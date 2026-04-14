@@ -1,0 +1,45 @@
+#include "resource.h"
+
+IDI_LL_ICON        ICON       DISCARDABLE "ll_icon.ico"
+IDI_LCD_LL_ICON    ICON       DISCARDABLE "ll_icon.ico"
+IDB_LOGIN          BITMAP     DISCARDABLE "ll_icon.BMP"
+
+IDC_CURSOR1        CURSOR     DISCARDABLE "arrow.cur"
+IDC_CURSOR2        CURSOR     DISCARDABLE "arrowcop.cur"
+IDC_CURSOR3        CURSOR     DISCARDABLE "arrowcopmulti.cur"
+IDC_CURSOR4        CURSOR     DISCARDABLE "arrowdrag.cur"
+IDC_CURSOR5        CURSOR     DISCARDABLE "circleandline.cur"
+IDC_CURSOR6        CURSOR     DISCARDABLE "lltoolcamera.cur"
+IDC_GRABHAND       CURSOR     DISCARDABLE "llgrablocked.cur"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,0,0,0
+ PRODUCTVERSION 0,0,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "Alchemy Viewer"
+            VALUE "FileDescription", "Alchemy Viewer"
+            VALUE "FileVersion", "0.0.0.0"
+            VALUE "InternalName", "alchemy-bin"
+            VALUE "OriginalFilename", "alchemy-bin.exe"
+            VALUE "ProductName", "Alchemy Viewer"
+            VALUE "ProductVersion", "0.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END
