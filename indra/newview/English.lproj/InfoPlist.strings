@@ -1,0 +1,7 @@
+/* Localized versions of Info.plist keys */
+
+CFBundleName = "Alchemy";
+
+CFBundleShortVersionString = "Alchemy version %%VERSION%%";
+CFBundleGetInfoString = "Alchemy version %%VERSION%%, Copyright � 2013-2025 Alchemy Development Group";
+
