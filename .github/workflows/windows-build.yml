@@ -53,14 +53,60 @@ jobs:
           ninja --version
           autobuild --version
 
-      - name: Remove private FMOD package from autobuild.xml
+      - name: Remove private installables from autobuild.xml
         shell: pwsh
         run: |
-          $content = Get-Content autobuild.xml -Raw
-          $pattern = '(?s)<key>fmodstudio</key>\s*<map>.*?</map>'
-          $updated = [regex]::Replace($content, $pattern, '')
-          Set-Content autobuild.xml $updated -NoNewline
-          Write-Host "Removed fmodstudio package block from autobuild.xml"
+          @'
+          import xml.etree.ElementTree as ET
+
+          path = "autobuild.xml"
+          tree = ET.parse(path)
+          root = tree.getroot()
+
+          private_keys = {
+              "fmodstudio",
+              "kdu",
+              "havok-source",
+              "llphysicsextensions_source",
+              "discord_sdk",
+          }
+
+          def find_installables_map(root_elem):
+              children = list(root_elem)
+              for i in range(len(children) - 1):
+                  if children[i].tag == "key" and children[i].text == "installables":
+                      return children[i + 1]
+              raise RuntimeError("installables map not found")
+
+          installables = find_installables_map(root)
+          items = list(installables)
+
+          new_children = []
+          removed = []
+
+          i = 0
+          while i < len(items):
+              node = items[i]
+              if node.tag == "key" and i + 1 < len(items):
+                  key_name = node.text
+                  value_node = items[i + 1]
+                  if key_name in private_keys:
+                      removed.append(key_name)
+                  else:
+                      new_children.append(node)
+                      new_children.append(value_node)
+                  i += 2
+              else:
+                  new_children.append(node)
+                  i += 1
+
+          installables.clear()
+          for child in new_children:
+              installables.append(child)
+
+          tree.write(path, encoding="utf-8", xml_declaration=True)
+          print("Removed installables:", ", ".join(removed) if removed else "none")
+          '@ | python
 
       - name: Configure
         shell: pwsh
