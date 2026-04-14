@@ -104,6 +104,17 @@ jobs:
             }
           }
 
+          $characterDir = "indra/newview/character"
+          if (-not (Get-ChildItem -Path "$characterDir/*.llm" -ErrorAction SilentlyContinue)) {
+            Set-Content -Path "$characterDir/placeholder.llm" -Encoding UTF8 -NoNewline -Value "placeholder"
+            Write-Host "Created missing placeholder: $characterDir/placeholder.llm"
+          }
+
+          if (-not (Get-ChildItem -Path "$characterDir/*.tga" -ErrorAction SilentlyContinue)) {
+            Set-Content -Path "$characterDir/placeholder.tga" -Encoding UTF8 -NoNewline -Value "placeholder"
+            Write-Host "Created missing placeholder: $characterDir/placeholder.tga"
+          }
+
       - name: Configure (ReleaseOS)
         shell: pwsh
         run: |
