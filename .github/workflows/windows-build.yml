@@ -1,3 +1,4 @@
+```yaml
 name: Windows build
 
 on:
@@ -20,6 +21,9 @@ jobs:
       AUTOBUILD_VSVER: "170"
       AUTOBUILD_ADDRSIZE: "64"
       AUTOBUILD_CPU_COUNT: "4"
+      AUTOBUILD_PLATFORM: "windows64"
+      LL_BUILD_RELEASE: "1"
+      LL_BUILD_RELWITHDEBINFO: "1"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
       PYTHONUTF8: "1"
 
@@ -93,3 +97,4 @@ jobs:
           path: artifacts
           if-no-files-found: error
           retention-days: 14
+```
