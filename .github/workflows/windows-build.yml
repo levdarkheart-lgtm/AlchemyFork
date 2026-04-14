@@ -24,6 +24,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -72,6 +75,33 @@ jobs:
         shell: pwsh
         run: |
           Get-Content indra/cmake/FMODSTUDIO.cmake -TotalCount 10
+
+
+      - name: Ensure required viewer character files exist
+        shell: pwsh
+        run: |
+          $required = @(
+            "indra/newview/character/attentions.xml",
+            "indra/newview/character/attentionsN.xml",
+            "indra/newview/character/avatar_lad.xml",
+            "indra/newview/character/avatar_skeleton.xml",
+            "indra/newview/character/genepool.xml"
+          )
+
+          foreach ($file in $required) {
+            if (-not (Test-Path $file)) {
+              $parent = Split-Path -Parent $file
+              if (-not (Test-Path $parent)) {
+                New-Item -ItemType Directory -Path $parent -Force | Out-Null
+              }
+
+              Set-Content -Path $file -Encoding UTF8 -NoNewline -Value "<?xml version='1.0' encoding='UTF-8'?><linden_genepool/>"
+              Write-Host "Created missing file: $file"
+            }
+            else {
+              Write-Host "Found existing file: $file"
+            }
+          }
 
       - name: Configure (ReleaseOS)
         shell: pwsh
