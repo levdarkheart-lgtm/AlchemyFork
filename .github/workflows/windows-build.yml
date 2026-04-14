@@ -1,0 +1,95 @@
+name: Windows build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    timeout-minutes: 180
+
+    env:
+      AUTOBUILD_WIN_CMAKE_GEN: Visual Studio 17 2022
+      AUTOBUILD_WIN_VSPLATFORM: x64
+      AUTOBUILD_VSVER: "170"
+      AUTOBUILD_ADDRSIZE: "64"
+      AUTOBUILD_CPU_COUNT: "4"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHONUTF8: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v4
+
+      - name: Install Python build tools
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install cmake ninja certifi llbase llsd autobuild
+
+      - name: Show tool versions
+        shell: pwsh
+        run: |
+          python --version
+          pip --version
+          cmake --version
+          ninja --version
+          autobuild --version
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          autobuild configure -c ReleaseOS -A64 -- -DLL_TESTS=OFF -DPACKAGE=ON -DUSE_FMODSTUDIO=OFF -DUSE_BUGSPLAT=OFF -DUSE_DISCORD=OFF -DDISABLE_FATAL_WARNINGS=ON
+
+      - name: Build
+        shell: pwsh
+        run: |
+          autobuild build -c ReleaseOS -A64 --no-configure
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+
+          $candidates = @(
+            'build-vc170-64/newview/Release',
+            'build-vc170-64/newview/RelWithDebInfo',
+            'build-vc170-64/newview/packaged',
+            'build-vc170-64/newview'
+          )
+
+          foreach ($path in $candidates) {
+            if (Test-Path $path) {
+              Write-Host "Copying from $path"
+              Copy-Item -Path $path -Destination artifacts -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          Get-ChildItem -Path artifacts -Recurse | Select-Object FullName
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: alchemy-windows-build
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 14
