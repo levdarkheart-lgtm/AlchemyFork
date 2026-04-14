@@ -3,12 +3,6 @@ name: Windows build
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
 
 jobs:
   build-windows:
@@ -59,10 +53,19 @@ jobs:
           ninja --version
           autobuild --version
 
+      - name: Remove private FMOD package from autobuild.xml
+        shell: pwsh
+        run: |
+          $content = Get-Content autobuild.xml -Raw
+          $pattern = '(?s)<key>fmodstudio</key>\s*<map>.*?</map>'
+          $updated = [regex]::Replace($content, $pattern, '')
+          Set-Content autobuild.xml $updated -NoNewline
+          Write-Host "Removed fmodstudio package block from autobuild.xml"
+
       - name: Configure
         shell: pwsh
         run: |
-          autobuild configure -c ReleaseOS -A64 -- -DLL_TESTS=OFF -DPACKAGE=ON -DUSE_FMODSTUDIO=OFF -DUSE_BUGSPLAT=OFF -DUSE_DISCORD=OFF -DDISABLE_FATAL_WARNINGS=ON
+          autobuild configure -c ReleaseOS -A64 -- -DLL_TESTS=OFF -DPACKAGE=ON -DUSE_FMODSTUDIO:BOOL=OFF -DUSE_BUGSPLAT:BOOL=OFF -DUSE_DISCORD:BOOL=OFF -DDISABLE_FATAL_WARNINGS:BOOL=ON
 
       - name: Build
         shell: pwsh
