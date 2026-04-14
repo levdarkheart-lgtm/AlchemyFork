@@ -1,3 +1,4 @@
+```yaml
 name: Windows build
 
 on:
@@ -59,29 +60,35 @@ jobs:
           $content = Get-Content $path -Raw
 
           $prepend = @'
-          # --- GitHub Actions CI patch: disable FMOD completely ---
-          set(USE_FMODSTUDIO OFF CACHE BOOL "Using FMODSTUDIO sound library." FORCE)
-          return()
-          # --- end CI patch ---
-          
-          '@
+# --- CI patch: disable FMOD completely ---
+set(USE_FMODSTUDIO OFF CACHE BOOL "Using FMODSTUDIO sound library." FORCE)
+return()
+# --- end CI patch ---
+
+'@
 
           Set-Content -Path $path -Value ($prepend + $content)
 
       - name: Verify FMOD patch
         shell: pwsh
         run: |
-          Get-Content indra/cmake/FMODSTUDIO.cmake -TotalCount 12
+          Get-Content indra/cmake/FMODSTUDIO.cmake -TotalCount 10
 
       - name: Configure
         shell: pwsh
         run: |
-          autobuild configure -c ReleaseOS -A64 -- -DLL_TESTS=OFF -DPACKAGE=ON -DUSE_FMODSTUDIO:BOOL=OFF -DUSE_BUGSPLAT:BOOL=OFF -DUSE_DISCORD:BOOL=OFF -DDISABLE_FATAL_WARNINGS=ON
+          & autobuild configure -c ReleaseOS -A64 -- `
+            "-DLL_TESTS=OFF" `
+            "-DPACKAGE=ON" `
+            "-DUSE_FMODSTUDIO:BOOL=OFF" `
+            "-DUSE_BUGSPLAT:BOOL=OFF" `
+            "-DUSE_DISCORD:BOOL=OFF" `
+            "-DDISABLE_FATAL_WARNINGS=ON"
 
       - name: Build
         shell: pwsh
         run: |
-          autobuild build -c ReleaseOS -A64 --no-configure
+          & autobuild build -c ReleaseOS -A64 --no-configure
 
       - name: Collect artifacts
         shell: pwsh
@@ -111,3 +118,4 @@ jobs:
           path: artifacts
           if-no-files-found: error
           retention-days: 14
+```
