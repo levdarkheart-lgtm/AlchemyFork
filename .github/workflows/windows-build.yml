@@ -16,14 +16,17 @@ jobs:
       AUTOBUILD_ADDRSIZE: "64"
       AUTOBUILD_CPU_COUNT: "4"
       AUTOBUILD_PLATFORM: "windows64"
-      LL_BUILD_RELEASE: "1"
-      LL_BUILD_RELWITHDEBINFO: "1"
+      LL_BUILD_RELEASE: "/DWIN32 /D_WINDOWS /DLL_WINDOWS=1 /DLL_RELEASE=1 /DLL_RELEASE_FOR_DOWNLOAD=1 /DNDEBUG /DUNICODE /D_UNICODE /DWINVER=0x0A00 /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A000000"
+      LL_BUILD_RELWITHDEBINFO: "/DWIN32 /D_WINDOWS /DLL_WINDOWS=1 /DLL_RELEASE=1 /DLL_RELEASE_WITH_DEBUG_INFO=1 /DNDEBUG /DUNICODE /D_UNICODE /DWINVER=0x0A00 /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A000000"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
       PYTHONUTF8: "1"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -72,6 +75,33 @@ jobs:
         shell: pwsh
         run: |
           Get-Content indra/cmake/FMODSTUDIO.cmake -TotalCount 10
+
+
+      - name: Ensure required viewer character files exist
+        shell: pwsh
+        run: |
+          $required = @(
+            "indra/newview/character/attentions.xml",
+            "indra/newview/character/attentionsN.xml",
+            "indra/newview/character/avatar_lad.xml",
+            "indra/newview/character/avatar_skeleton.xml",
+            "indra/newview/character/genepool.xml"
+          )
+
+          foreach ($file in $required) {
+            if (-not (Test-Path $file)) {
+              $parent = Split-Path -Parent $file
+              if (-not (Test-Path $parent)) {
+                New-Item -ItemType Directory -Path $parent -Force | Out-Null
+              }
+
+              Set-Content -Path $file -Encoding UTF8 -NoNewline -Value "<?xml version='1.0' encoding='UTF-8'?><linden_genepool/>"
+              Write-Host "Created missing file: $file"
+            }
+            else {
+              Write-Host "Found existing file: $file"
+            }
+          }
 
       - name: Configure (ReleaseOS)
         shell: pwsh
