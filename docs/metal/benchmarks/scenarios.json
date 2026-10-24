@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "primary_device": "M1 Max / 64 GiB (verify GPU configuration on host)",
+  "minimum_frames_per_variant": 300,
+  "required_scenarios_for_20pct_p50_win": 3,
+  "minimum_p50_frame_time_improvement_pct": 20.0,
+  "maximum_p95_frame_time_regression_pct": 5.0,
+  "scenarios": [
+    {"id": "quiet-region", "description": "Static camera in a low-avatar region; control for resolution and cold/warm texture cache", "capture": "Record region coordinates/camera privately; commit anonymized reproducible setup"},
+    {"id": "dense-avatars", "description": "Avatar-heavy controlled scene with clothing/hair alpha; compare stable avatar density", "capture": "Use permitted scenes and do not log identifiable avatar names"},
+    {"id": "pbr-interior", "description": "PBR material-heavy interior with reflections/probes and dynamic lights", "capture": "Match graphics, lights, probe state and HDR"},
+    {"id": "outdoor-motion", "description": "Scripted repeatable camera motion across terrain, water, sky and geometry", "capture": "Match path, draw distance, cache and settings"}
+  ]
+}

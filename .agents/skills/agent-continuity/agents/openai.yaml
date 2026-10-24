@@ -1,0 +1,3 @@
+interface:
+  display_name: "Agent Continuity"
+  short_description: "Resume and coordinate the ongoing Metal implementation"

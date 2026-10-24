@@ -1,0 +1,27 @@
+id,area,scenario,critical,reference,metal,evidence,notes
+login,session,Startup login and MFA where applicable,yes,unverified,unverified,,Use authorized test account only
+inventory,session,Inventory search fetch and outfit changes,yes,unverified,unverified,,Account data excluded from logs
+movement,world,Movement camera controls and teleport,yes,unverified,unverified,,Include crossing regions
+terrain,world,Terrain textures and PBR terrain,yes,unverified,unverified,,Different elevation/LOD settings
+objects,world,Static and animated mesh objects,yes,unverified,unverified,,Texture/geometry streaming
+pbr,materials,glTF PBR metallic roughness and normals,yes,unverified,unverified,,Color fidelity
+alpha,materials,Alpha mask blend hair foliage and sorting,yes,unverified,unverified,,Order/depth behavior
+avatars,avatars,Rigged mesh avatars and skinning,yes,unverified,unverified,,Animations multiple avatars
+attachments,avatars,Hud and world attachments,yes,unverified,unverified,,HUD camera and compositing
+shadows,lighting,Sun moon local lights and shadow maps,yes,unverified,unverified,,Cascades and alpha shadowing
+sky_water,environment,Atmosphere sky ocean waves underwater,yes,unverified,unverified,,Sky transitions reflections
+probes,lighting,Reflection probes and mirrors,yes,unverified,unverified,,Probe/Hero views
+post,render,Bloom glow SSAO SSR tonemapping exposure AA,yes,unverified,unverified,,All available reference settings
+ui,ui,Login floater windows toolbars and controls,yes,unverified,unverified,,Resize Retina multiple screens
+fonts,ui,Unicode fonts glyph cache and text entry,yes,unverified,unverified,,IME and cursor placement
+picking,editing,Picking selection and outlines,yes,unverified,unverified,,Depth readback correctness
+edit,editing,Object edit move rotate texture and build,yes,unverified,unverified,,Permissions intact
+mesh_upload,editing,Mesh upload and open-source physics decomposition,yes,unverified,unverified,,Reference V-HACD not Havok
+snapshots,render,Snapshots and render-to-texture capture,yes,unverified,unverified,,Image format and gamma
+media,media,In-world web and video texture display,yes,unverified,unverified,,CEF/VLC in-scope behavior
+audio,audio,Spatial sound and streaming audio,yes,unverified,unverified,,Open-source audio reference
+voice,voice,WebRTC voice connection and spatial voice,yes,unverified,unverified,,Microphone privacy
+scripts,world,LSL/script-controlled interaction and effects,yes,unverified,unverified,,Network effects retained
+stability,session,Long session resize suspend resume and logout,yes,unverified,unverified,,Resource leaks and deadlocks
+performance,performance,Primary benchmark comparison and GPU profiling,yes,unverified,unverified,,Do not fabricate data
+native,build,ARM64-only runtime and no app-owned OpenGL,yes,unverified,unverified,,Strict release gate

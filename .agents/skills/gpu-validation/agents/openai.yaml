@@ -1,0 +1,3 @@
+interface:
+  display_name: "GPU Validation"
+  short_description: "Verify correctness and performance on Apple Silicon"
