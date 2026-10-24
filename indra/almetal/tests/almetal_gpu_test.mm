@@ -759,9 +759,17 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             {{0.f, 1.f, 0.f, 0.f}}, {{1.f, 0.f, 0.f, 0.f}},
             {{1.f, 0.f, 0.f, 0.f}}, {{1.f, 0.f, 0.f, 0.f}},
         }};
-        std::array<std::uint8_t, sizeof(positions) + sizeof(normals)> vertex_bytes{};
+        const std::array<std::array<float, 2>, 6> texcoords{{
+            {{0.f, 0.f}}, {{0.f, 0.f}}, {{0.f, 0.f}},
+            {{0.f, 0.f}}, {{0.f, 0.f}}, {{0.f, 0.f}},
+        }};
+        std::array<std::uint8_t,
+                   sizeof(positions) + sizeof(normals) + sizeof(texcoords)>
+            vertex_bytes{};
         std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
         std::memcpy(vertex_bytes.data() + sizeof(positions), normals.data(), sizeof(normals));
+        std::memcpy(vertex_bytes.data() + sizeof(positions) + sizeof(normals),
+                    texcoords.data(), sizeof(texcoords));
         const std::array<std::uint16_t, 6> indices{{0, 1, 2, 3, 4, 5}};
 
         ALMetalBufferDescriptor vertex_descriptor;
@@ -794,10 +802,32 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         INFO(error);
         REQUIRE(destination_template);
 
+        ALMetalTextureDescriptor diffuse_descriptor;
+        diffuse_descriptor.format = ALMetalPixelFormat::rgba8_unorm_srgb;
+        diffuse_descriptor.width = 1;
+        diffuse_descriptor.height = 1;
+        diffuse_descriptor.storage = ALMetalStorageMode::private_gpu;
+        diffuse_descriptor.usage = ALMetalTextureUsage::shader_read;
+        diffuse_descriptor.label = "Alchemy textured preview encoded-color source";
+        auto diffuse_texture = ALMetalTexture::create(
+            *device, diffuse_descriptor, &error);
+        INFO(error);
+        REQUIRE(diffuse_texture);
+        const std::array<std::uint8_t, 4> diffuse_pixel{{128, 64, 32, 255}};
+        auto upload = device->makeCommandBuffer(
+            "Alchemy textured preview upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        REQUIRE(diffuse_texture->upload(
+            *upload, 0, 0, {}, diffuse_pixel.data(), 4, &error));
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
         ALMetalLitPreviewBatch batch;
         batch.vertices = vertices.get();
         batch.position_offset = 0;
         batch.normal_offset = sizeof(positions);
+        batch.texcoord_offset = sizeof(positions) + sizeof(normals);
         batch.vertex_count = positions.size();
         batch.indices = index_buffer.get();
         batch.index_count = indices.size();
@@ -829,6 +859,7 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         batches[0].index_count = 3;
         batches[1].index_offset = sizeof(std::uint16_t) * 3;
         batches[1].index_count = 3;
+        batches[1].texture = diffuse_texture.get();
         std::memset(batches[0].light_direction, 0,
                     sizeof(batches[0].light_direction));
         std::memset(batches[0].light_diffuse, 0,
@@ -841,6 +872,13 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
                     sizeof(batches[1].light_diffuse));
         batches[1].light_direction[0][0] = 1.f;
         batches[1].light_diffuse[0][0] = 1.f;
+
+        batches[1].texcoord_offset = vertex_bytes.size();
+        CHECK_FALSE(renderer->render(batches[1], &error));
+        CHECK(error == "Metal lit preview geometry range exceeds its buffers");
+        batches[1].texcoord_offset = sizeof(positions) + sizeof(normals);
+        error.clear();
+
         ALMetalLitPreviewScene scene;
         scene.batches = batches;
         scene.batch_count = 2;
@@ -858,7 +896,10 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         INFO(error);
 
         const std::size_t center = (16 * 32 + 16) * 4;
-        CHECK(std::abs(static_cast<int>(pixels[center + 0]) - 230) <= 1);
+        // The sRGB source is intentionally sampled through its linear UNORM
+        // view, matching legacy AnisoWrap/GL_SKIP_DECODE. 128 * 0.9 = 115.2;
+        // hardware sRGB decode would instead produce roughly 50 here.
+        CHECK(std::abs(static_cast<int>(pixels[center + 0]) - 115) <= 1);
         CHECK(pixels[center + 1] <= 1);
         CHECK(pixels[center + 2] <= 1);
         CHECK(pixels[center + 3] == 255);

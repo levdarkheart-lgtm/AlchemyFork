@@ -103,6 +103,8 @@ namespace
 {
     bool appendMetalModelPreviewBatch(
         LLVertexBuffer& buffer,
+        const ALMetalTexture* texture,
+        const LLColor4& diffuse_color,
         std::vector<ALMetalLitPreviewBatch>& batches)
     {
         if (!buffer.hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
@@ -131,6 +133,16 @@ namespace
         batch.vertices = vertices;
         batch.position_offset = buffer.getOffset(LLVertexBuffer::TYPE_VERTEX);
         batch.normal_offset = buffer.getOffset(LLVertexBuffer::TYPE_NORMAL);
+        if (texture)
+        {
+            if (!buffer.hasDataType(LLVertexBuffer::TYPE_TEXCOORD0))
+            {
+                return false;
+            }
+            batch.texcoord_offset = buffer.getOffset(
+                LLVertexBuffer::TYPE_TEXCOORD0);
+            batch.texture = texture;
+        }
         batch.vertex_count = buffer.getNumVerts();
         batch.indices = indices;
         batch.index_type = buffer.getIndexStride() == 4
@@ -166,7 +178,7 @@ namespace
             std::memcpy(batch.light_diffuse[light],
                         light_diffuse[light].mV, sizeof(F32) * 3);
         }
-        std::memcpy(batch.diffuse_color, PREVIEW_BASE_COL.mV,
+        std::memcpy(batch.diffuse_color, diffuse_color.mV,
                     sizeof(batch.diffuse_color));
         batches.push_back(batch);
         return true;
@@ -3380,8 +3392,7 @@ bool LLModelPreview::render()
 #if LL_DARWIN
     mMetalPreview.reset();
     bool metal_preview_eligible = !show_edges && !show_joint_positions &&
-                                  !show_skin_weight && !show_textures &&
-                                  !show_physics;
+                                  !show_skin_weight && !show_physics;
     std::vector<ALMetalLitPreviewBatch> metal_preview_batches;
 #endif
 
@@ -3651,6 +3662,10 @@ bool LLModelPreview::render()
                 auto num_models = mVertexBuffer[mPreviewLOD][model].size();
                 for (size_t i = 0; i < num_models; ++i)
                 {
+#if LL_DARWIN
+                    const ALMetalTexture* metal_diffuse_texture = nullptr;
+                    LLColor4 metal_diffuse_color = PREVIEW_BASE_COL;
+#endif
                     if (show_textures)
                     {
                         auto materialCnt = instance.mModel->mMaterialList.size();
@@ -3660,6 +3675,9 @@ bool LLModelPreview::render()
                             const LLImportMaterial& material = instance.mMaterial[binding];
 
                             gGL.diffuseColor4fv(material.mDiffuseColor.mV);
+#if LL_DARWIN
+                            metal_diffuse_color = material.mDiffuseColor;
+#endif
 
                             // Find the tex for this material, bind it, and add it to our set
                             //
@@ -3667,8 +3685,20 @@ bool LLModelPreview::render()
                             if (tex)
                             {
                                 mTextureSet.insert(tex);
+#if LL_DARWIN
+                                LLImageGL* image = tex->getGLTexture();
+                                metal_diffuse_texture = image
+                                    ? image->getMetalTexture() : nullptr;
+#endif
                             }
                         }
+#if LL_DARWIN
+                        if (!metal_diffuse_texture)
+                        {
+                            metal_preview_eligible = false;
+                            metal_preview_batches.clear();
+                        }
+#endif
                     }
                     else
                     {
@@ -3696,6 +3726,8 @@ bool LLModelPreview::render()
 #if LL_DARWIN
                     if (metal_preview_eligible &&
                         !appendMetalModelPreviewBatch(*buffer,
+                                                     metal_diffuse_texture,
+                                                     metal_diffuse_color,
                                                      metal_preview_batches))
                     {
                         metal_preview_eligible = false;

@@ -203,15 +203,21 @@ struct ALMetalLitPreviewVaryings
     float4 color;
 };
 
-vertex ALMetalLitPreviewVaryings almetal_lit_preview_vertex(
-    const device float4* positions [[buffer(0)]],
-    const device float4* normals [[buffer(1)]],
-    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
-    uint vertex_id [[vertex_id]])
+struct ALMetalLitPreviewTexturedVaryings
+{
+    float4 position [[position]];
+    float4 color;
+    float2 texcoord;
+};
+
+static ALMetalLitPreviewVaryings almetal_lit_preview_vertex_common(
+    float4 position,
+    float4 normal_value,
+    constant ALMetalLitPreviewConstants& constants)
 {
     ALMetalLitPreviewVaryings output;
     float4 clip_position = constants.modelview_projection *
-                           float4(positions[vertex_id].xyz, 1.0);
+                           float4(position.xyz, 1.0);
     // Match glCopyTexSubImage's lower-left framebuffer row convention in the
     // resulting texture bytes.
     clip_position.y = -clip_position.y;
@@ -221,7 +227,7 @@ vertex ALMetalLitPreviewVaryings almetal_lit_preview_vertex(
         constants.normal_matrix[0].xyz,
         constants.normal_matrix[1].xyz,
         constants.normal_matrix[2].xyz);
-    const float3 normal = normalize(normal_matrix * normals[vertex_id].xyz);
+    const float3 normal = normalize(normal_matrix * normal_value.xyz);
     float3 lighting = 0.0;
     for (uint light = 0; light < 3; ++light)
     {
@@ -233,10 +239,45 @@ vertex ALMetalLitPreviewVaryings almetal_lit_preview_vertex(
     return output;
 }
 
+vertex ALMetalLitPreviewVaryings almetal_lit_preview_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    uint vertex_id [[vertex_id]])
+{
+    return almetal_lit_preview_vertex_common(
+        positions[vertex_id], normals[vertex_id], constants);
+}
+
 fragment float4 almetal_lit_preview_fragment(
     ALMetalLitPreviewVaryings input [[stage_in]])
 {
     return max(input.color, float4(0.0));
+}
+
+vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_textured_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device float2* texcoords [[buffer(3)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalLitPreviewVaryings lit = almetal_lit_preview_vertex_common(
+        positions[vertex_id], normals[vertex_id], constants);
+    ALMetalLitPreviewTexturedVaryings output;
+    output.position = lit.position;
+    output.color = lit.color;
+    output.texcoord = texcoords[vertex_id];
+    return output;
+}
+
+fragment float4 almetal_lit_preview_textured_fragment(
+    ALMetalLitPreviewTexturedVaryings input [[stage_in]],
+    texture2d<float> diffuse_map [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]])
+{
+    return max(diffuse_map.sample(diffuse_sampler, input.texcoord) *
+               input.color, float4(0.0));
 }
 
 vertex ALMetalUIVaryings almetal_ui_vertex(

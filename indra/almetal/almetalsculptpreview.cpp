@@ -40,8 +40,10 @@ struct ALMetalLitPreviewRenderer::Impl
 {
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalShaderLibrary> library;
-    std::unique_ptr<ALMetalRenderPipeline> pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> solid_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> textured_pipeline;
     std::unique_ptr<ALMetalDepthStencilState> depth_state;
+    std::unique_ptr<ALMetalSamplerState> texture_sampler;
 };
 
 ALMetalLitPreviewRenderer::ALMetalLitPreviewRenderer(std::unique_ptr<Impl> impl)
@@ -60,7 +62,9 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->library ||
         !impl->library->hasFunction("almetal_lit_preview_vertex") ||
-        !impl->library->hasFunction("almetal_lit_preview_fragment"))
+        !impl->library->hasFunction("almetal_lit_preview_fragment") ||
+        !impl->library->hasFunction("almetal_lit_preview_textured_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_textured_fragment"))
     {
         if (impl->library)
         {
@@ -76,8 +80,19 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
     pipeline_descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
     pipeline_descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float;
     pipeline_descriptor.label = "Alchemy lit preview pipeline";
-    impl->pipeline = ALMetalRenderPipeline::create(device, pipeline_descriptor, error);
-    if (!impl->pipeline)
+    impl->solid_pipeline = ALMetalRenderPipeline::create(
+        device, pipeline_descriptor, error);
+    if (!impl->solid_pipeline)
+    {
+        return nullptr;
+    }
+
+    pipeline_descriptor.vertex_function = "almetal_lit_preview_textured_vertex";
+    pipeline_descriptor.fragment_function = "almetal_lit_preview_textured_fragment";
+    pipeline_descriptor.label = "Alchemy textured lit preview pipeline";
+    impl->textured_pipeline = ALMetalRenderPipeline::create(
+        device, pipeline_descriptor, error);
+    if (!impl->textured_pipeline)
     {
         return nullptr;
     }
@@ -88,6 +103,16 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
     depth_descriptor.label = "Alchemy lit preview depth";
     impl->depth_state = ALMetalDepthStencilState::create(device, depth_descriptor, error);
     if (!impl->depth_state)
+    {
+        return nullptr;
+    }
+
+    ALMetalSamplerDescriptor sampler_descriptor;
+    sampler_descriptor.max_anisotropy = 16;
+    sampler_descriptor.label = "Alchemy lit preview anisotropic wrap sampler";
+    impl->texture_sampler = ALMetalSamplerState::create(
+        device, sampler_descriptor, error);
+    if (!impl->texture_sampler)
     {
         return nullptr;
     }
@@ -153,6 +178,9 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                         batch.vertices->length()) ||
             !range_fits(batch.normal_offset, batch.vertex_count, vector_stride,
                         batch.vertices->length()) ||
+            (batch.texture &&
+             !range_fits(batch.texcoord_offset, batch.vertex_count,
+                         sizeof(float) * 2, batch.vertices->length())) ||
             !range_fits(batch.index_offset, batch.index_count, index_stride,
                         batch.indices->length()))
         {
@@ -227,7 +255,6 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
     const ALMetalTexture* color = target->colorTexture(0);
     bool encoded =
         color &&
-        encoder->setPipeline(*mImpl->pipeline, error) &&
         encoder->setDepthStencilState(mImpl->depth_state.get(), error) &&
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
@@ -252,11 +279,28 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                     sizeof(constants.diffuse_color));
 
         encoded =
+            encoder->setPipeline(
+                batch.texture ? *mImpl->textured_pipeline
+                              : *mImpl->solid_pipeline,
+                error) &&
             encoder->setVertexBuffer(0, *batch.vertices,
                                      batch.position_offset, error) &&
             encoder->setVertexBuffer(1, *batch.vertices,
                                      batch.normal_offset, error) &&
-            encoder->setVertexBytes(2, &constants, sizeof(constants), error) &&
+            encoder->setVertexBytes(2, &constants, sizeof(constants), error);
+        if (encoded && batch.texture)
+        {
+            encoded =
+                encoder->setVertexBuffer(3, *batch.vertices,
+                                         batch.texcoord_offset, error) &&
+                // The legacy preview uses AnisoWrap without sRGB decode. Bind
+                // the linear-compatible view so Metal samples the same encoded
+                // bytes even when LLImageGL owns sRGB storage.
+                encoder->setFragmentTextureLinear(0, batch.texture, error) &&
+                encoder->setFragmentSampler(0, mImpl->texture_sampler.get(),
+                                            error);
+        }
+        encoded = encoded &&
             encoder->drawIndexed(ALMetalPrimitiveType::triangle,
                                  batch.index_count, batch.index_type,
                                  *batch.indices, batch.index_offset, 1, error);

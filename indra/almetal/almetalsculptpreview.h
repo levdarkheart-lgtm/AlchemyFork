@@ -22,11 +22,16 @@ struct ALMetalLitPreviewBatch
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
     std::size_t normal_offset = 0;
+    std::size_t texcoord_offset = 0;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;
     ALMetalIndexType index_type = ALMetalIndexType::uint16;
     std::uint32_t index_count = 0;
+    // When present, the batch samples this texture through the preview's
+    // encoded-space anisotropic wrap sampler. A null texture selects the
+    // solid-lit pipeline and does not require texture coordinates.
+    const ALMetalTexture* texture = nullptr;
     const ALMetalTexture* destination_template = nullptr;
     float modelview_projection[16]{};
     float normal_matrix[3][4]{};
@@ -43,9 +48,10 @@ struct ALMetalLitPreviewScene
     float clear_color[4] = {0.15f, 0.20f, 0.30f, 1.0f};
 };
 
-// A deliberately narrow shared pass for solid-lit upload previews: indexed
-// position/normal meshes over a constant background. It is not a generic
-// framebuffer-copy abstraction; each concrete preview still owns its scene.
+// A deliberately narrow shared pass for solid or diffuse-textured upload
+// previews: indexed position/normal meshes over a constant background. It is
+// not a generic framebuffer-copy abstraction; each concrete preview still
+// owns its scene.
 class ALMetalLitPreviewRenderer final
 {
 public:
