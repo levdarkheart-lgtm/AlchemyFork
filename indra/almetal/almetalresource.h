@@ -218,6 +218,17 @@ struct ALMetalRegion2D
     std::uint32_t height = 0;
 };
 
+struct ALMetalTextureCopy
+{
+    std::uint32_t source_mip_level = 0;
+    std::uint32_t source_slice = 0;
+    ALMetalRegion2D source_region{};
+    std::uint32_t destination_mip_level = 0;
+    std::uint32_t destination_slice = 0;
+    std::uint32_t destination_x = 0;
+    std::uint32_t destination_y = 0;
+};
+
 class ALMetalTexture final
 {
 public:
@@ -251,6 +262,13 @@ public:
                 const void* bytes,
                 std::size_t bytes_per_row,
                 std::string* error = nullptr);
+
+    // GPU-only subresource copy. A zero-sized source region means the complete
+    // selected source mip. Source and destination formats must match.
+    bool copyFrom(ALMetalCommandBuffer& command_buffer,
+                  const ALMetalTexture& source,
+                  ALMetalTextureCopy copy = {},
+                  std::string* error = nullptr);
 
     // Generates every level after level zero in this texture's allocated mip
     // chain. The texture must be uncompressed and have more than one level.

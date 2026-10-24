@@ -929,6 +929,93 @@ bool ALMetalTexture::upload(ALMetalCommandBuffer& command_buffer,
     }
 }
 
+bool ALMetalTexture::copyFrom(ALMetalCommandBuffer& command_buffer,
+                              const ALMetalTexture& source,
+                              ALMetalTextureCopy copy,
+                              std::string* error)
+{
+    if (!mImpl || !source.mImpl)
+    {
+        setError(error, "Metal texture copy requires live source and destination textures");
+        return false;
+    }
+    if (mDescriptor.type == ALMetalTextureType::texture_2d_multisample ||
+        source.mDescriptor.type == ALMetalTextureType::texture_2d_multisample ||
+        mDescriptor.storage == ALMetalStorageMode::memoryless ||
+        source.mDescriptor.storage == ALMetalStorageMode::memoryless)
+    {
+        setError(error, "Multisample and memoryless Metal textures cannot use a direct blit copy");
+        return false;
+    }
+    if (mDescriptor.format != source.mDescriptor.format)
+    {
+        setError(error, "Metal texture copy requires matching pixel formats");
+        return false;
+    }
+    if (mImpl->device != source.mImpl->device)
+    {
+        setError(error, "Metal texture copy source and destination use different devices");
+        return false;
+    }
+    if (!normalizedRegion(source.mDescriptor, copy.source_mip_level,
+                          copy.source_slice, &copy.source_region, error))
+    {
+        return false;
+    }
+    TextureTransferLayout source_layout;
+    if (!textureTransferLayout(source.mDescriptor, copy.source_mip_level,
+                               copy.source_region, &source_layout, error))
+    {
+        return false;
+    }
+
+    ALMetalRegion2D destination_region{
+        copy.destination_x,
+        copy.destination_y,
+        copy.source_region.width,
+        copy.source_region.height,
+    };
+    if (!normalizedRegion(mDescriptor, copy.destination_mip_level,
+                          copy.destination_slice, &destination_region, error))
+    {
+        return false;
+    }
+    TextureTransferLayout destination_layout;
+    if (!textureTransferLayout(mDescriptor, copy.destination_mip_level,
+                               destination_region, &destination_layout, error))
+    {
+        return false;
+    }
+    if (command_buffer.isCommitted() ||
+        command_buffer.nativeDevice() != (__bridge void*)mImpl->device)
+    {
+        setError(error, "Metal texture copy requires an uncommitted command buffer from the same device");
+        return false;
+    }
+
+    @autoreleasepool
+    {
+        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
+        id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
+        if (!encoder)
+        {
+            setError(error, "Metal could not create a texture copy blit encoder");
+            return false;
+        }
+        [encoder copyFromTexture:source.mImpl->texture
+                     sourceSlice:copy.source_slice
+                     sourceLevel:copy.source_mip_level
+                    sourceOrigin:MTLOriginMake(copy.source_region.x, copy.source_region.y, 0)
+                      sourceSize:MTLSizeMake(copy.source_region.width, copy.source_region.height, 1)
+                       toTexture:mImpl->texture
+                destinationSlice:copy.destination_slice
+                destinationLevel:copy.destination_mip_level
+               destinationOrigin:MTLOriginMake(copy.destination_x, copy.destination_y, 0)];
+        [encoder endEncoding];
+        return true;
+    }
+}
+
 bool ALMetalTexture::generateMipmaps(ALMetalCommandBuffer& command_buffer,
                                      std::string* error)
 {

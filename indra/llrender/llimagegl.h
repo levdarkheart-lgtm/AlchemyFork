@@ -617,6 +617,7 @@ private:
                                   std::size_t source_bytes_per_row);
     bool generateMetalMipmaps(ALMetalCommandBuffer& command_buffer);
     bool commitMetalUpload(std::unique_ptr<ALMetalCommandBuffer>& command_buffer);
+    bool preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 height);
     ALMetalTexture* metalTextureForUpload() noexcept;
     std::size_t metalSourceBytesPerRow(U32 width) const;
 #endif

@@ -40,6 +40,11 @@
 
 #include "llimage.h"
 
+#if LL_DARWIN
+#include "../../almetal/almetaldevice.h"
+#include "../../almetal/almetalresource.h"
+#endif
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -487,6 +492,47 @@ namespace
         UNSCOPED_INFO("luminance and alpha both survive the copy");
         CHECK(match);
     }
+
+#if LL_DARWIN
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: scaleDown preserves its Metal mirror with a GPU blit", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        constexpr U16 W = 16;
+        constexpr U16 H = 16;
+        LLPointer<LLImageGL> img = new LLImageGL(/*usemipmaps=*/true);
+        REQUIRE(img->createGLTexture(0, makeRaw(W, H, 4, 0x80).get()));
+        REQUIRE(img->getMetalTexture());
+        CHECK(img->getMetalTexture()->descriptor().width == W);
+        CHECK(img->getMetalTexture()->descriptor().height == H);
+
+        const U32 method = gGLManager.mDownScaleMethod;
+        gGLManager.mDownScaleMethod = 1;
+        const bool scaled = img->scaleDown(1);
+        gGLManager.mDownScaleMethod = method;
+
+        REQUIRE(scaled);
+        REQUIRE(img->getMetalTexture());
+        CHECK(img->getMetalTexture()->descriptor().width == W / 2);
+        CHECK(img->getMetalTexture()->descriptor().height == H / 2);
+        CHECK(img->getMetalTexture()->descriptor().mipmap_level_count == 4);
+
+        std::vector<U8> pixels((W / 2) * (H / 2) * 4, 0);
+        REQUIRE(img->getMetalTexture()->readback(
+            *device, 0, 0, {}, pixels.data(), (W / 2) * 4, &error));
+        INFO(error);
+        CHECK(std::all_of(pixels.begin(), pixels.end(), [](U8 value) { return value == 0x80; }));
+    }
+#endif
 
     // scaleDown waits out an upload in flight: the LLImageGL thread is writing the
     // discard level and storage state it reads and replaces, and that upload's

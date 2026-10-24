@@ -74,6 +74,7 @@ static std::atomic<U32> sTextureNameGeneration{ 1 };
 #if LL_DARWIN
 static ALMetalDevice* sImageMetalDevice = nullptr;
 static std::atomic<bool> sMetalTextureReported{false};
+static std::atomic<bool> sMetalScaleDownReported{false};
 #endif
 
 namespace
@@ -1963,6 +1964,74 @@ bool LLImageGL::commitMetalUpload(std::unique_ptr<ALMetalCommandBuffer>& command
         return false;
     }
     command_buffer.reset();
+    return true;
+}
+
+bool LLImageGL::preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 height)
+{
+    if (!sImageMetalDevice || !mMetalTexture)
+    {
+        return false;
+    }
+
+    const ALMetalTextureDescriptor& source_descriptor = mMetalTexture->descriptor();
+    if (source_mip_level >= source_descriptor.mipmap_level_count ||
+        mMetalTexture->width(source_mip_level) != width ||
+        mMetalTexture->height(source_mip_level) != height)
+    {
+        // A no-mip GL texture can be minified through an FBO, but a Metal blit
+        // does not scale. Keep the safe unavailable state for that uncommon
+        // case until the native resample pass owns it.
+        return false;
+    }
+
+    ALMetalTextureDescriptor destination_descriptor = source_descriptor;
+    destination_descriptor.width = width;
+    destination_descriptor.height = height;
+    destination_descriptor.mipmap_level_count = mHasMipMaps
+        ? static_cast<U32>(std::bit_width(std::max(width, height))) : 1;
+    destination_descriptor.label = "Alchemy downscaled image texture";
+
+    std::string error;
+    auto destination = ALMetalTexture::create(
+        *sImageMetalDevice, destination_descriptor, &error);
+    if (!destination)
+    {
+        LL_WARNS("Metal") << "Could not allocate downscaled LLImageGL Metal texture: "
+                           << error << LL_ENDL;
+        return false;
+    }
+
+    auto command = sImageMetalDevice->makeCommandBuffer(
+        "Alchemy image scale-down blit", &error);
+    if (!command)
+    {
+        LL_WARNS("Metal") << "Could not create LLImageGL scale-down command: "
+                           << error << LL_ENDL;
+        return false;
+    }
+
+    ALMetalTextureCopy copy;
+    copy.source_mip_level = source_mip_level;
+    if (!destination->copyFrom(*command, *mMetalTexture, copy, &error) ||
+        (destination_descriptor.mipmap_level_count > 1 &&
+         !destination->generateMipmaps(*command, &error)) ||
+        !command->commit(&error))
+    {
+        LL_WARNS("Metal") << "Could not preserve LLImageGL scale-down in Metal: "
+                           << error << LL_ENDL;
+        return false;
+    }
+
+    mMetalTexture = std::move(destination);
+    bool expected = false;
+    if (sMetalScaleDownReported.compare_exchange_strong(
+            expected, true, std::memory_order_relaxed))
+    {
+        LL_INFOS("Metal") << "Production LLImageGL Metal scale-down blits are active; first result is "
+                           << width << "x" << height << " from source mip "
+                           << source_mip_level << LL_ENDL;
+    }
     return true;
 }
 #endif
@@ -4180,10 +4249,16 @@ bool LLImageGL::scaleDown(S32 desired_discard)
     mTexName = new_texname;
 
 #if LL_DARWIN
-    // scaleDown obtains its new pixels entirely through GL framebuffer/PBO paths. A later
-    // native implementation will blit the matching Metal mip, but an absent mirror is the
-    // only safe state until then.
-    mMetalTexture.reset();
+    // The source image already has the same mip chain in Metal. Copy the
+    // selected mip into a right-sized native texture and regenerate its tail,
+    // preserving the mirror without a CPU round-trip. A no-mip GL-only
+    // resample has no exact blit source yet and deliberately remains absent.
+    if (!preserveMetalScaleDown(static_cast<U32>(mip),
+                                static_cast<U32>(desired_width),
+                                static_cast<U32>(desired_height)))
+    {
+        mMetalTexture.reset();
+    }
     mPendingMetalTexture.reset();
 #endif
 

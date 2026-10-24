@@ -379,6 +379,65 @@ TEST_CASE("almetal: texture swizzles and generated mipmaps survive private uploa
     }
 }
 
+TEST_CASE("almetal: a typed texture blit copies one mip into a new mip chain", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        ALMetalTextureDescriptor source_descriptor;
+        source_descriptor.format = ALMetalPixelFormat::r8_unorm;
+        source_descriptor.width = 4;
+        source_descriptor.height = 4;
+        source_descriptor.mipmap_level_count = 3;
+        source_descriptor.storage = ALMetalStorageMode::private_gpu;
+        source_descriptor.usage = ALMetalTextureUsage::shader_read;
+        source_descriptor.label = "Alchemy texture-copy source";
+        auto source = ALMetalTexture::create(*device, source_descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        ALMetalTextureDescriptor destination_descriptor = source_descriptor;
+        destination_descriptor.width = 2;
+        destination_descriptor.height = 2;
+        destination_descriptor.mipmap_level_count = 2;
+        destination_descriptor.label = "Alchemy texture-copy destination";
+        auto destination = ALMetalTexture::create(*device, destination_descriptor, &error);
+        INFO(error);
+        REQUIRE(destination);
+
+        const std::array<std::uint8_t, 4> expected = {11, 22, 33, 44};
+        auto command = device->makeCommandBuffer("Alchemy typed texture-copy test", &error);
+        INFO(error);
+        REQUIRE(command);
+        REQUIRE(source->upload(*command, 1, 0, {}, expected.data(), 2, &error));
+        ALMetalTextureCopy copy;
+        copy.source_mip_level = 1;
+        REQUIRE(destination->copyFrom(*command, *source, copy, &error));
+        REQUIRE(destination->generateMipmaps(*command, &error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 4> result{};
+        REQUIRE(destination->readback(*device, 0, 0, {}, result.data(), 2, &error));
+        INFO(error);
+        CHECK(result == expected);
+
+        ALMetalTextureDescriptor mismatched_descriptor = destination_descriptor;
+        mismatched_descriptor.format = ALMetalPixelFormat::rg8_unorm;
+        auto mismatched = ALMetalTexture::create(*device, mismatched_descriptor, &error);
+        INFO(error);
+        REQUIRE(mismatched);
+        auto rejected = device->makeCommandBuffer("Alchemy rejected texture-copy test", &error);
+        REQUIRE(rejected);
+        CHECK_FALSE(mismatched->copyFrom(*rejected, *source, {}, &error));
+        CHECK(error == "Metal texture copy requires matching pixel formats");
+    }
+}
+
 TEST_CASE("almetal: BC texture transfer honors block rows and edge dimensions", "[almetal]")
 {
     @autoreleasepool
