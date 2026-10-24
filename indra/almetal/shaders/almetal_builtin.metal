@@ -132,6 +132,62 @@ static float4 almetal_clip_from_gl(float4 position)
     return position;
 }
 
+struct ALMetalTerrainPaintConstants
+{
+    float4x4 modelview_projection;
+    float4 paint;
+};
+
+struct ALMetalTerrainPaintVaryings
+{
+    float4 position [[position]];
+    float2 texcoord;
+};
+
+vertex ALMetalTerrainPaintVaryings almetal_terrain_paint_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(1)]],
+    constant ALMetalTerrainPaintConstants& constants [[buffer(2)]],
+    uint vertex_id [[vertex_id]])
+{
+    ALMetalTerrainPaintVaryings output;
+    float4 clip_position =
+        constants.modelview_projection * float4(positions[vertex_id].xyz, 1.0);
+    // GL framebuffer row zero is the lower row. Metal render-target row zero
+    // is the upper row, so invert clip Y for byte-for-byte mirror storage.
+    clip_position.y = -clip_position.y;
+    output.position = almetal_clip_from_gl(clip_position);
+    output.texcoord = texcoords[vertex_id];
+    return output;
+}
+
+fragment float4 almetal_terrain_paint_fragment(
+    ALMetalTerrainPaintVaryings input [[stage_in]],
+    texture2d<float> alpha_ramp [[texture(0)]],
+    sampler alpha_sampler [[sampler(0)]],
+    constant ALMetalTerrainPaintConstants& constants [[buffer(0)]])
+{
+    const float alpha1 = alpha_ramp.sample(alpha_sampler, input.texcoord).a;
+    const float alpha2 = alpha_ramp.sample(
+        alpha_sampler, input.texcoord - float2(2.0, 0.0)).a;
+    const float alpha_final = alpha_ramp.sample(
+        alpha_sampler, input.texcoord - float2(1.0, 0.0)).a;
+
+    const float4 sample_x = float4(1.0, 0.0, 0.0, 0.0);
+    const float4 sample_y = float4(0.0, 1.0, 0.0, 0.0);
+    const float4 sample_z = float4(0.0, 0.0, 1.0, 0.0);
+    const float4 sample_w = float4(0.0, 0.0, 0.0, 1.0);
+    float4 weight = mix(mix(sample_w, sample_z, alpha2),
+                        mix(sample_y, sample_x, alpha1), alpha_final) - 0.1;
+    const float4 usage = select(float4(0.0), float4(1.0), weight > 0.0);
+    weight *= usage;
+    weight /= dot(weight, float4(1.0));
+
+    const float3 stored = round(weight.yzw * constants.paint.x) /
+                          constants.paint.x;
+    return max(float4(stored, 1.0), float4(0.0));
+}
+
 vertex ALMetalUIVaryings almetal_ui_vertex(
     const device float4* positions [[buffer(0)]],
     const device float2* texcoords [[buffer(1)]],

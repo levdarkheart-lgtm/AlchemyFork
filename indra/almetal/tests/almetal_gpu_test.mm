@@ -13,6 +13,7 @@
 #include "../almetalpipeline.h"
 #include "../almetalresource.h"
 #include "../almetalsurface.h"
+#include "../almetalterrainpaint.h"
 #include "../almetaltextureops.h"
 #include "../almetaluirenderer.h"
 
@@ -558,6 +559,174 @@ TEST_CASE("almetal: bilinear texture resampling stays entirely on the GPU", "[al
             CHECK(std::abs(static_cast<int>(srgb_result[pixel * 4 + 2]) - 128) <= 1);
             CHECK(srgb_result[pixel * 4 + 3] == 255);
         }
+    }
+}
+
+TEST_CASE("almetal: terrain paint bake consumes indexed viewer buffers and generates mips", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalTerrainPaintRenderer::create(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::size_t position_offset = 0;
+        constexpr std::size_t texcoord_offset = sizeof(float) * 4 * 4;
+        std::array<std::uint8_t, texcoord_offset + sizeof(float) * 2 * 4> vertex_bytes{};
+        const float positions[4][4] = {
+            {-1.f, -1.f, 0.f, 1.f},
+            { 1.f, -1.f, 0.f, 1.f},
+            {-1.f,  1.f, 0.f, 1.f},
+            { 1.f,  1.f, 0.f, 1.f},
+        };
+        const float texcoords[4][2] = {
+            {0.5f, 0.5f}, {0.5f, 0.5f},
+            {0.5f, 0.5f}, {0.5f, 0.5f},
+        };
+        std::memcpy(vertex_bytes.data() + position_offset, positions, sizeof(positions));
+        std::memcpy(vertex_bytes.data() + texcoord_offset, texcoords, sizeof(texcoords));
+
+        ALMetalBufferDescriptor vertex_descriptor;
+        vertex_descriptor.length = vertex_bytes.size();
+        vertex_descriptor.storage = ALMetalStorageMode::shared;
+        vertex_descriptor.label = "Alchemy terrain paint vertex test";
+        auto vertices = ALMetalBuffer::create(*device, vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(vertices);
+        REQUIRE(vertices->write(0, vertex_bytes.data(), vertex_bytes.size(), &error));
+
+        const std::array<std::uint32_t, 6> index_values = {0, 1, 2, 1, 3, 2};
+        ALMetalBufferDescriptor index_descriptor;
+        index_descriptor.length = sizeof(index_values);
+        index_descriptor.storage = ALMetalStorageMode::shared;
+        index_descriptor.label = "Alchemy terrain paint index test";
+        auto indices = ALMetalBuffer::create(*device, index_descriptor, &error);
+        INFO(error);
+        REQUIRE(indices);
+        REQUIRE(indices->write(0, index_values.data(), sizeof(index_values), &error));
+
+        ALMetalTextureDescriptor alpha_descriptor;
+        alpha_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        alpha_descriptor.width = 1;
+        alpha_descriptor.height = 1;
+        alpha_descriptor.storage = ALMetalStorageMode::private_gpu;
+        alpha_descriptor.usage = ALMetalTextureUsage::shader_read;
+        alpha_descriptor.label = "Alchemy terrain alpha-ramp test";
+        auto alpha_ramp = ALMetalTexture::create(*device, alpha_descriptor, &error);
+        INFO(error);
+        REQUIRE(alpha_ramp);
+        const std::array<std::uint8_t, 4> alpha_pixel = {0, 0, 0, 128};
+        auto upload = device->makeCommandBuffer("Alchemy terrain alpha upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        REQUIRE(alpha_ramp->upload(*upload, 0, 0, {}, alpha_pixel.data(), 4, &error));
+        REQUIRE(upload->commit(&error));
+
+        ALMetalTextureDescriptor template_descriptor;
+        template_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        template_descriptor.width = 8;
+        template_descriptor.height = 8;
+        template_descriptor.mipmap_level_count = 4;
+        template_descriptor.storage = ALMetalStorageMode::private_gpu;
+        template_descriptor.usage = ALMetalTextureUsage::shader_read;
+        template_descriptor.label = "Alchemy terrain paint destination template";
+        auto destination_template = ALMetalTexture::create(
+            *device, template_descriptor, &error);
+        INFO(error);
+        REQUIRE(destination_template);
+
+        ALMetalTerrainPaintBatch batch;
+        batch.vertices = vertices.get();
+        batch.position_offset = position_offset;
+        batch.texcoord_offset = texcoord_offset;
+        batch.indices = indices.get();
+        batch.index_type = ALMetalIndexType::uint32;
+        batch.index_count = index_values.size();
+        batch.alpha_ramp = alpha_ramp.get();
+        batch.destination_template = destination_template.get();
+        batch.precision = 255.f;
+        for (int i = 0; i < 4; ++i)
+        {
+            batch.modelview_projection[i * 4 + i] = 1.f;
+        }
+
+        auto result = renderer->render(batch, &error);
+        INFO(error);
+        REQUIRE(result);
+        CHECK(alMetalHasUsage(result->descriptor().usage,
+                              ALMetalTextureUsage::shader_read));
+        CHECK(alMetalHasUsage(result->descriptor().usage,
+                              ALMetalTextureUsage::render_target));
+        CHECK(result->descriptor().mipmap_level_count == 4);
+
+        std::array<std::uint8_t, 8 * 8 * 4> level_zero{};
+        REQUIRE(result->readback(
+            *device, 0, 0, {}, level_zero.data(), 8 * 4, &error));
+        INFO(error);
+        for (std::size_t pixel = 0; pixel < 8 * 8; ++pixel)
+        {
+            CHECK(level_zero[pixel * 4 + 0] == 64);
+            CHECK(level_zero[pixel * 4 + 1] == 64);
+            CHECK(level_zero[pixel * 4 + 2] == 63);
+            CHECK(level_zero[pixel * 4 + 3] == 255);
+        }
+
+        std::array<std::uint8_t, 4> final_mip{};
+        REQUIRE(result->readback(
+            *device, 3, 0, {}, final_mip.data(), 4, &error));
+        INFO(error);
+        CHECK(final_mip == std::array<std::uint8_t, 4>{64, 64, 63, 255});
+
+        // A Metal render target numbers row zero from the top, while the GL
+        // framebuffer copy numbers it from the bottom. Vary the composition
+        // coordinate vertically and verify the renderer stores GL's lower
+        // row first so the two mirrors remain byte-for-byte interchangeable.
+        const float vertical_texcoords[4][2] = {
+            {1.25f, 0.5f}, {1.25f, 0.5f},
+            {1.75f, 0.5f}, {1.75f, 0.5f},
+        };
+        REQUIRE(vertices->write(
+            texcoord_offset, vertical_texcoords, sizeof(vertical_texcoords), &error));
+        ALMetalTextureDescriptor gradient_descriptor = alpha_descriptor;
+        gradient_descriptor.width = 2;
+        gradient_descriptor.label = "Alchemy terrain alpha orientation test";
+        auto gradient = ALMetalTexture::create(*device, gradient_descriptor, &error);
+        INFO(error);
+        REQUIRE(gradient);
+        const std::array<std::uint8_t, 8> gradient_pixels = {
+            0, 0, 0, 0,
+            0, 0, 0, 255,
+        };
+        auto gradient_upload = device->makeCommandBuffer(
+            "Alchemy terrain alpha orientation upload", &error);
+        INFO(error);
+        REQUIRE(gradient_upload);
+        REQUIRE(gradient->upload(
+            *gradient_upload, 0, 0, {}, gradient_pixels.data(), 8, &error));
+        REQUIRE(gradient_upload->commit(&error));
+
+        batch.alpha_ramp = gradient.get();
+        auto oriented = renderer->render(batch, &error);
+        INFO(error);
+        REQUIRE(oriented);
+        std::array<std::uint8_t, 8 * 8 * 4> oriented_pixels{};
+        REQUIRE(oriented->readback(
+            *device, 0, 0, {}, oriented_pixels.data(), 8 * 4, &error));
+        INFO(error);
+        const std::size_t lower_gl_row = 4 * 4;
+        CHECK(oriented_pixels[lower_gl_row + 0] == 0);
+        CHECK(oriented_pixels[lower_gl_row + 1] == 0);
+        CHECK(oriented_pixels[lower_gl_row + 2] == 255);
+        CHECK(oriented_pixels[lower_gl_row + 3] == 255);
+        const std::size_t upper_gl_row = (7 * 8 + 4) * 4;
+        CHECK(oriented_pixels[upper_gl_row + 0] == 0);
+        CHECK(oriented_pixels[upper_gl_row + 1] == 0);
+        CHECK(oriented_pixels[upper_gl_row + 2] == 0);
+        CHECK(oriented_pixels[upper_gl_row + 3] == 255);
     }
 }
 

@@ -325,6 +325,11 @@ public:
     LLGLuint getTexName() const { return mTexName; }
 #if LL_DARWIN
     ALMetalTexture* getMetalTexture() const noexcept { return mMetalTexture.get(); }
+    // Render passes that reproduce a GL-owned write create a separate native
+    // texture, let GL finish its authoritative fallback, then publish the
+    // native result here. The descriptor is checked against this image before
+    // ownership changes.
+    bool adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture);
 #endif
     // What the texture holds, as a value no texture has held before: taken again by every upload into it, in place or
     // not. A pass that keeps what it drew tells by it whether the pixels it sampled are as they were.
@@ -601,6 +606,7 @@ public:
     static void cleanupClass() ;
 #if LL_DARWIN
     static void setMetalDevice(ALMetalDevice* device);
+    static ALMetalDevice* getMetalDevice() noexcept;
 #endif
 
 private:

@@ -34,6 +34,11 @@
 #include "llrendertarget.h"
 #include "llvertexbuffer.h"
 
+#if LL_DARWIN
+#include "../almetal/almetalterrainpaint.h"
+#include "../almetal/almetalresource.h"
+#endif
+
 // newview includes
 #include "llrender.h"
 #include "llsurface.h"
@@ -208,6 +213,9 @@ bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& 
         buf->unbind();
     }
 
+    LLPointer<LLViewerTexture> alpha_ramp_texture =
+        LLViewerTextureManager::getFetchedTexture(IMG_ALPHA_GRAD_2D);
+
     // Draw the region in agent space at full resolution
     {
 
@@ -224,7 +232,6 @@ bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& 
         LLGLDepthTest depth_test(GL_FALSE, GL_FALSE, GL_ALWAYS);
 
         S32 alpha_ramp = shader.enableTexture(LLViewerShaderMgr::TERRAIN_ALPHARAMP);
-        LLPointer<LLViewerTexture> alpha_ramp_texture = LLViewerTextureManager::getFetchedTexture(IMG_ALPHA_GRAD_2D);
         gGL.getTextureSlot(alpha_ramp)->bindSampled(alpha_ramp_texture, ALSamplers::AnisoClamp);
 
         buf->setBuffer();
@@ -248,6 +255,68 @@ bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& 
         shader.unbind();
     }
 
+#if LL_DARWIN
+    // Reproduce the bake from the same production buffers and alpha-ramp
+    // mirror. The GL pass remains authoritative and runs unconditionally;
+    // this separate texture is published only after the framebuffer copy
+    // succeeds, so a missing native prerequisite degrades to the established
+    // GL path without exposing stale pixels.
+    std::unique_ptr<ALMetalTexture> metal_paintmap;
+    ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+    ALMetalTexture* destination_template = tex.getGLTexture()->getMetalTexture();
+    ALMetalTexture* alpha_ramp_metal = alpha_ramp_texture.notNull() &&
+                                      alpha_ramp_texture->getGLTexture()
+        ? alpha_ramp_texture->getGLTexture()->getMetalTexture() : nullptr;
+    ALMetalBuffer* metal_vertices = buf->getMetalVertexBuffer();
+    ALMetalBuffer* metal_indices = buf->getMetalIndexBuffer();
+    const U32 terrain_bit_depth =
+        LLViewerShaderMgr::instance()->inputs().mLocal.mTerrainPaintBitDepth;
+    if (metal_device && destination_template && alpha_ramp_metal &&
+        metal_vertices && metal_indices && terrain_bit_depth >= 1 &&
+        terrain_bit_depth <= 8)
+    {
+        static ALMetalDevice* renderer_device = nullptr;
+        static std::unique_ptr<ALMetalTerrainPaintRenderer> renderer;
+        std::string error;
+        if (renderer_device != metal_device)
+        {
+            renderer.reset();
+            renderer_device = metal_device;
+        }
+        if (!renderer)
+        {
+            renderer = ALMetalTerrainPaintRenderer::create(*metal_device, &error);
+        }
+
+        if (renderer)
+        {
+            LLMatrix4a modelview_projection;
+            modelview_projection.setMul(gGL.getModelviewMatrix(),
+                                        gGL.getProjectionMatrix());
+            ALMetalTerrainPaintBatch batch;
+            batch.vertices = metal_vertices;
+            batch.position_offset = buf->getOffset(LLVertexBuffer::TYPE_VERTEX);
+            batch.texcoord_offset = buf->getOffset(LLVertexBuffer::TYPE_TEXCOORD1);
+            batch.indices = metal_indices;
+            batch.index_type = buf->getIndexStride() == 4
+                ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+            batch.index_count = region_indices;
+            batch.alpha_ramp = alpha_ramp_metal;
+            batch.destination_template = destination_template;
+            memcpy(batch.modelview_projection, modelview_projection.getF32ptr(),
+                   sizeof(batch.modelview_projection));
+            batch.precision = static_cast<F32>((1u << terrain_bit_depth) - 1u);
+            metal_paintmap = renderer->render(batch, &error);
+        }
+
+        if (!metal_paintmap)
+        {
+            LL_WARNS("Metal") << "Could not mirror the terrain paintmap bake: "
+                               << error << LL_ENDL;
+        }
+    }
+#endif
+
     gGL.matrixMode(LLRender::MM_PROJECTION);
     gGL.popMatrix();
 
@@ -263,6 +332,22 @@ bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& 
     // sampler; generateMipmaps clears that so mip generation follows the texture's own state.
     LLImageGL::generateMipmaps(GL_TEXTURE_2D);
     stop_glerror();
+
+#if LL_DARWIN
+    if (success && metal_paintmap)
+    {
+        if (tex.getGLTexture()->adoptMetalRenderTexture(std::move(metal_paintmap)))
+        {
+            LL_INFOS_ONCE("Metal") << "Production terrain paintmap bakes are mirrored "
+                                    << "through native Metal" << LL_ENDL;
+        }
+        else
+        {
+            LL_WARNS("Metal") << "Could not publish the native terrain paintmap mirror"
+                               << LL_ENDL;
+        }
+    }
+#endif
 
     scratch_target.flush();
 

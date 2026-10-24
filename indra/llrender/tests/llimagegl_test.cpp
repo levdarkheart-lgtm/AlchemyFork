@@ -495,6 +495,56 @@ namespace
     }
 
 #if LL_DARWIN
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: adopts a render-produced Metal mirror and reuses its superset usage", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        constexpr U16 W = 8;
+        constexpr U16 H = 8;
+        LLPointer<LLImageGL> img = new LLImageGL(/*usemipmaps=*/false);
+        img->setExplicitFormat(GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
+        REQUIRE(img->createGLTexture(0, makeRaw(W, H, 3, 0x20).get()));
+        REQUIRE(img->getMetalTexture());
+
+        ALMetalTextureDescriptor descriptor = img->getMetalTexture()->descriptor();
+        descriptor.usage = descriptor.usage | ALMetalTextureUsage::render_target;
+        descriptor.label = "Alchemy adopted LLImageGL render mirror test";
+        auto rendered = ALMetalTexture::create(*device, descriptor, &error);
+        INFO(error);
+        REQUIRE(rendered);
+        ALMetalTexture* rendered_pointer = rendered.get();
+        REQUIRE(img->adoptMetalRenderTexture(std::move(rendered)));
+        CHECK(img->getMetalTexture() == rendered_pointer);
+
+        // A later upload asks only for shader-read usage. The adopted
+        // shader-read|render-target allocation is a valid superset and must
+        // be updated in place rather than replaced with undefined storage.
+        REQUIRE(img->setSubImage(makeRaw(W, H, 3, 0x60).get(),
+                                 0, 0, W, H, true, 0, true));
+        CHECK(img->getMetalTexture() == rendered_pointer);
+
+        std::array<U8, W * H * 4> pixels{};
+        REQUIRE(img->getMetalTexture()->readback(
+            *device, 0, 0, {}, pixels.data(), W * 4, &error));
+        INFO(error);
+        for (std::size_t pixel = 0; pixel < W * H; ++pixel)
+        {
+            CHECK(pixels[pixel * 4 + 0] == 0x60);
+            CHECK(pixels[pixel * 4 + 1] == 0x60);
+            CHECK(pixels[pixel * 4 + 2] == 0x60);
+            CHECK(pixels[pixel * 4 + 3] == 0xff);
+        }
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: scaleDown preserves its Metal mirror with a GPU blit", "[LLImageGL][almetal]")
     {
         std::string error;

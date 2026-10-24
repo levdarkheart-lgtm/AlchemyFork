@@ -19,6 +19,7 @@ target_sources(
     almetalpipeline.mm
     almetalresource.mm
     almetalsurface.mm
+    almetalterrainpaint.cpp
     almetaltextureops.cpp
     almetaluirenderer.cpp
   PUBLIC
@@ -29,6 +30,7 @@ target_sources(
       almetalpipeline.h
       almetalresource.h
       almetalsurface.h
+      almetalterrainpaint.h
       almetaltextureops.h
       almetaluirenderer.h
 )

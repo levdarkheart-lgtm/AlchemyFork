@@ -346,6 +346,11 @@ void LLImageGL::setMetalDevice(ALMetalDevice* device)
     }
     sImageMetalDevice = device;
 }
+
+ALMetalDevice* LLImageGL::getMetalDevice() noexcept
+{
+    return sImageMetalDevice;
+}
 #endif
 
 //static
@@ -1703,7 +1708,8 @@ namespace
                existing.mipmap_level_count == descriptor.mipmap_level_count &&
                existing.sample_count == descriptor.sample_count &&
                existing.storage == descriptor.storage &&
-               existing.usage == descriptor.usage &&
+               existing.hazard_tracking == descriptor.hazard_tracking &&
+               (existing.usage & descriptor.usage) == descriptor.usage &&
                existing.swizzle == descriptor.swizzle;
     }
 
@@ -1713,6 +1719,64 @@ namespace
                            << std::hex << internal_format << ", primary 0x" << primary_format
                            << ", type 0x" << type << std::dec << LL_ENDL;
     }
+}
+
+bool LLImageGL::adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture)
+{
+    if (!sImageMetalDevice || !texture || mExternalTexture ||
+        mTarget != GL_TEXTURE_2D || mUploadInFlight)
+    {
+        return false;
+    }
+
+    const MetalUploadFormat upload_format =
+        metal_upload_format(getStorageInternalFormat(), mFormatPrimary, mFormatType);
+    if (upload_format.format == ALMetalPixelFormat::invalid)
+    {
+        return false;
+    }
+
+    ALMetalTextureDescriptor expected;
+    expected.type = ALMetalTextureType::texture_2d;
+    expected.format = upload_format.format;
+    expected.width = static_cast<U32>(liveWidth(mCurrentDiscardLevel));
+    expected.height = static_cast<U32>(liveHeight(mCurrentDiscardLevel));
+    expected.mipmap_level_count = static_cast<U32>(llmax(mMipLevels, 1));
+    expected.storage = ALMetalStorageMode::private_gpu;
+    expected.usage = ALMetalTextureUsage::shader_read;
+    switch (mDeprecatedSourceFormat)
+    {
+        case GL_ALPHA:
+            expected.swizzle = {
+                ALMetalTextureSwizzle::zero, ALMetalTextureSwizzle::zero,
+                ALMetalTextureSwizzle::zero, ALMetalTextureSwizzle::red};
+            break;
+        case GL_LUMINANCE:
+            expected.swizzle = {
+                ALMetalTextureSwizzle::red, ALMetalTextureSwizzle::red,
+                ALMetalTextureSwizzle::red, ALMetalTextureSwizzle::one};
+            break;
+        case GL_LUMINANCE_ALPHA:
+            expected.swizzle = {
+                ALMetalTextureSwizzle::red, ALMetalTextureSwizzle::red,
+                ALMetalTextureSwizzle::red, ALMetalTextureSwizzle::green};
+            break;
+        default:
+            break;
+    }
+
+    if (!same_metal_texture(texture.get(), expected) ||
+        !alMetalHasUsage(texture->descriptor().usage,
+                         ALMetalTextureUsage::render_target))
+    {
+        LL_WARNS("Metal") << "Rejected a render-produced LLImageGL mirror with an "
+                           << "incompatible descriptor" << LL_ENDL;
+        return false;
+    }
+
+    mPendingMetalTexture.reset();
+    mMetalTexture = std::move(texture);
+    return true;
 }
 
 ALMetalTexture* LLImageGL::metalTextureForUpload() noexcept
