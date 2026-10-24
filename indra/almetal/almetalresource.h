@@ -102,17 +102,58 @@ enum class ALMetalPixelFormat
 {
     invalid,
     r8_unorm,
+    r8_sint,
+    r8_uint,
     rg8_unorm,
+    rg8_sint,
+    rg8_uint,
     rgba8_unorm,
     rgba8_unorm_srgb,
+    rgba8_sint,
+    rgba8_uint,
     bgra8_unorm,
     bgra8_unorm_srgb,
+    r16_unorm,
     r16_float,
+    r16_sint,
+    r16_uint,
     rg16_float,
+    rg16_sint,
+    rg16_uint,
+    rgba16_unorm,
     rgba16_float,
+    rgba16_sint,
+    rgba16_uint,
     r32_float,
+    r32_sint,
+    r32_uint,
+    rg32_float,
+    rg32_sint,
+    rg32_uint,
+    rgba32_float,
+    rgba32_sint,
+    rgba32_uint,
+    rgb10a2_unorm,
+    rgb10a2_uint,
+    rg11b10_float,
+    bc1_rgba,
+    bc1_rgba_srgb,
+    bc2_rgba,
+    bc2_rgba_srgb,
+    bc3_rgba,
+    bc3_rgba_srgb,
     depth32_float,
     depth32_float_stencil8,
+};
+
+enum class ALMetalTextureSwizzle
+{
+    zero,
+    one,
+    red,
+    green,
+    blue,
+    alpha,
 };
 
 enum class ALMetalTextureType
@@ -160,6 +201,12 @@ struct ALMetalTextureDescriptor
     ALMetalStorageMode storage = ALMetalStorageMode::private_gpu;
     ALMetalHazardTrackingMode hazard_tracking = ALMetalHazardTrackingMode::tracked;
     ALMetalTextureUsage usage = ALMetalTextureUsage::shader_read;
+    std::array<ALMetalTextureSwizzle, 4> swizzle = {
+        ALMetalTextureSwizzle::red,
+        ALMetalTextureSwizzle::green,
+        ALMetalTextureSwizzle::blue,
+        ALMetalTextureSwizzle::alpha,
+    };
     std::string label;
 };
 
@@ -190,6 +237,10 @@ public:
     std::uint32_t width(std::uint32_t mip_level = 0) const noexcept;
     std::uint32_t height(std::uint32_t mip_level = 0) const noexcept;
     std::size_t bytesPerPixel() const noexcept;
+    std::uint32_t blockWidth() const noexcept;
+    std::uint32_t blockHeight() const noexcept;
+    std::size_t bytesPerBlock() const noexcept;
+    bool isCompressed() const noexcept;
 
     // Uploads one uncompressed 2D region. Source rows may be tightly packed;
     // the backend supplies Metal's required staging-row alignment.
@@ -200,6 +251,11 @@ public:
                 const void* bytes,
                 std::size_t bytes_per_row,
                 std::string* error = nullptr);
+
+    // Generates every level after level zero in this texture's allocated mip
+    // chain. The texture must be uncompressed and have more than one level.
+    bool generateMipmaps(ALMetalCommandBuffer& command_buffer,
+                         std::string* error = nullptr);
 
     // Synchronous counterpart for exceptional CPU consumers. Destination row
     // pitch is caller-selected and need not have Metal's blit alignment.

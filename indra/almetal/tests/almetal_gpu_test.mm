@@ -292,6 +292,136 @@ TEST_CASE("almetal: private texture transfer handles unaligned CPU row pitches",
     }
 }
 
+TEST_CASE("almetal: texture swizzles and generated mipmaps survive private upload", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        ALMetalTextureDescriptor descriptor;
+        descriptor.format = ALMetalPixelFormat::r8_unorm;
+        descriptor.width = 4;
+        descriptor.height = 4;
+        descriptor.mipmap_level_count = 3;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.swizzle = {
+            ALMetalTextureSwizzle::zero,
+            ALMetalTextureSwizzle::zero,
+            ALMetalTextureSwizzle::zero,
+            ALMetalTextureSwizzle::red,
+        };
+        descriptor.label = "Alchemy alpha swizzle texture";
+        auto texture = ALMetalTexture::create(*device, descriptor, &error);
+        INFO(error);
+        REQUIRE(texture);
+        CHECK(texture->blockWidth() == 1);
+        CHECK(texture->blockHeight() == 1);
+        CHECK(texture->bytesPerBlock() == 1);
+        CHECK_FALSE(texture->isCompressed());
+
+        auto library = ALMetalShaderLibrary::loadBuiltin(*device, &error);
+        INFO(error);
+        REQUIRE(library);
+        ALMetalComputePipelineDescriptor pipeline_descriptor;
+        pipeline_descriptor.library = library.get();
+        pipeline_descriptor.function = "almetal_test_sample_texture";
+        pipeline_descriptor.label = "Alchemy texture swizzle pipeline";
+        auto pipeline = ALMetalComputePipeline::create(*device, pipeline_descriptor, &error);
+        INFO(error);
+        REQUIRE(pipeline);
+
+        ALMetalBufferDescriptor result_descriptor;
+        result_descriptor.length = sizeof(float) * 4;
+        result_descriptor.storage = ALMetalStorageMode::shared;
+        result_descriptor.label = "Alchemy texture sample result";
+        auto result = ALMetalBuffer::create(*device, result_descriptor, &error);
+        INFO(error);
+        REQUIRE(result);
+
+        const std::array<std::uint8_t, 16> source = {
+            64, 64, 64, 64,
+            64, 64, 64, 64,
+            64, 64, 64, 64,
+            64, 64, 64, 64,
+        };
+        auto command = device->makeCommandBuffer("Alchemy swizzle and mip test", &error);
+        INFO(error);
+        REQUIRE(command);
+        REQUIRE(texture->upload(*command, 0, 0, {}, source.data(), 4, &error));
+        REQUIRE(texture->generateMipmaps(*command, &error));
+
+        auto encoder = ALMetalComputeEncoder::begin(*command, "Alchemy texture sample", &error);
+        INFO(error);
+        REQUIRE(encoder);
+        REQUIRE(encoder->setPipeline(*pipeline, &error));
+        REQUIRE(encoder->setTexture(0, texture.get(), &error));
+        REQUIRE(encoder->setBuffer(0, *result, 0, &error));
+        REQUIRE(encoder->dispatch(1, 1, 1, 1, 1, 1, &error));
+        REQUIRE(encoder->end(&error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<float, 4> sample{};
+        REQUIRE(result->read(0, sample.data(), sizeof(sample), &error));
+        CHECK(sample[0] == 0.0f);
+        CHECK(sample[1] == 0.0f);
+        CHECK(sample[2] == 0.0f);
+        CHECK(std::abs(sample[3] - (64.0f / 255.0f)) < 0.001f);
+
+        std::uint8_t final_mip = 0;
+        REQUIRE(texture->readback(*device, 2, 0, {}, &final_mip, 1, &error));
+        INFO(error);
+        CHECK(final_mip == 64);
+    }
+}
+
+TEST_CASE("almetal: BC texture transfer honors block rows and edge dimensions", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        ALMetalTextureDescriptor descriptor;
+        descriptor.format = ALMetalPixelFormat::bc1_rgba;
+        descriptor.width = 7;
+        descriptor.height = 5;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.label = "Alchemy BC1 transfer texture";
+        auto texture = ALMetalTexture::create(*device, descriptor, &error);
+        INFO(error);
+        REQUIRE(texture);
+        CHECK(texture->isCompressed());
+        CHECK(texture->blockWidth() == 4);
+        CHECK(texture->blockHeight() == 4);
+        CHECK(texture->bytesPerBlock() == 8);
+        CHECK(texture->bytesPerPixel() == 0);
+
+        constexpr std::size_t row_pitch = 2 * 8;
+        std::array<std::uint8_t, row_pitch * 2> source{};
+        for (std::size_t index = 0; index < source.size(); ++index)
+        {
+            source[index] = static_cast<std::uint8_t>(index * 13u + 5u);
+        }
+        auto command = device->makeCommandBuffer("Alchemy BC1 upload", &error);
+        INFO(error);
+        REQUIRE(command);
+        REQUIRE(texture->upload(*command, 0, 0, {}, source.data(), row_pitch, &error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, row_pitch * 2> result{};
+        REQUIRE(texture->readback(*device, 0, 0, {}, result.data(), row_pitch, &error));
+        INFO(error);
+        CHECK(result == source);
+    }
+}
+
 TEST_CASE("almetal: memoryless MSAA target resolves while depth remains transient", "[almetal]")
 {
     @autoreleasepool

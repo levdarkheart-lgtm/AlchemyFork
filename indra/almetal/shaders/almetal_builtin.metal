@@ -36,6 +36,13 @@ kernel void almetal_test_compute(
     values[index] = values[index] * 3u + addend;
 }
 
+kernel void almetal_test_sample_texture(
+    texture2d<float, access::read> source [[texture(0)]],
+    device float4* result [[buffer(0)]])
+{
+    result[0] = source.read(uint2(0, 0));
+}
+
 struct ALMetalMatrices
 {
     float4x4 modelview;

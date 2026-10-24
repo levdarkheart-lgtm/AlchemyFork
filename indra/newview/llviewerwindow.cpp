@@ -53,6 +53,7 @@
 #include "llxmltree.h"
 #include "llslurl.h"
 #include "llrender.h"
+#include "llimagegl.h"
 #include "aluniformbuffer.h"
 
 #if LL_DARWIN
@@ -2324,6 +2325,7 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     if (auto* sdl_window = dynamic_cast<LLWindowSDL*>(mWindow))
     {
         LLVertexBuffer::setMetalDevice(sdl_window->getMetalDevice());
+        LLImageGL::setMetalDevice(sdl_window->getMetalDevice());
     }
 #endif
     LLVertexBuffer::initClass(mWindow);

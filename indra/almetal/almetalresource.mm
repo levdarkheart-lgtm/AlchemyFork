@@ -85,15 +85,46 @@ namespace
         switch (format)
         {
             case ALMetalPixelFormat::r8_unorm:               return MTLPixelFormatR8Unorm;
+            case ALMetalPixelFormat::r8_sint:                return MTLPixelFormatR8Sint;
+            case ALMetalPixelFormat::r8_uint:                return MTLPixelFormatR8Uint;
             case ALMetalPixelFormat::rg8_unorm:              return MTLPixelFormatRG8Unorm;
+            case ALMetalPixelFormat::rg8_sint:               return MTLPixelFormatRG8Sint;
+            case ALMetalPixelFormat::rg8_uint:               return MTLPixelFormatRG8Uint;
             case ALMetalPixelFormat::rgba8_unorm:            return MTLPixelFormatRGBA8Unorm;
             case ALMetalPixelFormat::rgba8_unorm_srgb:       return MTLPixelFormatRGBA8Unorm_sRGB;
+            case ALMetalPixelFormat::rgba8_sint:             return MTLPixelFormatRGBA8Sint;
+            case ALMetalPixelFormat::rgba8_uint:             return MTLPixelFormatRGBA8Uint;
             case ALMetalPixelFormat::bgra8_unorm:            return MTLPixelFormatBGRA8Unorm;
             case ALMetalPixelFormat::bgra8_unorm_srgb:       return MTLPixelFormatBGRA8Unorm_sRGB;
+            case ALMetalPixelFormat::r16_unorm:              return MTLPixelFormatR16Unorm;
             case ALMetalPixelFormat::r16_float:              return MTLPixelFormatR16Float;
+            case ALMetalPixelFormat::r16_sint:               return MTLPixelFormatR16Sint;
+            case ALMetalPixelFormat::r16_uint:               return MTLPixelFormatR16Uint;
             case ALMetalPixelFormat::rg16_float:             return MTLPixelFormatRG16Float;
+            case ALMetalPixelFormat::rg16_sint:              return MTLPixelFormatRG16Sint;
+            case ALMetalPixelFormat::rg16_uint:              return MTLPixelFormatRG16Uint;
+            case ALMetalPixelFormat::rgba16_unorm:           return MTLPixelFormatRGBA16Unorm;
             case ALMetalPixelFormat::rgba16_float:           return MTLPixelFormatRGBA16Float;
+            case ALMetalPixelFormat::rgba16_sint:            return MTLPixelFormatRGBA16Sint;
+            case ALMetalPixelFormat::rgba16_uint:            return MTLPixelFormatRGBA16Uint;
             case ALMetalPixelFormat::r32_float:              return MTLPixelFormatR32Float;
+            case ALMetalPixelFormat::r32_sint:               return MTLPixelFormatR32Sint;
+            case ALMetalPixelFormat::r32_uint:               return MTLPixelFormatR32Uint;
+            case ALMetalPixelFormat::rg32_float:             return MTLPixelFormatRG32Float;
+            case ALMetalPixelFormat::rg32_sint:              return MTLPixelFormatRG32Sint;
+            case ALMetalPixelFormat::rg32_uint:              return MTLPixelFormatRG32Uint;
+            case ALMetalPixelFormat::rgba32_float:           return MTLPixelFormatRGBA32Float;
+            case ALMetalPixelFormat::rgba32_sint:            return MTLPixelFormatRGBA32Sint;
+            case ALMetalPixelFormat::rgba32_uint:            return MTLPixelFormatRGBA32Uint;
+            case ALMetalPixelFormat::rgb10a2_unorm:          return MTLPixelFormatRGB10A2Unorm;
+            case ALMetalPixelFormat::rgb10a2_uint:           return MTLPixelFormatRGB10A2Uint;
+            case ALMetalPixelFormat::rg11b10_float:          return MTLPixelFormatRG11B10Float;
+            case ALMetalPixelFormat::bc1_rgba:               return MTLPixelFormatBC1_RGBA;
+            case ALMetalPixelFormat::bc1_rgba_srgb:          return MTLPixelFormatBC1_RGBA_sRGB;
+            case ALMetalPixelFormat::bc2_rgba:               return MTLPixelFormatBC2_RGBA;
+            case ALMetalPixelFormat::bc2_rgba_srgb:          return MTLPixelFormatBC2_RGBA_sRGB;
+            case ALMetalPixelFormat::bc3_rgba:               return MTLPixelFormatBC3_RGBA;
+            case ALMetalPixelFormat::bc3_rgba_srgb:          return MTLPixelFormatBC3_RGBA_sRGB;
             case ALMetalPixelFormat::depth32_float:          return MTLPixelFormatDepth32Float;
             case ALMetalPixelFormat::depth32_float_stencil8: return MTLPixelFormatDepth32Float_Stencil8;
             case ALMetalPixelFormat::invalid:                return MTLPixelFormatInvalid;
@@ -106,20 +137,109 @@ namespace
         switch (format)
         {
             case ALMetalPixelFormat::r8_unorm:               return 1;
+            case ALMetalPixelFormat::r8_sint:
+            case ALMetalPixelFormat::r8_uint:                return 1;
             case ALMetalPixelFormat::rg8_unorm:              return 2;
+            case ALMetalPixelFormat::rg8_sint:
+            case ALMetalPixelFormat::rg8_uint:               return 2;
             case ALMetalPixelFormat::rgba8_unorm:
             case ALMetalPixelFormat::rgba8_unorm_srgb:
+            case ALMetalPixelFormat::rgba8_sint:
+            case ALMetalPixelFormat::rgba8_uint:
             case ALMetalPixelFormat::bgra8_unorm:
             case ALMetalPixelFormat::bgra8_unorm_srgb:
             case ALMetalPixelFormat::r32_float:
+            case ALMetalPixelFormat::r32_sint:
+            case ALMetalPixelFormat::r32_uint:
+            case ALMetalPixelFormat::rgb10a2_unorm:
+            case ALMetalPixelFormat::rgb10a2_uint:
+            case ALMetalPixelFormat::rg11b10_float:
             case ALMetalPixelFormat::depth32_float:          return 4;
+            case ALMetalPixelFormat::r16_unorm:
             case ALMetalPixelFormat::r16_float:              return 2;
-            case ALMetalPixelFormat::rg16_float:             return 4;
-            case ALMetalPixelFormat::rgba16_float:           return 8;
+            case ALMetalPixelFormat::r16_sint:
+            case ALMetalPixelFormat::r16_uint:               return 2;
+            case ALMetalPixelFormat::rg16_float:
+            case ALMetalPixelFormat::rg16_sint:
+            case ALMetalPixelFormat::rg16_uint:              return 4;
+            case ALMetalPixelFormat::rgba16_unorm:
+            case ALMetalPixelFormat::rgba16_float:
+            case ALMetalPixelFormat::rgba16_sint:
+            case ALMetalPixelFormat::rgba16_uint:            return 8;
+            case ALMetalPixelFormat::rg32_float:
+            case ALMetalPixelFormat::rg32_sint:
+            case ALMetalPixelFormat::rg32_uint:              return 8;
+            case ALMetalPixelFormat::rgba32_float:
+            case ALMetalPixelFormat::rgba32_sint:
+            case ALMetalPixelFormat::rgba32_uint:            return 16;
             case ALMetalPixelFormat::depth32_float_stencil8: return 8;
+            case ALMetalPixelFormat::bc1_rgba:
+            case ALMetalPixelFormat::bc1_rgba_srgb:
+            case ALMetalPixelFormat::bc2_rgba:
+            case ALMetalPixelFormat::bc2_rgba_srgb:
+            case ALMetalPixelFormat::bc3_rgba:
+            case ALMetalPixelFormat::bc3_rgba_srgb:          return 0;
             case ALMetalPixelFormat::invalid:                return 0;
         }
         return 0;
+    }
+
+    std::uint32_t formatBlockWidth(ALMetalPixelFormat format)
+    {
+        switch (format)
+        {
+            case ALMetalPixelFormat::bc1_rgba:
+            case ALMetalPixelFormat::bc1_rgba_srgb:
+            case ALMetalPixelFormat::bc2_rgba:
+            case ALMetalPixelFormat::bc2_rgba_srgb:
+            case ALMetalPixelFormat::bc3_rgba:
+            case ALMetalPixelFormat::bc3_rgba_srgb: return 4;
+            default:                                return 1;
+        }
+    }
+
+    std::uint32_t formatBlockHeight(ALMetalPixelFormat format)
+    {
+        return formatBlockWidth(format);
+    }
+
+    std::size_t formatBytesPerBlock(ALMetalPixelFormat format)
+    {
+        switch (format)
+        {
+            case ALMetalPixelFormat::bc1_rgba:
+            case ALMetalPixelFormat::bc1_rgba_srgb: return 8;
+            case ALMetalPixelFormat::bc2_rgba:
+            case ALMetalPixelFormat::bc2_rgba_srgb:
+            case ALMetalPixelFormat::bc3_rgba:
+            case ALMetalPixelFormat::bc3_rgba_srgb: return 16;
+            default:                                return formatBytesPerPixel(format);
+        }
+    }
+
+    MTLTextureSwizzle textureSwizzle(ALMetalTextureSwizzle swizzle)
+    {
+        switch (swizzle)
+        {
+            case ALMetalTextureSwizzle::zero:  return MTLTextureSwizzleZero;
+            case ALMetalTextureSwizzle::one:   return MTLTextureSwizzleOne;
+            case ALMetalTextureSwizzle::red:   return MTLTextureSwizzleRed;
+            case ALMetalTextureSwizzle::green: return MTLTextureSwizzleGreen;
+            case ALMetalTextureSwizzle::blue:  return MTLTextureSwizzleBlue;
+            case ALMetalTextureSwizzle::alpha: return MTLTextureSwizzleAlpha;
+        }
+        return MTLTextureSwizzleRed;
+    }
+
+    bool hasIdentitySwizzle(const ALMetalTextureDescriptor& descriptor)
+    {
+        const std::array<ALMetalTextureSwizzle, 4> identity = {
+            ALMetalTextureSwizzle::red,
+            ALMetalTextureSwizzle::green,
+            ALMetalTextureSwizzle::blue,
+            ALMetalTextureSwizzle::alpha,
+        };
+        return descriptor.swizzle == identity;
     }
 
     MTLTextureType textureType(ALMetalTextureType type)
@@ -209,6 +329,52 @@ namespace
             setError(error, "Metal texture region exceeds the selected mip level");
             return false;
         }
+        return true;
+    }
+
+    struct TextureTransferLayout
+    {
+        std::size_t tight_row = 0;
+        std::uint32_t rows = 0;
+    };
+
+    bool textureTransferLayout(const ALMetalTextureDescriptor& descriptor,
+                               std::uint32_t mip_level,
+                               const ALMetalRegion2D& region,
+                               TextureTransferLayout* layout,
+                               std::string* error)
+    {
+        const std::uint32_t block_width = formatBlockWidth(descriptor.format);
+        const std::uint32_t block_height = formatBlockHeight(descriptor.format);
+        const std::size_t bytes_per_block = formatBytesPerBlock(descriptor.format);
+        if (bytes_per_block == 0)
+        {
+            setError(error, "Metal texture format has no transferable pixel/block size");
+            return false;
+        }
+
+        const std::uint32_t mip_width = mipDimension(descriptor.width, mip_level);
+        const std::uint32_t mip_height = mipDimension(descriptor.height, mip_level);
+        if (block_width > 1 || block_height > 1)
+        {
+            if ((region.x % block_width) != 0 || (region.y % block_height) != 0 ||
+                ((region.width % block_width) != 0 && region.x + region.width != mip_width) ||
+                ((region.height % block_height) != 0 && region.y + region.height != mip_height))
+            {
+                setError(error, "Compressed Metal texture transfer is not block aligned");
+                return false;
+            }
+        }
+
+        const std::size_t blocks_per_row =
+            (static_cast<std::size_t>(region.width) + block_width - 1) / block_width;
+        if (blocks_per_row > std::numeric_limits<std::size_t>::max() / bytes_per_block)
+        {
+            setError(error, "Metal texture transfer row size overflowed");
+            return false;
+        }
+        layout->tight_row = blocks_per_row * bytes_per_block;
+        layout->rows = (region.height + block_height - 1) / block_height;
         return true;
     }
 
@@ -489,6 +655,7 @@ struct ALMetalTexture::Impl
 {
     id<MTLDevice> device = nil;
     id<MTLTexture> texture = nil;
+    id<MTLTexture> shader_view = nil;
 };
 
 ALMetalTexture::ALMetalTexture(std::unique_ptr<Impl> impl, ALMetalTextureDescriptor descriptor)
@@ -546,6 +713,11 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::create(
         }
 
         id<MTLDevice> native_device = (__bridge id<MTLDevice>)device.nativeHandle();
+        if (formatBlockWidth(descriptor.format) > 1 && !native_device.supportsBCTextureCompression)
+        {
+            setError(error, "Metal device does not support BC-compressed textures");
+            return nullptr;
+        }
         if (multisample && ![native_device supportsTextureSampleCount:descriptor.sample_count])
         {
             setError(error, "Metal device does not support the requested sample count");
@@ -566,6 +738,10 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::create(
             ? MTLHazardTrackingModeTracked : MTLHazardTrackingModeUntracked;
         native_descriptor.cpuCacheMode = MTLCPUCacheModeDefaultCache;
         native_descriptor.usage = textureUsage(descriptor.usage);
+        if (!hasIdentitySwizzle(descriptor))
+        {
+            native_descriptor.usage |= MTLTextureUsagePixelFormatView;
+        }
 
         id<MTLTexture> texture = [native_device newTextureWithDescriptor:native_descriptor];
         if (!texture)
@@ -575,16 +751,43 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::create(
         }
         texture.label = toNSString(descriptor.label);
 
+        id<MTLTexture> shader_view = nil;
+        if (!hasIdentitySwizzle(descriptor))
+        {
+            const MTLTextureSwizzleChannels channels = MTLTextureSwizzleChannelsMake(
+                textureSwizzle(descriptor.swizzle[0]),
+                textureSwizzle(descriptor.swizzle[1]),
+                textureSwizzle(descriptor.swizzle[2]),
+                textureSwizzle(descriptor.swizzle[3]));
+            shader_view = [texture
+                newTextureViewWithPixelFormat:native_descriptor.pixelFormat
+                                  textureType:native_descriptor.textureType
+                                       levels:NSMakeRange(0, descriptor.mipmap_level_count)
+                                       slices:NSMakeRange(0, sliceCount(descriptor))
+                                      swizzle:channels];
+            if (!shader_view)
+            {
+                setError(error, "Metal could not create the requested texture swizzle view");
+                return nullptr;
+            }
+            shader_view.label = toNSString(descriptor.label + " swizzle");
+        }
+
         auto impl = std::make_unique<Impl>();
         impl->device = native_device;
         impl->texture = texture;
+        impl->shader_view = shader_view;
         return std::unique_ptr<ALMetalTexture>(new ALMetalTexture(std::move(impl), descriptor));
     }
 }
 
 void* ALMetalTexture::nativeHandle() const noexcept
 {
-    return mImpl ? (__bridge void*)mImpl->texture : nullptr;
+    if (!mImpl)
+    {
+        return nullptr;
+    }
+    return (__bridge void*)(mImpl->shader_view ? mImpl->shader_view : mImpl->texture);
 }
 
 const ALMetalTextureDescriptor& ALMetalTexture::descriptor() const noexcept
@@ -605,6 +808,26 @@ std::uint32_t ALMetalTexture::height(std::uint32_t mip_level) const noexcept
 std::size_t ALMetalTexture::bytesPerPixel() const noexcept
 {
     return formatBytesPerPixel(mDescriptor.format);
+}
+
+std::uint32_t ALMetalTexture::blockWidth() const noexcept
+{
+    return formatBlockWidth(mDescriptor.format);
+}
+
+std::uint32_t ALMetalTexture::blockHeight() const noexcept
+{
+    return formatBlockHeight(mDescriptor.format);
+}
+
+std::size_t ALMetalTexture::bytesPerBlock() const noexcept
+{
+    return formatBytesPerBlock(mDescriptor.format);
+}
+
+bool ALMetalTexture::isCompressed() const noexcept
+{
+    return blockWidth() > 1 || blockHeight() > 1;
 }
 
 bool ALMetalTexture::upload(ALMetalCommandBuffer& command_buffer,
@@ -630,8 +853,12 @@ bool ALMetalTexture::upload(ALMetalCommandBuffer& command_buffer,
     {
         return false;
     }
-    const std::size_t tight_row = static_cast<std::size_t>(region.width) * bytesPerPixel();
-    if (tight_row == 0 || bytes_per_row < tight_row)
+    TextureTransferLayout layout;
+    if (!textureTransferLayout(mDescriptor, mip_level, region, &layout, error))
+    {
+        return false;
+    }
+    if (bytes_per_row < layout.tight_row)
     {
         setError(error, "Metal texture upload row pitch is too small");
         return false;
@@ -653,17 +880,17 @@ bool ALMetalTexture::upload(ALMetalCommandBuffer& command_buffer,
                                     slice:slice
                                 withBytes:bytes
                               bytesPerRow:bytes_per_row
-                            bytesPerImage:bytes_per_row * region.height];
+                            bytesPerImage:bytes_per_row * layout.rows];
             return true;
         }
 
-        const std::size_t aligned_row = alignUp(tight_row, 256);
-        if (aligned_row > std::numeric_limits<std::size_t>::max() / region.height)
+        const std::size_t aligned_row = alignUp(layout.tight_row, 256);
+        if (aligned_row > std::numeric_limits<std::size_t>::max() / layout.rows)
         {
             setError(error, "Metal texture upload staging size overflowed");
             return false;
         }
-        const std::size_t staging_size = aligned_row * region.height;
+        const std::size_t staging_size = aligned_row * layout.rows;
         id<MTLBuffer> staging = [mImpl->device
             newBufferWithLength:staging_size
                          options:MTLResourceStorageModeShared | MTLResourceCPUCacheModeWriteCombined];
@@ -674,9 +901,11 @@ bool ALMetalTexture::upload(ALMetalCommandBuffer& command_buffer,
         }
         auto* destination = static_cast<std::uint8_t*>(staging.contents);
         const auto* source = static_cast<const std::uint8_t*>(bytes);
-        for (std::uint32_t row = 0; row < region.height; ++row)
+        for (std::uint32_t row = 0; row < layout.rows; ++row)
         {
-            std::memcpy(destination + row * aligned_row, source + row * bytes_per_row, tight_row);
+            std::memcpy(destination + row * aligned_row,
+                        source + row * bytes_per_row,
+                        layout.tight_row);
         }
 
         id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
@@ -695,6 +924,47 @@ bool ALMetalTexture::upload(ALMetalCommandBuffer& command_buffer,
                destinationSlice:slice
                destinationLevel:mip_level
               destinationOrigin:MTLOriginMake(region.x, region.y, 0)];
+        [encoder endEncoding];
+        return true;
+    }
+}
+
+bool ALMetalTexture::generateMipmaps(ALMetalCommandBuffer& command_buffer,
+                                     std::string* error)
+{
+    if (mDescriptor.mipmap_level_count <= 1)
+    {
+        setError(error, "Metal texture has no mip levels to generate");
+        return false;
+    }
+    if (isCompressed())
+    {
+        setError(error, "Metal cannot generate mipmaps for a block-compressed texture");
+        return false;
+    }
+    if (mDescriptor.type == ALMetalTextureType::texture_2d_multisample ||
+        mDescriptor.storage == ALMetalStorageMode::memoryless)
+    {
+        setError(error, "Multisample and memoryless Metal textures cannot generate mipmaps");
+        return false;
+    }
+    if (command_buffer.isCommitted() ||
+        command_buffer.nativeDevice() != (__bridge void*)mImpl->device)
+    {
+        setError(error, "Metal mip generation requires an uncommitted command buffer from the same device");
+        return false;
+    }
+
+    @autoreleasepool
+    {
+        id<MTLCommandBuffer> command = (__bridge id<MTLCommandBuffer>)command_buffer.nativeHandle();
+        id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
+        if (!encoder)
+        {
+            setError(error, "Metal could not create a mip-generation blit encoder");
+            return false;
+        }
+        [encoder generateMipmapsForTexture:mImpl->texture];
         [encoder endEncoding];
         return true;
     }
@@ -728,8 +998,12 @@ bool ALMetalTexture::readback(const ALMetalDevice& device,
         setError(error, "Metal texture and readback device do not match");
         return false;
     }
-    const std::size_t tight_row = static_cast<std::size_t>(region.width) * bytesPerPixel();
-    if (tight_row == 0 || bytes_per_row < tight_row)
+    TextureTransferLayout layout;
+    if (!textureTransferLayout(mDescriptor, mip_level, region, &layout, error))
+    {
+        return false;
+    }
+    if (bytes_per_row < layout.tight_row)
     {
         setError(error, "Metal texture readback row pitch is too small");
         return false;
@@ -741,20 +1015,20 @@ bool ALMetalTexture::readback(const ALMetalDevice& device,
         {
             [mImpl->texture getBytes:bytes
                          bytesPerRow:bytes_per_row
-                       bytesPerImage:bytes_per_row * region.height
+                       bytesPerImage:bytes_per_row * layout.rows
                           fromRegion:MTLRegionMake2D(region.x, region.y, region.width, region.height)
                          mipmapLevel:mip_level
                                slice:slice];
             return true;
         }
 
-        const std::size_t aligned_row = alignUp(tight_row, 256);
-        if (aligned_row > std::numeric_limits<std::size_t>::max() / region.height)
+        const std::size_t aligned_row = alignUp(layout.tight_row, 256);
+        if (aligned_row > std::numeric_limits<std::size_t>::max() / layout.rows)
         {
             setError(error, "Metal texture readback staging size overflowed");
             return false;
         }
-        const std::size_t staging_size = aligned_row * region.height;
+        const std::size_t staging_size = aligned_row * layout.rows;
         id<MTLBuffer> staging = [mImpl->device newBufferWithLength:staging_size
                                                           options:MTLResourceStorageModeShared];
         if (!staging)
@@ -791,9 +1065,11 @@ bool ALMetalTexture::readback(const ALMetalDevice& device,
 
         const auto* source = static_cast<const std::uint8_t*>(staging.contents);
         auto* destination = static_cast<std::uint8_t*>(bytes);
-        for (std::uint32_t row = 0; row < region.height; ++row)
+        for (std::uint32_t row = 0; row < layout.rows; ++row)
         {
-            std::memcpy(destination + row * bytes_per_row, source + row * aligned_row, tight_row);
+            std::memcpy(destination + row * bytes_per_row,
+                        source + row * aligned_row,
+                        layout.tight_row);
         }
         return true;
     }

@@ -42,11 +42,17 @@
 #include <boost/unordered_set.hpp>
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <vector>
 
 #define LL_IMAGEGL_THREAD_CHECK 0 //set to 1 to enable thread debugging for ImageGL
 
 class LLWindow;
+#if LL_DARWIN
+class ALMetalCommandBuffer;
+class ALMetalDevice;
+class ALMetalTexture;
+#endif
 
 #define BYTES_TO_MEGA_BYTES(x) ((x) >> 20)
 #define MEGA_BYTES_TO_BYTES(x) ((x) << 20)
@@ -317,6 +323,9 @@ public:
 
     bool getHasGLTexture() const { return mTexName != 0; }
     LLGLuint getTexName() const { return mTexName; }
+#if LL_DARWIN
+    ALMetalTexture* getMetalTexture() const noexcept { return mMetalTexture.get(); }
+#endif
     // What the texture holds, as a value no texture has held before: taken again by every upload into it, in place or
     // not. A pass that keeps what it drew tells by it whether the pixels it sampled are as they were.
     U64 getContentStamp() const { return mContentStamp.load(std::memory_order_relaxed); }
@@ -513,6 +522,10 @@ private:
     std::atomic<U64> mContentStamp{ 0 };
     void touchContents();
     LLGLuint mTexName;
+#if LL_DARWIN
+    std::unique_ptr<ALMetalTexture> mMetalTexture;
+    std::unique_ptr<ALMetalTexture> mPendingMetalTexture;
+#endif
     // Whether mTexName has had its storage allocated yet. Storage is always immutable
     // (glTexStorage2D), so it can be allocated exactly once: every upload afterwards is a
     // sub-image write, and any size or format change has to build a new texture object.
@@ -586,8 +599,28 @@ public:
 public:
     static void initClass(LLWindow* window, S32 num_catagories, bool skip_analyze_alpha = false, bool thread_texture_loads = false, bool thread_media_updates = false);
     static void cleanupClass() ;
+#if LL_DARWIN
+    static void setMetalDevice(ALMetalDevice* device);
+#endif
 
 private:
+#if LL_DARWIN
+    bool prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& command_buffer,
+                             bool will_upload_pixels);
+    bool uploadMetalTextureRegion(ALMetalCommandBuffer& command_buffer,
+                                  U32 mip_level,
+                                  U32 x,
+                                  U32 y,
+                                  U32 width,
+                                  U32 height,
+                                  const U8* pixels,
+                                  std::size_t source_bytes_per_row);
+    bool generateMetalMipmaps(ALMetalCommandBuffer& command_buffer);
+    bool commitMetalUpload(std::unique_ptr<ALMetalCommandBuffer>& command_buffer);
+    ALMetalTexture* metalTextureForUpload() noexcept;
+    std::size_t metalSourceBytesPerRow(U32 width) const;
+#endif
+
     static S32 sMaxCategories;
     static bool sSkipAnalyzeAlpha;
     static U32 sScratchPBO;

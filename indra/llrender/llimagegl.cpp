@@ -37,6 +37,11 @@
 #include "llerror.h"
 #include "llimage.h"
 
+#if LL_DARWIN
+#include "almetaldevice.h"
+#include "almetalresource.h"
+#endif
+
 #include "llmath.h"
 #include "llgl.h"
 #include "llglslshader.h"
@@ -66,6 +71,10 @@ static std::vector<U32> sFreeList[DELETE_DELAY+1];
 // profile refuses to bind it -- and the pool is thread-local, so no one
 // thread can empty the others'.
 static std::atomic<U32> sTextureNameGeneration{ 1 };
+#if LL_DARWIN
+static ALMetalDevice* sImageMetalDevice = nullptr;
+static std::atomic<bool> sMetalTextureReported{false};
+#endif
 
 namespace
 {
@@ -321,6 +330,13 @@ constexpr bool is_little_endian()
 {
     return std::endian::native == std::endian::little;
 }
+
+#if LL_DARWIN
+void LLImageGL::setMetalDevice(ALMetalDevice* device)
+{
+    sImageMetalDevice = device;
+}
+#endif
 
 //static
 void LLImageGL::initClass(LLWindow* window, S32 num_catagories, bool skip_analyze_alpha /* = false */, bool thread_texture_loads /* = false */, bool thread_media_updates /* = false */)
@@ -923,6 +939,10 @@ void LLImageGL::init(bool usemipmaps)
 
     mGLTextureCreated = false ;
     mTexName = 0;
+#if LL_DARWIN
+    mMetalTexture.reset();
+    mPendingMetalTexture.reset();
+#endif
     mWidth = 0;
     mHeight = 0;
     mCurrentDiscardLevel = -1;
@@ -960,6 +980,10 @@ void LLImageGL::cleanup()
     {
         destroyGLTexture();
     }
+#if LL_DARWIN
+    mMetalTexture.reset();
+    mPendingMetalTexture.reset();
+#endif
     freePickMask();
     discardPendingAlpha();
 
@@ -1147,6 +1171,14 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
         allocateTextureStorage(liveWidth(mCurrentDiscardLevel), liveHeight(mCurrentDiscardLevel), mUseMipMaps);
     }
 
+#if LL_DARWIN
+    std::unique_ptr<ALMetalCommandBuffer> metal_command;
+    if (!prepareMetalTexture(metal_command, data_in != nullptr))
+    {
+        return false;
+    }
+#endif
+
     if (data_in == nullptr)
     {
         // Storage is the whole point of this call; there are no pixels to write.
@@ -1204,6 +1236,14 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
 
                     stop_glerror();
                 }
+#if LL_DARWIN
+                if (metal_command &&
+                    !uploadMetalTextureRegion(*metal_command, gl_level, 0, 0, w, h,
+                                              data_in, metalSourceBytesPerRow(w)))
+                {
+                    return false;
+                }
+#endif
                 stop_glerror();
             }
         }
@@ -1235,6 +1275,14 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
                         glPixelStorei(GL_UNPACK_SWAP_BYTES, 0);
                         stop_glerror();
                     }
+#if LL_DARWIN
+                    if (metal_command &&
+                        !uploadMetalTextureRegion(*metal_command, 0, 0, 0, w, h,
+                                                  data_in, metalSourceBytesPerRow(w)))
+                    {
+                        return false;
+                    }
+#endif
 
                     {
                         LL_PROFILE_GPU_ZONE("generate mip map");
@@ -1255,6 +1303,12 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
                         // always mips as raw bytes rather than by frame timing.
                         generateMipmaps(mTarget);
                     }
+#if LL_DARWIN
+                    if (metal_command && !generateMetalMipmaps(*metal_command))
+                    {
+                        return false;
+                    }
+#endif
                     stop_glerror();
                 }
             }
@@ -1356,6 +1410,23 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
                             glPixelStorei(GL_UNPACK_SWAP_BYTES, 0);
                             stop_glerror();
                         }
+#if LL_DARWIN
+                        if (metal_command &&
+                            !uploadMetalTextureRegion(*metal_command, m, 0, 0, w, h,
+                                                      cur_mip_data, metalSourceBytesPerRow(w)))
+                        {
+                            if (prev_mip_data && prev_mip_data != data_in
+                                && prev_mip_data != cur_mip_data)
+                            {
+                                delete[] prev_mip_data;
+                            }
+                            if (cur_mip_data && cur_mip_data != data_in)
+                            {
+                                delete[] cur_mip_data;
+                            }
+                            return false;
+                        }
+#endif
                     }
                     if (prev_mip_data && prev_mip_data != data_in)
                     {
@@ -1413,8 +1484,22 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
             }
 
         }
+#if LL_DARWIN
+        if (metal_command &&
+            !uploadMetalTextureRegion(*metal_command, 0, 0, 0, w, h,
+                                      data_in, metalSourceBytesPerRow(w)))
+        {
+            return false;
+        }
+#endif
     }
     stop_glerror();
+#if LL_DARWIN
+    if (!commitMetalUpload(metal_command))
+    {
+        return false;
+    }
+#endif
     mGLTextureCreated = true;
     return true;
 }
@@ -1465,6 +1550,422 @@ static U32 pixel_bytes(U32 pixformat, U32 pixtype)
         return 0;
     }
 }
+
+#if LL_DARWIN
+namespace
+{
+    enum class MetalRgbExpansion
+    {
+        none,
+        rgb8,
+        rgb16_float,
+        rgb32_float,
+    };
+
+    struct MetalUploadFormat
+    {
+        ALMetalPixelFormat format = ALMetalPixelFormat::invalid;
+        MetalRgbExpansion expansion = MetalRgbExpansion::none;
+    };
+
+    MetalUploadFormat metal_upload_format(S32 internal_format, U32 primary_format, U32 type)
+    {
+        switch (primary_format)
+        {
+            case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+                return {ALMetalPixelFormat::bc1_rgba};
+            case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT:
+                return {ALMetalPixelFormat::bc1_rgba_srgb};
+            case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:
+                return {ALMetalPixelFormat::bc2_rgba};
+            case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT:
+                return {ALMetalPixelFormat::bc2_rgba_srgb};
+            case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
+                return {ALMetalPixelFormat::bc3_rgba};
+            case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT:
+                return {ALMetalPixelFormat::bc3_rgba_srgb};
+            default:
+                break;
+        }
+
+        if (primary_format == GL_BGRA &&
+            (type == GL_UNSIGNED_BYTE || type == GL_UNSIGNED_INT_8_8_8_8_REV))
+        {
+            return {internal_format == GL_SRGB8_ALPHA8
+                ? ALMetalPixelFormat::bgra8_unorm_srgb
+                : ALMetalPixelFormat::bgra8_unorm};
+        }
+
+        switch (internal_format)
+        {
+            case GL_R8:                 return {ALMetalPixelFormat::r8_unorm};
+            case GL_RG8:                return {ALMetalPixelFormat::rg8_unorm};
+            case GL_RGB8:               return {ALMetalPixelFormat::rgba8_unorm, MetalRgbExpansion::rgb8};
+            case GL_SRGB8:              return {ALMetalPixelFormat::rgba8_unorm_srgb, MetalRgbExpansion::rgb8};
+            case GL_RGBA8:              return {ALMetalPixelFormat::rgba8_unorm};
+            case GL_SRGB8_ALPHA8:       return {ALMetalPixelFormat::rgba8_unorm_srgb};
+            case GL_R16F:               return {ALMetalPixelFormat::r16_float};
+            case GL_RG16F:              return {ALMetalPixelFormat::rg16_float};
+            case GL_RGB16F:             return {ALMetalPixelFormat::rgba16_float, MetalRgbExpansion::rgb16_float};
+            case GL_RGBA16F:            return {ALMetalPixelFormat::rgba16_float};
+            case GL_RGBA16:             return {ALMetalPixelFormat::rgba16_unorm};
+            case GL_R32F:               return {ALMetalPixelFormat::r32_float};
+            case GL_RG32F:              return {ALMetalPixelFormat::rg32_float};
+            case GL_RGB32F:             return {ALMetalPixelFormat::rgba32_float, MetalRgbExpansion::rgb32_float};
+            case GL_RGBA32F:            return {ALMetalPixelFormat::rgba32_float};
+            case GL_RGB10_A2:           return {ALMetalPixelFormat::rgb10a2_unorm};
+            case GL_R11F_G11F_B10F:     return {ALMetalPixelFormat::rg11b10_float};
+            case GL_R8I:                return {ALMetalPixelFormat::r8_sint};
+            case GL_R8UI:               return {ALMetalPixelFormat::r8_uint};
+            case GL_RG8I:               return {ALMetalPixelFormat::rg8_sint};
+            case GL_RG8UI:              return {ALMetalPixelFormat::rg8_uint};
+            case GL_RGBA8I:             return {ALMetalPixelFormat::rgba8_sint};
+            case GL_RGBA8UI:            return {ALMetalPixelFormat::rgba8_uint};
+            case GL_R16I:               return {ALMetalPixelFormat::r16_sint};
+            case GL_R16UI:              return {ALMetalPixelFormat::r16_uint};
+            case GL_RG16I:              return {ALMetalPixelFormat::rg16_sint};
+            case GL_RG16UI:             return {ALMetalPixelFormat::rg16_uint};
+            case GL_RGBA16I:            return {ALMetalPixelFormat::rgba16_sint};
+            case GL_RGBA16UI:           return {ALMetalPixelFormat::rgba16_uint};
+            case GL_R32I:               return {ALMetalPixelFormat::r32_sint};
+            case GL_R32UI:              return {ALMetalPixelFormat::r32_uint};
+            case GL_RG32I:              return {ALMetalPixelFormat::rg32_sint};
+            case GL_RG32UI:             return {ALMetalPixelFormat::rg32_uint};
+            case GL_RGBA32I:            return {ALMetalPixelFormat::rgba32_sint};
+            case GL_RGBA32UI:           return {ALMetalPixelFormat::rgba32_uint};
+            case GL_RGB10_A2UI:         return {ALMetalPixelFormat::rgb10a2_uint};
+            default:                    return {};
+        }
+    }
+
+    std::size_t metal_scalar_bytes(U32 type)
+    {
+        switch (type)
+        {
+            case GL_BYTE:
+            case GL_UNSIGNED_BYTE:  return 1;
+            case GL_SHORT:
+            case GL_UNSIGNED_SHORT:
+            case GL_HALF_FLOAT:     return 2;
+            case GL_INT:
+            case GL_UNSIGNED_INT:
+            case GL_FLOAT:          return 4;
+            default:                return 0;
+        }
+    }
+
+    std::size_t metal_packed_bytes(U32 type)
+    {
+        switch (type)
+        {
+            case GL_UNSIGNED_SHORT_5_6_5:
+            case GL_UNSIGNED_SHORT_5_6_5_REV:
+            case GL_UNSIGNED_SHORT_4_4_4_4:
+            case GL_UNSIGNED_SHORT_4_4_4_4_REV:
+            case GL_UNSIGNED_SHORT_5_5_5_1:
+            case GL_UNSIGNED_SHORT_1_5_5_5_REV:
+                return 2;
+            case GL_UNSIGNED_INT_8_8_8_8:
+            case GL_UNSIGNED_INT_8_8_8_8_REV:
+            case GL_UNSIGNED_INT_10_10_10_2:
+            case GL_UNSIGNED_INT_2_10_10_10_REV:
+            case GL_UNSIGNED_INT_10F_11F_11F_REV:
+            case GL_UNSIGNED_INT_5_9_9_9_REV:
+                return 4;
+            default:
+                return 0;
+        }
+    }
+
+    bool same_metal_texture(const ALMetalTexture* texture,
+                            const ALMetalTextureDescriptor& descriptor)
+    {
+        if (!texture)
+        {
+            return false;
+        }
+        const ALMetalTextureDescriptor& existing = texture->descriptor();
+        return existing.type == descriptor.type &&
+               existing.format == descriptor.format &&
+               existing.width == descriptor.width &&
+               existing.height == descriptor.height &&
+               existing.array_length == descriptor.array_length &&
+               existing.mipmap_level_count == descriptor.mipmap_level_count &&
+               existing.sample_count == descriptor.sample_count &&
+               existing.storage == descriptor.storage &&
+               existing.usage == descriptor.usage &&
+               existing.swizzle == descriptor.swizzle;
+    }
+
+    void report_unsupported_metal_texture(S32 internal_format, U32 primary_format, U32 type)
+    {
+        LL_WARNS("Metal") << "LLImageGL format is not yet mirrored to Metal: internal 0x"
+                           << std::hex << internal_format << ", primary 0x" << primary_format
+                           << ", type 0x" << type << std::dec << LL_ENDL;
+    }
+}
+
+ALMetalTexture* LLImageGL::metalTextureForUpload() noexcept
+{
+    if (!on_main_thread() && mUploadInFlight)
+    {
+        return mPendingMetalTexture.get();
+    }
+    return mMetalTexture.get();
+}
+
+std::size_t LLImageGL::metalSourceBytesPerRow(U32 width) const
+{
+    switch (mFormatPrimary)
+    {
+        case GL_COMPRESSED_RGBA_S3TC_DXT1_EXT:
+        case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT:
+            return ((static_cast<std::size_t>(width) + 3) / 4) * 8;
+        case GL_COMPRESSED_RGBA_S3TC_DXT3_EXT:
+        case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT:
+        case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
+        case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT:
+            return ((static_cast<std::size_t>(width) + 3) / 4) * 16;
+        default:
+            return static_cast<std::size_t>(width) * pixel_bytes(mFormatPrimary, mFormatType);
+    }
+}
+
+bool LLImageGL::prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& command_buffer,
+                                    bool will_upload_pixels)
+{
+    if (!sImageMetalDevice || mExternalTexture || mTarget != GL_TEXTURE_2D)
+    {
+        return true;
+    }
+
+    const MetalUploadFormat upload_format =
+        metal_upload_format(getStorageInternalFormat(), mFormatPrimary, mFormatType);
+    std::unique_ptr<ALMetalTexture>& destination =
+        (!on_main_thread() && mUploadInFlight) ? mPendingMetalTexture : mMetalTexture;
+    if (upload_format.format == ALMetalPixelFormat::invalid)
+    {
+        destination.reset();
+        report_unsupported_metal_texture(getStorageInternalFormat(), mFormatPrimary, mFormatType);
+        return true;
+    }
+
+    ALMetalTextureDescriptor descriptor;
+    descriptor.type = ALMetalTextureType::texture_2d;
+    descriptor.format = upload_format.format;
+    descriptor.width = static_cast<U32>(liveWidth(mCurrentDiscardLevel));
+    descriptor.height = static_cast<U32>(liveHeight(mCurrentDiscardLevel));
+    descriptor.mipmap_level_count = static_cast<U32>(llmax(mMipLevels, 1));
+    descriptor.storage = ALMetalStorageMode::private_gpu;
+    descriptor.usage = ALMetalTextureUsage::shader_read;
+    descriptor.label = "Alchemy image texture";
+    switch (mDeprecatedSourceFormat)
+    {
+        case GL_ALPHA:
+            descriptor.swizzle = {
+                ALMetalTextureSwizzle::zero, ALMetalTextureSwizzle::zero,
+                ALMetalTextureSwizzle::zero, ALMetalTextureSwizzle::red};
+            break;
+        case GL_LUMINANCE:
+            descriptor.swizzle = {
+                ALMetalTextureSwizzle::red, ALMetalTextureSwizzle::red,
+                ALMetalTextureSwizzle::red, ALMetalTextureSwizzle::one};
+            break;
+        case GL_LUMINANCE_ALPHA:
+            descriptor.swizzle = {
+                ALMetalTextureSwizzle::red, ALMetalTextureSwizzle::red,
+                ALMetalTextureSwizzle::red, ALMetalTextureSwizzle::green};
+            break;
+        default:
+            break;
+    }
+
+    if (!same_metal_texture(destination.get(), descriptor))
+    {
+        std::string error;
+        destination = ALMetalTexture::create(*sImageMetalDevice, descriptor, &error);
+        if (!destination)
+        {
+            LL_WARNS("Metal") << "Could not allocate LLImageGL Metal texture: " << error << LL_ENDL;
+            return false;
+        }
+        bool expected = false;
+        if (sMetalTextureReported.compare_exchange_strong(expected, true, std::memory_order_relaxed))
+        {
+            LL_INFOS("Metal") << "Production LLImageGL Metal mirrors are active; first texture is "
+                               << descriptor.width << "x" << descriptor.height << ", "
+                               << descriptor.mipmap_level_count << " mip level(s)" << LL_ENDL;
+        }
+    }
+
+    if (will_upload_pixels)
+    {
+        std::string error;
+        command_buffer = sImageMetalDevice->makeCommandBuffer("Alchemy image upload", &error);
+        if (!command_buffer)
+        {
+            LL_WARNS("Metal") << "Could not create LLImageGL upload command: " << error << LL_ENDL;
+            return false;
+        }
+    }
+    return true;
+}
+
+bool LLImageGL::uploadMetalTextureRegion(ALMetalCommandBuffer& command_buffer,
+                                         U32 mip_level,
+                                         U32 x,
+                                         U32 y,
+                                         U32 width,
+                                         U32 height,
+                                         const U8* pixels,
+                                         std::size_t source_bytes_per_row)
+{
+    ALMetalTexture* texture = metalTextureForUpload();
+    if (!texture)
+    {
+        return true;
+    }
+
+    const MetalUploadFormat upload_format =
+        metal_upload_format(getStorageInternalFormat(), mFormatPrimary, mFormatType);
+    const U8* upload_pixels = pixels;
+    std::size_t upload_bytes_per_row = source_bytes_per_row;
+    std::vector<U8> converted;
+
+    if (upload_format.expansion != MetalRgbExpansion::none)
+    {
+        if (mFormatSwapBytes)
+        {
+            LL_WARNS("Metal") << "Byte-swapped RGB expansion is not supported for Metal upload" << LL_ENDL;
+            return false;
+        }
+        std::size_t source_pixel_bytes = 0;
+        std::size_t destination_pixel_bytes = 0;
+        switch (upload_format.expansion)
+        {
+            case MetalRgbExpansion::rgb8:
+                source_pixel_bytes = 3;
+                destination_pixel_bytes = 4;
+                break;
+            case MetalRgbExpansion::rgb16_float:
+                source_pixel_bytes = 6;
+                destination_pixel_bytes = 8;
+                break;
+            case MetalRgbExpansion::rgb32_float:
+                source_pixel_bytes = 12;
+                destination_pixel_bytes = 16;
+                break;
+            case MetalRgbExpansion::none:
+                break;
+        }
+        upload_bytes_per_row = static_cast<std::size_t>(width) * destination_pixel_bytes;
+        converted.resize(upload_bytes_per_row * height);
+        for (U32 row = 0; row < height; ++row)
+        {
+            const U8* source = pixels + static_cast<std::size_t>(row) * source_bytes_per_row;
+            U8* target = converted.data() + static_cast<std::size_t>(row) * upload_bytes_per_row;
+            for (U32 column = 0; column < width; ++column)
+            {
+                std::memcpy(target, source, source_pixel_bytes);
+                if (upload_format.expansion == MetalRgbExpansion::rgb8)
+                {
+                    target[3] = 0xff;
+                }
+                else if (upload_format.expansion == MetalRgbExpansion::rgb16_float)
+                {
+                    const U16 one = 0x3c00;
+                    std::memcpy(target + 6, &one, sizeof(one));
+                }
+                else
+                {
+                    const F32 one = 1.0f;
+                    std::memcpy(target + 12, &one, sizeof(one));
+                }
+                source += source_pixel_bytes;
+                target += destination_pixel_bytes;
+            }
+        }
+        upload_pixels = converted.data();
+    }
+    else if (mFormatSwapBytes)
+    {
+        const std::size_t packed_bytes = metal_packed_bytes(mFormatType);
+        const std::size_t scalar_bytes = packed_bytes ? packed_bytes : metal_scalar_bytes(mFormatType);
+        const std::size_t scalars_per_pixel = packed_bytes ? 1 : dataFormatComponents(mFormatPrimary);
+        if (scalar_bytes <= 1)
+        {
+            // GL treats byte swapping as a no-op for one-byte elements.
+        }
+        else
+        {
+            const std::size_t source_pixel_bytes = scalar_bytes * scalars_per_pixel;
+            upload_bytes_per_row = static_cast<std::size_t>(width) * source_pixel_bytes;
+            converted.resize(upload_bytes_per_row * height);
+            for (U32 row = 0; row < height; ++row)
+            {
+                const U8* source = pixels + static_cast<std::size_t>(row) * source_bytes_per_row;
+                U8* target = converted.data() + static_cast<std::size_t>(row) * upload_bytes_per_row;
+                for (U32 column = 0; column < width; ++column)
+                {
+                    for (std::size_t scalar = 0; scalar < scalars_per_pixel; ++scalar)
+                    {
+                        for (std::size_t byte = 0; byte < scalar_bytes; ++byte)
+                        {
+                            target[scalar * scalar_bytes + byte] =
+                                source[scalar * scalar_bytes + (scalar_bytes - byte - 1)];
+                        }
+                    }
+                    source += source_pixel_bytes;
+                    target += source_pixel_bytes;
+                }
+            }
+            upload_pixels = converted.data();
+        }
+    }
+
+    std::string error;
+    if (!texture->upload(command_buffer, mip_level, 0,
+                         {x, y, width, height}, upload_pixels,
+                         upload_bytes_per_row, &error))
+    {
+        LL_WARNS("Metal") << "Could not upload LLImageGL Metal texture: " << error << LL_ENDL;
+        return false;
+    }
+    return true;
+}
+
+bool LLImageGL::generateMetalMipmaps(ALMetalCommandBuffer& command_buffer)
+{
+    ALMetalTexture* texture = metalTextureForUpload();
+    if (!texture || texture->descriptor().mipmap_level_count <= 1)
+    {
+        return true;
+    }
+    std::string error;
+    if (!texture->generateMipmaps(command_buffer, &error))
+    {
+        LL_WARNS("Metal") << "Could not generate LLImageGL Metal mipmaps: " << error << LL_ENDL;
+        return false;
+    }
+    return true;
+}
+
+bool LLImageGL::commitMetalUpload(std::unique_ptr<ALMetalCommandBuffer>& command_buffer)
+{
+    if (!command_buffer)
+    {
+        return true;
+    }
+    std::string error;
+    if (!command_buffer->commit(&error))
+    {
+        LL_WARNS("Metal") << "Could not commit LLImageGL Metal upload: " << error << LL_ENDL;
+        return false;
+    }
+    command_buffer.reset();
+    return true;
+}
+#endif
 
 // Whether to break an upload into sub_image_lines slices. This is latency smoothing,
 // not throughput: it only ever applies on the main thread, where one large
@@ -1612,6 +2113,21 @@ bool LLImageGL::setSubImage(const U8* datap, S32 data_width, S32 data_height, S3
                    << LL_ENDL;
         }
 
+        const U8* sub_datap = datap + (y_pos * data_width + x_pos) * pixel_bytes(mFormatPrimary, mFormatType);
+#if LL_DARWIN
+        std::unique_ptr<ALMetalCommandBuffer> metal_command;
+        if (metalTextureForUpload() && sImageMetalDevice)
+        {
+            std::string error;
+            metal_command = sImageMetalDevice->makeCommandBuffer("Alchemy image subimage upload", &error);
+            if (!metal_command)
+            {
+                LL_WARNS("Metal") << "Could not create LLImageGL subimage upload command: "
+                                  << error << LL_ENDL;
+                return false;
+            }
+        }
+#endif
 
         glPixelStorei(GL_UNPACK_ROW_LENGTH, data_width);
         stop_glerror();
@@ -1622,7 +2138,6 @@ bool LLImageGL::setSubImage(const U8* datap, S32 data_width, S32 data_height, S3
             stop_glerror();
         }
 
-        const U8* sub_datap = datap + (y_pos * data_width + x_pos) * pixel_bytes(mFormatPrimary, mFormatType);
         // Forced: the write goes to whichever unit is ACTIVE, and a bind that finds the
         // texture already on slot 0 skips activating it. The glyph atlas is the usual case
         // -- it is still on slot 0 from the text being drawn when a new glyph arrives, and
@@ -1654,6 +2169,15 @@ bool LLImageGL::setSubImage(const U8* datap, S32 data_width, S32 data_height, S3
 
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
         stop_glerror();
+#if LL_DARWIN
+        if (metal_command &&
+            (!uploadMetalTextureRegion(*metal_command, 0, x_pos, y_pos, width, height,
+                                       sub_datap, metalSourceBytesPerRow(data_width)) ||
+             !commitMetalUpload(metal_command)))
+        {
+            return false;
+        }
+#endif
         mGLTextureCreated = true;
     }
     return true;
@@ -1672,6 +2196,13 @@ bool LLImageGL::setSubImageFromFrameBuffer(S32 fb_x, S32 fb_y, S32 x_pos, S32 y_
     {
         touchContents();
         glCopyTexSubImage2D(GL_TEXTURE_2D, 0, x_pos, y_pos, fb_x, fb_y, width, height);
+#if LL_DARWIN
+        // The source framebuffer is still GL-owned. Until render targets are native Metal,
+        // there is no correct source texture to blit from, so make the mirror unavailable
+        // rather than leaving native draws to sample stale pixels.
+        mMetalTexture.reset();
+        mPendingMetalTexture.reset();
+#endif
         mGLTextureCreated = true;
         stop_glerror();
         return true;
@@ -2339,6 +2870,9 @@ void LLImageGL::endUpload()
 
     // Whatever the upload staged and did not publish describes a texture that never was.
     discardPendingAlpha();
+#if LL_DARWIN
+    mPendingMetalTexture.reset();
+#endif
 }
 
 void LLImageGL::checkUploadBegun() const
@@ -2367,6 +2901,12 @@ void LLImageGL::syncTexName(LLGLuint texname)
 
         // The alpha facts derived from the new texture publish with it.
         publishPendingAlpha();
+#if LL_DARWIN
+        if (mPendingMetalTexture)
+        {
+            mMetalTexture = std::move(mPendingMetalTexture);
+        }
+#endif
     }
 
     // Members and mTexName describe the same texture again.
@@ -2601,6 +3141,11 @@ bool LLImageGL::readBackRaw(S32 discard_level, LLImageRaw* imageraw, bool compre
 void LLImageGL::destroyGLTexture()
 {
     checkActiveThread();
+
+#if LL_DARWIN
+    mMetalTexture.reset();
+    mPendingMetalTexture.reset();
+#endif
 
     if (mTexName != 0)
     {
@@ -3633,6 +4178,14 @@ bool LLImageGL::scaleDown(S32 desired_discard)
     free_tex_image(old_texname);
     deleteTextures(1, &old_texname);
     mTexName = new_texname;
+
+#if LL_DARWIN
+    // scaleDown obtains its new pixels entirely through GL framebuffer/PBO paths. A later
+    // native implementation will blit the matching Metal mip, but an absent mirror is the
+    // only safe state until then.
+    mMetalTexture.reset();
+    mPendingMetalTexture.reset();
+#endif
 
     mCurrentDiscardLevel = desired_discard;
 
