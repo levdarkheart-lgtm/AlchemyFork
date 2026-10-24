@@ -103,6 +103,7 @@ public:
     bool resizeFromWindow(std::string* error = nullptr);
     bool resize(std::uint32_t width, std::uint32_t height, std::string* error = nullptr);
     bool setDisplaySyncEnabled(bool enabled, std::string* error = nullptr);
+    bool setOpaque(bool opaque, std::string* error = nullptr);
 
     std::unique_ptr<ALMetalDrawable> nextDrawable(std::string* error = nullptr);
 

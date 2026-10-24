@@ -1203,6 +1203,11 @@ TEST_CASE("almetal: a CAMetalLayer overlay coexists with an SDL OpenGL window", 
         CHECK(surface->info().width >= 64);
         CHECK(surface->info().height >= 48);
         CHECK(surface->info().maximum_drawable_count == 3);
+        CHECK(surface->info().opaque);
+        REQUIRE(surface->setOpaque(false, &error));
+        CHECK_FALSE(surface->info().opaque);
+        REQUIRE(surface->setOpaque(true, &error));
+        CHECK(surface->info().opaque);
         const std::uint64_t original_generation = surface->info().generation;
         REQUIRE(surface->resize(80, 52, &error));
         CHECK(surface->info().width == 80);

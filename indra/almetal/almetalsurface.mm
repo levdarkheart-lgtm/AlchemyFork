@@ -358,6 +358,26 @@ bool ALMetalSurface::setDisplaySyncEnabled(bool enabled, std::string* error)
     return true;
 }
 
+bool ALMetalSurface::setOpaque(bool opaque, std::string* error)
+{
+    if (!requireMainThread(error))
+    {
+        return false;
+    }
+    if (!mImpl || !mImpl->layer)
+    {
+        setError(error, "Metal surface has no CAMetalLayer");
+        return false;
+    }
+    if (mInfo.opaque == opaque)
+    {
+        return true;
+    }
+    mImpl->layer.opaque = opaque;
+    mInfo.opaque = opaque;
+    return true;
+}
+
 std::unique_ptr<ALMetalDrawable> ALMetalSurface::nextDrawable(std::string* error)
 {
     @autoreleasepool

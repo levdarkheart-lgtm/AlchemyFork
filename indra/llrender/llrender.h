@@ -271,6 +271,12 @@ public:
     // because LLVertexBufferData replays outside LLRender::drawBuffer.
     bool drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                            LLImageGL* image, const ALSamplerDesc& sampler);
+
+    // A startup frame can replace the GL window presentation only when every
+    // eligible UI batch was encoded. The surface stays transparent for any
+    // incomplete frame so the GL fallback remains visible underneath it.
+    bool metalUIFrameHasCompleteCoverage() const noexcept;
+    bool setMetalPresentationOpaque(bool opaque);
 #endif
 
     // Refreshes renderer state to the cached values
@@ -812,7 +818,12 @@ private:
 
 #if LL_DARWIN
     std::unique_ptr<ALMetalUIRenderer> mMetalUIRenderer;
+    ALMetalSurface* mMetalUISurface = nullptr;
     U64 mMetalUILoggedFrame = 0;
+    U64 mMetalUIAttemptedBatches = 0;
+    U64 mMetalUIFallbackBatches = 0;
+    U64 mMetalUIFrameAttemptedBatches = 0;
+    U64 mMetalUIFrameFallbackBatches = 0;
 #endif
 
     std::vector<LLVector4a> mUIOffset;

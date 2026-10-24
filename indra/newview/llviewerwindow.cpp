@@ -2305,6 +2305,21 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     LLUI::setScaleFactor(mDisplayScale);
     LLFontGL::sResolutionGeneration++;
 
+    // The SDL window already owns the production Metal device, queue and
+    // surface. Publish them before initFonts(): font creation uploads the
+    // initial glyph atlases, and those first uploads must create their Metal
+    // mirrors rather than leaving every early text batch on the GL fallback.
+#if LL_DARWIN
+    if (auto* sdl_window = dynamic_cast<LLWindowSDL*>(mWindow))
+    {
+        LLVertexBuffer::setMetalDevice(sdl_window->getMetalDevice());
+        LLImageGL::setMetalDevice(sdl_window->getMetalDevice());
+        gGL.setMetalBackend(sdl_window->getMetalDevice(),
+                            sdl_window->getMetalFrameScheduler(),
+                            sdl_window->getMetalSurface());
+    }
+#endif
+
     {
         LLCoordWindow size;
         mWindow->getSize(&size);
@@ -2320,17 +2335,7 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     //
     LL_DEBUGS("Window") << "Loading feature tables." << LL_ENDL;
 
-    // Initialize OpenGL Renderer
-#if LL_DARWIN
-    if (auto* sdl_window = dynamic_cast<LLWindowSDL*>(mWindow))
-    {
-        LLVertexBuffer::setMetalDevice(sdl_window->getMetalDevice());
-        LLImageGL::setMetalDevice(sdl_window->getMetalDevice());
-        gGL.setMetalBackend(sdl_window->getMetalDevice(),
-                            sdl_window->getMetalFrameScheduler(),
-                            sdl_window->getMetalSurface());
-    }
-#endif
+    // Initialize renderer resources after both GL and Metal owners are known.
     LLVertexBuffer::initClass(mWindow);
     LL_INFOS("RenderInit") << "LLVertexBuffer initialization done." << LL_ENDL ;
     if (!gGL.init(true))

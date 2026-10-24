@@ -132,6 +132,20 @@ const U32 immediate_mask = LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_COLO
 #if LL_DARWIN
 namespace
 {
+    enum class MetalUIFallbackReason : std::size_t
+    {
+        incomplete_batch,
+        shader,
+        primitive,
+        mirror,
+        viewport,
+        encoder,
+        count,
+    };
+
+    std::array<U64, static_cast<std::size_t>(MetalUIFallbackReason::count)>
+        sMetalUIFallbackReasons{};
+
     ALMetalBlendFactor metal_blend_factor(LLRender::eBlendFactor factor)
     {
         switch (factor)
@@ -648,7 +662,28 @@ void LLRender::shutdown()
                            << stats.frames << " frames, " << stats.batches
                            << " batches and " << stats.vertices << " vertices; cache holds "
                            << stats.pipeline_states << " pipeline states and "
-                           << stats.sampler_states << " sampler states" << LL_ENDL;
+                           << stats.sampler_states << " sampler states; "
+                           << mMetalUIFallbackBatches << " of "
+                           << mMetalUIAttemptedBatches
+                           << " eligible UI batches used GL fallback" << LL_ENDL;
+        LL_INFOS("Metal") << "Native UI fallback breakdown: incomplete="
+                           << sMetalUIFallbackReasons[static_cast<std::size_t>(
+                                  MetalUIFallbackReason::incomplete_batch)]
+                           << ", shader="
+                           << sMetalUIFallbackReasons[static_cast<std::size_t>(
+                                  MetalUIFallbackReason::shader)]
+                           << ", primitive="
+                           << sMetalUIFallbackReasons[static_cast<std::size_t>(
+                                  MetalUIFallbackReason::primitive)]
+                           << ", mirror="
+                           << sMetalUIFallbackReasons[static_cast<std::size_t>(
+                                  MetalUIFallbackReason::mirror)]
+                           << ", viewport="
+                           << sMetalUIFallbackReasons[static_cast<std::size_t>(
+                                  MetalUIFallbackReason::viewport)]
+                           << ", encoder="
+                           << sMetalUIFallbackReasons[static_cast<std::size_t>(
+                                  MetalUIFallbackReason::encoder)] << LL_ENDL;
         mMetalUIRenderer.reset();
     }
 #endif
@@ -708,7 +743,10 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
         }
     }
     mMetalUIRenderer.reset();
+    mMetalUISurface = nullptr;
     mMetalUILoggedFrame = 0;
+    mMetalUIFrameAttemptedBatches = 0;
+    mMetalUIFrameFallbackBatches = 0;
     if (!device || !scheduler || !surface)
     {
         return;
@@ -724,10 +762,34 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     }
     else
     {
+        mMetalUISurface = surface;
         LL_INFOS("Metal") << "Native production UI drawable renderer initialized at "
                            << surface->info().width << "x" << surface->info().height
                            << LL_ENDL;
     }
+}
+
+bool LLRender::metalUIFrameHasCompleteCoverage() const noexcept
+{
+    return mMetalUIRenderer && mMetalUIFrameAttemptedBatches != 0 &&
+           mMetalUIFrameFallbackBatches == 0;
+}
+
+bool LLRender::setMetalPresentationOpaque(bool opaque)
+{
+    if (!mMetalUISurface)
+    {
+        return false;
+    }
+    std::string error;
+    if (!mMetalUISurface->setOpaque(opaque, &error))
+    {
+        LL_WARNS("Metal") << "Could not set Metal presentation surface "
+                           << (opaque ? "opaque: " : "transparent: ")
+                           << error << LL_ENDL;
+        return false;
+    }
+    return true;
 }
 #endif
 
@@ -756,6 +818,8 @@ void LLRender::endFrame(U32 frames_ahead)
             }
         }
     }
+    mMetalUIFrameAttemptedBatches = 0;
+    mMetalUIFrameFallbackBatches = 0;
 #endif
 
     // The batch's results are written ahead of the fence that follows them. The batches the fences have just shown
@@ -1830,10 +1894,12 @@ void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
     if (texture_slot)
     {
         mSamplerCache.describe(texture_slot->mCurrSampler, sampler);
-        if (drawMetalUIBuffer(vb, mode, count, texture_slot->mCurrImage, sampler))
-        {
-            return;
-        }
+    }
+    if (drawMetalUIBuffer(vb, mode, count,
+                          texture_slot ? texture_slot->mCurrImage : nullptr,
+                          sampler))
+    {
+        return;
     }
 #endif
     vb->setBuffer();
@@ -1844,9 +1910,22 @@ void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
 bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                                  LLImageGL* image, const ALSamplerDesc& sampler)
 {
-    if (!mMetalUIRenderer || mUIOffset.empty() || !buffer || !image || count == 0)
+    if (!mMetalUIRenderer || mUIOffset.empty())
     {
         return false;
+    }
+    ++mMetalUIAttemptedBatches;
+    ++mMetalUIFrameAttemptedBatches;
+    const auto fallback = [this](MetalUIFallbackReason reason)
+    {
+        ++mMetalUIFallbackBatches;
+        ++mMetalUIFrameFallbackBatches;
+        ++sMetalUIFallbackReasons[static_cast<std::size_t>(reason)];
+        return false;
+    };
+    if (!buffer || !image || count == 0)
+    {
+        return fallback(MetalUIFallbackReason::incomplete_batch);
     }
 
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
@@ -1861,13 +1940,13 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     }
     else
     {
-        return false;
+        return fallback(MetalUIFallbackReason::shader);
     }
 
     ALMetalUIPrimitive primitive;
     if (!metal_ui_primitive(mode, primitive))
     {
-        return false;
+        return fallback(MetalUIFallbackReason::primitive);
     }
     ALMetalBuffer* metal_buffer = buffer->getMetalVertexBuffer();
     ALMetalTexture* metal_texture = image->getMetalTexture();
@@ -1883,14 +1962,14 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                                << (metal_texture ? "yes" : "no") << ", mask=0x"
                                << std::hex << buffer->getTypeMask() << std::dec << LL_ENDL;
         }
-        return false;
+        return fallback(MetalUIFallbackReason::mirror);
     }
 
     const S32 viewport_width = mViewport[2];
     const S32 viewport_height = mViewport[3];
     if (viewport_width <= 0 || viewport_height <= 0)
     {
-        return false;
+        return fallback(MetalUIFallbackReason::viewport);
     }
     const U32 target_width = static_cast<U32>(llmax(viewport_width, mViewport[0] + viewport_width));
     const U32 target_height = static_cast<U32>(llmax(viewport_height, mViewport[1] + viewport_height));
@@ -1976,7 +2055,7 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
             LL_WARNS("Metal") << "Native production UI batch encoding failed: "
                                << error << LL_ENDL;
         }
-        return false;
+        return fallback(MetalUIFallbackReason::encoder);
     }
     return true;
 }

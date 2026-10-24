@@ -197,9 +197,32 @@ void display_startup()
 
     if (gViewerWindow && gViewerWindow->getWindow())
     {
-        gViewerWindow->getWindow()->swapBuffers();
-        // Every swap ends a frame, the login screen's too: the uniform rings and the queries key their reuse on the
-        // frames the GPU has finished.
+        bool native_presentation = false;
+#if LL_DARWIN
+        native_presentation = gGL.metalUIFrameHasCompleteCoverage() &&
+                              gGL.setMetalPresentationOpaque(true);
+        if (!native_presentation)
+        {
+            gGL.setMetalPresentationOpaque(false);
+        }
+#endif
+        if (!native_presentation)
+        {
+            gViewerWindow->getWindow()->swapBuffers();
+        }
+        else
+        {
+            static bool logged_native_presentation = false;
+            if (!logged_native_presentation)
+            {
+                logged_native_presentation = true;
+                LL_INFOS("Metal") << "Complete startup/login frames are presented "
+                                     << "by the opaque native Metal surface without a GL swap"
+                                     << LL_ENDL;
+            }
+        }
+        // Whether GL swapped or Metal presented, finish the login frame: the
+        // uniform rings and queries key their reuse on completed GPU frames.
         gGL.endFrame();
     }
 }
@@ -513,6 +536,16 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         gGL.endFrame();
     }
 
+#if LL_DARWIN
+    // The world still comes from the migration GL backend. A startup frame may
+    // have made the Metal layer opaque; restore transparent composition before
+    // any world frame, including a resize-only frame, can reach the screen.
+    if (LLStartUp::getStartupState() >= STATE_PRECACHE)
+    {
+        gGL.setMetalPresentationOpaque(false);
+    }
+#endif
+
     // What the settings and the window changed since the last frame, applied once, here, whatever the frame goes on to
     // draw: the login screen's frames apply them as the world's do.
     if (gPipeline.windowResizePending())
@@ -631,7 +664,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         display_startup();
         return;
     }
-
 
     if (gShaderProfileFrame)
     {
