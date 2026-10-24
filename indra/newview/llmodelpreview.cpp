@@ -105,6 +105,7 @@ namespace
         LLVertexBuffer& buffer,
         const ALMetalTexture* texture,
         const LLColor4& diffuse_color,
+        bool show_edges,
         std::vector<ALMetalLitPreviewBatch>& batches)
     {
         if (!buffer.hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
@@ -180,6 +181,9 @@ namespace
         }
         std::memcpy(batch.diffuse_color, diffuse_color.mV,
                     sizeof(batch.diffuse_color));
+        batch.show_edges = show_edges;
+        std::memcpy(batch.edge_color, PREVIEW_EDGE_COL.mV,
+                    sizeof(batch.edge_color));
         batches.push_back(batch);
         return true;
     }
@@ -3391,8 +3395,8 @@ bool LLModelPreview::render()
     bool show_physics = mViewOption["show_physics"];
 #if LL_DARWIN
     mMetalPreview.reset();
-    bool metal_preview_eligible = !show_edges && !show_joint_positions &&
-                                  !show_skin_weight && !show_physics;
+    bool metal_preview_eligible = !show_joint_positions && !show_skin_weight &&
+                                  !show_physics;
     std::vector<ALMetalLitPreviewBatch> metal_preview_batches;
 #endif
 
@@ -3728,6 +3732,7 @@ bool LLModelPreview::render()
                         !appendMetalModelPreviewBatch(*buffer,
                                                      metal_diffuse_texture,
                                                      metal_diffuse_color,
+                                                     show_edges,
                                                      metal_preview_batches))
                     {
                         metal_preview_eligible = false;

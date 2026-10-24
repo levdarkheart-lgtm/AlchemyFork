@@ -210,18 +210,25 @@ struct ALMetalLitPreviewTexturedVaryings
     float2 texcoord;
 };
 
+static float4 almetal_lit_preview_clip_position(
+    float4 position,
+    constant ALMetalLitPreviewConstants& constants)
+{
+    float4 clip_position = constants.modelview_projection *
+                           float4(position.xyz, 1.0);
+    // Match glCopyTexSubImage's lower-left framebuffer row convention in the
+    // resulting texture bytes.
+    clip_position.y = -clip_position.y;
+    return almetal_clip_from_gl(clip_position);
+}
+
 static ALMetalLitPreviewVaryings almetal_lit_preview_vertex_common(
     float4 position,
     float4 normal_value,
     constant ALMetalLitPreviewConstants& constants)
 {
     ALMetalLitPreviewVaryings output;
-    float4 clip_position = constants.modelview_projection *
-                           float4(position.xyz, 1.0);
-    // Match glCopyTexSubImage's lower-left framebuffer row convention in the
-    // resulting texture bytes.
-    clip_position.y = -clip_position.y;
-    output.position = almetal_clip_from_gl(clip_position);
+    output.position = almetal_lit_preview_clip_position(position, constants);
 
     const float3x3 normal_matrix = float3x3(
         constants.normal_matrix[0].xyz,
@@ -278,6 +285,104 @@ fragment float4 almetal_lit_preview_textured_fragment(
 {
     return max(diffuse_map.sample(diffuse_sampler, input.texcoord) *
                input.color, float4(0.0));
+}
+
+static uint almetal_lit_preview_edge_index(uint vertex_id)
+{
+    const uint triangle_start = (vertex_id / 6u) * 3u;
+    switch (vertex_id % 6u)
+    {
+        case 0u:
+        case 5u:
+            return triangle_start;
+        case 1u:
+        case 2u:
+            return triangle_start + 1u;
+        default:
+            return triangle_start + 2u;
+    }
+}
+
+static bool almetal_lit_preview_edge_triangle_is_back_facing(
+    const device float4* positions,
+    uint i0,
+    uint i1,
+    uint i2,
+    constant ALMetalLitPreviewConstants& constants)
+{
+    const float4 p0 = almetal_lit_preview_clip_position(positions[i0], constants);
+    const float4 p1 = almetal_lit_preview_clip_position(positions[i1], constants);
+    const float4 p2 = almetal_lit_preview_clip_position(positions[i2], constants);
+    if (p0.w <= 0.0 || p1.w <= 0.0 || p2.w <= 0.0)
+    {
+        // Let Metal clip near-plane crossings. The model preview normally
+        // keeps all geometry in front of the camera, and discarding before
+        // clipping would be less faithful than retaining the edge.
+        return false;
+    }
+    const float2 a = p0.xy / p0.w;
+    const float2 b = p1.xy / p1.w;
+    const float2 c = p2.xy / p2.w;
+    const float2 ab = b - a;
+    const float2 ac = c - a;
+    // The preview flips clip-space Y to preserve GL framebuffer row order,
+    // so its original counter-clockwise front faces are clockwise here.
+    return ab.x * ac.y - ab.y * ac.x >= 0.0;
+}
+
+static ALMetalLitPreviewVaryings almetal_lit_preview_edge_vertex_common(
+    const device float4* positions,
+    const device float4* normals,
+    uint source_id,
+    uint i0,
+    uint i1,
+    uint i2,
+    constant ALMetalLitPreviewConstants& constants)
+{
+    ALMetalLitPreviewVaryings output = almetal_lit_preview_vertex_common(
+        positions[source_id], normals[source_id], constants);
+    if (almetal_lit_preview_edge_triangle_is_back_facing(
+            positions, i0, i1, i2, constants))
+    {
+        // A degenerate line entirely outside the clip volume reproduces the
+        // triangle culling that GL applies before polygon-line rasterization.
+        output.position = float4(2.0, 2.0, 2.0, 1.0);
+    }
+    return output;
+}
+
+vertex ALMetalLitPreviewVaryings almetal_lit_preview_edge_u16_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device ushort* indices [[buffer(4)]],
+    constant uint& index_element_offset [[buffer(5)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint triangle_start = index_element_offset + (vertex_id / 6u) * 3u;
+    const uint source_id = indices[index_element_offset +
+                                   almetal_lit_preview_edge_index(vertex_id)];
+    return almetal_lit_preview_edge_vertex_common(
+        positions, normals, source_id,
+        indices[triangle_start], indices[triangle_start + 1u],
+        indices[triangle_start + 2u], constants);
+}
+
+vertex ALMetalLitPreviewVaryings almetal_lit_preview_edge_u32_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device uint* indices [[buffer(4)]],
+    constant uint& index_element_offset [[buffer(5)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint triangle_start = index_element_offset + (vertex_id / 6u) * 3u;
+    const uint source_id = indices[index_element_offset +
+                                   almetal_lit_preview_edge_index(vertex_id)];
+    return almetal_lit_preview_edge_vertex_common(
+        positions, normals, source_id,
+        indices[triangle_start], indices[triangle_start + 1u],
+        indices[triangle_start + 2u], constants);
 }
 
 vertex ALMetalUIVaryings almetal_ui_vertex(

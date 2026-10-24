@@ -139,6 +139,13 @@ install(
 )
 
 if(DARWIN)
+  # The viewer is staged by its post-link install step. Make shader-only edits
+  # invalidate that step as well, or an otherwise up-to-date executable would
+  # leave a stale runtime-compiled MSL source inside the app bundle.
+  set_property(
+    TARGET ${AL_VIEWER_BINARY_NAME}
+    APPEND PROPERTY LINK_DEPENDS "${AL_METAL_BUILTIN_SOURCE}"
+  )
   install(
     FILES "${AL_METAL_BUILTIN_SOURCE}"
     DESTINATION "${AL_INSTALL_DATADIR}"

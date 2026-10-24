@@ -42,6 +42,8 @@ struct ALMetalLitPreviewRenderer::Impl
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::unique_ptr<ALMetalRenderPipeline> solid_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> textured_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> edge_u16_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> edge_u32_pipeline;
     std::unique_ptr<ALMetalDepthStencilState> depth_state;
     std::unique_ptr<ALMetalSamplerState> texture_sampler;
 };
@@ -64,7 +66,9 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
         !impl->library->hasFunction("almetal_lit_preview_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_textured_vertex") ||
-        !impl->library->hasFunction("almetal_lit_preview_textured_fragment"))
+        !impl->library->hasFunction("almetal_lit_preview_textured_fragment") ||
+        !impl->library->hasFunction("almetal_lit_preview_edge_u16_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_edge_u32_vertex"))
     {
         if (impl->library)
         {
@@ -93,6 +97,25 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
     impl->textured_pipeline = ALMetalRenderPipeline::create(
         device, pipeline_descriptor, error);
     if (!impl->textured_pipeline)
+    {
+        return nullptr;
+    }
+
+    pipeline_descriptor.vertex_function = "almetal_lit_preview_edge_u16_vertex";
+    pipeline_descriptor.fragment_function = "almetal_lit_preview_fragment";
+    pipeline_descriptor.label = "Alchemy U16 lit preview edge pipeline";
+    impl->edge_u16_pipeline = ALMetalRenderPipeline::create(
+        device, pipeline_descriptor, error);
+    if (!impl->edge_u16_pipeline)
+    {
+        return nullptr;
+    }
+
+    pipeline_descriptor.vertex_function = "almetal_lit_preview_edge_u32_vertex";
+    pipeline_descriptor.label = "Alchemy U32 lit preview edge pipeline";
+    impl->edge_u32_pipeline = ALMetalRenderPipeline::create(
+        device, pipeline_descriptor, error);
+    if (!impl->edge_u32_pipeline)
     {
         return nullptr;
     }
@@ -185,6 +208,18 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                         batch.indices->length()))
         {
             setError(error, "Metal lit preview geometry range exceeds its buffers");
+            return nullptr;
+        }
+        if (batch.index_offset % index_stride != 0)
+        {
+            setError(error, "Metal lit preview index offset is not element aligned");
+            return nullptr;
+        }
+        if (batch.show_edges &&
+            (batch.index_count % 3 != 0 ||
+             batch.index_count > std::numeric_limits<std::uint32_t>::max() / 2))
+        {
+            setError(error, "Metal lit preview edges require complete triangle indices");
             return nullptr;
         }
     }
@@ -304,6 +339,34 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             encoder->drawIndexed(ALMetalPrimitiveType::triangle,
                                  batch.index_count, batch.index_type,
                                  *batch.indices, batch.index_offset, 1, error);
+        if (encoded && batch.show_edges)
+        {
+            LitPreviewConstants edge_constants = constants;
+            std::memcpy(edge_constants.diffuse_color, batch.edge_color,
+                        sizeof(edge_constants.diffuse_color));
+            const std::uint32_t index_element_offset =
+                static_cast<std::uint32_t>(batch.index_offset /
+                    (batch.index_type == ALMetalIndexType::uint32 ? 4 : 2));
+            encoded =
+                encoder->setPipeline(
+                    batch.index_type == ALMetalIndexType::uint32
+                        ? *mImpl->edge_u32_pipeline
+                        : *mImpl->edge_u16_pipeline,
+                    error) &&
+                encoder->setVertexBuffer(0, *batch.vertices,
+                                         batch.position_offset, error) &&
+                encoder->setVertexBuffer(1, *batch.vertices,
+                                         batch.normal_offset, error) &&
+                encoder->setVertexBytes(2, &edge_constants,
+                                        sizeof(edge_constants), error) &&
+                encoder->setVertexBuffer(4, *batch.indices, 0, error) &&
+                encoder->setVertexBytes(5, &index_element_offset,
+                                        sizeof(index_element_offset), error) &&
+                encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->draw(ALMetalPrimitiveType::line, 0,
+                              batch.index_count * 2, 1, error) &&
+                encoder->setCullMode(ALMetalCullMode::back, error);
+        }
     }
     encoded = encoded && encoder->end(error);
     if (!encoded || !output->copyFrom(*command, *color, {}, error) ||

@@ -770,7 +770,12 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         std::memcpy(vertex_bytes.data() + sizeof(positions), normals.data(), sizeof(normals));
         std::memcpy(vertex_bytes.data() + sizeof(positions) + sizeof(normals),
                     texcoords.data(), sizeof(texcoords));
-        const std::array<std::uint16_t, 6> indices{{0, 1, 2, 3, 4, 5}};
+        const std::array<std::uint16_t, 9> indices{{
+            0, 1, 2, 3, 4, 5,
+            // The same near triangle with reversed winding verifies that the
+            // explicit edge path preserves GL polygon-mode back-face culling.
+            5, 4, 3,
+        }};
 
         ALMetalBufferDescriptor vertex_descriptor;
         vertex_descriptor.length = vertex_bytes.size();
@@ -855,7 +860,7 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         batch.normal_offset = sizeof(positions);
         error.clear();
 
-        ALMetalLitPreviewBatch batches[2] = {batch, batch};
+        ALMetalLitPreviewBatch batches[3] = {batch, batch, batch};
         batches[0].index_count = 3;
         batches[1].index_offset = sizeof(std::uint16_t) * 3;
         batches[1].index_count = 3;
@@ -872,6 +877,24 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
                     sizeof(batches[1].light_diffuse));
         batches[1].light_direction[0][0] = 1.f;
         batches[1].light_diffuse[0][0] = 1.f;
+        batches[1].show_edges = true;
+        batches[1].edge_color[0] = 1.f;
+        batches[1].edge_color[1] = 0.f;
+        batches[1].edge_color[2] = 0.f;
+        batches[1].edge_color[3] = 1.f;
+        batches[2].index_offset = sizeof(std::uint16_t) * 6;
+        batches[2].index_count = 3;
+        batches[2].show_edges = true;
+        batches[2].edge_color[0] = 0.f;
+        batches[2].edge_color[1] = 1.f;
+        batches[2].edge_color[2] = 0.f;
+        batches[2].edge_color[3] = 1.f;
+
+        batches[1].index_count = 2;
+        CHECK_FALSE(renderer->render(batches[1], &error));
+        CHECK(error == "Metal lit preview edges require complete triangle indices");
+        batches[1].index_count = 3;
+        error.clear();
 
         batches[1].texcoord_offset = vertex_bytes.size();
         CHECK_FALSE(renderer->render(batches[1], &error));
@@ -881,7 +904,7 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
 
         ALMetalLitPreviewScene scene;
         scene.batches = batches;
-        scene.batch_count = 2;
+        scene.batch_count = 3;
         scene.destination_template = destination_template.get();
         scene.clear_color[0] = 0.169f;
         scene.clear_color[1] = 0.169f;
@@ -903,6 +926,26 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(pixels[center + 1] <= 1);
         CHECK(pixels[center + 2] <= 1);
         CHECK(pixels[center + 3] == 255);
+        std::size_t red_edge_pixels = 0;
+        for (std::size_t offset = 0; offset < pixels.size(); offset += 4)
+        {
+            if (pixels[offset + 0] >= 254 && pixels[offset + 1] <= 1 &&
+                pixels[offset + 2] <= 1 && pixels[offset + 3] == 255)
+            {
+                ++red_edge_pixels;
+            }
+        }
+        CHECK(red_edge_pixels == 76);
+        std::size_t back_face_edge_pixels = 0;
+        for (std::size_t offset = 0; offset < pixels.size(); offset += 4)
+        {
+            if (pixels[offset + 0] <= 1 && pixels[offset + 1] >= 254 &&
+                pixels[offset + 2] <= 1 && pixels[offset + 3] == 255)
+            {
+                ++back_face_edge_pixels;
+            }
+        }
+        CHECK(back_face_edge_pixels == 0);
         const std::size_t corner = 4;
         CHECK(std::abs(static_cast<int>(pixels[corner + 0]) - 43) <= 1);
         CHECK(std::abs(static_cast<int>(pixels[corner + 1]) - 43) <= 1);

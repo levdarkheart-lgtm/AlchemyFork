@@ -32,12 +32,18 @@ struct ALMetalLitPreviewBatch
     // encoded-space anisotropic wrap sampler. A null texture selects the
     // solid-lit pipeline and does not require texture coordinates.
     const ALMetalTexture* texture = nullptr;
+    // Re-emit the three edges of every indexed triangle as one-pixel Metal
+    // line primitives after its fill. The edge vertex path reads the same
+    // index buffer directly, so no CPU expansion or transient buffer is
+    // required.
+    bool show_edges = false;
     const ALMetalTexture* destination_template = nullptr;
     float modelview_projection[16]{};
     float normal_matrix[3][4]{};
     float light_direction[3][4]{};
     float light_diffuse[3][4]{};
     float diffuse_color[4] = {1.f, 1.f, 1.f, 1.f};
+    float edge_color[4] = {0.4f, 0.4f, 0.4f, 1.f};
 };
 
 struct ALMetalLitPreviewScene
