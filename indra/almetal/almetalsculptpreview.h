@@ -37,7 +37,16 @@ struct ALMetalLitPreviewBatch
     // index buffer directly, so no CPU expansion or transient buffer is
     // required.
     bool show_edges = false;
+    // Start a new render pass which retains color but clears depth before
+    // drawing this batch. Model previews use this boundary before their
+    // optional physics overlay, matching the legacy depth-buffer clear.
+    bool clear_depth_before = false;
+    // Match the legacy source-alpha/one-minus-source-alpha preview overlay.
+    // Blending is immutable pipeline state, so the renderer selects a cached
+    // blended pipeline rather than changing state on the encoder.
+    bool alpha_blending = false;
     const ALMetalTexture* destination_template = nullptr;
+    const ALMetalTextureDescriptor* destination_descriptor = nullptr;
     float modelview_projection[16]{};
     float normal_matrix[3][4]{};
     float light_direction[3][4]{};
@@ -51,6 +60,10 @@ struct ALMetalLitPreviewScene
     const ALMetalLitPreviewBatch* batches = nullptr;
     std::size_t batch_count = 0;
     const ALMetalTexture* destination_template = nullptr;
+    // Dynamic GL preview textures discard their Metal mirror after the GL
+    // framebuffer copy. Keep only its validated allocation descriptor so a
+    // later native preview frame can allocate a fresh, non-stale target.
+    const ALMetalTextureDescriptor* destination_descriptor = nullptr;
     float clear_color[4] = {0.15f, 0.20f, 0.30f, 1.0f};
 };
 

@@ -276,6 +276,10 @@ public:
     // eligible UI batch was encoded. The surface stays transparent for any
     // incomplete frame so the GL fallback remains visible underneath it.
     bool metalUIFrameHasCompleteCoverage() const noexcept;
+    // Native UI replacement is currently safe only while the Metal surface
+    // owns presentation (startup/login). World frames still swap the GL
+    // backing and keep their UI draws there until world presentation moves.
+    void setMetalUIReplacementEnabled(bool enabled) noexcept;
     bool setMetalPresentationOpaque(bool opaque);
 #endif
 
@@ -824,6 +828,7 @@ private:
     U64 mMetalUIFallbackBatches = 0;
     U64 mMetalUIFrameAttemptedBatches = 0;
     U64 mMetalUIFrameFallbackBatches = 0;
+    bool mMetalUIReplacementEnabled = true;
 #endif
 
     std::vector<LLVector4a> mUIOffset;

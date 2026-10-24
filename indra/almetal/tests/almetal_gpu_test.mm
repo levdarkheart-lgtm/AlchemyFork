@@ -905,7 +905,7 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         ALMetalLitPreviewScene scene;
         scene.batches = batches;
         scene.batch_count = 3;
-        scene.destination_template = destination_template.get();
+        scene.destination_descriptor = &destination_template->descriptor();
         scene.clear_color[0] = 0.169f;
         scene.clear_color[1] = 0.169f;
         scene.clear_color[2] = 0.169f;
@@ -951,6 +951,57 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(std::abs(static_cast<int>(pixels[corner + 1]) - 43) <= 1);
         CHECK(std::abs(static_cast<int>(pixels[corner + 2]) - 43) <= 1);
         CHECK(pixels[corner + 3] == 255);
+
+        // The ordinary model-physics overlay clears depth after the model,
+        // retains its color, then source-alpha blends the physics mesh. Reuse
+        // the farther triangle: it was rejected above, so seeing it here also
+        // proves that the explicit pass boundary cleared depth.
+        std::array<ALMetalLitPreviewBatch, 4> overlay_batches{{
+            batches[0], batches[1], batches[2], batch,
+        }};
+        ALMetalLitPreviewBatch& overlay = overlay_batches[3];
+        overlay.index_offset = 0;
+        overlay.index_count = 3;
+        overlay.texture = nullptr;
+        overlay.show_edges = false;
+        overlay.clear_depth_before = true;
+        overlay.alpha_blending = true;
+        std::memset(overlay.light_direction, 0,
+                    sizeof(overlay.light_direction));
+        std::memset(overlay.light_diffuse, 0,
+                    sizeof(overlay.light_diffuse));
+        overlay.light_direction[0][1] = 1.f;
+        overlay.light_diffuse[0][2] = 1.f;
+        overlay.diffuse_color[0] = 1.f;
+        overlay.diffuse_color[1] = 1.f;
+        overlay.diffuse_color[2] = 1.f;
+        overlay.diffuse_color[3] = 0.5f;
+
+        scene.batches = overlay_batches.data();
+        scene.batch_count = overlay_batches.size();
+        auto rendered_overlay = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(rendered_overlay);
+        std::array<std::uint8_t, 32 * 32 * 4> overlay_pixels{};
+        REQUIRE(rendered_overlay->readback(
+            *device, 0, 0, {}, overlay_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(overlay_pixels[center + 0]) - 58) <= 1);
+        CHECK(overlay_pixels[center + 1] <= 1);
+        CHECK(std::abs(static_cast<int>(overlay_pixels[center + 2]) - 128) <= 1);
+        CHECK(std::abs(static_cast<int>(overlay_pixels[center + 3]) - 191) <= 1);
+
+        ALMetalTextureDescriptor srgb_destination =
+            destination_template->descriptor();
+        srgb_destination.format = ALMetalPixelFormat::rgba8_unorm_srgb;
+        srgb_destination.label = "Alchemy sRGB preview destination descriptor";
+        scene.destination_descriptor = &srgb_destination;
+        error.clear();
+        auto rendered_srgb = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(rendered_srgb);
+        CHECK(rendered_srgb->descriptor().format ==
+              ALMetalPixelFormat::rgba8_unorm_srgb);
     }
 }
 

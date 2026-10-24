@@ -747,6 +747,7 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     mMetalUILoggedFrame = 0;
     mMetalUIFrameAttemptedBatches = 0;
     mMetalUIFrameFallbackBatches = 0;
+    mMetalUIReplacementEnabled = true;
     if (!device || !scheduler || !surface)
     {
         return;
@@ -773,6 +774,11 @@ bool LLRender::metalUIFrameHasCompleteCoverage() const noexcept
 {
     return mMetalUIRenderer && mMetalUIFrameAttemptedBatches != 0 &&
            mMetalUIFrameFallbackBatches == 0;
+}
+
+void LLRender::setMetalUIReplacementEnabled(bool enabled) noexcept
+{
+    mMetalUIReplacementEnabled = enabled;
 }
 
 bool LLRender::setMetalPresentationOpaque(bool opaque)
@@ -1910,7 +1916,7 @@ void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
 bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                                  LLImageGL* image, const ALSamplerDesc& sampler)
 {
-    if (!mMetalUIRenderer || mUIOffset.empty())
+    if (!mMetalUIRenderer || !mMetalUIReplacementEnabled || mUIOffset.empty())
     {
         return false;
     }

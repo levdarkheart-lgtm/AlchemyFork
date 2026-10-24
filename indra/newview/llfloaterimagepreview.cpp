@@ -990,6 +990,12 @@ bool LLImagePreviewSculpted::render()
     mNeedsUpdate = false;
 #if LL_DARWIN
     mMetalPreview.reset();
+    mMetalPreviewDescriptor.reset();
+    if (mGLTexturep.notNull() && mGLTexturep->getMetalTexture())
+    {
+        mMetalPreviewDescriptor = std::make_unique<ALMetalTextureDescriptor>(
+            mGLTexturep->getMetalTexture()->descriptor());
+    }
 #endif
     LLGLSUIDefault def;
     LLGLDisable no_blend(GL_BLEND);
@@ -1052,13 +1058,11 @@ bool LLImagePreviewSculpted::render()
 
 #if LL_DARWIN
     ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
-    ALMetalTexture* destination_template = mGLTexturep.notNull()
-        ? mGLTexturep->getMetalTexture() : nullptr;
     ALMetalBuffer* metal_vertices = mVertexBuffer.notNull()
         ? mVertexBuffer->getMetalVertexBuffer() : nullptr;
     ALMetalBuffer* metal_indices = mVertexBuffer.notNull()
         ? mVertexBuffer->getMetalIndexBuffer() : nullptr;
-    if (metal_device && destination_template && metal_vertices && metal_indices)
+    if (metal_device && mMetalPreviewDescriptor && metal_vertices && metal_indices)
     {
         static ALMetalDevice* renderer_device = nullptr;
         static std::unique_ptr<ALMetalLitPreviewRenderer> renderer;
@@ -1091,7 +1095,7 @@ bool LLImagePreviewSculpted::render()
             batch.index_type = mVertexBuffer->getIndexStride() == 4
                 ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
             batch.index_count = num_indices;
-            batch.destination_template = destination_template;
+            batch.destination_descriptor = mMetalPreviewDescriptor.get();
             memcpy(batch.modelview_projection, modelview_projection.getF32ptr(),
                    sizeof(batch.modelview_projection));
 

@@ -36,6 +36,7 @@
 
 #if LL_DARWIN
 class ALMetalTexture;
+struct ALMetalTextureDescriptor;
 #endif
 
 class LLComboBox;
@@ -79,6 +80,7 @@ protected:
     LLPointer<LLVertexBuffer> mVertexBuffer;
 #if LL_DARWIN
     std::unique_ptr<ALMetalTexture> mMetalPreview;
+    std::unique_ptr<ALMetalTextureDescriptor> mMetalPreviewDescriptor;
 #endif
 };
 

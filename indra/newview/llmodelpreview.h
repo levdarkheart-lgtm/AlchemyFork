@@ -38,6 +38,7 @@
 
 #if LL_DARWIN
 class ALMetalTexture;
+struct ALMetalTextureDescriptor;
 #endif
 
 class LLJoint;
@@ -346,6 +347,7 @@ protected:
     LLCachedControl<bool>   mImporterDebug;
 #if LL_DARWIN
     std::unique_ptr<ALMetalTexture> mMetalPreview;
+    std::unique_ptr<ALMetalTextureDescriptor> mMetalPreviewDescriptor;
 #endif
 };
 

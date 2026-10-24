@@ -170,6 +170,12 @@ void display_startup()
 
     LLGLState::checkStates();
 
+#if LL_DARWIN
+    // Startup/login is wholly owned by the native drawable when coverage is
+    // complete, so successful native batches may replace their GL copies.
+    gGL.setMetalUIReplacementEnabled(true);
+#endif
+
     if (frame_count++ > 1) // make sure we have rendered a frame first
     {
         LLViewerDynamicTexture::updateAllInstances();
@@ -540,9 +546,21 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     // The world still comes from the migration GL backend. A startup frame may
     // have made the Metal layer opaque; restore transparent composition before
     // any world frame, including a resize-only frame, can reach the screen.
+    // Keep world UI in that same GL presentation until the world backing pass
+    // migrates; a transparent Cocoa Metal child cannot reliably composite over
+    // the live NSOpenGL surface on all macOS configurations.
     if (LLStartUp::getStartupState() >= STATE_PRECACHE)
     {
+        gGL.setMetalUIReplacementEnabled(false);
         gGL.setMetalPresentationOpaque(false);
+        static bool logged_world_gl_ui = false;
+        if (!logged_world_gl_ui)
+        {
+            logged_world_gl_ui = true;
+            LL_INFOS("Metal") << "World frames retain visible UI in the GL backing "
+                                 "until native world presentation replaces it"
+                               << LL_ENDL;
+        }
     }
 #endif
 

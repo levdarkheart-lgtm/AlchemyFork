@@ -111,6 +111,9 @@ namespace
         if (!buffer.hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
             !buffer.hasDataType(LLVertexBuffer::TYPE_NORMAL))
         {
+            LL_WARNS_ONCE("Metal") << "Static model preview retained GL because a "
+                                      "batch has no native position/normal layout"
+                                   << LL_ENDL;
             return false;
         }
 
@@ -118,6 +121,9 @@ namespace
         ALMetalBuffer* indices = buffer.getMetalIndexBuffer();
         if (!vertices || !indices)
         {
+            LL_WARNS_ONCE("Metal") << "Static model preview retained GL because a "
+                                      "vertex or index buffer has no Metal mirror"
+                                   << LL_ENDL;
             return false;
         }
 
@@ -125,6 +131,9 @@ namespace
         LLMatrix4a inverse_modelview;
         if (!inverse_modelview.setAffineInverse(modelview))
         {
+            LL_WARNS_ONCE("Metal") << "Static model preview retained GL because its "
+                                      "model-view transform is singular"
+                                   << LL_ENDL;
             return false;
         }
         LLMatrix4a modelview_projection;
@@ -138,6 +147,9 @@ namespace
         {
             if (!buffer.hasDataType(LLVertexBuffer::TYPE_TEXCOORD0))
             {
+                LL_WARNS_ONCE("Metal") << "Static model preview retained GL because a "
+                                          "textured batch has no texture coordinates"
+                                       << LL_ENDL;
                 return false;
             }
             batch.texcoord_offset = buffer.getOffset(
@@ -3395,8 +3407,14 @@ bool LLModelPreview::render()
     bool show_physics = mViewOption["show_physics"];
 #if LL_DARWIN
     mMetalPreview.reset();
+    mMetalPreviewDescriptor.reset();
+    if (mGLTexturep.notNull() && mGLTexturep->getMetalTexture())
+    {
+        mMetalPreviewDescriptor = std::make_unique<ALMetalTextureDescriptor>(
+            mGLTexturep->getMetalTexture()->descriptor());
+    }
     bool metal_preview_eligible = !show_joint_positions && !show_skin_weight &&
-                                  !show_physics;
+                                  !(show_physics && mHasDegenerate);
     std::vector<ALMetalLitPreviewBatch> metal_preview_batches;
 #endif
 
@@ -3669,6 +3687,7 @@ bool LLModelPreview::render()
 #if LL_DARWIN
                     const ALMetalTexture* metal_diffuse_texture = nullptr;
                     LLColor4 metal_diffuse_color = PREVIEW_BASE_COL;
+                    bool metal_has_diffuse_map = false;
 #endif
                     if (show_textures)
                     {
@@ -3685,7 +3704,14 @@ bool LLModelPreview::render()
 
                             // Find the tex for this material, bind it, and add it to our set
                             //
-                            LLViewerFetchedTexture* tex = bindMaterialDiffuseTexture(material);
+                            const bool has_diffuse_map =
+                                !material.mDiffuseMapFilename.empty() ||
+                                material.getDiffuseMap().notNull();
+#if LL_DARWIN
+                            metal_has_diffuse_map = has_diffuse_map;
+#endif
+                            LLViewerFetchedTexture* tex = has_diffuse_map
+                                ? bindMaterialDiffuseTexture(material) : nullptr;
                             if (tex)
                             {
                                 mTextureSet.insert(tex);
@@ -3697,7 +3723,10 @@ bool LLModelPreview::render()
                             }
                         }
 #if LL_DARWIN
-                        if (!metal_diffuse_texture)
+                        // A material color without a declared image remains a
+                        // solid native batch. Only fail closed when the source
+                        // actually declares a texture which is not mirrored.
+                        if (metal_has_diffuse_map && !metal_diffuse_texture)
                         {
                             metal_preview_eligible = false;
                             metal_preview_batches.clear();
@@ -3746,6 +3775,9 @@ bool LLModelPreview::render()
             if (show_physics)
             {
                 gGL.clear(GL_DEPTH_BUFFER_BIT);
+#if LL_DARWIN
+                bool metal_physics_depth_clear = true;
+#endif
 
                 for (U32 pass = 0; pass < 2; pass++)
                 {
@@ -3791,6 +3823,13 @@ bool LLModelPreview::render()
                             if (!physics.mHull.empty())
                             {
                                 render_mesh = false;
+#if LL_DARWIN
+                                // Convex-decomposition preview geometry is
+                                // still CPU-owned. Do not publish a partial
+                                // Metal preview which omits those hulls.
+                                metal_preview_eligible = false;
+                                metal_preview_batches.clear();
+#endif
 
                                 if (physics.mMesh.empty())
                                 { //build vertex buffer for physics mesh
@@ -3867,6 +3906,32 @@ bool LLModelPreview::render()
                                     gGL.setLineWidth(1.f);
 
                                     buffer->unmapBuffer();
+#if LL_DARWIN
+                                    if (metal_preview_eligible)
+                                    {
+                                        if (!appendMetalModelPreviewBatch(
+                                                *buffer, nullptr,
+                                                PREVIEW_PSYH_FILL_COL, true,
+                                                metal_preview_batches))
+                                        {
+                                            metal_preview_eligible = false;
+                                            metal_preview_batches.clear();
+                                        }
+                                        else
+                                        {
+                                            ALMetalLitPreviewBatch& metal_batch =
+                                                metal_preview_batches.back();
+                                            metal_batch.clear_depth_before =
+                                                metal_physics_depth_clear;
+                                            metal_batch.alpha_blending = true;
+                                            std::memcpy(
+                                                metal_batch.edge_color,
+                                                PREVIEW_PSYH_EDGE_COL.mV,
+                                                sizeof(metal_batch.edge_color));
+                                            metal_physics_depth_clear = false;
+                                        }
+                                    }
+#endif
                                 }
                             }
                         }
@@ -4114,9 +4179,7 @@ bool LLModelPreview::render()
     if (metal_preview_eligible && !metal_preview_batches.empty())
     {
         ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
-        ALMetalTexture* destination_template = mGLTexturep.notNull()
-            ? mGLTexturep->getMetalTexture() : nullptr;
-        if (metal_device && destination_template)
+        if (metal_device && mMetalPreviewDescriptor)
         {
             static ALMetalDevice* renderer_device = nullptr;
             static std::unique_ptr<ALMetalLitPreviewRenderer> renderer;
@@ -4136,7 +4199,7 @@ bool LLModelPreview::render()
                 ALMetalLitPreviewScene scene;
                 scene.batches = metal_preview_batches.data();
                 scene.batch_count = metal_preview_batches.size();
-                scene.destination_template = destination_template;
+                scene.destination_descriptor = mMetalPreviewDescriptor.get();
                 std::memcpy(scene.clear_color, PREVIEW_CANVAS_COL.mV,
                             sizeof(scene.clear_color));
                 mMetalPreview = renderer->render(scene, &error);
@@ -4147,6 +4210,18 @@ bool LLModelPreview::render()
                                    << error << LL_ENDL;
             }
         }
+        else
+        {
+            LL_WARNS_ONCE("Metal") << "Static model preview retained GL because its "
+                                      "device or destination descriptor is unavailable"
+                                   << LL_ENDL;
+        }
+    }
+    else if (metal_preview_eligible)
+    {
+        LL_INFOS_ONCE("Metal") << "Static model preview retained GL because it produced "
+                                  "no drawable native batches"
+                               << LL_ENDL;
     }
 #endif
 
@@ -4168,7 +4243,7 @@ void LLModelPreview::postRender(bool success)
             static bool reported_native_preview = false;
             if (!reported_native_preview)
             {
-                LL_INFOS("Metal") << "Default static model previews own a native Metal render target"
+                LL_INFOS("Metal") << "Static model previews own a native Metal render target"
                                    << LL_ENDL;
                 reported_native_preview = true;
             }
