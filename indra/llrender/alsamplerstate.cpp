@@ -175,6 +175,32 @@ U32 ALSamplerCache::get(const ALSamplerDesc& desc)
     return name;
 }
 
+bool ALSamplerCache::describe(U32 name, ALSamplerDesc& desc) const
+{
+    if (!name)
+    {
+        return false;
+    }
+
+    for (U32 i = 0; i < NUM_SAMPLERS; ++i)
+    {
+        if (mSamplers[i] == name)
+        {
+            desc = makeDesc(static_cast<ALSampler>(i));
+            return true;
+        }
+    }
+    for (const auto& entry : mCustomSamplers)
+    {
+        if (entry.second == name)
+        {
+            desc = entry.first;
+            return true;
+        }
+    }
+    return false;
+}
+
 void ALSamplerCache::warmup()
 {
     for (U32 i = 0; i < NUM_SAMPLERS; ++i)

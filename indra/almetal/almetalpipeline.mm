@@ -622,7 +622,13 @@ std::unique_ptr<ALMetalSamplerState> ALMetalSamplerState::create(
             return nullptr;
         }
         MTLSamplerDescriptor* native_descriptor = [[MTLSamplerDescriptor alloc] init];
-        native_descriptor.label = toNSString(descriptor.label);
+        // MTLSamplerDescriptor rejects nil rather than treating it as an
+        // unlabeled object. An empty public label is valid and intentionally
+        // common for descriptors assembled from production GL sampler state.
+        if (!descriptor.label.empty())
+        {
+            native_descriptor.label = toNSString(descriptor.label);
+        }
         native_descriptor.minFilter = samplerFilter(descriptor.min_filter);
         native_descriptor.magFilter = samplerFilter(descriptor.mag_filter);
         native_descriptor.mipFilter = samplerMipFilter(descriptor.mip_filter);

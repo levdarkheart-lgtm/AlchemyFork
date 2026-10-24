@@ -565,6 +565,7 @@ void LLFontTextCache::renderBuffers()
     if (mLastUsedShaderShadow && LLGLSLShader::sCurBoundShaderPtr)
     {
         const int mode = (mLastShadow == LLFontGL::DROP_SHADOW) ? 1 : 2; // SOFT
+        gGL.setUITextShadowMode(mode);
         LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::TEXT_SHADOW_MODE, mode);
     }
     for (LLVertexBufferData& buffer : mShadowBufferList)
@@ -573,6 +574,7 @@ void LLFontTextCache::renderBuffers()
     }
     if (mLastUsedShaderShadow && LLGLSLShader::sCurBoundShaderPtr)
     {
+        gGL.setUITextShadowMode(0);
         LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::TEXT_SHADOW_MODE, 0);
     }
     for (LLVertexBufferData& buffer : mForegroundBufferList)

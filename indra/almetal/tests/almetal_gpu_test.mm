@@ -13,6 +13,7 @@
 #include "../almetalpipeline.h"
 #include "../almetalresource.h"
 #include "../almetalsurface.h"
+#include "../almetaluirenderer.h"
 
 #import <Metal/Metal.h>
 
@@ -693,6 +694,128 @@ TEST_CASE("almetal: bundled MSL render pipeline draws a typed triangle", "[almet
         CHECK(std::abs(static_cast<int>(pixels[center + 1]) - 128) <= 1);
         CHECK(std::abs(static_cast<int>(pixels[center + 2]) - 223) <= 1);
         CHECK(pixels[center + 3] == 255);
+    }
+}
+
+TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[almetal]")
+{
+    @autoreleasepool
+    {
+        static_assert(sizeof(ALMetalUIMatrices) == 368);
+
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto scheduler = ALMetalFrameScheduler::create(*device, 3, &error);
+        INFO(error);
+        REQUIRE(scheduler);
+        auto renderer = ALMetalUIRenderer::create(*device, *scheduler, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        // Exactly LLVertexBuffer's production structure-of-arrays layout:
+        // float4 positions, then float2 texcoords, then byte colors.
+        constexpr std::size_t position_offset = 0;
+        constexpr std::size_t texcoord_offset = sizeof(float) * 4 * 3;
+        constexpr std::size_t color_offset = texcoord_offset + sizeof(float) * 2 * 3;
+        std::array<std::uint8_t, color_offset + 4 * 3> bytes{};
+        const float positions[3][4] = {
+            {-0.8f, -0.8f, 0.f, 1.f},
+            { 0.8f, -0.8f, 0.f, 1.f},
+            { 0.0f,  0.8f, 0.f, 1.f},
+        };
+        const float texcoords[3][2] = {{0.f, 0.f}, {0.f, 0.f}, {0.f, 0.f}};
+        const std::uint8_t colors[3][4] = {
+            {255, 32, 16, 255}, {255, 32, 16, 255}, {255, 32, 16, 255},
+        };
+        std::memcpy(bytes.data() + position_offset, positions, sizeof(positions));
+        std::memcpy(bytes.data() + texcoord_offset, texcoords, sizeof(texcoords));
+        std::memcpy(bytes.data() + color_offset, colors, sizeof(colors));
+
+        ALMetalBufferDescriptor buffer_descriptor;
+        buffer_descriptor.length = bytes.size();
+        buffer_descriptor.storage = ALMetalStorageMode::shared;
+        buffer_descriptor.label = "Alchemy production UI test SoA";
+        auto buffer = ALMetalBuffer::create(*device, buffer_descriptor, &error);
+        INFO(error);
+        REQUIRE(buffer);
+        REQUIRE(buffer->write(0, bytes.data(), bytes.size(), &error));
+
+        ALMetalTextureDescriptor texture_descriptor;
+        texture_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        texture_descriptor.width = 1;
+        texture_descriptor.height = 1;
+        texture_descriptor.mipmap_level_count = 1;
+        texture_descriptor.storage = ALMetalStorageMode::private_gpu;
+        texture_descriptor.usage = ALMetalTextureUsage::shader_read;
+        texture_descriptor.label = "Alchemy production UI test white";
+        auto texture = ALMetalTexture::create(*device, texture_descriptor, &error);
+        INFO(error);
+        REQUIRE(texture);
+        const std::array<std::uint8_t, 4> white = {255, 255, 255, 255};
+        auto upload = device->makeCommandBuffer("Alchemy production UI test upload", &error);
+        REQUIRE(upload);
+        REQUIRE(texture->upload(*upload, 0, 0, {}, white.data(), 4, &error));
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalUIBatch batch;
+        batch.vertices = buffer.get();
+        batch.position_offset = position_offset;
+        batch.texcoord_offset = texcoord_offset;
+        batch.color_offset = color_offset;
+        batch.texture = texture.get();
+        batch.sampler.min_filter = ALMetalSamplerFilter::nearest;
+        batch.sampler.mag_filter = ALMetalSamplerFilter::nearest;
+        batch.sampler.mip_filter = ALMetalSamplerMipFilter::none;
+        batch.sampler.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+        batch.sampler.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+        batch.sampler.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
+        batch.blend.enabled = false;
+        batch.viewport = {0.0, 0.0, 32.0, 32.0, 0.0, 1.0};
+        batch.scissor = {0, 0, 32, 32};
+        batch.target_width = 32;
+        batch.target_height = 32;
+        batch.vertex_count = 3;
+        for (int i = 0; i < 4; ++i)
+        {
+            batch.matrices.modelview[i * 4 + i] = 1.f;
+            batch.matrices.projection[i * 4 + i] = 1.f;
+            batch.matrices.modelview_projection[i * 4 + i] = 1.f;
+            batch.matrices.inverse_projection[i * 4 + i] = 1.f;
+            batch.matrices.texture0[i * 4 + i] = 1.f;
+        }
+
+        REQUIRE(renderer->draw(batch, &error));
+        INFO(error);
+        REQUIRE(renderer->hasOpenFrame());
+        REQUIRE(renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+
+        const ALMetalTexture* output = renderer->outputTexture();
+        REQUIRE(output);
+        std::array<std::uint8_t, 32 * 32 * 4> pixels{};
+        REQUIRE(output->readback(*device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        INFO(error);
+        const std::size_t center = (16 * 32 + 16) * 4;
+        CHECK(pixels[center + 0] == 16);  // BGRA target
+        CHECK(pixels[center + 1] == 32);
+        CHECK(pixels[center + 2] == 255);
+        CHECK(pixels[center + 3] == 255);
+        CHECK(pixels[0] == 0);
+        CHECK(pixels[1] == 0);
+        CHECK(pixels[2] == 0);
+        CHECK(pixels[3] == 0);
+
+        const ALMetalUIRendererStats stats = renderer->stats();
+        CHECK(stats.frames == 1);
+        CHECK(stats.batches == 1);
+        CHECK(stats.vertices == 3);
+        CHECK(stats.pipeline_states == 1);
+        CHECK(stats.sampler_states == 1);
     }
 }
 

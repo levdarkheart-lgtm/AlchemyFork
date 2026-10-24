@@ -19,6 +19,7 @@ target_sources(
     almetalpipeline.mm
     almetalresource.mm
     almetalsurface.mm
+    almetaluirenderer.cpp
   PUBLIC
     FILE_SET HEADERS
     FILES
@@ -27,6 +28,7 @@ target_sources(
       almetalpipeline.h
       almetalresource.h
       almetalsurface.h
+      almetaluirenderer.h
 )
 target_compile_definitions(
   almetal

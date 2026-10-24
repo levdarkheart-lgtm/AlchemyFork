@@ -293,6 +293,12 @@ public:
     // overload on anything per-draw.
     U32 get(const ALSamplerDesc& desc);
 
+    // Recover the immutable descriptor behind a GL sampler name. Migration
+    // backends bind sampler state by descriptor rather than by the GL name,
+    // and captured UI batches need that logical state to remain meaningful
+    // after the GL sampler cache is rebuilt.
+    bool describe(U32 name, ALSamplerDesc& desc) const;
+
     // Create every reachable sampler up front.
     //
     // The table is 64 slots of which 48 are reachable, and a sampler object is a few words of

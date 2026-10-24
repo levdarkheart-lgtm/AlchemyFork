@@ -72,6 +72,30 @@ struct ALMetalSolidFragmentConstants
     float4 color;
 };
 
+struct ALMetalVertexRemapConstants
+{
+    uint mode;
+    uint source_count;
+};
+
+static uint almetal_source_vertex(uint vertex_id,
+                                  constant ALMetalVertexRemapConstants& remap)
+{
+    // 0: direct. 1: triangle fan expanded to a triangle list.
+    // 2: line loop expanded to a line strip with vertex zero repeated.
+    if (remap.mode == 1)
+    {
+        const uint lane = vertex_id % 3;
+        const uint triangle = vertex_id / 3;
+        return lane == 0 ? 0 : triangle + lane;
+    }
+    if (remap.mode == 2 && vertex_id == remap.source_count)
+    {
+        return 0;
+    }
+    return vertex_id;
+}
+
 static float4 almetal_clip_from_gl(float4 position)
 {
     // OpenGL clip depth is [-w,+w], while Metal is [0,+w]. X/Y and winding
@@ -85,13 +109,15 @@ vertex ALMetalUIVaryings almetal_ui_vertex(
     const device float2* texcoords [[buffer(1)]],
     const device uchar4* colors [[buffer(2)]],
     constant ALMetalMatrices& matrices [[buffer(3)]],
+    constant ALMetalVertexRemapConstants& remap [[buffer(4)]],
     uint vertex_id [[vertex_id]])
 {
+    const uint source_id = almetal_source_vertex(vertex_id, remap);
     ALMetalUIVaryings output;
     output.position = almetal_clip_from_gl(
-        matrices.modelview_projection * float4(positions[vertex_id].xyz, 1.0));
-    output.texcoord = (matrices.texture0 * float4(texcoords[vertex_id], 0.0, 1.0)).xy;
-    output.color = float4(colors[vertex_id]) * (1.0 / 255.0);
+        matrices.modelview_projection * float4(positions[source_id].xyz, 1.0));
+    output.texcoord = (matrices.texture0 * float4(texcoords[source_id], 0.0, 1.0)).xy;
+    output.color = float4(colors[source_id]) * (1.0 / 255.0);
     return output;
 }
 
@@ -132,12 +158,14 @@ vertex ALMetalUIVaryings almetal_solid_vertex(
     const device float4* positions [[buffer(0)]],
     const device float2* texcoords [[buffer(1)]],
     constant ALMetalMatrices& matrices [[buffer(3)]],
+    constant ALMetalVertexRemapConstants& remap [[buffer(4)]],
     uint vertex_id [[vertex_id]])
 {
+    const uint source_id = almetal_source_vertex(vertex_id, remap);
     ALMetalUIVaryings output;
     output.position = almetal_clip_from_gl(
-        matrices.modelview_projection * float4(positions[vertex_id].xyz, 1.0));
-    output.texcoord = texcoords[vertex_id];
+        matrices.modelview_projection * float4(positions[source_id].xyz, 1.0));
+    output.texcoord = texcoords[source_id];
     output.color = 1.0;
     return output;
 }

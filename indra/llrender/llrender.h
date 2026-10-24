@@ -55,6 +55,7 @@
 #include <array>
 #include <chrono>
 #include <list>
+#include <memory>
 #include <vector>
 
 class LLVertexBuffer;
@@ -63,6 +64,11 @@ class LLImageGL;
 class LLRenderTarget;
 class LLTexture;
 class LLVertexBufferData;
+#if LL_DARWIN
+class ALMetalDevice;
+class ALMetalFrameScheduler;
+class ALMetalUIRenderer;
+#endif
 
 namespace ll_test { struct RenderProbe; }
 
@@ -253,6 +259,18 @@ public:
     void resetVertexBuffer();
     void shutdown();
 
+#if LL_DARWIN
+    // Install the window-owned native device and bounded frame scheduler on
+    // the main renderer. The renderer borrows both; the window outlives gGL's
+    // explicit shutdown.
+    void setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* scheduler);
+
+    // Mirror one already-materialized immediate/captured UI draw. Public only
+    // because LLVertexBufferData replays outside LLRender::drawBuffer.
+    void drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
+                           LLImageGL* image, const ALSamplerDesc& sampler);
+#endif
+
     // Refreshes renderer state to the cached values
     // Needed when the render context has changed and invalidated the current state
     void refreshState(void);
@@ -364,6 +382,11 @@ public:
     void diffuseColor4fv(const F32* c);
     void diffuseColor4ubv(const U8* c);
     void diffuseColor4ub(U8 r, U8 g, U8 b, U8 a);
+
+    // The UI text shader's only per-pass constant. The GL uniform remains
+    // owned by its shader; this shadows the value at the batch boundary for
+    // the native encoder.
+    void setUITextShadowMode(U32 mode);
 
     void vertexBatchPreTransformed(LLVector4a* verts, S32 vert_count);
     void vertexBatchPreTransformed(LLVector4a* verts, LLVector2* uvs, S32 vert_count);
@@ -781,6 +804,14 @@ private:
     eBlendFactor mCurrBlendColorDFactor;
     eBlendFactor mCurrBlendAlphaSFactor;
     eBlendFactor mCurrBlendAlphaDFactor;
+
+    U32      mUITextShadowMode = 0;
+    LLColor4 mMetalSolidColor = LLColor4(1.f, 1.f, 1.f, 1.f);
+
+#if LL_DARWIN
+    std::unique_ptr<ALMetalUIRenderer> mMetalUIRenderer;
+    U64 mMetalUILoggedFrame = 0;
+#endif
 
     std::vector<LLVector4a> mUIOffset;
     std::vector<LLVector4a> mUIScale;

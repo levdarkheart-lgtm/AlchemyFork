@@ -64,6 +64,13 @@ ALTextureSlot::ALTextureSlot(S32 index)
     llassert_always(index < (S32)AL_NUM_TEXTURE_SLOTS);
 }
 
+// static
+void ALTextureSlot::setWhiteImage(LLImageGL* image)
+{
+    sWhiteImage = image;
+    sWhiteTexture = image ? image->getTexName() : 0;
+}
+
 //static
 U32 ALTextureSlot::getInternalType(eTextureType type)
 {
@@ -176,6 +183,7 @@ void ALTextureSlot::bindFastImpl(LLTexture* texture, LLImageGL* gl_tex, U32 samp
     glActiveTexture(GL_TEXTURE0 + mIndex);
     gGL.mCurrTextureUnitIndex = mIndex;
     mCurrTexture = gl_tex->getTexName();
+    mCurrImage = gl_tex;
     if (!mCurrTexture)
     {
         LL_PROFILE_ZONE_NAMED("MISSING TEXTURE");
@@ -248,6 +256,7 @@ bool ALTextureSlot::bindImpl(LLTexture* texture, bool forceBind, ALSampler key)
 
         if (texture != NULL && (gl_tex = texture->getGLTexture()))
         {
+            mCurrImage = gl_tex;
             if (gl_tex->getTexName()) //if texture exists
             {
                 //in audit, replace the selected texture by the default one.
@@ -313,6 +322,13 @@ bool ALTextureSlot::bind(LLImageGL* texture, bool for_rendering, bool forceBind,
     // diagnostic could fire.
     U32 texname = usename ? usename : texture->getTexName();
 
+    // A supplied name is a transient upload/edit target and may not be the
+    // resource represented by texture's published Metal mirror. Treat the
+    // logical identity as draw state: geometry queued under the previous
+    // identity must drain before it changes, even when the GL name happens to
+    // be the same (for example, bind-to-edit through an explicit name).
+    LLImageGL* next_image = usename ? nullptr : texture;
+
     if(!texname)
     {
         if(LLImageGL::sDefaultGLTexture && LLImageGL::sDefaultGLTexture->getTexName())
@@ -321,6 +337,12 @@ bool ALTextureSlot::bind(LLImageGL* texture, bool for_rendering, bool forceBind,
         }
         stop_glerror();
         return false ;
+    }
+
+    if (mCurrImage != next_image)
+    {
+        gGL.flush();
+        mCurrImage = next_image;
     }
 
     if ((mCurrTexture != texname) || forceBind)
@@ -363,6 +385,7 @@ bool ALTextureSlot::bind(LLCubeMap* cubeMap, ALSampler key)
     if (mIndex < 0) return false;
 
     gGL.flush();
+    mCurrImage = nullptr;
 
     if (cubeMap == NULL)
     {
@@ -431,6 +454,14 @@ bool ALTextureSlot::bindManual(eTextureType type, U32 texture, U32 sampler)
         return false;
     }
 
+    LLImageGL* next_image = (type == TT_TEXTURE && texture == sWhiteTexture.load())
+        ? sWhiteImage.load() : nullptr;
+    if (mCurrImage != next_image)
+    {
+        gGL.flush();
+        mCurrImage = next_image;
+    }
+
     if(mCurrTexture != texture)
     {
         gGL.flush();
@@ -468,6 +499,7 @@ void ALTextureSlot::unbind()
     if (mCurrTexType != TT_NONE)
     {
         mCurrTexture = 0;
+        mCurrImage = (mCurrTexType == TT_TEXTURE) ? sWhiteImage.load() : nullptr;
 
         if (mCurrTexType == TT_TEXTURE)
         {
@@ -509,6 +541,7 @@ void ALTextureSlot::unbindFast()
     if (mCurrTexType != TT_NONE)
     {
         mCurrTexture = 0;
+        mCurrImage = (mCurrTexType == TT_TEXTURE) ? sWhiteImage.load() : nullptr;
 
         if (mCurrTexType == TT_TEXTURE)
         {

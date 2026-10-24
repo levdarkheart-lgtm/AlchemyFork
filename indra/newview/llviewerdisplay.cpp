@@ -160,7 +160,7 @@ void display_startup()
     //
     if (!LLViewerFetchedTexture::sWhiteImagep.isNull())
     {
-    ALTextureSlot::sWhiteTexture = LLViewerFetchedTexture::sWhiteImagep->getTexName();
+        ALTextureSlot::setWhiteImage(LLViewerFetchedTexture::sWhiteImagep->getGLTexture());
     }
 
     LLGLSDefault gls_default;
@@ -856,7 +856,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         LLDrawable::incrementVisible();
 
         LLSpatialGroup::sNoDelete = true;
-        ALTextureSlot::sWhiteTexture = LLViewerFetchedTexture::sWhiteImagep->getTexName();
+        ALTextureSlot::setWhiteImage(LLViewerFetchedTexture::sWhiteImagep->getGLTexture());
 
         S32 occlusion = LLPipeline::sUseOcclusion;
         if (gDepthDirty)

@@ -64,26 +64,12 @@ class ALMetalDevice;
 class LLVertexBufferData
 {
 public:
-    LLVertexBufferData()
-        : mVB(nullptr)
-        , mMode(0)
-        , mCount(0)
-        , mTexName(0)
-        , mTexSampler(0)
-        , mProjection(LLMatrix4a::identity())
-        , mModelView(LLMatrix4a::identity())
-        , mTexture0(LLMatrix4a::identity())
-    {}
-    LLVertexBufferData(LLVertexBuffer* buffer, U8 mode, U32 count, U32 tex_name, U32 tex_sampler, const LLMatrix4a& model_view, const LLMatrix4a& projection, const LLMatrix4a& texture0)
-        : mVB(buffer)
-        , mMode(mode)
-        , mCount(count)
-        , mTexName(tex_name)
-        , mTexSampler(tex_sampler)
-        , mProjection(projection)
-        , mModelView(model_view)
-        , mTexture0(texture0)
-    {}
+    LLVertexBufferData();
+    LLVertexBufferData(LLVertexBuffer* buffer, U8 mode, U32 count,
+                       U32 tex_name, U32 tex_sampler, LLImageGL* tex_image,
+                       const ALSamplerDesc& sampler_desc,
+                       const LLMatrix4a& model_view, const LLMatrix4a& projection,
+                       const LLMatrix4a& texture0);
     void drawWithMatrix();
     void draw();
     LLPointer<LLVertexBuffer> mVB;
@@ -94,6 +80,12 @@ public:
     // sampling state of their own any more, so replaying the bind without the sampler
     // would read the atlas through GL defaults instead of what the live draw used.
     U32 mTexSampler;
+    // The GL name is enough only for GL replay. Retain the logical image and
+    // immutable sampling descriptor so native replay survives texture and
+    // sampler-cache lifetime changes without reverse-looking up API handles.
+    LLPointer<LLThreadSafeRefCount> mTexImageOwner;
+    LLImageGL* mTexImage = nullptr;
+    ALSamplerDesc mSamplerDesc;
     LLMatrix4a mProjection;
     LLMatrix4a mModelView;
     LLMatrix4a mTexture0;

@@ -450,7 +450,7 @@ void LLViewerTextureManager::cleanup()
     LLViewerFetchedTexture::sDefaultImagep = NULL;
     LLViewerFetchedTexture::sSmokeImagep = NULL;
     LLViewerFetchedTexture::sMissingAssetImagep = NULL;
-    ALTextureSlot::sWhiteTexture = 0;
+    ALTextureSlot::setWhiteImage(nullptr);
     LLViewerFetchedTexture::sWhiteImagep = NULL;
 
     LLViewerFetchedTexture::sFlatNormalImagep = NULL;

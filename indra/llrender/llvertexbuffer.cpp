@@ -39,6 +39,7 @@
 #include "llvector4a.h"
 #include "llshadermgr.h"
 #include "llglslshader.h"
+#include "llimagegl.h"
 #include "llmemory.h"
 
 #include <atomic>
@@ -666,6 +667,40 @@ public:
 
 static LLVBOPool* sVBOPool = nullptr;
 
+LLVertexBufferData::LLVertexBufferData()
+    : mVB(nullptr),
+      mMode(0),
+      mCount(0),
+      mTexName(0),
+      mTexSampler(0),
+      mTexImageOwner(nullptr),
+      mTexImage(nullptr),
+      mProjection(LLMatrix4a::identity()),
+      mModelView(LLMatrix4a::identity()),
+      mTexture0(LLMatrix4a::identity())
+{
+}
+
+LLVertexBufferData::LLVertexBufferData(
+    LLVertexBuffer* buffer, U8 mode, U32 count,
+    U32 tex_name, U32 tex_sampler, LLImageGL* tex_image,
+    const ALSamplerDesc& sampler_desc,
+    const LLMatrix4a& model_view, const LLMatrix4a& projection,
+    const LLMatrix4a& texture0)
+    : mVB(buffer),
+      mMode(mode),
+      mCount(count),
+      mTexName(tex_name),
+      mTexSampler(tex_sampler),
+      mTexImageOwner(static_cast<LLThreadSafeRefCount*>(tex_image)),
+      mTexImage(tex_image),
+      mSamplerDesc(sampler_desc),
+      mProjection(projection),
+      mModelView(model_view),
+      mTexture0(texture0)
+{
+}
+
 void LLVertexBufferData::drawWithMatrix()
 {
     if (!mVB)
@@ -694,6 +729,9 @@ void LLVertexBufferData::drawWithMatrix()
     gGL.pushMatrix();
     gGL.loadMatrix(mTexture0);
 
+#if LL_DARWIN
+    gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc);
+#endif
     mVB->setBuffer();
     mVB->drawArrays(mMode, 0, mCount);
 
@@ -722,6 +760,9 @@ void LLVertexBufferData::draw()
         gGL.getTextureSlot(0)->unbind();
     }
 
+#if LL_DARWIN
+    gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc);
+#endif
     mVB->setBuffer();
     mVB->drawArrays(mMode, 0, mCount);
 }
@@ -1769,7 +1810,7 @@ template <class T,LLVertexBuffer::AttributeType type> struct VertexBufferStrider
                     strider_t& strider,
                     S32 index, S32 count)
     {
-        if (type == LLVertexBuffer::TYPE_INDEX)
+        if constexpr (type == LLVertexBuffer::TYPE_INDEX)
         {
             U8* ptr = vbo.mapIndexBuffer(index, count);
 

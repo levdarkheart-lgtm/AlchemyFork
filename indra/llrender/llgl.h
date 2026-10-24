@@ -374,6 +374,11 @@ public:
     // GL's default. The map describes the main context; call on the main thread only.
     static void seedState(LLGLenum state, LLGLboolean enabled) { sStateMap[state] = enabled; }
 
+    // Read the renderer's authoritative capability cache without a driver
+    // round trip. Native migration paths snapshot this at the same draw
+    // boundary that GL consumes it.
+    static bool isEnabled(LLGLenum state);
+
     static void resetTextureStates();
     static void dumpStates();
 

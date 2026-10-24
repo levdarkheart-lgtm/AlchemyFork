@@ -3620,6 +3620,13 @@ void LLGLState::restoreGL()
 }
 
 //static
+bool LLGLState::isEnabled(LLGLenum state)
+{
+    const auto found = sStateMap.find(state);
+    return found != sStateMap.end() && found->second == GL_TRUE;
+}
+
+//static
 // Really shouldn't be needed, but seems we sometimes do.
 void LLGLState::resetTextureStates()
 {

@@ -138,7 +138,7 @@ void LLViewerTextureList::doPreloadImages()
 
     // Set the "white" image
     LLViewerFetchedTexture::sWhiteImagep = LLViewerTextureManager::getFetchedTextureFromFile("white.tga", FTT_LOCAL_FILE, MIPMAP_NO, LLViewerFetchedTexture::BOOST_UI);
-    ALTextureSlot::sWhiteTexture = LLViewerFetchedTexture::sWhiteImagep->getTexName();
+    ALTextureSlot::setWhiteImage(LLViewerFetchedTexture::sWhiteImagep->getGLTexture());
     LLUIImageList* image_list = LLUIImageList::getInstance();
 
     // Set default particle texture

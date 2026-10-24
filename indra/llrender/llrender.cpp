@@ -42,6 +42,10 @@
 #include "llcamera.h"
 #include "llthread.h"
 
+#if LL_DARWIN
+#include "almetaluirenderer.h"
+#endif
+
 #include <algorithm>
 
 #if GL_ARB_debug_output
@@ -106,6 +110,7 @@ U32 LLRender::sUIVerts = 0;
 U32 LLRender::sDrawCalls = 0;
 U64 LLRender::sDrawElements = 0;
 std::atomic<U32> ALTextureSlot::sWhiteTexture = 0;
+std::atomic<LLImageGL*> ALTextureSlot::sWhiteImage = nullptr;
 F32 LLRender::sAnisotropicFilteringLevel = 0.f;
 // Read by the native Win32 window alone, which makes a compatibility context when it is false
 // (RenderGLContextCoreProfile, which Intel's Windows driver is recommended off). Every other window,
@@ -122,6 +127,118 @@ bool LLRender::s10bitBackBuffer = false;
 
 
 const U32 immediate_mask = LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_COLOR | LLVertexBuffer::MAP_TEXCOORD0;
+
+#if LL_DARWIN
+namespace
+{
+    ALMetalBlendFactor metal_blend_factor(LLRender::eBlendFactor factor)
+    {
+        switch (factor)
+        {
+            case LLRender::BF_ZERO:                   return ALMetalBlendFactor::zero;
+            case LLRender::BF_ONE:                    return ALMetalBlendFactor::one;
+            case LLRender::BF_SOURCE_COLOR:           return ALMetalBlendFactor::source_color;
+            case LLRender::BF_ONE_MINUS_SOURCE_COLOR: return ALMetalBlendFactor::one_minus_source_color;
+            case LLRender::BF_SOURCE_ALPHA:           return ALMetalBlendFactor::source_alpha;
+            case LLRender::BF_ONE_MINUS_SOURCE_ALPHA: return ALMetalBlendFactor::one_minus_source_alpha;
+            case LLRender::BF_DEST_COLOR:             return ALMetalBlendFactor::destination_color;
+            case LLRender::BF_ONE_MINUS_DEST_COLOR:   return ALMetalBlendFactor::one_minus_destination_color;
+            case LLRender::BF_DEST_ALPHA:             return ALMetalBlendFactor::destination_alpha;
+            case LLRender::BF_ONE_MINUS_DEST_ALPHA:   return ALMetalBlendFactor::one_minus_destination_alpha;
+            case LLRender::BF_UNDEF:                  return ALMetalBlendFactor::one;
+        }
+        return ALMetalBlendFactor::one;
+    }
+
+    ALMetalBlendOperation metal_blend_operation(U32 operation)
+    {
+        switch (operation)
+        {
+            case GL_FUNC_SUBTRACT:         return ALMetalBlendOperation::subtract;
+            case GL_FUNC_REVERSE_SUBTRACT: return ALMetalBlendOperation::reverse_subtract;
+            case GL_MIN:                   return ALMetalBlendOperation::minimum;
+            case GL_MAX:                   return ALMetalBlendOperation::maximum;
+            case GL_FUNC_ADD:
+            default:                       return ALMetalBlendOperation::add;
+        }
+    }
+
+    ALMetalSamplerFilter metal_sampler_filter(U32 filter)
+    {
+        return filter == GL_NEAREST ? ALMetalSamplerFilter::nearest
+                                    : ALMetalSamplerFilter::linear;
+    }
+
+    ALMetalSamplerAddressMode metal_sampler_address(U32 address)
+    {
+        switch (address)
+        {
+            case GL_MIRRORED_REPEAT: return ALMetalSamplerAddressMode::mirror_repeat;
+            case GL_CLAMP_TO_BORDER: return ALMetalSamplerAddressMode::clamp_to_zero;
+            case GL_CLAMP_TO_EDGE:   return ALMetalSamplerAddressMode::clamp_to_edge;
+            case GL_REPEAT:
+            default:                 return ALMetalSamplerAddressMode::repeat;
+        }
+    }
+
+    ALMetalSamplerDescriptor metal_sampler_descriptor(const ALSamplerDesc& source)
+    {
+        ALMetalSamplerDescriptor result;
+        switch (source.mMinFilter)
+        {
+            case GL_NEAREST:
+                result.min_filter = ALMetalSamplerFilter::nearest;
+                result.mip_filter = ALMetalSamplerMipFilter::none;
+                break;
+            case GL_LINEAR:
+                result.min_filter = ALMetalSamplerFilter::linear;
+                result.mip_filter = ALMetalSamplerMipFilter::none;
+                break;
+            case GL_NEAREST_MIPMAP_NEAREST:
+                result.min_filter = ALMetalSamplerFilter::nearest;
+                result.mip_filter = ALMetalSamplerMipFilter::nearest;
+                break;
+            case GL_LINEAR_MIPMAP_NEAREST:
+                result.min_filter = ALMetalSamplerFilter::linear;
+                result.mip_filter = ALMetalSamplerMipFilter::nearest;
+                break;
+            case GL_NEAREST_MIPMAP_LINEAR:
+                result.min_filter = ALMetalSamplerFilter::nearest;
+                result.mip_filter = ALMetalSamplerMipFilter::linear;
+                break;
+            case GL_LINEAR_MIPMAP_LINEAR:
+            default:
+                result.min_filter = ALMetalSamplerFilter::linear;
+                result.mip_filter = ALMetalSamplerMipFilter::linear;
+                break;
+        }
+        result.mag_filter = metal_sampler_filter(source.mMagFilter);
+        result.address_s = metal_sampler_address(source.mWrapS);
+        result.address_t = metal_sampler_address(source.mWrapT);
+        result.address_r = metal_sampler_address(source.mWrapR);
+        result.max_anisotropy = static_cast<U32>(
+            llclamp(ll_round(source.mMaxAnisotropy), 1, 16));
+        result.label = "Alchemy production UI sampler";
+        return result;
+    }
+
+    bool metal_ui_primitive(U32 mode, ALMetalUIPrimitive& result)
+    {
+        switch (mode)
+        {
+            case LLRender::POINTS:         result = ALMetalUIPrimitive::points; return true;
+            case LLRender::LINES:          result = ALMetalUIPrimitive::lines; return true;
+            case LLRender::LINE_STRIP:     result = ALMetalUIPrimitive::line_strip; return true;
+            case LLRender::LINE_LOOP:      result = ALMetalUIPrimitive::line_loop; return true;
+            case LLRender::TRIANGLES:      result = ALMetalUIPrimitive::triangles; return true;
+            case LLRender::TRIANGLE_STRIP: result = ALMetalUIPrimitive::triangle_strip; return true;
+            case LLRender::TRIANGLE_FAN:   result = ALMetalUIPrimitive::triangle_fan; return true;
+            case LLRender::PATCHES:
+            default:                       return false;
+        }
+    }
+}
+#endif
 
 static const GLenum sGLBlendFactor[] =
 {
@@ -402,6 +519,7 @@ bool LLRender::init(bool needs_vertex_buffer)
         slot.mCurrTexture = 0;
         slot.mCurrTexType = ALTextureSlot::TT_NONE;
         slot.mCurrSampler = 0;
+        slot.mCurrImage = nullptr;
     }
     mCurrTextureUnitIndex = 0;
 
@@ -515,6 +633,19 @@ void LLRender::shutdown()
     // released here must therefore belong to THIS thread's context and no other. That is
     // why mSamplerCache is a member: a static one would have the upload thread deleting
     // the render thread's samplers. mDummyVAO and mLightsUBO stay zero on worker threads.
+#if LL_DARWIN
+    if (mMetalUIRenderer)
+    {
+        std::string error;
+        if (!mMetalUIRenderer->endFrame(&error))
+        {
+            LL_WARNS("Metal") << "Could not finish the native UI frame during shutdown: "
+                                << error << LL_ENDL;
+        }
+        mMetalUIRenderer.reset();
+    }
+#endif
+
     clearSamplers();
 
     resetVertexBuffer();
@@ -556,8 +687,57 @@ void LLRender::shutdown()
     mFrameFences.release();
 }
 
+#if LL_DARWIN
+void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* scheduler)
+{
+    mMetalUIRenderer.reset();
+    mMetalUILoggedFrame = 0;
+    if (!device || !scheduler)
+    {
+        return;
+    }
+
+    std::string error;
+    mMetalUIRenderer = ALMetalUIRenderer::create(*device, *scheduler, &error);
+    if (!mMetalUIRenderer)
+    {
+        LL_WARNS("Metal") << "Native production UI renderer initialization failed: "
+                           << error << LL_ENDL;
+    }
+    else
+    {
+        LL_INFOS("Metal") << "Native production UI batch renderer initialized" << LL_ENDL;
+    }
+}
+#endif
+
 void LLRender::endFrame(U32 frames_ahead)
 {
+#if LL_DARWIN
+    if (mMetalUIRenderer && mMetalUIRenderer->hasOpenFrame())
+    {
+        std::string error;
+        if (!mMetalUIRenderer->endFrame(&error))
+        {
+            LL_WARNS("Metal") << "Native production UI frame submission failed: "
+                               << error << LL_ENDL;
+        }
+        else
+        {
+            const ALMetalUIRendererStats stats = mMetalUIRenderer->stats();
+            if (mMetalUILoggedFrame == 0 && stats.frames != 0)
+            {
+                mMetalUILoggedFrame = stats.frames;
+                LL_INFOS("Metal") << "Native production UI frame encoded "
+                                   << stats.batches << " batches / " << stats.vertices
+                                   << " vertices with " << stats.pipeline_states
+                                   << " cached pipeline states and " << stats.sampler_states
+                                   << " cached sampler states" << LL_ENDL;
+            }
+        }
+    }
+#endif
+
     // The batch's results are written ahead of the fence that follows them. The batches the fences have just shown
     // finished are read here rather than before the next cull, the next batch's names are made here rather than by its
     // queries, and the fences of the uploads handed over by other contexts are polled here rather than in the next
@@ -1476,12 +1656,17 @@ void LLRender::flush()
             if (mBufferDataList)
             {
                 vb = genBuffer(attribute_mask, count);
+                ALTextureSlot* texture_slot = gGL.getTextureSlot(0);
+                ALSamplerDesc sampler_desc = ALSamplerCache::makeDesc(ALSamplers::BilinearClamp);
+                mSamplerCache.describe(texture_slot->mCurrSampler, sampler_desc);
                 mBufferDataList->emplace_back(
                     vb,
                     mMode,
                     count,
-                    gGL.getTextureSlot(0)->mCurrTexture,
-                    gGL.getTextureSlot(0)->mCurrSampler,
+                    texture_slot->mCurrTexture,
+                    texture_slot->mCurrSampler,
+                    texture_slot->mCurrImage,
+                    sampler_desc,
                     mMatrix[MM_MODELVIEW][mMatIdx[MM_MODELVIEW]],
                     mMatrix[MM_PROJECTION][mMatIdx[MM_PROJECTION]],
                     mMatrix[MM_TEXTURE0][mMatIdx[MM_TEXTURE0]]
@@ -1619,9 +1804,158 @@ LLVertexBuffer* LLRender::genBuffer(U32 attribute_mask, S32 count)
 
 void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
 {
+#if LL_DARWIN
+    ALTextureSlot* texture_slot = getTextureSlot(0);
+    ALSamplerDesc sampler = ALSamplerCache::makeDesc(ALSamplers::BilinearClamp);
+    if (texture_slot)
+    {
+        mSamplerCache.describe(texture_slot->mCurrSampler, sampler);
+        drawMetalUIBuffer(vb, mode, count, texture_slot->mCurrImage, sampler);
+    }
+#endif
     vb->setBuffer();
     vb->drawArrays(mode, 0, count);
 }
+
+#if LL_DARWIN
+void LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
+                                 LLImageGL* image, const ALSamplerDesc& sampler)
+{
+    if (!mMetalUIRenderer || mUIOffset.empty() || !buffer || !image || count == 0)
+    {
+        return;
+    }
+
+    LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
+    ALMetalUIShader metal_shader;
+    if (shader == &gUIProgram)
+    {
+        metal_shader = ALMetalUIShader::textured;
+    }
+    else if (shader == &gSolidColorProgram)
+    {
+        metal_shader = ALMetalUIShader::solid_color;
+    }
+    else
+    {
+        return;
+    }
+
+    ALMetalUIPrimitive primitive;
+    if (!metal_ui_primitive(mode, primitive))
+    {
+        return;
+    }
+    ALMetalBuffer* metal_buffer = buffer->getMetalVertexBuffer();
+    ALMetalTexture* metal_texture = image->getMetalTexture();
+    const U32 required = LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_TEXCOORD0 |
+        (metal_shader == ALMetalUIShader::textured ? LLVertexBuffer::MAP_COLOR : 0);
+    if (!metal_buffer || !metal_texture || (buffer->getTypeMask() & required) != required)
+    {
+        static U32 warned = 0;
+        if (warned++ < 4)
+        {
+            LL_WARNS("Metal") << "Skipping native UI batch without a complete Metal mirror: buffer="
+                               << (metal_buffer ? "yes" : "no") << ", texture="
+                               << (metal_texture ? "yes" : "no") << ", mask=0x"
+                               << std::hex << buffer->getTypeMask() << std::dec << LL_ENDL;
+        }
+        return;
+    }
+
+    const S32 viewport_width = mViewport[2];
+    const S32 viewport_height = mViewport[3];
+    if (viewport_width <= 0 || viewport_height <= 0)
+    {
+        return;
+    }
+    const U32 target_width = static_cast<U32>(llmax(viewport_width, mViewport[0] + viewport_width));
+    const U32 target_height = static_cast<U32>(llmax(viewport_height, mViewport[1] + viewport_height));
+
+    ALMetalUIBatch batch;
+    batch.vertices = metal_buffer;
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
+    batch.texture = metal_texture;
+    batch.sampler = metal_sampler_descriptor(sampler);
+    batch.shader = metal_shader;
+    batch.primitive = primitive;
+    batch.vertex_count = count;
+    batch.text_shadow_mode = mUITextShadowMode;
+    memcpy(batch.solid_color, mMetalSolidColor.mV, sizeof(batch.solid_color));
+    batch.target_width = target_width;
+    batch.target_height = target_height;
+
+    const LLMatrix4a& modelview = mMatrix[MM_MODELVIEW][mMatIdx[MM_MODELVIEW]];
+    const LLMatrix4a& projection = mMatrix[MM_PROJECTION][mMatIdx[MM_PROJECTION]];
+    const LLMatrix4a& texture = mMatrix[MM_TEXTURE0][mMatIdx[MM_TEXTURE0]];
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(modelview, projection);
+    static_assert(sizeof(batch.matrices) == sizeof(MatricesUBOData));
+    memcpy(batch.matrices.modelview, modelview.getF32ptr(), sizeof(batch.matrices.modelview));
+    memcpy(batch.matrices.projection, projection.getF32ptr(), sizeof(batch.matrices.projection));
+    memcpy(batch.matrices.modelview_projection, modelview_projection.getF32ptr(),
+           sizeof(batch.matrices.modelview_projection));
+    memcpy(batch.matrices.texture0, texture.getF32ptr(), sizeof(batch.matrices.texture0));
+
+    batch.blend.enabled = LLGLState::isEnabled(GL_BLEND);
+    batch.blend.source_rgb = metal_blend_factor(
+        mCurrBlendColorSFactor == BF_UNDEF ? BF_SOURCE_ALPHA : mCurrBlendColorSFactor);
+    batch.blend.destination_rgb = metal_blend_factor(
+        mCurrBlendColorDFactor == BF_UNDEF ? BF_ONE_MINUS_SOURCE_ALPHA : mCurrBlendColorDFactor);
+    batch.blend.source_alpha = metal_blend_factor(
+        mCurrBlendAlphaSFactor == BF_UNDEF ? BF_SOURCE_ALPHA : mCurrBlendAlphaSFactor);
+    batch.blend.destination_alpha = metal_blend_factor(
+        mCurrBlendAlphaDFactor == BF_UNDEF ? BF_ONE_MINUS_SOURCE_ALPHA : mCurrBlendAlphaDFactor);
+    batch.blend.rgb_operation = metal_blend_operation(mBlendEquationRGB);
+    batch.blend.alpha_operation = metal_blend_operation(mBlendEquationAlpha);
+    U8 write_mask = 0;
+    write_mask |= mCurrColorMask[0] ? static_cast<U8>(ALMetalColorWriteMask::red) : 0;
+    write_mask |= mCurrColorMask[1] ? static_cast<U8>(ALMetalColorWriteMask::green) : 0;
+    write_mask |= mCurrColorMask[2] ? static_cast<U8>(ALMetalColorWriteMask::blue) : 0;
+    write_mask |= mCurrColorMask[3] ? static_cast<U8>(ALMetalColorWriteMask::alpha) : 0;
+    batch.blend.write_mask = static_cast<ALMetalColorWriteMask>(write_mask);
+
+    batch.viewport = {
+        static_cast<double>(mViewport[0]),
+        static_cast<double>(static_cast<S32>(target_height) - mViewport[1] - viewport_height),
+        static_cast<double>(viewport_width),
+        static_cast<double>(viewport_height),
+        0.0,
+        1.0,
+    };
+
+    if (LLGLState::isEnabled(GL_SCISSOR_TEST) && mScissor[2] >= 0 && mScissor[3] >= 0)
+    {
+        const S32 left = llclamp(mScissor[0], 0, static_cast<S32>(target_width));
+        const S32 right = llclamp(mScissor[0] + mScissor[2], 0, static_cast<S32>(target_width));
+        const S32 bottom = llclamp(mScissor[1], 0, static_cast<S32>(target_height));
+        const S32 top = llclamp(mScissor[1] + mScissor[3], 0, static_cast<S32>(target_height));
+        batch.scissor = {
+            static_cast<U32>(left),
+            static_cast<U32>(static_cast<S32>(target_height) - top),
+            static_cast<U32>(llmax(0, right - left)),
+            static_cast<U32>(llmax(0, top - bottom)),
+        };
+    }
+    else
+    {
+        batch.scissor = {0, 0, target_width, target_height};
+    }
+
+    std::string error;
+    if (!mMetalUIRenderer->draw(batch, &error))
+    {
+        static U32 warned = 0;
+        if (warned++ < 8)
+        {
+            LL_WARNS("Metal") << "Native production UI batch encoding failed: "
+                               << error << LL_ENDL;
+        }
+    }
+}
+#endif
 
 void LLRender::resetStriders(S32 count)
 {
@@ -1815,6 +2149,7 @@ void LLRender::color3fv(const GLfloat* c)
 
 void LLRender::diffuseColor3f(F32 r, F32 g, F32 b)
 {
+    mMetalSolidColor.set(r, g, b, 1.f);
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
     llassert(shader != NULL);
 
@@ -1826,6 +2161,7 @@ void LLRender::diffuseColor3f(F32 r, F32 g, F32 b)
 
 void LLRender::diffuseColor3fv(const F32* c)
 {
+    mMetalSolidColor.set(c[0], c[1], c[2], 1.f);
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
     llassert(shader != NULL);
 
@@ -1837,6 +2173,7 @@ void LLRender::diffuseColor3fv(const F32* c)
 
 void LLRender::diffuseColor4f(F32 r, F32 g, F32 b, F32 a)
 {
+    mMetalSolidColor.set(r, g, b, a);
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
     llassert(shader != NULL);
 
@@ -1848,6 +2185,7 @@ void LLRender::diffuseColor4f(F32 r, F32 g, F32 b, F32 a)
 
 void LLRender::diffuseColor4fv(const F32* c)
 {
+    mMetalSolidColor.set(c);
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
     llassert(shader != NULL);
 
@@ -1859,6 +2197,7 @@ void LLRender::diffuseColor4fv(const F32* c)
 
 void LLRender::diffuseColor4ubv(const U8* c)
 {
+    mMetalSolidColor.set(c[0] / 255.f, c[1] / 255.f, c[2] / 255.f, c[3] / 255.f);
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
     llassert(shader != NULL);
 
@@ -1870,12 +2209,25 @@ void LLRender::diffuseColor4ubv(const U8* c)
 
 void LLRender::diffuseColor4ub(U8 r, U8 g, U8 b, U8 a)
 {
+    mMetalSolidColor.set(r / 255.f, g / 255.f, b / 255.f, a / 255.f);
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
     llassert(shader != NULL);
 
     if (shader)
     {
         shader->uniform4f(LLShaderMgr::DIFFUSE_COLOR, r/255.f, g/255.f, b/255.f, a/255.f);
+    }
+}
+
+void LLRender::setUITextShadowMode(U32 mode)
+{
+    llassert(mode <= 2);
+    if (mUITextShadowMode != mode)
+    {
+        // The GL uniform writers call this before changing their program
+        // value, so queued geometry is drained under the old constant.
+        flush();
+        mUITextShadowMode = mode;
     }
 }
 

@@ -60,6 +60,12 @@ public:
     // The white texture's name, which every context shares: set on the main thread, read
     // where a slot is unbound on any thread with a context.
     static std::atomic<U32> sWhiteTexture;
+    static std::atomic<LLImageGL*> sWhiteImage;
+
+    // Publish the viewer's white image as one logical resource for both the
+    // temporary GL binding and the native Metal mirror. The raw pointer is
+    // safe here because the viewer owns this singleton until texture teardown.
+    static void setWhiteImage(LLImageGL* image);
 
     // --- sampler traffic, per frame ---------------------------------------------------
     //
@@ -202,6 +208,8 @@ public:
 
     U32 getCurrTexture(void) const { return mCurrTexture; }
 
+    LLImageGL* getCurrImage(void) const { return mCurrImage; }
+
     eTextureType getCurrType(void) const { return mCurrTexType; }
 
 protected:
@@ -210,6 +218,10 @@ protected:
     S32                 mIndex;
     U32                 mCurrTexture;
     eTextureType        mCurrTexType;
+    // Non-owning identity of a real image bind. Manual GL names, render
+    // targets and cube maps clear it because they have no LLImageGL mirror to
+    // hand a native backend. Captured batches retain their own LLPointer.
+    LLImageGL*          mCurrImage = nullptr;
     // The sampler object currently bound to this slot, so a redundant selection can be
     // skipped. Reset by clearSamplers() when the objects behind the names are dropped.
     U32                 mCurrSampler = 0;
