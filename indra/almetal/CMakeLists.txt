@@ -12,11 +12,15 @@ target_sources(
   almetal
   PRIVATE
     almetaldevice.mm
+    almetalframe.mm
+    almetalresource.mm
     almetalsurface.mm
   PUBLIC
     FILE_SET HEADERS
     FILES
       almetaldevice.h
+      almetalframe.h
+      almetalresource.h
       almetalsurface.h
 )
 target_link_libraries(
@@ -33,6 +37,8 @@ target_link_libraries(
 # explicit even though this small backend deliberately has no PCH of its own.
 set_source_files_properties(
   almetaldevice.mm
+  almetalframe.mm
+  almetalresource.mm
   almetalsurface.mm
   PROPERTIES SKIP_PRECOMPILE_HEADERS ON
 )

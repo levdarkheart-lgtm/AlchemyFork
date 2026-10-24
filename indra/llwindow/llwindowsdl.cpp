@@ -31,6 +31,7 @@
 
 #if LL_DARWIN
 #include "almetaldevice.h"
+#include "almetalframe.h"
 #endif
 
 #include "llwindowcallbacks.h"
@@ -196,6 +197,16 @@ LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
                        << ", unified memory " << (metal_info.unified_memory ? "yes" : "no")
                        << ", recommended working set " << metal_info.recommended_working_set_size
                        << " bytes" << LL_ENDL;
+
+    mMetalFrames = ALMetalFrameScheduler::create(*mMetalDevice, 3, &metal_error);
+    if (!mMetalFrames)
+    {
+        LL_WARNS("Metal") << "Metal frame scheduler initialization failed: "
+                           << metal_error << LL_ENDL;
+        setupFailure("Alchemy could not create its Metal frame scheduler.\n\n" + metal_error,
+                     "Metal initialization error", OSMB_OK);
+        return;
+    }
 #endif
 
     // Create the GL context and set it up for windowed or fullscreen, as appropriate.

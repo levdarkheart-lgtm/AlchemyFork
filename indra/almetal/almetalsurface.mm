@@ -383,5 +383,5 @@ bool ALMetalSurface::present(
     }
     [native_command presentDrawable:drawable.mImpl->drawable];
     drawable.mImpl->presented = true;
-    return command_buffer.commit(error);
+    return true;
 }

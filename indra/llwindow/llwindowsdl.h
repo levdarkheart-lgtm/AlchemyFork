@@ -46,6 +46,7 @@
 class LLPreeditor;
 #if LL_DARWIN
 class ALMetalDevice;
+class ALMetalFrameScheduler;
 #endif
 
 class LLWindowSDL final : public LLWindow
@@ -194,6 +195,7 @@ public:
     // lifetime. Render infrastructure borrows it; LLWindowSDL destroys it
     // only after all render work and the window surface have shut down.
     ALMetalDevice* getMetalDevice() const noexcept { return mMetalDevice.get(); }
+    ALMetalFrameScheduler* getMetalFrameScheduler() const noexcept { return mMetalFrames.get(); }
 #endif
 
     // "wayland" / "x11" / "" - reports the SDL video driver this window is on.
@@ -327,6 +329,7 @@ protected:
     SDL_GLContext mContext = nullptr;
 #if LL_DARWIN
     std::unique_ptr<ALMetalDevice> mMetalDevice;
+    std::unique_ptr<ALMetalFrameScheduler> mMetalFrames;
 #endif
     SDL_Cursor *mSDLCursors[UI_CURSOR_COUNT];
 

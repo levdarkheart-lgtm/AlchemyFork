@@ -9,6 +9,8 @@
  */
 
 #include "../almetaldevice.h"
+#include "../almetalframe.h"
+#include "../almetalresource.h"
 #include "../almetalsurface.h"
 
 #import <Metal/Metal.h>
@@ -22,6 +24,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -174,6 +177,219 @@ TEST_CASE("almetal: a render pass clears a texture and CPU readback observes it"
     }
 }
 
+TEST_CASE("almetal: typed shared and private buffers preserve staged ranges", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        ALMetalBufferDescriptor shared_descriptor;
+        shared_descriptor.length = 256;
+        shared_descriptor.storage = ALMetalStorageMode::shared;
+        shared_descriptor.label = "Alchemy shared buffer test";
+        auto shared = ALMetalBuffer::create(*device, shared_descriptor, &error);
+        INFO(error);
+        REQUIRE(shared);
+        REQUIRE(shared->mappedBytes());
+
+        std::array<std::uint8_t, 31> small_source{};
+        for (std::size_t i = 0; i < small_source.size(); ++i)
+        {
+            small_source[i] = static_cast<std::uint8_t>(i * 7u + 3u);
+        }
+        REQUIRE(shared->write(17, small_source.data(), small_source.size(), &error));
+        std::array<std::uint8_t, 31> small_result{};
+        REQUIRE(shared->read(17, small_result.data(), small_result.size(), &error));
+        CHECK(small_result == small_source);
+
+        ALMetalBufferDescriptor private_descriptor;
+        private_descriptor.length = 8192;
+        private_descriptor.storage = ALMetalStorageMode::private_gpu;
+        private_descriptor.label = "Alchemy private buffer test";
+        auto private_buffer = ALMetalBuffer::create(*device, private_descriptor, &error);
+        INFO(error);
+        REQUIRE(private_buffer);
+        CHECK(private_buffer->mappedBytes() == nullptr);
+
+        std::array<std::uint8_t, 1024> source{};
+        for (std::size_t i = 0; i < source.size(); ++i)
+        {
+            source[i] = static_cast<std::uint8_t>((i * 29u + 11u) & 0xffu);
+        }
+        auto upload = device->makeCommandBuffer("Alchemy private buffer upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        REQUIRE(private_buffer->upload(*upload, 257, source.data(), source.size(), &error));
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 1024> result{};
+        REQUIRE(private_buffer->readback(*device, 257, result.data(), result.size(), &error));
+        INFO(error);
+        CHECK(result == source);
+        CHECK_FALSE(private_buffer->readback(*device, 8000, result.data(), result.size(), &error));
+    }
+}
+
+TEST_CASE("almetal: private texture transfer handles unaligned CPU row pitches", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        constexpr std::uint32_t width = 17;
+        constexpr std::uint32_t height = 9;
+        constexpr std::size_t source_pitch = width * 4 + 12;
+        constexpr std::size_t result_pitch = width * 4 + 20;
+        std::vector<std::uint8_t> source(source_pitch * height, 0xcd);
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                std::uint8_t* pixel = source.data() + y * source_pitch + x * 4;
+                pixel[0] = static_cast<std::uint8_t>(x * 9u);
+                pixel[1] = static_cast<std::uint8_t>(y * 17u);
+                pixel[2] = static_cast<std::uint8_t>(x + y * 3u);
+                pixel[3] = 255;
+            }
+        }
+
+        ALMetalTextureDescriptor descriptor;
+        descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        descriptor.width = width;
+        descriptor.height = height;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.usage = ALMetalTextureUsage::shader_read | ALMetalTextureUsage::shader_write;
+        descriptor.label = "Alchemy odd-pitch private texture";
+        auto texture = ALMetalTexture::create(*device, descriptor, &error);
+        INFO(error);
+        REQUIRE(texture);
+
+        auto command = device->makeCommandBuffer("Alchemy private texture upload", &error);
+        INFO(error);
+        REQUIRE(command);
+        REQUIRE(texture->upload(*command, 0, 0, {}, source.data(), source_pitch, &error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::vector<std::uint8_t> result(result_pitch * height, 0xee);
+        REQUIRE(texture->readback(*device, 0, 0, {}, result.data(), result_pitch, &error));
+        INFO(error);
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            CHECK(std::memcmp(result.data() + y * result_pitch,
+                              source.data() + y * source_pitch,
+                              width * 4) == 0);
+            CHECK(result[y * result_pitch + width * 4] == 0xee);
+        }
+    }
+}
+
+TEST_CASE("almetal: memoryless MSAA target resolves while depth remains transient", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        ALMetalRenderTargetDescriptor target_descriptor;
+        target_descriptor.width = 13;
+        target_descriptor.height = 7;
+        target_descriptor.sample_count = 4;
+        target_descriptor.color_attachment_count = 1;
+        target_descriptor.colors[0].format = ALMetalPixelFormat::bgra8_unorm;
+        target_descriptor.colors[0].label = "Alchemy MSAA color";
+        target_descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float;
+        target_descriptor.memoryless_multisample = true;
+        target_descriptor.memoryless_depth_stencil = true;
+        target_descriptor.label = "Alchemy MSAA target";
+        auto target = ALMetalRenderTarget::create(*device, target_descriptor, &error);
+        INFO(error);
+        REQUIRE(target);
+        REQUIRE(target->colorTexture(0));
+        REQUIRE(target->multisampleColorTexture(0));
+        REQUIRE(target->depthStencilTexture());
+        CHECK(target->multisampleColorTexture(0)->descriptor().storage == ALMetalStorageMode::memoryless);
+        CHECK(target->depthStencilTexture()->descriptor().storage == ALMetalStorageMode::memoryless);
+
+        ALMetalRenderPassConfig pass_config;
+        pass_config.colors[0].load = ALMetalLoadAction::clear;
+        pass_config.colors[0].store = ALMetalStoreAction::multisample_resolve;
+        pass_config.colors[0].clear = {0.2, 0.4, 0.6, 1.0};
+        pass_config.depth_load = ALMetalLoadAction::clear;
+        pass_config.depth_store = ALMetalStoreAction::dont_care;
+        pass_config.clear_depth = 0.0;
+        auto pass = target->makeRenderPass(pass_config, &error);
+        INFO(error);
+        REQUIRE(pass);
+
+        auto command = device->makeCommandBuffer("Alchemy MSAA resolve test", &error);
+        INFO(error);
+        REQUIRE(command);
+        id<MTLRenderCommandEncoder> encoder = [nativeCommand(*command)
+            renderCommandEncoderWithDescriptor:(__bridge MTLRenderPassDescriptor*)pass->nativeHandle()];
+        REQUIRE(encoder);
+        [encoder endEncoding];
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 13 * 7 * 4> pixels{};
+        REQUIRE(target->colorTexture(0)->readback(*device, 0, 0, {}, pixels.data(), 13 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(pixels[0]) - 153) <= 1);
+        CHECK(std::abs(static_cast<int>(pixels[1]) - 102) <= 1);
+        CHECK(std::abs(static_cast<int>(pixels[2]) - 51) <= 1);
+        CHECK(pixels[3] == 255);
+    }
+}
+
+TEST_CASE("almetal: frame scheduler bounds work and recovers abandoned slots", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto scheduler = ALMetalFrameScheduler::create(*device, 2, &error);
+        INFO(error);
+        REQUIRE(scheduler);
+
+        auto first = scheduler->beginFrame("Alchemy scheduled frame one", 100, &error);
+        auto abandoned = scheduler->beginFrame("Alchemy abandoned frame", 100, &error);
+        REQUIRE(first);
+        REQUIRE(abandoned);
+        auto blocked = scheduler->beginFrame("Alchemy blocked frame", 1, &error);
+        CHECK_FALSE(blocked);
+
+        abandoned.reset();
+        auto second = scheduler->beginFrame("Alchemy scheduled frame two", 100, &error);
+        INFO(error);
+        REQUIRE(second);
+        CHECK(first->slot() != second->slot());
+        REQUIRE(scheduler->submit(*first, &error));
+        REQUIRE(scheduler->submit(*second, &error));
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+
+        const ALMetalFrameStats stats = scheduler->stats();
+        CHECK(stats.maximum_in_flight == 2);
+        CHECK(stats.begun == 3);
+        CHECK(stats.submitted == 2);
+        CHECK(stats.completed == 2);
+        CHECK(stats.failed == 0);
+        CHECK(stats.in_flight == 0);
+    }
+}
+
 TEST_CASE("almetal: an SDL CAMetalLayer resizes, supplies a drawable and presents it", "[almetal]")
 {
     @autoreleasepool
@@ -240,6 +456,7 @@ TEST_CASE("almetal: an SDL CAMetalLayer resizes, supplies a drawable and present
 
         REQUIRE(surface->present(*command, *drawable, &error));
         CHECK(drawable->wasPresented());
+        REQUIRE(command->commit(&error));
         REQUIRE(command->waitUntilCompleted(&error));
         INFO(error);
 
