@@ -45,6 +45,7 @@
 #include "llmeshrepository.h"
 #include "llmeshoptimizer.h"
 #include "llrender.h"
+#include "llrigginginfo.h"
 #include "llsdutil_math.h"
 #include "llskinningutil.h"
 #include "llstring.h"
@@ -54,6 +55,7 @@
 #include "llvector4a.h"
 #include "llviewercamera.h"
 #include "llviewercontrol.h"
+#include "llviewerjointattachment.h"
 #include "llviewerobjectlist.h"
 #include "llviewernetwork.h"
 #include "llviewershadermgr.h"
@@ -74,6 +76,7 @@
 #include "lltextbox.h"
 
 #include <filesystem>
+#include <array>
 #include <limits>
 
 #include <boost/algorithm/string.hpp>
@@ -286,7 +289,8 @@ namespace
         ALMetalLitPreviewBatch batch;
         batch.vertices = vertices.get();
         batch.vertex_count = static_cast<U32>(positions.size());
-        batch.unindexed_flat = true;
+        batch.geometry =
+            ALMetalLitPreviewGeometry::unindexed_flat_triangles;
         batch.depth_prepass = true;
         batch.clear_depth_before = clear_depth_before;
         batch.alpha_blending = true;
@@ -300,6 +304,374 @@ namespace
         }
         owned_buffers.push_back(std::move(vertices));
         batches.push_back(batch);
+        return true;
+    }
+
+    using MetalDebugVertex = std::array<F32, 3>;
+
+    void captureMetalPreviewTransform(ALMetalLitPreviewBatch& batch)
+    {
+        LLMatrix4a modelview_projection;
+        modelview_projection.setMul(
+            gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+        std::memcpy(batch.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.modelview_projection));
+    }
+
+    void setMetalPreviewColor(ALMetalLitPreviewBatch& batch,
+                              const LLVector3& color)
+    {
+        batch.diffuse_color[0] = color.mV[0];
+        batch.diffuse_color[1] = color.mV[1];
+        batch.diffuse_color[2] = color.mV[2];
+        batch.diffuse_color[3] = 1.f;
+    }
+
+    bool appendMetalFlatLineBatch(
+        const LLVector3* positions,
+        std::size_t position_count,
+        const LLVector3& color,
+        ALMetalLitPreviewDepthMode depth_mode,
+        std::vector<MetalDebugVertex>& flat_vertices,
+        std::vector<std::size_t>& flat_batch_indices,
+        std::vector<ALMetalLitPreviewBatch>& batches)
+    {
+        if (!positions || position_count == 0 || position_count % 2 != 0 ||
+            position_count > std::numeric_limits<U32>::max() ||
+            flat_vertices.size() >
+                std::numeric_limits<std::size_t>::max() - position_count)
+        {
+            return false;
+        }
+
+        ALMetalLitPreviewBatch batch;
+        batch.position_offset = flat_vertices.size() * sizeof(MetalDebugVertex);
+        batch.vertex_count = static_cast<U32>(position_count);
+        batch.geometry = ALMetalLitPreviewGeometry::unindexed_flat_lines;
+        batch.depth_mode = depth_mode;
+        captureMetalPreviewTransform(batch);
+        setMetalPreviewColor(batch, color);
+        for (std::size_t index = 0; index < position_count; ++index)
+        {
+            flat_vertices.push_back({
+                positions[index].mV[0],
+                positions[index].mV[1],
+                positions[index].mV[2],
+            });
+        }
+        flat_batch_indices.push_back(batches.size());
+        batches.push_back(batch);
+        return true;
+    }
+
+    void appendMetalUnitSphereBatch(
+        F32 scale,
+        const LLVector3& color,
+        ALMetalLitPreviewDepthMode depth_mode,
+        std::vector<ALMetalLitPreviewBatch>& batches)
+    {
+        gGL.pushMatrix();
+        gGL.scalef(scale, scale, scale);
+        ALMetalLitPreviewBatch batch;
+        batch.geometry = ALMetalLitPreviewGeometry::unit_sphere;
+        batch.depth_mode = depth_mode;
+        captureMetalPreviewTransform(batch);
+        setMetalPreviewColor(batch, color);
+        batches.push_back(batch);
+        gGL.popMatrix();
+    }
+
+    bool appendMetalSphereAndLine(
+        const LLVector3& begin,
+        const LLVector3& end,
+        F32 sphere_scale,
+        const LLVector3& occluded_color,
+        const LLVector3& visible_color,
+        std::vector<MetalDebugVertex>& flat_vertices,
+        std::vector<std::size_t>& flat_batch_indices,
+        std::vector<ALMetalLitPreviewBatch>& batches)
+    {
+        const LLVector3 line[] = {begin, end};
+        if (!appendMetalFlatLineBatch(
+                line, std::size(line), visible_color,
+                ALMetalLitPreviewDepthMode::less_equal_write,
+                flat_vertices, flat_batch_indices, batches))
+        {
+            return false;
+        }
+        appendMetalUnitSphereBatch(
+            sphere_scale, visible_color,
+            ALMetalLitPreviewDepthMode::less_equal_write, batches);
+        if (!appendMetalFlatLineBatch(
+                line, std::size(line), occluded_color,
+                ALMetalLitPreviewDepthMode::greater_read_only,
+                flat_vertices, flat_batch_indices, batches))
+        {
+            return false;
+        }
+        appendMetalUnitSphereBatch(
+            sphere_scale, occluded_color,
+            ALMetalLitPreviewDepthMode::greater_read_only, batches);
+        return true;
+    }
+
+    bool appendMetalBoxOutline(
+        const LLVector3& position,
+        const LLVector3& size,
+        const LLVector3& color,
+        std::vector<MetalDebugVertex>& flat_vertices,
+        std::vector<std::size_t>& flat_batch_indices,
+        std::vector<ALMetalLitPreviewBatch>& batches)
+    {
+        if (!position.isFinite() || !size.isFinite())
+        {
+            return true;
+        }
+        const LLVector3 v1 = size.scaledVec(LLVector3( 1, 1, 1));
+        const LLVector3 v2 = size.scaledVec(LLVector3(-1, 1, 1));
+        const LLVector3 v3 = size.scaledVec(LLVector3(-1,-1, 1));
+        const LLVector3 v4 = size.scaledVec(LLVector3( 1,-1, 1));
+        const std::array<LLVector3, 24> lines{{
+            position + v1, position + v2,
+            position + v2, position + v3,
+            position + v3, position + v4,
+            position + v4, position + v1,
+            position - v1, position - v2,
+            position - v2, position - v3,
+            position - v3, position - v4,
+            position - v4, position - v1,
+            position + v1, position - v3,
+            position + v4, position - v2,
+            position + v2, position - v4,
+            position + v3, position - v1,
+        }};
+        return appendMetalFlatLineBatch(
+            lines.data(), lines.size(), color,
+            ALMetalLitPreviewDepthMode::less_equal_write,
+            flat_vertices, flat_batch_indices, batches);
+    }
+
+    bool appendMetalAvatarDebugBatches(
+        LLVOAvatar& avatar,
+        const std::string& selected_joint,
+        std::vector<MetalDebugVertex>& flat_vertices,
+        std::vector<std::size_t>& flat_batch_indices,
+        std::vector<ALMetalLitPreviewBatch>& batches)
+    {
+        static const LLVector3 blue(0.f, 0.f, 1.f);
+        static const LLVector3 pastel_blue(0.5f, 0.5f, 1.f);
+        static const LLVector3 red(1.f, 0.f, 0.f);
+        static const LLVector3 pastel_red(1.f, 0.5f, 0.5f);
+        static const LLVector3 white(1.f, 1.f, 1.f);
+
+        const LLVector3& collision_occluded = avatar.isControlAvatar()
+            ? red : blue;
+        const LLVector3& collision_visible = avatar.isControlAvatar()
+            ? pastel_red : pastel_blue;
+        for (S32 index = 0; index < avatar.mNumCollisionVolumes; ++index)
+        {
+            LLAvatarJointCollisionVolume& volume =
+                avatar.mCollisionVolumes[index];
+            gGL.pushMatrix();
+            gGL.multMatrix(volume.getWorldMatrix().getF32ptr());
+            const LLVector3 begin(0.f, 0.f, 0.f);
+            const LLVector3 end(volume.getEnd());
+            const bool appended =
+                appendMetalSphereAndLine(
+                    begin, end, 1.f, collision_occluded,
+                    collision_visible, flat_vertices,
+                    flat_batch_indices, batches) &&
+                appendMetalSphereAndLine(
+                    begin, end, 0.05f, white, white,
+                    flat_vertices, flat_batch_indices, batches);
+            gGL.popMatrix();
+            if (!appended)
+            {
+                return false;
+            }
+        }
+
+        static const LLVector3 selected_occluded(1.f, 1.f, 0.f);
+        static const LLVector3 selected_visible(0.5f, 0.5f, 0.5f);
+        static const LLVector3 override_occluded(1.f, 0.f, 0.f);
+        static const LLVector3 override_visible(0.5f, 0.5f, 0.5f);
+        static const LLVector3 rigged_occluded(0.f, 1.f, 1.f);
+        static const LLVector3 rigged_visible(0.5f, 0.5f, 0.5f);
+        static const LLVector3 other_occluded(0.f, 1.f, 0.f);
+        static const LLVector3 other_visible(0.5f, 0.5f, 0.5f);
+        for (std::size_t index = 0;
+             index < avatar.getSkeletonJointCount(); ++index)
+        {
+            LLJoint* joint = avatar.getSkeletonJoint(static_cast<S32>(index));
+            if (!joint)
+            {
+                continue;
+            }
+            const LLVector3* occluded = &other_occluded;
+            const LLVector3* visible = &other_visible;
+            F32 sphere_scale = 0.001f;
+            LLVector3 override_position;
+            LLUUID override_mesh;
+            if (joint->getName() == selected_joint)
+            {
+                sphere_scale *= 16.f;
+                occluded = &selected_occluded;
+                visible = &selected_visible;
+            }
+            else if (joint->hasAttachmentPosOverride(
+                         override_position, override_mesh))
+            {
+                occluded = &override_occluded;
+                visible = &override_visible;
+            }
+            else if (avatar.jointIsRiggedTo(joint))
+            {
+                occluded = &rigged_occluded;
+                visible = &rigged_visible;
+            }
+
+            gGL.pushMatrix();
+            gGL.multMatrix(joint->getWorldMatrix().getF32ptr());
+            const LLVector3 begin(0.f, 0.f, 0.f);
+            const LLVector3 end(joint->getEnd());
+            const bool appended = appendMetalSphereAndLine(
+                begin, end, sphere_scale, *occluded, *visible,
+                flat_vertices, flat_batch_indices, batches);
+            gGL.popMatrix();
+            if (!appended)
+            {
+                return false;
+            }
+        }
+
+        const LLVector3 yellow(1.f, 1.f, 0.f);
+        for (S32 joint_number = 0;
+             joint_number < LL_CHARACTER_MAX_ANIMATED_JOINTS;
+             ++joint_number)
+        {
+            LLJoint* joint = avatar.getJoint(joint_number);
+            LLJointRiggingInfo* rigging = joint_number <
+                avatar.mJointRiggingInfoTab.size()
+                ? &avatar.mJointRiggingInfoTab[joint_number] : nullptr;
+            if (!joint || !rigging || !rigging->isRiggedTo())
+            {
+                continue;
+            }
+            LLViewerJointAttachment* attachment =
+                dynamic_cast<LLViewerJointAttachment*>(joint);
+            if (attachment && attachment->getIsHUDAttachment())
+            {
+                continue;
+            }
+            const LLVector4a* extents = rigging->getRiggedExtents();
+            LLVector4a center;
+            LLVector4a half_size;
+            center.setAdd(extents[0], extents[1]);
+            center.mul(0.5f);
+            half_size.setSub(extents[1], extents[0]);
+            half_size.mul(0.5f);
+            gGL.pushMatrix();
+            gGL.multMatrix(joint->getWorldMatrix().getF32ptr());
+            const bool appended = appendMetalBoxOutline(
+                LLVector3(center), LLVector3(half_size), yellow,
+                flat_vertices, flat_batch_indices, batches);
+            gGL.popMatrix();
+            if (!appended)
+            {
+                return false;
+            }
+        }
+
+        const LLVector3 cyan(0.f, 1.f, 1.f);
+        for (const auto& attachment_entry : avatar.mAttachmentPoints)
+        {
+            LLViewerJointAttachment* attachment = attachment_entry.second;
+            if (!attachment || !attachment->getValid())
+            {
+                continue;
+            }
+            for (const LLPointer<LLViewerObject>& attached :
+                 attachment->mAttachedObjects)
+            {
+                LLViewerObject* object = attached.get();
+                if (!object || object->isHUDAttachment())
+                {
+                    continue;
+                }
+                LLDrawable* drawable = object->mDrawable;
+                if (!drawable || !drawable->isState(
+                        LLDrawable::RIGGED | LLDrawable::RIGGED_CHILD))
+                {
+                    continue;
+                }
+                for (S32 face_index = 0;
+                     face_index < drawable->getNumFaces(); ++face_index)
+                {
+                    LLFace* face = drawable->getFace(face_index);
+                    if (!face || !face->isState(LLFace::RIGGED))
+                    {
+                        continue;
+                    }
+                    LLVector4a center;
+                    LLVector4a half_size;
+                    center.setAdd(
+                        face->mRiggedExtents[0], face->mRiggedExtents[1]);
+                    center.mul(0.5f);
+                    half_size.setSub(
+                        face->mRiggedExtents[1], face->mRiggedExtents[0]);
+                    half_size.mul(0.5f);
+                    if (!appendMetalBoxOutline(
+                            LLVector3(center), LLVector3(half_size), cyan,
+                            flat_vertices, flat_batch_indices, batches))
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    bool uploadMetalDebugVertices(
+        const std::vector<MetalDebugVertex>& flat_vertices,
+        const std::vector<std::size_t>& flat_batch_indices,
+        std::vector<std::unique_ptr<ALMetalBuffer>>& owned_buffers,
+        std::vector<ALMetalLitPreviewBatch>& batches)
+    {
+        if (flat_vertices.empty())
+        {
+            return flat_batch_indices.empty();
+        }
+        ALMetalDevice* device = LLImageGL::getMetalDevice();
+        if (!device)
+        {
+            return false;
+        }
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = flat_vertices.size() * sizeof(MetalDebugVertex);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy model-preview diagnostic lines";
+        std::string error;
+        auto buffer = ALMetalBuffer::create(*device, descriptor, &error);
+        if (!buffer || !buffer->write(
+                0, flat_vertices.data(), descriptor.length, &error))
+        {
+            LL_WARNS_ONCE("Metal")
+                << "Joint diagnostics retained GL because their Metal vertex "
+                   "upload failed: " << error << LL_ENDL;
+            return false;
+        }
+        for (std::size_t batch_index : flat_batch_indices)
+        {
+            if (batch_index >= batches.size())
+            {
+                return false;
+            }
+            batches[batch_index].vertices = buffer.get();
+        }
+        owned_buffers.push_back(std::move(buffer));
         return true;
     }
 }
@@ -3516,13 +3888,14 @@ bool LLModelPreview::render()
         mMetalPreviewDescriptor = std::make_unique<ALMetalTextureDescriptor>(
             mGLTexturep->getMetalTexture()->descriptor());
     }
-    bool metal_preview_eligible = !show_joint_positions &&
-                                  !(show_physics && mHasDegenerate);
+    bool metal_preview_eligible = !(show_physics && mHasDegenerate);
     std::vector<ALMetalLitPreviewBatch> metal_preview_batches;
     // CPU-owned decomposition meshes are uploaded while the decomposition
     // mutex is held. Keep their Metal wrappers alive through command encoding;
     // the committed command buffer retains the native resources afterwards.
     std::vector<std::unique_ptr<ALMetalBuffer>> metal_preview_owned_buffers;
+    std::vector<MetalDebugVertex> metal_preview_flat_vertices;
+    std::vector<std::size_t> metal_preview_flat_batch_indices;
 #endif
 
     S32 width = getWidth();
@@ -4360,6 +4733,47 @@ bool LLModelPreview::render()
                 {
                     shader->bind();
                 }
+#if LL_DARWIN
+                if (metal_preview_eligible)
+                {
+                    const std::string selected_joint =
+                        fmp->mTabContainer->getCurrentPanelIndex() ==
+                            fmp->mAvatarTabIndex
+                        ? fmp->mSelectedJointName : std::string();
+                    const std::array<LLVector3, 8> ground_lines{{
+                        mGroundPlane[0], mGroundPlane[1],
+                        mGroundPlane[1], mGroundPlane[2],
+                        mGroundPlane[2], mGroundPlane[3],
+                        mGroundPlane[3], mGroundPlane[0],
+                    }};
+                    static const LLVector3 magenta(1.f, 0.f, 1.f);
+                    if (!appendMetalAvatarDebugBatches(
+                            *getPreviewAvatar(), selected_joint,
+                            metal_preview_flat_vertices,
+                            metal_preview_flat_batch_indices,
+                            metal_preview_batches) ||
+                        !appendMetalFlatLineBatch(
+                            ground_lines.data(), ground_lines.size(), magenta,
+                            ALMetalLitPreviewDepthMode::less_equal_write,
+                            metal_preview_flat_vertices,
+                            metal_preview_flat_batch_indices,
+                            metal_preview_batches) ||
+                        !uploadMetalDebugVertices(
+                            metal_preview_flat_vertices,
+                            metal_preview_flat_batch_indices,
+                            metal_preview_owned_buffers,
+                            metal_preview_batches))
+                    {
+                        LL_WARNS_ONCE("Metal")
+                            << "Joint diagnostics retained GL because their "
+                               "native geometry could not be prepared"
+                            << LL_ENDL;
+                        metal_preview_eligible = false;
+                        metal_preview_batches.clear();
+                        metal_preview_owned_buffers.clear();
+                    }
+                }
+#endif
             }
 
             if (pelvis_recalc)

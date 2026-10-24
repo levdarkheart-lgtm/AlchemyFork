@@ -1026,7 +1026,8 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         ALMetalLitPreviewBatch far_hull;
         far_hull.vertices = hull_vertices.get();
         far_hull.vertex_count = 3;
-        far_hull.unindexed_flat = true;
+        far_hull.geometry =
+            ALMetalLitPreviewGeometry::unindexed_flat_triangles;
         far_hull.depth_prepass = true;
         far_hull.clear_depth_before = true;
         far_hull.alpha_blending = true;
@@ -1074,6 +1075,103 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(std::abs(static_cast<int>(hull_pixels[center + 1]) - 22) <= 1);
         CHECK(std::abs(static_cast<int>(hull_pixels[center + 2]) - 22) <= 1);
         CHECK(std::abs(static_cast<int>(hull_pixels[center + 3]) - 191) <= 1);
+
+        // Joint diagnostics use a compact shared float3 stream for lines and
+        // one renderer-owned unit sphere. Exercise both geometry modes and
+        // the legacy read-only GL_GREATER pass used for occluded bones.
+        const std::array<std::array<float, 3>, 2> line_positions{{
+            {{-0.75f, 0.f, 0.f}}, {{0.75f, 0.f, 0.f}},
+        }};
+        ALMetalBufferDescriptor line_descriptor;
+        line_descriptor.length = sizeof(line_positions);
+        line_descriptor.storage = ALMetalStorageMode::shared;
+        line_descriptor.label = "Alchemy diagnostic preview line vertices";
+        auto line_vertices = ALMetalBuffer::create(
+            *device, line_descriptor, &error);
+        INFO(error);
+        REQUIRE(line_vertices);
+        REQUIRE(line_vertices->write(
+            0, line_positions.data(), sizeof(line_positions), &error));
+
+        ALMetalLitPreviewBatch line_batch;
+        line_batch.vertices = line_vertices.get();
+        line_batch.vertex_count = line_positions.size();
+        line_batch.geometry =
+            ALMetalLitPreviewGeometry::unindexed_flat_lines;
+        line_batch.destination_template = destination_template.get();
+        line_batch.diffuse_color[0] = 0.f;
+        line_batch.diffuse_color[1] = 0.f;
+        line_batch.diffuse_color[2] = 1.f;
+        line_batch.diffuse_color[3] = 1.f;
+        for (std::size_t index = 0; index < 4; ++index)
+        {
+            line_batch.modelview_projection[index * 4 + index] = 1.f;
+        }
+        line_batch.vertex_count = 1;
+        CHECK_FALSE(renderer->render(line_batch, &error));
+        CHECK(error == "Metal flat-line preview requires complete line segments");
+        line_batch.vertex_count = line_positions.size();
+        error.clear();
+        auto rendered_line = renderer->render(line_batch, &error);
+        INFO(error);
+        REQUIRE(rendered_line);
+        std::array<std::uint8_t, 32 * 32 * 4> line_pixels{};
+        REQUIRE(rendered_line->readback(
+            *device, 0, 0, {}, line_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        std::size_t blue_line_pixels = 0;
+        for (std::size_t offset = 0; offset < line_pixels.size(); offset += 4)
+        {
+            if (line_pixels[offset + 0] <= 1 &&
+                line_pixels[offset + 1] <= 1 &&
+                line_pixels[offset + 2] >= 254 &&
+                line_pixels[offset + 3] == 255)
+            {
+                ++blue_line_pixels;
+            }
+        }
+        CHECK(blue_line_pixels >= 20);
+
+        ALMetalLitPreviewBatch sphere_batch;
+        sphere_batch.geometry = ALMetalLitPreviewGeometry::unit_sphere;
+        sphere_batch.destination_template = destination_template.get();
+        sphere_batch.diffuse_color[0] = 0.f;
+        sphere_batch.diffuse_color[1] = 1.f;
+        sphere_batch.diffuse_color[2] = 1.f;
+        sphere_batch.diffuse_color[3] = 1.f;
+        sphere_batch.modelview_projection[0] = 0.25f;
+        sphere_batch.modelview_projection[5] = 0.25f;
+        sphere_batch.modelview_projection[10] = 0.25f;
+        sphere_batch.modelview_projection[14] = 0.5f;
+        sphere_batch.modelview_projection[15] = 1.f;
+
+        ALMetalLitPreviewBatch near_surface = batch;
+        near_surface.index_offset = sizeof(std::uint16_t) * 3;
+        near_surface.index_count = 3;
+        near_surface.texture = nullptr;
+        near_surface.show_edges = false;
+        sphere_batch.depth_mode =
+            ALMetalLitPreviewDepthMode::greater_read_only;
+        std::array<ALMetalLitPreviewBatch, 2> diagnostic_batches{{
+            near_surface, sphere_batch,
+        }};
+        ALMetalLitPreviewScene diagnostic_scene;
+        diagnostic_scene.batches = diagnostic_batches.data();
+        diagnostic_scene.batch_count = diagnostic_batches.size();
+        diagnostic_scene.destination_descriptor =
+            &destination_template->descriptor();
+        auto rendered_diagnostics = renderer->render(
+            diagnostic_scene, &error);
+        INFO(error);
+        REQUIRE(rendered_diagnostics);
+        std::array<std::uint8_t, 32 * 32 * 4> diagnostic_pixels{};
+        REQUIRE(rendered_diagnostics->readback(
+            *device, 0, 0, {}, diagnostic_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(diagnostic_pixels[center + 0] <= 1);
+        CHECK(diagnostic_pixels[center + 1] >= 254);
+        CHECK(diagnostic_pixels[center + 2] >= 254);
+        CHECK(diagnostic_pixels[center + 3] == 255);
 
         // Reproduce the viewer's rebased one-joint object-skinning palette.
         // The joint contributes +0.25 X in its local translation and the

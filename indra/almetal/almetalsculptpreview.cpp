@@ -11,6 +11,7 @@
 #include "almetalsculptpreview.h"
 
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <utility>
@@ -67,7 +68,12 @@ struct ALMetalLitPreviewRenderer::Impl
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::array<PipelineSet, 2> pipelines;
     std::unique_ptr<ALMetalDepthStencilState> depth_state;
+    std::unique_ptr<ALMetalDepthStencilState> occluded_depth_state;
     std::unique_ptr<ALMetalSamplerState> texture_sampler;
+    std::unique_ptr<ALMetalBuffer> unit_sphere_vertices;
+    std::unique_ptr<ALMetalBuffer> unit_sphere_indices;
+    std::uint32_t unit_sphere_vertex_count = 0;
+    std::uint32_t unit_sphere_index_count = 0;
 };
 
 ALMetalLitPreviewRenderer::ALMetalLitPreviewRenderer(std::unique_ptr<Impl> impl)
@@ -240,6 +246,16 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
         return nullptr;
     }
 
+    depth_descriptor.depth_compare = ALMetalCompareFunction::greater;
+    depth_descriptor.depth_write_enabled = false;
+    depth_descriptor.label = "Alchemy lit preview occluded depth";
+    impl->occluded_depth_state = ALMetalDepthStencilState::create(
+        device, depth_descriptor, error);
+    if (!impl->occluded_depth_state)
+    {
+        return nullptr;
+    }
+
     ALMetalSamplerDescriptor sampler_descriptor;
     sampler_descriptor.max_anisotropy = 16;
     sampler_descriptor.label = "Alchemy lit preview anisotropic wrap sampler";
@@ -249,6 +265,79 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
     {
         return nullptr;
     }
+
+    // Match LLRenderSphere exactly, but keep the immutable diagnostic mesh in
+    // the pass that consumes it. This avoids rebuilding or flattening 3,600
+    // vertices for every animated upload-preview frame.
+    constexpr std::uint32_t latitude_slices = 20;
+    constexpr std::uint32_t longitude_slices = 30;
+    constexpr float two_pi = 6.28318530717958647692f;
+    std::array<std::array<float, 3>,
+               (latitude_slices + 1) * (longitude_slices + 1)>
+        sphere_positions{};
+    std::array<std::uint16_t,
+               latitude_slices * longitude_slices * 6>
+        sphere_indices{};
+    for (std::uint32_t latitude = 0; latitude <= latitude_slices; ++latitude)
+    {
+        const float lat = static_cast<float>(latitude) /
+                          static_cast<float>(latitude_slices);
+        for (std::uint32_t longitude = 0;
+             longitude <= longitude_slices; ++longitude)
+        {
+            const float lon = static_cast<float>(longitude) /
+                              static_cast<float>(longitude_slices);
+            sphere_positions[latitude * (longitude_slices + 1) + longitude] = {
+                std::sin(two_pi * lat) * std::cos(two_pi * lon),
+                std::sin(two_pi * lat) * std::sin(two_pi * lon),
+                std::cos(two_pi * lat),
+            };
+        }
+    }
+    for (std::uint32_t latitude = 0; latitude < latitude_slices; ++latitude)
+    {
+        for (std::uint32_t longitude = 0;
+             longitude < longitude_slices; ++longitude)
+        {
+            const std::size_t destination =
+                (latitude * longitude_slices + longitude) * 6;
+            const std::uint16_t current = static_cast<std::uint16_t>(
+                latitude * (longitude_slices + 1) + longitude);
+            const std::uint16_t next = static_cast<std::uint16_t>(
+                (latitude + 1) * (longitude_slices + 1) + longitude);
+            sphere_indices[destination + 0] = current;
+            sphere_indices[destination + 1] = current + 1;
+            sphere_indices[destination + 2] = next;
+            sphere_indices[destination + 3] = next;
+            sphere_indices[destination + 4] = current + 1;
+            sphere_indices[destination + 5] = next + 1;
+        }
+    }
+
+    ALMetalBufferDescriptor sphere_vertex_descriptor;
+    sphere_vertex_descriptor.length = sizeof(sphere_positions);
+    sphere_vertex_descriptor.storage = ALMetalStorageMode::shared;
+    sphere_vertex_descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+    sphere_vertex_descriptor.label = "Alchemy preview unit sphere vertices";
+    impl->unit_sphere_vertices = ALMetalBuffer::create(
+        device, sphere_vertex_descriptor, error);
+    ALMetalBufferDescriptor sphere_index_descriptor;
+    sphere_index_descriptor.length = sizeof(sphere_indices);
+    sphere_index_descriptor.storage = ALMetalStorageMode::shared;
+    sphere_index_descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+    sphere_index_descriptor.label = "Alchemy preview unit sphere indices";
+    impl->unit_sphere_indices = ALMetalBuffer::create(
+        device, sphere_index_descriptor, error);
+    if (!impl->unit_sphere_vertices || !impl->unit_sphere_indices ||
+        !impl->unit_sphere_vertices->write(
+            0, sphere_positions.data(), sizeof(sphere_positions), error) ||
+        !impl->unit_sphere_indices->write(
+            0, sphere_indices.data(), sizeof(sphere_indices), error))
+    {
+        return nullptr;
+    }
+    impl->unit_sphere_vertex_count = sphere_positions.size();
+    impl->unit_sphere_index_count = sphere_indices.size();
 
     return std::unique_ptr<ALMetalLitPreviewRenderer>(
         new ALMetalLitPreviewRenderer(std::move(impl)));
@@ -310,22 +399,41 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
         const ALMetalLitPreviewBatch& batch = scene.batches[batch_index];
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
-        if (!batch.vertices || batch.vertex_count == 0)
+        if (batch.geometry == ALMetalLitPreviewGeometry::unit_sphere)
         {
-            setError(error, "Metal lit preview batch is incomplete");
-            return nullptr;
-        }
-        if (batch.unindexed_flat)
-        {
-            if (batch.indices || batch.index_count != 0 || batch.texture ||
-                batch.show_edges || batch.skin_palette ||
-                batch.skin_palette_float_count != 0 ||
-                batch.skin_joint_count != 0 || batch.vertex_count % 3 != 0)
+            if (batch.vertices || batch.vertex_count != 0 || batch.indices ||
+                batch.index_count != 0 || batch.texture || batch.show_edges ||
+                batch.skin_palette || batch.skin_palette_float_count != 0 ||
+                batch.skin_joint_count != 0 || batch.depth_prepass)
             {
-                setError(error, "Metal flat preview requires an unindexed triangle list");
+                setError(error, "Metal unit-sphere preview batch has external geometry");
                 return nullptr;
             }
-            if (batch.depth_prepass && !batch.alpha_blending)
+            continue;
+        }
+        if (batch.geometry ==
+                ALMetalLitPreviewGeometry::unindexed_flat_triangles ||
+            batch.geometry ==
+                ALMetalLitPreviewGeometry::unindexed_flat_lines)
+        {
+            const bool triangles = batch.geometry ==
+                ALMetalLitPreviewGeometry::unindexed_flat_triangles;
+            if (!batch.vertices || batch.vertex_count == 0 ||
+                batch.indices || batch.index_count != 0 || batch.texture ||
+                batch.show_edges || batch.skin_palette ||
+                batch.skin_palette_float_count != 0 ||
+                batch.skin_joint_count != 0 ||
+                batch.vertex_count % (triangles ? 3 : 2) != 0)
+            {
+                setError(error, triangles
+                    ? "Metal flat preview requires an unindexed triangle list"
+                    : "Metal flat-line preview requires complete line segments");
+                return nullptr;
+            }
+            if (batch.depth_prepass &&
+                (!triangles || !batch.alpha_blending ||
+                 batch.depth_mode !=
+                    ALMetalLitPreviewDepthMode::less_equal_write))
             {
                 setError(error, "Metal flat preview depth prepass requires blending");
                 return nullptr;
@@ -338,7 +446,8 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             }
             continue;
         }
-        if (!batch.indices || batch.index_count == 0)
+        if (!batch.vertices || batch.vertex_count == 0 ||
+            !batch.indices || batch.index_count == 0)
         {
             setError(error, "Metal lit preview batch is incomplete");
             return nullptr;
@@ -528,6 +637,8 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             std::memcpy(constants.diffuse_color, batch.diffuse_color,
                         sizeof(constants.diffuse_color));
             encoded =
+                encoder->setDepthStencilState(mImpl->depth_state.get(), error) &&
+                encoder->setCullMode(ALMetalCullMode::back, error) &&
                 encoder->setPipeline(*pipelines.flat_depth_only, error) &&
                 encoder->setVertexBuffer(0, *batch.vertices,
                                          batch.position_offset, error) &&
@@ -552,19 +663,49 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             std::memcpy(constants.diffuse_color, batch.diffuse_color,
                         sizeof(constants.diffuse_color));
 
-            if (batch.unindexed_flat)
+            const ALMetalDepthStencilState* batch_depth_state =
+                batch.depth_mode ==
+                    ALMetalLitPreviewDepthMode::greater_read_only
+                ? mImpl->occluded_depth_state.get()
+                : mImpl->depth_state.get();
+            const bool flat_lines = batch.geometry ==
+                ALMetalLitPreviewGeometry::unindexed_flat_lines;
+            encoded =
+                encoder->setDepthStencilState(batch_depth_state, error) &&
+                encoder->setCullMode(flat_lines
+                    ? ALMetalCullMode::none : ALMetalCullMode::back, error);
+
+            if (encoded &&
+                batch.geometry != ALMetalLitPreviewGeometry::indexed_lit)
             {
                 const ALMetalRenderPipeline* flat_pipeline =
                     batch.alpha_blending
                         ? pipelines.flat_blended.get() : pipelines.flat.get();
-                encoded =
-                    encoder->setPipeline(*flat_pipeline, error) &&
-                    encoder->setVertexBuffer(0, *batch.vertices,
-                                             batch.position_offset, error) &&
+                const bool unit_sphere = batch.geometry ==
+                    ALMetalLitPreviewGeometry::unit_sphere;
+                const ALMetalBuffer* flat_vertices = unit_sphere
+                    ? mImpl->unit_sphere_vertices.get() : batch.vertices;
+                encoded = encoder->setPipeline(*flat_pipeline, error) &&
+                    encoder->setVertexBuffer(
+                        0, *flat_vertices,
+                        unit_sphere ? 0 : batch.position_offset, error) &&
                     encoder->setVertexBytes(2, &constants,
-                                            sizeof(constants), error) &&
-                    encoder->draw(ALMetalPrimitiveType::triangle, 0,
-                                  batch.vertex_count, 1, error);
+                                            sizeof(constants), error);
+                if (encoded && unit_sphere)
+                {
+                    encoded = encoder->drawIndexed(
+                        ALMetalPrimitiveType::triangle,
+                        mImpl->unit_sphere_index_count,
+                        ALMetalIndexType::uint16,
+                        *mImpl->unit_sphere_indices, 0, 1, error);
+                }
+                else if (encoded)
+                {
+                    encoded = encoder->draw(
+                        flat_lines ? ALMetalPrimitiveType::line
+                                   : ALMetalPrimitiveType::triangle,
+                        0, batch.vertex_count, 1, error);
+                }
                 continue;
             }
 

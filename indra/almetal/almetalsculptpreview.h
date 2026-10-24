@@ -17,6 +17,20 @@
 #include <memory>
 #include <string>
 
+enum class ALMetalLitPreviewGeometry
+{
+    indexed_lit,
+    unindexed_flat_triangles,
+    unindexed_flat_lines,
+    unit_sphere,
+};
+
+enum class ALMetalLitPreviewDepthMode
+{
+    less_equal_write,
+    greater_read_only,
+};
+
 struct ALMetalLitPreviewBatch
 {
     const ALMetalBuffer* vertices = nullptr;
@@ -53,10 +67,16 @@ struct ALMetalLitPreviewBatch
     // Blending is immutable pipeline state, so the renderer selects a cached
     // blended pipeline rather than changing state on the encoder.
     bool alpha_blending = false;
-    // Convex-decomposition previews arrive from LLModel::PhysicsMesh as a
-    // tightly-packed float3 triangle list. They are intentionally fullbright
-    // and unindexed: the legacy physics shader ignores the generated normals.
-    bool unindexed_flat = false;
+    // Flat geometry is used by generated convex hulls and the upload
+    // preview's diagnostic lines/spheres. Unit spheres use renderer-owned,
+    // immutable geometry; the other modes consume tightly-packed float3s.
+    ALMetalLitPreviewGeometry geometry =
+        ALMetalLitPreviewGeometry::indexed_lit;
+    // Most preview geometry updates depth with GL_LEQUAL semantics. Bone and
+    // collision diagnostics immediately repeat each primitive through a
+    // read-only GL_GREATER pass so hidden portions remain visible.
+    ALMetalLitPreviewDepthMode depth_mode =
+        ALMetalLitPreviewDepthMode::less_equal_write;
     // The legacy hull path first writes every hull to depth with color writes
     // disabled, then blends the colored hulls against that completed depth.
     // This is distinct from the ordinary physics-mesh overlay, which has no
