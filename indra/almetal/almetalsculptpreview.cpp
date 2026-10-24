@@ -44,10 +44,13 @@ struct ALMetalLitPreviewRenderer::Impl
     {
         std::unique_ptr<ALMetalRenderPipeline> solid;
         std::unique_ptr<ALMetalRenderPipeline> textured;
+        std::unique_ptr<ALMetalRenderPipeline> flat;
         std::unique_ptr<ALMetalRenderPipeline> edge_u16;
         std::unique_ptr<ALMetalRenderPipeline> edge_u32;
         std::unique_ptr<ALMetalRenderPipeline> solid_blended;
         std::unique_ptr<ALMetalRenderPipeline> textured_blended;
+        std::unique_ptr<ALMetalRenderPipeline> flat_blended;
+        std::unique_ptr<ALMetalRenderPipeline> flat_depth_only;
         std::unique_ptr<ALMetalRenderPipeline> edge_u16_blended;
         std::unique_ptr<ALMetalRenderPipeline> edge_u32_blended;
         std::unique_ptr<ALMetalRenderPipeline> skinned_solid;
@@ -83,6 +86,7 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->library ||
         !impl->library->hasFunction("almetal_lit_preview_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_flat_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_textured_fragment") ||
@@ -135,6 +139,10 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
                              "almetal_lit_preview_textured_vertex",
                              "almetal_lit_preview_textured_fragment",
                              "Alchemy textured lit preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.flat,
+                             "almetal_lit_preview_flat_vertex",
+                             "almetal_lit_preview_fragment",
+                             "Alchemy flat preview" + suffix + " pipeline") ||
             !create_pipeline(pipelines.edge_u16,
                              "almetal_lit_preview_edge_u16_vertex",
                              "almetal_lit_preview_fragment",
@@ -179,6 +187,10 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
                              "almetal_lit_preview_textured_vertex",
                              "almetal_lit_preview_textured_fragment",
                              "Alchemy blended textured lit preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.flat_blended,
+                             "almetal_lit_preview_flat_vertex",
+                             "almetal_lit_preview_fragment",
+                             "Alchemy blended flat preview" + suffix + " pipeline") ||
             !create_pipeline(pipelines.edge_u16_blended,
                              "almetal_lit_preview_edge_u16_vertex",
                              "almetal_lit_preview_fragment",
@@ -203,6 +215,16 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
                              "almetal_lit_preview_skinned_edge_u32_vertex",
                              "almetal_lit_preview_fragment",
                              "Alchemy blended skinned U32 lit preview edge" + suffix + " pipeline"))
+        {
+            return nullptr;
+        }
+
+        pipeline_descriptor.colors[0].blending_enabled = false;
+        pipeline_descriptor.colors[0].write_mask = ALMetalColorWriteMask::none;
+        if (!create_pipeline(pipelines.flat_depth_only,
+                             "almetal_lit_preview_flat_vertex",
+                             "almetal_lit_preview_fragment",
+                             "Alchemy flat preview depth-only" + suffix + " pipeline"))
         {
             return nullptr;
         }
@@ -288,10 +310,42 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
         const ALMetalLitPreviewBatch& batch = scene.batches[batch_index];
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
-        if (!batch.vertices || !batch.indices || batch.vertex_count == 0 ||
-            batch.index_count == 0)
+        if (!batch.vertices || batch.vertex_count == 0)
         {
             setError(error, "Metal lit preview batch is incomplete");
+            return nullptr;
+        }
+        if (batch.unindexed_flat)
+        {
+            if (batch.indices || batch.index_count != 0 || batch.texture ||
+                batch.show_edges || batch.skin_palette ||
+                batch.skin_palette_float_count != 0 ||
+                batch.skin_joint_count != 0 || batch.vertex_count % 3 != 0)
+            {
+                setError(error, "Metal flat preview requires an unindexed triangle list");
+                return nullptr;
+            }
+            if (batch.depth_prepass && !batch.alpha_blending)
+            {
+                setError(error, "Metal flat preview depth prepass requires blending");
+                return nullptr;
+            }
+            if (!range_fits(batch.position_offset, batch.vertex_count,
+                            sizeof(float) * 3, batch.vertices->length()))
+            {
+                setError(error, "Metal lit preview geometry range exceeds its buffers");
+                return nullptr;
+            }
+            continue;
+        }
+        if (!batch.indices || batch.index_count == 0)
+        {
+            setError(error, "Metal lit preview batch is incomplete");
+            return nullptr;
+        }
+        if (batch.depth_prepass)
+        {
+            setError(error, "Metal lit preview depth prepass requires flat geometry");
             return nullptr;
         }
         if (!range_fits(batch.position_offset, batch.vertex_count, vector_stride,
@@ -455,6 +509,33 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             // therefore changes the projected front-face winding.
             encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error);
 
+        // Convex hulls alone use the legacy two-pass contract: establish the
+        // nearest surface across every hull without touching color, then
+        // blend their colors against that completed depth. Keep both phases
+        // in one encoder so the memoryless depth attachment remains live.
+        for (std::size_t batch_index = segment_begin;
+             encoded && batch_index < segment_end; ++batch_index)
+        {
+            const ALMetalLitPreviewBatch& batch = scene.batches[batch_index];
+            if (!batch.depth_prepass)
+            {
+                continue;
+            }
+            LitPreviewConstants constants{};
+            std::memcpy(constants.modelview_projection,
+                        batch.modelview_projection,
+                        sizeof(constants.modelview_projection));
+            std::memcpy(constants.diffuse_color, batch.diffuse_color,
+                        sizeof(constants.diffuse_color));
+            encoded =
+                encoder->setPipeline(*pipelines.flat_depth_only, error) &&
+                encoder->setVertexBuffer(0, *batch.vertices,
+                                         batch.position_offset, error) &&
+                encoder->setVertexBytes(2, &constants, sizeof(constants), error) &&
+                encoder->draw(ALMetalPrimitiveType::triangle, 0,
+                              batch.vertex_count, 1, error);
+        }
+
         for (std::size_t batch_index = segment_begin;
              encoded && batch_index < segment_end; ++batch_index)
         {
@@ -470,6 +551,22 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                         sizeof(constants.light_diffuse));
             std::memcpy(constants.diffuse_color, batch.diffuse_color,
                         sizeof(constants.diffuse_color));
+
+            if (batch.unindexed_flat)
+            {
+                const ALMetalRenderPipeline* flat_pipeline =
+                    batch.alpha_blending
+                        ? pipelines.flat_blended.get() : pipelines.flat.get();
+                encoded =
+                    encoder->setPipeline(*flat_pipeline, error) &&
+                    encoder->setVertexBuffer(0, *batch.vertices,
+                                             batch.position_offset, error) &&
+                    encoder->setVertexBytes(2, &constants,
+                                            sizeof(constants), error) &&
+                    encoder->draw(ALMetalPrimitiveType::triangle, 0,
+                                  batch.vertex_count, 1, error);
+                continue;
+            }
 
             const bool skinned = batch.skin_palette != nullptr;
             const ALMetalRenderPipeline* fill_pipeline = nullptr;

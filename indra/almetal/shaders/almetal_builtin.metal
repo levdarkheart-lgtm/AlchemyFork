@@ -329,6 +329,18 @@ vertex ALMetalLitPreviewVaryings almetal_lit_preview_vertex(
         positions[vertex_id], normals[vertex_id], constants);
 }
 
+vertex ALMetalLitPreviewVaryings almetal_lit_preview_flat_vertex(
+    const device packed_float3* positions [[buffer(0)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    uint vertex_id [[vertex_id]])
+{
+    ALMetalLitPreviewVaryings output;
+    output.position = almetal_lit_preview_clip_position(
+        float4(float3(positions[vertex_id]), 1.0), constants);
+    output.color = constants.diffuse_color;
+    return output;
+}
+
 vertex ALMetalLitPreviewVaryings almetal_lit_preview_skinned_vertex(
     const device float4* positions [[buffer(0)]],
     const device float4* normals [[buffer(1)]],

@@ -53,6 +53,15 @@ struct ALMetalLitPreviewBatch
     // Blending is immutable pipeline state, so the renderer selects a cached
     // blended pipeline rather than changing state on the encoder.
     bool alpha_blending = false;
+    // Convex-decomposition previews arrive from LLModel::PhysicsMesh as a
+    // tightly-packed float3 triangle list. They are intentionally fullbright
+    // and unindexed: the legacy physics shader ignores the generated normals.
+    bool unindexed_flat = false;
+    // The legacy hull path first writes every hull to depth with color writes
+    // disabled, then blends the colored hulls against that completed depth.
+    // This is distinct from the ordinary physics-mesh overlay, which has no
+    // depth prepass.
+    bool depth_prepass = false;
     const ALMetalTexture* destination_template = nullptr;
     const ALMetalTextureDescriptor* destination_descriptor = nullptr;
     float modelview_projection[16]{};

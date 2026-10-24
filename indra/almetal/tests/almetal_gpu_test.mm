@@ -805,6 +805,28 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         REQUIRE(index_buffer);
         REQUIRE(index_buffer->write(0, indices.data(), sizeof(indices), &error));
 
+        // Convex decomposition meshes are CPU-owned, tightly-packed float3
+        // triangle lists. Put the farther hull first so the output differs if
+        // the required all-hull depth prepass is accidentally omitted.
+        const std::array<std::array<float, 3>, 6> hull_positions{{
+            {{-0.8f, -0.8f,  0.5f}},
+            {{ 0.8f, -0.8f,  0.5f}},
+            {{ 0.0f,  0.8f,  0.5f}},
+            {{-0.8f, -0.8f, -0.5f}},
+            {{ 0.8f, -0.8f, -0.5f}},
+            {{ 0.0f,  0.8f, -0.5f}},
+        }};
+        ALMetalBufferDescriptor hull_descriptor;
+        hull_descriptor.length = sizeof(hull_positions);
+        hull_descriptor.storage = ALMetalStorageMode::shared;
+        hull_descriptor.label = "Alchemy flat convex-hull preview vertices";
+        auto hull_vertices = ALMetalBuffer::create(
+            *device, hull_descriptor, &error);
+        INFO(error);
+        REQUIRE(hull_vertices);
+        REQUIRE(hull_vertices->write(
+            0, hull_positions.data(), sizeof(hull_positions), &error));
+
         ALMetalTextureDescriptor destination_descriptor;
         destination_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
         destination_descriptor.width = 32;
@@ -1000,6 +1022,58 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(overlay_pixels[center + 1] <= 1);
         CHECK(std::abs(static_cast<int>(overlay_pixels[center + 2]) - 128) <= 1);
         CHECK(std::abs(static_cast<int>(overlay_pixels[center + 3]) - 191) <= 1);
+
+        ALMetalLitPreviewBatch far_hull;
+        far_hull.vertices = hull_vertices.get();
+        far_hull.vertex_count = 3;
+        far_hull.unindexed_flat = true;
+        far_hull.depth_prepass = true;
+        far_hull.clear_depth_before = true;
+        far_hull.alpha_blending = true;
+        far_hull.destination_template = destination_template.get();
+        far_hull.diffuse_color[0] = 0.f;
+        far_hull.diffuse_color[1] = 1.f;
+        far_hull.diffuse_color[2] = 0.f;
+        far_hull.diffuse_color[3] = 0.5f;
+        for (std::size_t index = 0; index < 4; ++index)
+        {
+            far_hull.modelview_projection[index * 4 + index] = 1.f;
+        }
+        ALMetalLitPreviewBatch near_hull = far_hull;
+        near_hull.position_offset = sizeof(float) * 3 * 3;
+        near_hull.clear_depth_before = false;
+        near_hull.diffuse_color[0] = 1.f;
+        near_hull.diffuse_color[1] = 0.f;
+
+        far_hull.vertex_count = 2;
+        CHECK_FALSE(renderer->render(far_hull, &error));
+        CHECK(error == "Metal flat preview requires an unindexed triangle list");
+        far_hull.vertex_count = 3;
+        error.clear();
+
+        std::array<ALMetalLitPreviewBatch, 2> hull_batches{{
+            far_hull, near_hull,
+        }};
+        ALMetalLitPreviewScene hull_scene;
+        hull_scene.batches = hull_batches.data();
+        hull_scene.batch_count = hull_batches.size();
+        hull_scene.destination_descriptor = &destination_template->descriptor();
+        hull_scene.clear_color[0] = 0.169f;
+        hull_scene.clear_color[1] = 0.169f;
+        hull_scene.clear_color[2] = 0.169f;
+        auto rendered_hulls = renderer->render(hull_scene, &error);
+        INFO(error);
+        REQUIRE(rendered_hulls);
+        std::array<std::uint8_t, 32 * 32 * 4> hull_pixels{};
+        REQUIRE(rendered_hulls->readback(
+            *device, 0, 0, {}, hull_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        // Only the nearer red hull contributes. If the far green hull were
+        // blended before depth became complete, green would be about 75.
+        CHECK(std::abs(static_cast<int>(hull_pixels[center + 0]) - 149) <= 1);
+        CHECK(std::abs(static_cast<int>(hull_pixels[center + 1]) - 22) <= 1);
+        CHECK(std::abs(static_cast<int>(hull_pixels[center + 2]) - 22) <= 1);
+        CHECK(std::abs(static_cast<int>(hull_pixels[center + 3]) - 191) <= 1);
 
         // Reproduce the viewer's rebased one-joint object-skinning palette.
         // The joint contributes +0.25 X in its local translation and the

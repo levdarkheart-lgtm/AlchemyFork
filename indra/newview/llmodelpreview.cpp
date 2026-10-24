@@ -74,6 +74,7 @@
 #include "lltextbox.h"
 
 #include <filesystem>
+#include <limits>
 
 #include <boost/algorithm/string.hpp>
 
@@ -217,6 +218,87 @@ namespace
         batch.show_edges = show_edges;
         std::memcpy(batch.edge_color, PREVIEW_EDGE_COL.mV,
                     sizeof(batch.edge_color));
+        batches.push_back(batch);
+        return true;
+    }
+
+    const LLColor4U& previewPhysicsHullColor(std::size_t index)
+    {
+        static std::vector<LLColor4U> hull_colors;
+        while (hull_colors.size() <= index)
+        {
+            hull_colors.emplace_back(
+                ll_rand(128) + 127, ll_rand(128) + 127,
+                ll_rand(128) + 127, 128);
+        }
+        return hull_colors[index];
+    }
+
+    bool appendMetalPhysicsHullPreviewBatch(
+        const std::vector<LLVector3>& positions,
+        const LLColor4U& color,
+        bool clear_depth_before,
+        std::vector<std::unique_ptr<ALMetalBuffer>>& owned_buffers,
+        std::vector<ALMetalLitPreviewBatch>& batches)
+    {
+        static_assert(sizeof(LLVector3) == sizeof(float) * 3,
+                      "Metal hull preview requires tightly-packed LLVector3");
+        if (positions.empty() || positions.size() % 3 != 0 ||
+            positions.size() > std::numeric_limits<U32>::max())
+        {
+            LL_WARNS_ONCE("Metal")
+                << "Convex-hull preview retained GL because its generated "
+                   "triangle list is incomplete"
+                << LL_ENDL;
+            return false;
+        }
+
+        ALMetalDevice* device = LLImageGL::getMetalDevice();
+        if (!device)
+        {
+            LL_WARNS_ONCE("Metal")
+                << "Convex-hull preview retained GL because the Metal device "
+                   "is unavailable"
+                << LL_ENDL;
+            return false;
+        }
+
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = positions.size() * sizeof(LLVector3);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy convex-hull preview vertices";
+        std::string error;
+        auto vertices = ALMetalBuffer::create(*device, descriptor, &error);
+        if (!vertices || !vertices->write(
+                0, positions.data(), descriptor.length, &error))
+        {
+            LL_WARNS_ONCE("Metal")
+                << "Convex-hull preview retained GL because its Metal vertex "
+                   "upload failed: " << error << LL_ENDL;
+            return false;
+        }
+
+        const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+        LLMatrix4a modelview_projection;
+        modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+
+        ALMetalLitPreviewBatch batch;
+        batch.vertices = vertices.get();
+        batch.vertex_count = static_cast<U32>(positions.size());
+        batch.unindexed_flat = true;
+        batch.depth_prepass = true;
+        batch.clear_depth_before = clear_depth_before;
+        batch.alpha_blending = true;
+        std::memcpy(batch.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.modelview_projection));
+        for (U32 component = 0; component < 4; ++component)
+        {
+            batch.diffuse_color[component] =
+                static_cast<F32>(color.mV[component]) / 255.f;
+        }
+        owned_buffers.push_back(std::move(vertices));
         batches.push_back(batch);
         return true;
     }
@@ -3437,6 +3519,10 @@ bool LLModelPreview::render()
     bool metal_preview_eligible = !show_joint_positions &&
                                   !(show_physics && mHasDegenerate);
     std::vector<ALMetalLitPreviewBatch> metal_preview_batches;
+    // CPU-owned decomposition meshes are uploaded while the decomposition
+    // mutex is held. Keep their Metal wrappers alive through command encoding;
+    // the committed command buffer retains the native resources afterwards.
+    std::vector<std::unique_ptr<ALMetalBuffer>> metal_preview_owned_buffers;
 #endif
 
     S32 width = getWidth();
@@ -3844,13 +3930,6 @@ bool LLModelPreview::render()
                             if (!physics.mHull.empty())
                             {
                                 render_mesh = false;
-#if LL_DARWIN
-                                // Convex-decomposition preview geometry is
-                                // still CPU-owned. Do not publish a partial
-                                // Metal preview which omits those hulls.
-                                metal_preview_eligible = false;
-                                metal_preview_batches.clear();
-#endif
 
                                 if (physics.mMesh.empty())
                                 { //build vertex buffer for physics mesh
@@ -3879,15 +3958,46 @@ bool LLModelPreview::render()
                                             gGL.translatef(offset.mV[0], offset.mV[1], offset.mV[2]);
                                         }
 
+#if LL_DARWIN
+                                        const LLColor4U& hull_color =
+                                            previewPhysicsHullColor(i);
+#else
                                         static std::vector<LLColor4U> hull_colors;
-
-                                        if (i + 1 >= hull_colors.size())
+                                        while (hull_colors.size() <= i)
                                         {
-                                            hull_colors.push_back(LLColor4U(ll_rand(128) + 127, ll_rand(128) + 127, ll_rand(128) + 127, 128));
+                                            hull_colors.emplace_back(
+                                                ll_rand(128) + 127,
+                                                ll_rand(128) + 127,
+                                                ll_rand(128) + 127, 128);
                                         }
-
-                                        gGL.diffuseColor4ubv(hull_colors[i].mV);
+                                        const LLColor4U& hull_color = hull_colors[i];
+#endif
+                                        gGL.diffuseColor4ubv(hull_color.mV);
                                         LLVertexBuffer::drawArrays(LLRender::TRIANGLES, physics.mMesh[i].mPositions);
+
+#if LL_DARWIN
+                                        // The GL loop visits hulls once for
+                                        // depth and once for color. One Metal
+                                        // batch represents both phases.
+                                        if (pass > 0 && metal_preview_eligible)
+                                        {
+                                            if (!appendMetalPhysicsHullPreviewBatch(
+                                                    physics.mMesh[i].mPositions,
+                                                    hull_color,
+                                                    metal_physics_depth_clear,
+                                                    metal_preview_owned_buffers,
+                                                    metal_preview_batches))
+                                            {
+                                                metal_preview_eligible = false;
+                                                metal_preview_batches.clear();
+                                                metal_preview_owned_buffers.clear();
+                                            }
+                                            else
+                                            {
+                                                metal_physics_depth_clear = false;
+                                            }
+                                        }
+#endif
 
                                         if (physics_explode > 0.f)
                                         {
