@@ -10,6 +10,7 @@
 
 #include "../almetaldevice.h"
 #include "../almetalframe.h"
+#include "../almetalpipeline.h"
 #include "../almetalresource.h"
 #include "../almetalsurface.h"
 
@@ -387,6 +388,181 @@ TEST_CASE("almetal: frame scheduler bounds work and recovers abandoned slots", "
         CHECK(stats.completed == 2);
         CHECK(stats.failed == 0);
         CHECK(stats.in_flight == 0);
+    }
+}
+
+TEST_CASE("almetal: bundled MSL compute pipeline dispatches through typed bindings", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto library = ALMetalShaderLibrary::loadBuiltin(*device, &error);
+        INFO(error);
+        REQUIRE(library);
+        CHECK(library->hasFunction("almetal_test_compute"));
+
+        ALMetalComputePipelineDescriptor pipeline_descriptor;
+        pipeline_descriptor.library = library.get();
+        pipeline_descriptor.function = "almetal_test_compute";
+        pipeline_descriptor.label = "Alchemy typed compute test";
+        auto pipeline = ALMetalComputePipeline::create(*device, pipeline_descriptor, &error);
+        INFO(error);
+        REQUIRE(pipeline);
+        CHECK(pipeline->threadExecutionWidth() > 0);
+
+        constexpr std::uint32_t count = 257;
+        std::array<std::uint32_t, count> values{};
+        for (std::uint32_t index = 0; index < count; ++index)
+        {
+            values[index] = index * 5u + 1u;
+        }
+        ALMetalBufferDescriptor buffer_descriptor;
+        buffer_descriptor.length = sizeof(values);
+        buffer_descriptor.storage = ALMetalStorageMode::shared;
+        buffer_descriptor.label = "Alchemy compute values";
+        auto buffer = ALMetalBuffer::create(*device, buffer_descriptor, &error);
+        INFO(error);
+        REQUIRE(buffer);
+        REQUIRE(buffer->write(0, values.data(), sizeof(values), &error));
+
+        auto command = device->makeCommandBuffer("Alchemy typed compute dispatch", &error);
+        INFO(error);
+        REQUIRE(command);
+        auto encoder = ALMetalComputeEncoder::begin(*command, "Alchemy compute encoder", &error);
+        INFO(error);
+        REQUIRE(encoder);
+        REQUIRE(encoder->setPipeline(*pipeline, &error));
+        REQUIRE(encoder->setBuffer(0, *buffer, 0, &error));
+        const std::uint32_t addend = 19;
+        REQUIRE(encoder->setBytes(1, &addend, sizeof(addend), &error));
+        const std::uint32_t group_width = std::min(
+            pipeline->threadExecutionWidth(), pipeline->maximumTotalThreadsPerThreadgroup());
+        REQUIRE(encoder->dispatch(count, 1, 1, group_width, 1, 1, &error));
+        REQUIRE(encoder->end(&error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint32_t, count> result{};
+        REQUIRE(buffer->read(0, result.data(), sizeof(result), &error));
+        for (std::uint32_t index = 0; index < count; ++index)
+        {
+            CHECK(result[index] == values[index] * 3u + addend);
+        }
+    }
+}
+
+TEST_CASE("almetal: bundled MSL render pipeline draws a typed triangle", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto library = ALMetalShaderLibrary::loadBuiltin(*device, &error);
+        INFO(error);
+        REQUIRE(library);
+        CHECK(library->hasFunction("almetal_test_vertex"));
+        CHECK(library->hasFunction("almetal_test_fragment"));
+
+        ALMetalRenderTargetDescriptor target_descriptor;
+        target_descriptor.width = 32;
+        target_descriptor.height = 32;
+        target_descriptor.color_attachment_count = 1;
+        target_descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        target_descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float;
+        target_descriptor.label = "Alchemy typed triangle target";
+        auto target = ALMetalRenderTarget::create(*device, target_descriptor, &error);
+        INFO(error);
+        REQUIRE(target);
+
+        ALMetalRenderPipelineDescriptor pipeline_descriptor;
+        pipeline_descriptor.library = library.get();
+        pipeline_descriptor.vertex_function = "almetal_test_vertex";
+        pipeline_descriptor.fragment_function = "almetal_test_fragment";
+        pipeline_descriptor.color_attachment_count = 1;
+        pipeline_descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        pipeline_descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float;
+        pipeline_descriptor.label = "Alchemy typed triangle pipeline";
+        auto pipeline = ALMetalRenderPipeline::create(*device, pipeline_descriptor, &error);
+        INFO(error);
+        REQUIRE(pipeline);
+
+        ALMetalDepthStencilDescriptor depth_descriptor;
+        depth_descriptor.depth_compare = ALMetalCompareFunction::less_equal;
+        depth_descriptor.depth_write_enabled = true;
+        depth_descriptor.label = "Alchemy typed triangle depth";
+        auto depth_state = ALMetalDepthStencilState::create(*device, depth_descriptor, &error);
+        INFO(error);
+        REQUIRE(depth_state);
+
+        ALMetalSamplerDescriptor sampler_descriptor;
+        sampler_descriptor.max_anisotropy = 8;
+        sampler_descriptor.label = "Alchemy linear repeat sampler";
+        auto sampler = ALMetalSamplerState::create(*device, sampler_descriptor, &error);
+        INFO(error);
+        REQUIRE(sampler);
+
+        struct Vertex
+        {
+            float position[2];
+            float color[4];
+        };
+        const std::array<Vertex, 3> vertices{{
+            {{-0.9f, -0.9f}, {0.125f, 0.5f, 0.875f, 1.0f}},
+            {{ 0.9f, -0.9f}, {0.125f, 0.5f, 0.875f, 1.0f}},
+            {{ 0.0f,  0.9f}, {0.125f, 0.5f, 0.875f, 1.0f}},
+        }};
+        ALMetalBufferDescriptor vertex_descriptor;
+        vertex_descriptor.length = sizeof(vertices);
+        vertex_descriptor.storage = ALMetalStorageMode::shared;
+        vertex_descriptor.label = "Alchemy typed triangle vertices";
+        auto vertex_buffer = ALMetalBuffer::create(*device, vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(vertex_buffer);
+        REQUIRE(vertex_buffer->write(0, vertices.data(), sizeof(vertices), &error));
+
+        ALMetalRenderPassConfig pass_config;
+        pass_config.colors[0].load = ALMetalLoadAction::clear;
+        pass_config.colors[0].store = ALMetalStoreAction::store;
+        pass_config.colors[0].clear = {0.0, 0.0, 0.0, 1.0};
+        pass_config.depth_load = ALMetalLoadAction::clear;
+        pass_config.depth_store = ALMetalStoreAction::dont_care;
+        pass_config.clear_depth = 1.0;
+        auto pass = target->makeRenderPass(pass_config, &error);
+        INFO(error);
+        REQUIRE(pass);
+
+        auto command = device->makeCommandBuffer("Alchemy typed triangle draw", &error);
+        INFO(error);
+        REQUIRE(command);
+        auto encoder = ALMetalRenderEncoder::begin(*command, *pass, "Alchemy triangle encoder", &error);
+        INFO(error);
+        REQUIRE(encoder);
+        REQUIRE(encoder->setPipeline(*pipeline, &error));
+        REQUIRE(encoder->setDepthStencilState(depth_state.get(), &error));
+        REQUIRE(encoder->setVertexBuffer(0, *vertex_buffer, 0, &error));
+        REQUIRE(encoder->setFragmentSampler(0, sampler.get(), &error));
+        REQUIRE(encoder->setViewport({0.0, 0.0, 32.0, 32.0, 0.0, 1.0}, &error));
+        REQUIRE(encoder->setScissor({0, 0, 32, 32}, &error));
+        REQUIRE(encoder->setCullMode(ALMetalCullMode::none, &error));
+        REQUIRE(encoder->setFrontFacingWinding(ALMetalWinding::counter_clockwise, &error));
+        REQUIRE(encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, &error));
+        REQUIRE(encoder->end(&error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 32 * 32 * 4> pixels{};
+        REQUIRE(target->colorTexture(0)->readback(*device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        INFO(error);
+        const std::size_t center = (16 * 32 + 16) * 4;
+        CHECK(std::abs(static_cast<int>(pixels[center + 0]) - 32) <= 1);
+        CHECK(std::abs(static_cast<int>(pixels[center + 1]) - 128) <= 1);
+        CHECK(std::abs(static_cast<int>(pixels[center + 2]) - 223) <= 1);
+        CHECK(pixels[center + 3] == 255);
     }
 }
 

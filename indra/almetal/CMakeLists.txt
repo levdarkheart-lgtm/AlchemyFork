@@ -6,6 +6,9 @@ endif()
 
 find_library(AL_METAL_FRAMEWORK Metal REQUIRED)
 find_library(AL_QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
+set(AL_METAL_BUILTIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/almetal_builtin.metal")
+set(AL_METAL_BUILTIN_SOURCE "${AL_METAL_BUILTIN_SOURCE}" CACHE INTERNAL
+    "Built-in native Metal shader source")
 
 add_library(almetal STATIC)
 target_sources(
@@ -13,6 +16,7 @@ target_sources(
   PRIVATE
     almetaldevice.mm
     almetalframe.mm
+    almetalpipeline.mm
     almetalresource.mm
     almetalsurface.mm
   PUBLIC
@@ -20,8 +24,13 @@ target_sources(
     FILES
       almetaldevice.h
       almetalframe.h
+      almetalpipeline.h
       almetalresource.h
       almetalsurface.h
+)
+target_compile_definitions(
+  almetal
+  PRIVATE AL_METAL_BUILTIN_SOURCE_PATH="${AL_METAL_BUILTIN_SOURCE}"
 )
 target_link_libraries(
   almetal
@@ -38,6 +47,7 @@ target_link_libraries(
 set_source_files_properties(
   almetaldevice.mm
   almetalframe.mm
+  almetalpipeline.mm
   almetalresource.mm
   almetalsurface.mm
   PROPERTIES SKIP_PRECOMPILE_HEADERS ON

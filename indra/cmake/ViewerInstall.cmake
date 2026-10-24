@@ -138,6 +138,14 @@ install(
   BUNDLE DESTINATION .
 )
 
+if(DARWIN)
+  install(
+    FILES "${AL_METAL_BUILTIN_SOURCE}"
+    DESTINATION "${AL_INSTALL_DATADIR}"
+    COMPONENT viewer
+  )
+endif()
+
 if(WINDOWS)
   install(
     FILES $<TARGET_RUNTIME_DLLS:${AL_VIEWER_BINARY_NAME}>
