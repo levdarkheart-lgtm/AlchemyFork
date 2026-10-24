@@ -9,12 +9,13 @@ if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
 fi
 
 ACTION="${1:-build}"
-BUILD_DIR="${AL_METAL_BUILD_DIR:-build-Darwin-xcode-os-arm64}"
+PRESET="${AL_METAL_PRESET:-xcode-os-arm64}"
+BUILD_DIR="${AL_METAL_BUILD_DIR:-build-Darwin-${PRESET}}"
 CONFIG="${AL_METAL_CONFIG:-Release}"
 
 case "$ACTION" in
   configure)
-    cmake -S indra --preset xcode-os-arm64 -DAL_CHANNEL:STRING="Alchemy Metal Development"
+    cmake -S indra --preset "$PRESET" -DAL_CHANNEL:STRING="Alchemy Metal Development"
     ;;
   build)
     if [[ ! -d "$BUILD_DIR" ]]; then
@@ -29,7 +30,7 @@ case "$ACTION" in
     ;;
   help|--help|-h)
     printf 'Usage: tools/metal/build.sh {configure|build|test}\n'
-    printf 'Env: AL_METAL_BUILD_DIR (default build-Darwin-xcode-os-arm64), AL_METAL_CONFIG (Release), AL_METAL_JOBS (4)\n'
+    printf 'Env: AL_METAL_PRESET (default xcode-os-arm64), AL_METAL_BUILD_DIR (default build-Darwin-$AL_METAL_PRESET), AL_METAL_CONFIG (Release), AL_METAL_JOBS (4)\n'
     ;;
   *)
     echo "Unknown action: $ACTION" >&2

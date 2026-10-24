@@ -5,9 +5,9 @@
 ## Work board (Codex manages and expands)
 | ID | Work | Paths / integration | Depends on | State | Evidence / next action |
 | --- | --- | --- | --- | --- | --- |
-| M-001 | Verify host/fork, reproduce ARM64 OSS build, run reference and record baseline | build preset, docs/state | none | todo | First: doctor, configure, build, launch, test; store command/exit/SHA |
-| M-002 | Enumerate GL calls, shader/variant graph, pass/resource read/write graph, non-system runtime slices | `llrender`, `newview`, `alrender`, `llwindow` | source checkout | todo | Inventory in docs, no unsupported counts |
-| M-003 | Native Metal drawable/presentation and app lifecycle | SDL3 macOS window, `llviewerdisplay` | M-001 | todo | Real app launch/resize/present without GL context |
+| M-001 | Verify host/fork, reproduce ARM64 OSS build, run reference and record baseline | build preset, docs/state | none | doing | Release configure/build/login-screen smoke pass; 461/461 architecture-neutral tests pass; 349/349 bundled Mach-O files arm64. Next: authenticated feature/perf reference when authorized. |
+| M-002 | Enumerate GL calls, shader/variant graph, pass/resource read/write graph, non-system runtime slices | `llrender`, `newview`, `alrender`, `llwindow` | source checkout | doing | 3,080 findings/135 files recorded with raw artifact hash and top owners. Next: deterministic shader variants and pass/resource edges. |
+| M-003 | Native Metal drawable/presentation and app lifecycle | SDL3 macOS window, `llviewerdisplay` | M-001 | doing | Implement production device/queue/CAMetalLayer ownership and real-GPU lifecycle tests, then remove `SDL_GL_SwapWindow`. |
 | M-004 | Metal buffers, textures, render targets, uploads, readback, synchronization | `llrender`, `alrender` GPU resources | M-002 | todo | Metal validation + focused tests |
 | M-005 | Native MSL and explicit pipeline/resource-binding system | shader source and manager | M-002, M-004 | todo | Correct shader permutations, captured outputs |
 | M-006 | Existing UI/fonts/login, media texture ingress and HUD drawing through Metal | `llrender` fonts, `llui`, `newview` | M-003..005 | todo | Real viewer login/UI and media, no GL |
@@ -20,9 +20,11 @@ Rows encode technical dependencies, **not** user-supervised phases. Multiple ind
 
 ## Recorded observations
 - 2026-10-24: harness authored independently of fork; no local Mac build or performance run. Upstream observations in `REPO_FACTS.md` require fork verification.
+- 2026-10-24: physical M1 Max reference Release builds and reaches `STATE_LOGIN_WAIT`; runtime is macOS GL 4.1 with no compute. Full-bundle arm64 and signature checks pass. See `docs/metal/state/reference-baseline-2026-10-24.md`.
+- 2026-10-24: macOS ignored the documented disposable-profile environment variable. Added parity with Linux before continuing smoke/validation runs; the successful second run kept logs, settings, and cache under `/tmp` and exited normally.
 
 ## Active integration / next action
-Codex on M1 Max: start M-001 and M-002 immediately; implement M-003/M-004 as soon as dependencies are established. Continue driving the full target across work items. Record current branch, SHA, tests, errors and file ownership at each handoff.
+Codex on M1 Max: M-001/M-002 have a locally proven reference and green architecture-neutral suite. Implement M-003 production Metal device/queue/CAMetalLayer ownership and advance directly into M-004 resources. Record current branch, SHA, tests, errors and file ownership at each handoff.
 
 ## Risks to monitor
 - GL state semantics and Metal render-pass lifetimes;

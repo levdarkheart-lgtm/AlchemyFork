@@ -200,6 +200,43 @@ void LLDir_Mac::initAppDirs(const std::string &app_name,
         mAppRODataDir = app_read_only_data_dir;
         mSkinBaseDir = add(mAppRODataDir, "skins");
     }
+
+    // Match Linux's $<APP>_USER_DIR contract so development, smoke and
+    // sanitizer runs can use a disposable profile without reading or writing
+    // the owner's normal Application Support and cache trees. This has to run
+    // before logging and settings initialization, both of which consume these
+    // paths immediately after initAppDirs returns.
+    std::string upper_app_name(app_name);
+    LLStringUtil::toUpper(upper_app_name);
+    if (auto user_dir = LLStringUtil::getoptenv(upper_app_name + "_USER_DIR"))
+    {
+        const std::filesystem::path root(*user_dir);
+        std::error_code error;
+        std::filesystem::create_directories(root, error);
+        if (!error && std::filesystem::is_directory(root, error))
+        {
+            const auto make_profile_dir = [&root](const char* leaf)
+            {
+                const std::filesystem::path directory = root / leaf;
+                std::error_code directory_error;
+                std::filesystem::create_directories(directory, directory_error);
+                return directory.string();
+            };
+
+            mOSUserDir = root.string();
+            mOSUserAppDir = root.string();
+            mUserSettingsDir = make_profile_dir("user_settings");
+            mLogsDir = make_profile_dir("logs");
+            mDefaultCacheDir = make_profile_dir("cache");
+            make_profile_dir("data");
+            make_profile_dir("browser_profile");
+        }
+        else
+        {
+            LL_WARNS() << "Cannot use " << upper_app_name << "_USER_DIR='"
+                       << *user_dir << "': " << error.message() << LL_ENDL;
+        }
+    }
     mCAFile = add(mAppRODataDir, "ca-bundle.crt");
 }
 

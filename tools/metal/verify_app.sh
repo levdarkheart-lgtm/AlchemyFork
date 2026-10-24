@@ -20,7 +20,7 @@ while IFS= read -r -d '' path; do
     echo "BAD: $path -> [$archs]" >&2
     bad=$((bad+1))
   fi
-done < <(find "$APP/Contents/MacOS" "$APP/Contents/Frameworks" "$APP/Contents/PlugIns" -type f -print0 2>/dev/null || true)
+done < <(find "$APP/Contents" -type f -print0)
 
 echo "Mach-O slices checked: $count; invalid non-arm64 slices: $bad"
 if (( count == 0 || bad > 0 )); then exit 1; fi

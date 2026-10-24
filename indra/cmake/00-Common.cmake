@@ -474,12 +474,21 @@ elseif(DARWIN)
   # Under -dead_strip, ld only warns of a symbol defined both in an object and
   # in an archive member it loads, and keeps the object's: a stub in a test, or
   # a stray copy in the viewer, silently replaces the real one. An error, as
-  # GNU ld and MSVC make it.
+  # GNU ld and MSVC make it. Apple ld does not expose this diagnostic switch
+  # in every Xcode release, so probe it rather than making otherwise-supported
+  # toolchains fail every link with an unknown-option error.
+  include(CheckLinkerFlag)
+  check_linker_flag(CXX "LINKER:-duplicate_symbols,error" AL_LINKER_SUPPORTS_DUPLICATE_SYMBOLS_ERROR)
+  if(AL_LINKER_SUPPORTS_DUPLICATE_SYMBOLS_ERROR)
+    set(al_duplicate_symbols_link_option "LINKER:-duplicate_symbols,error")
+  else()
+    message(STATUS "Linker has no -duplicate_symbols option; using its default duplicate-symbol diagnostics")
+  endif()
   target_link_options(
     al_flags
     INTERFACE
       $<$<CONFIG:${AL_OPTIMIZED_CONFIGS}>:LINKER:-dead_strip>
-      "LINKER:-duplicate_symbols,error"
+      ${al_duplicate_symbols_link_option}
       LINKER:-dead_strip_dylibs
       "LINKER:-headerpad_max_install_names"
       "LINKER:-search_paths_first"

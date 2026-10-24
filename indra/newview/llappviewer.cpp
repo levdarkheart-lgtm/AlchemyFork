@@ -26,6 +26,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include <filesystem>
+
 #include "llappviewer.h"
 
 #include "alcrashreporter.h"
@@ -2650,7 +2652,8 @@ bool LLAppViewer::loadSettingsFromDirectory(const std::string& location_key,
                 {
                     continue;
                 }
-                else if (!gDirUtilp->fileExists(full_settings_path))
+                else if (!gDirUtilp->fileExists(full_settings_path)
+                         && !std::filesystem::path(full_settings_path).is_absolute())
                 {
                     // search in default path
                     full_settings_path = gDirUtilp->getExpandedFilename((ELLPath)path_index, full_settings_path);
