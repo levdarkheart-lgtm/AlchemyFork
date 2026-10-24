@@ -13,6 +13,7 @@
 #include "../almetalpipeline.h"
 #include "../almetalresource.h"
 #include "../almetalsurface.h"
+#include "../almetaltextureops.h"
 #include "../almetaluirenderer.h"
 
 #import <Metal/Metal.h>
@@ -435,6 +436,128 @@ TEST_CASE("almetal: a typed texture blit copies one mip into a new mip chain", "
         REQUIRE(rejected);
         CHECK_FALSE(mismatched->copyFrom(*rejected, *source, {}, &error));
         CHECK(error == "Metal texture copy requires matching pixel formats");
+    }
+}
+
+TEST_CASE("almetal: bilinear texture resampling stays entirely on the GPU", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        ALMetalTextureDescriptor source_descriptor;
+        source_descriptor.format = ALMetalPixelFormat::r8_unorm;
+        source_descriptor.width = 4;
+        source_descriptor.height = 4;
+        source_descriptor.storage = ALMetalStorageMode::private_gpu;
+        source_descriptor.usage = ALMetalTextureUsage::shader_read;
+        source_descriptor.label = "Alchemy texture-resample source";
+        auto source = ALMetalTexture::create(*device, source_descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        ALMetalTextureDescriptor destination_descriptor = source_descriptor;
+        destination_descriptor.width = 2;
+        destination_descriptor.height = 2;
+        destination_descriptor.usage = ALMetalTextureUsage::shader_read |
+                                       ALMetalTextureUsage::render_target;
+        destination_descriptor.label = "Alchemy texture-resample destination";
+        auto destination = ALMetalTexture::create(*device, destination_descriptor, &error);
+        INFO(error);
+        REQUIRE(destination);
+
+        // Each output pixel samples the center of one constant 2x2 quadrant,
+        // so the exact expected bytes are independent of UNORM rounding.
+        const std::array<std::uint8_t, 16> source_pixels = {
+             16,  16,  64,  64,
+             16,  16,  64,  64,
+            128, 128, 240, 240,
+            128, 128, 240, 240,
+        };
+        const std::array<std::uint8_t, 4> expected = {16, 64, 128, 240};
+
+        auto resampler = ALMetalTextureResampler::create(*device, &error);
+        INFO(error);
+        REQUIRE(resampler);
+        auto command = device->makeCommandBuffer(
+            "Alchemy bilinear texture-resample test", &error);
+        INFO(error);
+        REQUIRE(command);
+        REQUIRE(source->upload(
+            *command, 0, 0, {}, source_pixels.data(), 4, &error));
+        REQUIRE(resampler->encode(*command, *source, *destination, &error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 4> result{};
+        REQUIRE(destination->readback(
+            *device, 0, 0, {}, result.data(), 2, &error));
+        INFO(error);
+        CHECK(result == expected);
+        CHECK(ALMetalTextureResampler::supports(
+            ALMetalPixelFormat::rgba8_unorm_srgb));
+
+        ALMetalTextureDescriptor srgb_source_descriptor;
+        srgb_source_descriptor.format = ALMetalPixelFormat::rgba8_unorm_srgb;
+        srgb_source_descriptor.width = 4;
+        srgb_source_descriptor.height = 4;
+        srgb_source_descriptor.storage = ALMetalStorageMode::private_gpu;
+        srgb_source_descriptor.usage = ALMetalTextureUsage::shader_read;
+        srgb_source_descriptor.label = "Alchemy raw-sRGB resample source";
+        auto srgb_source = ALMetalTexture::create(
+            *device, srgb_source_descriptor, &error);
+        INFO(error);
+        REQUIRE(srgb_source);
+
+        ALMetalTextureDescriptor srgb_destination_descriptor = srgb_source_descriptor;
+        srgb_destination_descriptor.width = 2;
+        srgb_destination_descriptor.height = 2;
+        srgb_destination_descriptor.usage = ALMetalTextureUsage::shader_read |
+                                            ALMetalTextureUsage::render_target;
+        srgb_destination_descriptor.label = "Alchemy raw-sRGB resample destination";
+        auto srgb_destination = ALMetalTexture::create(
+            *device, srgb_destination_descriptor, &error);
+        INFO(error);
+        REQUIRE(srgb_destination);
+
+        std::array<std::uint8_t, 4 * 4 * 4> srgb_pixels{};
+        for (std::size_t y = 0; y < 4; ++y)
+        {
+            for (std::size_t x = 0; x < 4; ++x)
+            {
+                const std::uint8_t value = (x & 1u) ? 255 : 0;
+                const std::size_t offset = (y * 4 + x) * 4;
+                srgb_pixels[offset + 0] = value;
+                srgb_pixels[offset + 1] = value;
+                srgb_pixels[offset + 2] = value;
+                srgb_pixels[offset + 3] = 255;
+            }
+        }
+        auto srgb_command = device->makeCommandBuffer(
+            "Alchemy encoded-sRGB texture-resample test", &error);
+        INFO(error);
+        REQUIRE(srgb_command);
+        REQUIRE(srgb_source->upload(
+            *srgb_command, 0, 0, {}, srgb_pixels.data(), 4 * 4, &error));
+        REQUIRE(resampler->encode(
+            *srgb_command, *srgb_source, *srgb_destination, &error));
+        REQUIRE(srgb_command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 2 * 2 * 4> srgb_result{};
+        REQUIRE(srgb_destination->readback(
+            *device, 0, 0, {}, srgb_result.data(), 2 * 4, &error));
+        INFO(error);
+        for (std::size_t pixel = 0; pixel < 4; ++pixel)
+        {
+            CHECK(std::abs(static_cast<int>(srgb_result[pixel * 4 + 0]) - 128) <= 1);
+            CHECK(std::abs(static_cast<int>(srgb_result[pixel * 4 + 1]) - 128) <= 1);
+            CHECK(std::abs(static_cast<int>(srgb_result[pixel * 4 + 2]) - 128) <= 1);
+            CHECK(srgb_result[pixel * 4 + 3] == 255);
+        }
     }
 }
 

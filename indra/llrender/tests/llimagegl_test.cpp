@@ -34,6 +34,7 @@
 #include "../llimagegl.h"
 #include "../llgl.h"
 #include "../llrender.h"
+#include "../llrendertarget.h"
 #include "../llglheaders.h"
 
 #include "llheadlessgl_fixture.h"
@@ -525,6 +526,92 @@ namespace
         CHECK(img->getMetalTexture()->descriptor().width == W / 2);
         CHECK(img->getMetalTexture()->descriptor().height == H / 2);
         CHECK(img->getMetalTexture()->descriptor().mipmap_level_count == 4);
+
+        std::vector<U8> pixels((W / 2) * (H / 2) * 4, 0);
+        REQUIRE(img->getMetalTexture()->readback(
+            *device, 0, 0, {}, pixels.data(), (W / 2) * 4, &error));
+        INFO(error);
+        CHECK(std::all_of(pixels.begin(), pixels.end(), [](U8 value) { return value == 0x80; }));
+    }
+
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: no-mip scaleDown resamples its Metal mirror on the GPU", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        constexpr U16 W = 16;
+        constexpr U16 H = 16;
+        LLPointer<LLImageGL> img = new LLImageGL(/*usemipmaps=*/false);
+        REQUIRE(img->createGLTexture(0, makeRaw(W, H, 4, 0x80).get()));
+        REQUIRE(img->getMetalTexture());
+
+        // scaleDown's production FBO path is called while gCopyProgram and
+        // the texture-list scratch target are bound. Reproduce that minimal
+        // contract here; the assertion below concerns the parallel native
+        // mirror, while the GL draw keeps the public lifecycle realistic.
+        static constexpr const char* vertex_source =
+            "#version 330\n"
+            "out vec2 texcoord;\n"
+            "void main() {\n"
+            "  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);\n"
+            "  texcoord = p;\n"
+            "  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+            "}\n";
+        static constexpr const char* fragment_source =
+            "#version 330\n"
+            "uniform sampler2D diffuseMap;\n"
+            "in vec2 texcoord;\n"
+            "out vec4 color;\n"
+            "void main() { color = texture(diffuseMap, texcoord); }\n";
+        const GLuint vertex = ll_test::compileTestShader(GL_VERTEX_SHADER, vertex_source);
+        const GLuint fragment = ll_test::compileTestShader(GL_FRAGMENT_SHADER, fragment_source);
+        REQUIRE(vertex);
+        REQUIRE(fragment);
+        const GLuint program = glCreateProgram();
+        glAttachShader(program, vertex);
+        glAttachShader(program, fragment);
+        glLinkProgram(program);
+        glDeleteShader(vertex);
+        glDeleteShader(fragment);
+        GLint linked = GL_FALSE;
+        glGetProgramiv(program, GL_LINK_STATUS, &linked);
+        REQUIRE(linked == GL_TRUE);
+        GLuint vertex_array = 0;
+        glGenVertexArrays(1, &vertex_array);
+        glBindVertexArray(vertex_array);
+        glUseProgram(program);
+
+        const U32 method = gGLManager.mDownScaleMethod;
+        const U32 target_width = LLRenderTarget::sCurResX;
+        const U32 target_height = LLRenderTarget::sCurResY;
+        gGLManager.mDownScaleMethod = 0;
+        LLRenderTarget::sCurResX = ll_test::HeadlessGL::WIDTH;
+        LLRenderTarget::sCurResY = ll_test::HeadlessGL::HEIGHT;
+        const bool scaled = img->scaleDown(1);
+        gGLManager.mDownScaleMethod = method;
+        LLRenderTarget::sCurResX = target_width;
+        LLRenderTarget::sCurResY = target_height;
+
+        glUseProgram(0);
+        glBindVertexArray(0);
+        glDeleteVertexArrays(1, &vertex_array);
+        glDeleteProgram(program);
+
+        REQUIRE(scaled);
+        REQUIRE(img->getMetalTexture());
+        CHECK(img->getMetalTexture()->descriptor().width == W / 2);
+        CHECK(img->getMetalTexture()->descriptor().height == H / 2);
+        CHECK(img->getMetalTexture()->descriptor().mipmap_level_count == 1);
+        CHECK(alMetalHasUsage(img->getMetalTexture()->descriptor().usage,
+                              ALMetalTextureUsage::render_target));
 
         std::vector<U8> pixels((W / 2) * (H / 2) * 4, 0);
         REQUIRE(img->getMetalTexture()->readback(

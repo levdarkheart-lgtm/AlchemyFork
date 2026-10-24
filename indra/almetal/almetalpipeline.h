@@ -305,6 +305,9 @@ public:
                           std::string* error = nullptr);
     bool setFragmentTexture(std::uint32_t index, const ALMetalTexture* texture,
                             std::string* error = nullptr);
+    // Bind a view that samples encoded sRGB storage as linear UNORM values.
+    bool setFragmentTextureLinear(std::uint32_t index, const ALMetalTexture* texture,
+                                  std::string* error = nullptr);
     bool setVertexSampler(std::uint32_t index, const ALMetalSamplerState* sampler,
                           std::string* error = nullptr);
     bool setFragmentSampler(std::uint32_t index, const ALMetalSamplerState* sampler,

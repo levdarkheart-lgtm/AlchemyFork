@@ -823,6 +823,31 @@ bool ALMetalRenderEncoder::setFragmentTexture(std::uint32_t index, const ALMetal
     return true;
 }
 
+bool ALMetalRenderEncoder::setFragmentTextureLinear(std::uint32_t index,
+                                                    const ALMetalTexture* texture,
+                                                    std::string* error)
+{
+    if (!mImpl || mImpl->ended ||
+        !validBindingIndex(index, 128, "fragment texture", error))
+    {
+        return false;
+    }
+    id<MTLTexture> native_texture = texture
+        ? (__bridge id<MTLTexture>)texture->nativeLinearHandle() : nil;
+    if (texture && !native_texture)
+    {
+        setError(error, "Metal could not provide the linear fragment texture view");
+        return false;
+    }
+    if (native_texture && native_texture.device != mImpl->device)
+    {
+        setError(error, "Metal fragment texture belongs to another device");
+        return false;
+    }
+    [mImpl->encoder setFragmentTexture:native_texture atIndex:index];
+    return true;
+}
+
 bool ALMetalRenderEncoder::setVertexSampler(std::uint32_t index, const ALMetalSamplerState* sampler,
                                             std::string* error)
 {

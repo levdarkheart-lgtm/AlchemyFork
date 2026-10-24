@@ -146,6 +146,21 @@ enum class ALMetalPixelFormat
     depth32_float_stencil8,
 };
 
+// A view-compatible non-sRGB format for renderable operations that must
+// preserve and filter encoded storage values. Other formats are unchanged.
+constexpr ALMetalPixelFormat alMetalLinearFormat(ALMetalPixelFormat format)
+{
+    switch (format)
+    {
+        case ALMetalPixelFormat::rgba8_unorm_srgb:
+            return ALMetalPixelFormat::rgba8_unorm;
+        case ALMetalPixelFormat::bgra8_unorm_srgb:
+            return ALMetalPixelFormat::bgra8_unorm;
+        default:
+            return format;
+    }
+}
+
 enum class ALMetalTextureSwizzle
 {
     zero,
@@ -244,6 +259,10 @@ public:
         std::string* error = nullptr);
 
     void* nativeHandle() const noexcept;
+    // Shader-compatible view that suppresses automatic RGBA/BGRA sRGB
+    // decoding while retaining any channel swizzle. Equal to nativeHandle for
+    // formats without a supported linear view.
+    void* nativeLinearHandle() const noexcept;
     const ALMetalTextureDescriptor& descriptor() const noexcept;
     std::uint32_t width(std::uint32_t mip_level = 0) const noexcept;
     std::uint32_t height(std::uint32_t mip_level = 0) const noexcept;

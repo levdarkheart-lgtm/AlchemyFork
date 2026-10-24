@@ -40,6 +40,7 @@
 #if LL_DARWIN
 #include "almetaldevice.h"
 #include "almetalresource.h"
+#include "almetaltextureops.h"
 #endif
 
 #include "llmath.h"
@@ -73,8 +74,10 @@ static std::vector<U32> sFreeList[DELETE_DELAY+1];
 static std::atomic<U32> sTextureNameGeneration{ 1 };
 #if LL_DARWIN
 static ALMetalDevice* sImageMetalDevice = nullptr;
+static std::unique_ptr<ALMetalTextureResampler> sMetalTextureResampler;
 static std::atomic<bool> sMetalTextureReported{false};
 static std::atomic<bool> sMetalScaleDownReported{false};
+static std::atomic<bool> sMetalResampleReported{false};
 #endif
 
 namespace
@@ -335,6 +338,12 @@ constexpr bool is_little_endian()
 #if LL_DARWIN
 void LLImageGL::setMetalDevice(ALMetalDevice* device)
 {
+    if (device != sImageMetalDevice)
+    {
+        // The cached pipelines and sampler retain objects from their creating
+        // device. Drop them before that borrowed device pointer can expire.
+        sMetalTextureResampler.reset();
+    }
     sImageMetalDevice = device;
 }
 #endif
@@ -1975,13 +1984,13 @@ bool LLImageGL::preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 heig
     }
 
     const ALMetalTextureDescriptor& source_descriptor = mMetalTexture->descriptor();
-    if (source_mip_level >= source_descriptor.mipmap_level_count ||
-        mMetalTexture->width(source_mip_level) != width ||
-        mMetalTexture->height(source_mip_level) != height)
+    const bool can_blit = source_mip_level < source_descriptor.mipmap_level_count &&
+                          mMetalTexture->width(source_mip_level) == width &&
+                          mMetalTexture->height(source_mip_level) == height;
+    const bool can_resample = !mHasMipMaps &&
+                              ALMetalTextureResampler::supports(source_descriptor.format);
+    if (!can_blit && !can_resample)
     {
-        // A no-mip GL texture can be minified through an FBO, but a Metal blit
-        // does not scale. Keep the safe unavailable state for that uncommon
-        // case until the native resample pass owns it.
         return false;
     }
 
@@ -1990,6 +1999,11 @@ bool LLImageGL::preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 heig
     destination_descriptor.height = height;
     destination_descriptor.mipmap_level_count = mHasMipMaps
         ? static_cast<U32>(std::bit_width(std::max(width, height))) : 1;
+    if (can_resample)
+    {
+        destination_descriptor.usage = destination_descriptor.usage |
+                                       ALMetalTextureUsage::render_target;
+    }
     destination_descriptor.label = "Alchemy downscaled image texture";
 
     std::string error;
@@ -2003,7 +2017,8 @@ bool LLImageGL::preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 heig
     }
 
     auto command = sImageMetalDevice->makeCommandBuffer(
-        "Alchemy image scale-down blit", &error);
+        can_blit ? "Alchemy image scale-down blit"
+                 : "Alchemy image scale-down bilinear render", &error);
     if (!command)
     {
         LL_WARNS("Metal") << "Could not create LLImageGL scale-down command: "
@@ -2011,12 +2026,28 @@ bool LLImageGL::preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 heig
         return false;
     }
 
-    ALMetalTextureCopy copy;
-    copy.source_mip_level = source_mip_level;
-    if (!destination->copyFrom(*command, *mMetalTexture, copy, &error) ||
-        (destination_descriptor.mipmap_level_count > 1 &&
-         !destination->generateMipmaps(*command, &error)) ||
-        !command->commit(&error))
+    bool encoded = false;
+    if (can_blit)
+    {
+        ALMetalTextureCopy copy;
+        copy.source_mip_level = source_mip_level;
+        encoded = destination->copyFrom(*command, *mMetalTexture, copy, &error) &&
+                  (destination_descriptor.mipmap_level_count <= 1 ||
+                   destination->generateMipmaps(*command, &error));
+    }
+    else
+    {
+        if (!sMetalTextureResampler)
+        {
+            sMetalTextureResampler = ALMetalTextureResampler::create(
+                *sImageMetalDevice, &error);
+        }
+        encoded = sMetalTextureResampler &&
+                  sMetalTextureResampler->encode(
+                      *command, *mMetalTexture, *destination, &error);
+    }
+
+    if (!encoded || !command->commit(&error))
     {
         LL_WARNS("Metal") << "Could not preserve LLImageGL scale-down in Metal: "
                            << error << LL_ENDL;
@@ -2024,13 +2055,16 @@ bool LLImageGL::preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 heig
     }
 
     mMetalTexture = std::move(destination);
+    std::atomic<bool>& report = can_blit
+        ? sMetalScaleDownReported : sMetalResampleReported;
     bool expected = false;
-    if (sMetalScaleDownReported.compare_exchange_strong(
-            expected, true, std::memory_order_relaxed))
+    if (report.compare_exchange_strong(expected, true, std::memory_order_relaxed))
     {
-        LL_INFOS("Metal") << "Production LLImageGL Metal scale-down blits are active; first result is "
-                           << width << "x" << height << " from source mip "
-                           << source_mip_level << LL_ENDL;
+        LL_INFOS("Metal") << "Production LLImageGL Metal scale-down "
+                           << (can_blit ? "blits" : "bilinear renders")
+                           << " are active; first result is " << width << "x" << height
+                           << (can_blit ? " from source mip " : " from level-zero source ")
+                           << (can_blit ? source_mip_level : 0) << LL_ENDL;
     }
     return true;
 }
@@ -4249,10 +4283,9 @@ bool LLImageGL::scaleDown(S32 desired_discard)
     mTexName = new_texname;
 
 #if LL_DARWIN
-    // The source image already has the same mip chain in Metal. Copy the
-    // selected mip into a right-sized native texture and regenerate its tail,
-    // preserving the mirror without a CPU round-trip. A no-mip GL-only
-    // resample has no exact blit source yet and deliberately remains absent.
+    // A mip-backed image copies the selected native level and regenerates its
+    // tail. A no-mip image uses the cached native bilinear pass in parallel
+    // with the temporary GL FBO path above. Neither requires a CPU round-trip.
     if (!preserveMetalScaleDown(static_cast<U32>(mip),
                                 static_cast<U32>(desired_width),
                                 static_cast<U32>(desired_height)))

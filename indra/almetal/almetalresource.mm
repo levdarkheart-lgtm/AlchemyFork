@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <utility>
 
 namespace
@@ -656,6 +657,8 @@ struct ALMetalTexture::Impl
     id<MTLDevice> device = nil;
     id<MTLTexture> texture = nil;
     id<MTLTexture> shader_view = nil;
+    id<MTLTexture> linear_view = nil;
+    std::mutex linear_view_mutex;
 };
 
 ALMetalTexture::ALMetalTexture(std::unique_ptr<Impl> impl, ALMetalTextureDescriptor descriptor)
@@ -738,7 +741,10 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::create(
             ? MTLHazardTrackingModeTracked : MTLHazardTrackingModeUntracked;
         native_descriptor.cpuCacheMode = MTLCPUCacheModeDefaultCache;
         native_descriptor.usage = textureUsage(descriptor.usage);
-        if (!hasIdentitySwizzle(descriptor))
+        const MTLPixelFormat linear_format = pixelFormat(
+            alMetalLinearFormat(descriptor.format));
+        const bool needs_linear_view = linear_format != native_descriptor.pixelFormat;
+        if (!hasIdentitySwizzle(descriptor) || needs_linear_view)
         {
             native_descriptor.usage |= MTLTextureUsagePixelFormatView;
         }
@@ -788,6 +794,48 @@ void* ALMetalTexture::nativeHandle() const noexcept
         return nullptr;
     }
     return (__bridge void*)(mImpl->shader_view ? mImpl->shader_view : mImpl->texture);
+}
+
+void* ALMetalTexture::nativeLinearHandle() const noexcept
+{
+    if (!mImpl)
+    {
+        return nullptr;
+    }
+    const MTLPixelFormat linear_format = pixelFormat(
+        alMetalLinearFormat(mDescriptor.format));
+    if (linear_format == pixelFormat(mDescriptor.format))
+    {
+        return nativeHandle();
+    }
+
+    // A viewer can own thousands of sRGB mirrors but only a small fraction
+    // are resized. Defer the compatible view object until a raw-storage
+    // operation actually needs it.
+    std::lock_guard<std::mutex> lock(mImpl->linear_view_mutex);
+    if (!mImpl->linear_view)
+    {
+        @autoreleasepool
+        {
+            const MTLTextureSwizzleChannels channels = MTLTextureSwizzleChannelsMake(
+                textureSwizzle(mDescriptor.swizzle[0]),
+                textureSwizzle(mDescriptor.swizzle[1]),
+                textureSwizzle(mDescriptor.swizzle[2]),
+                textureSwizzle(mDescriptor.swizzle[3]));
+            mImpl->linear_view = [mImpl->texture
+                newTextureViewWithPixelFormat:linear_format
+                                  textureType:mImpl->texture.textureType
+                                       levels:NSMakeRange(0, mDescriptor.mipmap_level_count)
+                                       slices:NSMakeRange(0, sliceCount(mDescriptor))
+                                      swizzle:channels];
+            if (mImpl->linear_view)
+            {
+                mImpl->linear_view.label = toNSString(
+                    mDescriptor.label + " linear storage view");
+            }
+        }
+    }
+    return (__bridge void*)mImpl->linear_view;
 }
 
 const ALMetalTextureDescriptor& ALMetalTexture::descriptor() const noexcept

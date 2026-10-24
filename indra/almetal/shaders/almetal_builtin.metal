@@ -43,6 +43,34 @@ kernel void almetal_test_sample_texture(
     result[0] = source.read(uint2(0, 0));
 }
 
+struct ALMetalResampleVaryings
+{
+    float4 position [[position]];
+    float2 texcoord;
+};
+
+vertex ALMetalResampleVaryings almetal_resample_vertex(uint vertex_id [[vertex_id]])
+{
+    // One oversized triangle covers the viewport. Mapping (0,0) to the
+    // upper-left matches Metal texture coordinates and preserves raw row
+    // orientation through a resize.
+    const float2 texcoord = float2((vertex_id << 1) & 2, vertex_id & 2);
+    ALMetalResampleVaryings output;
+    output.position = float4(texcoord.x * 2.0 - 1.0,
+                             1.0 - texcoord.y * 2.0,
+                             0.0, 1.0);
+    output.texcoord = texcoord;
+    return output;
+}
+
+fragment float4 almetal_resample_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]])
+{
+    return source.sample(source_sampler, input.texcoord);
+}
+
 struct ALMetalMatrices
 {
     float4x4 modelview;
