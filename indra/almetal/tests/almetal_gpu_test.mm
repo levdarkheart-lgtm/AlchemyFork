@@ -731,7 +731,7 @@ TEST_CASE("almetal: terrain paint bake consumes indexed viewer buffers and gener
     }
 }
 
-TEST_CASE("almetal: sculpt preview renders indexed depth and lighting into a native texture", "[almetal]")
+TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", "[almetal]")
 {
     @autoreleasepool
     {
@@ -739,7 +739,7 @@ TEST_CASE("almetal: sculpt preview renders indexed depth and lighting into a nat
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
-        auto renderer = ALMetalSculptPreviewRenderer::create(*device, &error);
+        auto renderer = ALMetalLitPreviewRenderer::create(*device, &error);
         INFO(error);
         REQUIRE(renderer);
 
@@ -794,7 +794,7 @@ TEST_CASE("almetal: sculpt preview renders indexed depth and lighting into a nat
         INFO(error);
         REQUIRE(destination_template);
 
-        ALMetalSculptPreviewBatch batch;
+        ALMetalLitPreviewBatch batch;
         batch.vertices = vertices.get();
         batch.position_offset = 0;
         batch.normal_offset = sizeof(positions);
@@ -821,11 +821,34 @@ TEST_CASE("almetal: sculpt preview renders indexed depth and lighting into a nat
 
         batch.normal_offset = vertex_bytes.size();
         CHECK_FALSE(renderer->render(batch, &error));
-        CHECK(error == "Metal sculpt preview geometry range exceeds its buffers");
+        CHECK(error == "Metal lit preview geometry range exceeds its buffers");
         batch.normal_offset = sizeof(positions);
         error.clear();
 
-        auto rendered = renderer->render(batch, &error);
+        ALMetalLitPreviewBatch batches[2] = {batch, batch};
+        batches[0].index_count = 3;
+        batches[1].index_offset = sizeof(std::uint16_t) * 3;
+        batches[1].index_count = 3;
+        std::memset(batches[0].light_direction, 0,
+                    sizeof(batches[0].light_direction));
+        std::memset(batches[0].light_diffuse, 0,
+                    sizeof(batches[0].light_diffuse));
+        batches[0].light_direction[0][1] = 1.f;
+        batches[0].light_diffuse[0][1] = 1.f;
+        std::memset(batches[1].light_direction, 0,
+                    sizeof(batches[1].light_direction));
+        std::memset(batches[1].light_diffuse, 0,
+                    sizeof(batches[1].light_diffuse));
+        batches[1].light_direction[0][0] = 1.f;
+        batches[1].light_diffuse[0][0] = 1.f;
+        ALMetalLitPreviewScene scene;
+        scene.batches = batches;
+        scene.batch_count = 2;
+        scene.destination_template = destination_template.get();
+        scene.clear_color[0] = 0.169f;
+        scene.clear_color[1] = 0.169f;
+        scene.clear_color[2] = 0.169f;
+        auto rendered = renderer->render(scene, &error);
         INFO(error);
         REQUIRE(rendered);
         CHECK(alMetalHasUsage(rendered->descriptor().usage,
@@ -840,9 +863,9 @@ TEST_CASE("almetal: sculpt preview renders indexed depth and lighting into a nat
         CHECK(pixels[center + 2] <= 1);
         CHECK(pixels[center + 3] == 255);
         const std::size_t corner = 4;
-        CHECK(std::abs(static_cast<int>(pixels[corner + 0]) - 38) <= 1);
-        CHECK(std::abs(static_cast<int>(pixels[corner + 1]) - 51) <= 1);
-        CHECK(std::abs(static_cast<int>(pixels[corner + 2]) - 77) <= 1);
+        CHECK(std::abs(static_cast<int>(pixels[corner + 0]) - 43) <= 1);
+        CHECK(std::abs(static_cast<int>(pixels[corner + 1]) - 43) <= 1);
+        CHECK(std::abs(static_cast<int>(pixels[corner + 2]) - 43) <= 1);
         CHECK(pixels[corner + 3] == 255);
     }
 }

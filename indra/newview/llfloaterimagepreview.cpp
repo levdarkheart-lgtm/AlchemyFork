@@ -1061,7 +1061,7 @@ bool LLImagePreviewSculpted::render()
     if (metal_device && destination_template && metal_vertices && metal_indices)
     {
         static ALMetalDevice* renderer_device = nullptr;
-        static std::unique_ptr<ALMetalSculptPreviewRenderer> renderer;
+        static std::unique_ptr<ALMetalLitPreviewRenderer> renderer;
         std::string error;
         if (renderer_device != metal_device)
         {
@@ -1070,7 +1070,7 @@ bool LLImagePreviewSculpted::render()
         }
         if (!renderer)
         {
-            renderer = ALMetalSculptPreviewRenderer::create(*metal_device, &error);
+            renderer = ALMetalLitPreviewRenderer::create(*metal_device, &error);
         }
 
         if (renderer)
@@ -1082,7 +1082,7 @@ bool LLImagePreviewSculpted::render()
             LLMatrix4a inverse_modelview;
             const bool inverse_ok = inverse_modelview.setAffineInverse(modelview);
 
-            ALMetalSculptPreviewBatch batch;
+            ALMetalLitPreviewBatch batch;
             batch.vertices = metal_vertices;
             batch.position_offset = mVertexBuffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
             batch.normal_offset = mVertexBuffer->getOffset(LLVertexBuffer::TYPE_NORMAL);

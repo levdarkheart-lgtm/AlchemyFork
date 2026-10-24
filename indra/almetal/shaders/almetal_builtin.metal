@@ -188,7 +188,7 @@ fragment float4 almetal_terrain_paint_fragment(
     return max(float4(stored, 1.0), float4(0.0));
 }
 
-struct ALMetalSculptPreviewConstants
+struct ALMetalLitPreviewConstants
 {
     float4x4 modelview_projection;
     float4 normal_matrix[3];
@@ -197,19 +197,19 @@ struct ALMetalSculptPreviewConstants
     float4 diffuse_color;
 };
 
-struct ALMetalSculptPreviewVaryings
+struct ALMetalLitPreviewVaryings
 {
     float4 position [[position]];
     float4 color;
 };
 
-vertex ALMetalSculptPreviewVaryings almetal_sculpt_preview_vertex(
+vertex ALMetalLitPreviewVaryings almetal_lit_preview_vertex(
     const device float4* positions [[buffer(0)]],
     const device float4* normals [[buffer(1)]],
-    constant ALMetalSculptPreviewConstants& constants [[buffer(2)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
     uint vertex_id [[vertex_id]])
 {
-    ALMetalSculptPreviewVaryings output;
+    ALMetalLitPreviewVaryings output;
     float4 clip_position = constants.modelview_projection *
                            float4(positions[vertex_id].xyz, 1.0);
     // Match glCopyTexSubImage's lower-left framebuffer row convention in the
@@ -233,8 +233,8 @@ vertex ALMetalSculptPreviewVaryings almetal_sculpt_preview_vertex(
     return output;
 }
 
-fragment float4 almetal_sculpt_preview_fragment(
-    ALMetalSculptPreviewVaryings input [[stage_in]])
+fragment float4 almetal_lit_preview_fragment(
+    ALMetalLitPreviewVaryings input [[stage_in]])
 {
     return max(input.color, float4(0.0));
 }

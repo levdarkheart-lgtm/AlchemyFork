@@ -62,6 +62,10 @@
 #include "llvoavatar.h"
 #include "pipeline.h"
 
+#if LL_DARWIN
+#include "../almetal/almetalsculptpreview.h"
+#endif
+
 // ui controls (from floater)
 #include "llbutton.h"
 #include "llcombobox.h"
@@ -93,6 +97,82 @@ static const F32 PREVIEW_ZOOM_LIMIT(10.f);
 static const std::string DEFAULT_PHYSICS_MESH_NAME = "default_physics_shape";
 
 const F32 SKIN_WEIGHT_CAMERA_DISTANCE = 16.f;
+
+#if LL_DARWIN
+namespace
+{
+    bool appendMetalModelPreviewBatch(
+        LLVertexBuffer& buffer,
+        std::vector<ALMetalLitPreviewBatch>& batches)
+    {
+        if (!buffer.hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+            !buffer.hasDataType(LLVertexBuffer::TYPE_NORMAL))
+        {
+            return false;
+        }
+
+        ALMetalBuffer* vertices = buffer.getMetalVertexBuffer();
+        ALMetalBuffer* indices = buffer.getMetalIndexBuffer();
+        if (!vertices || !indices)
+        {
+            return false;
+        }
+
+        const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+        LLMatrix4a inverse_modelview;
+        if (!inverse_modelview.setAffineInverse(modelview))
+        {
+            return false;
+        }
+        LLMatrix4a modelview_projection;
+        modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+
+        ALMetalLitPreviewBatch batch;
+        batch.vertices = vertices;
+        batch.position_offset = buffer.getOffset(LLVertexBuffer::TYPE_VERTEX);
+        batch.normal_offset = buffer.getOffset(LLVertexBuffer::TYPE_NORMAL);
+        batch.vertex_count = buffer.getNumVerts();
+        batch.indices = indices;
+        batch.index_type = buffer.getIndexStride() == 4
+            ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+        batch.index_count = buffer.getNumIndices();
+        std::memcpy(batch.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.modelview_projection));
+
+        const F32* inverse = inverse_modelview.getF32ptr();
+        for (U32 column = 0; column < 3; ++column)
+        {
+            batch.normal_matrix[column][0] = inverse[0 * 4 + column];
+            batch.normal_matrix[column][1] = inverse[1 * 4 + column];
+            batch.normal_matrix[column][2] = inverse[2 * 4 + column];
+        }
+
+        LLVector3 light_directions[3] = {
+            LLPipeline::PreviewDirection0,
+            LLPipeline::PreviewDirection1,
+            LLPipeline::PreviewDirection2,
+        };
+        const LLColor4 light_diffuse[3] = {
+            LLPipeline::PreviewDiffuse0,
+            LLPipeline::PreviewDiffuse1,
+            LLPipeline::PreviewDiffuse2,
+        };
+        for (U32 light = 0; light < 3; ++light)
+        {
+            light_directions[light].normVec();
+            std::memcpy(batch.light_direction[light],
+                        light_directions[light].mV, sizeof(F32) * 3);
+            std::memcpy(batch.light_diffuse[light],
+                        light_diffuse[light].mV, sizeof(F32) * 3);
+        }
+        std::memcpy(batch.diffuse_color, PREVIEW_BASE_COL.mV,
+                    sizeof(batch.diffuse_color));
+        batches.push_back(batch);
+        return true;
+    }
+}
+#endif
 
 LLViewerFetchedTexture* bindMaterialDiffuseTexture(const LLImportMaterial& material)
 {
@@ -3297,6 +3377,13 @@ bool LLModelPreview::render()
     bool show_skin_weight = mViewOption["show_skin_weight"];
     bool show_textures = mViewOption["show_textures"];
     bool show_physics = mViewOption["show_physics"];
+#if LL_DARWIN
+    mMetalPreview.reset();
+    bool metal_preview_eligible = !show_edges && !show_joint_positions &&
+                                  !show_skin_weight && !show_textures &&
+                                  !show_physics;
+    std::vector<ALMetalLitPreviewBatch> metal_preview_batches;
+#endif
 
     S32 width = getWidth();
     S32 height = getHeight();
@@ -3606,6 +3693,15 @@ bool LLModelPreview::render()
                         gGL.setLineWidth(1.f);
                     }
                     buffer->unmapBuffer();
+#if LL_DARWIN
+                    if (metal_preview_eligible &&
+                        !appendMetalModelPreviewBatch(*buffer,
+                                                     metal_preview_batches))
+                    {
+                        metal_preview_eligible = false;
+                        metal_preview_batches.clear();
+                    }
+#endif
                 }
                 gGL.popMatrix();
             }
@@ -3977,11 +4073,77 @@ bool LLModelPreview::render()
         }
     }
 
+#if LL_DARWIN
+    if (metal_preview_eligible && !metal_preview_batches.empty())
+    {
+        ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+        ALMetalTexture* destination_template = mGLTexturep.notNull()
+            ? mGLTexturep->getMetalTexture() : nullptr;
+        if (metal_device && destination_template)
+        {
+            static ALMetalDevice* renderer_device = nullptr;
+            static std::unique_ptr<ALMetalLitPreviewRenderer> renderer;
+            std::string error;
+            if (renderer_device != metal_device)
+            {
+                renderer.reset();
+                renderer_device = metal_device;
+            }
+            if (!renderer)
+            {
+                renderer = ALMetalLitPreviewRenderer::create(
+                    *metal_device, &error);
+            }
+            if (renderer)
+            {
+                ALMetalLitPreviewScene scene;
+                scene.batches = metal_preview_batches.data();
+                scene.batch_count = metal_preview_batches.size();
+                scene.destination_template = destination_template;
+                std::memcpy(scene.clear_color, PREVIEW_CANVAS_COL.mV,
+                            sizeof(scene.clear_color));
+                mMetalPreview = renderer->render(scene, &error);
+            }
+            if (!mMetalPreview)
+            {
+                LL_WARNS("Metal") << "Could not mirror the default model preview: "
+                                   << error << LL_ENDL;
+            }
+        }
+    }
+#endif
+
     gObjectPreviewProgram.unbind();
 
     gGL.popMatrix();
 
     return true;
+}
+
+void LLModelPreview::postRender(bool success)
+{
+    LLViewerDynamicTexture::postRender(success);
+#if LL_DARWIN
+    if (lastPostRenderSucceeded() && mMetalPreview)
+    {
+        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
+        {
+            static bool reported_native_preview = false;
+            if (!reported_native_preview)
+            {
+                LL_INFOS("Metal") << "Default static model previews own a native Metal render target"
+                                   << LL_ENDL;
+                reported_native_preview = true;
+            }
+        }
+        else
+        {
+            LL_WARNS("Metal") << "Could not publish the native model preview mirror"
+                               << LL_ENDL;
+        }
+    }
+    mMetalPreview.reset();
+#endif
 }
 
 void LLModelPreview::renderGroundPlane(float z_offset)

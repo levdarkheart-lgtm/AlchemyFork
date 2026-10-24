@@ -1,6 +1,6 @@
 /**
  * @file almetalsculptpreview.h
- * @brief Native Metal sculpt-image preview render pass.
+ * @brief Native Metal solid-lit upload preview render pass.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -17,7 +17,7 @@
 #include <memory>
 #include <string>
 
-struct ALMetalSculptPreviewBatch
+struct ALMetalLitPreviewBatch
 {
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
@@ -35,26 +35,37 @@ struct ALMetalSculptPreviewBatch
     float diffuse_color[4] = {1.f, 1.f, 1.f, 1.f};
 };
 
-// The sculpt upload preview is a deliberately narrow dynamic-texture owner:
-// an indexed position/normal mesh over a constant background. Keeping it here
-// avoids recreating the old generic framebuffer-copy abstraction in Metal.
-class ALMetalSculptPreviewRenderer final
+struct ALMetalLitPreviewScene
+{
+    const ALMetalLitPreviewBatch* batches = nullptr;
+    std::size_t batch_count = 0;
+    const ALMetalTexture* destination_template = nullptr;
+    float clear_color[4] = {0.15f, 0.20f, 0.30f, 1.0f};
+};
+
+// A deliberately narrow shared pass for solid-lit upload previews: indexed
+// position/normal meshes over a constant background. It is not a generic
+// framebuffer-copy abstraction; each concrete preview still owns its scene.
+class ALMetalLitPreviewRenderer final
 {
 public:
-    ALMetalSculptPreviewRenderer(const ALMetalSculptPreviewRenderer&) = delete;
-    ALMetalSculptPreviewRenderer& operator=(const ALMetalSculptPreviewRenderer&) = delete;
-    ~ALMetalSculptPreviewRenderer();
+    ALMetalLitPreviewRenderer(const ALMetalLitPreviewRenderer&) = delete;
+    ALMetalLitPreviewRenderer& operator=(const ALMetalLitPreviewRenderer&) = delete;
+    ~ALMetalLitPreviewRenderer();
 
-    static std::unique_ptr<ALMetalSculptPreviewRenderer> create(
+    static std::unique_ptr<ALMetalLitPreviewRenderer> create(
         const ALMetalDevice& device,
         std::string* error = nullptr);
 
     std::unique_ptr<ALMetalTexture> render(
-        const ALMetalSculptPreviewBatch& batch,
+        const ALMetalLitPreviewBatch& batch,
+        std::string* error = nullptr);
+    std::unique_ptr<ALMetalTexture> render(
+        const ALMetalLitPreviewScene& scene,
         std::string* error = nullptr);
 
 private:
     struct Impl;
-    explicit ALMetalSculptPreviewRenderer(std::unique_ptr<Impl> impl);
+    explicit ALMetalLitPreviewRenderer(std::unique_ptr<Impl> impl);
     std::unique_ptr<Impl> mImpl;
 };

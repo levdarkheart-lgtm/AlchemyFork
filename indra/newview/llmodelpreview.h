@@ -34,6 +34,12 @@
 #include "llmodelloader.h" //NUM_LOD
 #include "llmodel.h"
 
+#include <memory>
+
+#if LL_DARWIN
+class ALMetalTexture;
+#endif
+
 class LLJoint;
 class LLVOAvatar;
 class LLTextBox;
@@ -138,7 +144,8 @@ public:
     void setTexture(U32 name) { mTextureName = name; }
 
     void setPhysicsFromLOD(S32 lod);
-    bool render();
+    bool render() override;
+    void postRender(bool success) override;
     void update();
     void genBuffers(S32 lod, bool skinned);
     void clearBuffers();
@@ -146,7 +153,7 @@ public:
     void rotate(F32 yaw_radians, F32 pitch_radians);
     void zoom(F32 zoom_amt);
     void pan(F32 right, F32 up);
-    virtual bool needsRender() { return mNeedsUpdate; }
+    bool needsRender() override { return mNeedsUpdate; }
     void setPreviewLOD(S32 lod);
     void clearModel(S32 lod);
     void getJointAliases(JointMap& joint_map);
@@ -337,6 +344,9 @@ protected:
 
     LLPointer<LLVOAvatar>   mPreviewAvatar;
     LLCachedControl<bool>   mImporterDebug;
+#if LL_DARWIN
+    std::unique_ptr<ALMetalTexture> mMetalPreview;
+#endif
 };
 
 #endif  // LL_LLMODELPREVIEW_H
