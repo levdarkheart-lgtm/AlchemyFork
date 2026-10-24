@@ -222,6 +222,22 @@ static float4 almetal_lit_preview_clip_position(
     return almetal_clip_from_gl(clip_position);
 }
 
+static float4 almetal_lit_preview_rebased_clip_position(
+    float4 local_position,
+    float3 origin,
+    constant ALMetalLitPreviewConstants& constants)
+{
+    // Preserve objectSkinV.glsl's precision contract: the varying local
+    // position is transformed with w=0 and the region-scale origin with w=1.
+    // Adding them before the matrix multiply would quantize local mesh detail
+    // at large agent coordinates.
+    float4 clip_position =
+        constants.modelview_projection * float4(local_position.xyz, 0.0) +
+        constants.modelview_projection * float4(origin, 1.0);
+    clip_position.y = -clip_position.y;
+    return almetal_clip_from_gl(clip_position);
+}
+
 static ALMetalLitPreviewVaryings almetal_lit_preview_vertex_common(
     float4 position,
     float4 normal_value,
@@ -246,6 +262,63 @@ static ALMetalLitPreviewVaryings almetal_lit_preview_vertex_common(
     return output;
 }
 
+struct ALMetalLitPreviewSkinnedVertex
+{
+    float4 position;
+    float4 normal;
+};
+
+// Decode the viewer's object-skinning stream without changing its precision
+// contract. Palette element zero is the agent-space rebase origin; each joint
+// then contributes the three float4 columns packed by
+// LLVOAvatar::updateSkinInfoMatrixPalette().
+static ALMetalLitPreviewSkinnedVertex almetal_lit_preview_skin_vertex(
+    float4 position,
+    float4 normal_value,
+    float4 encoded_weights,
+    const device float4* skin_palette,
+    uint joint_count)
+{
+    float4 weights = fract(encoded_weights);
+    const float weight_sum = dot(weights, float4(1.0));
+    // Imported skin weights are guaranteed non-zero by LLModel::loadModel.
+    // Keep malformed data finite here so a preview cannot poison a frame.
+    weights = weight_sum > 0.0
+        ? weights / weight_sum : float4(1.0, 0.0, 0.0, 0.0);
+    const float4 clamped_indices = clamp(
+        floor(encoded_weights), float4(0.0),
+        float4(float(max(joint_count, 1u) - 1u)));
+    const uint4 indices = uint4(clamped_indices);
+
+    float4 column0 = 0.0;
+    float4 column1 = 0.0;
+    float4 column2 = 0.0;
+    for (uint influence = 0; influence < 4; ++influence)
+    {
+        const uint palette_base = 1u + indices[influence] * 3u;
+        column0 += skin_palette[palette_base] * weights[influence];
+        column1 += skin_palette[palette_base + 1u] * weights[influence];
+        column2 += skin_palette[palette_base + 2u] * weights[influence];
+    }
+
+    const float3x3 skin_matrix = float3x3(
+        column0.xyz, column1.xyz, column2.xyz);
+    ALMetalLitPreviewSkinnedVertex output;
+    output.position = float4(
+        skin_matrix * position.xyz +
+            float3(column0.w, column1.w, column2.w),
+        0.0);
+    // Match objectSkinV.glsl's cofactor transform. It is the inverse
+    // transpose times the determinant and is normalized by the shared lit
+    // preview path afterwards.
+    const float3x3 skin_normal_matrix = float3x3(
+        cross(skin_matrix[1], skin_matrix[2]),
+        cross(skin_matrix[2], skin_matrix[0]),
+        cross(skin_matrix[0], skin_matrix[1]));
+    output.normal = float4(skin_normal_matrix * normal_value.xyz, 0.0);
+    return output;
+}
+
 vertex ALMetalLitPreviewVaryings almetal_lit_preview_vertex(
     const device float4* positions [[buffer(0)]],
     const device float4* normals [[buffer(1)]],
@@ -254,6 +327,26 @@ vertex ALMetalLitPreviewVaryings almetal_lit_preview_vertex(
 {
     return almetal_lit_preview_vertex_common(
         positions[vertex_id], normals[vertex_id], constants);
+}
+
+vertex ALMetalLitPreviewVaryings almetal_lit_preview_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    const device float4* skin_palette [[buffer(7)]],
+    constant uint& joint_count [[buffer(8)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalLitPreviewSkinnedVertex skinned =
+        almetal_lit_preview_skin_vertex(
+            positions[vertex_id], normals[vertex_id],
+            encoded_weights[vertex_id], skin_palette, joint_count);
+    ALMetalLitPreviewVaryings output = almetal_lit_preview_vertex_common(
+        skinned.position, skinned.normal, constants);
+    output.position = almetal_lit_preview_rebased_clip_position(
+        skinned.position, skin_palette[0].xyz, constants);
+    return output;
 }
 
 fragment float4 almetal_lit_preview_fragment(
@@ -275,6 +368,31 @@ vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_textured_vertex(
     output.position = lit.position;
     output.color = lit.color;
     output.texcoord = texcoords[vertex_id];
+    return output;
+}
+
+vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_skinned_textured_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device float2* texcoords [[buffer(3)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    const device float4* skin_palette [[buffer(7)]],
+    constant uint& joint_count [[buffer(8)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalLitPreviewSkinnedVertex skinned =
+        almetal_lit_preview_skin_vertex(
+            positions[vertex_id], normals[vertex_id],
+            encoded_weights[vertex_id], skin_palette, joint_count);
+    const ALMetalLitPreviewVaryings lit = almetal_lit_preview_vertex_common(
+        skinned.position, skinned.normal, constants);
+    ALMetalLitPreviewTexturedVaryings output;
+    output.position = lit.position;
+    output.color = lit.color;
+    output.texcoord = texcoords[vertex_id];
+    output.position = almetal_lit_preview_rebased_clip_position(
+        skinned.position, skin_palette[0].xyz, constants);
     return output;
 }
 
@@ -330,6 +448,45 @@ static bool almetal_lit_preview_edge_triangle_is_back_facing(
     return ab.x * ac.y - ab.y * ac.x >= 0.0;
 }
 
+static bool almetal_lit_preview_skinned_edge_triangle_is_back_facing(
+    const device float4* positions,
+    const device float4* normals,
+    const device float4* encoded_weights,
+    const device float4* skin_palette,
+    uint joint_count,
+    uint i0,
+    uint i1,
+    uint i2,
+    constant ALMetalLitPreviewConstants& constants)
+{
+    const ALMetalLitPreviewSkinnedVertex v0 = almetal_lit_preview_skin_vertex(
+        positions[i0], normals[i0], encoded_weights[i0],
+        skin_palette, joint_count);
+    const ALMetalLitPreviewSkinnedVertex v1 = almetal_lit_preview_skin_vertex(
+        positions[i1], normals[i1], encoded_weights[i1],
+        skin_palette, joint_count);
+    const ALMetalLitPreviewSkinnedVertex v2 = almetal_lit_preview_skin_vertex(
+        positions[i2], normals[i2], encoded_weights[i2],
+        skin_palette, joint_count);
+    const float3 origin = skin_palette[0].xyz;
+    const float4 p0 = almetal_lit_preview_rebased_clip_position(
+        v0.position, origin, constants);
+    const float4 p1 = almetal_lit_preview_rebased_clip_position(
+        v1.position, origin, constants);
+    const float4 p2 = almetal_lit_preview_rebased_clip_position(
+        v2.position, origin, constants);
+    if (p0.w <= 0.0 || p1.w <= 0.0 || p2.w <= 0.0)
+    {
+        return false;
+    }
+    const float2 a = p0.xy / p0.w;
+    const float2 b = p1.xy / p1.w;
+    const float2 c = p2.xy / p2.w;
+    const float2 ab = b - a;
+    const float2 ac = c - a;
+    return ab.x * ac.y - ab.y * ac.x >= 0.0;
+}
+
 static ALMetalLitPreviewVaryings almetal_lit_preview_edge_vertex_common(
     const device float4* positions,
     const device float4* normals,
@@ -346,6 +503,35 @@ static ALMetalLitPreviewVaryings almetal_lit_preview_edge_vertex_common(
     {
         // A degenerate line entirely outside the clip volume reproduces the
         // triangle culling that GL applies before polygon-line rasterization.
+        output.position = float4(2.0, 2.0, 2.0, 1.0);
+    }
+    return output;
+}
+
+static ALMetalLitPreviewVaryings almetal_lit_preview_skinned_edge_vertex_common(
+    const device float4* positions,
+    const device float4* normals,
+    const device float4* encoded_weights,
+    const device float4* skin_palette,
+    uint joint_count,
+    uint source_id,
+    uint i0,
+    uint i1,
+    uint i2,
+    constant ALMetalLitPreviewConstants& constants)
+{
+    const ALMetalLitPreviewSkinnedVertex skinned =
+        almetal_lit_preview_skin_vertex(
+            positions[source_id], normals[source_id],
+            encoded_weights[source_id], skin_palette, joint_count);
+    ALMetalLitPreviewVaryings output = almetal_lit_preview_vertex_common(
+        skinned.position, skinned.normal, constants);
+    output.position = almetal_lit_preview_rebased_clip_position(
+        skinned.position, skin_palette[0].xyz, constants);
+    if (almetal_lit_preview_skinned_edge_triangle_is_back_facing(
+            positions, normals, encoded_weights, skin_palette, joint_count,
+            i0, i1, i2, constants))
+    {
         output.position = float4(2.0, 2.0, 2.0, 1.0);
     }
     return output;
@@ -382,6 +568,46 @@ vertex ALMetalLitPreviewVaryings almetal_lit_preview_edge_u32_vertex(
     return almetal_lit_preview_edge_vertex_common(
         positions, normals, source_id,
         indices[triangle_start], indices[triangle_start + 1u],
+        indices[triangle_start + 2u], constants);
+}
+
+vertex ALMetalLitPreviewVaryings almetal_lit_preview_skinned_edge_u16_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device ushort* indices [[buffer(4)]],
+    constant uint& index_element_offset [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    const device float4* skin_palette [[buffer(7)]],
+    constant uint& joint_count [[buffer(8)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint triangle_start = index_element_offset + (vertex_id / 6u) * 3u;
+    const uint source_id = indices[index_element_offset +
+                                   almetal_lit_preview_edge_index(vertex_id)];
+    return almetal_lit_preview_skinned_edge_vertex_common(
+        positions, normals, encoded_weights, skin_palette, joint_count,
+        source_id, indices[triangle_start], indices[triangle_start + 1u],
+        indices[triangle_start + 2u], constants);
+}
+
+vertex ALMetalLitPreviewVaryings almetal_lit_preview_skinned_edge_u32_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device uint* indices [[buffer(4)]],
+    constant uint& index_element_offset [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    const device float4* skin_palette [[buffer(7)]],
+    constant uint& joint_count [[buffer(8)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint triangle_start = index_element_offset + (vertex_id / 6u) * 3u;
+    const uint source_id = indices[index_element_offset +
+                                   almetal_lit_preview_edge_index(vertex_id)];
+    return almetal_lit_preview_skinned_edge_vertex_common(
+        positions, normals, encoded_weights, skin_palette, joint_count,
+        source_id, indices[triangle_start], indices[triangle_start + 1u],
         indices[triangle_start + 2u], constants);
 }
 

@@ -106,13 +106,26 @@ namespace
         const ALMetalTexture* texture,
         const LLColor4& diffuse_color,
         bool show_edges,
-        std::vector<ALMetalLitPreviewBatch>& batches)
+        std::vector<ALMetalLitPreviewBatch>& batches,
+        const float* skin_palette = nullptr,
+        std::size_t skin_palette_float_count = 0,
+        U32 skin_joint_count = 0)
     {
         if (!buffer.hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
             !buffer.hasDataType(LLVertexBuffer::TYPE_NORMAL))
         {
             LL_WARNS_ONCE("Metal") << "Static model preview retained GL because a "
                                       "batch has no native position/normal layout"
+                                   << LL_ENDL;
+            return false;
+        }
+        if (skin_palette &&
+            (!buffer.hasDataType(LLVertexBuffer::TYPE_WEIGHT4) ||
+             skin_palette_float_count !=
+                 4 + static_cast<std::size_t>(skin_joint_count) * 12))
+        {
+            LL_WARNS_ONCE("Metal") << "Skinned model preview retained GL because a "
+                                      "batch has incomplete weights or palette data"
                                    << LL_ENDL;
             return false;
         }
@@ -143,6 +156,14 @@ namespace
         batch.vertices = vertices;
         batch.position_offset = buffer.getOffset(LLVertexBuffer::TYPE_VERTEX);
         batch.normal_offset = buffer.getOffset(LLVertexBuffer::TYPE_NORMAL);
+        if (skin_palette)
+        {
+            batch.weight_offset = buffer.getOffset(
+                LLVertexBuffer::TYPE_WEIGHT4);
+            batch.skin_palette = skin_palette;
+            batch.skin_palette_float_count = skin_palette_float_count;
+            batch.skin_joint_count = skin_joint_count;
+        }
         if (texture)
         {
             if (!buffer.hasDataType(LLVertexBuffer::TYPE_TEXCOORD0))
@@ -3413,7 +3434,7 @@ bool LLModelPreview::render()
         mMetalPreviewDescriptor = std::make_unique<ALMetalTextureDescriptor>(
             mGLTexturep->getMetalTexture()->descriptor());
     }
-    bool metal_preview_eligible = !show_joint_positions && !show_skin_weight &&
+    bool metal_preview_eligible = !show_joint_positions &&
                                   !(show_physics && mHasDegenerate);
     std::vector<ALMetalLitPreviewBatch> metal_preview_batches;
 #endif
@@ -4098,6 +4119,34 @@ bool LLModelPreview::render()
 
                             gGL.getTextureSlot(0)->unbind();
 
+#if LL_DARWIN
+                            const LLVOAvatar::MatrixPaletteCache* metal_palette = nullptr;
+                            const ALMetalTexture* metal_diffuse_texture = nullptr;
+                            LLColor4 metal_diffuse_color = PREVIEW_BASE_COL;
+                            bool metal_has_diffuse_map = false;
+                            if (metal_preview_eligible)
+                            {
+                                const LLVOAvatar::MatrixPaletteCache& palette =
+                                    getPreviewAvatar()->updateSkinInfoMatrixPalette(skin);
+                                const std::size_t joint_count =
+                                    palette.mMatrixPalette.size();
+                                if (joint_count == 0 ||
+                                    palette.mGLMp.size() != 4 + joint_count * 12)
+                                {
+                                    LL_WARNS_ONCE("Metal")
+                                        << "Skinned model preview retained GL because its "
+                                           "joint palette is unavailable"
+                                        << LL_ENDL;
+                                    metal_preview_eligible = false;
+                                    metal_preview_batches.clear();
+                                }
+                                else
+                                {
+                                    metal_palette = &palette;
+                                }
+                            }
+#endif
+
                             if (show_textures)
                             {
                                 auto materialCnt = instance.mModel->mMaterialList.size();
@@ -4107,15 +4156,36 @@ bool LLModelPreview::render()
                                     const LLImportMaterial& material = instance.mMaterial[binding];
 
                                     gGL.diffuseColor4fv(material.mDiffuseColor.mV);
+                                    const bool has_diffuse_map =
+                                        !material.mDiffuseMapFilename.empty() ||
+                                        material.getDiffuseMap().notNull();
+#if LL_DARWIN
+                                    metal_diffuse_color = material.mDiffuseColor;
+                                    metal_has_diffuse_map = has_diffuse_map;
+#endif
 
                                     // Find the tex for this material, bind it, and add it to our set
                                     //
-                                    LLViewerFetchedTexture* tex = bindMaterialDiffuseTexture(material);
+                                    LLViewerFetchedTexture* tex = has_diffuse_map
+                                        ? bindMaterialDiffuseTexture(material) : nullptr;
                                     if (tex)
                                     {
                                         mTextureSet.insert(tex);
+#if LL_DARWIN
+                                        LLImageGL* image = tex->getGLTexture();
+                                        metal_diffuse_texture = image
+                                            ? image->getMetalTexture() : nullptr;
+#endif
                                     }
                                 }
+#if LL_DARWIN
+                                if (metal_has_diffuse_map &&
+                                    !metal_diffuse_texture)
+                                {
+                                    metal_preview_eligible = false;
+                                    metal_preview_batches.clear();
+                                }
+#endif
                             }
                             else
                             {
@@ -4139,6 +4209,21 @@ bool LLModelPreview::render()
                                 gGL.setPolygonMode(GL_FILL);
                                 gGL.setLineWidth(1.f);
                             }
+#if LL_DARWIN
+                            if (metal_preview_eligible && metal_palette &&
+                                !appendMetalModelPreviewBatch(
+                                    *buffer, metal_diffuse_texture,
+                                    metal_diffuse_color, show_edges,
+                                    metal_preview_batches,
+                                    metal_palette->mGLMp.data(),
+                                    metal_palette->mGLMp.size(),
+                                    static_cast<U32>(
+                                        metal_palette->mMatrixPalette.size())))
+                            {
+                                metal_preview_eligible = false;
+                                metal_preview_batches.clear();
+                            }
+#endif
                         }
                     }
                 }

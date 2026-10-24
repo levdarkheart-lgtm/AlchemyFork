@@ -23,6 +23,14 @@ struct ALMetalLitPreviewBatch
     std::size_t position_offset = 0;
     std::size_t normal_offset = 0;
     std::size_t texcoord_offset = 0;
+    // Optional object-skinning input. The weight stream uses Alchemy's packed
+    // float4 convention (integer joint index + fractional influence). The
+    // palette is one rebase-origin float4 followed by three float4 columns
+    // per joint, matching LLVOAvatar::MatrixPaletteCache::mGLMp.
+    std::size_t weight_offset = 0;
+    const float* skin_palette = nullptr;
+    std::size_t skin_palette_float_count = 0;
+    std::uint32_t skin_joint_count = 0;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;

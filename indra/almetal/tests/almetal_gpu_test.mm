@@ -763,13 +763,23 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             {{0.f, 0.f}}, {{0.f, 0.f}}, {{0.f, 0.f}},
             {{0.f, 0.f}}, {{0.f, 0.f}}, {{0.f, 0.f}},
         }};
+        const std::array<std::array<float, 4>, 6> skin_weights{{
+            {{0.5f, 0.f, 0.f, 0.f}}, {{0.5f, 0.f, 0.f, 0.f}},
+            {{0.5f, 0.f, 0.f, 0.f}}, {{0.5f, 0.f, 0.f, 0.f}},
+            {{0.5f, 0.f, 0.f, 0.f}}, {{0.5f, 0.f, 0.f, 0.f}},
+        }};
         std::array<std::uint8_t,
-                   sizeof(positions) + sizeof(normals) + sizeof(texcoords)>
+                   sizeof(positions) + sizeof(normals) + sizeof(texcoords) +
+                       sizeof(skin_weights)>
             vertex_bytes{};
         std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
         std::memcpy(vertex_bytes.data() + sizeof(positions), normals.data(), sizeof(normals));
         std::memcpy(vertex_bytes.data() + sizeof(positions) + sizeof(normals),
                     texcoords.data(), sizeof(texcoords));
+        const std::size_t skin_weight_offset =
+            sizeof(positions) + sizeof(normals) + sizeof(texcoords);
+        std::memcpy(vertex_bytes.data() + skin_weight_offset,
+                    skin_weights.data(), sizeof(skin_weights));
         const std::array<std::uint16_t, 9> indices{{
             0, 1, 2, 3, 4, 5,
             // The same near triangle with reversed winding verifies that the
@@ -990,6 +1000,81 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(overlay_pixels[center + 1] <= 1);
         CHECK(std::abs(static_cast<int>(overlay_pixels[center + 2]) - 128) <= 1);
         CHECK(std::abs(static_cast<int>(overlay_pixels[center + 3]) - 191) <= 1);
+
+        // Reproduce the viewer's rebased one-joint object-skinning palette.
+        // The joint contributes +0.25 X in its local translation and the
+        // separate origin contributes another +0.25 X, moving the triangle
+        // by exactly +0.5 in clip space. The textured and edge pipelines both
+        // consume the same packed integer-index/fractional-weight stream.
+        const std::array<float, 16> skin_palette{{
+            0.25f, 0.f, 0.f, 0.f,
+            1.f, 0.f, 0.f, 0.25f,
+            0.f, 1.f, 0.f, 0.f,
+            0.f, 0.f, 1.f, 0.f,
+        }};
+        ALMetalLitPreviewBatch skinned = batch;
+        skinned.index_offset = 0;
+        skinned.index_count = 3;
+        skinned.texture = diffuse_texture.get();
+        skinned.show_edges = true;
+        skinned.weight_offset = skin_weight_offset;
+        skinned.skin_palette = skin_palette.data();
+        skinned.skin_palette_float_count = skin_palette.size();
+        skinned.skin_joint_count = 1;
+        skinned.edge_color[0] = 1.f;
+        skinned.edge_color[1] = 0.f;
+        skinned.edge_color[2] = 0.f;
+        skinned.edge_color[3] = 1.f;
+
+        auto rendered_skinned = renderer->render(skinned, &error);
+        INFO(error);
+        REQUIRE(rendered_skinned);
+        std::array<std::uint8_t, 32 * 32 * 4> skinned_pixels{};
+        REQUIRE(rendered_skinned->readback(
+            *device, 0, 0, {}, skinned_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        const std::size_t translated_interior = (16 * 32 + 24) * 4;
+        CHECK(skinned_pixels[translated_interior + 0] <= 1);
+        CHECK(std::abs(static_cast<int>(
+            skinned_pixels[translated_interior + 1]) - 58) <= 1);
+        CHECK(skinned_pixels[translated_interior + 2] <= 1);
+        CHECK(skinned_pixels[translated_interior + 3] == 255);
+
+        // Keep local mesh detail out of the region-scale add. A single
+        // pre-MVP addition at 2^24 collapses the triangle's positive-X half;
+        // the rebased two-term transform preserves this interior sample.
+        std::array<float, 16> precision_palette = skin_palette;
+        constexpr float large_origin = 16777216.f;
+        precision_palette[0] = large_origin;
+        precision_palette[7] = 0.f;
+        ALMetalLitPreviewBatch precision_skinned = skinned;
+        precision_skinned.skin_palette = precision_palette.data();
+        precision_skinned.texture = nullptr;
+        precision_skinned.show_edges = false;
+        precision_skinned.modelview_projection[12] = -large_origin;
+        auto rendered_precision = renderer->render(precision_skinned, &error);
+        INFO(error);
+        REQUIRE(rendered_precision);
+        std::array<std::uint8_t, 32 * 32 * 4> precision_pixels{};
+        REQUIRE(rendered_precision->readback(
+            *device, 0, 0, {}, precision_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        std::size_t preserved_local_pixels = 0;
+        for (std::size_t pixel = 0; pixel < precision_pixels.size(); pixel += 4)
+        {
+            if (precision_pixels[pixel + 0] <= 1 &&
+                std::abs(static_cast<int>(precision_pixels[pixel + 1]) - 230) <= 1 &&
+                precision_pixels[pixel + 2] <= 1 &&
+                precision_pixels[pixel + 3] == 255)
+            {
+                ++preserved_local_pixels;
+            }
+        }
+        CHECK(preserved_local_pixels > 50);
+
+        skinned.skin_joint_count = 0;
+        CHECK_FALSE(renderer->render(skinned, &error));
+        CHECK(error == "Metal lit preview skinning data is invalid");
 
         ALMetalTextureDescriptor srgb_destination =
             destination_template->descriptor();

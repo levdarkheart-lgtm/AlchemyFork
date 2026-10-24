@@ -14,6 +14,7 @@
 #include <cstring>
 #include <limits>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -49,6 +50,14 @@ struct ALMetalLitPreviewRenderer::Impl
         std::unique_ptr<ALMetalRenderPipeline> textured_blended;
         std::unique_ptr<ALMetalRenderPipeline> edge_u16_blended;
         std::unique_ptr<ALMetalRenderPipeline> edge_u32_blended;
+        std::unique_ptr<ALMetalRenderPipeline> skinned_solid;
+        std::unique_ptr<ALMetalRenderPipeline> skinned_textured;
+        std::unique_ptr<ALMetalRenderPipeline> skinned_edge_u16;
+        std::unique_ptr<ALMetalRenderPipeline> skinned_edge_u32;
+        std::unique_ptr<ALMetalRenderPipeline> skinned_solid_blended;
+        std::unique_ptr<ALMetalRenderPipeline> skinned_textured_blended;
+        std::unique_ptr<ALMetalRenderPipeline> skinned_edge_u16_blended;
+        std::unique_ptr<ALMetalRenderPipeline> skinned_edge_u32_blended;
     };
 
     const ALMetalDevice* device = nullptr;
@@ -78,7 +87,11 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
         !impl->library->hasFunction("almetal_lit_preview_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_textured_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_edge_u16_vertex") ||
-        !impl->library->hasFunction("almetal_lit_preview_edge_u32_vertex"))
+        !impl->library->hasFunction("almetal_lit_preview_edge_u32_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_skinned_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_skinned_textured_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_skinned_edge_u16_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_skinned_edge_u32_vertex"))
     {
         if (impl->library)
         {
@@ -129,7 +142,23 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
             !create_pipeline(pipelines.edge_u32,
                              "almetal_lit_preview_edge_u32_vertex",
                              "almetal_lit_preview_fragment",
-                             "Alchemy U32 lit preview edge" + suffix + " pipeline"))
+                             "Alchemy U32 lit preview edge" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.skinned_solid,
+                             "almetal_lit_preview_skinned_vertex",
+                             "almetal_lit_preview_fragment",
+                             "Alchemy skinned lit preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.skinned_textured,
+                             "almetal_lit_preview_skinned_textured_vertex",
+                             "almetal_lit_preview_textured_fragment",
+                             "Alchemy skinned textured lit preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.skinned_edge_u16,
+                             "almetal_lit_preview_skinned_edge_u16_vertex",
+                             "almetal_lit_preview_fragment",
+                             "Alchemy skinned U16 lit preview edge" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.skinned_edge_u32,
+                             "almetal_lit_preview_skinned_edge_u32_vertex",
+                             "almetal_lit_preview_fragment",
+                             "Alchemy skinned U32 lit preview edge" + suffix + " pipeline"))
         {
             return nullptr;
         }
@@ -157,7 +186,23 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
             !create_pipeline(pipelines.edge_u32_blended,
                              "almetal_lit_preview_edge_u32_vertex",
                              "almetal_lit_preview_fragment",
-                             "Alchemy blended U32 lit preview edge" + suffix + " pipeline"))
+                             "Alchemy blended U32 lit preview edge" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.skinned_solid_blended,
+                             "almetal_lit_preview_skinned_vertex",
+                             "almetal_lit_preview_fragment",
+                             "Alchemy blended skinned lit preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.skinned_textured_blended,
+                             "almetal_lit_preview_skinned_textured_vertex",
+                             "almetal_lit_preview_textured_fragment",
+                             "Alchemy blended skinned textured lit preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.skinned_edge_u16_blended,
+                             "almetal_lit_preview_skinned_edge_u16_vertex",
+                             "almetal_lit_preview_fragment",
+                             "Alchemy blended skinned U16 lit preview edge" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.skinned_edge_u32_blended,
+                             "almetal_lit_preview_skinned_edge_u32_vertex",
+                             "almetal_lit_preview_fragment",
+                             "Alchemy blended skinned U32 lit preview edge" + suffix + " pipeline"))
         {
             return nullptr;
         }
@@ -234,6 +279,10 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
         return count <= (std::numeric_limits<std::size_t>::max() - offset) / stride &&
                offset + count * stride <= length;
     };
+    constexpr std::uint32_t max_skin_joints = 110;
+    std::vector<std::unique_ptr<ALMetalBuffer>> skin_palette_storage;
+    std::vector<const ALMetalBuffer*> skin_palette_buffers(
+        scene.batch_count, nullptr);
     for (std::size_t batch_index = 0; batch_index < scene.batch_count; ++batch_index)
     {
         const ALMetalLitPreviewBatch& batch = scene.batches[batch_index];
@@ -268,6 +317,60 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
              batch.index_count > std::numeric_limits<std::uint32_t>::max() / 2))
         {
             setError(error, "Metal lit preview edges require complete triangle indices");
+            return nullptr;
+        }
+        if (batch.skin_palette)
+        {
+            const std::size_t expected_palette_floats =
+                4 + static_cast<std::size_t>(batch.skin_joint_count) * 12;
+            if (batch.skin_joint_count == 0 ||
+                batch.skin_joint_count > max_skin_joints ||
+                batch.skin_palette_float_count != expected_palette_floats ||
+                !range_fits(batch.weight_offset, batch.vertex_count,
+                            vector_stride, batch.vertices->length()))
+            {
+                setError(error, "Metal lit preview skinning data is invalid");
+                return nullptr;
+            }
+
+            // A model normally contributes several material faces which all
+            // share one palette. Upload it once per scene rather than once per
+            // face; the command buffer retains the shared Metal resource.
+            for (std::size_t previous = 0; previous < batch_index; ++previous)
+            {
+                const ALMetalLitPreviewBatch& candidate = scene.batches[previous];
+                if (candidate.skin_palette == batch.skin_palette &&
+                    candidate.skin_palette_float_count ==
+                        batch.skin_palette_float_count &&
+                    candidate.skin_joint_count == batch.skin_joint_count)
+                {
+                    skin_palette_buffers[batch_index] =
+                        skin_palette_buffers[previous];
+                    break;
+                }
+            }
+            if (!skin_palette_buffers[batch_index])
+            {
+                ALMetalBufferDescriptor palette_descriptor;
+                palette_descriptor.length = expected_palette_floats * sizeof(float);
+                palette_descriptor.storage = ALMetalStorageMode::shared;
+                palette_descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+                palette_descriptor.label = "Alchemy lit preview skin palette";
+                auto palette_buffer = ALMetalBuffer::create(
+                    *mImpl->device, palette_descriptor, error);
+                if (!palette_buffer || !palette_buffer->write(
+                        0, batch.skin_palette, palette_descriptor.length, error))
+                {
+                    return nullptr;
+                }
+                skin_palette_buffers[batch_index] = palette_buffer.get();
+                skin_palette_storage.push_back(std::move(palette_buffer));
+            }
+        }
+        else if (batch.skin_palette_float_count != 0 ||
+                 batch.skin_joint_count != 0)
+        {
+            setError(error, "Metal lit preview skinning data is incomplete");
             return nullptr;
         }
     }
@@ -368,18 +471,37 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             std::memcpy(constants.diffuse_color, batch.diffuse_color,
                         sizeof(constants.diffuse_color));
 
+            const bool skinned = batch.skin_palette != nullptr;
             const ALMetalRenderPipeline* fill_pipeline = nullptr;
             if (batch.texture)
             {
-                fill_pipeline = batch.alpha_blending
-                    ? pipelines.textured_blended.get()
-                    : pipelines.textured.get();
+                if (skinned)
+                {
+                    fill_pipeline = batch.alpha_blending
+                        ? pipelines.skinned_textured_blended.get()
+                        : pipelines.skinned_textured.get();
+                }
+                else
+                {
+                    fill_pipeline = batch.alpha_blending
+                        ? pipelines.textured_blended.get()
+                        : pipelines.textured.get();
+                }
             }
             else
             {
-                fill_pipeline = batch.alpha_blending
-                    ? pipelines.solid_blended.get()
-                    : pipelines.solid.get();
+                if (skinned)
+                {
+                    fill_pipeline = batch.alpha_blending
+                        ? pipelines.skinned_solid_blended.get()
+                        : pipelines.skinned_solid.get();
+                }
+                else
+                {
+                    fill_pipeline = batch.alpha_blending
+                        ? pipelines.solid_blended.get()
+                        : pipelines.solid.get();
+                }
             }
             encoded =
                 encoder->setPipeline(*fill_pipeline, error) &&
@@ -388,6 +510,17 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 encoder->setVertexBuffer(1, *batch.vertices,
                                          batch.normal_offset, error) &&
                 encoder->setVertexBytes(2, &constants, sizeof(constants), error);
+            if (encoded && skinned)
+            {
+                encoded =
+                    encoder->setVertexBuffer(6, *batch.vertices,
+                                             batch.weight_offset, error) &&
+                    encoder->setVertexBuffer(
+                        7, *skin_palette_buffers[batch_index], 0, error) &&
+                    encoder->setVertexBytes(
+                        8, &batch.skin_joint_count,
+                        sizeof(batch.skin_joint_count), error);
+            }
             if (encoded && batch.texture)
             {
                 encoded =
@@ -415,15 +548,33 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 const ALMetalRenderPipeline* edge_pipeline = nullptr;
                 if (batch.index_type == ALMetalIndexType::uint32)
                 {
-                    edge_pipeline = batch.alpha_blending
-                        ? pipelines.edge_u32_blended.get()
-                        : pipelines.edge_u32.get();
+                    if (skinned)
+                    {
+                        edge_pipeline = batch.alpha_blending
+                            ? pipelines.skinned_edge_u32_blended.get()
+                            : pipelines.skinned_edge_u32.get();
+                    }
+                    else
+                    {
+                        edge_pipeline = batch.alpha_blending
+                            ? pipelines.edge_u32_blended.get()
+                            : pipelines.edge_u32.get();
+                    }
                 }
                 else
                 {
-                    edge_pipeline = batch.alpha_blending
-                        ? pipelines.edge_u16_blended.get()
-                        : pipelines.edge_u16.get();
+                    if (skinned)
+                    {
+                        edge_pipeline = batch.alpha_blending
+                            ? pipelines.skinned_edge_u16_blended.get()
+                            : pipelines.skinned_edge_u16.get();
+                    }
+                    else
+                    {
+                        edge_pipeline = batch.alpha_blending
+                            ? pipelines.edge_u16_blended.get()
+                            : pipelines.edge_u16.get();
+                    }
                 }
                 encoded =
                     encoder->setPipeline(*edge_pipeline, error) &&
@@ -435,7 +586,19 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                                             sizeof(edge_constants), error) &&
                     encoder->setVertexBuffer(4, *batch.indices, 0, error) &&
                     encoder->setVertexBytes(5, &index_element_offset,
-                                            sizeof(index_element_offset), error) &&
+                                            sizeof(index_element_offset), error);
+                if (encoded && skinned)
+                {
+                    encoded =
+                        encoder->setVertexBuffer(6, *batch.vertices,
+                                                 batch.weight_offset, error) &&
+                        encoder->setVertexBuffer(
+                            7, *skin_palette_buffers[batch_index], 0, error) &&
+                        encoder->setVertexBytes(
+                            8, &batch.skin_joint_count,
+                            sizeof(batch.skin_joint_count), error);
+                }
+                encoded = encoded &&
                     encoder->setCullMode(ALMetalCullMode::none, error) &&
                     encoder->draw(ALMetalPrimitiveType::line, 0,
                                   batch.index_count * 2, 1, error) &&
