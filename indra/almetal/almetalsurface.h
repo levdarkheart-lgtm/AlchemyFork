@@ -1,6 +1,6 @@
 /**
  * @file almetalsurface.h
- * @brief SDL Metal view and CAMetalLayer drawable lifecycle.
+ * @brief SDL-window Cocoa overlay and CAMetalLayer drawable lifecycle.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -39,6 +39,7 @@ struct ALMetalSurfaceConfig
     bool framebuffer_only = true;
     bool allows_next_drawable_timeout = true;
     bool extended_dynamic_range = false;
+    bool opaque = true;
 };
 
 struct ALMetalSurfaceInfo
@@ -51,6 +52,7 @@ struct ALMetalSurfaceInfo
     bool display_sync_enabled = true;
     bool framebuffer_only = true;
     bool extended_dynamic_range = false;
+    bool opaque = true;
 };
 
 class ALMetalDrawable final
@@ -87,8 +89,8 @@ public:
     ALMetalSurface& operator=(ALMetalSurface&&) = delete;
     ~ALMetalSurface();
 
-    // Creation, mutation and destruction of the SDL view happen on the main
-    // thread. Drawable acquisition and command encoding may happen elsewhere.
+    // Creation, mutation and destruction of the Cocoa overlay happen on the
+    // main thread. Drawable acquisition and command encoding may happen elsewhere.
     static std::unique_ptr<ALMetalSurface> create(
         SDL_Window* window,
         const ALMetalDevice& device,

@@ -819,7 +819,7 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
     }
 }
 
-TEST_CASE("almetal: an SDL CAMetalLayer resizes, supplies a drawable and presents it", "[almetal]")
+TEST_CASE("almetal: a CAMetalLayer overlay coexists with an SDL OpenGL window", "[almetal]")
 {
     @autoreleasepool
     {
@@ -834,16 +834,20 @@ TEST_CASE("almetal: an SDL CAMetalLayer resizes, supplies a drawable and present
         SDL_SetStringProperty(properties, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "Alchemy Metal surface test");
         SDL_SetNumberProperty(properties, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, 64);
         SDL_SetNumberProperty(properties, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, 48);
-        SDL_SetBooleanProperty(properties, SDL_PROP_WINDOW_CREATE_METAL_BOOLEAN, true);
+        SDL_SetBooleanProperty(properties, SDL_PROP_WINDOW_CREATE_OPENGL_BOOLEAN, true);
         SDL_SetBooleanProperty(properties, SDL_PROP_WINDOW_CREATE_HIDDEN_BOOLEAN, true);
         std::unique_ptr<SDL_Window, SDLWindowDeleter> window(SDL_CreateWindowWithProperties(properties));
         SDL_DestroyProperties(properties);
         INFO(SDL_GetError());
         REQUIRE(window);
+        CHECK((SDL_GetWindowFlags(window.get()) & SDL_WINDOW_OPENGL) != 0);
+        CHECK((SDL_GetWindowFlags(window.get()) & SDL_WINDOW_METAL) == 0);
 
         auto surface = ALMetalSurface::create(window.get(), *device, {}, &error);
         INFO(error);
         REQUIRE(surface);
+        CHECK((SDL_GetWindowFlags(window.get()) & SDL_WINDOW_OPENGL) != 0);
+        CHECK((SDL_GetWindowFlags(window.get()) & SDL_WINDOW_METAL) == 0);
         CHECK(surface->nativeLayer() != nullptr);
         CHECK(surface->info().width >= 64);
         CHECK(surface->info().height >= 48);
@@ -874,20 +878,45 @@ TEST_CASE("almetal: an SDL CAMetalLayer resizes, supplies a drawable and present
         auto command = device->makeCommandBuffer("Alchemy Metal drawable test", &error);
         INFO(error);
         REQUIRE(command);
-        MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
-        pass.colorAttachments[0].texture = (__bridge id<MTLTexture>)drawable->nativeTexture();
-        pass.colorAttachments[0].loadAction = MTLLoadActionClear;
-        pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-        pass.colorAttachments[0].clearColor = MTLClearColorMake(0.02, 0.04, 0.08, 1.0);
-        id<MTLRenderCommandEncoder> encoder = [nativeCommand(*command) renderCommandEncoderWithDescriptor:pass];
+        ALMetalRenderPassColorConfig pass_config;
+        pass_config.clear = {0.02, 0.04, 0.08, 1.0};
+        auto pass = ALMetalRenderPass::createForColorAttachment(
+            *device, drawable->nativeTexture(), ALMetalPixelFormat::bgra8_unorm,
+            pass_config, &error);
+        INFO(error);
+        REQUIRE(pass);
+        auto encoder = ALMetalRenderEncoder::begin(
+            *command, *pass, "Alchemy Metal drawable clear", &error);
+        INFO(error);
         REQUIRE(encoder);
-        [encoder endEncoding];
+        REQUIRE(encoder->end(&error));
 
         REQUIRE(surface->present(*command, *drawable, &error));
         CHECK(drawable->wasPresented());
         REQUIRE(command->commit(&error));
         REQUIRE(command->waitUntilCompleted(&error));
         INFO(error);
+
+        // A viewer frame without UI batches must still replace the previous
+        // overlay with a transparent drawable; otherwise hiding all UI would
+        // leave the last presented controls frozen above the GL world.
+        auto scheduler = ALMetalFrameScheduler::create(*device, 3, &error);
+        INFO(error);
+        REQUIRE(scheduler);
+        auto renderer = ALMetalUIRenderer::createForSurface(
+            *device, *scheduler, *surface, &error);
+        INFO(error);
+        REQUIRE(renderer);
+        REQUIRE(renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        const ALMetalUIRendererStats empty_stats = renderer->stats();
+        CHECK(empty_stats.frames == 1);
+        CHECK(empty_stats.batches == 0);
+        CHECK(empty_stats.vertices == 0);
+        CHECK(renderer->outputTexture() == nullptr);
+        renderer.reset();
 
         // The Metal view must go away before its SDL window.
         surface.reset();

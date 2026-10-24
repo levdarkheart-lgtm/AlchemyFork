@@ -47,6 +47,7 @@ class LLPreeditor;
 #if LL_DARWIN
 class ALMetalDevice;
 class ALMetalFrameScheduler;
+class ALMetalSurface;
 #endif
 
 class LLWindowSDL final : public LLWindow
@@ -196,6 +197,7 @@ public:
     // only after all render work and the window surface have shut down.
     ALMetalDevice* getMetalDevice() const noexcept { return mMetalDevice.get(); }
     ALMetalFrameScheduler* getMetalFrameScheduler() const noexcept { return mMetalFrames.get(); }
+    ALMetalSurface* getMetalSurface() const noexcept { return mMetalSurface.get(); }
 #endif
 
     // "wayland" / "x11" / "" - reports the SDL video driver this window is on.
@@ -330,6 +332,7 @@ protected:
 #if LL_DARWIN
     std::unique_ptr<ALMetalDevice> mMetalDevice;
     std::unique_ptr<ALMetalFrameScheduler> mMetalFrames;
+    std::unique_ptr<ALMetalSurface> mMetalSurface;
 #endif
     SDL_Cursor *mSDLCursors[UI_CURSOR_COUNT];
 

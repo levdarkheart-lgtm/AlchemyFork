@@ -2327,7 +2327,8 @@ LLViewerWindow::LLViewerWindow(const Params& p)
         LLVertexBuffer::setMetalDevice(sdl_window->getMetalDevice());
         LLImageGL::setMetalDevice(sdl_window->getMetalDevice());
         gGL.setMetalBackend(sdl_window->getMetalDevice(),
-                            sdl_window->getMetalFrameScheduler());
+                            sdl_window->getMetalFrameScheduler(),
+                            sdl_window->getMetalSurface());
     }
 #endif
     LLVertexBuffer::initClass(mWindow);

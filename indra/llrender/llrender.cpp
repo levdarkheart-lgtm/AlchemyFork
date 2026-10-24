@@ -43,6 +43,7 @@
 #include "llthread.h"
 
 #if LL_DARWIN
+#include "almetalsurface.h"
 #include "almetaluirenderer.h"
 #endif
 
@@ -637,11 +638,17 @@ void LLRender::shutdown()
     if (mMetalUIRenderer)
     {
         std::string error;
-        if (!mMetalUIRenderer->endFrame(&error))
+        if (mMetalUIRenderer->hasOpenFrame() && !mMetalUIRenderer->endFrame(&error))
         {
             LL_WARNS("Metal") << "Could not finish the native UI frame during shutdown: "
                                 << error << LL_ENDL;
         }
+        const ALMetalUIRendererStats stats = mMetalUIRenderer->stats();
+        LL_INFOS("Metal") << "Native production UI session encoded "
+                           << stats.frames << " frames, " << stats.batches
+                           << " batches and " << stats.vertices << " vertices; cache holds "
+                           << stats.pipeline_states << " pipeline states and "
+                           << stats.sampler_states << " sampler states" << LL_ENDL;
         mMetalUIRenderer.reset();
     }
 #endif
@@ -688,17 +695,28 @@ void LLRender::shutdown()
 }
 
 #if LL_DARWIN
-void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* scheduler)
+void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* scheduler,
+                               ALMetalSurface* surface)
 {
+    if (mMetalUIRenderer)
+    {
+        std::string error;
+        if (mMetalUIRenderer->hasOpenFrame() && !mMetalUIRenderer->endFrame(&error))
+        {
+            LL_WARNS("Metal") << "Could not finish the native UI frame while changing surfaces: "
+                                << error << LL_ENDL;
+        }
+    }
     mMetalUIRenderer.reset();
     mMetalUILoggedFrame = 0;
-    if (!device || !scheduler)
+    if (!device || !scheduler || !surface)
     {
         return;
     }
 
     std::string error;
-    mMetalUIRenderer = ALMetalUIRenderer::create(*device, *scheduler, &error);
+    mMetalUIRenderer = ALMetalUIRenderer::createForSurface(
+        *device, *scheduler, *surface, &error);
     if (!mMetalUIRenderer)
     {
         LL_WARNS("Metal") << "Native production UI renderer initialization failed: "
@@ -706,7 +724,9 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     }
     else
     {
-        LL_INFOS("Metal") << "Native production UI batch renderer initialized" << LL_ENDL;
+        LL_INFOS("Metal") << "Native production UI drawable renderer initialized at "
+                           << surface->info().width << "x" << surface->info().height
+                           << LL_ENDL;
     }
 }
 #endif
@@ -714,7 +734,7 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
 void LLRender::endFrame(U32 frames_ahead)
 {
 #if LL_DARWIN
-    if (mMetalUIRenderer && mMetalUIRenderer->hasOpenFrame())
+    if (mMetalUIRenderer)
     {
         std::string error;
         if (!mMetalUIRenderer->endFrame(&error))
@@ -1810,7 +1830,10 @@ void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
     if (texture_slot)
     {
         mSamplerCache.describe(texture_slot->mCurrSampler, sampler);
-        drawMetalUIBuffer(vb, mode, count, texture_slot->mCurrImage, sampler);
+        if (drawMetalUIBuffer(vb, mode, count, texture_slot->mCurrImage, sampler))
+        {
+            return;
+        }
     }
 #endif
     vb->setBuffer();
@@ -1818,12 +1841,12 @@ void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
 }
 
 #if LL_DARWIN
-void LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
+bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                                  LLImageGL* image, const ALSamplerDesc& sampler)
 {
     if (!mMetalUIRenderer || mUIOffset.empty() || !buffer || !image || count == 0)
     {
-        return;
+        return false;
     }
 
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
@@ -1838,13 +1861,13 @@ void LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     }
     else
     {
-        return;
+        return false;
     }
 
     ALMetalUIPrimitive primitive;
     if (!metal_ui_primitive(mode, primitive))
     {
-        return;
+        return false;
     }
     ALMetalBuffer* metal_buffer = buffer->getMetalVertexBuffer();
     ALMetalTexture* metal_texture = image->getMetalTexture();
@@ -1860,14 +1883,14 @@ void LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                                << (metal_texture ? "yes" : "no") << ", mask=0x"
                                << std::hex << buffer->getTypeMask() << std::dec << LL_ENDL;
         }
-        return;
+        return false;
     }
 
     const S32 viewport_width = mViewport[2];
     const S32 viewport_height = mViewport[3];
     if (viewport_width <= 0 || viewport_height <= 0)
     {
-        return;
+        return false;
     }
     const U32 target_width = static_cast<U32>(llmax(viewport_width, mViewport[0] + viewport_width));
     const U32 target_height = static_cast<U32>(llmax(viewport_height, mViewport[1] + viewport_height));
@@ -1953,7 +1976,9 @@ void LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
             LL_WARNS("Metal") << "Native production UI batch encoding failed: "
                                << error << LL_ENDL;
         }
+        return false;
     }
+    return true;
 }
 #endif
 

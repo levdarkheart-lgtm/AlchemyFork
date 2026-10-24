@@ -23,6 +23,8 @@
 #include <memory>
 #include <string>
 
+class ALMetalSurface;
+
 enum class ALMetalUIShader
 {
     textured,
@@ -113,9 +115,18 @@ public:
         ALMetalFrameScheduler& scheduler,
         std::string* error = nullptr);
 
-    // Encodes into one persistent offscreen target and one command buffer per
-    // viewer frame. The caller ends that frame after all production UI batches
-    // have passed through. No CPU/GPU synchronization occurs here.
+    // Production path: encode the same batches directly into the window's
+    // CAMetalLayer drawable and schedule presentation with the frame command
+    // buffer. The surface remains owned by the platform window.
+    static std::unique_ptr<ALMetalUIRenderer> createForSurface(
+        const ALMetalDevice& device,
+        ALMetalFrameScheduler& scheduler,
+        ALMetalSurface& surface,
+        std::string* error = nullptr);
+
+    // Encodes into one command buffer per viewer frame. The test path uses a
+    // persistent offscreen target; the production path acquires and presents
+    // one window drawable. No CPU/GPU synchronization occurs here.
     bool draw(const ALMetalUIBatch& batch, std::string* error = nullptr);
     bool endFrame(std::string* error = nullptr);
 

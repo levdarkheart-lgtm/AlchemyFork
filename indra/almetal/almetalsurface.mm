@@ -1,6 +1,6 @@
 /**
  * @file almetalsurface.mm
- * @brief SDL Metal view and CAMetalLayer drawable lifecycle.
+ * @brief SDL-window Cocoa overlay and CAMetalLayer drawable lifecycle.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -15,10 +15,42 @@
 #import <QuartzCore/CAMetalLayer.h>
 
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_metal.h>
 
 #include <algorithm>
 #include <utility>
+
+// SDL deliberately treats a window as owning only one graphics API: asking
+// SDL_Metal_CreateView() on an OpenGL window clears its OpenGL flag and unloads
+// the GL library. During the incremental port we need the native UI above the
+// still-GL world, so this non-interactive child view owns the CAMetalLayer
+// without changing SDL's window backend. It can disappear with this class once
+// the final world pass removes the migration GL context.
+@interface ALMetalOverlayView : NSView
+@end
+
+@implementation ALMetalOverlayView
+
++ (Class)layerClass
+{
+    return [CAMetalLayer class];
+}
+
+- (BOOL)wantsUpdateLayer
+{
+    return YES;
+}
+
+- (CALayer*)makeBackingLayer
+{
+    return [CAMetalLayer layer];
+}
+
+- (NSView*)hitTest:(NSPoint)point
+{
+    return nil;
+}
+
+@end
 
 namespace
 {
@@ -75,7 +107,7 @@ struct ALMetalDrawable::Impl
 struct ALMetalSurface::Impl
 {
     SDL_Window* window = nullptr;
-    SDL_MetalView view = nullptr;
+    NSView* view = nil;
     CAMetalLayer* layer = nil;
     id<MTLDevice> device = nil;
 };
@@ -131,19 +163,18 @@ ALMetalSurface::~ALMetalSurface()
     }
 
     mImpl->layer = nil;
-    SDL_MetalView view = mImpl->view;
-    mImpl->view = nullptr;
+    NSView* view = mImpl->view;
+    mImpl->view = nil;
     if ([NSThread isMainThread])
     {
-        SDL_Metal_DestroyView(view);
+        [view removeFromSuperview];
     }
     else
     {
-        // SDL documents view destruction as a main-thread operation. Viewer
-        // shutdown normally already is there; this keeps exceptional teardown
-        // deterministic rather than leaking or violating Cocoa's contract.
+        // AppKit view destruction is a main-thread operation. Viewer shutdown
+        // normally already is there; keep exceptional teardown deterministic.
         dispatch_sync(dispatch_get_main_queue(), ^{
-            SDL_Metal_DestroyView(view);
+            [view removeFromSuperview];
         });
     }
 }
@@ -182,19 +213,26 @@ std::unique_ptr<ALMetalSurface> ALMetalSurface::create(
             return nullptr;
         }
 
-        SDL_MetalView view = SDL_Metal_CreateView(window);
-        if (!view)
+        SDL_PropertiesID window_properties = SDL_GetWindowProperties(window);
+        NSWindow* native_window = (__bridge NSWindow*)SDL_GetPointerProperty(
+            window_properties, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
+        NSView* container = native_window.contentView;
+        if (!native_window || !container)
         {
-            setError(error, std::string("SDL_Metal_CreateView failed: ") + SDL_GetError());
+            setError(error, "SDL window does not expose its Cocoa window and content view");
             return nullptr;
         }
-        CAMetalLayer* layer = (__bridge CAMetalLayer*)SDL_Metal_GetLayer(view);
+
+        ALMetalOverlayView* view = [[ALMetalOverlayView alloc] initWithFrame:container.bounds];
+        view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        view.wantsLayer = YES;
+        CAMetalLayer* layer = (CAMetalLayer*)view.layer;
         if (!layer)
         {
-            SDL_Metal_DestroyView(view);
-            setError(error, "SDL_Metal_GetLayer returned no CAMetalLayer");
+            setError(error, "Could not create the Cocoa CAMetalLayer overlay");
             return nullptr;
         }
+        [container addSubview:view];
 
         id<MTLDevice> native_device = (__bridge id<MTLDevice>)device.nativeHandle();
         layer.device = native_device;
@@ -204,7 +242,7 @@ std::unique_ptr<ALMetalSurface> ALMetalSurface::create(
         layer.displaySyncEnabled = config.display_sync_enabled;
         layer.allowsNextDrawableTimeout = config.allows_next_drawable_timeout;
         layer.presentsWithTransaction = NO;
-        layer.opaque = YES;
+        layer.opaque = config.opaque;
         layer.wantsExtendedDynamicRangeContent = config.extended_dynamic_range;
 
         CGColorSpaceRef color_space = createColorSpace(config);
@@ -226,6 +264,7 @@ std::unique_ptr<ALMetalSurface> ALMetalSurface::create(
         info.display_sync_enabled = config.display_sync_enabled;
         info.framebuffer_only = config.framebuffer_only;
         info.extended_dynamic_range = config.extended_dynamic_range;
+        info.opaque = config.opaque;
 
         auto surface = std::unique_ptr<ALMetalSurface>(new ALMetalSurface(std::move(impl), info));
         if (!surface->resizeFromWindow(error))
@@ -285,6 +324,12 @@ bool ALMetalSurface::resize(std::uint32_t width, std::uint32_t height, std::stri
         setError(error, "Metal drawable size must be non-zero");
         return false;
     }
+
+    // NSView does not guarantee that a custom backing layer follows a window
+    // across Retina/non-Retina displays. drawableSize remains explicit pixels;
+    // contentsScale keeps Core Animation's logical composition in agreement.
+    const CGFloat backing_scale = mImpl->view.window.backingScaleFactor;
+    mImpl->layer.contentsScale = backing_scale > 0.0 ? backing_scale : 1.0;
     if (mInfo.width == width && mInfo.height == height)
     {
         return true;

@@ -730,10 +730,12 @@ void LLVertexBufferData::drawWithMatrix()
     gGL.loadMatrix(mTexture0);
 
 #if LL_DARWIN
-    gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc);
+    if (!gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc))
 #endif
-    mVB->setBuffer();
-    mVB->drawArrays(mMode, 0, mCount);
+    {
+        mVB->setBuffer();
+        mVB->drawArrays(mMode, 0, mCount);
+    }
 
     gGL.popMatrix();
     gGL.matrixMode(LLRender::MM_PROJECTION);
@@ -761,10 +763,12 @@ void LLVertexBufferData::draw()
     }
 
 #if LL_DARWIN
-    gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc);
+    if (!gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc))
 #endif
-    mVB->setBuffer();
-    mVB->drawArrays(mMode, 0, mCount);
+    {
+        mVB->setBuffer();
+        mVB->drawArrays(mMode, 0, mCount);
+    }
 }
 
 //============================================================================

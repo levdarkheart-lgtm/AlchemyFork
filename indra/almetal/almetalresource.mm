@@ -1087,6 +1087,61 @@ ALMetalRenderPass::ALMetalRenderPass(std::unique_ptr<Impl> impl)
 
 ALMetalRenderPass::~ALMetalRenderPass() = default;
 
+std::unique_ptr<ALMetalRenderPass> ALMetalRenderPass::createForColorAttachment(
+    const ALMetalDevice& device,
+    void* native_texture,
+    ALMetalPixelFormat format,
+    const ALMetalRenderPassColorConfig& config,
+    std::string* error)
+{
+    @autoreleasepool
+    {
+        id<MTLTexture> texture = (__bridge id<MTLTexture>)native_texture;
+        id<MTLDevice> native_device = (__bridge id<MTLDevice>)device.nativeHandle();
+        const MTLPixelFormat expected_format = pixelFormat(format);
+        if (!texture || !native_device || expected_format == MTLPixelFormatInvalid)
+        {
+            setError(error, "Metal drawable pass requires a texture, device and valid color format");
+            return nullptr;
+        }
+        if (texture.device != native_device)
+        {
+            setError(error, "Metal drawable texture belongs to a different device");
+            return nullptr;
+        }
+        if (texture.textureType != MTLTextureType2D || texture.sampleCount != 1 ||
+            (texture.usage & MTLTextureUsageRenderTarget) == 0)
+        {
+            setError(error, "Metal drawable pass requires a single-sample renderable 2D texture");
+            return nullptr;
+        }
+        if (texture.pixelFormat != expected_format)
+        {
+            setError(error, "Metal drawable texture format does not match the render pass");
+            return nullptr;
+        }
+        if (isResolveAction(config.store))
+        {
+            setError(error, "A single-sample Metal drawable cannot use a resolve store action");
+            return nullptr;
+        }
+
+        MTLRenderPassDescriptor* descriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+        MTLRenderPassColorAttachmentDescriptor* attachment = descriptor.colorAttachments[0];
+        attachment.texture = texture;
+        attachment.loadAction = loadAction(config.load);
+        attachment.storeAction = storeAction(config.store);
+        attachment.clearColor = MTLClearColorMake(config.clear.red,
+                                                   config.clear.green,
+                                                   config.clear.blue,
+                                                   config.clear.alpha);
+
+        auto impl = std::make_unique<ALMetalRenderPass::Impl>();
+        impl->descriptor = descriptor;
+        return std::unique_ptr<ALMetalRenderPass>(new ALMetalRenderPass(std::move(impl)));
+    }
+}
+
 void* ALMetalRenderPass::nativeHandle() const noexcept
 {
     return mImpl ? (__bridge void*)mImpl->descriptor : nullptr;

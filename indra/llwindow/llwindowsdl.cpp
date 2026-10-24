@@ -32,6 +32,7 @@
 #if LL_DARWIN
 #include "almetaldevice.h"
 #include "almetalframe.h"
+#include "almetalsurface.h"
 #endif
 
 #include "llwindowcallbacks.h"
@@ -570,6 +571,34 @@ bool LLWindowSDL::createContext(int x, int y, int width, int height, int bits, b
         return false;
     }
 
+    // Attach the production CAMetalLayer only after both the SDL window and
+    // the temporary migration GL context are live. The layer is owned by this
+    // window and must be removed before SDL destroys that window.
+#if LL_DARWIN
+    {
+        ALMetalSurfaceConfig surface_config;
+        surface_config.display_sync_enabled = enable_vsync;
+        // Until the world passes have moved, the native UI drawable composes
+        // over the existing GL world buffer. Migrated UI batches are no longer
+        // duplicated into GL, so this is one renderer per UI pixel.
+        surface_config.opaque = false;
+        std::string metal_error;
+        mMetalSurface = ALMetalSurface::create(
+            mWindow, *mMetalDevice, surface_config, &metal_error);
+        if (!mMetalSurface)
+        {
+            LL_WARNS("Metal") << "Production Metal surface creation failed: "
+                               << metal_error << LL_ENDL;
+            setupFailure("Alchemy could not attach its native Metal rendering surface.\n\n" +
+                         metal_error, "Metal surface error", OSMB_OK);
+            return false;
+        }
+        LL_INFOS("Metal") << "Production Metal surface attached at "
+                           << mMetalSurface->info().width << "x"
+                           << mMetalSurface->info().height << LL_ENDL;
+    }
+#endif
+
     // Enable vertical sync
     toggleVSync(enable_vsync);
 
@@ -686,6 +715,17 @@ void LLWindowSDL::toggleVSync(bool enable_vsync)
         LL_WARNS("Window") << "SDL_GL_SetSwapInterval(" << interval << ") failed: "
                            << SDL_GetError() << LL_ENDL;
     }
+#if LL_DARWIN
+    if (mMetalSurface)
+    {
+        std::string error;
+        if (!mMetalSurface->setDisplaySyncEnabled(enable_vsync, &error))
+        {
+            LL_WARNS("Metal") << "Could not update Metal display sync: "
+                               << error << LL_ENDL;
+        }
+    }
+#endif
 }
 
 // changing fullscreen resolution, or switching between windowed and fullscreen mode.
@@ -704,6 +744,9 @@ bool LLWindowSDL::switchContext(bool fullscreen, const LLCoordScreen &size, bool
         {
             gGLManager.initWGL();
             gGLManager.initGL();
+#if LL_DARWIN
+            gGL.setMetalBackend(mMetalDevice.get(), mMetalFrames.get(), mMetalSurface.get());
+#endif
 #if LL_WINDOWS
             LLDXHardware::updateVRAMBudgetFromDXGI();
 #endif
@@ -728,6 +771,23 @@ bool LLWindowSDL::switchContext(bool fullscreen, const LLCoordScreen &size, bool
 void LLWindowSDL::destroyContext()
 {
     LL_INFOS() << "destroyContext begins" << LL_ENDL;
+
+#if LL_DARWIN
+    // The renderer borrows the CAMetalLayer. End and detach it before the
+    // layer/view is destroyed, then drain submitted drawables so no command
+    // buffer can outlive its native surface.
+    gGL.setMetalBackend(nullptr, nullptr, nullptr);
+    if (mMetalFrames)
+    {
+        std::string metal_error;
+        if (!mMetalFrames->waitUntilIdle(5000, &metal_error))
+        {
+            LL_WARNS("Metal") << "Metal surface teardown did not reach idle: "
+                               << metal_error << LL_ENDL;
+        }
+    }
+    mMetalSurface.reset();
+#endif
 
     {
         // Reclaim any shared GL contexts a worker thread failed to release.
@@ -2584,6 +2644,17 @@ SDL_AppResult LLWindowSDL::handleEvent(const SDL_Event& event)
             S32 width = llmax(1, (S32)(llmax(event.window.data1, (S32)mMinWindowWidth) * pixel_density));
             S32 height = llmax(1, (S32)(llmax(event.window.data2, (S32)mMinWindowHeight) * pixel_density));
 
+#if LL_DARWIN
+            if (mMetalSurface)
+            {
+                std::string error;
+                if (!mMetalSurface->resize(static_cast<U32>(width), static_cast<U32>(height), &error))
+                {
+                    LL_WARNS("Metal") << "Could not resize Metal surface: "
+                                       << error << LL_ENDL;
+                }
+            }
+#endif
             mCallbacks->handleResize(this, width, height);
             break;
         }
@@ -2604,6 +2675,17 @@ SDL_AppResult LLWindowSDL::handleEvent(const SDL_Event& event)
             // through as a degenerate 0x0 resize.
             S32 width  = llmax(1, llmax(event.window.data1, (S32)mMinWindowWidthPx));
             S32 height = llmax(1, llmax(event.window.data2, (S32)mMinWindowHeightPx));
+#if LL_DARWIN
+            if (mMetalSurface)
+            {
+                std::string error;
+                if (!mMetalSurface->resize(static_cast<U32>(width), static_cast<U32>(height), &error))
+                {
+                    LL_WARNS("Metal") << "Could not resize Metal surface: "
+                                       << error << LL_ENDL;
+                }
+            }
+#endif
             mCallbacks->handleResize(this, width, height);
             break;
         }

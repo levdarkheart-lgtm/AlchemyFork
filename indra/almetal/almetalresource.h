@@ -350,6 +350,16 @@ public:
     ALMetalRenderPass& operator=(ALMetalRenderPass&&) = delete;
     ~ALMetalRenderPass();
 
+    // A swapchain drawable is externally owned rather than part of an
+    // ALMetalRenderTarget. Build the same typed pass wrapper around that one
+    // color attachment after validating device, format and renderability.
+    static std::unique_ptr<ALMetalRenderPass> createForColorAttachment(
+        const ALMetalDevice& device,
+        void* native_texture,
+        ALMetalPixelFormat format,
+        const ALMetalRenderPassColorConfig& config,
+        std::string* error = nullptr);
+
     void* nativeHandle() const noexcept;
 
 private:

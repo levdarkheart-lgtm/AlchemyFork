@@ -67,6 +67,7 @@ class LLVertexBufferData;
 #if LL_DARWIN
 class ALMetalDevice;
 class ALMetalFrameScheduler;
+class ALMetalSurface;
 class ALMetalUIRenderer;
 #endif
 
@@ -263,11 +264,12 @@ public:
     // Install the window-owned native device and bounded frame scheduler on
     // the main renderer. The renderer borrows both; the window outlives gGL's
     // explicit shutdown.
-    void setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* scheduler);
+    void setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* scheduler,
+                         ALMetalSurface* surface);
 
     // Mirror one already-materialized immediate/captured UI draw. Public only
     // because LLVertexBufferData replays outside LLRender::drawBuffer.
-    void drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
+    bool drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                            LLImageGL* image, const ALSamplerDesc& sampler);
 #endif
 

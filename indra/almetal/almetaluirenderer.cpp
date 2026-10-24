@@ -15,6 +15,8 @@
 
 #include "almetaluirenderer.h"
 
+#include "almetalsurface.h"
+
 #include <algorithm>
 #include <cstring>
 #include <utility>
@@ -115,8 +117,10 @@ struct ALMetalUIRenderer::Impl
 
     const ALMetalDevice* device = nullptr;
     ALMetalFrameScheduler* scheduler = nullptr;
+    ALMetalSurface* surface = nullptr;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::unique_ptr<ALMetalRenderTarget> target;
+    std::unique_ptr<ALMetalDrawable> drawable;
     std::unique_ptr<ALMetalRenderPass> pass;
     std::unique_ptr<ALMetalFrame> frame;
     std::unique_ptr<ALMetalRenderEncoder> encoder;
@@ -125,14 +129,30 @@ struct ALMetalUIRenderer::Impl
     ALMetalUIRendererStats totals{};
     std::uint64_t frame_batches = 0;
     std::uint64_t frame_vertices = 0;
+    std::uint32_t frame_width = 0;
+    std::uint32_t frame_height = 0;
 
     ALMetalRenderPipeline* pipeline(ALMetalUIShader shader,
                                     const ALMetalUIBlendState& blend,
                                     std::string* error)
     {
+        ALMetalUIBlendState target_blend = blend;
+        if (surface && target_blend.enabled &&
+            target_blend.source_rgb == ALMetalBlendFactor::source_alpha &&
+            target_blend.destination_rgb == ALMetalBlendFactor::one_minus_source_alpha &&
+            target_blend.source_alpha == ALMetalBlendFactor::source_alpha &&
+            target_blend.destination_alpha == ALMetalBlendFactor::one_minus_source_alpha)
+        {
+            // The transparent CAMetalLayer is composited as premultiplied
+            // color. RGB already becomes premultiplied through SrcAlpha, but
+            // applying SrcAlpha to alpha itself would square coverage. Preserve
+            // the GL color equation while emitting the mathematically matching
+            // source-over alpha for Core Animation.
+            target_blend.source_alpha = ALMetalBlendFactor::one;
+        }
         for (PipelineEntry& entry : pipelines)
         {
-            if (entry.shader == shader && sameBlend(entry.blend, blend))
+            if (entry.shader == shader && sameBlend(entry.blend, target_blend))
             {
                 return entry.state.get();
             }
@@ -146,14 +166,14 @@ struct ALMetalUIRenderer::Impl
             ? "almetal_ui_fragment" : "almetal_solid_fragment";
         descriptor.color_attachment_count = 1;
         descriptor.colors[0].format = ALMetalPixelFormat::bgra8_unorm;
-        descriptor.colors[0].blending_enabled = blend.enabled;
-        descriptor.colors[0].source_rgb = blend.source_rgb;
-        descriptor.colors[0].destination_rgb = blend.destination_rgb;
-        descriptor.colors[0].rgb_operation = blend.rgb_operation;
-        descriptor.colors[0].source_alpha = blend.source_alpha;
-        descriptor.colors[0].destination_alpha = blend.destination_alpha;
-        descriptor.colors[0].alpha_operation = blend.alpha_operation;
-        descriptor.colors[0].write_mask = blend.write_mask;
+        descriptor.colors[0].blending_enabled = target_blend.enabled;
+        descriptor.colors[0].source_rgb = target_blend.source_rgb;
+        descriptor.colors[0].destination_rgb = target_blend.destination_rgb;
+        descriptor.colors[0].rgb_operation = target_blend.rgb_operation;
+        descriptor.colors[0].source_alpha = target_blend.source_alpha;
+        descriptor.colors[0].destination_alpha = target_blend.destination_alpha;
+        descriptor.colors[0].alpha_operation = target_blend.alpha_operation;
+        descriptor.colors[0].write_mask = target_blend.write_mask;
         descriptor.label = shader == ALMetalUIShader::textured
             ? "Alchemy production UI pipeline" : "Alchemy production solid UI pipeline";
 
@@ -162,7 +182,7 @@ struct ALMetalUIRenderer::Impl
         {
             return nullptr;
         }
-        pipelines.push_back({shader, blend, std::move(state)});
+        pipelines.push_back({shader, target_blend, std::move(state)});
         totals.pipeline_states = pipelines.size();
         return pipelines.back().state.get();
     }
@@ -192,8 +212,7 @@ struct ALMetalUIRenderer::Impl
     {
         if (frame)
         {
-            if (!target || target->descriptor().width != width ||
-                target->descriptor().height != height)
+            if (frame_width != width || frame_height != height)
             {
                 setError(error, "Metal UI target dimensions changed inside one frame");
                 return false;
@@ -201,8 +220,22 @@ struct ALMetalUIRenderer::Impl
             return true;
         }
 
-        if (!target || target->descriptor().width != width ||
-            target->descriptor().height != height)
+        if (surface)
+        {
+            drawable = surface->nextDrawable(error);
+            if (!drawable)
+            {
+                return false;
+            }
+            if (drawable->width() != width || drawable->height() != height)
+            {
+                setError(error, "Metal UI batch dimensions do not match the window drawable");
+                drawable.reset();
+                return false;
+            }
+        }
+        else if (!target || target->descriptor().width != width ||
+                 target->descriptor().height != height)
         {
             ALMetalRenderTargetDescriptor descriptor;
             descriptor.width = width;
@@ -219,13 +252,25 @@ struct ALMetalUIRenderer::Impl
             }
         }
 
-        ALMetalRenderPassConfig config;
-        config.colors[0].load = ALMetalLoadAction::clear;
-        config.colors[0].store = ALMetalStoreAction::store;
-        config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
-        pass = target->makeRenderPass(config, error);
+        ALMetalRenderPassColorConfig color_config;
+        color_config.load = ALMetalLoadAction::clear;
+        color_config.store = ALMetalStoreAction::store;
+        color_config.clear = {0.0, 0.0, 0.0, 0.0};
+        if (surface)
+        {
+            pass = ALMetalRenderPass::createForColorAttachment(
+                *device, drawable->nativeTexture(), ALMetalPixelFormat::bgra8_unorm,
+                color_config, error);
+        }
+        else
+        {
+            ALMetalRenderPassConfig config;
+            config.colors[0] = color_config;
+            pass = target->makeRenderPass(config, error);
+        }
         if (!pass)
         {
+            drawable.reset();
             return false;
         }
 
@@ -233,6 +278,7 @@ struct ALMetalUIRenderer::Impl
         if (!frame)
         {
             pass.reset();
+            drawable.reset();
             return false;
         }
         encoder = ALMetalRenderEncoder::begin(
@@ -241,10 +287,13 @@ struct ALMetalUIRenderer::Impl
         {
             frame.reset();
             pass.reset();
+            drawable.reset();
             return false;
         }
         frame_batches = 0;
         frame_vertices = 0;
+        frame_width = width;
+        frame_height = height;
         return true;
     }
 };
@@ -280,6 +329,25 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::create(
     impl->scheduler = &scheduler;
     impl->library = std::move(library);
     return std::unique_ptr<ALMetalUIRenderer>(new ALMetalUIRenderer(std::move(impl)));
+}
+
+std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForSurface(
+    const ALMetalDevice& device,
+    ALMetalFrameScheduler& scheduler,
+    ALMetalSurface& surface,
+    std::string* error)
+{
+    if (surface.info().format != ALMetalSurfaceFormat::bgra8_unorm)
+    {
+        setError(error, "Production UI renderer requires a BGRA8-unorm Metal surface");
+        return nullptr;
+    }
+    auto renderer = create(device, scheduler, error);
+    if (renderer)
+    {
+        renderer->mImpl->surface = &surface;
+    }
+    return renderer;
 }
 
 bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
@@ -373,7 +441,19 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
 
 bool ALMetalUIRenderer::endFrame(std::string* error)
 {
-    if (!mImpl || !mImpl->frame)
+    if (!mImpl)
+    {
+        return true;
+    }
+    if (!mImpl->frame && mImpl->surface)
+    {
+        const ALMetalSurfaceInfo& info = mImpl->surface->info();
+        if (!mImpl->beginFrame(info.width, info.height, error))
+        {
+            return false;
+        }
+    }
+    if (!mImpl->frame)
     {
         return true;
     }
@@ -382,17 +462,29 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         mImpl->encoder.reset();
         mImpl->frame.reset();
         mImpl->pass.reset();
+        mImpl->drawable.reset();
         return false;
     }
     mImpl->encoder.reset();
+    if (mImpl->surface &&
+        (!mImpl->drawable ||
+         !mImpl->surface->present(mImpl->frame->commandBuffer(), *mImpl->drawable, error)))
+    {
+        mImpl->frame.reset();
+        mImpl->pass.reset();
+        mImpl->drawable.reset();
+        return false;
+    }
     if (!mImpl->scheduler->submit(*mImpl->frame, error))
     {
         mImpl->frame.reset();
         mImpl->pass.reset();
+        mImpl->drawable.reset();
         return false;
     }
     mImpl->frame.reset();
     mImpl->pass.reset();
+    mImpl->drawable.reset();
     ++mImpl->totals.frames;
     mImpl->totals.batches += mImpl->frame_batches;
     mImpl->totals.vertices += mImpl->frame_vertices;
