@@ -70,6 +70,8 @@ if(AL_USE_SDL_WINDOW)
 endif()
 
 if(DARWIN)
+  target_link_libraries(llwindow PRIVATE almetal)
+
   # Objective-C++ helper that fixes up SDL's auto-created Cocoa menu bar
   # (strips the Cmd+W shortcut off its default Window > Close item); init_sdl
   # calls it.

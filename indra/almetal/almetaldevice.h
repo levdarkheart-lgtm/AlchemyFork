@@ -1,0 +1,113 @@
+/**
+ * @file almetaldevice.h
+ * @brief Apple Silicon Metal device, queue and command-buffer ownership.
+ *
+ * $LicenseInfo:firstyear=2026&license=viewerlgpl$
+ * Alchemy Viewer Source Code
+ * Copyright (C) 2026, Alchemy Viewer Project
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ * $/LicenseInfo$
+ */
+
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+
+struct ALMetalDeviceInfo
+{
+    std::string name;
+    std::uint64_t registry_id = 0;
+    std::uint64_t recommended_working_set_size = 0;
+    std::uint64_t max_buffer_length = 0;
+    std::uint64_t current_allocated_size = 0;
+    std::uint32_t highest_apple_family = 0;
+    std::uint32_t highest_mac_family = 0;
+    std::uint32_t max_threads_per_threadgroup_width = 0;
+    std::uint32_t max_threads_per_threadgroup_height = 0;
+    std::uint32_t max_threads_per_threadgroup_depth = 0;
+    bool unified_memory = false;
+    bool low_power = false;
+    bool removable = false;
+    bool headless = false;
+};
+
+enum class ALMetalCommandStatus
+{
+    not_enqueued,
+    enqueued,
+    committed,
+    scheduled,
+    completed,
+    error,
+    unknown,
+};
+
+class ALMetalCommandBuffer final
+{
+public:
+    ALMetalCommandBuffer(const ALMetalCommandBuffer&) = delete;
+    ALMetalCommandBuffer& operator=(const ALMetalCommandBuffer&) = delete;
+    ALMetalCommandBuffer(ALMetalCommandBuffer&&) = delete;
+    ALMetalCommandBuffer& operator=(ALMetalCommandBuffer&&) = delete;
+    ~ALMetalCommandBuffer();
+
+    // Non-owning Objective-C handles. Only Objective-C++ encoder code should
+    // bridge these to id<MTLCommandBuffer>/id<MTLDevice>; their lifetime is
+    // bounded by this wrapper.
+    void* nativeHandle() const noexcept;
+    void* nativeDevice() const noexcept;
+
+    ALMetalCommandStatus status() const noexcept;
+    bool isCommitted() const noexcept;
+    std::string errorDescription() const;
+
+    bool commit(std::string* error = nullptr);
+    bool waitUntilCompleted(std::string* error = nullptr);
+    bool commitAndWait(std::string* error = nullptr);
+
+private:
+    struct Impl;
+    explicit ALMetalCommandBuffer(std::unique_ptr<Impl> impl);
+    std::unique_ptr<Impl> mImpl;
+
+    friend class ALMetalDevice;
+};
+
+class ALMetalDevice final
+{
+public:
+    ALMetalDevice(const ALMetalDevice&) = delete;
+    ALMetalDevice& operator=(const ALMetalDevice&) = delete;
+    ALMetalDevice(ALMetalDevice&&) = delete;
+    ALMetalDevice& operator=(ALMetalDevice&&) = delete;
+    ~ALMetalDevice();
+
+    // Fails closed when the process is not native arm64 or the selected Metal
+    // device is not a built-in unified-memory Apple GPU.
+    static std::unique_ptr<ALMetalDevice> create(std::string* error = nullptr);
+
+    const ALMetalDeviceInfo& info() const noexcept;
+    void* nativeHandle() const noexcept;
+    void* nativeCommandQueue() const noexcept;
+
+    std::unique_ptr<ALMetalCommandBuffer> makeCommandBuffer(
+        const std::string& label,
+        std::string* error = nullptr) const;
+
+    // Submit an empty command buffer and wait for it. This is an explicit
+    // shutdown/testing primitive, not a per-frame synchronization path.
+    bool waitUntilIdle(std::string* error = nullptr) const;
+
+private:
+    struct Impl;
+    explicit ALMetalDevice(std::unique_ptr<Impl> impl, ALMetalDeviceInfo info);
+    std::unique_ptr<Impl> mImpl;
+    ALMetalDeviceInfo mInfo;
+};

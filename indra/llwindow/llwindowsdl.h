@@ -33,6 +33,7 @@
 #include "lltimer.h"
 #include "llmutex.h"
 
+#include <memory>
 #include <set>
 
 #include "SDL3/SDL.h"
@@ -43,6 +44,9 @@
 #endif
 
 class LLPreeditor;
+#if LL_DARWIN
+class ALMetalDevice;
+#endif
 
 class LLWindowSDL final : public LLWindow
 {
@@ -185,6 +189,13 @@ public:
 
     void *getPlatformWindow() override;
 
+#if LL_DARWIN
+    // The one native Metal device/queue owned for this window's complete
+    // lifetime. Render infrastructure borrows it; LLWindowSDL destroys it
+    // only after all render work and the window surface have shut down.
+    ALMetalDevice* getMetalDevice() const noexcept { return mMetalDevice.get(); }
+#endif
+
     // "wayland" / "x11" / "" - reports the SDL video driver this window is on.
     std::string getDisplayServer() const override;
 
@@ -314,6 +325,9 @@ protected:
     S32 mReallyCapturedCount = 0;
     SDL_Window *mWindow = nullptr;
     SDL_GLContext mContext = nullptr;
+#if LL_DARWIN
+    std::unique_ptr<ALMetalDevice> mMetalDevice;
+#endif
     SDL_Cursor *mSDLCursors[UI_CURSOR_COUNT];
 
     std::string mWindowTitle;

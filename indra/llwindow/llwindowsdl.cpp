@@ -29,6 +29,10 @@
 
 #include "llwindowsdl.h"
 
+#if LL_DARWIN
+#include "almetaldevice.h"
+#endif
+
 #include "llwindowcallbacks.h"
 #include "llkeyboardsdl.h"
 
@@ -170,6 +174,29 @@ LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
     // gWindowImplementation. If we set this after createContext, the error
     // dialog runs unparented.
     gWindowImplementation = this;
+
+#if LL_DARWIN
+    // Establish the native renderer's single device and queue at the same
+    // ownership boundary as the platform window. This branch still creates
+    // its temporary GL migration context until every render pass has moved;
+    // that context does not own or select a second Metal device.
+    std::string metal_error;
+    mMetalDevice = ALMetalDevice::create(&metal_error);
+    if (!mMetalDevice)
+    {
+        LL_WARNS("Metal") << "Native Metal initialization failed: " << metal_error << LL_ENDL;
+        setupFailure("Alchemy requires a built-in Apple Silicon Metal GPU.\n\n" + metal_error,
+                     "Metal initialization error", OSMB_OK);
+        return;
+    }
+    const ALMetalDeviceInfo& metal_info = mMetalDevice->info();
+    LL_INFOS("Metal") << "Metal device: " << metal_info.name
+                       << ", registry " << metal_info.registry_id
+                       << ", Apple family " << metal_info.highest_apple_family
+                       << ", unified memory " << (metal_info.unified_memory ? "yes" : "no")
+                       << ", recommended working set " << metal_info.recommended_working_set_size
+                       << " bytes" << LL_ENDL;
+#endif
 
     // Create the GL context and set it up for windowed or fullscreen, as appropriate.
     if(createContext(x, y, width, height, 32, fullscreen, enable_vsync))
