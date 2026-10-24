@@ -28,6 +28,11 @@
 
 #include "llsys.h"
 #include "llvertexbuffer.h"
+
+#if LL_DARWIN
+#include "almetaldevice.h"
+#include "almetalresource.h"
+#endif
 // #include "llrender.h"
 #include "llglheaders.h"
 #include "llrender.h"
@@ -1104,6 +1109,46 @@ void LLVertexBuffer::touchContents()
 // NOTE: must not be LLPointer<LLVertexBuffer> to avoid breaking non-ref-counted LLVertexBuffer instances
 static std::vector<LLVertexBuffer*> sMappedBuffers;
 
+#if LL_DARWIN
+static ALMetalDevice* sMetalDevice = nullptr;
+static std::atomic<bool> sMetalMirrorReported{false};
+
+void LLVertexBuffer::setMetalDevice(ALMetalDevice* device)
+{
+    sMetalDevice = device;
+}
+
+static std::unique_ptr<ALMetalBuffer> allocate_metal_buffer(U32 size, const char* label)
+{
+    if (!sMetalDevice || size == 0)
+    {
+        return nullptr;
+    }
+
+    ALMetalBufferDescriptor descriptor;
+    descriptor.length = size;
+    descriptor.storage = ALMetalStorageMode::shared;
+    descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+    descriptor.label = label;
+    std::string error;
+    auto buffer = ALMetalBuffer::create(*sMetalDevice, descriptor, &error);
+    if (!buffer)
+    {
+        LL_WARNS("Metal") << "Could not allocate " << label << ": " << error << LL_ENDL;
+    }
+    else
+    {
+        bool expected = false;
+        if (sMetalMirrorReported.compare_exchange_strong(expected, true, std::memory_order_relaxed))
+        {
+            LL_INFOS("Metal") << "Production LLVertexBuffer Metal mirrors are active; first allocation "
+                               << label << " is " << size << " bytes" << LL_ENDL;
+        }
+    }
+    return buffer;
+}
+#endif
+
 //static
 void LLVertexBuffer::flushBuffers()
 {
@@ -1234,6 +1279,14 @@ bool LLVertexBuffer::createGLBuffer(U32 size)
 
     genBuffer(size);
 
+#if LL_DARWIN
+    mMetalBuffer = allocate_metal_buffer(size, "Alchemy vertex data");
+    if (sMetalDevice && !mMetalBuffer)
+    {
+        success = false;
+    }
+#endif
+
     if (!mMappedData)
     {
         success = false;
@@ -1257,6 +1310,14 @@ bool LLVertexBuffer::createGLIndices(U32 size)
 
     genIndices(size);
 
+#if LL_DARWIN
+    mMetalIndices = allocate_metal_buffer(size, "Alchemy index data");
+    if (sMetalDevice && !mMetalIndices)
+    {
+        success = false;
+    }
+#endif
+
     if (!mMappedIndexData)
     {
         success = false;
@@ -1266,6 +1327,9 @@ bool LLVertexBuffer::createGLIndices(U32 size)
 
 void LLVertexBuffer::destroyGLBuffer()
 {
+#if LL_DARWIN
+    mMetalBuffer.reset();
+#endif
     if (mGLBuffer || mMappedData)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
@@ -1283,6 +1347,9 @@ void LLVertexBuffer::destroyGLBuffer()
 
 void LLVertexBuffer::destroyGLIndices()
 {
+#if LL_DARWIN
+    mMetalIndices.reset();
+#endif
     if (mGLIndices || mMappedIndexData)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
@@ -1571,6 +1638,16 @@ void LLVertexBuffer::_unmapBuffer()
         STOP_GLERROR;
         if (mMappedData && (mVerticesWritten || !mGLBuffer))
         {
+#if LL_DARWIN
+            if (mMetalBuffer)
+            {
+                std::string error;
+                if (!mMetalBuffer->write(0, mMappedData, mSize, &error))
+                {
+                    LL_WARNS("Metal") << "Could not upload vertex data: " << error << LL_ENDL;
+                }
+            }
+#endif
             if (!mGLBuffer)
             {
                 mGLBuffer = gen_buffer();
@@ -1587,6 +1664,16 @@ void LLVertexBuffer::_unmapBuffer()
 
         if (mMappedIndexData && (mIndicesWritten || !mGLIndices))
         {
+#if LL_DARWIN
+            if (mMetalIndices)
+            {
+                std::string error;
+                if (!mMetalIndices->write(0, mMappedIndexData, mIndicesSize, &error))
+                {
+                    LL_WARNS("Metal") << "Could not upload index data: " << error << LL_ENDL;
+                }
+            }
+#endif
             if (!mGLIndices)
             {
                 mGLIndices = gen_buffer();

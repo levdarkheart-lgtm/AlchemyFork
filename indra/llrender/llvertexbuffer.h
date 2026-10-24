@@ -38,6 +38,7 @@
 #include <set>
 #include <vector>
 #include <list>
+#include <memory>
 #include "llmatrix4a.h"
 
 #define LL_MAX_VERTEX_ATTRIB_LOCATION 64
@@ -55,6 +56,10 @@
 // base class
 class LLPrivateMemoryPool;
 class LLVertexBuffer;
+#if LL_DARWIN
+class ALMetalBuffer;
+class ALMetalDevice;
+#endif
 
 class LLVertexBufferData
 {
@@ -109,6 +114,9 @@ public:
 
     static void initClass(LLWindow* window);
     static void cleanupClass();
+#if LL_DARWIN
+    static void setMetalDevice(ALMetalDevice* device);
+#endif
     static void setupClientArrays(U32 data_mask);
     static void drawArrays(U32 mode, const std::vector<LLVector3>& pos);
     static void drawElements(U32 mode, const LLVector4a* pos, const LLVector2* tc, U32 num_indices, const U16* indicesp);
@@ -264,6 +272,11 @@ public:
     U8* getMappedIndices() const            { return mMappedIndexData; }
     U32 getOffset(AttributeType type) const { return mOffsets[type]; }
 
+#if LL_DARWIN
+    ALMetalBuffer* getMetalVertexBuffer() const noexcept { return mMetalBuffer.get(); }
+    ALMetalBuffer* getMetalIndexBuffer() const noexcept { return mMetalIndices.get(); }
+#endif
+
     // What the buffer holds, as a value no buffer has held before: taken whenever its stores are allocated, mapped for
     // writing or written. A pass that keeps what it drew tells by it whether the geometry it drew is as it was.
     U64 getContentStamp() const             { return mContentStamp; }
@@ -303,6 +316,11 @@ protected:
 
     U32     mSize = 0;          // size in bytes of mMappedData
     U32     mIndicesSize = 0;   // size in bytes of mMappedIndexData
+
+#if LL_DARWIN
+    std::unique_ptr<ALMetalBuffer> mMetalBuffer;
+    std::unique_ptr<ALMetalBuffer> mMetalIndices;
+#endif
 
     std::vector<MappedRegion> mMappedVertexRegions;  // list of mMappedData byte ranges that must be sent to GL
     std::vector<MappedRegion> mMappedIndexRegions;   // list of mMappedIndexData byte ranges that must be sent to GL

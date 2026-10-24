@@ -121,6 +121,10 @@ if(DARWIN OR WINDOWS OR NOT AL_USE_SDL_WINDOW)
   target_link_libraries(llrender PUBLIC ll::opengl)
 endif()
 
+if(DARWIN)
+  target_link_libraries(llrender PRIVATE almetal)
+endif()
+
 if(AL_BUILD_TESTS)
   # llrender pulls in llcommon / llimage / llmath / llfilesystem / llxml /
   # llwindow + ll::freetype / ll::harfbuzz / ll::plutosvg / ll::glext via

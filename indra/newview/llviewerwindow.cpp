@@ -55,6 +55,10 @@
 #include "llrender.h"
 #include "aluniformbuffer.h"
 
+#if LL_DARWIN
+#include "llwindowsdl.h"
+#endif
+
 #include "stringize.h"
 
 //
@@ -2316,6 +2320,12 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     LL_DEBUGS("Window") << "Loading feature tables." << LL_ENDL;
 
     // Initialize OpenGL Renderer
+#if LL_DARWIN
+    if (auto* sdl_window = dynamic_cast<LLWindowSDL*>(mWindow))
+    {
+        LLVertexBuffer::setMetalDevice(sdl_window->getMetalDevice());
+    }
+#endif
     LLVertexBuffer::initClass(mWindow);
     LL_INFOS("RenderInit") << "LLVertexBuffer initialization done." << LL_ENDL ;
     if (!gGL.init(true))
