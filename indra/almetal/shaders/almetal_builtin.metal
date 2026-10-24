@@ -653,22 +653,31 @@ fragment float4 almetal_ui_fragment(
 
     const float2 atlas_texel_size = 1.0 / float2(diffuse_map.get_width(), diffuse_map.get_height());
     const float vertex_alpha = input.color.a;
-    auto atlas_alpha = [&](float2 offset) {
-        return diffuse_map.sample(diffuse_sampler, input.texcoord + atlas_texel_size * offset).a;
-    };
 
     float product;
     if (constants.text_shadow_mode == 1)
     {
-        product = 1.0 - vertex_alpha * atlas_alpha(float2(-1.0, 1.0));
+        product = 1.0 - vertex_alpha *
+            diffuse_map.sample(diffuse_sampler,
+                               input.texcoord + atlas_texel_size * float2(-1.0, 1.0)).a;
     }
     else
     {
-        product  = 1.0 - vertex_alpha * atlas_alpha(float2( 1.0,  1.0));
-        product *= 1.0 - vertex_alpha * atlas_alpha(float2(-1.0,  1.0));
-        product *= 1.0 - vertex_alpha * atlas_alpha(float2(-1.0, -1.0));
-        product *= 1.0 - vertex_alpha * atlas_alpha(float2( 1.0, -1.0));
-        product *= 1.0 - vertex_alpha * atlas_alpha(float2( 0.0,  2.0));
+        product  = 1.0 - vertex_alpha *
+            diffuse_map.sample(diffuse_sampler,
+                               input.texcoord + atlas_texel_size * float2( 1.0,  1.0)).a;
+        product *= 1.0 - vertex_alpha *
+            diffuse_map.sample(diffuse_sampler,
+                               input.texcoord + atlas_texel_size * float2(-1.0,  1.0)).a;
+        product *= 1.0 - vertex_alpha *
+            diffuse_map.sample(diffuse_sampler,
+                               input.texcoord + atlas_texel_size * float2(-1.0, -1.0)).a;
+        product *= 1.0 - vertex_alpha *
+            diffuse_map.sample(diffuse_sampler,
+                               input.texcoord + atlas_texel_size * float2( 1.0, -1.0)).a;
+        product *= 1.0 - vertex_alpha *
+            diffuse_map.sample(diffuse_sampler,
+                               input.texcoord + atlas_texel_size * float2( 0.0,  2.0)).a;
     }
     return float4(input.color.rgb, 1.0 - product);
 }

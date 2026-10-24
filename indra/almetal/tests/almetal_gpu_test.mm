@@ -89,6 +89,55 @@ TEST_CASE("almetal: the selected device is built-in unified-memory Apple Silicon
     }
 }
 
+#ifdef AL_METAL_BUILTIN_LIBRARY_PATH
+TEST_CASE("almetal: offline built-in library exposes every production entry point", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        auto library = ALMetalShaderLibrary::loadFile(
+            *device, AL_METAL_BUILTIN_LIBRARY_PATH, &error);
+        INFO(error);
+        REQUIRE(library);
+
+        constexpr std::array functions{
+            "almetal_test_vertex",
+            "almetal_test_fragment",
+            "almetal_test_compute",
+            "almetal_test_sample_texture",
+            "almetal_resample_vertex",
+            "almetal_resample_fragment",
+            "almetal_terrain_paint_vertex",
+            "almetal_terrain_paint_fragment",
+            "almetal_lit_preview_vertex",
+            "almetal_lit_preview_flat_vertex",
+            "almetal_lit_preview_skinned_vertex",
+            "almetal_lit_preview_fragment",
+            "almetal_lit_preview_textured_vertex",
+            "almetal_lit_preview_skinned_textured_vertex",
+            "almetal_lit_preview_textured_fragment",
+            "almetal_lit_preview_edge_u16_vertex",
+            "almetal_lit_preview_edge_u32_vertex",
+            "almetal_lit_preview_skinned_edge_u16_vertex",
+            "almetal_lit_preview_skinned_edge_u32_vertex",
+            "almetal_ui_vertex",
+            "almetal_ui_fragment",
+            "almetal_solid_vertex",
+            "almetal_solid_fragment",
+        };
+        for (const char* function : functions)
+        {
+            CAPTURE(function);
+            CHECK(library->hasFunction(function));
+        }
+    }
+}
+#endif
+
 TEST_CASE("almetal: a blit command copies shared storage and reports completion", "[almetal]")
 {
     @autoreleasepool
