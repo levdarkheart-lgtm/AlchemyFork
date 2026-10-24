@@ -68,6 +68,10 @@
 #include "lltrans.h"
 #include "llimagedimensionsinfo.h"
 
+#if LL_DARWIN
+#include "../almetal/almetalsculptpreview.h"
+#endif
+
 const S32 PREVIEW_BORDER_WIDTH = 2;
 const S32 PREVIEW_RESIZE_HANDLE_SIZE = S32(RESIZE_HANDLE_WIDTH * OO_SQRT2) + PREVIEW_BORDER_WIDTH;
 const S32 PREVIEW_HPAD = PREVIEW_RESIZE_HANDLE_SIZE;
@@ -984,6 +988,9 @@ void LLImagePreviewSculpted::setPreviewTarget(LLImageRaw* imagep, F32 distance)
 bool LLImagePreviewSculpted::render()
 {
     mNeedsUpdate = false;
+#if LL_DARWIN
+    mMetalPreview.reset();
+#endif
     LLGLSUIDefault def;
     LLGLDisable no_blend(GL_BLEND);
     LLGLEnable cull(GL_CULL_FACE);
@@ -1043,6 +1050,105 @@ bool LLImagePreviewSculpted::render()
     const F32 BRIGHTNESS = 0.9f;
     gGL.diffuseColor3f(BRIGHTNESS, BRIGHTNESS, BRIGHTNESS);
 
+#if LL_DARWIN
+    ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+    ALMetalTexture* destination_template = mGLTexturep.notNull()
+        ? mGLTexturep->getMetalTexture() : nullptr;
+    ALMetalBuffer* metal_vertices = mVertexBuffer.notNull()
+        ? mVertexBuffer->getMetalVertexBuffer() : nullptr;
+    ALMetalBuffer* metal_indices = mVertexBuffer.notNull()
+        ? mVertexBuffer->getMetalIndexBuffer() : nullptr;
+    if (metal_device && destination_template && metal_vertices && metal_indices)
+    {
+        static ALMetalDevice* renderer_device = nullptr;
+        static std::unique_ptr<ALMetalSculptPreviewRenderer> renderer;
+        std::string error;
+        if (renderer_device != metal_device)
+        {
+            renderer.reset();
+            renderer_device = metal_device;
+        }
+        if (!renderer)
+        {
+            renderer = ALMetalSculptPreviewRenderer::create(*metal_device, &error);
+        }
+
+        if (renderer)
+        {
+            const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+            const LLMatrix4a& projection = gGL.getProjectionMatrix();
+            LLMatrix4a modelview_projection;
+            modelview_projection.setMul(modelview, projection);
+            LLMatrix4a inverse_modelview;
+            const bool inverse_ok = inverse_modelview.setAffineInverse(modelview);
+
+            ALMetalSculptPreviewBatch batch;
+            batch.vertices = metal_vertices;
+            batch.position_offset = mVertexBuffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+            batch.normal_offset = mVertexBuffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
+            batch.vertex_count = vf.mNumVertices;
+            batch.indices = metal_indices;
+            batch.index_type = mVertexBuffer->getIndexStride() == 4
+                ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+            batch.index_count = num_indices;
+            batch.destination_template = destination_template;
+            memcpy(batch.modelview_projection, modelview_projection.getF32ptr(),
+                   sizeof(batch.modelview_projection));
+
+            if (inverse_ok)
+            {
+                const F32* inverse = inverse_modelview.getF32ptr();
+                for (U32 column = 0; column < 3; ++column)
+                {
+                    batch.normal_matrix[column][0] = inverse[0 * 4 + column];
+                    batch.normal_matrix[column][1] = inverse[1 * 4 + column];
+                    batch.normal_matrix[column][2] = inverse[2 * 4 + column];
+                }
+
+                const LLVector3 light_directions[3] = {
+                    LLPipeline::PreviewDirection0,
+                    LLPipeline::PreviewDirection1,
+                    LLPipeline::PreviewDirection2,
+                };
+                const LLColor4 light_diffuse[3] = {
+                    LLPipeline::PreviewDiffuse0,
+                    LLPipeline::PreviewDiffuse1,
+                    LLPipeline::PreviewDiffuse2,
+                };
+                for (U32 light = 0; light < 3; ++light)
+                {
+                    LLVector4 direction(light_directions[light], 0.f);
+                    LLVector4a source;
+                    source.loadua(direction.mV);
+                    LLVector4a transformed;
+                    modelview.transform4(source, transformed);
+                    LLVector3 normalized(transformed.getF32ptr());
+                    normalized.normVec();
+                    memcpy(batch.light_direction[light], normalized.mV,
+                           sizeof(F32) * 3);
+                    memcpy(batch.light_diffuse[light], light_diffuse[light].mV,
+                           sizeof(F32) * 3);
+                }
+                batch.diffuse_color[0] = BRIGHTNESS;
+                batch.diffuse_color[1] = BRIGHTNESS;
+                batch.diffuse_color[2] = BRIGHTNESS;
+                batch.diffuse_color[3] = 1.f;
+                mMetalPreview = renderer->render(batch, &error);
+            }
+            else
+            {
+                error = "sculpt preview modelview matrix is singular";
+            }
+        }
+
+        if (!mMetalPreview)
+        {
+            LL_WARNS("Metal") << "Could not mirror the sculpt image preview: "
+                               << error << LL_ENDL;
+        }
+    }
+#endif
+
     mVertexBuffer->setBuffer();
     mVertexBuffer->draw(LLRender::TRIANGLES, num_indices, 0);
 
@@ -1051,6 +1157,32 @@ bool LLImagePreviewSculpted::render()
     gObjectPreviewProgram.unbind();
 
     return true;
+}
+
+void LLImagePreviewSculpted::postRender(bool success)
+{
+    LLViewerDynamicTexture::postRender(success);
+#if LL_DARWIN
+    if (lastPostRenderSucceeded() && mMetalPreview)
+    {
+        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
+        {
+            static bool reported_native_preview = false;
+            if (!reported_native_preview)
+            {
+                LL_INFOS("Metal") << "Sculpt image previews own a native Metal render target"
+                                   << LL_ENDL;
+                reported_native_preview = true;
+            }
+        }
+        else
+        {
+            LL_WARNS("Metal") << "Could not publish the native sculpt image preview mirror"
+                               << LL_ENDL;
+        }
+    }
+    mMetalPreview.reset();
+#endif
 }
 
 //-----------------------------------------------------------------------------

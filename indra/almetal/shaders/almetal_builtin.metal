@@ -188,6 +188,57 @@ fragment float4 almetal_terrain_paint_fragment(
     return max(float4(stored, 1.0), float4(0.0));
 }
 
+struct ALMetalSculptPreviewConstants
+{
+    float4x4 modelview_projection;
+    float4 normal_matrix[3];
+    float4 light_direction[3];
+    float4 light_diffuse[3];
+    float4 diffuse_color;
+};
+
+struct ALMetalSculptPreviewVaryings
+{
+    float4 position [[position]];
+    float4 color;
+};
+
+vertex ALMetalSculptPreviewVaryings almetal_sculpt_preview_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalSculptPreviewConstants& constants [[buffer(2)]],
+    uint vertex_id [[vertex_id]])
+{
+    ALMetalSculptPreviewVaryings output;
+    float4 clip_position = constants.modelview_projection *
+                           float4(positions[vertex_id].xyz, 1.0);
+    // Match glCopyTexSubImage's lower-left framebuffer row convention in the
+    // resulting texture bytes.
+    clip_position.y = -clip_position.y;
+    output.position = almetal_clip_from_gl(clip_position);
+
+    const float3x3 normal_matrix = float3x3(
+        constants.normal_matrix[0].xyz,
+        constants.normal_matrix[1].xyz,
+        constants.normal_matrix[2].xyz);
+    const float3 normal = normalize(normal_matrix * normals[vertex_id].xyz);
+    float3 lighting = 0.0;
+    for (uint light = 0; light < 3; ++light)
+    {
+        lighting += constants.light_diffuse[light].rgb *
+                    max(dot(normal, constants.light_direction[light].xyz), 0.0);
+    }
+    output.color = float4(lighting * constants.diffuse_color.rgb,
+                          constants.diffuse_color.a);
+    return output;
+}
+
+fragment float4 almetal_sculpt_preview_fragment(
+    ALMetalSculptPreviewVaryings input [[stage_in]])
+{
+    return max(input.color, float4(0.0));
+}
+
 vertex ALMetalUIVaryings almetal_ui_vertex(
     const device float4* positions [[buffer(0)]],
     const device float2* texcoords [[buffer(1)]],

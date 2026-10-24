@@ -32,6 +32,12 @@
 #include "llpointer.h"
 #include "llquaternion.h"
 
+#include <memory>
+
+#if LL_DARWIN
+class ALMetalTexture;
+#endif
+
 class LLComboBox;
 class LLJoint;
 class LLViewerJointMesh;
@@ -54,6 +60,7 @@ protected:
     void setTexture(U32 name) { mTextureName = name; }
 
     bool render() override;
+    void postRender(bool success) override;
     void refresh();
     void rotate(F32 yaw_radians, F32 pitch_radians);
     void zoom(F32 zoom_amt);
@@ -70,6 +77,9 @@ protected:
     LLVector3   mCameraOffset;
     LLPointer<LLVolume> mVolume;
     LLPointer<LLVertexBuffer> mVertexBuffer;
+#if LL_DARWIN
+    std::unique_ptr<ALMetalTexture> mMetalPreview;
+#endif
 };
 
 

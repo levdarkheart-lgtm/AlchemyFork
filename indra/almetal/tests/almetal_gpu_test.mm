@@ -12,6 +12,7 @@
 #include "../almetalframe.h"
 #include "../almetalpipeline.h"
 #include "../almetalresource.h"
+#include "../almetalsculptpreview.h"
 #include "../almetalsurface.h"
 #include "../almetalterrainpaint.h"
 #include "../almetaltextureops.h"
@@ -727,6 +728,122 @@ TEST_CASE("almetal: terrain paint bake consumes indexed viewer buffers and gener
         CHECK(oriented_pixels[upper_gl_row + 1] == 0);
         CHECK(oriented_pixels[upper_gl_row + 2] == 0);
         CHECK(oriented_pixels[upper_gl_row + 3] == 255);
+    }
+}
+
+TEST_CASE("almetal: sculpt preview renders indexed depth and lighting into a native texture", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalSculptPreviewRenderer::create(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        // Two coincident triangles exercise indexed SoA fetch and depth. The
+        // nearer triangle has an X normal/red light; the farther one has a Y
+        // normal/green light and must not overwrite it.
+        const std::array<std::array<float, 4>, 6> positions{{
+            {{-0.8f, -0.8f,  0.5f, 1.f}},
+            {{ 0.8f, -0.8f,  0.5f, 1.f}},
+            {{ 0.0f,  0.8f,  0.5f, 1.f}},
+            {{-0.8f, -0.8f, -0.5f, 1.f}},
+            {{ 0.8f, -0.8f, -0.5f, 1.f}},
+            {{ 0.0f,  0.8f, -0.5f, 1.f}},
+        }};
+        const std::array<std::array<float, 4>, 6> normals{{
+            {{0.f, 1.f, 0.f, 0.f}}, {{0.f, 1.f, 0.f, 0.f}},
+            {{0.f, 1.f, 0.f, 0.f}}, {{1.f, 0.f, 0.f, 0.f}},
+            {{1.f, 0.f, 0.f, 0.f}}, {{1.f, 0.f, 0.f, 0.f}},
+        }};
+        std::array<std::uint8_t, sizeof(positions) + sizeof(normals)> vertex_bytes{};
+        std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
+        std::memcpy(vertex_bytes.data() + sizeof(positions), normals.data(), sizeof(normals));
+        const std::array<std::uint16_t, 6> indices{{0, 1, 2, 3, 4, 5}};
+
+        ALMetalBufferDescriptor vertex_descriptor;
+        vertex_descriptor.length = vertex_bytes.size();
+        vertex_descriptor.storage = ALMetalStorageMode::shared;
+        vertex_descriptor.label = "Alchemy sculpt preview test vertices";
+        auto vertices = ALMetalBuffer::create(*device, vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(vertices);
+        REQUIRE(vertices->write(0, vertex_bytes.data(), vertex_bytes.size(), &error));
+
+        ALMetalBufferDescriptor index_descriptor;
+        index_descriptor.length = sizeof(indices);
+        index_descriptor.storage = ALMetalStorageMode::shared;
+        index_descriptor.label = "Alchemy sculpt preview test indices";
+        auto index_buffer = ALMetalBuffer::create(*device, index_descriptor, &error);
+        INFO(error);
+        REQUIRE(index_buffer);
+        REQUIRE(index_buffer->write(0, indices.data(), sizeof(indices), &error));
+
+        ALMetalTextureDescriptor destination_descriptor;
+        destination_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        destination_descriptor.width = 32;
+        destination_descriptor.height = 32;
+        destination_descriptor.storage = ALMetalStorageMode::private_gpu;
+        destination_descriptor.usage = ALMetalTextureUsage::shader_read;
+        destination_descriptor.label = "Alchemy sculpt preview destination template";
+        auto destination_template = ALMetalTexture::create(
+            *device, destination_descriptor, &error);
+        INFO(error);
+        REQUIRE(destination_template);
+
+        ALMetalSculptPreviewBatch batch;
+        batch.vertices = vertices.get();
+        batch.position_offset = 0;
+        batch.normal_offset = sizeof(positions);
+        batch.vertex_count = positions.size();
+        batch.indices = index_buffer.get();
+        batch.index_count = indices.size();
+        batch.destination_template = destination_template.get();
+        for (std::size_t index = 0; index < 4; ++index)
+        {
+            batch.modelview_projection[index * 4 + index] = 1.f;
+        }
+        for (std::size_t index = 0; index < 3; ++index)
+        {
+            batch.normal_matrix[index][index] = 1.f;
+        }
+        batch.light_direction[0][0] = 1.f;
+        batch.light_direction[1][1] = 1.f;
+        batch.light_diffuse[0][0] = 1.f;
+        batch.light_diffuse[1][1] = 1.f;
+        batch.diffuse_color[0] = 0.9f;
+        batch.diffuse_color[1] = 0.9f;
+        batch.diffuse_color[2] = 0.9f;
+        batch.diffuse_color[3] = 1.f;
+
+        batch.normal_offset = vertex_bytes.size();
+        CHECK_FALSE(renderer->render(batch, &error));
+        CHECK(error == "Metal sculpt preview geometry range exceeds its buffers");
+        batch.normal_offset = sizeof(positions);
+        error.clear();
+
+        auto rendered = renderer->render(batch, &error);
+        INFO(error);
+        REQUIRE(rendered);
+        CHECK(alMetalHasUsage(rendered->descriptor().usage,
+                              ALMetalTextureUsage::render_target));
+        std::array<std::uint8_t, 32 * 32 * 4> pixels{};
+        REQUIRE(rendered->readback(*device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        INFO(error);
+
+        const std::size_t center = (16 * 32 + 16) * 4;
+        CHECK(std::abs(static_cast<int>(pixels[center + 0]) - 230) <= 1);
+        CHECK(pixels[center + 1] <= 1);
+        CHECK(pixels[center + 2] <= 1);
+        CHECK(pixels[center + 3] == 255);
+        const std::size_t corner = 4;
+        CHECK(std::abs(static_cast<int>(pixels[corner + 0]) - 38) <= 1);
+        CHECK(std::abs(static_cast<int>(pixels[corner + 1]) - 51) <= 1);
+        CHECK(std::abs(static_cast<int>(pixels[corner + 2]) - 77) <= 1);
+        CHECK(pixels[corner + 3] == 255);
     }
 }
 

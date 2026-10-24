@@ -84,6 +84,8 @@ public:
     void setBoundTarget(LLRenderTarget* target) { mBoundTarget = target; }
 
 protected:
+    bool lastPostRenderSucceeded() const { return mLastPostRenderSuccess; }
+
     void generateGLTexture();
     void generateGLTexture(LLGLint internal_format, LLGLenum primary_format, LLGLenum type_format, bool swap_bytes = false);
 
@@ -92,6 +94,7 @@ protected:
     LLCamera mCamera;
 
     LLRenderTarget* mBoundTarget;
+    bool mLastPostRenderSuccess;
 
     typedef std::set<LLViewerDynamicTexture*> instance_list_t;
     static instance_list_t sInstances[ LLViewerDynamicTexture::ORDER_COUNT ];

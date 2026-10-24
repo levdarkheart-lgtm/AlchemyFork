@@ -53,7 +53,9 @@ S32 LLViewerDynamicTexture::sNumRenders = 0;
 // LLViewerDynamicTexture()
 //-----------------------------------------------------------------------------
 LLViewerDynamicTexture::LLViewerDynamicTexture(S32 width, S32 height, S32 components, EOrder order) :
-    LLViewerTexture(width, height, components, false)
+    LLViewerTexture(width, height, components, false),
+    mBoundTarget(nullptr),
+    mLastPostRenderSuccess(false)
 {
     llassert((1 <= components) && (components <= 4));
 
@@ -163,6 +165,7 @@ void LLViewerDynamicTexture::postRender(bool success)
             success = mGLTexturep->setSubImageFromFrameBuffer(0, 0, mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
         }
     }
+    mLastPostRenderSuccess = success;
 
     // restore viewport
     gViewerWindow->setup2DViewport();

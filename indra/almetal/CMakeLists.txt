@@ -18,6 +18,7 @@ target_sources(
     almetalframe.mm
     almetalpipeline.mm
     almetalresource.mm
+    almetalsculptpreview.cpp
     almetalsurface.mm
     almetalterrainpaint.cpp
     almetaltextureops.cpp
@@ -29,6 +30,7 @@ target_sources(
       almetalframe.h
       almetalpipeline.h
       almetalresource.h
+      almetalsculptpreview.h
       almetalsurface.h
       almetalterrainpaint.h
       almetaltextureops.h
