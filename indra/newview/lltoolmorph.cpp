@@ -53,12 +53,19 @@
 #include "llui.h"
 #include "llviewercamera.h"
 #include "llviewertexturelist.h"
+#include "llviewerjointmesh.h"
 #include "llviewerobject.h"
 #include "llviewerwearable.h"
 #include "llviewerwindow.h"
 #include "llvoavatarself.h"
 #include "pipeline.h"
 
+#if LL_DARWIN
+#include "../almetal/almetalsculptpreview.h"
+#endif
+
+#include <array>
+#include <vector>
 
 //static
 LLVisualParamHint::instance_list_t LLVisualParamHint::sInstances;
@@ -222,6 +229,15 @@ void LLVisualParamHint::preRender(bool clear_depth)
 bool LLVisualParamHint::render()
 {
     LLVisualParamReset::sDirty = true;
+#if LL_DARWIN
+    mMetalPreview.reset();
+    mMetalPreviewDescriptor.reset();
+    if (mGLTexturep.notNull() && mGLTexturep->getMetalTexture())
+    {
+        mMetalPreviewDescriptor = std::make_unique<ALMetalTextureDescriptor>(
+            mGLTexturep->getMetalTexture()->descriptor());
+    }
+#endif
 
     gGL.pushUIMatrix();
     gGL.loadUIIdentity();
@@ -301,6 +317,270 @@ bool LLVisualParamHint::render()
         gPipeline.generateImpostor(gAgentAvatarp, true);
         gGL.setSceneBlendType(LLRender::BT_ALPHA);
         gGL.flush();
+
+#if LL_DARWIN
+        ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+        LLImageGL* background_image = mBackgroundp && mBackgroundp->getImage()
+            ? mBackgroundp->getImage()->getGLTexture() : nullptr;
+        const ALMetalTexture* background_texture = background_image
+            ? background_image->getMetalTexture() : nullptr;
+        if (metal_device && mMetalPreviewDescriptor && background_texture)
+        {
+            static ALMetalDevice* renderer_device = nullptr;
+            static std::unique_ptr<ALMetalLitPreviewRenderer> renderer;
+            std::string error;
+            if (renderer_device != metal_device)
+            {
+                renderer.reset();
+                renderer_device = metal_device;
+            }
+            if (!renderer)
+            {
+                renderer = ALMetalLitPreviewRenderer::create(
+                    *metal_device, &error);
+            }
+
+            // The GL owner also draws its optional cloth deformation and any
+            // rigged attachments into this hint. Keep the entire native scene
+            // fail-closed until those two shader families are represented.
+            bool complete = renderer != nullptr &&
+                !gPipeline.shaderInputs().mLocal.mAvatarCloth;
+            for (const auto& attachment_entry :
+                 gAgentAvatarp->mAttachmentPoints)
+            {
+                LLViewerJointAttachment* attachment = attachment_entry.second;
+                if (!attachment)
+                {
+                    continue;
+                }
+                for (const auto& attached : attachment->mAttachedObjects)
+                {
+                    LLViewerObject* object = attached.get();
+                    bool rigged = object && object->isRiggedMesh();
+                    if (object && !rigged)
+                    {
+                        for (LLViewerObject* child : object->getChildren())
+                        {
+                            if (child && child->isRiggedMesh())
+                            {
+                                rigged = true;
+                                break;
+                            }
+                        }
+                    }
+                    complete = complete && !rigged;
+                }
+            }
+
+            using namespace LLAvatarAppearanceDefines;
+            std::vector<EMeshIndex> required_meshes;
+            required_meshes.reserve(8);
+            const bool render_avatar = gAgent.needsRenderAvatar();
+            const bool render_head = gAgent.needsRenderHead();
+            const bool jelly =
+                gAgentAvatarp->getOverallAppearance() ==
+                    LLVOAvatar::AOA_JELLYDOLL &&
+                !gAgentAvatarp->isControlAvatar();
+            if (render_avatar && render_head &&
+                (gAgentAvatarp->isTextureVisible(TEX_EYES_BAKED) || jelly ||
+                 gAgentAvatarp->isUIAvatar()))
+            {
+                required_meshes.push_back(MESH_ID_EYEBALL_LEFT);
+                required_meshes.push_back(MESH_ID_EYEBALL_RIGHT);
+            }
+            if (render_avatar &&
+                (gAgentAvatarp->isTextureVisible(TEX_HEAD_BAKED) || jelly ||
+                 gAgentAvatarp->isUIAvatar()))
+            {
+                required_meshes.push_back(MESH_ID_HEAD);
+            }
+            if (render_avatar &&
+                (gAgentAvatarp->isTextureVisible(TEX_UPPER_BAKED) || jelly ||
+                 gAgentAvatarp->isUIAvatar()))
+            {
+                required_meshes.push_back(MESH_ID_UPPER_BODY);
+            }
+            if (render_avatar &&
+                (gAgentAvatarp->isTextureVisible(TEX_LOWER_BAKED) || jelly ||
+                 gAgentAvatarp->isUIAvatar()))
+            {
+                required_meshes.push_back(MESH_ID_LOWER_BODY);
+            }
+            if (render_avatar && gAgentAvatarp->isWearingWearableType(
+                    LLWearableType::WT_SKIRT) &&
+                (gAgentAvatarp->isUIAvatar() ||
+                 gAgentAvatarp->isTextureVisible(TEX_SKIRT_BAKED)))
+            {
+                required_meshes.push_back(MESH_ID_SKIRT);
+            }
+            if (render_avatar &&
+                gAgentAvatarp->isTextureVisible(TEX_HEAD_BAKED))
+            {
+                required_meshes.push_back(MESH_ID_EYELASH);
+            }
+            if (render_avatar &&
+                gAgentAvatarp->isTextureVisible(TEX_HAIR_BAKED) && !jelly)
+            {
+                required_meshes.push_back(MESH_ID_HAIR);
+            }
+
+            std::vector<LLViewerJointMesh*> preview_meshes;
+            preview_meshes.reserve(required_meshes.size());
+            for (EMeshIndex mesh_index : required_meshes)
+            {
+                auto* joint = dynamic_cast<LLAvatarJoint*>(
+                    gAgentAvatarp->getViewerJoint(mesh_index));
+                std::size_t active_parts = 0;
+                if (joint)
+                {
+                    for (LLAvatarJointMesh* part : joint->mMeshParts)
+                    {
+                        auto* viewer_mesh =
+                            dynamic_cast<LLViewerJointMesh*>(part);
+                        LLFace* preview_face = nullptr;
+                        LLPolyMesh* preview_mesh = nullptr;
+                        if (viewer_mesh && viewer_mesh->getPreviewGeometry(
+                                               preview_face, preview_mesh))
+                        {
+                            preview_meshes.push_back(viewer_mesh);
+                            ++active_parts;
+                        }
+                    }
+                }
+                complete = complete && active_parts == 1;
+            }
+
+            constexpr std::size_t AVATAR_PALETTE_FLOATS =
+                LL_CHARACTER_MAX_JOINTS_PER_MESH * 3 * 4;
+            std::vector<std::array<F32, AVATAR_PALETTE_FLOATS>> palettes;
+            std::vector<ALMetalLitPreviewBatch> batches;
+            palettes.reserve(preview_meshes.size());
+            batches.reserve(preview_meshes.size());
+            const LLMatrix4a modelview = gGL.getModelviewMatrix();
+            const LLMatrix4a projection = gGL.getProjectionMatrix();
+
+            for (LLViewerJointMesh* viewer_mesh : preview_meshes)
+            {
+                LLFace* preview_face = nullptr;
+                LLPolyMesh* preview_mesh = nullptr;
+                LLGLTexture* diffuse = nullptr;
+                complete = complete && viewer_mesh->getPreviewGeometry(
+                    preview_face, preview_mesh) &&
+                    viewer_mesh->getPreviewDiffuseTexture(diffuse);
+                LLVertexBuffer* buffer = preview_face
+                    ? preview_face->getVertexBuffer() : nullptr;
+                LLImageGL* diffuse_image = diffuse
+                    ? diffuse->getGLTexture() : nullptr;
+                const ALMetalTexture* diffuse_texture = diffuse_image
+                    ? diffuse_image->getMetalTexture() : nullptr;
+                complete = complete && buffer && preview_mesh &&
+                    diffuse_texture &&
+                    buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) &&
+                    buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) &&
+                    buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) &&
+                    buffer->getMetalVertexBuffer() &&
+                    buffer->getMetalIndexBuffer();
+                if (!complete)
+                {
+                    break;
+                }
+
+                ALMetalLitPreviewBatch batch;
+                batch.vertices = buffer->getMetalVertexBuffer();
+                batch.position_offset = buffer->getOffset(
+                    LLVertexBuffer::TYPE_VERTEX);
+                batch.normal_offset = buffer->getOffset(
+                    LLVertexBuffer::TYPE_NORMAL);
+                batch.texcoord_offset = buffer->getOffset(
+                    LLVertexBuffer::TYPE_TEXCOORD0);
+                batch.vertex_count = buffer->getNumVerts();
+                batch.indices = buffer->getMetalIndexBuffer();
+                batch.index_type = buffer->getIndexStride() == 4
+                    ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+                batch.index_offset = static_cast<std::size_t>(
+                    preview_mesh->mFaceIndexOffset) *
+                    buffer->getIndexStride();
+                batch.index_count = preview_mesh->mFaceIndexCount;
+                batch.texture = diffuse_texture;
+                batch.destination_descriptor =
+                    mMetalPreviewDescriptor.get();
+                batch.avatar_unlit = true;
+
+                if (preview_mesh->hasWeights())
+                {
+                    complete = buffer->hasDataType(
+                        LLVertexBuffer::TYPE_WEIGHT);
+                    if (!complete)
+                    {
+                        break;
+                    }
+                    palettes.emplace_back();
+                    complete = viewer_mesh->buildJointMatrixPalette(
+                        palettes.back().data(), palettes.back().size());
+                    if (!complete)
+                    {
+                        break;
+                    }
+                    batch.weight_offset = buffer->getOffset(
+                        LLVertexBuffer::TYPE_WEIGHT);
+                    batch.skin_palette = palettes.back().data();
+                    batch.skin_palette_float_count = palettes.back().size();
+                    batch.skin_joint_count =
+                        LL_CHARACTER_MAX_JOINTS_PER_MESH;
+                    batch.avatar_skinning = true;
+                    std::memcpy(batch.modelview_projection,
+                                projection.getF32ptr(),
+                                sizeof(batch.modelview_projection));
+                }
+                else
+                {
+                    const LLMatrix4a& joint_world =
+                        viewer_mesh->getWorldMatrix();
+                    LLMatrix4a rigid_modelview;
+                    rigid_modelview.setMul(joint_world, modelview);
+                    LLMatrix4a modelview_projection;
+                    modelview_projection.setMul(
+                        rigid_modelview, projection);
+                    std::memcpy(batch.modelview_projection,
+                                modelview_projection.getF32ptr(),
+                                sizeof(batch.modelview_projection));
+                }
+                batches.push_back(batch);
+            }
+
+            if (complete && !batches.empty())
+            {
+                ALMetalLitPreviewScene scene;
+                scene.batches = batches.data();
+                scene.batch_count = batches.size();
+                scene.background_texture = background_texture;
+                scene.destination_descriptor =
+                    mMetalPreviewDescriptor.get();
+                scene.clear_color[0] = 0.f;
+                scene.clear_color[1] = 0.f;
+                scene.clear_color[2] = 0.f;
+                scene.clear_color[3] = 0.f;
+                mMetalPreview = renderer->render(scene, &error);
+            }
+            else if (error.empty())
+            {
+                error = "visual-parameter avatar scene is incomplete";
+            }
+            if (!mMetalPreview)
+            {
+                LL_DEBUGS("Metal")
+                    << "Visual-parameter hint retained GL: "
+                    << error << LL_ENDL;
+            }
+        }
+        else
+        {
+            LL_DEBUGS("Metal")
+                << "Visual-parameter hint retained GL because its native "
+                   "background, device or destination is incomplete"
+                << LL_ENDL;
+        }
+#endif
     }
 
     gAgentAvatarp->setVisualParamWeight(mVisualParam->getID(), mLastParamWeight);
@@ -317,6 +597,29 @@ bool LLVisualParamHint::render()
     gGL.popUIMatrix();
 
     return true;
+}
+
+void LLVisualParamHint::postRender(bool success)
+{
+    LLViewerDynamicTexture::postRender(success);
+#if LL_DARWIN
+    if (lastPostRenderSucceeded() && mMetalPreview)
+    {
+        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
+        {
+            LL_INFOS_ONCE("Metal")
+                << "Visual-parameter hints own a native Metal render target"
+                << LL_ENDL;
+        }
+        else
+        {
+            LL_WARNS("Metal")
+                << "Could not publish the native visual-parameter hint"
+                << LL_ENDL;
+        }
+    }
+    mMetalPreview.reset();
+#endif
 }
 
 

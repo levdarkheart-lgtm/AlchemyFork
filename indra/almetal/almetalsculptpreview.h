@@ -49,6 +49,11 @@ struct ALMetalLitPreviewBatch
     // alpha-tested texture fragment. Rigid avatar parts use this without a
     // palette; scalar-weight body meshes select it implicitly below.
     bool avatar_lighting = false;
+    // Select the deferred avatar-preview albedo writer: encoded-space diffuse
+    // RGB, alpha-tested at 0.2, with opaque coverage for accepted fragments.
+    // It is valid only with a texture. With avatar_skinning it consumes the
+    // scalar palette; without a palette it draws a rigid avatar part.
+    bool avatar_unlit = false;
     // Legacy avatar body meshes use one float per vertex: integer joint i plus
     // a fractional blend toward min(i + 1, 14). Their fixed palette is 45
     // float4 rows, laid out as three runs of 15 by
@@ -107,6 +112,10 @@ struct ALMetalLitPreviewScene
 {
     const ALMetalLitPreviewBatch* batches = nullptr;
     std::size_t batch_count = 0;
+    // Optional full-target encoded-space background. This is sampled through
+    // a clamp sampler before any depth-tested preview geometry and does not
+    // touch depth, matching a UI image drawn ahead of an avatar hint.
+    const ALMetalTexture* background_texture = nullptr;
     const ALMetalTexture* destination_template = nullptr;
     // Dynamic GL preview textures discard their Metal mirror after the GL
     // framebuffer copy. Keep only its validated allocation descriptor so a

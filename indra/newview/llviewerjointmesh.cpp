@@ -107,6 +107,32 @@ bool LLViewerJointMesh::getPreviewGeometry(
     return true;
 }
 
+bool LLViewerJointMesh::getPreviewDiffuseTexture(LLGLTexture*& texture) const
+{
+    texture = nullptr;
+    if (mTestImageName)
+    {
+        return false;
+    }
+
+    LLViewerTexLayerSet* layer_set =
+        dynamic_cast<LLViewerTexLayerSet*>(mLayerSet);
+    if (layer_set)
+    {
+        texture = layer_set->hasComposite()
+            ? layer_set->getViewerComposite() : nullptr;
+    }
+    else
+    {
+        texture = mTexture.get();
+    }
+    if (!texture)
+    {
+        texture = LLViewerTextureManager::getFetchedTexture(IMG_DEFAULT);
+    }
+    return texture && LLDrawPoolAvatar::shadowDrawsBake(texture);
+}
+
 bool LLViewerJointMesh::buildJointMatrixPalette(
     F32* destination,
     std::size_t float_count) const

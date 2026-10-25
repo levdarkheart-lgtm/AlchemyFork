@@ -123,9 +123,12 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_textured_fragment",
             "almetal_lit_preview_avatar_vertex",
             "almetal_lit_preview_avatar_textured_vertex",
+            "almetal_lit_preview_avatar_unlit_textured_vertex",
             "almetal_lit_preview_avatar_skinned_vertex",
             "almetal_lit_preview_avatar_skinned_textured_vertex",
+            "almetal_lit_preview_avatar_skinned_unlit_textured_vertex",
             "almetal_lit_preview_avatar_fragment",
+            "almetal_lit_preview_avatar_unlit_fragment",
             "almetal_lit_preview_edge_u16_vertex",
             "almetal_lit_preview_edge_u32_vertex",
             "almetal_lit_preview_skinned_edge_u16_vertex",
@@ -1362,6 +1365,22 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(avatar_textured_pixels[avatar_translated_interior + 0] > 0);
         CHECK(avatar_textured_pixels[avatar_translated_interior + 3] == 255);
 
+        ALMetalLitPreviewBatch avatar_skinned_unlit = avatar_skinned;
+        avatar_skinned_unlit.avatar_unlit = true;
+        auto rendered_avatar_skinned_unlit = renderer->render(
+            avatar_skinned_unlit, &error);
+        INFO(error);
+        REQUIRE(rendered_avatar_skinned_unlit);
+        std::array<std::uint8_t, 32 * 32 * 4> avatar_skinned_unlit_pixels{};
+        REQUIRE(rendered_avatar_skinned_unlit->readback(
+            *device, 0, 0, {}, avatar_skinned_unlit_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(avatar_skinned_unlit_pixels[avatar_translated_interior + 0] == 128);
+        CHECK(avatar_skinned_unlit_pixels[avatar_translated_interior + 1] == 64);
+        CHECK(avatar_skinned_unlit_pixels[avatar_translated_interior + 2] == 32);
+        CHECK(avatar_skinned_unlit_pixels[avatar_translated_interior + 3] == 255);
+
         // Rigid avatar parts use the same one-light/wrapped-back response and
         // alpha-tested texture path without a palette or weight stream.
         ALMetalLitPreviewBatch rigid_avatar = batch;
@@ -1395,10 +1414,52 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         INFO(error);
         REQUIRE(rendered_rigid_avatar_textured);
 
+        rigid_avatar.avatar_lighting = false;
+        rigid_avatar.avatar_unlit = true;
+        auto rendered_rigid_avatar_unlit = renderer->render(
+            rigid_avatar, &error);
+        INFO(error);
+        REQUIRE(rendered_rigid_avatar_unlit);
+        std::array<std::uint8_t, 32 * 32 * 4> rigid_avatar_unlit_pixels{};
+        REQUIRE(rendered_rigid_avatar_unlit->readback(
+            *device, 0, 0, {}, rigid_avatar_unlit_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(rigid_avatar_unlit_pixels[avatar_translated_interior + 0] == 128);
+        CHECK(rigid_avatar_unlit_pixels[avatar_translated_interior + 1] == 64);
+        CHECK(rigid_avatar_unlit_pixels[avatar_translated_interior + 2] == 32);
+        CHECK(rigid_avatar_unlit_pixels[avatar_translated_interior + 3] == 255);
+
+        ALMetalLitPreviewScene avatar_hint_scene;
+        avatar_hint_scene.batches = &rigid_avatar;
+        avatar_hint_scene.batch_count = 1;
+        avatar_hint_scene.background_texture = diffuse_texture.get();
+        avatar_hint_scene.destination_descriptor =
+            &destination_template->descriptor();
+        auto rendered_avatar_hint = renderer->render(avatar_hint_scene, &error);
+        INFO(error);
+        REQUIRE(rendered_avatar_hint);
+        std::array<std::uint8_t, 32 * 32 * 4> avatar_hint_pixels{};
+        REQUIRE(rendered_avatar_hint->readback(
+            *device, 0, 0, {}, avatar_hint_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(avatar_hint_pixels[corner + 0] == 128);
+        CHECK(avatar_hint_pixels[corner + 1] == 64);
+        CHECK(avatar_hint_pixels[corner + 2] == 32);
+        CHECK(avatar_hint_pixels[corner + 3] == 255);
+
         rigid_avatar.show_edges = true;
         CHECK_FALSE(renderer->render(rigid_avatar, &error));
         CHECK(error == "Metal avatar preview mode is invalid");
         rigid_avatar.show_edges = false;
+        rigid_avatar.avatar_lighting = true;
+        CHECK_FALSE(renderer->render(rigid_avatar, &error));
+        CHECK(error == "Metal avatar preview mode is invalid");
+        rigid_avatar.avatar_lighting = false;
+        rigid_avatar.texture = nullptr;
+        CHECK_FALSE(renderer->render(rigid_avatar, &error));
+        CHECK(error == "Metal avatar preview mode is invalid");
+        rigid_avatar.texture = diffuse_texture.get();
         rigid_avatar.skin_palette = avatar_palette.data();
         rigid_avatar.skin_palette_float_count = avatar_palette.size();
         rigid_avatar.skin_joint_count = 15;

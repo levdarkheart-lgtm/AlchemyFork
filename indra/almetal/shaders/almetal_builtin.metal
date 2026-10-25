@@ -515,6 +515,20 @@ vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_avatar_textured_ver
     return output;
 }
 
+vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_avatar_unlit_textured_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device float2* texcoords [[buffer(3)]],
+    uint vertex_id [[vertex_id]])
+{
+    ALMetalLitPreviewTexturedVaryings output;
+    output.position = almetal_lit_preview_clip_position(
+        positions[vertex_id], constants);
+    output.color = constants.diffuse_color;
+    output.texcoord = texcoords[vertex_id];
+    return output;
+}
+
 vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_avatar_skinned_textured_vertex(
     const device float4* positions [[buffer(0)]],
     const device float4* normals [[buffer(1)]],
@@ -534,6 +548,27 @@ vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_avatar_skinned_text
     ALMetalLitPreviewTexturedVaryings output;
     output.position = lit.position;
     output.color = lit.color;
+    output.texcoord = texcoords[vertex_id];
+    return output;
+}
+
+vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_avatar_skinned_unlit_textured_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device float2* texcoords [[buffer(3)]],
+    const device float* encoded_weights [[buffer(6)]],
+    const device float4* skin_palette [[buffer(7)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalLitPreviewSkinnedVertex skinned =
+        almetal_lit_preview_avatar_skin_vertex(
+            positions[vertex_id], normals[vertex_id],
+            encoded_weights[vertex_id], skin_palette);
+    ALMetalLitPreviewTexturedVaryings output;
+    output.position = almetal_lit_preview_clip_position(
+        skinned.position, constants);
+    output.color = constants.diffuse_color;
     output.texcoord = texcoords[vertex_id];
     return output;
 }
@@ -558,6 +593,19 @@ fragment float4 almetal_lit_preview_avatar_fragment(
         discard_fragment();
     }
     return max(diffuse * input.color, float4(0.0));
+}
+
+fragment float4 almetal_lit_preview_avatar_unlit_fragment(
+    ALMetalLitPreviewTexturedVaryings input [[stage_in]],
+    texture2d<float> diffuse_map [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]])
+{
+    const float4 diffuse = diffuse_map.sample(diffuse_sampler, input.texcoord);
+    if (diffuse.a < 0.2)
+    {
+        discard_fragment();
+    }
+    return float4(max(diffuse.rgb * input.color.rgb, float3(0.0)), 1.0);
 }
 
 static uint almetal_lit_preview_edge_index(uint vertex_id)

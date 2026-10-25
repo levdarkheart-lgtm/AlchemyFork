@@ -66,6 +66,10 @@ public:
     // refreshed the shared face buffers.
     bool getPreviewGeometry(LLFace*& face, LLPolyMesh*& mesh) const;
 
+    // Resolve the same non-dummy diffuse source drawShape() would bind. A
+    // manual GL-name test texture has no native owner and fails closed.
+    bool getPreviewDiffuseTexture(LLGLTexture*& texture) const;
+
     // overloaded from base class
     U32 drawShape( F32 pixelArea, bool first_pass, bool is_dummy ) override;
 

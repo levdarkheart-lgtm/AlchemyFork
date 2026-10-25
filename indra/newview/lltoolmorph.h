@@ -42,6 +42,10 @@ class LLViewerJointMesh;
 class LLPolyMesh;
 class LLViewerObject;
 class LLJoint;
+#if LL_DARWIN
+class ALMetalTexture;
+struct ALMetalTextureDescriptor;
+#endif
 
 //-----------------------------------------------------------------------------
 // LLVisualParamHint
@@ -61,11 +65,12 @@ public:
         F32 param_weight,
         LLJoint* jointp);
 
-    /*virtual*/ S8 getType() const ;
+    S8                     getType() const override;
 
-    bool                    needsRender();
-    void                    preRender(bool clear_depth);
-    bool                    render();
+    bool                    needsRender() override;
+    void                    preRender(bool clear_depth) override;
+    bool                    render() override;
+    void                    postRender(bool success) override;
     void                    requestUpdate( S32 delay_frames ) {mNeedsUpdate = true; mDelayFrames = delay_frames; }
     void                    setUpdateDelayFrames( S32 delay_frames ) { mDelayFrames = delay_frames; }
     void                    draw(F32 alpha);
@@ -96,6 +101,11 @@ protected:
 
     LLUIImagePtr mBackgroundp;
     boost::signals2::scoped_connection mBackgroundLoadedConnection;
+
+#if LL_DARWIN
+    std::unique_ptr<ALMetalTexture> mMetalPreview;
+    std::unique_ptr<ALMetalTextureDescriptor> mMetalPreviewDescriptor;
+#endif
 
     typedef std::set< LLVisualParamHint* > instance_list_t;
     static instance_list_t sInstances;

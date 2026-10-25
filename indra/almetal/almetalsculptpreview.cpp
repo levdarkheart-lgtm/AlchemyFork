@@ -43,6 +43,7 @@ struct ALMetalLitPreviewRenderer::Impl
 {
     struct PipelineSet
     {
+        std::unique_ptr<ALMetalRenderPipeline> background;
         std::unique_ptr<ALMetalRenderPipeline> solid;
         std::unique_ptr<ALMetalRenderPipeline> textured;
         std::unique_ptr<ALMetalRenderPipeline> flat;
@@ -64,8 +65,10 @@ struct ALMetalLitPreviewRenderer::Impl
         std::unique_ptr<ALMetalRenderPipeline> skinned_edge_u32_blended;
         std::unique_ptr<ALMetalRenderPipeline> avatar_solid;
         std::unique_ptr<ALMetalRenderPipeline> avatar_textured;
+        std::unique_ptr<ALMetalRenderPipeline> avatar_unlit_textured;
         std::unique_ptr<ALMetalRenderPipeline> avatar_skinned_solid;
         std::unique_ptr<ALMetalRenderPipeline> avatar_skinned_textured;
+        std::unique_ptr<ALMetalRenderPipeline> avatar_skinned_unlit_textured;
     };
 
     const ALMetalDevice* device = nullptr;
@@ -73,7 +76,9 @@ struct ALMetalLitPreviewRenderer::Impl
     std::array<PipelineSet, 2> pipelines;
     std::unique_ptr<ALMetalDepthStencilState> depth_state;
     std::unique_ptr<ALMetalDepthStencilState> occluded_depth_state;
+    std::unique_ptr<ALMetalDepthStencilState> no_depth_state;
     std::unique_ptr<ALMetalSamplerState> texture_sampler;
+    std::unique_ptr<ALMetalSamplerState> background_sampler;
     std::unique_ptr<ALMetalBuffer> unit_sphere_vertices;
     std::unique_ptr<ALMetalBuffer> unit_sphere_indices;
     std::uint32_t unit_sphere_vertex_count = 0;
@@ -95,6 +100,8 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
     impl->device = &device;
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->library ||
+        !impl->library->hasFunction("almetal_resample_vertex") ||
+        !impl->library->hasFunction("almetal_resample_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_flat_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_fragment") ||
@@ -106,9 +113,12 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
         !impl->library->hasFunction("almetal_lit_preview_skinned_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_textured_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_avatar_unlit_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_textured_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_unlit_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_fragment") ||
+        !impl->library->hasFunction("almetal_lit_preview_avatar_unlit_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_skinned_edge_u16_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_skinned_edge_u32_vertex"))
     {
@@ -146,7 +156,11 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
             return destination != nullptr;
         };
 
-        if (!create_pipeline(pipelines.solid,
+        if (!create_pipeline(pipelines.background,
+                             "almetal_resample_vertex",
+                             "almetal_resample_fragment",
+                             "Alchemy preview background" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.solid,
                              "almetal_lit_preview_vertex",
                              "almetal_lit_preview_fragment",
                              "Alchemy lit preview" + suffix + " pipeline") ||
@@ -190,6 +204,10 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
                              "almetal_lit_preview_avatar_textured_vertex",
                              "almetal_lit_preview_avatar_fragment",
                              "Alchemy textured rigid-avatar lit preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.avatar_unlit_textured,
+                             "almetal_lit_preview_avatar_unlit_textured_vertex",
+                             "almetal_lit_preview_avatar_unlit_fragment",
+                             "Alchemy textured rigid-avatar unlit preview" + suffix + " pipeline") ||
             !create_pipeline(pipelines.avatar_skinned_solid,
                              "almetal_lit_preview_avatar_skinned_vertex",
                              "almetal_lit_preview_fragment",
@@ -197,7 +215,11 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
             !create_pipeline(pipelines.avatar_skinned_textured,
                              "almetal_lit_preview_avatar_skinned_textured_vertex",
                              "almetal_lit_preview_avatar_fragment",
-                             "Alchemy textured avatar-skinned lit preview" + suffix + " pipeline"))
+                             "Alchemy textured avatar-skinned lit preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.avatar_skinned_unlit_textured,
+                             "almetal_lit_preview_avatar_skinned_unlit_textured_vertex",
+                             "almetal_lit_preview_avatar_unlit_fragment",
+                             "Alchemy textured avatar-skinned unlit preview" + suffix + " pipeline"))
         {
             return nullptr;
         }
@@ -281,12 +303,33 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
         return nullptr;
     }
 
+    depth_descriptor.depth_compare = ALMetalCompareFunction::always;
+    depth_descriptor.depth_write_enabled = false;
+    depth_descriptor.label = "Alchemy preview background no depth";
+    impl->no_depth_state = ALMetalDepthStencilState::create(
+        device, depth_descriptor, error);
+    if (!impl->no_depth_state)
+    {
+        return nullptr;
+    }
+
     ALMetalSamplerDescriptor sampler_descriptor;
     sampler_descriptor.max_anisotropy = 16;
     sampler_descriptor.label = "Alchemy lit preview anisotropic wrap sampler";
     impl->texture_sampler = ALMetalSamplerState::create(
         device, sampler_descriptor, error);
     if (!impl->texture_sampler)
+    {
+        return nullptr;
+    }
+
+    sampler_descriptor.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler_descriptor.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler_descriptor.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler_descriptor.label = "Alchemy preview background anisotropic clamp sampler";
+    impl->background_sampler = ALMetalSamplerState::create(
+        device, sampler_descriptor, error);
+    if (!impl->background_sampler)
     {
         return nullptr;
     }
@@ -430,7 +473,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 batch.index_count != 0 || batch.texture || batch.show_edges ||
                 batch.skin_palette || batch.skin_palette_float_count != 0 ||
                 batch.skin_joint_count != 0 || batch.avatar_lighting ||
-                batch.avatar_skinning ||
+                batch.avatar_unlit || batch.avatar_skinning ||
                 batch.depth_prepass)
             {
                 setError(error, "Metal unit-sphere preview batch has external geometry");
@@ -450,7 +493,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 batch.show_edges || batch.skin_palette ||
                 batch.skin_palette_float_count != 0 ||
                 batch.skin_joint_count != 0 || batch.avatar_lighting ||
-                batch.avatar_skinning ||
+                batch.avatar_unlit || batch.avatar_skinning ||
                 batch.vertex_count % (triangles ? 3 : 2) != 0)
             {
                 setError(error, triangles
@@ -485,8 +528,13 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             setError(error, "Metal lit preview depth prepass requires flat geometry");
             return nullptr;
         }
-        if (batch.avatar_lighting &&
-            (batch.skin_palette || batch.show_edges || batch.alpha_blending))
+        if ((batch.avatar_lighting &&
+             (batch.avatar_unlit || batch.skin_palette || batch.show_edges ||
+              batch.alpha_blending)) ||
+            (batch.avatar_unlit &&
+             (!batch.texture || batch.avatar_lighting || batch.show_edges ||
+              batch.alpha_blending ||
+              ((batch.skin_palette != nullptr) != batch.avatar_skinning))))
         {
             setError(error, "Metal avatar preview mode is invalid");
             return nullptr;
@@ -662,6 +710,19 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             // therefore changes the projected front-face winding.
             encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error);
 
+        if (encoded && segment_begin == 0 && scene.background_texture)
+        {
+            encoded =
+                encoder->setDepthStencilState(mImpl->no_depth_state.get(), error) &&
+                encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setPipeline(*pipelines.background, error) &&
+                encoder->setFragmentTextureLinear(
+                    0, scene.background_texture, error) &&
+                encoder->setFragmentSampler(
+                    0, mImpl->background_sampler.get(), error) &&
+                encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+        }
+
         // Convex hulls alone use the legacy two-pass contract: establish the
         // nearest surface across every hull without touching color, then
         // blend their colors against that completed depth. Keep both phases
@@ -759,7 +820,16 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             const ALMetalRenderPipeline* fill_pipeline = nullptr;
             if (batch.texture)
             {
-                if (avatar_skinned)
+                if (batch.avatar_unlit && avatar_skinned)
+                {
+                    fill_pipeline =
+                        pipelines.avatar_skinned_unlit_textured.get();
+                }
+                else if (batch.avatar_unlit)
+                {
+                    fill_pipeline = pipelines.avatar_unlit_textured.get();
+                }
+                else if (avatar_skinned)
                 {
                     fill_pipeline = pipelines.avatar_skinned_textured.get();
                 }
