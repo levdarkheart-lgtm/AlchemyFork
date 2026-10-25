@@ -250,6 +250,7 @@ namespace
             case ALMetalTextureType::texture_2d:             return MTLTextureType2D;
             case ALMetalTextureType::texture_2d_array:       return MTLTextureType2DArray;
             case ALMetalTextureType::texture_cube:           return MTLTextureTypeCube;
+            case ALMetalTextureType::texture_cube_array:     return MTLTextureTypeCubeArray;
             case ALMetalTextureType::texture_2d_multisample: return MTLTextureType2DMultisample;
         }
         return MTLTextureType2D;
@@ -294,6 +295,8 @@ namespace
         {
             case ALMetalTextureType::texture_2d_array: return descriptor.array_length;
             case ALMetalTextureType::texture_cube:     return 6;
+            case ALMetalTextureType::texture_cube_array:
+                return descriptor.array_length * 6;
             default:                                   return 1;
         }
     }
@@ -701,9 +704,11 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::create(
             setError(error, "Metal texture sample count does not match its texture type");
             return nullptr;
         }
-        if (descriptor.type != ALMetalTextureType::texture_2d_array && descriptor.array_length != 1)
+        if (descriptor.type != ALMetalTextureType::texture_2d_array &&
+            descriptor.type != ALMetalTextureType::texture_cube_array &&
+            descriptor.array_length != 1)
         {
-            setError(error, "Only a 2D-array Metal texture accepts array_length greater than one");
+            setError(error, "Only an array Metal texture accepts array_length greater than one");
             return nullptr;
         }
         if (descriptor.storage == ALMetalStorageMode::memoryless &&

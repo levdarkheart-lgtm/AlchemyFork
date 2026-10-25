@@ -113,6 +113,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_test_fragment",
             "almetal_test_compute",
             "almetal_test_sample_texture",
+            "almetal_test_sample_cube_array",
             "almetal_resample_vertex",
             "almetal_resample_fragment",
             "almetal_world_simple_vertex",
@@ -491,6 +492,117 @@ TEST_CASE("almetal: texture swizzles and generated mipmaps survive private uploa
         REQUIRE(texture->readback(*device, 2, 0, {}, &final_mip, 1, &error));
         INFO(error);
         CHECK(final_mip == 64);
+    }
+}
+
+TEST_CASE("almetal: a cube-array texture addresses every cube face and samples one array element", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        ALMetalTextureDescriptor descriptor;
+        descriptor.type = ALMetalTextureType::texture_cube_array;
+        descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        descriptor.width = 1;
+        descriptor.height = 1;
+        descriptor.array_length = 2;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.usage = ALMetalTextureUsage::shader_read;
+        descriptor.label = "Alchemy cube-array resource test";
+        auto texture = ALMetalTexture::create(*device, descriptor, &error);
+        INFO(error);
+        REQUIRE(texture);
+
+        auto upload = device->makeCommandBuffer(
+            "Alchemy cube-array resource upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        for (std::uint32_t slice = 0; slice < 12; ++slice)
+        {
+            const std::array<std::uint8_t, 4> pixel{{
+                static_cast<std::uint8_t>(slice * 17u),
+                static_cast<std::uint8_t>(255u - slice * 13u),
+                static_cast<std::uint8_t>(slice * 7u),
+                255,
+            }};
+            REQUIRE(texture->upload(
+                *upload, 0, slice, {}, pixel.data(), 4, &error));
+        }
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 4> face{};
+        REQUIRE(texture->readback(
+            *device, 0, 10, {}, face.data(), 4, &error));
+        INFO(error);
+        CHECK(face[0] == 170);
+        CHECK(face[1] == 125);
+        CHECK(face[2] == 70);
+        CHECK(face[3] == 255);
+
+        auto library = ALMetalShaderLibrary::loadBuiltin(*device, &error);
+        INFO(error);
+        REQUIRE(library);
+        ALMetalComputePipelineDescriptor pipeline_descriptor;
+        pipeline_descriptor.library = library.get();
+        pipeline_descriptor.function = "almetal_test_sample_cube_array";
+        pipeline_descriptor.label = "Alchemy cube-array sample pipeline";
+        auto pipeline = ALMetalComputePipeline::create(
+            *device, pipeline_descriptor, &error);
+        INFO(error);
+        REQUIRE(pipeline);
+
+        ALMetalBufferDescriptor result_descriptor;
+        result_descriptor.length = sizeof(float) * 4;
+        result_descriptor.storage = ALMetalStorageMode::shared;
+        result_descriptor.label = "Alchemy cube-array sample result";
+        auto result = ALMetalBuffer::create(
+            *device, result_descriptor, &error);
+        INFO(error);
+        REQUIRE(result);
+
+        auto sample = device->makeCommandBuffer(
+            "Alchemy cube-array resource sample", &error);
+        INFO(error);
+        REQUIRE(sample);
+        auto encoder = ALMetalComputeEncoder::begin(
+            *sample, "Alchemy cube-array sample encoder", &error);
+        INFO(error);
+        REQUIRE(encoder);
+        REQUIRE(encoder->setPipeline(*pipeline, &error));
+        REQUIRE(encoder->setTexture(0, texture.get(), &error));
+        REQUIRE(encoder->setBuffer(0, *result, 0, &error));
+        REQUIRE(encoder->dispatch(1, 1, 1, 1, 1, 1, &error));
+        REQUIRE(encoder->end(&error));
+        REQUIRE(sample->commitAndWait(&error));
+        INFO(error);
+
+        std::array<float, 4> sampled{};
+        REQUIRE(result->read(
+            0, sampled.data(), sizeof(sampled), &error));
+        CHECK(std::abs(sampled[0] - 170.0f / 255.0f) < 0.001f);
+        CHECK(std::abs(sampled[1] - 125.0f / 255.0f) < 0.001f);
+        CHECK(std::abs(sampled[2] - 70.0f / 255.0f) < 0.001f);
+        CHECK(sampled[3] == 1.0f);
+
+        auto invalid_upload = device->makeCommandBuffer(
+            "Alchemy invalid cube-array upload", &error);
+        INFO(error);
+        REQUIRE(invalid_upload);
+        CHECK_FALSE(texture->upload(
+            *invalid_upload, 0, 12, {}, face.data(), 4, &error));
+        CHECK(error == "Metal texture slice is out of range");
+
+        ALMetalTextureDescriptor invalid_descriptor = descriptor;
+        invalid_descriptor.type = ALMetalTextureType::texture_cube;
+        CHECK_FALSE(ALMetalTexture::create(
+            *device, invalid_descriptor, &error));
+        CHECK(error ==
+              "Only an array Metal texture accepts array_length greater than one");
     }
 }
 

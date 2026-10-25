@@ -176,6 +176,7 @@ enum class ALMetalTextureType
     texture_2d,
     texture_2d_array,
     texture_cube,
+    texture_cube_array,
     texture_2d_multisample,
 };
 

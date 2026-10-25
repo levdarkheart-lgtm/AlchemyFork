@@ -43,6 +43,16 @@ kernel void almetal_test_sample_texture(
     result[0] = source.read(uint2(0, 0));
 }
 
+kernel void almetal_test_sample_cube_array(
+    texturecube_array<float> source [[texture(0)]],
+    device float4* result [[buffer(0)]])
+{
+    constexpr sampler cube_sampler(
+        coord::normalized, filter::nearest, address::clamp_to_edge);
+    result[0] = source.sample(
+        cube_sampler, float3(0.0, 0.0, 1.0), 1u, level(0.0));
+}
+
 struct ALMetalResampleVaryings
 {
     float4 position [[position]];
