@@ -296,7 +296,9 @@ public:
                          std::string* error = nullptr);
 
     // Synchronous counterpart for exceptional CPU consumers. Destination row
-    // pitch is caller-selected and need not have Metal's blit alignment.
+    // pitch is caller-selected and need not have Metal's blit alignment. A
+    // combined depth32-float/stencil8 texture returns its four-byte float
+    // depth plane; stencil remains render-state-owned and is not interleaved.
     bool readback(const ALMetalDevice& device,
                   std::uint32_t mip_level,
                   std::uint32_t slice,

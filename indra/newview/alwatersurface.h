@@ -43,6 +43,7 @@ class LLImageRaw;
 class LLVector3;
 class LLViewerCamera;
 class LLViewerTexture;
+struct ALMetalWorldWaterExclusionSurface;
 
 /// The water's field for the frame: ALWaterField's layout around the main camera, and the cell map the water's shaders
 /// read the heights from, ALWaterField::MAP_SIZE texels a side of RG32F (height, flags) as fillCells lays them out.
@@ -150,6 +151,15 @@ public:
 
     /// The cell map, null until the first update with an agent region.
     LLImageGL* getCellMap() const { return mCellMap; }
+
+    /// Snapshot the exact live height field and camera transform consumed by
+    /// the native water-exclusion stencil pass. False until both the field
+    /// and its persistent Metal texture mirror exist.
+#if LL_DARWIN
+    bool fillMetalWaterExclusionSurface(
+        ALMetalWorldWaterExclusionSurface& surface,
+        const LLViewerCamera& camera) const;
+#endif
 
 private:
     struct Key

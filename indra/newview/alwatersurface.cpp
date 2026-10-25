@@ -27,6 +27,9 @@
 #include "alwatersurface.h"
 
 #include "alfarplane.h"
+#if LL_DARWIN
+#include "../almetal/almetalworld.h"
+#endif
 #include "alwaterheightbake.h"
 #include "llagent.h"
 #include "llagentcamera.h"
@@ -50,6 +53,7 @@
 #include "workqueue.h"
 
 #include <cmath>
+#include <cstring>
 #include <memory>
 
 ALWaterSurface::WaveSettings ALWaterSurface::waveSettings()
@@ -237,6 +241,34 @@ void ALWaterSurface::bind(LLGLSLShader& shader) const
 
     shader.uniform4f(LLShaderMgr::WATER_RINGS, (F32)mLayout.mHalf, (F32)mLayout.mRings, (F32)mLayout.mRim, mVoidDrawn ? 1.f : 0.f);
 }
+
+#if LL_DARWIN
+bool ALWaterSurface::fillMetalWaterExclusionSurface(
+    ALMetalWorldWaterExclusionSurface& surface,
+    const LLViewerCamera& camera) const
+{
+    surface = {};
+    if (mCellMap.isNull() || !mCellMap->getMetalTexture())
+    {
+        return false;
+    }
+    LLMatrix4a eye_to_agent;
+    if (!eye_to_agent.setAffineInverse(camera.getModelview()))
+    {
+        return false;
+    }
+    surface.cell_map = mCellMap->getMetalTexture();
+    std::memcpy(surface.eye_to_agent, eye_to_agent.getF32ptr(),
+                sizeof(surface.eye_to_agent));
+    std::memcpy(surface.cell_square, mSquare.mV,
+                sizeof(surface.cell_square));
+    const LLVector3& camera_position = camera.getOrigin();
+    std::memcpy(surface.camera_default_height, camera_position.mV,
+                sizeof(F32) * 3);
+    surface.camera_default_height[3] = mDefaultHeight;
+    return true;
+}
+#endif
 
 void ALWaterSurface::draw(LLGLSLShader& shader, bool patched) const
 {

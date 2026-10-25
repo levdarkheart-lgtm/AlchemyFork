@@ -42,6 +42,17 @@ namespace
         float avatar_cloth_depth[4]{};
     };
 
+    struct alignas(16) WorldWaterExclusionConstants
+    {
+        float modelview_projection[16]{};
+        float modelview[16]{};
+        float eye_to_agent[16]{};
+        float cell_square[4]{};
+        float camera_default_height[4]{};
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldWaterExclusionConstants) == 240);
+
     struct alignas(16) WorldShinyConstants
     {
         float modelview_projection[16];
@@ -586,6 +597,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         opaque_forward_shiny_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         opaque_forward_emboss_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        water_exclusion_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> light_map_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> light_map_blur_pipeline;
     std::array<NormalPipelines, 2> hdri_sky_pipelines;
@@ -605,6 +618,10 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalDepthStencilState> reverse_readonly_depth;
     std::unique_ptr<ALMetalDepthStencilState> forward_coverage_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_coverage_depth;
+    std::unique_ptr<ALMetalDepthStencilState>
+        forward_water_exclusion_depth;
+    std::unique_ptr<ALMetalDepthStencilState>
+        reverse_water_exclusion_depth;
     std::unique_ptr<ALMetalSamplerState> diffuse_sampler;
     std::unique_ptr<ALMetalSamplerState> probe_sampler;
     std::unique_ptr<ALMetalSamplerState> point_clamp_sampler;
@@ -670,6 +687,10 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction(
             "almetal_world_emboss_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_emboss_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_water_exclusion_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_water_exclusion_fragment") ||
         !impl->library->hasFunction("almetal_world_flat_alpha_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_alpha_fragment") ||
         !impl->library->hasFunction(
@@ -833,7 +854,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 : ALMetalPixelFormat::rgb10a2_unorm;
             sky_descriptor.colors[3].format = emissive_formats[hdr];
             sky_descriptor.depth_stencil_format =
-                ALMetalPixelFormat::depth32_float;
+                ALMetalPixelFormat::depth32_float_stencil8;
             sky_descriptor.label = hdr
                 ? "Alchemy HDRI sky G-buffer pipeline"
                 : "Alchemy vintage HDRI sky G-buffer pipeline";
@@ -1076,7 +1097,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                     descriptor.colors[3].write_mask =
                         ALMetalColorWriteMask::none;
                     descriptor.depth_stencil_format =
-                        ALMetalPixelFormat::depth32_float;
+                        ALMetalPixelFormat::depth32_float_stencil8;
                     descriptor.label = alpha_mask
                         ? "Alchemy world fullbright-mask impostor pipeline"
                         : "Alchemy world fullbright impostor pipeline";
@@ -1113,6 +1134,28 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         }
     }
 
+    for (std::size_t hdr = 0; hdr < screen_formats.size(); ++hdr)
+    {
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = impl->library.get();
+        descriptor.vertex_function =
+            "almetal_world_water_exclusion_vertex";
+        descriptor.fragment_function =
+            "almetal_world_water_exclusion_fragment";
+        descriptor.color_attachment_count = 1;
+        descriptor.colors[0].format = screen_formats[hdr];
+        descriptor.colors[0].write_mask = ALMetalColorWriteMask::none;
+        descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        descriptor.label = "Alchemy world water-exclusion stencil pipeline";
+        impl->water_exclusion_pipelines[hdr] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->water_exclusion_pipelines[hdr])
+        {
+            return nullptr;
+        }
+    }
+
     for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
     {
         for (std::size_t rigged = 0; rigged < 2; ++rigged)
@@ -1140,7 +1183,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 descriptor.colors[3].write_mask =
                     ALMetalColorWriteMask::none;
                 descriptor.depth_stencil_format =
-                    ALMetalPixelFormat::depth32_float;
+                    ALMetalPixelFormat::depth32_float_stencil8;
                 descriptor.label =
                     "Alchemy world shiny avatar-impostor pipeline";
                 auto& pipeline =
@@ -1210,7 +1253,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 descriptor.colors[3].write_mask =
                     ALMetalColorWriteMask::none;
                 descriptor.depth_stencil_format =
-                    ALMetalPixelFormat::depth32_float;
+                    ALMetalPixelFormat::depth32_float_stencil8;
                 descriptor.label =
                     "Alchemy world emboss impostor pipeline";
                 auto& pipeline =
@@ -1274,7 +1317,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 descriptor.colors[3].format = emissive_formats[hdr];
                 descriptor.colors[3].write_mask = ALMetalColorWriteMask::none;
                 descriptor.depth_stencil_format =
-                    ALMetalPixelFormat::depth32_float;
+                    ALMetalPixelFormat::depth32_float_stencil8;
                 descriptor.label =
                     "Alchemy world legacy-material impostor-alpha pipeline";
                 auto& pipeline =
@@ -1322,7 +1365,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 descriptor.colors[3].format = emissive_formats[hdr];
                 descriptor.colors[3].write_mask = ALMetalColorWriteMask::none;
                 descriptor.depth_stencil_format =
-                    ALMetalPixelFormat::depth32_float;
+                    ALMetalPixelFormat::depth32_float_stencil8;
                 descriptor.label =
                     "Alchemy world flat impostor-alpha pipeline";
                 auto& pipeline =
@@ -1354,7 +1397,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 : ALMetalPixelFormat::rgb10a2_unorm;
             descriptor.colors[3].format = emissive_formats[hdr];
             descriptor.depth_stencil_format =
-                ALMetalPixelFormat::depth32_float;
+                ALMetalPixelFormat::depth32_float_stencil8;
             descriptor.label = "Alchemy world impostor G-buffer pipeline";
             impl->impostor_pipelines[hdr][normal_hdr] =
                 ALMetalRenderPipeline::create(device, descriptor, error);
@@ -1385,7 +1428,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             descriptor.colors[3].format = emissive_formats[hdr];
             descriptor.colors[3].write_mask = ALMetalColorWriteMask::none;
             descriptor.depth_stencil_format =
-                ALMetalPixelFormat::depth32_float;
+                ALMetalPixelFormat::depth32_float_stencil8;
             descriptor.label = "Alchemy world opaque-coverage pipeline";
             impl->coverage_pipelines[hdr][normal_hdr] =
                 ALMetalRenderPipeline::create(device, descriptor, error);
@@ -1413,7 +1456,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                     ? ALMetalPixelFormat::rgba16_unorm
                     : ALMetalPixelFormat::rgb10a2_unorm;
                 descriptor.colors[3].format = emissive_formats[hdr];
-                descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float;
+                descriptor.depth_stencil_format =
+                    ALMetalPixelFormat::depth32_float_stencil8;
                 descriptor.tessellation.enabled = true;
                 descriptor.tessellation.partition_mode = pinned
                     ? ALMetalTessellationPartitionMode::integer
@@ -1469,7 +1513,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                     : ALMetalPixelFormat::rgb10a2_unorm;
                 descriptor.colors[3].format = emissive_formats[hdr];
                 descriptor.depth_stencil_format =
-                    ALMetalPixelFormat::depth32_float;
+                    ALMetalPixelFormat::depth32_float_stencil8;
                 descriptor.label = "Alchemy world avatar G-buffer pipeline";
                 auto& pipeline =
                     impl->avatar_pipelines[hdr][variant][normal_hdr];
@@ -1505,7 +1549,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                     : ALMetalPixelFormat::rgb10a2_unorm;
                 descriptor.colors[3].format = emissive_formats[hdr];
                 descriptor.depth_stencil_format =
-                    ALMetalPixelFormat::depth32_float;
+                    ALMetalPixelFormat::depth32_float_stencil8;
                 descriptor.label = "Alchemy world PBR G-buffer pipeline";
                 auto& pipeline = impl->pbr_pipelines[hdr][rigged][normal_hdr];
                 pipeline = ALMetalRenderPipeline::create(
@@ -1551,7 +1595,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 descriptor.colors[3].format = emissive_formats[hdr];
                 descriptor.colors[3].write_mask = ALMetalColorWriteMask::none;
                 descriptor.depth_stencil_format =
-                    ALMetalPixelFormat::depth32_float;
+                    ALMetalPixelFormat::depth32_float_stencil8;
                 descriptor.label =
                     "Alchemy world PBR impostor-alpha pipeline";
                 auto& pipeline =
@@ -1589,7 +1633,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                     : ALMetalPixelFormat::rgb10a2_unorm;
                 descriptor.colors[3].format = emissive_formats[hdr];
                 descriptor.depth_stencil_format =
-                    ALMetalPixelFormat::depth32_float;
+                    ALMetalPixelFormat::depth32_float_stencil8;
                 descriptor.label =
                     "Alchemy world legacy material G-buffer pipeline";
                 auto& pipeline = impl->material_pipelines[hdr][rigged]
@@ -1637,7 +1681,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                         descriptor.colors[3].format =
                             emissive_formats[hdr];
                         descriptor.depth_stencil_format =
-                            ALMetalPixelFormat::depth32_float;
+                            ALMetalPixelFormat::depth32_float_stencil8;
                         descriptor.label =
                             "Alchemy world G-buffer pipeline";
                         auto& pipeline = impl->pipelines[hdr][bump][masked]
@@ -1703,6 +1747,34 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->reverse_coverage_depth = ALMetalDepthStencilState::create(
         device, depth, error);
     if (!impl->reverse_coverage_depth)
+    {
+        return nullptr;
+    }
+
+    depth.depth_compare = ALMetalCompareFunction::less_equal;
+    depth.depth_write_enabled = false;
+    depth.stencil_enabled = true;
+    depth.front_stencil.compare = ALMetalCompareFunction::always;
+    depth.front_stencil.stencil_failure =
+        ALMetalStencilOperation::keep;
+    depth.front_stencil.depth_failure = ALMetalStencilOperation::keep;
+    depth.front_stencil.depth_stencil_pass =
+        ALMetalStencilOperation::replace;
+    depth.front_stencil.read_mask = 0u;
+    depth.front_stencil.write_mask = 1u;
+    depth.back_stencil = depth.front_stencil;
+    depth.label = "Alchemy forward-Z water-exclusion stencil";
+    impl->forward_water_exclusion_depth =
+        ALMetalDepthStencilState::create(device, depth, error);
+    if (!impl->forward_water_exclusion_depth)
+    {
+        return nullptr;
+    }
+    depth.depth_compare = ALMetalCompareFunction::greater_equal;
+    depth.label = "Alchemy reverse-Z water-exclusion stencil";
+    impl->reverse_water_exclusion_depth =
+        ALMetalDepthStencilState::create(device, depth, error);
+    if (!impl->reverse_water_exclusion_depth)
     {
         return nullptr;
     }
@@ -2392,7 +2464,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         ? ALMetalPixelFormat::rg11b10_float
         : ALMetalPixelFormat::rgba8_unorm;
     target_descriptor.colors[3].label = "Alchemy world G-buffer emissive";
-    target_descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float;
+    target_descriptor.depth_stencil_format =
+        ALMetalPixelFormat::depth32_float_stencil8;
     target_descriptor.depth_stencil_shader_read = true;
     target_descriptor.label = "Alchemy native world G-buffer bootstrap";
     auto target = ALMetalRenderTarget::create(
@@ -2415,6 +2488,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     pass_config.depth_load = ALMetalLoadAction::clear;
     pass_config.depth_store = ALMetalStoreAction::store;
     pass_config.clear_depth = scene.reverse_z ? 0.0 : 1.0;
+    pass_config.stencil_load = ALMetalLoadAction::clear;
+    pass_config.stencil_store = ALMetalStoreAction::store;
+    pass_config.clear_stencil = 0;
     auto pass = target->makeRenderPass(pass_config, error);
     if (!pass)
     {
@@ -2882,6 +2958,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         }
         coverage_config.depth_load = ALMetalLoadAction::load;
         coverage_config.depth_store = ALMetalStoreAction::store;
+        coverage_config.stencil_load = ALMetalLoadAction::load;
+        coverage_config.stencil_store = ALMetalStoreAction::store;
         auto coverage_pass = target->makeRenderPass(coverage_config, error);
         if (!coverage_pass)
         {
@@ -2959,7 +3037,8 @@ ALMetalWorldGBufferRenderer::renderLocalLights(
         input.colors[0].format != ALMetalPixelFormat::rgba8_unorm_srgb ||
         input.colors[1].format != ALMetalPixelFormat::rgba8_unorm ||
         !normal_format || input.colors[3].format != expected_emissive ||
-        input.depth_stencil_format != ALMetalPixelFormat::depth32_float ||
+        input.depth_stencil_format !=
+            ALMetalPixelFormat::depth32_float_stencil8 ||
         !input.depth_stencil_shader_read ||
         !sampleableTexture(albedo) || !sampleableTexture(specular) ||
         !sampleableTexture(normal) || !sampleableTexture(emissive) ||
@@ -3145,7 +3224,8 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
         input.colors[1].format != ALMetalPixelFormat::rgba8_unorm ||
         input.colors[2].format != expected_normal ||
         input.colors[3].format != expected_emissive ||
-        input.depth_stencil_format != ALMetalPixelFormat::depth32_float ||
+        input.depth_stencil_format !=
+            ALMetalPixelFormat::depth32_float_stencil8 ||
         !input.depth_stencil_shader_read ||
         !sampleableTexture(albedo) || !sampleableTexture(specular) ||
         !sampleableTexture(normal) || !sampleableTexture(emissive) ||
@@ -3458,7 +3538,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         scene.composed_lighting->descriptor();
     if (gbuffer.width != scene.width || gbuffer.height != scene.height ||
         gbuffer.sample_count != 1 || gbuffer.color_attachment_count != 4 ||
-        gbuffer.depth_stencil_format != ALMetalPixelFormat::depth32_float ||
+        gbuffer.depth_stencil_format !=
+            ALMetalPixelFormat::depth32_float_stencil8 ||
         !scene.gbuffer->depthStencilTexture() ||
         lighting.width != scene.width || lighting.height != scene.height ||
         lighting.sample_count != 1 || lighting.color_attachment_count != 1 ||
@@ -3474,21 +3555,21 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     constexpr std::size_t color_stride = sizeof(std::uint32_t);
     constexpr std::uint32_t max_skin_joints = 110;
     bool has_shiny = false;
+    bool has_water_exclusion = false;
+    bool saw_opaque_forward = false;
     for (std::size_t index = 0; index < scene.batch_count; ++index)
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
         const std::uint32_t family_count =
             (batch.impostor_fullbright ? 1u : 0u) +
             (batch.impostor_shiny ? 1u : 0u) +
-            (batch.impostor_emboss ? 1u : 0u);
+            (batch.impostor_emboss ? 1u : 0u) +
+            (batch.water_exclusion ? 1u : 0u);
         const bool rigged = batch.skin_palette != nullptr;
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         if (family_count != 1 || !batch.vertices || !batch.indices ||
             batch.vertex_count == 0 || batch.index_count == 0 ||
-            batch.texture_count == 0 ||
-            batch.texture_count >
-                ALMetalWorldSimpleBatch::max_diffuse_textures ||
             batch.material_slot_count != 0 || batch.pbr_slot_count != 0 ||
             batch.normal_texture || batch.impostor || batch.terrain ||
             batch.avatar_rigid || batch.avatar_skinning ||
@@ -3499,10 +3580,33 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             batch.position_offset % float4_stride != 0 ||
             !rangeFits(batch.position_offset, batch.vertex_count,
                        float4_stride, batch.vertices->length()) ||
+            !finiteValues(batch.modelview_projection, 16))
+        {
+            setError(error, "Metal world opaque post-deferred batch is invalid");
+            return nullptr;
+        }
+        if (batch.water_exclusion)
+        {
+            if (saw_opaque_forward || batch.texture_count != 0 || rigged ||
+                batch.skin_palette_float_count != 0 ||
+                batch.skin_joint_count != 0 ||
+                !finiteValues(batch.modelview, 16))
+            {
+                setError(
+                    error,
+                    "Metal world water-exclusion batch is invalid");
+                return nullptr;
+            }
+            has_water_exclusion = true;
+            continue;
+        }
+        saw_opaque_forward = true;
+        if (batch.texture_count == 0 ||
+            batch.texture_count >
+                ALMetalWorldSimpleBatch::max_diffuse_textures ||
             batch.texcoord_offset % float2_stride != 0 ||
             !rangeFits(batch.texcoord_offset, batch.vertex_count,
                        float2_stride, batch.vertices->length()) ||
-            !finiteValues(batch.modelview_projection, 16) ||
             !finiteValues(batch.texture_matrix, 16) ||
             (batch.impostor_fullbright &&
              (!std::isfinite(batch.alpha_cutoff) ||
@@ -3548,6 +3652,33 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             }
         }
         has_shiny = has_shiny || batch.impostor_shiny;
+    }
+    if (has_water_exclusion)
+    {
+        const ALMetalWorldWaterExclusionSurface* surface =
+            scene.water_exclusion_surface;
+        const ALMetalTextureDescriptor* cell_map = surface &&
+                surface->cell_map
+            ? &surface->cell_map->descriptor() : nullptr;
+        if (!surface || !cell_map ||
+            cell_map->type != ALMetalTextureType::texture_2d ||
+            cell_map->format != ALMetalPixelFormat::rg32_float ||
+            cell_map->width == 0 || cell_map->height == 0 ||
+            cell_map->sample_count != 1 ||
+            !sampleableTexture(surface->cell_map) ||
+            !finiteValues(surface->eye_to_agent, 16) ||
+            !finiteValues(surface->cell_square, 4) ||
+            !finiteValues(surface->camera_default_height, 4) ||
+            surface->cell_square[2] <= 0.f ||
+            surface->cell_square[3] <= 0.f ||
+            surface->cell_square[3] >
+                static_cast<float>(std::min(
+                    cell_map->width, cell_map->height)))
+        {
+            setError(error,
+                     "Metal world water-exclusion surface is invalid");
+            return nullptr;
+        }
     }
     if (has_shiny && !validReflectionProbes(scene.reflection_probes))
     {
@@ -3630,7 +3761,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     output_descriptor.colors[0].label =
         "Alchemy world post-deferred final color";
     output_descriptor.depth_stencil_format =
-        ALMetalPixelFormat::depth32_float;
+        ALMetalPixelFormat::depth32_float_stencil8;
     output_descriptor.label =
         "Alchemy native world opaque post-deferred target";
     auto output = ALMetalRenderTarget::create(
@@ -3656,6 +3787,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     pass_config.colors[0].store = ALMetalStoreAction::store;
     pass_config.depth_load = ALMetalLoadAction::load;
     pass_config.depth_store = ALMetalStoreAction::store;
+    pass_config.stencil_load = ALMetalLoadAction::clear;
+    pass_config.stencil_store = ALMetalStoreAction::store;
+    pass_config.clear_stencil = 0;
     auto pass = output->makeRenderPass(pass_config, error);
     auto encoder = pass ? ALMetalRenderEncoder::begin(
         *command, *pass,
@@ -3701,6 +3835,50 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
         const bool rigged = batch.skin_palette != nullptr;
+        if (batch.water_exclusion)
+        {
+            WorldWaterExclusionConstants constants{};
+            std::memcpy(constants.modelview_projection,
+                        batch.modelview_projection,
+                        sizeof(constants.modelview_projection));
+            std::memcpy(constants.modelview, batch.modelview,
+                        sizeof(constants.modelview));
+            std::memcpy(constants.eye_to_agent,
+                        scene.water_exclusion_surface->eye_to_agent,
+                        sizeof(constants.eye_to_agent));
+            std::memcpy(constants.cell_square,
+                        scene.water_exclusion_surface->cell_square,
+                        sizeof(constants.cell_square));
+            std::memcpy(constants.camera_default_height,
+                        scene.water_exclusion_surface
+                            ->camera_default_height,
+                        sizeof(constants.camera_default_height));
+            constants.config[0] = scene.reverse_z ? 1u : 0u;
+            const ALMetalDepthStencilState* water_depth = scene.reverse_z
+                ? mImpl->reverse_water_exclusion_depth.get()
+                : mImpl->forward_water_exclusion_depth.get();
+            encoded =
+                encoder->setDepthStencilState(water_depth, error) &&
+                encoder->setStencilReferenceValue(1u, error) &&
+                encoder->setCullMode(ALMetalCullMode::back, error) &&
+                encoder->setPipeline(
+                    *mImpl->water_exclusion_pipelines
+                        [scene.hdr ? 1 : 0],
+                    error) &&
+                encoder->setVertexBuffer(
+                    0, *batch.vertices, batch.position_offset, error) &&
+                encoder->setVertexBytes(
+                    1, &constants, sizeof(constants), error) &&
+                encoder->setFragmentBytes(
+                    0, &constants, sizeof(constants), error) &&
+                encoder->setFragmentTexture(
+                    0, scene.water_exclusion_surface->cell_map, error) &&
+                encoder->drawIndexed(
+                    ALMetalPrimitiveType::triangle, batch.index_count,
+                    batch.index_type, *batch.indices,
+                    batch.index_offset, 1, error);
+            continue;
+        }
         const ALMetalRenderPipeline* pipeline = nullptr;
         if (batch.impostor_emboss)
         {
@@ -3859,7 +4037,8 @@ ALMetalWorldGBufferRenderer::renderLightMap(
          noise->sample_count == 1 && noise->mipmap_level_count == 1);
     if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
         input.color_attachment_count != 4 || !normal_format ||
-        input.depth_stencil_format != ALMetalPixelFormat::depth32_float ||
+        input.depth_stencil_format !=
+            ALMetalPixelFormat::depth32_float_stencil8 ||
         !input.depth_stencil_shader_read ||
         constants.screen[0] != static_cast<float>(input.width) ||
         constants.screen[1] != static_cast<float>(input.height) ||
@@ -4048,7 +4227,7 @@ bool ALMetalWorldGBufferRenderer::compositeHDRISky(
         descriptor.colors[2].format != expected_normal ||
         descriptor.colors[3].format != expected_emissive ||
         descriptor.depth_stencil_format !=
-            ALMetalPixelFormat::depth32_float)
+            ALMetalPixelFormat::depth32_float_stencil8)
     {
         setError(error, "Metal world HDRI sky target is incompatible");
         return false;
@@ -4093,6 +4272,8 @@ bool ALMetalWorldGBufferRenderer::compositeHDRISky(
     }
     pass_config.depth_load = ALMetalLoadAction::load;
     pass_config.depth_store = ALMetalStoreAction::store;
+    pass_config.stencil_load = ALMetalLoadAction::load;
+    pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
     auto command = pass ? mImpl->device->makeCommandBuffer(
         "Alchemy native world HDRI sky", error) : nullptr;
@@ -4223,7 +4404,7 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightSky(
         descriptor.colors[2].format != expected_normal ||
         descriptor.colors[3].format != expected_emissive ||
         descriptor.depth_stencil_format !=
-            ALMetalPixelFormat::depth32_float)
+            ALMetalPixelFormat::depth32_float_stencil8)
     {
         setError(error, "Metal world WindLight sky target is incompatible");
         return false;
@@ -4258,6 +4439,8 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightSky(
     }
     pass_config.depth_load = ALMetalLoadAction::load;
     pass_config.depth_store = ALMetalStoreAction::store;
+    pass_config.stencil_load = ALMetalLoadAction::load;
+    pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
     auto command = pass ? mImpl->device->makeCommandBuffer(
         "Alchemy native world WindLight sky", error) : nullptr;
@@ -4371,7 +4554,7 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightStars(
         descriptor.colors[2].format != expected_normal ||
         descriptor.colors[3].format != expected_emissive ||
         descriptor.depth_stencil_format !=
-            ALMetalPixelFormat::depth32_float)
+            ALMetalPixelFormat::depth32_float_stencil8)
     {
         setError(error, "Metal world WindLight star target is incompatible");
         return false;
@@ -4410,6 +4593,8 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightStars(
     pass_config.colors[0].linear_storage_view = !scene.hdr;
     pass_config.depth_load = ALMetalLoadAction::load;
     pass_config.depth_store = ALMetalStoreAction::store;
+    pass_config.stencil_load = ALMetalLoadAction::load;
+    pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
     auto command = pass ? mImpl->device->makeCommandBuffer(
         "Alchemy native world WindLight stars", error) : nullptr;
@@ -4515,7 +4700,7 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightHeavenlyBodies(
         descriptor.colors[2].format != expected_normal ||
         descriptor.colors[3].format != expected_emissive ||
         descriptor.depth_stencil_format !=
-            ALMetalPixelFormat::depth32_float)
+            ALMetalPixelFormat::depth32_float_stencil8)
     {
         setError(error,
                  "Metal world WindLight heavenly-body target is incompatible");
@@ -4564,6 +4749,8 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightHeavenlyBodies(
     pass_config.colors[0].linear_storage_view = !scene.hdr;
     pass_config.depth_load = ALMetalLoadAction::load;
     pass_config.depth_store = ALMetalStoreAction::store;
+    pass_config.stencil_load = ALMetalLoadAction::load;
+    pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
     auto command = pass ? mImpl->device->makeCommandBuffer(
         "Alchemy native world WindLight heavenly bodies", error) : nullptr;
@@ -4663,7 +4850,7 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightMeteors(
         descriptor.colors[2].format != expected_normal ||
         descriptor.colors[3].format != expected_emissive ||
         descriptor.depth_stencil_format !=
-            ALMetalPixelFormat::depth32_float)
+            ALMetalPixelFormat::depth32_float_stencil8)
     {
         setError(error, "Metal world WindLight meteor target is incompatible");
         return false;
@@ -4705,6 +4892,8 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightMeteors(
     pass_config.colors[0].linear_storage_view = !scene.hdr;
     pass_config.depth_load = ALMetalLoadAction::load;
     pass_config.depth_store = ALMetalStoreAction::store;
+    pass_config.stencil_load = ALMetalLoadAction::load;
+    pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
     auto command = pass ? mImpl->device->makeCommandBuffer(
         "Alchemy native world WindLight meteors", error) : nullptr;
@@ -4800,7 +4989,7 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightAurora(
         descriptor.colors[2].format != expected_normal ||
         descriptor.colors[3].format != expected_emissive ||
         descriptor.depth_stencil_format !=
-            ALMetalPixelFormat::depth32_float)
+            ALMetalPixelFormat::depth32_float_stencil8)
     {
         setError(error, "Metal world WindLight aurora target is incompatible");
         return false;
@@ -4837,6 +5026,8 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightAurora(
     pass_config.colors[0].linear_storage_view = !scene.hdr;
     pass_config.depth_load = ALMetalLoadAction::load;
     pass_config.depth_store = ALMetalStoreAction::store;
+    pass_config.stencil_load = ALMetalLoadAction::load;
+    pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
     auto command = pass ? mImpl->device->makeCommandBuffer(
         "Alchemy native world WindLight aurora", error) : nullptr;
@@ -4965,7 +5156,7 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightClouds(
         descriptor.colors[2].format != expected_normal ||
         descriptor.colors[3].format != expected_emissive ||
         descriptor.depth_stencil_format !=
-            ALMetalPixelFormat::depth32_float)
+            ALMetalPixelFormat::depth32_float_stencil8)
     {
         setError(error, "Metal world WindLight cloud target is incompatible");
         return false;
@@ -5006,6 +5197,8 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightClouds(
     pass_config.colors[0].linear_storage_view = !scene.hdr;
     pass_config.depth_load = ALMetalLoadAction::load;
     pass_config.depth_store = ALMetalStoreAction::store;
+    pass_config.stencil_load = ALMetalLoadAction::load;
+    pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
     auto command = pass ? mImpl->device->makeCommandBuffer(
         "Alchemy native world WindLight clouds", error) : nullptr;
@@ -5139,7 +5332,8 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         input.colors[0].format != ALMetalPixelFormat::rgba8_unorm_srgb ||
         input.colors[1].format != ALMetalPixelFormat::rgba8_unorm ||
         !normal_format || input.colors[3].format != expected_emissive ||
-        input.depth_stencil_format != ALMetalPixelFormat::depth32_float ||
+        input.depth_stencil_format !=
+            ALMetalPixelFormat::depth32_float_stencil8 ||
         !input.depth_stencil_shader_read ||
         light_map.format != ALMetalPixelFormat::rg8_unorm ||
         light_map.width != input.width || light_map.height != input.height ||
@@ -5321,7 +5515,7 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
         target_descriptor.colors[2].format != expected_normal ||
         target_descriptor.colors[3].format != expected_emissive ||
         target_descriptor.depth_stencil_format !=
-            ALMetalPixelFormat::depth32_float)
+            ALMetalPixelFormat::depth32_float_stencil8)
     {
         setError(error,
                  "Metal world impostor post-deferred target is incompatible");
@@ -5614,6 +5808,8 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
     }
     pass_config.depth_load = ALMetalLoadAction::load;
     pass_config.depth_store = ALMetalStoreAction::store;
+    pass_config.stencil_load = ALMetalLoadAction::load;
+    pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
     if (!pass)
     {

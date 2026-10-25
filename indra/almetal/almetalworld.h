@@ -217,6 +217,7 @@ struct ALMetalWorldSimpleBatch
     bool impostor_fullbright = false;
     bool impostor_shiny = false;
     bool impostor_emboss = false;
+    bool water_exclusion = false;
     bool terrain = false;
     bool use_vertex_color = true;
     bool alpha_cutoff_bias = true;
@@ -353,9 +354,23 @@ struct ALMetalWorldLightingCompositionScene
     bool hdr = false;
 };
 
+// The water-exclusion fragment needs the same live height field and
+// eye-to-agent transform as waterExclusionF.glsl. The cell map is the
+// persistent Metal mirror of ALWaterSurface's RG32F height/flag texture.
+struct ALMetalWorldWaterExclusionSurface
+{
+    const ALMetalTexture* cell_map = nullptr;
+    float eye_to_agent[16]{};
+    // xy = cell square origin, z = cell width, w = cells per side.
+    float cell_square[4]{};
+    // xyz = camera position in agent space, w = default water height.
+    float camera_default_height[4]{};
+};
+
 // The first ordered post-deferred world slice. The composed lighting color
-// and retained G-buffer depth are copied into one final-color target before
-// opaque-forward fullbright, shiny and emboss batches are replayed. Blended
+// and retained G-buffer depth/stencil attachment are copied into one
+// final-color target. Water-exclusion batches first rebuild EXCLUDE_BIT,
+// followed by opaque-forward fullbright, shiny and emboss replay. Blended
 // alpha, water, haze, glow and presentation remain later owners.
 struct ALMetalWorldOpaquePostDeferredScene
 {
@@ -365,6 +380,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t batch_count = 0;
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
     const ALMetalWorldHeroProbe* hero_probe = nullptr;
+    const ALMetalWorldWaterExclusionSurface* water_exclusion_surface =
+        nullptr;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     bool reverse_z = false;

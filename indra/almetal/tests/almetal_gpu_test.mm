@@ -144,6 +144,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_emboss_vertex",
             "almetal_world_emboss_skinned_vertex",
             "almetal_world_emboss_fragment",
+            "almetal_world_water_exclusion_vertex",
+            "almetal_world_water_exclusion_fragment",
             "almetal_world_flat_alpha_fragment",
             "almetal_world_pbr_alpha_fragment",
             "almetal_world_impostor_fragment",
@@ -2117,7 +2119,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(opaque_forward->descriptor().colors[0].format ==
               ALMetalPixelFormat::rgba16_float);
         CHECK(opaque_forward->descriptor().depth_stencil_format ==
-              ALMetalPixelFormat::depth32_float);
+              ALMetalPixelFormat::depth32_float_stencil8);
         std::array<std::uint16_t, 32 * 32 * 4> opaque_forward_pixels{};
         std::array<float, 32 * 32> opaque_forward_depth{};
         REQUIRE(opaque_forward->colorTexture(0)->readback(
@@ -2139,6 +2141,191 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(
                   opaque_forward_depth[24 * 32 + 8] - 0.625f) < 0.0001f);
         CHECK(std::abs(opaque_forward_depth[0] - 1.f) < 0.0001f);
+
+        // Water exclusion runs before opaque-forward geometry, tests the
+        // retained scene depth without writing it, and marks only stencil
+        // bit zero. Feed an all-zero water-height cell under a camera and
+        // triangle that are both above the surface, then prove the mark by
+        // drawing red only where that bit survived the transaction.
+        ALMetalTextureDescriptor water_cell_descriptor;
+        water_cell_descriptor.format = ALMetalPixelFormat::rg32_float;
+        water_cell_descriptor.width = 1;
+        water_cell_descriptor.height = 1;
+        water_cell_descriptor.storage = ALMetalStorageMode::private_gpu;
+        water_cell_descriptor.usage = ALMetalTextureUsage::shader_read;
+        water_cell_descriptor.label =
+            "Alchemy water-exclusion test height field";
+        auto water_cell_map = ALMetalTexture::create(
+            *device, water_cell_descriptor, &error);
+        INFO(error);
+        REQUIRE(water_cell_map);
+        const std::array<float, 2> water_cell{{0.f, 0.f}};
+        auto water_upload = device->makeCommandBuffer(
+            "Alchemy water-exclusion test height upload", &error);
+        REQUIRE(water_upload);
+        REQUIRE(water_cell_map->upload(
+            *water_upload, 0, 0, {}, water_cell.data(),
+            sizeof(water_cell), &error));
+        REQUIRE(water_upload->commitAndWait(&error));
+
+        const std::array<float, 16> identity{{
+            1.f, 0.f, 0.f, 0.f,
+            0.f, 1.f, 0.f, 0.f,
+            0.f, 0.f, 1.f, 0.f,
+            0.f, 0.f, 0.f, 1.f,
+        }};
+        ALMetalWorldSimpleBatch water_exclusion_batch;
+        water_exclusion_batch.vertices = vertices.get();
+        water_exclusion_batch.vertex_count = positions.size();
+        water_exclusion_batch.indices = indices.get();
+        water_exclusion_batch.index_count = index_values.size();
+        water_exclusion_batch.water_exclusion = true;
+        std::memcpy(water_exclusion_batch.modelview_projection,
+                    identity.data(), sizeof(identity));
+        std::memcpy(water_exclusion_batch.modelview,
+                    identity.data(), sizeof(identity));
+        std::array<ALMetalWorldSimpleBatch, 2> final_batches{{
+            water_exclusion_batch,
+            fullbright_batch,
+        }};
+        ALMetalWorldWaterExclusionSurface water_surface;
+        water_surface.cell_map = water_cell_map.get();
+        std::memcpy(water_surface.eye_to_agent,
+                    identity.data(), sizeof(identity));
+        water_surface.cell_square[0] = -1.f;
+        water_surface.cell_square[1] = -1.f;
+        water_surface.cell_square[2] = 2.f;
+        water_surface.cell_square[3] = 1.f;
+        water_surface.camera_default_height[2] = 1.f;
+        water_surface.camera_default_height[3] = 0.f;
+        opaque_forward_scene.batches = final_batches.data();
+        opaque_forward_scene.batch_count = final_batches.size();
+        opaque_forward_scene.water_exclusion_surface = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world water-exclusion surface is invalid");
+        opaque_forward_scene.water_exclusion_surface = &water_surface;
+        error.clear();
+        auto water_excluded = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(water_excluded);
+
+        auto stencil_library = ALMetalShaderLibrary::loadBuiltin(
+            *device, &error);
+        INFO(error);
+        REQUIRE(stencil_library);
+        ALMetalRenderPipelineDescriptor stencil_pipeline_descriptor;
+        stencil_pipeline_descriptor.library = stencil_library.get();
+        stencil_pipeline_descriptor.vertex_function =
+            "almetal_test_vertex";
+        stencil_pipeline_descriptor.fragment_function =
+            "almetal_test_fragment";
+        stencil_pipeline_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba16_float;
+        stencil_pipeline_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        stencil_pipeline_descriptor.label =
+            "Alchemy water-exclusion stencil proof pipeline";
+        auto stencil_pipeline = ALMetalRenderPipeline::create(
+            *device, stencil_pipeline_descriptor, &error);
+        INFO(error);
+        REQUIRE(stencil_pipeline);
+        ALMetalDepthStencilDescriptor stencil_test_descriptor;
+        stencil_test_descriptor.depth_compare =
+            ALMetalCompareFunction::always;
+        stencil_test_descriptor.depth_write_enabled = false;
+        stencil_test_descriptor.stencil_enabled = true;
+        stencil_test_descriptor.front_stencil.compare =
+            ALMetalCompareFunction::equal;
+        stencil_test_descriptor.front_stencil.read_mask = 1u;
+        stencil_test_descriptor.front_stencil.write_mask = 0u;
+        stencil_test_descriptor.back_stencil =
+            stencil_test_descriptor.front_stencil;
+        stencil_test_descriptor.label =
+            "Alchemy water-exclusion stencil proof state";
+        auto stencil_test_state = ALMetalDepthStencilState::create(
+            *device, stencil_test_descriptor, &error);
+        INFO(error);
+        REQUIRE(stencil_test_state);
+        struct StencilProofVertex
+        {
+            float position[2];
+            float color[4];
+        };
+        const std::array<StencilProofVertex, 3> stencil_vertices{{
+            {{-0.8f, -0.8f}, {1.f, 0.f, 0.f, 1.f}},
+            {{ 0.8f, -0.8f}, {1.f, 0.f, 0.f, 1.f}},
+            {{ 0.0f,  0.8f}, {1.f, 0.f, 0.f, 1.f}},
+        }};
+        ALMetalBufferDescriptor stencil_vertex_descriptor;
+        stencil_vertex_descriptor.length = sizeof(stencil_vertices);
+        stencil_vertex_descriptor.storage = ALMetalStorageMode::shared;
+        stencil_vertex_descriptor.label =
+            "Alchemy water-exclusion stencil proof vertices";
+        auto stencil_vertex_buffer = ALMetalBuffer::create(
+            *device, stencil_vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(stencil_vertex_buffer);
+        REQUIRE(stencil_vertex_buffer->write(
+            0, stencil_vertices.data(), sizeof(stencil_vertices), &error));
+        ALMetalRenderPassConfig stencil_proof_config;
+        stencil_proof_config.colors[0].load = ALMetalLoadAction::load;
+        stencil_proof_config.colors[0].store = ALMetalStoreAction::store;
+        stencil_proof_config.depth_load = ALMetalLoadAction::load;
+        stencil_proof_config.depth_store = ALMetalStoreAction::store;
+        stencil_proof_config.stencil_load = ALMetalLoadAction::load;
+        stencil_proof_config.stencil_store = ALMetalStoreAction::store;
+        auto stencil_proof_pass = water_excluded->makeRenderPass(
+            stencil_proof_config, &error);
+        auto stencil_proof_command = device->makeCommandBuffer(
+            "Alchemy water-exclusion stencil proof", &error);
+        auto stencil_proof_encoder =
+            stencil_proof_pass && stencil_proof_command
+            ? ALMetalRenderEncoder::begin(
+                  *stencil_proof_command, *stencil_proof_pass,
+                  "Alchemy water-exclusion stencil proof encoder",
+                  &error)
+            : nullptr;
+        INFO(error);
+        REQUIRE(stencil_proof_encoder);
+        REQUIRE(stencil_proof_encoder->setPipeline(
+            *stencil_pipeline, &error));
+        REQUIRE(stencil_proof_encoder->setDepthStencilState(
+            stencil_test_state.get(), &error));
+        REQUIRE(stencil_proof_encoder->setStencilReferenceValue(
+            1u, &error));
+        REQUIRE(stencil_proof_encoder->setVertexBuffer(
+            0, *stencil_vertex_buffer, 0, &error));
+        REQUIRE(stencil_proof_encoder->setViewport(
+            {0.0, 0.0, 32.0, 32.0, 0.0, 1.0}, &error));
+        REQUIRE(stencil_proof_encoder->setScissor(
+            {0, 0, 32, 32}, &error));
+        REQUIRE(stencil_proof_encoder->setCullMode(
+            ALMetalCullMode::none, &error));
+        REQUIRE(stencil_proof_encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, &error));
+        REQUIRE(stencil_proof_encoder->end(&error));
+        REQUIRE(stencil_proof_command->commitAndWait(&error));
+        INFO(error);
+        std::array<std::uint16_t, 32 * 32 * 4> stencil_pixels{};
+        REQUIRE(water_excluded->colorTexture(0)->readback(
+            *device, 0, 0, {}, stencil_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const std::size_t stencil_center = (16 * 32 + 16) * 4;
+        CHECK(stencil_pixels[stencil_center + 0] == 0x3c00);
+        CHECK(stencil_pixels[stencil_center + 1] == 0);
+        CHECK(stencil_pixels[stencil_center + 2] == 0);
+        CHECK(stencil_pixels[stencil_center + 3] == 0x3c00);
+        CHECK(stencil_pixels[0] == 0x3400);
+        CHECK(stencil_pixels[1] == 0x3000);
+        CHECK(stencil_pixels[2] == 0x2c00);
+        CHECK(stencil_pixels[3] == 0x3800);
+        opaque_forward_scene.batches = &fullbright_batch;
+        opaque_forward_scene.batch_count = 1;
+        opaque_forward_scene.water_exclusion_surface = nullptr;
 
         // Fullbright shiny is opaque in the impostor bake, but its RGB is
         // the exact legacy reflection-probe result: decoded diffuse times
@@ -8657,6 +8844,184 @@ TEST_CASE("almetal: bundled MSL render pipeline draws a typed triangle", "[almet
         CHECK(std::abs(static_cast<int>(pixels[center + 1]) - 128) <= 1);
         CHECK(std::abs(static_cast<int>(pixels[center + 2]) - 223) <= 1);
         CHECK(pixels[center + 3] == 255);
+    }
+}
+
+TEST_CASE("almetal: typed depth-stencil state preserves masked stencil semantics", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto library = ALMetalShaderLibrary::loadBuiltin(*device, &error);
+        INFO(error);
+        REQUIRE(library);
+
+        ALMetalRenderTargetDescriptor target_descriptor;
+        target_descriptor.width = 32;
+        target_descriptor.height = 32;
+        target_descriptor.color_attachment_count = 1;
+        target_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        target_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        target_descriptor.label = "Alchemy typed stencil target";
+        auto target = ALMetalRenderTarget::create(
+            *device, target_descriptor, &error);
+        INFO(error);
+        REQUIRE(target);
+
+        ALMetalRenderPipelineDescriptor pipeline_descriptor;
+        pipeline_descriptor.library = library.get();
+        pipeline_descriptor.vertex_function = "almetal_test_vertex";
+        pipeline_descriptor.fragment_function = "almetal_test_fragment";
+        pipeline_descriptor.color_attachment_count = 1;
+        pipeline_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        pipeline_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        pipeline_descriptor.label = "Alchemy typed stencil color pipeline";
+        auto color_pipeline = ALMetalRenderPipeline::create(
+            *device, pipeline_descriptor, &error);
+        INFO(error);
+        REQUIRE(color_pipeline);
+        pipeline_descriptor.colors[0].write_mask =
+            ALMetalColorWriteMask::none;
+        pipeline_descriptor.label = "Alchemy typed stencil mark pipeline";
+        auto mark_pipeline = ALMetalRenderPipeline::create(
+            *device, pipeline_descriptor, &error);
+        INFO(error);
+        REQUIRE(mark_pipeline);
+
+        ALMetalDepthStencilDescriptor mark_descriptor;
+        mark_descriptor.depth_compare = ALMetalCompareFunction::always;
+        mark_descriptor.depth_write_enabled = false;
+        mark_descriptor.stencil_enabled = true;
+        mark_descriptor.front_stencil.depth_stencil_pass =
+            ALMetalStencilOperation::replace;
+        mark_descriptor.front_stencil.read_mask = 0x1u;
+        mark_descriptor.front_stencil.write_mask = 0x1u;
+        mark_descriptor.back_stencil = mark_descriptor.front_stencil;
+        mark_descriptor.label = "Alchemy typed stencil mark";
+        auto mark_state = ALMetalDepthStencilState::create(
+            *device, mark_descriptor, &error);
+        INFO(error);
+        REQUIRE(mark_state);
+
+        ALMetalDepthStencilDescriptor test_descriptor;
+        test_descriptor.depth_compare = ALMetalCompareFunction::always;
+        test_descriptor.depth_write_enabled = false;
+        test_descriptor.stencil_enabled = true;
+        test_descriptor.front_stencil.compare =
+            ALMetalCompareFunction::equal;
+        test_descriptor.front_stencil.read_mask = 0x1u;
+        test_descriptor.front_stencil.write_mask = 0u;
+        test_descriptor.back_stencil = test_descriptor.front_stencil;
+        test_descriptor.label = "Alchemy typed stencil test";
+        auto test_state = ALMetalDepthStencilState::create(
+            *device, test_descriptor, &error);
+        INFO(error);
+        REQUIRE(test_state);
+
+        struct Vertex
+        {
+            float position[2];
+            float color[4];
+        };
+        const auto make_vertices = [](const std::array<float, 4>& color)
+        {
+            return std::array<Vertex, 3>{{
+                {{-0.9f, -0.9f}, {color[0], color[1], color[2], color[3]}},
+                {{ 0.9f, -0.9f}, {color[0], color[1], color[2], color[3]}},
+                {{ 0.0f,  0.9f}, {color[0], color[1], color[2], color[3]}},
+            }};
+        };
+        const auto green_vertices = make_vertices({0.f, 1.f, 0.f, 1.f});
+        const auto red_vertices = make_vertices({1.f, 0.f, 0.f, 1.f});
+        ALMetalBufferDescriptor buffer_descriptor;
+        buffer_descriptor.length = sizeof(green_vertices);
+        buffer_descriptor.storage = ALMetalStorageMode::shared;
+        buffer_descriptor.label = "Alchemy typed stencil vertices";
+        auto green_buffer = ALMetalBuffer::create(
+            *device, buffer_descriptor, &error);
+        auto red_buffer = ALMetalBuffer::create(
+            *device, buffer_descriptor, &error);
+        INFO(error);
+        REQUIRE(green_buffer);
+        REQUIRE(red_buffer);
+        REQUIRE(green_buffer->write(
+            0, green_vertices.data(), sizeof(green_vertices), &error));
+        REQUIRE(red_buffer->write(
+            0, red_vertices.data(), sizeof(red_vertices), &error));
+
+        ALMetalRenderPassConfig pass_config;
+        pass_config.colors[0].load = ALMetalLoadAction::clear;
+        pass_config.colors[0].store = ALMetalStoreAction::store;
+        pass_config.colors[0].clear = {0.0, 0.0, 0.0, 1.0};
+        pass_config.depth_load = ALMetalLoadAction::clear;
+        pass_config.depth_store = ALMetalStoreAction::dont_care;
+        pass_config.clear_depth = 1.0;
+        pass_config.stencil_load = ALMetalLoadAction::clear;
+        pass_config.stencil_store = ALMetalStoreAction::store;
+        pass_config.clear_stencil = 0;
+        auto pass = target->makeRenderPass(pass_config, &error);
+        INFO(error);
+        REQUIRE(pass);
+
+        auto command = device->makeCommandBuffer(
+            "Alchemy typed stencil draw", &error);
+        INFO(error);
+        REQUIRE(command);
+        auto encoder = ALMetalRenderEncoder::begin(
+            *command, *pass, "Alchemy typed stencil encoder", &error);
+        INFO(error);
+        REQUIRE(encoder);
+        REQUIRE(encoder->setViewport(
+            {0.0, 0.0, 32.0, 32.0, 0.0, 1.0}, &error));
+        REQUIRE(encoder->setScissor({0, 0, 32, 32}, &error));
+        REQUIRE(encoder->setCullMode(ALMetalCullMode::none, &error));
+
+        // Reference 3 is masked to bit zero, exactly like the water mask's
+        // independent EXCLUDE_BIT and SURFACE_BIT transactions.
+        REQUIRE(encoder->setPipeline(*mark_pipeline, &error));
+        REQUIRE(encoder->setDepthStencilState(mark_state.get(), &error));
+        REQUIRE(encoder->setStencilReferenceValue(3u, &error));
+        REQUIRE(encoder->setVertexBuffer(0, *green_buffer, 0, &error));
+        REQUIRE(encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, &error));
+
+        REQUIRE(encoder->setPipeline(*color_pipeline, &error));
+        REQUIRE(encoder->setDepthStencilState(test_state.get(), &error));
+        REQUIRE(encoder->setStencilReferenceValue(1u, &error));
+        REQUIRE(encoder->setVertexBuffer(0, *green_buffer, 0, &error));
+        REQUIRE(encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, &error));
+
+        // The zero reference must fail over the marked triangle. If stencil
+        // comparison or the read mask is lost, this red draw overwrites it.
+        REQUIRE(encoder->setStencilReferenceValue(0u, &error));
+        REQUIRE(encoder->setVertexBuffer(0, *red_buffer, 0, &error));
+        REQUIRE(encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, &error));
+        REQUIRE(encoder->end(&error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 32 * 32 * 4> pixels{};
+        REQUIRE(target->colorTexture(0)->readback(
+            *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        INFO(error);
+        const std::size_t center = (16 * 32 + 16) * 4;
+        CHECK(pixels[center + 0] == 0);
+        CHECK(pixels[center + 1] == 255);
+        CHECK(pixels[center + 2] == 0);
+        CHECK(pixels[center + 3] == 255);
+        CHECK(pixels[0] == 0);
+        CHECK(pixels[1] == 0);
+        CHECK(pixels[2] == 0);
+        CHECK(pixels[3] == 255);
     }
 }
 

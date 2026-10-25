@@ -63,12 +63,18 @@ void LLDrawPoolWaterExclusion::render(S32 pass)
     shader.uniformMatrix4fv(LLShaderMgr::INVERSE_MODELVIEW_MATRIX, eye_to_agent);
     shader.uniform3fv(LLShaderMgr::WL_CAMPOSLOCAL, 1, camera.getOrigin().mV);
 
+#if LL_DARWIN
+    gPipeline.beginMetalWorldWaterExclusionPass();
+#endif
     {
         LLGLDepthTest depth(GL_TRUE, GL_FALSE);
         LLGLSColorMask no_color(false, false);
         ALWaterStencil::Exclude stencil;
         pushBatches(LLRenderPass::PASS_INVISIBLE, false, false);
     }
+#if LL_DARWIN
+    gPipeline.endMetalWorldGBufferPass();
+#endif
 
     shader.unbind();
 }

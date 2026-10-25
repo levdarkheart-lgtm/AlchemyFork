@@ -602,6 +602,7 @@ public:
     void beginMetalImpostorAlphaPhase();
     void endMetalImpostorAlphaCapture();
     void beginMetalWorldPostDeferredCapture();
+    void beginMetalWorldWaterExclusionPass();
     void encodeMetalWorldOpaquePostDeferredCapture();
     void endMetalWorldPostDeferredCapture();
     void captureMetalImpostorFlatAlphaBatch(

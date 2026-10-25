@@ -558,6 +558,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool impostor_fullbright = false;
     bool impostor_shiny = false;
     bool impostor_emboss = false;
+    bool water_exclusion = false;
+    ALMetalWorldWaterExclusionSurface water_exclusion_surface;
+    bool water_exclusion_surface_valid = false;
     ALMetalWorldReflectionProbes impostor_reflection_probes;
     std::unique_ptr<ALMetalTexture> impostor_hero_probe_texture;
     ALMetalWorldHeroProbe impostor_hero_probe;
@@ -2715,6 +2718,45 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.impostor_fullbright = false;
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
+    capture.water_exclusion = false;
+    capture.water_exclusion_surface = {};
+    capture.water_exclusion_surface_valid = false;
+}
+
+void LLPipeline::beginMetalWorldWaterExclusionPass()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active ||
+        !mWaterSurface.fillMetalWaterExclusionSurface(
+            capture.water_exclusion_surface,
+            *LLViewerCamera::getInstance()))
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        capture.water_exclusion_surface_valid = false;
+        return;
+    }
+    capture.rigged = false;
+    capture.alpha_mask = false;
+    capture.material_alpha_mode = 0;
+    capture.material_normal_map = false;
+    capture.material_specular_map = false;
+    capture.pbr = false;
+    capture.terrain = false;
+    capture.avatar = false;
+    capture.impostor = false;
+    capture.impostor_fullbright = false;
+    capture.impostor_shiny = false;
+    capture.impostor_emboss = false;
+    capture.water_exclusion = true;
+    capture.water_exclusion_surface_valid = true;
+    capture.pass_active = true;
 }
 
 void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
@@ -2769,6 +2811,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             ? &capture.impostor_reflection_probes : nullptr;
         scene.hero_probe = has_shiny && hero_active
             ? &capture.impostor_hero_probe : nullptr;
+        scene.water_exclusion_surface =
+            capture.water_exclusion_surface_valid
+                ? &capture.water_exclusion_surface : nullptr;
         scene.width = capture.width;
         scene.height = capture.height;
         scene.reverse_z = capture.reverse_z;
@@ -2810,6 +2855,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.impostor_fullbright = false;
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
+    capture.water_exclusion = false;
+    capture.water_exclusion_surface = {};
+    capture.water_exclusion_surface_valid = false;
 }
 
 void LLPipeline::endMetalWorldPostDeferredCapture()
@@ -2828,6 +2876,9 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
     capture.impostor_fullbright = false;
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
+    capture.water_exclusion = false;
+    capture.water_exclusion_surface = {};
+    capture.water_exclusion_surface_valid = false;
 }
 
 void LLPipeline::beginMetalImpostorFullbrightPass(bool rigged,
@@ -3179,6 +3230,41 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
         return;
     }
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
+    if (capture.water_exclusion)
+    {
+        if (!buffer ||
+            !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+            !buffer->getMetalVertexBuffer() ||
+            !buffer->getMetalIndexBuffer())
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
+        const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+        LLMatrix4a modelview_projection;
+        modelview_projection.setMul(
+            modelview, gGL.getProjectionMatrix());
+        ALMetalWorldSimpleBatch batch;
+        batch.vertices = buffer->getMetalVertexBuffer();
+        batch.position_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_VERTEX);
+        batch.vertex_count = buffer->getNumVerts();
+        batch.indices = buffer->getMetalIndexBuffer();
+        batch.index_offset = static_cast<std::size_t>(params.mOffset) *
+                             buffer->getIndexStride();
+        batch.index_type = buffer->getIndexStride() == 4
+            ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+        batch.index_count = params.mCount;
+        batch.water_exclusion = true;
+        std::memcpy(batch.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.modelview_projection));
+        std::memcpy(batch.modelview, modelview.getF32ptr(),
+                    sizeof(batch.modelview));
+        capture.batches.push_back(batch);
+        return;
+    }
     const bool indexed_textures =
         batch_textures && params.mTextureList.size() > 1;
     const std::size_t texture_count = indexed_textures
@@ -5853,6 +5939,7 @@ void LLPipeline::endMetalWorldGBufferPass()
         return;
     }
     mMetalWorldSimpleCapture->pass_active = false;
+    mMetalWorldSimpleCapture->water_exclusion = false;
 }
 
 void LLPipeline::endMetalWorldGBufferCapture()

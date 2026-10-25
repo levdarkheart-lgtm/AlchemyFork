@@ -221,10 +221,38 @@ enum class ALMetalCompareFunction
     always,
 };
 
+enum class ALMetalStencilOperation
+{
+    keep,
+    zero,
+    replace,
+    increment_clamp,
+    decrement_clamp,
+    invert,
+    increment_wrap,
+    decrement_wrap,
+};
+
+struct ALMetalStencilDescriptor
+{
+    ALMetalCompareFunction compare = ALMetalCompareFunction::always;
+    ALMetalStencilOperation stencil_failure =
+        ALMetalStencilOperation::keep;
+    ALMetalStencilOperation depth_failure =
+        ALMetalStencilOperation::keep;
+    ALMetalStencilOperation depth_stencil_pass =
+        ALMetalStencilOperation::keep;
+    std::uint32_t read_mask = 0xffffffffu;
+    std::uint32_t write_mask = 0xffffffffu;
+};
+
 struct ALMetalDepthStencilDescriptor
 {
     ALMetalCompareFunction depth_compare = ALMetalCompareFunction::less_equal;
     bool depth_write_enabled = true;
+    bool stencil_enabled = false;
+    ALMetalStencilDescriptor front_stencil;
+    ALMetalStencilDescriptor back_stencil;
     std::string label;
 };
 
@@ -328,6 +356,8 @@ public:
 
     bool setPipeline(const ALMetalRenderPipeline& pipeline, std::string* error = nullptr);
     bool setDepthStencilState(const ALMetalDepthStencilState* state, std::string* error = nullptr);
+    bool setStencilReferenceValue(std::uint32_t value,
+                                  std::string* error = nullptr);
     bool setVertexBuffer(std::uint32_t index, const ALMetalBuffer& buffer,
                          std::size_t offset = 0, std::string* error = nullptr);
     bool setFragmentBuffer(std::uint32_t index, const ALMetalBuffer& buffer,

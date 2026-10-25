@@ -177,6 +177,48 @@ namespace
         return MTLCompareFunctionAlways;
     }
 
+    MTLStencilOperation stencilOperation(ALMetalStencilOperation operation)
+    {
+        switch (operation)
+        {
+            case ALMetalStencilOperation::keep:
+                return MTLStencilOperationKeep;
+            case ALMetalStencilOperation::zero:
+                return MTLStencilOperationZero;
+            case ALMetalStencilOperation::replace:
+                return MTLStencilOperationReplace;
+            case ALMetalStencilOperation::increment_clamp:
+                return MTLStencilOperationIncrementClamp;
+            case ALMetalStencilOperation::decrement_clamp:
+                return MTLStencilOperationDecrementClamp;
+            case ALMetalStencilOperation::invert:
+                return MTLStencilOperationInvert;
+            case ALMetalStencilOperation::increment_wrap:
+                return MTLStencilOperationIncrementWrap;
+            case ALMetalStencilOperation::decrement_wrap:
+                return MTLStencilOperationDecrementWrap;
+        }
+        return MTLStencilOperationKeep;
+    }
+
+    MTLStencilDescriptor* stencilDescriptor(
+        const ALMetalStencilDescriptor& descriptor)
+    {
+        MTLStencilDescriptor* native_descriptor =
+            [[MTLStencilDescriptor alloc] init];
+        native_descriptor.stencilCompareFunction =
+            compareFunction(descriptor.compare);
+        native_descriptor.stencilFailureOperation =
+            stencilOperation(descriptor.stencil_failure);
+        native_descriptor.depthFailureOperation =
+            stencilOperation(descriptor.depth_failure);
+        native_descriptor.depthStencilPassOperation =
+            stencilOperation(descriptor.depth_stencil_pass);
+        native_descriptor.readMask = descriptor.read_mask;
+        native_descriptor.writeMask = descriptor.write_mask;
+        return native_descriptor;
+    }
+
     MTLSamplerMinMagFilter samplerFilter(ALMetalSamplerFilter filter)
     {
         return filter == ALMetalSamplerFilter::nearest
@@ -636,6 +678,13 @@ std::unique_ptr<ALMetalDepthStencilState> ALMetalDepthStencilState::create(
         native_descriptor.label = toNSString(descriptor.label);
         native_descriptor.depthCompareFunction = compareFunction(descriptor.depth_compare);
         native_descriptor.depthWriteEnabled = descriptor.depth_write_enabled;
+        if (descriptor.stencil_enabled)
+        {
+            native_descriptor.frontFaceStencil =
+                stencilDescriptor(descriptor.front_stencil);
+            native_descriptor.backFaceStencil =
+                stencilDescriptor(descriptor.back_stencil);
+        }
         id<MTLDevice> native_device = (__bridge id<MTLDevice>)device.nativeHandle();
         id<MTLDepthStencilState> state = [native_device newDepthStencilStateWithDescriptor:native_descriptor];
         if (!state)
@@ -791,6 +840,18 @@ bool ALMetalRenderEncoder::setDepthStencilState(const ALMetalDepthStencilState* 
         return false;
     }
     [mImpl->encoder setDepthStencilState:state ? state->mImpl->state : nil];
+    return true;
+}
+
+bool ALMetalRenderEncoder::setStencilReferenceValue(
+    std::uint32_t value, std::string* error)
+{
+    if (!mImpl || mImpl->ended)
+    {
+        setError(error, "Metal render encoder has ended");
+        return false;
+    }
+    [mImpl->encoder setStencilReferenceValue:value];
     return true;
 }
 

@@ -902,6 +902,14 @@ bool ALMetalTexture::upload(ALMetalCommandBuffer& command_buffer,
         setError(error, "Multisample and memoryless Metal textures cannot receive CPU uploads");
         return false;
     }
+    if (mDescriptor.format ==
+        ALMetalPixelFormat::depth32_float_stencil8)
+    {
+        setError(
+            error,
+            "Combined Metal depth-stencil textures cannot receive an interleaved CPU upload");
+        return false;
+    }
     if (!normalizedRegion(mDescriptor, mip_level, slice, &region, error))
     {
         return false;
@@ -1139,7 +1147,20 @@ bool ALMetalTexture::readback(const ALMetalDevice& device,
         return false;
     }
     TextureTransferLayout layout;
-    if (!textureTransferLayout(mDescriptor, mip_level, region, &layout, error))
+    const bool depth_from_combined =
+        mDescriptor.format == ALMetalPixelFormat::depth32_float_stencil8;
+    if (depth_from_combined)
+    {
+        // The generic readback contract exposes the depth plane of a
+        // combined attachment. Stencil remains render-state-owned; callers
+        // validate it through a draw because Metal copies the two planes
+        // independently rather than as an interleaved eight-byte texel.
+        layout.tight_row = static_cast<std::size_t>(region.width) *
+                           sizeof(float);
+        layout.rows = region.height;
+    }
+    else if (!textureTransferLayout(
+                 mDescriptor, mip_level, region, &layout, error))
     {
         return false;
     }
@@ -1151,7 +1172,8 @@ bool ALMetalTexture::readback(const ALMetalDevice& device,
 
     @autoreleasepool
     {
-        if (mDescriptor.storage == ALMetalStorageMode::shared)
+        if (mDescriptor.storage == ALMetalStorageMode::shared &&
+            !depth_from_combined)
         {
             [mImpl->texture getBytes:bytes
                          bytesPerRow:bytes_per_row
@@ -1196,7 +1218,10 @@ bool ALMetalTexture::readback(const ALMetalDevice& device,
                         toBuffer:staging
                destinationOffset:0
           destinationBytesPerRow:aligned_row
-        destinationBytesPerImage:staging_size];
+        destinationBytesPerImage:staging_size
+                         options:depth_from_combined
+                             ? MTLBlitOptionDepthFromDepthStencil
+                             : MTLBlitOptionNone];
         [encoder endEncoding];
         if (!command_buffer->commitAndWait(error))
         {

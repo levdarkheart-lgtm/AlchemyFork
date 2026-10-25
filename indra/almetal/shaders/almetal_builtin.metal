@@ -258,6 +258,22 @@ struct ALMetalWorldSimpleVaryings
     uint3 material_flags [[flat]];
 };
 
+struct ALMetalWorldWaterExclusionConstants
+{
+    float4x4 modelview_projection;
+    float4x4 modelview;
+    float4x4 eye_to_agent;
+    float4 cell_square;
+    float4 camera_default_height;
+    uint4 config;
+};
+
+struct ALMetalWorldWaterExclusionVaryings
+{
+    float4 position [[position]];
+    float3 agent_position;
+};
+
 struct ALMetalWorldShinyConstants
 {
     float4x4 modelview_projection;
@@ -1552,6 +1568,50 @@ vertex ALMetalWorldSimpleVaryings almetal_world_simple_vertex(
         constants.material.z != 0.0,
         constants.material.w != 0.0);
     return output;
+}
+
+vertex ALMetalWorldWaterExclusionVaryings
+almetal_world_water_exclusion_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldWaterExclusionConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 object_position =
+        float4(positions[vertex_id].xyz, 1.0);
+    float4 clip_position = constants.modelview_projection *
+                           object_position;
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldWaterExclusionVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.agent_position = (
+        constants.eye_to_agent * constants.modelview * object_position).xyz;
+    return output;
+}
+
+fragment float4 almetal_world_water_exclusion_fragment(
+    ALMetalWorldWaterExclusionVaryings input [[stage_in]],
+    constant ALMetalWorldWaterExclusionConstants& constants [[buffer(0)]],
+    texture2d<float, access::read> cell_map [[texture(0)]])
+{
+    const float2 cell = floor(
+        (input.agent_position.xy - constants.cell_square.xy) /
+        constants.cell_square.z);
+    float water_height = constants.camera_default_height.w;
+    if (all(cell >= float2(0.0)) &&
+        all(cell < float2(constants.cell_square.w)))
+    {
+        water_height = cell_map.read(uint2(cell)).r;
+    }
+    if ((input.agent_position.z - water_height) *
+        (constants.camera_default_height.z - water_height) < 0.0)
+    {
+        discard_fragment();
+    }
+    // Color writes are disabled in the pipeline. Surviving fragments update
+    // only EXCLUDE_BIT through the typed stencil state.
+    return 0.0;
 }
 
 vertex ALMetalWorldSimpleVaryings almetal_world_simple_skinned_vertex(
