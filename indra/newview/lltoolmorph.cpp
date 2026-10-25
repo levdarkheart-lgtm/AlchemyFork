@@ -534,13 +534,14 @@ bool LLVisualParamHint::render()
             }
 
             // Deferred simple/mask attachments precede the avatar pool; the
-            // post-deferred fullbright mask follows it. Split texture-indexed
+            // post-deferred fullbright families follow it. Split texture-indexed
             // GL batches back into exact face ranges so each native batch can
             // bind the face's real diffuse mirror without a texture ladder.
             // Other material/forward families remain fail-closed.
             constexpr U32 rigged_pools[] = {
                 LLDrawPool::POOL_SIMPLE,
                 LLDrawPool::POOL_ALPHA_MASK,
+                LLDrawPool::POOL_FULLBRIGHT,
                 LLDrawPool::POOL_FULLBRIGHT_ALPHA_MASK,
             };
             for (LLFace* face : rigged_faces)
@@ -548,6 +549,7 @@ bool LLVisualParamHint::render()
                 complete = complete &&
                     (face->getPoolType() == LLDrawPool::POOL_SIMPLE ||
                      face->getPoolType() == LLDrawPool::POOL_ALPHA_MASK ||
+                     face->getPoolType() == LLDrawPool::POOL_FULLBRIGHT ||
                      face->getPoolType() ==
                          LLDrawPool::POOL_FULLBRIGHT_ALPHA_MASK);
             }
@@ -571,15 +573,18 @@ bool LLVisualParamHint::render()
                         draw_info->mTextureMatrix;
                     const bool fullbright_mask =
                         pool == LLDrawPool::POOL_FULLBRIGHT_ALPHA_MASK;
+                    const bool fullbright =
+                        pool == LLDrawPool::POOL_FULLBRIGHT;
                     const bool mask_pool =
-                        pool != LLDrawPool::POOL_SIMPLE;
+                        pool == LLDrawPool::POOL_ALPHA_MASK ||
+                        fullbright_mask;
                     complete = draw_info && buffer && diffuse_texture &&
                         (!mask_pool ||
                          draw_info->mMaterialSlotList.size() <= 1) &&
                         !uses_texture_matrix && face->getIndicesStart() >= 0 &&
                         face->getIndicesCount() > 0 &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) &&
-                        (fullbright_mask || buffer->hasDataType(
+                        (fullbright || fullbright_mask || buffer->hasDataType(
                             LLVertexBuffer::TYPE_NORMAL)) &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) &&
@@ -609,7 +614,7 @@ bool LLVisualParamHint::render()
                     batch.vertices = buffer->getMetalVertexBuffer();
                     batch.position_offset = buffer->getOffset(
                         LLVertexBuffer::TYPE_VERTEX);
-                    if (!fullbright_mask)
+                    if (!fullbright && !fullbright_mask)
                     {
                         batch.normal_offset = buffer->getOffset(
                             LLVertexBuffer::TYPE_NORMAL);
@@ -635,15 +640,15 @@ bool LLVisualParamHint::render()
                     batch.skin_palette_float_count =
                         rigged_palettes.back().size();
                     batch.skin_joint_count = joint_count;
-                    batch.deferred_rigged = !fullbright_mask;
+                    batch.deferred_rigged = !fullbright && !fullbright_mask;
+                    batch.fullbright_rigged = fullbright;
                     batch.fullbright_mask_rigged = fullbright_mask;
                     batch.alpha_cutoff =
-                        pool == LLDrawPool::POOL_SIMPLE
-                        ? 0.f : draw_info->mAlphaMaskCutoff;
+                        mask_pool ? draw_info->mAlphaMaskCutoff : 0.f;
                     std::memcpy(batch.modelview_projection,
                                 rigged_modelview_projection.getF32ptr(),
                                 sizeof(batch.modelview_projection));
-                    if (fullbright_mask)
+                    if (fullbright || fullbright_mask)
                     {
                         post_avatar_rigged_batches.push_back(batch);
                     }
@@ -762,8 +767,8 @@ bool LLVisualParamHint::render()
                 batches.push_back(batch);
             }
 
-            // The fullbright alpha-mask pool runs post-deferred, after the
-            // avatar pool. Its batches still share this encoder/depth target,
+            // The fullbright pools run post-deferred, after the avatar pool.
+            // Their batches still share this encoder/depth target,
             // so appending them preserves the GL pool ordering directly.
             batches.insert(batches.end(),
                            post_avatar_rigged_batches.begin(),

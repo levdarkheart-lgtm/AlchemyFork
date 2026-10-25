@@ -764,6 +764,27 @@ vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_fullbright_mask_rig
     return output;
 }
 
+fragment float4 almetal_lit_preview_fullbright_rigged_fragment(
+    ALMetalLitPreviewTexturedVaryings input [[stage_in]],
+    float4 destination [[color(0), raster_order_group(0)]],
+    texture2d<float> diffuse_map [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]])
+{
+    const float4 diffuse = diffuse_map.sample(diffuse_sampler, input.texcoord);
+    const float3 source_linear = diffuse.rgb *
+                                 almetal_srgb_to_linear(input.color.rgb);
+    const float coverage = diffuse.a * input.color.a;
+
+    // OpenGL decodes the existing sRGB attachment value, blends the shader's
+    // linear result, and re-encodes the store. Visual hints deliberately own
+    // linear RGBA8 storage containing those encoded bytes, so programmable
+    // blending reproduces the operation without an intermediate target.
+    const float3 destination_linear = almetal_srgb_to_linear(destination.rgb);
+    const float3 blended_linear = source_linear * coverage +
+                                  destination_linear * (1.0 - coverage);
+    return float4(almetal_linear_to_srgb(blended_linear), destination.a);
+}
+
 fragment float4 almetal_lit_preview_fullbright_mask_rigged_fragment(
     ALMetalLitPreviewTexturedVaryings input [[stage_in]],
     texture2d<float> diffuse_map [[texture(0)]],

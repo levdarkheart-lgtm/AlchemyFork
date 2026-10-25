@@ -131,6 +131,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_deferred_rigged_textured_vertex",
             "almetal_lit_preview_deferred_rigged_fragment",
             "almetal_lit_preview_fullbright_mask_rigged_textured_vertex",
+            "almetal_lit_preview_fullbright_rigged_fragment",
             "almetal_lit_preview_fullbright_mask_rigged_fragment",
             "almetal_lit_preview_avatar_fragment",
             "almetal_lit_preview_avatar_unlit_fragment",
@@ -1401,6 +1402,35 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(fullbright_mask_discard_pixels[translated_interior + 1] == 51);
         CHECK(fullbright_mask_discard_pixels[translated_interior + 2] == 77);
         CHECK(fullbright_mask_discard_pixels[translated_interior + 3] == 255);
+
+        // Ordinary post-deferred fullbright attachments blend in linear
+        // space against the decoded sRGB destination. Both texture and
+        // vertex alpha contribute to coverage, while the RGB-only GL color
+        // mask preserves the destination alpha. With two half-alpha inputs,
+        // the exact coverage is roughly one quarter.
+        ALMetalLitPreviewBatch fullbright = fullbright_mask;
+        fullbright.fullbright_mask_rigged = false;
+        fullbright.fullbright_rigged = true;
+        fullbright.alpha_cutoff = 0.f;
+        auto rendered_fullbright = renderer->render(fullbright, &error);
+        INFO(error);
+        REQUIRE(rendered_fullbright);
+        std::array<std::uint8_t, 32 * 32 * 4> fullbright_pixels{};
+        REQUIRE(rendered_fullbright->readback(
+            *device, 0, 0, {}, fullbright_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+            fullbright_pixels[translated_interior + 0]) - 45) <= 1);
+        CHECK(std::abs(static_cast<int>(
+            fullbright_pixels[translated_interior + 1]) - 55) <= 1);
+        CHECK(std::abs(static_cast<int>(
+            fullbright_pixels[translated_interior + 2]) - 69) <= 1);
+        CHECK(fullbright_pixels[translated_interior + 3] == 255);
+
+        fullbright.fullbright_mask_rigged = true;
+        error.clear();
+        CHECK_FALSE(renderer->render(fullbright, &error));
+        CHECK(error == "Metal fullbright mask rigged preview data is invalid");
 
         deferred_rigged.color_offset = vertex_bytes.size();
         error.clear();

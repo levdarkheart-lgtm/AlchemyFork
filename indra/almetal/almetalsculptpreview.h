@@ -76,6 +76,10 @@ struct ALMetalLitPreviewBatch
     // GL owner tests texture alpha alone because vertex alpha stores legacy
     // shininess outside the alpha pool.
     bool fullbright_mask_rigged = false;
+    // Select the post-deferred, source-alpha blended fullbright attachment
+    // writer. The visual-hint target stores encoded bytes in linear RGBA8,
+    // so its fragment performs the GL sRGB framebuffer blend explicitly.
+    bool fullbright_rigged = false;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;
