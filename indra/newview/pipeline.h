@@ -678,6 +678,12 @@ public:
         LLViewerTexture* moon_texture, bool moon_mask);
     void captureMetalWorldWindLightStarBatch(LLVertexBuffer* buffer);
     void endMetalWorldWindLightStars();
+    void beginMetalWorldWindLightHeavenlyBodies();
+    void captureMetalWorldWindLightHeavenlyBody(
+        LLFace* face, LLViewerTexture* texture_a,
+        LLViewerTexture* texture_b, F32 parameter,
+        F32 moon_direction_z, bool moon);
+    void endMetalWorldWindLightHeavenlyBodies();
     bool mirrorMetalWorldBaseLightMap(LLRenderTarget* source);
     void renderMetalWorldBaseLighting(
         LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao,

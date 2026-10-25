@@ -161,6 +161,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_windlight_sky_fragment",
             "almetal_world_star_vertex",
             "almetal_world_star_fragment",
+            "almetal_world_heavenly_body_vertex",
+            "almetal_world_heavenly_body_fragment",
             "almetal_world_base_light_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
@@ -4015,6 +4017,251 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         star_scene.reverse_z = false;
         windlight_scene.reverse_z = false;
 
+        // Source-over the indexed sun/moon quads after the stars. The sun's
+        // two live environment textures blend before its alpha blends into
+        // the raw display-encoded vintage storage, exactly as the GL sky pool
+        // does with framebuffer sRGB disabled.
+        struct HeavenlyBodyBufferData
+        {
+            std::array<std::array<float, 4>, 4> positions{};
+            std::array<std::array<float, 2>, 4> texcoords{};
+        } body_data;
+        const float body_extent = 4.f / 32.f;
+        body_data.positions = {{
+            {{star_coordinate - body_extent,
+              star_coordinate + body_extent, 0.5f, 1.f}},
+            {{star_coordinate - body_extent,
+              star_coordinate - body_extent, 0.5f, 1.f}},
+            {{star_coordinate + body_extent,
+              star_coordinate + body_extent, 0.5f, 1.f}},
+            {{star_coordinate + body_extent,
+              star_coordinate - body_extent, 0.5f, 1.f}},
+        }};
+        body_data.texcoords = {{
+            {{0.f, 1.f}}, {{0.f, 0.f}},
+            {{1.f, 1.f}}, {{1.f, 0.f}},
+        }};
+        const std::array<std::uint16_t, 6> body_indices{{
+            0, 2, 1, 1, 2, 3,
+        }};
+        ALMetalBufferDescriptor body_vertex_descriptor;
+        body_vertex_descriptor.length = sizeof(body_data);
+        body_vertex_descriptor.storage = ALMetalStorageMode::shared;
+        body_vertex_descriptor.label =
+            "Alchemy WindLight heavenly-body production-layout vertices";
+        auto body_vertex_buffer = ALMetalBuffer::create(
+            *device, body_vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(body_vertex_buffer);
+        REQUIRE(body_vertex_buffer->write(
+            0, &body_data, sizeof(body_data), &error));
+        ALMetalBufferDescriptor body_index_descriptor;
+        body_index_descriptor.length = sizeof(body_indices);
+        body_index_descriptor.storage = ALMetalStorageMode::shared;
+        body_index_descriptor.label =
+            "Alchemy WindLight heavenly-body production-layout indices";
+        auto body_index_buffer = ALMetalBuffer::create(
+            *device, body_index_descriptor, &error);
+        INFO(error);
+        REQUIRE(body_index_buffer);
+        REQUIRE(body_index_buffer->write(
+            0, body_indices.data(), sizeof(body_indices), &error));
+
+        auto sun_a = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy WindLight sun texture A");
+        auto sun_b = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy WindLight sun texture B");
+        const std::array<std::uint8_t, 4> sun_a_pixel{{
+            200, 40, 20, 128,
+        }};
+        const std::array<std::uint8_t, 4> sun_b_pixel{{
+            40, 200, 100, 128,
+        }};
+        auto sun_upload = device->makeCommandBuffer(
+            "Alchemy WindLight sun texture upload", &error);
+        INFO(error);
+        REQUIRE(sun_upload);
+        REQUIRE(sun_a->upload(
+            *sun_upload, 0, 0, {}, sun_a_pixel.data(), 4, &error));
+        REQUIRE(sun_b->upload(
+            *sun_upload, 0, 0, {}, sun_b_pixel.data(), 4, &error));
+        REQUIRE(sun_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldHeavenlyBodyBatch body_batch;
+        body_batch.vertices = body_vertex_buffer.get();
+        body_batch.position_offset = offsetof(
+            HeavenlyBodyBufferData, positions);
+        body_batch.texcoord_offset = offsetof(
+            HeavenlyBodyBufferData, texcoords);
+        body_batch.indices = body_index_buffer.get();
+        body_batch.index_type = ALMetalIndexType::uint16;
+        body_batch.vertex_count = 4;
+        body_batch.index_count = 6;
+        body_batch.texture_a = sun_a.get();
+        body_batch.texture_b = sun_b.get();
+        body_batch.parameters[0] = 0.25f;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            body_batch.modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        ALMetalWorldHeavenlyBodyScene body_scene;
+        body_scene.batches = &body_batch;
+        body_scene.batch_count = 1;
+        body_scene.width = 32;
+        body_scene.height = 32;
+        body_scene.normal_hdr = true;
+
+        REQUIRE(renderer->compositeWindLightHeavenlyBodies(
+            *pbr_gbuffer, body_scene, &error));
+        INFO(error);
+        body_scene.reverse_z = true;
+        REQUIRE(renderer->compositeWindLightHeavenlyBodies(
+            *pbr_reverse_gbuffer, body_scene, &error));
+        INFO(error);
+        body_scene.reverse_z = false;
+        std::array<std::uint8_t, 32 * 32 * 4> sun_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4> reverse_sun_albedo{};
+        std::array<std::uint16_t, 32 * 32 * 4> sun_normal{};
+        REQUIRE(pbr_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, sun_albedo.data(), 32 * 4, &error));
+        REQUIRE(pbr_reverse_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_sun_albedo.data(),
+            32 * 4, &error));
+        REQUIRE(pbr_gbuffer->colorTexture(2)->readback(
+            *device, 0, 0, {}, sun_normal.data(), 32 * 8, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(reverse_sun_albedo[outside + channel] ==
+                  sun_albedo[outside + channel]);
+            CHECK(sun_albedo[center + channel] ==
+                  star_albedo[center + channel]);
+        }
+        CHECK(sun_normal[outside + 0] == star_normal[outside + 0]);
+        CHECK(sun_normal[outside + 1] == star_normal[outside + 1]);
+        CHECK(sun_normal[outside + 2] == star_normal[outside + 2]);
+        CHECK(sun_normal[outside + 3] == star_normal[outside + 3]);
+
+        auto sun_source_gbuffer = renderer->render(
+            gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(sun_source_gbuffer);
+        REQUIRE(renderer->compositeWindLightSky(
+            *sun_source_gbuffer, black_windlight_scene, &error));
+        REQUIRE(renderer->compositeWindLightHeavenlyBodies(
+            *sun_source_gbuffer, body_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> sun_source_albedo{};
+        REQUIRE(sun_source_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, sun_source_albedo.data(),
+            32 * 4, &error));
+        INFO(error);
+        const float sun_alpha = 128.f / 255.f;
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const int raw_source_over = std::min(
+                255, static_cast<int>(std::lround(
+                    static_cast<float>(
+                        star_albedo[outside + channel]) *
+                    (1.f - sun_alpha))) +
+                    static_cast<int>(
+                        sun_source_albedo[outside + channel]));
+            CHECK(std::abs(static_cast<int>(
+                      sun_albedo[outside + channel]) -
+                  raw_source_over) <= 2);
+        }
+
+        // The moon uses only texture A, discards the transparent surround,
+        // scales RGB by moon brightness and applies the legacy z-direction
+        // horizon fade to alpha before source-over blending.
+        auto moon_texture = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy WindLight moon texture");
+        auto transparent_moon = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy WindLight transparent moon surround");
+        const std::array<std::uint8_t, 4> moon_pixel{{
+            160, 80, 40, 128,
+        }};
+        const std::array<std::uint8_t, 4> transparent_moon_pixel{{
+            255, 255, 255, 2,
+        }};
+        auto body_upload = device->makeCommandBuffer(
+            "Alchemy WindLight moon texture upload", &error);
+        INFO(error);
+        REQUIRE(body_upload);
+        REQUIRE(moon_texture->upload(
+            *body_upload, 0, 0, {}, moon_pixel.data(), 4, &error));
+        REQUIRE(transparent_moon->upload(
+            *body_upload, 0, 0, {}, transparent_moon_pixel.data(),
+            4, &error));
+        REQUIRE(body_upload->commitAndWait(&error));
+        INFO(error);
+
+        auto moon_gbuffer = renderer->render(gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(moon_gbuffer);
+        REQUIRE(renderer->compositeWindLightSky(
+            *moon_gbuffer, black_windlight_scene, &error));
+        std::array<std::uint8_t, 32 * 32 * 4> moon_before{};
+        REQUIRE(moon_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, moon_before.data(), 32 * 4, &error));
+        body_batch.moon = true;
+        body_batch.texture_a = transparent_moon.get();
+        body_batch.texture_b = transparent_moon.get();
+        body_batch.parameters[0] = 0.5f;
+        body_batch.parameters[1] = 0.25f;
+        REQUIRE(renderer->compositeWindLightHeavenlyBodies(
+            *moon_gbuffer, body_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> transparent_moon_albedo{};
+        REQUIRE(moon_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, transparent_moon_albedo.data(),
+            32 * 4, &error));
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(transparent_moon_albedo[outside + channel] ==
+                  moon_before[outside + channel]);
+        }
+
+        body_batch.texture_a = moon_texture.get();
+        body_batch.texture_b = moon_texture.get();
+        REQUIRE(renderer->compositeWindLightHeavenlyBodies(
+            *moon_gbuffer, body_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> moon_albedo{};
+        REQUIRE(moon_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, moon_albedo.data(), 32 * 4, &error));
+        INFO(error);
+        const float moon_fade = 0.25f * 0.25f * 4.f;
+        const float moon_alpha = 128.f / 255.f * moon_fade;
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const int expected = static_cast<int>(std::lround(
+                static_cast<float>(moon_pixel[channel]) * 0.5f *
+                moon_alpha));
+            CHECK(std::abs(static_cast<int>(
+                      moon_albedo[outside + channel]) - expected) <= 1);
+            CHECK(moon_albedo[center + channel] ==
+                  moon_before[center + channel]);
+        }
+
+        body_batch.texture_a = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->compositeWindLightHeavenlyBodies(
+            *moon_gbuffer, body_scene, &error));
+        CHECK(error ==
+              "Metal world WindLight heavenly-body batch is invalid");
+        error.clear();
+        body_batch.moon = false;
+        body_batch.texture_a = sun_a.get();
+        body_batch.texture_b = sun_b.get();
+        body_batch.parameters[0] = 0.25f;
+        body_batch.parameters[1] = 0.f;
+
         ALMetalWorldWindLightSkyScene invalid_windlight_scene =
             windlight_scene;
         invalid_windlight_scene.halo_texture = nullptr;
@@ -4917,7 +5164,23 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         star_scene.hdr = true;
         REQUIRE(renderer->compositeWindLightStars(
             *hdr_gbuffer, star_scene, &error));
+        std::array<std::uint32_t, 32 * 32> hdr_body_before{};
+        REQUIRE(hdr_gbuffer->colorTexture(3)->readback(
+            *device, 0, 0, {}, hdr_body_before.data(), 32 * 4,
+            &error));
+        body_scene.hdr = true;
+        REQUIRE(renderer->compositeWindLightHeavenlyBodies(
+            *hdr_gbuffer, body_scene, &error));
         INFO(error);
+        std::array<std::uint32_t, 32 * 32> hdr_body_after{};
+        REQUIRE(hdr_gbuffer->colorTexture(3)->readback(
+            *device, 0, 0, {}, hdr_body_after.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(hdr_body_after[outside / 4] !=
+              hdr_body_before[outside / 4]);
+        CHECK(hdr_body_after[center / 4] ==
+              hdr_body_before[center / 4]);
         std::array<std::uint16_t, 32 * 32 * 4> hdr_windlight_normal{};
         REQUIRE(hdr_gbuffer->colorTexture(2)->readback(
             *device, 0, 0, {}, hdr_windlight_normal.data(),

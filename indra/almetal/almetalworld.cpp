@@ -92,6 +92,16 @@ namespace
     };
     static_assert(sizeof(WorldStarConstants) == 160);
 
+    struct alignas(16) WorldHeavenlyBodyConstants
+    {
+        float modelview_projection[16]{};
+        // x = sun texture blend or moon brightness, y = moon direction z.
+        float parameters[4]{};
+        // x = reverse Z, y = emissive/HDR G-buffer, z = moon.
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldHeavenlyBodyConstants) == 96);
+
     struct alignas(16) WorldMaterialSlotConstants
     {
         float specular_color[4];
@@ -483,6 +493,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<NormalPipelines, 2> hdri_sky_pipelines;
     std::array<NormalPipelines, 2> windlight_sky_pipelines;
     std::array<NormalPipelines, 2> windlight_star_pipelines;
+    std::array<NormalPipelines, 2> windlight_sun_pipelines;
+    std::array<NormalPipelines, 2> windlight_moon_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         base_light_pipelines;
     std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
@@ -582,6 +594,10 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_windlight_sky_fragment") ||
         !impl->library->hasFunction("almetal_world_star_vertex") ||
         !impl->library->hasFunction("almetal_world_star_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_heavenly_body_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_heavenly_body_fragment") ||
         !impl->library->hasFunction("almetal_world_base_light_fragment") ||
         !impl->library->hasFunction("almetal_pbr_preview_brdf_lut"))
     {
@@ -731,6 +747,43 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 ALMetalRenderPipeline::create(
                     device, sky_descriptor, error);
             if (!impl->windlight_star_pipelines[hdr][normal_hdr])
+            {
+                return nullptr;
+            }
+
+            sky_descriptor.vertex_function =
+                "almetal_world_heavenly_body_vertex";
+            sky_descriptor.fragment_function =
+                "almetal_world_heavenly_body_fragment";
+            for (std::size_t attachment = 0; attachment < 4;
+                 ++attachment)
+            {
+                sky_descriptor.colors[attachment].source_rgb =
+                    ALMetalBlendFactor::source_alpha;
+                sky_descriptor.colors[attachment].destination_rgb =
+                    ALMetalBlendFactor::one_minus_source_alpha;
+                sky_descriptor.colors[attachment].source_alpha =
+                    ALMetalBlendFactor::one;
+                sky_descriptor.colors[attachment].destination_alpha =
+                    ALMetalBlendFactor::one_minus_source_alpha;
+            }
+            sky_descriptor.label = hdr
+                ? "Alchemy HDR WindLight sun G-buffer pipeline"
+                : "Alchemy vintage WindLight raw-storage sun G-buffer pipeline";
+            impl->windlight_sun_pipelines[hdr][normal_hdr] =
+                ALMetalRenderPipeline::create(
+                    device, sky_descriptor, error);
+            if (!impl->windlight_sun_pipelines[hdr][normal_hdr])
+            {
+                return nullptr;
+            }
+            sky_descriptor.label = hdr
+                ? "Alchemy HDR WindLight moon G-buffer pipeline"
+                : "Alchemy vintage WindLight raw-storage moon G-buffer pipeline";
+            impl->windlight_moon_pipelines[hdr][normal_hdr] =
+                ALMetalRenderPipeline::create(
+                    device, sky_descriptor, error);
+            if (!impl->windlight_moon_pipelines[hdr][normal_hdr])
             {
                 return nullptr;
             }
@@ -3441,6 +3494,154 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightStars(
             encoder->draw(
                 ALMetalPrimitiveType::triangle, 0,
                 batch.vertex_count, 1, error);
+    }
+
+    return encoded && encoder->end(error) && command->commit(error);
+}
+
+bool ALMetalWorldGBufferRenderer::compositeWindLightHeavenlyBodies(
+    ALMetalRenderTarget& target,
+    const ALMetalWorldHeavenlyBodyScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.batches ||
+        scene.batch_count == 0 || scene.width == 0 || scene.height == 0)
+    {
+        setError(error,
+                 "Metal world WindLight heavenly-body scene is incomplete");
+        return false;
+    }
+
+    const ALMetalRenderTargetDescriptor& descriptor = target.descriptor();
+    const ALMetalPixelFormat expected_normal = scene.normal_hdr
+        ? ALMetalPixelFormat::rgba16_unorm
+        : ALMetalPixelFormat::rgb10a2_unorm;
+    const ALMetalPixelFormat expected_emissive = scene.hdr
+        ? ALMetalPixelFormat::rg11b10_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    if (descriptor.width != scene.width ||
+        descriptor.height != scene.height || descriptor.sample_count != 1 ||
+        descriptor.color_attachment_count != 4 ||
+        descriptor.colors[0].format !=
+            ALMetalPixelFormat::rgba8_unorm_srgb ||
+        descriptor.colors[1].format != ALMetalPixelFormat::rgba8_unorm ||
+        descriptor.colors[2].format != expected_normal ||
+        descriptor.colors[3].format != expected_emissive ||
+        descriptor.depth_stencil_format !=
+            ALMetalPixelFormat::depth32_float)
+    {
+        setError(error,
+                 "Metal world WindLight heavenly-body target is incompatible");
+        return false;
+    }
+
+    constexpr std::size_t position_stride = sizeof(float) * 4;
+    constexpr std::size_t texcoord_stride = sizeof(float) * 2;
+    for (std::size_t index = 0; index < scene.batch_count; ++index)
+    {
+        const ALMetalWorldHeavenlyBodyBatch& batch = scene.batches[index];
+        const std::size_t index_stride = batch.index_type ==
+            ALMetalIndexType::uint32 ? sizeof(std::uint32_t)
+                                     : sizeof(std::uint16_t);
+        if (!batch.vertices || !batch.indices || !batch.texture_a ||
+            !batch.texture_b || batch.vertex_count < 3 ||
+            batch.index_count < 3 ||
+            batch.position_offset % position_stride != 0 ||
+            batch.texcoord_offset % alignof(float) != 0 ||
+            batch.index_offset % index_stride != 0 ||
+            !sampleableTexture(batch.texture_a) ||
+            !sampleableTexture(batch.texture_b) ||
+            !finiteValues(batch.modelview_projection, 16) ||
+            !finiteValues(batch.parameters, 4) ||
+            batch.parameters[0] < 0.f ||
+            (!batch.moon && batch.parameters[0] > 1.f) ||
+            !rangeFits(batch.position_offset, batch.vertex_count,
+                       position_stride, batch.vertices->length()) ||
+            !rangeFits(batch.texcoord_offset, batch.vertex_count,
+                       texcoord_stride, batch.vertices->length()) ||
+            !rangeFits(batch.index_offset, batch.index_count,
+                       index_stride, batch.indices->length()))
+        {
+            setError(error,
+                     "Metal world WindLight heavenly-body batch is invalid");
+            return false;
+        }
+    }
+
+    ALMetalRenderPassConfig pass_config;
+    for (std::size_t attachment = 0; attachment < 4; ++attachment)
+    {
+        pass_config.colors[attachment].load = ALMetalLoadAction::load;
+        pass_config.colors[attachment].store = ALMetalStoreAction::store;
+    }
+    pass_config.colors[0].linear_storage_view = !scene.hdr;
+    pass_config.depth_load = ALMetalLoadAction::load;
+    pass_config.depth_store = ALMetalStoreAction::store;
+    auto pass = target.makeRenderPass(pass_config, error);
+    auto command = pass ? mImpl->device->makeCommandBuffer(
+        "Alchemy native world WindLight heavenly bodies", error) : nullptr;
+    auto encoder = command ? ALMetalRenderEncoder::begin(
+        *command, *pass,
+        "Alchemy world WindLight heavenly-body encoder", error) : nullptr;
+    if (!encoder)
+    {
+        return false;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(scene.width),
+        static_cast<double>(scene.height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{0, 0, scene.width, scene.height};
+    const ALMetalDepthStencilState* depth = scene.reverse_z
+        ? mImpl->reverse_readonly_depth.get()
+        : mImpl->forward_readonly_depth.get();
+    bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setDepthStencilState(depth, error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->ramp_sampler.get(), error);
+
+    for (std::size_t index = 0;
+         encoded && index < scene.batch_count; ++index)
+    {
+        const ALMetalWorldHeavenlyBodyBatch& batch = scene.batches[index];
+        WorldHeavenlyBodyConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(constants.modelview_projection));
+        std::memcpy(constants.parameters, batch.parameters,
+                    sizeof(constants.parameters));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        constants.config[1] = scene.hdr ? 1u : 0u;
+        constants.config[2] = batch.moon ? 1u : 0u;
+        const ALMetalRenderPipeline* pipeline = batch.moon
+            ? mImpl->windlight_moon_pipelines[scene.hdr ? 1 : 0]
+                                                [scene.normal_hdr ? 1 : 0]
+                  .get()
+            : mImpl->windlight_sun_pipelines[scene.hdr ? 1 : 0]
+                                               [scene.normal_hdr ? 1 : 0]
+                  .get();
+        encoded =
+            encoder->setPipeline(*pipeline, error) &&
+            encoder->setVertexBuffer(
+                0, *batch.vertices, batch.position_offset, error) &&
+            encoder->setVertexBuffer(
+                1, *batch.vertices, batch.texcoord_offset, error) &&
+            encoder->setVertexBytes(
+                2, &constants, sizeof(constants), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->setFragmentTexture(
+                0, batch.texture_a, error) &&
+            encoder->setFragmentTexture(
+                1, batch.texture_b, error) &&
+            encoder->drawIndexed(
+                ALMetalPrimitiveType::triangle,
+                batch.index_count, batch.index_type,
+                *batch.indices, batch.index_offset, 1, error);
     }
 
     return encoded && encoder->end(error) && command->commit(error);

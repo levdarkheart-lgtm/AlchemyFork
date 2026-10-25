@@ -617,6 +617,10 @@ void LLDrawPoolWLSky::renderHeavenlyBodies()
 {
     if (!gSky.mVOSkyp || use_hdri_sky()) return;
 
+#if LL_DARWIN
+    gPipeline.beginMetalWorldWindLightHeavenlyBodies();
+#endif
+
     LLGLEnable blend(GL_BLEND);
     gGL.setSceneBlendType(LLRender::BT_ALPHA);
 
@@ -674,6 +678,10 @@ void LLDrawPoolWLSky::renderHeavenlyBodies()
                 sun_shader->uniform4fv(LLShaderMgr::DIFFUSE_COLOR, 1, color.mV);
                 sun_shader->uniform1f(LLShaderMgr::BLEND_FACTOR, blend_factor);
 
+#if LL_DARWIN
+                gPipeline.captureMetalWorldWindLightHeavenlyBody(
+                    face, tex_a, tex_b, blend_factor, 0.f, false);
+#endif
                 face->renderIndexed();
 
                 gGL.getTextureSlot(0)->unbind();
@@ -723,6 +731,11 @@ void LLDrawPoolWLSky::renderHeavenlyBodies()
             //moon_shader->uniform1f(LLShaderMgr::BLEND_FACTOR, blend_factor);
             moon_shader->uniform3fv(LLShaderMgr::DEFERRED_MOON_DIR, 1, psky->getMoonDirection().mV); // shader: moon_dir
 
+#if LL_DARWIN
+            gPipeline.captureMetalWorldWindLightHeavenlyBody(
+                face, tex_a, tex_b, moon_brightness,
+                psky->getMoonDirection().mV[VZ], true);
+#endif
             face->renderIndexed();
 
             gGL.getTextureSlot(0)->unbind();
@@ -732,6 +745,9 @@ void LLDrawPoolWLSky::renderHeavenlyBodies()
         }
     }
 
+#if LL_DARWIN
+    gPipeline.endMetalWorldWindLightHeavenlyBodies();
+#endif
     gGL.popMatrix();
 }
 

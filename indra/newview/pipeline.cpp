@@ -452,6 +452,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     F32 windlight_star_moon_quad_u[4]{};
     F32 windlight_star_moon_quad_v[4]{};
     F32 windlight_star_moon_brightness = 0.f;
+    std::vector<ALMetalWorldHeavenlyBodyBatch>
+        windlight_heavenly_body_batches;
     std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
         avatar_palettes;
     U32 width = 0;
@@ -470,6 +472,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool windlight_stars_complete = false;
     bool windlight_stars_moon_mask = false;
     bool windlight_stars_native_available = false;
+    bool windlight_heavenly_bodies_expected = false;
+    bool windlight_heavenly_bodies_active = false;
+    bool windlight_heavenly_bodies_complete = false;
+    bool windlight_heavenly_bodies_native_available = false;
     bool attempted = false;
     bool local_lighting_attempted = false;
     U32 local_lighting_failed_frames = 0;
@@ -915,6 +921,11 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.windlight_stars_complete = false;
         capture.windlight_stars_moon_mask = false;
         capture.windlight_stars_native_available = false;
+        capture.windlight_heavenly_body_batches.clear();
+        capture.windlight_heavenly_bodies_expected = false;
+        capture.windlight_heavenly_bodies_active = false;
+        capture.windlight_heavenly_bodies_complete = false;
+        capture.windlight_heavenly_bodies_native_available = false;
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
@@ -1094,6 +1105,11 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.windlight_stars_complete = false;
     capture.windlight_stars_moon_mask = false;
     capture.windlight_stars_native_available = false;
+    capture.windlight_heavenly_body_batches.clear();
+    capture.windlight_heavenly_bodies_expected = false;
+    capture.windlight_heavenly_bodies_active = false;
+    capture.windlight_heavenly_bodies_complete = false;
+    capture.windlight_heavenly_bodies_native_available = false;
     capture.avatar_palettes.clear();
     capture.width = descriptor->width;
     capture.height = descriptor->height;
@@ -1481,6 +1497,128 @@ void LLPipeline::endMetalWorldWindLightStars()
     }
 }
 
+void LLPipeline::beginMetalWorldWindLightHeavenlyBodies()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.windlight_heavenly_body_batches.clear();
+    capture.windlight_heavenly_bodies_expected = false;
+    capture.windlight_heavenly_bodies_active = true;
+    capture.windlight_heavenly_bodies_complete =
+        !capture.pass_active && !capture.hdri_sky_complete &&
+        !capture.windlight_sky_active &&
+        capture.windlight_sky_complete &&
+        !capture.windlight_stars_active &&
+        (!capture.windlight_stars_expected ||
+         capture.windlight_stars_complete);
+    capture.windlight_heavenly_bodies_native_available = false;
+}
+
+void LLPipeline::captureMetalWorldWindLightHeavenlyBody(
+    LLFace* face, LLViewerTexture* texture_a,
+    LLViewerTexture* texture_b, F32 parameter,
+    F32 moon_direction_z, bool moon)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->windlight_heavenly_bodies_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.windlight_heavenly_bodies_expected = true;
+
+    LLVertexBuffer* buffer = face ? face->getVertexBuffer() : nullptr;
+    LLImageGL* image_a = texture_a ? texture_a->getGLTexture() : nullptr;
+    LLImageGL* image_b = texture_b ? texture_b->getGLTexture() : nullptr;
+    ALMetalTexture* metal_a = image_a ? image_a->getMetalTexture() : nullptr;
+    ALMetalTexture* metal_b = image_b ? image_b->getMetalTexture() : nullptr;
+    if (moon)
+    {
+        metal_b = metal_a;
+    }
+    else if (texture_a &&
+             (!texture_b || texture_a == texture_b))
+    {
+        metal_b = metal_a;
+        parameter = 0.f;
+    }
+    else if (texture_b && !texture_a)
+    {
+        metal_a = metal_b;
+        parameter = 0.f;
+    }
+
+    if (!capture.windlight_heavenly_bodies_complete || !face || !buffer ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer() || !metal_a || !metal_b ||
+        face->getGeomCount() < 3 || face->getIndicesCount() < 3 ||
+        face->getIndicesStart() < 0 ||
+        static_cast<U32>(face->getGeomIndex()) +
+                static_cast<U32>(face->getGeomCount()) >
+            buffer->getNumVerts() ||
+        static_cast<U32>(face->getIndicesStart()) +
+                face->getIndicesCount() >
+            buffer->getNumIndices() ||
+        (buffer->getIndexStride() != 2 &&
+         buffer->getIndexStride() != 4) ||
+        !std::isfinite(parameter) || parameter < 0.f ||
+        (!moon && parameter > 1.f) ||
+        !std::isfinite(moon_direction_z))
+    {
+        capture.windlight_heavenly_bodies_complete = false;
+        capture.windlight_heavenly_body_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldHeavenlyBodyBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset =
+        buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.texcoord_offset =
+        buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_offset = static_cast<std::size_t>(
+        face->getIndicesStart()) * buffer->getIndexStride();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.vertex_count = buffer->getNumVerts();
+    batch.index_count = face->getIndicesCount();
+    batch.texture_a = metal_a;
+    batch.texture_b = metal_b;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    batch.parameters[0] = parameter;
+    batch.parameters[1] = moon_direction_z;
+    batch.moon = moon;
+    capture.windlight_heavenly_body_batches.push_back(batch);
+}
+
+void LLPipeline::endMetalWorldWindLightHeavenlyBodies()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->windlight_heavenly_bodies_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.windlight_heavenly_bodies_active = false;
+    if (capture.windlight_heavenly_bodies_expected &&
+        capture.windlight_heavenly_body_batches.empty())
+    {
+        capture.windlight_heavenly_bodies_complete = false;
+    }
+}
+
 void LLPipeline::beginMetalWorldGBufferPass(bool rigged, bool alpha_mask)
 {
     if (!mMetalWorldSimpleCapture ||
@@ -1740,6 +1878,11 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.windlight_stars_complete = false;
         capture.windlight_stars_moon_mask = false;
         capture.windlight_stars_native_available = false;
+        capture.windlight_heavenly_body_batches.clear();
+        capture.windlight_heavenly_bodies_expected = false;
+        capture.windlight_heavenly_bodies_active = false;
+        capture.windlight_heavenly_bodies_complete = false;
+        capture.windlight_heavenly_bodies_native_available = false;
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
@@ -4781,6 +4924,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
         capture.hdri_sky_native_available = false;
         capture.windlight_sky_native_available = false;
         capture.windlight_stars_native_available = false;
+        capture.windlight_heavenly_bodies_native_available = false;
         if (capture.hdri_sky_complete &&
             !capture.hdri_sky_active &&
             !capture.hdri_sky_batches.empty() &&
@@ -4896,6 +5040,38 @@ void LLPipeline::endMetalWorldGBufferCapture()
                     << LL_ENDL;
             }
         }
+        if (capture.windlight_sky_native_available &&
+            capture.windlight_heavenly_bodies_expected)
+        {
+            if (capture.windlight_heavenly_bodies_complete &&
+                !capture.windlight_heavenly_bodies_active &&
+                !capture.windlight_heavenly_body_batches.empty())
+            {
+                ALMetalWorldHeavenlyBodyScene body_scene;
+                body_scene.batches =
+                    capture.windlight_heavenly_body_batches.data();
+                body_scene.batch_count =
+                    capture.windlight_heavenly_body_batches.size();
+                body_scene.width = capture.width;
+                body_scene.height = capture.height;
+                body_scene.normal_hdr = capture.normal_hdr;
+                body_scene.hdr = capture.hdr;
+                body_scene.reverse_z = capture.reverse_z;
+                error.clear();
+                capture.windlight_heavenly_bodies_native_available =
+                    capture.renderer->compositeWindLightHeavenlyBodies(
+                        *target, body_scene, &error);
+            }
+            if (!capture.windlight_heavenly_bodies_native_available)
+            {
+                capture.windlight_sky_native_available = false;
+                LL_WARNS("Metal")
+                    << "Native WindLight sky retained GL authority because "
+                       "its expected sun/moon layer was incomplete"
+                    << (error.empty() ? "" : ": ") << error
+                    << LL_ENDL;
+            }
+        }
         capture.target = std::move(target);
         capture.attempted = true;
         capture.failed_frames = 0;
@@ -4907,9 +5083,11 @@ void LLPipeline::endMetalWorldGBufferCapture()
             << (capture.hdri_sky_native_available
                     ? "; full HDRI sky is native"
                     : capture.windlight_sky_native_available
-                        ? capture.windlight_stars_expected
-                            ? "; WindLight haze and stars are native"
-                            : "; WindLight atmospheric haze sky is native"
+                        ? capture.windlight_heavenly_bodies_expected
+                            ? "; WindLight haze, stars and heavenly bodies are native"
+                            : capture.windlight_stars_expected
+                                ? "; WindLight haze and stars are native"
+                                : "; WindLight atmospheric haze sky is native"
                         : "; sky remains GL-owned")
             << "; presentation remains on GL until the remaining world passes exist"
             << LL_ENDL;
@@ -4930,6 +5108,10 @@ void LLPipeline::endMetalWorldGBufferCapture()
     capture.windlight_stars_active = false;
     capture.windlight_stars_complete = false;
     capture.windlight_stars_moon_mask = false;
+    capture.windlight_heavenly_body_batches.clear();
+    capture.windlight_heavenly_bodies_expected = false;
+    capture.windlight_heavenly_bodies_active = false;
+    capture.windlight_heavenly_bodies_complete = false;
     capture.avatar_palettes.clear();
 }
 

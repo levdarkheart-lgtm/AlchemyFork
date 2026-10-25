@@ -448,6 +448,38 @@ struct ALMetalWorldStarScene
     bool reverse_z = false;
 };
 
+// One of the indexed far-plane quads drawn after the WindLight stars. Sun
+// quads interpolate two environment textures; moon quads use one texture plus
+// the legacy horizon fade and brightness response.
+struct ALMetalWorldHeavenlyBodyBatch
+{
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::size_t texcoord_offset = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t vertex_count = 0;
+    std::uint32_t index_count = 0;
+    const ALMetalTexture* texture_a = nullptr;
+    const ALMetalTexture* texture_b = nullptr;
+    float modelview_projection[16]{};
+    // x = sun texture blend or moon brightness, y = moon direction z.
+    float parameters[4]{};
+    bool moon = false;
+};
+
+struct ALMetalWorldHeavenlyBodyScene
+{
+    const ALMetalWorldHeavenlyBodyBatch* batches = nullptr;
+    std::size_t batch_count = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    bool normal_hdr = false;
+    bool hdr = false;
+    bool reverse_z = false;
+};
+
 struct alignas(16) ALMetalWorldBaseLightingConstants
 {
     float inverse_projection[16]{};
@@ -548,6 +580,14 @@ public:
     bool compositeWindLightStars(
         ALMetalRenderTarget& target,
         const ALMetalWorldStarScene& scene,
+        std::string* error = nullptr);
+
+    // Source-over the exact sunDisc and moon layers after the native stars.
+    // Vintage albedo again uses the raw UNORM storage view because the GL sky
+    // pool disables framebuffer sRGB for its complete ordered transaction.
+    bool compositeWindLightHeavenlyBodies(
+        ALMetalRenderTarget& target,
+        const ALMetalWorldHeavenlyBodyScene& scene,
         std::string* error = nullptr);
 
     // Shade the retained world G-buffer with the deferred base-light owner:

@@ -435,6 +435,15 @@ struct ALMetalWorldStarConstants
     uint4 config;
 };
 
+struct ALMetalWorldHeavenlyBodyConstants
+{
+    float4x4 modelview_projection;
+    // x = sun texture blend or moon brightness, y = moon direction z.
+    float4 parameters;
+    // x = reverse Z, y = emissive/HDR G-buffer, z = moon.
+    uint4 config;
+};
+
 struct ALMetalWorldLocalLightVaryings
 {
     float4 position [[position]];
@@ -829,6 +838,90 @@ fragment ALMetalWorldGBufferOutput almetal_world_star_fragment(
     {
         output.albedo = float4(
             premultiplied * (1.0 + input.intensity), shape);
+        output.emissive = 0.0;
+    }
+    return output;
+}
+
+struct ALMetalWorldHeavenlyBodyVaryings
+{
+    float4 position [[position]];
+    float2 texcoord;
+};
+
+vertex ALMetalWorldHeavenlyBodyVaryings
+almetal_world_heavenly_body_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(1)]],
+    constant ALMetalWorldHeavenlyBodyConstants& constants [[buffer(2)]],
+    uint vertex_id [[vertex_id]])
+{
+    float3 local_position = positions[vertex_id].xyz;
+    // sunDiscV alone removes the historic sky-centre offset. moonV consumes
+    // the stored face position directly.
+    if (constants.config.z == 0u)
+    {
+        local_position -= float3(0.0, 0.0, 50.0);
+    }
+    float4 clip_position = constants.modelview_projection *
+                           float4(local_position, 1.0);
+    clip_position.y = -clip_position.y;
+    clip_position.z = constants.config.x != 0u
+        ? 0.0 : clip_position.w;
+
+    ALMetalWorldHeavenlyBodyVaryings output;
+    output.position = clip_position;
+    output.texcoord = texcoords[vertex_id];
+    return output;
+}
+
+fragment ALMetalWorldGBufferOutput
+almetal_world_heavenly_body_fragment(
+    ALMetalWorldHeavenlyBodyVaryings input [[stage_in]],
+    constant ALMetalWorldHeavenlyBodyConstants& constants [[buffer(0)]],
+    texture2d<float> texture_a [[texture(0)]],
+    texture2d<float> texture_b [[texture(1)]],
+    sampler body_sampler [[sampler(0)]])
+{
+    float4 color;
+    ALMetalWorldGBufferOutput output;
+    output.specular_orm = 0.0;
+    output.normal = 0.0;
+    if (constants.config.z != 0u)
+    {
+        color = texture_a.sample(
+            body_sampler, input.texcoord, level(0.0));
+        if (color.a <= 2.0 / 255.0)
+        {
+            discard_fragment();
+        }
+        color.rgb *= constants.parameters.x;
+        float fade = 1.0;
+        if (constants.parameters.y > 0.0)
+        {
+            fade = clamp(constants.parameters.y *
+                         constants.parameters.y * 4.0, 0.0, 1.0);
+        }
+        color.a *= fade;
+    }
+    else
+    {
+        const float4 sun_a = texture_a.sample(
+            body_sampler, input.texcoord, level(0.0));
+        const float4 sun_b = texture_b.sample(
+            body_sampler, input.texcoord, level(0.0));
+        color = mix(sun_a, sun_b, constants.parameters.x);
+        output.normal = float4(0.0, 1.0, 0.0, 0.0);
+    }
+
+    if (constants.config.y != 0u)
+    {
+        output.albedo = 0.0;
+        output.emissive = color;
+    }
+    else
+    {
+        output.albedo = color;
         output.emissive = 0.0;
     }
     return output;
