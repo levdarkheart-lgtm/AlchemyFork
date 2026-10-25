@@ -78,6 +78,7 @@ class LLImageGL;
 class LLVertexBuffer;
 struct ALMetalWorldAlphaEnvironment;
 struct ALMetalWorldLegacyAlphaLighting;
+struct ALMetalWorldWaterSurface;
 
 typedef enum e_avatar_skinning_method
 {
@@ -608,6 +609,8 @@ public:
     void endMetalWorldPreWaterAlphaPhase();
     void beginMetalWorldWaterExclusionPass();
     void captureMetalWorldWaterHaze();
+    void captureMetalWorldWaterSurface(
+        const ALMetalWorldWaterSurface& surface);
     void beginMetalWorldLegacyGlowPass(bool rigged);
     void beginMetalWorldPBRGlowPass(bool rigged);
     void encodeMetalWorldOpaquePostDeferredCapture();

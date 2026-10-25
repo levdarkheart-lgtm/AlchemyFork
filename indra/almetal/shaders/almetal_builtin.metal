@@ -293,6 +293,29 @@ struct ALMetalWorldWaterHazeVaryings
     float2 texcoord;
 };
 
+struct ALMetalWorldWaterSurfaceConstants
+{
+    float4x4 modelview;
+    float4 eye_position;
+    float4 big_phase;
+    float4 little_phase;
+    float4 sweep_phase;
+    float4 water_far;
+    float4 map_mean;
+    float4 lattice_fraction;
+    int4 lattice_base;
+    float4 parameters;
+    float4 screen;
+    uint4 config;
+};
+
+struct ALMetalWorldWaterSurfaceVaryings
+{
+    float4 position [[position]];
+    float3 eye_position;
+    float2 agent_view;
+};
+
 struct ALMetalWorldAlphaEnvironment
 {
     float4 water_plane;
@@ -1716,11 +1739,10 @@ static ALMetalWorldWaterHazeVaryings almetal_world_water_haze_output(
     return output;
 }
 
-vertex ALMetalWorldWaterHazeVaryings
-almetal_world_water_haze_field_vertex(
-    constant ALMetalWorldWaterHazeConstants& constants [[buffer(0)]],
-    texture2d<float, access::read> cell_map [[texture(0)]],
-    uint vertex_id [[vertex_id]], uint instance_id [[instance_id]])
+static float3 almetal_world_water_field_position(
+    constant ALMetalWorldWaterHazeConstants& constants,
+    texture2d<float, access::read> cell_map,
+    uint vertex_id, uint instance_id)
 {
     const uint part = constants.config.z;
     const uint side = uint(constants.cell_square.w);
@@ -1867,7 +1889,19 @@ almetal_world_water_haze_field_vertex(
                 : float2(0.0)),
             constants.default_height.x);
     }
-    return almetal_world_water_haze_output(position, constants);
+    return position;
+}
+
+vertex ALMetalWorldWaterHazeVaryings
+almetal_world_water_haze_field_vertex(
+    constant ALMetalWorldWaterHazeConstants& constants [[buffer(0)]],
+    texture2d<float, access::read> cell_map [[texture(0)]],
+    uint vertex_id [[vertex_id]], uint instance_id [[instance_id]])
+{
+    return almetal_world_water_haze_output(
+        almetal_world_water_field_position(
+            constants, cell_map, vertex_id, instance_id),
+        constants);
 }
 
 vertex ALMetalWorldWaterHazeVaryings
@@ -1940,6 +1974,271 @@ fragment float4 almetal_world_water_haze_fragment(
         transmission);
     fogged.a = max(pow(fogged.a, 1.7), 0.0);
     return max(fogged, float4(0.0));
+}
+
+vertex ALMetalWorldWaterSurfaceVaryings
+almetal_world_flat_water_vertex(
+    constant ALMetalWorldWaterHazeConstants& field [[buffer(0)]],
+    constant ALMetalWorldWaterSurfaceConstants& water [[buffer(1)]],
+    texture2d<float, access::read> cell_map [[texture(0)]],
+    uint vertex_id [[vertex_id]], uint instance_id [[instance_id]])
+{
+    const float3 agent_position = almetal_world_water_field_position(
+        field, cell_map, vertex_id, instance_id);
+    float4 clip_position = field.modelview_projection *
+        float4(agent_position, 1.0);
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldWaterSurfaceVaryings output;
+    output.position = water.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.eye_position = (
+        water.modelview * float4(agent_position, 1.0)).xyz;
+    output.agent_view = agent_position.xy - water.eye_position.xy;
+    return output;
+}
+
+static float2 almetal_world_water_hex_skew(float2 point)
+{
+    return float2(
+        point.x - 0.57735027 * point.y,
+        1.15470054 * point.y);
+}
+
+static void almetal_world_water_hex_triangle(
+    float2 fraction, thread int2& corner0, thread int2& corner1,
+    thread int2& corner2, thread float3& barycentric)
+{
+    const int upper = fraction.x + fraction.y >= 1.0 ? 1 : 0;
+    const float flip = float(upper) * 2.0 - 1.0;
+    corner0 = int2(upper);
+    corner1 = int2(upper, 1 - upper);
+    corner2 = int2(1 - upper, upper);
+    barycentric = max(float3(0.0), float3(
+        (fraction.x + fraction.y - 1.0) * flip,
+        float(upper) - fraction.y * flip,
+        float(upper) - fraction.x * flip));
+}
+
+static uint almetal_world_water_hex_hash(uint2 identifier)
+{
+    uint hash = identifier.x * 0x8da6b343u +
+                identifier.y * 0xd8163841u;
+    hash ^= hash >> 16;
+    hash *= 0x7feb352du;
+    hash ^= hash >> 15;
+    hash *= 0x846ca68bu;
+    hash ^= hash >> 16;
+    return hash;
+}
+
+static void almetal_world_water_hex_cells(
+    float2 point, float2 fraction, int2 base,
+    thread float2 offset[3], thread float3& weight)
+{
+    const float2 q = fraction +
+        almetal_world_water_hex_skew(point);
+    const float2 cell = floor(q);
+    int2 corners[3];
+    float3 barycentric;
+    almetal_world_water_hex_triangle(
+        q - cell, corners[0], corners[1], corners[2], barycentric);
+    float3 sharpened = pow(barycentric, 7.0);
+    sharpened /= max(dot(sharpened, float3(1.0)), 1.0e-12);
+    sharpened -= 0.01;
+    weight = max(float3(0.0), sharpened);
+    weight /= max(dot(weight, float3(1.0)), 1.0e-12);
+    const uint2 identifier = uint2(base) + uint2(int2(cell));
+    for (uint index = 0; index < 3; ++index)
+    {
+        const uint hash = almetal_world_water_hex_hash(
+            identifier + uint2(corners[index]));
+        offset[index] = float2(hash & 0x7ffu,
+                               (hash >> 11) & 0x7ffu) /
+            2048.0;
+    }
+}
+
+static float almetal_world_water_hex_gain(
+    float3 weight, float footprint, float2 texels)
+{
+    const float cell_texels = min(texels.x, texels.y) /
+        max(footprint, 1.0);
+    return mix(1.0,
+               rsqrt(max(dot(weight, weight), 1.0e-12)),
+               smoothstep(4.0, 16.0, cell_texels));
+}
+
+static float3 almetal_world_water_hex_read(
+    texture2d<float> map, sampler normal_sampler,
+    float2 uv, float2 uv_dx, float2 uv_dy,
+    thread float2 offset[3], float3 weight, float gain,
+    float2 mean)
+{
+    float2 xy = 0.0;
+    float z = 0.0;
+    for (uint index = 0; index < 3; ++index)
+    {
+        if (weight[index] > 0.0)
+        {
+            const float3 normal = map.sample(
+                normal_sampler, uv + offset[index],
+                gradient2d(uv_dx, uv_dy)).xyz * 2.0 - 1.0;
+            xy += weight[index] * (normal.xy - mean);
+            z += weight[index] * normal.z;
+        }
+    }
+    return float3(mean + gain * xy, z);
+}
+
+static float3 almetal_world_water_tiled_layer(
+    texture2d<float> map_a, texture2d<float> map_b,
+    sampler normal_sampler, float2 uv, float2 point,
+    float2 fraction, int2 base, float blend, float4 means)
+{
+    const float2 uv_dx = dfdx(uv);
+    const float2 uv_dy = dfdy(uv);
+    float2 offset[3];
+    float3 weight;
+    almetal_world_water_hex_cells(
+        point, fraction, base, offset, weight);
+    const float2 texels = float2(map_a.get_width(), map_a.get_height());
+    const float gain = almetal_world_water_hex_gain(
+        weight, max(length(uv_dx * texels),
+                    length(uv_dy * texels)), texels);
+    float3 normal = almetal_world_water_hex_read(
+        map_a, normal_sampler, uv, uv_dx, uv_dy,
+        offset, weight, gain, means.xy);
+    if (blend > 0.0)
+    {
+        normal = mix(normal, almetal_world_water_hex_read(
+            map_b, normal_sampler, uv, uv_dx, uv_dy,
+            offset, weight, gain, means.zw), blend);
+    }
+    return normal;
+}
+
+static float3 almetal_world_water_plain_layer(
+    texture2d<float> map_a, texture2d<float> map_b,
+    sampler normal_sampler, float2 uv, float blend)
+{
+    float3 normal = map_a.sample(normal_sampler, uv).xyz * 2.0 - 1.0;
+    if (blend > 0.0)
+    {
+        normal = mix(normal,
+                     map_b.sample(normal_sampler, uv).xyz * 2.0 - 1.0,
+                     blend);
+    }
+    return normal;
+}
+
+static float2 almetal_world_water_wave_clamp(
+    float2 value, float limit)
+{
+    const float distance = max(length(value), 0.001);
+    return value * (min(distance, limit) / distance);
+}
+
+static void almetal_world_water_wave_normals(
+    float2 agent_view,
+    texture2d<float> map_a, texture2d<float> map_b,
+    sampler normal_sampler,
+    constant ALMetalWorldWaterSurfaceConstants& water,
+    thread float3& big, thread float3& little_xy,
+    thread float3& little_zw)
+{
+    const float2 clamped = almetal_world_water_wave_clamp(
+        agent_view, water.water_far.x);
+    float2 swept = clamped;
+    swept.x += (cos(clamped.x * 0.08 + water.sweep_phase.x) +
+                sin(clamped.y * 0.02 + water.sweep_phase.y)) * 6.0;
+    const float2 big_uv = swept * 0.04 + water.big_phase.xy;
+    const float4 little_uv = float4(
+        swept * float2(0.45, 0.9) + water.little_phase.xy,
+        swept * float2(0.1, 0.2) + water.little_phase.zw);
+    const float blend = water.parameters.x;
+    if (water.config.z >= 1u)
+    {
+        big = almetal_world_water_tiled_layer(
+            map_a, map_b, normal_sampler, big_uv,
+            clamped * 0.04, water.lattice_fraction.xy,
+            water.lattice_base.xy, blend, water.map_mean);
+    }
+    else
+    {
+        big = almetal_world_water_plain_layer(
+            map_a, map_b, normal_sampler, big_uv, blend);
+    }
+    little_xy = almetal_world_water_plain_layer(
+        map_a, map_b, normal_sampler, little_uv.xy, blend);
+    if (water.config.z >= 2u)
+    {
+        little_zw = almetal_world_water_tiled_layer(
+            map_a, map_b, normal_sampler, little_uv.zw,
+            clamped * float2(0.1, 0.2),
+            water.lattice_fraction.zw, water.lattice_base.zw,
+            blend, water.map_mean);
+    }
+    else
+    {
+        little_zw = almetal_world_water_plain_layer(
+            map_a, map_b, normal_sampler, little_uv.zw, blend);
+    }
+}
+
+static float3 almetal_world_underwater_fog(
+    float3 eye_position, float3 color,
+    constant ALMetalWorldWaterHazeConstants& field)
+{
+    const float3 view = normalize(eye_position);
+    const float eye_surface = -dot(view, field.water_plane.xyz);
+    const float eye_depth = max(-field.water_plane.w, 0.0);
+    const float3 intersection = field.water_plane.w > 0.0
+        ? view * field.water_plane.w / eye_surface : float3(0.0);
+    const float length_in_water = max(
+        length(eye_position - intersection), 0.1);
+    const float density = field.fog.y;
+    const float light_scale = field.fog.x;
+    constexpr float base = 0.98;
+    const float term1 = -density * pow(base, light_scale * eye_depth);
+    const float term2 = density + light_scale * eye_surface;
+    const float term3 = pow(base, term2 * length_in_water) - 1.0;
+    const float light = pow(min(term1 / term2 * term3, 1.0),
+                            1.0 / 1.7);
+    const float transmission = pow(base, length_in_water * density);
+    return color * transmission +
+        almetal_srgb_to_linear(field.fog_color.rgb) * light;
+}
+
+fragment float4 almetal_world_underwater_fragment(
+    ALMetalWorldWaterSurfaceVaryings input [[stage_in]],
+    constant ALMetalWorldWaterHazeConstants& field [[buffer(0)]],
+    constant ALMetalWorldWaterSurfaceConstants& water [[buffer(1)]],
+    texture2d<float> normal_map_a [[texture(1)]],
+    texture2d<float> normal_map_b [[texture(2)]],
+    texture2d<float> refraction_color [[texture(3)]],
+    sampler normal_sampler [[sampler(0)]],
+    sampler screen_sampler [[sampler(1)]])
+{
+    float3 wave1;
+    float3 wave2;
+    float3 wave3;
+    almetal_world_water_wave_normals(
+        input.agent_view, normal_map_a, normal_map_b,
+        normal_sampler, water, wave1, wave2, wave3);
+    const float3 wave = normalize(wave1 + wave2 + wave3);
+    const float2 screen_uv = input.position.xy / water.screen.xy;
+    const float2 distorted_uv = mix(
+        screen_uv,
+        screen_uv + wave.xy * water.parameters.y,
+        water.parameters.z);
+    const float3 source = water.config.w != 0u
+        ? refraction_color.sample(screen_sampler, distorted_uv).rgb
+        : almetal_srgb_to_linear(field.fog_color.rgb);
+    return max(float4(
+        almetal_world_underwater_fog(
+            input.eye_position, source, field), 0.0),
+        float4(0.0));
 }
 
 static void almetal_world_alpha_atmospherics(

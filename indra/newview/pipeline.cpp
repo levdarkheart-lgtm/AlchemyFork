@@ -566,6 +566,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool water_exclusion_surface_valid = false;
     ALMetalWorldWaterHaze water_haze;
     bool water_haze_valid = false;
+    ALMetalWorldWaterSurface water_surface;
+    bool water_surface_valid = false;
     ALMetalWorldAlphaEnvironment alpha_environment;
     bool alpha_environment_valid = false;
     ALMetalWorldLegacyAlphaLighting world_alpha_lighting;
@@ -2801,6 +2803,8 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.water_exclusion_surface_valid = false;
     capture.water_haze = {};
     capture.water_haze_valid = false;
+    capture.water_surface = {};
+    capture.water_surface_valid = false;
     capture.alpha_environment = {};
     capture.alpha_environment_valid = false;
     capture.world_alpha_lighting = {};
@@ -3102,6 +3106,33 @@ void LLPipeline::captureMetalWorldWaterHaze()
     capture.water_haze_valid = true;
 }
 
+void LLPipeline::captureMetalWorldWaterSurface(
+    const ALMetalWorldWaterSurface& surface)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active || capture.world_pre_water_alpha_active ||
+        capture.water_surface_valid || !capture.water_haze_valid)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        capture.water_surface = {};
+        capture.water_surface_valid = false;
+        return;
+    }
+
+    capture.water_surface = surface;
+    ALMetalWorldSimpleBatch marker;
+    marker.water_surface = true;
+    capture.batches.push_back(marker);
+    capture.water_surface_valid = true;
+}
+
 void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -3138,6 +3169,12 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         [](const ALMetalWorldSimpleBatch& batch)
         {
             return batch.pre_water_pbr;
+        });
+    const bool has_water_surface = std::any_of(
+        capture.batches.begin(), capture.batches.end(),
+        [](const ALMetalWorldSimpleBatch& batch)
+        {
+            return batch.water_surface;
         });
     const bool material_uses_environment = std::any_of(
         capture.batches.begin(), capture.batches.end(),
@@ -3235,6 +3272,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 ? &capture.water_exclusion_surface : nullptr;
         scene.water_haze = capture.water_haze_valid
             ? &capture.water_haze : nullptr;
+        scene.water_surface = capture.water_surface_valid
+            ? &capture.water_surface : nullptr;
         scene.alpha_environment = capture.alpha_environment_valid
             ? &capture.alpha_environment : nullptr;
         scene.alpha_lighting = capture.world_alpha_lighting_valid
@@ -3271,6 +3310,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         : "")
                 << (has_pbr_alpha
                         ? "; including PBR pre-water alpha" : "")
+                << (has_water_surface
+                        ? "; including flat underwater water" : "")
                 << "; result remains offscreen and visible GL authority is "
                    "unchanged" << LL_ENDL;
         }
@@ -3298,6 +3339,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.water_exclusion_surface_valid = false;
     capture.water_haze = {};
     capture.water_haze_valid = false;
+    capture.water_surface = {};
+    capture.water_surface_valid = false;
     capture.alpha_environment = {};
     capture.alpha_environment_valid = false;
     capture.world_alpha_lighting = {};
@@ -3329,6 +3372,8 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
     capture.water_exclusion_surface_valid = false;
     capture.water_haze = {};
     capture.water_haze_valid = false;
+    capture.water_surface = {};
+    capture.water_surface_valid = false;
     capture.alpha_environment = {};
     capture.alpha_environment_valid = false;
     capture.world_alpha_lighting = {};

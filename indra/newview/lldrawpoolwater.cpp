@@ -44,6 +44,10 @@
 #include "alfarplane.h"
 #include "alwaterfield.h"
 #include "alwaterstencil.h"
+#if LL_DARWIN
+#include "../almetal/almetalworld.h"
+#include "llimagegl.h"
+#endif
 
 extern bool gCubeSnapshot;
 
@@ -304,6 +308,63 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
     // below, the surface stays where an exclusion prim covers it, undistorted, drawn again only if one was drawn. The
     // flat field's cells beside the patches are its fringe where the patches are drawn.
     const bool excluded = underwater && gPipeline.beginRenderMap(LLRenderPass::PASS_INVISIBLE) != gPipeline.endRenderMap(LLRenderPass::PASS_INVISIBLE);
+
+#if LL_DARWIN
+    // Start the native water boundary with the complete flat underwater
+    // family. Wave-patch tessellation and above-water reflection/glint are
+    // deliberately left to later checkpoints, so unsupported frames retain
+    // the already validated pre-water target and visible GL authority.
+    if (underwater && !waves && mShaderLevel > 2 && bound_a)
+    {
+        ALMetalWorldWaterSurface metal_water;
+        LLImageGL* normal_a = bound_a->getGLTexture();
+        LLImageGL* normal_b = bound_b ? bound_b->getGLTexture() : normal_a;
+        const ALMetalTexture* metal_a = normal_a
+            ? normal_a->getMetalTexture() : nullptr;
+        const ALMetalTexture* metal_b = normal_b
+            ? normal_b->getMetalTexture() : nullptr;
+        LLViewerCamera& camera = *LLViewerCamera::getInstance();
+        if (metal_a && metal_b &&
+            surface.fillMetalWaterHaze(
+                metal_water.field, camera, true))
+        {
+            metal_water.normal_maps[0] = metal_a;
+            metal_water.normal_maps[1] = metal_b;
+            std::memcpy(metal_water.modelview,
+                        camera.getModelview().getF32ptr(),
+                        sizeof(metal_water.modelview));
+            std::memcpy(metal_water.eye_position, eye.mV,
+                        sizeof(F32) * 3);
+            std::memcpy(metal_water.big_phase, phases.mBig.mV,
+                        sizeof(F32) * 2);
+            std::memcpy(metal_water.little_phase,
+                        phases.mLittle.mV,
+                        sizeof(metal_water.little_phase));
+            std::memcpy(metal_water.sweep_phase,
+                        phases.mSweep.mV, sizeof(F32) * 2);
+            metal_water.water_far[0] = water_far.mWaveClamp;
+            metal_water.water_far[1] = water_far.mEdgeFade;
+            const LLVector4 means = surface.mapMeans(bound_a, bound_b);
+            std::memcpy(metal_water.map_mean, means.mV,
+                        sizeof(metal_water.map_mean));
+            std::memcpy(metal_water.lattice_fraction,
+                        lattice.mFrac.mV,
+                        sizeof(metal_water.lattice_fraction));
+            std::memcpy(metal_water.lattice_base, lattice.mBase,
+                        sizeof(metal_water.lattice_base));
+            metal_water.parameters[0] = blend_factor;
+            metal_water.parameters[1] = underwater
+                ? pwater->getScaleBelow() : pwater->getScaleAbove();
+            metal_water.parameters[2] = 1.f;
+            metal_water.parameters[3] = static_cast<F32>(
+                gPipeline.shaderInputs().mGlobal.mWaterHextile);
+            metal_water.refracts = refracts;
+            metal_water.has_excluded_surface = excluded;
+            gPipeline.captureMetalWorldWaterSurface(metal_water);
+        }
+    }
+#endif
+
     const auto draw = [&](LLGLSLShader* shader, bool patches)
     {
         {

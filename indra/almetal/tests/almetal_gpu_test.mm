@@ -149,6 +149,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_water_haze_field_vertex",
             "almetal_world_water_haze_fullscreen_vertex",
             "almetal_world_water_haze_fragment",
+            "almetal_world_flat_water_vertex",
+            "almetal_world_underwater_fragment",
             "almetal_world_pre_water_fullbright_fragment",
             "almetal_world_pre_water_simple_fragment",
             "almetal_world_pre_water_simple_shadow_fragment",
@@ -4383,6 +4385,167 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             opaque_forward_scene, &error);
         INFO(error);
         REQUIRE(custom_pbr_result);
+
+        // Flat class-3 underwater water follows the complete pre-water
+        // family. It snapshots the retained color before sampling it,
+        // preserves destination alpha, writes surface depth, and redraws
+        // exclusion-stencilled pixels undistorted without marking them as
+        // ordinary surface pixels.
+        const std::array<float, 2> underwater_surface_cell{{-0.5f, 1.f}};
+        auto underwater_surface_upload = device->makeCommandBuffer(
+            "Alchemy underwater surface height upload", &error);
+        REQUIRE(underwater_surface_upload);
+        REQUIRE(water_cell_map->upload(
+            *underwater_surface_upload, 0, 0, {},
+            underwater_surface_cell.data(),
+            sizeof(underwater_surface_cell), &error));
+        REQUIRE(underwater_surface_upload->commitAndWait(&error));
+
+        ALMetalWorldWaterHaze underwater_marker_haze = water_haze;
+        underwater_marker_haze.above_water = false;
+        underwater_marker_haze.cell_map = nullptr;
+        underwater_marker_haze.draw_count = 0;
+        underwater_marker_haze.water_plane[0] = 0.f;
+        underwater_marker_haze.water_plane[1] = 0.f;
+        underwater_marker_haze.water_plane[2] = 1.f;
+        underwater_marker_haze.water_plane[3] = 1.f;
+        underwater_marker_haze.fog[0] = 1.f;
+        underwater_marker_haze.fog[1] = 0.f;
+
+        ALMetalWorldWaterSurface underwater_surface;
+        underwater_surface.field = water_haze;
+        underwater_surface.field.above_water = true;
+        underwater_surface.field.cell_map = water_cell_map.get();
+        underwater_surface.field.default_height[0] = -0.5f;
+        underwater_surface.field.water_plane[0] = 0.f;
+        underwater_surface.field.water_plane[1] = 0.f;
+        underwater_surface.field.water_plane[2] = 1.f;
+        underwater_surface.field.water_plane[3] = 1.f;
+        underwater_surface.field.fog[0] = 1.f;
+        underwater_surface.field.fog[1] = 0.f;
+        underwater_surface.normal_maps[0] = flat_normal.get();
+        underwater_surface.normal_maps[1] = flat_normal.get();
+        std::memcpy(underwater_surface.modelview,
+                    identity.data(), sizeof(identity));
+        underwater_surface.eye_position[2] = -1.f;
+        underwater_surface.water_far[0] = 256.f;
+        underwater_surface.parameters[1] = 0.05f;
+        underwater_surface.parameters[2] = 1.f;
+        underwater_surface.refracts = true;
+        underwater_surface.has_excluded_surface = true;
+
+        ALMetalWorldSimpleBatch underwater_surface_marker;
+        underwater_surface_marker.water_surface = true;
+        std::array<ALMetalWorldSimpleBatch, 3>
+            underwater_surface_batches{{
+                water_exclusion_batch,
+                water_haze_marker,
+                underwater_surface_marker,
+            }};
+        opaque_forward_scene.batches = underwater_surface_batches.data();
+        opaque_forward_scene.batch_count =
+            underwater_surface_batches.size();
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.water_exclusion_surface = &water_surface;
+        opaque_forward_scene.water_haze = &underwater_marker_haze;
+        opaque_forward_scene.water_surface = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world water-surface inputs are invalid");
+        opaque_forward_scene.water_surface = &underwater_surface;
+        error.clear();
+        auto underwater_surface_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(underwater_surface_result);
+        REQUIRE(underwater_surface_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(underwater_surface_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(
+            half_to_float(pre_water_pixels[stencil_center + 0]) -
+            0.25f) < 0.002f);
+        CHECK(std::abs(
+            half_to_float(pre_water_pixels[stencil_center + 1]) -
+            0.125f) < 0.002f);
+        CHECK(std::abs(
+            half_to_float(pre_water_pixels[stencil_center + 2]) -
+            0.0625f) < 0.002f);
+        CHECK(std::abs(
+            half_to_float(pre_water_pixels[stencil_center + 3]) -
+            0.5f) < 0.002f);
+        CHECK(std::abs(
+            pre_water_depth[stencil_center / 4] - 0.25f) < 0.0001f);
+
+        // The same shader handles both runtime hextile tiers. A one-texel
+        // flat map makes their exact lattice reads deterministic while still
+        // forcing every branch and cached production pipeline to execute.
+        for (const float hextile : {1.f, 2.f})
+        {
+            underwater_surface.parameters[3] = hextile;
+            auto hextile_surface = renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+            INFO(error);
+            REQUIRE(hextile_surface);
+        }
+        underwater_surface.parameters[3] = 0.f;
+
+        // Opaque water has no screen copy: its source is the authored fog
+        // colour. With zero density the colour reaches the target unchanged.
+        underwater_surface.refracts = false;
+        auto opaque_underwater_surface = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(opaque_underwater_surface);
+        REQUIRE(opaque_underwater_surface->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(std::abs(
+            half_to_float(pre_water_pixels[stencil_center + 0]) -
+            srgb_to_linear(underwater_surface.field.fog_color[0])) <
+            0.002f);
+        CHECK(std::abs(
+            half_to_float(pre_water_pixels[stencil_center + 3]) -
+            0.5f) < 0.002f);
+        underwater_surface.refracts = true;
+
+        const std::array<float, 2> reverse_underwater_surface_cell{{
+            0.5f, 1.f,
+        }};
+        auto reverse_underwater_surface_upload =
+            device->makeCommandBuffer(
+                "Alchemy reverse underwater surface height upload",
+                &error);
+        REQUIRE(reverse_underwater_surface_upload);
+        REQUIRE(water_cell_map->upload(
+            *reverse_underwater_surface_upload, 0, 0, {},
+            reverse_underwater_surface_cell.data(),
+            sizeof(reverse_underwater_surface_cell), &error));
+        REQUIRE(reverse_underwater_surface_upload->commitAndWait(&error));
+        underwater_surface.field.default_height[0] = 0.5f;
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        auto reverse_underwater_surface =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_underwater_surface);
+        REQUIRE(reverse_underwater_surface->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(
+            pre_water_depth[stencil_center / 4] - 0.5f) < 0.0001f);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.water_surface = nullptr;
 
         ALMetalWorldSimpleBatch shiny_batch = fullbright_batch;
         shiny_batch.impostor_fullbright = false;

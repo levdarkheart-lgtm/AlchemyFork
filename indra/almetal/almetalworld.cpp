@@ -87,6 +87,23 @@ namespace
     };
     static_assert(sizeof(WorldWaterHazeConstants) == 240);
 
+    struct alignas(16) WorldWaterSurfaceConstants
+    {
+        float modelview[16];
+        float eye_position[4];
+        float big_phase[4];
+        float little_phase[4];
+        float sweep_phase[4];
+        float water_far[4];
+        float map_mean[4];
+        float lattice_fraction[4];
+        std::int32_t lattice_base[4];
+        float parameters[4];
+        float screen[4];
+        std::uint32_t config[4];
+    };
+    static_assert(sizeof(WorldWaterSurfaceConstants) == 240);
+
     struct alignas(16) WorldShinyConstants
     {
         float modelview_projection[16];
@@ -659,6 +676,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         water_exclusion_pipelines;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>
         water_haze_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        underwater_flat_water_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         pre_water_fullbright_pipelines;
     std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
@@ -702,6 +721,14 @@ struct ALMetalWorldGBufferRenderer::Impl
         reverse_water_haze_depth;
     std::unique_ptr<ALMetalDepthStencilState>
         underwater_water_haze_depth;
+    std::unique_ptr<ALMetalDepthStencilState>
+        forward_underwater_surface_depth;
+    std::unique_ptr<ALMetalDepthStencilState>
+        reverse_underwater_surface_depth;
+    std::unique_ptr<ALMetalDepthStencilState>
+        forward_underwater_excluded_depth;
+    std::unique_ptr<ALMetalDepthStencilState>
+        reverse_underwater_excluded_depth;
     std::unique_ptr<ALMetalSamplerState> diffuse_sampler;
     std::unique_ptr<ALMetalSamplerState> probe_sampler;
     std::unique_ptr<ALMetalSamplerState> point_clamp_sampler;
@@ -855,6 +882,10 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_water_haze_fullscreen_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_water_haze_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_flat_water_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_underwater_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_pre_water_fullbright_fragment") ||
         !impl->library->hasFunction(
@@ -1374,6 +1405,31 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             {
                 return nullptr;
             }
+        }
+
+        ALMetalRenderPipelineDescriptor underwater_descriptor;
+        underwater_descriptor.library = impl->library.get();
+        underwater_descriptor.vertex_function =
+            "almetal_world_flat_water_vertex";
+        underwater_descriptor.fragment_function =
+            "almetal_world_underwater_fragment";
+        underwater_descriptor.color_attachment_count = 1;
+        underwater_descriptor.colors[0].format = screen_formats[hdr];
+        underwater_descriptor.colors[0].write_mask =
+            static_cast<ALMetalColorWriteMask>(
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+        underwater_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        underwater_descriptor.label =
+            "Alchemy world flat underwater surface pipeline";
+        impl->underwater_flat_water_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, underwater_descriptor, error);
+        if (!impl->underwater_flat_water_pipelines[hdr])
+        {
+            return nullptr;
         }
 
         for (std::size_t rigged = 0; rigged < 2; ++rigged)
@@ -2160,6 +2216,53 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->underwater_water_haze_depth =
         ALMetalDepthStencilState::create(device, depth, error);
     if (!impl->underwater_water_haze_depth)
+    {
+        return nullptr;
+    }
+
+    depth.depth_compare = ALMetalCompareFunction::less_equal;
+    depth.depth_write_enabled = true;
+    depth.stencil_enabled = true;
+    depth.front_stencil.compare = ALMetalCompareFunction::equal;
+    depth.front_stencil.stencil_failure = ALMetalStencilOperation::keep;
+    depth.front_stencil.depth_failure = ALMetalStencilOperation::keep;
+    depth.front_stencil.depth_stencil_pass =
+        ALMetalStencilOperation::replace;
+    depth.front_stencil.read_mask = 1u;
+    depth.front_stencil.write_mask = 2u;
+    depth.back_stencil = depth.front_stencil;
+    depth.label = "Alchemy forward-Z underwater surface depth and stencil";
+    impl->forward_underwater_surface_depth =
+        ALMetalDepthStencilState::create(device, depth, error);
+    if (!impl->forward_underwater_surface_depth)
+    {
+        return nullptr;
+    }
+    depth.depth_compare = ALMetalCompareFunction::greater_equal;
+    depth.label = "Alchemy reverse-Z underwater surface depth and stencil";
+    impl->reverse_underwater_surface_depth =
+        ALMetalDepthStencilState::create(device, depth, error);
+    if (!impl->reverse_underwater_surface_depth)
+    {
+        return nullptr;
+    }
+
+    depth.depth_compare = ALMetalCompareFunction::less_equal;
+    depth.front_stencil.depth_stencil_pass = ALMetalStencilOperation::keep;
+    depth.front_stencil.write_mask = 0u;
+    depth.back_stencil = depth.front_stencil;
+    depth.label = "Alchemy forward-Z excluded underwater surface depth";
+    impl->forward_underwater_excluded_depth =
+        ALMetalDepthStencilState::create(device, depth, error);
+    if (!impl->forward_underwater_excluded_depth)
+    {
+        return nullptr;
+    }
+    depth.depth_compare = ALMetalCompareFunction::greater_equal;
+    depth.label = "Alchemy reverse-Z excluded underwater surface depth";
+    impl->reverse_underwater_excluded_depth =
+        ALMetalDepthStencilState::create(device, depth, error);
+    if (!impl->reverse_underwater_excluded_depth)
     {
         return nullptr;
     }
@@ -3943,6 +4046,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     bool has_shiny = false;
     bool has_water_exclusion = false;
     bool has_water_haze = false;
+    bool has_water_surface = false;
     bool has_pre_water_alpha = false;
     bool has_pre_water_simple = false;
     bool has_pre_water_material = false;
@@ -3976,6 +4080,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             (batch.impostor_emboss ? 1u : 0u) +
             (batch.water_exclusion ? 1u : 0u) +
             (batch.water_haze ? 1u : 0u) +
+            (batch.water_surface ? 1u : 0u) +
             (batch.pre_water_alpha ? 1u : 0u) +
             (batch.legacy_glow ? 1u : 0u) +
             (batch.pbr_glow ? 1u : 0u);
@@ -3991,8 +4096,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             setError(error, "Metal world opaque post-deferred batch is invalid");
             return nullptr;
         }
-        if ((has_water_haze && !batch.pre_water_alpha) ||
-            (saw_pre_water_alpha && !batch.pre_water_alpha))
+        if (has_water_surface ||
+            (has_water_haze && !batch.pre_water_alpha &&
+             !batch.water_surface) ||
+            (saw_pre_water_alpha && !batch.pre_water_alpha &&
+             !batch.water_surface))
         {
             setError(error,
                      "Metal world water-haze ordering is invalid");
@@ -4014,6 +4122,24 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             }
             has_water_haze = true;
             saw_post_exclusion = true;
+            continue;
+        }
+        if (batch.water_surface)
+        {
+            if (!has_water_haze || has_water_surface ||
+                batch.vertices || batch.indices ||
+                batch.vertex_count != 0 || batch.index_count != 0 ||
+                batch.texture_count != 0 || batch.normal_texture ||
+                batch.material_slot_count != 0 ||
+                batch.pbr_slot_count != 0 || rigged ||
+                batch.skin_palette_float_count != 0 ||
+                batch.skin_joint_count != 0)
+            {
+                setError(error,
+                         "Metal world water-surface marker is invalid");
+                return nullptr;
+            }
+            has_water_surface = true;
             continue;
         }
         if (!batch.vertices || !batch.indices ||
@@ -4325,6 +4451,76 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             return nullptr;
         }
     }
+    if (has_water_surface)
+    {
+        const ALMetalWorldWaterSurface* surface = scene.water_surface;
+        const ALMetalWorldWaterHaze* field = surface
+            ? &surface->field : nullptr;
+        const ALMetalTextureDescriptor* cell_map = field && field->cell_map
+            ? &field->cell_map->descriptor() : nullptr;
+        if (!surface || !field || !field->above_water || !cell_map ||
+            cell_map->type != ALMetalTextureType::texture_2d ||
+            cell_map->format != ALMetalPixelFormat::rg32_float ||
+            cell_map->width == 0 || cell_map->height == 0 ||
+            cell_map->sample_count != 1 ||
+            !sampleableTexture(field->cell_map) ||
+            !sampleableTexture(surface->normal_maps[0]) ||
+            !sampleableTexture(surface->normal_maps[1]) ||
+            !finiteValues(field->modelview_projection, 16) ||
+            !finiteValues(field->cell_square, 4) ||
+            !finiteValues(field->default_height, 4) ||
+            !finiteValues(field->rings, 4) ||
+            !finiteValues(field->water_plane, 4) ||
+            !finiteValues(field->fog_color, 4) ||
+            !finiteValues(field->fog, 4) ||
+            !finiteValues(surface->modelview, 16) ||
+            !finiteValues(surface->eye_position, 4) ||
+            !finiteValues(surface->big_phase, 4) ||
+            !finiteValues(surface->little_phase, 4) ||
+            !finiteValues(surface->sweep_phase, 4) ||
+            !finiteValues(surface->water_far, 4) ||
+            !finiteValues(surface->map_mean, 4) ||
+            !finiteValues(surface->lattice_fraction, 4) ||
+            !finiteValues(surface->parameters, 4) ||
+            field->cell_square[2] <= 0.f ||
+            field->cell_square[3] <= 0.f ||
+            field->cell_square[3] > static_cast<float>(std::min(
+                cell_map->width, cell_map->height)) ||
+            field->rings[0] <= 0.f || field->rings[1] <= 0.f ||
+            field->rings[2] <= 0.f || field->draw_count != 3 ||
+            field->fog[0] <= 0.f || field->fog[1] < 0.f ||
+            surface->parameters[0] < 0.f ||
+            surface->parameters[0] > 1.f ||
+            surface->parameters[1] < 0.f ||
+            surface->parameters[2] != 1.f ||
+            surface->parameters[3] < 0.f ||
+            surface->parameters[3] > 2.f ||
+            std::floor(surface->parameters[3]) !=
+                surface->parameters[3] ||
+            surface->water_far[0] <= 0.f)
+        {
+            setError(error, "Metal world water-surface inputs are invalid");
+            return nullptr;
+        }
+        for (std::uint32_t draw = 0; draw < field->draw_count; ++draw)
+        {
+            const ALMetalWorldWaterFieldDraw& command =
+                field->draws[draw];
+            if (command.part != draw || command.vertex_count == 0 ||
+                command.instance_count == 0 ||
+                command.triangle_strip != (draw == 0))
+            {
+                setError(error,
+                         "Metal world water-surface field draw is invalid");
+                return nullptr;
+            }
+        }
+    }
+    else if (scene.water_surface)
+    {
+        setError(error, "Metal world water-surface marker is missing");
+        return nullptr;
+    }
     if (has_pre_water_alpha)
     {
         const ALMetalWorldAlphaEnvironment* environment =
@@ -4505,6 +4701,24 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         haze_depth_snapshot = ALMetalRenderTarget::create(
             *mImpl->device, haze_depth_descriptor, error);
         if (!haze_depth_snapshot)
+        {
+            return nullptr;
+        }
+    }
+    std::unique_ptr<ALMetalRenderTarget> water_color_snapshot;
+    if (has_water_surface && scene.water_surface->refracts)
+    {
+        ALMetalRenderTargetDescriptor water_color_descriptor;
+        water_color_descriptor.width = scene.width;
+        water_color_descriptor.height = scene.height;
+        water_color_descriptor.colors[0].format = color_format;
+        water_color_descriptor.colors[0].label =
+            "Alchemy underwater refraction color";
+        water_color_descriptor.label =
+            "Alchemy native underwater refraction snapshot";
+        water_color_snapshot = ALMetalRenderTarget::create(
+            *mImpl->device, water_color_descriptor, error);
+        if (!water_color_snapshot)
         {
             return nullptr;
         }
@@ -4747,6 +4961,178 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         0, &constants, sizeof(constants), error) &&
                     encoder->draw(
                         ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+            }
+            continue;
+        }
+        if (batch.water_surface)
+        {
+            const ALMetalWorldWaterSurface& water =
+                *scene.water_surface;
+            const ALMetalWorldWaterHaze& field = water.field;
+            if (!encoder->end(error) ||
+                (water.refracts &&
+                 (!water_color_snapshot ||
+                  !water_color_snapshot->copyColorFrom(
+                      *command, 0, *output->colorTexture(0), {}, error))))
+            {
+                return nullptr;
+            }
+
+            ALMetalRenderPassConfig water_pass_config;
+            water_pass_config.colors[0].load = ALMetalLoadAction::load;
+            water_pass_config.colors[0].store = ALMetalStoreAction::store;
+            water_pass_config.depth_load = ALMetalLoadAction::load;
+            water_pass_config.depth_store = ALMetalStoreAction::store;
+            water_pass_config.stencil_load = ALMetalLoadAction::load;
+            water_pass_config.stencil_store = ALMetalStoreAction::store;
+            auto water_pass = output->makeRenderPass(
+                water_pass_config, error);
+            encoder = water_pass ? ALMetalRenderEncoder::begin(
+                *command, *water_pass,
+                "Alchemy world flat underwater surface encoder", error)
+                : nullptr;
+            if (!encoder)
+            {
+                return nullptr;
+            }
+
+            WorldWaterHazeConstants field_constants{};
+            std::memcpy(field_constants.modelview_projection,
+                        field.modelview_projection,
+                        sizeof(field_constants.modelview_projection));
+            std::memcpy(field_constants.inverse_projection,
+                        field.inverse_projection,
+                        sizeof(field_constants.inverse_projection));
+            std::memcpy(field_constants.cell_square, field.cell_square,
+                        sizeof(field_constants.cell_square));
+            std::memcpy(field_constants.default_height,
+                        field.default_height,
+                        sizeof(field_constants.default_height));
+            std::memcpy(field_constants.rings, field.rings,
+                        sizeof(field_constants.rings));
+            std::memcpy(field_constants.water_plane, field.water_plane,
+                        sizeof(field_constants.water_plane));
+            std::memcpy(field_constants.fog_color, field.fog_color,
+                        sizeof(field_constants.fog_color));
+            std::memcpy(field_constants.fog, field.fog,
+                        sizeof(field_constants.fog));
+            field_constants.config[0] = scene.reverse_z ? 1u : 0u;
+            field_constants.config[1] = 1u;
+
+            WorldWaterSurfaceConstants water_constants{};
+            std::memcpy(water_constants.modelview, water.modelview,
+                        sizeof(water_constants.modelview));
+            std::memcpy(water_constants.eye_position,
+                        water.eye_position,
+                        sizeof(water_constants.eye_position));
+            std::memcpy(water_constants.big_phase, water.big_phase,
+                        sizeof(water_constants.big_phase));
+            std::memcpy(water_constants.little_phase,
+                        water.little_phase,
+                        sizeof(water_constants.little_phase));
+            std::memcpy(water_constants.sweep_phase,
+                        water.sweep_phase,
+                        sizeof(water_constants.sweep_phase));
+            std::memcpy(water_constants.water_far, water.water_far,
+                        sizeof(water_constants.water_far));
+            std::memcpy(water_constants.map_mean, water.map_mean,
+                        sizeof(water_constants.map_mean));
+            std::memcpy(water_constants.lattice_fraction,
+                        water.lattice_fraction,
+                        sizeof(water_constants.lattice_fraction));
+            std::memcpy(water_constants.lattice_base,
+                        water.lattice_base,
+                        sizeof(water_constants.lattice_base));
+            std::memcpy(water_constants.parameters,
+                        water.parameters,
+                        sizeof(water_constants.parameters));
+            water_constants.screen[0] = static_cast<float>(scene.width);
+            water_constants.screen[1] = static_cast<float>(scene.height);
+            water_constants.config[0] = scene.reverse_z ? 1u : 0u;
+            water_constants.config[1] = scene.hdr ? 1u : 0u;
+            water_constants.config[2] = static_cast<std::uint32_t>(
+                water.parameters[3]);
+            water_constants.config[3] = water.refracts ? 1u : 0u;
+
+            const ALMetalTexture* refraction = water.refracts
+                ? water_color_snapshot->colorTexture(0)
+                : mImpl->inactive_ssr_color.get();
+            encoded =
+                encoder->setViewport(viewport, error) &&
+                encoder->setScissor(scissor, error) &&
+                encoder->setFrontFacingWinding(
+                    ALMetalWinding::clockwise, error) &&
+                encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+                encoder->setPipeline(
+                    *mImpl->underwater_flat_water_pipelines
+                        [scene.hdr ? 1 : 0], error) &&
+                encoder->setVertexTexture(0, field.cell_map, error) &&
+                encoder->setFragmentTexture(
+                    1, water.normal_maps[0], error) &&
+                encoder->setFragmentTexture(
+                    2, water.normal_maps[1], error) &&
+                encoder->setFragmentTexture(3, refraction, error) &&
+                encoder->setFragmentSampler(
+                    0, mImpl->diffuse_sampler.get(), error) &&
+                encoder->setFragmentSampler(
+                    1, mImpl->linear_clamp_sampler.get(), error) &&
+                encoder->setVertexBytes(
+                    1, &water_constants,
+                    sizeof(water_constants), error) &&
+                encoder->setFragmentBytes(
+                    0, &field_constants,
+                    sizeof(field_constants), error);
+
+            const auto draw_water_field = [&]()
+            {
+                bool drew = true;
+                for (std::uint32_t draw = 0;
+                     drew && draw < field.draw_count; ++draw)
+                {
+                    const ALMetalWorldWaterFieldDraw& command =
+                        field.draws[draw];
+                    field_constants.config[2] = command.part;
+                    drew =
+                        encoder->setVertexBytes(
+                            0, &field_constants,
+                            sizeof(field_constants), error) &&
+                        encoder->draw(
+                            command.triangle_strip
+                                ? ALMetalPrimitiveType::triangle_strip
+                                : ALMetalPrimitiveType::triangle,
+                            0, command.vertex_count,
+                            command.instance_count, error);
+                }
+                return drew;
+            };
+
+            const ALMetalDepthStencilState* surface_depth = scene.reverse_z
+                ? mImpl->reverse_underwater_surface_depth.get()
+                : mImpl->forward_underwater_surface_depth.get();
+            encoded = encoded &&
+                encoder->setDepthStencilState(surface_depth, error) &&
+                encoder->setStencilReferenceValue(2u, error) &&
+                encoder->setFragmentBytes(
+                    1, &water_constants,
+                    sizeof(water_constants), error) &&
+                draw_water_field();
+
+            if (encoded && water.has_excluded_surface)
+            {
+                water_constants.parameters[2] = 0.f;
+                const ALMetalDepthStencilState* excluded_depth =
+                    scene.reverse_z
+                        ? mImpl->reverse_underwater_excluded_depth.get()
+                        : mImpl->forward_underwater_excluded_depth.get();
+                encoded =
+                    encoder->setDepthStencilState(
+                        excluded_depth, error) &&
+                    encoder->setStencilReferenceValue(1u, error) &&
+                    encoder->setFragmentBytes(
+                        1, &water_constants,
+                        sizeof(water_constants), error) &&
+                    draw_water_field();
             }
             continue;
         }

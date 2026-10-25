@@ -220,6 +220,7 @@ struct ALMetalWorldSimpleBatch
     bool impostor_emboss = false;
     bool water_exclusion = false;
     bool water_haze = false;
+    bool water_surface = false;
     bool pre_water_alpha = false;
     bool pre_water_fullbright = false;
     bool pre_water_simple = false;
@@ -416,6 +417,34 @@ struct ALMetalWorldWaterHaze
     bool above_water = false;
 };
 
+// The flat underwater water-surface subset consumes the same exact
+// procedural field as the haze pass plus the live normal-map phase and fog
+// inputs. The renderer snapshots its retained color immediately before this
+// marker so transparent water never samples the attachment it is writing.
+// Wave-patch tessellation and the above-water reflection/glint family remain
+// separate migration boundaries.
+struct ALMetalWorldWaterSurface
+{
+    ALMetalWorldWaterHaze field;
+    std::array<const ALMetalTexture*, 2> normal_maps{};
+    float modelview[16]{};
+    // xyz = camera in agent space.
+    float eye_position[4]{};
+    float big_phase[4]{};
+    float little_phase[4]{};
+    float sweep_phase[4]{};
+    // x = wave-coordinate clamp, y = infinite-projection edge fade.
+    float water_far[4]{};
+    float map_mean[4]{};
+    float lattice_fraction[4]{};
+    std::int32_t lattice_base[4]{};
+    // x = normal-map blend, y = refraction scale, z = exclusion distortion,
+    // w = water-hextile mode (0..2).
+    float parameters[4]{};
+    bool refracts = false;
+    bool has_excluded_surface = false;
+};
+
 // The shared environment subset used by post-deferred transparent geometry.
 // These values are copied from the same live Environment block and loose sky
 // uniforms as the GLSL alpha programs; no settings are reinterpreted by the
@@ -469,6 +498,7 @@ struct ALMetalWorldOpaquePostDeferredScene
     const ALMetalWorldWaterExclusionSurface* water_exclusion_surface =
         nullptr;
     const ALMetalWorldWaterHaze* water_haze = nullptr;
+    const ALMetalWorldWaterSurface* water_surface = nullptr;
     const ALMetalWorldAlphaEnvironment* alpha_environment = nullptr;
     const ALMetalWorldLegacyAlphaLighting* alpha_lighting = nullptr;
     const ALMetalWorldDirectionalShadows* alpha_directional_shadows =
