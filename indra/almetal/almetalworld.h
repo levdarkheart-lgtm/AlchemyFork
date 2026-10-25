@@ -74,6 +74,10 @@ struct alignas(16) ALMetalWorldReflectionProbeConstants
 struct ALMetalWorldReflectionProbes
 {
     const ALMetalTexture* radiance_texture = nullptr;
+    // Four RGBA32UI texels per cube slot pack the nine RGB half-float SH
+    // coefficients used by the PBR diffuse-irradiance path. This remains
+    // optional for legacy-only consumers, which sample radiance alone.
+    const ALMetalTexture* irradiance_texture = nullptr;
     ALMetalWorldReflectionProbeConstants constants;
 };
 

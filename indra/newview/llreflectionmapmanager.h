@@ -279,6 +279,8 @@ private:
     void endMetalDefaultProbeRadianceCapture();
     void releaseMetalDefaultProbe();
     void collectMetalProbeArray();
+    bool reconcileMetalProbeArray();
+    void requestMetalProbeSH(LLReflectionMap* probe);
     bool beginMetalProbeRadianceCapture(LLReflectionMap* probe);
     void captureMetalProbeRadiance(U32 mip, U32 face, U32 resolution);
     void endMetalProbeRadianceCapture();
