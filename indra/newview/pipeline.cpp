@@ -435,6 +435,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool complete = false;
     bool attempted = false;
     bool impostor_bake_attempted = false;
+    bool impostor_bake_native_valid = false;
+    bool impostor_bake_native_complete = false;
     U32 failed_frames = 0;
     bool rigged = false;
     bool alpha_mask = false;
@@ -862,6 +864,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.impostor_mirrors.clear();
         capture.attempted = false;
         capture.impostor_bake_attempted = false;
+        capture.impostor_bake_native_valid = false;
+        capture.impostor_bake_native_complete = false;
         capture.impostor_alpha_active = false;
         capture.impostor_alpha_phase = false;
         capture.impostor_fullbright = false;
@@ -1248,6 +1252,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.impostor_mirrors.clear();
         capture.attempted = false;
         capture.impostor_bake_attempted = false;
+        capture.impostor_bake_native_valid = false;
+        capture.impostor_bake_native_complete = false;
         capture.impostor_alpha_active = false;
         capture.impostor_alpha_phase = false;
         capture.impostor_fullbright = false;
@@ -1259,7 +1265,15 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     }
     if (capture.impostor_bake_attempted)
     {
-        return;
+        // A prior GL bake can be abandoned before its native transaction is
+        // published (for example if the avatar target was resized during the
+        // bake). Do not let that stale target monopolize the single retained
+        // native bake slot and prevent later avatars from trying.
+        capture.impostor_bake_target.reset();
+        capture.impostor_bake_avatar_id.setNull();
+        capture.impostor_bake_attempted = false;
+        capture.impostor_bake_native_valid = false;
+        capture.impostor_bake_native_complete = false;
     }
     if (!capture.renderer)
     {
@@ -1287,6 +1301,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     capture.pass_active = false;
     capture.impostor_bake = true;
     capture.impostor_bake_avatar_id = avatar_id;
+    capture.impostor_bake_native_valid = true;
+    capture.impostor_bake_native_complete = false;
 }
 
 void LLPipeline::beginMetalImpostorAlphaCapture(
@@ -1474,6 +1490,7 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
         if (!capture.renderer->compositeImpostorPostDeferred(
                 *capture.impostor_bake_target, scene, &error))
         {
+            capture.complete = false;
             LL_WARNS("Metal")
                 << "Could not encode native avatar-impostor "
                    "opaque-forward slice: " << error << LL_ENDL;
@@ -1489,6 +1506,12 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
                 << LL_ENDL;
         }
     }
+    else if (capture.complete && !capture.batches.empty())
+    {
+        capture.complete = false;
+    }
+    capture.impostor_bake_native_valid =
+        capture.impostor_bake_native_valid && capture.complete;
     capture.batches.clear();
     capture.avatar_palettes.clear();
     capture.complete = true;
@@ -1575,6 +1598,13 @@ void LLPipeline::endMetalImpostorAlphaCapture()
     if (!capture.complete || capture.batches.empty() ||
         !capture.renderer || !capture.impostor_bake_target)
     {
+        if (!capture.complete ||
+            (!capture.batches.empty() &&
+             (!capture.renderer || !capture.impostor_bake_target)))
+        {
+            capture.impostor_bake_native_valid = false;
+        }
+        capture.impostor_bake_native_complete = true;
         capture.batches.clear();
         capture.avatar_palettes.clear();
         return;
@@ -1606,6 +1636,7 @@ void LLPipeline::endMetalImpostorAlphaCapture()
     if (!capture.renderer->compositeImpostorPostDeferred(
             *capture.impostor_bake_target, scene, &error))
     {
+        capture.impostor_bake_native_valid = false;
         LL_WARNS("Metal")
             << "Could not encode native avatar-impostor alpha slice: "
             << error << LL_ENDL;
@@ -1621,6 +1652,7 @@ void LLPipeline::endMetalImpostorAlphaCapture()
                     : "")
             << LL_ENDL;
     }
+    capture.impostor_bake_native_complete = true;
     capture.batches.clear();
     capture.avatar_palettes.clear();
 }
@@ -3267,21 +3299,111 @@ void LLPipeline::captureMetalImpostorMirror(LLVOAvatar& avatar)
             std::make_unique<MetalWorldSimpleCapture>();
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    if (capture.attempted || !capture.device)
+    if (!capture.device)
     {
         return;
     }
     MetalWorldSimpleCapture::ImpostorMirror& mirror =
         capture.impostor_mirrors[avatar.getID()];
-    if (mirror.pending)
-    {
-        return;
-    }
 
     const U32 width = avatar.mImpostor.getWidth();
     const U32 height = avatar.mImpostor.getHeight();
     const U32 attachment_count = avatar.mImpostor.getNumTextures();
     if (width == 0 || height == 0 || attachment_count > 4)
+    {
+        return;
+    }
+
+    const bool owns_native_transaction =
+        capture.impostor_bake_avatar_id == avatar.getID();
+    if (owns_native_transaction)
+    {
+        bool native_ready = capture.impostor_bake_attempted &&
+            capture.impostor_bake_native_valid &&
+            capture.impostor_bake_native_complete &&
+            capture.impostor_bake_target;
+        if (native_ready)
+        {
+            const ALMetalRenderTargetDescriptor& descriptor =
+                capture.impostor_bake_target->descriptor();
+            native_ready = descriptor.width == width &&
+                descriptor.height == height && descriptor.sample_count == 1 &&
+                descriptor.color_attachment_count == 4 &&
+                descriptor.colors[0].format ==
+                    ALMetalPixelFormat::rgba8_unorm_srgb &&
+                descriptor.colors[1].format ==
+                    ALMetalPixelFormat::rgba8_unorm &&
+                descriptor.colors[2].format ==
+                    (capture.normal_hdr
+                         ? ALMetalPixelFormat::rgba16_unorm
+                         : ALMetalPixelFormat::rgb10a2_unorm) &&
+                descriptor.colors[3].format ==
+                    (capture.hdr ? ALMetalPixelFormat::rg11b10_float
+                                 : ALMetalPixelFormat::rgba8_unorm);
+            for (U32 attachment = 0; native_ready && attachment < 4;
+                 ++attachment)
+            {
+                native_ready =
+                    capture.impostor_bake_target->colorTexture(attachment) !=
+                    nullptr;
+            }
+        }
+
+        if (native_ready)
+        {
+            std::array<std::unique_ptr<ALMetalTexture>, 4> textures;
+            for (U32 attachment = 0; attachment < textures.size();
+                 ++attachment)
+            {
+                textures[attachment] =
+                    capture.impostor_bake_target->takeColorTexture(
+                        attachment);
+            }
+            native_ready = std::all_of(
+                textures.begin(), textures.end(),
+                [](const std::unique_ptr<ALMetalTexture>& texture)
+                {
+                    return texture != nullptr;
+                });
+            if (native_ready)
+            {
+                mirror.readback.release();
+                mirror.planes = {};
+                mirror.bytes.clear();
+                mirror.bytes.shrink_to_fit();
+                mirror.textures = std::move(textures);
+                mirror.device = capture.device;
+                mirror.width = width;
+                mirror.height = height;
+                mirror.source_attachment_count = 4;
+                mirror.normal_hdr = capture.normal_hdr;
+                mirror.hdr = capture.hdr;
+                mirror.pending = false;
+                mirror.ready = true;
+                LL_INFOS("Metal")
+                    << "Published native avatar-impostor G-buffer "
+                    << avatar.getID() << " at " << width << "x" << height
+                    << " without a GL readback" << LL_ENDL;
+            }
+        }
+
+        capture.impostor_bake_target.reset();
+        capture.impostor_bake_avatar_id.setNull();
+        capture.impostor_bake_attempted = false;
+        capture.impostor_bake_native_valid = false;
+        capture.impostor_bake_native_complete = false;
+        capture.impostor_alpha_active = false;
+        capture.impostor_alpha_phase = false;
+        if (native_ready)
+        {
+            return;
+        }
+        // The GL target is still current here. A failed or incomplete native
+        // transaction therefore falls through to the asynchronous PBO mirror
+        // and preserves the viewer's existing visible impostor authority.
+    }
+
+    if (mirror.pending)
     {
         return;
     }
@@ -3442,6 +3564,8 @@ void LLPipeline::releaseMetalImpostorMirror(const LLUUID& avatar_id)
             mMetalWorldSimpleCapture->impostor_bake_target.reset();
             mMetalWorldSimpleCapture->impostor_bake_avatar_id.setNull();
             mMetalWorldSimpleCapture->impostor_bake_attempted = false;
+            mMetalWorldSimpleCapture->impostor_bake_native_valid = false;
+            mMetalWorldSimpleCapture->impostor_bake_native_complete = false;
             mMetalWorldSimpleCapture->impostor_alpha_active = false;
             mMetalWorldSimpleCapture->impostor_alpha_phase = false;
             mMetalWorldSimpleCapture->impostor_fullbright = false;
@@ -4023,6 +4147,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
         capture.avatar_palettes.clear();
         if (impostor_bake)
         {
+            capture.impostor_bake_native_valid = false;
             return;
         }
         if (++capture.failed_frames >=
@@ -4058,6 +4183,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     {
         if (impostor_bake)
         {
+            capture.impostor_bake_native_valid = false;
             LL_WARNS("Metal")
                 << "Could not encode native opaque avatar-impostor bake: "
                 << error << LL_ENDL;
@@ -4083,7 +4209,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
             << "Native opaque avatar-impostor bake encoded "
             << capture.batches.size() << " batches at "
             << capture.width << "x" << capture.height
-            << "; forward alpha remains on the GL transition path"
+            << "; native forward phases remain transactionally retained"
             << LL_ENDL;
     }
     else

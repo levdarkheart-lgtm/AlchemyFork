@@ -3244,6 +3244,40 @@ TEST_CASE("almetal: avatar impostor replays a coherent baked G-buffer", "[almeta
         CHECK(output_emissive[center + 2] == emissive_pixel[2]);
         CHECK(output_emissive[center + 3] == 0);
 
+        // The viewer publishes a completed native impostor bake by moving
+        // all four resolved attachments directly into the retained per-avatar
+        // mirror. Prove that this ownership handoff stays sampleable without
+        // a GL/PBO round trip and can immediately feed the world replay.
+        scene.stamp_opaque_coverage = true;
+        auto native_bake = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(native_bake);
+        std::array<std::unique_ptr<ALMetalTexture>, 4> published_textures;
+        for (std::size_t attachment = 0;
+             attachment < published_textures.size(); ++attachment)
+        {
+            published_textures[attachment] =
+                native_bake->takeColorTexture(attachment);
+            REQUIRE(published_textures[attachment]);
+            CHECK(native_bake->colorTexture(attachment) == nullptr);
+            batch.impostor_textures[attachment] =
+                published_textures[attachment].get();
+        }
+        scene.stamp_opaque_coverage = false;
+        auto direct_replay = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(direct_replay);
+        REQUIRE(device->waitUntilIdle(&error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> direct_albedo{};
+        REQUIRE(direct_replay->colorTexture(0)->readback(
+            *device, 0, 0, {}, direct_albedo.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(direct_albedo[center + 0] == output_albedo[center + 0]);
+        CHECK(direct_albedo[center + 1] == output_albedo[center + 1]);
+        CHECK(direct_albedo[center + 2] == output_albedo[center + 2]);
+        CHECK(direct_albedo[center + 3] == 0);
+
         // Rotate the baked +X normal to +Y. The PBR flag and the blue
         // geometric-normal payload remain byte-for-byte material data.
         std::memset(batch.impostor_normal_rotation, 0,
