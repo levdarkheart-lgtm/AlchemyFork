@@ -195,6 +195,10 @@ struct ALMetalLitPreviewConstants
     float4 light_direction[3];
     float4 light_diffuse[3];
     float4 diffuse_color;
+    float4 avatar_wind;
+    float4 avatar_sin_wave;
+    float4 avatar_gravity;
+    float4 avatar_cloth_depth;
 };
 
 struct ALMetalLitPreviewVaryings
@@ -268,6 +272,27 @@ struct ALMetalLitPreviewSkinnedVertex
     float4 normal;
 };
 
+struct ALMetalLitPreviewAvatarRows
+{
+    float4 row0;
+    float4 row1;
+    float4 row2;
+};
+
+static ALMetalLitPreviewAvatarRows almetal_lit_preview_avatar_rows(
+    float encoded_weight,
+    const device float4* skin_palette)
+{
+    const uint i = uint(clamp(floor(encoded_weight), 0.0, 14.0));
+    const uint j = min(i + 1u, 14u);
+    const float blend = fract(encoded_weight);
+    ALMetalLitPreviewAvatarRows rows;
+    rows.row0 = mix(skin_palette[i], skin_palette[j], blend);
+    rows.row1 = mix(skin_palette[15u + i], skin_palette[15u + j], blend);
+    rows.row2 = mix(skin_palette[30u + i], skin_palette[30u + j], blend);
+    return rows;
+}
+
 // Legacy system-avatar meshes predate the four-influence object stream below.
 // Their scalar weight stores joint i in the integer part and the blend toward
 // min(i + 1, 14) in the fraction. The palette is exactly the 45 float4 layout
@@ -278,24 +303,83 @@ static ALMetalLitPreviewSkinnedVertex almetal_lit_preview_avatar_skin_vertex(
     float encoded_weight,
     const device float4* skin_palette)
 {
-    const uint i = uint(clamp(floor(encoded_weight), 0.0, 14.0));
-    const uint j = min(i + 1u, 14u);
-    const float blend = fract(encoded_weight);
-    const float4 row0 = mix(skin_palette[i], skin_palette[j], blend);
-    const float4 row1 = mix(skin_palette[15u + i],
-                            skin_palette[15u + j], blend);
-    const float4 row2 = mix(skin_palette[30u + i],
-                            skin_palette[30u + j], blend);
+    const ALMetalLitPreviewAvatarRows rows =
+        almetal_lit_preview_avatar_rows(encoded_weight, skin_palette);
 
     ALMetalLitPreviewSkinnedVertex output;
-    output.position = float4(dot(row0, position), dot(row1, position),
-                             dot(row2, position), 1.0);
+    output.position = float4(dot(rows.row0, position),
+                             dot(rows.row1, position),
+                             dot(rows.row2, position), 1.0);
     const float3 normal = normal_value.xyz;
     output.normal = float4(
-        dot(cross(row1.xyz, row2.xyz), normal),
-        dot(cross(row2.xyz, row0.xyz), normal),
-        dot(cross(row0.xyz, row1.xyz), normal), 0.0);
+        dot(cross(rows.row1.xyz, rows.row2.xyz), normal),
+        dot(cross(rows.row2.xyz, rows.row0.xyz), normal),
+        dot(cross(rows.row0.xyz, rows.row1.xyz), normal), 0.0);
     return output;
+}
+
+// Exact position half of avatarSkinV.glsl's getClothedPosition(). The hint
+// path is unlit, so the routine need not carry the final perturbed normal past
+// the point where the legacy formula has finished deriving displacement.
+static float4 almetal_lit_preview_avatar_cloth_position(
+    float4 position,
+    float4 normal_value,
+    float4 clothing,
+    float encoded_weight,
+    const device float4* skin_palette,
+    constant ALMetalLitPreviewConstants& constants)
+{
+    const ALMetalLitPreviewAvatarRows rows =
+        almetal_lit_preview_avatar_rows(encoded_weight, skin_palette);
+    const float3 source_normal = normal_value.xyz;
+    float3 normal = normalize(float3(
+        dot(cross(rows.row1.xyz, rows.row2.xyz), source_normal),
+        dot(cross(rows.row2.xyz, rows.row0.xyz), source_normal),
+        dot(cross(rows.row0.xyz, rows.row1.xyz), source_normal)));
+
+    const float wind_dot = dot(normal, constants.avatar_wind.xyz);
+    float4 wind_effect = float4(wind_dot);
+    const float4 eye_position = float4(
+        dot(rows.row0, position), dot(rows.row1, position),
+        dot(rows.row2, position), 1.0);
+    const float main_depth = dot(constants.avatar_cloth_depth, eye_position);
+    wind_effect.xyz = main_depth * float3(0.015) + wind_effect.xyz;
+    wind_effect.w = (wind_effect.w * 2.0 + 1.0) *
+                    constants.avatar_wind.w;
+    wind_effect.xyz = wind_effect.xyz * constants.avatar_sin_wave.xyz +
+                      float3(constants.avatar_sin_wave.w);
+
+    const float inverse_two_pi = 0.159154943;
+    const float two_pi = 6.28318530;
+    const float half_pi = 1.5707963;
+    float3 periods = wind_effect.xyz * inverse_two_pi;
+    wind_effect.x = (periods.x - floor(periods.x)) * two_pi;
+    periods.z -= half_pi;
+    wind_effect.z = (periods.z - floor(periods.z)) * two_pi;
+    // The source shader intentionally uses this literal rather than
+    // gPiConstants.z; retain its exact rounding.
+    wind_effect.xyz -= float3(3.141592);
+
+    const float4 squared = wind_effect * wind_effect;
+    float4 sin_wave = -squared * 0.00018542 + float4(0.0083143);
+    sin_wave = sin_wave * -squared + float4(0.166666);
+    sin_wave = sin_wave * -squared + float4(1.0);
+    sin_wave *= wind_effect;
+    sin_wave.xyz = sin_wave.xyz * constants.avatar_wind.w +
+                   float3(wind_effect.w);
+
+    float4 gravity = float4(dot(normal, constants.avatar_gravity.xyz));
+    gravity = min(gravity, float4(0.2, 0.0, 0.0, 0.0));
+    gravity *= float4(1.5, 0.0, 0.0, 0.0);
+    sin_wave.x += gravity.x;
+    sin_wave.xyz *= clothing.w;
+    sin_wave.xyz = max(sin_wave.xyz, float3(-1.0));
+
+    const float4 offset_position =
+        float4(1.0, 1.0, 1.0, 0.0) * (clothing * sin_wave.x) + position;
+    return float4(dot(rows.row0, offset_position),
+                  dot(rows.row1, offset_position),
+                  dot(rows.row2, offset_position), 1.0);
 }
 
 static ALMetalLitPreviewVaryings almetal_lit_preview_avatar_vertex_common(
@@ -568,6 +652,28 @@ vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_avatar_skinned_unli
     ALMetalLitPreviewTexturedVaryings output;
     output.position = almetal_lit_preview_clip_position(
         skinned.position, constants);
+    output.color = constants.diffuse_color;
+    output.texcoord = texcoords[vertex_id];
+    return output;
+}
+
+vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_avatar_skinned_unlit_cloth_textured_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device float2* texcoords [[buffer(3)]],
+    const device float* encoded_weights [[buffer(6)]],
+    const device float4* skin_palette [[buffer(7)]],
+    const device float4* clothing [[buffer(9)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 skinned_position =
+        almetal_lit_preview_avatar_cloth_position(
+            positions[vertex_id], normals[vertex_id], clothing[vertex_id],
+            encoded_weights[vertex_id], skin_palette, constants);
+    ALMetalLitPreviewTexturedVaryings output;
+    output.position = almetal_lit_preview_clip_position(
+        skinned_position, constants);
     output.color = constants.diffuse_color;
     output.texcoord = texcoords[vertex_id];
     return output;

@@ -42,6 +42,10 @@ struct ALMetalLitPreviewBatch
     // palette is one rebase-origin float4 followed by three float4 columns
     // per joint, matching LLVOAvatar::MatrixPaletteCache::mGLMp.
     std::size_t weight_offset = 0;
+    // Optional legacy clothing displacement stream and constants, matching
+    // avatarSkinV.glsl's AVATAR_CLOTH path. It is valid only for an unlit,
+    // scalar-weighted system-avatar batch.
+    std::size_t cloth_offset = 0;
     const float* skin_palette = nullptr;
     std::size_t skin_palette_float_count = 0;
     std::uint32_t skin_joint_count = 0;
@@ -61,6 +65,7 @@ struct ALMetalLitPreviewBatch
     // its packed four-influence convention; the two modes are mutually
     // exclusive even though they share the palette upload storage.
     bool avatar_skinning = false;
+    bool avatar_cloth = false;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;
@@ -105,6 +110,10 @@ struct ALMetalLitPreviewBatch
     float light_direction[3][4]{};
     float light_diffuse[3][4]{};
     float diffuse_color[4] = {1.f, 1.f, 1.f, 1.f};
+    float avatar_wind[4]{};
+    float avatar_sin_wave[4]{};
+    float avatar_gravity[4]{};
+    float avatar_cloth_depth[4]{};
     float edge_color[4] = {0.4f, 0.4f, 0.4f, 1.f};
 };
 

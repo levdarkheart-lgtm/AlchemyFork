@@ -58,6 +58,7 @@
 #include "llviewerwearable.h"
 #include "llviewerwindow.h"
 #include "llvoavatarself.h"
+#include "noise.h"
 #include "pipeline.h"
 
 #if LL_DARWIN
@@ -340,11 +341,10 @@ bool LLVisualParamHint::render()
                     *metal_device, &error);
             }
 
-            // The GL owner also draws its optional cloth deformation and any
-            // rigged attachments into this hint. Keep the entire native scene
-            // fail-closed until those two shader families are represented.
-            bool complete = renderer != nullptr &&
-                !gPipeline.shaderInputs().mLocal.mAvatarCloth;
+            // The GL owner also draws rigged attachments into this hint. Keep
+            // the native scene fail-closed until that remaining shader family
+            // is represented.
+            bool complete = renderer != nullptr;
             for (const auto& attachment_entry :
                  gAgentAvatarp->mAttachmentPoints)
             {
@@ -458,6 +458,47 @@ bool LLVisualParamHint::render()
             batches.reserve(preview_meshes.size());
             const LLMatrix4a modelview = gGL.getModelviewMatrix();
             const LLMatrix4a projection = gGL.getProjectionMatrix();
+            const bool avatar_cloth =
+                gPipeline.shaderInputs().mLocal.mAvatarCloth;
+            LLVector4 cloth_wind;
+            LLVector4 cloth_sin_wave;
+            LLVector4 cloth_gravity;
+            LLVector4 cloth_depth(0.f, 0.f, 1.f, 0.f);
+            if (avatar_cloth)
+            {
+                // Keep these values byte-for-byte aligned with
+                // LLDrawPoolAvatar::set_cloth_uniforms(), which owns the GL
+                // draw mirrored by this scene.
+                const LLMatrix4& cloth_view =
+                    LLDrawPoolAvatar::getModelView();
+                cloth_wind.setVec(gAgentAvatarp->mWindVec);
+                cloth_wind.mV[VW] = 0.f;
+                cloth_wind = cloth_wind * cloth_view;
+                cloth_wind.mV[VW] = gAgentAvatarp->mWindVec.mV[VW];
+
+                const F32 phase = -gAgentAvatarp->mRipplePhase;
+                const F32 frequency =
+                    7.f + noise1(gAgentAvatarp->mRipplePhase) * 2.f;
+                cloth_sin_wave.set(
+                    frequency, frequency, frequency, phase);
+
+                cloth_gravity.set(0.f, 0.f, -0.7f, 0.f);
+                cloth_gravity = cloth_gravity * cloth_view;
+
+                LLViewerCamera* main_camera =
+                    LLViewerCamera::getInstance();
+                if (&LLViewerCamera::getCurrent() != main_camera)
+                {
+                    LLMatrix4 main_view;
+                    main_camera->getModelview().store(main_view);
+                    LLMatrix4 to_main = cloth_view;
+                    to_main.invert();
+                    to_main *= main_view;
+                    cloth_depth.set(
+                        to_main.mMatrix[0][2], to_main.mMatrix[1][2],
+                        to_main.mMatrix[2][2], to_main.mMatrix[3][2]);
+                }
+            }
 
             for (LLViewerJointMesh* viewer_mesh : preview_meshes)
             {
@@ -509,7 +550,9 @@ bool LLVisualParamHint::render()
                 if (preview_mesh->hasWeights())
                 {
                     complete = buffer->hasDataType(
-                        LLVertexBuffer::TYPE_WEIGHT);
+                        LLVertexBuffer::TYPE_WEIGHT) &&
+                        (!avatar_cloth || buffer->hasDataType(
+                            LLVertexBuffer::TYPE_CLOTHWEIGHT));
                     if (!complete)
                     {
                         break;
@@ -528,6 +571,23 @@ bool LLVisualParamHint::render()
                     batch.skin_joint_count =
                         LL_CHARACTER_MAX_JOINTS_PER_MESH;
                     batch.avatar_skinning = true;
+                    if (avatar_cloth)
+                    {
+                        batch.cloth_offset = buffer->getOffset(
+                            LLVertexBuffer::TYPE_CLOTHWEIGHT);
+                        batch.avatar_cloth = true;
+                        std::memcpy(batch.avatar_wind, cloth_wind.mV,
+                                    sizeof(batch.avatar_wind));
+                        std::memcpy(batch.avatar_sin_wave,
+                                    cloth_sin_wave.mV,
+                                    sizeof(batch.avatar_sin_wave));
+                        std::memcpy(batch.avatar_gravity,
+                                    cloth_gravity.mV,
+                                    sizeof(batch.avatar_gravity));
+                        std::memcpy(batch.avatar_cloth_depth,
+                                    cloth_depth.mV,
+                                    sizeof(batch.avatar_cloth_depth));
+                    }
                     std::memcpy(batch.modelview_projection,
                                 projection.getF32ptr(),
                                 sizeof(batch.modelview_projection));

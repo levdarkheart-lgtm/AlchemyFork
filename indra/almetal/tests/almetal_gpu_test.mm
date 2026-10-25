@@ -127,6 +127,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_avatar_skinned_vertex",
             "almetal_lit_preview_avatar_skinned_textured_vertex",
             "almetal_lit_preview_avatar_skinned_unlit_textured_vertex",
+            "almetal_lit_preview_avatar_skinned_unlit_cloth_textured_vertex",
             "almetal_lit_preview_avatar_fragment",
             "almetal_lit_preview_avatar_unlit_fragment",
             "almetal_lit_preview_edge_u16_vertex",
@@ -829,9 +830,15 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         const std::array<float, 6> avatar_weights{{
             0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f,
         }};
+        const std::array<std::array<float, 4>, 6> avatar_clothing{{
+            {{0.5f, 0.f, 0.f, 1.f}}, {{0.5f, 0.f, 0.f, 1.f}},
+            {{0.5f, 0.f, 0.f, 1.f}}, {{0.5f, 0.f, 0.f, 1.f}},
+            {{0.5f, 0.f, 0.f, 1.f}}, {{0.5f, 0.f, 0.f, 1.f}},
+        }};
         std::array<std::uint8_t,
                    sizeof(positions) + sizeof(normals) + sizeof(texcoords) +
-                       sizeof(skin_weights) + sizeof(avatar_weights)>
+                       sizeof(skin_weights) + sizeof(avatar_weights) +
+                       sizeof(avatar_clothing)>
             vertex_bytes{};
         std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
         std::memcpy(vertex_bytes.data() + sizeof(positions), normals.data(), sizeof(normals));
@@ -841,8 +848,12 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             sizeof(positions) + sizeof(normals) + sizeof(texcoords);
         std::memcpy(vertex_bytes.data() + skin_weight_offset,
                     skin_weights.data(), sizeof(skin_weights));
-        const std::size_t avatar_weight_offset =
+        const std::size_t avatar_cloth_offset =
             skin_weight_offset + sizeof(skin_weights);
+        std::memcpy(vertex_bytes.data() + avatar_cloth_offset,
+                    avatar_clothing.data(), sizeof(avatar_clothing));
+        const std::size_t avatar_weight_offset =
+            avatar_cloth_offset + sizeof(avatar_clothing);
         std::memcpy(vertex_bytes.data() + avatar_weight_offset,
                     avatar_weights.data(), sizeof(avatar_weights));
         const std::array<std::uint16_t, 9> indices{{
@@ -1380,6 +1391,37 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(avatar_skinned_unlit_pixels[avatar_translated_interior + 1] == 64);
         CHECK(avatar_skinned_unlit_pixels[avatar_translated_interior + 2] == 32);
         CHECK(avatar_skinned_unlit_pixels[avatar_translated_interior + 3] == 255);
+
+        // Match avatarSkinV.glsl's optional clothing stream. With zero phase,
+        // frequency, gravity and view-depth terms, wind strength one plus the
+        // source shader's minimax sine approximation makes clothing.x move
+        // every vertex slightly more than +0.5 before the palette adds its
+        // existing +0.25 translation.
+        const std::size_t avatar_cloth_interior = (16 * 32 + 28) * 4;
+        CHECK(avatar_skinned_unlit_pixels[avatar_cloth_interior + 0] == 38);
+        CHECK(avatar_skinned_unlit_pixels[avatar_cloth_interior + 1] == 51);
+        CHECK(avatar_skinned_unlit_pixels[avatar_cloth_interior + 2] == 77);
+        CHECK(avatar_skinned_unlit_pixels[avatar_cloth_interior + 3] == 255);
+        ALMetalLitPreviewBatch avatar_cloth = avatar_skinned_unlit;
+        avatar_cloth.cloth_offset = avatar_cloth_offset;
+        avatar_cloth.avatar_cloth = true;
+        avatar_cloth.avatar_wind[3] = 1.f;
+        auto rendered_avatar_cloth = renderer->render(avatar_cloth, &error);
+        INFO(error);
+        REQUIRE(rendered_avatar_cloth);
+        std::array<std::uint8_t, 32 * 32 * 4> avatar_cloth_pixels{};
+        REQUIRE(rendered_avatar_cloth->readback(
+            *device, 0, 0, {}, avatar_cloth_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(avatar_cloth_pixels[avatar_cloth_interior + 0] == 128);
+        CHECK(avatar_cloth_pixels[avatar_cloth_interior + 1] == 64);
+        CHECK(avatar_cloth_pixels[avatar_cloth_interior + 2] == 32);
+        CHECK(avatar_cloth_pixels[avatar_cloth_interior + 3] == 255);
+
+        avatar_cloth.cloth_offset = vertex_bytes.size();
+        error.clear();
+        CHECK_FALSE(renderer->render(avatar_cloth, &error));
+        CHECK(error == "Metal avatar cloth preview data is invalid");
 
         // Rigid avatar parts use the same one-light/wrapped-back response and
         // alpha-tested texture path without a palette or weight stream.

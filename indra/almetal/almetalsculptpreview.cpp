@@ -34,9 +34,13 @@ namespace
         float light_direction[3][4];
         float light_diffuse[3][4];
         float diffuse_color[4];
+        float avatar_wind[4];
+        float avatar_sin_wave[4];
+        float avatar_gravity[4];
+        float avatar_cloth_depth[4];
     };
 
-    static_assert(sizeof(LitPreviewConstants) == 224);
+    static_assert(sizeof(LitPreviewConstants) == 288);
 }
 
 struct ALMetalLitPreviewRenderer::Impl
@@ -69,6 +73,8 @@ struct ALMetalLitPreviewRenderer::Impl
         std::unique_ptr<ALMetalRenderPipeline> avatar_skinned_solid;
         std::unique_ptr<ALMetalRenderPipeline> avatar_skinned_textured;
         std::unique_ptr<ALMetalRenderPipeline> avatar_skinned_unlit_textured;
+        std::unique_ptr<ALMetalRenderPipeline>
+            avatar_skinned_unlit_cloth_textured;
     };
 
     const ALMetalDevice* device = nullptr;
@@ -117,6 +123,7 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
         !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_unlit_textured_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_unlit_cloth_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_unlit_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_skinned_edge_u16_vertex") ||
@@ -219,7 +226,11 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
             !create_pipeline(pipelines.avatar_skinned_unlit_textured,
                              "almetal_lit_preview_avatar_skinned_unlit_textured_vertex",
                              "almetal_lit_preview_avatar_unlit_fragment",
-                             "Alchemy textured avatar-skinned unlit preview" + suffix + " pipeline"))
+                             "Alchemy textured avatar-skinned unlit preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.avatar_skinned_unlit_cloth_textured,
+                             "almetal_lit_preview_avatar_skinned_unlit_cloth_textured_vertex",
+                             "almetal_lit_preview_avatar_unlit_fragment",
+                             "Alchemy textured avatar-skinned unlit cloth preview" + suffix + " pipeline"))
         {
             return nullptr;
         }
@@ -474,6 +485,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 batch.skin_palette || batch.skin_palette_float_count != 0 ||
                 batch.skin_joint_count != 0 || batch.avatar_lighting ||
                 batch.avatar_unlit || batch.avatar_skinning ||
+                batch.avatar_cloth ||
                 batch.depth_prepass)
             {
                 setError(error, "Metal unit-sphere preview batch has external geometry");
@@ -494,6 +506,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 batch.skin_palette_float_count != 0 ||
                 batch.skin_joint_count != 0 || batch.avatar_lighting ||
                 batch.avatar_unlit || batch.avatar_skinning ||
+                batch.avatar_cloth ||
                 batch.vertex_count % (triangles ? 3 : 2) != 0)
             {
                 setError(error, triangles
@@ -537,6 +550,16 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
               ((batch.skin_palette != nullptr) != batch.avatar_skinning))))
         {
             setError(error, "Metal avatar preview mode is invalid");
+            return nullptr;
+        }
+        if (batch.avatar_cloth &&
+            (!batch.avatar_unlit || !batch.avatar_skinning ||
+             !batch.skin_palette ||
+             batch.cloth_offset % vector_stride != 0 ||
+             !range_fits(batch.cloth_offset, batch.vertex_count,
+                         vector_stride, batch.vertices->length())))
+        {
+            setError(error, "Metal avatar cloth preview data is invalid");
             return nullptr;
         }
         if (!range_fits(batch.position_offset, batch.vertex_count, vector_stride,
@@ -623,7 +646,8 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             }
         }
         else if (batch.skin_palette_float_count != 0 ||
-                 batch.skin_joint_count != 0 || batch.avatar_skinning)
+                 batch.skin_joint_count != 0 || batch.avatar_skinning ||
+                 batch.avatar_cloth)
         {
             setError(error, "Metal lit preview skinning data is incomplete");
             return nullptr;
@@ -767,6 +791,15 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                         sizeof(constants.light_diffuse));
             std::memcpy(constants.diffuse_color, batch.diffuse_color,
                         sizeof(constants.diffuse_color));
+            std::memcpy(constants.avatar_wind, batch.avatar_wind,
+                        sizeof(constants.avatar_wind));
+            std::memcpy(constants.avatar_sin_wave, batch.avatar_sin_wave,
+                        sizeof(constants.avatar_sin_wave));
+            std::memcpy(constants.avatar_gravity, batch.avatar_gravity,
+                        sizeof(constants.avatar_gravity));
+            std::memcpy(constants.avatar_cloth_depth,
+                        batch.avatar_cloth_depth,
+                        sizeof(constants.avatar_cloth_depth));
 
             const ALMetalDepthStencilState* batch_depth_state =
                 batch.depth_mode ==
@@ -820,7 +853,12 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             const ALMetalRenderPipeline* fill_pipeline = nullptr;
             if (batch.texture)
             {
-                if (batch.avatar_unlit && avatar_skinned)
+                if (batch.avatar_cloth)
+                {
+                    fill_pipeline =
+                        pipelines.avatar_skinned_unlit_cloth_textured.get();
+                }
+                else if (batch.avatar_unlit && avatar_skinned)
                 {
                     fill_pipeline =
                         pipelines.avatar_skinned_unlit_textured.get();
@@ -893,6 +931,11 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                         8, &batch.skin_joint_count,
                         sizeof(batch.skin_joint_count), error);
                 }
+            }
+            if (encoded && batch.avatar_cloth)
+            {
+                encoded = encoder->setVertexBuffer(
+                    9, *batch.vertices, batch.cloth_offset, error);
             }
             if (encoded && batch.texture)
             {
