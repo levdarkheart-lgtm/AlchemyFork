@@ -824,11 +824,8 @@ struct ALMetalPBRPreviewConstants
     float4 emissive_color;
     float4 sun_direction;
     float4 sun_color;
-    // metallic, roughness, alpha cutoff, exposure
+    // metallic, roughness, alpha cutoff, reserved
     float4 material;
-    // tonemap mix, tonemap type, target is sRGB, reserved
-    float4 post;
-    float4 tonemap_params;
 };
 
 struct ALMetalPBRPreviewVaryings
@@ -1148,23 +1145,181 @@ fragment float4 almetal_pbr_preview_fragment(
     const float3 ambient_specular = f0 * mix(0.12, 0.035, roughness) * ao;
     const float3 emissive = constants.emissive_color.rgb *
         emissive_map.sample(emissive_sampler, input.emissive_texcoord).rgb;
-    float3 color = direct + ambient_diffuse + ambient_specular + emissive;
+    const float3 color = direct + ambient_diffuse + ambient_specular + emissive;
 
-    color *= constants.material.w;
+    // Match the GL preview's ordering: alpha-composite the complete linear HDR
+    // sphere first. Exposure and tone mapping are a later full-target pass.
+    return float4(max(color, float3(0.0)), coverage);
+}
+
+struct ALMetalPBRPreviewExposureConstants
+{
+    float compensation;
+    float min_ev;
+    float max_ev;
+    float low_fraction;
+    float high_fraction;
+    uint metering_mode;
+    uint enabled;
+    uint reserved;
+};
+
+static float almetal_pbr_preview_meter_weight(float2 uv, uint mode)
+{
+    const float2 q = uv * 2.0 - 1.0;
+    const float distance_squared = dot(q, q);
+    if (mode == 0)
+    {
+        return 1.0;
+    }
+    if (mode == 1)
+    {
+        return exp(-2.0 * distance_squared);
+    }
+    return 1.0 - smoothstep(0.15, 0.3, sqrt(distance_squared));
+}
+
+kernel void almetal_pbr_preview_exposure(
+    texture2d<float> scene [[texture(0)]],
+    texture2d<float, access::write> exposure [[texture(1)]],
+    sampler scene_sampler [[sampler(0)]],
+    constant ALMetalPBRPreviewExposureConstants& constants [[buffer(0)]],
+    uint thread_index [[thread_position_in_grid]])
+{
+    if (thread_index != 0)
+    {
+        return;
+    }
+    if (constants.enabled == 0)
+    {
+        exposure.write(float4(1.0, 0.0, 0.0, 1.0), uint2(0));
+        return;
+    }
+
+    constexpr uint meter_width = 128;
+    constexpr uint meter_height = 72;
+    constexpr uint bins = 64;
+    constexpr float min_histogram_ev = -16.0;
+    constexpr float max_histogram_ev = 12.0;
+    constexpr float bins_per_ev =
+        float(bins) / (max_histogram_ev - min_histogram_ev);
+    thread float histogram_weight[bins];
+    thread float histogram_log[bins];
+    for (uint bin = 0; bin < bins; ++bin)
+    {
+        histogram_weight[bin] = 0.0;
+        histogram_log[bin] = 0.0;
+    }
+
+    const float2 scene_size = float2(scene.get_width(), scene.get_height());
+    const float2 patch_size = scene_size /
+                              float2(meter_width, meter_height);
+    const uint2 taps = uint2(
+        max(1.0, ceil(patch_size.x * 0.5)),
+        max(1.0, ceil(patch_size.y * 0.5)));
+    const float2 tap_step = patch_size / float2(taps);
+    const float tap_count = float(taps.x * taps.y);
+
+    for (uint y = 0; y < meter_height; ++y)
+    {
+        for (uint x = 0; x < meter_width; ++x)
+        {
+            const float2 patch_origin = float2(x, y) * patch_size;
+            float luminance = 0.0;
+            for (uint tap_y = 0; tap_y < taps.y; ++tap_y)
+            {
+                for (uint tap_x = 0; tap_x < taps.x; ++tap_x)
+                {
+                    const float2 pixel = patch_origin +
+                        (float2(tap_x, tap_y) + 0.5) * tap_step;
+                    const float3 color = scene.sample(
+                        scene_sampler, pixel / scene_size, level(0.0)).rgb;
+                    luminance += min(dot(float3(0.2126, 0.7152, 0.0722),
+                                         color),
+                                     60000.0);
+                }
+            }
+            luminance /= tap_count;
+            const float2 uv = (float2(x, y) + 0.5) /
+                              float2(meter_width, meter_height);
+            const float weight = almetal_pbr_preview_meter_weight(
+                uv, constants.metering_mode);
+            if (weight > 0.0 && luminance > 0.0)
+            {
+                const float ev = clamp(log2(max(luminance, 1.0e-10)),
+                                       min_histogram_ev, max_histogram_ev);
+                const uint bin = min(
+                    uint(floor((ev - min_histogram_ev) * bins_per_ev)),
+                    bins - 1);
+                histogram_weight[bin] += weight;
+                histogram_log[bin] += weight * ev;
+            }
+        }
+    }
+
+    float total = 0.0;
+    for (uint bin = 0; bin < bins; ++bin)
+    {
+        total += histogram_weight[bin];
+    }
+    const float low = total * constants.low_fraction;
+    const float high = total * constants.high_fraction;
+    float below = 0.0;
+    float kept = 0.0;
+    float kept_log = 0.0;
+    for (uint bin = 0; bin < bins; ++bin)
+    {
+        const float bin_weight = histogram_weight[bin];
+        const float from = max(low, below);
+        const float to = min(high, below + bin_weight);
+        if (to > from)
+        {
+            const float share = (to - from) / bin_weight;
+            kept += bin_weight * share;
+            kept_log += histogram_log[bin] * share;
+        }
+        below += bin_weight;
+    }
+
+    constexpr float exposure_key = 0.18;
+    float ev = kept > 0.0
+        ? kept_log / kept - (log2(exposure_key) + constants.compensation)
+        : constants.min_ev;
+    ev = clamp(ev, constants.min_ev, constants.max_ev);
+    exposure.write(float4(exp2(-ev), ev, ev, 1.0), uint2(0));
+}
+
+struct ALMetalPBRPreviewPostConstants
+{
+    // static exposure, tonemap mix, tonemap type, target is sRGB
+    float4 post;
+    float4 tonemap_params;
+};
+
+fragment float4 almetal_pbr_preview_post_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> scene [[texture(0)]],
+    texture2d<float> exposure [[texture(1)]],
+    sampler scene_sampler [[sampler(0)]],
+    constant ALMetalPBRPreviewPostConstants& constants [[buffer(0)]])
+{
+    const float4 scene_color = scene.sample(scene_sampler, input.texcoord);
+    float3 color = scene_color.rgb * constants.post.x *
+                   exposure.read(uint2(0)).r;
     const float3 clamped = clamp(color, float3(0.0), float3(1.0));
-    const uint tonemap_type = uint(round(constants.post.y));
+    const uint tonemap_type = uint(round(constants.post.z));
     color = mix(clamped,
                 clamp(almetal_pbr_tonemap(
                           color, tonemap_type, constants.tonemap_params),
                       float3(0.0), float3(1.0)),
-                constants.post.x);
+                constants.post.y);
     // An sRGB attachment performs the final transfer itself. The ordinary
     // RGBA8 dynamic texture stores the same encoded bytes explicitly.
-    if (constants.post.z < 0.5)
+    if (constants.post.w < 0.5)
     {
         color = almetal_linear_to_srgb(color);
     }
-    return float4(max(color, float3(0.0)), coverage);
+    return float4(max(color, float3(0.0)), scene_color.a);
 }
 
 fragment float4 almetal_lit_preview_deferred_rigged_fragment(

@@ -694,6 +694,29 @@ bool LLGLTFPreviewTexture::render()
         const ALMetalTexture* orm_texture = metal_texture(orm_image);
         const ALMetalTexture* emissive_texture = metal_texture(emissive_image);
 
+        const F32 metal_preview_exposure = llclamp(
+            gSavedSettings.get<F32>("RenderExposure"), 0.5f, 4.f);
+        LLSettingsSky::ptr_t metal_preview_sky =
+            LLEnvironment::instance().getCurrentSky();
+        const bool metal_preview_auto_adjust = gSavedSettings.get<bool>(
+            "RenderSkyAutoAdjustLegacy");
+        const F32 metal_preview_tonemap_mix = metal_preview_sky
+            ? llclamp(metal_preview_sky->getTonemapMix(
+                          metal_preview_auto_adjust),
+                      0.f, 1.f)
+            : 1.f;
+        const S32 metal_preview_tonemap_type = llmax(
+            gSavedSettings.get<S32>("AlchemyRenderTonemapType"), 0);
+        const std::array<F32, 4> metal_preview_tonemap_params =
+            pbr_preview_tonemap_params(metal_preview_tonemap_type);
+        const F32 metal_preview_low_fraction = llclamp(
+            gSavedSettings.get<F32>("AlchemyExposureLowPercent") * 0.01f,
+            0.f, 0.99f);
+        const F32 metal_preview_high_fraction = llclamp(
+            gSavedSettings.get<F32>("AlchemyExposureHighPercent") * 0.01f,
+            metal_preview_low_fraction + 0.01f, 1.f);
+        const bool metal_preview_hdr = LLPipeline::hdrEnabled();
+
         bool metal_preview_eligible = metal_device &&
             mMetalPreviewDescriptor && base_color_texture && normal_texture &&
             orm_texture && emissive_texture;
@@ -786,21 +809,6 @@ bool LLGLTFPreviewTexture::render()
                 : mGLTFMaterial->mAlphaMode ==
                     LLGLTFMaterial::ALPHA_MODE_BLEND
                     ? 0.004f : -1.f;
-            batch.exposure = llclamp(
-                gSavedSettings.get<F32>("RenderExposure"), 0.5f, 4.f);
-            LLSettingsSky::ptr_t sky =
-                LLEnvironment::instance().getCurrentSky();
-            const bool auto_adjust = gSavedSettings.get<bool>(
-                "RenderSkyAutoAdjustLegacy");
-            batch.tonemap_mix = sky
-                ? llclamp(sky->getTonemapMix(auto_adjust), 0.f, 1.f) : 1.f;
-            const S32 tonemap_type = llmax(
-                gSavedSettings.get<S32>("AlchemyRenderTonemapType"), 0);
-            batch.tonemap_type = static_cast<U32>(tonemap_type);
-            const std::array<F32, 4> tonemap_params =
-                pbr_preview_tonemap_params(tonemap_type);
-            std::memcpy(batch.tonemap_params, tonemap_params.data(),
-                        sizeof(batch.tonemap_params));
             batch.double_sided = mGLTFMaterial->mDoubleSided;
             metal_preview_batches.push_back(batch);
         }
@@ -827,6 +835,31 @@ bool LLGLTFPreviewTexture::render()
                 metal_scene.batch_count = metal_preview_batches.size();
                 metal_scene.destination_descriptor =
                     mMetalPreviewDescriptor.get();
+                metal_scene.exposure = metal_preview_exposure;
+                metal_scene.tonemap_mix = metal_preview_tonemap_mix;
+                metal_scene.tonemap_type = static_cast<U32>(
+                    metal_preview_tonemap_type);
+                std::memcpy(metal_scene.tonemap_params,
+                            metal_preview_tonemap_params.data(),
+                            sizeof(metal_scene.tonemap_params));
+                metal_scene.meter_exposure = metal_preview_hdr &&
+                    gSavedSettings.get<bool>(
+                        "RenderDynamicExposureEnabled") &&
+                    !LLRender::sClassicMode;
+                metal_scene.exposure_compensation =
+                    gSavedSettings.get<F32>(
+                        "AlchemyExposureCompensation");
+                metal_scene.exposure_min_ev = gSavedSettings.get<F32>(
+                    "AlchemyExposureMinEV");
+                metal_scene.exposure_max_ev = gSavedSettings.get<F32>(
+                    "AlchemyExposureMaxEV");
+                metal_scene.exposure_low_fraction =
+                    metal_preview_low_fraction;
+                metal_scene.exposure_high_fraction =
+                    metal_preview_high_fraction;
+                metal_scene.exposure_metering_mode =
+                    gSavedSettings.get<U32>(
+                        "AlchemyExposureMeteringMode");
                 mMetalPreview = renderer->render(metal_scene, &error);
             }
             if (!mMetalPreview)

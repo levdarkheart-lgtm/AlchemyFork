@@ -153,6 +153,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_solid_fragment",
             "almetal_pbr_preview_vertex",
             "almetal_pbr_preview_fragment",
+            "almetal_pbr_preview_exposure",
+            "almetal_pbr_preview_post_fragment",
         };
         for (const char* function : functions)
         {
@@ -2223,9 +2225,9 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         std::array<std::uint8_t,
                    tangent_offset + sizeof(float) * 4 * 3> vertex_bytes{};
         const float positions[3][4] = {
-            {-0.9f, -0.9f, 0.f, 1.f},
-            { 0.9f, -0.9f, 0.f, 1.f},
-            { 0.0f,  0.9f, 0.f, 1.f},
+            {-1.f, -1.f, 0.f, 1.f},
+            { 3.f, -1.f, 0.f, 1.f},
+            {-1.f,  3.f, 0.f, 1.f},
         };
         const float normals[3][4] = {
             {0.f, 0.f, 1.f, 0.f},
@@ -2374,15 +2376,15 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         batch.metallic_factor = 0.f;
         batch.roughness_factor = 1.f;
         batch.alpha_cutoff = 0.f;
-        batch.exposure = 1.f;
-        batch.tonemap_mix = 0.f;
-        batch.tonemap_type = 1;
         batch.double_sided = true;
 
         ALMetalPBRPreviewScene scene;
         scene.batches = &batch;
         scene.batch_count = 1;
         scene.destination_descriptor = &destination_descriptor;
+        scene.exposure = 1.f;
+        scene.tonemap_mix = 0.f;
+        scene.tonemap_type = 1;
 
         auto read_center = [&](const ALMetalTexture& texture)
         {
@@ -2430,6 +2432,55 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         CHECK(srgb_green[3] == 255);
         destination_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
 
+        // The GL owner alpha-composites linear HDR first, then applies the
+        // full-frame post pass. Half-covered unit red therefore encodes 0.5
+        // linear (~188), rather than blending an encoded 255 down to 128.
+        batch.texture_transform[3][4] = 0.f;
+        batch.base_color_texture = cutout_base.get();
+        batch.alpha_cutoff = 0.f;
+        auto blended_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(blended_output);
+        const auto blended = read_center(*blended_output);
+        CHECK(std::abs(static_cast<int>(blended[0]) - 188) <= 1);
+        CHECK(blended[1] == 0);
+        CHECK(blended[2] == 0);
+        CHECK(std::abs(static_cast<int>(blended[3]) - 128) <= 1);
+
+        // The preview asks generateExposure for an unadapted one-frame value.
+        // Pinning min/max to EV 1 makes its dynamic scale exactly 0.5.
+        batch.base_color_texture = base.get();
+        scene.meter_exposure = true;
+        scene.exposure_min_ev = 1.f;
+        scene.exposure_max_ev = 1.f;
+        auto exposed_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(exposed_output);
+        const auto exposed = read_center(*exposed_output);
+        CHECK(std::abs(static_cast<int>(exposed[0]) - 188) <= 1);
+        CHECK(exposed[1] == 0);
+        CHECK(exposed[2] == 0);
+        CHECK(exposed[3] == 255);
+
+        // With a full target of unit red, the meter's exact luminance is
+        // 0.2126. Placing that at the 0.18 key produces scale 0.18/0.2126.
+        scene.exposure_min_ev = -3.f;
+        scene.exposure_max_ev = 4.f;
+        auto metered_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(metered_output);
+        const auto metered = read_center(*metered_output);
+        const float expected_linear = 0.18f / 0.2126f;
+        const float expected_encoded =
+            1.055f * std::pow(expected_linear, 1.f / 2.4f) - 0.055f;
+        const int expected_byte = static_cast<int>(
+            std::lround(expected_encoded * 255.f));
+        CHECK(std::abs(static_cast<int>(metered[0]) - expected_byte) <= 1);
+        CHECK(metered[1] == 0);
+        CHECK(metered[2] == 0);
+        CHECK(metered[3] == 255);
+        scene.meter_exposure = false;
+
         batch.base_color_texture = cutout_base.get();
         batch.alpha_cutoff = 0.75f;
         auto cutout_output = renderer->render(scene, &error);
@@ -2443,20 +2494,20 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
 
         batch.base_color_texture = base.get();
         batch.alpha_cutoff = 0.f;
-        batch.tonemap_mix = 1.f;
+        scene.tonemap_mix = 1.f;
         for (std::uint32_t type = 2; type <= 6; ++type)
         {
-            batch.tonemap_type = type;
-            std::fill(std::begin(batch.tonemap_params),
-                      std::end(batch.tonemap_params), 0.f);
+            scene.tonemap_type = type;
+            std::fill(std::begin(scene.tonemap_params),
+                      std::end(scene.tonemap_params), 0.f);
             if (type == 2 || type == 3 || type == 4)
             {
-                batch.tonemap_params[0] = 1.f;
+                scene.tonemap_params[0] = 1.f;
             }
             else if (type == 6)
             {
-                std::fill(std::begin(batch.tonemap_params),
-                          std::end(batch.tonemap_params), 1.f);
+                std::fill(std::begin(scene.tonemap_params),
+                          std::end(scene.tonemap_params), 1.f);
             }
             auto mapped_output = renderer->render(scene, &error);
             INFO(error);
@@ -2465,18 +2516,18 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
             CHECK(read_center(*mapped_output)[3] == 255);
         }
 
-        batch.tonemap_type = 6;
-        std::fill(std::begin(batch.tonemap_params),
-                  std::end(batch.tonemap_params), 0.f);
+        scene.tonemap_type = 6;
+        std::fill(std::begin(scene.tonemap_params),
+                  std::end(scene.tonemap_params), 0.f);
         error.clear();
         CHECK_FALSE(renderer->render(scene, &error));
-        CHECK(error == "Metal PBR preview batch is invalid");
-        batch.tonemap_type = 7;
+        CHECK(error == "Metal PBR preview post state is invalid");
+        scene.tonemap_type = 7;
         error.clear();
         CHECK_FALSE(renderer->render(scene, &error));
-        CHECK(error == "Metal PBR preview batch is invalid");
-        batch.tonemap_type = 1;
-        batch.tonemap_mix = 0.f;
+        CHECK(error == "Metal PBR preview post state is invalid");
+        scene.tonemap_type = 1;
+        scene.tonemap_mix = 0.f;
         batch.normal_texture = nullptr;
         error.clear();
         CHECK_FALSE(renderer->render(scene, &error));

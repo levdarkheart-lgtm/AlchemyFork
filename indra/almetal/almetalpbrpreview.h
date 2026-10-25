@@ -52,10 +52,6 @@ struct ALMetalPBRPreviewBatch
     float metallic_factor = 1.f;
     float roughness_factor = 1.f;
     float alpha_cutoff = 0.004f;
-    float exposure = 1.f;
-    float tonemap_mix = 1.f;
-    std::uint32_t tonemap_type = 1;
-    float tonemap_params[4]{};
     bool double_sided = false;
 };
 
@@ -64,6 +60,24 @@ struct ALMetalPBRPreviewScene
     const ALMetalPBRPreviewBatch* batches = nullptr;
     std::size_t batch_count = 0;
     const ALMetalTextureDescriptor* destination_descriptor = nullptr;
+
+    // colorCorrect applies these after the complete linear HDR scene has
+    // been composited, rather than independently to each material batch.
+    float exposure = 1.f;
+    float tonemap_mix = 1.f;
+    std::uint32_t tonemap_type = 1;
+    float tonemap_params[4]{};
+
+    // The material preview deliberately requests an unadapted exposure
+    // (generateExposure(..., use_history=false)). Fractions are normalized
+    // percentile positions in the generated histogram.
+    bool meter_exposure = false;
+    float exposure_compensation = 0.f;
+    float exposure_min_ev = -3.f;
+    float exposure_max_ev = 4.f;
+    float exposure_low_fraction = 0.1f;
+    float exposure_high_fraction = 0.95f;
+    std::uint32_t exposure_metering_mode = 1;
 };
 
 // A narrow owner for LLGLTFPreviewTexture's generated sphere. The GL render

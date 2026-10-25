@@ -10,6 +10,7 @@
 
 #include "almetalpbrpreview.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
@@ -36,11 +37,32 @@ namespace
         float sun_direction[4];
         float sun_color[4];
         float material[4];
+    };
+
+    static_assert(sizeof(PBRPreviewConstants) == 368);
+
+    struct alignas(16) PBRPreviewExposureConstants
+    {
+        float compensation;
+        float min_ev;
+        float max_ev;
+        float low_fraction;
+        float high_fraction;
+        std::uint32_t metering_mode;
+        std::uint32_t enabled;
+        std::uint32_t reserved;
+    };
+
+    static_assert(sizeof(PBRPreviewExposureConstants) == 32);
+
+    struct alignas(16) PBRPreviewPostConstants
+    {
+        // static exposure, tonemap mix, tonemap type, target is sRGB
         float post[4];
         float tonemap_params[4];
     };
 
-    static_assert(sizeof(PBRPreviewConstants) == 400);
+    static_assert(sizeof(PBRPreviewPostConstants) == 32);
 
     bool finiteValues(const float* values, std::size_t count)
     {
@@ -67,9 +89,13 @@ struct ALMetalPBRPreviewRenderer::Impl
 {
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalShaderLibrary> library;
-    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2> pipelines;
+    std::unique_ptr<ALMetalRenderPipeline> shade_pipeline;
+    std::unique_ptr<ALMetalComputePipeline> exposure_pipeline;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2> post_pipelines;
     std::unique_ptr<ALMetalSamplerState> color_sampler;
     std::unique_ptr<ALMetalSamplerState> data_sampler;
+    std::unique_ptr<ALMetalSamplerState> meter_sampler;
+    std::unique_ptr<ALMetalSamplerState> post_sampler;
 };
 
 ALMetalPBRPreviewRenderer::ALMetalPBRPreviewRenderer(
@@ -89,7 +115,9 @@ ALMetalPBRPreviewRenderer::create(const ALMetalDevice& device,
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->library ||
         !impl->library->hasFunction("almetal_pbr_preview_vertex") ||
-        !impl->library->hasFunction("almetal_pbr_preview_fragment"))
+        !impl->library->hasFunction("almetal_pbr_preview_fragment") ||
+        !impl->library->hasFunction("almetal_pbr_preview_exposure") ||
+        !impl->library->hasFunction("almetal_pbr_preview_post_fragment"))
     {
         if (impl->library)
         {
@@ -99,30 +127,54 @@ ALMetalPBRPreviewRenderer::create(const ALMetalDevice& device,
         return nullptr;
     }
 
-    constexpr std::array<ALMetalPixelFormat, 2> formats{{
+    ALMetalRenderPipelineDescriptor shade_descriptor;
+    shade_descriptor.library = impl->library.get();
+    shade_descriptor.vertex_function = "almetal_pbr_preview_vertex";
+    shade_descriptor.fragment_function = "almetal_pbr_preview_fragment";
+    shade_descriptor.colors[0].format = ALMetalPixelFormat::rgba16_float;
+    shade_descriptor.colors[0].blending_enabled = true;
+    shade_descriptor.colors[0].source_rgb = ALMetalBlendFactor::source_alpha;
+    shade_descriptor.colors[0].destination_rgb =
+        ALMetalBlendFactor::one_minus_source_alpha;
+    shade_descriptor.colors[0].source_alpha = ALMetalBlendFactor::one;
+    shade_descriptor.colors[0].destination_alpha =
+        ALMetalBlendFactor::one_minus_source_alpha;
+    shade_descriptor.label = "Alchemy PBR material preview HDR pipeline";
+    impl->shade_pipeline = ALMetalRenderPipeline::create(
+        device, shade_descriptor, error);
+    if (!impl->shade_pipeline)
+    {
+        return nullptr;
+    }
+
+    ALMetalComputePipelineDescriptor exposure_descriptor;
+    exposure_descriptor.library = impl->library.get();
+    exposure_descriptor.function = "almetal_pbr_preview_exposure";
+    exposure_descriptor.label = "Alchemy PBR material preview exposure pipeline";
+    impl->exposure_pipeline = ALMetalComputePipeline::create(
+        device, exposure_descriptor, error);
+    if (!impl->exposure_pipeline)
+    {
+        return nullptr;
+    }
+
+    constexpr std::array<ALMetalPixelFormat, 2> post_formats{{
         ALMetalPixelFormat::rgba8_unorm,
         ALMetalPixelFormat::rgba8_unorm_srgb,
     }};
-    for (std::size_t index = 0; index < formats.size(); ++index)
+    for (std::size_t index = 0; index < post_formats.size(); ++index)
     {
         ALMetalRenderPipelineDescriptor descriptor;
         descriptor.library = impl->library.get();
-        descriptor.vertex_function = "almetal_pbr_preview_vertex";
-        descriptor.fragment_function = "almetal_pbr_preview_fragment";
-        descriptor.colors[0].format = formats[index];
-        descriptor.colors[0].blending_enabled = true;
-        descriptor.colors[0].source_rgb = ALMetalBlendFactor::source_alpha;
-        descriptor.colors[0].destination_rgb =
-            ALMetalBlendFactor::one_minus_source_alpha;
-        descriptor.colors[0].source_alpha = ALMetalBlendFactor::one;
-        descriptor.colors[0].destination_alpha =
-            ALMetalBlendFactor::one_minus_source_alpha;
+        descriptor.vertex_function = "almetal_resample_vertex";
+        descriptor.fragment_function = "almetal_pbr_preview_post_fragment";
+        descriptor.colors[0].format = post_formats[index];
         descriptor.label = index == 0
-            ? "Alchemy PBR material preview pipeline"
-            : "Alchemy PBR material preview sRGB pipeline";
-        impl->pipelines[index] = ALMetalRenderPipeline::create(
+            ? "Alchemy PBR material preview post pipeline"
+            : "Alchemy PBR material preview sRGB post pipeline";
+        impl->post_pipelines[index] = ALMetalRenderPipeline::create(
             device, descriptor, error);
-        if (!impl->pipelines[index])
+        if (!impl->post_pipelines[index])
         {
             return nullptr;
         }
@@ -139,6 +191,29 @@ ALMetalPBRPreviewRenderer::create(const ALMetalDevice& device,
     sampler.label = "Alchemy PBR preview data sampler";
     impl->data_sampler = ALMetalSamplerState::create(device, sampler, error);
     if (!impl->data_sampler)
+    {
+        return nullptr;
+    }
+    sampler.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.max_anisotropy = 1;
+    sampler.label = "Alchemy PBR preview exposure meter sampler";
+    impl->meter_sampler = ALMetalSamplerState::create(device, sampler, error);
+    if (!impl->meter_sampler)
+    {
+        return nullptr;
+    }
+    sampler.min_filter = ALMetalSamplerFilter::nearest;
+    sampler.mag_filter = ALMetalSamplerFilter::nearest;
+    sampler.mip_filter = ALMetalSamplerMipFilter::none;
+    sampler.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.max_anisotropy = 1;
+    sampler.label = "Alchemy PBR preview post sampler";
+    impl->post_sampler = ALMetalSamplerState::create(device, sampler, error);
+    if (!impl->post_sampler)
     {
         return nullptr;
     }
@@ -170,6 +245,33 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
     {
         setError(error,
                  "Metal PBR preview destination must be a private shader-readable RGBA8 texture");
+        return nullptr;
+    }
+
+    if (!std::isfinite(scene.exposure) || scene.exposure < 0.f ||
+        !std::isfinite(scene.tonemap_mix) || scene.tonemap_mix < 0.f ||
+        scene.tonemap_mix > 1.f || scene.tonemap_type > 6 ||
+        !finiteValues(scene.tonemap_params, 4) ||
+        !std::isfinite(scene.exposure_compensation) ||
+        !std::isfinite(scene.exposure_min_ev) ||
+        !std::isfinite(scene.exposure_max_ev) ||
+        !std::isfinite(scene.exposure_low_fraction) ||
+        !std::isfinite(scene.exposure_high_fraction) ||
+        scene.exposure_metering_mode > 2 ||
+        scene.exposure_low_fraction < 0.f ||
+        scene.exposure_low_fraction > 0.99f ||
+        scene.exposure_high_fraction <
+            scene.exposure_low_fraction + 0.01f ||
+        scene.exposure_high_fraction > 1.f ||
+        ((scene.tonemap_type == 2 || scene.tonemap_type == 3 ||
+          scene.tonemap_type == 4) && scene.tonemap_params[0] <= 0.f) ||
+        (scene.tonemap_type == 6 &&
+         (scene.tonemap_params[0] <= 0.f ||
+          scene.tonemap_params[1] <= 0.f ||
+          scene.tonemap_params[2] <= 0.f ||
+          scene.tonemap_params[3] <= 0.f)))
+    {
+        setError(error, "Metal PBR preview post state is invalid");
         return nullptr;
     }
 
@@ -209,38 +311,54 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
             !std::isfinite(batch.metallic_factor) ||
             !std::isfinite(batch.roughness_factor) ||
             !std::isfinite(batch.alpha_cutoff) ||
-            !std::isfinite(batch.exposure) ||
-            !std::isfinite(batch.tonemap_mix) ||
-            !finiteValues(batch.tonemap_params, 4) ||
             batch.metallic_factor < 0.f || batch.metallic_factor > 1.f ||
             batch.roughness_factor < 0.f || batch.roughness_factor > 1.f ||
-            batch.alpha_cutoff < -1.f || batch.alpha_cutoff > 1.f ||
-            batch.exposure < 0.f || batch.tonemap_mix < 0.f ||
-            batch.tonemap_mix > 1.f || batch.tonemap_type > 6 ||
-            ((batch.tonemap_type == 2 || batch.tonemap_type == 3 ||
-              batch.tonemap_type == 4) &&
-             batch.tonemap_params[0] <= 0.f) ||
-            (batch.tonemap_type == 6 &&
-             (batch.tonemap_params[0] <= 0.f ||
-              batch.tonemap_params[1] <= 0.f ||
-              batch.tonemap_params[2] <= 0.f ||
-              batch.tonemap_params[3] <= 0.f)))
+            batch.alpha_cutoff < -1.f || batch.alpha_cutoff > 1.f)
         {
             setError(error, "Metal PBR preview batch is invalid");
             return nullptr;
         }
     }
 
-    ALMetalRenderTargetDescriptor target_descriptor;
-    target_descriptor.width = output_template.width;
-    target_descriptor.height = output_template.height;
-    target_descriptor.colors[0].format = output_template.format;
-    target_descriptor.colors[0].shader_read = true;
-    target_descriptor.colors[0].label = "Alchemy PBR preview color";
-    target_descriptor.label = "Alchemy PBR preview target";
-    auto target = ALMetalRenderTarget::create(
-        *mImpl->device, target_descriptor, error);
-    if (!target)
+    ALMetalRenderTargetDescriptor hdr_descriptor;
+    hdr_descriptor.width = output_template.width;
+    hdr_descriptor.height = output_template.height;
+    hdr_descriptor.colors[0].format = ALMetalPixelFormat::rgba16_float;
+    hdr_descriptor.colors[0].shader_read = true;
+    hdr_descriptor.colors[0].label = "Alchemy PBR preview linear HDR color";
+    hdr_descriptor.label = "Alchemy PBR preview linear HDR target";
+    auto hdr_target = ALMetalRenderTarget::create(
+        *mImpl->device, hdr_descriptor, error);
+    if (!hdr_target)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderTargetDescriptor post_descriptor;
+    post_descriptor.width = output_template.width;
+    post_descriptor.height = output_template.height;
+    post_descriptor.colors[0].format = output_template.format;
+    post_descriptor.colors[0].shader_read = true;
+    post_descriptor.colors[0].label = "Alchemy PBR preview display color";
+    post_descriptor.label = "Alchemy PBR preview display target";
+    auto post_target = ALMetalRenderTarget::create(
+        *mImpl->device, post_descriptor, error);
+    if (!post_target)
+    {
+        return nullptr;
+    }
+
+    ALMetalTextureDescriptor exposure_descriptor;
+    exposure_descriptor.format = ALMetalPixelFormat::r32_float;
+    exposure_descriptor.width = 1;
+    exposure_descriptor.height = 1;
+    exposure_descriptor.storage = ALMetalStorageMode::private_gpu;
+    exposure_descriptor.usage = ALMetalTextureUsage::shader_read |
+                                ALMetalTextureUsage::shader_write;
+    exposure_descriptor.label = "Alchemy PBR preview exposure";
+    auto exposure = ALMetalTexture::create(
+        *mImpl->device, exposure_descriptor, error);
+    if (!exposure)
     {
         return nullptr;
     }
@@ -267,9 +385,10 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
     pass_config.colors[0].load = ALMetalLoadAction::clear;
     pass_config.colors[0].store = ALMetalStoreAction::store;
     pass_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
-    auto pass = target->makeRenderPass(pass_config, error);
-    auto encoder = pass ? ALMetalRenderEncoder::begin(
-        *command, *pass, "Alchemy PBR preview encoder", error) : nullptr;
+    auto shade_pass = hdr_target->makeRenderPass(pass_config, error);
+    auto shade_encoder = shade_pass ? ALMetalRenderEncoder::begin(
+        *command, *shade_pass, "Alchemy PBR preview HDR encoder", error)
+        : nullptr;
     const ALMetalViewport viewport{
         0.0, 0.0,
         static_cast<double>(output_template.width),
@@ -280,11 +399,11 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
     };
     const std::size_t pipeline_index =
         output_template.format == ALMetalPixelFormat::rgba8_unorm_srgb ? 1 : 0;
-    bool encoded = encoder &&
-        encoder->setPipeline(*mImpl->pipelines[pipeline_index], error) &&
-        encoder->setViewport(viewport, error) &&
-        encoder->setScissor(scissor, error) &&
-        encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error);
+    bool encoded = shade_encoder &&
+        shade_encoder->setPipeline(*mImpl->shade_pipeline, error) &&
+        shade_encoder->setViewport(viewport, error) &&
+        shade_encoder->setScissor(scissor, error) &&
+        shade_encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error);
 
     for (std::size_t index = 0; encoded && index < scene.batch_count; ++index)
     {
@@ -308,55 +427,107 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         constants.material[0] = batch.metallic_factor;
         constants.material[1] = batch.roughness_factor;
         constants.material[2] = batch.alpha_cutoff;
-        constants.material[3] = batch.exposure;
-        constants.post[0] = batch.tonemap_mix;
-        constants.post[1] = static_cast<float>(batch.tonemap_type);
-        constants.post[2] = pipeline_index == 1 ? 1.f : 0.f;
-        std::memcpy(constants.tonemap_params, batch.tonemap_params,
-                    sizeof(constants.tonemap_params));
 
         encoded =
-            encoder->setCullMode(batch.double_sided
+            shade_encoder->setCullMode(batch.double_sided
                 ? ALMetalCullMode::none : ALMetalCullMode::back, error) &&
-            encoder->setVertexBuffer(
+            shade_encoder->setVertexBuffer(
                 0, *batch.vertices, batch.position_offset, error) &&
-            encoder->setVertexBuffer(
+            shade_encoder->setVertexBuffer(
                 1, *batch.vertices, batch.normal_offset, error) &&
-            encoder->setVertexBuffer(
+            shade_encoder->setVertexBuffer(
                 2, *batch.vertices, batch.texcoord_offset, error) &&
-            encoder->setVertexBuffer(
+            shade_encoder->setVertexBuffer(
                 3, *batch.vertices, batch.color_offset, error) &&
-            encoder->setVertexBuffer(
+            shade_encoder->setVertexBuffer(
                 4, *batch.vertices, batch.tangent_offset, error) &&
-            encoder->setVertexBytes(
+            shade_encoder->setVertexBytes(
                 5, &constants, sizeof(constants), error) &&
-            encoder->setFragmentBytes(
+            shade_encoder->setFragmentBytes(
                 0, &constants, sizeof(constants), error) &&
-            encoder->setFragmentTexture(
+            shade_encoder->setFragmentTexture(
                 0, batch.base_color_texture, error) &&
-            encoder->setFragmentTextureLinear(
+            shade_encoder->setFragmentTextureLinear(
                 1, batch.normal_texture, error) &&
-            encoder->setFragmentTextureLinear(
+            shade_encoder->setFragmentTextureLinear(
                 2, batch.orm_texture, error) &&
-            encoder->setFragmentTexture(
+            shade_encoder->setFragmentTexture(
                 3, batch.emissive_texture, error) &&
-            encoder->setFragmentSampler(
+            shade_encoder->setFragmentSampler(
                 0, mImpl->color_sampler.get(), error) &&
-            encoder->setFragmentSampler(
+            shade_encoder->setFragmentSampler(
                 1, mImpl->data_sampler.get(), error) &&
-            encoder->setFragmentSampler(
+            shade_encoder->setFragmentSampler(
                 2, mImpl->data_sampler.get(), error) &&
-            encoder->setFragmentSampler(
+            shade_encoder->setFragmentSampler(
                 3, mImpl->color_sampler.get(), error) &&
-            encoder->drawIndexed(
+            shade_encoder->drawIndexed(
                 ALMetalPrimitiveType::triangle, batch.index_count,
                 batch.index_type, *batch.indices,
                 batch.index_offset, 1, error);
     }
 
-    const ALMetalTexture* color = target->colorTexture(0);
-    if (!encoded || !encoder->end(error) || !color ||
-        !output->copyFrom(*command, *color, {}, error) ||
+    const ALMetalTexture* hdr_color = hdr_target->colorTexture(0);
+    if (!encoded || !shade_encoder->end(error) || !hdr_color)
+    {
+        return nullptr;
+    }
+
+    PBRPreviewExposureConstants exposure_constants{};
+    exposure_constants.compensation = scene.exposure_compensation;
+    exposure_constants.min_ev = std::min(
+        scene.exposure_min_ev, scene.exposure_max_ev);
+    exposure_constants.max_ev = std::max(
+        scene.exposure_min_ev, scene.exposure_max_ev);
+    exposure_constants.low_fraction = scene.exposure_low_fraction;
+    exposure_constants.high_fraction = scene.exposure_high_fraction;
+    exposure_constants.metering_mode = scene.exposure_metering_mode;
+    exposure_constants.enabled = scene.meter_exposure ? 1u : 0u;
+    auto exposure_encoder = ALMetalComputeEncoder::begin(
+        *command, "Alchemy PBR preview exposure encoder", error);
+    encoded = exposure_encoder &&
+        exposure_encoder->setPipeline(*mImpl->exposure_pipeline, error) &&
+        exposure_encoder->setTexture(0, hdr_color, error) &&
+        exposure_encoder->setTexture(1, exposure.get(), error) &&
+        exposure_encoder->setSampler(0, mImpl->meter_sampler.get(), error) &&
+        exposure_encoder->setBytes(
+            0, &exposure_constants, sizeof(exposure_constants), error) &&
+        exposure_encoder->dispatch(1, 1, 1, 1, 1, 1, error) &&
+        exposure_encoder->end(error);
+    if (!encoded)
+    {
+        return nullptr;
+    }
+
+    auto post_pass = post_target->makeRenderPass(pass_config, error);
+    auto post_encoder = post_pass ? ALMetalRenderEncoder::begin(
+        *command, *post_pass, "Alchemy PBR preview post encoder", error)
+        : nullptr;
+    PBRPreviewPostConstants post_constants{};
+    post_constants.post[0] = scene.exposure;
+    post_constants.post[1] = scene.tonemap_mix;
+    post_constants.post[2] = static_cast<float>(scene.tonemap_type);
+    post_constants.post[3] = pipeline_index == 1 ? 1.f : 0.f;
+    std::memcpy(post_constants.tonemap_params, scene.tonemap_params,
+                sizeof(post_constants.tonemap_params));
+    encoded = post_encoder &&
+        post_encoder->setPipeline(
+            *mImpl->post_pipelines[pipeline_index], error) &&
+        post_encoder->setViewport(viewport, error) &&
+        post_encoder->setScissor(scissor, error) &&
+        post_encoder->setFragmentTexture(0, hdr_color, error) &&
+        post_encoder->setFragmentTexture(1, exposure.get(), error) &&
+        post_encoder->setFragmentSampler(
+            0, mImpl->post_sampler.get(), error) &&
+        post_encoder->setFragmentBytes(
+            0, &post_constants, sizeof(post_constants), error) &&
+        post_encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+        post_encoder->end(error);
+
+    const ALMetalTexture* post_color = post_target->colorTexture(0);
+    if (!encoded || !post_color ||
+        !output->copyFrom(*command, *post_color, {}, error) ||
         (output_descriptor.mipmap_level_count > 1 &&
          !output->generateMipmaps(*command, error)) ||
         !command->commit(error))
