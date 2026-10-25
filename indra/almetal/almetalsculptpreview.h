@@ -37,6 +37,7 @@ struct ALMetalLitPreviewBatch
     std::size_t position_offset = 0;
     std::size_t normal_offset = 0;
     std::size_t texcoord_offset = 0;
+    std::size_t color_offset = 0;
     // Optional object-skinning input. The weight stream uses Alchemy's packed
     // float4 convention (integer joint index + fractional influence). The
     // palette is one rebase-origin float4 followed by three float4 columns
@@ -66,6 +67,10 @@ struct ALMetalLitPreviewBatch
     // exclusive even though they share the palette upload storage.
     bool avatar_skinning = false;
     bool avatar_cloth = false;
+    // Select an opaque or alpha-masked deferred rigged-attachment albedo
+    // writer. It consumes object skinning, encoded U8 vertex tint and an
+    // encoded diffuse texture; alpha_cutoff zero represents the opaque pass.
+    bool deferred_rigged = false;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;
@@ -114,6 +119,7 @@ struct ALMetalLitPreviewBatch
     float avatar_sin_wave[4]{};
     float avatar_gravity[4]{};
     float avatar_cloth_depth[4]{};
+    float alpha_cutoff = 0.f;
     float edge_color[4] = {0.4f, 0.4f, 0.4f, 1.f};
 };
 

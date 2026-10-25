@@ -42,12 +42,14 @@
 // Viewer includes
 #include "llagent.h"
 #include "lldrawable.h"
+#include "lldrawpool.h"
 #include "lldrawpoolavatar.h"
 #include "llface.h"
 #include "llmorphview.h"
 #include "llresmgr.h"
 #include "llselectmgr.h"
 #include "llsky.h"
+#include "llspatialpartition.h"
 #include "lltexlayer.h"
 #include "lltoolmgr.h"
 #include "llui.h"
@@ -341,10 +343,39 @@ bool LLVisualParamHint::render()
                     *metal_device, &error);
             }
 
-            // The GL owner also draws rigged attachments into this hint. Keep
-            // the native scene fail-closed until that remaining shader family
-            // is represented.
             bool complete = renderer != nullptr;
+            std::vector<LLFace*> rigged_faces;
+            auto collect_rigged_faces = [&rigged_faces](
+                LLViewerObject* object)
+            {
+                if (!object || !object->isRiggedMesh())
+                {
+                    return true;
+                }
+                LLDrawable* drawable = object->mDrawable.get();
+                if (!drawable)
+                {
+                    return false;
+                }
+                bool found = false;
+                for (S32 face_index = 0;
+                     face_index < drawable->getNumFaces(); ++face_index)
+                {
+                    LLFace* face = drawable->getFace(face_index);
+                    if (!face || !face->isState(LLFace::RIGGED))
+                    {
+                        continue;
+                    }
+                    found = true;
+                    if (!face->mDrawInfo || face->mAvatar != gAgentAvatarp ||
+                        !face->mSkinInfo)
+                    {
+                        return false;
+                    }
+                    rigged_faces.push_back(face);
+                }
+                return found;
+            };
             for (const auto& attachment_entry :
                  gAgentAvatarp->mAttachmentPoints)
             {
@@ -356,19 +387,15 @@ bool LLVisualParamHint::render()
                 for (const auto& attached : attachment->mAttachedObjects)
                 {
                     LLViewerObject* object = attached.get();
-                    bool rigged = object && object->isRiggedMesh();
-                    if (object && !rigged)
+                    complete = complete && collect_rigged_faces(object);
+                    if (object)
                     {
                         for (LLViewerObject* child : object->getChildren())
                         {
-                            if (child && child->isRiggedMesh())
-                            {
-                                rigged = true;
-                                break;
-                            }
+                            complete = complete &&
+                                collect_rigged_faces(child);
                         }
                     }
-                    complete = complete && !rigged;
                 }
             }
 
@@ -453,11 +480,15 @@ bool LLVisualParamHint::render()
             constexpr std::size_t AVATAR_PALETTE_FLOATS =
                 LL_CHARACTER_MAX_JOINTS_PER_MESH * 3 * 4;
             std::vector<std::array<F32, AVATAR_PALETTE_FLOATS>> palettes;
+            std::vector<std::vector<F32>> rigged_palettes;
             std::vector<ALMetalLitPreviewBatch> batches;
             palettes.reserve(preview_meshes.size());
-            batches.reserve(preview_meshes.size());
+            rigged_palettes.reserve(rigged_faces.size());
+            batches.reserve(preview_meshes.size() + rigged_faces.size());
             const LLMatrix4a modelview = gGL.getModelviewMatrix();
             const LLMatrix4a projection = gGL.getProjectionMatrix();
+            LLMatrix4a rigged_modelview_projection;
+            rigged_modelview_projection.setMul(modelview, projection);
             const bool avatar_cloth =
                 gPipeline.shaderInputs().mLocal.mAvatarCloth;
             LLVector4 cloth_wind;
@@ -497,6 +528,106 @@ bool LLVisualParamHint::render()
                     cloth_depth.set(
                         to_main.mMatrix[0][2], to_main.mMatrix[1][2],
                         to_main.mMatrix[2][2], to_main.mMatrix[3][2]);
+                }
+            }
+
+            // The deferred geometry pass draws opaque and alpha-masked rigged
+            // attachments before the avatar pool. Split texture-indexed GL
+            // batches back into their exact face ranges so each native batch
+            // can bind the face's real diffuse mirror without a texture
+            // ladder. Other material/forward families remain fail-closed.
+            constexpr U32 rigged_pools[] = {
+                LLDrawPool::POOL_SIMPLE,
+                LLDrawPool::POOL_ALPHA_MASK,
+            };
+            for (LLFace* face : rigged_faces)
+            {
+                complete = complete &&
+                    (face->getPoolType() == LLDrawPool::POOL_SIMPLE ||
+                     face->getPoolType() == LLDrawPool::POOL_ALPHA_MASK);
+            }
+            for (U32 pool : rigged_pools)
+            {
+                for (LLFace* face : rigged_faces)
+                {
+                    if (!complete || face->getPoolType() != pool)
+                    {
+                        continue;
+                    }
+                    LLDrawInfo* draw_info = face->mDrawInfo;
+                    LLVertexBuffer* buffer = face->getVertexBuffer();
+                    LLViewerTexture* diffuse = face->getTexture();
+                    LLImageGL* diffuse_image = diffuse
+                        ? diffuse->getGLTexture() : nullptr;
+                    const ALMetalTexture* diffuse_texture = diffuse_image
+                        ? diffuse_image->getMetalTexture() : nullptr;
+                    const bool uses_texture_matrix = draw_info &&
+                        draw_info->mTextureList.size() <= 1 &&
+                        draw_info->mTextureMatrix;
+                    complete = draw_info && buffer && diffuse_texture &&
+                        !uses_texture_matrix && face->getIndicesStart() >= 0 &&
+                        face->getIndicesCount() > 0 &&
+                        buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) &&
+                        buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) &&
+                        buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) &&
+                        buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) &&
+                        buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4) &&
+                        buffer->getMetalVertexBuffer() &&
+                        buffer->getMetalIndexBuffer();
+                    if (!complete)
+                    {
+                        break;
+                    }
+
+                    const LLVOAvatar::MatrixPaletteCache& palette =
+                        gAgentAvatarp->updateSkinInfoMatrixPalette(
+                            face->mSkinInfo);
+                    const U32 joint_count = static_cast<U32>(
+                        palette.mMatrixPalette.size());
+                    complete = joint_count > 0 &&
+                        palette.mGLMp.size() ==
+                            4 + static_cast<std::size_t>(joint_count) * 12;
+                    if (!complete)
+                    {
+                        break;
+                    }
+                    rigged_palettes.push_back(palette.mGLMp);
+
+                    ALMetalLitPreviewBatch batch;
+                    batch.vertices = buffer->getMetalVertexBuffer();
+                    batch.position_offset = buffer->getOffset(
+                        LLVertexBuffer::TYPE_VERTEX);
+                    batch.normal_offset = buffer->getOffset(
+                        LLVertexBuffer::TYPE_NORMAL);
+                    batch.texcoord_offset = buffer->getOffset(
+                        LLVertexBuffer::TYPE_TEXCOORD0);
+                    batch.color_offset = buffer->getOffset(
+                        LLVertexBuffer::TYPE_COLOR);
+                    batch.weight_offset = buffer->getOffset(
+                        LLVertexBuffer::TYPE_WEIGHT4);
+                    batch.vertex_count = buffer->getNumVerts();
+                    batch.indices = buffer->getMetalIndexBuffer();
+                    batch.index_type = buffer->getIndexStride() == 4
+                        ? ALMetalIndexType::uint32
+                        : ALMetalIndexType::uint16;
+                    batch.index_offset = static_cast<std::size_t>(
+                        face->getIndicesStart()) * buffer->getIndexStride();
+                    batch.index_count = face->getIndicesCount();
+                    batch.texture = diffuse_texture;
+                    batch.destination_descriptor =
+                        mMetalPreviewDescriptor.get();
+                    batch.skin_palette = rigged_palettes.back().data();
+                    batch.skin_palette_float_count =
+                        rigged_palettes.back().size();
+                    batch.skin_joint_count = joint_count;
+                    batch.deferred_rigged = true;
+                    batch.alpha_cutoff =
+                        pool == LLDrawPool::POOL_ALPHA_MASK
+                        ? draw_info->mAlphaMaskCutoff : 0.f;
+                    std::memcpy(batch.modelview_projection,
+                                rigged_modelview_projection.getF32ptr(),
+                                sizeof(batch.modelview_projection));
+                    batches.push_back(batch);
                 }
             }
 

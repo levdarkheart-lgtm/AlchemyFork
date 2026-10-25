@@ -128,6 +128,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_avatar_skinned_textured_vertex",
             "almetal_lit_preview_avatar_skinned_unlit_textured_vertex",
             "almetal_lit_preview_avatar_skinned_unlit_cloth_textured_vertex",
+            "almetal_lit_preview_deferred_rigged_textured_vertex",
+            "almetal_lit_preview_deferred_rigged_fragment",
             "almetal_lit_preview_avatar_fragment",
             "almetal_lit_preview_avatar_unlit_fragment",
             "almetal_lit_preview_edge_u16_vertex",
@@ -835,10 +837,17 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             {{0.5f, 0.f, 0.f, 1.f}}, {{0.5f, 0.f, 0.f, 1.f}},
             {{0.5f, 0.f, 0.f, 1.f}}, {{0.5f, 0.f, 0.f, 1.f}},
         }};
+        const std::array<std::array<std::uint8_t, 4>, 6> rigged_colors{{
+            {{128, 255, 255, 128}}, {{128, 255, 255, 128}},
+            {{128, 255, 255, 128}}, {{128, 255, 255, 128}},
+            {{128, 255, 255, 128}}, {{128, 255, 255, 128}},
+        }};
+        constexpr std::size_t rigged_color_alignment_padding = 8;
         std::array<std::uint8_t,
                    sizeof(positions) + sizeof(normals) + sizeof(texcoords) +
                        sizeof(skin_weights) + sizeof(avatar_weights) +
-                       sizeof(avatar_clothing)>
+                       sizeof(avatar_clothing) +
+                       rigged_color_alignment_padding + sizeof(rigged_colors)>
             vertex_bytes{};
         std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
         std::memcpy(vertex_bytes.data() + sizeof(positions), normals.data(), sizeof(normals));
@@ -856,6 +865,11 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             avatar_cloth_offset + sizeof(avatar_clothing);
         std::memcpy(vertex_bytes.data() + avatar_weight_offset,
                     avatar_weights.data(), sizeof(avatar_weights));
+        const std::size_t rigged_color_offset =
+            avatar_weight_offset + sizeof(avatar_weights) +
+            rigged_color_alignment_padding;
+        std::memcpy(vertex_bytes.data() + rigged_color_offset,
+                    rigged_colors.data(), sizeof(rigged_colors));
         const std::array<std::uint16_t, 9> indices{{
             0, 1, 2, 3, 4, 5,
             // The same near triangle with reversed winding verifies that the
@@ -1287,6 +1301,49 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             skinned_pixels[translated_interior + 1]) - 58) <= 1);
         CHECK(skinned_pixels[translated_interior + 2] <= 1);
         CHECK(skinned_pixels[translated_interior + 3] == 255);
+
+        // Deferred rigged attachments decode both diffuse and vertex tint,
+        // multiply them in linear space, and re-encode for the hint texture.
+        // 128 sRGB multiplied by 128 sRGB becomes 61 sRGB, unlike an encoded
+        // byte multiply (64). Accepted deferred coverage is opaque.
+        ALMetalLitPreviewBatch deferred_rigged = skinned;
+        deferred_rigged.show_edges = false;
+        deferred_rigged.deferred_rigged = true;
+        deferred_rigged.color_offset = rigged_color_offset;
+        auto rendered_deferred_rigged = renderer->render(
+            deferred_rigged, &error);
+        INFO(error);
+        REQUIRE(rendered_deferred_rigged);
+        std::array<std::uint8_t, 32 * 32 * 4> deferred_rigged_pixels{};
+        REQUIRE(rendered_deferred_rigged->readback(
+            *device, 0, 0, {}, deferred_rigged_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+            deferred_rigged_pixels[translated_interior + 0]) - 61) <= 1);
+        CHECK(deferred_rigged_pixels[translated_interior + 1] == 64);
+        CHECK(deferred_rigged_pixels[translated_interior + 2] == 32);
+        CHECK(deferred_rigged_pixels[translated_interior + 3] == 255);
+
+        deferred_rigged.alpha_cutoff = 0.6f;
+        auto rendered_deferred_mask = renderer->render(
+            deferred_rigged, &error);
+        INFO(error);
+        REQUIRE(rendered_deferred_mask);
+        std::array<std::uint8_t, 32 * 32 * 4> deferred_mask_pixels{};
+        REQUIRE(rendered_deferred_mask->readback(
+            *device, 0, 0, {}, deferred_mask_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(deferred_mask_pixels[translated_interior + 0] == 38);
+        CHECK(deferred_mask_pixels[translated_interior + 1] == 51);
+        CHECK(deferred_mask_pixels[translated_interior + 2] == 77);
+        CHECK(deferred_mask_pixels[translated_interior + 3] == 255);
+
+        deferred_rigged.color_offset = vertex_bytes.size();
+        error.clear();
+        CHECK_FALSE(renderer->render(deferred_rigged, &error));
+        CHECK(error == "Metal deferred rigged preview data is invalid");
 
         // Keep local mesh detail out of the region-scale add. A single
         // pre-MVP addition at 2^24 collapses the triangle's positive-X half;
