@@ -767,11 +767,8 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                 if (gltf_mat && gltf_mat->mAlphaMode == LLGLTFMaterial::ALPHA_MODE_BLEND)
                 {
 #if LL_DARWIN
-                    if (!depth_only)
-                    {
-                        gPipeline.captureMetalImpostorPBRAlphaBatch(
-                            params, is_particle_or_hud_particle);
-                    }
+                    gPipeline.captureMetalImpostorPBRAlphaBatch(
+                        params, is_particle_or_hud_particle, depth_only);
 #endif
                     target_shader = pbr_shader;
                     if (params.mAvatar != nullptr)
@@ -814,15 +811,15 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                     mat = LLPipeline::sRenderingHUDs ? nullptr : params.mMaterial;
 
 #if LL_DARWIN
-                    if (!depth_only && mat)
+                    if (mat)
                     {
                         gPipeline.captureMetalImpostorLegacyMaterialAlphaBatch(
-                            params, is_particle_or_hud_particle);
+                            params, is_particle_or_hud_particle, depth_only);
                     }
-                    else if (!depth_only)
+                    else
                     {
                         gPipeline.captureMetalImpostorFlatAlphaBatch(
-                            params, is_particle_or_hud_particle);
+                            params, is_particle_or_hud_particle, depth_only);
                     }
 #endif
 

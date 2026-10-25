@@ -664,6 +664,13 @@ struct ALMetalWorldGBufferRenderer::Impl
         std::unique_ptr<ALMetalRenderPipeline> pipeline;
     };
 
+    struct PostWaterDepthPipelines
+    {
+        std::unique_ptr<ALMetalRenderPipeline> fullbright;
+        std::unique_ptr<ALMetalRenderPipeline> material;
+        std::unique_ptr<ALMetalRenderPipeline> pbr;
+    };
+
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::array<BumpPipelines, 2> pipelines;
@@ -717,6 +724,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         pre_water_pbr_pipelines;
     std::vector<PreWaterAlphaPipelineEntry>
         custom_pre_water_alpha_pipelines;
+    std::array<PostWaterDepthPipelines, 2>
+        post_water_depth_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         legacy_glow_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
@@ -1694,6 +1703,56 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                     return nullptr;
                 }
             }
+        }
+
+        ALMetalRenderPipelineDescriptor depth_alpha_descriptor;
+        depth_alpha_descriptor.library = impl->library.get();
+        depth_alpha_descriptor.vertex_function =
+            "almetal_world_shiny_vertex";
+        depth_alpha_descriptor.fragment_function =
+            "almetal_world_pre_water_fullbright_fragment";
+        depth_alpha_descriptor.color_attachment_count = 1;
+        depth_alpha_descriptor.colors[0].format = screen_formats[hdr];
+        depth_alpha_descriptor.colors[0].write_mask =
+            ALMetalColorWriteMask::none;
+        depth_alpha_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        depth_alpha_descriptor.label =
+            "Alchemy world post-water flat DoF-depth pipeline";
+        impl->post_water_depth_pipelines[hdr].fullbright =
+            ALMetalRenderPipeline::create(
+                device, depth_alpha_descriptor, error);
+        if (!impl->post_water_depth_pipelines[hdr].fullbright)
+        {
+            return nullptr;
+        }
+
+        depth_alpha_descriptor.vertex_function =
+            "almetal_world_legacy_alpha_vertex";
+        depth_alpha_descriptor.fragment_function =
+            "almetal_world_pre_water_material_fragment";
+        depth_alpha_descriptor.label =
+            "Alchemy world post-water material DoF-depth pipeline";
+        impl->post_water_depth_pipelines[hdr].material =
+            ALMetalRenderPipeline::create(
+                device, depth_alpha_descriptor, error);
+        if (!impl->post_water_depth_pipelines[hdr].material)
+        {
+            return nullptr;
+        }
+
+        depth_alpha_descriptor.vertex_function =
+            "almetal_world_pbr_vertex";
+        depth_alpha_descriptor.fragment_function =
+            "almetal_world_pre_water_pbr_fragment";
+        depth_alpha_descriptor.label =
+            "Alchemy world post-water PBR DoF-depth pipeline";
+        impl->post_water_depth_pipelines[hdr].pbr =
+            ALMetalRenderPipeline::create(
+                device, depth_alpha_descriptor, error);
+        if (!impl->post_water_depth_pipelines[hdr].pbr)
+        {
+            return nullptr;
         }
 
         for (std::size_t rigged = 0; rigged < 2; ++rigged)
@@ -4283,6 +4342,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     bool has_post_water_alpha = false;
     bool saw_pre_water_alpha = false;
     bool saw_post_water = false;
+    bool saw_post_water_depth = false;
     bool saw_post_exclusion = false;
     const auto valid_skinning = [=](
         const ALMetalWorldSimpleBatch& batch, bool rigged)
@@ -4327,6 +4387,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
               batch.pre_water_shadows) &&
              !alpha) ||
             (batch.pre_water_alpha && batch.post_water_alpha) ||
+            (batch.post_water_depth_only &&
+             (!batch.post_water_alpha || rigged)) ||
             (batch.post_water_glow && (!glow || alpha)))
         {
             setError(error, "Metal world opaque post-deferred batch is invalid");
@@ -4349,6 +4411,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
              !post_family) ||
             (post_family && !post_boundary_ready) ||
             (batch.post_water_glow && !has_post_water_alpha) ||
+            (batch.post_water_depth_only && !has_post_water_alpha) ||
+            (saw_post_water_depth && !batch.post_water_depth_only) ||
             (saw_post_water && !post_family))
         {
             setError(error,
@@ -4456,7 +4520,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             has_pre_water_alpha = has_pre_water_alpha ||
                 batch.pre_water_alpha;
             has_post_water_alpha = has_post_water_alpha ||
-                batch.post_water_alpha;
+                (batch.post_water_alpha &&
+                 !batch.post_water_depth_only);
             has_pre_water_simple =
                 has_pre_water_simple || batch.pre_water_simple;
             has_pre_water_material =
@@ -4469,6 +4534,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 batch.pre_water_alpha;
         }
         saw_post_water = saw_post_water || post_family;
+        saw_post_water_depth = saw_post_water_depth ||
+            batch.post_water_depth_only;
         if (batch.texture_count == 0 ||
             batch.texture_count >
                 ALMetalWorldSimpleBatch::max_diffuse_textures ||
@@ -4501,7 +4568,16 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                !batch.pre_water_pbr) ||
               !std::isfinite(batch.pre_water_minimum_alpha) ||
               (batch.pre_water_minimum_alpha != 0.f &&
-               batch.pre_water_minimum_alpha != 0.004f) ||
+               batch.pre_water_minimum_alpha != 0.004f &&
+               batch.pre_water_minimum_alpha != 0.33f) ||
+              (batch.pre_water_minimum_alpha == 0.33f &&
+               (!batch.post_water_depth_only ||
+                !batch.pre_water_fullbright)) ||
+              (batch.post_water_depth_only &&
+               batch.pre_water_fullbright &&
+               batch.pre_water_minimum_alpha == 0.004f) ||
+              (batch.post_water_depth_only &&
+               batch.pre_water_alpha_writes_coverage) ||
               !validBlendFactor(batch.pre_water_source_rgb) ||
               !validBlendFactor(batch.pre_water_destination_rgb) ||
               batch.alpha_mask ||
@@ -5880,6 +5956,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         if (batch.pre_water_alpha || batch.post_water_alpha)
         {
+            // Water, haze and group-local glow reuse fixed texture/sampler and
+            // constant slots. Re-establish the complete forward pack at every
+            // sorted alpha boundary so a material batch following any of those
+            // owners cannot inherit their incompatible bindings.
+            encoded = encoded && bind_forward_resources(*encoder);
             WorldShinyConstants world{};
             std::memcpy(world.modelview_projection,
                         batch.modelview_projection,
@@ -5939,7 +6020,17 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     ? Impl::PreWaterAlphaFamily::simple
                     : Impl::PreWaterAlphaFamily::fullbright;
             ALMetalRenderPipeline* alpha_pipeline = nullptr;
-            if (!standard_blend)
+            if (batch.post_water_depth_only)
+            {
+                const Impl::PostWaterDepthPipelines& depth_pipelines =
+                    mImpl->post_water_depth_pipelines[scene.hdr ? 1 : 0];
+                alpha_pipeline = batch.pre_water_pbr
+                    ? depth_pipelines.pbr.get()
+                    : batch.pre_water_material
+                    ? depth_pipelines.material.get()
+                    : depth_pipelines.fullbright.get();
+            }
+            else if (!standard_blend)
             {
                 alpha_pipeline = mImpl->customPreWaterAlphaPipeline(
                     alpha_family, scene.hdr, rigged,
@@ -5977,7 +6068,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                           [rigged ? 1 : 0].get();
             }
 
-            const bool writes_depth = batch.pre_water_alpha || rigged;
+            const bool writes_depth = batch.pre_water_alpha || rigged ||
+                batch.post_water_depth_only;
             const ALMetalDepthStencilState* depth = scene.reverse_z
                 ? (writes_depth ? mImpl->reverse_depth.get()
                                 : mImpl->reverse_readonly_depth.get())

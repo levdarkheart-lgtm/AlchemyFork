@@ -968,11 +968,12 @@ bool metalWorldAlphaBlendFactor(
 
 bool fillMetalWorldPreWaterAlphaDraw(
     ALMetalWorldSimpleBatch& batch, const LLDrawInfo& params,
-    bool particle_or_hud_particle)
+    bool particle_or_hud_particle, bool depth_only, bool flat_depth)
 {
     batch.pre_water_particle = particle_or_hud_particle;
-    batch.pre_water_alpha_writes_coverage =
-        LLPipeline::alphaWritesCoverage();
+    batch.post_water_depth_only = depth_only;
+    batch.pre_water_alpha_writes_coverage = depth_only
+        ? false : LLPipeline::alphaWritesCoverage();
     if (!metalWorldAlphaBlendFactor(
             static_cast<LLRender::eBlendFactor>(params.mBlendFuncSrc),
             batch.pre_water_source_rgb) ||
@@ -982,10 +983,11 @@ bool fillMetalWorldPreWaterAlphaDraw(
     {
         return false;
     }
-    batch.pre_water_minimum_alpha =
+    const bool custom_zero_cutoff =
         params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA &&
-        params.mBlendFuncDst != LLRender::BF_SOURCE_ALPHA
-            ? 0.f : 0.004f;
+        params.mBlendFuncDst != LLRender::BF_SOURCE_ALPHA;
+    batch.pre_water_minimum_alpha = custom_zero_cutoff
+        ? 0.f : (depth_only && flat_depth ? 0.33f : 0.004f);
     return true;
 }
 }
@@ -2995,13 +2997,8 @@ void LLPipeline::beginMetalWorldPostWaterAlphaPhase()
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    // The optional post-alpha 0.33-cutoff depth replay is a distinct DoF
-    // attachment owner. Until that owner is native, retain the complete GL
-    // transaction rather than publish a colour-correct target with stale
-    // static-alpha depth.
     if (capture.pass_active || capture.world_pre_water_alpha_active ||
         capture.world_post_water_alpha_active ||
-        (RenderDepthOfField && !gCubeSnapshot) ||
         !capture.atmospheric_haze_valid ||
         !capture.alpha_environment_valid)
     {
@@ -4704,7 +4701,8 @@ void LLPipeline::captureMetalWorldPBRBatch(
 }
 
 void LLPipeline::captureMetalImpostorPBRAlphaBatch(
-    const LLDrawInfo& params, bool particle_or_hud_particle)
+    const LLDrawInfo& params, bool particle_or_hud_particle,
+    bool depth_only)
 {
     if (!mMetalWorldSimpleCapture)
     {
@@ -4718,6 +4716,12 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
     const bool world_alpha = world_pre_water || world_post_water;
     if (!capture.impostor_alpha_active && !world_alpha)
     {
+        return;
+    }
+    if (depth_only && !world_post_water)
+    {
+        capture.complete = false;
+        capture.batches.clear();
         return;
     }
     if (params.mGLTFMaterial.isNull() ||
@@ -4789,7 +4793,8 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
         batch.pre_water_pbr = true;
         batch.pre_water_shadows = uses_shadows;
         if (!fillMetalWorldPreWaterAlphaDraw(
-                batch, params, particle_or_hud_particle))
+                batch, params, particle_or_hud_particle,
+                depth_only, false))
         {
             capture.complete = false;
             capture.batches.clear();
@@ -4798,12 +4803,16 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
         // PBR always carries a radiance lobe. Arm paired scene history even
         // for rough content because the live material can change without
         // changing this capture owner's topology.
-        capture.impostor_ssr_needed = true;
+        if (!depth_only)
+        {
+            capture.impostor_ssr_needed = true;
+        }
     }
 }
 
 void LLPipeline::captureMetalImpostorFlatAlphaBatch(
-    const LLDrawInfo& params, bool particle_or_hud_particle)
+    const LLDrawInfo& params, bool particle_or_hud_particle,
+    bool depth_only)
 {
     if (!mMetalWorldSimpleCapture)
     {
@@ -4818,6 +4827,12 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     const bool world_alpha = world_pre_water || world_post_water;
     if (!capture.impostor_alpha_active && !world_alpha)
     {
+        return;
+    }
+    if (depth_only && !world_post_water)
+    {
+        capture.complete = false;
+        capture.batches.clear();
         return;
     }
 
@@ -4840,7 +4855,7 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     }
 
     bool world_simple_shadows = false;
-    if (world_alpha && !params.mFullbright)
+    if (world_alpha && !depth_only && !params.mFullbright)
     {
         if (!capture.world_alpha_lighting_valid)
         {
@@ -4895,12 +4910,16 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
         ALMetalWorldSimpleBatch& batch = capture.batches.back();
         batch.pre_water_alpha = world_pre_water;
         batch.post_water_alpha = world_post_water;
-        batch.pre_water_fullbright = params.mFullbright;
-        batch.pre_water_simple = !params.mFullbright;
+        // GL's DoF replay aliases both flat families to the fullbright
+        // alpha-mask shader. It needs only texture coverage and the water
+        // plane, never the simple-lighting resources.
+        batch.pre_water_fullbright = depth_only || params.mFullbright;
+        batch.pre_water_simple = !depth_only && !params.mFullbright;
         batch.pre_water_shadows = world_simple_shadows;
         batch.impostor_fullbright = false;
         if (!fillMetalWorldPreWaterAlphaDraw(
-                batch, params, particle_or_hud_particle))
+                batch, params, particle_or_hud_particle,
+                depth_only, true))
         {
             capture.complete = false;
             capture.batches.clear();
@@ -5831,7 +5850,8 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
 }
 
 void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
-    const LLDrawInfo& params, bool particle_or_hud_particle)
+    const LLDrawInfo& params, bool particle_or_hud_particle,
+    bool depth_only)
 {
     if (!mMetalWorldSimpleCapture || !params.mMaterial)
     {
@@ -5846,6 +5866,12 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
     const bool world_alpha = world_pre_water || world_post_water;
     if (!capture.impostor_alpha_active && !world_alpha)
     {
+        return;
+    }
+    if (depth_only && !world_post_water)
+    {
+        capture.complete = false;
+        capture.batches.clear();
         return;
     }
     const U32 shader_mask = params.mShaderMask;
@@ -5930,7 +5956,8 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
             batch.pre_water_material = true;
             batch.pre_water_shadows = uses_shadows;
             if (!fillMetalWorldPreWaterAlphaDraw(
-                    batch, params, particle_or_hud_particle))
+                    batch, params, particle_or_hud_particle,
+                    depth_only, false))
             {
                 capture.complete = false;
                 capture.batches.clear();

@@ -619,9 +619,11 @@ public:
     void encodeMetalWorldOpaquePostDeferredCapture();
     void endMetalWorldPostDeferredCapture();
     void captureMetalImpostorFlatAlphaBatch(
-        const LLDrawInfo& params, bool particle_or_hud_particle);
+        const LLDrawInfo& params, bool particle_or_hud_particle,
+        bool depth_only = false);
     void captureMetalImpostorLegacyMaterialAlphaBatch(
-        const LLDrawInfo& params, bool particle_or_hud_particle);
+        const LLDrawInfo& params, bool particle_or_hud_particle,
+        bool depth_only = false);
     bool fillMetalImpostorHeroProbe();
     void requestMetalScreenSpaceReflections(const LLRenderTarget& source);
     void collectMetalScreenSpaceReflections();
@@ -629,7 +631,8 @@ public:
     bool fillMetalImpostorDirectionalShadows();
     bool fillMetalWorldProjectorShadows();
     void captureMetalImpostorPBRAlphaBatch(
-        const LLDrawInfo& params, bool particle_or_hud_particle);
+        const LLDrawInfo& params, bool particle_or_hud_particle,
+        bool depth_only = false);
     bool fillMetalWorldAlphaEnvironment(
         ALMetalWorldAlphaEnvironment& environment);
     bool fillMetalWorldAlphaLighting(

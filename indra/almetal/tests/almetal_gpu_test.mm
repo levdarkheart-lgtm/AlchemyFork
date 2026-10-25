@@ -5125,6 +5125,153 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                   post_water_depth[stencil_center / 4] - 0.625f) <
               0.0001f);
 
+        // The optional DoF replay follows every colour/glow batch, writes no
+        // colour at all, and promotes qualifying static alpha into retained
+        // depth. The flat production shader uses the explicit 0.33 cutoff.
+        ALMetalWorldSimpleBatch post_water_depth_only = post_water_alpha;
+        post_water_depth_only.post_water_depth_only = true;
+        post_water_depth_only.pre_water_minimum_alpha = 0.33f;
+        std::array<ALMetalWorldSimpleBatch, 3> post_water_dof_batches{{
+            atmospheric_marker,
+            post_water_alpha,
+            post_water_depth_only,
+        }};
+        opaque_forward_scene.batches = post_water_dof_batches.data();
+        opaque_forward_scene.batch_count = post_water_dof_batches.size();
+        auto post_water_dof_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(post_water_dof_result);
+        std::array<std::uint16_t, 32 * 32 * 4> post_water_dof_pixels{};
+        REQUIRE(post_water_dof_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_dof_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(post_water_dof_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, post_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(post_water_dof_pixels == post_water_pixels);
+        CHECK(std::abs(
+                  post_water_depth[stencil_center / 4] - 0.5f) <
+              0.0001f);
+
+        std::array<ALMetalWorldSimpleBatch, 2> dof_without_color{{
+            atmospheric_marker,
+            post_water_depth_only,
+        }};
+        opaque_forward_scene.batches = dof_without_color.data();
+        opaque_forward_scene.batch_count = dof_without_color.size();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world water-haze ordering is invalid");
+        error.clear();
+
+        // A transparent texel is rejected by the ordinary 0.33 flat cutoff.
+        // Custom RGB factors make GL lower the cutoff to zero; the depth-only
+        // pipeline must then accept that same texel while colour stays exact.
+        post_water_dof_batches[2].diffuse_textures[0] =
+            zero_alpha_diffuse.get();
+        opaque_forward_scene.batches = post_water_dof_batches.data();
+        opaque_forward_scene.batch_count = post_water_dof_batches.size();
+        auto rejected_post_water_dof = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(rejected_post_water_dof);
+        REQUIRE(rejected_post_water_dof->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_dof_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(rejected_post_water_dof->depthStencilTexture()->readback(
+            *device, 0, 0, {}, post_water_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(post_water_dof_pixels == post_water_pixels);
+        CHECK(std::abs(
+                  post_water_depth[stencil_center / 4] - 0.625f) <
+              0.0001f);
+
+        post_water_dof_batches[2].pre_water_minimum_alpha = 0.f;
+        post_water_dof_batches[2].pre_water_source_rgb =
+            ALMetalBlendFactor::one;
+        post_water_dof_batches[2].pre_water_destination_rgb =
+            ALMetalBlendFactor::one;
+        auto custom_post_water_dof = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(custom_post_water_dof);
+        REQUIRE(custom_post_water_dof->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_dof_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(custom_post_water_dof->depthStencilTexture()->readback(
+            *device, 0, 0, {}, post_water_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(post_water_dof_pixels == post_water_pixels);
+        CHECK(std::abs(
+                  post_water_depth[stencil_center / 4] - 0.5f) <
+              0.0001f);
+
+        // Legacy and PBR BLEND keep their live 0.004 cutoff and exact material
+        // programs during the replay. Execute both dedicated no-colour PSOs.
+        ALMetalWorldSimpleBatch post_water_material = pre_water_material;
+        post_water_material.pre_water_alpha = false;
+        post_water_material.post_water_alpha = true;
+        post_water_material.modelview[14] = 0.25f;
+        post_water_material.modelview_projection[14] = -0.25f;
+        post_water_material.pre_water_minimum_alpha = 0.004f;
+        ALMetalWorldSimpleBatch post_water_material_depth =
+            post_water_material;
+        post_water_material_depth.post_water_depth_only = true;
+        ALMetalWorldSimpleBatch post_water_state_glow = legacy_glow_batch;
+        post_water_state_glow.post_water_glow = true;
+        std::array<ALMetalWorldSimpleBatch, 4> post_water_material_dof{{
+            atmospheric_marker,
+            post_water_material,
+            post_water_state_glow,
+            post_water_material_depth,
+        }};
+        opaque_forward_scene.batches = post_water_material_dof.data();
+        opaque_forward_scene.batch_count = post_water_material_dof.size();
+        auto post_water_material_dof_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(post_water_material_dof_result);
+        REQUIRE(post_water_material_dof_result->depthStencilTexture()
+                    ->readback(
+                        *device, 0, 0, {}, post_water_depth.data(),
+                        32 * sizeof(float), &error));
+        CHECK(std::abs(
+                  post_water_depth[material_pixel / 4] - 0.5f) <
+              0.0001f);
+
+        ALMetalWorldSimpleBatch post_water_pbr = pre_water_pbr;
+        post_water_pbr.pre_water_alpha = false;
+        post_water_pbr.post_water_alpha = true;
+        post_water_pbr.modelview[14] = 0.25f;
+        post_water_pbr.modelview_projection[14] = -0.25f;
+        post_water_pbr.pre_water_minimum_alpha = 0.004f;
+        ALMetalWorldSimpleBatch post_water_pbr_depth = post_water_pbr;
+        post_water_pbr_depth.post_water_depth_only = true;
+        std::array<ALMetalWorldSimpleBatch, 3> post_water_pbr_dof{{
+            atmospheric_marker,
+            post_water_pbr,
+            post_water_pbr_depth,
+        }};
+        opaque_forward_scene.batches = post_water_pbr_dof.data();
+        opaque_forward_scene.batch_count = post_water_pbr_dof.size();
+        auto post_water_pbr_dof_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(post_water_pbr_dof_result);
+        REQUIRE(post_water_pbr_dof_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, post_water_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(std::abs(
+                  post_water_depth[material_pixel / 4] - 0.5f) <
+              0.0001f);
+
+        opaque_forward_scene.batches = post_water_batches.data();
+        opaque_forward_scene.batch_count = post_water_batches.size();
+
         post_water_batches[1].pre_water_alpha_writes_coverage = true;
         auto post_water_coverage_result =
             renderer->renderOpaquePostDeferred(
@@ -5257,12 +5404,45 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             opaque_forward_scene, &error);
         INFO(error);
         REQUIRE(reverse_post_water);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_post_water_pixels{};
+        REQUIRE(reverse_post_water->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_post_water_pixels.data(), 32 * 8,
+            &error));
         REQUIRE(reverse_post_water->depthStencilTexture()->readback(
             *device, 0, 0, {}, post_water_depth.data(),
             32 * sizeof(float), &error));
         INFO(error);
         CHECK(std::abs(
                   post_water_depth[stencil_center / 4] - 0.25f) <
+              0.0001f);
+
+        ALMetalWorldSimpleBatch reverse_post_water_depth =
+            post_water_batches[1];
+        reverse_post_water_depth.post_water_depth_only = true;
+        reverse_post_water_depth.pre_water_minimum_alpha = 0.33f;
+        std::array<ALMetalWorldSimpleBatch, 3> reverse_post_water_dof{{
+            atmospheric_marker,
+            post_water_batches[1],
+            reverse_post_water_depth,
+        }};
+        opaque_forward_scene.batches = reverse_post_water_dof.data();
+        opaque_forward_scene.batch_count = reverse_post_water_dof.size();
+        auto reverse_post_water_dof_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_post_water_dof_result);
+        REQUIRE(reverse_post_water_dof_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_dof_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(reverse_post_water_dof_result->depthStencilTexture()
+                    ->readback(
+                        *device, 0, 0, {}, post_water_depth.data(),
+                        32 * sizeof(float), &error));
+        CHECK(post_water_dof_pixels == reverse_post_water_pixels);
+        CHECK(std::abs(
+                  post_water_depth[stencil_center / 4] - 0.5f) <
               0.0001f);
 
         atmospheric_haze = {};

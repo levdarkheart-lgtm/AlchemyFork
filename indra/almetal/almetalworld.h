@@ -225,6 +225,7 @@ struct ALMetalWorldSimpleBatch
     bool atmospheric_haze = false;
     bool pre_water_alpha = false;
     bool post_water_alpha = false;
+    bool post_water_depth_only = false;
     bool post_water_glow = false;
     bool pre_water_fullbright = false;
     bool pre_water_simple = false;
