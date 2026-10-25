@@ -343,6 +343,15 @@ struct ALMetalWorldAlphaEnvironment
     float4 water_fog;
 };
 
+struct ALMetalWorldAtmosphericHazeConstants
+{
+    float4x4 inverse_projection;
+    // x = water-ground fade.
+    float4 parameters;
+    // x = reverse Z, y = sky-behind convergence.
+    uint4 config;
+};
+
 struct ALMetalWorldShinyConstants
 {
     float4x4 modelview_projection;
@@ -694,15 +703,15 @@ fragment ALMetalWorldGBufferOutput almetal_world_hdri_sky_fragment(
     return output;
 }
 
-fragment ALMetalWorldGBufferOutput almetal_world_windlight_sky_fragment(
-    ALMetalWorldHDRISkyVaryings input [[stage_in]],
-    constant ALMetalWorldWindLightSkyConstants& constants [[buffer(0)]],
-    texture2d<float> rainbow_map [[texture(0)]],
-    texture2d<float> halo_map [[texture(1)]],
-    sampler optics_sampler [[sampler(0)]])
+static float3 almetal_world_windlight_sky_color(
+    float3 local_position,
+    constant ALMetalWorldWindLightSkyConstants& constants,
+    texture2d<float> rainbow_map,
+    texture2d<float> halo_map,
+    sampler optics_sampler)
 {
     // Match skyF.glsl's sky-frame ray and its asymmetric altitude clamp.
-    float3 relative_position = input.local_position -
+    float3 relative_position = local_position -
         constants.camera_local.xyz + float3(0.0, 50.0, 0.0);
     if (relative_position.y > 0.0)
     {
@@ -765,7 +774,19 @@ fragment ALMetalWorldGBufferOutput almetal_world_windlight_sky_fragment(
     color += halo_map.sample(
         optics_sampler, float2(0.0, halo_coordinate),
         level(0.0)).rgb * constants.optics.z;
-    color = clamp(color * 2.0, 0.0, 5.0);
+    return clamp(color * 2.0, 0.0, 5.0);
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_windlight_sky_fragment(
+    ALMetalWorldHDRISkyVaryings input [[stage_in]],
+    constant ALMetalWorldWindLightSkyConstants& constants [[buffer(0)]],
+    texture2d<float> rainbow_map [[texture(0)]],
+    texture2d<float> halo_map [[texture(1)]],
+    sampler optics_sampler [[sampler(0)]])
+{
+    const float3 color = almetal_world_windlight_sky_color(
+        input.local_position, constants, rainbow_map, halo_map,
+        optics_sampler);
 
     ALMetalWorldGBufferOutput output;
     output.specular_orm = 0.0;
@@ -797,6 +818,32 @@ fragment ALMetalWorldGBufferOutput almetal_world_windlight_sky_fragment(
         output.emissive = 0.0;
     }
     return output;
+}
+
+fragment float4 almetal_world_windlight_sky_behind_fragment(
+    ALMetalWorldHDRISkyVaryings input [[stage_in]],
+    constant ALMetalWorldWindLightSkyConstants& constants [[buffer(0)]],
+    texture2d<float> rainbow_map [[texture(0)]],
+    texture2d<float> halo_map [[texture(1)]],
+    sampler optics_sampler [[sampler(0)]])
+{
+    float3 color = almetal_world_windlight_sky_color(
+        input.local_position, constants, rainbow_map, halo_map,
+        optics_sampler);
+    if (constants.config.y != 0u)
+    {
+        const float2 gl_fragment_position = float2(
+            input.position.x, constants.transfer.y - input.position.y);
+        const float noise = fract(
+            52.9829189 * fract(dot(
+                gl_fragment_position,
+                float2(0.06711056, 0.00583715)))) - 0.5;
+        color *= 1.0 + noise *
+            float3(1.0 / 64.0, 1.0 / 64.0, 1.0 / 32.0);
+    }
+    // This target deliberately holds the display-encoded sky value exactly
+    // as the GL sky-behind target does. Haze converts it after sampling.
+    return float4(color, 1.0);
 }
 
 struct ALMetalWorldStarVaryings
@@ -2657,6 +2704,68 @@ static float3 almetal_world_alpha_fog(
               color, additive, attenuation, environment)
         : almetal_world_alpha_water_fog(
               eye_position, color, environment);
+}
+
+vertex ALMetalResampleVaryings almetal_world_atmospheric_haze_vertex(
+    constant ALMetalWorldAtmosphericHazeConstants& constants [[buffer(0)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float2 texcoord = float2((vertex_id << 1u) & 2u,
+                                   vertex_id & 2u);
+    ALMetalResampleVaryings output;
+    output.position = float4(
+        texcoord.x * 2.0 - 1.0,
+        1.0 - texcoord.y * 2.0,
+        constants.config.x != 0u ? 0.0 : 1.0,
+        1.0);
+    output.texcoord = texcoord;
+    return output;
+}
+
+fragment float4 almetal_world_atmospheric_haze_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    constant ALMetalWorldAtmosphericHazeConstants& constants [[buffer(0)]],
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(1)]],
+    texture2d<float> depth_texture [[texture(33)]],
+    texture2d<float> sky_behind_map [[texture(34)]],
+    sampler point_sampler [[sampler(1)]],
+    sampler sky_sampler [[sampler(2)]])
+{
+    const float depth = depth_texture.sample(
+        point_sampler, input.texcoord).r;
+    const bool reverse_z = constants.config.x != 0u;
+    const bool far_depth = reverse_z ? depth <= 0.0 : depth >= 1.0;
+    const float ndc_z = reverse_z ? depth : depth * 2.0 - 1.0;
+    float4 position = constants.inverse_projection *
+        float4(input.texcoord * 2.0 - 1.0, ndc_z, 1.0);
+    position.xyz /= max(position.w, 0.000001);
+
+    const bool object_above_water =
+        dot(position.xyz, environment.water_plane.xyz) +
+            environment.water_plane.w > 0.0;
+    if (far_depth ||
+        (environment.water_plane.w <= 0.0 && !object_above_water))
+    {
+        return float4(0.0, 0.0, 0.0, 1.0);
+    }
+
+    float3 additive;
+    float3 attenuation;
+    almetal_world_alpha_atmospherics(
+        position.xyz, environment, additive, attenuation);
+    if (constants.config.y != 0u)
+    {
+        attenuation *= 1.0 - constants.parameters.x;
+        const float3 sky = sky_behind_map.sample(
+            sky_sampler, input.texcoord).rgb * 0.5;
+        const float3 convergence = 1.0 - attenuation;
+        additive = mix(
+            additive, sky * convergence, convergence);
+    }
+
+    const float3 color = almetal_srgb_to_linear(additive * 2.0) *
+        environment.atmospheric.w;
+    return max(float4(color, attenuation.r), float4(0.0));
 }
 
 fragment float4 almetal_world_pre_water_fullbright_fragment(

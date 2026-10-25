@@ -222,6 +222,7 @@ struct ALMetalWorldSimpleBatch
     bool water_exclusion = false;
     bool water_haze = false;
     bool water_surface = false;
+    bool atmospheric_haze = false;
     bool pre_water_alpha = false;
     bool pre_water_fullbright = false;
     bool pre_water_simple = false;
@@ -504,13 +505,27 @@ struct alignas(16) ALMetalWorldAlphaEnvironment
     float water_fog[4]{};
 };
 
+// The full-screen deferred atmospheric pass that follows water above the
+// surface and precedes it below the surface. The Environment payload remains
+// shared with transparent geometry so the same live atmospheric equations are
+// used by both owners.
+struct alignas(16) ALMetalWorldAtmosphericHaze
+{
+    float inverse_projection[16]{};
+    float water_ground_fade = 0.f;
+    bool above_water = true;
+    bool sky_behind = false;
+    bool alpha_writes_coverage = false;
+};
+
 // The first ordered post-deferred world slice. The composed lighting color
 // and retained G-buffer depth/stencil attachment are copied into one
 // final-color target. Water-exclusion batches first rebuild EXCLUDE_BIT,
 // followed by opaque-forward fullbright, shiny and emboss replay, both
 // ordered glow families, water haze, and the exact supported pre-water alpha
-// families, then class-3 water including its tessellated wave patches.
-// Atmospheric haze and presentation remain later owners.
+// families, class-3 water including its tessellated wave patches, and the
+// exact deferred atmospheric haze on the appropriate side of that surface.
+// Post-water alpha and presentation remain later owners.
 struct ALMetalWorldOpaquePostDeferredScene
 {
     const ALMetalRenderTarget* gbuffer = nullptr;
@@ -525,6 +540,8 @@ struct ALMetalWorldOpaquePostDeferredScene
         nullptr;
     const ALMetalWorldWaterHaze* water_haze = nullptr;
     const ALMetalWorldWaterSurface* water_surface = nullptr;
+    const ALMetalWorldAtmosphericHaze* atmospheric_haze = nullptr;
+    const ALMetalTexture* sky_behind = nullptr;
     const ALMetalWorldAlphaEnvironment* alpha_environment = nullptr;
     const ALMetalWorldLegacyAlphaLighting* alpha_lighting = nullptr;
     const ALMetalWorldDirectionalShadows* alpha_directional_shadows =
@@ -920,6 +937,13 @@ public:
     // vintage output round-trips the same bytes through an sRGB attachment.
     bool compositeWindLightSky(
         ALMetalRenderTarget& target,
+        const ALMetalWorldWindLightSkyScene& scene,
+        std::string* error = nullptr);
+
+    // Re-render only the base WindLight dome into the half-resolution color
+    // target sampled by hazeF's on-water convergence path. No later stars,
+    // bodies, aurora or clouds belong in this texture.
+    std::unique_ptr<ALMetalRenderTarget> renderWindLightSkyBehind(
         const ALMetalWorldWindLightSkyScene& scene,
         std::string* error = nullptr);
 

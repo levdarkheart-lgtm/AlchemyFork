@@ -149,6 +149,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_water_haze_field_vertex",
             "almetal_world_water_haze_fullscreen_vertex",
             "almetal_world_water_haze_fragment",
+            "almetal_world_atmospheric_haze_vertex",
+            "almetal_world_atmospheric_haze_fragment",
             "almetal_world_flat_water_vertex",
             "almetal_world_wave_water_vertex",
             "almetal_world_underwater_fragment",
@@ -181,6 +183,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_hdri_sky_fragment",
             "almetal_world_windlight_sky_vertex",
             "almetal_world_windlight_sky_fragment",
+            "almetal_world_windlight_sky_behind_fragment",
             "almetal_world_star_vertex",
             "almetal_world_star_fragment",
             "almetal_world_heavenly_body_vertex",
@@ -4882,6 +4885,200 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.reverse_z = false;
         opaque_forward_scene.water_surface = nullptr;
 
+        // Deferred atmospheric haze snapshots depth at its real ordered
+        // boundary. Clear-depth sky pixels remain byte-for-byte untouched,
+        // drawn pixels receive additive in-scatter plus multiplicative
+        // extinction, and cutout coverage keeps destination alpha.
+        ALMetalWorldSimpleBatch atmospheric_marker;
+        atmospheric_marker.atmospheric_haze = true;
+        ALMetalWorldAtmosphericHaze atmospheric_haze;
+        std::memcpy(atmospheric_haze.inverse_projection,
+                    identity.data(), sizeof(identity));
+        atmospheric_haze.above_water = true;
+        alpha_environment.water_plane[0] = 0.f;
+        alpha_environment.water_plane[1] = 0.f;
+        alpha_environment.water_plane[2] = 1.f;
+        alpha_environment.water_plane[3] = 1.f;
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            alpha_environment.haze_extinction[channel] = 1.f;
+            alpha_environment.haze_additive[channel] = 0.2f;
+            alpha_environment.haze_additive_glow[channel] = 0.f;
+        }
+        alpha_environment.atmospheric[0] = 1.f;
+        alpha_environment.atmospheric[1] = 1.f;
+        alpha_environment.atmospheric[2] = 0.f;
+        alpha_environment.atmospheric[3] = 1.f;
+        alpha_environment.water_fog[2] = -1.f;
+        opaque_forward_scene.batches = &atmospheric_marker;
+        opaque_forward_scene.batch_count = 1;
+        opaque_forward_scene.water_exclusion_surface = nullptr;
+        opaque_forward_scene.water_haze = nullptr;
+        opaque_forward_scene.atmospheric_haze = &atmospheric_haze;
+        opaque_forward_scene.sky_behind = nullptr;
+        opaque_forward_scene.alpha_environment = &alpha_environment;
+        auto atmospheric_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(atmospheric_result);
+        std::array<std::uint16_t, 32 * 32 * 4> atmospheric_pixels{};
+        REQUIRE(atmospheric_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, atmospheric_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(atmospheric_pixels[0] == 0x3400);
+        CHECK(atmospheric_pixels[1] == 0x3000);
+        CHECK(atmospheric_pixels[2] == 0x2c00);
+        CHECK(atmospheric_pixels[3] == 0x3800);
+        CHECK(atmospheric_pixels[stencil_center + 0] != 0x3400);
+        CHECK(atmospheric_pixels[stencil_center + 3] < 0x3800);
+
+        atmospheric_haze.alpha_writes_coverage = true;
+        auto coverage_atmosphere = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(coverage_atmosphere);
+        REQUIRE(coverage_atmosphere->colorTexture(0)->readback(
+            *device, 0, 0, {}, atmospheric_pixels.data(), 32 * 8,
+            &error));
+        CHECK(atmospheric_pixels[stencil_center + 3] == 0x3800);
+        atmospheric_haze.alpha_writes_coverage = false;
+
+        atmospheric_haze.inverse_projection[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world atmospheric-haze inputs are invalid");
+        atmospheric_haze.inverse_projection[0] = 1.f;
+        error.clear();
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        auto reverse_atmosphere = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_atmosphere);
+        REQUIRE(reverse_atmosphere->colorTexture(0)->readback(
+            *device, 0, 0, {}, atmospheric_pixels.data(), 32 * 8,
+            &error));
+        CHECK(atmospheric_pixels[stencil_center + 0] != 0x3400);
+
+        // From below the surface, geometry below the water plane is masked
+        // while the same far-depth rejection still preserves the sky.
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        atmospheric_haze.above_water = false;
+        alpha_environment.water_plane[3] = -10.f;
+        alpha_environment.water_fog[2] = 1.f;
+        auto masked_underwater_atmosphere =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(masked_underwater_atmosphere);
+        REQUIRE(masked_underwater_atmosphere->colorTexture(0)->readback(
+            *device, 0, 0, {}, atmospheric_pixels.data(), 32 * 8,
+            &error));
+        CHECK(atmospheric_pixels[stencil_center + 0] == 0x3400);
+        CHECK(atmospheric_pixels[stencil_center + 1] == 0x3000);
+        CHECK(atmospheric_pixels[stencil_center + 2] == 0x2c00);
+        CHECK(atmospheric_pixels[stencil_center + 3] == 0x3800);
+
+        // Above water, the stencil split runs ordinary haze off the surface
+        // and converges surface pixels on the half-resolution WindLight sky.
+        ALMetalRenderTargetDescriptor sky_behind_descriptor;
+        sky_behind_descriptor.width = 16;
+        sky_behind_descriptor.height = 16;
+        sky_behind_descriptor.colors[0].format =
+            ALMetalPixelFormat::rg11b10_float;
+        auto sky_behind_target = ALMetalRenderTarget::create(
+            *device, sky_behind_descriptor, &error);
+        INFO(error);
+        REQUIRE(sky_behind_target);
+        ALMetalRenderPassConfig sky_behind_clear;
+        sky_behind_clear.colors[0].load = ALMetalLoadAction::clear;
+        sky_behind_clear.colors[0].store = ALMetalStoreAction::store;
+        sky_behind_clear.colors[0].clear = {0.25, 0.25, 0.25, 1.0};
+        auto sky_behind_pass = sky_behind_target->makeRenderPass(
+            sky_behind_clear, &error);
+        auto sky_behind_command = device->makeCommandBuffer(
+            "Alchemy atmospheric sky-behind clear", &error);
+        auto sky_behind_encoder = sky_behind_pass && sky_behind_command
+            ? ALMetalRenderEncoder::begin(
+                  *sky_behind_command, *sky_behind_pass,
+                  "Alchemy atmospheric sky-behind clear encoder",
+                  &error)
+            : nullptr;
+        REQUIRE(sky_behind_encoder);
+        REQUIRE(sky_behind_encoder->end(&error));
+        REQUIRE(sky_behind_command->commitAndWait(&error));
+
+        atmospheric_haze.above_water = true;
+        atmospheric_haze.sky_behind = true;
+        atmospheric_haze.water_ground_fade = 1.f;
+        alpha_environment.water_plane[3] = 1.f;
+        alpha_environment.water_fog[2] = -1.f;
+        std::array<ALMetalWorldSimpleBatch, 4> atmospheric_water_batches{{
+            water_exclusion_batch,
+            water_haze_marker,
+            underwater_surface_marker,
+            atmospheric_marker,
+        }};
+        opaque_forward_scene.batches = atmospheric_water_batches.data();
+        opaque_forward_scene.batch_count = atmospheric_water_batches.size();
+        opaque_forward_scene.water_exclusion_surface = &water_surface;
+        opaque_forward_scene.water_haze = &underwater_marker_haze;
+        opaque_forward_scene.water_surface = &above_water_surface;
+        opaque_forward_scene.atmospheric_haze = &atmospheric_haze;
+        opaque_forward_scene.sky_behind =
+            sky_behind_target->colorTexture(0);
+        auto sky_converged_atmosphere =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(sky_converged_atmosphere);
+        REQUIRE(sky_converged_atmosphere->colorTexture(0)->readback(
+            *device, 0, 0, {}, atmospheric_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(sky_converged_atmosphere->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        bool saw_sky_convergence = false;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            if (std::abs(pre_water_depth[pixel] - 0.25f) > 0.0001f)
+            {
+                continue;
+            }
+            const float red = half_to_float(
+                atmospheric_pixels[pixel * 4]);
+            saw_sky_convergence = saw_sky_convergence ||
+                std::abs(red - srgb_to_linear(0.25f)) < 0.01f;
+        }
+        CHECK(saw_sky_convergence);
+
+        std::array<ALMetalWorldSimpleBatch, 4> misordered_atmosphere{{
+            water_exclusion_batch,
+            water_haze_marker,
+            atmospheric_marker,
+            underwater_surface_marker,
+        }};
+        opaque_forward_scene.batches = misordered_atmosphere.data();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world atmospheric-haze marker is invalid");
+        error.clear();
+
+        atmospheric_haze = {};
+        opaque_forward_scene.batches = &fullbright_batch;
+        opaque_forward_scene.batch_count = 1;
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.water_exclusion_surface = nullptr;
+        opaque_forward_scene.water_haze = nullptr;
+        opaque_forward_scene.water_surface = nullptr;
+        opaque_forward_scene.atmospheric_haze = nullptr;
+        opaque_forward_scene.sky_behind = nullptr;
+        opaque_forward_scene.alpha_environment = nullptr;
+
         ALMetalWorldSimpleBatch shiny_batch = fullbright_batch;
         shiny_batch.impostor_fullbright = false;
         shiny_batch.impostor_shiny = true;
@@ -6464,6 +6661,44 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(windlight_normal[outside + 1] == 0);
         CHECK(windlight_normal[outside + 2] == 0);
         CHECK(windlight_normal[outside + 3] == 0);
+
+        auto windlight_sky_behind =
+            renderer->renderWindLightSkyBehind(
+                windlight_scene, &error);
+        INFO(error);
+        REQUIRE(windlight_sky_behind);
+        CHECK(windlight_sky_behind->descriptor().width == 16);
+        CHECK(windlight_sky_behind->descriptor().height == 16);
+        CHECK(windlight_sky_behind->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba8_unorm);
+        std::array<std::uint8_t, 16 * 16 * 4> sky_behind_pixels{};
+        REQUIRE(windlight_sky_behind->colorTexture(0)->readback(
+            *device, 0, 0, {}, sky_behind_pixels.data(), 16 * 4,
+            &error));
+        INFO(error);
+        CHECK(std::any_of(
+            sky_behind_pixels.begin(), sky_behind_pixels.end(),
+            [](std::uint8_t value) { return value != 0; }));
+
+        windlight_scene.hdr = true;
+        auto hdr_windlight_sky_behind =
+            renderer->renderWindLightSkyBehind(
+                windlight_scene, &error);
+        INFO(error);
+        REQUIRE(hdr_windlight_sky_behind);
+        CHECK(hdr_windlight_sky_behind->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rg11b10_float);
+        windlight_scene.hdr = false;
+
+        const float saved_sky_density =
+            windlight_scene.constants.light_density[3];
+        windlight_scene.constants.light_density[3] = -1.f;
+        CHECK_FALSE(renderer->renderWindLightSkyBehind(
+            windlight_scene, &error));
+        CHECK(error ==
+              "Metal world WindLight sky-behind scene is incomplete");
+        windlight_scene.constants.light_density[3] = saved_sky_density;
+        error.clear();
 
         // Replay one production-layout star quad over the atmospheric dome.
         // Rendering the same star over a black WindLight transaction isolates

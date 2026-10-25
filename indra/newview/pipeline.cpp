@@ -429,6 +429,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> projector_light_target;
     std::unique_ptr<ALMetalRenderTarget> composed_light_target;
     std::unique_ptr<ALMetalRenderTarget> opaque_post_deferred_target;
+    std::unique_ptr<ALMetalRenderTarget> sky_behind_target;
     std::unique_ptr<ALMetalTexture> projector_shadow_texture;
     ALMetalWorldDirectionalShadows projector_shadows;
     std::vector<F32> projector_shadow_depth;
@@ -568,6 +569,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool water_haze_valid = false;
     ALMetalWorldWaterSurface water_surface;
     bool water_surface_valid = false;
+    ALMetalWorldAtmosphericHaze atmospheric_haze;
+    bool atmospheric_haze_valid = false;
     ALMetalWorldAlphaEnvironment alpha_environment;
     bool alpha_environment_valid = false;
     ALMetalWorldLegacyAlphaLighting world_alpha_lighting;
@@ -1251,6 +1254,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
 
     capture.batches.clear();
+    capture.sky_behind_target.reset();
     capture.hdri_sky_batches.clear();
     capture.hdri_sky_environment = nullptr;
     capture.hdri_sky_active = false;
@@ -2805,6 +2809,8 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.water_haze_valid = false;
     capture.water_surface = {};
     capture.water_surface_valid = false;
+    capture.atmospheric_haze = {};
+    capture.atmospheric_haze_valid = false;
     capture.alpha_environment = {};
     capture.alpha_environment_valid = false;
     capture.world_alpha_lighting = {};
@@ -3160,6 +3166,56 @@ void LLPipeline::captureMetalWorldWaterSurface(
     capture.water_surface_valid = true;
 }
 
+void LLPipeline::captureMetalWorldAtmospherics()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const bool sky_behind = !gCubeSnapshot && mRT == &mMainRT &&
+        mSkyBehind != nullptr;
+    if (capture.pass_active || capture.world_pre_water_alpha_active ||
+        capture.atmospheric_haze_valid ||
+        (sky_behind && !capture.sky_behind_target) ||
+        (!capture.alpha_environment_valid &&
+         !fillMetalWorldAlphaEnvironment(capture.alpha_environment)))
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        capture.atmospheric_haze = {};
+        capture.atmospheric_haze_valid = false;
+        return;
+    }
+
+    capture.alpha_environment_valid = true;
+    ALMetalWorldAtmosphericHaze& haze = capture.atmospheric_haze;
+    haze = {};
+    LLViewerCamera& camera = *LLViewerCamera::getInstance();
+    LLMatrix4a inverse_projection;
+    inverse_projection.setInverse(camera.getProjection());
+    std::memcpy(haze.inverse_projection,
+                inverse_projection.getF32ptr(),
+                sizeof(haze.inverse_projection));
+    haze.above_water = !sUnderWaterRender;
+    haze.sky_behind = sky_behind;
+    haze.alpha_writes_coverage = alphaWritesCoverage();
+    if (sky_behind)
+    {
+        const LLEnvironment& environment = LLEnvironment::instance();
+        const F32 height = camera.getOrigin().mV[VZ] -
+            environment.getWaterHeight();
+        haze.water_ground_fade = ALFarPlane::groundFade(height);
+    }
+
+    ALMetalWorldSimpleBatch marker;
+    marker.atmospheric_haze = true;
+    capture.batches.push_back(marker);
+    capture.atmospheric_haze_valid = true;
+}
+
 void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -3202,6 +3258,12 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         [](const ALMetalWorldSimpleBatch& batch)
         {
             return batch.water_surface;
+        });
+    const bool has_atmospheric_haze = std::any_of(
+        capture.batches.begin(), capture.batches.end(),
+        [](const ALMetalWorldSimpleBatch& batch)
+        {
+            return batch.atmospheric_haze;
         });
     const bool has_above_water_surface = has_water_surface &&
         capture.water_surface_valid &&
@@ -3309,6 +3371,12 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             ? &capture.water_haze : nullptr;
         scene.water_surface = capture.water_surface_valid
             ? &capture.water_surface : nullptr;
+        scene.atmospheric_haze = capture.atmospheric_haze_valid
+            ? &capture.atmospheric_haze : nullptr;
+        scene.sky_behind = capture.atmospheric_haze_valid &&
+                capture.atmospheric_haze.sky_behind &&
+                capture.sky_behind_target
+            ? capture.sky_behind_target->colorTexture(0) : nullptr;
         scene.alpha_environment = capture.alpha_environment_valid
             ? &capture.alpha_environment : nullptr;
         scene.alpha_lighting = capture.world_alpha_lighting_valid
@@ -3350,6 +3418,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                                ? "; including flat above-water water"
                                : "; including flat underwater water")
                         : "")
+                << (has_atmospheric_haze
+                        ? "; including atmospheric haze" : "")
                 << "; result remains offscreen and visible GL authority is "
                    "unchanged" << LL_ENDL;
         }
@@ -3379,6 +3449,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.water_haze_valid = false;
     capture.water_surface = {};
     capture.water_surface_valid = false;
+    capture.atmospheric_haze = {};
+    capture.atmospheric_haze_valid = false;
+    capture.sky_behind_target.reset();
     capture.alpha_environment = {};
     capture.alpha_environment_valid = false;
     capture.world_alpha_lighting = {};
@@ -3412,6 +3485,9 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
     capture.water_haze_valid = false;
     capture.water_surface = {};
     capture.water_surface_valid = false;
+    capture.atmospheric_haze = {};
+    capture.atmospheric_haze_valid = false;
+    capture.sky_behind_target.reset();
     capture.alpha_environment = {};
     capture.alpha_environment_valid = false;
     capture.world_alpha_lighting = {};
@@ -6993,6 +7069,20 @@ void LLPipeline::endMetalWorldGBufferCapture()
                     << "Native WindLight atmospheric sky retained "
                        "clear-depth GL authority after composite failure: "
                     << error << LL_ENDL;
+            }
+            else if (mSkyBehind)
+            {
+                error.clear();
+                capture.sky_behind_target =
+                    capture.renderer->renderWindLightSkyBehind(
+                        sky_scene, &error);
+                if (!capture.sky_behind_target)
+                {
+                    LL_WARNS("Metal")
+                        << "Native WindLight sky-behind mirror was not "
+                           "available for the later atmospheric pass: "
+                        << error << LL_ENDL;
+                }
             }
         }
         if (capture.windlight_sky_native_available &&
@@ -19732,6 +19822,9 @@ void LLPipeline::doAtmospherics()
 
     if (RenderDeferredAtmospheric)
     {
+#if LL_DARWIN
+        captureMetalWorldAtmospherics();
+#endif
         // The scene's depth as the haze reads it, after the water and the pools before it wrote it in this binding.
         ALTransientTargets haze(mTransientTargets);
         LLRenderTarget*    depth = hazeDepth(haze);

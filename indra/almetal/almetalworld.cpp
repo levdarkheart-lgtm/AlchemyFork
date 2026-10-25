@@ -88,6 +88,15 @@ namespace
     };
     static_assert(sizeof(WorldWaterHazeConstants) == 256);
 
+    struct alignas(16) WorldAtmosphericHazeConstants
+    {
+        float inverse_projection[16]{};
+        float parameters[4]{};
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldAtmosphericHazeConstants) == 96);
+    static_assert(sizeof(ALMetalWorldAtmosphericHaze) == 80);
+
     struct alignas(16) WorldWaterSurfaceConstants
     {
         float modelview[16];
@@ -686,6 +695,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         water_exclusion_pipelines;
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>
         water_haze_pipelines;
+    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>
+        atmospheric_haze_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         underwater_flat_water_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -712,6 +723,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalRenderPipeline> light_map_blur_pipeline;
     std::array<NormalPipelines, 2> hdri_sky_pipelines;
     std::array<NormalPipelines, 2> windlight_sky_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        windlight_sky_behind_pipelines;
     std::array<NormalPipelines, 2> windlight_star_pipelines;
     std::array<NormalPipelines, 2> windlight_sun_pipelines;
     std::array<NormalPipelines, 2> windlight_moon_pipelines;
@@ -727,6 +740,10 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalDepthStencilState> reverse_readonly_depth;
     std::unique_ptr<ALMetalDepthStencilState> forward_coverage_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_coverage_depth;
+    std::unique_ptr<ALMetalDepthStencilState>
+        forward_atmospheric_haze_depth;
+    std::unique_ptr<ALMetalDepthStencilState>
+        reverse_atmospheric_haze_depth;
     std::unique_ptr<ALMetalDepthStencilState>
         forward_water_exclusion_depth;
     std::unique_ptr<ALMetalDepthStencilState>
@@ -899,6 +916,10 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction(
             "almetal_world_water_haze_fragment") ||
         !impl->library->hasFunction(
+            "almetal_world_atmospheric_haze_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_atmospheric_haze_fragment") ||
+        !impl->library->hasFunction(
             "almetal_world_flat_water_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_wave_water_vertex") ||
@@ -953,6 +974,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_windlight_sky_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_windlight_sky_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_windlight_sky_behind_fragment") ||
         !impl->library->hasFunction("almetal_world_star_vertex") ||
         !impl->library->hasFunction("almetal_world_star_fragment") ||
         !impl->library->hasFunction(
@@ -1067,6 +1090,24 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         impl->base_light_pipelines[hdr] =
             ALMetalRenderPipeline::create(device, descriptor, error);
         if (!impl->base_light_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor sky_behind_descriptor;
+        sky_behind_descriptor.library = impl->library.get();
+        sky_behind_descriptor.vertex_function =
+            "almetal_world_windlight_sky_vertex";
+        sky_behind_descriptor.fragment_function =
+            "almetal_world_windlight_sky_behind_fragment";
+        sky_behind_descriptor.colors[0].format = emissive_formats[hdr];
+        sky_behind_descriptor.label = hdr
+            ? "Alchemy HDR WindLight sky-behind pipeline"
+            : "Alchemy vintage WindLight sky-behind pipeline";
+        impl->windlight_sky_behind_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, sky_behind_descriptor, error);
+        if (!impl->windlight_sky_behind_pipelines[hdr])
         {
             return nullptr;
         }
@@ -1420,6 +1461,39 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 ALMetalRenderPipeline::create(
                     device, haze_descriptor, error);
             if (!impl->water_haze_pipelines[hdr][above_water])
+            {
+                return nullptr;
+            }
+        }
+
+        for (std::size_t coverage = 0; coverage < 2; ++coverage)
+        {
+            ALMetalRenderPipelineDescriptor haze_descriptor;
+            haze_descriptor.library = impl->library.get();
+            haze_descriptor.vertex_function =
+                "almetal_world_atmospheric_haze_vertex";
+            haze_descriptor.fragment_function =
+                "almetal_world_atmospheric_haze_fragment";
+            haze_descriptor.colors[0].format = screen_formats[hdr];
+            haze_descriptor.colors[0].blending_enabled = true;
+            haze_descriptor.colors[0].source_rgb =
+                ALMetalBlendFactor::one;
+            haze_descriptor.colors[0].destination_rgb =
+                ALMetalBlendFactor::source_alpha;
+            haze_descriptor.colors[0].source_alpha =
+                ALMetalBlendFactor::zero;
+            haze_descriptor.colors[0].destination_alpha = coverage
+                ? ALMetalBlendFactor::one
+                : ALMetalBlendFactor::source_alpha;
+            haze_descriptor.depth_stencil_format =
+                ALMetalPixelFormat::depth32_float_stencil8;
+            haze_descriptor.label = coverage
+                ? "Alchemy world atmospheric haze coverage pipeline"
+                : "Alchemy world atmospheric haze pipeline";
+            impl->atmospheric_haze_pipelines[hdr][coverage] =
+                ALMetalRenderPipeline::create(
+                    device, haze_descriptor, error);
+            if (!impl->atmospheric_haze_pipelines[hdr][coverage])
             {
                 return nullptr;
             }
@@ -2244,6 +2318,32 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->reverse_coverage_depth = ALMetalDepthStencilState::create(
         device, depth, error);
     if (!impl->reverse_coverage_depth)
+    {
+        return nullptr;
+    }
+
+    depth.depth_compare = ALMetalCompareFunction::greater;
+    depth.depth_write_enabled = false;
+    depth.stencil_enabled = true;
+    depth.front_stencil.compare = ALMetalCompareFunction::equal;
+    depth.front_stencil.stencil_failure = ALMetalStencilOperation::keep;
+    depth.front_stencil.depth_failure = ALMetalStencilOperation::keep;
+    depth.front_stencil.depth_stencil_pass = ALMetalStencilOperation::keep;
+    depth.front_stencil.read_mask = 2u;
+    depth.front_stencil.write_mask = 0u;
+    depth.back_stencil = depth.front_stencil;
+    depth.label = "Alchemy forward-Z atmospheric haze water stencil";
+    impl->forward_atmospheric_haze_depth =
+        ALMetalDepthStencilState::create(device, depth, error);
+    if (!impl->forward_atmospheric_haze_depth)
+    {
+        return nullptr;
+    }
+    depth.depth_compare = ALMetalCompareFunction::less;
+    depth.label = "Alchemy reverse-Z atmospheric haze water stencil";
+    impl->reverse_atmospheric_haze_depth =
+        ALMetalDepthStencilState::create(device, depth, error);
+    if (!impl->reverse_atmospheric_haze_depth)
     {
         return nullptr;
     }
@@ -4139,6 +4239,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     bool has_water_haze = false;
     bool has_water_surface = false;
     bool has_above_water_surface = false;
+    bool has_atmospheric_haze = false;
     bool water_uses_shadows = false;
     bool has_pre_water_alpha = false;
     bool has_pre_water_simple = false;
@@ -4174,6 +4275,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             (batch.water_exclusion ? 1u : 0u) +
             (batch.water_haze ? 1u : 0u) +
             (batch.water_surface ? 1u : 0u) +
+            (batch.atmospheric_haze ? 1u : 0u) +
             (batch.pre_water_alpha ? 1u : 0u) +
             (batch.legacy_glow ? 1u : 0u) +
             (batch.pbr_glow ? 1u : 0u);
@@ -4189,11 +4291,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             setError(error, "Metal world opaque post-deferred batch is invalid");
             return nullptr;
         }
-        if (has_water_surface ||
+        if ((has_water_surface && !batch.atmospheric_haze) ||
+            (has_atmospheric_haze && !batch.water_surface) ||
             (has_water_haze && !batch.pre_water_alpha &&
-             !batch.water_surface) ||
+             !batch.water_surface && !batch.atmospheric_haze) ||
             (saw_pre_water_alpha && !batch.pre_water_alpha &&
-             !batch.water_surface))
+             !batch.water_surface && !batch.atmospheric_haze))
         {
             setError(error,
                      "Metal world water-haze ordering is invalid");
@@ -4217,9 +4320,35 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             saw_post_exclusion = true;
             continue;
         }
+        if (batch.atmospheric_haze)
+        {
+            const ALMetalWorldAtmosphericHaze* haze =
+                scene.atmospheric_haze;
+            if (!haze || has_atmospheric_haze ||
+                (haze->above_water && scene.water_surface &&
+                 !has_water_surface) ||
+                (!haze->above_water && has_water_surface) ||
+                batch.vertices || batch.indices ||
+                batch.vertex_count != 0 || batch.index_count != 0 ||
+                batch.texture_count != 0 || batch.normal_texture ||
+                batch.material_slot_count != 0 ||
+                batch.pbr_slot_count != 0 || rigged ||
+                batch.skin_palette_float_count != 0 ||
+                batch.skin_joint_count != 0)
+            {
+                setError(error,
+                         "Metal world atmospheric-haze marker is invalid");
+                return nullptr;
+            }
+            has_atmospheric_haze = true;
+            saw_post_exclusion = true;
+            continue;
+        }
         if (batch.water_surface)
         {
             if (!has_water_haze || has_water_surface ||
+                (has_atmospheric_haze &&
+                 scene.atmospheric_haze->above_water) ||
                 batch.vertices || batch.indices ||
                 batch.vertex_count != 0 || batch.index_count != 0 ||
                 batch.texture_count != 0 || batch.normal_texture ||
@@ -4727,7 +4856,46 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         setError(error, "Metal world water-surface marker is missing");
         return nullptr;
     }
-    if (has_pre_water_alpha || has_above_water_surface)
+    if (has_atmospheric_haze)
+    {
+        const ALMetalWorldAtmosphericHaze& haze =
+            *scene.atmospheric_haze;
+        const ALMetalTextureDescriptor* sky = scene.sky_behind
+            ? &scene.sky_behind->descriptor() : nullptr;
+        const ALMetalPixelFormat sky_format = scene.hdr
+            ? ALMetalPixelFormat::rg11b10_float
+            : ALMetalPixelFormat::rgba8_unorm;
+        if (!finiteValues(haze.inverse_projection, 16) ||
+            !std::isfinite(haze.water_ground_fade) ||
+            haze.water_ground_fade < 0.f ||
+            haze.water_ground_fade > 1.f ||
+            (scene.water_surface &&
+             haze.above_water == scene.water_surface->underwater) ||
+            (haze.sky_behind &&
+             (!haze.above_water || !has_water_surface)) ||
+            haze.sky_behind != (scene.sky_behind != nullptr) ||
+            (!haze.sky_behind && haze.water_ground_fade != 0.f) ||
+            (haze.sky_behind &&
+             (!sky || sky->type != ALMetalTextureType::texture_2d ||
+              sky->format != sky_format ||
+              sky->width != std::max(scene.width / 2u, 1u) ||
+              sky->height != std::max(scene.height / 2u, 1u) ||
+              sky->sample_count != 1 ||
+              !sampleableTexture(scene.sky_behind))))
+        {
+            setError(error,
+                     "Metal world atmospheric-haze inputs are invalid");
+            return nullptr;
+        }
+    }
+    else if (scene.atmospheric_haze || scene.sky_behind)
+    {
+        setError(error,
+                 "Metal world atmospheric-haze marker is missing");
+        return nullptr;
+    }
+    if (has_pre_water_alpha || has_above_water_surface ||
+        has_atmospheric_haze)
     {
         const ALMetalWorldAlphaEnvironment* environment =
             scene.alpha_environment;
@@ -4766,7 +4934,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             environment->atmos_sunlit_linear[3] < 0.f ||
             environment->water_fog[0] <= 0.f ||
             environment->water_fog[1] < 0.f ||
-            std::abs(environment->water_fog[2]) != 1.f)
+            std::abs(environment->water_fog[2]) != 1.f ||
+            (has_atmospheric_haze &&
+             ((scene.atmospheric_haze->above_water &&
+               environment->water_fog[2] != -1.f) ||
+              (!scene.atmospheric_haze->above_water &&
+               environment->water_fog[2] != 1.f))))
         {
             setError(error,
                      "Metal world pre-water alpha environment is invalid");
@@ -4927,6 +5100,25 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         haze_depth_snapshot = ALMetalRenderTarget::create(
             *mImpl->device, haze_depth_descriptor, error);
         if (!haze_depth_snapshot)
+        {
+            return nullptr;
+        }
+    }
+    std::unique_ptr<ALMetalRenderTarget> atmospheric_depth_snapshot;
+    if (has_atmospheric_haze)
+    {
+        ALMetalRenderTargetDescriptor depth_descriptor;
+        depth_descriptor.width = scene.width;
+        depth_descriptor.height = scene.height;
+        depth_descriptor.color_attachment_count = 0;
+        depth_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        depth_descriptor.depth_stencil_shader_read = true;
+        depth_descriptor.label =
+            "Alchemy native world atmospheric-haze depth snapshot";
+        atmospheric_depth_snapshot = ALMetalRenderTarget::create(
+            *mImpl->device, depth_descriptor, error);
+        if (!atmospheric_depth_snapshot)
         {
             return nullptr;
         }
@@ -5203,6 +5395,108 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             {
                 encoded =
                     encoder->setVertexBytes(
+                        0, &constants, sizeof(constants), error) &&
+                    encoder->draw(
+                        ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+            }
+            continue;
+        }
+        if (batch.atmospheric_haze)
+        {
+            const ALMetalWorldAtmosphericHaze& haze =
+                *scene.atmospheric_haze;
+            if (!encoder->end(error) || !atmospheric_depth_snapshot ||
+                !atmospheric_depth_snapshot->copyDepthStencilFrom(
+                    *command, *output->depthStencilTexture(), {}, error))
+            {
+                return nullptr;
+            }
+
+            ALMetalRenderPassConfig haze_pass_config;
+            haze_pass_config.colors[0].load = ALMetalLoadAction::load;
+            haze_pass_config.colors[0].store = ALMetalStoreAction::store;
+            haze_pass_config.depth_load = ALMetalLoadAction::load;
+            haze_pass_config.depth_store = ALMetalStoreAction::store;
+            haze_pass_config.stencil_load = ALMetalLoadAction::load;
+            haze_pass_config.stencil_store = ALMetalStoreAction::store;
+            auto haze_pass = output->makeRenderPass(
+                haze_pass_config, error);
+            encoder = haze_pass ? ALMetalRenderEncoder::begin(
+                *command, *haze_pass,
+                "Alchemy world atmospheric-haze encoder", error)
+                : nullptr;
+            if (!encoder)
+            {
+                return nullptr;
+            }
+
+            WorldAtmosphericHazeConstants constants{};
+            std::memcpy(constants.inverse_projection,
+                        haze.inverse_projection,
+                        sizeof(constants.inverse_projection));
+            constants.parameters[0] = haze.water_ground_fade;
+            constants.config[0] = scene.reverse_z ? 1u : 0u;
+            const ALMetalTexture* sky_behind = haze.sky_behind
+                ? scene.sky_behind : mImpl->inactive_ssr_color.get();
+            const ALMetalDepthStencilState* depth = haze.sky_behind
+                ? (scene.reverse_z
+                       ? mImpl->reverse_atmospheric_haze_depth.get()
+                       : mImpl->forward_atmospheric_haze_depth.get())
+                : (scene.reverse_z
+                       ? mImpl->reverse_coverage_depth.get()
+                       : mImpl->forward_coverage_depth.get());
+            encoded =
+                encoder->setViewport(viewport, error) &&
+                encoder->setScissor(scissor, error) &&
+                encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+                encoder->setDepthStencilState(depth, error) &&
+                encoder->setPipeline(
+                    *mImpl->atmospheric_haze_pipelines
+                        [scene.hdr ? 1 : 0]
+                        [haze.alpha_writes_coverage ? 1 : 0],
+                    error) &&
+                encoder->setFragmentTexture(
+                    33,
+                    atmospheric_depth_snapshot->depthStencilTexture(),
+                    error) &&
+                encoder->setFragmentTexture(34, sky_behind, error) &&
+                encoder->setFragmentSampler(
+                    1, mImpl->point_clamp_sampler.get(), error) &&
+                encoder->setFragmentSampler(
+                    2, mImpl->linear_clamp_sampler.get(), error) &&
+                encoder->setFragmentBytes(
+                    1, scene.alpha_environment,
+                    sizeof(*scene.alpha_environment), error);
+            if (encoded && haze.sky_behind)
+            {
+                constants.config[1] = 0u;
+                encoded =
+                    encoder->setStencilReferenceValue(0u, error) &&
+                    encoder->setVertexBytes(
+                        0, &constants, sizeof(constants), error) &&
+                    encoder->setFragmentBytes(
+                        0, &constants, sizeof(constants), error) &&
+                    encoder->draw(
+                        ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+                constants.config[1] = 1u;
+                encoded = encoded &&
+                    encoder->setStencilReferenceValue(2u, error) &&
+                    encoder->setVertexBytes(
+                        0, &constants, sizeof(constants), error) &&
+                    encoder->setFragmentBytes(
+                        0, &constants, sizeof(constants), error) &&
+                    encoder->draw(
+                        ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+            }
+            else if (encoded)
+            {
+                constants.config[1] = 0u;
+                encoded =
+                    encoder->setStencilReferenceValue(0u, error) &&
+                    encoder->setVertexBytes(
+                        0, &constants, sizeof(constants), error) &&
+                    encoder->setFragmentBytes(
                         0, &constants, sizeof(constants), error) &&
                     encoder->draw(
                         ALMetalPrimitiveType::triangle, 0, 3, 1, error);
@@ -6644,6 +6938,158 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightSky(
     }
 
     return encoded && encoder->end(error) && command->commit(error);
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderWindLightSkyBehind(
+    const ALMetalWorldWindLightSkyScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.batches ||
+        scene.batch_count == 0 ||
+        !sampleableTexture(scene.rainbow_texture) ||
+        !sampleableTexture(scene.halo_texture) ||
+        scene.width == 0 || scene.height == 0 ||
+        !finiteValues(scene.constants.camera_local, 4) ||
+        !finiteValues(scene.constants.light_density, 4) ||
+        !finiteValues(scene.constants.blue_horizon, 4) ||
+        !finiteValues(scene.constants.glow, 4) ||
+        !finiteValues(scene.constants.haze_extinction, 4) ||
+        !finiteValues(scene.constants.blue_weight, 4) ||
+        !finiteValues(scene.constants.haze_weight, 4) ||
+        !finiteValues(scene.constants.sky_light, 4) ||
+        !finiteValues(scene.constants.sky_ambient, 4) ||
+        !finiteValues(scene.constants.sky_light_atten, 4) ||
+        !finiteValues(scene.constants.sky_ambient_below, 4) ||
+        !finiteValues(scene.constants.optics, 4) ||
+        scene.constants.light_density[3] < 0.f ||
+        scene.constants.glow[3] < 0.f ||
+        scene.constants.optics[0] < 0.f ||
+        scene.constants.optics[1] < 0.f ||
+        scene.constants.optics[2] < 0.f ||
+        !std::isfinite(scene.sky_hdr_scale) ||
+        scene.sky_hdr_scale < 0.f)
+    {
+        setError(error, "Metal world WindLight sky-behind scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalTextureDescriptor& rainbow =
+        scene.rainbow_texture->descriptor();
+    const ALMetalTextureDescriptor& halo = scene.halo_texture->descriptor();
+    if (rainbow.type != ALMetalTextureType::texture_2d ||
+        halo.type != ALMetalTextureType::texture_2d ||
+        rainbow.width == 0 || rainbow.height == 0 ||
+        halo.width == 0 || halo.height == 0 ||
+        rainbow.sample_count != 1 || halo.sample_count != 1)
+    {
+        setError(error, "Metal world WindLight sky-behind optics are incompatible");
+        return nullptr;
+    }
+
+    constexpr std::size_t float4_stride = sizeof(float) * 4;
+    for (std::size_t index = 0; index < scene.batch_count; ++index)
+    {
+        const ALMetalWorldHDRISkyBatch& batch = scene.batches[index];
+        const std::size_t index_stride =
+            batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
+        if (!batch.vertices || !batch.indices || batch.vertex_count == 0 ||
+            batch.index_count < 3 ||
+            batch.position_offset % float4_stride != 0 ||
+            batch.index_offset % index_stride != 0 ||
+            !finiteValues(batch.modelview_projection, 16) ||
+            !rangeFits(batch.position_offset, batch.vertex_count,
+                       float4_stride, batch.vertices->length()) ||
+            !rangeFits(batch.index_offset, batch.index_count,
+                       index_stride, batch.indices->length()))
+        {
+            setError(error, "Metal world WindLight sky-behind batch is invalid");
+            return nullptr;
+        }
+    }
+
+    const std::uint32_t width = std::max(scene.width / 2u, 1u);
+    const std::uint32_t height = std::max(scene.height / 2u, 1u);
+    ALMetalRenderTargetDescriptor target_descriptor;
+    target_descriptor.width = width;
+    target_descriptor.height = height;
+    target_descriptor.colors[0].format = scene.hdr
+        ? ALMetalPixelFormat::rg11b10_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    target_descriptor.colors[0].label =
+        "Alchemy WindLight sky-behind color";
+    target_descriptor.label =
+        "Alchemy native WindLight sky-behind target";
+    auto target = ALMetalRenderTarget::create(
+        *mImpl->device, target_descriptor, error);
+    if (!target)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::clear;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    auto pass = target->makeRenderPass(pass_config, error);
+    auto command = pass ? mImpl->device->makeCommandBuffer(
+        "Alchemy native WindLight sky-behind", error) : nullptr;
+    auto encoder = command ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy WindLight sky-behind encoder", error)
+                           : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(width),
+        static_cast<double>(height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{0, 0, width, height};
+    bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(
+            *mImpl->windlight_sky_behind_pipelines[scene.hdr ? 1 : 0],
+            error) &&
+        encoder->setFragmentTexture(0, scene.rainbow_texture, error) &&
+        encoder->setFragmentTexture(1, scene.halo_texture, error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->diffuse_sampler.get(), error);
+
+    for (std::size_t index = 0;
+         encoded && index < scene.batch_count; ++index)
+    {
+        const ALMetalWorldHDRISkyBatch& batch = scene.batches[index];
+        WorldWindLightSkyConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(constants.modelview_projection));
+        constants.sky = scene.constants;
+        constants.transfer[0] = static_cast<float>(width);
+        constants.transfer[1] = static_cast<float>(height);
+        constants.transfer[2] = scene.sky_hdr_scale;
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        constants.config[1] = scene.hdr ? 1u : 0u;
+        encoded =
+            encoder->setVertexBuffer(
+                0, *batch.vertices, batch.position_offset, error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->drawIndexed(
+                ALMetalPrimitiveType::triangle_strip,
+                batch.index_count, batch.index_type,
+                *batch.indices, batch.index_offset, 1, error);
+    }
+
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return target;
 }
 
 bool ALMetalWorldGBufferRenderer::compositeWindLightStars(

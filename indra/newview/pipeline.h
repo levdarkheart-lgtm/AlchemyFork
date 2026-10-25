@@ -611,6 +611,7 @@ public:
     void captureMetalWorldWaterHaze();
     void captureMetalWorldWaterSurface(
         const ALMetalWorldWaterSurface& surface);
+    void captureMetalWorldAtmospherics();
     void beginMetalWorldLegacyGlowPass(bool rigged);
     void beginMetalWorldPBRGlowPass(bool rigged);
     void encodeMetalWorldOpaquePostDeferredCapture();
