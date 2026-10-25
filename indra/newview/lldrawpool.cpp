@@ -809,6 +809,10 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
         }
     }
 
+#if LL_DARWIN
+    gPipeline.captureMetalWorldSimpleBatch(params, batch_textures);
+#endif
+
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 

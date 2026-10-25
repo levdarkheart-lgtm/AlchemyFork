@@ -18,6 +18,7 @@
 #include "../almetalterrainpaint.h"
 #include "../almetaltextureops.h"
 #include "../almetaluirenderer.h"
+#include "../almetalworld.h"
 
 #import <Metal/Metal.h>
 
@@ -114,6 +115,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_test_sample_texture",
             "almetal_resample_vertex",
             "almetal_resample_fragment",
+            "almetal_world_simple_vertex",
+            "almetal_world_simple_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
             "almetal_lit_preview_vertex",
@@ -810,6 +813,235 @@ TEST_CASE("almetal: terrain paint bake consumes indexed viewer buffers and gener
         CHECK(oriented_pixels[upper_gl_row + 1] == 0);
         CHECK(oriented_pixels[upper_gl_row + 2] == 0);
         CHECK(oriented_pixels[upper_gl_row + 3] == 255);
+    }
+}
+
+TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        const std::array<std::array<float, 4>, 3> positions{{
+            {{-0.8f, -0.8f, 0.25f, 1.f}},
+            {{ 0.8f, -0.8f, 0.25f, 1.f}},
+            {{ 0.0f,  0.8f, 0.25f, 1.f}},
+        }};
+        const std::array<std::array<float, 4>, 3> normals{{
+            {{0.f, 0.f, 1.f, 0.f}},
+            {{0.f, 0.f, 1.f, 0.f}},
+            {{0.f, 0.f, 1.f, 0.f}},
+        }};
+        const std::array<std::array<float, 2>, 3> texcoords{{
+            {{0.f, 0.f}}, {{0.f, 0.f}}, {{0.f, 0.f}},
+        }};
+        const std::array<std::array<std::uint8_t, 4>, 3> colors{{
+            {{128, 255, 255, 128}},
+            {{128, 255, 255, 128}},
+            {{128, 255, 255, 128}},
+        }};
+        constexpr std::size_t normal_offset = sizeof(positions);
+        constexpr std::size_t texcoord_offset =
+            normal_offset + sizeof(normals);
+        constexpr std::size_t color_offset =
+            texcoord_offset + sizeof(texcoords);
+        std::array<std::uint8_t, color_offset + sizeof(colors)> vertex_bytes{};
+        std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
+        std::memcpy(vertex_bytes.data() + normal_offset,
+                    normals.data(), sizeof(normals));
+        std::memcpy(vertex_bytes.data() + texcoord_offset,
+                    texcoords.data(), sizeof(texcoords));
+        std::memcpy(vertex_bytes.data() + color_offset,
+                    colors.data(), sizeof(colors));
+
+        ALMetalBufferDescriptor vertex_descriptor;
+        vertex_descriptor.length = vertex_bytes.size();
+        vertex_descriptor.storage = ALMetalStorageMode::shared;
+        vertex_descriptor.label = "Alchemy world simple test vertices";
+        auto vertices = ALMetalBuffer::create(
+            *device, vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(vertices);
+        REQUIRE(vertices->write(
+            0, vertex_bytes.data(), vertex_bytes.size(), &error));
+
+        const std::array<std::uint16_t, 3> index_values{{0, 1, 2}};
+        ALMetalBufferDescriptor index_descriptor;
+        index_descriptor.length = sizeof(index_values);
+        index_descriptor.storage = ALMetalStorageMode::shared;
+        index_descriptor.label = "Alchemy world simple test indices";
+        auto indices = ALMetalBuffer::create(
+            *device, index_descriptor, &error);
+        INFO(error);
+        REQUIRE(indices);
+        REQUIRE(indices->write(
+            0, index_values.data(), sizeof(index_values), &error));
+
+        ALMetalTextureDescriptor diffuse_descriptor;
+        diffuse_descriptor.format = ALMetalPixelFormat::rgba8_unorm_srgb;
+        diffuse_descriptor.width = 1;
+        diffuse_descriptor.height = 1;
+        diffuse_descriptor.storage = ALMetalStorageMode::private_gpu;
+        diffuse_descriptor.usage = ALMetalTextureUsage::shader_read;
+        diffuse_descriptor.label = "Alchemy world simple sRGB diffuse";
+        auto diffuse = ALMetalTexture::create(
+            *device, diffuse_descriptor, &error);
+        INFO(error);
+        REQUIRE(diffuse);
+        const std::array<std::uint8_t, 4> diffuse_pixel{{128, 64, 32, 255}};
+        diffuse_descriptor.label =
+            "Alchemy world simple indexed sRGB diffuse";
+        auto indexed_diffuse = ALMetalTexture::create(
+            *device, diffuse_descriptor, &error);
+        INFO(error);
+        REQUIRE(indexed_diffuse);
+        const std::array<std::uint8_t, 4> indexed_diffuse_pixel{{
+            0, 255, 0, 255,
+        }};
+        auto upload = device->makeCommandBuffer(
+            "Alchemy world simple diffuse upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        REQUIRE(diffuse->upload(
+            *upload, 0, 0, {}, diffuse_pixel.data(), 4, &error));
+        REQUIRE(indexed_diffuse->upload(
+            *upload, 0, 0, {}, indexed_diffuse_pixel.data(), 4, &error));
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldSimpleBatch batch;
+        batch.vertices = vertices.get();
+        batch.position_offset = 0;
+        batch.normal_offset = normal_offset;
+        batch.texcoord_offset = texcoord_offset;
+        batch.color_offset = color_offset;
+        batch.vertex_count = positions.size();
+        batch.indices = indices.get();
+        batch.index_count = index_values.size();
+        batch.diffuse_textures[0] = diffuse.get();
+        batch.texture_count = 1;
+        for (std::size_t index = 0; index < 4; ++index)
+        {
+            batch.modelview_projection[index * 4 + index] = 1.f;
+        }
+        for (std::size_t index = 0; index < 3; ++index)
+        {
+            batch.normal_matrix[index][index] = 1.f;
+        }
+
+        ALMetalWorldGBufferScene scene;
+        scene.batches = &batch;
+        scene.batch_count = 1;
+        scene.width = 32;
+        scene.height = 32;
+        scene.normal_hdr = true;
+        scene.hdr = true;
+
+        batch.color_offset = vertex_bytes.size();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error ==
+              "Metal world simple geometry range exceeds its buffers");
+        batch.color_offset = color_offset;
+        error.clear();
+
+        auto result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(result);
+        CHECK(result->descriptor().color_attachment_count == 4);
+        CHECK(result->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba8_unorm_srgb);
+        CHECK(result->descriptor().colors[1].format ==
+              ALMetalPixelFormat::rgba8_unorm);
+        CHECK(result->descriptor().colors[2].format ==
+              ALMetalPixelFormat::rgba16_unorm);
+        CHECK(result->descriptor().colors[3].format ==
+              ALMetalPixelFormat::rg11b10_float);
+        REQUIRE(result->depthStencilTexture());
+
+        std::array<std::uint8_t, 32 * 32 * 4> albedo{};
+        REQUIRE(result->colorTexture(0)->readback(
+            *device, 0, 0, {}, albedo.data(), 32 * 4, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> specular{};
+        REQUIRE(result->colorTexture(1)->readback(
+            *device, 0, 0, {}, specular.data(), 32 * 4, &error));
+        INFO(error);
+        std::array<std::uint16_t, 32 * 32 * 4> normal{};
+        REQUIRE(result->colorTexture(2)->readback(
+            *device, 0, 0, {}, normal.data(), 32 * 8, &error));
+        INFO(error);
+
+        const std::size_t center = (16 * 32 + 16) * 4;
+        // Both diffuse and tint are decoded with the exact sRGB transfer;
+        // attachment zero then performs the hardware sRGB encode on store.
+        CHECK(std::abs(static_cast<int>(albedo[center + 0]) - 61) <= 1);
+        CHECK(std::abs(static_cast<int>(albedo[center + 1]) - 64) <= 1);
+        CHECK(std::abs(static_cast<int>(albedo[center + 2]) - 32) <= 1);
+        CHECK(albedo[center + 3] == 0);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(std::abs(static_cast<int>(specular[center + channel]) -
+                           128) <= 1);
+        }
+        CHECK(std::abs(static_cast<int>(normal[center + 0]) - 32768) <= 1);
+        CHECK(std::abs(static_cast<int>(normal[center + 1]) - 32768) <= 1);
+        CHECK(std::abs(static_cast<int>(normal[center + 2]) - 32896) <= 1);
+        CHECK(std::abs(static_cast<int>(normal[center + 3]) - 22282) <= 2);
+
+        std::array<float, 32 * 32> forward_depth{};
+        REQUIRE(result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, forward_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(forward_depth[16 * 32 + 16] - 0.625f) < 0.0001f);
+
+        // Forward GL clip depth is remapped from [-w,+w]. A reverse-Z world
+        // projection already emits Metal's [0,+w] convention and must not be
+        // remapped a second time.
+        scene.reverse_z = true;
+        auto reverse_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(reverse_result);
+        std::array<float, 32 * 32> reverse_depth{};
+        REQUIRE(reverse_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(reverse_depth[16 * 32 + 16] - 0.25f) < 0.0001f);
+
+        // TYPE_TEXTURE_INDEX aliases the fourth 32-bit word of the packed
+        // position stream. Verify the Metal vertex function reads that exact
+        // per-vertex word with the position's 16-byte stride and selects the
+        // corresponding entry from the viewer's 32-texture ladder.
+        constexpr std::int32_t indexed_texture = 1;
+        for (std::size_t vertex = 0; vertex < positions.size(); ++vertex)
+        {
+            std::memcpy(vertex_bytes.data() + vertex * sizeof(positions[0]) +
+                            sizeof(float) * 3,
+                        &indexed_texture, sizeof(indexed_texture));
+        }
+        REQUIRE(vertices->write(
+            0, vertex_bytes.data(), vertex_bytes.size(), &error));
+        batch.diffuse_textures[1] = indexed_diffuse.get();
+        batch.texture_count = 2;
+        scene.reverse_z = false;
+        auto indexed_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(indexed_result);
+        std::array<std::uint8_t, 32 * 32 * 4> indexed_albedo{};
+        REQUIRE(indexed_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, indexed_albedo.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(indexed_albedo[center + 0] == 0);
+        CHECK(indexed_albedo[center + 1] == 255);
+        CHECK(indexed_albedo[center + 2] == 0);
+        CHECK(indexed_albedo[center + 3] == 0);
     }
 }
 

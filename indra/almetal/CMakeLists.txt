@@ -84,6 +84,7 @@ target_sources(
     almetalterrainpaint.cpp
     almetaltextureops.cpp
     almetaluirenderer.cpp
+    almetalworld.cpp
   PUBLIC
     FILE_SET HEADERS
     FILES
@@ -97,6 +98,7 @@ target_sources(
       almetalterrainpaint.h
       almetaltextureops.h
       almetaluirenderer.h
+      almetalworld.h
 )
 target_compile_definitions(
   almetal

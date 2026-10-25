@@ -146,7 +146,13 @@ void LLDrawPoolSimple::renderDeferred(S32 pass)
 
     //render static
     shader->bind();
+#if LL_DARWIN
+    gPipeline.beginMetalWorldSimpleCapture();
+#endif
     pushBatches(LLRenderPass::PASS_SIMPLE, true, true);
+#if LL_DARWIN
+    gPipeline.endMetalWorldSimpleCapture();
+#endif
 
     //render rigged
     shader->bind(true);

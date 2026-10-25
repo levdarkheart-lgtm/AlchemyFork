@@ -138,6 +138,95 @@ static float4 almetal_clip_from_gl(float4 position)
     return position;
 }
 
+static float3 almetal_srgb_to_linear(float3 encoded);
+
+struct ALMetalWorldSimpleConstants
+{
+    float4x4 modelview_projection;
+    float4 normal_matrix[3];
+    float4x4 texture_matrix;
+    uint4 depth_convention;
+};
+
+struct ALMetalWorldSimpleVaryings
+{
+    float4 position [[position]];
+    float3 normal;
+    float4 color;
+    float2 texcoord;
+    uint texture_index [[flat]];
+    uint texture_count [[flat]];
+};
+
+struct ALMetalWorldGBufferOutput
+{
+    float4 albedo [[color(0)]];
+    float4 specular_orm [[color(1)]];
+    float4 normal [[color(2)]];
+    float4 emissive [[color(3)]];
+};
+
+vertex ALMetalWorldSimpleVaryings almetal_world_simple_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldSimpleConstants& constants [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    ALMetalWorldSimpleVaryings output;
+    float4 clip_position = constants.modelview_projection *
+                           float4(positions[vertex_id].xyz, 1.0);
+    // Match the GL render target's lower-left row-zero storage while the
+    // migration path compares the two G-buffers byte-for-byte.
+    clip_position.y = -clip_position.y;
+    output.position = constants.depth_convention.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+
+    const float3x3 normal_matrix = float3x3(
+        constants.normal_matrix[0].xyz,
+        constants.normal_matrix[1].xyz,
+        constants.normal_matrix[2].xyz);
+    output.normal = normalize(normal_matrix * normals[vertex_id].xyz);
+    const float4 encoded_color = float4(colors[vertex_id]) / 255.0;
+    output.color = float4(
+        almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.texture_index = constants.depth_convention.y > 1
+        ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
+    output.texture_count = constants.depth_convention.y;
+    return output;
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_simple_fragment(
+    ALMetalWorldSimpleVaryings input [[stage_in]],
+    array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]])
+{
+    const float4 diffuse = input.texture_index < input.texture_count
+        ? diffuse_textures[min(input.texture_index, 31u)].sample(
+              diffuse_sampler, input.texcoord)
+        : float4(1.0, 0.0, 1.0, 1.0);
+    const float3 color = input.color.rgb * diffuse.rgb;
+    const float3 normal = normalize(input.normal);
+    const float denominator = abs(normal.x) + abs(normal.y) + abs(normal.z);
+    float2 oct = normal.xy / max(denominator, 1.0e-20);
+    if (normal.z < 0.0)
+    {
+        oct = (1.0 - abs(oct.yx)) *
+              select(float2(-1.0), float2(1.0), oct >= 0.0);
+    }
+
+    ALMetalWorldGBufferOutput output;
+    output.albedo = float4(color, 0.0);
+    output.specular_orm = float4(input.color.aaa, input.color.a);
+    output.normal = float4(oct * 0.5 + 0.5,
+                           input.color.a, 0.34);
+    output.emissive = 0.0;
+    return output;
+}
+
 struct ALMetalTerrainPaintConstants
 {
     float4x4 modelview_projection;

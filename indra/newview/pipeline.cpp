@@ -70,6 +70,10 @@
 #include "llrender.h"
 #include "llstartup.h"
 #include "llwindow.h"   // swapBuffers()
+#if LL_DARWIN
+#include "../almetal/almetalworld.h"
+#include "llimagegl.h"
+#endif
 
 // newview includes
 #include "llagent.h"
@@ -366,6 +370,27 @@ bool addDeferredAttachments(LLRenderTarget& target)
     }
     return true;
 }
+
+#if LL_DARWIN
+struct LLPipeline::MetalWorldSimpleCapture
+{
+    static constexpr U32 max_failed_frames = 120;
+
+    const ALMetalDevice* device = nullptr;
+    std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
+    std::unique_ptr<ALMetalRenderTarget> target;
+    std::vector<ALMetalWorldSimpleBatch> batches;
+    U32 width = 0;
+    U32 height = 0;
+    bool active = false;
+    bool complete = false;
+    bool attempted = false;
+    U32 failed_frames = 0;
+    bool normal_hdr = false;
+    bool hdr = false;
+    bool reverse_z = false;
+};
+#endif
 
 LLPipeline::LLPipeline() :
     mBackfaceCull(false),
@@ -681,6 +706,226 @@ void LLPipeline::init()
         }
     }
 }
+
+#if LL_DARWIN
+void LLPipeline::beginMetalWorldSimpleCapture()
+{
+    if (!isMainWorldPass() || gSnapshot || !mGLResourcesLive)
+    {
+        return;
+    }
+    if (!mMetalWorldSimpleCapture)
+    {
+        mMetalWorldSimpleCapture =
+            std::make_unique<MetalWorldSimpleCapture>();
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.active || capture.attempted)
+    {
+        return;
+    }
+
+    ALMetalDevice* device = LLImageGL::getMetalDevice();
+    const std::optional<ALRenderTargetDesc>& descriptor =
+        mResourcePlan.desc(ALRenderResourcePlan::Id::MainGBuffer);
+    if (!device || !descriptor || descriptor->width == 0 ||
+        descriptor->height == 0)
+    {
+        // Startup can reach the draw-pool owner before the durable Metal
+        // device/resource plan exists. Leave the probe armed for a later
+        // world frame rather than permanently treating that ordering as a
+        // renderer failure.
+        return;
+    }
+
+    if (capture.device != device)
+    {
+        capture.renderer.reset();
+        capture.target.reset();
+        capture.device = device;
+    }
+    if (!capture.renderer)
+    {
+        std::string error;
+        capture.renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        if (!capture.renderer)
+        {
+            capture.attempted = true;
+            LL_WARNS("Metal")
+                << "Could not initialize the native world G-buffer probe: "
+                << error << LL_ENDL;
+            return;
+        }
+    }
+
+    capture.batches.clear();
+    capture.width = descriptor->width;
+    capture.height = descriptor->height;
+    capture.normal_hdr = LLRender::sGBufferNormHDR;
+    capture.hdr = hdrEnabled();
+    capture.reverse_z = LLRender::sReverseZ;
+    capture.complete = true;
+    capture.active = true;
+}
+
+void LLPipeline::captureMetalWorldSimpleBatch(const LLDrawInfo& params,
+                                              bool batch_textures)
+{
+    if (!mMetalWorldSimpleCapture || !mMetalWorldSimpleCapture->active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || !params.mCount)
+    {
+        return;
+    }
+    LLVertexBuffer* buffer = params.mVertexBuffer.get();
+    const bool indexed_textures =
+        batch_textures && params.mTextureList.size() > 1;
+    const std::size_t texture_count = indexed_textures
+        ? params.mTextureList.size() : 1;
+    if (!buffer || texture_count >
+            ALMetalWorldSimpleBatch::max_diffuse_textures ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
+        (indexed_textures &&
+         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX)) ||
+        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer())
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+
+    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    LLMatrix4a inverse_modelview;
+    if (!inverse_modelview.setAffineInverse(modelview))
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+
+    ALMetalWorldSimpleBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.normal_offset = buffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
+    batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_offset = static_cast<std::size_t>(params.mOffset) *
+                         buffer->getIndexStride();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = params.mCount;
+    batch.texture_count = static_cast<U32>(texture_count);
+    for (std::size_t index = 0; index < texture_count; ++index)
+    {
+        LLViewerTexture* texture = indexed_textures
+            ? params.mTextureList[index].get() : params.mTexture.get();
+        if (!texture)
+        {
+            texture = LLViewerFetchedTexture::sWhiteImagep.get();
+        }
+        LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        batch.diffuse_textures[index] = image
+            ? image->getMetalTexture() : nullptr;
+        if (!batch.diffuse_textures[index])
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
+    }
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+
+    const F32* inverse = inverse_modelview.getF32ptr();
+    for (U32 column = 0; column < 3; ++column)
+    {
+        batch.normal_matrix[column][0] = inverse[0 * 4 + column];
+        batch.normal_matrix[column][1] = inverse[1 * 4 + column];
+        batch.normal_matrix[column][2] = inverse[2 * 4 + column];
+    }
+    if (!indexed_textures && params.mTextureMatrix &&
+        (!gCubeSnapshot || mHeroProbeManager.isMirrorPass()))
+    {
+        std::memcpy(batch.texture_matrix, params.mTextureMatrix->mMatrix,
+                    sizeof(batch.texture_matrix));
+    }
+    capture.batches.push_back(batch);
+}
+
+void LLPipeline::endMetalWorldSimpleCapture()
+{
+    if (!mMetalWorldSimpleCapture || !mMetalWorldSimpleCapture->active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.active = false;
+    if (!capture.complete || capture.batches.empty())
+    {
+        capture.batches.clear();
+        if (++capture.failed_frames >=
+            MetalWorldSimpleCapture::max_failed_frames)
+        {
+            capture.attempted = true;
+            LL_WARNS("Metal")
+                << "Native world G-buffer probe retained GL after "
+                << capture.failed_frames
+                << " PASS_SIMPLE frames contained incomplete native "
+                   "geometry or texture mirrors"
+                << LL_ENDL;
+        }
+        return;
+    }
+
+    ALMetalWorldGBufferScene scene;
+    scene.batches = capture.batches.data();
+    scene.batch_count = capture.batches.size();
+    scene.width = capture.width;
+    scene.height = capture.height;
+    scene.normal_hdr = capture.normal_hdr;
+    scene.hdr = capture.hdr;
+    scene.reverse_z = capture.reverse_z;
+    std::string error;
+    capture.target = capture.renderer->render(scene, &error);
+    if (!capture.target)
+    {
+        if (++capture.failed_frames >=
+            MetalWorldSimpleCapture::max_failed_frames)
+        {
+            capture.attempted = true;
+            LL_WARNS("Metal")
+                << "Native world G-buffer probe retained GL after "
+                << capture.failed_frames << " render failures: "
+                << error << LL_ENDL;
+        }
+    }
+    else
+    {
+        capture.attempted = true;
+        capture.failed_frames = 0;
+        LL_INFOS("Metal")
+            << "Native world G-buffer bootstrap encoded "
+            << capture.batches.size()
+            << " static PASS_SIMPLE batches at " << capture.width << "x"
+            << capture.height
+            << "; presentation remains on GL until the remaining world passes exist"
+            << LL_ENDL;
+    }
+    capture.batches.clear();
+}
+#endif
 
 LLPipeline::~LLPipeline()
 {

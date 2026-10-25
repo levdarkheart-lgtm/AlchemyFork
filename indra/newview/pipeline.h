@@ -59,6 +59,7 @@
 #include "alscopedata.h"
 
 #include <array>
+#include <memory>
 #include <stack>
 
 class LLViewerTexture;
@@ -249,6 +250,11 @@ private:
     bool                   mResourcesFullSize = true;
     // The link of gDeferredGenBrdfLutProgram (LLGLSLShader::linkCount) the BRDF LUT was last drawn with.
     U32                    mBrdfLutLinks = 0;
+
+#if LL_DARWIN
+    struct MetalWorldSimpleCapture;
+    std::unique_ptr<MetalWorldSimpleCapture> mMetalWorldSimpleCapture;
+#endif
 
     // The changes marked since the last application, and how many the one running applies, for the log line.
     ALRenderInputRequests mRenderInputRequests;
@@ -566,6 +572,16 @@ public:
     void renderGeomPostDeferred(LLCamera& camera);
     void renderGeomShadow(LLCamera& camera);
     void bindBrdfLut(LLGLSLShader& shader);
+
+#if LL_DARWIN
+    // One fail-closed production probe of the first native world slice. The
+    // static PASS_SIMPLE owner brackets its ordinary GL sweep with these
+    // calls; pushBatch snapshots each exact draw after applying its matrices.
+    void beginMetalWorldSimpleCapture();
+    void captureMetalWorldSimpleBatch(const LLDrawInfo& params,
+                                      bool batch_textures);
+    void endMetalWorldSimpleCapture();
+#endif
 
     // bind shadow maps
     // if setup is true, wil lset texture compare mode function and filtering options
