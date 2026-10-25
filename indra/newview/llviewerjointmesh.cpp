@@ -307,6 +307,7 @@ U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
     const ALSampler skin_key = (bound && bound->mLinearDiffuse)
                              ? ALSamplers::AnisoWrapSRGB
                              : ALSamplers::AnisoWrap;
+    LLGLTexture* diffuse = nullptr;
 
     if (mTestImageName)
     {
@@ -323,7 +324,6 @@ U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
     }
     else
     {
-        LLGLTexture* diffuse = nullptr;
         if (!is_dummy && layerset)
         {
             diffuse = layerset->hasComposite() ? layerset->getViewerComposite() : nullptr;
@@ -359,6 +359,10 @@ U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
             uploadJointMatrices();
         }
 
+#if LL_DARWIN
+        gPipeline.captureMetalWorldAvatarBatch(
+            *this, buff, diffuse, start, end, count, offset);
+#endif
         buff->setBuffer();
         buff->drawRange(LLRender::TRIANGLES, start, end, count, offset);
     }
@@ -367,6 +371,10 @@ U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
         gGL.pushMatrix();
         LLMatrix4 jointToWorld = getWorldMatrix().toMatrix4();
         gGL.multMatrix((GLfloat*)jointToWorld.mMatrix);
+#if LL_DARWIN
+        gPipeline.captureMetalWorldAvatarBatch(
+            *this, buff, diffuse, start, end, count, offset);
+#endif
         buff->setBuffer();
         buff->drawRange(LLRender::TRIANGLES, start, end, count, offset);
         gGL.popMatrix();

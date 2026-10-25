@@ -59,6 +59,7 @@ struct ALMetalWorldSimpleBatch
     std::size_t color_offset = 0;
     std::size_t tangent_offset = 0;
     std::size_t weight_offset = 0;
+    std::size_t cloth_offset = 0;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;
@@ -77,6 +78,9 @@ struct ALMetalWorldSimpleBatch
     std::uint32_t skin_joint_count = 0;
     bool alpha_mask = false;
     bool double_sided = false;
+    bool avatar_rigid = false;
+    bool avatar_skinning = false;
+    bool avatar_cloth = false;
     bool use_vertex_color = true;
     bool alpha_cutoff_bias = true;
     float alpha_cutoff = 0.f;
@@ -89,6 +93,10 @@ struct ALMetalWorldSimpleBatch
         0.f, 0.f, 1.f, 0.f,
         0.f, 0.f, 0.f, 1.f,
     };
+    float avatar_wind[4]{};
+    float avatar_sin_wave[4]{};
+    float avatar_gravity[4]{};
+    float avatar_cloth_depth[4]{};
 };
 
 struct ALMetalWorldGBufferScene
@@ -103,7 +111,8 @@ struct ALMetalWorldGBufferScene
     float clear_color[4] = {1.f, 0.f, 1.f, 1.f};
 };
 
-// The ordered native world G-buffer owner for legacy and PBR material families.
+// The ordered native world G-buffer owner for supported object, material and
+// system-avatar families.
 // It writes four colour attachments plus depth and is not presented yet. The
 // viewer runs one bounded fail-closed probe so world integration can advance
 // without doubling these passes every migration frame.

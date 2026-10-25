@@ -85,6 +85,7 @@
 #include "lldrawable.h"
 #include "lldrawpoolalpha.h"
 #include "lldrawpoolavatar.h"
+#include "llviewerjointmesh.h"
 #include "lldrawpoolbump.h"
 #include "lldrawpooltree.h"
 #include "lldrawpoolwater.h"
@@ -380,6 +381,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
     std::unique_ptr<ALMetalRenderTarget> target;
     std::vector<ALMetalWorldSimpleBatch> batches;
+    std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
+        avatar_palettes;
     U32 width = 0;
     U32 height = 0;
     bool frame_active = false;
@@ -393,6 +396,13 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool material_normal_map = false;
     bool material_specular_map = false;
     bool pbr = false;
+    bool avatar = false;
+    bool avatar_skinned = false;
+    bool avatar_cloth = false;
+    F32 avatar_wind[4]{};
+    F32 avatar_sin_wave[4]{};
+    F32 avatar_gravity[4]{};
+    F32 avatar_cloth_depth[4]{};
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
@@ -767,6 +777,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
 
     capture.batches.clear();
+    capture.avatar_palettes.clear();
     capture.width = descriptor->width;
     capture.height = descriptor->height;
     capture.normal_hdr = LLRender::sGBufferNormHDR;
@@ -797,6 +808,7 @@ void LLPipeline::beginMetalWorldGBufferPass(bool rigged, bool alpha_mask)
     capture.material_normal_map = false;
     capture.material_specular_map = false;
     capture.pbr = false;
+    capture.avatar = false;
     capture.pass_active = true;
 }
 
@@ -828,6 +840,7 @@ void LLPipeline::beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode,
     capture.material_normal_map = normal_map;
     capture.material_specular_map = specular_map;
     capture.pbr = false;
+    capture.avatar = false;
     capture.pass_active = true;
 }
 
@@ -851,6 +864,55 @@ void LLPipeline::beginMetalWorldPBRPass(bool rigged, bool alpha_mask)
     capture.material_normal_map = false;
     capture.material_specular_map = false;
     capture.pbr = true;
+    capture.avatar = false;
+    capture.pass_active = true;
+}
+
+void LLPipeline::beginMetalWorldAvatarPass(
+    bool skinned, bool cloth, const F32* wind, const F32* sin_wave,
+    const F32* gravity, const F32* cloth_depth)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active || (cloth && !skinned) ||
+        (cloth && (!wind || !sin_wave || !gravity || !cloth_depth)))
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        capture.avatar_palettes.clear();
+        return;
+    }
+    capture.rigged = false;
+    capture.alpha_mask = true;
+    capture.material_alpha_mode = 0;
+    capture.material_normal_map = false;
+    capture.material_specular_map = false;
+    capture.pbr = false;
+    capture.avatar = true;
+    capture.avatar_skinned = skinned;
+    capture.avatar_cloth = cloth;
+    std::memset(capture.avatar_wind, 0, sizeof(capture.avatar_wind));
+    std::memset(capture.avatar_sin_wave, 0,
+                sizeof(capture.avatar_sin_wave));
+    std::memset(capture.avatar_gravity, 0,
+                sizeof(capture.avatar_gravity));
+    std::memset(capture.avatar_cloth_depth, 0,
+                sizeof(capture.avatar_cloth_depth));
+    if (cloth)
+    {
+        std::memcpy(capture.avatar_wind, wind,
+                    sizeof(capture.avatar_wind));
+        std::memcpy(capture.avatar_sin_wave, sin_wave,
+                    sizeof(capture.avatar_sin_wave));
+        std::memcpy(capture.avatar_gravity, gravity,
+                    sizeof(capture.avatar_gravity));
+        std::memcpy(capture.avatar_cloth_depth, cloth_depth,
+                    sizeof(capture.avatar_cloth_depth));
+    }
     capture.pass_active = true;
 }
 
@@ -1326,6 +1388,139 @@ void LLPipeline::captureMetalWorldPBRBatch(
     }
 }
 
+void LLPipeline::captureMetalWorldAvatarBatch(
+    const LLViewerJointMesh& mesh, LLVertexBuffer* buffer,
+    LLGLTexture* texture, U32 start, U32 end, U32 count, U32 offset)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->pass_active ||
+        !mMetalWorldSimpleCapture->avatar)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const auto fail = [&capture]()
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        capture.avatar_palettes.clear();
+    };
+    LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+    if (!capture.complete || !buffer || !image || count == 0 ||
+        start > end || end >= buffer->getNumVerts() ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer() ||
+        !image->getMetalTexture() ||
+        (capture.avatar_skinned &&
+         !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT)) ||
+        (capture.avatar_cloth &&
+         !buffer->hasDataType(LLVertexBuffer::TYPE_CLOTHWEIGHT)))
+    {
+        fail();
+        return;
+    }
+    const std::size_t index_stride = buffer->getIndexStride();
+    if (index_stride != 2 && index_stride != 4)
+    {
+        fail();
+        return;
+    }
+    const std::size_t index_offset =
+        static_cast<std::size_t>(offset) * index_stride;
+    if (count > (std::numeric_limits<std::size_t>::max() - index_offset) /
+                    index_stride ||
+        index_offset + static_cast<std::size_t>(count) * index_stride >
+            buffer->getMetalIndexBuffer()->length())
+    {
+        fail();
+        return;
+    }
+
+    ALMetalWorldSimpleBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.normal_offset = buffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
+    batch.texcoord_offset = buffer->getOffset(
+        LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_offset = index_offset;
+    batch.index_type = index_stride == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = count;
+    batch.diffuse_textures[0] = image->getMetalTexture();
+    batch.texture_count = 1;
+    batch.alpha_mask = true;
+    batch.use_vertex_color = false;
+    batch.alpha_cutoff_bias = false;
+    batch.alpha_cutoff = LLDrawPoolAvatar::sMinimumAlpha;
+    batch.avatar_rigid = !capture.avatar_skinned;
+    batch.avatar_skinning = capture.avatar_skinned;
+    batch.avatar_cloth = capture.avatar_cloth;
+
+    if (capture.avatar_skinned)
+    {
+        auto palette =
+            std::make_unique<std::array<F32, 45 * 4>>();
+        if (!mesh.buildJointMatrixPalette(
+                palette->data(), palette->size()))
+        {
+            fail();
+            return;
+        }
+        batch.weight_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_WEIGHT);
+        batch.skin_palette = palette->data();
+        batch.skin_palette_float_count = palette->size();
+        batch.skin_joint_count = 15;
+        capture.avatar_palettes.push_back(std::move(palette));
+        std::memcpy(batch.modelview_projection,
+                    gGL.getProjectionMatrix().getF32ptr(),
+                    sizeof(batch.modelview_projection));
+        if (capture.avatar_cloth)
+        {
+            batch.cloth_offset = buffer->getOffset(
+                LLVertexBuffer::TYPE_CLOTHWEIGHT);
+            std::memcpy(batch.avatar_wind, capture.avatar_wind,
+                        sizeof(batch.avatar_wind));
+            std::memcpy(batch.avatar_sin_wave, capture.avatar_sin_wave,
+                        sizeof(batch.avatar_sin_wave));
+            std::memcpy(batch.avatar_gravity, capture.avatar_gravity,
+                        sizeof(batch.avatar_gravity));
+            std::memcpy(batch.avatar_cloth_depth,
+                        capture.avatar_cloth_depth,
+                        sizeof(batch.avatar_cloth_depth));
+        }
+    }
+    else
+    {
+        const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+        LLMatrix4a inverse_modelview;
+        if (!inverse_modelview.setAffineInverse(modelview))
+        {
+            fail();
+            return;
+        }
+        LLMatrix4a modelview_projection;
+        modelview_projection.setMul(
+            modelview, gGL.getProjectionMatrix());
+        std::memcpy(batch.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.modelview_projection));
+        const F32* inverse = inverse_modelview.getF32ptr();
+        for (U32 column = 0; column < 3; ++column)
+        {
+            batch.normal_matrix[column][0] = inverse[0 * 4 + column];
+            batch.normal_matrix[column][1] = inverse[1 * 4 + column];
+            batch.normal_matrix[column][2] = inverse[2 * 4 + column];
+        }
+    }
+    capture.batches.push_back(batch);
+}
+
 void LLPipeline::captureMetalWorldTreeBatch(LLVertexBuffer* buffer,
                                             LLViewerTexture* texture)
 {
@@ -1427,6 +1622,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     if (!capture.complete || capture.batches.empty())
     {
         capture.batches.clear();
+        capture.avatar_palettes.clear();
         if (++capture.failed_frames >=
             MetalWorldSimpleCapture::max_failed_frames)
         {
@@ -1476,6 +1672,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
             << LL_ENDL;
     }
     capture.batches.clear();
+    capture.avatar_palettes.clear();
 }
 #endif
 

@@ -72,6 +72,8 @@ class LLVOPartGroup;
 class LLGLSLShader;
 class LLDrawPoolAlpha;
 class LLSettingsSky;
+class LLViewerJointMesh;
+class LLGLTexture;
 
 typedef enum e_avatar_skinning_method
 {
@@ -582,6 +584,11 @@ public:
     void beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode,
                                      bool normal_map, bool specular_map);
     void beginMetalWorldPBRPass(bool rigged, bool alpha_mask);
+    void beginMetalWorldAvatarPass(bool skinned, bool cloth,
+                                   const F32* wind = nullptr,
+                                   const F32* sin_wave = nullptr,
+                                   const F32* gravity = nullptr,
+                                   const F32* cloth_depth = nullptr);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
     void captureMetalWorldMaterialBatch(const LLDrawInfo& params,
@@ -592,6 +599,11 @@ public:
                                    LLViewerTexture* normal_texture);
     void captureMetalWorldTreeBatch(LLVertexBuffer* buffer,
                                     LLViewerTexture* texture);
+    void captureMetalWorldAvatarBatch(const LLViewerJointMesh& mesh,
+                                      LLVertexBuffer* buffer,
+                                      LLGLTexture* texture,
+                                      U32 start, U32 end,
+                                      U32 count, U32 offset);
     void endMetalWorldGBufferPass();
     void endMetalWorldGBufferCapture();
 #endif

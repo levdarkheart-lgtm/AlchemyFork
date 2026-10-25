@@ -72,31 +72,37 @@ extern bool gUseGLPick;
 F32 CLOTHING_GRAVITY_EFFECT = 0.7f;
 F32 CLOTHING_ACCEL_FORCE_FACTOR = 0.2f;
 
-// The cloth uniforms (avatarSkinV's getClothedPosition) for one avatar, turned into the eye space getModelView()
-// skins it into: the camera's, or the shadow map's.
-static void set_cloth_uniforms(LLGLSLShader* shader, const LLVOAvatar* avatarp)
+struct AvatarClothUniforms
+{
+    LLVector4 wind;
+    LLVector4 sin_wave;
+    LLVector4 gravity;
+    LLVector4 depth;
+};
+
+// The cloth uniforms (avatarSkinV's getClothedPosition) for one avatar, turned
+// into the eye space getModelView() skins it into: the camera's, or the shadow
+// map's. The native world owner consumes the exact same derived values.
+static AvatarClothUniforms avatar_cloth_uniforms(const LLVOAvatar* avatarp)
 {
     const LLMatrix4& view = LLDrawPoolAvatar::getModelView();
 
-    LLVector4 wind;
-    wind.setVec(avatarp->mWindVec);
-    wind.mV[VW] = 0;
-    wind = wind * view;
-    wind.mV[VW] = avatarp->mWindVec.mV[VW];
-    shader->uniform4fv(LLViewerShaderMgr::AVATAR_WIND, 1, wind.mV);
+    AvatarClothUniforms uniforms;
+    uniforms.wind.setVec(avatarp->mWindVec);
+    uniforms.wind.mV[VW] = 0;
+    uniforms.wind = uniforms.wind * view;
+    uniforms.wind.mV[VW] = avatarp->mWindVec.mV[VW];
 
     F32 phase = -1.f * (avatarp->mRipplePhase);
     F32 freq = 7.f + (noise1(avatarp->mRipplePhase) * 2.f);
-    LLVector4 sin_params(freq, freq, freq, phase);
-    shader->uniform4fv(LLViewerShaderMgr::AVATAR_SINWAVE, 1, sin_params.mV);
+    uniforms.sin_wave.set(freq, freq, freq, phase);
 
-    LLVector4 gravity(0.f, 0.f, -CLOTHING_GRAVITY_EFFECT, 0.f);
-    gravity = gravity * view;
-    shader->uniform4fv(LLViewerShaderMgr::AVATAR_GRAVITY, 1, gravity.mV);
+    uniforms.gravity.set(0.f, 0.f, -CLOTHING_GRAVITY_EFFECT, 0.f);
+    uniforms.gravity = uniforms.gravity * view;
 
     // The ripple's phase runs along the main camera's depth: in a shadow or capture pass the depth column of the
     // current eye space carried back to the agent's frame and on into the main camera's.
-    LLVector4 depth_row(0.f, 0.f, 1.f, 0.f);
+    uniforms.depth.set(0.f, 0.f, 1.f, 0.f);
     LLViewerCamera* main_camera = LLViewerCamera::getInstance();
     if (&LLViewerCamera::getCurrent() != main_camera)
     {
@@ -105,9 +111,29 @@ static void set_cloth_uniforms(LLGLSLShader* shader, const LLVOAvatar* avatarp)
         LLMatrix4 to_main = view;
         to_main.invert();
         to_main *= main_view;
-        depth_row.set(to_main.mMatrix[0][2], to_main.mMatrix[1][2], to_main.mMatrix[2][2], to_main.mMatrix[3][2]);
+        uniforms.depth.set(to_main.mMatrix[0][2], to_main.mMatrix[1][2],
+                           to_main.mMatrix[2][2], to_main.mMatrix[3][2]);
     }
-    shader->uniform4fv(LLViewerShaderMgr::AVATAR_CLOTH_DEPTH, 1, depth_row.mV);
+    return uniforms;
+}
+
+static void set_cloth_uniforms(LLGLSLShader* shader,
+                               const AvatarClothUniforms& uniforms)
+{
+    shader->uniform4fv(LLViewerShaderMgr::AVATAR_WIND, 1,
+                       uniforms.wind.mV);
+    shader->uniform4fv(LLViewerShaderMgr::AVATAR_SINWAVE, 1,
+                       uniforms.sin_wave.mV);
+    shader->uniform4fv(LLViewerShaderMgr::AVATAR_GRAVITY, 1,
+                       uniforms.gravity.mV);
+    shader->uniform4fv(LLViewerShaderMgr::AVATAR_CLOTH_DEPTH, 1,
+                       uniforms.depth.mV);
+}
+
+static void set_cloth_uniforms(LLGLSLShader* shader,
+                               const LLVOAvatar* avatarp)
+{
+    set_cloth_uniforms(shader, avatar_cloth_uniforms(avatarp));
 }
 
 // Format for gAGPVertices
@@ -931,18 +957,39 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
     if (pass == 1)
     {
         // render rigid meshes (eyeballs) first
+#if LL_DARWIN
+        gPipeline.beginMetalWorldAvatarPass(false, false);
+#endif
         avatarp->renderRigid();
+#if LL_DARWIN
+        gPipeline.endMetalWorldGBufferPass();
+#endif
         return;
     }
 
-    if (gPipeline.shaderInputs().mLocal.mAvatarCloth)
+    const bool avatar_cloth =
+        gPipeline.shaderInputs().mLocal.mAvatarCloth;
+    AvatarClothUniforms cloth_uniforms;
+    if (avatar_cloth)
     {
-        set_cloth_uniforms(sVertexProgram, avatarp);
+        cloth_uniforms = avatar_cloth_uniforms(avatarp);
+        set_cloth_uniforms(sVertexProgram, cloth_uniforms);
     }
 
     if( !single_avatar || (avatarp == single_avatar) )
     {
+#if LL_DARWIN
+        gPipeline.beginMetalWorldAvatarPass(
+            true, avatar_cloth,
+            avatar_cloth ? cloth_uniforms.wind.mV : nullptr,
+            avatar_cloth ? cloth_uniforms.sin_wave.mV : nullptr,
+            avatar_cloth ? cloth_uniforms.gravity.mV : nullptr,
+            avatar_cloth ? cloth_uniforms.depth.mV : nullptr);
+#endif
         avatarp->renderSkinned();
+#if LL_DARWIN
+        gPipeline.endMetalWorldGBufferPass();
+#endif
     }
 }
 

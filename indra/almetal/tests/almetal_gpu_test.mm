@@ -123,6 +123,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_material_skinned_vertex",
             "almetal_world_pbr_vertex",
             "almetal_world_pbr_skinned_vertex",
+            "almetal_world_avatar_rigid_vertex",
+            "almetal_world_avatar_skinned_vertex",
+            "almetal_world_avatar_cloth_skinned_vertex",
             "almetal_world_simple_fragment",
             "almetal_world_alpha_mask_fragment",
             "almetal_world_bump_fragment",
@@ -867,6 +870,12 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             {{0.5f, 0.f, 0.f, 0.f}},
             {{0.5f, 0.f, 0.f, 0.f}},
         }};
+        const std::array<float, 3> avatar_weights{{0.f, 0.f, 0.f}};
+        const std::array<std::array<float, 4>, 3> avatar_clothing{{
+            {{0.25f, 0.f, 0.f, 1.f}},
+            {{0.25f, 0.f, 0.f, 1.f}},
+            {{0.25f, 0.f, 0.f, 1.f}},
+        }};
         constexpr std::size_t normal_offset = sizeof(positions);
         constexpr std::size_t texcoord_offset =
             normal_offset + sizeof(normals);
@@ -876,6 +885,11 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             (color_offset + sizeof(colors) + 15) & ~std::size_t{15};
         constexpr std::size_t weight_offset =
             tangent_offset + sizeof(tangents);
+        constexpr std::size_t avatar_weight_offset =
+            texcoord_offset + sizeof(texcoords);
+        constexpr std::size_t avatar_cloth_offset =
+            (avatar_weight_offset + sizeof(avatar_weights) + 15) &
+            ~std::size_t{15};
         std::array<std::uint8_t, weight_offset + sizeof(weights)> vertex_bytes{};
         std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
         std::memcpy(vertex_bytes.data() + normal_offset,
@@ -888,6 +902,19 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                     tangents.data(), sizeof(tangents));
         std::memcpy(vertex_bytes.data() + weight_offset,
                     weights.data(), sizeof(weights));
+        std::array<std::uint8_t,
+                   avatar_cloth_offset + sizeof(avatar_clothing)>
+            avatar_vertex_bytes{};
+        std::memcpy(avatar_vertex_bytes.data(),
+                    positions.data(), sizeof(positions));
+        std::memcpy(avatar_vertex_bytes.data() + normal_offset,
+                    normals.data(), sizeof(normals));
+        std::memcpy(avatar_vertex_bytes.data() + texcoord_offset,
+                    texcoords.data(), sizeof(texcoords));
+        std::memcpy(avatar_vertex_bytes.data() + avatar_weight_offset,
+                    avatar_weights.data(), sizeof(avatar_weights));
+        std::memcpy(avatar_vertex_bytes.data() + avatar_cloth_offset,
+                    avatar_clothing.data(), sizeof(avatar_clothing));
 
         ALMetalBufferDescriptor vertex_descriptor;
         vertex_descriptor.length = vertex_bytes.size();
@@ -899,6 +926,17 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         REQUIRE(vertices);
         REQUIRE(vertices->write(
             0, vertex_bytes.data(), vertex_bytes.size(), &error));
+        ALMetalBufferDescriptor avatar_vertex_descriptor = vertex_descriptor;
+        avatar_vertex_descriptor.length = avatar_vertex_bytes.size();
+        avatar_vertex_descriptor.label =
+            "Alchemy world avatar test vertices";
+        auto avatar_vertices = ALMetalBuffer::create(
+            *device, avatar_vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(avatar_vertices);
+        REQUIRE(avatar_vertices->write(
+            0, avatar_vertex_bytes.data(), avatar_vertex_bytes.size(),
+            &error));
 
         const std::array<std::uint16_t, 3> index_values{{0, 1, 2}};
         ALMetalBufferDescriptor index_descriptor;
@@ -1726,6 +1764,129 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(skinned_pbr_albedo[translated_center + 0] == 0);
         CHECK(skinned_pbr_albedo[translated_center + 1] == 255);
         CHECK(skinned_pbr_albedo[translated_center + 2] == 0);
+
+        // System-avatar eyes and body meshes have no streamed color. Rigid
+        // parts use the live matrix stack; weighted parts use the legacy
+        // scalar joint/blend stream and exact 45-float4 eye-space palette.
+        batch = ALMetalWorldSimpleBatch{};
+        batch.vertices = avatar_vertices.get();
+        batch.position_offset = 0;
+        batch.normal_offset = normal_offset;
+        batch.texcoord_offset = texcoord_offset;
+        batch.vertex_count = positions.size();
+        batch.indices = indices.get();
+        batch.index_count = index_values.size();
+        batch.diffuse_textures[0] = diffuse.get();
+        batch.texture_count = 1;
+        batch.alpha_mask = true;
+        batch.use_vertex_color = false;
+        batch.alpha_cutoff_bias = false;
+        batch.alpha_cutoff = 0.2f;
+        batch.avatar_rigid = true;
+        for (std::size_t index = 0; index < 4; ++index)
+        {
+            batch.modelview_projection[index * 4 + index] = 1.f;
+        }
+        for (std::size_t index = 0; index < 3; ++index)
+        {
+            batch.normal_matrix[index][index] = 1.f;
+        }
+        scene.hdr = true;
+
+        batch.avatar_skinning = true;
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal world simple batch is invalid");
+        batch.avatar_skinning = false;
+        error.clear();
+        auto avatar_rigid_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(avatar_rigid_result);
+        std::array<std::uint8_t, 32 * 32 * 4> avatar_rigid_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4> avatar_rigid_specular{};
+        REQUIRE(avatar_rigid_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, avatar_rigid_albedo.data(), 32 * 4,
+            &error));
+        REQUIRE(avatar_rigid_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, avatar_rigid_specular.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(avatar_rigid_albedo[center + 0]) -
+                       128) <= 1);
+        CHECK(std::abs(static_cast<int>(avatar_rigid_albedo[center + 1]) -
+                       64) <= 1);
+        CHECK(std::abs(static_cast<int>(avatar_rigid_albedo[center + 2]) -
+                       32) <= 1);
+        CHECK(avatar_rigid_specular[center + 0] == 0);
+        CHECK(avatar_rigid_specular[center + 1] == 0);
+        CHECK(avatar_rigid_specular[center + 2] == 0);
+        CHECK(avatar_rigid_specular[center + 3] == 0);
+
+        std::array<float, 45 * 4> avatar_palette{};
+        avatar_palette[0] = 1.f;
+        avatar_palette[3] = 0.75f;
+        avatar_palette[15 * 4 + 1] = 1.f;
+        avatar_palette[30 * 4 + 2] = 1.f;
+        batch.avatar_rigid = false;
+        batch.avatar_skinning = true;
+        batch.weight_offset = avatar_weight_offset;
+        batch.skin_palette = avatar_palette.data();
+        batch.skin_palette_float_count = avatar_palette.size() - 1;
+        batch.skin_joint_count = 15;
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal world avatar skinning data is invalid");
+        batch.skin_palette_float_count = avatar_palette.size();
+        error.clear();
+        auto avatar_skinned_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(avatar_skinned_result);
+        std::array<std::uint8_t, 32 * 32 * 4> avatar_skinned_albedo{};
+        REQUIRE(avatar_skinned_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, avatar_skinned_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        const std::size_t avatar_translated = (16 * 32 + 24) * 4;
+        CHECK(avatar_skinned_albedo[center + 0] == 255);
+        CHECK(avatar_skinned_albedo[center + 1] == 0);
+        CHECK(avatar_skinned_albedo[center + 2] == 255);
+        CHECK(std::abs(static_cast<int>(
+                           avatar_skinned_albedo[avatar_translated + 0]) -
+                       128) <= 1);
+        CHECK(std::abs(static_cast<int>(
+                           avatar_skinned_albedo[avatar_translated + 1]) -
+                       64) <= 1);
+
+        // With a unit wind strength and phase PI, the owner's minimax sine
+        // produces a unit primary displacement. The clothing X vector moves
+        // this triangle another quarter clip unit; its X wind also turns the
+        // stored normal through the same exaggerated legacy perturbation.
+        batch.avatar_cloth = true;
+        batch.cloth_offset = avatar_cloth_offset;
+        batch.avatar_wind[0] = 1.f;
+        batch.avatar_wind[3] = 1.f;
+        batch.avatar_sin_wave[3] = 3.141592f;
+        auto avatar_cloth_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(avatar_cloth_result);
+        std::array<std::uint8_t, 32 * 32 * 4> avatar_cloth_albedo{};
+        std::array<std::uint16_t, 32 * 32 * 4> avatar_cloth_normal{};
+        REQUIRE(avatar_cloth_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, avatar_cloth_albedo.data(), 32 * 4,
+            &error));
+        REQUIRE(avatar_cloth_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, avatar_cloth_normal.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const std::size_t avatar_cloth_translated = (16 * 32 + 28) * 4;
+        CHECK(avatar_cloth_albedo[avatar_translated + 0] == 255);
+        CHECK(avatar_cloth_albedo[avatar_translated + 1] == 0);
+        CHECK(avatar_cloth_albedo[avatar_translated + 2] == 255);
+        CHECK(std::abs(static_cast<int>(
+                           avatar_cloth_albedo[
+                               avatar_cloth_translated + 0]) - 128) <= 1);
+        CHECK(avatar_cloth_normal[avatar_cloth_translated + 0] > 40000);
+        CHECK(std::abs(static_cast<int>(
+                           avatar_cloth_normal[
+                               avatar_cloth_translated + 1]) - 32768) <= 2);
     }
 }
 

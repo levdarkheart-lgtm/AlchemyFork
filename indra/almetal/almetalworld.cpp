@@ -36,6 +36,10 @@ namespace
         float texture_matrix[16];
         float material[4]{};
         std::uint32_t depth_convention[4]{};
+        float avatar_wind[4]{};
+        float avatar_sin_wave[4]{};
+        float avatar_gravity[4]{};
+        float avatar_cloth_depth[4]{};
     };
 
     struct alignas(16) WorldMaterialSlotConstants
@@ -126,12 +130,14 @@ struct ALMetalWorldGBufferRenderer::Impl
     using MaskPipelines = std::array<RiggedPipelines, 2>;
     using BumpPipelines = std::array<MaskPipelines, 2>;
     using MaterialRiggedPipelines = std::array<NormalPipelines, 2>;
+    using AvatarVariantPipelines = std::array<NormalPipelines, 3>;
 
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::array<BumpPipelines, 2> pipelines;
     std::array<MaterialRiggedPipelines, 2> material_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
+    std::array<AvatarVariantPipelines, 2> avatar_pipelines;
     std::unique_ptr<ALMetalDepthStencilState> forward_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_depth;
     std::unique_ptr<ALMetalSamplerState> diffuse_sampler;
@@ -162,6 +168,10 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_material_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_pbr_vertex") ||
         !impl->library->hasFunction("almetal_world_pbr_skinned_vertex") ||
+        !impl->library->hasFunction("almetal_world_avatar_rigid_vertex") ||
+        !impl->library->hasFunction("almetal_world_avatar_skinned_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_avatar_cloth_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_fragment") ||
         !impl->library->hasFunction("almetal_world_alpha_mask_fragment") ||
         !impl->library->hasFunction("almetal_world_bump_fragment") ||
@@ -180,6 +190,47 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         ALMetalPixelFormat::rgba8_unorm,
         ALMetalPixelFormat::rg11b10_float,
     }};
+    constexpr std::array<const char*, 3> avatar_vertex_functions{{
+        "almetal_world_avatar_rigid_vertex",
+        "almetal_world_avatar_skinned_vertex",
+        "almetal_world_avatar_cloth_skinned_vertex",
+    }};
+    for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
+    {
+        for (std::size_t variant = 0;
+             variant < avatar_vertex_functions.size(); ++variant)
+        {
+            for (std::size_t normal_hdr = 0; normal_hdr < 2; ++normal_hdr)
+            {
+                ALMetalRenderPipelineDescriptor descriptor;
+                descriptor.library = impl->library.get();
+                descriptor.vertex_function = avatar_vertex_functions[variant];
+                descriptor.fragment_function =
+                    "almetal_world_alpha_mask_fragment";
+                descriptor.color_attachment_count = 4;
+                descriptor.colors[0].format =
+                    ALMetalPixelFormat::rgba8_unorm_srgb;
+                descriptor.colors[1].format =
+                    ALMetalPixelFormat::rgba8_unorm;
+                descriptor.colors[2].format = normal_hdr
+                    ? ALMetalPixelFormat::rgba16_unorm
+                    : ALMetalPixelFormat::rgb10a2_unorm;
+                descriptor.colors[3].format = emissive_formats[hdr];
+                descriptor.depth_stencil_format =
+                    ALMetalPixelFormat::depth32_float;
+                descriptor.label = "Alchemy world avatar G-buffer pipeline";
+                auto& pipeline =
+                    impl->avatar_pipelines[hdr][variant][normal_hdr];
+                pipeline = ALMetalRenderPipeline::create(
+                    device, descriptor, error);
+                if (!pipeline)
+                {
+                    return nullptr;
+                }
+            }
+        }
+    }
+
     for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
     {
         for (std::size_t rigged = 0; rigged < 2; ++rigged)
@@ -365,6 +416,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         const bool bump = batch.normal_texture != nullptr;
         const bool material = batch.material_slot_count != 0;
         const bool pbr = isPBRBatch(batch);
+        const bool avatar = batch.avatar_rigid || batch.avatar_skinning;
         const bool material_normal_map = materialHasNormalMap(batch);
         const bool material_specular_map = materialHasSpecularMap(batch);
         const bool tangent_required = bump || material_normal_map || pbr;
@@ -384,13 +436,22 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                   ALMetalWorldSimpleBatch::max_material_slots ||
               batch.pbr_slot_count != batch.texture_count ||
               material || bump)) ||
+            (batch.avatar_cloth && !batch.avatar_skinning) ||
+            (!batch.avatar_skinning && batch.cloth_offset != 0) ||
+            (avatar &&
+             (batch.avatar_rigid == batch.avatar_skinning ||
+              (batch.avatar_rigid && batch.skin_palette != nullptr) ||
+              batch.texture_count != 1 || !batch.alpha_mask ||
+              batch.use_vertex_color || batch.alpha_cutoff_bias ||
+              material || pbr || bump)) ||
             (!material && batch.material_alpha_mode != 0) ||
             batch.vertex_count == 0 || batch.index_count == 0 ||
             batch.index_count % 3 != 0 ||
             batch.position_offset % float4_stride != 0 ||
             batch.normal_offset % float4_stride != 0 ||
             batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
-            batch.color_offset % (sizeof(std::uint8_t) * 4) != 0 ||
+            (!avatar &&
+             batch.color_offset % (sizeof(std::uint8_t) * 4) != 0) ||
             (tangent_required &&
              batch.tangent_offset % float4_stride != 0) ||
             (material_normal_map &&
@@ -402,7 +463,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             !finiteValues(batch.modelview_projection, 16) ||
             !finiteValues(&batch.normal_matrix[0][0], 12) ||
             !finiteValues(&batch.rigged_normal_matrix[0][0], 12) ||
-            !finiteValues(batch.texture_matrix, 16))
+            !finiteValues(batch.texture_matrix, 16) ||
+            (batch.avatar_cloth &&
+             (!finiteValues(batch.avatar_wind, 4) ||
+              !finiteValues(batch.avatar_sin_wave, 4) ||
+              !finiteValues(batch.avatar_gravity, 4) ||
+              !finiteValues(batch.avatar_cloth_depth, 4))))
         {
             setError(error, "Metal world simple batch is invalid");
             return nullptr;
@@ -457,8 +523,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                        float4_stride, batch.vertices->length()) ||
             !rangeFits(batch.texcoord_offset, batch.vertex_count,
                        sizeof(float) * 2, batch.vertices->length()) ||
-            !rangeFits(batch.color_offset, batch.vertex_count,
-                       sizeof(std::uint8_t) * 4, batch.vertices->length()) ||
+            (!avatar &&
+             !rangeFits(batch.color_offset, batch.vertex_count,
+                        sizeof(std::uint8_t) * 4,
+                        batch.vertices->length())) ||
             (tangent_required &&
              !rangeFits(batch.tangent_offset, batch.vertex_count,
                         float4_stride, batch.vertices->length())) ||
@@ -475,7 +543,28 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                      "Metal world simple geometry range exceeds its buffers");
             return nullptr;
         }
-        if (batch.skin_palette)
+        if (batch.avatar_skinning)
+        {
+            constexpr std::size_t avatar_palette_floats = 45 * 4;
+            if (!batch.skin_palette || batch.skin_joint_count != 15 ||
+                batch.skin_palette_float_count != avatar_palette_floats ||
+                batch.weight_offset % sizeof(float) != 0 ||
+                !rangeFits(batch.weight_offset, batch.vertex_count,
+                           sizeof(float), batch.vertices->length()) ||
+                !finiteValues(batch.skin_palette,
+                              avatar_palette_floats) ||
+                (batch.avatar_cloth &&
+                 (batch.cloth_offset % float4_stride != 0 ||
+                  !rangeFits(batch.cloth_offset, batch.vertex_count,
+                             float4_stride,
+                             batch.vertices->length()))))
+            {
+                setError(error,
+                         "Metal world avatar skinning data is invalid");
+                return nullptr;
+            }
+        }
+        else if (batch.skin_palette)
         {
             const std::size_t expected_palette_floats =
                 4 + static_cast<std::size_t>(batch.skin_joint_count) * 12;
@@ -493,7 +582,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 return nullptr;
             }
         }
-        else if (batch.weight_offset != 0 ||
+        else if (batch.weight_offset != 0 || batch.cloth_offset != 0 ||
                  batch.skin_palette_float_count != 0 ||
                  batch.skin_joint_count != 0)
         {
@@ -658,31 +747,47 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                     sizeof(constants.rigged_normal_matrix));
         std::memcpy(constants.texture_matrix, batch.texture_matrix,
                     sizeof(constants.texture_matrix));
+        std::memcpy(constants.avatar_wind, batch.avatar_wind,
+                    sizeof(constants.avatar_wind));
+        std::memcpy(constants.avatar_sin_wave, batch.avatar_sin_wave,
+                    sizeof(constants.avatar_sin_wave));
+        std::memcpy(constants.avatar_gravity, batch.avatar_gravity,
+                    sizeof(constants.avatar_gravity));
+        std::memcpy(constants.avatar_cloth_depth,
+                    batch.avatar_cloth_depth,
+                    sizeof(constants.avatar_cloth_depth));
         constants.material[0] = batch.alpha_cutoff;
         constants.material[1] = batch.use_vertex_color ? 1.f : 0.f;
         constants.material[2] = batch.alpha_cutoff_bias ? 1.f : 0.f;
         constants.material[3] = batch.alpha_mask ? 1.f : 0.f;
         constants.depth_convention[0] = scene.reverse_z ? 1u : 0u;
         constants.depth_convention[1] = batch.texture_count;
-        const bool rigged = batch.skin_palette != nullptr;
+        const bool avatar = batch.avatar_rigid || batch.avatar_skinning;
+        const bool rigged = batch.skin_palette != nullptr && !avatar;
         const bool bump = batch.normal_texture != nullptr;
         const bool material = batch.material_slot_count != 0;
         const bool pbr = isPBRBatch(batch);
         const bool material_normal_map = materialHasNormalMap(batch);
         const bool material_specular_map = materialHasSpecularMap(batch);
-        const ALMetalRenderPipeline* pipeline = pbr
-            ? mImpl->pbr_pipelines[scene.hdr ? 1 : 0]
-                                  [rigged ? 1 : 0]
-                                  [scene.normal_hdr ? 1 : 0].get()
-            : (material
-                ? mImpl->material_pipelines[scene.hdr ? 1 : 0]
-                                           [rigged ? 1 : 0]
-                                           [scene.normal_hdr ? 1 : 0].get()
-                : mImpl->pipelines[scene.hdr ? 1 : 0]
-                                  [bump ? 1 : 0]
-                                  [batch.alpha_mask ? 1 : 0]
-                                  [rigged ? 1 : 0]
-                                  [scene.normal_hdr ? 1 : 0].get());
+        const std::size_t avatar_variant = batch.avatar_rigid
+            ? 0 : (batch.avatar_cloth ? 2 : 1);
+        const ALMetalRenderPipeline* pipeline = avatar
+            ? mImpl->avatar_pipelines[scene.hdr ? 1 : 0]
+                                     [avatar_variant]
+                                     [scene.normal_hdr ? 1 : 0].get()
+            : (pbr
+                ? mImpl->pbr_pipelines[scene.hdr ? 1 : 0]
+                                      [rigged ? 1 : 0]
+                                      [scene.normal_hdr ? 1 : 0].get()
+                : (material
+                    ? mImpl->material_pipelines[scene.hdr ? 1 : 0]
+                                               [rigged ? 1 : 0]
+                                               [scene.normal_hdr ? 1 : 0].get()
+                    : mImpl->pipelines[scene.hdr ? 1 : 0]
+                                      [bump ? 1 : 0]
+                                      [batch.alpha_mask ? 1 : 0]
+                                      [rigged ? 1 : 0]
+                                      [scene.normal_hdr ? 1 : 0].get()));
 
         encoded =
             encoder->setCullMode(
@@ -696,11 +801,14 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                                      batch.normal_offset, error) &&
             encoder->setVertexBuffer(2, *batch.vertices,
                                      batch.texcoord_offset, error) &&
-            encoder->setVertexBuffer(3, *batch.vertices,
-                                     batch.color_offset, error) &&
             encoder->setVertexBytes(4, &constants, sizeof(constants), error) &&
             encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
-        if (encoded && rigged)
+        if (encoded && !avatar)
+        {
+            encoded = encoder->setVertexBuffer(
+                3, *batch.vertices, batch.color_offset, error);
+        }
+        if (encoded && batch.skin_palette)
         {
             encoded =
                 encoder->setVertexBuffer(
@@ -710,6 +818,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 encoder->setVertexBytes(
                     7, &batch.skin_joint_count,
                     sizeof(batch.skin_joint_count), error);
+        }
+        if (encoded && batch.avatar_cloth)
+        {
+            encoded = encoder->setVertexBuffer(
+                9, *batch.vertices, batch.cloth_offset, error);
         }
         if (encoded && bump)
         {
