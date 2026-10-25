@@ -146,6 +146,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_skinned_edge_u32_vertex",
             "almetal_ui_vertex",
             "almetal_ui_fragment",
+            "almetal_alpha_mask_fragment",
+            "almetal_alpha_mask_solid_fragment",
             "almetal_solid_vertex",
             "almetal_solid_fragment",
         };
@@ -2351,6 +2353,87 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         REQUIRE(scheduler->waitUntilIdle(1000, &error));
         INFO(error);
         REQUIRE(rgba_renderer->outputTexture());
+
+        // The appearance compositor uses the same vertex layout with the
+        // alpha-mask shader, including untextured clear/color rectangles.
+        auto alpha_renderer = ALMetalUIRenderer::createForTexture(
+            *device, *scheduler, ALMetalPixelFormat::rgba8_unorm, &error);
+        INFO(error);
+        REQUIRE(alpha_renderer);
+        batch.shader = ALMetalUIShader::alpha_mask_textured;
+        batch.minimum_alpha = 1.1f;
+        REQUIRE(alpha_renderer->draw(batch, &error));
+        REQUIRE(alpha_renderer->endFrame(&error));
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        const ALMetalTexture* alpha_output = alpha_renderer->outputTexture();
+        REQUIRE(alpha_output);
+        pixels.fill(255);
+        REQUIRE(alpha_output->readback(
+            *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(pixels[center + 0] == 0);
+        CHECK(pixels[center + 1] == 0);
+        CHECK(pixels[center + 2] == 0);
+        CHECK(pixels[center + 3] == 0);
+
+        auto discarded_alpha_output = alpha_renderer->takeOutputTexture();
+        REQUIRE(discarded_alpha_output);
+        const float upper_positions[3][4] = {
+            {-0.8f, 0.1f, 0.f, 1.f},
+            { 0.8f, 0.1f, 0.f, 1.f},
+            { 0.0f, 0.9f, 0.f, 1.f},
+        };
+        REQUIRE(buffer->write(position_offset, upper_positions,
+                              sizeof(upper_positions), &error));
+        batch.shader = ALMetalUIShader::alpha_mask_solid;
+        batch.texture = nullptr;
+        batch.minimum_alpha = 0.5f;
+        batch.blend.enabled = false;
+        REQUIRE(alpha_renderer->draw(batch, &error));
+
+        auto faded_bytes = bytes;
+        std::memcpy(faded_bytes.data() + position_offset,
+                    upper_positions, sizeof(upper_positions));
+        std::uint8_t faded_colors[3][4] = {
+            {255, 32, 16, 128}, {255, 32, 16, 128}, {255, 32, 16, 128},
+        };
+        std::memcpy(faded_bytes.data() + color_offset,
+                    faded_colors, sizeof(faded_colors));
+        buffer_descriptor.length = faded_bytes.size();
+        buffer_descriptor.label = "Alchemy alpha-mask multiply SoA";
+        auto faded_buffer = ALMetalBuffer::create(
+            *device, buffer_descriptor, &error);
+        INFO(error);
+        REQUIRE(faded_buffer);
+        REQUIRE(faded_buffer->write(
+            0, faded_bytes.data(), faded_bytes.size(), &error));
+
+        batch.vertices = faded_buffer.get();
+        batch.blend.enabled = true;
+        batch.blend.source_rgb = ALMetalBlendFactor::destination_alpha;
+        batch.blend.destination_rgb = ALMetalBlendFactor::zero;
+        batch.blend.source_alpha = ALMetalBlendFactor::destination_alpha;
+        batch.blend.destination_alpha = ALMetalBlendFactor::zero;
+        batch.blend.write_mask = ALMetalColorWriteMask::alpha;
+        REQUIRE(alpha_renderer->draw(batch, &error));
+        REQUIRE(alpha_renderer->endFrame(&error));
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        alpha_output = alpha_renderer->outputTexture();
+        REQUIRE(alpha_output);
+        pixels.fill(0);
+        REQUIRE(alpha_output->readback(
+            *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        INFO(error);
+        const std::size_t gl_upper_row = (26 * 32 + 16) * 4;
+        const std::size_t gl_lower_row = (4 * 32 + 16) * 4;
+        CHECK(pixels[gl_upper_row + 0] == 255);
+        CHECK(pixels[gl_upper_row + 1] == 32);
+        CHECK(pixels[gl_upper_row + 2] == 16);
+        CHECK(pixels[gl_upper_row + 3] == 128);
+        CHECK(pixels[gl_lower_row + 0] == 0);
+        CHECK(pixels[gl_lower_row + 1] == 0);
+        CHECK(pixels[gl_lower_row + 2] == 0);
+        CHECK(pixels[gl_lower_row + 3] == 0);
     }
 }
 

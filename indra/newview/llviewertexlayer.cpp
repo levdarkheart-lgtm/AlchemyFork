@@ -37,6 +37,10 @@
 #include "pipeline.h"
 #include "llviewercontrol.h"
 
+#if LL_DARWIN
+#include "../almetal/almetalresource.h"
+#endif
+
 // runway consolidate
 extern std::string self_av_string();
 
@@ -87,6 +91,10 @@ void LLViewerTexLayerSetBuffer::restoreGLTexture()
 //virtual
 void LLViewerTexLayerSetBuffer::destroyGLTexture()
 {
+#if LL_DARWIN
+    mMetalComposite.reset();
+    mMetalCompositeDescriptor.reset();
+#endif
     LLViewerDynamicTexture::destroyGLTexture() ;
 }
 
@@ -147,6 +155,28 @@ void LLViewerTexLayerSetBuffer::preRenderTexLayerSet()
 
     // keep depth buffer, we don't need to clear it
     LLViewerDynamicTexture::preRender(false);
+
+#if LL_DARWIN
+    mMetalComposite.reset();
+    ALMetalTexture* destination = mGLTexturep.notNull()
+        ? mGLTexturep->getMetalTexture() : nullptr;
+    if (destination)
+    {
+        mMetalCompositeDescriptor =
+            std::make_unique<ALMetalTextureDescriptor>(destination->descriptor());
+    }
+    if (mMetalCompositeDescriptor &&
+        mMetalCompositeDescriptor->mipmap_level_count == 1)
+    {
+        if (!gGL.beginMetalUITextureCapture(mMetalCompositeDescriptor->format,
+                                            &gAlphaMaskProgram))
+        {
+            LL_DEBUGS("Metal")
+                << "Appearance bake retained its authoritative GL path"
+                << LL_ENDL;
+        }
+    }
+#endif
 }
 
 // virtual
@@ -155,11 +185,32 @@ void LLViewerTexLayerSetBuffer::postRenderTexLayerSet(bool success)
 
     LLTexLayerSetBuffer::postRenderTexLayerSet(success);
     LLViewerDynamicTexture::postRender(success);
+#if LL_DARWIN
+    if (lastPostRenderSucceeded() && mMetalComposite)
+    {
+        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalComposite)))
+        {
+            LL_INFOS_ONCE("Metal")
+                << "Appearance bakes own native Metal render targets"
+                << LL_ENDL;
+        }
+        else
+        {
+            LL_WARNS("Metal")
+                << "Could not publish a native appearance bake"
+                << LL_ENDL;
+        }
+    }
+    mMetalComposite.reset();
+#endif
 }
 
 // virtual
 void LLViewerTexLayerSetBuffer::midRenderTexLayerSet(bool success)
 {
+#if LL_DARWIN
+    mMetalComposite = gGL.endMetalUITextureCapture(success);
+#endif
     const bool update_now = mNeedsUpdate && isReadyToUpdate();
     if (update_now)
     {

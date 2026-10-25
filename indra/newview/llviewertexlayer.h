@@ -33,6 +33,10 @@
 
 class LLVOAvatarSelf;
 class LLViewerTexLayerSetBuffer;
+#if LL_DARWIN
+class ALMetalTexture;
+struct ALMetalTextureDescriptor;
+#endif
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // LLViewerTexLayerSet
@@ -127,6 +131,10 @@ private:
     bool                    mNeedsUpdate;                   // Whether we need to locally update our baked textures
     U32                     mNumLowresUpdates;              // Number of times we've locally updated with lowres version of our baked textures
     LLFrameTimer            mNeedsUpdateTimer;              // Tracks time since update was requested and performed.
+#if LL_DARWIN
+    std::unique_ptr<ALMetalTexture> mMetalComposite;
+    std::unique_ptr<ALMetalTextureDescriptor> mMetalCompositeDescriptor;
+#endif
 };
 
 #endif  // LL_VIEWER_TEXLAYER_H

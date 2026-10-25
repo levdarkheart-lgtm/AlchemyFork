@@ -730,7 +730,8 @@ void LLVertexBufferData::drawWithMatrix()
     gGL.loadMatrix(mTexture0);
 
 #if LL_DARWIN
-    if (!gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc))
+    if (!gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc,
+                               mTexName != 0))
 #endif
     {
         mVB->setBuffer();
@@ -763,7 +764,8 @@ void LLVertexBufferData::draw()
     }
 
 #if LL_DARWIN
-    if (!gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc))
+    if (!gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc,
+                               mTexName != 0))
 #endif
     {
         mVB->setBuffer();

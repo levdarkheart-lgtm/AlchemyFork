@@ -100,10 +100,16 @@ struct ALMetalSolidFragmentConstants
     float4 color;
 };
 
+struct ALMetalAlphaMaskFragmentConstants
+{
+    float minimum_alpha;
+};
+
 struct ALMetalVertexRemapConstants
 {
     uint mode;
     uint source_count;
+    uint flip_y;
 };
 
 static uint almetal_source_vertex(uint vertex_id,
@@ -1198,8 +1204,15 @@ vertex ALMetalUIVaryings almetal_ui_vertex(
 {
     const uint source_id = almetal_source_vertex(vertex_id, remap);
     ALMetalUIVaryings output;
-    output.position = almetal_clip_from_gl(
-        matrices.modelview_projection * float4(positions[source_id].xyz, 1.0));
+    float4 clip_position =
+        matrices.modelview_projection * float4(positions[source_id].xyz, 1.0);
+    if (remap.flip_y != 0)
+    {
+        // Offscreen UI targets become GL-owned texture mirrors. Preserve the
+        // lower-left row-zero byte convention used by glCopyTexSubImage.
+        clip_position.y = -clip_position.y;
+    }
+    output.position = almetal_clip_from_gl(clip_position);
     output.texcoord = (matrices.texture0 * float4(texcoords[source_id], 0.0, 1.0)).xy;
     output.color = float4(colors[source_id]) * (1.0 / 255.0);
     return output;
@@ -1247,6 +1260,32 @@ fragment float4 almetal_ui_fragment(
     return float4(input.color.rgb, 1.0 - product);
 }
 
+fragment float4 almetal_alpha_mask_fragment(
+    ALMetalUIVaryings input [[stage_in]],
+    texture2d<float> diffuse_map [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    constant ALMetalAlphaMaskFragmentConstants& constants [[buffer(0)]])
+{
+    const float4 color = input.color *
+                         diffuse_map.sample(diffuse_sampler, input.texcoord);
+    if (color.a < constants.minimum_alpha)
+    {
+        discard_fragment();
+    }
+    return max(color, float4(0.0));
+}
+
+fragment float4 almetal_alpha_mask_solid_fragment(
+    ALMetalUIVaryings input [[stage_in]],
+    constant ALMetalAlphaMaskFragmentConstants& constants [[buffer(0)]])
+{
+    if (input.color.a < constants.minimum_alpha)
+    {
+        discard_fragment();
+    }
+    return max(input.color, float4(0.0));
+}
+
 vertex ALMetalUIVaryings almetal_solid_vertex(
     const device float4* positions [[buffer(0)]],
     const device float2* texcoords [[buffer(1)]],
@@ -1256,8 +1295,13 @@ vertex ALMetalUIVaryings almetal_solid_vertex(
 {
     const uint source_id = almetal_source_vertex(vertex_id, remap);
     ALMetalUIVaryings output;
-    output.position = almetal_clip_from_gl(
-        matrices.modelview_projection * float4(positions[source_id].xyz, 1.0));
+    float4 clip_position =
+        matrices.modelview_projection * float4(positions[source_id].xyz, 1.0);
+    if (remap.flip_y != 0)
+    {
+        clip_position.y = -clip_position.y;
+    }
+    output.position = almetal_clip_from_gl(clip_position);
     output.texcoord = texcoords[source_id];
     output.color = 1.0;
     return output;

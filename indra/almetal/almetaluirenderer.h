@@ -29,6 +29,8 @@ enum class ALMetalUIShader
 {
     textured,
     solid_color,
+    alpha_mask_textured,
+    alpha_mask_solid,
 };
 
 // Metal has no triangle-fan or line-loop primitive. The renderer expands
@@ -87,6 +89,7 @@ struct ALMetalUIBatch
     ALMetalUIPrimitive primitive = ALMetalUIPrimitive::triangles;
     std::uint32_t vertex_count = 0;
     std::uint32_t text_shadow_mode = 0;
+    float minimum_alpha = 0.004f;
     float solid_color[4] = {1.f, 1.f, 1.f, 1.f};
     std::uint32_t target_width = 0;
     std::uint32_t target_height = 0;

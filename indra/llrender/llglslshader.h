@@ -421,6 +421,7 @@ public:
     void uniform1i(const LLStaticHashedString& uniform, GLint i);
 
     void setMinimumAlpha(F32 minimum);
+    F32 getMinimumAlpha() const { return mMinimumAlpha; }
 
     void vertexAttrib4f(U32 index, GLfloat x, GLfloat y, GLfloat z, GLfloat w);
     void vertexAttrib4fv(U32 index, GLfloat* v);

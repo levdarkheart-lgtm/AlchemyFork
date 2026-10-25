@@ -61,6 +61,7 @@
 class LLVertexBuffer;
 class LLCubeMap;
 class LLImageGL;
+class LLGLSLShader;
 class LLRenderTarget;
 class LLTexture;
 class LLVertexBufferData;
@@ -68,7 +69,9 @@ class LLVertexBufferData;
 class ALMetalDevice;
 class ALMetalFrameScheduler;
 class ALMetalSurface;
+class ALMetalTexture;
 class ALMetalUIRenderer;
+enum class ALMetalPixelFormat;
 #endif
 
 namespace ll_test { struct RenderProbe; }
@@ -270,7 +273,15 @@ public:
     // Mirror one already-materialized immediate/captured UI draw. Public only
     // because LLVertexBufferData replays outside LLRender::drawBuffer.
     bool drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
-                           LLImageGL* image, const ALSamplerDesc& sampler);
+                           LLImageGL* image, const ALSamplerDesc& sampler,
+                           bool texture_bound);
+
+    // Parallel offscreen capture for GL-owned immediate-mode render-texture
+    // producers. Captured draws never suppress GL. A single unsupported batch
+    // fails the complete target closed and end returns no texture.
+    bool beginMetalUITextureCapture(ALMetalPixelFormat format,
+                                    LLGLSLShader* alpha_mask_shader);
+    std::unique_ptr<ALMetalTexture> endMetalUITextureCapture(bool source_success);
 
     // A startup frame can replace the GL window presentation only when every
     // eligible UI batch was encoded. The surface stays transparent for any
@@ -822,12 +833,18 @@ private:
 
 #if LL_DARWIN
     std::unique_ptr<ALMetalUIRenderer> mMetalUIRenderer;
+    std::unique_ptr<ALMetalUIRenderer> mMetalUICaptureRenderer;
+    ALMetalDevice* mMetalDevice = nullptr;
+    ALMetalFrameScheduler* mMetalFrames = nullptr;
     ALMetalSurface* mMetalUISurface = nullptr;
     U64 mMetalUILoggedFrame = 0;
     U64 mMetalUIAttemptedBatches = 0;
     U64 mMetalUIFallbackBatches = 0;
     U64 mMetalUIFrameAttemptedBatches = 0;
     U64 mMetalUIFrameFallbackBatches = 0;
+    U64 mMetalUICaptureBatches = 0;
+    LLGLSLShader* mMetalUICaptureAlphaShader = nullptr;
+    bool mMetalUICaptureComplete = false;
     bool mMetalUIReplacementEnabled = true;
 #endif
 

@@ -733,6 +733,10 @@ void LLRender::shutdown()
 void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* scheduler,
                                ALMetalSurface* surface)
 {
+    if (mMetalUICaptureRenderer)
+    {
+        endMetalUITextureCapture(false);
+    }
     if (mMetalUIRenderer)
     {
         std::string error;
@@ -743,6 +747,8 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
         }
     }
     mMetalUIRenderer.reset();
+    mMetalDevice = nullptr;
+    mMetalFrames = nullptr;
     mMetalUISurface = nullptr;
     mMetalUILoggedFrame = 0;
     mMetalUIFrameAttemptedBatches = 0;
@@ -753,6 +759,8 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
         return;
     }
 
+    mMetalDevice = device;
+    mMetalFrames = scheduler;
     std::string error;
     mMetalUIRenderer = ALMetalUIRenderer::createForSurface(
         *device, *scheduler, *surface, &error);
@@ -768,6 +776,59 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
                            << surface->info().width << "x" << surface->info().height
                            << LL_ENDL;
     }
+}
+
+bool LLRender::beginMetalUITextureCapture(ALMetalPixelFormat format,
+                                          LLGLSLShader* alpha_mask_shader)
+{
+    if (!mMetalDevice || !mMetalFrames || !alpha_mask_shader ||
+        mMetalUICaptureRenderer)
+    {
+        return false;
+    }
+    std::string error;
+    mMetalUICaptureRenderer = ALMetalUIRenderer::createForTexture(
+        *mMetalDevice, *mMetalFrames, format, &error);
+    if (!mMetalUICaptureRenderer)
+    {
+        LL_DEBUGS("Metal") << "Could not begin an offscreen immediate-mode capture: "
+                            << error << LL_ENDL;
+        return false;
+    }
+    mMetalUICaptureBatches = 0;
+    mMetalUICaptureAlphaShader = alpha_mask_shader;
+    mMetalUICaptureComplete = true;
+    return true;
+}
+
+std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
+    bool source_success)
+{
+    if (!mMetalUICaptureRenderer)
+    {
+        return nullptr;
+    }
+
+    std::string error;
+    const bool submitted = mMetalUICaptureRenderer->endFrame(&error);
+    const bool complete = source_success && submitted &&
+                          mMetalUICaptureComplete &&
+                          mMetalUICaptureBatches != 0;
+    std::unique_ptr<ALMetalTexture> output;
+    if (complete)
+    {
+        output = mMetalUICaptureRenderer->takeOutputTexture();
+    }
+    else if (!error.empty())
+    {
+        LL_DEBUGS("Metal") << "Discarded an offscreen immediate-mode capture: "
+                            << error << LL_ENDL;
+    }
+    mMetalUICaptureRenderer.reset();
+    mMetalUICaptureBatches = 0;
+    mMetalUICaptureAlphaShader = nullptr;
+    mMetalUICaptureComplete = false;
+    return output;
 }
 
 bool LLRender::metalUIFrameHasCompleteCoverage() const noexcept
@@ -1903,7 +1964,8 @@ void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
     }
     if (drawMetalUIBuffer(vb, mode, count,
                           texture_slot ? texture_slot->mCurrImage : nullptr,
-                          sampler))
+                          sampler,
+                          texture_slot && texture_slot->mCurrTexture != 0))
     {
         return;
     }
@@ -1914,22 +1976,36 @@ void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
 
 #if LL_DARWIN
 bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
-                                 LLImageGL* image, const ALSamplerDesc& sampler)
+                                 LLImageGL* image, const ALSamplerDesc& sampler,
+                                 bool texture_bound)
 {
-    if (!mMetalUIRenderer || !mMetalUIReplacementEnabled || mUIOffset.empty())
+    const bool capture = mMetalUICaptureRenderer != nullptr;
+    const bool replace = mMetalUIRenderer && mMetalUIReplacementEnabled &&
+                         !mUIOffset.empty();
+    if (!capture && !replace)
     {
         return false;
     }
-    ++mMetalUIAttemptedBatches;
-    ++mMetalUIFrameAttemptedBatches;
-    const auto fallback = [this](MetalUIFallbackReason reason)
+    if (replace)
     {
-        ++mMetalUIFallbackBatches;
-        ++mMetalUIFrameFallbackBatches;
-        ++sMetalUIFallbackReasons[static_cast<std::size_t>(reason)];
+        ++mMetalUIAttemptedBatches;
+        ++mMetalUIFrameAttemptedBatches;
+    }
+    const auto fallback = [this, capture, replace](MetalUIFallbackReason reason)
+    {
+        if (capture)
+        {
+            mMetalUICaptureComplete = false;
+        }
+        if (replace)
+        {
+            ++mMetalUIFallbackBatches;
+            ++mMetalUIFrameFallbackBatches;
+            ++sMetalUIFallbackReasons[static_cast<std::size_t>(reason)];
+        }
         return false;
     };
-    if (!buffer || !image || count == 0)
+    if (!buffer || count == 0)
     {
         return fallback(MetalUIFallbackReason::incomplete_batch);
     }
@@ -1944,6 +2020,11 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     {
         metal_shader = ALMetalUIShader::solid_color;
     }
+    else if (capture && shader == mMetalUICaptureAlphaShader)
+    {
+        metal_shader = texture_bound ? ALMetalUIShader::alpha_mask_textured
+                                     : ALMetalUIShader::alpha_mask_solid;
+    }
     else
     {
         return fallback(MetalUIFallbackReason::shader);
@@ -1955,10 +2036,15 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         return fallback(MetalUIFallbackReason::primitive);
     }
     ALMetalBuffer* metal_buffer = buffer->getMetalVertexBuffer();
-    ALMetalTexture* metal_texture = image->getMetalTexture();
+    ALMetalTexture* metal_texture = image ? image->getMetalTexture() : nullptr;
+    const bool needs_texture = metal_shader != ALMetalUIShader::alpha_mask_solid;
+    const bool needs_color = metal_shader == ALMetalUIShader::textured ||
+                             metal_shader == ALMetalUIShader::alpha_mask_textured ||
+                             metal_shader == ALMetalUIShader::alpha_mask_solid;
     const U32 required = LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_TEXCOORD0 |
-        (metal_shader == ALMetalUIShader::textured ? LLVertexBuffer::MAP_COLOR : 0);
-    if (!metal_buffer || !metal_texture || (buffer->getTypeMask() & required) != required)
+        (needs_color ? LLVertexBuffer::MAP_COLOR : 0);
+    if (!metal_buffer || (needs_texture && !metal_texture) ||
+        (buffer->getTypeMask() & required) != required)
     {
         static U32 warned = 0;
         if (warned++ < 4)
@@ -1991,6 +2077,8 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     batch.primitive = primitive;
     batch.vertex_count = count;
     batch.text_shadow_mode = mUITextShadowMode;
+    batch.minimum_alpha = shader == mMetalUICaptureAlphaShader
+        ? shader->getMinimumAlpha() : 0.004f;
     memcpy(batch.solid_color, mMetalSolidColor.mV, sizeof(batch.solid_color));
     batch.target_width = target_width;
     batch.target_height = target_height;
@@ -2050,6 +2138,25 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     else
     {
         batch.scissor = {0, 0, target_width, target_height};
+    }
+
+    if (capture)
+    {
+        std::string error;
+        if (!mMetalUICaptureRenderer->draw(batch, &error))
+        {
+            mMetalUICaptureComplete = false;
+            LL_DEBUGS("Metal") << "Offscreen immediate-mode capture retained GL: "
+                                << error << LL_ENDL;
+        }
+        else
+        {
+            ++mMetalUICaptureBatches;
+        }
+    }
+    if (!replace)
+    {
+        return false;
     }
 
     std::string error;

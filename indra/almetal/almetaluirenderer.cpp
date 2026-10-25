@@ -57,6 +57,38 @@ namespace
                lhs.normalized_coordinates == rhs.normalized_coordinates;
     }
 
+    bool shaderUsesTexture(ALMetalUIShader shader)
+    {
+        return shader == ALMetalUIShader::textured ||
+               shader == ALMetalUIShader::solid_color ||
+               shader == ALMetalUIShader::alpha_mask_textured;
+    }
+
+    bool shaderUsesVertexColor(ALMetalUIShader shader)
+    {
+        return shader == ALMetalUIShader::textured ||
+               shader == ALMetalUIShader::alpha_mask_textured ||
+               shader == ALMetalUIShader::alpha_mask_solid;
+    }
+
+    const char* vertexFunction(ALMetalUIShader shader)
+    {
+        return shader == ALMetalUIShader::solid_color
+            ? "almetal_solid_vertex" : "almetal_ui_vertex";
+    }
+
+    const char* fragmentFunction(ALMetalUIShader shader)
+    {
+        switch (shader)
+        {
+            case ALMetalUIShader::textured:            return "almetal_ui_fragment";
+            case ALMetalUIShader::solid_color:         return "almetal_solid_fragment";
+            case ALMetalUIShader::alpha_mask_textured: return "almetal_alpha_mask_fragment";
+            case ALMetalUIShader::alpha_mask_solid:    return "almetal_alpha_mask_solid_fragment";
+        }
+        return "";
+    }
+
     struct PrimitiveDraw
     {
         ALMetalPrimitiveType primitive = ALMetalPrimitiveType::triangle;
@@ -161,10 +193,8 @@ struct ALMetalUIRenderer::Impl
 
         ALMetalRenderPipelineDescriptor descriptor;
         descriptor.library = library.get();
-        descriptor.vertex_function = shader == ALMetalUIShader::textured
-            ? "almetal_ui_vertex" : "almetal_solid_vertex";
-        descriptor.fragment_function = shader == ALMetalUIShader::textured
-            ? "almetal_ui_fragment" : "almetal_solid_fragment";
+        descriptor.vertex_function = vertexFunction(shader);
+        descriptor.fragment_function = fragmentFunction(shader);
         descriptor.color_attachment_count = 1;
         descriptor.colors[0].format = output_format;
         descriptor.colors[0].blending_enabled = target_blend.enabled;
@@ -175,8 +205,7 @@ struct ALMetalUIRenderer::Impl
         descriptor.colors[0].destination_alpha = target_blend.destination_alpha;
         descriptor.colors[0].alpha_operation = target_blend.alpha_operation;
         descriptor.colors[0].write_mask = target_blend.write_mask;
-        descriptor.label = shader == ALMetalUIShader::textured
-            ? "Alchemy production UI pipeline" : "Alchemy production solid UI pipeline";
+        descriptor.label = "Alchemy production UI pipeline";
 
         auto state = ALMetalRenderPipeline::create(*device, descriptor, error);
         if (!state)
@@ -335,6 +364,8 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
     }
     if (!library->hasFunction("almetal_ui_vertex") ||
         !library->hasFunction("almetal_ui_fragment") ||
+        !library->hasFunction("almetal_alpha_mask_fragment") ||
+        !library->hasFunction("almetal_alpha_mask_solid_fragment") ||
         !library->hasFunction("almetal_solid_vertex") ||
         !library->hasFunction("almetal_solid_fragment"))
     {
@@ -371,10 +402,16 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForSurface(
 
 bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
 {
-    if (!mImpl || !batch.vertices || !batch.texture || batch.vertex_count == 0 ||
+    if (!mImpl || !batch.vertices || batch.vertex_count == 0 ||
         batch.target_width == 0 || batch.target_height == 0)
     {
-        setError(error, "Metal UI batch is missing geometry, texture or target dimensions");
+        setError(error, "Metal UI batch is missing geometry or target dimensions");
+        return false;
+    }
+    const bool uses_texture = shaderUsesTexture(batch.shader);
+    if (uses_texture && !batch.texture)
+    {
+        setError(error, "Metal UI batch is missing its sampled texture");
         return false;
     }
     if (batch.text_shadow_mode > 2)
@@ -395,8 +432,9 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
     }
 
     ALMetalRenderPipeline* pipeline = mImpl->pipeline(batch.shader, batch.blend, error);
-    ALMetalSamplerState* sampler = mImpl->sampler(batch.sampler, error);
-    if (!pipeline || !sampler)
+    ALMetalSamplerState* sampler = uses_texture
+        ? mImpl->sampler(batch.sampler, error) : nullptr;
+    if (!pipeline || (uses_texture && !sampler))
     {
         return false;
     }
@@ -408,7 +446,7 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
     {
         return false;
     }
-    if (batch.shader == ALMetalUIShader::textured &&
+    if (shaderUsesVertexColor(batch.shader) &&
         !encoder.setVertexBuffer(2, *batch.vertices, batch.color_offset, error))
     {
         return false;
@@ -422,10 +460,15 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
     {
         std::uint32_t mode;
         std::uint32_t source_count;
-    } remap{draw.remap_mode, batch.vertex_count};
-    if (!encoder.setVertexBytes(4, &remap, sizeof(remap), error) ||
-        !encoder.setFragmentTexture(0, batch.texture, error) ||
-        !encoder.setFragmentSampler(0, sampler, error))
+        std::uint32_t flip_y;
+    } remap{draw.remap_mode, batch.vertex_count, mImpl->surface ? 0u : 1u};
+    if (!encoder.setVertexBytes(4, &remap, sizeof(remap), error))
+    {
+        return false;
+    }
+    if (uses_texture &&
+        (!encoder.setFragmentTexture(0, batch.texture, error) ||
+         !encoder.setFragmentSampler(0, sampler, error)))
     {
         return false;
     }
@@ -438,8 +481,16 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
             return false;
         }
     }
-    else if (!encoder.setFragmentBytes(0, batch.solid_color,
-                                       sizeof(batch.solid_color), error))
+    else if (batch.shader == ALMetalUIShader::solid_color)
+    {
+        if (!encoder.setFragmentBytes(0, batch.solid_color,
+                                      sizeof(batch.solid_color), error))
+        {
+            return false;
+        }
+    }
+    else if (!encoder.setFragmentBytes(0, &batch.minimum_alpha,
+                                       sizeof(batch.minimum_alpha), error))
     {
         return false;
     }
