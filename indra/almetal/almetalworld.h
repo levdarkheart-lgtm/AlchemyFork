@@ -219,6 +219,7 @@ struct ALMetalWorldSimpleBatch
     bool impostor_shiny = false;
     bool impostor_emboss = false;
     bool water_exclusion = false;
+    bool water_haze = false;
     bool legacy_glow = false;
     bool pbr_glow = false;
     bool terrain = false;
@@ -370,11 +371,45 @@ struct ALMetalWorldWaterExclusionSurface
     float camera_default_height[4]{};
 };
 
+struct ALMetalWorldWaterFieldDraw
+{
+    std::uint32_t part = 0;
+    std::uint32_t vertex_count = 0;
+    std::uint32_t instance_count = 0;
+    bool triangle_strip = false;
+};
+
+// The exact procedural water field and fog inputs consumed by
+// waterHazeV/F.glsl. Above water, the field is depth-tested and masked by the
+// retained exclusion stencil. Underwater, only the matrices, plane and fog
+// terms are used by a full-screen triangle.
+struct ALMetalWorldWaterHaze
+{
+    const ALMetalTexture* cell_map = nullptr;
+    float modelview_projection[16]{};
+    float inverse_projection[16]{};
+    // xy = cell square origin, z = cell width, w = cells per side.
+    float cell_square[4]{};
+    // x = default height; the remaining elements are reserved.
+    float default_height[4]{};
+    // x = square half-size, y = ring count, z = rim, w = draw void.
+    float rings[4]{};
+    float water_plane[4]{};
+    // RGB is the same display-encoded waterFogColor converted by the shader.
+    float fog_color[4]{};
+    // x = waterFogKS, y = waterFogDensity.
+    float fog[4]{};
+    std::array<ALMetalWorldWaterFieldDraw, 3> draws{};
+    std::uint32_t draw_count = 0;
+    bool above_water = false;
+};
+
 // The first ordered post-deferred world slice. The composed lighting color
 // and retained G-buffer depth/stencil attachment are copied into one
 // final-color target. Water-exclusion batches first rebuild EXCLUDE_BIT,
-// followed by opaque-forward fullbright, shiny and emboss replay. Blended
-// alpha, water, haze, glow and presentation remain later owners.
+// followed by opaque-forward fullbright, shiny and emboss replay, both
+// ordered glow families, and water haze. Blended alpha, water, atmospheric
+// haze and presentation remain later owners.
 struct ALMetalWorldOpaquePostDeferredScene
 {
     const ALMetalRenderTarget* gbuffer = nullptr;
@@ -385,6 +420,7 @@ struct ALMetalWorldOpaquePostDeferredScene
     const ALMetalWorldHeroProbe* hero_probe = nullptr;
     const ALMetalWorldWaterExclusionSurface* water_exclusion_surface =
         nullptr;
+    const ALMetalWorldWaterHaze* water_haze = nullptr;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     bool reverse_z = false;
@@ -750,7 +786,7 @@ public:
         std::string* error = nullptr);
 
     // Retain composed lighting and scene depth, then render the supported
-    // opaque-forward post-deferred families into a one-color output target.
+    // ordered post-deferred families into a one-color output target.
     std::unique_ptr<ALMetalRenderTarget> renderOpaquePostDeferred(
         const ALMetalWorldOpaquePostDeferredScene& scene,
         std::string* error = nullptr);

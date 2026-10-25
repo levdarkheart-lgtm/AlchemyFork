@@ -44,6 +44,7 @@ class LLVector3;
 class LLViewerCamera;
 class LLViewerTexture;
 struct ALMetalWorldWaterExclusionSurface;
+struct ALMetalWorldWaterHaze;
 
 /// The water's field for the frame: ALWaterField's layout around the main camera, and the cell map the water's shaders
 /// read the heights from, ALWaterField::MAP_SIZE texels a side of RG32F (height, flags) as fillCells lays them out.
@@ -159,6 +160,13 @@ public:
     bool fillMetalWaterExclusionSurface(
         ALMetalWorldWaterExclusionSurface& surface,
         const LLViewerCamera& camera) const;
+
+    /// Snapshot the procedural field and exact fog/matrix inputs consumed by
+    /// the native water-haze pass. Underwater haze is full-screen and remains
+    /// valid without a field texture.
+    bool fillMetalWaterHaze(
+        ALMetalWorldWaterHaze& haze, const LLViewerCamera& camera,
+        bool above_water) const;
 #endif
 
 private:

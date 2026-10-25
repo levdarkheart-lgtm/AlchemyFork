@@ -603,6 +603,7 @@ public:
     void endMetalImpostorAlphaCapture();
     void beginMetalWorldPostDeferredCapture();
     void beginMetalWorldWaterExclusionPass();
+    void captureMetalWorldWaterHaze();
     void beginMetalWorldLegacyGlowPass(bool rigged);
     void beginMetalWorldPBRGlowPass(bool rigged);
     void encodeMetalWorldOpaquePostDeferredCapture();

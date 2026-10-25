@@ -274,6 +274,25 @@ struct ALMetalWorldWaterExclusionVaryings
     float3 agent_position;
 };
 
+struct ALMetalWorldWaterHazeConstants
+{
+    float4x4 modelview_projection;
+    float4x4 inverse_projection;
+    float4 cell_square;
+    float4 default_height;
+    float4 rings;
+    float4 water_plane;
+    float4 fog_color;
+    float4 fog;
+    uint4 config;
+};
+
+struct ALMetalWorldWaterHazeVaryings
+{
+    float4 position [[position]];
+    float2 texcoord;
+};
+
 struct ALMetalWorldShinyConstants
 {
     float4x4 modelview_projection;
@@ -1612,6 +1631,298 @@ fragment float4 almetal_world_water_exclusion_fragment(
     // Color writes are disabled in the pipeline. Surviving fragments update
     // only EXCLUDE_BIT through the typed stencil state.
     return 0.0;
+}
+
+static float2 almetal_world_water_square_point(
+    float2 at, constant ALMetalWorldWaterHazeConstants& constants)
+{
+    const float side = constants.cell_square.w;
+    const float2 centre = constants.cell_square.xy +
+        0.5 * side * constants.cell_square.z;
+    return centre + (at - 0.5 * side) * constants.cell_square.z;
+}
+
+static float2 almetal_world_water_turn(float2 value, uint edge)
+{
+    if (edge == 1u)
+    {
+        return float2(1.0 - value.y, value.x);
+    }
+    if (edge == 2u)
+    {
+        return float2(1.0 - value.x, 1.0 - value.y);
+    }
+    if (edge == 3u)
+    {
+        return float2(value.y, 1.0 - value.x);
+    }
+    return value;
+}
+
+static float2 almetal_world_water_turn_offset(float2 value, uint edge)
+{
+    if (edge == 1u)
+    {
+        return float2(-value.y, value.x);
+    }
+    if (edge == 2u)
+    {
+        return -value;
+    }
+    if (edge == 3u)
+    {
+        return float2(value.y, -value.x);
+    }
+    return value;
+}
+
+static float2 almetal_world_water_between(
+    float2 low, float2 high, float2 amount)
+{
+    return float2(
+        amount.x <= 0.0 ? low.x
+            : (amount.x >= 1.0 ? high.x : 0.5 * (low.x + high.x)),
+        amount.y <= 0.0 ? low.y
+            : (amount.y >= 1.0 ? high.y : 0.5 * (low.y + high.y)));
+}
+
+static ALMetalWorldWaterHazeVaryings almetal_world_water_haze_output(
+    float3 position, constant ALMetalWorldWaterHazeConstants& constants)
+{
+    float4 clip_position = constants.modelview_projection *
+        float4(position, 1.0);
+    ALMetalWorldWaterHazeVaryings output;
+    output.texcoord = clip_position.xy / clip_position.w * 0.5 + 0.5;
+    clip_position.y = -clip_position.y;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    return output;
+}
+
+vertex ALMetalWorldWaterHazeVaryings
+almetal_world_water_haze_field_vertex(
+    constant ALMetalWorldWaterHazeConstants& constants [[buffer(0)]],
+    texture2d<float, access::read> cell_map [[texture(0)]],
+    uint vertex_id [[vertex_id]], uint instance_id [[instance_id]])
+{
+    const uint part = constants.config.z;
+    const uint side = uint(constants.cell_square.w);
+    float3 position = 0.0;
+    if (part == 0u)
+    {
+        const uint2 cell = uint2(instance_id % side,
+                                 instance_id / side);
+        const float2 texel = cell_map.read(cell).rg;
+        const bool drawn = (uint(texel.y) & 1u) != 0u ||
+            constants.rings.w > 0.0;
+        const float2 corner = drawn
+            ? float2(float(vertex_id & 1u), float(vertex_id >> 1u))
+            : float2(0.0);
+        position = float3(almetal_world_water_square_point(
+                              float2(cell) + corner, constants),
+                          texel.x);
+    }
+    else if (part == 2u)
+    {
+        const int cells = int(side);
+        const int half_cells = (cells - 1) / 2;
+        const float square_half = constants.rings.x;
+        const float rim = constants.rings.z;
+        const float inner = (0.0 - 0.5 * float(side)) *
+            constants.cell_square.z;
+        const float outer = clamp(-2.0 * square_half, -rim, rim);
+        const int triangle = int(vertex_id / 3u);
+        const int corner = int(vertex_id - uint(triangle * 3));
+        float2 offset;
+        if (triangle < half_cells)
+        {
+            offset = corner == 0
+                ? float2(-square_half, outer)
+                : float2((float(triangle + (corner == 1 ? 1 : 0)) -
+                          0.5 * float(side)) * constants.cell_square.z,
+                         inner);
+        }
+        else if (triangle == half_cells)
+        {
+            offset = corner == 0 ? float2(-square_half, outer)
+                : (corner == 1 ? float2(0.0, outer)
+                    : float2((float(half_cells) - 0.5 * float(side)) *
+                             constants.cell_square.z, inner));
+        }
+        else if (triangle <= cells)
+        {
+            const int cell = triangle - 1;
+            offset = corner == 0 ? float2(0.0, outer)
+                : float2((float(cell + (corner == 1 ? 1 : 0)) -
+                          0.5 * float(side)) * constants.cell_square.z,
+                         inner);
+        }
+        else
+        {
+            offset = corner == 0 ? float2(0.0, outer)
+                : (corner == 1 ? float2(square_half, outer)
+                    : float2((float(cells) - 0.5 * float(side)) *
+                             constants.cell_square.z, inner));
+        }
+        const float2 centre = constants.cell_square.xy +
+            0.5 * float(side) * constants.cell_square.z;
+        const float2 point = constants.rings.w > 0.0
+            ? almetal_world_water_turn_offset(offset, instance_id)
+            : float2(0.0);
+        position = float3(centre + point, constants.default_height.x);
+    }
+    else
+    {
+        const uint ring = instance_id / 12u;
+        const uint quad = instance_id - ring * 12u;
+        int2 at;
+        int edge = -1;
+        if (quad < 4u)
+        {
+            at = int2(int(quad), 0);
+            edge = quad == 1u || quad == 2u ? 2 : -1;
+        }
+        else if (quad < 8u)
+        {
+            at = int2(int((quad & 1u) * 3u),
+                      1 + int((quad - 4u) / 2u));
+            edge = (quad & 1u) == 0u ? 1 : 3;
+        }
+        else
+        {
+            at = int2(int(quad - 8u), 3);
+            edge = quad == 9u || quad == 10u ? 0 : -1;
+        }
+        const float scale = constants.rings.x * float(1u << ring);
+        const float rim = constants.rings.z;
+        const float2 low = clamp((float2(at) - 2.0) * scale,
+                                 float2(-rim), float2(rim));
+        const float2 high = clamp((float2(at) - 1.0) * scale,
+                                  float2(-rim), float2(rim));
+        const bool drawn = constants.rings.w > 0.0 &&
+            !(ring == 0u && edge >= 0);
+        const uint triangle = vertex_id / 3u;
+        const uint corner = vertex_id - triangle * 3u;
+        float2 amount;
+        if (edge >= 0)
+        {
+            if (triangle == 0u)
+            {
+                amount = corner == 0u ? float2(0.0, 0.0)
+                    : (corner == 1u ? float2(0.5, 0.0)
+                                     : float2(0.0, 1.0));
+            }
+            else if (triangle == 1u)
+            {
+                amount = corner == 0u ? float2(0.5, 0.0)
+                    : (corner == 1u ? float2(1.0, 1.0)
+                                     : float2(0.0, 1.0));
+            }
+            else
+            {
+                amount = corner == 0u ? float2(0.5, 0.0)
+                    : (corner == 1u ? float2(1.0, 0.0)
+                                     : float2(1.0, 1.0));
+            }
+            amount = almetal_world_water_turn(amount, uint(edge));
+        }
+        else if (triangle == 0u)
+        {
+            amount = 0.0;
+        }
+        else if (triangle == 1u)
+        {
+            amount = corner == 0u ? float2(0.0, 0.0)
+                : (corner == 1u ? float2(1.0, 0.0)
+                                 : float2(1.0, 1.0));
+        }
+        else
+        {
+            amount = corner == 0u ? float2(0.0, 0.0)
+                : (corner == 1u ? float2(1.0, 1.0)
+                                 : float2(0.0, 1.0));
+        }
+        const float2 centre = constants.cell_square.xy +
+            0.5 * float(side) * constants.cell_square.z;
+        position = float3(
+            centre + (drawn
+                ? almetal_world_water_between(low, high, amount)
+                : float2(0.0)),
+            constants.default_height.x);
+    }
+    return almetal_world_water_haze_output(position, constants);
+}
+
+vertex ALMetalWorldWaterHazeVaryings
+almetal_world_water_haze_fullscreen_vertex(
+    constant ALMetalWorldWaterHazeConstants& constants [[buffer(0)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float2 texcoord = float2((vertex_id << 1u) & 2u,
+                                   vertex_id & 2u);
+    ALMetalWorldWaterHazeVaryings output;
+    output.position = float4(texcoord.x * 2.0 - 1.0,
+                             1.0 - texcoord.y * 2.0,
+                             0.0, 1.0);
+    output.texcoord = texcoord;
+    return output;
+}
+
+fragment float4 almetal_world_water_haze_fragment(
+    ALMetalWorldWaterHazeVaryings input [[stage_in]],
+    constant ALMetalWorldWaterHazeConstants& constants [[buffer(0)]],
+    texture2d<float> depth_texture [[texture(33)]],
+    sampler point_sampler [[sampler(1)]])
+{
+    const float depth = depth_texture.sample(point_sampler,
+                                             input.texcoord).r;
+    const bool reverse_z = constants.config.x != 0u;
+    const float ndc_z = reverse_z ? depth : depth * 2.0 - 1.0;
+    float4 position = constants.inverse_projection *
+        float4(input.texcoord * 2.0 - 1.0, ndc_z, 1.0);
+    position.xyz /= max(position.w, 0.000001);
+    position.w = 1.0;
+
+    const bool far_depth = reverse_z ? depth <= 0.0 : depth >= 1.0;
+    if (far_depth)
+    {
+        const float3 direction = normalize(position.xyz);
+        const float eye_surface = -dot(direction,
+                                       constants.water_plane.xyz);
+        const float entry = constants.water_plane.w > 0.0 &&
+                                  eye_surface > 0.0
+            ? constants.water_plane.w / eye_surface : 0.0;
+        position.xyz = direction * (entry + 1024.0);
+    }
+
+    if (dot(position.xyz, constants.water_plane.xyz) +
+            constants.water_plane.w > 0.0)
+    {
+        return float4(0.0, 0.0, 0.0, 1.0);
+    }
+
+    const float3 view = normalize(position.xyz);
+    const float eye_surface = -dot(view, constants.water_plane.xyz);
+    const float eye_depth = max(-constants.water_plane.w, 0.0);
+    const float3 intersection = constants.water_plane.w > 0.0
+        ? view * constants.water_plane.w / eye_surface : float3(0.0);
+    const float length_in_water = max(
+        length(position.xyz - intersection), 0.1);
+    const float density = constants.fog.y;
+    const float light_scale = constants.fog.x;
+    constexpr float base = 0.98;
+    const float term1 = -density * pow(base, light_scale * eye_depth);
+    const float term2 = density + light_scale * eye_surface;
+    const float term3 = pow(base, term2 * length_in_water) - 1.0;
+    const float light = pow(min(term1 / term2 * term3, 1.0),
+                            1.0 / 1.7);
+    const float transmission = pow(base,
+                                   length_in_water * density);
+    float4 fogged = float4(
+        almetal_srgb_to_linear(constants.fog_color.rgb) * light,
+        transmission);
+    fogged.a = max(pow(fogged.a, 1.7), 0.0);
+    return max(fogged, float4(0.0));
 }
 
 struct ALMetalWorldLegacyGlowVaryings

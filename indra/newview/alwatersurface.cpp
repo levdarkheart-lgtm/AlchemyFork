@@ -268,6 +268,72 @@ bool ALWaterSurface::fillMetalWaterExclusionSurface(
     surface.camera_default_height[3] = mDefaultHeight;
     return true;
 }
+
+bool ALWaterSurface::fillMetalWaterHaze(
+    ALMetalWorldWaterHaze& haze, const LLViewerCamera& camera,
+    bool above_water) const
+{
+    haze = {};
+    haze.above_water = above_water;
+
+    LLMatrix4a inverse_projection;
+    inverse_projection.setInverse(camera.getProjection());
+    std::memcpy(haze.inverse_projection,
+                inverse_projection.getF32ptr(),
+                sizeof(haze.inverse_projection));
+    std::memcpy(haze.water_plane, LLDrawPoolAlpha::sWaterPlane.mV,
+                sizeof(haze.water_plane));
+
+    const LLEnvironment::EnvironmentUBOData& environment =
+        LLEnvironment::instance().getEnvironmentUBOData();
+    std::memcpy(haze.fog_color, environment.waterFogColor,
+                sizeof(haze.fog_color));
+    haze.fog[0] = environment.waterFogKS;
+    haze.fog[1] = environment.waterFogDensity;
+
+    if (!above_water)
+    {
+        return true;
+    }
+    if (mCellMap.isNull() || !mCellMap->getMetalTexture())
+    {
+        return false;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(camera.getModelview(),
+                                camera.getProjection());
+    std::memcpy(haze.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(haze.modelview_projection));
+    haze.cell_map = mCellMap->getMetalTexture();
+    std::memcpy(haze.cell_square, mSquare.mV,
+                sizeof(haze.cell_square));
+    haze.default_height[0] = mDefaultHeight;
+    haze.rings[0] = static_cast<F32>(mLayout.mHalf);
+    haze.rings[1] = static_cast<F32>(mLayout.mRings);
+    haze.rings[2] = static_cast<F32>(mLayout.mRim);
+    haze.rings[3] = mVoidDrawn ? 1.f : 0.f;
+
+    const ALWaterField::FieldDraws field = ALWaterField::fieldDraws(
+        mLayout, ALWaterField::PatchRect());
+    for (const ALWaterField::Draw& draw : field)
+    {
+        if (draw.mPart == ALWaterField::Draw::FRINGE ||
+            draw.mVertices <= 0 || draw.mInstances <= 0 ||
+            haze.draw_count >= haze.draws.size())
+        {
+            continue;
+        }
+        ALMetalWorldWaterFieldDraw& destination =
+            haze.draws[haze.draw_count++];
+        destination.part = static_cast<U32>(draw.mPart);
+        destination.vertex_count = static_cast<U32>(draw.mVertices);
+        destination.instance_count = static_cast<U32>(draw.mInstances);
+        destination.triangle_strip = draw.mStrip;
+    }
+    return haze.draw_count == 3;
+}
 #endif
 
 void ALWaterSurface::draw(LLGLSLShader& shader, bool patched) const

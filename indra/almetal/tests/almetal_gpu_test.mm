@@ -146,6 +146,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_emboss_fragment",
             "almetal_world_water_exclusion_vertex",
             "almetal_world_water_exclusion_fragment",
+            "almetal_world_water_haze_field_vertex",
+            "almetal_world_water_haze_fullscreen_vertex",
+            "almetal_world_water_haze_fragment",
             "almetal_world_legacy_glow_vertex",
             "almetal_world_legacy_glow_skinned_vertex",
             "almetal_world_legacy_glow_fragment",
@@ -2174,7 +2177,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *device, water_cell_descriptor, &error);
         INFO(error);
         REQUIRE(water_cell_map);
-        const std::array<float, 2> water_cell{{0.f, 0.f}};
+        const std::array<float, 2> water_cell{{0.f, 1.f}};
         auto water_upload = device->makeCommandBuffer(
             "Alchemy water-exclusion test height upload", &error);
         REQUIRE(water_upload);
@@ -2338,9 +2341,145 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(stencil_pixels[1] == 0x3000);
         CHECK(stencil_pixels[2] == 0x2c00);
         CHECK(stencil_pixels[3] == 0x3800);
-        opaque_forward_scene.batches = &fullbright_batch;
+
+        // Water haze is an ordered procedural marker rather than a mesh
+        // batch. Above water it reuses the live field, reads the retained
+        // scene depth, and keeps pixels marked by water exclusion untouched.
+        // Underwater it uses the same fog equation over a full-screen
+        // triangle without depending on a field texture or stencil.
+        ALMetalWorldWaterHaze water_haze;
+        water_haze.cell_map = water_cell_map.get();
+        std::memcpy(water_haze.modelview_projection,
+                    identity.data(), sizeof(identity));
+        std::memcpy(water_haze.inverse_projection,
+                    identity.data(), sizeof(identity));
+        water_haze.cell_square[0] = -1.f;
+        water_haze.cell_square[1] = -1.f;
+        water_haze.cell_square[2] = 2.f;
+        water_haze.cell_square[3] = 1.f;
+        water_haze.rings[0] = 1.f;
+        water_haze.rings[1] = 1.f;
+        water_haze.rings[2] = 4.f;
+        water_haze.rings[3] = 0.f;
+        water_haze.water_plane[2] = -1.f;
+        water_haze.fog_color[0] = 0.5f;
+        water_haze.fog_color[1] = 0.25f;
+        water_haze.fog_color[2] = 0.125f;
+        water_haze.fog_color[3] = 1.f;
+        water_haze.fog[0] = 1.f;
+        water_haze.fog[1] = 1.f;
+        water_haze.draws[0] = {0u, 4u, 1u, true};
+        water_haze.draws[1] = {1u, 9u, 12u, false};
+        water_haze.draws[2] = {2u, 9u, 4u, false};
+        water_haze.draw_count = 3;
+        water_haze.above_water = true;
+        ALMetalWorldSimpleBatch water_haze_marker;
+        water_haze_marker.water_haze = true;
+        std::array<ALMetalWorldSimpleBatch, 2> water_haze_batches{{
+            water_exclusion_batch,
+            water_haze_marker,
+        }};
+        opaque_forward_scene.batches = water_haze_batches.data();
+        opaque_forward_scene.batch_count = water_haze_batches.size();
+        opaque_forward_scene.water_exclusion_surface = &water_surface;
+        opaque_forward_scene.water_haze = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world water-haze inputs are invalid");
+        opaque_forward_scene.water_haze = &water_haze;
+        std::array<ALMetalWorldSimpleBatch, 2> misordered_haze{{
+            water_haze_marker,
+            fullbright_batch,
+        }};
+        opaque_forward_scene.batches = misordered_haze.data();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world water-haze ordering is invalid");
+        opaque_forward_scene.batches = water_haze_batches.data();
+        error.clear();
+        auto above_water_haze = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(above_water_haze);
+        std::array<std::uint16_t, 32 * 32 * 4> water_haze_pixels{};
+        std::array<float, 32 * 32> water_haze_depth{};
+        REQUIRE(above_water_haze->colorTexture(0)->readback(
+            *device, 0, 0, {}, water_haze_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(above_water_haze->depthStencilTexture()->readback(
+            *device, 0, 0, {}, water_haze_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(water_haze_pixels[stencil_center + 0] == 0x3400);
+        CHECK(water_haze_pixels[stencil_center + 1] == 0x3000);
+        CHECK(water_haze_pixels[stencil_center + 2] == 0x2c00);
+        CHECK(water_haze_pixels[stencil_center + 3] == 0x3800);
+        CHECK(water_haze_pixels[0] != 0x3400);
+        CHECK(water_haze_pixels[3] < 0x3800);
+        CHECK(std::abs(
+                  water_haze_depth[stencil_center / 4] - 0.625f) <
+              0.0001f);
+        CHECK(std::abs(water_haze_depth[0] - 1.f) < 0.0001f);
+
+        water_haze.above_water = false;
+        water_haze.cell_map = nullptr;
+        water_haze.draw_count = 0;
+        opaque_forward_scene.batches = &water_haze_marker;
         opaque_forward_scene.batch_count = 1;
         opaque_forward_scene.water_exclusion_surface = nullptr;
+        auto underwater_haze = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(underwater_haze);
+        REQUIRE(underwater_haze->colorTexture(0)->readback(
+            *device, 0, 0, {}, water_haze_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(underwater_haze->depthStencilTexture()->readback(
+            *device, 0, 0, {}, water_haze_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(water_haze_pixels[stencil_center + 0] != 0x3400);
+        CHECK(water_haze_pixels[stencil_center + 3] < 0x3800);
+        CHECK(std::abs(
+                  water_haze_depth[stencil_center / 4] - 0.625f) <
+              0.0001f);
+
+        const std::array<float, 2> reverse_water_cell{{0.5f, 1.f}};
+        auto reverse_water_upload = device->makeCommandBuffer(
+            "Alchemy reverse water-haze height upload", &error);
+        REQUIRE(reverse_water_upload);
+        REQUIRE(water_cell_map->upload(
+            *reverse_water_upload, 0, 0, {}, reverse_water_cell.data(),
+            sizeof(reverse_water_cell), &error));
+        REQUIRE(reverse_water_upload->commitAndWait(&error));
+        water_haze.above_water = true;
+        water_haze.cell_map = water_cell_map.get();
+        water_haze.draw_count = 3;
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        auto reverse_water_haze = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_water_haze);
+        REQUIRE(reverse_water_haze->colorTexture(0)->readback(
+            *device, 0, 0, {}, water_haze_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(reverse_water_haze->depthStencilTexture()->readback(
+            *device, 0, 0, {}, water_haze_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(water_haze_pixels[stencil_center + 0] != 0x3400);
+        CHECK(water_haze_pixels[stencil_center + 3] < 0x3800);
+        CHECK(std::abs(
+                  water_haze_depth[stencil_center / 4] - 0.25f) <
+              0.0001f);
+
+        opaque_forward_scene.batches = &fullbright_batch;
+        opaque_forward_scene.batch_count = 1;
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.water_exclusion_surface = nullptr;
+        opaque_forward_scene.water_haze = nullptr;
 
         // The two glow owners share alpha-only output but not blending:
         // opaque PBR glow replaces destination alpha, then legacy glow adds

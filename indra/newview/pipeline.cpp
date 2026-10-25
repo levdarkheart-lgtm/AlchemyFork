@@ -563,6 +563,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool pbr_glow = false;
     ALMetalWorldWaterExclusionSurface water_exclusion_surface;
     bool water_exclusion_surface_valid = false;
+    ALMetalWorldWaterHaze water_haze;
+    bool water_haze_valid = false;
     ALMetalWorldReflectionProbes impostor_reflection_probes;
     std::unique_ptr<ALMetalTexture> impostor_hero_probe_texture;
     ALMetalWorldHeroProbe impostor_hero_probe;
@@ -2725,6 +2727,8 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.pbr_glow = false;
     capture.water_exclusion_surface = {};
     capture.water_exclusion_surface_valid = false;
+    capture.water_haze = {};
+    capture.water_haze_valid = false;
 }
 
 void LLPipeline::beginMetalWorldWaterExclusionPass()
@@ -2831,6 +2835,33 @@ void LLPipeline::beginMetalWorldPBRGlowPass(bool rigged)
     capture.pass_active = true;
 }
 
+void LLPipeline::captureMetalWorldWaterHaze()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active || capture.water_haze_valid ||
+        !mWaterSurface.fillMetalWaterHaze(
+            capture.water_haze, *LLViewerCamera::getInstance(),
+            !sUnderWaterRender))
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        capture.water_haze = {};
+        capture.water_haze_valid = false;
+        return;
+    }
+
+    ALMetalWorldSimpleBatch marker;
+    marker.water_haze = true;
+    capture.batches.push_back(marker);
+    capture.water_haze_valid = true;
+}
+
 void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -2886,6 +2917,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.water_exclusion_surface =
             capture.water_exclusion_surface_valid
                 ? &capture.water_exclusion_surface : nullptr;
+        scene.water_haze = capture.water_haze_valid
+            ? &capture.water_haze : nullptr;
         scene.width = capture.width;
         scene.height = capture.height;
         scene.reverse_z = capture.reverse_z;
@@ -2932,6 +2965,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.pbr_glow = false;
     capture.water_exclusion_surface = {};
     capture.water_exclusion_surface_valid = false;
+    capture.water_haze = {};
+    capture.water_haze_valid = false;
 }
 
 void LLPipeline::endMetalWorldPostDeferredCapture()
@@ -2955,6 +2990,8 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
     capture.pbr_glow = false;
     capture.water_exclusion_surface = {};
     capture.water_exclusion_surface_valid = false;
+    capture.water_haze = {};
+    capture.water_haze_valid = false;
 }
 
 void LLPipeline::beginMetalImpostorFullbrightPass(bool rigged,
@@ -19228,6 +19265,9 @@ void LLPipeline::doWaterHaze()
 
     if (RenderDeferredAtmospheric)
     {
+#if LL_DARWIN
+        captureMetalWorldWaterHaze();
+#endif
         // The scene's depth as the haze reads it, after the pools before it wrote it in this binding.
         ALTransientTargets haze(mTransientTargets);
         LLRenderTarget*    depth = hazeDepth(haze);

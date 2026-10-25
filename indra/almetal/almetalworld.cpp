@@ -53,6 +53,21 @@ namespace
     };
     static_assert(sizeof(WorldWaterExclusionConstants) == 240);
 
+    struct alignas(16) WorldWaterHazeConstants
+    {
+        float modelview_projection[16]{};
+        float inverse_projection[16]{};
+        float cell_square[4]{};
+        float default_height[4]{};
+        float rings[4]{};
+        float water_plane[4]{};
+        float fog_color[4]{};
+        float fog[4]{};
+        // x = reverse-Z, y = above-water field, z = field part.
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldWaterHazeConstants) == 240);
+
     struct alignas(16) WorldShinyConstants
     {
         float modelview_projection[16];
@@ -600,6 +615,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         opaque_forward_emboss_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         water_exclusion_pipelines;
+    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>
+        water_haze_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         legacy_glow_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
@@ -627,6 +644,12 @@ struct ALMetalWorldGBufferRenderer::Impl
         forward_water_exclusion_depth;
     std::unique_ptr<ALMetalDepthStencilState>
         reverse_water_exclusion_depth;
+    std::unique_ptr<ALMetalDepthStencilState>
+        forward_water_haze_depth;
+    std::unique_ptr<ALMetalDepthStencilState>
+        reverse_water_haze_depth;
+    std::unique_ptr<ALMetalDepthStencilState>
+        underwater_water_haze_depth;
     std::unique_ptr<ALMetalSamplerState> diffuse_sampler;
     std::unique_ptr<ALMetalSamplerState> probe_sampler;
     std::unique_ptr<ALMetalSamplerState> point_clamp_sampler;
@@ -696,6 +719,12 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_water_exclusion_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_water_exclusion_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_water_haze_field_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_water_haze_fullscreen_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_water_haze_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_legacy_glow_vertex") ||
         !impl->library->hasFunction(
@@ -1170,6 +1199,41 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         if (!impl->water_exclusion_pipelines[hdr])
         {
             return nullptr;
+        }
+
+        for (std::size_t above_water = 0; above_water < 2;
+             ++above_water)
+        {
+            ALMetalRenderPipelineDescriptor haze_descriptor;
+            haze_descriptor.library = impl->library.get();
+            haze_descriptor.vertex_function = above_water
+                ? "almetal_world_water_haze_field_vertex"
+                : "almetal_world_water_haze_fullscreen_vertex";
+            haze_descriptor.fragment_function =
+                "almetal_world_water_haze_fragment";
+            haze_descriptor.color_attachment_count = 1;
+            haze_descriptor.colors[0].format = screen_formats[hdr];
+            haze_descriptor.colors[0].blending_enabled = true;
+            haze_descriptor.colors[0].source_rgb =
+                ALMetalBlendFactor::one;
+            haze_descriptor.colors[0].destination_rgb =
+                ALMetalBlendFactor::source_alpha;
+            haze_descriptor.colors[0].source_alpha =
+                ALMetalBlendFactor::zero;
+            haze_descriptor.colors[0].destination_alpha =
+                ALMetalBlendFactor::source_alpha;
+            haze_descriptor.depth_stencil_format =
+                ALMetalPixelFormat::depth32_float_stencil8;
+            haze_descriptor.label = above_water
+                ? "Alchemy world above-water haze pipeline"
+                : "Alchemy world underwater haze pipeline";
+            impl->water_haze_pipelines[hdr][above_water] =
+                ALMetalRenderPipeline::create(
+                    device, haze_descriptor, error);
+            if (!impl->water_haze_pipelines[hdr][above_water])
+            {
+                return nullptr;
+            }
         }
 
         for (std::size_t rigged = 0; rigged < 2; ++rigged)
@@ -1841,6 +1905,41 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->reverse_water_exclusion_depth =
         ALMetalDepthStencilState::create(device, depth, error);
     if (!impl->reverse_water_exclusion_depth)
+    {
+        return nullptr;
+    }
+
+    depth.depth_compare = ALMetalCompareFunction::less_equal;
+    depth.depth_write_enabled = false;
+    depth.stencil_enabled = true;
+    depth.front_stencil.compare = ALMetalCompareFunction::equal;
+    depth.front_stencil.stencil_failure = ALMetalStencilOperation::keep;
+    depth.front_stencil.depth_failure = ALMetalStencilOperation::keep;
+    depth.front_stencil.depth_stencil_pass = ALMetalStencilOperation::keep;
+    depth.front_stencil.read_mask = 1u;
+    depth.front_stencil.write_mask = 0u;
+    depth.back_stencil = depth.front_stencil;
+    depth.label = "Alchemy forward-Z above-water haze depth and stencil";
+    impl->forward_water_haze_depth =
+        ALMetalDepthStencilState::create(device, depth, error);
+    if (!impl->forward_water_haze_depth)
+    {
+        return nullptr;
+    }
+    depth.depth_compare = ALMetalCompareFunction::greater_equal;
+    depth.label = "Alchemy reverse-Z above-water haze depth and stencil";
+    impl->reverse_water_haze_depth =
+        ALMetalDepthStencilState::create(device, depth, error);
+    if (!impl->reverse_water_haze_depth)
+    {
+        return nullptr;
+    }
+    depth.depth_compare = ALMetalCompareFunction::always;
+    depth.stencil_enabled = false;
+    depth.label = "Alchemy underwater water-haze depth";
+    impl->underwater_water_haze_depth =
+        ALMetalDepthStencilState::create(device, depth, error);
+    if (!impl->underwater_water_haze_depth)
     {
         return nullptr;
     }
@@ -3623,6 +3722,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     constexpr std::uint32_t max_skin_joints = 110;
     bool has_shiny = false;
     bool has_water_exclusion = false;
+    bool has_water_haze = false;
     bool saw_post_exclusion = false;
     const auto valid_skinning = [=](
         const ALMetalWorldSimpleBatch& batch, bool rigged)
@@ -3649,12 +3749,41 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             (batch.impostor_shiny ? 1u : 0u) +
             (batch.impostor_emboss ? 1u : 0u) +
             (batch.water_exclusion ? 1u : 0u) +
+            (batch.water_haze ? 1u : 0u) +
             (batch.legacy_glow ? 1u : 0u) +
             (batch.pbr_glow ? 1u : 0u);
         const bool rigged = batch.skin_palette != nullptr;
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
-        if (family_count != 1 || !batch.vertices || !batch.indices ||
+        if (family_count != 1)
+        {
+            setError(error, "Metal world opaque post-deferred batch is invalid");
+            return nullptr;
+        }
+        if (has_water_haze)
+        {
+            setError(error,
+                     "Metal world water-haze ordering is invalid");
+            return nullptr;
+        }
+        if (batch.water_haze)
+        {
+            if (has_water_haze || batch.vertices || batch.indices ||
+                batch.vertex_count != 0 || batch.index_count != 0 ||
+                batch.texture_count != 0 || batch.normal_texture ||
+                batch.material_slot_count != 0 ||
+                batch.pbr_slot_count != 0 || rigged ||
+                batch.skin_palette_float_count != 0 ||
+                batch.skin_joint_count != 0)
+            {
+                setError(error, "Metal world water-haze marker is invalid");
+                return nullptr;
+            }
+            has_water_haze = true;
+            saw_post_exclusion = true;
+            continue;
+        }
+        if (!batch.vertices || !batch.indices ||
             batch.vertex_count == 0 || batch.index_count == 0 ||
             batch.normal_texture || batch.impostor || batch.terrain ||
             batch.avatar_rigid || batch.avatar_skinning ||
@@ -3798,6 +3927,65 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             return nullptr;
         }
     }
+    if (has_water_haze)
+    {
+        const ALMetalWorldWaterHaze* haze = scene.water_haze;
+        if (!haze || !gbuffer.depth_stencil_shader_read ||
+            !sampleableTexture(scene.gbuffer->depthStencilTexture()) ||
+            !finiteValues(haze->modelview_projection, 16) ||
+            !finiteValues(haze->inverse_projection, 16) ||
+            !finiteValues(haze->cell_square, 4) ||
+            !finiteValues(haze->default_height, 4) ||
+            !finiteValues(haze->rings, 4) ||
+            !finiteValues(haze->water_plane, 4) ||
+            !finiteValues(haze->fog_color, 4) ||
+            !finiteValues(haze->fog, 4) ||
+            haze->fog[0] <= 0.f || haze->fog[1] < 0.f)
+        {
+            setError(error, "Metal world water-haze inputs are invalid");
+            return nullptr;
+        }
+        if (haze->above_water)
+        {
+            const ALMetalTextureDescriptor* cell_map = haze->cell_map
+                ? &haze->cell_map->descriptor() : nullptr;
+            if (!cell_map ||
+                cell_map->type != ALMetalTextureType::texture_2d ||
+                cell_map->format != ALMetalPixelFormat::rg32_float ||
+                cell_map->width == 0 || cell_map->height == 0 ||
+                cell_map->sample_count != 1 ||
+                !sampleableTexture(haze->cell_map) ||
+                haze->cell_square[2] <= 0.f ||
+                haze->cell_square[3] <= 0.f ||
+                haze->cell_square[3] > static_cast<float>(std::min(
+                    cell_map->width, cell_map->height)) ||
+                haze->rings[0] <= 0.f || haze->rings[1] <= 0.f ||
+                haze->rings[2] <= 0.f || haze->draw_count != 3)
+            {
+                setError(error, "Metal world water-haze field is invalid");
+                return nullptr;
+            }
+            for (std::uint32_t draw = 0; draw < haze->draw_count;
+                 ++draw)
+            {
+                const ALMetalWorldWaterFieldDraw& field =
+                    haze->draws[draw];
+                if (field.part != draw || field.vertex_count == 0 ||
+                    field.instance_count == 0 ||
+                    field.triangle_strip != (draw == 0))
+                {
+                    setError(error,
+                             "Metal world water-haze field draw is invalid");
+                    return nullptr;
+                }
+            }
+        }
+        else if (haze->cell_map || haze->draw_count != 0)
+        {
+            setError(error, "Metal world underwater haze is invalid");
+            return nullptr;
+        }
+    }
     if (has_shiny && !validReflectionProbes(scene.reflection_probes))
     {
         setError(error,
@@ -3888,6 +4076,25 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     {
         return nullptr;
     }
+    std::unique_ptr<ALMetalRenderTarget> haze_depth_snapshot;
+    if (has_water_haze)
+    {
+        ALMetalRenderTargetDescriptor haze_depth_descriptor;
+        haze_depth_descriptor.width = scene.width;
+        haze_depth_descriptor.height = scene.height;
+        haze_depth_descriptor.color_attachment_count = 0;
+        haze_depth_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        haze_depth_descriptor.depth_stencil_shader_read = true;
+        haze_depth_descriptor.label =
+            "Alchemy native world water-haze depth snapshot";
+        haze_depth_snapshot = ALMetalRenderTarget::create(
+            *mImpl->device, haze_depth_descriptor, error);
+        if (!haze_depth_snapshot)
+        {
+            return nullptr;
+        }
+    }
     auto command = mImpl->device->makeCommandBuffer(
         "Alchemy native world opaque post-deferred", error);
     if (!command ||
@@ -3953,6 +4160,137 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
         const bool rigged = batch.skin_palette != nullptr;
+        if (batch.water_haze)
+        {
+            const ALMetalWorldWaterHaze& haze = *scene.water_haze;
+            if (!encoder->end(error) || !haze_depth_snapshot ||
+                !haze_depth_snapshot->copyDepthStencilFrom(
+                    *command, *output->depthStencilTexture(), {}, error))
+            {
+                return nullptr;
+            }
+            ALMetalRenderPassConfig haze_pass_config;
+            haze_pass_config.colors[0].load = ALMetalLoadAction::load;
+            haze_pass_config.colors[0].store = ALMetalStoreAction::store;
+            haze_pass_config.depth_load = ALMetalLoadAction::load;
+            haze_pass_config.depth_store = ALMetalStoreAction::store;
+            haze_pass_config.stencil_load = ALMetalLoadAction::load;
+            haze_pass_config.stencil_store = ALMetalStoreAction::store;
+            auto haze_pass = output->makeRenderPass(
+                haze_pass_config, error);
+            encoder = haze_pass ? ALMetalRenderEncoder::begin(
+                *command, *haze_pass,
+                "Alchemy world water-haze encoder", error) : nullptr;
+            if (!encoder)
+            {
+                return nullptr;
+            }
+            encoded =
+                encoder->setViewport(viewport, error) &&
+                encoder->setScissor(scissor, error) &&
+                encoder->setFrontFacingWinding(
+                    ALMetalWinding::clockwise, error) &&
+                encoder->setFragmentSampler(
+                    0, mImpl->diffuse_sampler.get(), error);
+            if (encoded && has_shiny)
+            {
+                const ALMetalTexture* hero_texture = scene.hero_probe
+                    ? scene.hero_probe->radiance_texture
+                    : mImpl->inactive_hero_probe.get();
+                const ALMetalWorldHeroProbeConstants& hero_constants =
+                    scene.hero_probe
+                        ? scene.hero_probe->constants
+                        : mImpl->inactive_hero_constants;
+                encoded =
+                    encoder->setFragmentSampler(
+                        1, mImpl->probe_sampler.get(), error) &&
+                    encoder->setFragmentTexture(
+                        32,
+                        scene.reflection_probes->radiance_texture,
+                        error) &&
+                    encoder->setFragmentBuffer(
+                        1, *probe_constants_buffer, 0, error) &&
+                    encoder->setFragmentTexture(
+                        34, hero_texture, error) &&
+                    encoder->setFragmentBytes(
+                        4, &hero_constants,
+                        sizeof(hero_constants), error);
+            }
+            WorldWaterHazeConstants constants{};
+            std::memcpy(constants.modelview_projection,
+                        haze.modelview_projection,
+                        sizeof(constants.modelview_projection));
+            std::memcpy(constants.inverse_projection,
+                        haze.inverse_projection,
+                        sizeof(constants.inverse_projection));
+            std::memcpy(constants.cell_square, haze.cell_square,
+                        sizeof(constants.cell_square));
+            std::memcpy(constants.default_height, haze.default_height,
+                        sizeof(constants.default_height));
+            std::memcpy(constants.rings, haze.rings,
+                        sizeof(constants.rings));
+            std::memcpy(constants.water_plane, haze.water_plane,
+                        sizeof(constants.water_plane));
+            std::memcpy(constants.fog_color, haze.fog_color,
+                        sizeof(constants.fog_color));
+            std::memcpy(constants.fog, haze.fog,
+                        sizeof(constants.fog));
+            constants.config[0] = scene.reverse_z ? 1u : 0u;
+            constants.config[1] = haze.above_water ? 1u : 0u;
+
+            const ALMetalDepthStencilState* haze_depth =
+                haze.above_water
+                    ? (scene.reverse_z
+                           ? mImpl->reverse_water_haze_depth.get()
+                           : mImpl->forward_water_haze_depth.get())
+                    : mImpl->underwater_water_haze_depth.get();
+            encoded =
+                encoder->setDepthStencilState(haze_depth, error) &&
+                encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+                encoder->setStencilReferenceValue(0u, error) &&
+                encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setPipeline(
+                    *mImpl->water_haze_pipelines
+                        [scene.hdr ? 1 : 0][haze.above_water ? 1 : 0],
+                    error) &&
+                encoder->setFragmentTexture(
+                    33, haze_depth_snapshot->depthStencilTexture(),
+                    error) &&
+                encoder->setFragmentSampler(
+                    1, mImpl->point_clamp_sampler.get(), error) &&
+                encoder->setFragmentBytes(
+                    0, &constants, sizeof(constants), error);
+            if (encoded && haze.above_water)
+            {
+                encoded = encoder->setVertexTexture(
+                    0, haze.cell_map, error);
+                for (std::uint32_t draw = 0;
+                     encoded && draw < haze.draw_count; ++draw)
+                {
+                    const ALMetalWorldWaterFieldDraw& field =
+                        haze.draws[draw];
+                    constants.config[2] = field.part;
+                    encoded =
+                        encoder->setVertexBytes(
+                            0, &constants, sizeof(constants), error) &&
+                        encoder->draw(
+                            field.triangle_strip
+                                ? ALMetalPrimitiveType::triangle_strip
+                                : ALMetalPrimitiveType::triangle,
+                            0, field.vertex_count,
+                            field.instance_count, error);
+                }
+            }
+            else if (encoded)
+            {
+                encoded =
+                    encoder->setVertexBytes(
+                        0, &constants, sizeof(constants), error) &&
+                    encoder->draw(
+                        ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+            }
+            continue;
+        }
         if (batch.water_exclusion)
         {
             WorldWaterExclusionConstants constants{};
