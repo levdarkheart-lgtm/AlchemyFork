@@ -2851,6 +2851,8 @@ bool LLPipeline::fillMetalWorldAlphaLighting(
             lights.light_deferred_attenuation[light_index][1];
         destination.parameters[2] =
             lights.light_attenuation[light_index][2];
+        destination.parameters[3] =
+            lights.light_attenuation[light_index][3];
     }
     lighting.parameters[0] = mDeferredUBOData.specular_exponent;
     lighting.parameters[1] = 0.004f;
@@ -3066,6 +3068,12 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         {
             return batch.pre_water_material;
         });
+    const bool has_pbr_alpha = std::any_of(
+        capture.batches.begin(), capture.batches.end(),
+        [](const ALMetalWorldSimpleBatch& batch)
+        {
+            return batch.pre_water_pbr;
+        });
     const bool material_uses_environment = std::any_of(
         capture.batches.begin(), capture.batches.end(),
         [](const ALMetalWorldSimpleBatch& batch)
@@ -3085,7 +3093,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 });
         });
     const bool needs_reflection_probes =
-        has_shiny || has_simple_alpha || has_material_alpha;
+        has_shiny || has_simple_alpha || has_material_alpha ||
+        has_pbr_alpha;
     const bool hero_active =
         mHeroProbeManager.mHeroData.heroProbeCount > 0;
     const bool ssr_active =
@@ -3100,7 +3109,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             << "Could not acquire a coherent reflection-probe pack for "
                "the native world post-deferred slice" << LL_ENDL;
     }
-    if (capture.complete && (has_simple_alpha || has_material_alpha) &&
+    if (capture.complete &&
+        (has_simple_alpha || has_material_alpha || has_pbr_alpha) &&
         !capture.world_alpha_lighting_valid)
     {
         capture.complete = false;
@@ -3117,7 +3127,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                "native world pre-water alpha slice" << LL_ENDL;
     }
     if (capture.complete &&
-        (has_shiny || material_uses_environment) && hero_active &&
+        (has_shiny || material_uses_environment || has_pbr_alpha) &&
+        hero_active &&
         !fillMetalImpostorHeroProbe())
     {
         capture.complete = false;
@@ -3125,7 +3136,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             << "Could not acquire the active hero probe for the native "
                "world opaque-forward slice" << LL_ENDL;
     }
-    if (capture.complete && material_uses_environment && ssr_active &&
+    if (capture.complete &&
+        (material_uses_environment || has_pbr_alpha) && ssr_active &&
         !fillMetalImpostorScreenSpaceReflections())
     {
         capture.complete = false;
@@ -3147,10 +3159,11 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.reflection_probes = needs_reflection_probes
             ? &capture.impostor_reflection_probes : nullptr;
         scene.hero_probe =
-            (has_shiny || material_uses_environment) && hero_active
+            (has_shiny || material_uses_environment || has_pbr_alpha) &&
+                hero_active
             ? &capture.impostor_hero_probe : nullptr;
         scene.screen_space_reflections =
-            material_uses_environment && ssr_active
+            (material_uses_environment || has_pbr_alpha) && ssr_active
                 ? &capture.impostor_screen_space_reflections : nullptr;
         scene.water_exclusion_surface =
             capture.water_exclusion_surface_valid
@@ -3191,6 +3204,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 << (has_material_alpha
                         ? "; including legacy-material pre-water alpha"
                         : "")
+                << (has_pbr_alpha
+                        ? "; including PBR pre-water alpha" : "")
                 << "; result remains offscreen and visible GL authority is "
                    "unchanged" << LL_ENDL;
         }
@@ -4322,33 +4337,62 @@ void LLPipeline::captureMetalWorldPBRBatch(
 }
 
 void LLPipeline::captureMetalImpostorPBRAlphaBatch(
-    const LLDrawInfo& params)
+    const LLDrawInfo& params, bool particle_or_hud_particle)
 {
     if (!mMetalWorldSimpleCapture)
     {
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    if (capture.world_post_deferred_active &&
-        capture.world_pre_water_alpha_active)
-    {
-        capture.complete = false;
-        capture.batches.clear();
-        return;
-    }
-    if (!capture.impostor_alpha_active)
+    const bool world_pre_water = capture.world_post_deferred_active &&
+        capture.world_pre_water_alpha_active;
+    if (!capture.impostor_alpha_active && !world_pre_water)
     {
         return;
     }
     if (params.mGLTFMaterial.isNull() ||
         params.mGLTFMaterial->mAlphaMode !=
-            LLGLTFMaterial::ALPHA_MODE_BLEND)
+            LLGLTFMaterial::ALPHA_MODE_BLEND ||
+        particle_or_hud_particle ||
+        params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA ||
+        params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)
     {
         capture.complete = false;
         capture.batches.clear();
         return;
     }
 
+    bool uses_shadows = false;
+    if (world_pre_water)
+    {
+        LLGLSLShader* pbr_shader =
+            gDeferredPBRAlphaProgram.selectVariant();
+        uses_shadows = pbr_shader->mFeatures.hasShadows;
+        if (uses_shadows && !fillMetalImpostorDirectionalShadows())
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
+        uses_shadows = uses_shadows &&
+            capture.impostor_directional_shadows.depth_texture != nullptr;
+        capture.world_alpha_uses_shadows =
+            capture.world_alpha_uses_shadows || uses_shadows;
+        if (!capture.world_alpha_lighting_valid)
+        {
+            ALMetalWorldLegacyAlphaLighting lighting;
+            if (!fillMetalWorldAlphaLighting(lighting))
+            {
+                capture.complete = false;
+                capture.batches.clear();
+                return;
+            }
+            capture.world_alpha_lighting = lighting;
+            capture.world_alpha_lighting_valid = true;
+        }
+    }
+
+    const std::size_t first_batch = capture.batches.size();
     capture.rigged = params.mAvatar != nullptr;
     capture.alpha_mask = false;
     capture.material_alpha_mode = 0;
@@ -4365,6 +4409,18 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
     captureMetalWorldPBRBatch(params, false);
     capture.pass_active = false;
     capture.pbr = false;
+    if (capture.complete && world_pre_water &&
+        capture.batches.size() == first_batch + 1)
+    {
+        ALMetalWorldSimpleBatch& batch = capture.batches.back();
+        batch.pre_water_alpha = true;
+        batch.pre_water_pbr = true;
+        batch.pre_water_shadows = uses_shadows;
+        // PBR always carries a radiance lobe. Arm paired scene history even
+        // for rough content because the live material can change without
+        // changing this capture owner's topology.
+        capture.impostor_ssr_needed = true;
+    }
 }
 
 void LLPipeline::captureMetalImpostorFlatAlphaBatch(

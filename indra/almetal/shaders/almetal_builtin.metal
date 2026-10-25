@@ -2413,11 +2413,13 @@ struct ALMetalWorldPBRConstants
     ALMetalWorldPBRSlotConstants slots[8];
     // x = populated slot count, y = alpha mask, z = HDR normal target.
     uint4 config;
+    float4x4 modelview;
 };
 
 struct ALMetalWorldPBRVaryings
 {
     float4 position [[position]];
+    float3 eye_position;
     float3 normal;
     float3 tangent;
     float3 bitangent;
@@ -2576,6 +2578,7 @@ static float4 almetal_world_pbr_tangent(
 
 static ALMetalWorldPBRVaryings almetal_world_pbr_varyings(
     float4 clip_position,
+    float4 eye_position,
     float3 normal,
     float4 tangent,
     float2 texcoord,
@@ -2588,6 +2591,7 @@ static ALMetalWorldPBRVaryings almetal_world_pbr_varyings(
     clip_position.y = -clip_position.y;
     output.position = world.depth_convention.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
+    output.eye_position = eye_position.xyz;
     output.normal = normalize(normal);
     const uint slot = min(material_index, max(pbr.config.x, 1u) - 1u);
     constant ALMetalWorldPBRSlotConstants& material =
@@ -2631,6 +2635,7 @@ vertex ALMetalWorldPBRVaryings almetal_world_pbr_vertex(
     return almetal_world_pbr_varyings(
         world.modelview_projection *
             float4(positions[vertex_id].xyz, 1.0),
+        pbr.modelview * float4(positions[vertex_id].xyz, 1.0),
         normal_matrix * normals[vertex_id].xyz,
         float4(normal_matrix * tangents[vertex_id].xyz,
                tangents[vertex_id].w),
@@ -2662,9 +2667,11 @@ vertex ALMetalWorldPBRVaryings almetal_world_pbr_skinned_vertex(
         skin_palette, joint_count);
     const uint material_index = world.depth_convention.y > 1
         ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
+    const float4 rebased_position =
+        skinned.position + float4(skin_palette[0].xyz, 1.0);
     return almetal_world_pbr_varyings(
-        world.modelview_projection * skinned.position +
-            world.modelview_projection * float4(skin_palette[0].xyz, 1.0),
+        world.modelview_projection * rebased_position,
+        pbr.modelview * rebased_position,
         normal_matrix * skinned.normal.xyz,
         float4(normal_matrix * tangent, tangents[vertex_id].w),
         texcoords[vertex_id], colors[vertex_id], material_index, world, pbr);
@@ -7982,6 +7989,252 @@ fragment float4 almetal_world_local_light_fragment(
     }
 
     return float4(max(final_color * constants.surface.y, float3(0.0)), 0.0);
+}
+
+static float3 almetal_world_pre_water_pbr_local_light(
+    ALMetalWorldLegacyAlphaLight light,
+    float3 diffuse_color, float3 specular_color,
+    float perceptual_roughness, float3 normal,
+    float3 position, float3 view,
+    texture2d<float> brdf_lut, sampler brdf_sampler,
+    bool classic_mode)
+{
+    const float light_size = light.parameters.x;
+    if (light_size <= 0.0)
+    {
+        return 0.0;
+    }
+    const float3 light_vector = light.position.xyz - position;
+    const float light_distance = length(light_vector);
+    const float distance = light_distance / light_size;
+    if (distance > 1.0 || light_distance <= 0.0)
+    {
+        return 0.0;
+    }
+
+    const float3 light_direction = light_vector / light_distance;
+    const float distance_attenuation =
+        almetal_legacy_distance_attenuation(
+            distance, light.parameters.y);
+    const float spot = max(
+        dot(-light.direction.xyz, light_direction), light.parameters.z);
+    const float intensity = spot * spot * distance_attenuation;
+    const ALMetalPBRPreviewPunctual punctual = almetal_pbr_punctual(
+        diffuse_color, specular_color, perceptual_roughness,
+        normal, view, light_direction);
+    const float nv = dot(normal, view);
+    const float3 energy_compensation = almetal_pbr_energy_compensation(
+        brdf_lut, brdf_sampler, specular_color,
+        perceptual_roughness, nv);
+    const float3 lobe = punctual.nl *
+        (punctual.diffuse + punctual.specular * energy_compensation);
+    const float3 color = intensity * light.diffuse.rgb * 3.0 *
+        almetal_world_bounded_radiance(lobe);
+    return color * (classic_mode ? 0.9 : 1.0);
+}
+
+fragment float4 almetal_world_pre_water_pbr_fragment(
+    ALMetalWorldPBRVaryings input [[stage_in]],
+    array<texture2d<float>, 8> base_color_textures [[texture(0)]],
+    array<texture2d<float>, 8> normal_textures [[texture(8)]],
+    array<texture2d<float>, 8> orm_textures [[texture(16)]],
+    array<texture2d<float>, 8> emissive_textures [[texture(24)]],
+    texturecube_array<float> reflection_radiance [[texture(32)]],
+    texture2d_array<float> shadow_maps [[texture(33)]],
+    texturecube<float> hero_probe [[texture(34)]],
+    texture2d<float> ssr_scene_color [[texture(35)]],
+    texture2d<float> ssr_scene_depth [[texture(36)]],
+    texture2d<uint> reflection_irradiance [[texture(37)]],
+    texture2d<float> brdf_lut [[texture(38)]],
+    sampler material_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    sampler linear_sampler [[sampler(2)]],
+    sampler depth_sampler [[sampler(3)]],
+    constant ALMetalWorldPBRConstants& constants [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]],
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(6)]],
+    bool front_facing [[front_facing]])
+{
+    // Keep receiver and normal derivatives in uniform control flow before
+    // water or coverage can discard only part of a quad.
+    const float3 position_dx = dfdx(input.eye_position);
+    const float3 position_dy = dfdy(input.eye_position);
+    const float water_side =
+        dot(input.eye_position, environment.water_plane.xyz) +
+        environment.water_plane.w;
+    if ((environment.water_fog.z > 0.0 && water_side < 0.0) ||
+        (environment.water_fog.z <= 0.0 && water_side > 0.0))
+    {
+        discard_fragment();
+    }
+
+    const uint slot_count = max(constants.config.x, 1u);
+    const uint slot = min(input.material_index,
+                          min(slot_count - 1u, 7u));
+    const ALMetalWorldPBRSlotConstants material = constants.slots[slot];
+    const float4 base_color = base_color_textures[slot].sample(
+        material_sampler, input.base_color_texcoord) * input.color;
+    const float3 tangent_normal = normal_textures[slot].sample(
+        material_sampler, input.normal_texcoord).rgb * 2.0 - 1.0;
+    const float facing = front_facing ? 1.0 : -1.0;
+    float3 normal = normalize(
+        tangent_normal.x * input.tangent +
+        tangent_normal.y * input.bitangent +
+        tangent_normal.z * input.normal) * facing;
+    const float3 geometric_normal = normalize(input.normal) * facing;
+    const float3 orm_sample = orm_textures[slot].sample(
+        material_sampler, input.orm_texcoord).rgb;
+    const float ao = orm_sample.r;
+    float perceptual_roughness =
+        orm_sample.g * material.properties.x;
+    const float metallic = orm_sample.b * material.properties.y;
+    perceptual_roughness = almetal_pbr_filtered_roughness(
+        perceptual_roughness, normal);
+    const float3 emissive = material.emissive_color.rgb *
+        emissive_textures[slot].sample(
+            material_sampler, input.emissive_texcoord).rgb;
+
+    const float coverage = base_color.a;
+    if (coverage < lighting.parameters.y)
+    {
+        discard_fragment();
+    }
+
+    float directional_visibility = lighting.parameters.z;
+    if ((shadows.config.y & 0xfu) != 0xfu)
+    {
+        const float2 gl_fragment_position = float2(
+            input.position.x, shadows.parameters.w - input.position.y);
+        directional_visibility *= almetal_directional_shadow(
+            shadow_maps, shadows, input.eye_position, normal,
+            position_dx, position_dy,
+            gl_fragment_position / shadows.resolution.zw,
+            lighting.sun_direction.xyz);
+    }
+
+    const bool classic_mode = lighting.parameters.w != 0.0;
+    const float ambient_facing = 1.0 -
+        pow(0.5 * min(abs(dot(
+            normal, environment.light_direction.xyz)), 1.0), 2.0);
+    float3 sunlit = classic_mode
+        ? environment.atmos_sunlit.rgb
+        : environment.atmos_sunlit_linear.rgb;
+    float3 ambient = environment.atmos_amblit.rgb * ambient_facing;
+    if (!classic_mode)
+    {
+        ambient = almetal_srgb_to_linear(ambient);
+        ambient = float3(dot(
+            ambient, float3(0.2126, 0.7152, 0.0722)));
+    }
+    else
+    {
+        sunlit *= 1.35;
+    }
+    sunlit *= environment.atmos_sunlit.w;
+    ambient *= environment.atmos_sunlit_linear.w;
+
+    const float glossiness = 1.0 - perceptual_roughness;
+    float3 irradiance = ambient;
+    float3 radiance = 0.0;
+    float3 unused_legacy = 0.0;
+    almetal_sample_base_probes(
+        true, input.eye_position, normal, glossiness, 0.0,
+        ambient, classic_mode,
+        reflection_radiance, reflection_irradiance,
+        probe_sampler, probes,
+        irradiance, radiance, unused_legacy);
+    const float3 mirror_direction = normalize(
+        reflect(input.eye_position, normal));
+    const float3 dominant_direction = almetal_base_dominant_direction(
+        normal, mirror_direction, perceptual_roughness);
+    const float2 gl_fragment_position = float2(
+        input.position.x, ssr.screen.z - input.position.y);
+    const float4 ssr_sample = almetal_sample_ssr(
+        gl_fragment_position / ssr.screen.xy,
+        input.eye_position, normal, dominant_direction,
+        glossiness, true,
+        ssr_scene_color, ssr_scene_depth,
+        linear_sampler, depth_sampler, ssr);
+    radiance = mix(radiance, ssr_sample.rgb, ssr_sample.a);
+    radiance = almetal_finish_hero_probe(
+        radiance, input.eye_position, normal, glossiness,
+        hero_probe, probe_sampler, probes, hero);
+    radiance *= almetal_pbr_horizon_occlusion(
+        reflect(normalize(input.eye_position), normal),
+        geometric_normal);
+
+    const float3 diffuse_color = base_color.rgb * (1.0 - metallic);
+    const float3 specular_color = mix(
+        float3(0.04), base_color.rgb, metallic);
+    const float3 view = -normalize(input.eye_position);
+    const float nv = clamp(abs(dot(normal, view)), 0.001, 1.0);
+    const float roughness = max(perceptual_roughness, 0.045);
+    const ALMetalPBRPreviewIBL ibl = almetal_pbr_ibl(
+        brdf_lut, linear_sampler, diffuse_color, specular_color,
+        radiance, irradiance, ao, nv, roughness);
+    const float alpha = perceptual_roughness * perceptual_roughness;
+    const float sun_roughness = sqrt(clamp(
+        alpha + 0.00465, 0.0, 1.0));
+    const float3 light_direction = normalize(
+        lighting.sun_direction.xyz);
+    ALMetalPBRPreviewPunctual punctual = almetal_pbr_punctual(
+        diffuse_color, specular_color, sun_roughness,
+        normal, view, light_direction);
+    punctual.specular *= almetal_pbr_energy_compensation(
+        brdf_lut, linear_sampler, specular_color, roughness, nv);
+
+    float3 color;
+    if (classic_mode)
+    {
+        const float3 classic_irradiance = almetal_srgb_to_linear(
+            irradiance * 0.9);
+        const float directional = pow(punctual.nl, 1.2);
+        float3 sun_contribution = float3(
+            min(directional, directional_visibility));
+        sun_contribution = almetal_srgb_to_linear(
+            almetal_linear_to_srgb(sun_contribution) *
+            sunlit * 0.7) * M_PI_F;
+        const float3 final_ambient = classic_irradiance *
+            diffuse_color *
+            almetal_pbr_gtao_multibounce(ao, diffuse_color);
+        const float3 final_sun = almetal_world_bounded_radiance(
+            sun_contribution *
+            ((punctual.diffuse + punctual.specular) *
+             directional_visibility));
+        color = almetal_srgb_to_linear(
+            almetal_linear_to_srgb(final_ambient) +
+            almetal_linear_to_srgb(final_sun) * 1.1);
+    }
+    else
+    {
+        color = ibl.diffuse +
+            almetal_world_bounded_radiance(
+                punctual.nl *
+                (punctual.diffuse + punctual.specular)) *
+            sunlit * 3.0 * directional_visibility;
+    }
+    color += ibl.specular + emissive;
+    if (classic_mode)
+    {
+        color *= 1.1;
+    }
+
+    for (uint light_index = 0; light_index < 7; ++light_index)
+    {
+        color += almetal_world_pre_water_pbr_local_light(
+            lighting.local_lights[light_index],
+            diffuse_color, specular_color, perceptual_roughness,
+            normal, input.eye_position, view,
+            brdf_lut, linear_sampler, classic_mode);
+    }
+    color = almetal_world_alpha_fog(
+        input.eye_position, color, environment);
+    color = almetal_world_bounded_radiance(color);
+    return max(float4(color, coverage), float4(0.0));
 }
 
 static float4 almetal_projector_diffuse_cookie(

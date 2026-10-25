@@ -153,6 +153,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_pre_water_simple_fragment",
             "almetal_world_pre_water_simple_shadow_fragment",
             "almetal_world_pre_water_material_fragment",
+            "almetal_world_pre_water_pbr_fragment",
             "almetal_world_legacy_glow_vertex",
             "almetal_world_legacy_glow_skinned_vertex",
             "almetal_world_legacy_glow_fragment",
@@ -1175,6 +1176,14 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         const std::array<std::uint8_t, 4> bump_normal_pixel{{
             255, 128, 128, 128,
         }};
+        normal_descriptor.label = "Alchemy world flat tangent normal";
+        auto flat_normal = ALMetalTexture::create(
+            *device, normal_descriptor, &error);
+        INFO(error);
+        REQUIRE(flat_normal);
+        const std::array<std::uint8_t, 4> flat_normal_pixel{{
+            128, 128, 255, 255,
+        }};
         normal_descriptor.width = 2;
         normal_descriptor.label = "Alchemy world two-tap emboss bump";
         auto emboss_bump = ALMetalTexture::create(
@@ -1230,6 +1239,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *upload, 0, 0, {}, tree_diffuse_pixel.data(), 4, &error));
         REQUIRE(bump_normal->upload(
             *upload, 0, 0, {}, bump_normal_pixel.data(), 4, &error));
+        REQUIRE(flat_normal->upload(
+            *upload, 0, 0, {}, flat_normal_pixel.data(), 4, &error));
         REQUIRE(emboss_bump->upload(
             *upload, 0, 0, {}, emboss_bump_pixels.data(), 8, &error));
         REQUIRE(material_specular_texture->upload(
@@ -3982,6 +3993,254 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         alpha_environment.atmos_sunlit_linear[0] = 1.f;
         alpha_environment.atmos_sunlit_linear[1] = 0.5f;
         alpha_environment.atmos_sunlit_linear[2] = 0.25f;
+
+        // The glTF BLEND owner stays in the main-world forward slice rather
+        // than falling back to its flat impostor bake. It consumes the same
+        // four-map material, probe/BRDF, directional-shadow and seven-light
+        // contracts as pbralphaF.glsl. Exercise the source-over static and
+        // rigged pipelines first with an emissive-only source so the result
+        // remains independent of direct-light and radiance-probe terms.
+        ALMetalWorldSimpleBatch pre_water_pbr = legacy_alpha_batch;
+        pre_water_pbr.pre_water_alpha = true;
+        pre_water_pbr.pre_water_material = false;
+        pre_water_pbr.pre_water_pbr = true;
+        pre_water_pbr.pre_water_shadows = false;
+        pre_water_pbr.material_slot_count = 0;
+        pre_water_pbr.material_alpha_mode = 0;
+        pre_water_pbr.pbr_slot_count = 1;
+        pre_water_pbr.texture_count = 1;
+        pre_water_pbr.diffuse_textures[0] = tree_diffuse.get();
+        pre_water_pbr.double_sided = true;
+        ALMetalWorldPBRSlot& pre_water_pbr_slot =
+            pre_water_pbr.pbr_slots[0];
+        pre_water_pbr_slot.normal_texture = flat_normal.get();
+        pre_water_pbr_slot.orm_texture = pbr_orm_texture.get();
+        pre_water_pbr_slot.emissive_texture = diffuse.get();
+        pre_water_pbr_slot.emissive_color[1] = 1.f;
+        pre_water_pbr_slot.roughness_factor = 1.f;
+        pre_water_pbr_slot.metallic_factor = 0.f;
+        pre_water_pbr_slot.alpha_cutoff = -1.f;
+        ALMetalWorldSimpleBatch pre_water_pbr_rigged = pre_water_pbr;
+        pre_water_pbr_rigged.skin_palette = alpha_skin_palette.data();
+        pre_water_pbr_rigged.skin_palette_float_count =
+            alpha_skin_palette.size();
+        pre_water_pbr_rigged.skin_joint_count = 1;
+        pre_water_pbr_rigged.weight_offset = weight_offset;
+
+        opaque_forward_scene.batches = &pre_water_pbr;
+        opaque_forward_scene.batch_count = 1;
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.reflection_probes = &reflection_probes;
+        opaque_forward_scene.hero_probe = nullptr;
+        opaque_forward_scene.screen_space_reflections = nullptr;
+        opaque_forward_scene.alpha_environment = &alpha_environment;
+        opaque_forward_scene.alpha_lighting = &simple_alpha_lighting;
+        opaque_forward_scene.alpha_directional_shadows = nullptr;
+        pre_water_pbr_slot.normal_texture = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world pre-water PBR slot is invalid");
+        pre_water_pbr_slot.normal_texture = flat_normal.get();
+        pre_water_pbr_slot.alpha_cutoff = 0.5f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world pre-water PBR slot is invalid");
+        pre_water_pbr_slot.alpha_cutoff = -1.f;
+
+        const float pbr_default_radiance_scale =
+            reflection_probes.constants.ref_params[0][1];
+        const float pbr_radiance_scale =
+            reflection_probes.constants.ref_params[1][1];
+        reflection_probes.constants.ref_params[0][1] = 0.f;
+        reflection_probes.constants.ref_params[1][1] = 0.f;
+        alpha_environment.atmos_sunlit_linear[0] = 0.f;
+        alpha_environment.atmos_sunlit_linear[1] = 0.f;
+        alpha_environment.atmos_sunlit_linear[2] = 0.f;
+        error.clear();
+        auto static_pbr_alpha_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(static_pbr_alpha_result);
+        REQUIRE(static_pbr_alpha_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(static_pbr_alpha_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        std::array<float, 4> static_pbr_pixel{};
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            static_pbr_pixel[channel] = half_to_float(
+                pre_water_pixels[material_pixel + channel]);
+            CHECK(std::isfinite(static_pbr_pixel[channel]));
+        }
+        CHECK(static_pbr_pixel[1] >
+              retained_color[1] * material_uncovered);
+        const float static_pbr_depth =
+            pre_water_depth[material_pixel / 4];
+
+        opaque_forward_scene.batches = &pre_water_pbr_rigged;
+        auto rigged_pbr_alpha_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(rigged_pbr_alpha_result);
+        REQUIRE(rigged_pbr_alpha_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(rigged_pbr_alpha_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(std::abs(
+                half_to_float(pre_water_pixels[
+                    material_pixel + channel]) -
+                static_pbr_pixel[channel]) < 0.002f);
+        }
+        CHECK(std::abs(pre_water_depth[material_pixel / 4] -
+                       static_pbr_depth) < 0.0001f);
+
+        // A built cascade removes the aligned modern sun term; marking all
+        // four cascades unbuilt restores it. This proves the PBR owner uses
+        // the demanded live shadow state instead of silently rendering an
+        // unshadowed approximation.
+        opaque_forward_scene.batches = &pre_water_pbr;
+        pre_water_pbr_slot.emissive_color[1] = 0.f;
+        pre_water_pbr.pre_water_shadows = true;
+        alpha_environment.atmos_sunlit_linear[0] = 1.f;
+        alpha_environment.atmos_sunlit_linear[1] = 0.5f;
+        alpha_environment.atmos_sunlit_linear[2] = 0.25f;
+        directional_shadows.constants.config[1] = 0xeu;
+        opaque_forward_scene.alpha_directional_shadows =
+            &directional_shadows;
+        auto shadowed_pbr_alpha_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(shadowed_pbr_alpha_result);
+        REQUIRE(shadowed_pbr_alpha_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float shadowed_pbr_green = half_to_float(
+            pre_water_pixels[material_pixel + 1]);
+        directional_shadows.constants.config[1] = 0xfu;
+        auto unbuilt_pbr_alpha_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(unbuilt_pbr_alpha_result);
+        REQUIRE(unbuilt_pbr_alpha_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(half_to_float(pre_water_pixels[material_pixel + 1]) >
+              shadowed_pbr_green);
+
+        // With directional and probe radiance disabled, an aligned green
+        // punctual light must still raise the PBR diffuse lobe.
+        pre_water_pbr.pre_water_shadows = false;
+        opaque_forward_scene.alpha_directional_shadows = nullptr;
+        alpha_environment.atmos_sunlit_linear[0] = 0.f;
+        alpha_environment.atmos_sunlit_linear[1] = 0.f;
+        alpha_environment.atmos_sunlit_linear[2] = 0.f;
+        simple_alpha_lighting.local_lights[0].position[2] = 10.f;
+        simple_alpha_lighting.local_lights[0].diffuse[1] = 2.f;
+        simple_alpha_lighting.local_lights[0].parameters[0] = 100.f;
+        simple_alpha_lighting.local_lights[0].parameters[2] = 1.f;
+        auto local_pbr_alpha_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(local_pbr_alpha_result);
+        REQUIRE(local_pbr_alpha_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(half_to_float(pre_water_pixels[material_pixel + 1]) >
+              retained_color[1] * material_uncovered);
+        simple_alpha_lighting.local_lights[0] = {};
+
+        // Finish the glossy radiance lobe through the same ordinary, SSR,
+        // then hero order as pbralphaF.glsl. A black hero removes the blue
+        // ordinary cube; with ordinary radiance disabled, the paired red
+        // scene-history hit raises only the SSR-enabled result.
+        reflection_probes.constants.ref_params[0][1] =
+            pbr_default_radiance_scale;
+        reflection_probes.constants.ref_params[1][1] =
+            pbr_radiance_scale;
+        pre_water_pbr_slot.roughness_factor = 0.f;
+        pre_water_pbr_slot.metallic_factor = 1.f;
+        auto ordinary_pbr_alpha_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(ordinary_pbr_alpha_result);
+        REQUIRE(ordinary_pbr_alpha_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float ordinary_pbr_blue = half_to_float(
+            pre_water_pixels[material_pixel + 2]);
+        opaque_forward_scene.hero_probe = &hero_probe;
+        auto hero_pbr_alpha_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(hero_pbr_alpha_result);
+        REQUIRE(hero_pbr_alpha_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(ordinary_pbr_blue > half_to_float(
+                  pre_water_pixels[material_pixel + 2]));
+        opaque_forward_scene.hero_probe = nullptr;
+
+        reflection_probes.constants.ref_params[0][1] = 0.f;
+        reflection_probes.constants.ref_params[1][1] = 0.f;
+        pre_water_pbr_slot.normal_texture = ssr_normal.get();
+        auto no_ssr_pbr_alpha_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_ssr_pbr_alpha_result);
+        REQUIRE(no_ssr_pbr_alpha_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float no_ssr_pbr_red = half_to_float(
+            pre_water_pixels[material_pixel + 0]);
+        opaque_forward_scene.screen_space_reflections =
+            &screen_space_reflections;
+        auto ssr_pbr_alpha_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(ssr_pbr_alpha_result);
+        REQUIRE(ssr_pbr_alpha_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(half_to_float(pre_water_pixels[material_pixel + 0]) >
+              no_ssr_pbr_red);
+        opaque_forward_scene.screen_space_reflections = nullptr;
+        pre_water_pbr_slot.normal_texture = flat_normal.get();
+        pre_water_pbr_slot.roughness_factor = 1.f;
+        pre_water_pbr_slot.metallic_factor = 0.f;
+        alpha_environment.atmos_sunlit_linear[0] = 1.f;
+        alpha_environment.atmos_sunlit_linear[1] = 0.5f;
+        alpha_environment.atmos_sunlit_linear[2] = 0.25f;
+        reflection_probes.constants.ref_params[0][1] =
+            pbr_default_radiance_scale;
+        reflection_probes.constants.ref_params[1][1] =
+            pbr_radiance_scale;
+        directional_shadows.constants.config[1] = 0xeu;
 
         ALMetalWorldSimpleBatch shiny_batch = fullbright_batch;
         shiny_batch.impostor_fullbright = false;

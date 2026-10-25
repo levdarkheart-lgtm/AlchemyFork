@@ -622,7 +622,8 @@ public:
     bool fillMetalImpostorScreenSpaceReflections();
     bool fillMetalImpostorDirectionalShadows();
     bool fillMetalWorldProjectorShadows();
-    void captureMetalImpostorPBRAlphaBatch(const LLDrawInfo& params);
+    void captureMetalImpostorPBRAlphaBatch(
+        const LLDrawInfo& params, bool particle_or_hud_particle);
     bool fillMetalWorldAlphaEnvironment(
         ALMetalWorldAlphaEnvironment& environment);
     bool fillMetalWorldAlphaLighting(

@@ -135,7 +135,8 @@ struct alignas(16) ALMetalWorldLegacyAlphaLight
     float position[4]{};
     float direction[4]{};
     float diffuse[4]{};
-    // x = radius/size, y = falloff, z = point-light flag.
+    // x = radius/size, y = falloff, z = point-light flag,
+    // w = projector ambiance (retained for the shared PBR light ABI).
     float parameters[4]{};
 };
 
@@ -223,6 +224,7 @@ struct ALMetalWorldSimpleBatch
     bool pre_water_fullbright = false;
     bool pre_water_simple = false;
     bool pre_water_material = false;
+    bool pre_water_pbr = false;
     bool pre_water_shadows = false;
     bool legacy_glow = false;
     bool pbr_glow = false;
