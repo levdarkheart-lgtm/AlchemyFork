@@ -117,8 +117,11 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_resample_fragment",
             "almetal_world_simple_vertex",
             "almetal_world_simple_skinned_vertex",
+            "almetal_world_bump_vertex",
+            "almetal_world_bump_skinned_vertex",
             "almetal_world_simple_fragment",
             "almetal_world_alpha_mask_fragment",
+            "almetal_world_bump_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
             "almetal_lit_preview_vertex",
@@ -848,6 +851,11 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             {{128, 255, 255, 128}},
             {{128, 255, 255, 128}},
         }};
+        const std::array<std::array<float, 4>, 3> tangents{{
+            {{1.f, 0.f, 0.f, 1.f}},
+            {{1.f, 0.f, 0.f, 1.f}},
+            {{1.f, 0.f, 0.f, 1.f}},
+        }};
         const std::array<std::array<float, 4>, 3> weights{{
             {{0.5f, 0.f, 0.f, 0.f}},
             {{0.5f, 0.f, 0.f, 0.f}},
@@ -858,8 +866,10 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             normal_offset + sizeof(normals);
         constexpr std::size_t color_offset =
             texcoord_offset + sizeof(texcoords);
-        constexpr std::size_t weight_offset =
+        constexpr std::size_t tangent_offset =
             (color_offset + sizeof(colors) + 15) & ~std::size_t{15};
+        constexpr std::size_t weight_offset =
+            tangent_offset + sizeof(tangents);
         std::array<std::uint8_t, weight_offset + sizeof(weights)> vertex_bytes{};
         std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
         std::memcpy(vertex_bytes.data() + normal_offset,
@@ -868,6 +878,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                     texcoords.data(), sizeof(texcoords));
         std::memcpy(vertex_bytes.data() + color_offset,
                     colors.data(), sizeof(colors));
+        std::memcpy(vertex_bytes.data() + tangent_offset,
+                    tangents.data(), sizeof(tangents));
         std::memcpy(vertex_bytes.data() + weight_offset,
                     weights.data(), sizeof(weights));
 
@@ -924,6 +936,16 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         const std::array<std::uint8_t, 4> tree_diffuse_pixel{{
             128, 64, 32, 128,
         }};
+        ALMetalTextureDescriptor normal_descriptor = diffuse_descriptor;
+        normal_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        normal_descriptor.label = "Alchemy world bump tangent normal";
+        auto bump_normal = ALMetalTexture::create(
+            *device, normal_descriptor, &error);
+        INFO(error);
+        REQUIRE(bump_normal);
+        const std::array<std::uint8_t, 4> bump_normal_pixel{{
+            255, 128, 128, 255,
+        }};
         auto upload = device->makeCommandBuffer(
             "Alchemy world simple diffuse upload", &error);
         INFO(error);
@@ -934,6 +956,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *upload, 0, 0, {}, indexed_diffuse_pixel.data(), 4, &error));
         REQUIRE(tree_diffuse->upload(
             *upload, 0, 0, {}, tree_diffuse_pixel.data(), 4, &error));
+        REQUIRE(bump_normal->upload(
+            *upload, 0, 0, {}, bump_normal_pixel.data(), 4, &error));
         REQUIRE(upload->commitAndWait(&error));
         INFO(error);
 
@@ -1065,6 +1089,54 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(indexed_albedo[center + 2] == 0);
         CHECK(indexed_albedo[center + 3] == 0);
 
+        // The legacy bump owner consumes the mirrored tangent stream and its
+        // generated linear normal map. This +X tangent-space normal must turn
+        // the encoded view normal away from the geometric +Z value while
+        // retaining the vertex-alpha specular/gloss contract.
+        batch.tangent_offset = vertex_bytes.size();
+        batch.normal_texture = bump_normal.get();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error ==
+              "Metal world simple geometry range exceeds its buffers");
+        batch.tangent_offset = tangent_offset;
+        error.clear();
+        auto bump_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(bump_result);
+        std::array<std::uint8_t, 32 * 32 * 4> bump_specular{};
+        std::array<std::uint16_t, 32 * 32 * 4> bump_normal_output{};
+        REQUIRE(bump_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, bump_specular.data(), 32 * 4, &error));
+        REQUIRE(bump_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, bump_normal_output.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(bump_normal_output[center + 0] > 65000);
+        CHECK(std::abs(static_cast<int>(bump_normal_output[center + 1]) -
+                       32768) < 512);
+        CHECK(std::abs(static_cast<int>(bump_normal_output[center + 2]) -
+                       32896) <= 2);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(std::abs(static_cast<int>(bump_specular[center + channel]) -
+                           128) <= 1);
+        }
+
+        batch.alpha_mask = true;
+        batch.alpha_cutoff = 0.5f;
+        auto masked_bump_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(masked_bump_result);
+        std::array<std::uint16_t, 32 * 32 * 4> masked_bump_normal{};
+        REQUIRE(masked_bump_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, masked_bump_normal.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(masked_bump_normal[center + 0] > 65000);
+
+        batch.normal_texture = nullptr;
+        batch.tangent_offset = 0;
+
         // The alpha-mask owner uses combined texture/vertex coverage with the
         // legacy half-byte bias, but clears specular/environment while
         // retaining the same encoded albedo and atmospheric normal flag.
@@ -1185,8 +1257,32 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(skinned_albedo[translated_center + 2] == 0);
         CHECK(skinned_albedo[translated_center + 3] == 0);
 
+        batch.tangent_offset = tangent_offset;
+        batch.normal_texture = bump_normal.get();
+        auto skinned_bump_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(skinned_bump_result);
+        std::array<std::uint16_t, 32 * 32 * 4> skinned_bump_normal{};
+        REQUIRE(skinned_bump_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, skinned_bump_normal.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(skinned_bump_normal[translated_center + 0] > 65000);
+
         batch.alpha_mask = true;
         batch.alpha_cutoff = 0.5f;
+        auto skinned_bump_mask_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(skinned_bump_mask_result);
+        std::array<std::uint16_t, 32 * 32 * 4> skinned_bump_mask_normal{};
+        REQUIRE(skinned_bump_mask_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, skinned_bump_mask_normal.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(skinned_bump_mask_normal[translated_center + 0] > 65000);
+
+        batch.normal_texture = nullptr;
+        batch.tangent_offset = 0;
         auto skinned_mask_result = renderer->render(scene, &error);
         INFO(error);
         REQUIRE(skinned_mask_result);

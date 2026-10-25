@@ -412,11 +412,12 @@ void LLDrawPoolBump::renderGroup(LLSpatialGroup* group, U32 type, bool texture =
 
 
 // static
-bool LLDrawPoolBump::bindBumpMap(LLDrawInfo& params, S32 channel)
+bool LLDrawPoolBump::bindBumpMap(LLDrawInfo& params, S32 channel,
+                                 LLViewerTexture** resolved)
 {
     U8 bump_code = params.mBump;
 
-    return bindBumpMap(bump_code, params.mTexture, channel);
+    return bindBumpMap(bump_code, params.mTexture, channel, resolved);
 }
 
 //static
@@ -433,9 +434,14 @@ bool LLDrawPoolBump::bindBumpMap(LLFace* face, S32 channel)
 }
 
 //static
-bool LLDrawPoolBump::bindBumpMap(U8 bump_code, LLViewerTexture* texture, S32 channel)
+bool LLDrawPoolBump::bindBumpMap(U8 bump_code, LLViewerTexture* texture,
+                                 S32 channel, LLViewerTexture** resolved)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    if (resolved)
+    {
+        *resolved = nullptr;
+    }
     //Note: texture atlas does not support bump texture now.
     LLViewerFetchedTexture* tex = LLViewerTextureManager::staticCastToFetchedTexture(texture) ;
     if(!tex)
@@ -466,6 +472,10 @@ bool LLDrawPoolBump::bindBumpMap(U8 bump_code, LLViewerTexture* texture, S32 cha
 
     if (bump)
     {
+        if (resolved)
+        {
+            *resolved = bump;
+        }
         if (channel == -2)
         {
             gGL.getTextureSlot(1)->bindFast(bump, ALSamplers::AnisoWrap);
@@ -582,7 +592,12 @@ void LLDrawPoolBump::renderDeferred(S32 pass)
             // max-based on the source texture, so skipping a repeat is a no-op there too.)
             U8 lastBump = 255;
             LLViewerTexture* lastBumpTex = nullptr;
+            LLViewerTexture* lastBumpMap = nullptr;
             F32 lastAlpha = -1.f;
+
+#if LL_DARWIN
+            gPipeline.beginMetalWorldGBufferPass(rigged, alpha_mask);
+#endif
 
             const auto draw = [&](LLDrawInfo& params)
             {
@@ -607,19 +622,20 @@ void LLDrawPoolBump::renderDeferred(S32 pass)
                 {
                     lastBump = params.mBump;
                     lastBumpTex = params.mTexture.get();
-                    LLDrawPoolBump::bindBumpMap(params, bump_channel);
+                    LLDrawPoolBump::bindBumpMap(
+                        params, bump_channel, &lastBumpMap);
                 }
 
                 if (rigged)
                 {
                     if (uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
                     {
-                        pushBumpBatch(params, true, false);
+                        pushBumpBatch(params, true, false, lastBumpMap);
                     }
                 }
                 else
                 {
-                    pushBumpBatch(params, true, false);
+                    pushBumpBatch(params, true, false, lastBumpMap);
                 }
             };
 
@@ -653,6 +669,9 @@ void LLDrawPoolBump::renderDeferred(S32 pass)
                 shader->disableTexture(LLViewerShaderMgr::BUMP_MAP);
                 shader->unbind();
             }
+#if LL_DARWIN
+            gPipeline.endMetalWorldGBufferPass();
+#endif
         }
     }
 
@@ -1075,10 +1094,16 @@ void LLDrawPoolBump::pushBumpBatches(U32 type)
     }
 }
 
-void LLRenderPass::pushBumpBatch(LLDrawInfo& params, bool texture, bool batch_textures)
+void LLRenderPass::pushBumpBatch(LLDrawInfo& params, bool texture,
+                                 bool batch_textures,
+                                 LLViewerTexture* bump_texture)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     applyModelMatrix(params);
+
+#if LL_DARWIN
+    gPipeline.captureMetalWorldBumpBatch(params, bump_texture);
+#endif
 
     // Same derivation as pushBatch: the bound program knows whether its diffuse wants the
     // hardware decode. The shadow pass reaches this too with an unflagged program, so its

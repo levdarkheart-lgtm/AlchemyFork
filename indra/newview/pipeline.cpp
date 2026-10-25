@@ -925,6 +925,43 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
     capture.batches.push_back(batch);
 }
 
+void LLPipeline::captureMetalWorldBumpBatch(
+    const LLDrawInfo& params, LLViewerTexture* normal_texture)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->pass_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete)
+    {
+        return;
+    }
+    LLVertexBuffer* buffer = params.mVertexBuffer.get();
+    LLImageGL* normal_image = normal_texture
+        ? normal_texture->getGLTexture() : nullptr;
+    if (!buffer ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TANGENT) ||
+        !normal_image || !normal_image->getMetalTexture())
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+
+    const std::size_t prior_count = capture.batches.size();
+    captureMetalWorldGBufferBatch(params, false);
+    if (!capture.complete || capture.batches.size() == prior_count)
+    {
+        return;
+    }
+    ALMetalWorldSimpleBatch& batch = capture.batches.back();
+    batch.tangent_offset = buffer->getOffset(LLVertexBuffer::TYPE_TANGENT);
+    batch.normal_texture = normal_image->getMetalTexture();
+}
+
 void LLPipeline::captureMetalWorldTreeBatch(LLVertexBuffer* buffer,
                                             LLViewerTexture* texture)
 {

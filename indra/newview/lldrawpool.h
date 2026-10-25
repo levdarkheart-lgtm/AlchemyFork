@@ -481,7 +481,9 @@ public:
     void pushEmissiveBatchesIndexed(U32 type, bool rigged);
     void pushBatch(LLDrawInfo& params, bool texture, bool batch_textures = false);
     void pushUntexturedBatch(LLDrawInfo& params);
-    void pushBumpBatch(LLDrawInfo& params, bool texture, bool batch_textures = false);
+    void pushBumpBatch(LLDrawInfo& params, bool texture,
+                       bool batch_textures = false,
+                       LLViewerTexture* bump_texture = nullptr);
     static bool uploadMatrixPalette(LLDrawInfo& params);
     static bool uploadMatrixPalette(LLVOAvatar* avatar, LLMeshSkinInfo* skinInfo);
     static bool uploadMatrixPalette(LLVOAvatar* avatar, LLMeshSkinInfo* skinInfo, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin);

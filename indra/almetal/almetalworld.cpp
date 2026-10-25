@@ -64,10 +64,11 @@ struct ALMetalWorldGBufferRenderer::Impl
         std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>;
     using RiggedPipelines = std::array<NormalPipelines, 2>;
     using MaskPipelines = std::array<RiggedPipelines, 2>;
+    using BumpPipelines = std::array<MaskPipelines, 2>;
 
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalShaderLibrary> library;
-    std::array<MaskPipelines, 2> pipelines;
+    std::array<BumpPipelines, 2> pipelines;
     std::unique_ptr<ALMetalDepthStencilState> forward_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_depth;
     std::unique_ptr<ALMetalSamplerState> diffuse_sampler;
@@ -91,8 +92,11 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     if (!impl->library ||
         !impl->library->hasFunction("almetal_world_simple_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_skinned_vertex") ||
+        !impl->library->hasFunction("almetal_world_bump_vertex") ||
+        !impl->library->hasFunction("almetal_world_bump_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_fragment") ||
-        !impl->library->hasFunction("almetal_world_alpha_mask_fragment"))
+        !impl->library->hasFunction("almetal_world_alpha_mask_fragment") ||
+        !impl->library->hasFunction("almetal_world_bump_fragment"))
     {
         if (impl->library)
         {
@@ -108,40 +112,48 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     }};
     for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
     {
-        for (std::size_t masked = 0; masked < 2; ++masked)
+        for (std::size_t bump = 0; bump < 2; ++bump)
         {
-            for (std::size_t rigged = 0; rigged < 2; ++rigged)
+            for (std::size_t masked = 0; masked < 2; ++masked)
             {
-                for (std::size_t normal_hdr = 0; normal_hdr < 2;
-                     ++normal_hdr)
+                for (std::size_t rigged = 0; rigged < 2; ++rigged)
                 {
-                    ALMetalRenderPipelineDescriptor descriptor;
-                    descriptor.library = impl->library.get();
-                    descriptor.vertex_function = rigged
-                        ? "almetal_world_simple_skinned_vertex"
-                        : "almetal_world_simple_vertex";
-                    descriptor.fragment_function = masked
-                        ? "almetal_world_alpha_mask_fragment"
-                        : "almetal_world_simple_fragment";
-                    descriptor.color_attachment_count = 4;
-                    descriptor.colors[0].format =
-                        ALMetalPixelFormat::rgba8_unorm_srgb;
-                    descriptor.colors[1].format =
-                        ALMetalPixelFormat::rgba8_unorm;
-                    descriptor.colors[2].format = normal_hdr
-                        ? ALMetalPixelFormat::rgba16_unorm
-                        : ALMetalPixelFormat::rgb10a2_unorm;
-                    descriptor.colors[3].format = emissive_formats[hdr];
-                    descriptor.depth_stencil_format =
-                        ALMetalPixelFormat::depth32_float;
-                    descriptor.label = "Alchemy world G-buffer pipeline";
-                    auto& pipeline = impl->pipelines[hdr][masked][rigged]
-                                                     [normal_hdr];
-                    pipeline = ALMetalRenderPipeline::create(
-                        device, descriptor, error);
-                    if (!pipeline)
+                    for (std::size_t normal_hdr = 0; normal_hdr < 2;
+                         ++normal_hdr)
                     {
-                        return nullptr;
+                        ALMetalRenderPipelineDescriptor descriptor;
+                        descriptor.library = impl->library.get();
+                        descriptor.vertex_function = bump
+                            ? (rigged ? "almetal_world_bump_skinned_vertex"
+                                      : "almetal_world_bump_vertex")
+                            : (rigged ? "almetal_world_simple_skinned_vertex"
+                                      : "almetal_world_simple_vertex");
+                        descriptor.fragment_function = bump
+                            ? "almetal_world_bump_fragment"
+                            : (masked ? "almetal_world_alpha_mask_fragment"
+                                      : "almetal_world_simple_fragment");
+                        descriptor.color_attachment_count = 4;
+                        descriptor.colors[0].format =
+                            ALMetalPixelFormat::rgba8_unorm_srgb;
+                        descriptor.colors[1].format =
+                            ALMetalPixelFormat::rgba8_unorm;
+                        descriptor.colors[2].format = normal_hdr
+                            ? ALMetalPixelFormat::rgba16_unorm
+                            : ALMetalPixelFormat::rgb10a2_unorm;
+                        descriptor.colors[3].format =
+                            emissive_formats[hdr];
+                        descriptor.depth_stencil_format =
+                            ALMetalPixelFormat::depth32_float;
+                        descriptor.label =
+                            "Alchemy world G-buffer pipeline";
+                        auto& pipeline = impl->pipelines[hdr][bump][masked]
+                                                         [rigged][normal_hdr];
+                        pipeline = ALMetalRenderPipeline::create(
+                            device, descriptor, error);
+                        if (!pipeline)
+                        {
+                            return nullptr;
+                        }
                     }
                 }
             }
@@ -207,6 +219,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     for (std::size_t index = 0; index < scene.batch_count; ++index)
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        const bool bump = batch.normal_texture != nullptr;
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         if (!batch.vertices || !batch.indices || batch.texture_count == 0 ||
@@ -218,6 +231,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             batch.normal_offset % float4_stride != 0 ||
             batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
             batch.color_offset % (sizeof(std::uint8_t) * 4) != 0 ||
+            (bump && batch.tangent_offset % float4_stride != 0) ||
             batch.index_offset % index_stride != 0 ||
             !std::isfinite(batch.alpha_cutoff) ||
             !finiteValues(batch.modelview_projection, 16) ||
@@ -236,6 +250,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                        sizeof(float) * 2, batch.vertices->length()) ||
             !rangeFits(batch.color_offset, batch.vertex_count,
                        sizeof(std::uint8_t) * 4, batch.vertices->length()) ||
+            (bump && !rangeFits(batch.tangent_offset, batch.vertex_count,
+                                float4_stride,
+                                batch.vertices->length())) ||
             !rangeFits(batch.index_offset, batch.index_count,
                        index_stride, batch.indices->length()))
         {
@@ -283,6 +300,16 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                          "Metal world diffuse texture is not sampleable 2D");
                 return nullptr;
             }
+        }
+        if (bump &&
+            (batch.normal_texture->descriptor().type !=
+                 ALMetalTextureType::texture_2d ||
+             !alMetalHasUsage(batch.normal_texture->descriptor().usage,
+                              ALMetalTextureUsage::shader_read)))
+        {
+            setError(error,
+                     "Metal world normal texture is not sampleable 2D");
+            return nullptr;
         }
     }
 
@@ -419,11 +446,14 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         constants.material[0] = batch.alpha_cutoff;
         constants.material[1] = batch.use_vertex_color ? 1.f : 0.f;
         constants.material[2] = batch.alpha_cutoff_bias ? 1.f : 0.f;
+        constants.material[3] = batch.alpha_mask ? 1.f : 0.f;
         constants.depth_convention[0] = scene.reverse_z ? 1u : 0u;
         constants.depth_convention[1] = batch.texture_count;
         const bool rigged = batch.skin_palette != nullptr;
+        const bool bump = batch.normal_texture != nullptr;
         const ALMetalRenderPipeline* pipeline =
             mImpl->pipelines[scene.hdr ? 1 : 0]
+                            [bump ? 1 : 0]
                             [batch.alpha_mask ? 1 : 0]
                             [rigged ? 1 : 0]
                             [scene.normal_hdr ? 1 : 0].get();
@@ -450,6 +480,14 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 encoder->setVertexBytes(
                     7, &batch.skin_joint_count,
                     sizeof(batch.skin_joint_count), error);
+        }
+        if (encoded && bump)
+        {
+            encoded =
+                encoder->setVertexBuffer(8, *batch.vertices,
+                                         batch.tangent_offset, error) &&
+                encoder->setFragmentTexture(
+                    32, batch.normal_texture, error);
         }
         for (std::size_t texture_index = 0;
              encoded && texture_index <

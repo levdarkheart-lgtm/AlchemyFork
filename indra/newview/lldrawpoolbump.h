@@ -76,11 +76,13 @@ public:
     virtual S32 getNumPostDeferredPasses() override { return 1; }
     /*virtual*/ void renderPostDeferred(S32 pass) override;
 
-    static bool bindBumpMap(LLDrawInfo& params, S32 channel = -2);
+    static bool bindBumpMap(LLDrawInfo& params, S32 channel = -2,
+                            LLViewerTexture** resolved = nullptr);
     static bool bindBumpMap(LLFace* face, S32 channel = -2);
 
 private:
-    static bool bindBumpMap(U8 bump_code, LLViewerTexture* tex, S32 channel);
+    static bool bindBumpMap(U8 bump_code, LLViewerTexture* tex, S32 channel,
+                            LLViewerTexture** resolved = nullptr);
     bool mRigged = false; // if true, doing a rigged pass
 
 };

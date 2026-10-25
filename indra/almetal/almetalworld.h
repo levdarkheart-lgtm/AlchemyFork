@@ -27,6 +27,7 @@ struct ALMetalWorldSimpleBatch
     std::size_t normal_offset = 0;
     std::size_t texcoord_offset = 0;
     std::size_t color_offset = 0;
+    std::size_t tangent_offset = 0;
     std::size_t weight_offset = 0;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
@@ -35,6 +36,7 @@ struct ALMetalWorldSimpleBatch
     std::uint32_t index_count = 0;
     std::array<const ALMetalTexture*, max_diffuse_textures> diffuse_textures{};
     std::uint32_t texture_count = 0;
+    const ALMetalTexture* normal_texture = nullptr;
     const float* skin_palette = nullptr;
     std::size_t skin_palette_float_count = 0;
     std::uint32_t skin_joint_count = 0;
