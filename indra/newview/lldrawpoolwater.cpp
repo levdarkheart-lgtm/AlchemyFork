@@ -308,13 +308,16 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
     // below, the surface stays where an exclusion prim covers it, undistorted, drawn again only if one was drawn. The
     // flat field's cells beside the patches are its fringe where the patches are drawn.
     const bool excluded = underwater && gPipeline.beginRenderMap(LLRenderPass::PASS_INVISIBLE) != gPipeline.endRenderMap(LLRenderPass::PASS_INVISIBLE);
+    // The opaque programs beside the transparent ones where this view's water does not refract; with the setting off
+    // the water's programs are opaque already.
+    const bool opaque_beside = LLPipeline::sRenderTransparentWater && !refracts;
 
 #if LL_DARWIN
-    // Start the native water boundary with the complete flat underwater
-    // family. Wave-patch tessellation and above-water reflection/glint are
-    // deliberately left to later checkpoints, so unsupported frames retain
-    // the already validated pre-water target and visible GL authority.
-    if (underwater && !waves && mShaderLevel > 2 && bound_a)
+    // The flat class-3 family is one native boundary above and below the
+    // surface. Tessellated wave patches remain a later checkpoint, so those
+    // frames retain the already validated pre-water target and visible GL
+    // authority.
+    if (!waves && mShaderLevel > 2 && bound_a)
     {
         ALMetalWorldWaterSurface metal_water;
         LLImageGL* normal_a = bound_a->getGLTexture();
@@ -324,7 +327,9 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
         const ALMetalTexture* metal_b = normal_b
             ? normal_b->getMetalTexture() : nullptr;
         LLViewerCamera& camera = *LLViewerCamera::getInstance();
+        LLMatrix4a normal_matrix;
         if (metal_a && metal_b &&
+            normal_matrix.setNormalMatrix(camera.getModelview()) &&
             surface.fillMetalWaterHaze(
                 metal_water.field, camera, true))
         {
@@ -333,6 +338,9 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
             std::memcpy(metal_water.modelview,
                         camera.getModelview().getF32ptr(),
                         sizeof(metal_water.modelview));
+            std::memcpy(metal_water.normal_matrix,
+                        normal_matrix.getF32ptr(),
+                        sizeof(metal_water.normal_matrix));
             std::memcpy(metal_water.eye_position, eye.mV,
                         sizeof(F32) * 3);
             std::memcpy(metal_water.big_phase, phases.mBig.mV,
@@ -352,14 +360,37 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
                         sizeof(metal_water.lattice_fraction));
             std::memcpy(metal_water.lattice_base, lattice.mBase,
                         sizeof(metal_water.lattice_base));
+            const LLVector3 normal_scale = pwater->getNormalScale();
+            std::memcpy(metal_water.normal_scale_glint,
+                        normal_scale.mV, sizeof(F32) * 3);
+            metal_water.normal_scale_glint[3] = llclamp(
+                static_cast<F32>(glint_roughness), 0.05f, 1.f);
+            metal_water.optics[0] = pwater->getFresnelScale();
+            metal_water.optics[1] = pwater->getFresnelOffset();
+            metal_water.optics[2] =
+                fmaxf(0.f, pwater->getBlurMultiplier()) * 2.f;
+            metal_water.rim[0] = rim_lo.mV[VX];
+            metal_water.rim[1] = rim_lo.mV[VY];
+            metal_water.rim[2] = rim_hi.mV[VX];
+            metal_water.rim[3] = rim_hi.mV[VY];
+            std::memcpy(metal_water.light_direction,
+                        light_dir.mV, sizeof(F32) * 3);
             metal_water.parameters[0] = blend_factor;
             metal_water.parameters[1] = underwater
                 ? pwater->getScaleBelow() : pwater->getScaleAbove();
             metal_water.parameters[2] = 1.f;
             metal_water.parameters[3] = static_cast<F32>(
                 gPipeline.shaderInputs().mGlobal.mWaterHextile);
+            metal_water.underwater = underwater;
             metal_water.refracts = refracts;
             metal_water.has_excluded_surface = excluded;
+            LLGLSLShader& metal_flat_program = underwater
+                ? (opaque_beside
+                       ? gUnderWaterOpaqueProgram : gUnderWaterProgram)
+                : (opaque_beside
+                       ? gWaterOpaqueProgram : gWaterProgram);
+            metal_water.uses_shadows = !underwater &&
+                metal_flat_program.selectVariant()->mFeatures.hasShadows;
             gPipeline.captureMetalWorldWaterSurface(metal_water);
         }
     }
@@ -407,9 +438,6 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
         gPipeline.mWaterPrimitives.begin();
     }
 
-    // The opaque programs beside the transparent ones where this view's water does not refract; with the setting off
-    // the water's programs are opaque already.
-    const bool opaque_beside = LLPipeline::sRenderTransparentWater && !refracts;
     LLGLSLShader& flat_program = underwater ? (opaque_beside ? gUnderWaterOpaqueProgram : gUnderWaterProgram)
                                             : (opaque_beside ? gWaterOpaqueProgram : gWaterProgram);
     LLGLSLShader* flat = flat_program.selectVariant();

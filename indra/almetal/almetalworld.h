@@ -417,17 +417,19 @@ struct ALMetalWorldWaterHaze
     bool above_water = false;
 };
 
-// The flat underwater water-surface subset consumes the same exact
-// procedural field as the haze pass plus the live normal-map phase and fog
-// inputs. The renderer snapshots its retained color immediately before this
-// marker so transparent water never samples the attachment it is writing.
-// Wave-patch tessellation and the above-water reflection/glint family remain
-// separate migration boundaries.
+// The flat water-surface subset consumes the same exact procedural field as
+// the haze pass plus the live normal-map phase, optical and lighting inputs.
+// The renderer snapshots its retained color (and, above water, depth)
+// immediately before this marker so transparent water never samples an
+// attachment it is writing. Wave-patch tessellation remains a separate
+// migration boundary.
 struct ALMetalWorldWaterSurface
 {
     ALMetalWorldWaterHaze field;
     std::array<const ALMetalTexture*, 2> normal_maps{};
     float modelview[16]{};
+    // Three vec4-strided columns, matching the live GLSL normal matrix.
+    float normal_matrix[3][4]{};
     // xyz = camera in agent space.
     float eye_position[4]{};
     float big_phase[4]{};
@@ -438,11 +440,22 @@ struct ALMetalWorldWaterSurface
     float map_mean[4]{};
     float lattice_fraction[4]{};
     std::int32_t lattice_base[4]{};
+    // xyz = authored layer normal scales, w = glint roughness.
+    float normal_scale_glint[4]{};
+    // x = Fresnel scale, y = Fresnel offset,
+    // z = reflection/refraction perceptual roughness.
+    float optics[4]{};
+    // xy = field rim low, zw = field rim high.
+    float rim[4]{};
+    // xyz = exact agent-space light direction used by waterF.glsl.
+    float light_direction[4]{};
     // x = normal-map blend, y = refraction scale, z = exclusion distortion,
     // w = water-hextile mode (0..2).
     float parameters[4]{};
+    bool underwater = true;
     bool refracts = false;
     bool has_excluded_surface = false;
+    bool uses_shadows = false;
 };
 
 // The shared environment subset used by post-deferred transparent geometry.
@@ -484,7 +497,8 @@ struct alignas(16) ALMetalWorldAlphaEnvironment
 // final-color target. Water-exclusion batches first rebuild EXCLUDE_BIT,
 // followed by opaque-forward fullbright, shiny and emboss replay, both
 // ordered glow families, water haze, and the exact supported pre-water alpha
-// families. Water, atmospheric haze and presentation remain later owners.
+// families, then flat class-3 water. Tessellated water, atmospheric haze and
+// presentation remain later owners.
 struct ALMetalWorldOpaquePostDeferredScene
 {
     const ALMetalRenderTarget* gbuffer = nullptr;

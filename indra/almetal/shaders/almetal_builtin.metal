@@ -296,6 +296,7 @@ struct ALMetalWorldWaterHazeVaryings
 struct ALMetalWorldWaterSurfaceConstants
 {
     float4x4 modelview;
+    float4 normal_matrix[3];
     float4 eye_position;
     float4 big_phase;
     float4 little_phase;
@@ -304,6 +305,10 @@ struct ALMetalWorldWaterSurfaceConstants
     float4 map_mean;
     float4 lattice_fraction;
     int4 lattice_base;
+    float4 normal_scale_glint;
+    float4 optics;
+    float4 rim;
+    float4 light_direction;
     float4 parameters;
     float4 screen;
     uint4 config;
@@ -313,7 +318,7 @@ struct ALMetalWorldWaterSurfaceVaryings
 {
     float4 position [[position]];
     float3 eye_position;
-    float2 agent_view;
+    float3 agent_view;
 };
 
 struct ALMetalWorldAlphaEnvironment
@@ -1994,7 +1999,7 @@ almetal_world_flat_water_vertex(
         ? clip_position : almetal_clip_from_gl(clip_position);
     output.eye_position = (
         water.modelview * float4(agent_position, 1.0)).xyz;
-    output.agent_view = agent_position.xy - water.eye_position.xy;
+    output.agent_view = agent_position - water.eye_position.xyz;
     return output;
 }
 
@@ -2224,7 +2229,7 @@ fragment float4 almetal_world_underwater_fragment(
     float3 wave2;
     float3 wave3;
     almetal_world_water_wave_normals(
-        input.agent_view, normal_map_a, normal_map_b,
+        input.agent_view.xy, normal_map_a, normal_map_b,
         normal_sampler, water, wave1, wave2, wave3);
     const float3 wave = normalize(wave1 + wave2 + wave3);
     const float2 screen_uv = input.position.xy / water.screen.xy;
@@ -5128,6 +5133,338 @@ static float almetal_directional_shadow(
         weight_sum += weight;
     }
     return shadow / weight_sum;
+}
+
+static float3 almetal_world_water_transform_normal(
+    float3 value,
+    constant ALMetalWorldWaterSurfaceConstants& water)
+{
+    const float3x3 normal_matrix = float3x3(
+        water.normal_matrix[0].xyz,
+        water.normal_matrix[1].xyz,
+        water.normal_matrix[2].xyz);
+    const float3 plane_normal = normal_matrix[2];
+    const float3 plane_tangent = normal_matrix[0];
+    const float3 plane_bitangent = cross(plane_normal, plane_tangent);
+    return normalize(value.x * plane_tangent +
+                     value.y * plane_bitangent +
+                     value.z * plane_normal);
+}
+
+// Water rejects automatic probes while retaining manual probes and the
+// default probe zero. This is reflectionProbeF.glsl's water=true probe walk;
+// the automatic family is enabled only at the final mix so probe zero can
+// smooth the manual result without allowing other automatic probes in.
+static void almetal_water_probe_tap(
+    int index, float3 position, float3 box_position,
+    float3 gloss_direction, float gloss_lod,
+    texturecube_array<float> radiance, sampler probe_sampler,
+    constant ALMetalWorldReflectionProbeConstants& probes,
+    thread ALMetalBaseProbeSums& sums)
+{
+    float distance_weight = 0.0;
+    const float weight = almetal_probe_weight(
+        index, position, box_position, distance_weight, probes);
+    const uint family =
+        clamp(abs(probes.ref_index[index].w), 0, 1) == 0 ? 0u : 1u;
+    sums.gloss[family] += almetal_probe_radiance(
+        index, position, box_position, gloss_direction, gloss_lod,
+        radiance, probe_sampler, probes) * weight;
+    sums.weight[family] += weight;
+    sums.distance_weight[family] += distance_weight;
+}
+
+static float3 almetal_sample_water_probes(
+    float3 position, float3 normal, float glossiness,
+    texturecube_array<float> radiance, sampler probe_sampler,
+    constant ALMetalWorldReflectionProbeConstants& probes)
+{
+    const float3 reflection = normalize(reflect(position, normal));
+    const float perceptual_roughness = 1.0 - glossiness;
+    const float3 gloss_direction = almetal_base_dominant_direction(
+        normal, reflection, perceptual_roughness);
+    const float gloss_lod = perceptual_roughness * probes.config.y;
+    ALMetalBaseProbeSums sums{};
+    const bool automatic = false;
+    int accepted_count = 0;
+    const int probe_count = clamp(int(probes.config.x), 1, 256);
+    int index = almetal_probe_start_index(position, probe_count, probes);
+    int neighbor = -1;
+    int neighbor_base = 0;
+    int neighbor_count = 0;
+    while (accepted_count < 32)
+    {
+        int candidate;
+        if (neighbor < 0)
+        {
+            if (index >= probe_count ||
+                probes.ref_params[index].w > -position.z)
+            {
+                break;
+            }
+            candidate = index++;
+        }
+        else
+        {
+            if (neighbor >= neighbor_count)
+            {
+                break;
+            }
+            const int vector_index = neighbor_base + (neighbor >> 2);
+            if (vector_index < 0 || vector_index >= 1024)
+            {
+                break;
+            }
+            candidate = probes.ref_neighbor[vector_index][neighbor & 3];
+            ++neighbor;
+            if (candidate < 0 || candidate >= probe_count)
+            {
+                continue;
+            }
+        }
+
+        bool boxed = false;
+        float3 box_position = 0.0;
+        if (!almetal_probe_holds(
+                candidate, position, automatic,
+                boxed, box_position, probes))
+        {
+            continue;
+        }
+        almetal_water_probe_tap(
+            candidate, position, box_position,
+            gloss_direction, gloss_lod,
+            radiance, probe_sampler, probes, sums);
+        ++accepted_count;
+        if (neighbor < 0 && probes.ref_index[candidate].y != -1)
+        {
+            neighbor_base = probes.ref_index[candidate].y;
+            neighbor_count = clamp(
+                probes.ref_index[candidate].z, 0, 31);
+            neighbor = 0;
+        }
+    }
+
+    if (accepted_count < 32)
+    {
+        const float3 box_position = probes.ref_index[0].w < 0
+            ? (probes.ref_box[0] * float4(position, 1.0)).xyz
+            : float3(0.0);
+        almetal_water_probe_tap(
+            0, position, box_position,
+            gloss_direction, gloss_lod,
+            radiance, probe_sampler, probes, sums);
+    }
+    return almetal_base_probe_mix(
+        sums.gloss[0], sums.gloss[1], sums, true);
+}
+
+static float3 almetal_world_water_depth_position(
+    float2 uv, float depth, bool reverse_z,
+    constant ALMetalWorldWaterHazeConstants& field)
+{
+    const float ndc_z = reverse_z ? depth : depth * 2.0 - 1.0;
+    const float4 position = field.inverse_projection *
+        float4(uv * 2.0 - 1.0, ndc_z, 1.0);
+    return position.xyz / max(position.w, 0.000001);
+}
+
+fragment float4 almetal_world_above_water_fragment(
+    ALMetalWorldWaterSurfaceVaryings input [[stage_in]],
+    constant ALMetalWorldWaterHazeConstants& field [[buffer(0)]],
+    constant ALMetalWorldWaterSurfaceConstants& water [[buffer(1)]],
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(2)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(3)]],
+    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(4)]],
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(5)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(6)]],
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(7)]],
+    texture2d<float> normal_map_a [[texture(1)]],
+    texture2d<float> normal_map_b [[texture(2)]],
+    texture2d<float> refraction_color [[texture(3)]],
+    texture2d<float> refraction_depth [[texture(4)]],
+    texturecube_array<float> reflection_radiance [[texture(32)]],
+    texture2d_array<float> shadow_maps [[texture(33)]],
+    texturecube<float> hero_probe [[texture(34)]],
+    texture2d<float> ssr_scene_color [[texture(35)]],
+    texture2d<float> ssr_scene_depth [[texture(36)]],
+    sampler normal_sampler [[sampler(0)]],
+    sampler screen_sampler [[sampler(1)]],
+    sampler probe_sampler [[sampler(2)]],
+    sampler depth_sampler [[sampler(3)]])
+{
+    const float3 position_dx = dfdx(input.eye_position);
+    const float3 position_dy = dfdy(input.eye_position);
+    float3 wave1;
+    float3 wave2;
+    float3 wave3;
+    almetal_world_water_wave_normals(
+        input.agent_view.xy, normal_map_a, normal_map_b,
+        normal_sampler, water, wave1, wave2, wave3);
+
+    const float3 view_vector = normalize(input.eye_position);
+    const float3 agent_view_vector = normalize(input.agent_view);
+    const float3 wave_flat =
+        (wave1 + wave2 * 0.4 + wave3 * 0.6) * 0.5;
+
+    float3 fresnel3 = max(float3(0.0), float3(
+        dot(agent_view_vector, wave1),
+        dot(agent_view_vector, (wave2 + wave3) * 0.5),
+        dot(agent_view_vector, wave3)) * water.optics.x + water.optics.y);
+    fresnel3 *= fresnel3;
+    const float2 fresnel2 = max(float2(0.0), float2(
+        fresnel3.x + fresnel3.y + fresnel3.z,
+        dot(agent_view_vector, wave_flat) *
+            water.optics.x + water.optics.y));
+
+    const float3 up = almetal_world_water_transform_normal(
+        float3(0.0, 0.0, 1.0), water);
+    float3 wave_ibl = float3(
+        (wave1.xy * water.normal_scale_glint.x +
+         wave2.xy * (0.4 * water.normal_scale_glint.y) +
+         wave3.xy * (0.6 * water.normal_scale_glint.z)) * 0.25,
+        wave_flat.z * 2.0);
+    wave_ibl = almetal_world_water_transform_normal(
+        normalize(wave_ibl), water);
+    const float below_horizon = dot(
+        reflect(view_vector, wave_ibl), up);
+    if (below_horizon < 0.0)
+    {
+        const float3 horizon =
+            reflect(view_vector, wave_ibl) - up * below_horizon;
+        const float3 half_vector = horizon *
+            rsqrt(max(dot(horizon, horizon), 1.0e-12)) - view_vector;
+        wave_ibl = dot(half_vector, half_vector) > 1.0e-12
+            ? normalize(half_vector) : up;
+    }
+
+    const float3 normal = almetal_world_water_transform_normal(
+        normalize(wave_flat), water);
+    float3 steep_wave = wave_flat;
+    steep_wave.z *= max(-view_vector.z, 0.1);
+    steep_wave = normalize(steep_wave);
+    const float3 sun_normal = almetal_world_water_transform_normal(
+        steep_wave, water);
+    const float3 light = almetal_world_water_transform_normal(
+        water.light_direction.xyz, water);
+
+    const float2 screen_uv = input.position.xy / water.screen.xy;
+    const float flat_distance = max(length(input.agent_view.xy), 5.0);
+    const float flat_modulus = sqrt(flat_distance);
+    float2 refracted_uv = screen_uv + steep_wave.xy *
+        water.parameters.y / max(flat_modulus * fresnel2.x, 1.0);
+    refracted_uv = clamp(refracted_uv, float2(0.0), float2(0.999));
+
+    float3 source;
+    if (water.config.w != 0u)
+    {
+        const float depth = refraction_depth.sample(
+            depth_sampler, refracted_uv).r;
+        const float3 refracted_position =
+            almetal_world_water_depth_position(
+                refracted_uv, depth, water.config.x != 0u, field);
+        if (input.eye_position.z < refracted_position.z - 0.05)
+        {
+            refracted_uv = screen_uv;
+        }
+        source = refraction_color.sample(
+            screen_sampler, refracted_uv).rgb;
+    }
+    else
+    {
+        source = almetal_world_alpha_water_fog(
+            input.eye_position + view_vector * 2048.0,
+            float3(1.0), environment);
+    }
+
+    const bool classic_mode = lighting.parameters.w != 0.0;
+    float3 sunlit = classic_mode
+        ? environment.atmos_sunlit.rgb
+        : environment.atmos_sunlit_linear.rgb;
+    sunlit *= environment.atmos_sunlit.w;
+
+    float shadow = 1.0;
+    if (water.config.y != 0u)
+    {
+        const float2 gl_fragment_position = float2(
+            input.position.x, shadows.parameters.w - input.position.y);
+        shadow = almetal_directional_shadow(
+            shadow_maps, shadows, input.eye_position, normal,
+            position_dx, position_dy,
+            gl_fragment_position / shadows.resolution.zw,
+            lighting.sun_direction.xyz);
+    }
+
+    const float glossiness = 1.0 - water.optics.z;
+    float3 radiance = almetal_sample_water_probes(
+        input.eye_position, wave_ibl, glossiness,
+        reflection_radiance, probe_sampler, probes);
+    const float3 reflection = normalize(
+        reflect(input.eye_position, wave_ibl));
+    const float3 dominant = almetal_base_dominant_direction(
+        wave_ibl, reflection, water.optics.z);
+    const float4 ssr_sample = almetal_sample_ssr(
+        refracted_uv,
+        input.eye_position, wave_ibl, dominant, glossiness, false,
+        ssr_scene_color, ssr_scene_depth,
+        screen_sampler, depth_sampler, ssr);
+    radiance = mix(radiance, ssr_sample.rgb, ssr_sample.a);
+    radiance = almetal_finish_hero_probe(
+        radiance, input.eye_position, wave_ibl, glossiness,
+        hero_probe, probe_sampler, probes, hero);
+
+    const float3 view = -view_vector;
+    const float glint_alpha =
+        water.normal_scale_glint.w * water.normal_scale_glint.w;
+    const float glint_exponent = max(
+        2.0 / (glint_alpha * glint_alpha) - 2.0, 1.0);
+    const float lobe = pow(clamp(
+        dot(reflect(-view, sun_normal), light), 0.0, 1.0),
+        glint_exponent);
+    const float glint = lobe * (glint_exponent + 2.0) / 6.2831853;
+    const float view_half = sqrt(max(
+        0.5 + 0.5 * dot(view, light), 0.0));
+    const float sun_fresnel = 0.02 + 0.98 * pow(
+        max(1.0 - view_half, 0.0), 5.0);
+    const float3 punctual = min(glint * sun_fresnel, 10.0) *
+        sunlit * shadow;
+    float glow = lobe *
+        (0.1 + 0.2 * max(water.light_direction.z, 0.0)) * shadow;
+
+    radiance *= fresnel2.y;
+    float3 color = mix(source, radiance, min(1.0, fresnel2.x)) +
+        punctual;
+
+    if (water.water_far.y > 0.0)
+    {
+        const float2 to_rim = min(
+            input.agent_view.xy - water.rim.xy,
+            water.rim.zw - input.agent_view.xy);
+        const float gone = 1.0 - smoothstep(
+            0.0, 0.15 * water.water_far.y,
+            min(to_rim.x, to_rim.y));
+        if (gone > 0.0)
+        {
+            float3 sky = almetal_sample_water_probes(
+                input.eye_position, up, 1.0,
+                reflection_radiance, probe_sampler, probes);
+            const float3 sky_reflection = normalize(
+                reflect(input.eye_position, up));
+            const float4 sky_ssr = almetal_sample_ssr(
+                screen_uv,
+                input.eye_position, up, sky_reflection, 1.0, false,
+                ssr_scene_color, ssr_scene_depth,
+                screen_sampler, depth_sampler, ssr);
+            sky = mix(sky, sky_ssr.rgb, sky_ssr.a);
+            sky = almetal_finish_hero_probe(
+                sky, input.eye_position, up, 1.0,
+                hero_probe, probe_sampler, probes, hero);
+            color = mix(color, sky, gone);
+            glow *= 1.0 - gone;
+        }
+    }
+
+    return max(float4(color, glow), float4(0.0));
 }
 
 static float almetal_projector_shadow(

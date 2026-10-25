@@ -90,6 +90,7 @@ namespace
     struct alignas(16) WorldWaterSurfaceConstants
     {
         float modelview[16];
+        float normal_matrix[3][4];
         float eye_position[4];
         float big_phase[4];
         float little_phase[4];
@@ -98,11 +99,15 @@ namespace
         float map_mean[4];
         float lattice_fraction[4];
         std::int32_t lattice_base[4];
+        float normal_scale_glint[4];
+        float optics[4];
+        float rim[4];
+        float light_direction[4];
         float parameters[4];
         float screen[4];
         std::uint32_t config[4];
     };
-    static_assert(sizeof(WorldWaterSurfaceConstants) == 240);
+    static_assert(sizeof(WorldWaterSurfaceConstants) == 352);
 
     struct alignas(16) WorldShinyConstants
     {
@@ -678,6 +683,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         water_haze_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         underwater_flat_water_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        above_water_flat_water_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         pre_water_fullbright_pipelines;
     std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
@@ -1428,6 +1435,35 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             ALMetalRenderPipeline::create(
                 device, underwater_descriptor, error);
         if (!impl->underwater_flat_water_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor above_water_descriptor =
+            underwater_descriptor;
+        above_water_descriptor.fragment_function =
+            "almetal_world_above_water_fragment";
+        above_water_descriptor.colors[0].write_mask =
+            ALMetalColorWriteMask::all;
+        above_water_descriptor.colors[0].blending_enabled = true;
+        above_water_descriptor.colors[0].source_rgb =
+            ALMetalBlendFactor::one;
+        above_water_descriptor.colors[0].destination_rgb =
+            ALMetalBlendFactor::zero;
+        above_water_descriptor.colors[0].rgb_operation =
+            ALMetalBlendOperation::add;
+        above_water_descriptor.colors[0].source_alpha =
+            ALMetalBlendFactor::one;
+        above_water_descriptor.colors[0].destination_alpha =
+            ALMetalBlendFactor::one;
+        above_water_descriptor.colors[0].alpha_operation =
+            ALMetalBlendOperation::maximum;
+        above_water_descriptor.label =
+            "Alchemy world flat above-water surface pipeline";
+        impl->above_water_flat_water_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, above_water_descriptor, error);
+        if (!impl->above_water_flat_water_pipelines[hdr])
         {
             return nullptr;
         }
@@ -4047,6 +4083,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     bool has_water_exclusion = false;
     bool has_water_haze = false;
     bool has_water_surface = false;
+    bool has_above_water_surface = false;
+    bool water_uses_shadows = false;
     bool has_pre_water_alpha = false;
     bool has_pre_water_simple = false;
     bool has_pre_water_material = false;
@@ -4481,6 +4519,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             !finiteValues(surface->water_far, 4) ||
             !finiteValues(surface->map_mean, 4) ||
             !finiteValues(surface->lattice_fraction, 4) ||
+            !finiteValues(surface->normal_scale_glint, 4) ||
+            !finiteValues(surface->optics, 4) ||
+            !finiteValues(surface->rim, 4) ||
+            !finiteValues(surface->light_direction, 4) ||
             !finiteValues(surface->parameters, 4) ||
             field->cell_square[2] <= 0.f ||
             field->cell_square[3] <= 0.f ||
@@ -4497,10 +4539,35 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             surface->parameters[3] > 2.f ||
             std::floor(surface->parameters[3]) !=
                 surface->parameters[3] ||
-            surface->water_far[0] <= 0.f)
+            surface->water_far[0] <= 0.f ||
+            (!surface->underwater &&
+             (!finiteValues(&surface->normal_matrix[0][0], 12) ||
+              surface->normal_scale_glint[3] < 0.05f ||
+              surface->normal_scale_glint[3] > 1.f ||
+              surface->optics[2] < 0.f ||
+              surface->has_excluded_surface)))
         {
             setError(error, "Metal world water-surface inputs are invalid");
             return nullptr;
+        }
+        has_above_water_surface = !surface->underwater;
+        water_uses_shadows = has_above_water_surface &&
+            surface->uses_shadows;
+        if (has_above_water_surface)
+        {
+            const float light_length =
+                surface->light_direction[0] *
+                    surface->light_direction[0] +
+                surface->light_direction[1] *
+                    surface->light_direction[1] +
+                surface->light_direction[2] *
+                    surface->light_direction[2];
+            if (light_length <= 0.f)
+            {
+                setError(
+                    error, "Metal world water-surface inputs are invalid");
+                return nullptr;
+            }
         }
         for (std::uint32_t draw = 0; draw < field->draw_count; ++draw)
         {
@@ -4521,7 +4588,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         setError(error, "Metal world water-surface marker is missing");
         return nullptr;
     }
-    if (has_pre_water_alpha)
+    if (has_pre_water_alpha || has_above_water_surface)
     {
         const ALMetalWorldAlphaEnvironment* environment =
             scene.alpha_environment;
@@ -4568,7 +4635,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
     }
     if ((has_pre_water_simple || has_pre_water_material ||
-         has_pre_water_pbr) &&
+         has_pre_water_pbr || has_above_water_surface) &&
         (!validLegacyAlphaLighting(scene.alpha_lighting) ||
          !validPBRReflectionProbes(scene.reflection_probes)))
     {
@@ -4576,9 +4643,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                  "Metal world pre-water alpha lighting is invalid");
         return nullptr;
     }
-    if (has_pre_water_shadows !=
+    if ((has_pre_water_shadows || water_uses_shadows) !=
             (scene.alpha_directional_shadows != nullptr) ||
-        (has_pre_water_shadows &&
+        ((has_pre_water_shadows || water_uses_shadows) &&
          !validDirectionalShadows(scene.alpha_directional_shadows)))
     {
         setError(error,
@@ -4652,7 +4719,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
 
     std::unique_ptr<ALMetalBuffer> probe_constants_buffer;
     if (has_shiny || has_pre_water_simple || has_pre_water_material ||
-        has_pre_water_pbr)
+        has_pre_water_pbr || has_above_water_surface)
     {
         ALMetalBufferDescriptor descriptor;
         descriptor.length = sizeof(ALMetalWorldReflectionProbeConstants);
@@ -4706,6 +4773,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
     }
     std::unique_ptr<ALMetalRenderTarget> water_color_snapshot;
+    std::unique_ptr<ALMetalRenderTarget> water_depth_snapshot;
     if (has_water_surface && scene.water_surface->refracts)
     {
         ALMetalRenderTargetDescriptor water_color_descriptor;
@@ -4713,14 +4781,32 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         water_color_descriptor.height = scene.height;
         water_color_descriptor.colors[0].format = color_format;
         water_color_descriptor.colors[0].label =
-            "Alchemy underwater refraction color";
+            "Alchemy water refraction color";
         water_color_descriptor.label =
-            "Alchemy native underwater refraction snapshot";
+            "Alchemy native water refraction snapshot";
         water_color_snapshot = ALMetalRenderTarget::create(
             *mImpl->device, water_color_descriptor, error);
         if (!water_color_snapshot)
         {
             return nullptr;
+        }
+        if (has_above_water_surface)
+        {
+            ALMetalRenderTargetDescriptor water_depth_descriptor;
+            water_depth_descriptor.width = scene.width;
+            water_depth_descriptor.height = scene.height;
+            water_depth_descriptor.color_attachment_count = 0;
+            water_depth_descriptor.depth_stencil_format =
+                ALMetalPixelFormat::depth32_float_stencil8;
+            water_depth_descriptor.depth_stencil_shader_read = true;
+            water_depth_descriptor.label =
+                "Alchemy native water refraction depth snapshot";
+            water_depth_snapshot = ALMetalRenderTarget::create(
+                *mImpl->device, water_depth_descriptor, error);
+            if (!water_depth_snapshot)
+            {
+                return nullptr;
+            }
         }
     }
     auto command = mImpl->device->makeCommandBuffer(
@@ -4786,7 +4872,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     {
         bool bound = true;
         if (has_shiny || has_pre_water_simple || has_pre_water_material ||
-            has_pre_water_pbr)
+            has_pre_water_pbr || has_above_water_surface)
         {
             bound =
             active.setFragmentSampler(
@@ -4973,7 +5059,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 (water.refracts &&
                  (!water_color_snapshot ||
                   !water_color_snapshot->copyColorFrom(
-                      *command, 0, *output->colorTexture(0), {}, error))))
+                      *command, 0, *output->colorTexture(0), {}, error))) ||
+                (!water.underwater && water.refracts &&
+                 (!water_depth_snapshot ||
+                  !water_depth_snapshot->copyDepthStencilFrom(
+                      *command, *output->depthStencilTexture(), {},
+                      error))))
             {
                 return nullptr;
             }
@@ -4989,7 +5080,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 water_pass_config, error);
             encoder = water_pass ? ALMetalRenderEncoder::begin(
                 *command, *water_pass,
-                "Alchemy world flat underwater surface encoder", error)
+                water.underwater
+                    ? "Alchemy world flat underwater surface encoder"
+                    : "Alchemy world flat above-water surface encoder",
+                error)
                 : nullptr;
             if (!encoder)
             {
@@ -5022,6 +5116,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             WorldWaterSurfaceConstants water_constants{};
             std::memcpy(water_constants.modelview, water.modelview,
                         sizeof(water_constants.modelview));
+            std::memcpy(water_constants.normal_matrix,
+                        water.normal_matrix,
+                        sizeof(water_constants.normal_matrix));
             std::memcpy(water_constants.eye_position,
                         water.eye_position,
                         sizeof(water_constants.eye_position));
@@ -5043,13 +5140,23 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             std::memcpy(water_constants.lattice_base,
                         water.lattice_base,
                         sizeof(water_constants.lattice_base));
+            std::memcpy(water_constants.normal_scale_glint,
+                        water.normal_scale_glint,
+                        sizeof(water_constants.normal_scale_glint));
+            std::memcpy(water_constants.optics, water.optics,
+                        sizeof(water_constants.optics));
+            std::memcpy(water_constants.rim, water.rim,
+                        sizeof(water_constants.rim));
+            std::memcpy(water_constants.light_direction,
+                        water.light_direction,
+                        sizeof(water_constants.light_direction));
             std::memcpy(water_constants.parameters,
                         water.parameters,
                         sizeof(water_constants.parameters));
             water_constants.screen[0] = static_cast<float>(scene.width);
             water_constants.screen[1] = static_cast<float>(scene.height);
             water_constants.config[0] = scene.reverse_z ? 1u : 0u;
-            water_constants.config[1] = scene.hdr ? 1u : 0u;
+            water_constants.config[1] = water.uses_shadows ? 1u : 0u;
             water_constants.config[2] = static_cast<std::uint32_t>(
                 water.parameters[3]);
             water_constants.config[3] = water.refracts ? 1u : 0u;
@@ -5057,6 +5164,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             const ALMetalTexture* refraction = water.refracts
                 ? water_color_snapshot->colorTexture(0)
                 : mImpl->inactive_ssr_color.get();
+            const ALMetalTexture* refraction_depth =
+                !water.underwater && water.refracts
+                    ? water_depth_snapshot->depthStencilTexture()
+                    : mImpl->inactive_ssr_depth.get();
             encoded =
                 encoder->setViewport(viewport, error) &&
                 encoder->setScissor(scissor, error) &&
@@ -5065,7 +5176,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setCullMode(ALMetalCullMode::none, error) &&
                 encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
                 encoder->setPipeline(
-                    *mImpl->underwater_flat_water_pipelines
+                    *(water.underwater
+                        ? mImpl->underwater_flat_water_pipelines
+                        : mImpl->above_water_flat_water_pipelines)
                         [scene.hdr ? 1 : 0], error) &&
                 encoder->setVertexTexture(0, field.cell_map, error) &&
                 encoder->setFragmentTexture(
@@ -5073,6 +5186,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setFragmentTexture(
                     2, water.normal_maps[1], error) &&
                 encoder->setFragmentTexture(3, refraction, error) &&
+                encoder->setFragmentTexture(
+                    4, refraction_depth, error) &&
                 encoder->setFragmentSampler(
                     0, mImpl->diffuse_sampler.get(), error) &&
                 encoder->setFragmentSampler(
@@ -5083,6 +5198,70 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setFragmentBytes(
                     0, &field_constants,
                     sizeof(field_constants), error);
+
+            if (encoded && !water.underwater)
+            {
+                const ALMetalTexture* directional_depth =
+                    water.uses_shadows
+                        ? scene.alpha_directional_shadows->depth_texture
+                        : mImpl->unshadowed_depth.get();
+                const ALMetalWorldDirectionalShadowConstants&
+                    directional_constants = water.uses_shadows
+                        ? scene.alpha_directional_shadows->constants
+                        : mImpl->unshadowed_constants;
+                const ALMetalTexture* hero_texture = scene.hero_probe
+                    ? scene.hero_probe->radiance_texture
+                    : mImpl->inactive_hero_probe.get();
+                const ALMetalWorldHeroProbeConstants& hero_constants =
+                    scene.hero_probe
+                        ? scene.hero_probe->constants
+                        : mImpl->inactive_hero_constants;
+                const ALMetalTexture* ssr_color =
+                    scene.screen_space_reflections
+                        ? scene.screen_space_reflections->scene_color
+                        : mImpl->inactive_ssr_color.get();
+                const ALMetalTexture* ssr_depth =
+                    scene.screen_space_reflections
+                        ? scene.screen_space_reflections->scene_depth
+                        : mImpl->inactive_ssr_depth.get();
+                const ALMetalWorldScreenSpaceReflectionConstants&
+                    ssr_constants = scene.screen_space_reflections
+                        ? scene.screen_space_reflections->constants
+                        : mImpl->inactive_ssr_constants;
+                encoded =
+                    encoder->setFragmentBytes(
+                        2, scene.alpha_environment,
+                        sizeof(*scene.alpha_environment), error) &&
+                    encoder->setFragmentBuffer(
+                        3, *probe_constants_buffer, 0, error) &&
+                    encoder->setFragmentBytes(
+                        4, scene.alpha_lighting,
+                        sizeof(*scene.alpha_lighting), error) &&
+                    encoder->setFragmentTexture(
+                        33, directional_depth, error) &&
+                    encoder->setFragmentBytes(
+                        5, &directional_constants,
+                        sizeof(directional_constants), error) &&
+                    encoder->setFragmentTexture(
+                        34, hero_texture, error) &&
+                    encoder->setFragmentBytes(
+                        6, &hero_constants,
+                        sizeof(hero_constants), error) &&
+                    encoder->setFragmentTexture(
+                        35, ssr_color, error) &&
+                    encoder->setFragmentTexture(
+                        36, ssr_depth, error) &&
+                    encoder->setFragmentBytes(
+                        7, &ssr_constants,
+                        sizeof(ssr_constants), error) &&
+                    encoder->setFragmentTexture(
+                        32, scene.reflection_probes->radiance_texture,
+                        error) &&
+                    encoder->setFragmentSampler(
+                        2, mImpl->probe_sampler.get(), error) &&
+                    encoder->setFragmentSampler(
+                        3, mImpl->point_clamp_sampler.get(), error);
+            }
 
             const auto draw_water_field = [&]()
             {

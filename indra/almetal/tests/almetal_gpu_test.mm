@@ -151,6 +151,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_water_haze_fragment",
             "almetal_world_flat_water_vertex",
             "almetal_world_underwater_fragment",
+            "almetal_world_above_water_fragment",
             "almetal_world_pre_water_fullbright_fragment",
             "almetal_world_pre_water_simple_fragment",
             "almetal_world_pre_water_simple_shadow_fragment",
@@ -4542,6 +4543,162 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         INFO(error);
         CHECK(std::abs(
             pre_water_depth[stencil_center / 4] - 0.5f) < 0.0001f);
+
+        // Above-water flat water owns the same field and normal layers but
+        // adds a current-depth refraction guard, water-only probe traversal,
+        // directional-shadowed sun glint and MAX glow-alpha blending.
+        const std::array<float, 2> above_water_surface_cell{{-0.5f, 1.f}};
+        auto above_water_surface_upload = device->makeCommandBuffer(
+            "Alchemy above-water surface height upload", &error);
+        REQUIRE(above_water_surface_upload);
+        REQUIRE(water_cell_map->upload(
+            *above_water_surface_upload, 0, 0, {},
+            above_water_surface_cell.data(),
+            sizeof(above_water_surface_cell), &error));
+        REQUIRE(above_water_surface_upload->commitAndWait(&error));
+
+        ALMetalWorldWaterSurface above_water_surface =
+            underwater_surface;
+        above_water_surface.field.default_height[0] = -0.5f;
+        above_water_surface.eye_position[2] = 1.f;
+        above_water_surface.normal_matrix[0][0] = 1.f;
+        above_water_surface.normal_matrix[1][1] = 1.f;
+        above_water_surface.normal_matrix[2][2] = 1.f;
+        above_water_surface.normal_scale_glint[0] = 2.f;
+        above_water_surface.normal_scale_glint[1] = 2.f;
+        above_water_surface.normal_scale_glint[2] = 2.f;
+        above_water_surface.normal_scale_glint[3] = 1.f;
+        above_water_surface.optics[0] = 0.f;
+        above_water_surface.optics[1] = 1.f;
+        above_water_surface.optics[2] = 0.7f;
+        above_water_surface.light_direction[2] = 1.f;
+        above_water_surface.underwater = false;
+        above_water_surface.has_excluded_surface = false;
+        above_water_surface.uses_shadows = false;
+        alpha_environment.atmos_sunlit[0] = 1.f;
+        alpha_environment.atmos_sunlit[1] = 0.5f;
+        alpha_environment.atmos_sunlit[2] = 0.25f;
+        alpha_environment.atmos_sunlit[3] = 1.f;
+        alpha_environment.atmos_sunlit_linear[0] = 1.f;
+        alpha_environment.atmos_sunlit_linear[1] = 0.5f;
+        alpha_environment.atmos_sunlit_linear[2] = 0.25f;
+        alpha_environment.atmos_sunlit_linear[3] = 1.f;
+        simple_alpha_lighting.parameters[3] = 0.f;
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.reflection_probes = &reflection_probes;
+        opaque_forward_scene.alpha_environment = &alpha_environment;
+        opaque_forward_scene.alpha_lighting = &simple_alpha_lighting;
+        opaque_forward_scene.alpha_directional_shadows = nullptr;
+        opaque_forward_scene.water_surface = &above_water_surface;
+        error.clear();
+        auto above_water_surface_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(above_water_surface_result);
+        REQUIRE(above_water_surface_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(above_water_surface_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        std::size_t above_water_pixel = 0;
+        float above_water_delta = 0.f;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            if (std::abs(pre_water_depth[pixel] - 0.25f) >= 0.0001f)
+            {
+                continue;
+            }
+            const float red = half_to_float(
+                pre_water_pixels[pixel * 4 + 0]);
+            const float green = half_to_float(
+                pre_water_pixels[pixel * 4 + 1]);
+            const float blue = half_to_float(
+                pre_water_pixels[pixel * 4 + 2]);
+            const float delta = std::abs(red - 0.25f) +
+                std::abs(green - 0.125f) +
+                std::abs(blue - 0.0625f);
+            if (delta > above_water_delta)
+            {
+                above_water_delta = delta;
+                above_water_pixel = pixel * 4;
+            }
+        }
+        CHECK(above_water_delta > 0.01f);
+        CHECK(std::abs(
+            half_to_float(pre_water_pixels[above_water_pixel + 3]) -
+            0.5f) < 0.002f);
+        CHECK(std::abs(
+            pre_water_depth[above_water_pixel / 4] - 0.25f) < 0.0001f);
+
+        // A requested live cascade is mandatory. Once supplied, the same
+        // shader executes both built and explicitly unbuilt shadow states.
+        above_water_surface.uses_shadows = true;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world pre-water alpha shadows are invalid");
+        opaque_forward_scene.alpha_directional_shadows =
+            &directional_shadows;
+        directional_shadows.constants.config[1] = 0xeu;
+        error.clear();
+        auto shadowed_above_water = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(shadowed_above_water);
+        REQUIRE(shadowed_above_water->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        const float shadowed_water_red = half_to_float(
+            pre_water_pixels[above_water_pixel]);
+        directional_shadows.constants.config[1] = 0xfu;
+        auto unbuilt_above_water = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(unbuilt_above_water);
+        REQUIRE(unbuilt_above_water->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        CHECK(half_to_float(pre_water_pixels[above_water_pixel]) >
+              shadowed_water_red);
+
+        above_water_surface.uses_shadows = false;
+        opaque_forward_scene.alpha_directional_shadows = nullptr;
+        directional_shadows.constants.config[1] = 0xeu;
+
+        // Opaque water replaces the missing scene copy with the authored
+        // 2,048-metre water-fog source while retaining reflection/glint.
+        above_water_surface.refracts = false;
+        auto opaque_above_water = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(opaque_above_water);
+
+        // Exercise the water-specific ordinary -> SSR -> hero finish and
+        // the infinite-projection rim replacement with coherent resources.
+        above_water_surface.refracts = true;
+        above_water_surface.optics[2] = 0.f;
+        above_water_surface.water_far[1] = 8.f;
+        above_water_surface.rim[0] = 100.f;
+        above_water_surface.rim[1] = 100.f;
+        above_water_surface.rim[2] = -100.f;
+        above_water_surface.rim[3] = -100.f;
+        opaque_forward_scene.hero_probe = &hero_probe;
+        opaque_forward_scene.screen_space_reflections =
+            &screen_space_reflections;
+        auto finished_above_water = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(finished_above_water);
+        REQUIRE(finished_above_water->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        CHECK(std::isfinite(half_to_float(
+            pre_water_pixels[above_water_pixel])));
+        opaque_forward_scene.hero_probe = nullptr;
+        opaque_forward_scene.screen_space_reflections = nullptr;
 
         opaque_forward_scene.gbuffer = coverage_result.get();
         opaque_forward_scene.reverse_z = false;

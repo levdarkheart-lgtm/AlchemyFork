@@ -3117,13 +3117,40 @@ void LLPipeline::captureMetalWorldWaterSurface(
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (capture.pass_active || capture.world_pre_water_alpha_active ||
-        capture.water_surface_valid || !capture.water_haze_valid)
+        capture.water_surface_valid || !capture.water_haze_valid ||
+        (!surface.underwater && !capture.alpha_environment_valid))
     {
         capture.complete = false;
         capture.batches.clear();
         capture.water_surface = {};
         capture.water_surface_valid = false;
         return;
+    }
+
+    if (!surface.underwater)
+    {
+        if (!capture.world_alpha_lighting_valid)
+        {
+            ALMetalWorldLegacyAlphaLighting lighting;
+            if (!fillMetalWorldAlphaLighting(lighting))
+            {
+                capture.complete = false;
+                capture.batches.clear();
+                return;
+            }
+            capture.world_alpha_lighting = lighting;
+            capture.world_alpha_lighting_valid = true;
+        }
+        if (surface.uses_shadows &&
+            (!fillMetalImpostorDirectionalShadows() ||
+             !capture.impostor_directional_shadows.depth_texture))
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
+        capture.world_alpha_uses_shadows =
+            capture.world_alpha_uses_shadows || surface.uses_shadows;
     }
 
     capture.water_surface = surface;
@@ -3176,6 +3203,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         {
             return batch.water_surface;
         });
+    const bool has_above_water_surface = has_water_surface &&
+        capture.water_surface_valid &&
+        !capture.water_surface.underwater;
     const bool material_uses_environment = std::any_of(
         capture.batches.begin(), capture.batches.end(),
         [](const ALMetalWorldSimpleBatch& batch)
@@ -3196,7 +3226,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         });
     const bool needs_reflection_probes =
         has_shiny || has_simple_alpha || has_material_alpha ||
-        has_pbr_alpha;
+        has_pbr_alpha || has_above_water_surface;
     const bool hero_active =
         mHeroProbeManager.mHeroData.heroProbeCount > 0;
     const bool ssr_active =
@@ -3212,7 +3242,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                "the native world post-deferred slice" << LL_ENDL;
     }
     if (capture.complete &&
-        (has_simple_alpha || has_material_alpha || has_pbr_alpha) &&
+        (has_simple_alpha || has_material_alpha || has_pbr_alpha ||
+         has_above_water_surface) &&
         !capture.world_alpha_lighting_valid)
     {
         capture.complete = false;
@@ -3229,7 +3260,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                "native world pre-water alpha slice" << LL_ENDL;
     }
     if (capture.complete &&
-        (has_shiny || material_uses_environment || has_pbr_alpha) &&
+        (has_shiny || material_uses_environment || has_pbr_alpha ||
+         has_above_water_surface) &&
         hero_active &&
         !fillMetalImpostorHeroProbe())
     {
@@ -3239,7 +3271,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                "world opaque-forward slice" << LL_ENDL;
     }
     if (capture.complete &&
-        (material_uses_environment || has_pbr_alpha) && ssr_active &&
+        (material_uses_environment || has_pbr_alpha ||
+         has_above_water_surface) && ssr_active &&
         !fillMetalImpostorScreenSpaceReflections())
     {
         capture.complete = false;
@@ -3261,11 +3294,13 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.reflection_probes = needs_reflection_probes
             ? &capture.impostor_reflection_probes : nullptr;
         scene.hero_probe =
-            (has_shiny || material_uses_environment || has_pbr_alpha) &&
+            (has_shiny || material_uses_environment || has_pbr_alpha ||
+             has_above_water_surface) &&
                 hero_active
             ? &capture.impostor_hero_probe : nullptr;
         scene.screen_space_reflections =
-            (material_uses_environment || has_pbr_alpha) && ssr_active
+            (material_uses_environment || has_pbr_alpha ||
+             has_above_water_surface) && ssr_active
                 ? &capture.impostor_screen_space_reflections : nullptr;
         scene.water_exclusion_surface =
             capture.water_exclusion_surface_valid
@@ -3311,7 +3346,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 << (has_pbr_alpha
                         ? "; including PBR pre-water alpha" : "")
                 << (has_water_surface
-                        ? "; including flat underwater water" : "")
+                        ? (has_above_water_surface
+                               ? "; including flat above-water water"
+                               : "; including flat underwater water")
+                        : "")
                 << "; result remains offscreen and visible GL authority is "
                    "unchanged" << LL_ENDL;
         }
