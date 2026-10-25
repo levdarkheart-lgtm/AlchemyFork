@@ -917,6 +917,71 @@ void LLPipeline::init()
 }
 
 #if LL_DARWIN
+namespace
+{
+bool metalWorldAlphaBlendFactor(
+    LLRender::eBlendFactor factor, ALMetalBlendFactor& result)
+{
+    switch (factor)
+    {
+        case LLRender::BF_ZERO:
+            result = ALMetalBlendFactor::zero;
+            return true;
+        case LLRender::BF_ONE:
+            result = ALMetalBlendFactor::one;
+            return true;
+        case LLRender::BF_SOURCE_COLOR:
+            result = ALMetalBlendFactor::source_color;
+            return true;
+        case LLRender::BF_ONE_MINUS_SOURCE_COLOR:
+            result = ALMetalBlendFactor::one_minus_source_color;
+            return true;
+        case LLRender::BF_SOURCE_ALPHA:
+            result = ALMetalBlendFactor::source_alpha;
+            return true;
+        case LLRender::BF_ONE_MINUS_SOURCE_ALPHA:
+            result = ALMetalBlendFactor::one_minus_source_alpha;
+            return true;
+        case LLRender::BF_DEST_COLOR:
+            result = ALMetalBlendFactor::destination_color;
+            return true;
+        case LLRender::BF_ONE_MINUS_DEST_COLOR:
+            result = ALMetalBlendFactor::one_minus_destination_color;
+            return true;
+        case LLRender::BF_DEST_ALPHA:
+            result = ALMetalBlendFactor::destination_alpha;
+            return true;
+        case LLRender::BF_ONE_MINUS_DEST_ALPHA:
+            result = ALMetalBlendFactor::one_minus_destination_alpha;
+            return true;
+        case LLRender::BF_UNDEF:
+            break;
+    }
+    return false;
+}
+
+bool fillMetalWorldPreWaterAlphaDraw(
+    ALMetalWorldSimpleBatch& batch, const LLDrawInfo& params,
+    bool particle_or_hud_particle)
+{
+    batch.pre_water_particle = particle_or_hud_particle;
+    if (!metalWorldAlphaBlendFactor(
+            static_cast<LLRender::eBlendFactor>(params.mBlendFuncSrc),
+            batch.pre_water_source_rgb) ||
+        !metalWorldAlphaBlendFactor(
+            static_cast<LLRender::eBlendFactor>(params.mBlendFuncDst),
+            batch.pre_water_destination_rgb))
+    {
+        return false;
+    }
+    batch.pre_water_minimum_alpha =
+        params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA &&
+        params.mBlendFuncDst != LLRender::BF_SOURCE_ALPHA
+            ? 0.f : 0.004f;
+    return true;
+}
+}
+
 void LLPipeline::beginMetalWorldGBufferCapture()
 {
     if (!isMainWorldPass() || gSnapshot || !mGLResourcesLive)
@@ -4353,9 +4418,10 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
     if (params.mGLTFMaterial.isNull() ||
         params.mGLTFMaterial->mAlphaMode !=
             LLGLTFMaterial::ALPHA_MODE_BLEND ||
-        particle_or_hud_particle ||
-        params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA ||
-        params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)
+        (!world_pre_water &&
+         (particle_or_hud_particle ||
+          params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA ||
+          params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)))
     {
         capture.complete = false;
         capture.batches.clear();
@@ -4416,6 +4482,13 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
         batch.pre_water_alpha = true;
         batch.pre_water_pbr = true;
         batch.pre_water_shadows = uses_shadows;
+        if (!fillMetalWorldPreWaterAlphaDraw(
+                batch, params, particle_or_hud_particle))
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
         // PBR always carries a radiance lobe. Arm paired scene history even
         // for rough content because the live material can change without
         // changing this capture owner's topology.
@@ -4440,13 +4513,14 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     }
 
     // The two legacy non-material impostor programs converge on the same
-    // contract: decoded diffuse times linearised streamed tint. Particle
-    // clamp sampling and custom blend equations are separate owners; leave
-    // those transitional rather than approximating them with source-over.
+    // contract: decoded diffuse times linearised streamed tint. Main-world
+    // capture also retains particle clamp/cull state and custom RGB blend
+    // factors; the avatar-impostor bake keeps its narrower source-over set.
     if (params.mGLTFMaterial.notNull() || params.mMaterial ||
-        particle_or_hud_particle ||
-        params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA ||
-        params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)
+        (!world_pre_water &&
+         (particle_or_hud_particle ||
+          params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA ||
+          params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)))
     {
         if (world_pre_water)
         {
@@ -4515,6 +4589,13 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
         batch.pre_water_simple = !params.mFullbright;
         batch.pre_water_shadows = world_simple_shadows;
         batch.impostor_fullbright = false;
+        if (!fillMetalWorldPreWaterAlphaDraw(
+                batch, params, particle_or_hud_particle))
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
     }
 }
 
@@ -5457,9 +5538,11 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
     const U32 shader_mask = params.mShaderMask;
     if (shader_mask >= LLMaterial::SHADER_COUNT ||
         (shader_mask & 0x3u) != LLMaterial::DIFFUSE_ALPHA_MODE_BLEND ||
-        params.mGLTFMaterial.notNull() || particle_or_hud_particle ||
-        params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA ||
-        params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)
+        params.mGLTFMaterial.notNull() ||
+        (!world_pre_water &&
+         (particle_or_hud_particle ||
+          params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA ||
+          params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)))
     {
         capture.complete = false;
         capture.batches.clear();
@@ -5532,6 +5615,13 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
             batch.pre_water_alpha = true;
             batch.pre_water_material = true;
             batch.pre_water_shadows = uses_shadows;
+            if (!fillMetalWorldPreWaterAlphaDraw(
+                    batch, params, particle_or_hud_particle))
+            {
+                capture.complete = false;
+                capture.batches.clear();
+                return;
+            }
         }
         const std::size_t slot_count = std::min<std::size_t>(
             batch.material_slot_count, batch.material_slots.size());

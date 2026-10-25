@@ -226,6 +226,12 @@ struct ALMetalWorldSimpleBatch
     bool pre_water_material = false;
     bool pre_water_pbr = false;
     bool pre_water_shadows = false;
+    bool pre_water_particle = false;
+    float pre_water_minimum_alpha = 0.004f;
+    ALMetalBlendFactor pre_water_source_rgb =
+        ALMetalBlendFactor::source_alpha;
+    ALMetalBlendFactor pre_water_destination_rgb =
+        ALMetalBlendFactor::one_minus_source_alpha;
     bool legacy_glow = false;
     bool pbr_glow = false;
     bool terrain = false;
@@ -439,7 +445,8 @@ struct alignas(16) ALMetalWorldAlphaEnvironment
     // z = sun/moon glow factor, w = deferred sky HDR scale.
     float atmospheric[4]{};
     // x = waterFogKS, y = waterFogDensity,
-    // z = waterSign for this alpha pool.
+    // z = waterSign for this alpha pool. The renderer injects the current
+    // draw's minimum-alpha threshold into w before binding this block.
     float water_fog[4]{};
 };
 

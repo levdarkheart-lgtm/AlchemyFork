@@ -2065,7 +2065,7 @@ fragment float4 almetal_world_pre_water_fullbright_fragment(
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
               diffuse_sampler, input.texcoord) * input.color
         : float4(1.0, 0.0, 1.0, 1.0);
-    constexpr float minimum_alpha = 0.004;
+    const float minimum_alpha = environment.water_fog.w;
     if (color.a < minimum_alpha)
     {
         discard_fragment();
@@ -4918,7 +4918,6 @@ static void almetal_world_pre_water_simple_surface(
     array<texture2d<float>, 32> diffuse_textures,
     sampler diffuse_sampler,
     constant ALMetalWorldAlphaEnvironment& environment,
-    constant ALMetalWorldLegacyAlphaLighting& lighting,
     thread float4& diffuse,
     thread float3& normal)
 {
@@ -4935,7 +4934,7 @@ static void almetal_world_pre_water_simple_surface(
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
               diffuse_sampler, input.texcoord) * input.color
         : float4(1.0, 0.0, 1.0, 1.0);
-    if (diffuse.a < lighting.parameters.y)
+    if (diffuse.a < environment.water_fog.w)
     {
         discard_fragment();
     }
@@ -5032,7 +5031,7 @@ fragment float4 almetal_world_pre_water_simple_fragment(
     float3 normal;
     almetal_world_pre_water_simple_surface(
         input, diffuse_textures, diffuse_sampler,
-        environment, lighting, diffuse, normal);
+        environment, diffuse, normal);
     return almetal_world_pre_water_simple_lighting(
         input, diffuse, normal, 1.0,
         reflection_radiance, reflection_irradiance,
@@ -5058,7 +5057,7 @@ fragment float4 almetal_world_pre_water_simple_shadow_fragment(
     float3 normal;
     almetal_world_pre_water_simple_surface(
         input, diffuse_textures, diffuse_sampler,
-        environment, lighting, diffuse, normal);
+        environment, diffuse, normal);
     const float2 gl_fragment_position = float2(
         input.position.x, shadows.parameters.w - input.position.y);
     const float directional_visibility = almetal_directional_shadow(
@@ -5157,7 +5156,7 @@ fragment float4 almetal_world_pre_water_material_fragment(
         0.0, 1.0)));
     specular.a = glossiness;
 
-    const float minimum_alpha = lighting.parameters.y;
+    const float minimum_alpha = environment.water_fog.w;
     if (input.color.a < minimum_alpha ||
         (diffuse.a * input.color.a < minimum_alpha &&
          glossiness <= 0.0 && environment_intensity <= 0.0))
@@ -8099,7 +8098,7 @@ fragment float4 almetal_world_pre_water_pbr_fragment(
             material_sampler, input.emissive_texcoord).rgb;
 
     const float coverage = base_color.a;
-    if (coverage < lighting.parameters.y)
+    if (coverage < environment.water_fog.w)
     {
         discard_fragment();
     }

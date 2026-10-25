@@ -28,6 +28,25 @@ namespace
         }
     }
 
+    bool validBlendFactor(ALMetalBlendFactor factor)
+    {
+        switch (factor)
+        {
+            case ALMetalBlendFactor::zero:
+            case ALMetalBlendFactor::one:
+            case ALMetalBlendFactor::source_color:
+            case ALMetalBlendFactor::one_minus_source_color:
+            case ALMetalBlendFactor::source_alpha:
+            case ALMetalBlendFactor::one_minus_source_alpha:
+            case ALMetalBlendFactor::destination_color:
+            case ALMetalBlendFactor::one_minus_destination_color:
+            case ALMetalBlendFactor::destination_alpha:
+            case ALMetalBlendFactor::one_minus_destination_alpha:
+                return true;
+        }
+        return false;
+    }
+
     struct alignas(16) WorldSimpleConstants
     {
         float modelview_projection[16];
@@ -588,6 +607,26 @@ struct ALMetalWorldGBufferRenderer::Impl
     using OpaqueForwardMaskPipelines =
         std::array<OpaqueForwardRiggedPipelines, 2>;
 
+    enum class PreWaterAlphaFamily : std::uint8_t
+    {
+        fullbright,
+        simple,
+        material,
+        pbr,
+    };
+
+    struct PreWaterAlphaPipelineEntry
+    {
+        PreWaterAlphaFamily family = PreWaterAlphaFamily::fullbright;
+        bool hdr = false;
+        bool rigged = false;
+        bool shadows = false;
+        ALMetalBlendFactor source = ALMetalBlendFactor::source_alpha;
+        ALMetalBlendFactor destination =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        std::unique_ptr<ALMetalRenderPipeline> pipeline;
+    };
+
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::array<BumpPipelines, 2> pipelines;
@@ -628,6 +667,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         pre_water_material_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         pre_water_pbr_pipelines;
+    std::vector<PreWaterAlphaPipelineEntry>
+        custom_pre_water_alpha_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         legacy_glow_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
@@ -677,6 +718,84 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalTexture> inactive_ssr_color;
     std::unique_ptr<ALMetalTexture> inactive_ssr_depth;
     ALMetalWorldScreenSpaceReflectionConstants inactive_ssr_constants{};
+
+    ALMetalRenderPipeline* customPreWaterAlphaPipeline(
+        PreWaterAlphaFamily family, bool hdr, bool rigged, bool shadows,
+        ALMetalBlendFactor source, ALMetalBlendFactor destination,
+        std::string* error)
+    {
+        for (PreWaterAlphaPipelineEntry& entry :
+             custom_pre_water_alpha_pipelines)
+        {
+            if (entry.family == family && entry.hdr == hdr &&
+                entry.rigged == rigged && entry.shadows == shadows &&
+                entry.source == source &&
+                entry.destination == destination)
+            {
+                return entry.pipeline.get();
+            }
+        }
+
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = library.get();
+        descriptor.color_attachment_count = 1;
+        descriptor.colors[0].format = hdr
+            ? ALMetalPixelFormat::rgba16_float
+            : ALMetalPixelFormat::rgba8_unorm;
+        descriptor.colors[0].blending_enabled = true;
+        descriptor.colors[0].source_rgb = source;
+        descriptor.colors[0].destination_rgb = destination;
+        descriptor.colors[0].source_alpha = ALMetalBlendFactor::zero;
+        descriptor.colors[0].destination_alpha =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        switch (family)
+        {
+            case PreWaterAlphaFamily::fullbright:
+                descriptor.vertex_function = rigged
+                    ? "almetal_world_shiny_skinned_vertex"
+                    : "almetal_world_shiny_vertex";
+                descriptor.fragment_function =
+                    "almetal_world_pre_water_fullbright_fragment";
+                break;
+            case PreWaterAlphaFamily::simple:
+                descriptor.vertex_function = rigged
+                    ? "almetal_world_shiny_skinned_vertex"
+                    : "almetal_world_shiny_vertex";
+                descriptor.fragment_function = shadows
+                    ? "almetal_world_pre_water_simple_shadow_fragment"
+                    : "almetal_world_pre_water_simple_fragment";
+                break;
+            case PreWaterAlphaFamily::material:
+                descriptor.vertex_function = rigged
+                    ? "almetal_world_legacy_alpha_skinned_vertex"
+                    : "almetal_world_legacy_alpha_vertex";
+                descriptor.fragment_function =
+                    "almetal_world_pre_water_material_fragment";
+                break;
+            case PreWaterAlphaFamily::pbr:
+                descriptor.vertex_function = rigged
+                    ? "almetal_world_pbr_skinned_vertex"
+                    : "almetal_world_pbr_vertex";
+                descriptor.fragment_function =
+                    "almetal_world_pre_water_pbr_fragment";
+                break;
+        }
+        descriptor.label =
+            "Alchemy world custom-blend pre-water alpha pipeline";
+        auto pipeline = ALMetalRenderPipeline::create(
+            *device, descriptor, error);
+        if (!pipeline)
+        {
+            return nullptr;
+        }
+        ALMetalRenderPipeline* result = pipeline.get();
+        custom_pre_water_alpha_pipelines.push_back({
+            family, hdr, rigged, shadows, source, destination,
+            std::move(pipeline)});
+        return result;
+    }
 };
 
 ALMetalWorldGBufferRenderer::ALMetalWorldGBufferRenderer(
@@ -3976,6 +4095,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                !batch.pre_water_simple &&
                !batch.pre_water_material &&
                !batch.pre_water_pbr) ||
+              !std::isfinite(batch.pre_water_minimum_alpha) ||
+              (batch.pre_water_minimum_alpha != 0.f &&
+               batch.pre_water_minimum_alpha != 0.004f) ||
+              !validBlendFactor(batch.pre_water_source_rgb) ||
+              !validBlendFactor(batch.pre_water_destination_rgb) ||
               batch.alpha_mask ||
               (batch.double_sided && !batch.pre_water_pbr) ||
               (batch.pre_water_material
@@ -4661,29 +4785,70 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 scene.reverse_z ? 1u : 0u;
             pbr_world.depth_convention[1] = batch.texture_count;
 
+            ALMetalWorldAlphaEnvironment alpha_environment =
+                *scene.alpha_environment;
+            alpha_environment.water_fog[3] =
+                batch.pre_water_minimum_alpha;
+
+            const bool standard_blend =
+                batch.pre_water_source_rgb ==
+                    ALMetalBlendFactor::source_alpha &&
+                batch.pre_water_destination_rgb ==
+                    ALMetalBlendFactor::one_minus_source_alpha;
+            const Impl::PreWaterAlphaFamily alpha_family =
+                batch.pre_water_pbr
+                    ? Impl::PreWaterAlphaFamily::pbr
+                    : batch.pre_water_material
+                    ? Impl::PreWaterAlphaFamily::material
+                    : batch.pre_water_simple
+                    ? Impl::PreWaterAlphaFamily::simple
+                    : Impl::PreWaterAlphaFamily::fullbright;
+            ALMetalRenderPipeline* alpha_pipeline = nullptr;
+            if (!standard_blend)
+            {
+                alpha_pipeline = mImpl->customPreWaterAlphaPipeline(
+                    alpha_family, scene.hdr, rigged,
+                    batch.pre_water_simple &&
+                        batch.pre_water_shadows,
+                    batch.pre_water_source_rgb,
+                    batch.pre_water_destination_rgb, error);
+                if (!alpha_pipeline)
+                {
+                    return nullptr;
+                }
+            }
+            else
+            {
+                alpha_pipeline = batch.pre_water_pbr
+                    ? mImpl->pre_water_pbr_pipelines
+                          [scene.hdr ? 1 : 0][rigged ? 1 : 0].get()
+                    : batch.pre_water_material
+                    ? mImpl->pre_water_material_pipelines
+                          [scene.hdr ? 1 : 0][rigged ? 1 : 0].get()
+                    : batch.pre_water_simple
+                    ? mImpl->pre_water_simple_pipelines
+                          [scene.hdr ? 1 : 0]
+                          [batch.pre_water_shadows ? 1 : 0]
+                          [rigged ? 1 : 0].get()
+                    : mImpl->pre_water_fullbright_pipelines
+                          [scene.hdr ? 1 : 0][rigged ? 1 : 0].get();
+            }
+
             const ALMetalDepthStencilState* depth = scene.reverse_z
                 ? mImpl->reverse_depth.get() : mImpl->forward_depth.get();
             encoded =
                 encoder->setDepthStencilState(depth, error) &&
                 encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
                 encoder->setCullMode(
-                    batch.pre_water_pbr && batch.double_sided
+                    batch.pre_water_particle ||
+                            (batch.pre_water_pbr && batch.double_sided)
                         ? ALMetalCullMode::none : ALMetalCullMode::back,
                     error) &&
-                encoder->setPipeline(
-                    batch.pre_water_pbr
-                        ? *mImpl->pre_water_pbr_pipelines
-                              [scene.hdr ? 1 : 0][rigged ? 1 : 0]
-                        : batch.pre_water_material
-                        ? *mImpl->pre_water_material_pipelines
-                              [scene.hdr ? 1 : 0][rigged ? 1 : 0]
-                        : batch.pre_water_simple
-                        ? *mImpl->pre_water_simple_pipelines
-                              [scene.hdr ? 1 : 0]
-                              [batch.pre_water_shadows ? 1 : 0]
-                              [rigged ? 1 : 0]
-                        : *mImpl->pre_water_fullbright_pipelines
-                              [scene.hdr ? 1 : 0][rigged ? 1 : 0],
+                encoder->setPipeline(*alpha_pipeline, error) &&
+                encoder->setFragmentSampler(
+                    0, batch.pre_water_particle
+                        ? mImpl->probe_sampler.get()
+                        : mImpl->diffuse_sampler.get(),
                     error) &&
                 encoder->setVertexBuffer(
                     0, *batch.vertices, batch.position_offset, error) &&
@@ -4763,8 +4928,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         3, &directional_constants,
                         sizeof(directional_constants), error) &&
                     encoder->setFragmentBytes(
-                        6, scene.alpha_environment,
-                        sizeof(*scene.alpha_environment), error);
+                        6, &alpha_environment,
+                        sizeof(alpha_environment), error);
                 for (std::size_t slot = 0;
                      encoded && slot <
                          ALMetalWorldSimpleBatch::max_material_slots;
@@ -4839,8 +5004,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         3, &directional_constants,
                         sizeof(directional_constants), error) &&
                     encoder->setFragmentBytes(
-                        6, scene.alpha_environment,
-                        sizeof(*scene.alpha_environment), error);
+                        6, &alpha_environment,
+                        sizeof(alpha_environment), error);
                 for (std::size_t slot = 0;
                      encoded && slot <
                          ALMetalWorldSimpleBatch::max_material_slots;
@@ -4869,8 +5034,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             else if (encoded)
             {
                 encoded = encoder->setFragmentBytes(
-                    0, scene.alpha_environment,
-                    sizeof(*scene.alpha_environment), error);
+                    0, &alpha_environment,
+                    sizeof(alpha_environment), error);
                 if (encoded && batch.pre_water_simple)
                 {
                     encoded = encoder->setFragmentBytes(

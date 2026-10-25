@@ -1166,6 +1166,15 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         const std::array<std::uint8_t, 4> tree_diffuse_pixel{{
             128, 64, 32, 128,
         }};
+        diffuse_descriptor.label =
+            "Alchemy world custom-blend zero-alpha sRGB diffuse";
+        auto zero_alpha_diffuse = ALMetalTexture::create(
+            *device, diffuse_descriptor, &error);
+        INFO(error);
+        REQUIRE(zero_alpha_diffuse);
+        const std::array<std::uint8_t, 4> zero_alpha_diffuse_pixel{{
+            128, 64, 32, 0,
+        }};
         ALMetalTextureDescriptor normal_descriptor = diffuse_descriptor;
         normal_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
         normal_descriptor.label = "Alchemy world bump tangent normal";
@@ -1237,6 +1246,9 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *upload, 0, 0, {}, indexed_diffuse_pixel.data(), 4, &error));
         REQUIRE(tree_diffuse->upload(
             *upload, 0, 0, {}, tree_diffuse_pixel.data(), 4, &error));
+        REQUIRE(zero_alpha_diffuse->upload(
+            *upload, 0, 0, {}, zero_alpha_diffuse_pixel.data(), 4,
+            &error));
         REQUIRE(bump_normal->upload(
             *upload, 0, 0, {}, bump_normal_pixel.data(), 4, &error));
         REQUIRE(flat_normal->upload(
@@ -4241,6 +4253,136 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         reflection_probes.constants.ref_params[1][1] =
             pbr_radiance_scale;
         directional_shadows.constants.config[1] = 0xeu;
+
+        // Particle batches differ from otherwise identical fullbright alpha
+        // in two production states: anisotropic clamp sampling and disabled
+        // culling. Shift a red/green two-texel source beyond U=1 so wrap
+        // resolves red while the particle path clamps to green.
+        ALMetalWorldSimpleBatch particle_alpha = legacy_alpha_batch;
+        particle_alpha.pre_water_alpha = true;
+        particle_alpha.pre_water_fullbright = true;
+        particle_alpha.pre_water_material = false;
+        particle_alpha.pre_water_pbr = false;
+        particle_alpha.pre_water_shadows = false;
+        particle_alpha.material_slot_count = 0;
+        particle_alpha.material_alpha_mode = 0;
+        particle_alpha.pbr_slot_count = 0;
+        particle_alpha.texture_count = 1;
+        particle_alpha.diffuse_textures[0] = pbr_base_texture.get();
+        particle_alpha.texture_matrix[12] = 1.25f;
+        particle_alpha.pre_water_particle = false;
+        particle_alpha.pre_water_minimum_alpha = 0.004f;
+        particle_alpha.pre_water_source_rgb =
+            ALMetalBlendFactor::source_alpha;
+        particle_alpha.pre_water_destination_rgb =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        opaque_forward_scene.batches = &particle_alpha;
+        auto wrapped_alpha_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(wrapped_alpha_result);
+        REQUIRE(wrapped_alpha_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float wrapped_particle_red = half_to_float(
+            pre_water_pixels[material_pixel + 0]);
+        const float wrapped_particle_green = half_to_float(
+            pre_water_pixels[material_pixel + 1]);
+
+        particle_alpha.pre_water_particle = true;
+        auto clamped_alpha_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(clamped_alpha_result);
+        REQUIRE(clamped_alpha_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(half_to_float(pre_water_pixels[material_pixel + 0]) <
+              wrapped_particle_red);
+        CHECK(half_to_float(pre_water_pixels[material_pixel + 1]) >
+              wrapped_particle_green);
+
+        // When neither custom RGB factor is SOURCE_ALPHA, GL lowers the
+        // cutoff to zero. A zero-alpha coloured texel must therefore execute
+        // the lazy ONE/ONE pipeline and add RGB while destination alpha keeps
+        // the pool's fixed ZERO/ONE_MINUS_SOURCE_ALPHA recurrence.
+        ALMetalWorldSimpleBatch custom_alpha = particle_alpha;
+        custom_alpha.pre_water_particle = false;
+        custom_alpha.diffuse_textures[0] = zero_alpha_diffuse.get();
+        custom_alpha.texture_matrix[12] = 0.f;
+        custom_alpha.pre_water_minimum_alpha = 0.f;
+        custom_alpha.pre_water_source_rgb = ALMetalBlendFactor::one;
+        custom_alpha.pre_water_destination_rgb = ALMetalBlendFactor::one;
+        opaque_forward_scene.batches = &custom_alpha;
+        auto custom_alpha_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(custom_alpha_result);
+        REQUIRE(custom_alpha_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(half_to_float(pre_water_pixels[material_pixel + 0]) >
+              retained_color[0]);
+        CHECK(std::abs(
+            half_to_float(pre_water_pixels[material_pixel + 3]) -
+            0.5f) < 0.002f);
+
+        custom_alpha.pre_water_minimum_alpha = 0.002f;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world opaque post-deferred batch is invalid");
+        custom_alpha.pre_water_minimum_alpha = 0.f;
+        error.clear();
+
+        // Material family and skinning select distinct custom pipeline
+        // entries. Execute every family so none can silently retain the
+        // source-over descriptor while the shared blend key says otherwise.
+        ALMetalWorldSimpleBatch custom_alpha_rigged = custom_alpha;
+        custom_alpha_rigged.skin_palette = alpha_skin_palette.data();
+        custom_alpha_rigged.skin_palette_float_count =
+            alpha_skin_palette.size();
+        custom_alpha_rigged.skin_joint_count = 1;
+        custom_alpha_rigged.weight_offset = weight_offset;
+        opaque_forward_scene.batches = &custom_alpha_rigged;
+        auto custom_alpha_rigged_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(custom_alpha_rigged_result);
+
+        ALMetalWorldSimpleBatch custom_simple = simple_pre_water;
+        custom_simple.pre_water_source_rgb = ALMetalBlendFactor::one;
+        custom_simple.pre_water_destination_rgb = ALMetalBlendFactor::one;
+        custom_simple.pre_water_minimum_alpha = 0.f;
+        opaque_forward_scene.batches = &custom_simple;
+        auto custom_simple_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(custom_simple_result);
+
+        ALMetalWorldSimpleBatch custom_material = pre_water_material;
+        custom_material.pre_water_source_rgb = ALMetalBlendFactor::one;
+        custom_material.pre_water_destination_rgb = ALMetalBlendFactor::one;
+        custom_material.pre_water_minimum_alpha = 0.f;
+        opaque_forward_scene.batches = &custom_material;
+        auto custom_material_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(custom_material_result);
+
+        ALMetalWorldSimpleBatch custom_pbr = pre_water_pbr;
+        custom_pbr.pre_water_source_rgb = ALMetalBlendFactor::one;
+        custom_pbr.pre_water_destination_rgb = ALMetalBlendFactor::one;
+        custom_pbr.pre_water_minimum_alpha = 0.f;
+        opaque_forward_scene.batches = &custom_pbr;
+        auto custom_pbr_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(custom_pbr_result);
 
         ALMetalWorldSimpleBatch shiny_batch = fullbright_batch;
         shiny_batch.impostor_fullbright = false;
