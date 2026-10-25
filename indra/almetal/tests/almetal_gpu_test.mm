@@ -2313,6 +2313,44 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(stats.vertices == 3);
         CHECK(stats.pipeline_states == 1);
         CHECK(stats.sampler_states == 1);
+
+        auto rgba_renderer = ALMetalUIRenderer::createForTexture(
+            *device, *scheduler, ALMetalPixelFormat::rgba8_unorm, &error);
+        INFO(error);
+        REQUIRE(rgba_renderer);
+        REQUIRE(rgba_renderer->draw(batch, &error));
+        INFO(error);
+        CHECK(rgba_renderer->takeOutputTexture() == nullptr);
+        REQUIRE(rgba_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+
+        auto owned_output = rgba_renderer->takeOutputTexture();
+        REQUIRE(owned_output);
+        CHECK(rgba_renderer->outputTexture() == nullptr);
+        CHECK(owned_output->descriptor().format == ALMetalPixelFormat::rgba8_unorm);
+        CHECK(alMetalHasUsage(owned_output->descriptor().usage,
+                              ALMetalTextureUsage::render_target));
+        CHECK(alMetalHasUsage(owned_output->descriptor().usage,
+                              ALMetalTextureUsage::shader_read));
+        pixels.fill(0);
+        REQUIRE(owned_output->readback(*device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(pixels[center + 0] == 255); // RGBA target
+        CHECK(pixels[center + 1] == 32);
+        CHECK(pixels[center + 2] == 16);
+        CHECK(pixels[center + 3] == 255);
+
+        // Ownership transfer must leave the reusable encoder capable of
+        // allocating its next offscreen target lazily.
+        REQUIRE(rgba_renderer->draw(batch, &error));
+        INFO(error);
+        REQUIRE(rgba_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(rgba_renderer->outputTexture());
     }
 }
 

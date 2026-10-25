@@ -118,6 +118,7 @@ struct ALMetalUIRenderer::Impl
     const ALMetalDevice* device = nullptr;
     ALMetalFrameScheduler* scheduler = nullptr;
     ALMetalSurface* surface = nullptr;
+    ALMetalPixelFormat output_format = ALMetalPixelFormat::bgra8_unorm;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::unique_ptr<ALMetalRenderTarget> target;
     std::unique_ptr<ALMetalDrawable> drawable;
@@ -165,7 +166,7 @@ struct ALMetalUIRenderer::Impl
         descriptor.fragment_function = shader == ALMetalUIShader::textured
             ? "almetal_ui_fragment" : "almetal_solid_fragment";
         descriptor.color_attachment_count = 1;
-        descriptor.colors[0].format = ALMetalPixelFormat::bgra8_unorm;
+        descriptor.colors[0].format = output_format;
         descriptor.colors[0].blending_enabled = target_blend.enabled;
         descriptor.colors[0].source_rgb = target_blend.source_rgb;
         descriptor.colors[0].destination_rgb = target_blend.destination_rgb;
@@ -241,7 +242,7 @@ struct ALMetalUIRenderer::Impl
             descriptor.width = width;
             descriptor.height = height;
             descriptor.color_attachment_count = 1;
-            descriptor.colors[0].format = ALMetalPixelFormat::bgra8_unorm;
+            descriptor.colors[0].format = output_format;
             descriptor.colors[0].shader_read = true;
             descriptor.colors[0].label = "Alchemy production UI color";
             descriptor.label = "Alchemy production UI target";
@@ -310,6 +311,23 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::create(
     ALMetalFrameScheduler& scheduler,
     std::string* error)
 {
+    return createForTexture(device, scheduler, ALMetalPixelFormat::bgra8_unorm, error);
+}
+
+std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
+    const ALMetalDevice& device,
+    ALMetalFrameScheduler& scheduler,
+    ALMetalPixelFormat format,
+    std::string* error)
+{
+    if (format != ALMetalPixelFormat::rgba8_unorm &&
+        format != ALMetalPixelFormat::rgba8_unorm_srgb &&
+        format != ALMetalPixelFormat::bgra8_unorm &&
+        format != ALMetalPixelFormat::bgra8_unorm_srgb)
+    {
+        setError(error, "Metal UI offscreen target requires an RGBA8 or BGRA8 format");
+        return nullptr;
+    }
     auto library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!library)
     {
@@ -327,6 +345,7 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::create(
     auto impl = std::make_unique<Impl>();
     impl->device = &device;
     impl->scheduler = &scheduler;
+    impl->output_format = format;
     impl->library = std::move(library);
     return std::unique_ptr<ALMetalUIRenderer>(new ALMetalUIRenderer(std::move(impl)));
 }
@@ -499,6 +518,17 @@ bool ALMetalUIRenderer::hasOpenFrame() const noexcept
 const ALMetalTexture* ALMetalUIRenderer::outputTexture() const noexcept
 {
     return mImpl && mImpl->target ? mImpl->target->colorTexture(0) : nullptr;
+}
+
+std::unique_ptr<ALMetalTexture> ALMetalUIRenderer::takeOutputTexture() noexcept
+{
+    if (!mImpl || mImpl->surface || mImpl->frame || !mImpl->target)
+    {
+        return nullptr;
+    }
+    auto output = mImpl->target->takeColorTexture(0);
+    mImpl->target.reset();
+    return output;
 }
 
 ALMetalUIRendererStats ALMetalUIRenderer::stats() const noexcept

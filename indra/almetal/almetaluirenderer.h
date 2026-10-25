@@ -115,6 +115,15 @@ public:
         ALMetalFrameScheduler& scheduler,
         std::string* error = nullptr);
 
+    // Offscreen path with an explicit destination format. RGBA is used by
+    // viewer-owned render textures such as appearance bakes, while BGRA is
+    // retained by create() and the window surface path.
+    static std::unique_ptr<ALMetalUIRenderer> createForTexture(
+        const ALMetalDevice& device,
+        ALMetalFrameScheduler& scheduler,
+        ALMetalPixelFormat format,
+        std::string* error = nullptr);
+
     // Production path: encode the same batches directly into the window's
     // CAMetalLayer drawable and schedule presentation with the frame command
     // buffer. The surface remains owned by the platform window.
@@ -132,6 +141,10 @@ public:
 
     bool hasOpenFrame() const noexcept;
     const ALMetalTexture* outputTexture() const noexcept;
+    // Completes the offscreen renderer-to-viewer ownership handoff. Returns
+    // null for a surface-backed renderer or while a frame is still open. The
+    // next offscreen draw lazily allocates a fresh target.
+    std::unique_ptr<ALMetalTexture> takeOutputTexture() noexcept;
     ALMetalUIRendererStats stats() const noexcept;
 
 private:

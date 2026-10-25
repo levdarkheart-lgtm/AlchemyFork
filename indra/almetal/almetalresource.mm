@@ -1421,6 +1421,13 @@ const ALMetalTexture* ALMetalRenderTarget::colorTexture(std::uint32_t index) con
     return mImpl && index < mDescriptor.color_attachment_count ? mImpl->colors[index].get() : nullptr;
 }
 
+std::unique_ptr<ALMetalTexture> ALMetalRenderTarget::takeColorTexture(
+    std::uint32_t index) noexcept
+{
+    return mImpl && index < mDescriptor.color_attachment_count
+        ? std::move(mImpl->colors[index]) : nullptr;
+}
+
 const ALMetalTexture* ALMetalRenderTarget::multisampleColorTexture(std::uint32_t index) const noexcept
 {
     return mImpl && index < mDescriptor.color_attachment_count

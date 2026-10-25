@@ -423,6 +423,9 @@ public:
 
     const ALMetalRenderTargetDescriptor& descriptor() const noexcept;
     const ALMetalTexture* colorTexture(std::uint32_t index) const noexcept;
+    // Transfers one resolved color attachment out of the target. The caller
+    // must not create another render pass from this target afterwards.
+    std::unique_ptr<ALMetalTexture> takeColorTexture(std::uint32_t index) noexcept;
     const ALMetalTexture* multisampleColorTexture(std::uint32_t index) const noexcept;
     const ALMetalTexture* depthStencilTexture() const noexcept;
 
