@@ -78,7 +78,7 @@ namespace
         std::uint32_t config[4]{};
     };
     static_assert(sizeof(WorldShinyConstants) == 304);
-    static_assert(sizeof(ALMetalWorldAlphaEnvironment) == 192);
+    static_assert(sizeof(ALMetalWorldAlphaEnvironment) == 240);
     static_assert(sizeof(ALMetalWorldLegacyAlphaLight) == 64);
     static_assert(sizeof(ALMetalWorldLegacyAlphaLighting) == 496);
     static_assert(sizeof(ALMetalWorldHeroProbeConstants) == 112);
@@ -620,6 +620,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         water_haze_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         pre_water_fullbright_pipelines;
+    std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
+        pre_water_simple_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         legacy_glow_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
@@ -730,6 +732,10 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_water_haze_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_pre_water_fullbright_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_pre_water_simple_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_pre_water_simple_shadow_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_legacy_glow_vertex") ||
         !impl->library->hasFunction(
@@ -1271,6 +1277,23 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             if (!impl->pre_water_fullbright_pipelines[hdr][rigged])
             {
                 return nullptr;
+            }
+            for (std::size_t shadows = 0; shadows < 2; ++shadows)
+            {
+                alpha_descriptor.fragment_function = shadows
+                    ? "almetal_world_pre_water_simple_shadow_fragment"
+                    : "almetal_world_pre_water_simple_fragment";
+                alpha_descriptor.label = shadows
+                    ? "Alchemy world pre-water simple-alpha shadow pipeline"
+                    : "Alchemy world pre-water simple-alpha pipeline";
+                impl->pre_water_simple_pipelines[hdr][shadows][rigged] =
+                    ALMetalRenderPipeline::create(
+                        device, alpha_descriptor, error);
+                if (!impl->pre_water_simple_pipelines
+                        [hdr][shadows][rigged])
+                {
+                    return nullptr;
+                }
             }
         }
 
@@ -3762,6 +3785,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     bool has_water_exclusion = false;
     bool has_water_haze = false;
     bool has_pre_water_alpha = false;
+    bool has_pre_water_simple = false;
+    bool has_pre_water_shadows = false;
     bool saw_pre_water_alpha = false;
     bool saw_post_exclusion = false;
     const auto valid_skinning = [=](
@@ -3797,7 +3822,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         if (family_count != 1 ||
-            (batch.pre_water_fullbright && !batch.pre_water_alpha))
+            ((batch.pre_water_fullbright || batch.pre_water_simple ||
+              batch.pre_water_shadows) && !batch.pre_water_alpha))
         {
             setError(error, "Metal world opaque post-deferred batch is invalid");
             return nullptr;
@@ -3864,6 +3890,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         if (batch.pre_water_alpha)
         {
             has_pre_water_alpha = true;
+            has_pre_water_simple =
+                has_pre_water_simple || batch.pre_water_simple;
+            has_pre_water_shadows =
+                has_pre_water_shadows || batch.pre_water_shadows;
             saw_pre_water_alpha = true;
         }
         const bool glow = batch.legacy_glow || batch.pbr_glow;
@@ -3890,7 +3920,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
               batch.pbr_slot_count >
                   ALMetalWorldSimpleBatch::max_material_slots)) ||
             (alpha &&
-             (!batch.pre_water_fullbright || batch.alpha_mask ||
+             ((batch.pre_water_fullbright ? 1u : 0u) +
+                      (batch.pre_water_simple ? 1u : 0u) != 1u ||
+              (batch.pre_water_shadows && !batch.pre_water_simple) ||
+              batch.alpha_mask ||
               batch.material_alpha_mode != 0 || batch.double_sided ||
               batch.material_slot_count != 0 ||
               batch.pbr_slot_count != 0 ||
@@ -4070,12 +4103,17 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             !finiteValues(environment->haze_additive_glow, 4) ||
             !finiteValues(environment->water_fog_color, 4) ||
             !finiteValues(environment->light_direction, 4) ||
+            !finiteValues(environment->atmos_sunlit, 4) ||
+            !finiteValues(environment->atmos_sunlit_linear, 4) ||
+            !finiteValues(environment->atmos_amblit, 4) ||
             !finiteValues(environment->atmospheric, 4) ||
             !finiteValues(environment->water_fog, 4) ||
             water_normal_length <= 0.f || light_length <= 0.f ||
             environment->atmospheric[0] < 0.f ||
             environment->atmospheric[1] < 0.f ||
             environment->atmospheric[3] < 0.f ||
+            environment->atmos_sunlit[3] < 0.f ||
+            environment->atmos_sunlit_linear[3] < 0.f ||
             environment->water_fog[0] <= 0.f ||
             environment->water_fog[1] < 0.f ||
             std::abs(environment->water_fog[2]) != 1.f)
@@ -4085,7 +4123,25 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             return nullptr;
         }
     }
-    if (has_shiny && !validReflectionProbes(scene.reflection_probes))
+    if (has_pre_water_simple &&
+        (!validLegacyAlphaLighting(scene.alpha_lighting) ||
+         !validPBRReflectionProbes(scene.reflection_probes)))
+    {
+        setError(error,
+                 "Metal world pre-water simple-alpha lighting is invalid");
+        return nullptr;
+    }
+    if (has_pre_water_shadows !=
+            (scene.alpha_directional_shadows != nullptr) ||
+        (has_pre_water_shadows &&
+         !validDirectionalShadows(scene.alpha_directional_shadows)))
+    {
+        setError(error,
+                 "Metal world pre-water simple-alpha shadows are invalid");
+        return nullptr;
+    }
+    if (has_shiny && !has_pre_water_simple &&
+        !validReflectionProbes(scene.reflection_probes))
     {
         setError(error,
                  "Metal world opaque post-deferred reflection probes are invalid");
@@ -4141,7 +4197,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     }
 
     std::unique_ptr<ALMetalBuffer> probe_constants_buffer;
-    if (has_shiny)
+    if (has_shiny || has_pre_water_simple)
     {
         ALMetalBufferDescriptor descriptor;
         descriptor.length = sizeof(ALMetalWorldReflectionProbeConstants);
@@ -4233,25 +4289,46 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         encoder->setScissor(scissor, error) &&
         encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&
         encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
-    if (encoded && has_shiny)
+    if (encoded && (has_shiny || has_pre_water_simple))
     {
-        const ALMetalTexture* hero_texture = scene.hero_probe
-            ? scene.hero_probe->radiance_texture
-            : mImpl->inactive_hero_probe.get();
-        const ALMetalWorldHeroProbeConstants& hero_constants =
-            scene.hero_probe
-                ? scene.hero_probe->constants
-                : mImpl->inactive_hero_constants;
         encoded =
             encoder->setFragmentSampler(
                 1, mImpl->probe_sampler.get(), error) &&
             encoder->setFragmentTexture(
                 32, scene.reflection_probes->radiance_texture, error) &&
             encoder->setFragmentBuffer(
-                1, *probe_constants_buffer, 0, error) &&
-            encoder->setFragmentTexture(34, hero_texture, error) &&
-            encoder->setFragmentBytes(
-                4, &hero_constants, sizeof(hero_constants), error);
+                1, *probe_constants_buffer, 0, error);
+        if (encoded && has_pre_water_simple)
+        {
+            encoded = encoder->setFragmentTexture(
+                36, scene.reflection_probes->irradiance_texture, error);
+        }
+        if (encoded && has_shiny)
+        {
+            const ALMetalTexture* hero_texture = scene.hero_probe
+                ? scene.hero_probe->radiance_texture
+                : mImpl->inactive_hero_probe.get();
+            const ALMetalWorldHeroProbeConstants& hero_constants =
+                scene.hero_probe
+                    ? scene.hero_probe->constants
+                    : mImpl->inactive_hero_constants;
+            encoded =
+                encoder->setFragmentTexture(
+                    34, hero_texture, error) &&
+                encoder->setFragmentBytes(
+                    4, &hero_constants, sizeof(hero_constants), error);
+        }
+        if (encoded && has_pre_water_shadows)
+        {
+            encoded =
+                encoder->setFragmentTexture(
+                    35, scene.alpha_directional_shadows->depth_texture,
+                    error) &&
+                encoder->setFragmentBytes(
+                    3, &scene.alpha_directional_shadows->constants,
+                    sizeof(scene.alpha_directional_shadows->constants),
+                    error);
+        }
     }
 
     for (std::size_t index = 0;
@@ -4291,15 +4368,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     ALMetalWinding::clockwise, error) &&
                 encoder->setFragmentSampler(
                     0, mImpl->diffuse_sampler.get(), error);
-            if (encoded && has_shiny)
+            if (encoded && (has_shiny || has_pre_water_simple))
             {
-                const ALMetalTexture* hero_texture = scene.hero_probe
-                    ? scene.hero_probe->radiance_texture
-                    : mImpl->inactive_hero_probe.get();
-                const ALMetalWorldHeroProbeConstants& hero_constants =
-                    scene.hero_probe
-                        ? scene.hero_probe->constants
-                        : mImpl->inactive_hero_constants;
                 encoded =
                     encoder->setFragmentSampler(
                         1, mImpl->probe_sampler.get(), error) &&
@@ -4308,12 +4378,43 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         scene.reflection_probes->radiance_texture,
                         error) &&
                     encoder->setFragmentBuffer(
-                        1, *probe_constants_buffer, 0, error) &&
-                    encoder->setFragmentTexture(
-                        34, hero_texture, error) &&
-                    encoder->setFragmentBytes(
-                        4, &hero_constants,
-                        sizeof(hero_constants), error);
+                        1, *probe_constants_buffer, 0, error);
+                if (encoded && has_pre_water_simple)
+                {
+                    encoded = encoder->setFragmentTexture(
+                        36, scene.reflection_probes->irradiance_texture,
+                        error);
+                }
+                if (encoded && has_shiny)
+                {
+                    const ALMetalTexture* hero_texture = scene.hero_probe
+                        ? scene.hero_probe->radiance_texture
+                        : mImpl->inactive_hero_probe.get();
+                    const ALMetalWorldHeroProbeConstants& hero_constants =
+                        scene.hero_probe
+                            ? scene.hero_probe->constants
+                            : mImpl->inactive_hero_constants;
+                    encoded =
+                        encoder->setFragmentTexture(
+                            34, hero_texture, error) &&
+                        encoder->setFragmentBytes(
+                            4, &hero_constants,
+                            sizeof(hero_constants), error);
+                }
+                if (encoded && has_pre_water_shadows)
+                {
+                    encoded =
+                        encoder->setFragmentTexture(
+                            35,
+                            scene.alpha_directional_shadows->depth_texture,
+                            error) &&
+                        encoder->setFragmentBytes(
+                            3,
+                            &scene.alpha_directional_shadows->constants,
+                            sizeof(scene.alpha_directional_shadows
+                                       ->constants),
+                            error);
+                }
             }
             WorldWaterHazeConstants constants{};
             std::memcpy(constants.modelview_projection,
@@ -4415,8 +4516,13 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
                 encoder->setCullMode(ALMetalCullMode::back, error) &&
                 encoder->setPipeline(
-                    *mImpl->pre_water_fullbright_pipelines
-                        [scene.hdr ? 1 : 0][rigged ? 1 : 0],
+                    batch.pre_water_simple
+                        ? *mImpl->pre_water_simple_pipelines
+                              [scene.hdr ? 1 : 0]
+                              [batch.pre_water_shadows ? 1 : 0]
+                              [rigged ? 1 : 0]
+                        : *mImpl->pre_water_fullbright_pipelines
+                              [scene.hdr ? 1 : 0][rigged ? 1 : 0],
                     error) &&
                 encoder->setVertexBuffer(
                     0, *batch.vertices, batch.position_offset, error) &&
@@ -4431,6 +4537,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setFragmentBytes(
                     0, scene.alpha_environment,
                     sizeof(*scene.alpha_environment), error);
+            if (encoded && batch.pre_water_simple)
+            {
+                encoded = encoder->setFragmentBytes(
+                    2, scene.alpha_lighting,
+                    sizeof(*scene.alpha_lighting), error);
+            }
             if (encoded && rigged)
             {
                 encoded =

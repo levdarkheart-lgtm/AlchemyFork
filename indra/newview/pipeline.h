@@ -77,6 +77,7 @@ class LLGLTexture;
 class LLImageGL;
 class LLVertexBuffer;
 struct ALMetalWorldAlphaEnvironment;
+struct ALMetalWorldLegacyAlphaLighting;
 
 typedef enum e_avatar_skinning_method
 {
@@ -624,6 +625,8 @@ public:
     void captureMetalImpostorPBRAlphaBatch(const LLDrawInfo& params);
     bool fillMetalWorldAlphaEnvironment(
         ALMetalWorldAlphaEnvironment& environment);
+    bool fillMetalWorldAlphaLighting(
+        ALMetalWorldLegacyAlphaLighting& lighting);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
     void captureMetalWorldMaterialBatch(const LLDrawInfo& params,

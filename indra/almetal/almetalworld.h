@@ -222,6 +222,8 @@ struct ALMetalWorldSimpleBatch
     bool water_haze = false;
     bool pre_water_alpha = false;
     bool pre_water_fullbright = false;
+    bool pre_water_simple = false;
+    bool pre_water_shadows = false;
     bool legacy_glow = false;
     bool pbr_glow = false;
     bool terrain = false;
@@ -426,6 +428,11 @@ struct alignas(16) ALMetalWorldAlphaEnvironment
     float water_fog_color[4]{};
     // xyz = active sun/moon direction in eye space.
     float light_direction[4]{};
+    // Packed Environment-block lighting terms. The .w components of the
+    // first two carry sky_sunlight_scale and sky_ambient_scale.
+    float atmos_sunlit[4]{};
+    float atmos_sunlit_linear[4]{};
+    float atmos_amblit[4]{};
     // x = density multiplier, y = distance multiplier,
     // z = sun/moon glow factor, w = deferred sky HDR scale.
     float atmospheric[4]{};
@@ -452,6 +459,9 @@ struct ALMetalWorldOpaquePostDeferredScene
         nullptr;
     const ALMetalWorldWaterHaze* water_haze = nullptr;
     const ALMetalWorldAlphaEnvironment* alpha_environment = nullptr;
+    const ALMetalWorldLegacyAlphaLighting* alpha_lighting = nullptr;
+    const ALMetalWorldDirectionalShadows* alpha_directional_shadows =
+        nullptr;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     bool reverse_z = false;

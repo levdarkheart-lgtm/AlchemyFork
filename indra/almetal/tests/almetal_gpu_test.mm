@@ -150,6 +150,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_water_haze_fullscreen_vertex",
             "almetal_world_water_haze_fragment",
             "almetal_world_pre_water_fullbright_fragment",
+            "almetal_world_pre_water_simple_fragment",
+            "almetal_world_pre_water_simple_shadow_fragment",
             "almetal_world_legacy_glow_vertex",
             "almetal_world_legacy_glow_skinned_vertex",
             "almetal_world_legacy_glow_fragment",
@@ -2928,6 +2930,162 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         reflection_probes.constants.ref_index[1][1] = -1;
         reflection_probes.constants.ref_index[1][3] = 1;
         reflection_probes.constants.config[0] = 2.f;
+        reflection_probes.constants.env_matrix[0][0] = 1.f;
+        reflection_probes.constants.env_matrix[1][1] = 1.f;
+        reflection_probes.constants.env_matrix[2][2] = 1.f;
+
+        ALMetalTextureDescriptor irradiance_descriptor;
+        irradiance_descriptor.format = ALMetalPixelFormat::rgba32_uint;
+        irradiance_descriptor.width = 4;
+        irradiance_descriptor.height = 2;
+        irradiance_descriptor.storage = ALMetalStorageMode::private_gpu;
+        irradiance_descriptor.usage = ALMetalTextureUsage::shader_read;
+        irradiance_descriptor.label =
+            "Alchemy world simple-alpha irradiance test";
+        auto irradiance_texture = ALMetalTexture::create(
+            *device, irradiance_descriptor, &error);
+        INFO(error);
+        REQUIRE(irradiance_texture);
+        std::array<std::uint32_t, 4 * 2 * 4> zero_irradiance{};
+        auto irradiance_upload = device->makeCommandBuffer(
+            "Alchemy world simple-alpha irradiance upload", &error);
+        REQUIRE(irradiance_upload);
+        REQUIRE(irradiance_texture->upload(
+            *irradiance_upload, 0, 0, {}, zero_irradiance.data(),
+            4 * 4 * sizeof(std::uint32_t), &error));
+        REQUIRE(irradiance_upload->commitAndWait(&error));
+        INFO(error);
+        reflection_probes.irradiance_texture = irradiance_texture.get();
+
+        // The lit/simple pre-water family adds the exact forward ambient,
+        // directional and punctual model on top of the fullbright coverage,
+        // fog and depth contract. A zero-ambiance SH pack leaves the live
+        // Environment ambient unchanged, so this fixture isolates the
+        // modern directional term while exercising both static and rigged
+        // pipelines.
+        ALMetalWorldLegacyAlphaLighting simple_alpha_lighting;
+        simple_alpha_lighting.sun_direction[2] = 1.f;
+        simple_alpha_lighting.parameters[0] = 128.f;
+        simple_alpha_lighting.parameters[1] = 0.004f;
+        simple_alpha_lighting.parameters[2] = 1.f;
+        alpha_environment.atmos_sunlit_linear[0] = 1.f;
+        alpha_environment.atmos_sunlit_linear[1] = 0.5f;
+        alpha_environment.atmos_sunlit_linear[2] = 0.25f;
+        alpha_environment.atmos_sunlit[3] = 1.f;
+        alpha_environment.atmos_sunlit_linear[3] = 1.f;
+        alpha_environment.atmos_amblit[0] = 0.f;
+        alpha_environment.atmos_amblit[1] = 0.f;
+        alpha_environment.atmos_amblit[2] = 0.f;
+        alpha_environment.water_fog[1] = 0.f;
+
+        ALMetalWorldSimpleBatch simple_pre_water = pre_water_alpha;
+        simple_pre_water.pre_water_fullbright = false;
+        simple_pre_water.pre_water_simple = true;
+        simple_pre_water.pre_water_shadows = false;
+        ALMetalWorldSimpleBatch simple_pre_water_rigged =
+            pre_water_alpha_rigged;
+        simple_pre_water_rigged.pre_water_fullbright = false;
+        simple_pre_water_rigged.pre_water_simple = true;
+        simple_pre_water_rigged.pre_water_shadows = false;
+        std::array<ALMetalWorldSimpleBatch, 2> simple_pre_water_batches{{
+            simple_pre_water,
+            simple_pre_water_rigged,
+        }};
+        opaque_forward_scene.batches = simple_pre_water_batches.data();
+        opaque_forward_scene.batch_count = simple_pre_water_batches.size();
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.water_exclusion_surface = nullptr;
+        opaque_forward_scene.water_haze = nullptr;
+        opaque_forward_scene.alpha_environment = &alpha_environment;
+        opaque_forward_scene.reflection_probes = &reflection_probes;
+        opaque_forward_scene.alpha_lighting = nullptr;
+        opaque_forward_scene.alpha_directional_shadows = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world pre-water simple-alpha lighting is invalid");
+        opaque_forward_scene.alpha_lighting = &simple_alpha_lighting;
+        reflection_probes.irradiance_texture = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world pre-water simple-alpha lighting is invalid");
+        reflection_probes.irradiance_texture = irradiance_texture.get();
+        error.clear();
+        auto simple_pre_water_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(simple_pre_water_result);
+        REQUIRE(simple_pre_water_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(simple_pre_water_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        for (const std::size_t pixel : {pre_water_left,
+                                        pre_water_right})
+        {
+            CHECK(std::abs(
+                half_to_float(pre_water_pixels[pixel + 0]) - 0.125f) <
+                0.002f);
+            CHECK(std::abs(
+                half_to_float(pre_water_pixels[pixel + 1]) - 0.3125f) <
+                0.002f);
+            CHECK(std::abs(
+                half_to_float(pre_water_pixels[pixel + 2]) - 0.03125f) <
+                0.002f);
+            CHECK(std::abs(
+                half_to_float(pre_water_pixels[pixel + 3]) - 0.25f) <
+                0.002f);
+            CHECK(std::abs(pre_water_depth[pixel / 4] - 0.5f) <
+                  0.0001f);
+        }
+
+        simple_alpha_lighting.parameters[3] = 1.f;
+        alpha_environment.atmos_sunlit[0] = 0.f;
+        alpha_environment.atmos_sunlit[1] = 1.f;
+        alpha_environment.atmos_sunlit[2] = 0.f;
+        auto classic_simple_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(classic_simple_result);
+        REQUIRE(classic_simple_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float classic_source_green =
+            srgb_to_linear(0.7f * 1.35f) * 1.1f;
+        CHECK(std::abs(
+            half_to_float(pre_water_pixels[pre_water_left + 1]) -
+            (classic_source_green * coverage + 0.125f * uncovered)) <
+            0.002f);
+
+        simple_alpha_lighting.parameters[3] = 0.f;
+        alpha_environment.atmos_sunlit_linear[0] = 0.f;
+        alpha_environment.atmos_sunlit_linear[1] = 0.f;
+        alpha_environment.atmos_sunlit_linear[2] = 0.f;
+        ALMetalWorldLegacyAlphaLight& local_light =
+            simple_alpha_lighting.local_lights[0];
+        local_light.position[2] = 10.f;
+        local_light.diffuse[1] = 0.5f;
+        local_light.parameters[0] = 100.f;
+        local_light.parameters[2] = 1.f;
+        auto local_simple_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(local_simple_result);
+        REQUIRE(local_simple_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(half_to_float(pre_water_pixels[pre_water_left + 1]) >
+              0.0625f);
+        local_light = {};
+        alpha_environment.atmos_sunlit_linear[0] = 1.f;
+        alpha_environment.atmos_sunlit_linear[1] = 0.5f;
+        alpha_environment.atmos_sunlit_linear[2] = 0.25f;
 
         ALMetalTextureDescriptor hero_descriptor;
         hero_descriptor.type = ALMetalTextureType::texture_cube;
@@ -3397,6 +3555,51 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         directional_shadows.constants.config[0] = 4;
         directional_shadows.constants.config[1] = 0xeu;
         directional_shadows.constants.config[3] = 1;
+
+        ALMetalWorldSimpleBatch shadowed_simple_pre_water =
+            simple_pre_water;
+        shadowed_simple_pre_water.pre_water_shadows = true;
+        opaque_forward_scene.batches = &shadowed_simple_pre_water;
+        opaque_forward_scene.batch_count = 1;
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.reflection_probes = &reflection_probes;
+        opaque_forward_scene.alpha_environment = &alpha_environment;
+        opaque_forward_scene.alpha_lighting = &simple_alpha_lighting;
+        opaque_forward_scene.alpha_directional_shadows = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world pre-water simple-alpha shadows are invalid");
+        opaque_forward_scene.alpha_directional_shadows =
+            &directional_shadows;
+        error.clear();
+        auto shadowed_simple_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(shadowed_simple_result);
+        REQUIRE(shadowed_simple_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(std::abs(half_to_float(
+                  pre_water_pixels[pre_water_left + 1]) - 0.0625f) <
+              0.002f);
+
+        directional_shadows.constants.config[1] = 0xfu;
+        auto unbuilt_simple_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(unbuilt_simple_result);
+        REQUIRE(unbuilt_simple_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(std::abs(half_to_float(
+                  pre_water_pixels[pre_water_left + 1]) - 0.3125f) <
+              0.002f);
+        opaque_forward_scene.alpha_directional_shadows = nullptr;
+        directional_shadows.constants.config[1] = 0xeu;
         legacy_alpha_scene.directional_shadows = &directional_shadows;
 
         auto shadow_target = make_legacy_target();
