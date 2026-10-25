@@ -1113,6 +1113,41 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         CHECK(std::abs(forward_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
         CHECK(std::abs(forward_depth[1 * 32 + 1] - 1.f) < 0.0001f);
 
+        batch.modelview_projection[14] = -2.f;
+        auto clipped = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(clipped);
+        std::array<float, 32 * 32> clipped_depth{};
+        REQUIRE(clipped->colorTexture(0)->readback(
+            *device, 0, 0, {}, clipped_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(clipped_depth[16 * 32 + 16] - 1.f) < 0.0001f);
+
+        scene.depth_clamp = true;
+        auto clamped = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(clamped);
+        std::array<float, 32 * 32> clamped_depth{};
+        REQUIRE(clamped->colorTexture(0)->readback(
+            *device, 0, 0, {}, clamped_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(clamped_depth[16 * 32 + 16]) < 0.0001f);
+
+        batch.modelview_projection[14] = 0.f;
+        auto clamped_mid = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(clamped_mid);
+        std::array<float, 32 * 32> clamped_mid_depth{};
+        REQUIRE(clamped_mid->colorTexture(0)->readback(
+            *device, 0, 0, {}, clamped_mid_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(
+            clamped_mid_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
+        scene.depth_clamp = false;
+
         const std::array<float, 16> skin_palette{{
             0.25f, 0.f, 0.f, 0.f,
             1.f, 0.f, 0.f, 0.25f,
@@ -1150,6 +1185,34 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         INFO(error);
         CHECK(std::abs(reverse_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
         CHECK(std::abs(reverse_depth[1 * 32 + 1]) < 0.0001f);
+
+        scene.depth_clamp = true;
+        batch.modelview_projection[14] = 2.f;
+        auto reverse_clamped = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(reverse_clamped);
+        std::array<float, 32 * 32> reverse_clamped_depth{};
+        REQUIRE(reverse_clamped->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_clamped_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(
+            reverse_clamped_depth[16 * 32 + 16] - 1.f) < 0.0001f);
+
+        batch.modelview_projection[14] = 0.5f;
+        auto reverse_clamped_mid = renderer->renderSpotShadow(
+            scene, &error);
+        INFO(error);
+        REQUIRE(reverse_clamped_mid);
+        std::array<float, 32 * 32> reverse_clamped_mid_depth{};
+        REQUIRE(reverse_clamped_mid->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_clamped_mid_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(
+            reverse_clamped_mid_depth[16 * 32 + 16] - 0.5f) <
+            0.0001f);
+        scene.depth_clamp = false;
 
         const std::array<std::array<float, 4>, 4>
             terrain_control_points{{

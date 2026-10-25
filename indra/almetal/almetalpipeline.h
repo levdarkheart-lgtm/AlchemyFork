@@ -322,6 +322,7 @@ enum class ALMetalPrimitiveType { point, line, line_strip, triangle, triangle_st
 enum class ALMetalIndexType { uint16, uint32 };
 enum class ALMetalCullMode { none, front, back };
 enum class ALMetalWinding { clockwise, counter_clockwise };
+enum class ALMetalDepthClipMode { clip, clamp };
 
 struct ALMetalViewport
 {
@@ -381,6 +382,8 @@ public:
     bool setScissor(const ALMetalScissorRect& scissor, std::string* error = nullptr);
     bool setCullMode(ALMetalCullMode mode, std::string* error = nullptr);
     bool setFrontFacingWinding(ALMetalWinding winding, std::string* error = nullptr);
+    bool setDepthClipMode(ALMetalDepthClipMode mode,
+                          std::string* error = nullptr);
     bool setDepthBias(float constant_bias, float slope_scale, float clamp,
                       std::string* error = nullptr);
     bool setTessellationFactorBuffer(const ALMetalBuffer& buffer, std::size_t offset = 0,

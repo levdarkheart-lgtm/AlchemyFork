@@ -155,9 +155,10 @@ struct alignas(16) ALMetalWorldLegacyAlphaLighting
 };
 
 // Raw directional-shadow depth plus the exact Deferred-block subset used by
-// shadowUtil.glsl. The four GL cascades are uploaded as R32F array slices;
-// the Metal shader performs the same forward/reverse comparison, RPDB and
-// quality-tier filter in shader so D24 and D32F sources share one contract.
+// shadowUtil.glsl. Direct Metal cascades are retained as R32F array slices;
+// an incomplete direct transaction may retain the transitional GL mirror.
+// The shader performs the same forward/reverse comparison, RPDB and
+// quality-tier filter so both sources share one contract.
 struct alignas(16) ALMetalWorldDirectionalShadowConstants
 {
     float shadow_matrix[4][16]{};
@@ -254,6 +255,7 @@ struct ALMetalWorldSpotShadowScene
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     bool reverse_z = false;
+    bool depth_clamp = false;
 };
 
 struct ALMetalWorldSimpleBatch

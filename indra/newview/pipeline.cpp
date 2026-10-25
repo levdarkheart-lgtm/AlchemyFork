@@ -382,6 +382,36 @@ bool addDeferredAttachments(LLRenderTarget& target)
     return true;
 }
 
+// The render pass types drawShadow draws as the prim volume alone, ignoring
+// textures. Each has its rigged twin at the next type.
+static constexpr U32 SHADOW_GEOMETRY_PASSES[] = {
+    LLRenderPass::PASS_SIMPLE,
+    LLRenderPass::PASS_FULLBRIGHT,
+    LLRenderPass::PASS_SHINY,
+    LLRenderPass::PASS_BUMP,
+    LLRenderPass::PASS_FULLBRIGHT_SHINY,
+    LLRenderPass::PASS_MATERIAL,
+    LLRenderPass::PASS_MATERIAL_ALPHA_EMISSIVE,
+    LLRenderPass::PASS_SPECMAP,
+    LLRenderPass::PASS_SPECMAP_EMISSIVE,
+    LLRenderPass::PASS_NORMMAP,
+    LLRenderPass::PASS_NORMMAP_EMISSIVE,
+    LLRenderPass::PASS_NORMSPEC,
+    LLRenderPass::PASS_NORMSPEC_EMISSIVE
+};
+
+// Passes alpha-tested by their textures, each with its rigged twin at the
+// next type. Blended casters and grass are counted separately.
+static constexpr U32 SHADOW_MASKED_PASSES[] = {
+    LLRenderPass::PASS_ALPHA_MASK,
+    LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK,
+    LLRenderPass::PASS_NORMSPEC_MASK,
+    LLRenderPass::PASS_MATERIAL_ALPHA_MASK,
+    LLRenderPass::PASS_SPECMAP_MASK,
+    LLRenderPass::PASS_NORMMAP_MASK,
+    LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK
+};
+
 #if LL_DARWIN
 struct LLPipeline::MetalWorldSimpleCapture
 {
@@ -432,10 +462,12 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> sky_behind_target;
     std::unique_ptr<ALMetalTexture> projector_shadow_texture;
     std::unique_ptr<ALMetalTexture> direct_projector_shadow_texture;
+    std::unique_ptr<ALMetalTexture> direct_directional_shadow_texture;
     ALMetalWorldDirectionalShadows projector_shadows;
     std::vector<F32> projector_shadow_depth;
     U32 projector_shadow_frame = std::numeric_limits<U32>::max();
     std::array<bool, 2> direct_projector_shadow_valid{};
+    std::array<bool, 4> direct_directional_shadow_valid{};
     std::vector<ALMetalWorldSpotShadowBatch> spot_shadow_batches;
     std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
         spot_shadow_avatar_palettes;
@@ -446,6 +478,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     ALMetalWorldSpotShadowCoverage spot_shadow_coverage =
         ALMetalWorldSpotShadowCoverage::opaque;
     bool spot_shadow_capture_active = false;
+    bool spot_shadow_capture_directional = false;
     bool spot_shadow_capture_complete = false;
     bool spot_shadow_avatar_pass_active = false;
     bool spot_shadow_avatar_cloth = false;
@@ -1046,10 +1079,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.opaque_post_deferred_target.reset();
         capture.projector_shadow_texture.reset();
         capture.direct_projector_shadow_texture.reset();
+        capture.direct_directional_shadow_texture.reset();
         capture.projector_shadows = {};
         capture.projector_shadow_depth.clear();
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
         capture.direct_projector_shadow_valid = {};
+        capture.direct_directional_shadow_valid = {};
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
         capture.base_light_map_texture.reset();
@@ -2613,10 +2648,12 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.opaque_post_deferred_target.reset();
         capture.projector_shadow_texture.reset();
         capture.direct_projector_shadow_texture.reset();
+        capture.direct_directional_shadow_texture.reset();
         capture.projector_shadows = {};
         capture.projector_shadow_depth.clear();
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
         capture.direct_projector_shadow_valid = {};
+        capture.direct_directional_shadow_valid = {};
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
         capture.base_light_map_texture.reset();
@@ -5575,6 +5612,55 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
         return true;
     }
 
+    const auto publish = [&](const ALMetalTexture* texture)
+    {
+        ALMetalWorldDirectionalShadowConstants constants;
+        std::memcpy(constants.shadow_matrix,
+                    mDeferredUBOData.shadow_matrix,
+                    sizeof(constants.shadow_matrix));
+        std::memcpy(constants.shadow_clip, mDeferredUBOData.shadow_clip,
+                    sizeof(constants.shadow_clip));
+        constants.resolution[0] = mDeferredUBOData.shadow_res[0];
+        constants.resolution[1] = mDeferredUBOData.shadow_res[1];
+        constants.resolution[2] =
+            static_cast<F32>(mRT->deferredScreen.getWidth());
+        constants.resolution[3] =
+            static_cast<F32>(mRT->deferredScreen.getHeight());
+        constants.parameters[0] = mDeferredUBOData.shadow_bias;
+        constants.parameters[1] = mDeferredUBOData.shadow_offset;
+        constants.parameters[2] = mDeferredUBOData.shadow_pcss_scale;
+        constants.parameters[3] = static_cast<F32>(capture.height);
+        constants.config[0] = sunCascades();
+        constants.config[1] = unbuilt;
+        constants.config[2] = capture.reverse_z ? 1u : 0u;
+        constants.config[3] = static_cast<U32>(std::clamp(
+            shaderInputs().mGlobal.mShadowFilterQuality, 0, 3));
+
+        capture.impostor_directional_shadows.depth_texture = texture;
+        capture.impostor_directional_shadows.constants = constants;
+        capture.impostor_directional_shadow_frame = gFrameCount;
+        return true;
+    };
+
+    const ALMetalTextureDescriptor* direct =
+        capture.direct_directional_shadow_texture
+            ? &capture.direct_directional_shadow_texture->descriptor()
+            : nullptr;
+    bool direct_complete = direct &&
+        direct->type == ALMetalTextureType::texture_2d_array &&
+        direct->format == ALMetalPixelFormat::r32_float &&
+        direct->width == width && direct->height == height &&
+        direct->array_length == 4;
+    for (U32 cascade = 0; direct_complete && cascade < 4; ++cascade)
+    {
+        direct_complete = (unbuilt & (1u << cascade)) != 0 ||
+            capture.direct_directional_shadow_valid[cascade];
+    }
+    if (direct_complete)
+    {
+        return publish(capture.direct_directional_shadow_texture.get());
+    }
+
     const std::size_t slice_pixels =
         static_cast<std::size_t>(width) * height;
     if (slice_pixels >
@@ -5670,32 +5756,87 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
         return false;
     }
 
-    ALMetalWorldDirectionalShadowConstants constants;
-    std::memcpy(constants.shadow_matrix, mDeferredUBOData.shadow_matrix,
-                sizeof(constants.shadow_matrix));
-    std::memcpy(constants.shadow_clip, mDeferredUBOData.shadow_clip,
-                sizeof(constants.shadow_clip));
-    constants.resolution[0] = mDeferredUBOData.shadow_res[0];
-    constants.resolution[1] = mDeferredUBOData.shadow_res[1];
-    constants.resolution[2] =
-        static_cast<F32>(mRT->deferredScreen.getWidth());
-    constants.resolution[3] =
-        static_cast<F32>(mRT->deferredScreen.getHeight());
-    constants.parameters[0] = mDeferredUBOData.shadow_bias;
-    constants.parameters[1] = mDeferredUBOData.shadow_offset;
-    constants.parameters[2] = mDeferredUBOData.shadow_pcss_scale;
-    constants.parameters[3] = static_cast<F32>(capture.height);
-    constants.config[0] = sunCascades();
-    constants.config[1] = unbuilt;
-    constants.config[2] = capture.reverse_z ? 1u : 0u;
-    constants.config[3] = static_cast<U32>(std::clamp(
-        shaderInputs().mGlobal.mShadowFilterQuality, 0, 3));
+    return publish(capture.impostor_directional_shadow_texture.get());
+}
 
-    capture.impostor_directional_shadows.depth_texture =
-        capture.impostor_directional_shadow_texture.get();
-    capture.impostor_directional_shadows.constants = constants;
-    capture.impostor_directional_shadow_frame = gFrameCount;
-    return true;
+void LLPipeline::countMetalShadowBatches(
+    std::size_t& batches, bool& complete)
+{
+    const auto counted_batches = [&](U32 type)
+    {
+        std::size_t count = 0;
+        auto* begin = beginRenderMap(type);
+        auto* end = endRenderMap(type);
+        for (auto* at = begin; at != end; )
+        {
+            LLDrawInfo* info = *at;
+            LLCullResult::increment_iterator(at, end);
+            if (info && info->mCount)
+            {
+                ++count;
+            }
+        }
+        return count;
+    };
+
+    batches = 0;
+    complete = true;
+    for (U32 type : SHADOW_GEOMETRY_PASSES)
+    {
+        batches += counted_batches(type);
+        batches += counted_batches(type + 1);
+    }
+    batches += counted_batches(LLRenderPass::PASS_GLTF_PBR);
+    batches += counted_batches(LLRenderPass::PASS_GLTF_PBR_RIGGED);
+    for (U32 type : SHADOW_MASKED_PASSES)
+    {
+        batches += counted_batches(type);
+        batches += counted_batches(type + 1);
+    }
+    batches += counted_batches(LLRenderPass::PASS_ALPHA);
+    batches += counted_batches(LLRenderPass::PASS_GRASS);
+
+    for (LLDrawPool* pool : mPools)
+    {
+        if (!complete)
+        {
+            break;
+        }
+        if (!hasRenderType(pool->getType()) ||
+            pool->getNumShadowPasses() == 0)
+        {
+            continue;
+        }
+        ALSpotShadowCache::Casters pool_casters;
+        pool->addShadowCasters(pool_casters);
+        if (pool->getType() == LLDrawPool::POOL_TREE)
+        {
+            // The tree pool contributes one caster record for every indexed
+            // face draw. The adjacent draw hook captures the same loop.
+            batches += pool_casters.count();
+        }
+        else if (pool->getType() == LLDrawPool::POOL_TERRAIN &&
+                 !pool_casters.changing())
+        {
+            // Terrain starts with one region-wide dependency, followed by
+            // one record per patch draw. Only the patch records are batches.
+            batches += pool_casters.count() == 0
+                ? 0 : pool_casters.count() - 1;
+        }
+        else if ((pool->getType() == LLDrawPool::POOL_AVATAR ||
+                  pool->getType() == LLDrawPool::POOL_CONTROL_AV) &&
+                 pool_casters.count() == 0)
+        {
+            // Avatar visibility, bake splitting and detail filtering are
+            // resolved in renderShadow. Its adjacent hook increments the
+            // expected total before each GL draw.
+        }
+        else
+        {
+            complete = pool_casters.count() == 0 &&
+                       !pool_casters.changing();
+        }
+    }
 }
 
 void LLPipeline::beginMetalSpotShadowCapture(
@@ -5722,6 +5863,38 @@ void LLPipeline::beginMetalSpotShadowCapture(
     capture.spot_shadow_coverage =
         ALMetalWorldSpotShadowCoverage::opaque;
     capture.spot_shadow_capture_complete = complete;
+    capture.spot_shadow_capture_directional = false;
+    capture.spot_shadow_avatar_pass_active = false;
+    capture.spot_shadow_avatar_cloth = false;
+    capture.reverse_z = LLRender::sReverseZ;
+    capture.spot_shadow_capture_active = true;
+}
+
+void LLPipeline::beginMetalDirectionalShadowCapture(
+    U32 map, U32 width, U32 height, std::size_t expected_batches,
+    bool complete)
+{
+    if (!mMetalWorldSimpleCapture || map >= 4 || width == 0 || height == 0)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.device || !capture.renderer ||
+        capture.spot_shadow_capture_active)
+    {
+        return;
+    }
+    capture.direct_directional_shadow_valid[map] = false;
+    capture.spot_shadow_batches.clear();
+    capture.spot_shadow_avatar_palettes.clear();
+    capture.spot_shadow_map = map;
+    capture.spot_shadow_width = width;
+    capture.spot_shadow_height = height;
+    capture.spot_shadow_expected_batches = expected_batches;
+    capture.spot_shadow_coverage =
+        ALMetalWorldSpotShadowCoverage::opaque;
+    capture.spot_shadow_capture_complete = complete;
+    capture.spot_shadow_capture_directional = true;
     capture.spot_shadow_avatar_pass_active = false;
     capture.spot_shadow_avatar_cloth = false;
     capture.reverse_z = LLRender::sReverseZ;
@@ -6543,6 +6716,8 @@ void LLPipeline::endMetalSpotShadowCapture()
     capture.spot_shadow_avatar_pass_active = false;
     capture.spot_shadow_avatar_cloth = false;
     const U32 map = capture.spot_shadow_map;
+    const bool directional = capture.spot_shadow_capture_directional;
+    capture.spot_shadow_capture_directional = false;
     const bool complete = capture.spot_shadow_capture_complete &&
         capture.spot_shadow_batches.size() ==
             capture.spot_shadow_expected_batches;
@@ -6560,6 +6735,7 @@ void LLPipeline::endMetalSpotShadowCapture()
     scene.width = capture.spot_shadow_width;
     scene.height = capture.spot_shadow_height;
     scene.reverse_z = capture.reverse_z;
+    scene.depth_clamp = directional;
     std::string error;
     auto slice = capture.renderer->renderSpotShadow(scene, &error);
     capture.spot_shadow_batches.clear();
@@ -6567,7 +6743,9 @@ void LLPipeline::endMetalSpotShadowCapture()
     if (!slice)
     {
         LL_WARNS("Metal")
-            << "Could not render direct Metal spot-shadow slice " << map
+            << "Could not render direct Metal "
+            << (directional ? "directional" : "spot")
+            << "-shadow slice " << map
             << ": " << error << LL_ENDL;
         return;
     }
@@ -6577,46 +6755,77 @@ void LLPipeline::endMetalSpotShadowCapture()
     descriptor.format = ALMetalPixelFormat::r32_float;
     descriptor.width = scene.width;
     descriptor.height = scene.height;
-    descriptor.array_length = 2;
+    descriptor.array_length = directional ? 4 : 2;
     descriptor.storage = ALMetalStorageMode::private_gpu;
     descriptor.usage = ALMetalTextureUsage::shader_read;
-    descriptor.label = "Alchemy direct raw projector-shadow maps";
+    descriptor.label = directional
+        ? "Alchemy direct raw directional-shadow maps"
+        : "Alchemy direct raw projector-shadow maps";
+    std::unique_ptr<ALMetalTexture>& retained_texture = directional
+        ? capture.direct_directional_shadow_texture
+        : capture.direct_projector_shadow_texture;
     const ALMetalTextureDescriptor* existing =
-        capture.direct_projector_shadow_texture
-            ? &capture.direct_projector_shadow_texture->descriptor()
+        retained_texture
+            ? &retained_texture->descriptor()
             : nullptr;
-    if (!existing || existing->width != descriptor.width ||
-        existing->height != descriptor.height)
+    if (!existing || existing->type != descriptor.type ||
+        existing->format != descriptor.format ||
+        existing->width != descriptor.width ||
+        existing->height != descriptor.height ||
+        existing->array_length != descriptor.array_length)
     {
-        capture.direct_projector_shadow_texture = ALMetalTexture::create(
+        retained_texture = ALMetalTexture::create(
             *capture.device, descriptor, &error);
-        capture.direct_projector_shadow_valid = {};
-        if (!capture.direct_projector_shadow_texture)
+        if (directional)
+        {
+            capture.direct_directional_shadow_valid = {};
+        }
+        else
+        {
+            capture.direct_projector_shadow_valid = {};
+        }
+        if (!retained_texture)
         {
             LL_WARNS("Metal")
-                << "Could not allocate direct Metal spot-shadow pack: "
+                << "Could not allocate direct Metal "
+                << (directional ? "directional" : "spot")
+                << "-shadow pack: "
                 << error << LL_ENDL;
             return;
         }
     }
 
     auto command = capture.device->makeCommandBuffer(
-        "Alchemy direct spot-shadow slice copy", &error);
+        directional
+            ? "Alchemy direct directional-shadow slice copy"
+            : "Alchemy direct spot-shadow slice copy",
+        &error);
     ALMetalTextureCopy copy;
     copy.destination_slice = map;
     const bool copied = command &&
-        capture.direct_projector_shadow_texture->copyFrom(
+        retained_texture->copyFrom(
             *command, *slice->colorTexture(0), copy, &error) &&
         command->commit(&error);
     if (!copied)
     {
         LL_WARNS("Metal")
-            << "Could not retain direct Metal spot-shadow slice " << map
+            << "Could not retain direct Metal "
+            << (directional ? "directional" : "spot")
+            << "-shadow slice " << map
             << ": " << error << LL_ENDL;
         return;
     }
-    capture.direct_projector_shadow_valid[map] = true;
-    capture.projector_shadow_frame = std::numeric_limits<U32>::max();
+    if (directional)
+    {
+        capture.direct_directional_shadow_valid[map] = true;
+        capture.impostor_directional_shadow_frame =
+            std::numeric_limits<U32>::max();
+    }
+    else
+    {
+        capture.direct_projector_shadow_valid[map] = true;
+        capture.projector_shadow_frame = std::numeric_limits<U32>::max();
+    }
 }
 
 bool LLPipeline::fillMetalWorldProjectorShadows()
@@ -21464,36 +21673,6 @@ inline float sgn(float a)
     return (0.0F);
 }
 
-// The render pass types drawShadow draws as the prim volume alone, ignoring textures. Each has its rigged twin at the
-// next type.
-static constexpr U32 SHADOW_GEOMETRY_PASSES[] = {
-    LLRenderPass::PASS_SIMPLE,
-    LLRenderPass::PASS_FULLBRIGHT,
-    LLRenderPass::PASS_SHINY,
-    LLRenderPass::PASS_BUMP,
-    LLRenderPass::PASS_FULLBRIGHT_SHINY,
-    LLRenderPass::PASS_MATERIAL,
-    LLRenderPass::PASS_MATERIAL_ALPHA_EMISSIVE,
-    LLRenderPass::PASS_SPECMAP,
-    LLRenderPass::PASS_SPECMAP_EMISSIVE,
-    LLRenderPass::PASS_NORMMAP,
-    LLRenderPass::PASS_NORMMAP_EMISSIVE,
-    LLRenderPass::PASS_NORMSPEC,
-    LLRenderPass::PASS_NORMSPEC_EMISSIVE
-};
-
-// Those it alpha tests by their textures, each with its rigged twin at the next type. The blended casters and the
-// grass it draws besides, from PASS_ALPHA and PASS_GRASS.
-static constexpr U32 SHADOW_MASKED_PASSES[] = {
-    LLRenderPass::PASS_ALPHA_MASK,
-    LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK,
-    LLRenderPass::PASS_NORMSPEC_MASK,
-    LLRenderPass::PASS_MATERIAL_ALPHA_MASK,
-    LLRenderPass::PASS_SPECMAP_MASK,
-    LLRenderPass::PASS_NORMMAP_MASK,
-    LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK
-};
-
 void LLPipeline::renderShadow(const LLMatrix4a& view, const LLMatrix4a& proj, LLCamera& shadow_cam, LLCullResult& result, bool depth_clamp, bool do_cull, S32 occlusion)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
@@ -22672,6 +22851,14 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                         mRT->shadow[j].clear();
                     }
                     mRT->shadow[j].flush();
+#if LL_DARWIN
+                    // Retain the same explicit far-depth slice instead of
+                    // leaving an older native cascade eligible for reuse.
+                    beginMetalDirectionalShadowCapture(
+                        j, mRT->shadow[j].getWidth(),
+                        mRT->shadow[j].getHeight(), 0, true);
+                    endMetalSpotShadowCapture();
+#endif
                 }
 
                 mShadowError.mV[j] = 0.f;
@@ -23009,7 +23196,25 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     {   // re-bucket the shared union cull down to this cascade's frustum
                         bucketShadowCull(sUnionShadowResult, shadow_cam, result[j]);
                     }
-                    renderShadow(view[j], proj[j], shadow_cam, result[j], true, !have_union_cull, sun_occlusion);
+                    sortShadow(
+                        shadow_cam, result[j], !have_union_cull,
+                        sun_occlusion);
+#if LL_DARWIN
+                    std::size_t native_batches = 0;
+                    bool native_complete = true;
+                    countMetalShadowBatches(
+                        native_batches, native_complete);
+                    beginMetalDirectionalShadowCapture(
+                        j, mRT->shadow[j].getWidth(),
+                        mRT->shadow[j].getHeight(), native_batches,
+                        native_complete);
+#endif
+                    drawShadow(
+                        view[j], proj[j], shadow_cam, true,
+                        sun_occlusion);
+#if LL_DARWIN
+                    endMetalSpotShadowCapture();
+#endif
                 }
 
                 mRT->shadow[j].flush();
@@ -23182,99 +23387,10 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     LL_PROFILE_GPU_ZONE("spot shadow");
 
 #if LL_DARWIN
-                    const auto counted_batches = [&](U32 type)
-                    {
-                        std::size_t count = 0;
-                        auto* begin = beginRenderMap(type);
-                        auto* end = endRenderMap(type);
-                        for (auto* at = begin; at != end; )
-                        {
-                            LLDrawInfo* info = *at;
-                            LLCullResult::increment_iterator(at, end);
-                            if (info && info->mCount)
-                            {
-                                ++count;
-                            }
-                        }
-                        return count;
-                    };
                     std::size_t native_batches = 0;
-                    for (U32 type : SHADOW_GEOMETRY_PASSES)
-                    {
-                        native_batches += counted_batches(type);
-                        native_batches += counted_batches(type + 1);
-                    }
-                    native_batches += counted_batches(
-                        LLRenderPass::PASS_GLTF_PBR);
-                    native_batches += counted_batches(
-                        LLRenderPass::PASS_GLTF_PBR_RIGGED);
-                    for (U32 type : SHADOW_MASKED_PASSES)
-                    {
-                        native_batches += counted_batches(type);
-                        native_batches += counted_batches(type + 1);
-                    }
-                    native_batches += counted_batches(
-                        LLRenderPass::PASS_ALPHA);
-                    native_batches += counted_batches(
-                        LLRenderPass::PASS_GRASS);
-
                     bool native_complete = true;
-                    for (LLDrawPool* pool : mPools)
-                    {
-                        if (!native_complete)
-                        {
-                            break;
-                        }
-                        if (hasRenderType(pool->getType()) &&
-                            pool->getNumShadowPasses() > 0)
-                        {
-                            ALSpotShadowCache::Casters pool_casters;
-                            pool->addShadowCasters(pool_casters);
-                            if (pool->getType() == LLDrawPool::POOL_TREE)
-                            {
-                                // LLDrawPoolTree adds one caster record for
-                                // every indexed face renderDeferred draws.
-                                // A changing texture already makes the cache
-                                // redraw this map every frame; it does not
-                                // make the current Metal mirror incomplete.
-                                // The direct capture below observes the same
-                                // loop, and strict final batch accounting also
-                                // catches any divergence or missing mirror.
-                                native_batches += pool_casters.count();
-                            }
-                            else if (pool->getType() ==
-                                         LLDrawPool::POOL_TERRAIN &&
-                                     !pool_casters.changing())
-                            {
-                                // Terrain records one region-wide surface
-                                // dependency followed by one record per
-                                // patch draw. Only the latter become Metal
-                                // batches; exact final accounting catches a
-                                // changed or incomplete draw loop.
-                                native_batches += pool_casters.count() == 0
-                                    ? 0 : pool_casters.count() - 1;
-                            }
-                            else if ((pool->getType() ==
-                                          LLDrawPool::POOL_AVATAR ||
-                                      pool->getType() ==
-                                          LLDrawPool::POOL_CONTROL_AV) &&
-                                     pool_casters.count() == 0)
-                            {
-                                // System-avatar visibility, bake splitting
-                                // and detail filtering are resolved inside
-                                // renderShadow. The drawShape hook increments
-                                // the expected count immediately before each
-                                // GL draw, then either appends its exact mirror
-                                // or fails the whole direct slice closed.
-                            }
-                            else
-                            {
-                                native_complete =
-                                    pool_casters.count() == 0 &&
-                                    !pool_casters.changing();
-                            }
-                        }
-                    }
+                    countMetalShadowBatches(
+                        native_batches, native_complete);
                     beginMetalSpotShadowCapture(
                         i, mSpotShadow[i].getWidth(),
                         mSpotShadow[i].getHeight(), native_batches,
@@ -24383,6 +24499,12 @@ void LLPipeline::skipRenderingShadows()
             mRT->shadow[j].bindTarget();
             mRT->shadow[j].clear();
             mRT->shadow[j].flush();
+#if LL_DARWIN
+            beginMetalDirectionalShadowCapture(
+                j, mRT->shadow[j].getWidth(),
+                mRT->shadow[j].getHeight(), 0, true);
+            endMetalSpotShadowCapture();
+#endif
         }
     }
 }

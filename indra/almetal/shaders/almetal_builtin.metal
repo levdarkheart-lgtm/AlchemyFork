@@ -148,6 +148,14 @@ static float4 almetal_clip_from_gl(float4 position)
     return position;
 }
 
+static float4 almetal_shadow_clip_from_gl(
+    float4 position, uint depth_convention)
+{
+    position.y = -position.y;
+    const bool reverse_z = (depth_convention & 1u) != 0u;
+    return reverse_z ? position : almetal_clip_from_gl(position);
+}
+
 static float3 almetal_srgb_to_linear(float3 encoded);
 static float3 almetal_linear_to_srgb(float3 linear);
 
@@ -1721,10 +1729,9 @@ vertex ALMetalWorldSimpleVaryings almetal_world_simple_vertex(
 static ALMetalWorldSpotShadowVaryings almetal_world_spot_shadow_output(
     float4 clip_position, constant ALMetalWorldSpotShadowConstants& constants)
 {
-    clip_position.y = -clip_position.y;
     ALMetalWorldSpotShadowVaryings output;
-    output.position = constants.config.x != 0u
-        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.position = almetal_shadow_clip_from_gl(
+        clip_position, constants.config.x);
     output.texcoord = 0.0;
     output.vertex_alpha = 1.0;
     output.texture_index = 0u;
@@ -1967,10 +1974,20 @@ almetal_world_avatar_spot_shadow_cloth_vertex(
         texcoords[vertex_id], constants);
 }
 
+static float almetal_world_shadow_depth(
+    ALMetalWorldSpotShadowVaryings input)
+{
+    // Depth-clamped fragments retain their unclamped stage-in z even though
+    // the depth attachment receives the viewport-clamped value. Mirror that
+    // value into the raw R32F texture explicitly; ordinary clipped fragments
+    // are already in range.
+    return clamp(input.position.z, 0.0, 1.0);
+}
+
 fragment float almetal_world_spot_shadow_fragment(
     ALMetalWorldSpotShadowVaryings input [[stage_in]])
 {
-    return input.position.z;
+    return almetal_world_shadow_depth(input);
 }
 
 fragment float almetal_world_spot_shadow_coverage_fragment(
@@ -2049,7 +2066,7 @@ fragment float almetal_world_spot_shadow_coverage_fragment(
             }
         }
     }
-    return input.position.z;
+    return almetal_world_shadow_depth(input);
 }
 
 vertex ALMetalWorldWaterExclusionVaryings
@@ -7496,11 +7513,9 @@ almetal_world_terrain_spot_shadow_vertex(
         : almetal_world_terrain_height_linear(height_map, grid);
     float4 clip_position = constants.modelview_projection *
                            float4(xy, height, 1.0);
-    clip_position.y = -clip_position.y;
-
     ALMetalWorldSpotShadowVaryings output;
-    output.position = constants.config.x != 0u
-        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.position = almetal_shadow_clip_from_gl(
+        clip_position, constants.config.x);
     output.texcoord = 0.0;
     output.vertex_alpha = 1.0;
     output.texture_index = 0u;

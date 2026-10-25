@@ -3278,6 +3278,10 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
         encoder->setDepthStencilState(depth, error) &&
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
+        encoder->setDepthClipMode(
+            scene.depth_clamp ? ALMetalDepthClipMode::clamp
+                              : ALMetalDepthClipMode::clip,
+            error) &&
         encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error);
     for (std::size_t index = 0;
          encoded && index < scene.batch_count; ++index)

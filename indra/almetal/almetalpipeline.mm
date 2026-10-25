@@ -1046,6 +1046,20 @@ bool ALMetalRenderEncoder::setFrontFacingWinding(ALMetalWinding value, std::stri
     return true;
 }
 
+bool ALMetalRenderEncoder::setDepthClipMode(
+    ALMetalDepthClipMode mode, std::string* error)
+{
+    if (!mImpl || mImpl->ended)
+    {
+        setError(error, "Metal render encoder has ended");
+        return false;
+    }
+    [mImpl->encoder setDepthClipMode:
+        mode == ALMetalDepthClipMode::clamp
+            ? MTLDepthClipModeClamp : MTLDepthClipModeClip];
+    return true;
+}
+
 bool ALMetalRenderEncoder::setDepthBias(float constant_bias,
                                         float slope_scale,
                                         float clamp,
