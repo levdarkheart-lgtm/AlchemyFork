@@ -411,6 +411,43 @@ struct ALMetalWorldWindLightSkyScene
     bool reverse_z = false;
 };
 
+// The retained non-indexed star field drawn between WindLight atmospheric
+// haze and the heavenly bodies. The source buffer uses LLVertexBuffer's
+// independent attribute planes: float4 positions, packed RGBA8 colors and
+// float2 billboard corners.
+struct ALMetalWorldStarBatch
+{
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::size_t color_offset = 0;
+    std::size_t texcoord_offset = 0;
+    std::uint32_t vertex_count = 0;
+    float modelview_projection[16]{};
+};
+
+struct ALMetalWorldStarScene
+{
+    const ALMetalWorldStarBatch* batches = nullptr;
+    std::size_t batch_count = 0;
+    // Required only when moon_mask is true. An internal transparent fallback
+    // is bound otherwise so the shader keeps one exact resource ABI.
+    const ALMetalTexture* moon_texture = nullptr;
+    float star_alpha = 0.f;
+    float time = 0.f;
+    // xyz terms are already rotated into the slowly turning star frame.
+    float moon_direction[4]{};
+    float moon_quad_center[4]{};
+    float moon_quad_u[4]{};
+    float moon_quad_v[4]{};
+    float moon_brightness = 0.f;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    bool moon_mask = false;
+    bool normal_hdr = false;
+    bool hdr = false;
+    bool reverse_z = false;
+};
+
 struct alignas(16) ALMetalWorldBaseLightingConstants
 {
     float inverse_projection[16]{};
@@ -503,6 +540,14 @@ public:
     bool compositeWindLightSky(
         ALMetalRenderTarget& target,
         const ALMetalWorldWindLightSkyScene& scene,
+        std::string* error = nullptr);
+
+    // Add the exact starsV/starsF layer over a completed native WindLight
+    // haze transaction. Vintage albedo blending uses the target's raw UNORM
+    // storage view to preserve GL's framebuffer-sRGB-disabled byte contract.
+    bool compositeWindLightStars(
+        ALMetalRenderTarget& target,
+        const ALMetalWorldStarScene& scene,
         std::string* error = nullptr);
 
     // Shade the retained world G-buffer with the deferred base-light owner:

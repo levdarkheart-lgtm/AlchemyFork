@@ -366,6 +366,11 @@ struct ALMetalRenderPassColorConfig
     ALMetalLoadAction load = ALMetalLoadAction::clear;
     ALMetalStoreAction store = ALMetalStoreAction::store;
     ALMetalClearColor clear{};
+    // Bind a view-compatible non-sRGB view of this attachment. This keeps
+    // fixed-function blending in raw UNORM storage space for legacy passes
+    // that deliberately wrote encoded display values with framebuffer sRGB
+    // disabled. Only single-sample sRGB attachments support this mode.
+    bool linear_storage_view = false;
 };
 
 struct ALMetalRenderPassConfig

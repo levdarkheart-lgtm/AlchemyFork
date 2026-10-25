@@ -50,6 +50,9 @@ public:
     /*virtual*/ LLDrawable * createDrawable(LLPipeline *pipeline);
     /*virtual*/ bool         updateGeometry(LLDrawable *drawable);
 
+#if LL_DARWIN
+    bool hasStars() const;
+#endif
     void drawStars(void);
     void drawDome(void);
     void drawFsSky(void); // fullscreen sky for advanced atmo

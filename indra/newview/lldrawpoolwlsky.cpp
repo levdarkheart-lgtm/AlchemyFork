@@ -364,6 +364,12 @@ void LLDrawPoolWLSky::renderStarsDeferred(const LLVector3& camPosLocal) const
         LL_DEBUGS("SKY") << "star_brightness below threshold." << LL_ENDL;
         return;
     }
+#if LL_DARWIN
+    if (!gSky.mVOWLSkyp->hasStars())
+    {
+        return;
+    }
+#endif
 
     gDeferredStarProgram.bind();
 
@@ -412,6 +418,9 @@ void LLDrawPoolWLSky::renderStarsDeferred(const LLVector3& camPosLocal) const
     LLViewerTexture* moon_tex = moon_face ? moon_face->getTexture(LLRender::DIFFUSE_MAP) : nullptr;
     const LLHeavenBody& moon = gSky.mVOSkyp->getMoon();
     const bool mask_moon = moon.getDraw() && moon_tex && moon_face->getGeomCount();
+    LLVector3 moon_quad_center;
+    LLVector3 moon_quad_u;
+    LLVector3 moon_quad_v;
     if (mask_moon)
     {
         // Corners 0..3 are (-right, +up), (-right, -up), (+right, +up), (+right, -up) (LLVOSky::updateHeavenlyBodyGeometry).
@@ -422,9 +431,12 @@ void LLDrawPoolWLSky::renderStarsDeferred(const LLVector3& camPosLocal) const
         half_u /= half_u.lengthSquared();
         half_v /= half_v.lengthSquared();
 
-        gDeferredStarProgram.uniform3fv(LLShaderMgr::MOON_QUAD_CENTER, 1, in_stars(centre / dist).mV);
-        gDeferredStarProgram.uniform3fv(LLShaderMgr::MOON_QUAD_U, 1, in_stars(half_u).mV);
-        gDeferredStarProgram.uniform3fv(LLShaderMgr::MOON_QUAD_V, 1, in_stars(half_v).mV);
+        moon_quad_center = in_stars(centre / dist);
+        moon_quad_u = in_stars(half_u);
+        moon_quad_v = in_stars(half_v);
+        gDeferredStarProgram.uniform3fv(LLShaderMgr::MOON_QUAD_CENTER, 1, moon_quad_center.mV);
+        gDeferredStarProgram.uniform3fv(LLShaderMgr::MOON_QUAD_U, 1, moon_quad_u.mV);
+        gDeferredStarProgram.uniform3fv(LLShaderMgr::MOON_QUAD_V, 1, moon_quad_v.mV);
         gDeferredStarProgram.bindTexture(LLShaderMgr::DIFFUSE_MAP, moon_tex, ALSamplers::AnisoClamp);
     }
     else
@@ -432,7 +444,17 @@ void LLDrawPoolWLSky::renderStarsDeferred(const LLVector3& camPosLocal) const
         gDeferredStarProgram.uniform3f(LLShaderMgr::MOON_QUAD_CENTER, 0.f, 0.f, 0.f);
     }
 
+#if LL_DARWIN
+    gPipeline.beginMetalWorldWindLightStars(
+        star_alpha, sStarTime, in_stars(psky->getMoonDirection()),
+        psky->getIsMoonUp() ? (F32)psky->getMoonBrightness() : 0.f,
+        moon_quad_center, moon_quad_u, moon_quad_v,
+        moon_tex, mask_moon);
+#endif
     gSky.mVOWLSkyp->drawStars();
+#if LL_DARWIN
+    gPipeline.endMetalWorldWindLightStars();
+#endif
 
     if (mask_moon)
     {

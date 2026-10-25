@@ -443,6 +443,15 @@ struct LLPipeline::MetalWorldSimpleCapture
     const ALMetalTexture* windlight_sky_halo = nullptr;
     ALMetalWorldWindLightSkyConstants windlight_sky_constants;
     F32 windlight_sky_hdr_scale = 1.f;
+    ALMetalWorldStarBatch windlight_star_batch;
+    const ALMetalTexture* windlight_star_moon = nullptr;
+    F32 windlight_star_alpha = 0.f;
+    F32 windlight_star_time = 0.f;
+    F32 windlight_star_moon_direction[4]{};
+    F32 windlight_star_moon_quad_center[4]{};
+    F32 windlight_star_moon_quad_u[4]{};
+    F32 windlight_star_moon_quad_v[4]{};
+    F32 windlight_star_moon_brightness = 0.f;
     std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
         avatar_palettes;
     U32 width = 0;
@@ -456,6 +465,11 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool windlight_sky_active = false;
     bool windlight_sky_complete = false;
     bool windlight_sky_native_available = false;
+    bool windlight_stars_expected = false;
+    bool windlight_stars_active = false;
+    bool windlight_stars_complete = false;
+    bool windlight_stars_moon_mask = false;
+    bool windlight_stars_native_available = false;
     bool attempted = false;
     bool local_lighting_attempted = false;
     U32 local_lighting_failed_frames = 0;
@@ -883,6 +897,24 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.windlight_sky_active = false;
         capture.windlight_sky_complete = false;
         capture.windlight_sky_native_available = false;
+        capture.windlight_star_batch = {};
+        capture.windlight_star_moon = nullptr;
+        capture.windlight_star_alpha = 0.f;
+        capture.windlight_star_time = 0.f;
+        std::fill(std::begin(capture.windlight_star_moon_direction),
+                  std::end(capture.windlight_star_moon_direction), 0.f);
+        std::fill(std::begin(capture.windlight_star_moon_quad_center),
+                  std::end(capture.windlight_star_moon_quad_center), 0.f);
+        std::fill(std::begin(capture.windlight_star_moon_quad_u),
+                  std::end(capture.windlight_star_moon_quad_u), 0.f);
+        std::fill(std::begin(capture.windlight_star_moon_quad_v),
+                  std::end(capture.windlight_star_moon_quad_v), 0.f);
+        capture.windlight_star_moon_brightness = 0.f;
+        capture.windlight_stars_expected = false;
+        capture.windlight_stars_active = false;
+        capture.windlight_stars_complete = false;
+        capture.windlight_stars_moon_mask = false;
+        capture.windlight_stars_native_available = false;
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
@@ -1044,6 +1076,24 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.windlight_sky_active = false;
     capture.windlight_sky_complete = false;
     capture.windlight_sky_native_available = false;
+    capture.windlight_star_batch = {};
+    capture.windlight_star_moon = nullptr;
+    capture.windlight_star_alpha = 0.f;
+    capture.windlight_star_time = 0.f;
+    std::fill(std::begin(capture.windlight_star_moon_direction),
+              std::end(capture.windlight_star_moon_direction), 0.f);
+    std::fill(std::begin(capture.windlight_star_moon_quad_center),
+              std::end(capture.windlight_star_moon_quad_center), 0.f);
+    std::fill(std::begin(capture.windlight_star_moon_quad_u),
+              std::end(capture.windlight_star_moon_quad_u), 0.f);
+    std::fill(std::begin(capture.windlight_star_moon_quad_v),
+              std::end(capture.windlight_star_moon_quad_v), 0.f);
+    capture.windlight_star_moon_brightness = 0.f;
+    capture.windlight_stars_expected = false;
+    capture.windlight_stars_active = false;
+    capture.windlight_stars_complete = false;
+    capture.windlight_stars_moon_mask = false;
+    capture.windlight_stars_native_available = false;
     capture.avatar_palettes.clear();
     capture.width = descriptor->width;
     capture.height = descriptor->height;
@@ -1304,6 +1354,133 @@ void LLPipeline::endMetalWorldWindLightSky()
     }
 }
 
+void LLPipeline::beginMetalWorldWindLightStars(
+    F32 star_alpha, F32 time,
+    const LLVector3& moon_direction, F32 moon_brightness,
+    const LLVector3& moon_quad_center,
+    const LLVector3& moon_quad_u,
+    const LLVector3& moon_quad_v,
+    LLViewerTexture* moon_texture, bool moon_mask)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.windlight_star_batch = {};
+    capture.windlight_star_moon = nullptr;
+    capture.windlight_star_alpha = 0.f;
+    capture.windlight_star_time = 0.f;
+    std::fill(std::begin(capture.windlight_star_moon_direction),
+              std::end(capture.windlight_star_moon_direction), 0.f);
+    std::fill(std::begin(capture.windlight_star_moon_quad_center),
+              std::end(capture.windlight_star_moon_quad_center), 0.f);
+    std::fill(std::begin(capture.windlight_star_moon_quad_u),
+              std::end(capture.windlight_star_moon_quad_u), 0.f);
+    std::fill(std::begin(capture.windlight_star_moon_quad_v),
+              std::end(capture.windlight_star_moon_quad_v), 0.f);
+    capture.windlight_star_moon_brightness = 0.f;
+    capture.windlight_stars_expected = true;
+    capture.windlight_stars_active = false;
+    capture.windlight_stars_complete = false;
+    capture.windlight_stars_moon_mask = moon_mask;
+    capture.windlight_stars_native_available = false;
+
+    LLImageGL* moon_image = moon_mask && moon_texture
+        ? moon_texture->getGLTexture() : nullptr;
+    ALMetalTexture* metal_moon = moon_image
+        ? moon_image->getMetalTexture() : nullptr;
+    const std::array<F32, 17> values{{
+        star_alpha, time,
+        moon_direction.mV[0], moon_direction.mV[1], moon_direction.mV[2],
+        moon_brightness,
+        moon_quad_center.mV[0], moon_quad_center.mV[1],
+        moon_quad_center.mV[2],
+        moon_quad_u.mV[0], moon_quad_u.mV[1], moon_quad_u.mV[2],
+        moon_quad_v.mV[0], moon_quad_v.mV[1], moon_quad_v.mV[2],
+        static_cast<F32>(capture.width),
+        static_cast<F32>(capture.height),
+    }};
+    if (capture.pass_active || capture.hdri_sky_complete ||
+        capture.windlight_sky_active ||
+        !capture.windlight_sky_complete ||
+        star_alpha < 0.001f || moon_brightness < 0.f ||
+        (moon_mask && !metal_moon) ||
+        std::any_of(values.begin(), values.end(),
+                    [](F32 value) { return !std::isfinite(value); }))
+    {
+        return;
+    }
+
+    capture.windlight_star_moon = metal_moon;
+    capture.windlight_star_alpha = star_alpha;
+    capture.windlight_star_time = time;
+    std::memcpy(capture.windlight_star_moon_direction,
+                moon_direction.mV, sizeof(F32) * 3);
+    std::memcpy(capture.windlight_star_moon_quad_center,
+                moon_quad_center.mV, sizeof(F32) * 3);
+    std::memcpy(capture.windlight_star_moon_quad_u,
+                moon_quad_u.mV, sizeof(F32) * 3);
+    std::memcpy(capture.windlight_star_moon_quad_v,
+                moon_quad_v.mV, sizeof(F32) * 3);
+    capture.windlight_star_moon_brightness = moon_brightness;
+    capture.windlight_stars_complete = true;
+    capture.windlight_stars_active = true;
+}
+
+void LLPipeline::captureMetalWorldWindLightStarBatch(
+    LLVertexBuffer* buffer)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->windlight_stars_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.windlight_stars_complete || !buffer ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->getMetalVertexBuffer() ||
+        buffer->getNumVerts() < 3 || buffer->getNumVerts() % 3 != 0)
+    {
+        capture.windlight_stars_complete = false;
+        capture.windlight_star_batch = {};
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldStarBatch& batch = capture.windlight_star_batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset =
+        buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
+    batch.texcoord_offset =
+        buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.vertex_count = buffer->getNumVerts();
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+}
+
+void LLPipeline::endMetalWorldWindLightStars()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->windlight_stars_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.windlight_stars_active = false;
+    if (!capture.windlight_star_batch.vertices)
+    {
+        capture.windlight_stars_complete = false;
+    }
+}
+
 void LLPipeline::beginMetalWorldGBufferPass(bool rigged, bool alpha_mask)
 {
     if (!mMetalWorldSimpleCapture ||
@@ -1556,6 +1733,13 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.windlight_sky_active = false;
         capture.windlight_sky_complete = false;
         capture.windlight_sky_native_available = false;
+        capture.windlight_star_batch = {};
+        capture.windlight_star_moon = nullptr;
+        capture.windlight_stars_expected = false;
+        capture.windlight_stars_active = false;
+        capture.windlight_stars_complete = false;
+        capture.windlight_stars_moon_mask = false;
+        capture.windlight_stars_native_available = false;
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
@@ -4596,6 +4780,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     {
         capture.hdri_sky_native_available = false;
         capture.windlight_sky_native_available = false;
+        capture.windlight_stars_native_available = false;
         if (capture.hdri_sky_complete &&
             !capture.hdri_sky_active &&
             !capture.hdri_sky_batches.empty() &&
@@ -4662,6 +4847,55 @@ void LLPipeline::endMetalWorldGBufferCapture()
                     << error << LL_ENDL;
             }
         }
+        if (capture.windlight_sky_native_available &&
+            capture.windlight_stars_expected)
+        {
+            if (capture.windlight_stars_complete &&
+                !capture.windlight_stars_active &&
+                capture.windlight_star_batch.vertices)
+            {
+                ALMetalWorldStarScene star_scene;
+                star_scene.batches = &capture.windlight_star_batch;
+                star_scene.batch_count = 1;
+                star_scene.moon_texture = capture.windlight_star_moon;
+                star_scene.star_alpha = capture.windlight_star_alpha;
+                star_scene.time = capture.windlight_star_time;
+                std::memcpy(star_scene.moon_direction,
+                            capture.windlight_star_moon_direction,
+                            sizeof(star_scene.moon_direction));
+                std::memcpy(star_scene.moon_quad_center,
+                            capture.windlight_star_moon_quad_center,
+                            sizeof(star_scene.moon_quad_center));
+                std::memcpy(star_scene.moon_quad_u,
+                            capture.windlight_star_moon_quad_u,
+                            sizeof(star_scene.moon_quad_u));
+                std::memcpy(star_scene.moon_quad_v,
+                            capture.windlight_star_moon_quad_v,
+                            sizeof(star_scene.moon_quad_v));
+                star_scene.moon_brightness =
+                    capture.windlight_star_moon_brightness;
+                star_scene.width = capture.width;
+                star_scene.height = capture.height;
+                star_scene.moon_mask =
+                    capture.windlight_stars_moon_mask;
+                star_scene.normal_hdr = capture.normal_hdr;
+                star_scene.hdr = capture.hdr;
+                star_scene.reverse_z = capture.reverse_z;
+                error.clear();
+                capture.windlight_stars_native_available =
+                    capture.renderer->compositeWindLightStars(
+                        *target, star_scene, &error);
+            }
+            if (!capture.windlight_stars_native_available)
+            {
+                capture.windlight_sky_native_available = false;
+                LL_WARNS("Metal")
+                    << "Native WindLight sky retained GL authority because "
+                       "its expected star layer was incomplete"
+                    << (error.empty() ? "" : ": ") << error
+                    << LL_ENDL;
+            }
+        }
         capture.target = std::move(target);
         capture.attempted = true;
         capture.failed_frames = 0;
@@ -4673,7 +4907,9 @@ void LLPipeline::endMetalWorldGBufferCapture()
             << (capture.hdri_sky_native_available
                     ? "; full HDRI sky is native"
                     : capture.windlight_sky_native_available
-                        ? "; WindLight atmospheric haze sky is native"
+                        ? capture.windlight_stars_expected
+                            ? "; WindLight haze and stars are native"
+                            : "; WindLight atmospheric haze sky is native"
                         : "; sky remains GL-owned")
             << "; presentation remains on GL until the remaining world passes exist"
             << LL_ENDL;
@@ -4688,6 +4924,12 @@ void LLPipeline::endMetalWorldGBufferCapture()
     capture.windlight_sky_halo = nullptr;
     capture.windlight_sky_active = false;
     capture.windlight_sky_complete = false;
+    capture.windlight_star_batch = {};
+    capture.windlight_star_moon = nullptr;
+    capture.windlight_stars_expected = false;
+    capture.windlight_stars_active = false;
+    capture.windlight_stars_complete = false;
+    capture.windlight_stars_moon_mask = false;
     capture.avatar_palettes.clear();
 }
 
@@ -5179,7 +5421,9 @@ void LLPipeline::renderMetalWorldBaseLighting(
         << (capture.hdri_sky_native_available
                 ? "; full HDRI clear-depth transfer is native"
                 : capture.windlight_sky_native_available
-                    ? "; WindLight atmospheric clear-depth transfer is native"
+                    ? capture.windlight_stars_native_available
+                        ? "; WindLight haze/star clear-depth transfer is native"
+                        : "; WindLight atmospheric clear-depth transfer is native"
                     : "; sky transfer remains GL-owned")
         << "; GL remains authoritative while sky layers, projectors and composition are open"
         << LL_ENDL;

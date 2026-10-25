@@ -421,6 +421,20 @@ struct ALMetalWorldWindLightSkyConstants
     uint4 config;
 };
 
+struct ALMetalWorldStarConstants
+{
+    float4x4 modelview_projection;
+    // xy = screen dimensions, z = custom_alpha, w = wrapped time.
+    float4 screen_alpha_time;
+    // xyz = moon direction in the star frame, w = moon brightness.
+    float4 moon_direction_brightness;
+    float4 moon_quad_center;
+    float4 moon_quad_u;
+    float4 moon_quad_v;
+    // x = reverse Z, y = emissive/HDR G-buffer.
+    uint4 config;
+};
+
 struct ALMetalWorldLocalLightVaryings
 {
     float4 position [[position]];
@@ -627,6 +641,194 @@ fragment ALMetalWorldGBufferOutput almetal_world_windlight_sky_fragment(
         // bytes that GL writes raw with FRAMEBUFFER_SRGB disabled.
         output.albedo = float4(
             almetal_srgb_to_linear(clamp(color, 0.0, 1.0)), 1.0);
+        output.emissive = 0.0;
+    }
+    return output;
+}
+
+struct ALMetalWorldStarVaryings
+{
+    float4 position [[position]];
+    float3 world_direction;
+    float2 corner;
+    float4 color;
+    float intensity;
+    float subpixel_fade;
+};
+
+vertex ALMetalWorldStarVaryings almetal_world_star_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device uchar4* colors [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    constant ALMetalWorldStarConstants& constants [[buffer(3)]],
+    uint vertex_id [[vertex_id]])
+{
+    float4 clip_center = constants.modelview_projection *
+                         float4(positions[vertex_id].xyz, 1.0);
+    const float4 packed_color = float4(colors[vertex_id]) / 255.0;
+    const float intensity = packed_color.a;
+    const float base_pixels = mix(1.8, 7.0, intensity);
+    const float spike_pixels = smoothstep(0.90, 1.0, intensity) * 12.0;
+    const float ideal_pixels = base_pixels + spike_pixels;
+    const float quad_pixels = max(ideal_pixels, 2.6);
+    const float2 pixel_offset = texcoords[vertex_id] *
+                                (quad_pixels * 0.5);
+    const float2 ndc_offset = pixel_offset *
+        (2.0 / max(constants.screen_alpha_time.xy, float2(1.0)));
+    clip_center.xy += ndc_offset * clip_center.w;
+    // Convert the final GL-oriented clip position to Metal's upper-left
+    // attachment convention after applying the pixel billboard offset.
+    clip_center.y = -clip_center.y;
+    clip_center.z = constants.config.x != 0u ? 0.0 : clip_center.w;
+
+    ALMetalWorldStarVaryings output;
+    output.position = clip_center;
+    output.world_direction = normalize(positions[vertex_id].xyz);
+    output.corner = texcoords[vertex_id];
+    output.color = float4(
+        pow(max(packed_color.rgb, float3(0.0)), float3(2.2)),
+        intensity);
+    output.intensity = intensity;
+    output.subpixel_fade =
+        (ideal_pixels * ideal_pixels) / (quad_pixels * quad_pixels);
+    return output;
+}
+
+static float almetal_star_hash31(float3 position)
+{
+    position = fract(position * float3(0.1031, 0.1030, 0.0973));
+    position += dot(position, position.yzx + 33.33);
+    return fract((position.x + position.y) * position.z);
+}
+
+static float almetal_star_value_noise(float3 position)
+{
+    const float3 cell = floor(position);
+    const float3 fraction = fract(position);
+    const float3 interpolation = fraction * fraction *
+                                 (3.0 - 2.0 * fraction);
+    const float n000 = almetal_star_hash31(cell + float3(0.0, 0.0, 0.0));
+    const float n100 = almetal_star_hash31(cell + float3(1.0, 0.0, 0.0));
+    const float n010 = almetal_star_hash31(cell + float3(0.0, 1.0, 0.0));
+    const float n110 = almetal_star_hash31(cell + float3(1.0, 1.0, 0.0));
+    const float n001 = almetal_star_hash31(cell + float3(0.0, 0.0, 1.0));
+    const float n101 = almetal_star_hash31(cell + float3(1.0, 0.0, 1.0));
+    const float n011 = almetal_star_hash31(cell + float3(0.0, 1.0, 1.0));
+    const float n111 = almetal_star_hash31(cell + float3(1.0, 1.0, 1.0));
+    return mix(
+        mix(mix(n000, n100, interpolation.x),
+            mix(n010, n110, interpolation.x), interpolation.y),
+        mix(mix(n001, n101, interpolation.x),
+            mix(n011, n111, interpolation.x), interpolation.y),
+        interpolation.z);
+}
+
+static float almetal_star_airmass(float cosine_zenith)
+{
+    const float bounded = clamp(cosine_zenith, 0.02, 1.0);
+    const float elevation_degrees = asin(bounded) *
+                                    (180.0 / M_PI_F);
+    return 1.0 / (bounded + 0.50572 *
+        pow(max(6.07995 + elevation_degrees, 1.0), -1.6364));
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_star_fragment(
+    ALMetalWorldStarVaryings input [[stage_in]],
+    constant ALMetalWorldStarConstants& constants [[buffer(0)]],
+    texture2d<float> moon_map [[texture(0)]],
+    sampler moon_sampler [[sampler(0)]])
+{
+    const float radius_squared = dot(input.corner, input.corner);
+    const float core = exp(-radius_squared * 9.0);
+    const float halo = exp(-radius_squared * 1.8) * 0.06;
+    const float horizontal = exp(-abs(input.corner.y) * 32.0) *
+                             (1.0 - abs(input.corner.x));
+    const float vertical = exp(-abs(input.corner.x) * 32.0) *
+                           (1.0 - abs(input.corner.y));
+    const float spike_strength = smoothstep(0.90, 1.0, input.intensity);
+    const float shape = core + halo +
+        (horizontal + vertical) * spike_strength * 0.30;
+    if (shape < 0.002)
+    {
+        discard_fragment();
+    }
+
+    const float moon_facing = dot(
+        input.world_direction, constants.moon_quad_center.xyz);
+    if (moon_facing > 0.0)
+    {
+        const float3 on_quad = input.world_direction / moon_facing -
+                               constants.moon_quad_center.xyz;
+        const float2 quad = float2(
+            dot(on_quad, constants.moon_quad_u.xyz),
+            dot(on_quad, constants.moon_quad_v.xyz));
+        if (all(abs(quad) < float2(1.0)) &&
+            moon_map.sample(moon_sampler, quad * 0.5 + 0.5,
+                            level(0.0)).a > 2.0 / 255.0)
+        {
+            discard_fragment();
+        }
+    }
+
+    const float airmass = almetal_star_airmass(input.world_direction.z);
+    const float3 extinction = exp(
+        -airmass * float3(0.05, 0.13, 0.30));
+    const float3 seed = input.world_direction * 120.0;
+    const float time = constants.screen_alpha_time.w;
+    const float fast_noise = almetal_star_value_noise(
+        seed + float3(0.0, 0.0, time * 2.3));
+    const float slow_noise = almetal_star_value_noise(
+        seed * 0.37 + float3(0.0, 0.0, time * 0.7));
+    const float twinkle_base = mix(fast_noise, slow_noise, 0.35);
+    const float twinkle_amount = clamp(
+        0.18 + 0.14 * (airmass - 1.0), 0.0, 0.65) * input.intensity;
+    const float twinkle = 1.0 +
+        (twinkle_base - 0.5) * 2.0 * twinkle_amount;
+    const float3 chroma_noise = float3(
+        almetal_star_value_noise(
+            seed * 0.55 + float3(0.0, 0.0, time * 1.7)),
+        almetal_star_value_noise(
+            seed * 0.55 + float3(0.0, 0.0, time * 1.3 + 5.7)),
+        almetal_star_value_noise(
+            seed * 0.55 + float3(0.0, 0.0, time * 2.1 + 13.1)));
+    const float chroma_amount = 0.18 * twinkle_amount;
+    const float3 color_jitter = 1.0 +
+        (chroma_noise - 0.5) * 2.0 * chroma_amount;
+
+    const float moon_up = max(0.0, constants.moon_direction_brightness.z);
+    const float moon_power = constants.moon_direction_brightness.w * moon_up;
+    const float sky_wash = moon_power *
+        (1.0 - input.intensity) * 0.55;
+    const float moon_cosine = max(0.0, dot(
+        input.world_direction,
+        constants.moon_direction_brightness.xyz));
+    const float direct_glare = pow(moon_cosine, 10.0) *
+                               moon_power * 0.85;
+    const float moon_fade = clamp(sky_wash + direct_glare, 0.0, 0.95);
+
+    float3 star_color = input.color.rgb * color_jitter *
+                        extinction * twinkle;
+    star_color *= input.intensity;
+    star_color *= constants.screen_alpha_time.z;
+    star_color *= 1.0 - moon_fade;
+    star_color *= input.subpixel_fade;
+    const float3 premultiplied = star_color * shape;
+    const float bloom_boost = 1.0 +
+        input.intensity * input.intensity * 1.2;
+
+    ALMetalWorldGBufferOutput output;
+    output.specular_orm = 0.0;
+    output.normal = float4(0.0, 1.0, 0.0, 0.0);
+    if (constants.config.y != 0u)
+    {
+        output.albedo = 0.0;
+        output.emissive = float4(
+            premultiplied * bloom_boost, shape);
+    }
+    else
+    {
+        output.albedo = float4(
+            premultiplied * (1.0 + input.intensity), shape);
         output.emissive = 0.0;
     }
     return output;
@@ -6274,12 +6476,14 @@ fragment float4 almetal_world_base_light_fragment(
         // transaction bit and the family-specific zero-normal marker rather
         // than accepting diagnostic clear pixels as sky.
         const bool windlight_sky = constants.sky.z != 0u;
-        const float normal_rgb = max(
-            normal_sample.r, max(normal_sample.g, normal_sample.b));
         const bool sky_marker = constants.sky.x != 0u &&
-            normal_rgb < 0.001 &&
-            (windlight_sky ? normal_sample.a < 0.1
-                           : normal_sample.a > 0.9);
+            (windlight_sky
+                ? normal_sample.r < 0.001 &&
+                  normal_sample.b < 0.001 &&
+                  normal_sample.a < 0.1
+                : max(normal_sample.r,
+                      max(normal_sample.g, normal_sample.b)) < 0.001 &&
+                  normal_sample.a > 0.9);
         if (!sky_marker)
         {
             discard_fragment();

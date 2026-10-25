@@ -1460,6 +1460,16 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
         {
             const auto& pass_config = config.colors[index];
             const bool multisample = mDescriptor.sample_count > 1;
+            const ALMetalPixelFormat attachment_format =
+                mDescriptor.colors[index].format;
+            if (pass_config.linear_storage_view &&
+                (multisample ||
+                 alMetalLinearFormat(attachment_format) == attachment_format))
+            {
+                setError(error,
+                         "A linear-storage Metal render-pass view requires a single-sample sRGB color attachment");
+                return nullptr;
+            }
             if (!multisample && isResolveAction(pass_config.store))
             {
                 setError(error, "A single-sample Metal color attachment cannot use a resolve store action");
@@ -1475,9 +1485,18 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
             }
 
             MTLRenderPassColorAttachmentDescriptor* attachment = descriptor.colorAttachments[index];
-            attachment.texture = (__bridge id<MTLTexture>)(multisample
+            void* color_handle = multisample
                 ? mImpl->multisample_colors[index]->nativeHandle()
-                : mImpl->colors[index]->nativeHandle());
+                : pass_config.linear_storage_view
+                    ? mImpl->colors[index]->nativeLinearHandle()
+                    : mImpl->colors[index]->nativeHandle();
+            if (!color_handle)
+            {
+                setError(error,
+                         "Metal could not create the requested linear-storage render-pass view");
+                return nullptr;
+            }
+            attachment.texture = (__bridge id<MTLTexture>)color_handle;
             attachment.resolveTexture = multisample
                 ? (__bridge id<MTLTexture>)mImpl->colors[index]->nativeHandle() : nil;
             attachment.loadAction = loadAction(pass_config.load);

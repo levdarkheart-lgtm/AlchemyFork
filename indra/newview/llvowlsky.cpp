@@ -464,11 +464,21 @@ bool LLVOWLSky::updateGeometry(LLDrawable * drawable)
     return true;
 }
 
+#if LL_DARWIN
+bool LLVOWLSky::hasStars() const
+{
+    return mStarsVerts.notNull();
+}
+#endif
+
 void LLVOWLSky::drawStars(void)
 {
     //  render the stars as a sphere centered at viewer camera
     if (mStarsVerts.notNull())
     {
+#if LL_DARWIN
+        gPipeline.captureMetalWorldWindLightStarBatch(mStarsVerts);
+#endif
         mStarsVerts->setBuffer();
         mStarsVerts->drawArrays(LLRender::TRIANGLES, 0, (S32)(getStarsNumVerts() * 6));
     }

@@ -159,6 +159,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_hdri_sky_fragment",
             "almetal_world_windlight_sky_vertex",
             "almetal_world_windlight_sky_fragment",
+            "almetal_world_star_vertex",
+            "almetal_world_star_fragment",
             "almetal_world_base_light_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
@@ -3804,6 +3806,182 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(windlight_normal[outside + 2] == 0);
         CHECK(windlight_normal[outside + 3] == 0);
 
+        // Replay one production-layout star quad over the atmospheric dome.
+        // Rendering the same star over a black WindLight transaction isolates
+        // its stored RGB contribution. The colored-dome result must then be
+        // the raw encoded-byte sum (within one quantization step), not an sRGB
+        // decode/blend/re-encode result.
+        struct StarBufferData
+        {
+            std::array<std::array<float, 4>, 6> positions{};
+            std::array<std::array<std::uint8_t, 4>, 6> colors{};
+            std::array<std::array<float, 2>, 6> texcoords{};
+        } star_data;
+        const float star_coordinate =
+            2.f * (2.5f / 32.f) - 1.f;
+        const std::array<std::array<float, 2>, 6> star_corners{{
+            {{-1.f, -1.f}}, {{ 1.f, -1.f}}, {{ 1.f,  1.f}},
+            {{-1.f, -1.f}}, {{ 1.f,  1.f}}, {{-1.f,  1.f}},
+        }};
+        for (std::size_t vertex = 0; vertex < 6; ++vertex)
+        {
+            star_data.positions[vertex] = {
+                star_coordinate, star_coordinate, 0.5f, 1.f,
+            };
+            star_data.colors[vertex] = {220, 180, 140, 128};
+            star_data.texcoords[vertex] = star_corners[vertex];
+        }
+        ALMetalBufferDescriptor star_buffer_descriptor;
+        star_buffer_descriptor.length = sizeof(star_data);
+        star_buffer_descriptor.storage = ALMetalStorageMode::shared;
+        star_buffer_descriptor.label =
+            "Alchemy WindLight star production-layout vertices";
+        auto star_buffer = ALMetalBuffer::create(
+            *device, star_buffer_descriptor, &error);
+        INFO(error);
+        REQUIRE(star_buffer);
+        REQUIRE(star_buffer->write(
+            0, &star_data, sizeof(star_data), &error));
+
+        ALMetalWorldStarBatch star_batch;
+        star_batch.vertices = star_buffer.get();
+        star_batch.position_offset = offsetof(
+            StarBufferData, positions);
+        star_batch.color_offset = offsetof(StarBufferData, colors);
+        star_batch.texcoord_offset = offsetof(
+            StarBufferData, texcoords);
+        star_batch.vertex_count = 6;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            star_batch.modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        ALMetalWorldStarScene star_scene;
+        star_scene.batches = &star_batch;
+        star_scene.batch_count = 1;
+        star_scene.star_alpha = 1.f;
+        star_scene.time = 0.f;
+        star_scene.width = 32;
+        star_scene.height = 32;
+        star_scene.normal_hdr = true;
+        REQUIRE(renderer->compositeWindLightStars(
+            *pbr_gbuffer, star_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> star_albedo{};
+        std::array<std::uint16_t, 32 * 32 * 4> star_normal{};
+        REQUIRE(pbr_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, star_albedo.data(), 32 * 4, &error));
+        REQUIRE(pbr_gbuffer->colorTexture(2)->readback(
+            *device, 0, 0, {}, star_normal.data(), 32 * 8, &error));
+        INFO(error);
+        CHECK(star_albedo[outside + 0] >
+              windlight_albedo[outside + 0]);
+        CHECK(star_albedo[outside + 1] >
+              windlight_albedo[outside + 1]);
+        CHECK(star_normal[outside + 0] == 0);
+        CHECK(star_normal[outside + 1] == 65535);
+        CHECK(star_normal[outside + 2] == 0);
+        CHECK(star_normal[outside + 3] == 0);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(star_albedo[center + channel] ==
+                  windlight_albedo[center + channel]);
+        }
+
+        auto star_source_gbuffer = renderer->render(
+            gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(star_source_gbuffer);
+        ALMetalWorldWindLightSkyScene black_windlight_scene =
+            windlight_scene;
+        std::fill(std::begin(
+                      black_windlight_scene.constants.blue_horizon),
+                  std::end(
+                      black_windlight_scene.constants.blue_horizon),
+                  0.f);
+        REQUIRE(renderer->compositeWindLightSky(
+            *star_source_gbuffer, black_windlight_scene, &error));
+        REQUIRE(renderer->compositeWindLightStars(
+            *star_source_gbuffer, star_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> star_source_albedo{};
+        REQUIRE(star_source_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, star_source_albedo.data(),
+            32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const int raw_sum = std::min(
+                255, static_cast<int>(
+                         windlight_albedo[outside + channel]) +
+                     static_cast<int>(
+                         star_source_albedo[outside + channel]));
+            CHECK(std::abs(static_cast<int>(
+                      star_albedo[outside + channel]) - raw_sum) <= 1);
+        }
+
+        // The live moon texture alpha suppresses the whole star quad when its
+        // direction intersects the moon quad. Missing mask storage fails
+        // before encoding rather than drawing through the moon.
+        auto opaque_moon = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy WindLight star opaque moon mask");
+        const std::array<std::uint8_t, 4> opaque_moon_pixel{{
+            255, 255, 255, 255,
+        }};
+        auto moon_upload = device->makeCommandBuffer(
+            "Alchemy WindLight star moon-mask upload", &error);
+        INFO(error);
+        REQUIRE(moon_upload);
+        REQUIRE(opaque_moon->upload(
+            *moon_upload, 0, 0, {}, opaque_moon_pixel.data(), 4,
+            &error));
+        REQUIRE(moon_upload->commitAndWait(&error));
+        INFO(error);
+        auto masked_star_gbuffer = renderer->render(
+            gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(masked_star_gbuffer);
+        REQUIRE(renderer->compositeWindLightSky(
+            *masked_star_gbuffer, windlight_scene, &error));
+        star_scene.moon_mask = true;
+        star_scene.moon_texture = opaque_moon.get();
+        const float star_length = std::sqrt(
+            2.f * star_coordinate * star_coordinate + 0.25f);
+        star_scene.moon_quad_center[0] =
+            star_coordinate / star_length;
+        star_scene.moon_quad_center[1] =
+            star_coordinate / star_length;
+        star_scene.moon_quad_center[2] = 0.5f / star_length;
+        star_scene.moon_quad_u[0] = 1.f;
+        star_scene.moon_quad_v[1] = 1.f;
+        REQUIRE(renderer->compositeWindLightStars(
+            *masked_star_gbuffer, star_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> masked_star_albedo{};
+        REQUIRE(masked_star_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, masked_star_albedo.data(),
+            32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(masked_star_albedo[outside + channel] ==
+                  windlight_albedo[outside + channel]);
+        }
+        star_scene.moon_texture = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->compositeWindLightStars(
+            *masked_star_gbuffer, star_scene, &error));
+        CHECK(error ==
+              "Metal world WindLight star scene is incomplete");
+        error.clear();
+        star_scene.moon_mask = false;
+        std::fill(std::begin(star_scene.moon_quad_center),
+                  std::end(star_scene.moon_quad_center), 0.f);
+        std::fill(std::begin(star_scene.moon_quad_u),
+                  std::end(star_scene.moon_quad_u), 0.f);
+        std::fill(std::begin(star_scene.moon_quad_v),
+                  std::end(star_scene.moon_quad_v), 0.f);
+
         windlight_scene.reverse_z = true;
         REQUIRE(renderer->compositeWindLightSky(
             *pbr_reverse_gbuffer, windlight_scene, &error));
@@ -3819,6 +3997,22 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             CHECK(reverse_windlight_albedo[outside + channel] ==
                   windlight_albedo[outside + channel]);
         }
+        star_scene.reverse_z = true;
+        REQUIRE(renderer->compositeWindLightStars(
+            *pbr_reverse_gbuffer, star_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            reverse_star_albedo{};
+        REQUIRE(pbr_reverse_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_star_albedo.data(),
+            32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(reverse_star_albedo[outside + channel] ==
+                  star_albedo[outside + channel]);
+        }
+        star_scene.reverse_z = false;
         windlight_scene.reverse_z = false;
 
         ALMetalWorldWindLightSkyScene invalid_windlight_scene =
@@ -4280,10 +4474,13 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
                   base_pixels[center + channel]);
         }
 
-        // WindLight uses the zero-alpha marker and, unlike HDRI, treats the
-        // G-buffer payload as display encoded before applying fake-HDR scale.
+        // Layer the stars again before base transfer. Their additive green
+        // normal channel is the reference SKIP_ATMOS value while red, blue
+        // and alpha retain the WindLight family marker.
         REQUIRE(renderer->compositeWindLightSky(
             *pbr_gbuffer, windlight_scene, &error));
+        REQUIRE(renderer->compositeWindLightStars(
+            *pbr_gbuffer, star_scene, &error));
         INFO(error);
         base_scene.constants.sky[2] = 1;
         base_scene.constants.sky_transfer[0] = 2.f;
@@ -4301,7 +4498,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         {
             const float expected_linear = std::clamp(
                 srgb_to_linear(
-                    windlight_albedo[outside + channel] / 255.f) * 2.f,
+                    star_albedo[outside + channel] / 255.f) * 2.f,
                 0.f, 1.f);
             const int expected = static_cast<int>(std::lround(
                 expected_linear * 255.f));
@@ -4717,6 +4914,9 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         windlight_scene.hdr = true;
         REQUIRE(renderer->compositeWindLightSky(
             *hdr_gbuffer, windlight_scene, &error));
+        star_scene.hdr = true;
+        REQUIRE(renderer->compositeWindLightStars(
+            *hdr_gbuffer, star_scene, &error));
         INFO(error);
         std::array<std::uint16_t, 32 * 32 * 4> hdr_windlight_normal{};
         REQUIRE(hdr_gbuffer->colorTexture(2)->readback(
@@ -4724,7 +4924,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             32 * 8, &error));
         INFO(error);
         CHECK(hdr_windlight_normal[outside + 0] == 0);
-        CHECK(hdr_windlight_normal[outside + 1] == 0);
+        CHECK(hdr_windlight_normal[outside + 1] == 65535);
         CHECK(hdr_windlight_normal[outside + 2] == 0);
         CHECK(hdr_windlight_normal[outside + 3] == 0);
         base_scene.constants.sky[2] = 1;

@@ -669,6 +669,15 @@ public:
         F32 sky_hdr_scale);
     void captureMetalWorldWindLightSkyBatch(LLVertexBuffer* buffer);
     void endMetalWorldWindLightSky();
+    void beginMetalWorldWindLightStars(
+        F32 star_alpha, F32 time,
+        const LLVector3& moon_direction, F32 moon_brightness,
+        const LLVector3& moon_quad_center,
+        const LLVector3& moon_quad_u,
+        const LLVector3& moon_quad_v,
+        LLViewerTexture* moon_texture, bool moon_mask);
+    void captureMetalWorldWindLightStarBatch(LLVertexBuffer* buffer);
+    void endMetalWorldWindLightStars();
     bool mirrorMetalWorldBaseLightMap(LLRenderTarget* source);
     void renderMetalWorldBaseLighting(
         LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao,
