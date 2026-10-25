@@ -433,6 +433,11 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> base_light_target;
     std::unique_ptr<ALMetalRenderTarget> impostor_bake_target;
     std::vector<ALMetalWorldSimpleBatch> batches;
+    std::vector<ALMetalWorldHDRISkyBatch> hdri_sky_batches;
+    const ALMetalTexture* hdri_sky_environment = nullptr;
+    F32 hdri_sky_camera_local[4]{};
+    F32 hdri_sky_environment_rotation[3][4]{};
+    F32 hdri_sky_exposure_scale = 1.f;
     std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
         avatar_palettes;
     U32 width = 0;
@@ -440,6 +445,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool frame_active = false;
     bool pass_active = false;
     bool complete = false;
+    bool hdri_sky_active = false;
+    bool hdri_sky_complete = false;
+    bool hdri_sky_native_available = false;
     bool attempted = false;
     bool local_lighting_attempted = false;
     U32 local_lighting_failed_frames = 0;
@@ -854,6 +862,11 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.base_light_map_texture.reset();
         capture.base_light_map_bytes.clear();
         capture.base_light_target.reset();
+        capture.hdri_sky_batches.clear();
+        capture.hdri_sky_environment = nullptr;
+        capture.hdri_sky_active = false;
+        capture.hdri_sky_complete = false;
+        capture.hdri_sky_native_available = false;
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
@@ -1002,6 +1015,11 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
 
     capture.batches.clear();
+    capture.hdri_sky_batches.clear();
+    capture.hdri_sky_environment = nullptr;
+    capture.hdri_sky_active = false;
+    capture.hdri_sky_complete = false;
+    capture.hdri_sky_native_available = false;
     capture.avatar_palettes.clear();
     capture.width = descriptor->width;
     capture.height = descriptor->height;
@@ -1011,6 +1029,113 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.complete = true;
     capture.frame_active = true;
     capture.pass_active = false;
+}
+
+void LLPipeline::beginMetalWorldHDRISky(
+    LLImageGL* environment, F32 exposure_scale,
+    const LLMatrix3& environment_rotation, F32 camera_height_local)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.hdri_sky_batches.clear();
+    capture.hdri_sky_environment = nullptr;
+    capture.hdri_sky_active = false;
+    capture.hdri_sky_complete = false;
+    capture.hdri_sky_native_available = false;
+    ALMetalTexture* metal_environment = environment
+        ? environment->getMetalTexture() : nullptr;
+    if (capture.pass_active || !metal_environment ||
+        !std::isfinite(exposure_scale) || exposure_scale < 0.f ||
+        !std::isfinite(camera_height_local))
+    {
+        return;
+    }
+    for (U32 row = 0; row < 3; ++row)
+    {
+        for (U32 column = 0; column < 3; ++column)
+        {
+            if (!std::isfinite(environment_rotation.mMatrix[row][column]))
+            {
+                return;
+            }
+        }
+    }
+
+    capture.hdri_sky_environment = metal_environment;
+    capture.hdri_sky_camera_local[0] = 0.f;
+    capture.hdri_sky_camera_local[1] = camera_height_local;
+    capture.hdri_sky_camera_local[2] = 0.f;
+    capture.hdri_sky_camera_local[3] = 0.f;
+    for (U32 column = 0; column < 3; ++column)
+    {
+        for (U32 row = 0; row < 3; ++row)
+        {
+            capture.hdri_sky_environment_rotation[column][row] =
+                environment_rotation.mMatrix[column][row];
+        }
+        capture.hdri_sky_environment_rotation[column][3] = 0.f;
+    }
+    capture.hdri_sky_exposure_scale = exposure_scale;
+    capture.hdri_sky_complete = true;
+    capture.hdri_sky_active = true;
+}
+
+void LLPipeline::captureMetalWorldHDRISkyBatch(LLVertexBuffer* buffer)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->hdri_sky_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.hdri_sky_complete || !buffer ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer() ||
+        buffer->getNumVerts() == 0 || buffer->getNumIndices() < 3 ||
+        (buffer->getIndexStride() != 2 &&
+         buffer->getIndexStride() != 4))
+    {
+        capture.hdri_sky_complete = false;
+        capture.hdri_sky_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldHDRISkyBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset =
+        buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = buffer->getNumIndices();
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    capture.hdri_sky_batches.push_back(batch);
+}
+
+void LLPipeline::endMetalWorldHDRISky()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->hdri_sky_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.hdri_sky_active = false;
+    if (capture.hdri_sky_batches.empty())
+    {
+        capture.hdri_sky_complete = false;
+    }
 }
 
 void LLPipeline::beginMetalWorldGBufferPass(bool rigged, bool alpha_mask)
@@ -1252,6 +1377,11 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.base_light_map_texture.reset();
         capture.base_light_map_bytes.clear();
         capture.base_light_target.reset();
+        capture.hdri_sky_batches.clear();
+        capture.hdri_sky_environment = nullptr;
+        capture.hdri_sky_active = false;
+        capture.hdri_sky_complete = false;
+        capture.hdri_sky_native_available = false;
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
@@ -4290,6 +4420,42 @@ void LLPipeline::endMetalWorldGBufferCapture()
     }
     else
     {
+        capture.hdri_sky_native_available = false;
+        if (capture.hdri_sky_complete &&
+            !capture.hdri_sky_active &&
+            !capture.hdri_sky_batches.empty() &&
+            capture.hdri_sky_environment)
+        {
+            ALMetalWorldHDRISkyScene sky_scene;
+            sky_scene.batches = capture.hdri_sky_batches.data();
+            sky_scene.batch_count = capture.hdri_sky_batches.size();
+            sky_scene.environment_texture =
+                capture.hdri_sky_environment;
+            std::memcpy(sky_scene.camera_local,
+                        capture.hdri_sky_camera_local,
+                        sizeof(sky_scene.camera_local));
+            std::memcpy(sky_scene.environment_rotation,
+                        capture.hdri_sky_environment_rotation,
+                        sizeof(sky_scene.environment_rotation));
+            sky_scene.exposure_scale =
+                capture.hdri_sky_exposure_scale;
+            sky_scene.width = capture.width;
+            sky_scene.height = capture.height;
+            sky_scene.normal_hdr = capture.normal_hdr;
+            sky_scene.hdr = capture.hdr;
+            sky_scene.reverse_z = capture.reverse_z;
+            error.clear();
+            capture.hdri_sky_native_available =
+                capture.renderer->compositeHDRISky(
+                    *target, sky_scene, &error);
+            if (!capture.hdri_sky_native_available)
+            {
+                LL_WARNS("Metal")
+                    << "Native world HDRI sky retained clear-depth GL "
+                       "authority after composite failure: "
+                    << error << LL_ENDL;
+            }
+        }
         capture.target = std::move(target);
         capture.attempted = true;
         capture.failed_frames = 0;
@@ -4298,10 +4464,17 @@ void LLPipeline::endMetalWorldGBufferCapture()
             << capture.batches.size()
             << " world batches at " << capture.width << "x"
             << capture.height
+            << (capture.hdri_sky_native_available
+                    ? "; full HDRI sky is native"
+                    : "; sky remains GL-owned")
             << "; presentation remains on GL until the remaining world passes exist"
             << LL_ENDL;
     }
     capture.batches.clear();
+    capture.hdri_sky_batches.clear();
+    capture.hdri_sky_environment = nullptr;
+    capture.hdri_sky_active = false;
+    capture.hdri_sky_complete = false;
     capture.avatar_palettes.clear();
 }
 
@@ -4756,6 +4929,8 @@ void LLPipeline::renderMetalWorldBaseLighting(
     constants.lighting[3] = ssao_max;
     constants.surface[0] = mDeferredUBOData.specular_exponent;
     constants.surface[1] = capture.normal_hdr ? 1.f : 0.f;
+    constants.sky[0] = capture.hdri_sky_native_available ? 1u : 0u;
+    constants.sky[1] = capture.hdr ? 1u : 0u;
     constants.config[0] = capture.reverse_z ? 1u : 0u;
     constants.config[1] = LLRender::sClassicMode ? 1u : 0u;
     constants.config[2] = has_sun_shadow ? 1u : 0u;
@@ -4783,7 +4958,10 @@ void LLPipeline::renderMetalWorldBaseLighting(
         << "Native world probe-finished base-light owner encoded at "
         << capture.base_light_target->descriptor().width << "x"
         << capture.base_light_target->descriptor().height
-        << "; GL remains authoritative while sky, projectors and composition are open"
+        << (capture.hdri_sky_native_available
+                ? "; full HDRI clear-depth transfer is native"
+                : "; sky transfer remains GL-owned")
+        << "; GL remains authoritative while WindLight sky, projectors and composition are open"
         << LL_ENDL;
 }
 #endif

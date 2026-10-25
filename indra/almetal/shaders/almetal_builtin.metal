@@ -383,6 +383,19 @@ struct ALMetalWorldBaseLightingConstants
     float4 ssao_effect[3];
     float4 lighting;
     float4 surface;
+    uint4 sky;
+    uint4 config;
+};
+
+struct ALMetalWorldHDRISkyConstants
+{
+    float4x4 modelview_projection;
+    // xyz = sky-local camera, w = 2^RenderHDRIExposure.
+    float4 camera_exposure;
+    float4 environment_rotation[3];
+    // xy = destination dimensions.
+    float4 screen;
+    // x = reverse Z, y = emissive/HDR G-buffer.
     uint4 config;
 };
 
@@ -399,6 +412,81 @@ struct ALMetalWorldGBufferOutput
     float4 normal [[color(2)]];
     float4 emissive [[color(3)]];
 };
+
+struct ALMetalWorldHDRISkyVaryings
+{
+    float4 position [[position]];
+    float3 local_position;
+};
+
+vertex ALMetalWorldHDRISkyVaryings almetal_world_hdri_sky_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldHDRISkyConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float3 local_position = positions[vertex_id].xyz;
+    float4 clip_position = constants.modelview_projection *
+                           float4(local_position, 1.0);
+    clip_position.y = -clip_position.y;
+    // Match skyV.glsl: every dome vertex is on the far plane and depth is
+    // read-only, so only pixels left clear by opaque geometry are writable.
+    clip_position.z = constants.config.x != 0u ? 0.0 : clip_position.w;
+
+    ALMetalWorldHDRISkyVaryings output;
+    output.position = clip_position;
+    output.local_position = local_position;
+    return output;
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_hdri_sky_fragment(
+    ALMetalWorldHDRISkyVaryings input [[stage_in]],
+    constant ALMetalWorldHDRISkyConstants& constants [[buffer(0)]],
+    texture2d<float> environment_map [[texture(0)]],
+    sampler environment_sampler [[sampler(0)]])
+{
+    float3 direction = normalize(
+        input.local_position - constants.camera_exposure.xyz +
+        float3(0.0, 50.0, 0.0));
+    const float3x3 rotation = float3x3(
+        constants.environment_rotation[0].xyz,
+        constants.environment_rotation[1].xyz,
+        constants.environment_rotation[2].xyz);
+    direction = rotation * direction;
+    const float2 texcoord = float2(
+        atan2(direction.z, direction.x) + M_PI_F,
+        acos(direction.y)) / float2(2.0 * M_PI_F, M_PI_F);
+    float3 color = environment_map.sample(
+        environment_sampler, texcoord, level(0.0)).rgb *
+        constants.camera_exposure.w;
+    color = min(color, float3(1073741824.0));
+
+    ALMetalWorldGBufferOutput output;
+    output.specular_orm = 0.0;
+    output.normal = float4(0.0, 0.0, 0.0, 1.0);
+    if (constants.config.y != 0u)
+    {
+        const float2 gl_fragment_position = float2(
+            input.position.x, constants.screen.y - input.position.y);
+        const float noise = fract(
+            52.9829189 * fract(dot(
+                gl_fragment_position, float2(0.06711056, 0.00583715)))) -
+            0.5;
+        output.albedo = 0.0;
+        output.emissive = float4(
+            color * (1.0 + noise *
+                float3(1.0 / 64.0, 1.0 / 64.0, 1.0 / 32.0)),
+            1.0);
+    }
+    else
+    {
+        // The destination is an sRGB attachment. Fixed-function encoding
+        // stores the same display-encoded bytes that skyF writes raw with
+        // FRAMEBUFFER_SRGB disabled; the base pass decodes them once.
+        output.albedo = float4(clamp(color, 0.0, 1.0), 1.0);
+        output.emissive = 0.0;
+    }
+    return output;
+}
 
 struct ALMetalWorldImpostorConstants
 {
@@ -6032,9 +6120,34 @@ fragment float4 almetal_world_base_light_fragment(
     const float depth = depth_texture.sample(
         point_sampler, input.texcoord).r;
     const bool reverse_z = constants.config.x != 0u;
-    if ((reverse_z && depth <= 0.0) || (!reverse_z && depth >= 1.0))
+    const bool clear_depth =
+        (reverse_z && depth <= 0.0) || (!reverse_z && depth >= 1.0);
+    const float4 normal_sample = normal_texture.sample(
+        point_sampler, input.texcoord);
+    if (clear_depth)
     {
-        discard_fragment();
+        // A clear target also has alpha one, so the HDRI flag is not enough
+        // to distinguish a completed sky transaction from the magenta
+        // diagnostic clear. Require both the explicit transaction bit and
+        // the zero-RGB marker written by the sky fragment.
+        const bool hdri_sky = constants.sky.x != 0u &&
+            normal_sample.a > 0.9 &&
+            max(normal_sample.r, max(normal_sample.g, normal_sample.b)) <
+                0.001;
+        if (!hdri_sky)
+        {
+            discard_fragment();
+        }
+        float3 sky_color = constants.sky.y != 0u
+            ? emissive_texture.sample(
+                  point_sampler, input.texcoord).rgb
+            : albedo_texture.sample(
+                  point_sampler, input.texcoord).rgb;
+        sky_color *= constants.config.y != 0u ? 1.1 : 1.0;
+        sky_color = select(
+            sky_color, float3(65504.0), isinf(sky_color));
+        sky_color = select(sky_color, float3(0.0), isnan(sky_color));
+        return float4(sky_color, 0.0);
     }
 
     const float ndc_z = reverse_z ? depth : depth * 2.0 - 1.0;
@@ -6043,8 +6156,6 @@ fragment float4 almetal_world_base_light_fragment(
     position.w = max(position.w, 0.000001);
     position /= position.w;
 
-    const float4 normal_sample = normal_texture.sample(
-        point_sampler, input.texcoord);
     const float3 normal = almetal_world_oct_decode(normal_sample.xy);
     const float4 base_color = albedo_texture.sample(
         point_sampler, input.texcoord);

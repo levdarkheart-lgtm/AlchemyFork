@@ -183,11 +183,15 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
 
     if (gPipeline.canUseWindLightShaders() && gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_SKY))
     {
+        const bool hdri_sky = use_hdri_sky();
+#if LL_DARWIN
+        bool native_hdri_capture = false;
+#endif
         // The sky again, behind everything, for the haze pass to converge far water on (hazeF.glsl): the main view's
         // only, and only when water is in it; an HDRI sky is colour already shaded, which the haze cannot take the
         // same way. Whether any water shows is asked first, before the sky binds its textures.
         // From the pool until the haze has read it, acquired before the sky binds its textures.
-        LLRenderTarget* const behind = !use_hdri_sky() && gPipeline.skyBehindWanted() ? gPipeline.acquireSkyBehind() : nullptr;
+        LLRenderTarget* const behind = !hdri_sky && gPipeline.skyBehindWanted() ? gPipeline.acquireSkyBehind() : nullptr;
         const bool            sky_behind = behind != nullptr;
         if (!gCubeSnapshot && gPipeline.mRT == &gPipeline.mMainRT)
         {
@@ -195,7 +199,7 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
         }
         const bool queried = sky_behind && query_water_in_view();
 
-        if (use_hdri_sky())
+        if (hdri_sky)
         {
             sky_shader = &gEnvironmentMapProgram;
             sky_shader->bind();
@@ -215,6 +219,19 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
             sky_shader->uniform1f(LLShaderMgr::SKY_HDR_SCALE, powf(2.f, hdri_exposure));
             sky_shader->uniformMatrix3fv(LLShaderMgr::DEFERRED_ENV_MAT, 1, GL_FALSE, (F32*) rot.mMatrix);
             sky_shader->uniform1f(LLShaderMgr::HDRI_SPLIT_SCREEN, gCubeSnapshot ? 1.f : hdri_split);
+#if LL_DARWIN
+            // The full-HDRI case owns every visible sky layer: the pool's
+            // later star/body/effect/cloud draws all opt out through
+            // use_hdri_sky(). A partial split still needs the complementary
+            // WindLight branch and therefore remains GL-owned fail-closed.
+            if (!gCubeSnapshot && hdri_split >= 1.f)
+            {
+                gPipeline.beginMetalWorldHDRISky(
+                    gEXRImage.get(), powf(2.f, hdri_exposure), rot,
+                    camHeightLocal);
+                native_hdri_capture = true;
+            }
+#endif
         }
         else
         {
@@ -252,6 +269,12 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
 
         /// Render the skydome
         renderDome(origin, camHeightLocal, sky_shader);
+#if LL_DARWIN
+        if (native_hdri_capture)
+        {
+            gPipeline.endMetalWorldHDRISky();
+        }
+#endif
 
         // Again into the sky behind, with the same program and uniforms and no depth, so it covers what the world hides.
         // The GPU clears and draws it only if the query saw water, with no readback: a frame late, the far water would

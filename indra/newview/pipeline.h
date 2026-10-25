@@ -74,6 +74,8 @@ class LLDrawPoolAlpha;
 class LLSettingsSky;
 class LLViewerJointMesh;
 class LLGLTexture;
+class LLImageGL;
+class LLVertexBuffer;
 
 typedef enum e_avatar_skinning_method
 {
@@ -654,6 +656,11 @@ public:
         F32 light_scale, S32 local_light_count);
     bool renderMetalWorldLightMap(
         LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao);
+    void beginMetalWorldHDRISky(
+        LLImageGL* environment, F32 exposure_scale,
+        const LLMatrix3& environment_rotation, F32 camera_height_local);
+    void captureMetalWorldHDRISkyBatch(LLVertexBuffer* buffer);
+    void endMetalWorldHDRISky();
     bool mirrorMetalWorldBaseLightMap(LLRenderTarget* source);
     void renderMetalWorldBaseLighting(
         LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao,

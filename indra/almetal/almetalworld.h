@@ -331,6 +331,44 @@ struct ALMetalWorldLightMapScene
     ALMetalWorldLightMapConstants constants;
 };
 
+// One retained strip of the WindLight sky dome. The vertex/index buffers are
+// the same immutable mirrors used by the authoritative GL draw; only the
+// model-view-projection transform is snapshotted per strip.
+struct ALMetalWorldHDRISkyBatch
+{
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
+    float modelview_projection[16]{};
+};
+
+// The exact full-screen HDRI branch of skyF.glsl. Split-screen HDRI is not a
+// valid instance of this scene because its other half is the WindLight haze
+// family; callers must retain GL until that producer is native too.
+struct ALMetalWorldHDRISkyScene
+{
+    const ALMetalWorldHDRISkyBatch* batches = nullptr;
+    std::size_t batch_count = 0;
+    const ALMetalTexture* environment_texture = nullptr;
+    float camera_local[4]{};
+    // Three vec4-strided columns matching GLSL's env_mat multiply.
+    float environment_rotation[3][4] = {
+        {1.f, 0.f, 0.f, 0.f},
+        {0.f, 1.f, 0.f, 0.f},
+        {0.f, 0.f, 1.f, 0.f},
+    };
+    float exposure_scale = 1.f;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    bool normal_hdr = false;
+    bool hdr = false;
+    bool reverse_z = false;
+};
+
 struct alignas(16) ALMetalWorldBaseLightingConstants
 {
     float inverse_projection[16]{};
@@ -347,6 +385,10 @@ struct alignas(16) ALMetalWorldBaseLightingConstants
     float lighting[4]{};
     // x = legacy specular exponent.
     float surface[4] = {128.f, 0.f, 0.f, 0.f};
+    // x = a native sky transaction populated the clear-depth pixels,
+    // y = the G-buffer has an emissive attachment. z/w are reserved for the
+    // WindLight transfer scale and future sky-family state.
+    std::uint32_t sky[4]{};
     // x = reverse Z, y = classic mode, z = sun shadow, w = SSAO.
     std::uint32_t config[4]{};
 };
@@ -399,6 +441,16 @@ public:
     // directional visibility in R and bilateral two-axis SSAO in G.
     std::unique_ptr<ALMetalRenderTarget> renderLightMap(
         const ALMetalWorldLightMapScene& scene,
+        std::string* error = nullptr);
+
+    // Load the retained world G-buffer and fill only its clear-depth pixels
+    // with the exact full-HDRI branch of the deferred sky dome. Geometry is
+    // preserved by read-only far-plane depth testing. This does not accept a
+    // split HDRI because the complementary WindLight branch is a separate
+    // native owner.
+    bool compositeHDRISky(
+        ALMetalRenderTarget& target,
+        const ALMetalWorldHDRISkyScene& scene,
         std::string* error = nullptr);
 
     // Shade the retained world G-buffer with the deferred base-light owner:

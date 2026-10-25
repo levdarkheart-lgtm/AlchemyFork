@@ -82,26 +82,25 @@ void load_exr(const std::string& filename)
     int ret =  LoadEXRWithLayer(&out, &width, &height, filename.c_str(), /* layername */ nullptr, &err);
     if (ret == TINYEXR_SUCCESS)
     {
-        U32 texName = 0;
-        LLImageGL::generateTextures(1, &texName);
-
-        gEXRImage = new LLImageGL(texName, 4, GL_TEXTURE_2D, GL_RGB16F, GL_RGBA, GL_FLOAT);
+        // Upload through LLImageGL rather than wrapping a raw GL name. On
+        // Darwin this publishes the same RGBA16F pixels and generated mip
+        // chain to the paired private Metal texture, so the native sky owner
+        // never needs a GL readback.
+        gEXRImage = new LLImageGL(width, height, 4, true);
+        gEXRImage->setExplicitFormat(
+            GL_RGBA16F, GL_RGBA, GL_FLOAT);
         gEXRImage->setHasMipMaps(true);
         gEXRImage->setUseMipMaps(true);
-        gEXRImage->markStorageAllocated();
-
-        gGL.getTextureSlot(0)->bind(gEXRImage);
-
-        // Immutable storage with the full mip chain, upload and VRAM accounting in one
-        // call -- this used to be a raw mutable glTexImage2D bypassing the allocator.
-        LLImageGL::allocateTexture2D(GL_TEXTURE_2D, GL_RGB16F, width, height, GL_RGBA, GL_FLOAT, out,
-                                     LLImageGL::calcMipLevelCount(width, height));
+        const bool uploaded = gEXRImage->createGLTexture(
+            0, reinterpret_cast<const U8*>(out));
 
         free(out); // release memory of image data
-
-        LLImageGL::generateMipmaps(GL_TEXTURE_2D);
-
-        gGL.getTextureSlot(0)->unbind();
+        if (!uploaded)
+        {
+            LL_WARNS("HDRI")
+                << "Could not publish the loaded HDRI texture" << LL_ENDL;
+            gEXRImage = nullptr;
+        }
 
     }
     else

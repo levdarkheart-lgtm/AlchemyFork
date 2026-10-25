@@ -504,6 +504,9 @@ void LLVOWLSky::drawDome(void)
     {
         LLVertexBuffer * strips_segment = strips_vbo_iter->get();
 
+#if LL_DARWIN
+        gPipeline.captureMetalWorldHDRISkyBatch(strips_segment);
+#endif
         strips_segment->setBuffer();
 
         strips_segment->drawRange(

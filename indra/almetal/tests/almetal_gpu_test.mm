@@ -155,6 +155,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_local_light_fragment",
             "almetal_world_light_map_fragment",
             "almetal_world_light_map_blur_fragment",
+            "almetal_world_hdri_sky_vertex",
+            "almetal_world_hdri_sky_fragment",
             "almetal_world_base_light_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
@@ -3589,6 +3591,138 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(pbr_pixels[center + 3] == 0);
         CHECK(pbr_pixels[center + 0] != legacy_pixels[center + 0]);
 
+        // Fill only the clear-depth pixels of both forward- and reverse-Z
+        // retained G-buffers with a full HDRI dome. A one-texel panorama
+        // makes the expected transfer independent of direction while the
+        // indexed strip still exercises the production geometry contract.
+        const std::array<std::array<float, 4>, 4> sky_vertices{{
+            {{-1.f, -1.f, 0.f, 1.f}},
+            {{ 1.f, -1.f, 0.f, 1.f}},
+            {{-1.f,  1.f, 0.f, 1.f}},
+            {{ 1.f,  1.f, 0.f, 1.f}},
+        }};
+        const std::array<std::uint16_t, 4> sky_indices{{0, 1, 2, 3}};
+        ALMetalBufferDescriptor sky_vertex_descriptor;
+        sky_vertex_descriptor.length = sizeof(sky_vertices);
+        sky_vertex_descriptor.storage = ALMetalStorageMode::shared;
+        sky_vertex_descriptor.label = "Alchemy HDRI sky test vertices";
+        auto sky_vertex_buffer = ALMetalBuffer::create(
+            *device, sky_vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(sky_vertex_buffer);
+        REQUIRE(sky_vertex_buffer->write(
+            0, sky_vertices.data(), sizeof(sky_vertices), &error));
+        ALMetalBufferDescriptor sky_index_descriptor;
+        sky_index_descriptor.length = sizeof(sky_indices);
+        sky_index_descriptor.storage = ALMetalStorageMode::shared;
+        sky_index_descriptor.label = "Alchemy HDRI sky test indices";
+        auto sky_index_buffer = ALMetalBuffer::create(
+            *device, sky_index_descriptor, &error);
+        INFO(error);
+        REQUIRE(sky_index_buffer);
+        REQUIRE(sky_index_buffer->write(
+            0, sky_indices.data(), sizeof(sky_indices), &error));
+
+        ALMetalTextureDescriptor hdri_descriptor;
+        hdri_descriptor.format = ALMetalPixelFormat::rgba16_float;
+        hdri_descriptor.width = 1;
+        hdri_descriptor.height = 1;
+        hdri_descriptor.storage = ALMetalStorageMode::private_gpu;
+        hdri_descriptor.usage = ALMetalTextureUsage::shader_read;
+        hdri_descriptor.label = "Alchemy full HDRI sky test panorama";
+        auto hdri_texture = ALMetalTexture::create(
+            *device, hdri_descriptor, &error);
+        INFO(error);
+        REQUIRE(hdri_texture);
+        const std::array<std::uint16_t, 4> hdri_pixel{{
+            0x3800, 0x3400, 0x3a00, 0x3c00,
+        }}; // linear (0.5, 0.25, 0.75, 1.0)
+        auto hdri_upload = device->makeCommandBuffer(
+            "Alchemy full HDRI sky test upload", &error);
+        INFO(error);
+        REQUIRE(hdri_upload);
+        REQUIRE(hdri_texture->upload(
+            *hdri_upload, 0, 0, {}, hdri_pixel.data(), 8, &error));
+        REQUIRE(hdri_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldHDRISkyBatch sky_batch;
+        sky_batch.vertices = sky_vertex_buffer.get();
+        sky_batch.vertex_count = 4;
+        sky_batch.indices = sky_index_buffer.get();
+        sky_batch.index_count = 4;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            sky_batch.modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        ALMetalWorldHDRISkyScene sky_scene;
+        sky_scene.batches = &sky_batch;
+        sky_scene.batch_count = 1;
+        sky_scene.environment_texture = hdri_texture.get();
+        sky_scene.environment_rotation[0][0] = 1.f;
+        sky_scene.environment_rotation[1][1] = 1.f;
+        sky_scene.environment_rotation[2][2] = 1.f;
+        sky_scene.exposure_scale = 1.f;
+        sky_scene.width = 32;
+        sky_scene.height = 32;
+        sky_scene.normal_hdr = true;
+
+        std::array<std::uint8_t, 32 * 32 * 4> before_sky_albedo{};
+        REQUIRE(pbr_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, before_sky_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        REQUIRE(renderer->compositeHDRISky(
+            *pbr_gbuffer, sky_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> sky_albedo{};
+        std::array<std::uint16_t, 32 * 32 * 4> sky_normal{};
+        REQUIRE(pbr_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, sky_albedo.data(), 32 * 4, &error));
+        REQUIRE(pbr_gbuffer->colorTexture(2)->readback(
+            *device, 0, 0, {}, sky_normal.data(), 32 * 8, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(sky_albedo[center + channel] ==
+                  before_sky_albedo[center + channel]);
+        }
+        CHECK(std::abs(static_cast<int>(sky_albedo[outside + 0]) - 188)
+              <= 1);
+        CHECK(std::abs(static_cast<int>(sky_albedo[outside + 1]) - 137)
+              <= 1);
+        CHECK(std::abs(static_cast<int>(sky_albedo[outside + 2]) - 225)
+              <= 1);
+        CHECK(sky_albedo[outside + 3] == 255);
+        CHECK(sky_normal[outside + 0] == 0);
+        CHECK(sky_normal[outside + 1] == 0);
+        CHECK(sky_normal[outside + 2] == 0);
+        CHECK(sky_normal[outside + 3] == 65535);
+
+        sky_scene.reverse_z = true;
+        REQUIRE(renderer->compositeHDRISky(
+            *pbr_reverse_gbuffer, sky_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> reverse_sky_albedo{};
+        REQUIRE(pbr_reverse_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_sky_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(reverse_sky_albedo[outside + channel] ==
+                  sky_albedo[outside + channel]);
+        }
+        sky_scene.reverse_z = false;
+
+        ALMetalWorldHDRISkyScene invalid_sky_scene = sky_scene;
+        invalid_sky_scene.environment_texture = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->compositeHDRISky(
+            *pbr_gbuffer, invalid_sky_scene, &error));
+        CHECK(error == "Metal world HDRI sky scene is incomplete");
+        error.clear();
+
         // The retained native G-buffer now owns the two-channel deferred
         // light map as well. With no shadows or SSAO both geometry and the
         // cleared sky are fully lit. Enabling the directional owner with no
@@ -3998,6 +4132,37 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(base_pixels[center + 1] > 0);
         CHECK(base_pixels[center + 2] > 0);
         CHECK(base_pixels[center + 3] == 0);
+        CHECK(base_pixels[outside + 0] == 0);
+        CHECK(base_pixels[outside + 1] == 0);
+        CHECK(base_pixels[outside + 2] == 0);
+
+        // Merely seeing clear depth and a normal alpha of one is not enough:
+        // the base owner above discarded the sky until this explicit native
+        // transaction bit is set. Once set, the sRGB attachment decodes the
+        // vintage HDRI exactly once and transfers its linear color unlit.
+        base_scene.constants.sky[0] = 1;
+        auto base_with_hdri = renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(base_with_hdri);
+        std::array<std::uint8_t, 32 * 32 * 4> base_hdri_pixels{};
+        REQUIRE(base_with_hdri->colorTexture(0)->readback(
+            *device, 0, 0, {}, base_hdri_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                  base_hdri_pixels[outside + 0]) - 128) <= 1);
+        CHECK(std::abs(static_cast<int>(
+                  base_hdri_pixels[outside + 1]) - 64) <= 1);
+        CHECK(std::abs(static_cast<int>(
+                  base_hdri_pixels[outside + 2]) - 191) <= 1);
+        CHECK(base_hdri_pixels[outside + 3] == 0);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(base_hdri_pixels[center + channel] ==
+                  base_pixels[center + channel]);
+        }
+        base_scene.constants.sky[0] = 0;
 
         // Finish the ordinary probe result the same way as the deferred GLSL
         // owner. A 0.8-gloss PBR surface reads the hero probe at LOD 0.8:
@@ -4361,6 +4526,35 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         auto hdr_gbuffer = renderer->render(gbuffer_scene, &error);
         INFO(error);
         REQUIRE(hdr_gbuffer);
+        sky_scene.hdr = true;
+        REQUIRE(renderer->compositeHDRISky(
+            *hdr_gbuffer, sky_scene, &error));
+        INFO(error);
+        base_scene.gbuffer = hdr_gbuffer.get();
+        base_scene.hdr = true;
+        base_scene.hero_probe = nullptr;
+        base_scene.screen_space_reflections = nullptr;
+        base_scene.constants.inverse_projection[10] = 1.f;
+        base_scene.constants.config[0] = 0;
+        base_scene.constants.config[1] = 0;
+        base_scene.constants.config[3] = 0;
+        base_scene.constants.sky[0] = 1;
+        base_scene.constants.sky[1] = 1;
+        auto hdr_base = renderer->renderBaseLighting(base_scene, &error);
+        INFO(error);
+        REQUIRE(hdr_base);
+        std::array<std::uint16_t, 32 * 32 * 4> hdr_base_pixels{};
+        REQUIRE(hdr_base->colorTexture(0)->readback(
+            *device, 0, 0, {}, hdr_base_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(hdr_base_pixels[outside + 0] >= 0x37e0);
+        CHECK(hdr_base_pixels[outside + 0] <= 0x3820);
+        CHECK(hdr_base_pixels[outside + 1] >= 0x33e0);
+        CHECK(hdr_base_pixels[outside + 1] <= 0x3420);
+        CHECK(hdr_base_pixels[outside + 2] >= 0x39c0);
+        CHECK(hdr_base_pixels[outside + 2] <= 0x3a40);
+        CHECK(hdr_base_pixels[outside + 3] == 0);
         lighting_scene.gbuffer = hdr_gbuffer.get();
         lighting_scene.hdr = true;
         auto hdr = renderer->renderLocalLights(lighting_scene, &error);
