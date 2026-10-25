@@ -555,6 +555,7 @@ bool LLGLTFPreviewTexture::render()
                 mGLTexturep->getMetalTexture()->descriptor());
     }
     std::vector<ALMetalPBRPreviewBatch> metal_preview_batches;
+    ALMetalPBRPreviewEnvironment metal_preview_environment;
 #endif
 
     // The probe pack's post target the colour correction writes, from the pool with the bloom
@@ -749,7 +750,38 @@ bool LLGLTFPreviewTexture::render()
         bool metal_preview_eligible = metal_device &&
             mMetalPreviewDescriptor && base_color_texture && normal_texture &&
             orm_texture && emissive_texture && metal_preview_hdr &&
-            !metal_preview_no_post;
+            !metal_preview_no_post && !LLRender::sClassicMode;
+        if (metal_preview_eligible)
+        {
+            metal_preview_eligible =
+                gPipeline.mReflectionMapManager.fillMetalDefaultProbe(
+                    metal_preview_environment);
+        }
+        if (metal_preview_eligible)
+        {
+            // setEnvMat uploads this 3x3 with transpose=true. Store the
+            // resulting columns explicitly for MSL's column-major matrix
+            // multiply rather than inheriting GL's upload convention.
+            const F32* matrix =
+                LLViewerCamera::getCurrent().getModelview().getF32ptr();
+            metal_preview_environment.env_matrix[0][0] = matrix[0];
+            metal_preview_environment.env_matrix[0][1] = matrix[4];
+            metal_preview_environment.env_matrix[0][2] = matrix[8];
+            metal_preview_environment.env_matrix[1][0] = matrix[1];
+            metal_preview_environment.env_matrix[1][1] = matrix[5];
+            metal_preview_environment.env_matrix[1][2] = matrix[9];
+            metal_preview_environment.env_matrix[2][0] = matrix[2];
+            metal_preview_environment.env_matrix[2][1] = matrix[6];
+            metal_preview_environment.env_matrix[2][2] = matrix[10];
+
+            const LLEnvironment::EnvironmentUBOData& environment =
+                LLEnvironment::instance().mEnvUBOData;
+            std::memcpy(metal_preview_environment.ambient,
+                        environment.atmos_amblit,
+                        sizeof(environment.atmos_amblit));
+            metal_preview_environment.ambient[3] =
+                environment.sky_ambient_scale;
+        }
         const LLMatrix4a& modelview = gGL.getModelviewMatrix();
         LLMatrix4a inverse_modelview;
         LLMatrix4a modelview_projection;
@@ -873,6 +905,7 @@ bool LLGLTFPreviewTexture::render()
                 metal_scene.batch_count = metal_preview_batches.size();
                 metal_scene.destination_descriptor =
                     mMetalPreviewDescriptor.get();
+                metal_scene.environment = &metal_preview_environment;
                 metal_scene.exposure = metal_preview_exposure;
                 metal_scene.tonemap_mix = metal_preview_tonemap_mix;
                 metal_scene.tonemap_type = static_cast<U32>(
@@ -995,7 +1028,8 @@ bool LLGLTFPreviewTexture::render()
         {
             LL_WARNS_ONCE("Metal")
                 << "PBR material preview retained GL because its native "
-                   "geometry, textures, device or destination is incomplete"
+                   "geometry, textures, environment snapshot, device or "
+                   "destination is incomplete"
                 << LL_ENDL;
         }
 #endif

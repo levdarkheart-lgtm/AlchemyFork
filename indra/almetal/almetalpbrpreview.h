@@ -55,11 +55,34 @@ struct ALMetalPBRPreviewBatch
     bool double_sided = false;
 };
 
+// One coherent generation of the GL owner's default reflection probe,
+// mirrored without stalling either API. The radiance cube and packed SH row
+// are published together; callers must not substitute one from a different
+// generation.
+struct ALMetalPBRPreviewEnvironment
+{
+    const ALMetalTexture* radiance_texture = nullptr;
+    std::uint32_t sh_coefficients[4][4]{};
+    float probe_origin[4]{};
+    float env_matrix[3][4] = {
+        {1.f, 0.f, 0.f, 0.f},
+        {0.f, 1.f, 0.f, 0.f},
+        {0.f, 0.f, 1.f, 0.f},
+    };
+    // atmos_amblit.rgb and sky_ambient_scale, before the fragment's
+    // normal-dependent ambientLighting and sRGB-to-linear conversion.
+    float ambient[4]{};
+    float irradiance_scale = 1.f;
+    float radiance_scale = 1.f;
+    float max_lod = 0.f;
+};
+
 struct ALMetalPBRPreviewScene
 {
     const ALMetalPBRPreviewBatch* batches = nullptr;
     std::size_t batch_count = 0;
     const ALMetalTextureDescriptor* destination_descriptor = nullptr;
+    const ALMetalPBRPreviewEnvironment* environment = nullptr;
 
     // colorCorrect applies these after the complete linear HDR scene has
     // been composited, rather than independently to each material batch.

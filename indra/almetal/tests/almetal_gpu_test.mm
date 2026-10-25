@@ -2317,6 +2317,8 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         const std::array<std::uint8_t, 4> half_alpha_black{{0, 0, 0, 128}};
         const std::array<std::uint8_t, 4> flat_normal{{128, 128, 255, 255}};
         const std::array<std::uint8_t, 4> zero_ambient_orm{{0, 255, 0, 255}};
+        const std::array<std::uint8_t, 4> glossy_metal_orm{{255, 0, 255, 255}};
+        const std::array<std::uint8_t, 4> rough_metal_orm{{255, 255, 255, 255}};
         const std::array<std::uint8_t, 4> black_emissive{{0, 0, 0, 255}};
         const std::array<std::uint8_t, 8> red_green_emissive{{
             255, 0, 0, 255, 0, 255, 0, 255,
@@ -2338,6 +2340,14 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         auto orm = make_texture(
             ALMetalPixelFormat::rgba8_unorm, 1,
             zero_ambient_orm.data(), 4, "Alchemy PBR preview test ORM");
+        auto glossy_metal = make_texture(
+            ALMetalPixelFormat::rgba8_unorm, 1,
+            glossy_metal_orm.data(), 4,
+            "Alchemy PBR preview glossy-metal test ORM");
+        auto rough_metal = make_texture(
+            ALMetalPixelFormat::rgba8_unorm, 1,
+            rough_metal_orm.data(), 4,
+            "Alchemy PBR preview rough-metal test ORM");
         auto emissive = make_texture(
             ALMetalPixelFormat::rgba8_unorm_srgb, 2,
             red_green_emissive.data(), 8,
@@ -2346,6 +2356,72 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
             ALMetalPixelFormat::rgba8_unorm_srgb, 1,
             black_emissive.data(), 4,
             "Alchemy PBR preview direct-light test emissive");
+
+        ALMetalTextureDescriptor environment_descriptor;
+        environment_descriptor.type = ALMetalTextureType::texture_cube;
+        environment_descriptor.format = ALMetalPixelFormat::rgba16_float;
+        environment_descriptor.width = 1;
+        environment_descriptor.height = 1;
+        environment_descriptor.storage = ALMetalStorageMode::private_gpu;
+        environment_descriptor.usage = ALMetalTextureUsage::shader_read;
+        environment_descriptor.label =
+            "Alchemy PBR preview test environment";
+        auto environment_texture = ALMetalTexture::create(
+            *device, environment_descriptor, &error);
+        INFO(error);
+        REQUIRE(environment_texture);
+        const std::array<std::uint16_t, 4> black_environment{{0, 0, 0, 0}};
+        auto environment_upload = device->makeCommandBuffer(
+            "Alchemy PBR preview test environment upload", &error);
+        INFO(error);
+        REQUIRE(environment_upload);
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            REQUIRE(environment_texture->upload(
+                *environment_upload, 0, face, {},
+                black_environment.data(), sizeof(black_environment),
+                &error));
+        }
+        REQUIRE(environment_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalTextureDescriptor filtered_environment_descriptor =
+            environment_descriptor;
+        filtered_environment_descriptor.width = 2;
+        filtered_environment_descriptor.height = 2;
+        filtered_environment_descriptor.mipmap_level_count = 2;
+        filtered_environment_descriptor.label =
+            "Alchemy PBR preview filtered test environment";
+        auto filtered_environment = ALMetalTexture::create(
+            *device, filtered_environment_descriptor, &error);
+        INFO(error);
+        REQUIRE(filtered_environment);
+        auto filtered_environment_upload = device->makeCommandBuffer(
+            "Alchemy PBR preview filtered environment upload", &error);
+        INFO(error);
+        REQUIRE(filtered_environment_upload);
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            std::array<std::uint16_t, 2 * 2 * 4> mip0{};
+            for (std::size_t texel = 0; texel < 4; ++texel)
+            {
+                // Metal cube slice 4 is +Z. The smooth lookup at this test's
+                // centre must select it, rather than any blue neighbour.
+                mip0[texel * 4 + (face == 4 ? 0 : 2)] = 0x3c00;
+                mip0[texel * 4 + 3] = 0x3c00;
+            }
+            const std::array<std::uint16_t, 4> mip1{{
+                0, 0x3c00, 0, 0x3c00,
+            }};
+            REQUIRE(filtered_environment->upload(
+                *filtered_environment_upload, 0, face, {},
+                mip0.data(), 2 * 4 * sizeof(std::uint16_t), &error));
+            REQUIRE(filtered_environment->upload(
+                *filtered_environment_upload, 1, face, {},
+                mip1.data(), 4 * sizeof(std::uint16_t), &error));
+        }
+        REQUIRE(filtered_environment_upload->commitAndWait(&error));
+        INFO(error);
 
         ALMetalTextureDescriptor destination_descriptor;
         destination_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
@@ -2394,9 +2470,12 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         batch.double_sided = true;
 
         ALMetalPBRPreviewScene scene;
+        ALMetalPBRPreviewEnvironment environment;
+        environment.radiance_texture = environment_texture.get();
         scene.batches = &batch;
         scene.batch_count = 1;
         scene.destination_descriptor = &destination_descriptor;
+        scene.environment = &environment;
         scene.exposure = 1.f;
         scene.tonemap_mix = 0.f;
         scene.tonemap_type = 1;
@@ -2470,6 +2549,55 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         batch.sun_color[0] = 0.f;
         batch.sun_color[1] = 0.f;
         batch.sun_color[2] = 0.f;
+
+        // A coherent environment carries the cube's face orientation and
+        // roughness-filtered mip chain. The centre reflection points at +Z:
+        // smooth metal reads red from slice 4/mip 0, while rough metal reads
+        // the green final mip shared by every face.
+        environment.radiance_texture = filtered_environment.get();
+        environment.max_lod = 1.f;
+        batch.base_color_texture = white_base.get();
+        batch.emissive_texture = unlit_emissive.get();
+        batch.orm_texture = glossy_metal.get();
+        batch.metallic_factor = 1.f;
+        auto smooth_environment_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(smooth_environment_output);
+        const auto smooth_environment = read_center(
+            *smooth_environment_output);
+        CHECK(smooth_environment[0] > 200);
+        CHECK(smooth_environment[1] < 4);
+        CHECK(smooth_environment[2] < 4);
+
+        batch.orm_texture = rough_metal.get();
+        auto rough_environment_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(rough_environment_output);
+        const auto rough_environment = read_center(*rough_environment_output);
+        CHECK(rough_environment[0] < 4);
+        CHECK(rough_environment[1] > 60);
+        CHECK(rough_environment[2] < 4);
+
+        // The packed SH row is consumed in the same coefficient order as
+        // reflectionProbeF.glsl. A green unit L0 coefficient therefore adds
+        // diffuse green while a black radiance cube contributes no specular.
+        environment.radiance_texture = environment_texture.get();
+        environment.max_lod = 0.f;
+        environment.sh_coefficients[0][0] = 0x3c000000u;
+        batch.metallic_factor = 0.f;
+        auto sh_environment_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(sh_environment_output);
+        const auto sh_environment = read_center(*sh_environment_output);
+        CHECK(sh_environment[0] < 4);
+        CHECK(sh_environment[1] > 100);
+        CHECK(sh_environment[2] < 4);
+
+        environment.sh_coefficients[0][0] = 0;
+        batch.base_color_texture = base.get();
+        batch.emissive_texture = emissive.get();
+        batch.orm_texture = orm.get();
+        batch.metallic_factor = 0.f;
 
         // colorCorrect's lateral chromatic aberration samples R and B away
         // from the centre tap while leaving G and coverage at the centre. Feed
@@ -2732,6 +2860,16 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         CHECK_FALSE(renderer->render(scene, &error));
         CHECK(error == "Metal PBR preview post state is invalid");
         scene.chromatic_aberration_falloff = 1.f;
+        scene.environment = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal PBR preview scene is incomplete");
+        scene.environment = &environment;
+        environment.radiance_texture = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal PBR preview environment is invalid");
+        environment.radiance_texture = environment_texture.get();
         batch.normal_texture = nullptr;
         error.clear();
         CHECK_FALSE(renderer->render(scene, &error));

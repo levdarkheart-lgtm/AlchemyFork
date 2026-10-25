@@ -32,8 +32,13 @@
 #include "llcubemap.h"
 #include "aluniformbuffer.h"
 
+#include <memory>
+
 class LLSpatialGroup;
 class LLViewerObject;
+#if LL_DARWIN
+struct ALMetalPBRPreviewEnvironment;
+#endif
 
 // number of reflection probes to keep in vram
 #define LL_MAX_REFLECTION_PROBE_COUNT 256
@@ -119,6 +124,7 @@ public:
 
     // allocate an environment map of the given resolution
     LLReflectionMapManager();
+    ~LLReflectionMapManager();
 
     // release any GL state
     void cleanup();
@@ -181,6 +187,12 @@ public:
     // this if you don't intend to call updateUniforms directly. Call again
     // with false when done.
     void forceDefaultProbeAndUpdateUniforms(bool force = true);
+
+#if LL_DARWIN
+    // Fill a native preview environment only after a matching radiance cube
+    // and SH row from one completed default-probe generation are available.
+    bool fillMetalDefaultProbe(ALMetalPBRPreviewEnvironment& environment) const;
+#endif
 
     U32 probeCount();
     U32 probeMemory();
@@ -249,6 +261,17 @@ private:
     // face edge length of the probe mip the SH irradiance projection integrates over, from
     // ALProbeSHProjectionRes, and in `mip` the level of mTexture that holds it
     U32 shProjectionRes(S32& mip) const;
+
+#if LL_DARWIN
+    struct MetalDefaultProbeMirror;
+    void collectMetalDefaultProbe();
+    void requestMetalDefaultProbeSH();
+    bool beginMetalDefaultProbeRadianceCapture();
+    void captureMetalDefaultProbeRadiance(U32 mip, U32 face, U32 resolution);
+    void endMetalDefaultProbeRadianceCapture();
+    void releaseMetalDefaultProbe();
+    std::unique_ptr<MetalDefaultProbeMirror> mMetalDefaultProbe;
+#endif
 
     // list of active reflection maps
     std::vector<LLPointer<LLReflectionMap> > mProbes;

@@ -44,6 +44,19 @@ namespace
 
     static_assert(sizeof(PBRPreviewConstants) == 368);
 
+    struct alignas(16) PBRPreviewEnvironmentConstants
+    {
+        float probe_origin[4];
+        float env_matrix[3][4];
+        // atmos_amblit.rgb, sky ambient scale
+        float ambient[4];
+        // irradiance scale, radiance scale, max LOD, reserved
+        float probe[4];
+        std::uint32_t sh_coefficients[4][4];
+    };
+
+    static_assert(sizeof(PBRPreviewEnvironmentConstants) == 160);
+
     struct alignas(16) PBRPreviewExposureConstants
     {
         float compensation;
@@ -142,6 +155,7 @@ struct ALMetalPBRPreviewRenderer::Impl
     std::unique_ptr<ALMetalRenderPipeline> cross_filter_add_pipeline;
     std::unique_ptr<ALMetalSamplerState> color_sampler;
     std::unique_ptr<ALMetalSamplerState> data_sampler;
+    std::unique_ptr<ALMetalSamplerState> environment_sampler;
     std::unique_ptr<ALMetalSamplerState> brdf_lut_sampler;
     std::unique_ptr<ALMetalSamplerState> meter_sampler;
     std::unique_ptr<ALMetalSamplerState> post_sampler;
@@ -365,6 +379,16 @@ ALMetalPBRPreviewRenderer::create(const ALMetalDevice& device,
     sampler.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
     sampler.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
     sampler.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.label = "Alchemy PBR preview environment sampler";
+    impl->environment_sampler = ALMetalSamplerState::create(
+        device, sampler, error);
+    if (!impl->environment_sampler)
+    {
+        return nullptr;
+    }
+    sampler.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
     sampler.mip_filter = ALMetalSamplerMipFilter::none;
     sampler.max_anisotropy = 1;
     sampler.label = "Alchemy PBR preview BRDF LUT sampler";
@@ -436,7 +460,8 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
     std::string* error)
 {
     if (!mImpl || !mImpl->device || !scene.batches ||
-        scene.batch_count == 0 || !scene.destination_descriptor)
+        scene.batch_count == 0 || !scene.destination_descriptor ||
+        !scene.environment)
     {
         setError(error, "Metal PBR preview scene is incomplete");
         return nullptr;
@@ -444,6 +469,10 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
 
     const ALMetalTextureDescriptor& output_template =
         *scene.destination_descriptor;
+    const ALMetalPBRPreviewEnvironment& environment = *scene.environment;
+    const ALMetalTextureDescriptor* radiance_descriptor =
+        environment.radiance_texture
+            ? &environment.radiance_texture->descriptor() : nullptr;
     if (output_template.type != ALMetalTextureType::texture_2d ||
         (output_template.format != ALMetalPixelFormat::rgba8_unorm &&
          output_template.format != ALMetalPixelFormat::rgba8_unorm_srgb) ||
@@ -454,6 +483,31 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
     {
         setError(error,
                  "Metal PBR preview destination must be a private shader-readable RGBA8 texture");
+        return nullptr;
+    }
+
+    if (!radiance_descriptor ||
+        radiance_descriptor->type != ALMetalTextureType::texture_cube ||
+        radiance_descriptor->format != ALMetalPixelFormat::rgba16_float ||
+        radiance_descriptor->width != radiance_descriptor->height ||
+        radiance_descriptor->width == 0 ||
+        radiance_descriptor->sample_count != 1 ||
+        radiance_descriptor->storage != ALMetalStorageMode::private_gpu ||
+        !alMetalHasUsage(radiance_descriptor->usage,
+                         ALMetalTextureUsage::shader_read) ||
+        !finiteValues(environment.probe_origin, 4) ||
+        !finiteValues(&environment.env_matrix[0][0], 12) ||
+        !finiteValues(environment.ambient, 4) ||
+        !std::isfinite(environment.irradiance_scale) ||
+        !std::isfinite(environment.radiance_scale) ||
+        !std::isfinite(environment.max_lod) ||
+        environment.irradiance_scale < 0.f ||
+        environment.radiance_scale < 0.f ||
+        environment.max_lod < 0.f ||
+        environment.max_lod > static_cast<float>(
+            radiance_descriptor->mipmap_level_count - 1))
+    {
+        setError(error, "Metal PBR preview environment is invalid");
         return nullptr;
     }
 
@@ -775,6 +829,23 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         shade_encoder->setScissor(scissor, error) &&
         shade_encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error);
 
+    PBRPreviewEnvironmentConstants environment_constants{};
+    std::memcpy(environment_constants.probe_origin,
+                environment.probe_origin,
+                sizeof(environment_constants.probe_origin));
+    std::memcpy(environment_constants.env_matrix,
+                environment.env_matrix,
+                sizeof(environment_constants.env_matrix));
+    std::memcpy(environment_constants.ambient,
+                environment.ambient,
+                sizeof(environment_constants.ambient));
+    environment_constants.probe[0] = environment.irradiance_scale;
+    environment_constants.probe[1] = environment.radiance_scale;
+    environment_constants.probe[2] = environment.max_lod;
+    std::memcpy(environment_constants.sh_coefficients,
+                environment.sh_coefficients,
+                sizeof(environment_constants.sh_coefficients));
+
     for (std::size_t index = 0; encoded && index < scene.batch_count; ++index)
     {
         const ALMetalPBRPreviewBatch& batch = scene.batches[index];
@@ -815,6 +886,9 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
                 5, &constants, sizeof(constants), error) &&
             shade_encoder->setFragmentBytes(
                 0, &constants, sizeof(constants), error) &&
+            shade_encoder->setFragmentBytes(
+                1, &environment_constants,
+                sizeof(environment_constants), error) &&
             shade_encoder->setFragmentTexture(
                 0, batch.base_color_texture, error) &&
             shade_encoder->setFragmentTextureLinear(
@@ -825,6 +899,8 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
                 3, batch.emissive_texture, error) &&
             shade_encoder->setFragmentTexture(
                 4, mImpl->brdf_lut.get(), error) &&
+            shade_encoder->setFragmentTexture(
+                5, environment.radiance_texture, error) &&
             shade_encoder->setFragmentSampler(
                 0, mImpl->color_sampler.get(), error) &&
             shade_encoder->setFragmentSampler(
@@ -835,6 +911,8 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
                 3, mImpl->color_sampler.get(), error) &&
             shade_encoder->setFragmentSampler(
                 4, mImpl->brdf_lut_sampler.get(), error) &&
+            shade_encoder->setFragmentSampler(
+                5, mImpl->environment_sampler.get(), error) &&
             shade_encoder->drawIndexed(
                 ALMetalPrimitiveType::triangle, batch.index_count,
                 batch.index_type, *batch.indices,

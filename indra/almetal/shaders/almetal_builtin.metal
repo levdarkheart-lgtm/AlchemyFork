@@ -828,6 +828,17 @@ struct ALMetalPBRPreviewConstants
     float4 material;
 };
 
+struct ALMetalPBRPreviewEnvironmentConstants
+{
+    float4 probe_origin;
+    float4 env_matrix[3];
+    // atmos_amblit.rgb, sky ambient scale
+    float4 ambient;
+    // irradiance scale, radiance scale, max LOD, reserved
+    float4 probe;
+    uint4 sh_coefficients[4];
+};
+
 struct ALMetalPBRPreviewVaryings
 {
     float4 position [[position]];
@@ -1072,6 +1083,214 @@ static float3 almetal_pbr_energy_compensation(texture2d<float> lut,
     return 1.0 + specular_color * (1.0 / single_scatter - 1.0);
 }
 
+static float3 almetal_pbr_environment_transform(
+    float3 direction,
+    constant ALMetalPBRPreviewEnvironmentConstants& environment)
+{
+    return direction.x * environment.env_matrix[0].xyz +
+           direction.y * environment.env_matrix[1].xyz +
+           direction.z * environment.env_matrix[2].xyz;
+}
+
+static float3 almetal_pbr_probe_direction(
+    float3 position,
+    float3 direction,
+    constant ALMetalPBRPreviewEnvironmentConstants& environment)
+{
+    constexpr float radius_squared = 4096.0 * 4096.0;
+    const float3 center = environment.probe_origin.xyz;
+    const float3 to_center = center - position;
+    float3 intersection;
+    if (dot(to_center, to_center) > radius_squared)
+    {
+        intersection = center + direction;
+    }
+    else
+    {
+        const float tca = dot(to_center, direction);
+        const float distance_squared = dot(to_center, to_center) - tca * tca;
+        const float half_chord = sqrt(max(radius_squared - distance_squared, 0.0));
+        intersection = position + direction * (tca + half_chord);
+    }
+    return almetal_pbr_environment_transform(
+        intersection - center, environment);
+}
+
+static float2 almetal_pbr_unpack_halves(uint packed)
+{
+    return float2(as_type<half2>(packed));
+}
+
+static float3 almetal_pbr_sh_irradiance(
+    float3 direction,
+    constant ALMetalPBRPreviewEnvironmentConstants& environment)
+{
+    const float2 h0 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[0].x);
+    const float2 h1 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[0].y);
+    const float2 h2 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[0].z);
+    const float2 h3 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[0].w);
+    const float2 h4 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[1].x);
+    const float2 h5 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[1].y);
+    const float2 h6 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[1].z);
+    const float2 h7 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[1].w);
+    const float2 h8 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[2].x);
+    const float2 h9 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[2].y);
+    const float2 h10 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[2].z);
+    const float2 h11 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[2].w);
+    const float2 h12 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[3].x);
+    const float2 h13 = almetal_pbr_unpack_halves(
+        environment.sh_coefficients[3].y);
+
+    const float3 l0 = float3(h0, h1.x);
+    const float3 l1 = float3(h1.y, h2);
+    const float3 l2 = float3(h3, h4.x);
+    const float3 l3 = float3(h4.y, h5);
+    const float3 l4 = float3(h6, h7.x);
+    const float3 l5 = float3(h7.y, h8);
+    const float3 l6 = float3(h9, h10.x);
+    const float3 l7 = float3(h10.y, h11);
+    const float3 l8 = float3(h12, h13.x);
+
+    constexpr float a0 = 1.0;
+    constexpr float a1 = 0.6666667;
+    constexpr float a2 = 0.25;
+    const float3 result =
+        a0 * 0.282095 * l0 +
+        a1 * 0.488603 *
+            (direction.y * l1 + direction.z * l2 + direction.x * l3) +
+        a2 * (1.092548 *
+                  (direction.x * direction.y * l4 +
+                   direction.y * direction.z * l5 +
+                   direction.x * direction.z * l7) +
+              0.315392 * (3.0 * direction.z * direction.z - 1.0) * l6 +
+              0.546274 *
+                  (direction.x * direction.x -
+                   direction.y * direction.y) * l8);
+    return max(result, float3(0.0));
+}
+
+static float3 almetal_pbr_ambient(
+    float3 normal,
+    float3 light,
+    constant ALMetalPBRPreviewEnvironmentConstants& environment)
+{
+    float ambient_lighting = min(abs(dot(normal, light)), 1.0) * 0.5;
+    ambient_lighting = 1.0 - ambient_lighting * ambient_lighting;
+    const float3 linear = almetal_srgb_to_linear(
+        environment.ambient.rgb * ambient_lighting);
+    return float3(dot(linear, float3(0.2126, 0.7152, 0.0722))) *
+           environment.ambient.w;
+}
+
+static float3 almetal_pbr_probe_irradiance(
+    float3 position,
+    float3 normal,
+    float3 ambient,
+    constant ALMetalPBRPreviewEnvironmentConstants& environment)
+{
+    const float3 probe_direction = almetal_pbr_probe_direction(
+        position, normal, environment);
+    const float length_squared = dot(probe_direction, probe_direction);
+    const float3 fallback = almetal_pbr_environment_transform(
+        normal, environment);
+    const float3 sample_direction = length_squared > 1.0e-12
+        ? probe_direction * rsqrt(length_squared) : normalize(fallback);
+    float3 irradiance = almetal_pbr_sh_irradiance(
+        sample_direction, environment);
+    irradiance *= max(environment.probe.x, 1.0);
+    return mix(ambient, irradiance, min(environment.probe.x, 1.0));
+}
+
+static float3 almetal_pbr_dominant_direction(
+    float3 normal, float3 reflection, float perceptual_roughness)
+{
+    const float smoothness = 1.0 - perceptual_roughness;
+    const float factor = smoothness *
+        (sqrt(smoothness) + perceptual_roughness);
+    return normalize(mix(normal, reflection, factor));
+}
+
+static float almetal_pbr_horizon_occlusion(
+    float3 reflection, float3 geometric_normal)
+{
+    const float horizon = clamp(
+        1.0 + dot(normalize(reflection), normalize(geometric_normal)),
+        0.0, 1.0);
+    return horizon * horizon;
+}
+
+static float almetal_pbr_specular_ao(
+    float nv, float ao, float perceptual_roughness)
+{
+    return clamp(pow(nv + ao,
+                     exp2(-16.0 * perceptual_roughness - 1.0)) -
+                 1.0 + ao,
+                 0.0, 1.0);
+}
+
+static float3 almetal_pbr_gtao_multibounce(float visibility, float3 albedo)
+{
+    const float3 a = 2.0404 * albedo - 0.3324;
+    const float3 b = -4.7951 * albedo + 0.6417;
+    const float3 c = 2.7552 * albedo + 0.6903;
+    return max(float3(visibility),
+               ((visibility * a + b) * visibility + c) * visibility);
+}
+
+struct ALMetalPBRPreviewIBL
+{
+    float3 diffuse;
+    float3 specular;
+};
+
+static ALMetalPBRPreviewIBL almetal_pbr_ibl(
+    texture2d<float> brdf_lut,
+    sampler brdf_sampler,
+    float3 diffuse_color,
+    float3 specular_color,
+    float3 radiance,
+    float3 irradiance,
+    float ao,
+    float nv,
+    float perceptual_roughness)
+{
+    ALMetalPBRPreviewIBL result;
+    nv = clamp(nv, 0.0, 1.0);
+    const float2 brdf = almetal_pbr_brdf(
+        brdf_lut, brdf_sampler, nv, perceptual_roughness);
+    const float3 fr = max(float3(1.0 - perceptual_roughness),
+                          specular_color) - specular_color;
+    const float3 ks = specular_color +
+        fr * pow(1.0 - nv, 5.0);
+    const float3 fss_ess = ks * brdf.x + brdf.y;
+    const float ems = 1.0 - (brdf.x + brdf.y);
+    const float3 f_average = specular_color +
+        (1.0 - specular_color) / 21.0;
+    const float3 fms_ems = ems * fss_ess * f_average /
+        max(float3(1.0) - f_average * ems, float3(1.0e-4));
+    const float3 kd = diffuse_color *
+        max(float3(1.0) - fss_ess - fms_ems, float3(0.0));
+    result.diffuse = (fms_ems + kd) * irradiance *
+        almetal_pbr_gtao_multibounce(ao, diffuse_color);
+    result.specular = radiance * fss_ess *
+        almetal_pbr_specular_ao(
+            nv, ao, perceptual_roughness * perceptual_roughness);
+    return result;
+}
+
 struct ALMetalPBRPreviewPunctual
 {
     float nl;
@@ -1247,12 +1466,16 @@ fragment float4 almetal_pbr_preview_fragment(
     texture2d<float> orm_map [[texture(2)]],
     texture2d<float> emissive_map [[texture(3)]],
     texture2d<float> brdf_lut [[texture(4)]],
+    texturecube<float> radiance_map [[texture(5)]],
     sampler color_sampler [[sampler(0)]],
     sampler normal_sampler [[sampler(1)]],
     sampler orm_sampler [[sampler(2)]],
     sampler emissive_sampler [[sampler(3)]],
     sampler brdf_sampler [[sampler(4)]],
-    constant ALMetalPBRPreviewConstants& constants [[buffer(0)]])
+    sampler environment_sampler [[sampler(5)]],
+    constant ALMetalPBRPreviewConstants& constants [[buffer(0)]],
+    constant ALMetalPBRPreviewEnvironmentConstants& environment
+        [[buffer(1)]])
 {
     const float4 base_sample = base_color_map.sample(
         color_sampler, input.base_color_texcoord);
@@ -1274,6 +1497,8 @@ fragment float4 almetal_pbr_preview_fragment(
                               tangent_normal.y * vertex_binormal +
                               tangent_normal.z * vertex_normal);
     normal *= front_facing ? 1.0 : -1.0;
+    const float3 geometric_normal = vertex_normal *
+        (front_facing ? 1.0 : -1.0);
 
     const float3 orm = orm_map.sample(orm_sampler, input.orm_texcoord).rgb;
     const float ao = clamp(orm.r, 0.0, 1.0);
@@ -1299,15 +1524,25 @@ fragment float4 almetal_pbr_preview_fragment(
         punctual.nl * (punctual.diffuse + punctual.specular)) *
         constants.sun_color.rgb * 3.0;
 
-    // The GL owner forces the default reflection probe and a white sun. This
-    // compact split-sum approximation keeps roughness/metal/occlusion response
-    // in the native swatch without borrowing world-owned probe textures.
-    const float3 ambient_diffuse = diffuse_color * 0.18 * ao;
-    const float3 ambient_specular = specular_color *
-        mix(0.12, 0.035, roughness) * ao;
+    const float3 ambient = almetal_pbr_ambient(normal, light, environment);
+    const float3 irradiance = almetal_pbr_probe_irradiance(
+        input.eye_position, normal, ambient, environment);
+    const float3 mirror_direction = normalize(reflect(-view, normal));
+    const float3 dominant_direction = almetal_pbr_dominant_direction(
+        normal, mirror_direction, roughness);
+    const float3 probe_direction = almetal_pbr_probe_direction(
+        input.eye_position, dominant_direction, environment);
+    float3 radiance = radiance_map.sample(
+        environment_sampler, probe_direction,
+        level(roughness * environment.probe.z)).rgb * environment.probe.y;
+    radiance *= almetal_pbr_horizon_occlusion(
+        mirror_direction, geometric_normal);
+    const ALMetalPBRPreviewIBL ibl = almetal_pbr_ibl(
+        brdf_lut, brdf_sampler, diffuse_color, specular_color,
+        radiance, irradiance, ao, nv, max(roughness, 0.045));
     const float3 emissive = constants.emissive_color.rgb *
         emissive_map.sample(emissive_sampler, input.emissive_texcoord).rgb;
-    const float3 color = direct + ambient_diffuse + ambient_specular + emissive;
+    const float3 color = direct + ibl.diffuse + ibl.specular + emissive;
 
     // Match the GL preview's ordering: alpha-composite the complete linear HDR
     // sphere first. Exposure and tone mapping are a later full-target pass.
