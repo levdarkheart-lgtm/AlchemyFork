@@ -139,6 +139,7 @@ static float4 almetal_clip_from_gl(float4 position)
 }
 
 static float3 almetal_srgb_to_linear(float3 encoded);
+static float3 almetal_linear_to_srgb(float3 linear);
 
 struct ALMetalObjectSkinnedVertex
 {
@@ -233,6 +234,8 @@ struct ALMetalWorldSimpleVaryings
     float3 normal;
     float4 color;
     float2 texcoord;
+    float2 texcoord1;
+    float2 texcoord2;
     float3 tangent;
     float3 bitangent;
     uint texture_index [[flat]];
@@ -276,6 +279,8 @@ vertex ALMetalWorldSimpleVaryings almetal_world_simple_vertex(
         almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
     output.texcoord = (constants.texture_matrix *
                        float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord1 = output.texcoord;
+    output.texcoord2 = output.texcoord;
     output.tangent = 0.0;
     output.bitangent = 0.0;
     output.texture_index = constants.depth_convention.y > 1
@@ -322,6 +327,8 @@ vertex ALMetalWorldSimpleVaryings almetal_world_simple_skinned_vertex(
         almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
     output.texcoord = (constants.texture_matrix *
                        float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord1 = output.texcoord;
+    output.texcoord2 = output.texcoord;
     output.tangent = 0.0;
     output.bitangent = 0.0;
     output.texture_index = constants.depth_convention.y > 1
@@ -364,6 +371,8 @@ vertex ALMetalWorldSimpleVaryings almetal_world_bump_vertex(
         almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
     output.texcoord = (constants.texture_matrix *
                        float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord1 = output.texcoord;
+    output.texcoord2 = output.texcoord;
     output.texture_index = constants.depth_convention.y > 1
         ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
     output.texture_count = constants.depth_convention.y;
@@ -416,6 +425,112 @@ vertex ALMetalWorldSimpleVaryings almetal_world_bump_skinned_vertex(
         almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
     output.texcoord = (constants.texture_matrix *
                        float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord1 = output.texcoord;
+    output.texcoord2 = output.texcoord;
+    output.texture_index = constants.depth_convention.y > 1
+        ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
+    output.texture_count = constants.depth_convention.y;
+    output.alpha_cutoff = constants.material.x;
+    output.material_flags = uint3(
+        constants.material.y != 0.0,
+        constants.material.z != 0.0,
+        constants.material.w != 0.0);
+    return output;
+}
+
+vertex ALMetalWorldSimpleVaryings almetal_world_material_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldSimpleConstants& constants [[buffer(4)]],
+    const device float4* tangents [[buffer(8)]],
+    const device float2* texcoords1 [[buffer(9)]],
+    const device float2* texcoords2 [[buffer(10)]],
+    uint vertex_id [[vertex_id]])
+{
+    ALMetalWorldSimpleVaryings output;
+    float4 clip_position = constants.modelview_projection *
+                           float4(positions[vertex_id].xyz, 1.0);
+    clip_position.y = -clip_position.y;
+    output.position = constants.depth_convention.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+
+    const float3x3 normal_matrix = float3x3(
+        constants.normal_matrix[0].xyz,
+        constants.normal_matrix[1].xyz,
+        constants.normal_matrix[2].xyz);
+    output.normal = normalize(normal_matrix * normals[vertex_id].xyz);
+    output.tangent = normalize(normal_matrix * tangents[vertex_id].xyz);
+    output.bitangent = tangents[vertex_id].w *
+                       cross(output.normal, output.tangent);
+    const float4 encoded_color = float4(colors[vertex_id]) / 255.0;
+    output.color = float4(
+        almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord1 = (constants.texture_matrix *
+                        float4(texcoords1[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord2 = (constants.texture_matrix *
+                        float4(texcoords2[vertex_id], 0.0, 1.0)).xy;
+    output.texture_index = constants.depth_convention.y > 1
+        ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
+    output.texture_count = constants.depth_convention.y;
+    output.alpha_cutoff = constants.material.x;
+    output.material_flags = uint3(
+        constants.material.y != 0.0,
+        constants.material.z != 0.0,
+        constants.material.w != 0.0);
+    return output;
+}
+
+vertex ALMetalWorldSimpleVaryings almetal_world_material_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldSimpleConstants& constants [[buffer(4)]],
+    const device float4* skin_palette [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    constant uint& joint_count [[buffer(7)]],
+    const device float4* tangents [[buffer(8)]],
+    const device float2* texcoords1 [[buffer(9)]],
+    const device float2* texcoords2 [[buffer(10)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        positions[vertex_id], normals[vertex_id],
+        encoded_weights[vertex_id], skin_palette, joint_count);
+    float4 clip_position =
+        constants.modelview_projection * skinned.position +
+        constants.modelview_projection * float4(skin_palette[0].xyz, 1.0);
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldSimpleVaryings output;
+    output.position = constants.depth_convention.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    const float3x3 rigged_normal_matrix = float3x3(
+        constants.rigged_normal_matrix[0].xyz,
+        constants.rigged_normal_matrix[1].xyz,
+        constants.rigged_normal_matrix[2].xyz);
+    output.normal = normalize(
+        rigged_normal_matrix * skinned.normal.xyz);
+    const float3 skinned_tangent = almetal_object_skin_direction(
+        tangents[vertex_id].xyz, encoded_weights[vertex_id],
+        skin_palette, joint_count);
+    output.tangent = normalize(
+        rigged_normal_matrix * skinned_tangent);
+    output.bitangent = tangents[vertex_id].w *
+                       cross(output.normal, output.tangent);
+    const float4 encoded_color = float4(colors[vertex_id]) / 255.0;
+    output.color = float4(
+        almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord1 = (constants.texture_matrix *
+                        float4(texcoords1[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord2 = (constants.texture_matrix *
+                        float4(texcoords2[vertex_id], 0.0, 1.0)).xy;
     output.texture_index = constants.depth_convention.y > 1
         ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
     output.texture_count = constants.depth_convention.y;
@@ -501,13 +616,15 @@ struct ALMetalWorldMaterialConstants
 {
     ALMetalWorldMaterialSlotConstants slots[8];
     // x = populated slot count, y = legacy diffuse alpha mode
-    // (0 opaque, 2 mask, 3 emissive).
+    // (0 opaque, 2 mask, 3 emissive), z = normal map, w = specular map.
     uint4 config;
 };
 
 fragment ALMetalWorldGBufferOutput almetal_world_material_fragment(
     ALMetalWorldSimpleVaryings input [[stage_in]],
     array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
+    array<texture2d<float>, 8> normal_textures [[texture(8)]],
+    array<texture2d<float>, 8> specular_textures [[texture(16)]],
     sampler diffuse_sampler [[sampler(0)]],
     constant ALMetalWorldMaterialConstants& constants [[buffer(0)]])
 {
@@ -528,14 +645,39 @@ fragment ALMetalWorldGBufferOutput almetal_world_material_fragment(
     }
 
     const float3 color = diffuse.rgb * input.color.rgb;
-    const float3 normal = normalize(input.normal);
+    float glossiness = material.specular_color.a;
+    float3 normal = normalize(input.normal);
+    if (constants.config.z != 0)
+    {
+        const float4 tangent_sample =
+            normal_textures[min(material_index, 7u)].sample(
+                diffuse_sampler, input.texcoord1);
+        glossiness *= tangent_sample.a;
+        const float3 tangent_normal = tangent_sample.rgb * 2.0 - 1.0;
+        normal = normalize(
+            tangent_normal.x * input.tangent +
+            tangent_normal.y * input.bitangent +
+            tangent_normal.z * input.normal);
+    }
+
+    float4 specular = float4(
+        almetal_srgb_to_linear(material.specular_color.rgb), 1.0);
+    if (constants.config.w != 0)
+    {
+        const float4 specular_sample =
+            specular_textures[min(material_index, 7u)].sample(
+                diffuse_sampler, input.texcoord2);
+        specular = float4(
+            specular_sample.rgb * specular.rgb, specular_sample.a);
+    }
+
     const float3 du = dfdx(normal);
     const float3 dv = dfdy(normal);
     const float variance = 0.15 * (dot(du, du) + dot(dv, dv));
     const float spec_kernel = min(2.0 * variance, 0.25);
-    const float perceptual_roughness = 1.0 - material.specular_color.a;
+    const float perceptual_roughness = 1.0 - glossiness;
     const float alpha = perceptual_roughness * perceptual_roughness;
-    const float glossiness = 1.0 - sqrt(sqrt(clamp(
+    glossiness = 1.0 - sqrt(sqrt(clamp(
         alpha * alpha + spec_kernel, 0.0, 1.0)));
     const float emissive = constants.config.y == alpha_mode_emissive
         ? max(diffuse.a, material.properties.z)
@@ -552,12 +694,15 @@ fragment ALMetalWorldGBufferOutput almetal_world_material_fragment(
     ALMetalWorldGBufferOutput output;
     output.albedo = max(float4(color, emissive), float4(0.0));
     // The legacy material G-buffer stores specular RGB encoded in its plain
-    // RGBA8 attachment. With no specular map, the GL shader's decode/encode
-    // pair is exactly the authored sRGB tint supplied here.
+    // RGBA8 attachment. Specular maps and tint multiply after hardware sRGB
+    // decode, then return to encoded storage exactly like materialF.glsl.
+    const float3 encoded_specular = constants.config.w != 0
+        ? almetal_linear_to_srgb(specular.rgb)
+        : material.specular_color.rgb;
     output.specular_orm = max(
-        float4(material.specular_color.rgb, glossiness), float4(0.0));
+        float4(encoded_specular, glossiness), float4(0.0));
     output.normal = float4(oct * 0.5 + 0.5,
-                           material.properties.x, 0.34);
+                           material.properties.x * specular.a, 0.34);
     output.emissive = 0.0;
     return output;
 }

@@ -20,6 +20,8 @@
 
 struct ALMetalWorldMaterialSlot
 {
+    const ALMetalTexture* normal_texture = nullptr;
+    const ALMetalTexture* specular_texture = nullptr;
     float specular_color[4] = {1.f, 1.f, 1.f, 0.5f};
     float env_intensity = 0.f;
     float alpha_cutoff = 0.5f;
@@ -35,6 +37,8 @@ struct ALMetalWorldSimpleBatch
     std::size_t position_offset = 0;
     std::size_t normal_offset = 0;
     std::size_t texcoord_offset = 0;
+    std::size_t texcoord1_offset = 0;
+    std::size_t texcoord2_offset = 0;
     std::size_t color_offset = 0;
     std::size_t tangent_offset = 0;
     std::size_t weight_offset = 0;

@@ -579,7 +579,8 @@ public:
     // bracket their GL sweeps so pushBatch snapshots only those exact draws.
     void beginMetalWorldGBufferCapture();
     void beginMetalWorldGBufferPass(bool rigged, bool alpha_mask);
-    void beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode);
+    void beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode,
+                                     bool normal_map, bool specular_map);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
     void captureMetalWorldMaterialBatch(const LLDrawInfo& params,

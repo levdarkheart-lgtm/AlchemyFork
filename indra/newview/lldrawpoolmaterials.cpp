@@ -271,13 +271,13 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
     }
 
 #if LL_DARWIN
-    const bool capture_plain_material = pass < 3;
-    if (capture_plain_material)
-    {
-        static constexpr U32 alpha_modes[] = {0, 2, 3};
-        gPipeline.beginMetalWorldMaterialPass(
-            rigged, alpha_modes[pass]);
-    }
+    static constexpr U32 alpha_modes[] = {0, 2, 3};
+    const U32 material_family = pass / 3;
+    const bool normal_map = material_family >= 2;
+    const bool specular_map = material_family == 1 ||
+                              material_family == 3;
+    gPipeline.beginMetalWorldMaterialPass(
+        rigged, alpha_modes[pass % 3], normal_map, specular_map);
 #endif
 
     LLCullResult::drawinfo_iterator begin = gPipeline.beginRenderMap(type);
@@ -424,10 +424,7 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
         }*/
 
 #if LL_DARWIN
-        if (capture_plain_material)
-        {
-            gPipeline.captureMetalWorldMaterialBatch(params, false);
-        }
+        gPipeline.captureMetalWorldMaterialBatch(params, false);
 #endif
 
         params.mVertexBuffer->setBuffer();
@@ -453,9 +450,6 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
     }
 
 #if LL_DARWIN
-    if (capture_plain_material)
-    {
-        gPipeline.endMetalWorldGBufferPass();
-    }
+    gPipeline.endMetalWorldGBufferPass();
 #endif
 }

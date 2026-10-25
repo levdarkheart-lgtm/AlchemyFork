@@ -10,6 +10,7 @@
 
 #include "almetalworld.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
@@ -74,6 +75,26 @@ namespace
     {
         return mode == 0 || mode == 2 || mode == 3;
     }
+
+    bool materialHasNormalMap(const ALMetalWorldSimpleBatch& batch)
+    {
+        return batch.material_slot_count != 0 &&
+               batch.material_slots[0].normal_texture != nullptr;
+    }
+
+    bool materialHasSpecularMap(const ALMetalWorldSimpleBatch& batch)
+    {
+        return batch.material_slot_count != 0 &&
+               batch.material_slots[0].specular_texture != nullptr;
+    }
+
+    bool sampleableTexture(const ALMetalTexture* texture)
+    {
+        return texture &&
+               texture->descriptor().type == ALMetalTextureType::texture_2d &&
+               alMetalHasUsage(texture->descriptor().usage,
+                               ALMetalTextureUsage::shader_read);
+    }
 }
 
 struct ALMetalWorldGBufferRenderer::Impl
@@ -114,6 +135,9 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_simple_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_bump_vertex") ||
         !impl->library->hasFunction("almetal_world_bump_skinned_vertex") ||
+        !impl->library->hasFunction("almetal_world_material_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_material_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_fragment") ||
         !impl->library->hasFunction("almetal_world_alpha_mask_fragment") ||
         !impl->library->hasFunction("almetal_world_bump_fragment") ||
@@ -140,8 +164,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 ALMetalRenderPipelineDescriptor descriptor;
                 descriptor.library = impl->library.get();
                 descriptor.vertex_function = rigged
-                    ? "almetal_world_simple_skinned_vertex"
-                    : "almetal_world_simple_vertex";
+                    ? "almetal_world_material_skinned_vertex"
+                    : "almetal_world_material_vertex";
                 descriptor.fragment_function =
                     "almetal_world_material_fragment";
                 descriptor.color_attachment_count = 4;
@@ -280,6 +304,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
         const bool bump = batch.normal_texture != nullptr;
         const bool material = batch.material_slot_count != 0;
+        const bool material_normal_map = materialHasNormalMap(batch);
+        const bool material_specular_map = materialHasSpecularMap(batch);
+        const bool tangent_required = bump || material_normal_map;
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         if (!batch.vertices || !batch.indices || batch.texture_count == 0 ||
@@ -298,7 +325,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             batch.normal_offset % float4_stride != 0 ||
             batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
             batch.color_offset % (sizeof(std::uint8_t) * 4) != 0 ||
-            (bump && batch.tangent_offset % float4_stride != 0) ||
+            (tangent_required &&
+             batch.tangent_offset % float4_stride != 0) ||
+            (material_normal_map &&
+             batch.texcoord1_offset % (sizeof(float) * 2) != 0) ||
+            (material_specular_map &&
+             batch.texcoord2_offset % (sizeof(float) * 2) != 0) ||
             batch.index_offset % index_stride != 0 ||
             !std::isfinite(batch.alpha_cutoff) ||
             !finiteValues(batch.modelview_projection, 16) ||
@@ -317,10 +349,17 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             if (!finiteValues(material_slot.specular_color, 4) ||
                 !std::isfinite(material_slot.env_intensity) ||
                 !std::isfinite(material_slot.alpha_cutoff) ||
-                !std::isfinite(material_slot.fullbright))
+                !std::isfinite(material_slot.fullbright) ||
+                (material_normal_map !=
+                 (material_slot.normal_texture != nullptr)) ||
+                (material_specular_map !=
+                 (material_slot.specular_texture != nullptr)) ||
+                (material_normal_map &&
+                 !sampleableTexture(material_slot.normal_texture)) ||
+                (material_specular_map &&
+                 !sampleableTexture(material_slot.specular_texture)))
             {
-                setError(error,
-                         "Metal world material constants are non-finite");
+                setError(error, "Metal world material slot is invalid");
                 return nullptr;
             }
         }
@@ -332,9 +371,15 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                        sizeof(float) * 2, batch.vertices->length()) ||
             !rangeFits(batch.color_offset, batch.vertex_count,
                        sizeof(std::uint8_t) * 4, batch.vertices->length()) ||
-            (bump && !rangeFits(batch.tangent_offset, batch.vertex_count,
-                                float4_stride,
-                                batch.vertices->length())) ||
+            (tangent_required &&
+             !rangeFits(batch.tangent_offset, batch.vertex_count,
+                        float4_stride, batch.vertices->length())) ||
+            (material_normal_map &&
+             !rangeFits(batch.texcoord1_offset, batch.vertex_count,
+                        sizeof(float) * 2, batch.vertices->length())) ||
+            (material_specular_map &&
+             !rangeFits(batch.texcoord2_offset, batch.vertex_count,
+                        sizeof(float) * 2, batch.vertices->length())) ||
             !rangeFits(batch.index_offset, batch.index_count,
                        index_stride, batch.indices->length()))
         {
@@ -534,6 +579,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         const bool rigged = batch.skin_palette != nullptr;
         const bool bump = batch.normal_texture != nullptr;
         const bool material = batch.material_slot_count != 0;
+        const bool material_normal_map = materialHasNormalMap(batch);
+        const bool material_specular_map = materialHasSpecularMap(batch);
         const ALMetalRenderPipeline* pipeline = material
             ? mImpl->material_pipelines[scene.hdr ? 1 : 0]
                                        [rigged ? 1 : 0]
@@ -577,6 +624,22 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         }
         if (encoded && material)
         {
+            encoded =
+                encoder->setVertexBuffer(
+                    8, *batch.vertices,
+                    material_normal_map
+                        ? batch.tangent_offset : batch.normal_offset,
+                    error) &&
+                encoder->setVertexBuffer(
+                    9, *batch.vertices,
+                    material_normal_map
+                        ? batch.texcoord1_offset : batch.texcoord_offset,
+                    error) &&
+                encoder->setVertexBuffer(
+                    10, *batch.vertices,
+                    material_specular_map
+                        ? batch.texcoord2_offset : batch.texcoord_offset,
+                    error);
             WorldMaterialConstants material_constants{};
             for (std::size_t slot = 0;
                  slot < batch.material_slot_count; ++slot)
@@ -594,7 +657,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             }
             material_constants.config[0] = batch.material_slot_count;
             material_constants.config[1] = batch.material_alpha_mode;
-            encoded = encoder->setFragmentBytes(
+            material_constants.config[2] = material_normal_map ? 1u : 0u;
+            material_constants.config[3] = material_specular_map ? 1u : 0u;
+            encoded = encoded && encoder->setFragmentBytes(
                 0, &material_constants, sizeof(material_constants), error);
         }
         for (std::size_t texture_index = 0;
@@ -607,6 +672,29 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 : batch.diffuse_textures[0];
             encoded = encoder->setFragmentTexture(
                 static_cast<std::uint32_t>(texture_index), texture, error);
+        }
+        if (encoded && material)
+        {
+            for (std::size_t slot = 0;
+                 encoded && slot < ALMetalWorldSimpleBatch::max_material_slots;
+                 ++slot)
+            {
+                const std::size_t source = std::min<std::size_t>(
+                    slot, batch.material_slot_count - 1);
+                const ALMetalTexture* normal_texture = material_normal_map
+                    ? batch.material_slots[source].normal_texture
+                    : batch.diffuse_textures[0];
+                const ALMetalTexture* specular_texture = material_specular_map
+                    ? batch.material_slots[source].specular_texture
+                    : batch.diffuse_textures[0];
+                encoded =
+                    encoder->setFragmentTexture(
+                        static_cast<std::uint32_t>(8 + slot),
+                        normal_texture, error) &&
+                    encoder->setFragmentTexture(
+                        static_cast<std::uint32_t>(16 + slot),
+                        specular_texture, error);
+            }
         }
         encoded = encoded &&
             encoder->drawIndexed(ALMetalPrimitiveType::triangle,

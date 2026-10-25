@@ -119,6 +119,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_simple_skinned_vertex",
             "almetal_world_bump_vertex",
             "almetal_world_bump_skinned_vertex",
+            "almetal_world_material_vertex",
+            "almetal_world_material_skinned_vertex",
             "almetal_world_simple_fragment",
             "almetal_world_alpha_mask_fragment",
             "almetal_world_bump_fragment",
@@ -945,7 +947,18 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         INFO(error);
         REQUIRE(bump_normal);
         const std::array<std::uint8_t, 4> bump_normal_pixel{{
-            255, 128, 128, 255,
+            255, 128, 128, 128,
+        }};
+        ALMetalTextureDescriptor material_specular_descriptor =
+            diffuse_descriptor;
+        material_specular_descriptor.label =
+            "Alchemy world material white sRGB specular";
+        auto material_specular_texture = ALMetalTexture::create(
+            *device, material_specular_descriptor, &error);
+        INFO(error);
+        REQUIRE(material_specular_texture);
+        const std::array<std::uint8_t, 4> material_specular_pixel{{
+            255, 255, 255, 128,
         }};
         auto upload = device->makeCommandBuffer(
             "Alchemy world simple diffuse upload", &error);
@@ -959,6 +972,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *upload, 0, 0, {}, tree_diffuse_pixel.data(), 4, &error));
         REQUIRE(bump_normal->upload(
             *upload, 0, 0, {}, bump_normal_pixel.data(), 4, &error));
+        REQUIRE(material_specular_texture->upload(
+            *upload, 0, 0, {}, material_specular_pixel.data(), 4, &error));
         REQUIRE(upload->commitAndWait(&error));
         INFO(error);
 
@@ -1278,6 +1293,106 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(material_normal[center + 3]) -
                        22282) <= 2);
 
+        // The three remaining legacy material families share the same slot
+        // constants but independently opt into the tangent/UV1 normal map and
+        // UV2 sRGB specular map. Exercise normal-only, specular-only and both
+        // before the rigged variant below reuses the combined contract.
+        batch.tangent_offset = tangent_offset;
+        batch.texcoord1_offset = texcoord_offset;
+        batch.texcoord2_offset = texcoord_offset;
+        batch.material_slots[0].normal_texture = bump_normal.get();
+        batch.material_slots[1].normal_texture = bump_normal.get();
+        auto material_normal_map_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(material_normal_map_result);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            material_normal_map_specular{};
+        std::array<std::uint16_t, 32 * 32 * 4>
+            material_normal_map_normal{};
+        REQUIRE(material_normal_map_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, material_normal_map_specular.data(),
+            32 * 4, &error));
+        REQUIRE(material_normal_map_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, material_normal_map_normal.data(),
+            32 * 8, &error));
+        INFO(error);
+        CHECK(material_normal_map_normal[center + 0] > 65000);
+        CHECK(std::abs(static_cast<int>(
+                           material_normal_map_specular[center + 3]) -
+                       32) <= 1);
+        CHECK(std::abs(static_cast<int>(
+                           material_normal_map_normal[center + 2]) -
+                       24576) <= 2);
+
+        batch.material_slots[0].normal_texture = nullptr;
+        batch.material_slots[1].normal_texture = nullptr;
+        batch.material_slots[0].specular_texture =
+            material_specular_texture.get();
+        batch.material_slots[1].specular_texture =
+            material_specular_texture.get();
+        auto material_specular_map_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(material_specular_map_result);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            material_specular_map_specular{};
+        std::array<std::uint16_t, 32 * 32 * 4>
+            material_specular_map_normal{};
+        REQUIRE(material_specular_map_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, material_specular_map_specular.data(),
+            32 * 4, &error));
+        REQUIRE(material_specular_map_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, material_specular_map_normal.data(),
+            32 * 8, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           material_specular_map_specular[center + 0]) -
+                       64) <= 1);
+        CHECK(std::abs(static_cast<int>(
+                           material_specular_map_specular[center + 1]) -
+                       128) <= 1);
+        CHECK(std::abs(static_cast<int>(
+                           material_specular_map_specular[center + 2]) -
+                       191) <= 1);
+        CHECK(std::abs(static_cast<int>(
+                           material_specular_map_specular[center + 3]) -
+                       64) <= 1);
+        CHECK(std::abs(static_cast<int>(
+                           material_specular_map_normal[center + 0]) -
+                       32768) <= 1);
+        CHECK(std::abs(static_cast<int>(
+                           material_specular_map_normal[center + 2]) -
+                       12336) <= 3);
+
+        batch.material_slots[0].normal_texture = bump_normal.get();
+        batch.material_slots[1].normal_texture = bump_normal.get();
+        batch.texcoord2_offset = vertex_bytes.size();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error ==
+              "Metal world simple geometry range exceeds its buffers");
+        batch.texcoord2_offset = texcoord_offset;
+        error.clear();
+        auto material_normal_specular_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(material_normal_specular_result);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            material_normal_specular_specular{};
+        std::array<std::uint16_t, 32 * 32 * 4>
+            material_normal_specular_normal{};
+        REQUIRE(material_normal_specular_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, material_normal_specular_specular.data(),
+            32 * 4, &error));
+        REQUIRE(material_normal_specular_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, material_normal_specular_normal.data(),
+            32 * 8, &error));
+        INFO(error);
+        CHECK(material_normal_specular_normal[center + 0] > 65000);
+        CHECK(std::abs(static_cast<int>(
+                           material_normal_specular_specular[center + 3]) -
+                       32) <= 1);
+        CHECK(std::abs(static_cast<int>(
+                           material_normal_specular_normal[center + 2]) -
+                       12336) <= 3);
+
         batch.material_alpha_mode = 2;
         batch.material_slots[1].alpha_cutoff = 1.01f;
         auto material_masked_result = renderer->render(scene, &error);
@@ -1400,6 +1515,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // vertex output; no separate approximation or CPU skinning path is
         // allowed for the rigged material owner.
         batch.alpha_mask = false;
+        batch.tangent_offset = tangent_offset;
         batch.material_slot_count = 2;
         batch.material_alpha_mode = 0;
         batch.material_slots[1].fullbright = 0.25f;
@@ -1407,8 +1523,16 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         INFO(error);
         REQUIRE(skinned_material_result);
         std::array<std::uint8_t, 32 * 32 * 4> skinned_material_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4> skinned_material_specular{};
+        std::array<std::uint16_t, 32 * 32 * 4> skinned_material_normal{};
         REQUIRE(skinned_material_result->colorTexture(0)->readback(
             *device, 0, 0, {}, skinned_material_albedo.data(), 32 * 4,
+            &error));
+        REQUIRE(skinned_material_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, skinned_material_specular.data(), 32 * 4,
+            &error));
+        REQUIRE(skinned_material_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, skinned_material_normal.data(), 32 * 8,
             &error));
         INFO(error);
         CHECK(skinned_material_albedo[translated_center + 0] == 0);
@@ -1417,6 +1541,13 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(
                            skinned_material_albedo[translated_center + 3]) -
                        64) <= 1);
+        CHECK(std::abs(static_cast<int>(
+                           skinned_material_specular[translated_center + 3]) -
+                       32) <= 1);
+        CHECK(skinned_material_normal[translated_center + 0] > 65000);
+        CHECK(std::abs(static_cast<int>(
+                           skinned_material_normal[translated_center + 2]) -
+                       12336) <= 3);
     }
 }
 

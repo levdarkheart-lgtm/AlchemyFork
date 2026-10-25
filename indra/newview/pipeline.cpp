@@ -390,6 +390,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool rigged = false;
     bool alpha_mask = false;
     U32 material_alpha_mode = 0;
+    bool material_normal_map = false;
+    bool material_specular_map = false;
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
@@ -791,10 +793,14 @@ void LLPipeline::beginMetalWorldGBufferPass(bool rigged, bool alpha_mask)
     capture.rigged = rigged;
     capture.alpha_mask = alpha_mask;
     capture.material_alpha_mode = 0;
+    capture.material_normal_map = false;
+    capture.material_specular_map = false;
     capture.pass_active = true;
 }
 
-void LLPipeline::beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode)
+void LLPipeline::beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode,
+                                             bool normal_map,
+                                             bool specular_map)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->frame_active)
@@ -817,6 +823,8 @@ void LLPipeline::beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode)
     capture.rigged = rigged;
     capture.alpha_mask = false;
     capture.material_alpha_mode = alpha_mode;
+    capture.material_normal_map = normal_map;
+    capture.material_specular_map = specular_map;
     capture.pass_active = true;
 }
 
@@ -1005,6 +1013,11 @@ void LLPipeline::captureMetalWorldMaterialBatch(
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
     if (!capture.complete || !buffer || slot_count == 0 ||
         slot_count > ALMetalWorldSimpleBatch::max_material_slots ||
+        (capture.material_normal_map &&
+         (!buffer->hasDataType(LLVertexBuffer::TYPE_TANGENT) ||
+          !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD1))) ||
+        (capture.material_specular_map &&
+         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD2)) ||
         (indexed_materials &&
          (slot_count < 2 ||
           !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX))))
@@ -1025,6 +1038,18 @@ void LLPipeline::captureMetalWorldMaterialBatch(
     batch.material_slot_count = static_cast<U32>(slot_count);
     batch.material_alpha_mode = capture.material_alpha_mode;
     batch.texture_count = static_cast<U32>(slot_count);
+    if (capture.material_normal_map)
+    {
+        batch.tangent_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_TANGENT);
+        batch.texcoord1_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_TEXCOORD1);
+    }
+    if (capture.material_specular_map)
+    {
+        batch.texcoord2_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_TEXCOORD2);
+    }
     if (indexed_materials)
     {
         std::memset(batch.texture_matrix, 0,
@@ -1039,6 +1064,8 @@ void LLPipeline::captureMetalWorldMaterialBatch(
          slot_index < slot_count; ++slot_index)
     {
         LLViewerTexture* texture = nullptr;
+        LLViewerTexture* normal_texture = nullptr;
+        LLViewerTexture* specular_texture = nullptr;
         ALMetalWorldMaterialSlot& destination =
             batch.material_slots[slot_index];
         if (indexed_materials)
@@ -1048,6 +1075,18 @@ void LLPipeline::captureMetalWorldMaterialBatch(
             texture = source.mDiffuse.notNull()
                 ? source.mDiffuse.get()
                 : LLViewerFetchedTexture::sWhiteImagep.get();
+            if (capture.material_normal_map)
+            {
+                normal_texture = source.mNormalMap.notNull()
+                    ? source.mNormalMap.get()
+                    : LLViewerFetchedTexture::sFlatNormalImagep.get();
+            }
+            if (capture.material_specular_map)
+            {
+                specular_texture = source.mSpecularMap.notNull()
+                    ? source.mSpecularMap.get()
+                    : LLViewerFetchedTexture::sWhiteImagep.get();
+            }
             std::memcpy(destination.specular_color,
                         source.mSpecColor.mV,
                         sizeof(destination.specular_color));
@@ -1060,6 +1099,18 @@ void LLPipeline::captureMetalWorldMaterialBatch(
             texture = params.mTexture
                 ? params.mTexture.get()
                 : LLViewerFetchedTexture::sWhiteImagep.get();
+            if (capture.material_normal_map)
+            {
+                normal_texture = params.mNormalMap
+                    ? params.mNormalMap.get()
+                    : LLViewerFetchedTexture::sFlatNormalImagep.get();
+            }
+            if (capture.material_specular_map)
+            {
+                specular_texture = params.mSpecularMap
+                    ? params.mSpecularMap.get()
+                    : LLViewerFetchedTexture::sWhiteImagep.get();
+            }
             std::memcpy(destination.specular_color,
                         params.mSpecColor.mV,
                         sizeof(destination.specular_color));
@@ -1076,6 +1127,32 @@ void LLPipeline::captureMetalWorldMaterialBatch(
             capture.complete = false;
             capture.batches.clear();
             return;
+        }
+        if (capture.material_normal_map)
+        {
+            LLImageGL* normal_image = normal_texture
+                ? normal_texture->getGLTexture() : nullptr;
+            destination.normal_texture = normal_image
+                ? normal_image->getMetalTexture() : nullptr;
+            if (!destination.normal_texture)
+            {
+                capture.complete = false;
+                capture.batches.clear();
+                return;
+            }
+        }
+        if (capture.material_specular_map)
+        {
+            LLImageGL* specular_image = specular_texture
+                ? specular_texture->getGLTexture() : nullptr;
+            destination.specular_texture = specular_image
+                ? specular_image->getMetalTexture() : nullptr;
+            if (!destination.specular_texture)
+            {
+                capture.complete = false;
+                capture.batches.clear();
+                return;
+            }
         }
     }
 }
