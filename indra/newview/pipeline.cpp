@@ -460,6 +460,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     F32 windlight_aurora_camera_local[4]{};
     F32 windlight_aurora_intensity = 0.f;
     F32 windlight_aurora_time = 0.f;
+    std::vector<ALMetalWorldCloudBatch> windlight_cloud_batches;
+    const ALMetalTexture* windlight_cloud_noise = nullptr;
+    const ALMetalTexture* windlight_cloud_noise_next = nullptr;
+    ALMetalWorldCloudConstants windlight_cloud_constants;
     std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
         avatar_palettes;
     U32 width = 0;
@@ -490,6 +494,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool windlight_aurora_active = false;
     bool windlight_aurora_complete = false;
     bool windlight_aurora_native_available = false;
+    bool windlight_clouds_expected = false;
+    bool windlight_clouds_active = false;
+    bool windlight_clouds_complete = false;
+    bool windlight_clouds_native_available = false;
     bool attempted = false;
     bool local_lighting_attempted = false;
     U32 local_lighting_failed_frames = 0;
@@ -955,6 +963,14 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.windlight_aurora_active = false;
         capture.windlight_aurora_complete = false;
         capture.windlight_aurora_native_available = false;
+        capture.windlight_cloud_batches.clear();
+        capture.windlight_cloud_noise = nullptr;
+        capture.windlight_cloud_noise_next = nullptr;
+        capture.windlight_cloud_constants = {};
+        capture.windlight_clouds_expected = false;
+        capture.windlight_clouds_active = false;
+        capture.windlight_clouds_complete = false;
+        capture.windlight_clouds_native_available = false;
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
@@ -1154,6 +1170,14 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.windlight_aurora_active = false;
     capture.windlight_aurora_complete = false;
     capture.windlight_aurora_native_available = false;
+    capture.windlight_cloud_batches.clear();
+    capture.windlight_cloud_noise = nullptr;
+    capture.windlight_cloud_noise_next = nullptr;
+    capture.windlight_cloud_constants = {};
+    capture.windlight_clouds_expected = false;
+    capture.windlight_clouds_active = false;
+    capture.windlight_clouds_complete = false;
+    capture.windlight_clouds_native_available = false;
     capture.avatar_palettes.clear();
     capture.width = descriptor->width;
     capture.height = descriptor->height;
@@ -1837,6 +1861,167 @@ void LLPipeline::endMetalWorldWindLightAurora()
     }
 }
 
+void LLPipeline::beginMetalWorldWindLightClouds(
+    LLViewerTexture* noise_texture,
+    LLViewerTexture* next_noise_texture,
+    F32 camera_height_local, F32 cloud_variance,
+    F32 blend_factor, F32 sun_moon_glow_factor,
+    F32 density_multiplier)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.windlight_cloud_batches.clear();
+    capture.windlight_cloud_noise = nullptr;
+    capture.windlight_cloud_noise_next = nullptr;
+    capture.windlight_cloud_constants = {};
+    capture.windlight_clouds_expected = true;
+    capture.windlight_clouds_active = true;
+    capture.windlight_clouds_native_available = false;
+
+    LLImageGL* noise_image = noise_texture
+        ? noise_texture->getGLTexture() : nullptr;
+    LLImageGL* next_noise_image = next_noise_texture
+        ? next_noise_texture->getGLTexture() : nullptr;
+    ALMetalTexture* metal_noise = noise_image
+        ? noise_image->getMetalTexture() : nullptr;
+    ALMetalTexture* metal_next_noise = next_noise_image
+        ? next_noise_image->getMetalTexture() : nullptr;
+    const std::array<F32, 5> values{{
+        camera_height_local, cloud_variance, blend_factor,
+        sun_moon_glow_factor, density_multiplier,
+    }};
+    capture.windlight_clouds_complete =
+        !capture.pass_active && !capture.hdri_sky_complete &&
+        !capture.windlight_sky_active &&
+        capture.windlight_sky_complete &&
+        !capture.windlight_stars_active &&
+        (!capture.windlight_stars_expected ||
+         capture.windlight_stars_complete) &&
+        !capture.windlight_heavenly_bodies_active &&
+        (!capture.windlight_heavenly_bodies_expected ||
+         capture.windlight_heavenly_bodies_complete) &&
+        !capture.windlight_meteors_active &&
+        (!capture.windlight_meteors_expected ||
+         capture.windlight_meteors_complete) &&
+        !capture.windlight_aurora_active &&
+        (!capture.windlight_aurora_expected ||
+         capture.windlight_aurora_complete) &&
+        metal_noise && metal_next_noise &&
+        cloud_variance >= 0.f && blend_factor >= 0.f &&
+        blend_factor <= 1.f && density_multiplier >= 0.f &&
+        std::none_of(values.begin(), values.end(),
+                     [](F32 value) { return !std::isfinite(value); });
+    if (!capture.windlight_clouds_complete)
+    {
+        return;
+    }
+
+    const LLEnvironment& environment = LLEnvironment::instance();
+    const LLEnvironment::EnvironmentUBOData& data =
+        environment.getEnvironmentUBOData();
+    ALMetalWorldCloudConstants& constants =
+        capture.windlight_cloud_constants;
+    constants.camera_local[1] = camera_height_local;
+    const LLVector4 light_direction = environment.getClampedLightNorm();
+    std::memcpy(constants.light_density, light_direction.mV,
+                sizeof(F32) * 3);
+    constants.light_density[3] = density_multiplier;
+    std::memcpy(constants.blue_horizon, data.blue_horizon,
+                sizeof(data.blue_horizon));
+    constants.blue_horizon[3] = data.haze_horizon;
+    std::memcpy(constants.glow, data.glow, sizeof(data.glow));
+    constants.glow[3] = data.max_y;
+    std::memcpy(constants.haze_extinction, data.haze_extinction,
+                sizeof(data.haze_extinction));
+    std::memcpy(constants.blue_weight, data.blue_weight,
+                sizeof(data.blue_weight));
+    std::memcpy(constants.haze_weight, data.haze_weight,
+                sizeof(data.haze_weight));
+    std::memcpy(constants.sky_sunlight, data.sky_sunlight,
+                sizeof(data.sky_sunlight));
+    std::memcpy(constants.atmos_ambient, data.atmos_ambient,
+                sizeof(data.atmos_ambient));
+    std::memcpy(constants.sky_light_atten, data.sky_light_atten,
+                sizeof(data.sky_light_atten));
+    std::memcpy(constants.cloud_sunlight, data.cloud_sunlight,
+                sizeof(data.cloud_sunlight));
+    std::memcpy(constants.cloud_color_shadow, data.cloud_color,
+                sizeof(data.cloud_color));
+    constants.cloud_color_shadow[3] = data.cloud_shadow;
+    std::memcpy(constants.cloud_pos_density1, data.cloud_pos_density1,
+                sizeof(data.cloud_pos_density1));
+    std::memcpy(constants.cloud_pos_density2, data.cloud_pos_density2,
+                sizeof(data.cloud_pos_density2));
+    constants.parameters[0] = data.cloud_scale;
+    constants.parameters[1] = cloud_variance;
+    constants.parameters[2] = blend_factor;
+    constants.parameters[3] = sun_moon_glow_factor;
+    capture.windlight_cloud_noise = metal_noise;
+    capture.windlight_cloud_noise_next = metal_next_noise;
+}
+
+void LLPipeline::captureMetalWorldWindLightCloudBatch(
+    LLVertexBuffer* buffer)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->windlight_clouds_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.windlight_clouds_complete || !buffer ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer() || buffer->getNumVerts() < 3 ||
+        buffer->getNumIndices() < 3 ||
+        (buffer->getIndexStride() != 2 &&
+         buffer->getIndexStride() != 4))
+    {
+        capture.windlight_clouds_complete = false;
+        capture.windlight_cloud_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldCloudBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset =
+        buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.texcoord_offset =
+        buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = buffer->getNumIndices();
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    capture.windlight_cloud_batches.push_back(batch);
+}
+
+void LLPipeline::endMetalWorldWindLightClouds()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->windlight_clouds_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.windlight_clouds_active = false;
+    if (capture.windlight_cloud_batches.empty())
+    {
+        capture.windlight_clouds_complete = false;
+    }
+}
+
 void LLPipeline::beginMetalWorldGBufferPass(bool rigged, bool alpha_mask)
 {
     if (!mMetalWorldSimpleCapture ||
@@ -2116,6 +2301,14 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.windlight_aurora_active = false;
         capture.windlight_aurora_complete = false;
         capture.windlight_aurora_native_available = false;
+        capture.windlight_cloud_batches.clear();
+        capture.windlight_cloud_noise = nullptr;
+        capture.windlight_cloud_noise_next = nullptr;
+        capture.windlight_cloud_constants = {};
+        capture.windlight_clouds_expected = false;
+        capture.windlight_clouds_active = false;
+        capture.windlight_clouds_complete = false;
+        capture.windlight_clouds_native_available = false;
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
@@ -5160,6 +5353,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
         capture.windlight_heavenly_bodies_native_available = false;
         capture.windlight_meteors_native_available = false;
         capture.windlight_aurora_native_available = false;
+        capture.windlight_clouds_native_available = false;
         if (capture.hdri_sky_complete &&
             !capture.hdri_sky_active &&
             !capture.hdri_sky_batches.empty() &&
@@ -5377,6 +5571,46 @@ void LLPipeline::endMetalWorldGBufferCapture()
                     << LL_ENDL;
             }
         }
+        if (capture.windlight_sky_native_available &&
+            capture.windlight_clouds_expected)
+        {
+            if (capture.windlight_clouds_complete &&
+                !capture.windlight_clouds_active &&
+                !capture.windlight_cloud_batches.empty() &&
+                capture.windlight_cloud_noise &&
+                capture.windlight_cloud_noise_next)
+            {
+                ALMetalWorldCloudScene cloud_scene;
+                cloud_scene.batches =
+                    capture.windlight_cloud_batches.data();
+                cloud_scene.batch_count =
+                    capture.windlight_cloud_batches.size();
+                cloud_scene.noise_texture =
+                    capture.windlight_cloud_noise;
+                cloud_scene.next_noise_texture =
+                    capture.windlight_cloud_noise_next;
+                cloud_scene.constants =
+                    capture.windlight_cloud_constants;
+                cloud_scene.width = capture.width;
+                cloud_scene.height = capture.height;
+                cloud_scene.normal_hdr = capture.normal_hdr;
+                cloud_scene.hdr = capture.hdr;
+                cloud_scene.reverse_z = capture.reverse_z;
+                error.clear();
+                capture.windlight_clouds_native_available =
+                    capture.renderer->compositeWindLightClouds(
+                        *target, cloud_scene, &error);
+            }
+            if (!capture.windlight_clouds_native_available)
+            {
+                capture.windlight_sky_native_available = false;
+                LL_WARNS("Metal")
+                    << "Native WindLight sky retained GL authority because "
+                       "its expected cloud layer was incomplete"
+                    << (error.empty() ? "" : ": ") << error
+                    << LL_ENDL;
+            }
+        }
         capture.target = std::move(target);
         capture.attempted = true;
         capture.failed_frames = 0;
@@ -5388,8 +5622,10 @@ void LLPipeline::endMetalWorldGBufferCapture()
             << (capture.hdri_sky_native_available
                     ? "; full HDRI sky is native"
                     : capture.windlight_sky_native_available
-                        ? capture.windlight_aurora_expected
-                            ? "; WindLight haze through aurora are native"
+                        ? capture.windlight_clouds_expected
+                            ? "; full WindLight sky and clouds are native"
+                            : capture.windlight_aurora_expected
+                                ? "; WindLight haze through aurora are native"
                             : capture.windlight_meteors_expected
                                 ? "; WindLight haze, stars, heavenly bodies and meteors are native"
                             : capture.windlight_heavenly_bodies_expected
@@ -5432,6 +5668,13 @@ void LLPipeline::endMetalWorldGBufferCapture()
     capture.windlight_aurora_expected = false;
     capture.windlight_aurora_active = false;
     capture.windlight_aurora_complete = false;
+    capture.windlight_cloud_batches.clear();
+    capture.windlight_cloud_noise = nullptr;
+    capture.windlight_cloud_noise_next = nullptr;
+    capture.windlight_cloud_constants = {};
+    capture.windlight_clouds_expected = false;
+    capture.windlight_clouds_active = false;
+    capture.windlight_clouds_complete = false;
     capture.avatar_palettes.clear();
 }
 

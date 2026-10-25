@@ -520,6 +520,62 @@ struct ALMetalWorldAuroraScene
     bool reverse_z = false;
 };
 
+// The indexed WindLight dome replayed for clouds. The source vertex buffer
+// keeps float4 positions and float2 cloud coordinates in independent planes.
+struct ALMetalWorldCloudBatch
+{
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::size_t texcoord_offset = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t vertex_count = 0;
+    std::uint32_t index_count = 0;
+    float modelview_projection[16]{};
+};
+
+// CPU-packed cloudsF.glsl inputs. Every vec3 is padded into a float4 so the
+// structure is also the Metal constant-buffer ABI.
+struct alignas(16) ALMetalWorldCloudConstants
+{
+    float camera_local[4]{};
+    // xyz = clamped sky-frame light direction, w = density multiplier.
+    float light_density[4]{};
+    // xyz = blue horizon, w = scalar haze horizon.
+    float blue_horizon[4]{};
+    // xyz = glow, w = maximum atmospheric layer height.
+    float glow[4]{};
+    float haze_extinction[4]{};
+    float blue_weight[4]{};
+    float haze_weight[4]{};
+    float sky_sunlight[4]{};
+    float atmos_ambient[4]{};
+    float sky_light_atten[4]{};
+    float cloud_sunlight[4]{};
+    // xyz = cloud color, w = cloud shadow.
+    float cloud_color_shadow[4]{};
+    float cloud_pos_density1[4]{};
+    float cloud_pos_density2[4]{};
+    // x = cloud scale, y = variance, z = texture blend,
+    // w = sun/moon glow factor.
+    float parameters[4]{};
+};
+
+struct ALMetalWorldCloudScene
+{
+    const ALMetalWorldCloudBatch* batches = nullptr;
+    std::size_t batch_count = 0;
+    const ALMetalTexture* noise_texture = nullptr;
+    const ALMetalTexture* next_noise_texture = nullptr;
+    ALMetalWorldCloudConstants constants;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    bool normal_hdr = false;
+    bool hdr = false;
+    bool reverse_z = false;
+};
+
 struct alignas(16) ALMetalWorldBaseLightingConstants
 {
     float inverse_projection[16]{};
@@ -640,6 +696,11 @@ public:
     bool compositeWindLightAurora(
         ALMetalRenderTarget& target,
         const ALMetalWorldAuroraScene& scene,
+        std::string* error = nullptr);
+
+    bool compositeWindLightClouds(
+        ALMetalRenderTarget& target,
+        const ALMetalWorldCloudScene& scene,
         std::string* error = nullptr);
 
     // Shade the retained world G-buffer with the deferred base-light owner:

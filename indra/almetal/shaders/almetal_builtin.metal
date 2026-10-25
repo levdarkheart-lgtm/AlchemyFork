@@ -464,6 +464,32 @@ struct ALMetalWorldAuroraConstants
     uint4 config;
 };
 
+struct ALMetalWorldCloudConstants
+{
+    float4x4 modelview_projection;
+    float4 camera_local;
+    float4 light_density;
+    float4 blue_horizon;
+    float4 glow;
+    float4 haze_extinction;
+    float4 blue_weight;
+    float4 haze_weight;
+    float4 sky_sunlight;
+    float4 atmos_ambient;
+    float4 sky_light_atten;
+    float4 cloud_sunlight;
+    float4 cloud_color_shadow;
+    float4 cloud_pos_density1;
+    float4 cloud_pos_density2;
+    // x = cloud scale, y = variance, z = texture blend,
+    // w = sun/moon glow factor.
+    float4 parameters;
+    // xy = target dimensions.
+    float4 screen;
+    // x = reverse Z, y = emissive/HDR G-buffer.
+    uint4 config;
+};
+
 struct ALMetalWorldLocalLightVaryings
 {
     float4 position [[position]];
@@ -1191,6 +1217,216 @@ fragment ALMetalWorldGBufferOutput almetal_world_aurora_fragment(
     else
     {
         output.albedo = float4(aurora, alpha);
+        output.emissive = 0.0;
+    }
+    return output;
+}
+
+struct ALMetalWorldCloudVaryings
+{
+    float4 position [[position]];
+    float3 local_position;
+    float2 texcoord0;
+    float2 texcoord1;
+    float2 texcoord2;
+    float2 texcoord3;
+};
+
+vertex ALMetalWorldCloudVaryings almetal_world_cloud_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(1)]],
+    constant ALMetalWorldCloudConstants& constants [[buffer(2)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float3 local_position = positions[vertex_id].xyz;
+    float4 clip_position = constants.modelview_projection *
+                           float4(local_position, 1.0);
+    clip_position.y = -clip_position.y;
+    clip_position.z = constants.config.x != 0u
+        ? 0.0 : clip_position.w;
+
+    float2 texcoord0 = float2(
+        -texcoords[vertex_id].x, texcoords[vertex_id].y);
+    texcoord0 = (texcoord0 - 0.5) / constants.parameters.x + 0.5;
+    float2 texcoord1 = texcoord0;
+    texcoord1.x += constants.light_density.z * 0.0125;
+    texcoord1.y -= constants.light_density.x * 0.0125;
+
+    ALMetalWorldCloudVaryings output;
+    output.position = clip_position;
+    output.local_position = local_position;
+    output.texcoord0 = texcoord0;
+    output.texcoord1 = texcoord1;
+    output.texcoord2 = texcoord0 * 16.0;
+    output.texcoord3 = texcoord1 * 16.0;
+    return output;
+}
+
+static float almetal_world_cloud_noise(
+    texture2d<float> noise_map,
+    texture2d<float> next_noise_map,
+    sampler noise_sampler,
+    float2 texcoord,
+    float blend_factor)
+{
+    float sample_value = noise_map.sample(noise_sampler, texcoord).r;
+    if (blend_factor > 0.0)
+    {
+        sample_value = mix(
+            sample_value,
+            next_noise_map.sample(noise_sampler, texcoord).r,
+            blend_factor);
+    }
+    return sample_value;
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_cloud_fragment(
+    ALMetalWorldCloudVaryings input [[stage_in]],
+    constant ALMetalWorldCloudConstants& constants [[buffer(0)]],
+    texture2d<float> noise_map [[texture(0)]],
+    texture2d<float> next_noise_map [[texture(1)]],
+    sampler noise_sampler [[sampler(0)]])
+{
+    if (constants.parameters.x < 0.001)
+    {
+        discard_fragment();
+    }
+
+    float2 uv1 = input.texcoord0;
+    float2 uv2 = input.texcoord1;
+    float2 uv3 = input.texcoord2;
+    float2 uv4 = input.texcoord3;
+    float3 relative_position = input.local_position -
+        constants.camera_local.xyz + float3(0.0, 50.0, 0.0);
+    float altitude_blend = smoothstep(
+        0.0, 0.035,
+        relative_position.y / length(relative_position));
+    if (relative_position.y > 0.0)
+    {
+        relative_position *= max(constants.glow.w, 1.0) /
+                             relative_position.y;
+    }
+    if (relative_position.y < 0.0)
+    {
+        altitude_blend = 0.0;
+        relative_position *= -32000.0 / relative_position.y;
+    }
+
+    const float3 direction = normalize(relative_position);
+    const float distance = length(relative_position);
+    const float off_axis = 1.0 / max(
+        0.000001,
+        max(0.0, direction.y) + constants.light_density.y);
+    float3 sunlight = constants.sky_sunlight.rgb * exp(
+        -constants.sky_light_atten.rgb * off_axis);
+    float3 combined_haze = exp(
+        -constants.haze_extinction.rgb *
+        (distance * constants.light_density.w));
+
+    float haze_glow = max(
+        1.0 - dot(direction, constants.light_density.xyz), 0.001);
+    haze_glow = pow(haze_glow * constants.glow.x, constants.glow.z);
+    haze_glow *= constants.parameters.w;
+    haze_glow = constants.parameters.w < 1.0
+        ? 0.0 : haze_glow + 0.25;
+
+    sunlight *= 1.0 - constants.cloud_color_shadow.w;
+    const float3 below_cloud =
+        constants.blue_horizon.rgb * constants.blue_weight.rgb *
+            (sunlight + constants.atmos_ambient.rgb) +
+        constants.blue_horizon.w * constants.haze_weight.rgb *
+            (sunlight * haze_glow + constants.atmos_ambient.rgb);
+
+    float3 cloud_color_sun =
+        constants.cloud_sunlight.rgb * haze_glow *
+        constants.cloud_color_shadow.rgb;
+    float3 cloud_color_ambient =
+        constants.atmos_ambient.rgb * constants.cloud_color_shadow.rgb;
+    combined_haze = sqrt(combined_haze);
+    cloud_color_sun *= combined_haze;
+    cloud_color_ambient *= combined_haze;
+    cloud_color_ambient += below_cloud * (1.0 - combined_haze);
+    float cloud_density = 2.0 *
+        (constants.cloud_color_shadow.w - 0.25);
+
+    const float variance_scale = constants.parameters.y *
+        (1.0 - constants.parameters.x * 0.25);
+    const float blend_factor = constants.parameters.z;
+    const float2 disturbance = float2(
+        almetal_world_cloud_noise(
+            noise_map, next_noise_map, noise_sampler,
+            uv1 / 8.0, blend_factor),
+        almetal_world_cloud_noise(
+            noise_map, next_noise_map, noise_sampler,
+            (uv3 + uv1) / 16.0, blend_factor)) * variance_scale;
+    const float2 disturbance2 = float2(
+        almetal_world_cloud_noise(
+            noise_map, next_noise_map, noise_sampler,
+            (uv1 + uv3) / 4.0, blend_factor),
+        almetal_world_cloud_noise(
+            noise_map, next_noise_map, noise_sampler,
+            (uv4 + uv2) / 8.0, blend_factor)) * variance_scale;
+
+    uv1 += constants.cloud_pos_density1.xy + disturbance * 0.2;
+    uv2 += constants.cloud_pos_density1.xy;
+    uv3 += constants.cloud_pos_density2.xy;
+    uv4 += constants.cloud_pos_density2.xy;
+    const float density_variance = min(
+        1.0,
+        (disturbance.x * 2.0 + disturbance.y * 2.0 +
+         disturbance2.x + disturbance2.y) * 4.0);
+    cloud_density *= 1.0 - density_variance * density_variance;
+
+    float alpha1 =
+        almetal_world_cloud_noise(
+            noise_map, next_noise_map, noise_sampler,
+            uv1, blend_factor) - 0.5 +
+        (almetal_world_cloud_noise(
+            noise_map, next_noise_map, noise_sampler,
+            uv3, blend_factor) - 0.5) *
+            constants.cloud_pos_density2.z;
+    alpha1 = min(
+        max(alpha1 + cloud_density, 0.0) * 10.0 *
+            constants.cloud_pos_density1.z,
+        1.0);
+    alpha1 = 1.0 - alpha1 * alpha1;
+    alpha1 = 1.0 - alpha1 * alpha1;
+    alpha1 = clamp(alpha1 * altitude_blend, 0.0, 1.0);
+
+    float alpha2 = almetal_world_cloud_noise(
+        noise_map, next_noise_map, noise_sampler,
+        uv2, blend_factor) - 0.5;
+    alpha2 = min(
+        max(alpha2 + cloud_density, 0.0) * 2.5 *
+            constants.cloud_pos_density1.z,
+        1.0);
+    alpha2 = 1.0 - alpha2;
+    alpha2 = 1.0 - alpha2 * alpha2;
+
+    float3 color = clamp(
+        cloud_color_sun * (1.0 - alpha2) + cloud_color_ambient,
+        float3(0.0), float3(1.0)) * 2.0;
+
+    ALMetalWorldGBufferOutput output;
+    output.specular_orm = 0.0;
+    output.normal = 0.0;
+    if (constants.config.y != 0u)
+    {
+        const float2 gl_fragment_position = float2(
+            input.position.x, constants.screen.y - input.position.y);
+        const float noise_value = fract(
+            52.9829189 * fract(dot(
+                gl_fragment_position,
+                float2(0.06711056, 0.00583715)))) - 0.5;
+        output.albedo = 0.0;
+        output.emissive = float4(
+            color * (1.0 + noise_value *
+                float3(1.0 / 64.0, 1.0 / 64.0, 1.0 / 32.0)),
+            alpha1);
+    }
+    else
+    {
+        output.albedo = float4(color, alpha1);
         output.emissive = 0.0;
     }
     return output;

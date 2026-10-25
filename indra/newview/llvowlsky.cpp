@@ -518,6 +518,7 @@ void LLVOWLSky::drawDome(void)
         gPipeline.captureMetalWorldHDRISkyBatch(strips_segment);
         gPipeline.captureMetalWorldWindLightSkyBatch(strips_segment);
         gPipeline.captureMetalWorldWindLightAuroraBatch(strips_segment);
+        gPipeline.captureMetalWorldWindLightCloudBatch(strips_segment);
 #endif
         strips_segment->setBuffer();
 

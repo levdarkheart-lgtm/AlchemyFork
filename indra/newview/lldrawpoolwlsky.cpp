@@ -598,11 +598,13 @@ void LLDrawPoolWLSky::renderSkyCloudsDeferred(const LLVector3& camPosLocal, F32 
             {
                 // Bind current and next sun textures
                 cloudshader->bindTexture(LLShaderMgr::CLOUD_NOISE_MAP, cloud_noise, ALSamplers::AnisoWrap);
+                cloud_noise_next = cloud_noise;
                 blend_factor = 0;
             }
             else if (cloud_noise_next && !cloud_noise)
             {
                 cloudshader->bindTexture(LLShaderMgr::CLOUD_NOISE_MAP, cloud_noise_next, ALSamplers::AnisoWrap);
+                cloud_noise = cloud_noise_next;
                 blend_factor = 0;
             }
             else if (cloud_noise_next != cloud_noise)
@@ -617,7 +619,16 @@ void LLDrawPoolWLSky::renderSkyCloudsDeferred(const LLVector3& camPosLocal, F32 
         cloudshader->uniform1f(LLShaderMgr::SUN_MOON_GLOW_FACTOR, psky->getSunMoonGlowFactor());
 
         /// Render the skydome
+#if LL_DARWIN
+        gPipeline.beginMetalWorldWindLightClouds(
+            cloud_noise, cloud_noise_next, camHeightLocal,
+            cloud_variance, blend_factor,
+            psky->getSunMoonGlowFactor(), psky->getDensityMultiplier());
+#endif
         renderDome(camPosLocal, camHeightLocal, cloudshader);
+#if LL_DARWIN
+        gPipeline.endMetalWorldWindLightClouds();
+#endif
 
         cloudshader->unbind();
 

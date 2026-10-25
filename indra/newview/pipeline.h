@@ -691,6 +691,14 @@ public:
         F32 intensity, F32 time, F32 camera_height_local);
     void captureMetalWorldWindLightAuroraBatch(LLVertexBuffer* buffer);
     void endMetalWorldWindLightAurora();
+    void beginMetalWorldWindLightClouds(
+        LLViewerTexture* noise_texture,
+        LLViewerTexture* next_noise_texture,
+        F32 camera_height_local, F32 cloud_variance,
+        F32 blend_factor, F32 sun_moon_glow_factor,
+        F32 density_multiplier);
+    void captureMetalWorldWindLightCloudBatch(LLVertexBuffer* buffer);
+    void endMetalWorldWindLightClouds();
     bool mirrorMetalWorldBaseLightMap(LLRenderTarget* source);
     void renderMetalWorldBaseLighting(
         LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao,

@@ -167,6 +167,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_meteor_fragment",
             "almetal_world_aurora_vertex",
             "almetal_world_aurora_fragment",
+            "almetal_world_cloud_vertex",
+            "almetal_world_cloud_fragment",
             "almetal_world_base_light_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
@@ -4497,6 +4499,200 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         error.clear();
         aurora_scene.intensity = 1.f;
 
+        // Clouds are the final non-HDRI WindLight layer. Their retained dome
+        // adds the production float2 UV plane and interpolates the two live
+        // wrap-filtered noise textures before source-over composition.
+        struct CloudBufferData
+        {
+            std::array<std::array<float, 4>, 4> positions{};
+            std::array<std::array<float, 2>, 4> texcoords{};
+        } cloud_data;
+        cloud_data.positions = aurora_vertices;
+        cloud_data.texcoords = {{
+            {{0.f, 0.f}}, {{1.f, 0.f}},
+            {{0.f, 1.f}}, {{1.f, 1.f}},
+        }};
+        ALMetalBufferDescriptor cloud_vertex_descriptor;
+        cloud_vertex_descriptor.length = sizeof(cloud_data);
+        cloud_vertex_descriptor.storage = ALMetalStorageMode::shared;
+        cloud_vertex_descriptor.label =
+            "Alchemy WindLight cloud production-layout vertices";
+        auto cloud_vertex_buffer = ALMetalBuffer::create(
+            *device, cloud_vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(cloud_vertex_buffer);
+        REQUIRE(cloud_vertex_buffer->write(
+            0, &cloud_data, sizeof(cloud_data), &error));
+
+        auto cloud_noise_a = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy WindLight cloud noise A");
+        auto cloud_noise_b = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy WindLight cloud noise B");
+        const std::array<std::uint8_t, 4> cloud_noise_a_pixel{{
+            204, 0, 0, 255,
+        }};
+        const std::array<std::uint8_t, 4> cloud_noise_b_pixel{{
+            51, 0, 0, 255,
+        }};
+        auto cloud_upload = device->makeCommandBuffer(
+            "Alchemy WindLight cloud noise upload", &error);
+        INFO(error);
+        REQUIRE(cloud_upload);
+        REQUIRE(cloud_noise_a->upload(
+            *cloud_upload, 0, 0, {}, cloud_noise_a_pixel.data(),
+            4, &error));
+        REQUIRE(cloud_noise_b->upload(
+            *cloud_upload, 0, 0, {}, cloud_noise_b_pixel.data(),
+            4, &error));
+        REQUIRE(cloud_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldCloudBatch cloud_batch;
+        cloud_batch.vertices = cloud_vertex_buffer.get();
+        cloud_batch.position_offset = offsetof(CloudBufferData, positions);
+        cloud_batch.texcoord_offset = offsetof(CloudBufferData, texcoords);
+        cloud_batch.indices = sky_index_buffer.get();
+        cloud_batch.index_count = 4;
+        cloud_batch.vertex_count = 4;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            cloud_batch.modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        ALMetalWorldCloudScene cloud_scene;
+        cloud_scene.batches = &cloud_batch;
+        cloud_scene.batch_count = 1;
+        cloud_scene.noise_texture = cloud_noise_a.get();
+        cloud_scene.next_noise_texture = cloud_noise_b.get();
+        cloud_scene.constants.light_density[1] = 1.f;
+        cloud_scene.constants.light_density[3] = 0.001f;
+        cloud_scene.constants.blue_horizon[0] = 0.4f;
+        cloud_scene.constants.blue_horizon[1] = 0.3f;
+        cloud_scene.constants.blue_horizon[2] = 0.2f;
+        cloud_scene.constants.blue_horizon[3] = 0.1f;
+        cloud_scene.constants.glow[0] = 1.f;
+        cloud_scene.constants.glow[2] = -1.f;
+        cloud_scene.constants.glow[3] = 1000.f;
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            cloud_scene.constants.haze_extinction[channel] = 0.5f;
+            cloud_scene.constants.blue_weight[channel] = 1.f;
+            cloud_scene.constants.haze_weight[channel] = 1.f;
+            cloud_scene.constants.sky_sunlight[channel] = 0.5f;
+            cloud_scene.constants.atmos_ambient[channel] = 0.2f;
+            cloud_scene.constants.sky_light_atten[channel] = 0.1f;
+            cloud_scene.constants.cloud_sunlight[channel] = 0.4f;
+            cloud_scene.constants.cloud_color_shadow[channel] =
+                0.6f - static_cast<float>(channel) * 0.1f;
+        }
+        cloud_scene.constants.cloud_color_shadow[3] = 0.25f;
+        cloud_scene.constants.cloud_pos_density1[2] = 0.2f;
+        cloud_scene.constants.cloud_pos_density2[2] = 0.5f;
+        cloud_scene.constants.parameters[0] = 1.f;
+        cloud_scene.constants.parameters[1] = 0.f;
+        cloud_scene.constants.parameters[2] = 0.25f;
+        cloud_scene.constants.parameters[3] = 0.5f;
+        cloud_scene.width = 32;
+        cloud_scene.height = 32;
+        cloud_scene.normal_hdr = true;
+
+        REQUIRE(renderer->compositeWindLightClouds(
+            *pbr_gbuffer, cloud_scene, &error));
+        INFO(error);
+        cloud_scene.reverse_z = true;
+        REQUIRE(renderer->compositeWindLightClouds(
+            *pbr_reverse_gbuffer, cloud_scene, &error));
+        INFO(error);
+        cloud_scene.reverse_z = false;
+        std::array<std::uint8_t, 32 * 32 * 4> cloud_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4>
+            reverse_cloud_albedo{};
+        REQUIRE(pbr_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, cloud_albedo.data(), 32 * 4,
+            &error));
+        REQUIRE(pbr_reverse_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_cloud_albedo.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(reverse_cloud_albedo == cloud_albedo);
+        CHECK(cloud_albedo[outside + 0] !=
+              aurora_albedo[outside + 0]);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(cloud_albedo[center + channel] ==
+                  aurora_albedo[center + channel]);
+        }
+
+        auto cloud_source_gbuffer = renderer->render(
+            gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(cloud_source_gbuffer);
+        REQUIRE(renderer->compositeWindLightSky(
+            *cloud_source_gbuffer, black_windlight_scene, &error));
+        REQUIRE(renderer->compositeWindLightClouds(
+            *cloud_source_gbuffer, cloud_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            cloud_source_albedo{};
+        REQUIRE(cloud_source_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, cloud_source_albedo.data(),
+            32 * 4, &error));
+        INFO(error);
+        constexpr float cloud_alpha = 0.36399375f;
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const int expected = static_cast<int>(std::lround(
+                static_cast<float>(aurora_albedo[outside + channel]) *
+                (1.f - cloud_alpha))) +
+                static_cast<int>(cloud_source_albedo[outside + channel]);
+            CHECK(std::abs(static_cast<int>(
+                      cloud_albedo[outside + channel]) - expected) <= 2);
+        }
+
+        auto cloud_a_gbuffer = renderer->render(gbuffer_scene, &error);
+        auto cloud_b_gbuffer = renderer->render(gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(cloud_a_gbuffer);
+        REQUIRE(cloud_b_gbuffer);
+        REQUIRE(renderer->compositeWindLightSky(
+            *cloud_a_gbuffer, black_windlight_scene, &error));
+        REQUIRE(renderer->compositeWindLightSky(
+            *cloud_b_gbuffer, black_windlight_scene, &error));
+        cloud_scene.next_noise_texture = cloud_noise_a.get();
+        cloud_scene.constants.parameters[2] = 0.f;
+        REQUIRE(renderer->compositeWindLightClouds(
+            *cloud_a_gbuffer, cloud_scene, &error));
+        cloud_scene.noise_texture = cloud_noise_b.get();
+        cloud_scene.next_noise_texture = cloud_noise_b.get();
+        REQUIRE(renderer->compositeWindLightClouds(
+            *cloud_b_gbuffer, cloud_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> cloud_a_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4> cloud_b_albedo{};
+        REQUIRE(cloud_a_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, cloud_a_albedo.data(), 32 * 4,
+            &error));
+        REQUIRE(cloud_b_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, cloud_b_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(cloud_a_albedo[outside + 0] >
+              cloud_source_albedo[outside + 0]);
+        CHECK(cloud_b_albedo[outside + 0] <
+              cloud_source_albedo[outside + 0]);
+        cloud_scene.noise_texture = cloud_noise_a.get();
+        cloud_scene.next_noise_texture = cloud_noise_b.get();
+        cloud_scene.constants.parameters[2] = 0.25f;
+
+        ALMetalWorldCloudScene invalid_cloud_scene = cloud_scene;
+        invalid_cloud_scene.noise_texture = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->compositeWindLightClouds(
+            *cloud_source_gbuffer, invalid_cloud_scene, &error));
+        CHECK(error == "Metal world WindLight cloud scene is incomplete");
+        error.clear();
+
         ALMetalWorldWindLightSkyScene invalid_windlight_scene =
             windlight_scene;
         invalid_windlight_scene.halo_texture = nullptr;
@@ -5441,6 +5637,19 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(hdr_aurora_after != hdr_meteor_after);
         CHECK(hdr_aurora_after[center / 4] ==
               hdr_meteor_after[center / 4]);
+        cloud_scene.hdr = true;
+        REQUIRE(renderer->compositeWindLightClouds(
+            *hdr_gbuffer, cloud_scene, &error));
+        INFO(error);
+        std::array<std::uint32_t, 32 * 32> hdr_cloud_after{};
+        REQUIRE(hdr_gbuffer->colorTexture(3)->readback(
+            *device, 0, 0, {}, hdr_cloud_after.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(hdr_cloud_after[outside / 4] !=
+              hdr_aurora_after[outside / 4]);
+        CHECK(hdr_cloud_after[center / 4] ==
+              hdr_aurora_after[center / 4]);
         std::array<std::uint16_t, 32 * 32 * 4> hdr_windlight_normal{};
         REQUIRE(hdr_gbuffer->colorTexture(2)->readback(
             *device, 0, 0, {}, hdr_windlight_normal.data(),
