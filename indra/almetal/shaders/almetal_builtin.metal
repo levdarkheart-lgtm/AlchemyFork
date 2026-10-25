@@ -739,6 +739,51 @@ fragment float4 almetal_lit_preview_deferred_rigged_fragment(
     return float4(almetal_linear_to_srgb(linear), 1.0);
 }
 
+vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_fullbright_mask_rigged_textured_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device float2* texcoords [[buffer(3)]],
+    const device uchar4* colors [[buffer(4)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    const device float4* skin_palette [[buffer(7)]],
+    constant uint& joint_count [[buffer(8)]],
+    uint vertex_id [[vertex_id]])
+{
+    // The fullbright GL vertex path transforms no normal. Reuse the exact
+    // object-skin position math with a throwaway direction so fullbright-only
+    // vertex buffers do not need to manufacture a normal stream.
+    const ALMetalLitPreviewSkinnedVertex skinned =
+        almetal_lit_preview_skin_vertex(
+            positions[vertex_id], float4(0.0, 0.0, 1.0, 0.0),
+            encoded_weights[vertex_id], skin_palette, joint_count);
+    ALMetalLitPreviewTexturedVaryings output;
+    output.position = almetal_lit_preview_rebased_clip_position(
+        skinned.position, skin_palette[0].xyz, constants);
+    output.color = float4(colors[vertex_id]) / 255.0;
+    output.texcoord = texcoords[vertex_id];
+    return output;
+}
+
+fragment float4 almetal_lit_preview_fullbright_mask_rigged_fragment(
+    ALMetalLitPreviewTexturedVaryings input [[stage_in]],
+    texture2d<float> diffuse_map [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    constant float& alpha_cutoff [[buffer(1)]])
+{
+    const float4 diffuse = diffuse_map.sample(diffuse_sampler, input.texcoord);
+    // Outside the alpha pool, LLFace vertex alpha carries legacy shininess;
+    // fullbrightF.glsl therefore applies this mask to texture alpha alone.
+    if (diffuse.a < alpha_cutoff - 0.001953125)
+    {
+        discard_fragment();
+    }
+    const float3 linear = diffuse.rgb *
+                          almetal_srgb_to_linear(input.color.rgb);
+    // Visual hints own linear RGBA8 storage, while the GL preview writes this
+    // linear result through an sRGB framebuffer. Preserve the stored bytes.
+    return float4(almetal_linear_to_srgb(linear), 1.0);
+}
+
 fragment float4 almetal_lit_preview_textured_fragment(
     ALMetalLitPreviewTexturedVaryings input [[stage_in]],
     texture2d<float> diffuse_map [[texture(0)]],

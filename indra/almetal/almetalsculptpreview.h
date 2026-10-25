@@ -71,6 +71,11 @@ struct ALMetalLitPreviewBatch
     // writer. It consumes object skinning, encoded U8 vertex tint and an
     // encoded diffuse texture; alpha_cutoff zero represents the opaque pass.
     bool deferred_rigged = false;
+    // Select the post-deferred fullbright alpha-mask attachment writer. This
+    // uses object skinning and the same encoded tint/diffuse inputs, but the
+    // GL owner tests texture alpha alone because vertex alpha stores legacy
+    // shininess outside the alpha pool.
+    bool fullbright_mask_rigged = false;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;

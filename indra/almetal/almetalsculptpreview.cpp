@@ -76,6 +76,8 @@ struct ALMetalLitPreviewRenderer::Impl
         std::unique_ptr<ALMetalRenderPipeline>
             avatar_skinned_unlit_cloth_textured;
         std::unique_ptr<ALMetalRenderPipeline> deferred_rigged_textured;
+        std::unique_ptr<ALMetalRenderPipeline>
+            fullbright_mask_rigged_textured;
     };
 
     const ALMetalDevice* device = nullptr;
@@ -127,6 +129,8 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
         !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_unlit_cloth_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_deferred_rigged_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_deferred_rigged_fragment") ||
+        !impl->library->hasFunction("almetal_lit_preview_fullbright_mask_rigged_textured_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_fullbright_mask_rigged_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_unlit_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_skinned_edge_u16_vertex") ||
@@ -242,6 +246,23 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
             return nullptr;
         }
 
+        // renderGeomPostDeferred keeps alpha writes disabled for opaque and
+        // alpha-masked fullbright pools. Preserve the background/deferred
+        // coverage already present in the visual-hint target.
+        pipeline_descriptor.colors[0].write_mask =
+            static_cast<ALMetalColorWriteMask>(
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+        if (!create_pipeline(pipelines.fullbright_mask_rigged_textured,
+                             "almetal_lit_preview_fullbright_mask_rigged_textured_vertex",
+                             "almetal_lit_preview_fullbright_mask_rigged_fragment",
+                             "Alchemy fullbright mask rigged attachment preview" + suffix + " pipeline"))
+        {
+            return nullptr;
+        }
+
+        pipeline_descriptor.colors[0].write_mask = ALMetalColorWriteMask::all;
         pipeline_descriptor.colors[0].blending_enabled = true;
         pipeline_descriptor.colors[0].source_rgb = ALMetalBlendFactor::source_alpha;
         pipeline_descriptor.colors[0].destination_rgb =
@@ -493,6 +514,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 batch.skin_joint_count != 0 || batch.avatar_lighting ||
                 batch.avatar_unlit || batch.avatar_skinning ||
                 batch.avatar_cloth || batch.deferred_rigged ||
+                batch.fullbright_mask_rigged ||
                 batch.depth_prepass)
             {
                 setError(error, "Metal unit-sphere preview batch has external geometry");
@@ -514,6 +536,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 batch.skin_joint_count != 0 || batch.avatar_lighting ||
                 batch.avatar_unlit || batch.avatar_skinning ||
                 batch.avatar_cloth || batch.deferred_rigged ||
+                batch.fullbright_mask_rigged ||
                 batch.vertex_count % (triangles ? 3 : 2) != 0)
             {
                 setError(error, triangles
@@ -572,7 +595,8 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
         if (batch.deferred_rigged &&
             (!batch.texture || !batch.skin_palette || batch.avatar_skinning ||
              batch.avatar_lighting || batch.avatar_unlit ||
-             batch.avatar_cloth || batch.show_edges || batch.alpha_blending ||
+             batch.avatar_cloth || batch.fullbright_mask_rigged ||
+             batch.show_edges || batch.alpha_blending ||
              template_descriptor.format !=
                  ALMetalPixelFormat::rgba8_unorm ||
              !std::isfinite(batch.alpha_cutoff) || batch.alpha_cutoff < 0.f ||
@@ -585,10 +609,29 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             setError(error, "Metal deferred rigged preview data is invalid");
             return nullptr;
         }
+        if (batch.fullbright_mask_rigged &&
+            (!batch.texture || !batch.skin_palette || batch.avatar_skinning ||
+             batch.avatar_lighting || batch.avatar_unlit ||
+             batch.avatar_cloth || batch.deferred_rigged ||
+             batch.show_edges || batch.alpha_blending ||
+             template_descriptor.format !=
+                 ALMetalPixelFormat::rgba8_unorm ||
+             !std::isfinite(batch.alpha_cutoff) || batch.alpha_cutoff < 0.f ||
+             batch.alpha_cutoff > 1.f ||
+             batch.color_offset % (sizeof(std::uint8_t) * 4) != 0 ||
+             !range_fits(batch.color_offset, batch.vertex_count,
+                         sizeof(std::uint8_t) * 4,
+                         batch.vertices->length())))
+        {
+            setError(error,
+                     "Metal fullbright mask rigged preview data is invalid");
+            return nullptr;
+        }
         if (!range_fits(batch.position_offset, batch.vertex_count, vector_stride,
                         batch.vertices->length()) ||
-            !range_fits(batch.normal_offset, batch.vertex_count, vector_stride,
-                        batch.vertices->length()) ||
+            (!batch.fullbright_mask_rigged &&
+             !range_fits(batch.normal_offset, batch.vertex_count,
+                         vector_stride, batch.vertices->length())) ||
             (batch.texture &&
              !range_fits(batch.texcoord_offset, batch.vertex_count,
                          sizeof(float) * 2, batch.vertices->length())) ||
@@ -670,7 +713,8 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
         }
         else if (batch.skin_palette_float_count != 0 ||
                  batch.skin_joint_count != 0 || batch.avatar_skinning ||
-                 batch.avatar_cloth || batch.deferred_rigged)
+                 batch.avatar_cloth || batch.deferred_rigged ||
+                 batch.fullbright_mask_rigged)
         {
             setError(error, "Metal lit preview skinning data is incomplete");
             return nullptr;
@@ -876,7 +920,12 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             const ALMetalRenderPipeline* fill_pipeline = nullptr;
             if (batch.texture)
             {
-                if (batch.deferred_rigged)
+                if (batch.fullbright_mask_rigged)
+                {
+                    fill_pipeline =
+                        pipelines.fullbright_mask_rigged_textured.get();
+                }
+                else if (batch.deferred_rigged)
                 {
                     fill_pipeline = pipelines.deferred_rigged_textured.get();
                 }
@@ -941,9 +990,13 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             encoded =
                 encoder->setPipeline(*fill_pipeline, error) &&
                 encoder->setVertexBuffer(0, *batch.vertices,
-                                         batch.position_offset, error) &&
-                encoder->setVertexBuffer(1, *batch.vertices,
-                                         batch.normal_offset, error) &&
+                                         batch.position_offset, error);
+            if (encoded && !batch.fullbright_mask_rigged)
+            {
+                encoded = encoder->setVertexBuffer(
+                    1, *batch.vertices, batch.normal_offset, error);
+            }
+            encoded = encoded &&
                 encoder->setVertexBytes(2, &constants, sizeof(constants), error);
             if (encoded && skinned)
             {
@@ -964,7 +1017,8 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 encoded = encoder->setVertexBuffer(
                     9, *batch.vertices, batch.cloth_offset, error);
             }
-            if (encoded && batch.deferred_rigged)
+            if (encoded &&
+                (batch.deferred_rigged || batch.fullbright_mask_rigged))
             {
                 encoded = encoder->setVertexBuffer(
                               4, *batch.vertices, batch.color_offset, error) &&
@@ -979,10 +1033,12 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                                              batch.texcoord_offset, error);
                 if (encoded)
                 {
-                    // Deferred rigged geometry follows the GL shader's
-                    // SRGBDecode sampler. Other legacy preview families keep
-                    // encoded-space sampling through the linear view.
-                    encoded = batch.deferred_rigged
+                    // Deferred and fullbright rigged geometry follow their GL
+                    // shaders' SRGBDecode sampler. Other legacy preview
+                    // families keep encoded-space sampling through the linear
+                    // view.
+                    encoded = (batch.deferred_rigged ||
+                               batch.fullbright_mask_rigged)
                         ? encoder->setFragmentTexture(
                               0, batch.texture, error)
                         : encoder->setFragmentTextureLinear(

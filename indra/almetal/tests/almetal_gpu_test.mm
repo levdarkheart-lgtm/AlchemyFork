@@ -130,6 +130,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_avatar_skinned_unlit_cloth_textured_vertex",
             "almetal_lit_preview_deferred_rigged_textured_vertex",
             "almetal_lit_preview_deferred_rigged_fragment",
+            "almetal_lit_preview_fullbright_mask_rigged_textured_vertex",
+            "almetal_lit_preview_fullbright_mask_rigged_fragment",
             "almetal_lit_preview_avatar_fragment",
             "almetal_lit_preview_avatar_unlit_fragment",
             "almetal_lit_preview_edge_u16_vertex",
@@ -950,6 +952,25 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         REQUIRE(upload->commitAndWait(&error));
         INFO(error);
 
+        diffuse_descriptor.label =
+            "Alchemy textured preview half-alpha encoded-color source";
+        auto half_alpha_diffuse_texture = ALMetalTexture::create(
+            *device, diffuse_descriptor, &error);
+        INFO(error);
+        REQUIRE(half_alpha_diffuse_texture);
+        const std::array<std::uint8_t, 4> half_alpha_diffuse_pixel{{
+            128, 64, 32, 128,
+        }};
+        auto half_alpha_upload = device->makeCommandBuffer(
+            "Alchemy half-alpha textured preview upload", &error);
+        INFO(error);
+        REQUIRE(half_alpha_upload);
+        REQUIRE(half_alpha_diffuse_texture->upload(
+            *half_alpha_upload, 0, 0, {}, half_alpha_diffuse_pixel.data(), 4,
+            &error));
+        REQUIRE(half_alpha_upload->commitAndWait(&error));
+        INFO(error);
+
         ALMetalLitPreviewBatch batch;
         batch.vertices = vertices.get();
         batch.position_offset = 0;
@@ -1339,6 +1360,47 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(deferred_mask_pixels[translated_interior + 1] == 51);
         CHECK(deferred_mask_pixels[translated_interior + 2] == 77);
         CHECK(deferred_mask_pixels[translated_interior + 3] == 255);
+
+        // The post-deferred fullbright mask uses texture alpha alone: outside
+        // the alpha pool the U8 vertex alpha is legacy shininess. A 0.75
+        // cutoff therefore keeps the opaque texel despite the 0.5 vertex
+        // alpha. The dedicated vertex path must not require a normal stream.
+        ALMetalLitPreviewBatch fullbright_mask = deferred_rigged;
+        fullbright_mask.deferred_rigged = false;
+        fullbright_mask.fullbright_mask_rigged = true;
+        fullbright_mask.alpha_cutoff = 0.75f;
+        fullbright_mask.normal_offset = vertex_bytes.size();
+        auto rendered_fullbright_mask = renderer->render(
+            fullbright_mask, &error);
+        INFO(error);
+        REQUIRE(rendered_fullbright_mask);
+        std::array<std::uint8_t, 32 * 32 * 4> fullbright_mask_pixels{};
+        REQUIRE(rendered_fullbright_mask->readback(
+            *device, 0, 0, {}, fullbright_mask_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+            fullbright_mask_pixels[translated_interior + 0]) - 61) <= 1);
+        CHECK(fullbright_mask_pixels[translated_interior + 1] == 64);
+        CHECK(fullbright_mask_pixels[translated_interior + 2] == 32);
+        CHECK(fullbright_mask_pixels[translated_interior + 3] == 255);
+
+        fullbright_mask.texture = half_alpha_diffuse_texture.get();
+        fullbright_mask.alpha_cutoff = 0.6f;
+        auto rendered_fullbright_mask_discard = renderer->render(
+            fullbright_mask, &error);
+        INFO(error);
+        REQUIRE(rendered_fullbright_mask_discard);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            fullbright_mask_discard_pixels{};
+        REQUIRE(rendered_fullbright_mask_discard->readback(
+            *device, 0, 0, {}, fullbright_mask_discard_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(fullbright_mask_discard_pixels[translated_interior + 0] == 38);
+        CHECK(fullbright_mask_discard_pixels[translated_interior + 1] == 51);
+        CHECK(fullbright_mask_discard_pixels[translated_interior + 2] == 77);
+        CHECK(fullbright_mask_discard_pixels[translated_interior + 3] == 255);
 
         deferred_rigged.color_offset = vertex_bytes.size();
         error.clear();
