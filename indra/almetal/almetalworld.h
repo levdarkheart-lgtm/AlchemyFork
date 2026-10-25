@@ -333,7 +333,8 @@ struct ALMetalWorldLightMapScene
 
 // One retained strip of the WindLight sky dome. The vertex/index buffers are
 // the same immutable mirrors used by the authoritative GL draw; only the
-// model-view-projection transform is snapshotted per strip.
+// model-view-projection transform is snapshotted per strip. Both the HDRI and
+// atmospheric WindLight owners consume this geometry contract.
 struct ALMetalWorldHDRISkyBatch
 {
     const ALMetalBuffer* vertices = nullptr;
@@ -369,6 +370,47 @@ struct ALMetalWorldHDRISkyScene
     bool reverse_z = false;
 };
 
+// The CPU-packed subset of EnvironmentUBOData and loose sky uniforms needed
+// by skyF.glsl's non-HDRI atmospheric branch. Every vec3 is padded to a
+// float4 so the structure can be copied directly into the Metal constant
+// buffer without inventing a second packing convention.
+struct alignas(16) ALMetalWorldWindLightSkyConstants
+{
+    float camera_local[4]{};
+    // xyz = clamped sky-frame light direction, w = density multiplier.
+    float light_density[4]{};
+    // xyz = blue horizon, w = scalar haze horizon.
+    float blue_horizon[4]{};
+    // xyz = glow, w = maximum atmospheric layer height.
+    float glow[4]{};
+    float haze_extinction[4]{};
+    float blue_weight[4]{};
+    float haze_weight[4]{};
+    float sky_light[4]{};
+    float sky_ambient[4]{};
+    float sky_light_atten[4]{};
+    // xyz = ambient below cloud, w = cloud shadow.
+    float sky_ambient_below[4]{};
+    // x = moisture, y = droplet radius, z = ice,
+    // w = sun/moon glow factor.
+    float optics[4]{};
+};
+
+struct ALMetalWorldWindLightSkyScene
+{
+    const ALMetalWorldHDRISkyBatch* batches = nullptr;
+    std::size_t batch_count = 0;
+    const ALMetalTexture* rainbow_texture = nullptr;
+    const ALMetalTexture* halo_texture = nullptr;
+    ALMetalWorldWindLightSkyConstants constants;
+    float sky_hdr_scale = 1.f;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    bool normal_hdr = false;
+    bool hdr = false;
+    bool reverse_z = false;
+};
+
 struct alignas(16) ALMetalWorldBaseLightingConstants
 {
     float inverse_projection[16]{};
@@ -385,9 +427,11 @@ struct alignas(16) ALMetalWorldBaseLightingConstants
     float lighting[4]{};
     // x = legacy specular exponent.
     float surface[4] = {128.f, 0.f, 0.f, 0.f};
+    // x = WindLight sky_hdr_scale. The HDRI path leaves this at one.
+    float sky_transfer[4] = {1.f, 0.f, 0.f, 0.f};
     // x = a native sky transaction populated the clear-depth pixels,
-    // y = the G-buffer has an emissive attachment. z/w are reserved for the
-    // WindLight transfer scale and future sky-family state.
+    // y = the G-buffer has an emissive attachment, z = WindLight rather than
+    // HDRI. w is reserved for future sky-family state.
     std::uint32_t sky[4]{};
     // x = reverse Z, y = classic mode, z = sun shadow, w = SSAO.
     std::uint32_t config[4]{};
@@ -451,6 +495,14 @@ public:
     bool compositeHDRISky(
         ALMetalRenderTarget& target,
         const ALMetalWorldHDRISkyScene& scene,
+        std::string* error = nullptr);
+
+    // Fill clear-depth pixels with skyF.glsl's exact non-HDRI atmospheric
+    // branch. HDR output retains its display-encoded emissive convention;
+    // vintage output round-trips the same bytes through an sRGB attachment.
+    bool compositeWindLightSky(
+        ALMetalRenderTarget& target,
+        const ALMetalWorldWindLightSkyScene& scene,
         std::string* error = nullptr);
 
     // Shade the retained world G-buffer with the deferred base-light owner:

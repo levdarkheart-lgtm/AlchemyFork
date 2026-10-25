@@ -383,6 +383,7 @@ struct ALMetalWorldBaseLightingConstants
     float4 ssao_effect[3];
     float4 lighting;
     float4 surface;
+    float4 sky_transfer;
     uint4 sky;
     uint4 config;
 };
@@ -395,6 +396,27 @@ struct ALMetalWorldHDRISkyConstants
     float4 environment_rotation[3];
     // xy = destination dimensions.
     float4 screen;
+    // x = reverse Z, y = emissive/HDR G-buffer.
+    uint4 config;
+};
+
+struct ALMetalWorldWindLightSkyConstants
+{
+    float4x4 modelview_projection;
+    float4 camera_local;
+    float4 light_density;
+    float4 blue_horizon;
+    float4 glow;
+    float4 haze_extinction;
+    float4 blue_weight;
+    float4 haze_weight;
+    float4 sky_light;
+    float4 sky_ambient;
+    float4 sky_light_atten;
+    float4 sky_ambient_below;
+    float4 optics;
+    // xy = destination dimensions, z = deferred sky_hdr_scale.
+    float4 transfer;
     // x = reverse Z, y = emissive/HDR G-buffer.
     uint4 config;
 };
@@ -430,6 +452,23 @@ vertex ALMetalWorldHDRISkyVaryings almetal_world_hdri_sky_vertex(
     clip_position.y = -clip_position.y;
     // Match skyV.glsl: every dome vertex is on the far plane and depth is
     // read-only, so only pixels left clear by opaque geometry are writable.
+    clip_position.z = constants.config.x != 0u ? 0.0 : clip_position.w;
+
+    ALMetalWorldHDRISkyVaryings output;
+    output.position = clip_position;
+    output.local_position = local_position;
+    return output;
+}
+
+vertex ALMetalWorldHDRISkyVaryings almetal_world_windlight_sky_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldWindLightSkyConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float3 local_position = positions[vertex_id].xyz;
+    float4 clip_position = constants.modelview_projection *
+                           float4(local_position, 1.0);
+    clip_position.y = -clip_position.y;
     clip_position.z = constants.config.x != 0u ? 0.0 : clip_position.w;
 
     ALMetalWorldHDRISkyVaryings output;
@@ -483,6 +522,111 @@ fragment ALMetalWorldGBufferOutput almetal_world_hdri_sky_fragment(
         // stores the same display-encoded bytes that skyF writes raw with
         // FRAMEBUFFER_SRGB disabled; the base pass decodes them once.
         output.albedo = float4(clamp(color, 0.0, 1.0), 1.0);
+        output.emissive = 0.0;
+    }
+    return output;
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_windlight_sky_fragment(
+    ALMetalWorldHDRISkyVaryings input [[stage_in]],
+    constant ALMetalWorldWindLightSkyConstants& constants [[buffer(0)]],
+    texture2d<float> rainbow_map [[texture(0)]],
+    texture2d<float> halo_map [[texture(1)]],
+    sampler optics_sampler [[sampler(0)]])
+{
+    // Match skyF.glsl's sky-frame ray and its asymmetric altitude clamp.
+    float3 relative_position = input.local_position -
+        constants.camera_local.xyz + float3(0.0, 50.0, 0.0);
+    if (relative_position.y > 0.0)
+    {
+        relative_position *= max(constants.glow.w, 1.0) /
+                             relative_position.y;
+    }
+    if (relative_position.y < 0.0)
+    {
+        relative_position *= -32000.0 / relative_position.y;
+    }
+
+    const float3 direction = normalize(relative_position);
+    const float distance = length(relative_position);
+    const float light_dot = dot(
+        direction, constants.light_density.xyz);
+    const float off_axis = 1.0 / max(
+        0.000001,
+        max(0.0, direction.y) + constants.light_density.y);
+    float3 sunlight = constants.sky_light.rgb * exp(
+        -constants.sky_light_atten.rgb * off_axis);
+    const float3 combined_haze = exp(
+        -constants.haze_extinction.rgb *
+        (distance * constants.light_density.w));
+
+    float haze_glow = max(1.0 - light_dot, 0.001);
+    haze_glow = pow(haze_glow * constants.glow.x, constants.glow.z);
+    haze_glow = constants.optics.w < 1.0
+        ? 0.0 : constants.optics.w * (haze_glow + 0.25);
+
+    float3 color =
+        constants.blue_horizon.rgb * constants.blue_weight.rgb *
+            (sunlight + constants.sky_ambient.rgb) +
+        constants.blue_horizon.w * constants.haze_weight.rgb *
+            (sunlight * haze_glow + constants.sky_ambient.rgb);
+    color *= 1.0 - combined_haze;
+
+    sunlight *= max(0.0, 1.0 - constants.sky_ambient_below.w);
+    const float3 below_cloud =
+        constants.blue_horizon.rgb * constants.blue_weight.rgb *
+            (sunlight + constants.sky_ambient_below.rgb) +
+        constants.blue_horizon.w * constants.haze_weight.rgb *
+            (sunlight * haze_glow + constants.sky_ambient_below.rgb);
+    const float3 lower_haze = sqrt(combined_haze);
+    color += (below_cloud - color) * (1.0 - sqrt(lower_haze));
+
+    float rainbow_coordinate = clamp(-0.575 - light_dot, 0.0, 1.0);
+    const float interior_coordinate =
+        max(0.0, rainbow_coordinate - 0.25) * 4.2857;
+    rainbow_coordinate = clamp(
+        rainbow_coordinate, 0.0, 0.25) + interior_coordinate;
+    const float radius = (constants.optics.y - 5.0) / 1024.0;
+    color += pow(rainbow_map.sample(
+        optics_sampler,
+        float2(radius + 0.5, rainbow_coordinate),
+        level(0.0)).rgb, float3(1.8)) * constants.optics.x;
+
+    const float halo_dot = clamp(light_dot, 0.1, 1.0);
+    const float halo_coordinate = sqrt(clamp(
+        1.0 - halo_dot * halo_dot, 0.0, 1.0));
+    color += halo_map.sample(
+        optics_sampler, float2(0.0, halo_coordinate),
+        level(0.0)).rgb * constants.optics.z;
+    color = clamp(color * 2.0, 0.0, 5.0);
+
+    ALMetalWorldGBufferOutput output;
+    output.specular_orm = 0.0;
+    // GBUFFER_FLAG_SKIP_ATMOS is zero. The all-zero normal is also the
+    // transaction marker used by the native soften owner.
+    output.normal = 0.0;
+    if (constants.config.y != 0u)
+    {
+        const float2 gl_fragment_position = float2(
+            input.position.x, constants.transfer.y - input.position.y);
+        const float noise = fract(
+            52.9829189 * fract(dot(
+                gl_fragment_position,
+                float2(0.06711056, 0.00583715)))) - 0.5;
+        output.albedo = 0.0;
+        // WindLight deliberately stores display-encoded sky color in the
+        // float emissive attachment. The soften transfer decodes it.
+        output.emissive = float4(
+            color * (1.0 + noise *
+                float3(1.0 / 64.0, 1.0 / 64.0, 1.0 / 32.0)),
+            1.0);
+    }
+    else
+    {
+        // Metal fixed-function sRGB encoding restores the display-encoded
+        // bytes that GL writes raw with FRAMEBUFFER_SRGB disabled.
+        output.albedo = float4(
+            almetal_srgb_to_linear(clamp(color, 0.0, 1.0)), 1.0);
         output.emissive = 0.0;
     }
     return output;
@@ -6126,15 +6270,17 @@ fragment float4 almetal_world_base_light_fragment(
         point_sampler, input.texcoord);
     if (clear_depth)
     {
-        // A clear target also has alpha one, so the HDRI flag is not enough
-        // to distinguish a completed sky transaction from the magenta
-        // diagnostic clear. Require both the explicit transaction bit and
-        // the zero-RGB marker written by the sky fragment.
-        const bool hdri_sky = constants.sky.x != 0u &&
-            normal_sample.a > 0.9 &&
-            max(normal_sample.r, max(normal_sample.g, normal_sample.b)) <
-                0.001;
-        if (!hdri_sky)
+        // A clear target also has alpha one. Require the explicit
+        // transaction bit and the family-specific zero-normal marker rather
+        // than accepting diagnostic clear pixels as sky.
+        const bool windlight_sky = constants.sky.z != 0u;
+        const float normal_rgb = max(
+            normal_sample.r, max(normal_sample.g, normal_sample.b));
+        const bool sky_marker = constants.sky.x != 0u &&
+            normal_rgb < 0.001 &&
+            (windlight_sky ? normal_sample.a < 0.1
+                           : normal_sample.a > 0.9);
+        if (!sky_marker)
         {
             discard_fragment();
         }
@@ -6143,6 +6289,11 @@ fragment float4 almetal_world_base_light_fragment(
                   point_sampler, input.texcoord).rgb
             : albedo_texture.sample(
                   point_sampler, input.texcoord).rgb;
+        if (windlight_sky && constants.sky.y != 0u)
+        {
+            sky_color = almetal_srgb_to_linear(sky_color);
+        }
+        sky_color *= windlight_sky ? constants.sky_transfer.x : 1.0;
         sky_color *= constants.config.y != 0u ? 1.1 : 1.0;
         sky_color = select(
             sky_color, float3(65504.0), isinf(sky_color));

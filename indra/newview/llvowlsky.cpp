@@ -506,6 +506,7 @@ void LLVOWLSky::drawDome(void)
 
 #if LL_DARWIN
         gPipeline.captureMetalWorldHDRISkyBatch(strips_segment);
+        gPipeline.captureMetalWorldWindLightSkyBatch(strips_segment);
 #endif
         strips_segment->setBuffer();
 

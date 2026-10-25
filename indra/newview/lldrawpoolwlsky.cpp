@@ -137,6 +137,26 @@ static bool use_hdri_sky()
 
 }
 
+// LLSettingsVOSky::applySpecial owns this exact loose-uniform policy. Keep the
+// native soften transfer in lockstep with the value the authoritative GLSL
+// sky and soften programs see for the main world view.
+static F32 windlight_sky_hdr_scale(const LLSettingsSky::ptr_t& sky)
+{
+    static LLCachedControl<bool> should_auto_adjust(
+        gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
+    static LLCachedControl<F32> auto_adjust_hdr_scale(
+        gSavedSettings, "RenderSkyAutoAdjustHDRScale", 2.f);
+    if (sky->getReflectionProbeAmbiance() != 0.f)
+    {
+        return sqrtf(sky->getGamma()) * 2.f;
+    }
+    if (sky->canAutoAdjust() && should_auto_adjust)
+    {
+        return auto_adjust_hdr_scale;
+    }
+    return 1.f;
+}
+
 // Whether any of the water lies in front of the depth the world left, the sky drawing last: the frustum can hold the
 // sea (LLPipeline::skyBehindWanted) while land hides all of it. The field, counted by the pipeline's query,
 // writing nothing: flat, and with waves raised by A as well, which counts a crest over a wall the flat field misses.
@@ -186,6 +206,7 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
         const bool hdri_sky = use_hdri_sky();
 #if LL_DARWIN
         bool native_hdri_capture = false;
+        bool native_windlight_capture = false;
 #endif
         // The sky again, behind everything, for the haze pass to converge far water on (hazeF.glsl): the main view's
         // only, and only when water is in it; an HDRI sky is colour already shaded, which the haze cannot take the
@@ -267,12 +288,29 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
 
         sky_shader->uniform1i(LLShaderMgr::SUN_UP_FACTOR, psky->getIsSunUp() ? 1 : 0);
 
+#if LL_DARWIN
+        if (!hdri_sky)
+        {
+            gPipeline.beginMetalWorldWindLightSky(
+                rainbow_tex, halo_tex, camHeightLocal,
+                moisture_level, droplet_radius, ice_level,
+                psky->getSunMoonGlowFactor(),
+                psky->getDensityMultiplier(),
+                windlight_sky_hdr_scale(psky));
+            native_windlight_capture = true;
+        }
+#endif
+
         /// Render the skydome
         renderDome(origin, camHeightLocal, sky_shader);
 #if LL_DARWIN
         if (native_hdri_capture)
         {
             gPipeline.endMetalWorldHDRISky();
+        }
+        if (native_windlight_capture)
+        {
+            gPipeline.endMetalWorldWindLightSky();
         }
 #endif
 

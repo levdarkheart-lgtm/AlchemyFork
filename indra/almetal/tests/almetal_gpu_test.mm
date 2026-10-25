@@ -157,6 +157,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_light_map_blur_fragment",
             "almetal_world_hdri_sky_vertex",
             "almetal_world_hdri_sky_fragment",
+            "almetal_world_windlight_sky_vertex",
+            "almetal_world_windlight_sky_fragment",
             "almetal_world_base_light_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
@@ -3723,6 +3725,121 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(error == "Metal world HDRI sky scene is incomplete");
         error.clear();
 
+        // Replace the same clear-depth pixels with skyF.glsl's non-HDRI
+        // WindLight branch. Zero optic maps isolate the atmospheric terms;
+        // the family-specific all-zero normal marker distinguishes this
+        // display-encoded transfer from the linear HDRI transaction.
+        auto rainbow = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy WindLight sky rainbow optic");
+        auto halo = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy WindLight sky halo optic");
+        const std::array<std::uint8_t, 4> zero_optic{{0, 0, 0, 0}};
+        auto optic_upload = device->makeCommandBuffer(
+            "Alchemy WindLight sky optic upload", &error);
+        INFO(error);
+        REQUIRE(optic_upload);
+        REQUIRE(rainbow->upload(
+            *optic_upload, 0, 0, {}, zero_optic.data(), 4, &error));
+        REQUIRE(halo->upload(
+            *optic_upload, 0, 0, {}, zero_optic.data(), 4, &error));
+        REQUIRE(optic_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldWindLightSkyScene windlight_scene;
+        windlight_scene.batches = &sky_batch;
+        windlight_scene.batch_count = 1;
+        windlight_scene.rainbow_texture = rainbow.get();
+        windlight_scene.halo_texture = halo.get();
+        windlight_scene.constants.light_density[1] = 1.f;
+        windlight_scene.constants.light_density[3] = 0.001f;
+        windlight_scene.constants.blue_horizon[0] = 0.4f;
+        windlight_scene.constants.blue_horizon[1] = 0.3f;
+        windlight_scene.constants.blue_horizon[2] = 0.2f;
+        windlight_scene.constants.blue_horizon[3] = 0.1f;
+        windlight_scene.constants.glow[0] = 1.f;
+        windlight_scene.constants.glow[2] = -1.f;
+        windlight_scene.constants.glow[3] = 1000.f;
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            windlight_scene.constants.haze_extinction[channel] = 0.5f;
+            windlight_scene.constants.blue_weight[channel] = 1.f;
+            windlight_scene.constants.haze_weight[channel] = 1.f;
+            windlight_scene.constants.sky_light[channel] = 0.5f;
+            windlight_scene.constants.sky_ambient[channel] = 0.2f;
+            windlight_scene.constants.sky_light_atten[channel] = 0.1f;
+            windlight_scene.constants.sky_ambient_below[channel] = 0.1f;
+        }
+        windlight_scene.constants.sky_ambient_below[3] = 0.2f;
+        windlight_scene.constants.optics[1] = 10.f;
+        windlight_scene.sky_hdr_scale = 2.f;
+        windlight_scene.width = 32;
+        windlight_scene.height = 32;
+        windlight_scene.normal_hdr = true;
+
+        REQUIRE(renderer->compositeWindLightSky(
+            *pbr_gbuffer, windlight_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> windlight_albedo{};
+        std::array<std::uint16_t, 32 * 32 * 4> windlight_normal{};
+        REQUIRE(pbr_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, windlight_albedo.data(), 32 * 4,
+            &error));
+        REQUIRE(pbr_gbuffer->colorTexture(2)->readback(
+            *device, 0, 0, {}, windlight_normal.data(), 32 * 8,
+            &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(windlight_albedo[center + channel] ==
+                  before_sky_albedo[center + channel]);
+        }
+        CHECK(windlight_albedo[outside + 0] > 0);
+        CHECK(windlight_albedo[outside + 1] > 0);
+        CHECK(windlight_albedo[outside + 2] > 0);
+        CHECK(windlight_albedo[outside + 3] == 255);
+        CHECK(windlight_normal[outside + 0] == 0);
+        CHECK(windlight_normal[outside + 1] == 0);
+        CHECK(windlight_normal[outside + 2] == 0);
+        CHECK(windlight_normal[outside + 3] == 0);
+
+        windlight_scene.reverse_z = true;
+        REQUIRE(renderer->compositeWindLightSky(
+            *pbr_reverse_gbuffer, windlight_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            reverse_windlight_albedo{};
+        REQUIRE(pbr_reverse_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_windlight_albedo.data(),
+            32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(reverse_windlight_albedo[outside + channel] ==
+                  windlight_albedo[outside + channel]);
+        }
+        windlight_scene.reverse_z = false;
+
+        ALMetalWorldWindLightSkyScene invalid_windlight_scene =
+            windlight_scene;
+        invalid_windlight_scene.halo_texture = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->compositeWindLightSky(
+            *pbr_gbuffer, invalid_windlight_scene, &error));
+        CHECK(error == "Metal world WindLight sky scene is incomplete");
+        error.clear();
+
+        // Restore the HDRI family before the existing light-map and base
+        // checks so each transfer is independently identified by its marker.
+        REQUIRE(renderer->compositeHDRISky(
+            *pbr_gbuffer, sky_scene, &error));
+        sky_scene.reverse_z = true;
+        REQUIRE(renderer->compositeHDRISky(
+            *pbr_reverse_gbuffer, sky_scene, &error));
+        sky_scene.reverse_z = false;
+        INFO(error);
+
         // The retained native G-buffer now owns the two-channel deferred
         // light map as well. With no shadows or SSAO both geometry and the
         // cleared sky are fully lit. Enabling the directional owner with no
@@ -4162,7 +4279,46 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             CHECK(base_hdri_pixels[center + channel] ==
                   base_pixels[center + channel]);
         }
+
+        // WindLight uses the zero-alpha marker and, unlike HDRI, treats the
+        // G-buffer payload as display encoded before applying fake-HDR scale.
+        REQUIRE(renderer->compositeWindLightSky(
+            *pbr_gbuffer, windlight_scene, &error));
+        INFO(error);
+        base_scene.constants.sky[2] = 1;
+        base_scene.constants.sky_transfer[0] = 2.f;
+        auto base_with_windlight = renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(base_with_windlight);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            base_windlight_pixels{};
+        REQUIRE(base_with_windlight->colorTexture(0)->readback(
+            *device, 0, 0, {}, base_windlight_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float expected_linear = std::clamp(
+                srgb_to_linear(
+                    windlight_albedo[outside + channel] / 255.f) * 2.f,
+                0.f, 1.f);
+            const int expected = static_cast<int>(std::lround(
+                expected_linear * 255.f));
+            CHECK(std::abs(static_cast<int>(
+                      base_windlight_pixels[outside + channel]) -
+                  expected) <= 1);
+            CHECK(base_windlight_pixels[center + channel] ==
+                  base_pixels[center + channel]);
+        }
+        CHECK(base_windlight_pixels[outside + 3] == 0);
+
+        REQUIRE(renderer->compositeHDRISky(
+            *pbr_gbuffer, sky_scene, &error));
+        INFO(error);
         base_scene.constants.sky[0] = 0;
+        base_scene.constants.sky[2] = 0;
+        base_scene.constants.sky_transfer[0] = 1.f;
 
         // Finish the ordinary probe result the same way as the deferred GLSL
         // owner. A 0.8-gloss PBR surface reads the hero probe at LOD 0.8:
@@ -4555,6 +4711,45 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(hdr_base_pixels[outside + 2] >= 0x39c0);
         CHECK(hdr_base_pixels[outside + 2] <= 0x3a40);
         CHECK(hdr_base_pixels[outside + 3] == 0);
+
+        // Exercise the HDR WindLight variant: it retains display-encoded
+        // color in R11G11B10F, then the base owner decodes and scales it.
+        windlight_scene.hdr = true;
+        REQUIRE(renderer->compositeWindLightSky(
+            *hdr_gbuffer, windlight_scene, &error));
+        INFO(error);
+        std::array<std::uint16_t, 32 * 32 * 4> hdr_windlight_normal{};
+        REQUIRE(hdr_gbuffer->colorTexture(2)->readback(
+            *device, 0, 0, {}, hdr_windlight_normal.data(),
+            32 * 8, &error));
+        INFO(error);
+        CHECK(hdr_windlight_normal[outside + 0] == 0);
+        CHECK(hdr_windlight_normal[outside + 1] == 0);
+        CHECK(hdr_windlight_normal[outside + 2] == 0);
+        CHECK(hdr_windlight_normal[outside + 3] == 0);
+        base_scene.constants.sky[2] = 1;
+        base_scene.constants.sky_transfer[0] = 2.f;
+        auto hdr_windlight_base = renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(hdr_windlight_base);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            hdr_windlight_pixels{};
+        REQUIRE(hdr_windlight_base->colorTexture(0)->readback(
+            *device, 0, 0, {}, hdr_windlight_pixels.data(),
+            32 * 8, &error));
+        INFO(error);
+        CHECK(hdr_windlight_pixels[outside + 0] > 0);
+        CHECK(hdr_windlight_pixels[outside + 1] > 0);
+        CHECK(hdr_windlight_pixels[outside + 2] > 0);
+        CHECK(hdr_windlight_pixels[outside + 3] == 0);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(hdr_windlight_pixels[center + channel] ==
+                  hdr_base_pixels[center + channel]);
+        }
+        base_scene.constants.sky[2] = 0;
+        base_scene.constants.sky_transfer[0] = 1.f;
         lighting_scene.gbuffer = hdr_gbuffer.get();
         lighting_scene.hdr = true;
         auto hdr = renderer->renderLocalLights(lighting_scene, &error);
