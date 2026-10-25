@@ -61,6 +61,13 @@ namespace
         float avatar_cloth_depth[4]{};
     };
 
+    struct alignas(16) WorldSpotShadowConstants
+    {
+        float modelview_projection[16];
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldSpotShadowConstants) == 80);
+
     struct alignas(16) WorldWaterExclusionConstants
     {
         float modelview_projection[16]{};
@@ -673,6 +680,8 @@ struct ALMetalWorldGBufferRenderer::Impl
 
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalShaderLibrary> library;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        spot_shadow_pipelines;
     std::array<BumpPipelines, 2> pipelines;
     std::array<MaterialRiggedPipelines, 2> material_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
@@ -749,6 +758,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
     std::unique_ptr<ALMetalDepthStencilState> forward_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_depth;
+    std::unique_ptr<ALMetalDepthStencilState> forward_spot_shadow_depth;
+    std::unique_ptr<ALMetalDepthStencilState> reverse_spot_shadow_depth;
     std::unique_ptr<ALMetalDepthStencilState> forward_readonly_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_readonly_depth;
     std::unique_ptr<ALMetalDepthStencilState> forward_coverage_depth;
@@ -890,6 +901,10 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->device = &device;
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->library ||
+        !impl->library->hasFunction("almetal_world_spot_shadow_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_spot_shadow_skinned_vertex") ||
+        !impl->library->hasFunction("almetal_world_spot_shadow_fragment") ||
         !impl->library->hasFunction("almetal_world_simple_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_bump_vertex") ||
@@ -1013,6 +1028,29 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                      "Built-in Metal library is missing world G-buffer functions");
         }
         return nullptr;
+    }
+
+    for (std::size_t rigged = 0; rigged < 2; ++rigged)
+    {
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = impl->library.get();
+        descriptor.vertex_function = rigged != 0
+            ? "almetal_world_spot_shadow_skinned_vertex"
+            : "almetal_world_spot_shadow_vertex";
+        descriptor.fragment_function =
+            "almetal_world_spot_shadow_fragment";
+        descriptor.color_attachment_count = 1;
+        descriptor.colors[0].format = ALMetalPixelFormat::r32_float;
+        descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float;
+        descriptor.label = rigged != 0
+            ? "Alchemy rigged spot-shadow depth pipeline"
+            : "Alchemy static spot-shadow depth pipeline";
+        impl->spot_shadow_pipelines[rigged] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->spot_shadow_pipelines[rigged])
+        {
+            return nullptr;
+        }
     }
 
     ALMetalRenderPipelineDescriptor light_map_descriptor;
@@ -2380,6 +2418,22 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     {
         return nullptr;
     }
+    depth.depth_compare = ALMetalCompareFunction::less;
+    depth.label = "Alchemy forward-Z spot-shadow depth";
+    impl->forward_spot_shadow_depth = ALMetalDepthStencilState::create(
+        device, depth, error);
+    if (!impl->forward_spot_shadow_depth)
+    {
+        return nullptr;
+    }
+    depth.depth_compare = ALMetalCompareFunction::greater;
+    depth.label = "Alchemy reverse-Z spot-shadow depth";
+    impl->reverse_spot_shadow_depth = ALMetalDepthStencilState::create(
+        device, depth, error);
+    if (!impl->reverse_spot_shadow_depth)
+    {
+        return nullptr;
+    }
     depth.depth_compare = ALMetalCompareFunction::less_equal;
     depth.depth_write_enabled = false;
     depth.label = "Alchemy forward-Z world read-only depth";
@@ -2739,6 +2793,180 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
 
     return std::unique_ptr<ALMetalWorldGBufferRenderer>(
         new ALMetalWorldGBufferRenderer(std::move(impl)));
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderSpotShadow(
+    const ALMetalWorldSpotShadowScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || scene.width == 0 || scene.height == 0 ||
+        (scene.batch_count != 0 && !scene.batches))
+    {
+        setError(error, "Metal spot-shadow scene is incomplete");
+        return nullptr;
+    }
+
+    constexpr std::size_t float4_stride = sizeof(float) * 4;
+    constexpr std::uint32_t max_skin_joints = 110;
+    std::vector<std::unique_ptr<ALMetalBuffer>> palette_storage;
+    std::vector<const ALMetalBuffer*> palette_buffers(
+        scene.batch_count, nullptr);
+    for (std::size_t index = 0; index < scene.batch_count; ++index)
+    {
+        const ALMetalWorldSpotShadowBatch& batch = scene.batches[index];
+        const bool valid_index_type =
+            batch.index_type == ALMetalIndexType::uint16 ||
+            batch.index_type == ALMetalIndexType::uint32;
+        const std::size_t index_stride = batch.index_type ==
+            ALMetalIndexType::uint32 ? sizeof(std::uint32_t)
+                                     : sizeof(std::uint16_t);
+        if (!batch.vertices || !batch.indices || batch.vertex_count == 0 ||
+            batch.index_count == 0 || !valid_index_type ||
+            batch.position_offset % float4_stride != 0 ||
+            batch.index_offset % index_stride != 0 ||
+            !finiteValues(batch.modelview_projection, 16) ||
+            !rangeFits(batch.position_offset, batch.vertex_count,
+                       float4_stride, batch.vertices->length()) ||
+            !rangeFits(batch.index_offset, batch.index_count,
+                       index_stride, batch.indices->length()))
+        {
+            setError(error, "Metal spot-shadow batch geometry is invalid");
+            return nullptr;
+        }
+
+        if (batch.skin_palette)
+        {
+            const std::size_t expected_palette_floats =
+                4 + static_cast<std::size_t>(batch.skin_joint_count) * 12;
+            if (batch.skin_joint_count == 0 ||
+                batch.skin_joint_count > max_skin_joints ||
+                batch.skin_palette_float_count != expected_palette_floats ||
+                batch.weight_offset % float4_stride != 0 ||
+                !rangeFits(batch.weight_offset, batch.vertex_count,
+                           float4_stride, batch.vertices->length()) ||
+                !finiteValues(batch.skin_palette,
+                              batch.skin_palette_float_count))
+            {
+                setError(error,
+                         "Metal spot-shadow skinning data is invalid");
+                return nullptr;
+            }
+            ALMetalBufferDescriptor descriptor;
+            descriptor.length = batch.skin_palette_float_count *
+                                sizeof(float);
+            descriptor.storage = ALMetalStorageMode::shared;
+            descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+            descriptor.label = "Alchemy spot-shadow skin palette";
+            auto palette = ALMetalBuffer::create(
+                *mImpl->device, descriptor, error);
+            if (!palette || !palette->write(
+                    0, batch.skin_palette, descriptor.length, error))
+            {
+                return nullptr;
+            }
+            palette_buffers[index] = palette.get();
+            palette_storage.push_back(std::move(palette));
+        }
+        else if (batch.weight_offset != 0 ||
+                 batch.skin_palette_float_count != 0 ||
+                 batch.skin_joint_count != 0)
+        {
+            setError(error, "Metal spot-shadow skinning data is incomplete");
+            return nullptr;
+        }
+    }
+
+    ALMetalRenderTargetDescriptor target_descriptor;
+    target_descriptor.width = scene.width;
+    target_descriptor.height = scene.height;
+    target_descriptor.color_attachment_count = 1;
+    target_descriptor.colors[0].format = ALMetalPixelFormat::r32_float;
+    target_descriptor.colors[0].label =
+        "Alchemy direct spot-shadow raw depth";
+    target_descriptor.depth_stencil_format =
+        ALMetalPixelFormat::depth32_float;
+    target_descriptor.label = "Alchemy direct spot-shadow slice";
+    auto target = ALMetalRenderTarget::create(
+        *mImpl->device, target_descriptor, error);
+    if (!target)
+    {
+        return nullptr;
+    }
+
+    const double far_depth = scene.reverse_z ? 0.0 : 1.0;
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::clear;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    pass_config.colors[0].clear = {
+        far_depth, far_depth, far_depth, far_depth};
+    pass_config.depth_load = ALMetalLoadAction::clear;
+    pass_config.depth_store = ALMetalStoreAction::dont_care;
+    pass_config.clear_depth = far_depth;
+    auto pass = target->makeRenderPass(pass_config, error);
+    auto command = pass ? mImpl->device->makeCommandBuffer(
+        "Alchemy direct spot-shadow slice", error) : nullptr;
+    auto encoder = command ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy direct spot-shadow encoder", error)
+                           : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    const ALMetalDepthStencilState* depth = scene.reverse_z
+        ? mImpl->reverse_spot_shadow_depth.get()
+        : mImpl->forward_spot_shadow_depth.get();
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(scene.width),
+        static_cast<double>(scene.height), 0.0, 1.0};
+    const ALMetalScissorRect scissor{0, 0, scene.width, scene.height};
+    bool encoded =
+        encoder->setDepthStencilState(depth, error) &&
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error);
+    for (std::size_t index = 0;
+         encoded && index < scene.batch_count; ++index)
+    {
+        const ALMetalWorldSpotShadowBatch& batch = scene.batches[index];
+        const bool rigged = batch.skin_palette != nullptr;
+        WorldSpotShadowConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(constants.modelview_projection));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        encoded =
+            encoder->setCullMode(
+                batch.double_sided ? ALMetalCullMode::none
+                                   : ALMetalCullMode::back,
+                error) &&
+            encoder->setPipeline(
+                *mImpl->spot_shadow_pipelines[rigged ? 1 : 0], error) &&
+            encoder->setVertexBuffer(
+                0, *batch.vertices, batch.position_offset, error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error);
+        if (encoded && rigged)
+        {
+            encoded =
+                encoder->setVertexBuffer(
+                    2, *palette_buffers[index], 0, error) &&
+                encoder->setVertexBuffer(
+                    3, *batch.vertices, batch.weight_offset, error) &&
+                encoder->setVertexBytes(
+                    4, &batch.skin_joint_count,
+                    sizeof(batch.skin_joint_count), error);
+        }
+        encoded = encoded && encoder->drawIndexed(
+            ALMetalPrimitiveType::triangle, batch.index_count,
+            batch.index_type, *batch.indices, batch.index_offset, 1, error);
+    }
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return target;
 }
 
 std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(

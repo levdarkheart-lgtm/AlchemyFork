@@ -258,6 +258,17 @@ struct ALMetalWorldSimpleVaryings
     uint3 material_flags [[flat]];
 };
 
+struct ALMetalWorldSpotShadowConstants
+{
+    float4x4 modelview_projection;
+    uint4 config;
+};
+
+struct ALMetalWorldSpotShadowVaryings
+{
+    float4 position [[position]];
+};
+
 struct ALMetalWorldWaterExclusionConstants
 {
     float4x4 modelview_projection;
@@ -1684,6 +1695,52 @@ vertex ALMetalWorldSimpleVaryings almetal_world_simple_vertex(
         constants.material.z != 0.0,
         constants.material.w != 0.0);
     return output;
+}
+
+static ALMetalWorldSpotShadowVaryings almetal_world_spot_shadow_output(
+    float4 clip_position, constant ALMetalWorldSpotShadowConstants& constants)
+{
+    clip_position.y = -clip_position.y;
+    ALMetalWorldSpotShadowVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    return output;
+}
+
+vertex ALMetalWorldSpotShadowVaryings almetal_world_spot_shadow_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldSpotShadowConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    return almetal_world_spot_shadow_output(
+        constants.modelview_projection *
+            float4(positions[vertex_id].xyz, 1.0),
+        constants);
+}
+
+vertex ALMetalWorldSpotShadowVaryings
+almetal_world_spot_shadow_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldSpotShadowConstants& constants [[buffer(1)]],
+    const device float4* skin_palette [[buffer(2)]],
+    const device float4* encoded_weights [[buffer(3)]],
+    constant uint& joint_count [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        positions[vertex_id], float4(0.0), encoded_weights[vertex_id],
+        skin_palette, joint_count);
+    return almetal_world_spot_shadow_output(
+        constants.modelview_projection * skinned.position +
+            constants.modelview_projection *
+                float4(skin_palette[0].xyz, 1.0),
+        constants);
+}
+
+fragment float almetal_world_spot_shadow_fragment(
+    ALMetalWorldSpotShadowVaryings input [[stage_in]])
+{
+    return input.position.z;
 }
 
 vertex ALMetalWorldWaterExclusionVaryings

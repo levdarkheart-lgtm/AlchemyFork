@@ -116,6 +116,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_test_sample_cube_array",
             "almetal_resample_vertex",
             "almetal_resample_fragment",
+            "almetal_world_spot_shadow_vertex",
+            "almetal_world_spot_shadow_skinned_vertex",
+            "almetal_world_spot_shadow_fragment",
             "almetal_world_simple_vertex",
             "almetal_world_simple_skinned_vertex",
             "almetal_world_bump_vertex",
@@ -1002,6 +1005,126 @@ TEST_CASE("almetal: terrain paint bake consumes indexed viewer buffers and gener
         CHECK(oriented_pixels[upper_gl_row + 1] == 0);
         CHECK(oriented_pixels[upper_gl_row + 2] == 0);
         CHECK(oriented_pixels[upper_gl_row + 3] == 255);
+    }
+}
+
+TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        const std::array<std::array<float, 4>, 3> positions{{
+            {{-0.75f, -0.75f, 0.f, 1.f}},
+            {{ 0.75f, -0.75f, 0.f, 1.f}},
+            {{ 0.f,    0.75f, 0.f, 1.f}},
+        }};
+        const std::array<std::array<float, 4>, 3> weights{{
+            {{0.5f, 0.f, 0.f, 0.f}},
+            {{0.5f, 0.f, 0.f, 0.f}},
+            {{0.5f, 0.f, 0.f, 0.f}},
+        }};
+        constexpr std::size_t weight_offset = sizeof(positions);
+        std::array<std::uint8_t, sizeof(positions) + sizeof(weights)>
+            vertex_bytes{};
+        std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
+        std::memcpy(vertex_bytes.data() + weight_offset,
+                    weights.data(), sizeof(weights));
+        const std::array<std::uint16_t, 3> index_values{{0, 1, 2}};
+
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = vertex_bytes.size();
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.label = "Alchemy direct spot-shadow test vertices";
+        auto vertices = ALMetalBuffer::create(*device, descriptor, &error);
+        INFO(error);
+        REQUIRE(vertices);
+        REQUIRE(vertices->write(
+            0, vertex_bytes.data(), vertex_bytes.size(), &error));
+        descriptor.length = sizeof(index_values);
+        descriptor.label = "Alchemy direct spot-shadow test indices";
+        auto indices = ALMetalBuffer::create(*device, descriptor, &error);
+        INFO(error);
+        REQUIRE(indices);
+        REQUIRE(indices->write(
+            0, index_values.data(), sizeof(index_values), &error));
+
+        ALMetalWorldSpotShadowBatch batch;
+        batch.vertices = vertices.get();
+        batch.vertex_count = positions.size();
+        batch.indices = indices.get();
+        batch.index_count = index_values.size();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            batch.modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        ALMetalWorldSpotShadowScene scene;
+        scene.batches = &batch;
+        scene.batch_count = 1;
+        scene.width = 32;
+        scene.height = 32;
+
+        auto forward = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(forward);
+        REQUIRE(forward->descriptor().colors[0].format ==
+                ALMetalPixelFormat::r32_float);
+        std::array<float, 32 * 32> forward_depth{};
+        REQUIRE(forward->colorTexture(0)->readback(
+            *device, 0, 0, {}, forward_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(forward_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
+        CHECK(std::abs(forward_depth[1 * 32 + 1] - 1.f) < 0.0001f);
+
+        const std::array<float, 16> skin_palette{{
+            0.25f, 0.f, 0.f, 0.f,
+            1.f, 0.f, 0.f, 0.25f,
+            0.f, 1.f, 0.f, 0.f,
+            0.f, 0.f, 1.f, 0.f,
+        }};
+        batch.weight_offset = weight_offset;
+        batch.skin_palette = skin_palette.data();
+        batch.skin_palette_float_count = skin_palette.size();
+        batch.skin_joint_count = 1;
+        auto rigged = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(rigged);
+        std::array<float, 32 * 32> rigged_depth{};
+        REQUIRE(rigged->colorTexture(0)->readback(
+            *device, 0, 0, {}, rigged_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(rigged_depth[16 * 32 + 24] - 0.5f) < 0.0001f);
+        CHECK(std::abs(rigged_depth[16 * 32 + 8] - 1.f) < 0.0001f);
+
+        batch.skin_palette = nullptr;
+        batch.skin_palette_float_count = 0;
+        batch.skin_joint_count = 0;
+        batch.weight_offset = 0;
+        scene.reverse_z = true;
+        batch.modelview_projection[14] = 0.5f;
+        auto reverse = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(reverse);
+        std::array<float, 32 * 32> reverse_depth{};
+        REQUIRE(reverse->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(reverse_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
+        CHECK(std::abs(reverse_depth[1 * 32 + 1]) < 0.0001f);
+
+        batch.index_count = 4;
+        error.clear();
+        CHECK_FALSE(renderer->renderSpotShadow(scene, &error));
+        CHECK(error == "Metal spot-shadow batch geometry is invalid");
     }
 }
 

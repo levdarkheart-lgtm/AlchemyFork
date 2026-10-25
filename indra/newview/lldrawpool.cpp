@@ -840,6 +840,10 @@ void LLRenderPass::pushUntexturedBatch(LLDrawInfo& params)
 
     applyModelMatrix(params);
 
+#if LL_DARWIN
+    gPipeline.captureMetalSpotShadowOpaqueBatch(params);
+#endif
+
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 }
@@ -1273,6 +1277,11 @@ void LLRenderPass::pushUntexturedGLTFBatch(LLDrawInfo& params)
     LLGLDisable cull_face(mat->mDoubleSided ? GL_CULL_FACE : 0);
 
     applyModelMatrix(params);
+
+#if LL_DARWIN
+    gPipeline.captureMetalSpotShadowOpaqueBatch(
+        params, mat && mat->mDoubleSided);
+#endif
 
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);

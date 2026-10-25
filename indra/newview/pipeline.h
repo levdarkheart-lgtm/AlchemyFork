@@ -630,6 +630,12 @@ public:
     bool fillMetalImpostorScreenSpaceReflections();
     bool fillMetalImpostorDirectionalShadows();
     bool fillMetalWorldProjectorShadows();
+    void beginMetalSpotShadowCapture(U32 map, U32 width, U32 height,
+                                     std::size_t expected_batches,
+                                     bool complete);
+    void endMetalSpotShadowCapture();
+    void captureMetalSpotShadowOpaqueBatch(
+        const LLDrawInfo& params, bool double_sided = false);
     void captureMetalImpostorPBRAlphaBatch(
         const LLDrawInfo& params, bool particle_or_hud_particle,
         bool depth_only = false);

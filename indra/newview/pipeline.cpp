@@ -431,9 +431,18 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> opaque_post_deferred_target;
     std::unique_ptr<ALMetalRenderTarget> sky_behind_target;
     std::unique_ptr<ALMetalTexture> projector_shadow_texture;
+    std::unique_ptr<ALMetalTexture> direct_projector_shadow_texture;
     ALMetalWorldDirectionalShadows projector_shadows;
     std::vector<F32> projector_shadow_depth;
     U32 projector_shadow_frame = std::numeric_limits<U32>::max();
+    std::array<bool, 2> direct_projector_shadow_valid{};
+    std::vector<ALMetalWorldSpotShadowBatch> spot_shadow_batches;
+    U32 spot_shadow_map = 0;
+    U32 spot_shadow_width = 0;
+    U32 spot_shadow_height = 0;
+    std::size_t spot_shadow_expected_batches = 0;
+    bool spot_shadow_capture_active = false;
+    bool spot_shadow_capture_complete = false;
     std::unique_ptr<ALMetalRenderTarget> base_light_map_target;
     std::unique_ptr<ALMetalTexture> base_noise_texture;
     std::unique_ptr<ALMetalTexture> base_light_map_texture;
@@ -1026,9 +1035,11 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.composed_light_target.reset();
         capture.opaque_post_deferred_target.reset();
         capture.projector_shadow_texture.reset();
+        capture.direct_projector_shadow_texture.reset();
         capture.projector_shadows = {};
         capture.projector_shadow_depth.clear();
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
+        capture.direct_projector_shadow_valid = {};
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
         capture.base_light_map_texture.reset();
@@ -2591,9 +2602,11 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.composed_light_target.reset();
         capture.opaque_post_deferred_target.reset();
         capture.projector_shadow_texture.reset();
+        capture.direct_projector_shadow_texture.reset();
         capture.projector_shadows = {};
         capture.projector_shadow_depth.clear();
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
+        capture.direct_projector_shadow_valid = {};
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
         capture.base_light_map_texture.reset();
@@ -5675,6 +5688,183 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
     return true;
 }
 
+void LLPipeline::beginMetalSpotShadowCapture(
+    U32 map, U32 width, U32 height, std::size_t expected_batches,
+    bool complete)
+{
+    if (!mMetalWorldSimpleCapture || map >= 2 || width == 0 || height == 0)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.device || !capture.renderer ||
+        capture.spot_shadow_capture_active)
+    {
+        return;
+    }
+    capture.direct_projector_shadow_valid[map] = false;
+    capture.spot_shadow_batches.clear();
+    capture.spot_shadow_map = map;
+    capture.spot_shadow_width = width;
+    capture.spot_shadow_height = height;
+    capture.spot_shadow_expected_batches = expected_batches;
+    capture.spot_shadow_capture_complete = complete;
+    capture.reverse_z = LLRender::sReverseZ;
+    capture.spot_shadow_capture_active = true;
+}
+
+void LLPipeline::captureMetalSpotShadowOpaqueBatch(
+    const LLDrawInfo& params, bool double_sided)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_active ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_complete ||
+        !params.mCount)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    LLVertexBuffer* buffer = params.mVertexBuffer.get();
+    if (!buffer ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer())
+    {
+        capture.spot_shadow_capture_complete = false;
+        capture.spot_shadow_batches.clear();
+        return;
+    }
+
+    ALMetalWorldSpotShadowBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_offset = static_cast<std::size_t>(params.mOffset) *
+                         buffer->getIndexStride();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = params.mCount;
+    batch.double_sided = double_sided;
+
+    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+
+    if (params.mAvatar || params.mSkinInfo)
+    {
+        if (!params.mAvatar || !params.mSkinInfo ||
+            !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))
+        {
+            capture.spot_shadow_capture_complete = false;
+            capture.spot_shadow_batches.clear();
+            return;
+        }
+        const LLVOAvatar::MatrixPaletteCache& palette =
+            params.mAvatar->updateSkinInfoMatrixPalette(params.mSkinInfo);
+        const U32 joint_count = static_cast<U32>(
+            palette.mMatrixPalette.size());
+        if (joint_count == 0 || palette.mGLMp.size() !=
+                4 + static_cast<std::size_t>(joint_count) * 12)
+        {
+            capture.spot_shadow_capture_complete = false;
+            capture.spot_shadow_batches.clear();
+            return;
+        }
+        batch.weight_offset = buffer->getOffset(LLVertexBuffer::TYPE_WEIGHT4);
+        batch.skin_palette = palette.mGLMp.data();
+        batch.skin_palette_float_count = palette.mGLMp.size();
+        batch.skin_joint_count = joint_count;
+    }
+    capture.spot_shadow_batches.push_back(batch);
+}
+
+void LLPipeline::endMetalSpotShadowCapture()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.spot_shadow_capture_active = false;
+    const U32 map = capture.spot_shadow_map;
+    const bool complete = capture.spot_shadow_capture_complete &&
+        capture.spot_shadow_batches.size() ==
+            capture.spot_shadow_expected_batches;
+    capture.spot_shadow_capture_complete = false;
+    if (!complete)
+    {
+        capture.spot_shadow_batches.clear();
+        return;
+    }
+
+    ALMetalWorldSpotShadowScene scene;
+    scene.batches = capture.spot_shadow_batches.data();
+    scene.batch_count = capture.spot_shadow_batches.size();
+    scene.width = capture.spot_shadow_width;
+    scene.height = capture.spot_shadow_height;
+    scene.reverse_z = capture.reverse_z;
+    std::string error;
+    auto slice = capture.renderer->renderSpotShadow(scene, &error);
+    capture.spot_shadow_batches.clear();
+    if (!slice)
+    {
+        LL_WARNS("Metal")
+            << "Could not render direct Metal spot-shadow slice " << map
+            << ": " << error << LL_ENDL;
+        return;
+    }
+
+    ALMetalTextureDescriptor descriptor;
+    descriptor.type = ALMetalTextureType::texture_2d_array;
+    descriptor.format = ALMetalPixelFormat::r32_float;
+    descriptor.width = scene.width;
+    descriptor.height = scene.height;
+    descriptor.array_length = 2;
+    descriptor.storage = ALMetalStorageMode::private_gpu;
+    descriptor.usage = ALMetalTextureUsage::shader_read;
+    descriptor.label = "Alchemy direct raw projector-shadow maps";
+    const ALMetalTextureDescriptor* existing =
+        capture.direct_projector_shadow_texture
+            ? &capture.direct_projector_shadow_texture->descriptor()
+            : nullptr;
+    if (!existing || existing->width != descriptor.width ||
+        existing->height != descriptor.height)
+    {
+        capture.direct_projector_shadow_texture = ALMetalTexture::create(
+            *capture.device, descriptor, &error);
+        capture.direct_projector_shadow_valid = {};
+        if (!capture.direct_projector_shadow_texture)
+        {
+            LL_WARNS("Metal")
+                << "Could not allocate direct Metal spot-shadow pack: "
+                << error << LL_ENDL;
+            return;
+        }
+    }
+
+    auto command = capture.device->makeCommandBuffer(
+        "Alchemy direct spot-shadow slice copy", &error);
+    ALMetalTextureCopy copy;
+    copy.destination_slice = map;
+    const bool copied = command &&
+        capture.direct_projector_shadow_texture->copyFrom(
+            *command, *slice->colorTexture(0), copy, &error) &&
+        command->commit(&error);
+    if (!copied)
+    {
+        LL_WARNS("Metal")
+            << "Could not retain direct Metal spot-shadow slice " << map
+            << ": " << error << LL_ENDL;
+        return;
+    }
+    capture.direct_projector_shadow_valid[map] = true;
+    capture.projector_shadow_frame = std::numeric_limits<U32>::max();
+}
+
 bool LLPipeline::fillMetalWorldProjectorShadows()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -5719,6 +5909,56 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
     if (width == 0 || height == 0)
     {
         return false;
+    }
+
+    const auto publish = [&](const ALMetalTexture* texture)
+    {
+        ALMetalWorldDirectionalShadowConstants constants;
+        std::memcpy(constants.shadow_matrix[0],
+                    mDeferredUBOData.shadow_matrix[4],
+                    sizeof(constants.shadow_matrix[0]));
+        std::memcpy(constants.shadow_matrix[1],
+                    mDeferredUBOData.shadow_matrix[5],
+                    sizeof(constants.shadow_matrix[1]));
+        std::memcpy(constants.shadow_clip,
+                    mDeferredUBOData.shadow_clip,
+                    sizeof(constants.shadow_clip));
+        constants.resolution[0] = static_cast<F32>(width);
+        constants.resolution[1] = static_cast<F32>(height);
+        constants.resolution[2] =
+            static_cast<F32>(mRT->deferredScreen.getWidth());
+        constants.resolution[3] =
+            static_cast<F32>(mRT->deferredScreen.getHeight());
+        constants.parameters[0] = mDeferredUBOData.spot_shadow_bias;
+        constants.parameters[1] = mDeferredUBOData.spot_shadow_offset;
+        constants.parameters[2] = mDeferredUBOData.shadow_pcss_scale;
+        constants.parameters[3] = static_cast<F32>(capture.height);
+        constants.config[0] = 2;
+        constants.config[1] = unbuilt;
+        constants.config[2] = capture.reverse_z ? 1u : 0u;
+        constants.config[3] = static_cast<U32>(std::clamp(
+            shaderInputs().mGlobal.mShadowFilterQuality, 0, 3));
+
+        capture.projector_shadows.depth_texture = texture;
+        capture.projector_shadows.constants = constants;
+        capture.projector_shadow_frame = gFrameCount;
+        return true;
+    };
+
+    const ALMetalTextureDescriptor* direct =
+        capture.direct_projector_shadow_texture
+            ? &capture.direct_projector_shadow_texture->descriptor()
+            : nullptr;
+    bool direct_complete = direct && direct->width == width &&
+        direct->height == height;
+    for (U32 index = 0; direct_complete && index < 2; ++index)
+    {
+        direct_complete = (unbuilt & (1u << index)) != 0 ||
+            capture.direct_projector_shadow_valid[index];
+    }
+    if (direct_complete)
+    {
+        return publish(capture.direct_projector_shadow_texture.get());
     }
 
     const std::size_t slice_pixels =
@@ -5816,37 +6056,7 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
         return false;
     }
 
-    ALMetalWorldDirectionalShadowConstants constants;
-    std::memcpy(constants.shadow_matrix[0],
-                mDeferredUBOData.shadow_matrix[4],
-                sizeof(constants.shadow_matrix[0]));
-    std::memcpy(constants.shadow_matrix[1],
-                mDeferredUBOData.shadow_matrix[5],
-                sizeof(constants.shadow_matrix[1]));
-    std::memcpy(constants.shadow_clip,
-                mDeferredUBOData.shadow_clip,
-                sizeof(constants.shadow_clip));
-    constants.resolution[0] = static_cast<F32>(width);
-    constants.resolution[1] = static_cast<F32>(height);
-    constants.resolution[2] =
-        static_cast<F32>(mRT->deferredScreen.getWidth());
-    constants.resolution[3] =
-        static_cast<F32>(mRT->deferredScreen.getHeight());
-    constants.parameters[0] = mDeferredUBOData.spot_shadow_bias;
-    constants.parameters[1] = mDeferredUBOData.spot_shadow_offset;
-    constants.parameters[2] = mDeferredUBOData.shadow_pcss_scale;
-    constants.parameters[3] = static_cast<F32>(capture.height);
-    constants.config[0] = 2;
-    constants.config[1] = unbuilt;
-    constants.config[2] = capture.reverse_z ? 1u : 0u;
-    constants.config[3] = static_cast<U32>(std::clamp(
-        shaderInputs().mGlobal.mShadowFilterQuality, 0, 3));
-
-    capture.projector_shadows.depth_texture =
-        capture.projector_shadow_texture.get();
-    capture.projector_shadows.constants = constants;
-    capture.projector_shadow_frame = gFrameCount;
-    return true;
+    return publish(capture.projector_shadow_texture.get());
 }
 
 void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
@@ -22193,11 +22403,75 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("spot shadow");
                     LL_PROFILE_GPU_ZONE("spot shadow");
 
+#if LL_DARWIN
+                    const auto counted_batches = [&](U32 type)
+                    {
+                        std::size_t count = 0;
+                        auto* begin = beginRenderMap(type);
+                        auto* end = endRenderMap(type);
+                        for (auto* at = begin; at != end; )
+                        {
+                            LLDrawInfo* info = *at;
+                            LLCullResult::increment_iterator(at, end);
+                            if (info && info->mCount)
+                            {
+                                ++count;
+                            }
+                        }
+                        return count;
+                    };
+                    std::size_t native_opaque_batches = 0;
+                    for (U32 type : SHADOW_GEOMETRY_PASSES)
+                    {
+                        native_opaque_batches += counted_batches(type);
+                        native_opaque_batches += counted_batches(type + 1);
+                    }
+                    native_opaque_batches += counted_batches(
+                        LLRenderPass::PASS_GLTF_PBR);
+                    native_opaque_batches += counted_batches(
+                        LLRenderPass::PASS_GLTF_PBR_RIGGED);
+
+                    bool native_opaque_complete = true;
+                    for (U32 type : SHADOW_MASKED_PASSES)
+                    {
+                        native_opaque_complete = native_opaque_complete &&
+                            counted_batches(type) == 0 &&
+                            counted_batches(type + 1) == 0;
+                    }
+                    native_opaque_complete = native_opaque_complete &&
+                        counted_batches(LLRenderPass::PASS_ALPHA) == 0 &&
+                        counted_batches(LLRenderPass::PASS_GRASS) == 0;
+                    for (LLDrawPool* pool : mPools)
+                    {
+                        if (!native_opaque_complete)
+                        {
+                            break;
+                        }
+                        if (hasRenderType(pool->getType()) &&
+                            pool->getNumShadowPasses() > 0)
+                        {
+                            ALSpotShadowCache::Casters pool_casters;
+                            pool->addShadowCasters(pool_casters);
+                            native_opaque_complete =
+                                pool_casters.count() == 0 &&
+                                !pool_casters.changing();
+                        }
+                    }
+                    beginMetalSpotShadowCapture(
+                        i, mSpotShadow[i].getWidth(),
+                        mSpotShadow[i].getHeight(), native_opaque_batches,
+                        native_opaque_complete);
+#endif
+
                     mSpotShadow[i].bindTarget();
                     mSpotShadow[i].getViewport(gGLViewport);
                     mSpotShadow[i].clear();
 
                     drawShadow(view[i + 4], proj[i + 4], shadow_cam, false, 0);
+
+#if LL_DARWIN
+                    endMetalSpotShadowCapture();
+#endif
 
                     mSpotShadow[i].flush();
                     mSpotShadowCache.drawn(i, key);

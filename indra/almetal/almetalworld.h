@@ -178,6 +178,36 @@ struct ALMetalWorldDirectionalShadows
     ALMetalWorldDirectionalShadowConstants constants;
 };
 
+// One exact indexed triangle batch seen by a spotlight's own shadow camera.
+// Opaque casters need only position; rigged casters additionally retain the
+// same packed object-skin palette and four-weight plane used by the live GLSL
+// shadow vertex program.
+struct ALMetalWorldSpotShadowBatch
+{
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::size_t weight_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
+    const float* skin_palette = nullptr;
+    std::size_t skin_palette_float_count = 0;
+    std::uint32_t skin_joint_count = 0;
+    float modelview_projection[16]{};
+    bool double_sided = false;
+};
+
+struct ALMetalWorldSpotShadowScene
+{
+    const ALMetalWorldSpotShadowBatch* batches = nullptr;
+    std::size_t batch_count = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    bool reverse_z = false;
+};
+
 struct ALMetalWorldSimpleBatch
 {
     static constexpr std::size_t max_diffuse_textures = 32;
@@ -890,6 +920,14 @@ public:
 
     std::unique_ptr<ALMetalRenderTarget> render(
         const ALMetalWorldGBufferScene& scene,
+        std::string* error = nullptr);
+
+    // Render one spotlight-camera slice directly from retained viewer buffers.
+    // R32F color stores the exact raster depth sampled by the projector owner;
+    // a private D32 attachment supplies the authoritative depth test. The
+    // caller may blit color attachment zero into its persistent two-slice pack.
+    std::unique_ptr<ALMetalRenderTarget> renderSpotShadow(
+        const ALMetalWorldSpotShadowScene& scene,
         std::string* error = nullptr);
 
     // Decode the retained native G-buffer and accumulate every ordinary
