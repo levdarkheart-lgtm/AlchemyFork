@@ -38,6 +38,7 @@ class LLSpatialGroup;
 class LLViewerObject;
 #if LL_DARWIN
 struct ALMetalPBRPreviewEnvironment;
+struct ALMetalWorldReflectionProbes;
 #endif
 
 // number of reflection probes to keep in vram
@@ -192,6 +193,12 @@ public:
     // Fill a native preview environment only after a matching radiance cube
     // and SH row from one completed default-probe generation are available.
     bool fillMetalDefaultProbe(ALMetalPBRPreviewEnvironment& environment) const;
+
+    // Fill the live native probe array only when every cube slot referenced
+    // by the current selection pack has a Metal generation for its current
+    // GL owner. Old generations remain usable while that same probe refreshes;
+    // a recycled slot fails closed until its new owner has been mirrored.
+    bool fillMetalReflectionProbes(ALMetalWorldReflectionProbes& probes) const;
 #endif
 
     U32 probeCount();
@@ -264,13 +271,21 @@ private:
 
 #if LL_DARWIN
     struct MetalDefaultProbeMirror;
+    struct MetalProbeArrayMirror;
     void collectMetalDefaultProbe();
     void requestMetalDefaultProbeSH();
     bool beginMetalDefaultProbeRadianceCapture();
     void captureMetalDefaultProbeRadiance(U32 mip, U32 face, U32 resolution);
     void endMetalDefaultProbeRadianceCapture();
     void releaseMetalDefaultProbe();
+    void collectMetalProbeArray();
+    bool beginMetalProbeRadianceCapture(LLReflectionMap* probe);
+    void captureMetalProbeRadiance(U32 mip, U32 face, U32 resolution);
+    void endMetalProbeRadianceCapture();
+    void invalidateMetalProbeSlot(U32 cube_index);
+    void releaseMetalProbeArray();
     std::unique_ptr<MetalDefaultProbeMirror> mMetalDefaultProbe;
+    std::unique_ptr<MetalProbeArrayMirror> mMetalProbeArray;
 #endif
 
     // list of active reflection maps

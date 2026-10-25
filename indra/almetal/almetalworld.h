@@ -46,6 +46,37 @@ struct ALMetalWorldPBRSlot
     float alpha_cutoff = -1.f;
 };
 
+// The live GL reflection-probe pack mirrored into Metal. Radiance is updated
+// one completed probe at a time; the manager exposes this only when every
+// cube slot referenced by these constants belongs to the same probe
+// generation in the Metal array. The fixed layout intentionally follows the
+// selection data used by reflectionProbeF.glsl so native forward owners can
+// preserve its exact traversal and weighting.
+struct alignas(16) ALMetalWorldReflectionProbeConstants
+{
+    static constexpr std::size_t max_probe_count = 256;
+
+    float ref_box[max_probe_count][16]{};
+    float ref_sphere[max_probe_count][4]{};
+    float ref_params[max_probe_count][4]{};
+    std::int32_t ref_index[max_probe_count][4]{};
+    std::int32_t ref_neighbor[4096]{};
+    std::int32_t ref_bucket[256][4]{};
+    float env_matrix[3][4] = {
+        {1.f, 0.f, 0.f, 0.f},
+        {0.f, 1.f, 0.f, 0.f},
+        {0.f, 0.f, 1.f, 0.f},
+    };
+    // x = active probe count, y = maximum radiance LOD.
+    float config[4]{};
+};
+
+struct ALMetalWorldReflectionProbes
+{
+    const ALMetalTexture* radiance_texture = nullptr;
+    ALMetalWorldReflectionProbeConstants constants;
+};
+
 struct ALMetalWorldSimpleBatch
 {
     static constexpr std::size_t max_diffuse_textures = 32;

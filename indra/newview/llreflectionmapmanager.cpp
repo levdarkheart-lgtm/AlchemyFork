@@ -51,6 +51,7 @@
 #include "llimagegl.h"
 #include "../almetal/almetalpbrpreview.h"
 #include "../almetal/almetalresource.h"
+#include "../almetal/almetalworld.h"
 #endif
 
 #if LL_WINDOWS
@@ -234,6 +235,60 @@ struct LLReflectionMapManager::MetalDefaultProbeMirror
         mPublishedRadiance.reset();
     }
 };
+
+struct LLReflectionMapManager::MetalProbeArrayMirror
+{
+    struct Subresource
+    {
+        U32 mMip = 0;
+        U32 mFace = 0;
+        U32 mResolution = 0;
+        size_t mOffset = 0;
+    };
+
+    ALGPUBuffer mRadianceReadback;
+    std::vector<Subresource> mSubresources;
+    std::vector<U8> mRadianceBytes;
+    std::vector<U64> mSlotGenerations;
+    std::vector<U64> mPublishedGenerations;
+    const ALMetalDevice* mDevice = nullptr;
+    std::unique_ptr<ALMetalTexture> mPublishedRadiance;
+    U32 mRadianceFrame = 0;
+    U32 mResolution = 0;
+    U32 mMipCount = 0;
+    U32 mCubeCount = 0;
+    U32 mCaptureCube = 0;
+    U64 mCaptureGeneration = 0;
+    bool mHDR = false;
+    bool mCaptureActive = false;
+    bool mRadiancePending = false;
+
+    bool hasResources() const
+    {
+        return mRadianceReadback.isAllocated() ||
+               mPublishedRadiance != nullptr;
+    }
+
+    void release()
+    {
+        mRadianceReadback.release();
+        mSubresources.clear();
+        mRadianceBytes.clear();
+        mSlotGenerations.clear();
+        mPublishedGenerations.clear();
+        mDevice = nullptr;
+        mPublishedRadiance.reset();
+        mRadianceFrame = 0;
+        mResolution = 0;
+        mMipCount = 0;
+        mCubeCount = 0;
+        mCaptureCube = 0;
+        mCaptureGeneration = 0;
+        mHDR = false;
+        mCaptureActive = false;
+        mRadiancePending = false;
+    }
+};
 #endif
 
 LLReflectionMapManager::LLReflectionMapManager()
@@ -246,6 +301,7 @@ LLReflectionMapManager::LLReflectionMapManager()
     mSHPartial.setLabel("probe.sh.partial");
 #if LL_DARWIN
     mMetalDefaultProbe = std::make_unique<MetalDefaultProbeMirror>();
+    mMetalProbeArray = std::make_unique<MetalProbeArrayMirror>();
 #endif
 }
 
@@ -257,6 +313,27 @@ void LLReflectionMapManager::releaseMetalDefaultProbe()
     if (mMetalDefaultProbe)
     {
         mMetalDefaultProbe->release();
+    }
+}
+
+void LLReflectionMapManager::releaseMetalProbeArray()
+{
+    if (mMetalProbeArray)
+    {
+        mMetalProbeArray->release();
+    }
+}
+
+void LLReflectionMapManager::invalidateMetalProbeSlot(U32 cube_index)
+{
+    MetalProbeArrayMirror& mirror = *mMetalProbeArray;
+    if (cube_index < mirror.mSlotGenerations.size())
+    {
+        ++mirror.mSlotGenerations[cube_index];
+        if (mirror.mSlotGenerations[cube_index] == 0)
+        {
+            ++mirror.mSlotGenerations[cube_index];
+        }
     }
 }
 
@@ -321,8 +398,6 @@ bool LLReflectionMapManager::beginMetalDefaultProbeRadianceCapture()
     mirror.mResolution = mProbeResolution;
     mirror.mMipCount = static_cast<U32>(mMipChain.size());
     mirror.mCaptureActive = true;
-    glBindBuffer(
-        GL_PIXEL_PACK_BUFFER, mirror.mRadianceReadback.getGLName());
     return true;
 }
 
@@ -341,9 +416,12 @@ void LLReflectionMapManager::captureMetalDefaultProbeRadiance(
         mirror.mSubresources[index];
     llassert(subresource.mMip == mip && subresource.mFace == face &&
              subresource.mResolution == resolution);
+    glBindBuffer(
+        GL_PIXEL_PACK_BUFFER, mirror.mRadianceReadback.getGLName());
     glReadPixels(
         0, 0, resolution, resolution, GL_RGBA, GL_HALF_FLOAT,
         reinterpret_cast<void*>(subresource.mOffset));
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 }
 
 void LLReflectionMapManager::endMetalDefaultProbeRadianceCapture()
@@ -354,12 +432,227 @@ void LLReflectionMapManager::endMetalDefaultProbeRadianceCapture()
         return;
     }
 
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
     mirror.mPendingSH = mirror.mStagedSH;
     mirror.mStagedSHValid = false;
     mirror.mRadianceFrame = gGL.frameFences().frame();
     mirror.mCaptureActive = false;
     mirror.mRadiancePending = true;
+}
+
+bool LLReflectionMapManager::beginMetalProbeRadianceCapture(
+    LLReflectionMap* probe)
+{
+    MetalProbeArrayMirror& mirror = *mMetalProbeArray;
+    ALMetalDevice* device = LLImageGL::getMetalDevice();
+    if (device && mirror.mDevice && mirror.mDevice != device)
+    {
+        // A private Metal texture cannot cross device lifetimes. The normal
+        // viewer teardown releases this mirror with the GL probe array, but
+        // keep this boundary safe if Metal is recreated independently.
+        mirror.release();
+    }
+    if (!probe || probe->mCubeIndex < 0 || !device || mMipChain.empty() ||
+        mirror.mRadiancePending || mirror.mCaptureActive)
+    {
+        return false;
+    }
+
+    const U32 cube_count = mReflectionProbeCount + 2;
+    if (mirror.mSlotGenerations.size() != cube_count)
+    {
+        mirror.mSlotGenerations.assign(cube_count, 1);
+        mirror.mPublishedGenerations.assign(cube_count, 0);
+        mirror.mPublishedRadiance.reset();
+    }
+    const U32 cube_index = static_cast<U32>(probe->mCubeIndex);
+    if (cube_index >= cube_count)
+    {
+        return false;
+    }
+
+    const size_t bytes_per_pixel = mHDR ? 4 * sizeof(U16) : 4;
+    std::vector<MetalProbeArrayMirror::Subresource> subresources;
+    subresources.reserve(mMipChain.size() * 6);
+    size_t total_bytes = 0;
+    U32 resolution = mProbeResolution;
+    for (U32 mip = 0; mip < mMipChain.size(); ++mip)
+    {
+        for (U32 face = 0; face < 6; ++face)
+        {
+            subresources.push_back({mip, face, resolution, total_bytes});
+            total_bytes += static_cast<size_t>(resolution) * resolution *
+                           bytes_per_pixel;
+        }
+        resolution = llmax(resolution >> 1, 1u);
+    }
+
+    if (!mirror.mRadianceReadback.isAllocated() ||
+        mirror.mRadianceReadback.size() != total_bytes)
+    {
+        mirror.mRadianceReadback.release();
+        if (!mirror.mRadianceReadback.allocate(
+                total_bytes, ALGPUBuffer::READBACK, nullptr,
+                "probe.array.metal.radiance.readback"))
+        {
+            return false;
+        }
+    }
+
+    mirror.mSubresources = std::move(subresources);
+    mirror.mRadianceBytes.resize(total_bytes);
+    mirror.mDevice = device;
+    mirror.mResolution = mProbeResolution;
+    mirror.mMipCount = static_cast<U32>(mMipChain.size());
+    mirror.mCubeCount = cube_count;
+    mirror.mCaptureCube = cube_index;
+    mirror.mCaptureGeneration = mirror.mSlotGenerations[cube_index];
+    mirror.mHDR = mHDR;
+    mirror.mCaptureActive = true;
+    return true;
+}
+
+void LLReflectionMapManager::captureMetalProbeRadiance(
+    U32 mip, U32 face, U32 resolution)
+{
+    MetalProbeArrayMirror& mirror = *mMetalProbeArray;
+    if (!mirror.mCaptureActive)
+    {
+        return;
+    }
+
+    const size_t index = static_cast<size_t>(mip) * 6 + face;
+    llassert(index < mirror.mSubresources.size());
+    const MetalProbeArrayMirror::Subresource& subresource =
+        mirror.mSubresources[index];
+    llassert(subresource.mMip == mip && subresource.mFace == face &&
+             subresource.mResolution == resolution);
+    glBindBuffer(
+        GL_PIXEL_PACK_BUFFER, mirror.mRadianceReadback.getGLName());
+    glReadPixels(
+        0, 0, resolution, resolution, GL_RGBA,
+        mirror.mHDR ? GL_HALF_FLOAT : GL_UNSIGNED_BYTE,
+        reinterpret_cast<void*>(subresource.mOffset));
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+}
+
+void LLReflectionMapManager::endMetalProbeRadianceCapture()
+{
+    MetalProbeArrayMirror& mirror = *mMetalProbeArray;
+    if (!mirror.mCaptureActive)
+    {
+        return;
+    }
+
+    mirror.mRadianceFrame = gGL.frameFences().frame();
+    mirror.mCaptureActive = false;
+    mirror.mRadiancePending = true;
+}
+
+void LLReflectionMapManager::collectMetalProbeArray()
+{
+    MetalProbeArrayMirror& mirror = *mMetalProbeArray;
+    if (!mirror.mRadiancePending ||
+        !gGL.frameFences().isComplete(mirror.mRadianceFrame))
+    {
+        return;
+    }
+
+    const bool generation_valid =
+        mirror.mCaptureCube < mirror.mSlotGenerations.size() &&
+        mirror.mSlotGenerations[mirror.mCaptureCube] ==
+            mirror.mCaptureGeneration;
+    if (!generation_valid)
+    {
+        mirror.mRadiancePending = false;
+        return;
+    }
+
+    if (const U8* mapped = mirror.mRadianceReadback.getMapped())
+    {
+        memcpy(mirror.mRadianceBytes.data(), mapped,
+               mirror.mRadianceBytes.size());
+    }
+    else if (!mirror.mRadianceReadback.read(
+                 0, mirror.mRadianceBytes.data(),
+                 mirror.mRadianceBytes.size()))
+    {
+        mirror.mRadiancePending = false;
+        return;
+    }
+
+    ALMetalDevice* device = LLImageGL::getMetalDevice();
+    if (!device || device != mirror.mDevice)
+    {
+        mirror.mRadiancePending = false;
+        return;
+    }
+
+    const ALMetalPixelFormat format = mirror.mHDR
+        ? ALMetalPixelFormat::rgba16_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    const ALMetalTextureDescriptor* published = mirror.mPublishedRadiance
+        ? &mirror.mPublishedRadiance->descriptor() : nullptr;
+    if (!published || published->type != ALMetalTextureType::texture_cube_array ||
+        published->format != format ||
+        published->width != mirror.mResolution ||
+        published->height != mirror.mResolution ||
+        published->mipmap_level_count != mirror.mMipCount ||
+        published->array_length != mirror.mCubeCount)
+    {
+        ALMetalTextureDescriptor descriptor;
+        descriptor.type = ALMetalTextureType::texture_cube_array;
+        descriptor.format = format;
+        descriptor.width = mirror.mResolution;
+        descriptor.height = mirror.mResolution;
+        descriptor.mipmap_level_count = mirror.mMipCount;
+        descriptor.array_length = mirror.mCubeCount;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.usage = ALMetalTextureUsage::shader_read;
+        descriptor.label = "Alchemy live reflection probe mirror";
+        std::string create_error;
+        mirror.mPublishedRadiance = ALMetalTexture::create(
+            *device, descriptor, &create_error);
+        std::fill(mirror.mPublishedGenerations.begin(),
+                  mirror.mPublishedGenerations.end(), 0);
+        if (!mirror.mPublishedRadiance)
+        {
+            LL_WARNS("Metal")
+                << "Could not allocate the live reflection probe mirror: "
+                << create_error << LL_ENDL;
+            mirror.mRadiancePending = false;
+            return;
+        }
+    }
+
+    std::string error;
+    auto upload = device->makeCommandBuffer(
+        "Alchemy live reflection probe upload", &error);
+    bool uploaded = upload != nullptr;
+    const size_t bytes_per_pixel = mirror.mHDR ? 4 * sizeof(U16) : 4;
+    for (const MetalProbeArrayMirror::Subresource& subresource :
+         mirror.mSubresources)
+    {
+        uploaded = uploaded && mirror.mPublishedRadiance->upload(
+            *upload, subresource.mMip,
+            mirror.mCaptureCube * 6 + subresource.mFace, {},
+            mirror.mRadianceBytes.data() + subresource.mOffset,
+            static_cast<size_t>(subresource.mResolution) *
+                bytes_per_pixel,
+            &error);
+    }
+    uploaded = uploaded && upload->commit(&error);
+    if (uploaded)
+    {
+        mirror.mPublishedGenerations[mirror.mCaptureCube] =
+            mirror.mCaptureGeneration;
+    }
+    else
+    {
+        LL_WARNS("Metal")
+            << "Could not mirror a live reflection probe: "
+            << error << LL_ENDL;
+    }
+    mirror.mRadiancePending = false;
 }
 
 void LLReflectionMapManager::collectMetalDefaultProbe()
@@ -462,6 +755,65 @@ bool LLReflectionMapManager::fillMetalDefaultProbe(
     environment.max_lod = mMaxProbeLOD;
     return true;
 }
+
+bool LLReflectionMapManager::fillMetalReflectionProbes(
+    ALMetalWorldReflectionProbes& probes) const
+{
+    const MetalProbeArrayMirror& mirror = *mMetalProbeArray;
+    const S32 count = mProbeData.refmapCount;
+    if (!mirror.mPublishedRadiance || count <= 0 ||
+        count > static_cast<S32>(
+            ALMetalWorldReflectionProbeConstants::max_probe_count))
+    {
+        return false;
+    }
+    for (S32 index = 0; index < count; ++index)
+    {
+        const S32 cube = mProbeData.refIndex[index][0];
+        if (cube < 0 ||
+            static_cast<size_t>(cube) >=
+                mirror.mPublishedGenerations.size() ||
+            mirror.mPublishedGenerations[cube] == 0 ||
+            mirror.mPublishedGenerations[cube] !=
+                mirror.mSlotGenerations[cube])
+        {
+            return false;
+        }
+    }
+
+    static_assert(sizeof(LLMatrix4) == sizeof(float) * 16);
+    probes = {};
+    probes.radiance_texture = mirror.mPublishedRadiance.get();
+    memcpy(probes.constants.ref_box, mProbeData.refBox,
+           sizeof(probes.constants.ref_box));
+    memcpy(probes.constants.ref_sphere, mProbeData.refSphere,
+           sizeof(probes.constants.ref_sphere));
+    memcpy(probes.constants.ref_params, mProbeData.refParams,
+           sizeof(probes.constants.ref_params));
+    memcpy(probes.constants.ref_index, mProbeData.refIndex,
+           sizeof(probes.constants.ref_index));
+    memcpy(probes.constants.ref_neighbor, mProbeData.refNeighbor,
+           sizeof(probes.constants.ref_neighbor));
+    memcpy(probes.constants.ref_bucket, mProbeData.refBucket,
+           sizeof(probes.constants.ref_bucket));
+
+    // setEnvMat uploads the transpose of the current view rotation. Spell
+    // the resulting columns out for MSL's column-major multiply.
+    const F32* matrix =
+        LLViewerCamera::getCurrent().getModelview().getF32ptr();
+    probes.constants.env_matrix[0][0] = matrix[0];
+    probes.constants.env_matrix[0][1] = matrix[4];
+    probes.constants.env_matrix[0][2] = matrix[8];
+    probes.constants.env_matrix[1][0] = matrix[1];
+    probes.constants.env_matrix[1][1] = matrix[5];
+    probes.constants.env_matrix[1][2] = matrix[9];
+    probes.constants.env_matrix[2][0] = matrix[2];
+    probes.constants.env_matrix[2][1] = matrix[6];
+    probes.constants.env_matrix[2][2] = matrix[10];
+    probes.constants.config[0] = static_cast<F32>(count);
+    probes.constants.config[1] = mMaxProbeLOD;
+    return true;
+}
 #endif
 
 void LLReflectionMapManager::initCubeFree()
@@ -545,6 +897,7 @@ void LLReflectionMapManager::update()
     // upload. Do it before any eligibility return so a completed coherent
     // generation cannot be stranded when probe updates pause temporarily.
     collectMetalDefaultProbe();
+    collectMetalProbeArray();
 #endif
 
     // Not until the resources are reconciled for probes, which a shader reload that stops short of it leaves undone.
@@ -832,6 +1185,9 @@ void LLReflectionMapManager::update()
         if (probe && probe->mCubeIndex != -1 && mUpdatingProbe != probe &&
             (i >= mReflectionProbeCount || !probe->isRelevant()))
         { // free this index
+#if LL_DARWIN
+            invalidateMetalProbeSlot(static_cast<U32>(probe->mCubeIndex));
+#endif
             mCubeFree.push_back(probe->mCubeIndex);
 
             probe->mCubeArray = nullptr;
@@ -1196,6 +1552,9 @@ void LLReflectionMapManager::deleteProbe(U32 i)
 
     if (probe->mCubeIndex != -1)
     { // mark the cube index used by this probe as being free
+#if LL_DARWIN
+        invalidateMetalProbeSlot(static_cast<U32>(probe->mCubeIndex));
+#endif
         mCubeFree.push_back(probe->mCubeIndex);
     }
     if (mUpdatingProbe == probe)
@@ -1432,6 +1791,8 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
             const bool capture_default_probe =
                 probe == mDefaultProbe &&
                 beginMetalDefaultProbeRadianceCapture();
+            const bool capture_probe_array =
+                beginMetalProbeRadianceCapture(probe);
 #endif
 
             for (int i = 0; i < mMipChain.size(); ++i)
@@ -1459,6 +1820,11 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                         captureMetalDefaultProbeRadiance(
                             static_cast<U32>(i), static_cast<U32>(cf), res);
                     }
+                    if (capture_probe_array)
+                    {
+                        captureMetalProbeRadiance(
+                            static_cast<U32>(i), static_cast<U32>(cf), res);
+                    }
 #endif
                     mTexture->copyFaceFromFramebuffer(i, probe->mCubeIndex, cf, res);
                 }
@@ -1474,6 +1840,10 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
             if (capture_default_probe)
             {
                 endMetalDefaultProbeRadianceCapture();
+            }
+            if (capture_probe_array)
+            {
+                endMetalProbeRadianceCapture();
             }
 #endif
 
@@ -2109,6 +2479,7 @@ void LLReflectionMapManager::initReflectionMaps()
             // A native environment is useful only as a coherent pair. Drop
             // both halves if either GL owner was recreated.
             releaseMetalDefaultProbe();
+            releaseMetalProbeArray();
         }
 #endif
 
@@ -2195,6 +2566,7 @@ bool LLReflectionMapManager::freeResources()
                       mSHPartial.isComplete() || mUBO.allocated() || mVertexBuffer.notNull()
 #if LL_DARWIN
                       || (mMetalDefaultProbe && mMetalDefaultProbe->hasResources())
+                      || (mMetalProbeArray && mMetalProbeArray->hasResources())
 #endif
                       ;
 
@@ -2220,6 +2592,7 @@ bool LLReflectionMapManager::freeResources()
     mVertexBuffer = nullptr;
 #if LL_DARWIN
     releaseMetalDefaultProbe();
+    releaseMetalProbeArray();
 #endif
 
     return held;
@@ -2229,6 +2602,7 @@ void LLReflectionMapManager::cleanup()
 {
 #if LL_DARWIN
     releaseMetalDefaultProbe();
+    releaseMetalProbeArray();
 #endif
     mVertexBuffer = nullptr;
     mRenderTarget.release();
