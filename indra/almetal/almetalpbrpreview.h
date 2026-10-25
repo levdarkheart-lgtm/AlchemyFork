@@ -55,6 +55,7 @@ struct ALMetalPBRPreviewBatch
     float exposure = 1.f;
     float tonemap_mix = 1.f;
     std::uint32_t tonemap_type = 1;
+    float tonemap_params[4]{};
     bool double_sided = false;
 };
 

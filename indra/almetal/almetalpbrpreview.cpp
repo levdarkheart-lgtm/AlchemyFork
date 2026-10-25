@@ -37,9 +37,10 @@ namespace
         float sun_color[4];
         float material[4];
         float post[4];
+        float tonemap_params[4];
     };
 
-    static_assert(sizeof(PBRPreviewConstants) == 384);
+    static_assert(sizeof(PBRPreviewConstants) == 400);
 
     bool finiteValues(const float* values, std::size_t count)
     {
@@ -210,11 +211,20 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
             !std::isfinite(batch.alpha_cutoff) ||
             !std::isfinite(batch.exposure) ||
             !std::isfinite(batch.tonemap_mix) ||
+            !finiteValues(batch.tonemap_params, 4) ||
             batch.metallic_factor < 0.f || batch.metallic_factor > 1.f ||
             batch.roughness_factor < 0.f || batch.roughness_factor > 1.f ||
             batch.alpha_cutoff < -1.f || batch.alpha_cutoff > 1.f ||
             batch.exposure < 0.f || batch.tonemap_mix < 0.f ||
-            batch.tonemap_mix > 1.f || batch.tonemap_type > 3)
+            batch.tonemap_mix > 1.f || batch.tonemap_type > 6 ||
+            ((batch.tonemap_type == 2 || batch.tonemap_type == 3 ||
+              batch.tonemap_type == 4) &&
+             batch.tonemap_params[0] <= 0.f) ||
+            (batch.tonemap_type == 6 &&
+             (batch.tonemap_params[0] <= 0.f ||
+              batch.tonemap_params[1] <= 0.f ||
+              batch.tonemap_params[2] <= 0.f ||
+              batch.tonemap_params[3] <= 0.f)))
         {
             setError(error, "Metal PBR preview batch is invalid");
             return nullptr;
@@ -302,6 +312,8 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         constants.post[0] = batch.tonemap_mix;
         constants.post[1] = static_cast<float>(batch.tonemap_type);
         constants.post[2] = pipeline_index == 1 ? 1.f : 0.f;
+        std::memcpy(constants.tonemap_params, batch.tonemap_params,
+                    sizeof(constants.tonemap_params));
 
         encoded =
             encoder->setCullMode(batch.double_sided

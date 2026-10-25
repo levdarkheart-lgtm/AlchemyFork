@@ -828,6 +828,7 @@ struct ALMetalPBRPreviewConstants
     float4 material;
     // tonemap mix, tonemap type, target is sRGB, reserved
     float4 post;
+    float4 tonemap_params;
 };
 
 struct ALMetalPBRPreviewVaryings
@@ -985,20 +986,99 @@ static float3 almetal_pbr_aces_hill(float3 color)
     return output_matrix * fitted;
 }
 
-static float3 almetal_pbr_aces_boosted(float3 color)
+static float3 almetal_pbr_aces_boosted(float3 color, float white_tonemapped)
 {
-    return almetal_pbr_aces_hill(color * 1.2);
+    return almetal_pbr_aces_hill(color * 1.2) / white_tonemapped;
 }
 
-static float3 almetal_pbr_tonemap(float3 color, uint type)
+static float3 almetal_pbr_reinhard(float3 color, float white_squared)
+{
+    return color * (1.0 + color / white_squared) / (1.0 + color);
+}
+
+static float3 almetal_pbr_filmic(float3 color, float white_tonemapped)
+{
+    constexpr float exposure_bias = 2.0;
+    constexpr float a = 0.22 * exposure_bias * exposure_bias;
+    constexpr float b = 0.30 * exposure_bias;
+    constexpr float c = 0.10;
+    constexpr float d = 0.20;
+    constexpr float e = 0.01;
+    constexpr float f = 0.30;
+    const float3 mapped =
+        ((color * (a * color + c * b) + d * e) /
+         (color * (a * color + b) + d * f)) - e / f;
+    return mapped / white_tonemapped;
+}
+
+static float3 almetal_pbr_uchimura(float3 color)
+{
+    constexpr float peak = 1.0;
+    constexpr float contrast = 1.0;
+    constexpr float linear_start = 0.22;
+    constexpr float linear_length = 0.4;
+    constexpr float black = 1.33;
+    constexpr float pedestal = 0.0;
+    const float l0 = ((peak - linear_start) * linear_length) / contrast;
+    const float s0 = linear_start + l0;
+    const float s1 = linear_start + contrast * l0;
+    const float c2 = (contrast * peak) / (peak - s1);
+    const float cp = -c2 / peak;
+    const float3 w0 = 1.0 - smoothstep(
+        float3(0.0), float3(linear_start), color);
+    const float3 w2 = step(float3(linear_start + l0), color);
+    const float3 w1 = 1.0 - w0 - w2;
+    const float3 toe = linear_start * pow(
+        color / linear_start, float3(black)) + pedestal;
+    const float3 shoulder = peak - (peak - s1) * exp(
+        cp * (color - s0));
+    const float3 linear = linear_start + contrast *
+        (color - linear_start);
+    return toe * w0 + linear * w1 + shoulder * w2;
+}
+
+static float3 almetal_pbr_allenwp(float3 color, float4 params)
+{
+    constexpr float crossover = 0.18;
+    constexpr float shoulder_max = 1.0 - crossover;
+    float3 shoulder = color - crossover;
+    const float3 slope_shoulder = params.z * shoulder;
+    shoulder = slope_shoulder * (1.0 + shoulder / params.w) /
+               (1.0 + slope_shoulder / shoulder_max) + crossover;
+    float3 toe = pow(color, float3(params.x));
+    toe = toe / (toe + params.y);
+    return select(shoulder, toe, color < float3(crossover));
+}
+
+static float3 almetal_pbr_agx(float3 color, float4 params)
+{
+    const float3x3 inset = float3x3(
+        float3(0.544814746488245, 0.140416948464053, 0.0888104196149096),
+        float3(0.373787398372697, 0.754137554567394, 0.178871756420858),
+        float3(0.0813978551390581, 0.105445496968552, 0.732317823964232));
+    const float3x3 outset = float3x3(
+        float3(1.96488741169489, -0.299313364904742, -0.164352742528393),
+        float3(-0.855988495690215, 1.32639796461980, -0.238183969428088),
+        float3(-0.108898916004672, -0.0270845997150571, 1.40253671195648));
+    color = inset * color;
+    color = almetal_pbr_allenwp(color, params);
+    color = min(float3(1.0), color);
+    return outset * color;
+}
+
+static float3 almetal_pbr_tonemap(
+    float3 color, uint type, float4 params)
 {
     color = max(color, float3(0.0));
     switch (type)
     {
         case 0: return almetal_pbr_neutral_tonemap(color);
         case 1: return almetal_pbr_aces_hill(color);
-        case 2: return almetal_pbr_aces_boosted(color);
-        case 3: return color / (1.0 + color);
+        case 2: return almetal_pbr_aces_boosted(color, params.x);
+        case 3: return almetal_pbr_reinhard(color, params.x);
+        case 4: return almetal_pbr_filmic(color, params.x);
+        case 5: return almetal_pbr_uchimura(color);
+        case 6: return almetal_pbr_agx(color, params);
     }
     return color;
 }
@@ -1074,7 +1154,8 @@ fragment float4 almetal_pbr_preview_fragment(
     const float3 clamped = clamp(color, float3(0.0), float3(1.0));
     const uint tonemap_type = uint(round(constants.post.y));
     color = mix(clamped,
-                clamp(almetal_pbr_tonemap(color, tonemap_type),
+                clamp(almetal_pbr_tonemap(
+                          color, tonemap_type, constants.tonemap_params),
                       float3(0.0), float3(1.0)),
                 constants.post.x);
     // An sRGB attachment performs the final transfer itself. The ordinary

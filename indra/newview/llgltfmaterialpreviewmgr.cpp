@@ -30,6 +30,8 @@
 
 #include "llgltfmaterialpreviewmgr.h"
 
+#include <array>
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -57,6 +59,79 @@ namespace
 {
     constexpr S32 FULLY_LOADED = 0;
     constexpr S32 NOT_LOADED = 99;
+
+    std::array<F32, 4> pbr_preview_tonemap_params(S32 type)
+    {
+        std::array<F32, 4> params{};
+        switch (type)
+        {
+            case 2:
+            {
+                F32 white = llmax(
+                    1.f,
+                    gSavedSettings.get<F32>("RenderTonemapACESWhite"));
+                constexpr F32 exposure_bias = 1.2f;
+                constexpr F32 a = 0.0245786f;
+                constexpr F32 b = 0.000090537f;
+                constexpr F32 c = 0.983729f;
+                constexpr F32 d = 0.432951f;
+                constexpr F32 e = 0.238081f;
+                white *= exposure_bias;
+                params[0] = (white * (white + a) - b) /
+                            (white * (c * white + d) + e);
+                break;
+            }
+            case 3:
+            {
+                const F32 white = llmax(
+                    1.f,
+                    gSavedSettings.get<F32>("RenderTonemapReinhardWhite"));
+                params[0] = white * white;
+                break;
+            }
+            case 4:
+            {
+                const F32 white = llmax(
+                    1.f,
+                    gSavedSettings.get<F32>("RenderTonemapFilmicWhite"));
+                constexpr F32 exposure_bias = 2.f;
+                constexpr F32 a = 0.22f * exposure_bias * exposure_bias;
+                constexpr F32 b = 0.30f * exposure_bias;
+                constexpr F32 c = 0.10f;
+                constexpr F32 d = 0.20f;
+                constexpr F32 e = 0.01f;
+                constexpr F32 f = 0.30f;
+                params[0] =
+                    ((white * (a * white + c * b) + d * e) /
+                     (white * (a * white + b) + d * f)) - e / f;
+                break;
+            }
+            case 6:
+            {
+                const F32 contrast = gSavedSettings.get<F32>(
+                    "RenderTonemapAgxContrast");
+                const F32 white = llmax(
+                    2.f,
+                    gSavedSettings.get<F32>("RenderTonemapAgxWhite"));
+                constexpr F32 crossover = 0.18f;
+                constexpr F32 shoulder_max = 1.f - crossover;
+                const F32 toe_a = (1.f / crossover - 1.f) *
+                    std::pow(crossover, contrast);
+                const F32 slope_denom =
+                    std::pow(crossover, contrast) + toe_a;
+                const F32 slope =
+                    (contrast * std::pow(crossover, contrast - 1.f) *
+                     toe_a) / (slope_denom * slope_denom);
+                F32 width = white - crossover;
+                width = width * width / shoulder_max * slope;
+                params = {{contrast, toe_a, slope, width}};
+                break;
+            }
+            default:
+                break;
+        }
+        return params;
+    }
 };
 
 LLGLTFPreviewTexture::MaterialLoadLevels::MaterialLoadLevels()
@@ -711,16 +786,21 @@ bool LLGLTFPreviewTexture::render()
                 : mGLTFMaterial->mAlphaMode ==
                     LLGLTFMaterial::ALPHA_MODE_BLEND
                     ? 0.004f : -1.f;
-            batch.exposure = llmax(
-                gSavedSettings.get<F32>("RenderExposure"), 0.f);
+            batch.exposure = llclamp(
+                gSavedSettings.get<F32>("RenderExposure"), 0.5f, 4.f);
             LLSettingsSky::ptr_t sky =
                 LLEnvironment::instance().getCurrentSky();
             const bool auto_adjust = gSavedSettings.get<bool>(
                 "RenderSkyAutoAdjustLegacy");
             batch.tonemap_mix = sky
                 ? llclamp(sky->getTonemapMix(auto_adjust), 0.f, 1.f) : 1.f;
-            batch.tonemap_type = static_cast<U32>(llmax(
-                gSavedSettings.get<S32>("AlchemyRenderTonemapType"), 0));
+            const S32 tonemap_type = llmax(
+                gSavedSettings.get<S32>("AlchemyRenderTonemapType"), 0);
+            batch.tonemap_type = static_cast<U32>(tonemap_type);
+            const std::array<F32, 4> tonemap_params =
+                pbr_preview_tonemap_params(tonemap_type);
+            std::memcpy(batch.tonemap_params, tonemap_params.data(),
+                        sizeof(batch.tonemap_params));
             batch.double_sided = mGLTFMaterial->mDoubleSided;
             metal_preview_batches.push_back(batch);
         }

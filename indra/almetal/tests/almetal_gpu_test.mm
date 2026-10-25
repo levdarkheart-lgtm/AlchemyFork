@@ -2443,11 +2443,40 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
 
         batch.base_color_texture = base.get();
         batch.alpha_cutoff = 0.f;
-        batch.tonemap_type = 4;
+        batch.tonemap_mix = 1.f;
+        for (std::uint32_t type = 2; type <= 6; ++type)
+        {
+            batch.tonemap_type = type;
+            std::fill(std::begin(batch.tonemap_params),
+                      std::end(batch.tonemap_params), 0.f);
+            if (type == 2 || type == 3 || type == 4)
+            {
+                batch.tonemap_params[0] = 1.f;
+            }
+            else if (type == 6)
+            {
+                std::fill(std::begin(batch.tonemap_params),
+                          std::end(batch.tonemap_params), 1.f);
+            }
+            auto mapped_output = renderer->render(scene, &error);
+            INFO(error);
+            CAPTURE(type);
+            REQUIRE(mapped_output);
+            CHECK(read_center(*mapped_output)[3] == 255);
+        }
+
+        batch.tonemap_type = 6;
+        std::fill(std::begin(batch.tonemap_params),
+                  std::end(batch.tonemap_params), 0.f);
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal PBR preview batch is invalid");
+        batch.tonemap_type = 7;
         error.clear();
         CHECK_FALSE(renderer->render(scene, &error));
         CHECK(error == "Metal PBR preview batch is invalid");
         batch.tonemap_type = 1;
+        batch.tonemap_mix = 0.f;
         batch.normal_texture = nullptr;
         error.clear();
         CHECK_FALSE(renderer->render(scene, &error));
