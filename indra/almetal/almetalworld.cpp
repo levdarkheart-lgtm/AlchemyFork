@@ -54,6 +54,7 @@ namespace
     static_assert(sizeof(WorldShinyConstants) == 304);
     static_assert(sizeof(ALMetalWorldLegacyAlphaLight) == 64);
     static_assert(sizeof(ALMetalWorldLegacyAlphaLighting) == 496);
+    static_assert(sizeof(ALMetalWorldDirectionalShadowConstants) == 320);
 
     struct alignas(16) WorldMaterialSlotConstants
     {
@@ -267,6 +268,38 @@ namespace
         return true;
     }
 
+    bool validDirectionalShadows(
+        const ALMetalWorldDirectionalShadows* shadows)
+    {
+        if (!shadows || !shadows->depth_texture)
+        {
+            return false;
+        }
+        const ALMetalTextureDescriptor& descriptor =
+            shadows->depth_texture->descriptor();
+        const ALMetalWorldDirectionalShadowConstants& constants =
+            shadows->constants;
+        return descriptor.type == ALMetalTextureType::texture_2d_array &&
+               descriptor.format == ALMetalPixelFormat::r32_float &&
+               descriptor.array_length == 4 &&
+               descriptor.mipmap_level_count == 1 &&
+               alMetalHasUsage(
+                   descriptor.usage, ALMetalTextureUsage::shader_read) &&
+               finiteValues(&constants.shadow_matrix[0][0], 4 * 16) &&
+               finiteValues(constants.shadow_clip, 4) &&
+               finiteValues(constants.resolution, 4) &&
+               finiteValues(constants.parameters, 4) &&
+               constants.resolution[0] == descriptor.width &&
+               constants.resolution[1] == descriptor.height &&
+               constants.resolution[2] > 0.f &&
+               constants.resolution[3] > 0.f &&
+               constants.parameters[3] > 0.f &&
+               constants.config[0] >= 1 && constants.config[0] <= 4 &&
+               (constants.config[1] & ~0xfu) == 0 &&
+               constants.config[2] <= 1 && constants.config[3] <= 3 &&
+               (constants.config[3] < 3 || constants.parameters[2] > 0.f);
+    }
+
 }
 
 struct ALMetalWorldGBufferRenderer::Impl
@@ -307,6 +340,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalSamplerState> point_clamp_sampler;
     std::unique_ptr<ALMetalSamplerState> linear_clamp_sampler;
     std::unique_ptr<ALMetalSamplerState> ramp_sampler;
+    std::unique_ptr<ALMetalTexture> unshadowed_depth;
+    ALMetalWorldDirectionalShadowConstants unshadowed_constants{};
 };
 
 ALMetalWorldGBufferRenderer::ALMetalWorldGBufferRenderer(
@@ -1063,6 +1098,46 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     {
         return nullptr;
     }
+
+    ALMetalTextureDescriptor unshadowed_descriptor;
+    unshadowed_descriptor.type = ALMetalTextureType::texture_2d_array;
+    unshadowed_descriptor.format = ALMetalPixelFormat::r32_float;
+    unshadowed_descriptor.width = 1;
+    unshadowed_descriptor.height = 1;
+    unshadowed_descriptor.array_length = 4;
+    unshadowed_descriptor.storage = ALMetalStorageMode::private_gpu;
+    unshadowed_descriptor.usage = ALMetalTextureUsage::shader_read;
+    unshadowed_descriptor.label =
+        "Alchemy world unshadowed directional fallback";
+    impl->unshadowed_depth = ALMetalTexture::create(
+        device, unshadowed_descriptor, error);
+    auto unshadowed_upload = impl->unshadowed_depth
+        ? device.makeCommandBuffer(
+              "Alchemy world unshadowed directional fallback upload",
+              error)
+        : nullptr;
+    const float fully_lit_depth = 1.f;
+    bool unshadowed_ready = unshadowed_upload != nullptr;
+    for (std::uint32_t cascade = 0;
+         unshadowed_ready && cascade < 4; ++cascade)
+    {
+        unshadowed_ready = impl->unshadowed_depth->upload(
+            *unshadowed_upload, 0, cascade, {}, &fully_lit_depth,
+            sizeof(fully_lit_depth), error);
+    }
+    unshadowed_ready = unshadowed_ready &&
+        unshadowed_upload->commitAndWait(error);
+    if (!unshadowed_ready)
+    {
+        return nullptr;
+    }
+    impl->unshadowed_constants.resolution[0] = 1.f;
+    impl->unshadowed_constants.resolution[1] = 1.f;
+    impl->unshadowed_constants.resolution[2] = 1.f;
+    impl->unshadowed_constants.resolution[3] = 1.f;
+    impl->unshadowed_constants.parameters[2] = 1.f;
+    impl->unshadowed_constants.config[0] = 4;
+    impl->unshadowed_constants.config[1] = 0xfu;
 
     return std::unique_ptr<ALMetalWorldGBufferRenderer>(
         new ALMetalWorldGBufferRenderer(std::move(impl)));
@@ -2169,6 +2244,13 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
                  "Metal world legacy alpha lighting is invalid");
         return false;
     }
+    if (has_legacy_alpha && scene.directional_shadows &&
+        !validDirectionalShadows(scene.directional_shadows))
+    {
+        setError(error,
+                 "Metal world legacy alpha directional shadows are invalid");
+        return false;
+    }
     for (std::size_t index = 0; index < scene.batch_count; ++index)
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
@@ -2603,6 +2685,14 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
         }
         else if (encoded && material_batch)
         {
+            const ALMetalTexture* directional_depth =
+                scene.directional_shadows
+                    ? scene.directional_shadows->depth_texture
+                    : mImpl->unshadowed_depth.get();
+            const ALMetalWorldDirectionalShadowConstants&
+                directional_constants = scene.directional_shadows
+                    ? scene.directional_shadows->constants
+                    : mImpl->unshadowed_constants;
             WorldMaterialConstants material{};
             for (std::size_t slot = 0;
                  slot < batch.material_slot_count; ++slot)
@@ -2640,7 +2730,12 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
                     0, &material, sizeof(material), error) &&
                 encoder->setFragmentBytes(
                     2, scene.legacy_alpha_lighting,
-                    sizeof(*scene.legacy_alpha_lighting), error);
+                    sizeof(*scene.legacy_alpha_lighting), error) &&
+                encoder->setFragmentTexture(
+                    33, directional_depth, error) &&
+                encoder->setFragmentBytes(
+                    3, &directional_constants,
+                    sizeof(directional_constants), error);
             for (std::size_t slot = 0;
                  encoded && slot <
                      ALMetalWorldSimpleBatch::max_material_slots; ++slot)

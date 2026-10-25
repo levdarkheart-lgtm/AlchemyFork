@@ -31,6 +31,7 @@
 
 #include "pipeline.h"
 #include <algorithm>
+#include <limits>
 #include <sstream>
 #include <unordered_map>
 
@@ -454,6 +455,11 @@ struct LLPipeline::MetalWorldSimpleCapture
     ALMetalWorldReflectionProbes impostor_reflection_probes;
     ALMetalWorldLegacyAlphaLighting impostor_legacy_alpha_lighting;
     bool impostor_legacy_alpha_lighting_valid = false;
+    std::unique_ptr<ALMetalTexture> impostor_directional_shadow_texture;
+    ALMetalWorldDirectionalShadows impostor_directional_shadows;
+    std::vector<F32> impostor_directional_shadow_depth;
+    U32 impostor_directional_shadow_frame = std::numeric_limits<U32>::max();
+    bool impostor_legacy_alpha_uses_shadows = false;
     LLUUID impostor_bake_avatar_id;
     std::unordered_map<LLUUID, ImpostorMirror> impostor_mirrors;
 };
@@ -805,6 +811,11 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.renderer.reset();
         capture.target.reset();
         capture.impostor_bake_target.reset();
+        capture.impostor_directional_shadow_texture.reset();
+        capture.impostor_directional_shadows = {};
+        capture.impostor_directional_shadow_depth.clear();
+        capture.impostor_directional_shadow_frame =
+            std::numeric_limits<U32>::max();
         capture.impostor_bake_avatar_id.setNull();
         capture.impostor_mirrors.clear();
         capture.attempted = false;
@@ -814,6 +825,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.impostor_fullbright = false;
         capture.impostor_shiny = false;
         capture.impostor_emboss = false;
+        capture.impostor_legacy_alpha_uses_shadows = false;
         capture.failed_frames = 0;
         capture.device = device;
     }
@@ -1166,6 +1178,11 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.renderer.reset();
         capture.target.reset();
         capture.impostor_bake_target.reset();
+        capture.impostor_directional_shadow_texture.reset();
+        capture.impostor_directional_shadows = {};
+        capture.impostor_directional_shadow_depth.clear();
+        capture.impostor_directional_shadow_frame =
+            std::numeric_limits<U32>::max();
         capture.impostor_bake_avatar_id.setNull();
         capture.impostor_mirrors.clear();
         capture.attempted = false;
@@ -1175,6 +1192,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.impostor_fullbright = false;
         capture.impostor_shiny = false;
         capture.impostor_emboss = false;
+        capture.impostor_legacy_alpha_uses_shadows = false;
         capture.failed_frames = 0;
         capture.device = device;
     }
@@ -1237,6 +1255,7 @@ void LLPipeline::beginMetalImpostorAlphaCapture(
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
     capture.impostor_legacy_alpha_lighting_valid = false;
+    capture.impostor_legacy_alpha_uses_shadows = false;
 }
 
 void LLPipeline::beginMetalImpostorFullbrightPass(bool rigged,
@@ -1471,6 +1490,11 @@ void LLPipeline::endMetalImpostorAlphaCapture()
         ? &capture.impostor_reflection_probes : nullptr;
     scene.legacy_alpha_lighting = has_legacy_alpha
         ? &capture.impostor_legacy_alpha_lighting : nullptr;
+    scene.directional_shadows =
+        has_legacy_alpha && capture.impostor_legacy_alpha_uses_shadows &&
+                capture.impostor_directional_shadows.depth_texture
+            ? &capture.impostor_directional_shadows
+            : nullptr;
     std::string error;
     if (!capture.renderer->compositeImpostorPostDeferred(
             *capture.impostor_bake_target, scene, &error))
@@ -2120,6 +2144,178 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     capture.pass_active = false;
 }
 
+bool LLPipeline::fillMetalImpostorDirectionalShadows()
+{
+    if (!mMetalWorldSimpleCapture || !mMetalWorldSimpleCapture->device)
+    {
+        return false;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.impostor_directional_shadow_frame == gFrameCount &&
+        capture.impostor_directional_shadows.depth_texture)
+    {
+        return true;
+    }
+
+    const U32 unbuilt = unbuiltShadowMaps() & 0xfu;
+    U32 width = 0;
+    U32 height = 0;
+    for (U32 cascade = 0; cascade < 4; ++cascade)
+    {
+        if ((unbuilt & (1u << cascade)) == 0)
+        {
+            LLRenderTarget* target = getSunShadowTarget(cascade);
+            if (!target || target->getUsage() != ALTextureSlot::TT_TEXTURE ||
+                !target->getDepth())
+            {
+                return false;
+            }
+            if (width == 0)
+            {
+                width = target->getWidth();
+                height = target->getHeight();
+            }
+            else if (target->getWidth() != width ||
+                     target->getHeight() != height)
+            {
+                return false;
+            }
+        }
+    }
+
+    // No cascade exists. The GL shader returns fully lit from its unbuilt
+    // mask without sampling, which is also the renderer's null-pack fallback.
+    if (width == 0 || height == 0)
+    {
+        capture.impostor_directional_shadows = {};
+        capture.impostor_directional_shadow_frame = gFrameCount;
+        return true;
+    }
+
+    const std::size_t slice_pixels =
+        static_cast<std::size_t>(width) * height;
+    if (slice_pixels >
+        std::numeric_limits<std::size_t>::max() / (sizeof(F32) * 4))
+    {
+        return false;
+    }
+    capture.impostor_directional_shadow_depth.assign(
+        slice_pixels * 4, capture.reverse_z ? 0.f : 1.f);
+
+    GLint previous_texture = 0;
+    GLint previous_pack_buffer = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture);
+    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &previous_pack_buffer);
+    clear_glerror();
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    for (U32 cascade = 0; cascade < 4; ++cascade)
+    {
+        if ((unbuilt & (1u << cascade)) != 0)
+        {
+            continue;
+        }
+        LLRenderTarget* target = getSunShadowTarget(cascade);
+        glBindTexture(GL_TEXTURE_2D, target->getDepth());
+        glGetTexImage(
+            GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, GL_FLOAT,
+            capture.impostor_directional_shadow_depth.data() +
+                slice_pixels * cascade);
+    }
+    const GLenum read_error = glGetError();
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous_texture));
+    glBindBuffer(
+        GL_PIXEL_PACK_BUFFER, static_cast<GLuint>(previous_pack_buffer));
+    if (read_error != GL_NO_ERROR)
+    {
+        LL_WARNS("Metal")
+            << "Could not read the live directional-shadow cascades for "
+               "native avatar-impostor glare: GL error 0x"
+            << std::hex << read_error << std::dec << LL_ENDL;
+        return false;
+    }
+
+    ALMetalTextureDescriptor descriptor;
+    descriptor.type = ALMetalTextureType::texture_2d_array;
+    descriptor.format = ALMetalPixelFormat::r32_float;
+    descriptor.width = width;
+    descriptor.height = height;
+    descriptor.array_length = 4;
+    descriptor.storage = ALMetalStorageMode::private_gpu;
+    descriptor.usage = ALMetalTextureUsage::shader_read;
+    descriptor.label = "Alchemy live directional-shadow mirror";
+    const ALMetalTextureDescriptor* existing =
+        capture.impostor_directional_shadow_texture
+            ? &capture.impostor_directional_shadow_texture->descriptor()
+            : nullptr;
+    if (!existing || existing->type != descriptor.type ||
+        existing->format != descriptor.format ||
+        existing->width != descriptor.width ||
+        existing->height != descriptor.height ||
+        existing->array_length != descriptor.array_length)
+    {
+        std::string create_error;
+        capture.impostor_directional_shadow_texture =
+            ALMetalTexture::create(
+                *capture.device, descriptor, &create_error);
+        if (!capture.impostor_directional_shadow_texture)
+        {
+            LL_WARNS("Metal")
+                << "Could not allocate the live directional-shadow mirror: "
+                << create_error << LL_ENDL;
+            return false;
+        }
+    }
+
+    std::string error;
+    auto upload = capture.device->makeCommandBuffer(
+        "Alchemy live directional-shadow upload", &error);
+    bool uploaded = upload != nullptr;
+    for (U32 cascade = 0; uploaded && cascade < 4; ++cascade)
+    {
+        uploaded = capture.impostor_directional_shadow_texture->upload(
+            *upload, 0, cascade, {},
+            capture.impostor_directional_shadow_depth.data() +
+                slice_pixels * cascade,
+            static_cast<std::size_t>(width) * sizeof(F32), &error);
+    }
+    uploaded = uploaded && upload->commit(&error);
+    if (!uploaded)
+    {
+        LL_WARNS("Metal")
+            << "Could not upload the live directional-shadow mirror: "
+            << error << LL_ENDL;
+        return false;
+    }
+
+    ALMetalWorldDirectionalShadowConstants constants;
+    std::memcpy(constants.shadow_matrix, mDeferredUBOData.shadow_matrix,
+                sizeof(constants.shadow_matrix));
+    std::memcpy(constants.shadow_clip, mDeferredUBOData.shadow_clip,
+                sizeof(constants.shadow_clip));
+    constants.resolution[0] = mDeferredUBOData.shadow_res[0];
+    constants.resolution[1] = mDeferredUBOData.shadow_res[1];
+    constants.resolution[2] =
+        static_cast<F32>(mRT->deferredScreen.getWidth());
+    constants.resolution[3] =
+        static_cast<F32>(mRT->deferredScreen.getHeight());
+    constants.parameters[0] = mDeferredUBOData.shadow_bias;
+    constants.parameters[1] = mDeferredUBOData.shadow_offset;
+    constants.parameters[2] = mDeferredUBOData.shadow_pcss_scale;
+    constants.parameters[3] = static_cast<F32>(capture.height);
+    constants.config[0] = sunCascades();
+    constants.config[1] = unbuilt;
+    constants.config[2] = capture.reverse_z ? 1u : 0u;
+    constants.config[3] = static_cast<U32>(std::clamp(
+        shaderInputs().mGlobal.mShadowFilterQuality, 0, 3));
+
+    capture.impostor_directional_shadows.depth_texture =
+        capture.impostor_directional_shadow_texture.get();
+    capture.impostor_directional_shadows.constants = constants;
+    capture.impostor_directional_shadow_frame = gFrameCount;
+    return true;
+}
+
 void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
     const LLDrawInfo& params, bool particle_or_hud_particle)
 {
@@ -2143,26 +2339,28 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
         return;
     }
 
-    // The current Metal owner has no native shadow-map mirror yet. A shader
-    // compiled with HAS_SUN_SHADOW can lower the sun-glint contribution per
-    // pixel, so accepting it with visibility one would inflate coverage.
-    // The GL probe finish can likewise replace cube radiance with SSR or an
-    // active hero probe. Keep the complete native alpha replay fail-closed
-    // until those inputs are represented instead of silently changing the
-    // material contract.
+    // The GL probe finish can replace cube radiance with SSR or an active
+    // hero probe. Keep the complete native alpha replay fail-closed until
+    // those inputs are represented instead of silently changing the
+    // material contract. Directional shadows have an exact raw-depth mirror
+    // below and therefore no longer need that gate.
     LLGLSLShader* material_shader =
         gDeferredMaterialProgram[shader_mask].selectVariant();
     const bool unsupported_probe_finish =
         (mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
          !gCubeSnapshot) ||
         mReflectionMapManager.mProbeData.heroProbeCount > 0;
-    if (material_shader->mFeatures.hasShadows ||
-        unsupported_probe_finish)
+    if (unsupported_probe_finish ||
+        (material_shader->mFeatures.hasShadows &&
+         !fillMetalImpostorDirectionalShadows()))
     {
         capture.complete = false;
         capture.batches.clear();
         return;
     }
+    capture.impostor_legacy_alpha_uses_shadows =
+        capture.impostor_legacy_alpha_uses_shadows ||
+        material_shader->mFeatures.hasShadows;
 
     if (!capture.impostor_legacy_alpha_lighting_valid)
     {

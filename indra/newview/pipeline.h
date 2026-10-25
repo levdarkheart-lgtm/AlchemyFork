@@ -603,6 +603,7 @@ public:
         const LLDrawInfo& params, bool particle_or_hud_particle);
     void captureMetalImpostorLegacyMaterialAlphaBatch(
         const LLDrawInfo& params, bool particle_or_hud_particle);
+    bool fillMetalImpostorDirectionalShadows();
     void captureMetalImpostorPBRAlphaBatch(const LLDrawInfo& params);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);

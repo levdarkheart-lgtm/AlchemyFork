@@ -2252,6 +2252,123 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(read_legacy_alpha(*sun_target)) -
                        128) <= 1);
 
+        // A live raw-depth cascade applies the same forward-Z receiver
+        // comparison as shadowUtil.glsl before the sun glint raises
+        // coverage. The constant matrix puts every receiver at (0.5, 0.5,
+        // 0.5); a stored 0.25 therefore shadows it and restores the authored
+        // quarter coverage. Marking that cascade unbuilt returns fully lit.
+        ALMetalTextureDescriptor shadow_descriptor;
+        shadow_descriptor.type = ALMetalTextureType::texture_2d_array;
+        shadow_descriptor.format = ALMetalPixelFormat::r32_float;
+        shadow_descriptor.width = 8;
+        shadow_descriptor.height = 8;
+        shadow_descriptor.array_length = 4;
+        shadow_descriptor.storage = ALMetalStorageMode::private_gpu;
+        shadow_descriptor.usage = ALMetalTextureUsage::shader_read;
+        shadow_descriptor.label =
+            "Alchemy world legacy-alpha directional-shadow test";
+        auto shadow_texture = ALMetalTexture::create(
+            *device, shadow_descriptor, &error);
+        INFO(error);
+        REQUIRE(shadow_texture);
+        auto shadow_upload = device->makeCommandBuffer(
+            "Alchemy world legacy-alpha directional-shadow upload",
+            &error);
+        INFO(error);
+        REQUIRE(shadow_upload);
+        const std::array<float, 8 * 8> shadowed_depth = []
+        {
+            std::array<float, 8 * 8> value{};
+            value.fill(0.25f);
+            return value;
+        }();
+        const std::array<float, 8 * 8> lit_depth = []
+        {
+            std::array<float, 8 * 8> value{};
+            value.fill(1.f);
+            return value;
+        }();
+        for (std::uint32_t cascade = 0; cascade < 4; ++cascade)
+        {
+            const auto& depth = cascade == 0
+                ? shadowed_depth : lit_depth;
+            REQUIRE(shadow_texture->upload(
+                *shadow_upload, 0, cascade, {}, depth.data(),
+                8 * sizeof(float), &error));
+        }
+        REQUIRE(shadow_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldDirectionalShadows directional_shadows;
+        directional_shadows.depth_texture = shadow_texture.get();
+        for (std::size_t cascade = 0; cascade < 4; ++cascade)
+        {
+            float* matrix = directional_shadows.constants
+                                .shadow_matrix[cascade];
+            matrix[12] = 0.5f;
+            matrix[13] = 0.5f;
+            matrix[14] = 0.5f;
+            matrix[15] = 1.f;
+        }
+        directional_shadows.constants.shadow_clip[0] = 4.f;
+        directional_shadows.constants.shadow_clip[1] = 8.f;
+        directional_shadows.constants.shadow_clip[2] = 12.f;
+        directional_shadows.constants.shadow_clip[3] = 16.f;
+        directional_shadows.constants.resolution[0] = 8.f;
+        directional_shadows.constants.resolution[1] = 8.f;
+        directional_shadows.constants.resolution[2] = 32.f;
+        directional_shadows.constants.resolution[3] = 32.f;
+        directional_shadows.constants.parameters[2] = 200.f;
+        directional_shadows.constants.parameters[3] = 32.f;
+        directional_shadows.constants.config[0] = 4;
+        directional_shadows.constants.config[1] = 0xeu;
+        directional_shadows.constants.config[3] = 1;
+        legacy_alpha_scene.directional_shadows = &directional_shadows;
+
+        auto shadow_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(shadow_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *shadow_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha(*shadow_target)) - 64) <= 1);
+
+        directional_shadows.constants.config[3] = 3;
+        auto pcss_shadow_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(pcss_shadow_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *pcss_shadow_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha(*pcss_shadow_target)) - 64) <= 1);
+
+        directional_shadows.constants.config[1] = 0xfu;
+        auto unbuilt_shadow_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(unbuilt_shadow_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *unbuilt_shadow_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha(*unbuilt_shadow_target)) -
+                       128) <= 1);
+
+        directional_shadows.constants.config[1] = 0xeu;
+        directional_shadows.constants.config[2] = 1;
+        directional_shadows.constants.config[3] = 1;
+        auto reverse_shadow_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(reverse_shadow_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *reverse_shadow_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha(*reverse_shadow_target)) -
+                       128) <= 1);
+        legacy_alpha_scene.directional_shadows = nullptr;
+
         legacy_alpha_batch.material_slots[0].normal_texture =
             bump_normal.get();
         auto normal_map_target = make_legacy_target();

@@ -100,6 +100,30 @@ struct alignas(16) ALMetalWorldLegacyAlphaLighting
     float parameters[4] = {128.f, 0.004f, 1.f, 0.f};
 };
 
+// Raw directional-shadow depth plus the exact Deferred-block subset used by
+// shadowUtil.glsl. The four GL cascades are uploaded as R32F array slices;
+// the Metal shader performs the same forward/reverse comparison, RPDB and
+// quality-tier filter in shader so D24 and D32F sources share one contract.
+struct alignas(16) ALMetalWorldDirectionalShadowConstants
+{
+    float shadow_matrix[4][16]{};
+    float shadow_clip[4]{};
+    // xy = shadow-map resolution, zw = GL screen_res used by PCSS rotation.
+    float resolution[4]{};
+    // x = signed constant bias, y = normal offset, z = PCSS scale,
+    // w = destination height for Metal-to-GL fragment-coordinate inversion.
+    float parameters[4]{};
+    // x = cascade count, y = unbuilt-map mask, z = reverse-Z,
+    // w = filter quality (0/1/2 Gaussian 2/4/6, 3 PCSS).
+    std::uint32_t config[4]{};
+};
+
+struct ALMetalWorldDirectionalShadows
+{
+    const ALMetalTexture* depth_texture = nullptr;
+    ALMetalWorldDirectionalShadowConstants constants;
+};
+
 struct ALMetalWorldSimpleBatch
 {
     static constexpr std::size_t max_diffuse_textures = 32;
@@ -202,6 +226,7 @@ struct ALMetalWorldGBufferScene
     bool stamp_opaque_coverage = false;
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
     const ALMetalWorldLegacyAlphaLighting* legacy_alpha_lighting = nullptr;
+    const ALMetalWorldDirectionalShadows* directional_shadows = nullptr;
     float clear_color[4] = {1.f, 0.f, 1.f, 1.f};
 };
 

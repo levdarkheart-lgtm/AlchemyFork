@@ -309,6 +309,15 @@ struct ALMetalWorldLegacyAlphaLighting
     float4 parameters;
 };
 
+struct ALMetalWorldDirectionalShadowConstants
+{
+    float4x4 shadow_matrix[4];
+    float4 shadow_clip;
+    float4 resolution;
+    float4 parameters;
+    uint4 config;
+};
+
 struct ALMetalWorldReflectionProbeConstants
 {
     float4x4 ref_box[256];
@@ -1870,6 +1879,383 @@ static void almetal_legacy_local_glare(
     glare += current_glare;
 }
 
+static float almetal_shadow_depth(
+    texture2d_array<float> shadow_maps, uint cascade,
+    int2 texel, uint2 resolution)
+{
+    const int2 bounded = clamp(
+        texel, int2(0), int2(resolution) - int2(1));
+    // glGetTexImage's first row is GL's lower row; Metal's first uploaded row
+    // is its upper row. Address in GL texel space and invert only at read.
+    const uint2 metal_texel = uint2(
+        uint(bounded.x), resolution.y - 1u - uint(bounded.y));
+    return shadow_maps.read(metal_texel, cascade).r;
+}
+
+static float almetal_shadow_compare(
+    float depth, float reference, bool reverse_z)
+{
+    const float bounded = clamp(reference, 0.0, 1.0);
+    return reverse_z
+        ? (bounded >= depth ? 1.0 : 0.0)
+        : (bounded <= depth ? 1.0 : 0.0);
+}
+
+static float2 almetal_shadow_receiver_plane_bias(
+    float2 duvdx, float2 duvdy, float dzdx, float dzdy,
+    float2 texel)
+{
+    const float determinant =
+        duvdx.x * duvdy.y - duvdx.y * duvdy.x;
+    float2 dz_duv = 0.0;
+    if (abs(determinant) >
+        0.001 * length(duvdx) * length(duvdy))
+    {
+        const float inverse = 1.0 / determinant;
+        dz_duv.x =
+            (duvdy.y * dzdx - duvdx.y * dzdy) * inverse;
+        dz_duv.y =
+            (-duvdy.x * dzdx + duvdx.x * dzdy) * inverse;
+    }
+    return clamp(
+        dz_duv * texel, float2(-0.01), float2(0.01));
+}
+
+static float almetal_shadow_gaussian_pcf(
+    texture2d_array<float> shadow_maps, uint cascade,
+    float3 uvz, uint2 resolution, float2 dz_texel,
+    uint quality, bool reverse_z)
+{
+    const uint filter_width = quality == 0u ? 2u :
+                              (quality == 1u ? 4u : 6u);
+    const float2 c = uvz.xy * float2(resolution);
+    const int2 base = int2(floor(c + 0.5)) -
+                      int2(int(filter_width / 2u));
+    const float sigma = float(filter_width) * 0.25;
+    const float inv2s2 = 1.0 / (2.0 * sigma * sigma);
+    const float edge = float(filter_width) * 0.5;
+    const float pedestal = exp(-edge * edge * inv2s2);
+    float wx[6];
+    float wy[6];
+    for (uint index = 0; index < filter_width; ++index)
+    {
+        const float dx =
+            float(base.x + int(index)) + 0.5 - c.x;
+        const float dy =
+            float(base.y + int(index)) + 0.5 - c.y;
+        wx[index] = max(0.0, exp(-dx * dx * inv2s2) - pedestal);
+        wy[index] = max(0.0, exp(-dy * dy * inv2s2) - pedestal);
+    }
+
+    const float toward_lit = reverse_z ? 1.0 : -1.0;
+    const float block_slope = toward_lit * 0.5 *
+        (abs(dz_texel.x) + abs(dz_texel.y));
+    float shadow = 0.0;
+    float weight_sum = 0.0;
+    for (uint by = 0; by < filter_width; by += 2u)
+    {
+        for (uint bx = 0; bx < filter_width; bx += 2u)
+        {
+            const int2 lower_left =
+                base + int2(int(bx), int(by));
+            const float2 block_offset =
+                float2(lower_left) + 1.0 - c;
+            const float reference = uvz.z +
+                dot(block_offset, dz_texel) + block_slope;
+            const float d00 = almetal_shadow_depth(
+                shadow_maps, cascade, lower_left,
+                resolution);
+            const float d10 = almetal_shadow_depth(
+                shadow_maps, cascade, lower_left + int2(1, 0),
+                resolution);
+            const float d01 = almetal_shadow_depth(
+                shadow_maps, cascade, lower_left + int2(0, 1),
+                resolution);
+            const float d11 = almetal_shadow_depth(
+                shadow_maps, cascade, lower_left + int2(1, 1),
+                resolution);
+            shadow += almetal_shadow_compare(
+                          d00, reference, reverse_z) *
+                      wx[bx] * wy[by];
+            shadow += almetal_shadow_compare(
+                          d10, reference, reverse_z) *
+                      wx[bx + 1u] * wy[by];
+            shadow += almetal_shadow_compare(
+                          d01, reference, reverse_z) *
+                      wx[bx] * wy[by + 1u];
+            shadow += almetal_shadow_compare(
+                          d11, reference, reverse_z) *
+                      wx[bx + 1u] * wy[by + 1u];
+            weight_sum += (wx[bx] + wx[bx + 1u]) *
+                          (wy[by] + wy[by + 1u]);
+        }
+    }
+    return shadow / weight_sum;
+}
+
+constant float2 almetal_pcss_blocker_disc[8] = {
+    float2(+0.250000, +0.000000), float2(-0.319290, +0.292496),
+    float2(+0.048872, -0.556877), float2(+0.402444, +0.524918),
+    float2(-0.738535, -0.130636), float2(+0.699605, -0.445031),
+    float2(-0.234004, +0.870484), float2(-0.446271, -0.859268),
+};
+
+constant float2 almetal_pcss_filter_disc[12] = {
+    float2(+0.204124, +0.000000), float2(-0.260699, +0.238822),
+    float2(+0.039904, -0.454688), float2(+0.328595, +0.428593),
+    float2(-0.603011, -0.106664), float2(+0.571225, -0.363367),
+    float2(-0.191064, +0.710747), float2(-0.364379, -0.701590),
+    float2(+0.790557, +0.288710), float2(-0.822442, +0.339492),
+    float2(+0.396472, -0.847237), float2(+0.292982, +0.934074),
+};
+
+static float almetal_pcss_rotation(float2 screen_position)
+{
+    const float2 p = screen_position * 2048.0;
+    return fract(52.9829189 * fract(
+        dot(p, float2(0.06711056, 0.00583715)))) * 6.2831853;
+}
+
+static float2 almetal_pcss_rotate(float2 value, float2 cs)
+{
+    return float2(value.x * cs.x - value.y * cs.y,
+                  value.x * cs.y + value.y * cs.x);
+}
+
+static float4 almetal_shadow_gather_depth(
+    texture2d_array<float> shadow_maps, uint cascade,
+    float2 at, uint2 resolution)
+{
+    const int2 lower_left = int2(floor(
+        at * float2(resolution) - 0.5));
+    return float4(
+        almetal_shadow_depth(
+            shadow_maps, cascade, lower_left + int2(0, 1), resolution),
+        almetal_shadow_depth(
+            shadow_maps, cascade, lower_left + int2(1, 1), resolution),
+        almetal_shadow_depth(
+            shadow_maps, cascade, lower_left + int2(1, 0), resolution),
+        almetal_shadow_depth(
+            shadow_maps, cascade, lower_left, resolution));
+}
+
+static float4 almetal_shadow_gather_references(
+    float3 uvz, float2 resolution, float2 at, float2 dz_texel)
+{
+    const float2 lower_left =
+        floor(at * resolution - 0.5) + 0.5 - uvz.xy * resolution;
+    const float reference = uvz.z + dot(lower_left, dz_texel);
+    return float4(
+        reference + dz_texel.y,
+        reference + dz_texel.x + dz_texel.y,
+        reference + dz_texel.x,
+        reference);
+}
+
+static float4 almetal_shadow_compare4(
+    float4 depth, float4 reference, bool reverse_z)
+{
+    return float4(
+        almetal_shadow_compare(depth.x, reference.x, reverse_z),
+        almetal_shadow_compare(depth.y, reference.y, reverse_z),
+        almetal_shadow_compare(depth.z, reference.z, reverse_z),
+        almetal_shadow_compare(depth.w, reference.w, reverse_z));
+}
+
+static float almetal_shadow_pcss(
+    texture2d_array<float> shadow_maps, uint cascade,
+    float3 uvz, uint2 resolution, float2 dz_texel,
+    float2 screen_position, float pcss_scale, bool reverse_z)
+{
+    const float angle = almetal_pcss_rotation(screen_position);
+    const float2 cs = float2(cos(angle), sin(angle));
+    float blocker_sum = 0.0;
+    float blocker_count = 0.0;
+    for (uint index = 0; index < 8; ++index)
+    {
+        const float2 offset = almetal_pcss_rotate(
+            almetal_pcss_blocker_disc[index], cs) * 6.0;
+        const float2 at = uvz.xy + offset / float2(resolution);
+        const float4 depth = almetal_shadow_gather_depth(
+            shadow_maps, cascade, at, resolution);
+        const float4 reference = almetal_shadow_gather_references(
+            uvz, float2(resolution), at, dz_texel);
+        const float4 blocker = reverse_z
+            ? select(float4(0.0), float4(1.0), depth >= reference)
+            : select(float4(0.0), float4(1.0), depth <= reference);
+        blocker_sum += dot(depth, blocker);
+        blocker_count += dot(blocker, float4(1.0));
+    }
+    if (blocker_count <= 0.0)
+    {
+        return 1.0;
+    }
+
+    const float blocker_depth = blocker_sum / blocker_count;
+    const float radius = clamp(
+        (reverse_z ? blocker_depth - uvz.z : uvz.z - blocker_depth) *
+            pcss_scale,
+        1.0, 12.0);
+    float shadow = 0.0;
+    float weight_sum = 0.0;
+    for (uint index = 0; index < 12; ++index)
+    {
+        const float2 unit = almetal_pcss_filter_disc[index];
+        const float2 offset = almetal_pcss_rotate(unit, cs) * radius;
+        const float2 at =
+            uvz.xy + offset / float2(resolution);
+        const float4 depth = almetal_shadow_gather_depth(
+            shadow_maps, cascade, at, resolution);
+        const float4 reference = almetal_shadow_gather_references(
+            uvz, float2(resolution), at, dz_texel);
+        const float weight = 1.0 - dot(unit, unit);
+        shadow += dot(
+            almetal_shadow_compare4(depth, reference, reverse_z),
+            float4(0.25)) * weight;
+        weight_sum += weight;
+    }
+    return shadow / weight_sum;
+}
+
+static bool almetal_shadow_map_built(
+    uint cascade, constant ALMetalWorldDirectionalShadowConstants& shadows)
+{
+    return (shadows.config.y & (1u << cascade)) == 0u;
+}
+
+static float almetal_filter_directional_shadow(
+    texture2d_array<float> shadow_maps, uint cascade,
+    float4 light_position, float4 light_dx, float4 light_dy,
+    float2 screen_position, float constant_bias,
+    constant ALMetalWorldDirectionalShadowConstants& shadows)
+{
+    const float inverse_w = 1.0 / light_position.w;
+    float3 uvz = light_position.xyz * inverse_w;
+    uvz.z += constant_bias;
+    const float2 duvdx =
+        (light_dx.xy - uvz.xy * light_dx.w) * inverse_w;
+    const float2 duvdy =
+        (light_dy.xy - uvz.xy * light_dy.w) * inverse_w;
+    const float dzdx =
+        (light_dx.z - uvz.z * light_dx.w) * inverse_w;
+    const float dzdy =
+        (light_dy.z - uvz.z * light_dy.w) * inverse_w;
+    const uint2 resolution = uint2(shadows.resolution.xy);
+    const float2 dz_texel = almetal_shadow_receiver_plane_bias(
+        duvdx, duvdy, dzdx, dzdy, 1.0 / shadows.resolution.xy);
+    const bool reverse_z = shadows.config.z != 0u;
+    return shadows.config.w >= 3u
+        ? almetal_shadow_pcss(
+              shadow_maps, cascade, uvz, resolution, dz_texel,
+              screen_position, shadows.parameters.z, reverse_z)
+        : almetal_shadow_gaussian_pcf(
+              shadow_maps, cascade, uvz, resolution, dz_texel,
+              shadows.config.w, reverse_z);
+}
+
+static float almetal_directional_shadow(
+    texture2d_array<float> shadow_maps,
+    constant ALMetalWorldDirectionalShadowConstants& shadows,
+    float3 position, float3 normal, float3 position_dx,
+    float3 position_dy, float2 screen_position,
+    float3 directional_light)
+{
+    const float directional = clamp(
+        dot(normal, normalize(directional_light)), 0.0, 1.0);
+    const float3 shadow_position = position +
+        normalize(directional_light) * (1.0 - directional) *
+            shadows.parameters.y * 2.0;
+    const float4 source = float4(shadow_position, 1.0);
+    const float4 source_dx = float4(position_dx, 0.0);
+    const float4 source_dy = float4(position_dy, 0.0);
+    const float constant_bias = shadows.parameters.x * 2.0;
+    if (source.z <= -shadows.shadow_clip.w)
+    {
+        return 1.0;
+    }
+
+    const float4 near_split = shadows.shadow_clip * -0.75;
+    const float4 far_split = shadows.shadow_clip * -1.25;
+    const float4 transition = near_split - far_split;
+    const float to_lit = clamp(
+        (position.z + shadows.shadow_clip.z) /
+            (shadows.shadow_clip.z - shadows.shadow_clip.w) * 2.0 - 1.0,
+        0.0, 1.0);
+    const bool two_cascades = shadows.config.x == 2u;
+    float shadow = 0.0;
+    float weight_sum = 0.0;
+
+    if (!two_cascades && source.z < near_split.z)
+    {
+        const uint cascade = 3u;
+        float weight = 1.0 -
+            max(source.z - far_split.z, 0.0) / transition.z;
+        float filtered = almetal_shadow_map_built(cascade, shadows)
+            ? almetal_filter_directional_shadow(
+                  shadow_maps, cascade,
+                  shadows.shadow_matrix[cascade] * source,
+                  shadows.shadow_matrix[cascade] * source_dx,
+                  shadows.shadow_matrix[cascade] * source_dy,
+                  screen_position, constant_bias, shadows)
+            : 1.0;
+        shadow += mix(filtered, 1.0, to_lit) * weight;
+        weight_sum += weight;
+    }
+    if (!two_cascades && source.z < near_split.y &&
+        source.z > far_split.z)
+    {
+        const uint cascade = 2u;
+        float weight = 1.0;
+        weight -= max(source.z - far_split.y, 0.0) / transition.y;
+        weight -= max(near_split.z - source.z, 0.0) / transition.z;
+        const float filtered = almetal_shadow_map_built(cascade, shadows)
+            ? almetal_filter_directional_shadow(
+                  shadow_maps, cascade,
+                  shadows.shadow_matrix[cascade] * source,
+                  shadows.shadow_matrix[cascade] * source_dx,
+                  shadows.shadow_matrix[cascade] * source_dy,
+                  screen_position, constant_bias, shadows)
+            : 1.0;
+        shadow += filtered * weight;
+        weight_sum += weight;
+    }
+    if (source.z < near_split.x && source.z > far_split.y)
+    {
+        const uint cascade = 1u;
+        float weight = 1.0;
+        weight -= max(source.z - far_split.x, 0.0) / transition.x;
+        weight -= max(near_split.y - source.z, 0.0) / transition.y;
+        float filtered = almetal_shadow_map_built(cascade, shadows)
+            ? almetal_filter_directional_shadow(
+                  shadow_maps, cascade,
+                  shadows.shadow_matrix[cascade] * source,
+                  shadows.shadow_matrix[cascade] * source_dx,
+                  shadows.shadow_matrix[cascade] * source_dy,
+                  screen_position, constant_bias, shadows)
+            : 1.0;
+        filtered = two_cascades ? mix(filtered, 1.0, to_lit) : filtered;
+        shadow += filtered * weight;
+        weight_sum += weight;
+    }
+    if (source.z > far_split.x)
+    {
+        const uint cascade = 0u;
+        const float weight = 1.0 -
+            max(near_split.x - source.z, 0.0) / transition.x;
+        const float filtered = almetal_shadow_map_built(cascade, shadows)
+            ? almetal_filter_directional_shadow(
+                  shadow_maps, cascade,
+                  shadows.shadow_matrix[cascade] * source,
+                  shadows.shadow_matrix[cascade] * source_dx,
+                  shadows.shadow_matrix[cascade] * source_dy,
+                  screen_position, constant_bias, shadows)
+            : 1.0;
+        shadow += filtered * weight;
+        weight_sum += weight;
+    }
+    return shadow / weight_sum;
+}
+
 fragment float4 almetal_world_legacy_alpha_fragment(
     ALMetalWorldLegacyAlphaVaryings input [[stage_in]],
     array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
@@ -1880,8 +2266,14 @@ fragment float4 almetal_world_legacy_alpha_fragment(
     sampler probe_sampler [[sampler(1)]],
     constant ALMetalWorldMaterialConstants& constants [[buffer(0)]],
     constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
-    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]])
+    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
+    texture2d_array<float> shadow_maps [[texture(33)]],
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]])
 {
+    // Keep the receiver derivatives in uniform control flow, before the
+    // material cutoffs below can discard only part of a quad.
+    const float3 position_dx = dfdx(input.eye_position);
+    const float3 position_dy = dfdy(input.eye_position);
     const uint slot_count = max(constants.config.x, 1u);
     const uint material_index = min(input.material_index, slot_count - 1u);
     const uint slot = min(material_index, 7u);
@@ -1926,6 +2318,20 @@ fragment float4 almetal_world_legacy_alpha_fragment(
     glossiness = 1.0 - sqrt(sqrt(clamp(
         alpha * alpha + specular_kernel, 0.0, 1.0)));
 
+    float directional_visibility = lighting.parameters.z;
+    if ((shadows.config.y & 0xfu) != 0xfu)
+    {
+        const float2 gl_fragment_position = float2(
+            input.position.x,
+            shadows.parameters.w - input.position.y);
+        const float2 screen_position =
+            gl_fragment_position / shadows.resolution.zw;
+        directional_visibility *= almetal_directional_shadow(
+            shadow_maps, shadows, input.eye_position, normal,
+            position_dx, position_dy, screen_position,
+            lighting.sun_direction.xyz);
+    }
+
     const float minimum_alpha = lighting.parameters.y;
     if (input.color.a < minimum_alpha ||
         (diffuse.a * input.color.a < minimum_alpha &&
@@ -1957,7 +2363,7 @@ fragment float4 almetal_world_legacy_alpha_fragment(
             const float geometry = max(
                 0.0, min(geometry_denominator * nv / vh,
                          geometry_denominator * nl / vh));
-            const float lobe = lighting.parameters.z * fresnel *
+            const float lobe = directional_visibility * fresnel *
                 almetal_legacy_blinn_phong_lobe(
                     nh, glossiness, lighting.parameters.x) *
                 geometry / (nh * nl);
