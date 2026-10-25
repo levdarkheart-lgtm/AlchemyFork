@@ -441,6 +441,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 spot_shadow_width = 0;
     U32 spot_shadow_height = 0;
     std::size_t spot_shadow_expected_batches = 0;
+    ALMetalWorldSpotShadowCoverage spot_shadow_coverage =
+        ALMetalWorldSpotShadowCoverage::opaque;
     bool spot_shadow_capture_active = false;
     bool spot_shadow_capture_complete = false;
     std::unique_ptr<ALMetalRenderTarget> base_light_map_target;
@@ -5708,9 +5710,21 @@ void LLPipeline::beginMetalSpotShadowCapture(
     capture.spot_shadow_width = width;
     capture.spot_shadow_height = height;
     capture.spot_shadow_expected_batches = expected_batches;
+    capture.spot_shadow_coverage =
+        ALMetalWorldSpotShadowCoverage::opaque;
     capture.spot_shadow_capture_complete = complete;
     capture.reverse_z = LLRender::sReverseZ;
     capture.spot_shadow_capture_active = true;
+}
+
+void LLPipeline::setMetalSpotShadowCoverage(
+    ALMetalWorldSpotShadowCoverage coverage)
+{
+    if (mMetalWorldSimpleCapture &&
+        mMetalWorldSimpleCapture->spot_shadow_capture_active)
+    {
+        mMetalWorldSimpleCapture->spot_shadow_coverage = coverage;
+    }
 }
 
 void LLPipeline::captureMetalSpotShadowOpaqueBatch(
@@ -5719,6 +5733,8 @@ void LLPipeline::captureMetalSpotShadowOpaqueBatch(
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->spot_shadow_capture_active ||
         !mMetalWorldSimpleCapture->spot_shadow_capture_complete ||
+        mMetalWorldSimpleCapture->spot_shadow_coverage !=
+            ALMetalWorldSpotShadowCoverage::opaque ||
         !params.mCount)
     {
         return;
@@ -5774,6 +5790,286 @@ void LLPipeline::captureMetalSpotShadowOpaqueBatch(
             return;
         }
         batch.weight_offset = buffer->getOffset(LLVertexBuffer::TYPE_WEIGHT4);
+        batch.skin_palette = palette.mGLMp.data();
+        batch.skin_palette_float_count = palette.mGLMp.size();
+        batch.skin_joint_count = joint_count;
+    }
+    capture.spot_shadow_batches.push_back(batch);
+}
+
+void LLPipeline::captureMetalSpotShadowTexturedBatch(
+    const LLDrawInfo& params, bool batch_textures,
+    bool indexed_materials)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_active ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_complete ||
+        mMetalWorldSimpleCapture->spot_shadow_coverage ==
+            ALMetalWorldSpotShadowCoverage::opaque ||
+        !params.mCount)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const bool indexed_textures = !indexed_materials && batch_textures &&
+        params.mTextureList.size() > 1;
+    const std::size_t texture_count = indexed_materials
+        ? params.mMaterialSlotList.size()
+        : indexed_textures ? params.mTextureList.size() : 1;
+    LLVertexBuffer* buffer = params.mVertexBuffer.get();
+    if (!buffer || texture_count == 0 ||
+        texture_count > ALMetalWorldSpotShadowBatch::max_textures ||
+        (indexed_materials && texture_count < 2) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
+        ((indexed_materials || indexed_textures) &&
+         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX)) ||
+        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer())
+    {
+        capture.spot_shadow_capture_complete = false;
+        capture.spot_shadow_batches.clear();
+        return;
+    }
+
+    ALMetalWorldSpotShadowBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.texcoord_offset = buffer->getOffset(
+        LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_offset = static_cast<std::size_t>(params.mOffset) *
+                         buffer->getIndexStride();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = params.mCount;
+    batch.texture_count = static_cast<U32>(texture_count);
+    batch.coverage = capture.spot_shadow_coverage;
+
+    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    if (!indexed_materials && !indexed_textures &&
+        params.mTextureMatrix &&
+        (!gCubeSnapshot || mHeroProbeManager.isMirrorPass()))
+    {
+        std::memcpy(batch.texture_matrix, params.mTextureMatrix->mMatrix,
+                    sizeof(batch.texture_matrix));
+    }
+
+    const auto metal_texture = [](LLViewerTexture* texture)
+        -> ALMetalTexture*
+    {
+        LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        return image ? image->getMetalTexture() : nullptr;
+    };
+    for (std::size_t slot = 0; slot < texture_count; ++slot)
+    {
+        LLViewerTexture* texture = nullptr;
+        if (indexed_materials)
+        {
+            const LLDrawInfo::MaterialSlot& material =
+                params.mMaterialSlotList[slot];
+            texture = material.mDiffuse.get();
+            batch.alpha_cutoffs[slot] = material.mAlphaMaskCutoff;
+        }
+        else if (indexed_textures)
+        {
+            texture = params.mTextureList[slot].get();
+            batch.alpha_cutoffs[slot] = params.mAlphaMaskCutoff;
+        }
+        else
+        {
+            texture = params.mTexture.get();
+            batch.alpha_cutoffs[slot] =
+                capture.spot_shadow_coverage ==
+                    ALMetalWorldSpotShadowCoverage::legacy_blend
+                ? ALPHA_BLEND_CUTOFF : params.mAlphaMaskCutoff;
+        }
+        if (!texture)
+        {
+            texture = LLViewerFetchedTexture::sWhiteImagep.get();
+        }
+        batch.textures[slot] = metal_texture(texture);
+        if (!batch.textures[slot])
+        {
+            capture.spot_shadow_capture_complete = false;
+            capture.spot_shadow_batches.clear();
+            return;
+        }
+    }
+    if (capture.spot_shadow_coverage ==
+            ALMetalWorldSpotShadowCoverage::legacy_blend)
+    {
+        std::fill_n(batch.alpha_cutoffs.begin(), texture_count,
+                    ALPHA_BLEND_CUTOFF);
+    }
+
+    if (params.mAvatar || params.mSkinInfo)
+    {
+        if (!params.mAvatar || !params.mSkinInfo ||
+            !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))
+        {
+            capture.spot_shadow_capture_complete = false;
+            capture.spot_shadow_batches.clear();
+            return;
+        }
+        const LLVOAvatar::MatrixPaletteCache& palette =
+            params.mAvatar->updateSkinInfoMatrixPalette(params.mSkinInfo);
+        const U32 joint_count = static_cast<U32>(
+            palette.mMatrixPalette.size());
+        if (joint_count == 0 || palette.mGLMp.size() !=
+                4 + static_cast<std::size_t>(joint_count) * 12)
+        {
+            capture.spot_shadow_capture_complete = false;
+            capture.spot_shadow_batches.clear();
+            return;
+        }
+        batch.weight_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_WEIGHT4);
+        batch.skin_palette = palette.mGLMp.data();
+        batch.skin_palette_float_count = palette.mGLMp.size();
+        batch.skin_joint_count = joint_count;
+    }
+    capture.spot_shadow_batches.push_back(batch);
+}
+
+void LLPipeline::captureMetalSpotShadowPBRBatch(
+    const LLDrawInfo& params, bool indexed_materials)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_active ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_complete ||
+        mMetalWorldSimpleCapture->spot_shadow_coverage ==
+            ALMetalWorldSpotShadowCoverage::opaque ||
+        !params.mCount)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const ALMetalWorldSpotShadowCoverage coverage =
+        capture.spot_shadow_coverage ==
+                ALMetalWorldSpotShadowCoverage::legacy_blend
+            ? ALMetalWorldSpotShadowCoverage::pbr_blend
+            : ALMetalWorldSpotShadowCoverage::pbr_mask;
+    const std::size_t texture_count = indexed_materials
+        ? params.mGLTFMaterialList.size() : 1;
+    LLVertexBuffer* buffer = params.mVertexBuffer.get();
+    if (!buffer || texture_count == 0 ||
+        texture_count > ALMetalWorldSpotShadowBatch::max_pbr_slots ||
+        (indexed_materials && texture_count < 2) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
+        (indexed_materials &&
+         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX)) ||
+        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer() ||
+        (!indexed_materials && params.mGLTFMaterial.isNull()))
+    {
+        capture.spot_shadow_capture_complete = false;
+        capture.spot_shadow_batches.clear();
+        return;
+    }
+
+    ALMetalWorldSpotShadowBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.texcoord_offset = buffer->getOffset(
+        LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_offset = static_cast<std::size_t>(params.mOffset) *
+                         buffer->getIndexStride();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = params.mCount;
+    batch.texture_count = static_cast<U32>(texture_count);
+    batch.coverage = coverage;
+
+    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    if (!indexed_materials && params.mTextureMatrix &&
+        (!gCubeSnapshot || mHeroProbeManager.isMirrorPass()))
+    {
+        std::memcpy(batch.texture_matrix, params.mTextureMatrix->mMatrix,
+                    sizeof(batch.texture_matrix));
+    }
+
+    const auto metal_texture = [](LLViewerTexture* texture)
+        -> ALMetalTexture*
+    {
+        LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        return image ? image->getMetalTexture() : nullptr;
+    };
+    for (std::size_t slot = 0; slot < texture_count; ++slot)
+    {
+        LLFetchedGLTFMaterial* material = indexed_materials
+            ? params.mGLTFMaterialList[slot].get()
+            : params.mGLTFMaterial.get();
+        if (!material)
+        {
+            capture.spot_shadow_capture_complete = false;
+            capture.spot_shadow_batches.clear();
+            return;
+        }
+        LLViewerTexture* texture = !indexed_materials
+            ? params.mTexture.get() : nullptr;
+        if (!texture)
+        {
+            texture = material->mBaseColorTexture.notNull()
+                ? material->mBaseColorTexture.get()
+                : LLViewerFetchedTexture::sWhiteImagep.get();
+        }
+        batch.textures[slot] = metal_texture(texture);
+        batch.alpha_cutoffs[slot] =
+            coverage == ALMetalWorldSpotShadowCoverage::pbr_blend
+                ? ALPHA_BLEND_CUTOFF : material->mAlphaCutoff;
+        LLGLTFMaterial::TextureTransform::Pack packed;
+        material->mTextureTransform[
+            LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR].getPacked(packed);
+        std::memcpy(batch.pbr_base_color_transforms[slot].data(), packed,
+                    sizeof(packed));
+        batch.double_sided = batch.double_sided || material->mDoubleSided;
+        if (!batch.textures[slot])
+        {
+            capture.spot_shadow_capture_complete = false;
+            capture.spot_shadow_batches.clear();
+            return;
+        }
+    }
+
+    if (params.mAvatar || params.mSkinInfo)
+    {
+        if (!params.mAvatar || !params.mSkinInfo ||
+            !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))
+        {
+            capture.spot_shadow_capture_complete = false;
+            capture.spot_shadow_batches.clear();
+            return;
+        }
+        const LLVOAvatar::MatrixPaletteCache& palette =
+            params.mAvatar->updateSkinInfoMatrixPalette(params.mSkinInfo);
+        const U32 joint_count = static_cast<U32>(
+            palette.mMatrixPalette.size());
+        if (joint_count == 0 || palette.mGLMp.size() !=
+                4 + static_cast<std::size_t>(joint_count) * 12)
+        {
+            capture.spot_shadow_capture_complete = false;
+            capture.spot_shadow_batches.clear();
+            return;
+        }
+        batch.weight_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_WEIGHT4);
         batch.skin_palette = palette.mGLMp.data();
         batch.skin_palette_float_count = palette.mGLMp.size();
         batch.skin_joint_count = joint_count;
@@ -20866,6 +21162,10 @@ void LLPipeline::drawShadow(const LLMatrix4a& view, const LLMatrix4a& proj, LLCa
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha masked");
                 LL_PROFILE_GPU_ZONE("shadow alpha masked");
+#if LL_DARWIN
+                setMetalSpotShadowCoverage(
+                    ALMetalWorldSpotShadowCoverage::legacy_mask);
+#endif
                 gDeferredShadowAlphaMaskProgram.bind(rigged);
                 LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
                 LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
@@ -20878,12 +21178,20 @@ void LLPipeline::drawShadow(const LLMatrix4a& view, const LLMatrix4a& proj, LLCa
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha blend");
                 LL_PROFILE_GPU_ZONE("shadow alpha blend");
+#if LL_DARWIN
+                setMetalSpotShadowCoverage(
+                    ALMetalWorldSpotShadowCoverage::legacy_blend);
+#endif
                 renderAlphaObjects(rigged);
             }
 
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow fullbright alpha masked");
                 LL_PROFILE_GPU_ZONE("shadow alpha masked");
+#if LL_DARWIN
+                setMetalSpotShadowCoverage(
+                    ALMetalWorldSpotShadowCoverage::legacy_fullbright_mask);
+#endif
                 gDeferredShadowFullbrightAlphaMaskProgram.bind(rigged);
                 LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
                 LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
@@ -20894,6 +21202,10 @@ void LLPipeline::drawShadow(const LLMatrix4a& view, const LLMatrix4a& proj, LLCa
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha grass");
                 LL_PROFILE_GPU_ZONE("shadow alpha grass");
+#if LL_DARWIN
+                setMetalSpotShadowCoverage(
+                    ALMetalWorldSpotShadowCoverage::texture_mask);
+#endif
                 gDeferredTreeShadowProgram.bind(rigged);
                 // Grass's own cutoff, LLDrawPoolGrass::renderDeferred's, so what draws casts. The
                 // masked passes below set each batch's.
@@ -20930,6 +21242,10 @@ void LLPipeline::drawShadow(const LLMatrix4a& view, const LLMatrix4a& proj, LLCa
         for (int i = 0; i < 2; ++i)
         {
             bool rigged = i == 1;
+#if LL_DARWIN
+            setMetalSpotShadowCoverage(
+                ALMetalWorldSpotShadowCoverage::pbr_mask);
+#endif
             gDeferredShadowGLTFAlphaMaskProgram.bind(rigged);
             LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
             LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
@@ -20979,6 +21295,10 @@ void LLPipeline::drawShadow(const LLMatrix4a& view, const LLMatrix4a& proj, LLCa
             gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
             gGLLastMatrix = NULL;
         }
+#if LL_DARWIN
+        setMetalSpotShadowCoverage(
+            ALMetalWorldSpotShadowCoverage::opaque);
+#endif
     }
 
     gDeferredShadowCubeProgram.bind();
@@ -22420,30 +22740,30 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                         }
                         return count;
                     };
-                    std::size_t native_opaque_batches = 0;
+                    std::size_t native_batches = 0;
                     for (U32 type : SHADOW_GEOMETRY_PASSES)
                     {
-                        native_opaque_batches += counted_batches(type);
-                        native_opaque_batches += counted_batches(type + 1);
+                        native_batches += counted_batches(type);
+                        native_batches += counted_batches(type + 1);
                     }
-                    native_opaque_batches += counted_batches(
+                    native_batches += counted_batches(
                         LLRenderPass::PASS_GLTF_PBR);
-                    native_opaque_batches += counted_batches(
+                    native_batches += counted_batches(
                         LLRenderPass::PASS_GLTF_PBR_RIGGED);
-
-                    bool native_opaque_complete = true;
                     for (U32 type : SHADOW_MASKED_PASSES)
                     {
-                        native_opaque_complete = native_opaque_complete &&
-                            counted_batches(type) == 0 &&
-                            counted_batches(type + 1) == 0;
+                        native_batches += counted_batches(type);
+                        native_batches += counted_batches(type + 1);
                     }
-                    native_opaque_complete = native_opaque_complete &&
-                        counted_batches(LLRenderPass::PASS_ALPHA) == 0 &&
-                        counted_batches(LLRenderPass::PASS_GRASS) == 0;
+                    native_batches += counted_batches(
+                        LLRenderPass::PASS_ALPHA);
+                    native_batches += counted_batches(
+                        LLRenderPass::PASS_GRASS);
+
+                    bool native_complete = true;
                     for (LLDrawPool* pool : mPools)
                     {
-                        if (!native_opaque_complete)
+                        if (!native_complete)
                         {
                             break;
                         }
@@ -22452,15 +22772,15 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                         {
                             ALSpotShadowCache::Casters pool_casters;
                             pool->addShadowCasters(pool_casters);
-                            native_opaque_complete =
+                            native_complete =
                                 pool_casters.count() == 0 &&
                                 !pool_casters.changing();
                         }
                     }
                     beginMetalSpotShadowCapture(
                         i, mSpotShadow[i].getWidth(),
-                        mSpotShadow[i].getHeight(), native_opaque_batches,
-                        native_opaque_complete);
+                        mSpotShadow[i].getHeight(), native_batches,
+                        native_complete);
 #endif
 
                     mSpotShadow[i].bindTarget();

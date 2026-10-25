@@ -261,12 +261,18 @@ struct ALMetalWorldSimpleVaryings
 struct ALMetalWorldSpotShadowConstants
 {
     float4x4 modelview_projection;
+    float4x4 texture_matrix;
+    float4 pbr_base_color_transforms[8][2];
+    float alpha_cutoffs[32];
     uint4 config;
 };
 
 struct ALMetalWorldSpotShadowVaryings
 {
     float4 position [[position]];
+    float2 texcoord;
+    float vertex_alpha;
+    uint texture_index [[flat]];
 };
 
 struct ALMetalWorldWaterExclusionConstants
@@ -1704,6 +1710,47 @@ static ALMetalWorldSpotShadowVaryings almetal_world_spot_shadow_output(
     ALMetalWorldSpotShadowVaryings output;
     output.position = constants.config.x != 0u
         ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord = 0.0;
+    output.vertex_alpha = 1.0;
+    output.texture_index = 0u;
+    return output;
+}
+
+static float2 almetal_world_spot_shadow_pbr_texcoord(
+    float2 texcoord, constant float4* transform)
+{
+    texcoord.y = 1.0 - texcoord.y;
+    const float2 scaled = texcoord * transform[0].xy;
+    const float cosine = cos(transform[0].z);
+    const float sine = sin(transform[0].z);
+    texcoord = float2(cosine * scaled.x + sine * scaled.y,
+                      -sine * scaled.x + cosine * scaled.y) +
+               transform[1].xy;
+    texcoord.y = 1.0 - texcoord.y;
+    return texcoord;
+}
+
+static ALMetalWorldSpotShadowVaryings
+almetal_world_spot_shadow_coverage_output(
+    float4 clip_position, float4 packed_position, float2 texcoord,
+    uchar4 color, constant ALMetalWorldSpotShadowConstants& constants)
+{
+    ALMetalWorldSpotShadowVaryings output =
+        almetal_world_spot_shadow_output(clip_position, constants);
+    const uint texture_count = max(constants.config.z, 1u);
+    const uint texture_index = constants.config.z > 1u
+        ? uint(max(as_type<int>(packed_position.w), 0)) : 0u;
+    output.texture_index = min(texture_index, texture_count - 1u);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoord, 0.0, 1.0)).xy;
+    if (constants.config.y == 5u || constants.config.y == 6u)
+    {
+        output.texcoord = almetal_world_spot_shadow_pbr_texcoord(
+            output.texcoord,
+            constants.pbr_base_color_transforms[
+                min(output.texture_index, 7u)]);
+    }
+    output.vertex_alpha = float(color.a) / 255.0;
     return output;
 }
 
@@ -1737,9 +1784,107 @@ almetal_world_spot_shadow_skinned_vertex(
         constants);
 }
 
+vertex ALMetalWorldSpotShadowVaryings
+almetal_world_spot_shadow_coverage_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldSpotShadowConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 position = positions[vertex_id];
+    return almetal_world_spot_shadow_coverage_output(
+        constants.modelview_projection *
+            float4(position.xyz, 1.0),
+        position, texcoords[vertex_id], colors[vertex_id], constants);
+}
+
+vertex ALMetalWorldSpotShadowVaryings
+almetal_world_spot_shadow_coverage_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldSpotShadowConstants& constants [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    const device float4* skin_palette [[buffer(4)]],
+    const device float4* encoded_weights [[buffer(5)]],
+    constant uint& joint_count [[buffer(6)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 position = positions[vertex_id];
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        position, float4(0.0), encoded_weights[vertex_id],
+        skin_palette, joint_count);
+    return almetal_world_spot_shadow_coverage_output(
+        constants.modelview_projection * skinned.position +
+            constants.modelview_projection *
+                float4(skin_palette[0].xyz, 1.0),
+        position, texcoords[vertex_id], colors[vertex_id], constants);
+}
+
 fragment float almetal_world_spot_shadow_fragment(
     ALMetalWorldSpotShadowVaryings input [[stage_in]])
 {
+    return input.position.z;
+}
+
+fragment float almetal_world_spot_shadow_coverage_fragment(
+    ALMetalWorldSpotShadowVaryings input [[stage_in]],
+    array<texture2d<float>, 32> textures [[texture(0)]],
+    sampler texture_sampler [[sampler(0)]],
+    constant ALMetalWorldSpotShadowConstants& constants [[buffer(0)]])
+{
+    const uint texture_index = min(input.texture_index, 31u);
+    const float texture_alpha = textures[texture_index].sample(
+        texture_sampler, input.texcoord).a;
+    const float cutoff = constants.alpha_cutoffs[texture_index];
+    const uint coverage = constants.config.y;
+    constexpr float quantization_bias = 1.0 / 512.0;
+
+    if (coverage == 4u)
+    {
+        if (texture_alpha < cutoff - quantization_bias)
+        {
+            discard_fragment();
+        }
+    }
+    else if (coverage == 5u)
+    {
+        if (texture_alpha * input.vertex_alpha <
+            cutoff - quantization_bias)
+        {
+            discard_fragment();
+        }
+    }
+    else
+    {
+        const bool blended = coverage == 3u || coverage == 6u;
+        if (texture_alpha < cutoff -
+                (blended ? 0.0 : quantization_bias))
+        {
+            discard_fragment();
+        }
+        float alpha = texture_alpha;
+        if (coverage != 2u)
+        {
+            alpha *= input.vertex_alpha;
+        }
+        if (alpha < 0.05)
+        {
+            discard_fragment();
+        }
+        if (blended && alpha < 0.88)
+        {
+            // Metal's fragment position has a top-left origin. Recover GL's
+            // lower-left gl_FragCoord row before applying the live shader's
+            // checkerboard, including its integer truncation at pixel centres.
+            const int gl_y = int(float(constants.config.w) -
+                                 input.position.y);
+            if (((int(input.position.x) + gl_y) & 1) == 0)
+            {
+                discard_fragment();
+            }
+        }
+    }
     return input.position.z;
 }
 

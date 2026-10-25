@@ -632,6 +632,11 @@ void LLRenderPass::pushMaskBatchesIndexed(U32 type, bool rigged)
 
         applyModelMatrix(params);
 
+#if LL_DARWIN
+        gPipeline.captureMetalSpotShadowTexturedBatch(
+            params, false, true);
+#endif
+
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
     }
@@ -814,6 +819,8 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
     }
 
 #if LL_DARWIN
+    gPipeline.captureMetalSpotShadowTexturedBatch(
+        params, batch_textures);
     gPipeline.captureMetalWorldLegacyGlowBatch(params, false);
     gPipeline.captureMetalWorldGBufferBatch(params, batch_textures);
 #endif
@@ -1227,6 +1234,7 @@ void LLRenderPass::pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps map
     applyModelMatrix(params);
 
 #if LL_DARWIN
+    gPipeline.captureMetalSpotShadowPBRBatch(params, true);
     gPipeline.captureMetalWorldPBRBatch(params, true);
 #endif
 
@@ -1260,6 +1268,7 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params, LLFetchedGLTFMaterial*& las
     applyModelMatrix(params);
 
 #if LL_DARWIN
+    gPipeline.captureMetalSpotShadowPBRBatch(params, false);
     gPipeline.captureMetalWorldPBRBatch(params, false);
 #endif
 

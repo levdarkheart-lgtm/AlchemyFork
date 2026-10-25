@@ -178,14 +178,31 @@ struct ALMetalWorldDirectionalShadows
     ALMetalWorldDirectionalShadowConstants constants;
 };
 
+enum class ALMetalWorldSpotShadowCoverage : std::uint32_t
+{
+    opaque = 0,
+    legacy_mask = 1,
+    legacy_fullbright_mask = 2,
+    legacy_blend = 3,
+    texture_mask = 4,
+    pbr_mask = 5,
+    pbr_blend = 6,
+};
+
 // One exact indexed triangle batch seen by a spotlight's own shadow camera.
-// Opaque casters need only position; rigged casters additionally retain the
-// same packed object-skin palette and four-weight plane used by the live GLSL
-// shadow vertex program.
+// Opaque casters need only position. Cutout/stippled casters retain their
+// diffuse UV, streamed alpha, texture ladder and exact live-shader cutoff
+// contract. Rigged casters additionally retain the same packed object-skin
+// palette and four-weight plane used by the live GLSL shadow vertex program.
 struct ALMetalWorldSpotShadowBatch
 {
+    static constexpr std::size_t max_textures = 32;
+    static constexpr std::size_t max_pbr_slots = 8;
+
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
+    std::size_t texcoord_offset = 0;
+    std::size_t color_offset = 0;
     std::size_t weight_offset = 0;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
@@ -196,6 +213,19 @@ struct ALMetalWorldSpotShadowBatch
     std::size_t skin_palette_float_count = 0;
     std::uint32_t skin_joint_count = 0;
     float modelview_projection[16]{};
+    float texture_matrix[16] = {
+        1.f, 0.f, 0.f, 0.f,
+        0.f, 1.f, 0.f, 0.f,
+        0.f, 0.f, 1.f, 0.f,
+        0.f, 0.f, 0.f, 1.f,
+    };
+    std::array<const ALMetalTexture*, max_textures> textures{};
+    std::array<float, max_textures> alpha_cutoffs{};
+    std::array<std::array<std::array<float, 4>, 2>, max_pbr_slots>
+        pbr_base_color_transforms{};
+    std::uint32_t texture_count = 0;
+    ALMetalWorldSpotShadowCoverage coverage =
+        ALMetalWorldSpotShadowCoverage::opaque;
     bool double_sided = false;
 };
 

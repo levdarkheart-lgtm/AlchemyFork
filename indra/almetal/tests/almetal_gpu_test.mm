@@ -119,6 +119,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_spot_shadow_vertex",
             "almetal_world_spot_shadow_skinned_vertex",
             "almetal_world_spot_shadow_fragment",
+            "almetal_world_spot_shadow_coverage_vertex",
+            "almetal_world_spot_shadow_coverage_skinned_vertex",
+            "almetal_world_spot_shadow_coverage_fragment",
             "almetal_world_simple_vertex",
             "almetal_world_simple_skinned_vertex",
             "almetal_world_bump_vertex",
@@ -1030,12 +1033,32 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
             {{0.5f, 0.f, 0.f, 0.f}},
             {{0.5f, 0.f, 0.f, 0.f}},
         }};
+        const std::array<std::array<float, 2>, 3> texcoords{{
+            {{0.125f, 0.5f}},
+            {{0.125f, 0.5f}},
+            {{0.125f, 0.5f}},
+        }};
+        const std::array<std::array<std::uint8_t, 4>, 3> white_colors{{
+            {{255, 255, 255, 255}},
+            {{255, 255, 255, 255}},
+            {{255, 255, 255, 255}},
+        }};
         constexpr std::size_t weight_offset = sizeof(positions);
-        std::array<std::uint8_t, sizeof(positions) + sizeof(weights)>
+        constexpr std::size_t texcoord_offset =
+            weight_offset + sizeof(weights);
+        constexpr std::size_t color_offset =
+            texcoord_offset + sizeof(texcoords);
+        std::array<std::uint8_t,
+                   sizeof(positions) + sizeof(weights) +
+                       sizeof(texcoords) + sizeof(white_colors)>
             vertex_bytes{};
         std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
         std::memcpy(vertex_bytes.data() + weight_offset,
                     weights.data(), sizeof(weights));
+        std::memcpy(vertex_bytes.data() + texcoord_offset,
+                    texcoords.data(), sizeof(texcoords));
+        std::memcpy(vertex_bytes.data() + color_offset,
+                    white_colors.data(), sizeof(white_colors));
         const std::array<std::uint16_t, 3> index_values{{0, 1, 2}};
 
         ALMetalBufferDescriptor descriptor;
@@ -1121,6 +1144,199 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         CHECK(std::abs(reverse_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
         CHECK(std::abs(reverse_depth[1 * 32 + 1]) < 0.0001f);
 
+        ALMetalTextureDescriptor coverage_descriptor;
+        coverage_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        coverage_descriptor.width = 1;
+        coverage_descriptor.height = 1;
+        coverage_descriptor.storage = ALMetalStorageMode::private_gpu;
+        coverage_descriptor.usage = ALMetalTextureUsage::shader_read;
+        coverage_descriptor.label =
+            "Alchemy spot-shadow quantized coverage texture";
+        auto below_cutoff = ALMetalTexture::create(
+            *device, coverage_descriptor, &error);
+        auto above_cutoff = ALMetalTexture::create(
+            *device, coverage_descriptor, &error);
+        auto opaque_coverage = ALMetalTexture::create(
+            *device, coverage_descriptor, &error);
+        INFO(error);
+        REQUIRE(below_cutoff);
+        REQUIRE(above_cutoff);
+        REQUIRE(opaque_coverage);
+        const std::array<std::uint8_t, 4> below_pixel{{255, 255, 255, 127}};
+        const std::array<std::uint8_t, 4> above_pixel{{255, 255, 255, 128}};
+        const std::array<std::uint8_t, 4> opaque_pixel{{255, 255, 255, 255}};
+
+        ALMetalTextureDescriptor transform_descriptor = coverage_descriptor;
+        transform_descriptor.width = 4;
+        transform_descriptor.label =
+            "Alchemy spot-shadow PBR transform coverage texture";
+        auto transform_coverage = ALMetalTexture::create(
+            *device, transform_descriptor, &error);
+        INFO(error);
+        REQUIRE(transform_coverage);
+        const std::array<std::uint8_t, 16> transform_pixels{{
+            255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255,   0, 255, 255, 255,   0,
+        }};
+        auto coverage_upload = device->makeCommandBuffer(
+            "Alchemy spot-shadow coverage upload", &error);
+        INFO(error);
+        REQUIRE(coverage_upload);
+        REQUIRE(below_cutoff->upload(
+            *coverage_upload, 0, 0, {}, below_pixel.data(), 4, &error));
+        REQUIRE(above_cutoff->upload(
+            *coverage_upload, 0, 0, {}, above_pixel.data(), 4, &error));
+        REQUIRE(opaque_coverage->upload(
+            *coverage_upload, 0, 0, {}, opaque_pixel.data(), 4, &error));
+        REQUIRE(transform_coverage->upload(
+            *coverage_upload, 0, 0, {}, transform_pixels.data(), 16,
+            &error));
+        REQUIRE(coverage_upload->commitAndWait(&error));
+        INFO(error);
+
+        scene.reverse_z = false;
+        batch.modelview_projection[14] = 0.f;
+        batch.texcoord_offset = texcoord_offset;
+        batch.color_offset = color_offset;
+        batch.texture_count = 1;
+        batch.alpha_cutoffs[0] = 0.5f;
+        batch.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
+        batch.textures[0] = below_cutoff.get();
+        auto rejected_mask = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(rejected_mask);
+        std::array<float, 32 * 32> rejected_mask_depth{};
+        REQUIRE(rejected_mask->colorTexture(0)->readback(
+            *device, 0, 0, {}, rejected_mask_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(std::abs(rejected_mask_depth[16 * 32 + 16] - 1.f) <
+              0.0001f);
+
+        batch.textures[0] = above_cutoff.get();
+        auto accepted_mask = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(accepted_mask);
+        std::array<float, 32 * 32> accepted_mask_depth{};
+        REQUIRE(accepted_mask->colorTexture(0)->readback(
+            *device, 0, 0, {}, accepted_mask_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(std::abs(accepted_mask_depth[16 * 32 + 16] - 0.5f) <
+              0.0001f);
+
+        const std::array<std::array<std::uint8_t, 4>, 3>
+            transparent_vertex_colors{{
+                {{255, 255, 255, 0}},
+                {{255, 255, 255, 0}},
+                {{255, 255, 255, 0}},
+            }};
+        REQUIRE(vertices->write(
+            color_offset, transparent_vertex_colors.data(),
+            sizeof(transparent_vertex_colors), &error));
+        batch.coverage = ALMetalWorldSpotShadowCoverage::legacy_mask;
+        auto tinted_mask = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(tinted_mask);
+        std::array<float, 32 * 32> tinted_mask_depth{};
+        REQUIRE(tinted_mask->colorTexture(0)->readback(
+            *device, 0, 0, {}, tinted_mask_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(std::abs(tinted_mask_depth[16 * 32 + 16] - 1.f) < 0.0001f);
+
+        batch.coverage =
+            ALMetalWorldSpotShadowCoverage::legacy_fullbright_mask;
+        auto fullbright_mask = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(fullbright_mask);
+        std::array<float, 32 * 32> fullbright_mask_depth{};
+        REQUIRE(fullbright_mask->colorTexture(0)->readback(
+            *device, 0, 0, {}, fullbright_mask_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(std::abs(fullbright_mask_depth[16 * 32 + 16] - 0.5f) <
+              0.0001f);
+
+        REQUIRE(vertices->write(
+            color_offset, white_colors.data(), sizeof(white_colors),
+            &error));
+        batch.coverage = ALMetalWorldSpotShadowCoverage::pbr_mask;
+        batch.textures[0] = transform_coverage.get();
+        batch.pbr_base_color_transforms[0][0][0] = 1.f;
+        batch.pbr_base_color_transforms[0][0][1] = 1.f;
+        auto unshifted_pbr = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(unshifted_pbr);
+        std::array<float, 32 * 32> unshifted_pbr_depth{};
+        REQUIRE(unshifted_pbr->colorTexture(0)->readback(
+            *device, 0, 0, {}, unshifted_pbr_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(std::abs(unshifted_pbr_depth[16 * 32 + 16] - 0.5f) <
+              0.0001f);
+
+        batch.pbr_base_color_transforms[0][1][0] = 0.5f;
+        auto shifted_pbr = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(shifted_pbr);
+        std::array<float, 32 * 32> shifted_pbr_depth{};
+        REQUIRE(shifted_pbr->colorTexture(0)->readback(
+            *device, 0, 0, {}, shifted_pbr_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(std::abs(shifted_pbr_depth[16 * 32 + 16] - 1.f) <
+              0.0001f);
+        batch.pbr_base_color_transforms[0][1][0] = 0.f;
+
+        const std::array<std::array<std::uint8_t, 4>, 3>
+            half_alpha_colors{{
+                {{255, 255, 255, 128}},
+                {{255, 255, 255, 128}},
+                {{255, 255, 255, 128}},
+            }};
+        REQUIRE(vertices->write(
+            color_offset, half_alpha_colors.data(),
+            sizeof(half_alpha_colors), &error));
+        batch.coverage = ALMetalWorldSpotShadowCoverage::legacy_blend;
+        batch.textures[0] = opaque_coverage.get();
+        batch.alpha_cutoffs[0] = 0.598f;
+        auto stippled = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(stippled);
+        std::array<float, 32 * 32> stippled_depth{};
+        REQUIRE(stippled->colorTexture(0)->readback(
+            *device, 0, 0, {}, stippled_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(std::abs(stippled_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
+        CHECK(std::abs(stippled_depth[16 * 32 + 17] - 1.f) < 0.0001f);
+
+        REQUIRE(vertices->write(
+            color_offset, white_colors.data(), sizeof(white_colors),
+            &error));
+        batch.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
+        batch.alpha_cutoffs[0] = 0.5f;
+        batch.weight_offset = weight_offset;
+        batch.skin_palette = skin_palette.data();
+        batch.skin_palette_float_count = skin_palette.size();
+        batch.skin_joint_count = 1;
+        auto covered_rigged = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(covered_rigged);
+        std::array<float, 32 * 32> covered_rigged_depth{};
+        REQUIRE(covered_rigged->colorTexture(0)->readback(
+            *device, 0, 0, {}, covered_rigged_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(std::abs(covered_rigged_depth[16 * 32 + 24] - 0.5f) <
+              0.0001f);
+        CHECK(std::abs(covered_rigged_depth[16 * 32 + 8] - 1.f) <
+              0.0001f);
+
+        batch.skin_palette = nullptr;
+        batch.skin_palette_float_count = 0;
+        batch.skin_joint_count = 0;
+        batch.weight_offset = 0;
+        batch.textures[0] = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderSpotShadow(scene, &error));
+        CHECK(error == "Metal spot-shadow coverage texture is invalid");
+
+        batch.coverage = ALMetalWorldSpotShadowCoverage::opaque;
+        batch.texture_count = 0;
         batch.index_count = 4;
         error.clear();
         CHECK_FALSE(renderer->renderSpotShadow(scene, &error));

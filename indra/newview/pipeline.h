@@ -59,6 +59,7 @@
 #include "alscopedata.h"
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <stack>
 
@@ -79,6 +80,7 @@ class LLVertexBuffer;
 struct ALMetalWorldAlphaEnvironment;
 struct ALMetalWorldLegacyAlphaLighting;
 struct ALMetalWorldWaterSurface;
+enum class ALMetalWorldSpotShadowCoverage : std::uint32_t;
 
 typedef enum e_avatar_skinning_method
 {
@@ -634,8 +636,15 @@ public:
                                      std::size_t expected_batches,
                                      bool complete);
     void endMetalSpotShadowCapture();
+    void setMetalSpotShadowCoverage(
+        ALMetalWorldSpotShadowCoverage coverage);
     void captureMetalSpotShadowOpaqueBatch(
         const LLDrawInfo& params, bool double_sided = false);
+    void captureMetalSpotShadowTexturedBatch(
+        const LLDrawInfo& params, bool batch_textures,
+        bool indexed_materials = false);
+    void captureMetalSpotShadowPBRBatch(
+        const LLDrawInfo& params, bool indexed_materials);
     void captureMetalImpostorPBRAlphaBatch(
         const LLDrawInfo& params, bool particle_or_hud_particle,
         bool depth_only = false);
