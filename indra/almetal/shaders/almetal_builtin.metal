@@ -284,6 +284,7 @@ struct ALMetalWorldWaterHazeConstants
     float4 water_plane;
     float4 fog_color;
     float4 fog;
+    int4 patch_rect;
     uint4 config;
 };
 
@@ -310,6 +311,10 @@ struct ALMetalWorldWaterSurfaceConstants
     float4 rim;
     float4 light_direction;
     float4 parameters;
+    float4 wave_eye_density;
+    float4 wave_reach_amplitude;
+    int4 patch_rect;
+    int4 patch_order;
     float4 screen;
     uint4 config;
 };
@@ -1757,13 +1762,121 @@ static float3 almetal_world_water_field_position(
         const uint2 cell = uint2(instance_id % side,
                                  instance_id / side);
         const float2 texel = cell_map.read(cell).rg;
-        const bool drawn = (uint(texel.y) & 1u) != 0u ||
-            constants.rings.w > 0.0;
+        const int2 signed_cell = int2(cell);
+        const bool patch_rectangle = all(
+            constants.patch_rect.xy < constants.patch_rect.zw);
+        const bool patched = patch_rectangle &&
+            all(signed_cell >= constants.patch_rect.xy) &&
+            all(signed_cell < constants.patch_rect.zw);
+        const bool along_x = patch_rectangle &&
+            signed_cell.x >= constants.patch_rect.x &&
+            signed_cell.x < constants.patch_rect.z;
+        const bool along_y = patch_rectangle &&
+            signed_cell.y >= constants.patch_rect.y &&
+            signed_cell.y < constants.patch_rect.w;
+        const bool fringe =
+            (along_x && (signed_cell.y == constants.patch_rect.y - 1 ||
+                         signed_cell.y == constants.patch_rect.w)) ||
+            (along_y && (signed_cell.x == constants.patch_rect.x - 1 ||
+                         signed_cell.x == constants.patch_rect.z));
+        const bool drawn = ((uint(texel.y) & 1u) != 0u ||
+            constants.rings.w > 0.0) && !patched && !fringe;
         const float2 corner = drawn
             ? float2(float(vertex_id & 1u), float(vertex_id >> 1u))
             : float2(0.0);
         position = float3(almetal_world_water_square_point(
                               float2(cell) + corner, constants),
+                          texel.x);
+    }
+    else if (part == 3u)
+    {
+        const int width = constants.patch_rect.z -
+            constants.patch_rect.x;
+        const int height = constants.patch_rect.w -
+            constants.patch_rect.y;
+        const int instance = int(instance_id);
+        int2 cell;
+        if (instance < width)
+        {
+            cell = int2(constants.patch_rect.x + instance,
+                        constants.patch_rect.y - 1);
+        }
+        else if (instance < 2 * width)
+        {
+            cell = int2(constants.patch_rect.x + instance - width,
+                        constants.patch_rect.w);
+        }
+        else if (instance < 2 * width + height)
+        {
+            cell = int2(constants.patch_rect.x - 1,
+                        constants.patch_rect.y + instance - 2 * width);
+        }
+        else
+        {
+            cell = int2(constants.patch_rect.z,
+                        constants.patch_rect.y + instance -
+                            2 * width - height);
+        }
+        const float2 texel = cell_map.read(uint2(cell)).rg;
+        int edge = 0;
+        const bool along_x = cell.x >= constants.patch_rect.x &&
+            cell.x < constants.patch_rect.z;
+        const bool along_y = cell.y >= constants.patch_rect.y &&
+            cell.y < constants.patch_rect.w;
+        bool fringe = false;
+        if (along_x && cell.y == constants.patch_rect.y - 1)
+        {
+            edge = 2;
+            fringe = true;
+        }
+        else if (along_x && cell.y == constants.patch_rect.w)
+        {
+            edge = 0;
+            fringe = true;
+        }
+        else if (along_y && cell.x == constants.patch_rect.x - 1)
+        {
+            edge = 1;
+            fringe = true;
+        }
+        else if (along_y && cell.x == constants.patch_rect.z)
+        {
+            edge = 3;
+            fringe = true;
+        }
+        const bool drawn = fringe &&
+            ((uint(texel.y) & 1u) != 0u || constants.rings.w > 0.0);
+        constexpr int patches = 8;
+        constexpr int half_patches = patches / 2;
+        const int triangle = int(vertex_id / 3u);
+        const int corner = int(vertex_id - uint(triangle * 3));
+        float2 at;
+        if (triangle < half_patches)
+        {
+            at = corner == 0 ? float2(float(triangle), 0.0)
+                : (corner == 1
+                    ? float2(float(triangle + 1), 0.0)
+                    : float2(0.0, float(patches)));
+        }
+        else if (triangle == half_patches)
+        {
+            at = corner == 0 ? float2(float(half_patches), 0.0)
+                : (corner == 1 ? float2(float(patches))
+                               : float2(0.0, float(patches)));
+        }
+        else
+        {
+            const int patch = triangle - 1;
+            at = corner == 0 ? float2(float(patch), 0.0)
+                : (corner == 1
+                    ? float2(float(patch + 1), 0.0)
+                    : float2(float(patches)));
+        }
+        const float2 local = drawn
+            ? almetal_world_water_turn(at / float(patches), uint(edge))
+            : float2(0.0);
+        position = float3(almetal_world_water_square_point(
+                              float2(cell) + local, constants),
                           texel.x);
     }
     else if (part == 2u)
@@ -1981,15 +2094,12 @@ fragment float4 almetal_world_water_haze_fragment(
     return max(fogged, float4(0.0));
 }
 
-vertex ALMetalWorldWaterSurfaceVaryings
-almetal_world_flat_water_vertex(
-    constant ALMetalWorldWaterHazeConstants& field [[buffer(0)]],
-    constant ALMetalWorldWaterSurfaceConstants& water [[buffer(1)]],
-    texture2d<float, access::read> cell_map [[texture(0)]],
-    uint vertex_id [[vertex_id]], uint instance_id [[instance_id]])
+static ALMetalWorldWaterSurfaceVaryings
+almetal_world_water_surface_output(
+    float3 agent_position,
+    constant ALMetalWorldWaterHazeConstants& field,
+    constant ALMetalWorldWaterSurfaceConstants& water)
 {
-    const float3 agent_position = almetal_world_water_field_position(
-        field, cell_map, vertex_id, instance_id);
     float4 clip_position = field.modelview_projection *
         float4(agent_position, 1.0);
     clip_position.y = -clip_position.y;
@@ -2001,6 +2111,19 @@ almetal_world_flat_water_vertex(
         water.modelview * float4(agent_position, 1.0)).xyz;
     output.agent_view = agent_position - water.eye_position.xyz;
     return output;
+}
+
+vertex ALMetalWorldWaterSurfaceVaryings
+almetal_world_flat_water_vertex(
+    constant ALMetalWorldWaterHazeConstants& field [[buffer(0)]],
+    constant ALMetalWorldWaterSurfaceConstants& water [[buffer(1)]],
+    texture2d<float, access::read> cell_map [[texture(0)]],
+    uint vertex_id [[vertex_id]], uint instance_id [[instance_id]])
+{
+    return almetal_world_water_surface_output(
+        almetal_world_water_field_position(
+            field, cell_map, vertex_id, instance_id),
+        field, water);
 }
 
 static float2 almetal_world_water_hex_skew(float2 point)
@@ -2189,6 +2312,192 @@ static void almetal_world_water_wave_normals(
         little_zw = almetal_world_water_plain_layer(
             map_a, map_b, normal_sampler, little_uv.zw, blend);
     }
+}
+
+static float almetal_world_water_hex_height(
+    texture2d<float> map, sampler height_sampler, uint field,
+    float2 uv, float lod, thread float2 offset[3],
+    float3 weight, float gain)
+{
+    float height = 0.0;
+    for (uint index = 0; index < 3; ++index)
+    {
+        if (weight[index] > 0.0)
+        {
+            height += weight[index] * map.sample(
+                height_sampler, uv + offset[index], level(lod))[field];
+        }
+    }
+    return gain * height;
+}
+
+static float almetal_world_water_map_height(
+    texture2d<float> map, sampler height_sampler,
+    float2 big_uv, float2 mid_uv, float2 point, float spacing,
+    constant ALMetalWorldWaterSurfaceConstants& water)
+{
+    const float2 texels = float2(map.get_width(), map.get_height());
+    const float big_step = spacing * 0.04 * max(texels.x, texels.y);
+    const float mid_step = spacing * 0.2 * max(texels.x, texels.y);
+    const float big_lod = log2(max(big_step, 1.0));
+    const float mid_lod = log2(max(mid_step, 1.0));
+    float big;
+    float mid;
+    float2 offset[3];
+    float3 weight;
+    if (water.config.z >= 1u)
+    {
+        almetal_world_water_hex_cells(
+            point * 0.04, water.lattice_fraction.xy,
+            water.lattice_base.xy, offset, weight);
+        big = almetal_world_water_hex_height(
+            map, height_sampler, 0u, big_uv, big_lod,
+            offset, weight,
+            almetal_world_water_hex_gain(weight, big_step, texels));
+    }
+    else
+    {
+        big = map.sample(
+            height_sampler, big_uv, level(big_lod)).r;
+    }
+    if (water.config.z >= 2u)
+    {
+        almetal_world_water_hex_cells(
+            point * float2(0.1, 0.2), water.lattice_fraction.zw,
+            water.lattice_base.zw, offset, weight);
+        mid = almetal_world_water_hex_height(
+            map, height_sampler, 1u, mid_uv, mid_lod,
+            offset, weight,
+            almetal_world_water_hex_gain(weight, mid_step, texels));
+    }
+    else
+    {
+        mid = map.sample(
+            height_sampler, mid_uv, level(mid_lod)).g;
+    }
+    return 12.5 * big + 3.0 * mid;
+}
+
+static float almetal_world_water_displacement(
+    float3 position,
+    texture2d<float> height_map_a,
+    texture2d<float> height_map_b,
+    sampler height_sampler,
+    constant ALMetalWorldWaterSurfaceConstants& water)
+{
+    const float amplitude = water.wave_reach_amplitude.y;
+    if (amplitude <= 0.0)
+    {
+        return 0.0;
+    }
+    const float2 fade_vector =
+        position.xy - water.wave_eye_density.xy;
+    const float distance_from_layout_eye = length(fade_vector);
+    float fade = 1.0 - smoothstep(
+        0.75 * water.wave_reach_amplitude.x,
+        water.wave_reach_amplitude.x,
+        distance_from_layout_eye);
+    const float camera_level = 1.0 - smoothstep(
+        amplitude, 2.0 * amplitude,
+        abs(water.wave_eye_density.z - position.z));
+    fade *= mix(
+        1.0,
+        smoothstep(0.0, max(8.0, 4.0 * amplitude),
+                   distance_from_layout_eye),
+        camera_level);
+    if (fade <= 0.0)
+    {
+        return 0.0;
+    }
+
+    const float2 relative = position.xy - water.eye_position.xy;
+    const float2 clamped = almetal_world_water_wave_clamp(
+        relative, water.water_far.x);
+    float2 swept = clamped;
+    swept.x += (cos(clamped.x * 0.08 + water.sweep_phase.x) +
+                sin(clamped.y * 0.02 + water.sweep_phase.y)) * 6.0;
+    const float2 big_uv = swept * 0.04 + water.big_phase.xy;
+    const float2 mid_uv =
+        swept * float2(0.1, 0.2) + water.little_phase.zw;
+    const float spacing = max(
+        distance(position, water.eye_position.xyz) /
+            water.wave_eye_density.w,
+        0.5);
+    float height = water.wave_reach_amplitude.z > 0.0
+        ? water.wave_reach_amplitude.z *
+            almetal_world_water_map_height(
+                height_map_a, height_sampler, big_uv, mid_uv,
+                clamped, spacing, water)
+        : 0.0;
+    if (water.parameters.x > 0.0)
+    {
+        const float next = water.wave_reach_amplitude.w > 0.0
+            ? water.wave_reach_amplitude.w *
+                almetal_world_water_map_height(
+                    height_map_b, height_sampler, big_uv, mid_uv,
+                    clamped, spacing, water)
+            : 0.0;
+        height = mix(height, next, water.parameters.x);
+    }
+    return fade * height;
+}
+
+static float almetal_world_water_edge_exact(
+    float low, float high, float amount)
+{
+    return amount >= 1.0 ? high : low + (high - low) * amount;
+}
+
+[[patch(quad, 4)]]
+vertex ALMetalWorldWaterSurfaceVaryings
+almetal_world_wave_water_vertex(
+    constant ALMetalWorldWaterHazeConstants& field [[buffer(0)]],
+    constant ALMetalWorldWaterSurfaceConstants& water [[buffer(1)]],
+    texture2d<float, access::read> cell_map [[texture(0)]],
+    texture2d<float> height_map_a [[texture(1)]],
+    texture2d<float> height_map_b [[texture(2)]],
+    sampler height_sampler [[sampler(0)]],
+    uint patch_id [[patch_id]],
+    float2 patch_position [[position_in_patch]])
+{
+    constexpr int patches_per_cell = 8;
+    const int2 patch_dimensions = max(
+        water.patch_rect.zw - water.patch_rect.xy, int2(1)) *
+        patches_per_cell;
+    const bool slow_x = water.patch_order.x != 0;
+    const int run = slow_x
+        ? patch_dimensions.y : patch_dimensions.x;
+    int slow = int(patch_id) / run;
+    int fast = int(patch_id) - slow * run;
+    slow = water.patch_order.y != 0
+        ? (slow_x ? patch_dimensions.x : patch_dimensions.y) - 1 - slow
+        : slow;
+    fast = water.patch_order.z != 0 ? run - 1 - fast : fast;
+    const int2 at_patch = slow_x
+        ? int2(slow, fast) : int2(fast, slow);
+    const int2 cell = water.patch_rect.xy +
+        at_patch / patches_per_cell;
+    const int2 square = at_patch -
+        (at_patch / patches_per_cell) * patches_per_cell;
+    const float water_height = cell_map.read(uint2(cell)).r;
+    const float2 south_west = almetal_world_water_square_point(
+        float2(cell) + float2(square) / float(patches_per_cell),
+        field);
+    const float2 north_east = almetal_world_water_square_point(
+        float2(cell) + float2(square + 1) /
+            float(patches_per_cell),
+        field);
+    float3 agent_position = float3(
+        almetal_world_water_edge_exact(
+            south_west.x, north_east.x, patch_position.x),
+        almetal_world_water_edge_exact(
+            south_west.y, north_east.y, patch_position.y),
+        water_height);
+    agent_position.z += almetal_world_water_displacement(
+        agent_position, height_map_a, height_map_b,
+        height_sampler, water);
+    return almetal_world_water_surface_output(
+        agent_position, field, water);
 }
 
 static float3 almetal_world_underwater_fog(

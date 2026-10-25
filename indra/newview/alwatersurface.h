@@ -45,6 +45,7 @@ class LLViewerCamera;
 class LLViewerTexture;
 struct ALMetalWorldWaterExclusionSurface;
 struct ALMetalWorldWaterHaze;
+struct ALMetalWorldWaterSurface;
 
 /// The water's field for the frame: ALWaterField's layout around the main camera, and the cell map the water's shaders
 /// read the heights from, ALWaterField::MAP_SIZE texels a side of RG32F (height, flags) as fillCells lays them out.
@@ -80,7 +81,8 @@ public:
     void draw(LLGLSLShader& shader, bool patched) const;
 
     /// Whether the water is drawn with waves this frame: AlchemyRenderWaterWaves where tessellation is, a cell within
-    /// the reach, and a map whose heights have landed. Captures always draw the field flat.
+    /// the reach, and a map whose heights have landed. Probe and hero captures draw the field flat; the main native
+    /// snapshot carries the same patch family when its optional depth-pyramid cull is inactive.
     bool wavesDrawn() const { return mWavesDrawn; }
 
     /// A, the most the waves move the surface this frame, in metres; 0 without waves.
@@ -167,6 +169,16 @@ public:
     bool fillMetalWaterHaze(
         ALMetalWorldWaterHaze& haze, const LLViewerCamera& camera,
         bool above_water) const;
+
+    /// Add the exact wave patch rectangle, ordering, height maps and CPU
+    /// tessellation factors to a native water snapshot. Depth-pyramid
+    /// occlusion is deliberately fail-closed until its native owner lands.
+    bool fillMetalWaterWaves(
+        ALMetalWorldWaterSurface& surface,
+        const LLViewerCamera& camera,
+        const LLViewerTexture* current,
+        const LLViewerTexture* next,
+        bool occlusion) const;
 #endif
 
 private:

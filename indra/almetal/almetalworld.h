@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 struct ALMetalWorldMaterialSlot
 {
@@ -412,21 +413,23 @@ struct ALMetalWorldWaterHaze
     float fog_color[4]{};
     // x = waterFogKS, y = waterFogDensity.
     float fog[4]{};
-    std::array<ALMetalWorldWaterFieldDraw, 3> draws{};
+    std::array<ALMetalWorldWaterFieldDraw, 4> draws{};
     std::uint32_t draw_count = 0;
     bool above_water = false;
 };
 
-// The flat water-surface subset consumes the same exact procedural field as
-// the haze pass plus the live normal-map phase, optical and lighting inputs.
+// The water-surface subset consumes the same exact procedural field as the
+// haze pass plus the live normal-map phase, optical and lighting inputs.
 // The renderer snapshots its retained color (and, above water, depth)
 // immediately before this marker so transparent water never samples an
-// attachment it is writing. Wave-patch tessellation remains a separate
-// migration boundary.
+// attachment it is writing. With waves, the field omits the patch rectangle
+// and adds its fringe; one packed half-factor record drives each native quad
+// patch before the remaining field is drawn.
 struct ALMetalWorldWaterSurface
 {
     ALMetalWorldWaterHaze field;
     std::array<const ALMetalTexture*, 2> normal_maps{};
+    std::array<const ALMetalTexture*, 2> height_maps{};
     float modelview[16]{};
     // Three vec4-strided columns, matching the live GLSL normal matrix.
     float normal_matrix[3][4]{};
@@ -452,6 +455,15 @@ struct ALMetalWorldWaterSurface
     // x = normal-map blend, y = refraction scale, z = exclusion distortion,
     // w = water-hextile mode (0..2).
     float parameters[4]{};
+    // xyz = the main camera used to lay out the waves, w = tessellation
+    // density. x = reach, y = maximum displacement, zw = map amplitudes.
+    float wave_eye_density[4]{};
+    float wave_reach_amplitude[4]{};
+    std::int32_t patch_rect[4]{};
+    std::int32_t patch_order[4]{};
+    std::uint32_t patch_count = 0;
+    std::vector<std::uint16_t> tessellation_factors;
+    bool waves = false;
     bool underwater = true;
     bool refracts = false;
     bool has_excluded_surface = false;
@@ -497,8 +509,8 @@ struct alignas(16) ALMetalWorldAlphaEnvironment
 // final-color target. Water-exclusion batches first rebuild EXCLUDE_BIT,
 // followed by opaque-forward fullbright, shiny and emboss replay, both
 // ordered glow families, water haze, and the exact supported pre-water alpha
-// families, then flat class-3 water. Tessellated water, atmospheric haze and
-// presentation remain later owners.
+// families, then class-3 water including its tessellated wave patches.
+// Atmospheric haze and presentation remain later owners.
 struct ALMetalWorldOpaquePostDeferredScene
 {
     const ALMetalRenderTarget* gbuffer = nullptr;

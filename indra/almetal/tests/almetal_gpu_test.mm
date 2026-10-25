@@ -150,6 +150,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_water_haze_fullscreen_vertex",
             "almetal_world_water_haze_fragment",
             "almetal_world_flat_water_vertex",
+            "almetal_world_wave_water_vertex",
             "almetal_world_underwater_fragment",
             "almetal_world_above_water_fragment",
             "almetal_world_pre_water_fullbright_fragment",
@@ -4544,6 +4545,137 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(
             pre_water_depth[stencil_center / 4] - 0.5f) < 0.0001f);
 
+        // Native waves replace the patched cell with 8x8 fractional-odd
+        // quad patches, displace their tessellated vertices from the baked
+        // RG16F height field, then draw the exact four-part field including
+        // its patch fringe. A constant unit big-height and 0.04 amplitude
+        // move this -0.5 plane to z=0, hence forward depth 0.5.
+        ALMetalTextureDescriptor wave_cell_descriptor =
+            water_cell_descriptor;
+        wave_cell_descriptor.width = 3;
+        wave_cell_descriptor.height = 3;
+        wave_cell_descriptor.label =
+            "Alchemy wave water test height field";
+        auto wave_cell_map = ALMetalTexture::create(
+            *device, wave_cell_descriptor, &error);
+        INFO(error);
+        REQUIRE(wave_cell_map);
+        std::array<float, 3 * 3 * 2> wave_cells{};
+        for (std::size_t cell = 0; cell < 9; ++cell)
+        {
+            wave_cells[cell * 2] = -0.5f;
+            wave_cells[cell * 2 + 1] = 1.f;
+        }
+        ALMetalTextureDescriptor wave_height_descriptor;
+        wave_height_descriptor.format = ALMetalPixelFormat::rg16_float;
+        wave_height_descriptor.width = 1;
+        wave_height_descriptor.height = 1;
+        wave_height_descriptor.storage = ALMetalStorageMode::private_gpu;
+        wave_height_descriptor.usage = ALMetalTextureUsage::shader_read;
+        wave_height_descriptor.label =
+            "Alchemy wave water test baked heights";
+        auto wave_height_map = ALMetalTexture::create(
+            *device, wave_height_descriptor, &error);
+        INFO(error);
+        REQUIRE(wave_height_map);
+        const std::array<std::uint16_t, 2> wave_height{{
+            0x3c00u, 0u,
+        }};
+        auto wave_upload = device->makeCommandBuffer(
+            "Alchemy wave water test upload", &error);
+        REQUIRE(wave_upload);
+        REQUIRE(wave_cell_map->upload(
+            *wave_upload, 0, 0, {}, wave_cells.data(),
+            3 * 2 * sizeof(float), &error));
+        REQUIRE(wave_height_map->upload(
+            *wave_upload, 0, 0, {}, wave_height.data(),
+            sizeof(wave_height), &error));
+        REQUIRE(wave_upload->commitAndWait(&error));
+
+        ALMetalWorldWaterSurface underwater_wave = underwater_surface;
+        underwater_wave.field.cell_map = wave_cell_map.get();
+        underwater_wave.field.cell_square[0] = -1.5f;
+        underwater_wave.field.cell_square[1] = -1.5f;
+        underwater_wave.field.cell_square[2] = 1.f;
+        underwater_wave.field.cell_square[3] = 3.f;
+        underwater_wave.field.default_height[0] = -0.5f;
+        underwater_wave.field.rings[0] = 1.5f;
+        underwater_wave.field.draws[0] = {0u, 4u, 9u, true};
+        underwater_wave.field.draws[1] = {1u, 9u, 12u, false};
+        underwater_wave.field.draws[2] = {2u, 15u, 4u, false};
+        underwater_wave.field.draws[3] = {3u, 27u, 4u, false};
+        underwater_wave.field.draw_count = 4;
+        underwater_wave.height_maps[0] = wave_height_map.get();
+        underwater_wave.height_maps[1] = wave_height_map.get();
+        underwater_wave.parameters[0] = 0.f;
+        underwater_wave.wave_eye_density[2] = 4.f;
+        underwater_wave.wave_eye_density[3] = 32.f;
+        underwater_wave.wave_reach_amplitude[0] = 256.f;
+        underwater_wave.wave_reach_amplitude[1] = 1.f;
+        underwater_wave.wave_reach_amplitude[2] = 0.04f;
+        underwater_wave.patch_rect[0] = 1;
+        underwater_wave.patch_rect[1] = 1;
+        underwater_wave.patch_rect[2] = 2;
+        underwater_wave.patch_rect[3] = 2;
+        underwater_wave.patch_count = 64;
+        underwater_wave.tessellation_factors.assign(64 * 6, 0x3c00u);
+        underwater_wave.waves = true;
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.water_surface = &underwater_wave;
+        auto underwater_wave_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(underwater_wave_result);
+        REQUIRE(underwater_wave_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(
+            pre_water_depth[stencil_center / 4] - 0.5f) < 0.02f);
+
+        for (const float hextile : {1.f, 2.f})
+        {
+            underwater_wave.parameters[3] = hextile;
+            auto tiled_wave = renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+            INFO(error);
+            REQUIRE(tiled_wave);
+        }
+        underwater_wave.parameters[3] = 0.f;
+        underwater_wave.patch_order[0] = 1;
+        underwater_wave.patch_order[1] = 1;
+        underwater_wave.patch_order[2] = 1;
+        auto reversed_wave_order = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reversed_wave_order);
+        underwater_wave.patch_order[0] = 0;
+        underwater_wave.patch_order[1] = 0;
+        underwater_wave.patch_order[2] = 0;
+        std::fill_n(underwater_wave.tessellation_factors.begin(), 6, 0u);
+        auto culled_wave_patch = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(culled_wave_patch);
+        std::fill_n(
+            underwater_wave.tessellation_factors.begin(), 6, 0x3c00u);
+
+        underwater_wave.tessellation_factors.pop_back();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world wave water-surface inputs are invalid");
+        underwater_wave.tessellation_factors.push_back(0x3c00u);
+        underwater_wave.height_maps[0] = flat_normal.get();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world wave water-surface inputs are invalid");
+        underwater_wave.height_maps[0] = wave_height_map.get();
+        error.clear();
+
         // Above-water flat water owns the same field and normal layers but
         // adds a current-depth refraction guard, water-only probe traversal,
         // directional-shadowed sun glint and MAX glow-alpha blending.
@@ -4633,6 +4765,52 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             0.5f) < 0.002f);
         CHECK(std::abs(
             pre_water_depth[above_water_pixel / 4] - 0.25f) < 0.0001f);
+
+        ALMetalWorldWaterSurface above_water_wave =
+            above_water_surface;
+        above_water_wave.field.cell_map = wave_cell_map.get();
+        above_water_wave.field.cell_square[0] = -1.5f;
+        above_water_wave.field.cell_square[1] = -1.5f;
+        above_water_wave.field.cell_square[2] = 1.f;
+        above_water_wave.field.cell_square[3] = 3.f;
+        above_water_wave.field.rings[0] = 1.5f;
+        above_water_wave.field.draws = underwater_wave.field.draws;
+        above_water_wave.field.draw_count = 4;
+        above_water_wave.height_maps = underwater_wave.height_maps;
+        std::memcpy(above_water_wave.wave_eye_density,
+                    underwater_wave.wave_eye_density,
+                    sizeof(above_water_wave.wave_eye_density));
+        std::memcpy(above_water_wave.wave_reach_amplitude,
+                    underwater_wave.wave_reach_amplitude,
+                    sizeof(above_water_wave.wave_reach_amplitude));
+        std::memcpy(above_water_wave.patch_rect,
+                    underwater_wave.patch_rect,
+                    sizeof(above_water_wave.patch_rect));
+        std::memcpy(above_water_wave.patch_order,
+                    underwater_wave.patch_order,
+                    sizeof(above_water_wave.patch_order));
+        above_water_wave.patch_count = underwater_wave.patch_count;
+        above_water_wave.tessellation_factors =
+            underwater_wave.tessellation_factors;
+        above_water_wave.waves = true;
+        opaque_forward_scene.water_surface = &above_water_wave;
+        auto above_water_wave_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(above_water_wave_result);
+        REQUIRE(above_water_wave_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        bool saw_above_wave_depth = false;
+        for (float depth : pre_water_depth)
+        {
+            saw_above_wave_depth = saw_above_wave_depth ||
+                std::abs(depth - 0.5f) < 0.02f;
+        }
+        CHECK(saw_above_wave_depth);
+        opaque_forward_scene.water_surface = &above_water_surface;
 
         // A requested live cascade is mandatory. Once supplied, the same
         // shader executes both built and explicitly unbuilt shadow states.

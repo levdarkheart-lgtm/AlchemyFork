@@ -334,6 +334,281 @@ bool ALWaterSurface::fillMetalWaterHaze(
     }
     return haze.draw_count == 3;
 }
+
+bool ALWaterSurface::fillMetalWaterWaves(
+    ALMetalWorldWaterSurface& surface,
+    const LLViewerCamera& camera,
+    const LLViewerTexture* current,
+    const LLViewerTexture* next,
+    bool occlusion) const
+{
+    if (!mWavesDrawn || occlusion || mCellMap.isNull() ||
+        mTexels.size() < static_cast<size_t>(
+            ALWaterField::MAP_SIZE * ALWaterField::MAP_SIZE * 2))
+    {
+        return false;
+    }
+
+    const Heights heights[2] = {
+        mapHeights(current), mapHeights(next)
+    };
+    const ALMetalTexture* height_maps[2] = {
+        heights[0].mTexture ? heights[0].mTexture->getMetalTexture()
+                            : nullptr,
+        heights[1].mTexture ? heights[1].mTexture->getMetalTexture()
+                            : nullptr,
+    };
+    const ALMetalTexture* fallback = height_maps[0]
+        ? height_maps[0] : height_maps[1];
+    if (!fallback)
+    {
+        return false;
+    }
+    surface.height_maps[0] = height_maps[0] ? height_maps[0] : fallback;
+    surface.height_maps[1] = height_maps[1] ? height_maps[1] : fallback;
+
+    const WaveSettings settings = waveSettings();
+    surface.wave_eye_density[0] = mEye.mV[VX];
+    surface.wave_eye_density[1] = mEye.mV[VY];
+    surface.wave_eye_density[2] = mEye.mV[VZ];
+    surface.wave_eye_density[3] = settings.mDensity;
+    surface.wave_reach_amplitude[0] = static_cast<F32>(mLayout.mReach);
+    surface.wave_reach_amplitude[1] = mMaxDisplacement;
+    surface.wave_reach_amplitude[2] = height_maps[0]
+        ? settings.mHeight * heights[0].mRise : 0.f;
+    surface.wave_reach_amplitude[3] = height_maps[1]
+        ? settings.mHeight * heights[1].mRise : 0.f;
+
+    const ALWaterField::PatchRect rect =
+        ALWaterField::patchRect(mLayout);
+    if (rect.empty())
+    {
+        return false;
+    }
+    surface.patch_rect[0] = rect.mMinX;
+    surface.patch_rect[1] = rect.mMinY;
+    surface.patch_rect[2] = rect.mEndX;
+    surface.patch_rect[3] = rect.mEndY;
+    const LLVector3 at = camera.getAtAxis();
+    const ALWaterField::PatchOrder order =
+        ALWaterField::patchOrder(at.mV[VX], at.mV[VY]);
+    std::memcpy(surface.patch_order, order.mOrder,
+                sizeof(surface.patch_order));
+
+    surface.field.draws = {};
+    surface.field.draw_count = 0;
+    for (const ALWaterField::Draw& draw :
+         ALWaterField::fieldDraws(mLayout, rect))
+    {
+        if (draw.mVertices <= 0 || draw.mInstances <= 0 ||
+            surface.field.draw_count >= surface.field.draws.size())
+        {
+            continue;
+        }
+        ALMetalWorldWaterFieldDraw& destination =
+            surface.field.draws[surface.field.draw_count++];
+        destination.part = static_cast<U32>(draw.mPart);
+        destination.vertex_count = static_cast<U32>(draw.mVertices);
+        destination.instance_count = static_cast<U32>(draw.mInstances);
+        destination.triangle_strip = draw.mStrip;
+    }
+    if (surface.field.draw_count != 4)
+    {
+        return false;
+    }
+
+    constexpr S32 cull_plane_count = 5;
+    const S32 plane_indices[cull_plane_count] = {
+        LLCamera::AGENT_PLANE_LEFT,
+        LLCamera::AGENT_PLANE_RIGHT,
+        LLCamera::AGENT_PLANE_NEAR,
+        LLCamera::AGENT_PLANE_BOTTOM,
+        LLCamera::AGENT_PLANE_TOP,
+    };
+    F32 planes[cull_plane_count][4]{};
+    for (S32 plane_index = 0; plane_index < cull_plane_count;
+         ++plane_index)
+    {
+        const LLPlane& plane = camera.getAgentPlane(
+            plane_indices[plane_index]);
+        for (S32 component = 0; component < 4; ++component)
+        {
+            planes[plane_index][component] = plane[component];
+        }
+    }
+
+    constexpr S32 patches_per_cell =
+        ALWaterField::PATCHES_PER_CELL;
+    const S32 patches_x =
+        (rect.mEndX - rect.mMinX) * patches_per_cell;
+    const S32 patches_y =
+        (rect.mEndY - rect.mMinY) * patches_per_cell;
+    const S32 patch_count = patches_x * patches_y;
+    if (patch_count <= 0 || patch_count != patchCount())
+    {
+        return false;
+    }
+    surface.patch_count = static_cast<U32>(patch_count);
+    surface.tessellation_factors.assign(
+        static_cast<size_t>(patch_count) * 6, 0);
+
+    struct PatchCorner
+    {
+        F32 x;
+        F32 y;
+        F32 z;
+    };
+    const F32 side = mSquare.mV[VW];
+    const F32 width = mSquare.mV[VZ];
+    const F32 centre_x = mSquare.mV[VX] + 0.5f * side * width;
+    const F32 centre_y = mSquare.mV[VY] + 0.5f * side * width;
+    const LLVector3 eye = camera.getOrigin();
+    const auto edge_level = [&](const PatchCorner& a,
+                                const PatchCorner& b)
+    {
+        const F32 ab_x = b.x - a.x;
+        const F32 ab_y = b.y - a.y;
+        const F32 ab_length_sq = ab_x * ab_x + ab_y * ab_y;
+        const F32 eye_x = mEye.mV[VX] - a.x;
+        const F32 eye_y = mEye.mV[VY] - a.y;
+        const F32 along = llclamp(
+            (eye_x * ab_x + eye_y * ab_y) /
+                llmax(ab_length_sq, 1e-6f),
+            0.f, 1.f);
+        const F32 reach_x = a.x + along * ab_x - mEye.mV[VX];
+        const F32 reach_y = a.y + along * ab_y - mEye.mV[VY];
+        if (sqrtf(reach_x * reach_x + reach_y * reach_y) >=
+            surface.wave_reach_amplitude[0])
+        {
+            return 1.f;
+        }
+        const F32 ab_z = b.z - a.z;
+        const F32 length = sqrtf(
+            ab_x * ab_x + ab_y * ab_y + ab_z * ab_z);
+        const F32 mid_x = 0.5f * (a.x + b.x) - eye.mV[VX];
+        const F32 mid_y = 0.5f * (a.y + b.y) - eye.mV[VY];
+        const F32 mid_z = 0.5f * (a.z + b.z) - eye.mV[VZ];
+        const F32 distance = sqrtf(
+            mid_x * mid_x + mid_y * mid_y + mid_z * mid_z);
+        return llclamp(
+            length * settings.mDensity / llmax(distance, 1.f),
+            1.f, 64.f);
+    };
+
+    for (S32 instance = 0; instance < patch_count; ++instance)
+    {
+        const bool slow_x = order.mOrder[0] != 0;
+        const S32 run = slow_x ? patches_y : patches_x;
+        S32 slow = instance / run;
+        S32 fast = instance - slow * run;
+        slow = order.mOrder[1] != 0
+            ? (slow_x ? patches_x : patches_y) - 1 - slow : slow;
+        fast = order.mOrder[2] != 0 ? run - 1 - fast : fast;
+        const S32 at_x = slow_x ? slow : fast;
+        const S32 at_y = slow_x ? fast : slow;
+        const S32 cell_x = rect.mMinX + at_x / patches_per_cell;
+        const S32 cell_y = rect.mMinY + at_y / patches_per_cell;
+        const S32 square_x = at_x % patches_per_cell;
+        const S32 square_y = at_y % patches_per_cell;
+        const size_t texel_index = static_cast<size_t>(
+            (cell_y * ALWaterField::MAP_SIZE + cell_x) * 2);
+        const F32 water_height = mTexels[texel_index];
+        const bool drawn = mVoidDrawn ||
+            (static_cast<S32>(mTexels[texel_index + 1]) & 1) != 0;
+
+        std::array<PatchCorner, 4> corners{};
+        constexpr S32 corner_x[4] = { 0, 1, 1, 0 };
+        constexpr S32 corner_y[4] = { 0, 0, 1, 1 };
+        for (S32 corner = 0; corner < 4; ++corner)
+        {
+            const S32 dx = drawn ? corner_x[corner] : 0;
+            const S32 dy = drawn ? corner_y[corner] : 0;
+            const F32 local_x = static_cast<F32>(cell_x) +
+                static_cast<F32>(square_x + dx) /
+                    static_cast<F32>(patches_per_cell);
+            const F32 local_y = static_cast<F32>(cell_y) +
+                static_cast<F32>(square_y + dy) /
+                    static_cast<F32>(patches_per_cell);
+            corners[corner] = {
+                centre_x + (local_x - 0.5f * side) * width,
+                centre_y + (local_y - 0.5f * side) * width,
+                water_height,
+            };
+        }
+
+        bool visible = drawn &&
+            (corners[0].x != corners[2].x ||
+             corners[0].y != corners[2].y);
+        if (visible)
+        {
+            F32 lo[3] = { corners[0].x, corners[0].y,
+                          water_height - mMaxDisplacement };
+            F32 hi[3] = { corners[0].x, corners[0].y,
+                          water_height + mMaxDisplacement };
+            for (const PatchCorner& corner : corners)
+            {
+                lo[0] = llmin(lo[0], corner.x);
+                lo[1] = llmin(lo[1], corner.y);
+                hi[0] = llmax(hi[0], corner.x);
+                hi[1] = llmax(hi[1], corner.y);
+            }
+            const F32 centre[3] = {
+                0.5f * (lo[0] + hi[0]),
+                0.5f * (lo[1] + hi[1]),
+                0.5f * (lo[2] + hi[2]),
+            };
+            const F32 radius[3] = {
+                0.5f * (hi[0] - lo[0]),
+                0.5f * (hi[1] - lo[1]),
+                0.5f * (hi[2] - lo[2]),
+            };
+            for (S32 plane_index = 0;
+                 visible && plane_index < cull_plane_count;
+                 ++plane_index)
+            {
+                F32 distance = planes[plane_index][3];
+                for (S32 component = 0; component < 3; ++component)
+                {
+                    const F32 normal =
+                        planes[plane_index][component];
+                    const F32 inner = centre[component] -
+                        radius[component] *
+                            (normal > 0.f ? 1.f
+                             : normal < 0.f ? -1.f : 0.f);
+                    distance += normal * inner;
+                }
+                visible = distance <= 0.f;
+            }
+        }
+        if (!visible)
+        {
+            continue;
+        }
+
+        const F32 outer[4] = {
+            edge_level(corners[0], corners[3]),
+            edge_level(corners[0], corners[1]),
+            edge_level(corners[1], corners[2]),
+            edge_level(corners[3], corners[2]),
+        };
+        const F32 inner[2] = {
+            llmax(outer[1], outer[3]),
+            llmax(outer[0], outer[2]),
+        };
+        const size_t factor = static_cast<size_t>(instance) * 6;
+        for (S32 edge = 0; edge < 4; ++edge)
+        {
+            surface.tessellation_factors[factor + edge] =
+                ALWaterHeightBake::halfOf(outer[edge]);
+        }
+        surface.tessellation_factors[factor + 4] =
+            ALWaterHeightBake::halfOf(inner[0]);
+        surface.tessellation_factors[factor + 5] =
+            ALWaterHeightBake::halfOf(inner[1]);
+    }
+    surface.waves = true;
+    return true;
+}
 #endif
 
 void ALWaterSurface::draw(LLGLSLShader& shader, bool patched) const

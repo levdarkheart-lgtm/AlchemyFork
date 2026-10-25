@@ -313,11 +313,11 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
     const bool opaque_beside = LLPipeline::sRenderTransparentWater && !refracts;
 
 #if LL_DARWIN
-    // The flat class-3 family is one native boundary above and below the
-    // surface. Tessellated wave patches remain a later checkpoint, so those
-    // frames retain the already validated pre-water target and visible GL
-    // authority.
-    if (!waves && mShaderLevel > 2 && bound_a)
+    // The class-3 family is one native boundary above and below the surface.
+    // Wave frames join it only after their exact patch factors and height-map
+    // mirrors are complete; unsupported depth-pyramid occlusion fails closed
+    // and retains the already validated pre-water target.
+    if (mShaderLevel > 2 && bound_a)
     {
         ALMetalWorldWaterSurface metal_water;
         LLImageGL* normal_a = bound_a->getGLTexture();
@@ -391,7 +391,11 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
                        ? gWaterOpaqueProgram : gWaterProgram);
             metal_water.uses_shadows = !underwater &&
                 metal_flat_program.selectVariant()->mFeatures.hasShadows;
-            gPipeline.captureMetalWorldWaterSurface(metal_water);
+            if (!waves || surface.fillMetalWaterWaves(
+                    metal_water, camera, bound_a, bound_b, occlusion))
+            {
+                gPipeline.captureMetalWorldWaterSurface(metal_water);
+            }
         }
     }
 #endif
