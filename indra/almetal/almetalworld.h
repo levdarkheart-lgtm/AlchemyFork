@@ -18,9 +18,18 @@
 #include <memory>
 #include <string>
 
+struct ALMetalWorldMaterialSlot
+{
+    float specular_color[4] = {1.f, 1.f, 1.f, 0.5f};
+    float env_intensity = 0.f;
+    float alpha_cutoff = 0.5f;
+    float fullbright = 0.f;
+};
+
 struct ALMetalWorldSimpleBatch
 {
     static constexpr std::size_t max_diffuse_textures = 32;
+    static constexpr std::size_t max_material_slots = 8;
 
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
@@ -37,6 +46,9 @@ struct ALMetalWorldSimpleBatch
     std::array<const ALMetalTexture*, max_diffuse_textures> diffuse_textures{};
     std::uint32_t texture_count = 0;
     const ALMetalTexture* normal_texture = nullptr;
+    std::array<ALMetalWorldMaterialSlot, max_material_slots> material_slots{};
+    std::uint32_t material_slot_count = 0;
+    std::uint32_t material_alpha_mode = 0;
     const float* skin_palette = nullptr;
     std::size_t skin_palette_float_count = 0;
     std::uint32_t skin_joint_count = 0;

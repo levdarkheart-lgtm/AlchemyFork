@@ -122,6 +122,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_simple_fragment",
             "almetal_world_alpha_mask_fragment",
             "almetal_world_bump_fragment",
+            "almetal_world_material_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
             "almetal_lit_preview_vertex",
@@ -1221,6 +1222,99 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(discarded_albedo[center + 2] == 255);
         CHECK(discarded_albedo[center + 3] == 255);
 
+        // Plain legacy materials add authored specular/gloss, environment,
+        // fullbright and three diffuse-alpha modes to the same geometry path.
+        // The position.w slot index selects the second material exactly as the
+        // indexed GL program does.
+        batch.alpha_mask = false;
+        batch.alpha_cutoff = 0.f;
+        batch.diffuse_textures[1] = indexed_diffuse.get();
+        batch.material_slot_count = 2;
+        batch.material_alpha_mode = 1;
+        batch.material_slots[1].specular_color[0] = 0.25f;
+        batch.material_slots[1].specular_color[1] = 0.5f;
+        batch.material_slots[1].specular_color[2] = 0.75f;
+        batch.material_slots[1].specular_color[3] = 0.25f;
+        batch.material_slots[1].env_intensity = 0.375f;
+        batch.material_slots[1].alpha_cutoff = 0.5f;
+        batch.material_slots[1].fullbright = 0.25f;
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal world simple batch is invalid");
+
+        batch.material_alpha_mode = 0;
+        error.clear();
+        auto material_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(material_result);
+        std::array<std::uint8_t, 32 * 32 * 4> material_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4> material_specular{};
+        std::array<std::uint16_t, 32 * 32 * 4> material_normal{};
+        REQUIRE(material_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, material_albedo.data(), 32 * 4, &error));
+        REQUIRE(material_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, material_specular.data(), 32 * 4, &error));
+        REQUIRE(material_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, material_normal.data(), 32 * 8, &error));
+        INFO(error);
+        CHECK(material_albedo[center + 0] == 0);
+        CHECK(material_albedo[center + 1] == 255);
+        CHECK(material_albedo[center + 2] == 0);
+        CHECK(std::abs(static_cast<int>(material_albedo[center + 3]) -
+                       64) <= 1);
+        CHECK(std::abs(static_cast<int>(material_specular[center + 0]) -
+                       64) <= 1);
+        CHECK(std::abs(static_cast<int>(material_specular[center + 1]) -
+                       128) <= 1);
+        CHECK(std::abs(static_cast<int>(material_specular[center + 2]) -
+                       191) <= 1);
+        CHECK(std::abs(static_cast<int>(material_specular[center + 3]) -
+                       64) <= 1);
+        CHECK(std::abs(static_cast<int>(material_normal[center + 0]) -
+                       32768) <= 1);
+        CHECK(std::abs(static_cast<int>(material_normal[center + 1]) -
+                       32768) <= 1);
+        CHECK(std::abs(static_cast<int>(material_normal[center + 2]) -
+                       24576) <= 2);
+        CHECK(std::abs(static_cast<int>(material_normal[center + 3]) -
+                       22282) <= 2);
+
+        batch.material_alpha_mode = 2;
+        batch.material_slots[1].alpha_cutoff = 1.01f;
+        auto material_masked_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(material_masked_result);
+        std::array<std::uint8_t, 32 * 32 * 4> material_masked_albedo{};
+        REQUIRE(material_masked_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, material_masked_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(material_masked_albedo[center + 0] == 255);
+        CHECK(material_masked_albedo[center + 1] == 0);
+        CHECK(material_masked_albedo[center + 2] == 255);
+
+        batch.material_alpha_mode = 3;
+        batch.diffuse_textures[1] = tree_diffuse.get();
+        auto material_emissive_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(material_emissive_result);
+        std::array<std::uint8_t, 32 * 32 * 4> material_emissive_albedo{};
+        REQUIRE(material_emissive_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, material_emissive_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(material_emissive_albedo[center + 0]) -
+                       61) <= 1);
+        CHECK(std::abs(static_cast<int>(material_emissive_albedo[center + 1]) -
+                       64) <= 1);
+        CHECK(std::abs(static_cast<int>(material_emissive_albedo[center + 2]) -
+                       32) <= 1);
+        CHECK(std::abs(static_cast<int>(material_emissive_albedo[center + 3]) -
+                       128) <= 1);
+
+        batch.material_slot_count = 0;
+        batch.material_alpha_mode = 0;
+        batch.diffuse_textures[1] = indexed_diffuse.get();
+
         // Reproduce the world owner's rebased object skinning. Joint-local
         // and origin translations each contribute +0.25 clip X, so the
         // indexed green triangle moves by exactly half the target width.
@@ -1301,6 +1395,28 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(skinned_mask_specular[translated_center + 1] == 0);
         CHECK(skinned_mask_specular[translated_center + 2] == 0);
         CHECK(skinned_mask_specular[translated_center + 3] == 0);
+
+        // The same material fragment contract consumes the rebased rigged
+        // vertex output; no separate approximation or CPU skinning path is
+        // allowed for the rigged material owner.
+        batch.alpha_mask = false;
+        batch.material_slot_count = 2;
+        batch.material_alpha_mode = 0;
+        batch.material_slots[1].fullbright = 0.25f;
+        auto skinned_material_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(skinned_material_result);
+        std::array<std::uint8_t, 32 * 32 * 4> skinned_material_albedo{};
+        REQUIRE(skinned_material_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, skinned_material_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(skinned_material_albedo[translated_center + 0] == 0);
+        CHECK(skinned_material_albedo[translated_center + 1] == 255);
+        CHECK(skinned_material_albedo[translated_center + 2] == 0);
+        CHECK(std::abs(static_cast<int>(
+                           skinned_material_albedo[translated_center + 3]) -
+                       64) <= 1);
     }
 }
 

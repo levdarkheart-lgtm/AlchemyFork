@@ -37,6 +37,19 @@ namespace
         std::uint32_t depth_convention[4]{};
     };
 
+    struct alignas(16) WorldMaterialSlotConstants
+    {
+        float specular_color[4];
+        float properties[4];
+    };
+
+    struct alignas(16) WorldMaterialConstants
+    {
+        WorldMaterialSlotConstants
+            slots[ALMetalWorldSimpleBatch::max_material_slots]{};
+        std::uint32_t config[4]{};
+    };
+
     bool finiteValues(const float* values, std::size_t count)
     {
         for (std::size_t index = 0; index < count; ++index)
@@ -56,6 +69,11 @@ namespace
                             stride &&
                offset + count * stride <= length;
     }
+
+    bool validMaterialAlphaMode(std::uint32_t mode)
+    {
+        return mode == 0 || mode == 2 || mode == 3;
+    }
 }
 
 struct ALMetalWorldGBufferRenderer::Impl
@@ -65,10 +83,12 @@ struct ALMetalWorldGBufferRenderer::Impl
     using RiggedPipelines = std::array<NormalPipelines, 2>;
     using MaskPipelines = std::array<RiggedPipelines, 2>;
     using BumpPipelines = std::array<MaskPipelines, 2>;
+    using MaterialRiggedPipelines = std::array<NormalPipelines, 2>;
 
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::array<BumpPipelines, 2> pipelines;
+    std::array<MaterialRiggedPipelines, 2> material_pipelines;
     std::unique_ptr<ALMetalDepthStencilState> forward_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_depth;
     std::unique_ptr<ALMetalSamplerState> diffuse_sampler;
@@ -96,7 +116,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_bump_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_fragment") ||
         !impl->library->hasFunction("almetal_world_alpha_mask_fragment") ||
-        !impl->library->hasFunction("almetal_world_bump_fragment"))
+        !impl->library->hasFunction("almetal_world_bump_fragment") ||
+        !impl->library->hasFunction("almetal_world_material_fragment"))
     {
         if (impl->library)
         {
@@ -110,6 +131,44 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         ALMetalPixelFormat::rgba8_unorm,
         ALMetalPixelFormat::rg11b10_float,
     }};
+    for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
+    {
+        for (std::size_t rigged = 0; rigged < 2; ++rigged)
+        {
+            for (std::size_t normal_hdr = 0; normal_hdr < 2; ++normal_hdr)
+            {
+                ALMetalRenderPipelineDescriptor descriptor;
+                descriptor.library = impl->library.get();
+                descriptor.vertex_function = rigged
+                    ? "almetal_world_simple_skinned_vertex"
+                    : "almetal_world_simple_vertex";
+                descriptor.fragment_function =
+                    "almetal_world_material_fragment";
+                descriptor.color_attachment_count = 4;
+                descriptor.colors[0].format =
+                    ALMetalPixelFormat::rgba8_unorm_srgb;
+                descriptor.colors[1].format =
+                    ALMetalPixelFormat::rgba8_unorm;
+                descriptor.colors[2].format = normal_hdr
+                    ? ALMetalPixelFormat::rgba16_unorm
+                    : ALMetalPixelFormat::rgb10a2_unorm;
+                descriptor.colors[3].format = emissive_formats[hdr];
+                descriptor.depth_stencil_format =
+                    ALMetalPixelFormat::depth32_float;
+                descriptor.label =
+                    "Alchemy world legacy material G-buffer pipeline";
+                auto& pipeline = impl->material_pipelines[hdr][rigged]
+                                                         [normal_hdr];
+                pipeline = ALMetalRenderPipeline::create(
+                    device, descriptor, error);
+                if (!pipeline)
+                {
+                    return nullptr;
+                }
+            }
+        }
+    }
+
     for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
     {
         for (std::size_t bump = 0; bump < 2; ++bump)
@@ -220,11 +279,19 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
         const bool bump = batch.normal_texture != nullptr;
+        const bool material = batch.material_slot_count != 0;
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         if (!batch.vertices || !batch.indices || batch.texture_count == 0 ||
             batch.texture_count >
                 ALMetalWorldSimpleBatch::max_diffuse_textures ||
+            (material &&
+             (batch.material_slot_count >
+                  ALMetalWorldSimpleBatch::max_material_slots ||
+              batch.material_slot_count != batch.texture_count ||
+              bump || batch.alpha_mask ||
+              !validMaterialAlphaMode(batch.material_alpha_mode))) ||
+            (!material && batch.material_alpha_mode != 0) ||
             batch.vertex_count == 0 || batch.index_count == 0 ||
             batch.index_count % 3 != 0 ||
             batch.position_offset % float4_stride != 0 ||
@@ -241,6 +308,21 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         {
             setError(error, "Metal world simple batch is invalid");
             return nullptr;
+        }
+        for (std::uint32_t slot = 0;
+             slot < batch.material_slot_count; ++slot)
+        {
+            const ALMetalWorldMaterialSlot& material_slot =
+                batch.material_slots[slot];
+            if (!finiteValues(material_slot.specular_color, 4) ||
+                !std::isfinite(material_slot.env_intensity) ||
+                !std::isfinite(material_slot.alpha_cutoff) ||
+                !std::isfinite(material_slot.fullbright))
+            {
+                setError(error,
+                         "Metal world material constants are non-finite");
+                return nullptr;
+            }
         }
         if (!rangeFits(batch.position_offset, batch.vertex_count,
                        float4_stride, batch.vertices->length()) ||
@@ -451,12 +533,16 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         constants.depth_convention[1] = batch.texture_count;
         const bool rigged = batch.skin_palette != nullptr;
         const bool bump = batch.normal_texture != nullptr;
-        const ALMetalRenderPipeline* pipeline =
-            mImpl->pipelines[scene.hdr ? 1 : 0]
-                            [bump ? 1 : 0]
-                            [batch.alpha_mask ? 1 : 0]
-                            [rigged ? 1 : 0]
-                            [scene.normal_hdr ? 1 : 0].get();
+        const bool material = batch.material_slot_count != 0;
+        const ALMetalRenderPipeline* pipeline = material
+            ? mImpl->material_pipelines[scene.hdr ? 1 : 0]
+                                       [rigged ? 1 : 0]
+                                       [scene.normal_hdr ? 1 : 0].get()
+            : mImpl->pipelines[scene.hdr ? 1 : 0]
+                              [bump ? 1 : 0]
+                              [batch.alpha_mask ? 1 : 0]
+                              [rigged ? 1 : 0]
+                              [scene.normal_hdr ? 1 : 0].get();
 
         encoded =
             encoder->setPipeline(*pipeline, error) &&
@@ -488,6 +574,28 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                                          batch.tangent_offset, error) &&
                 encoder->setFragmentTexture(
                     32, batch.normal_texture, error);
+        }
+        if (encoded && material)
+        {
+            WorldMaterialConstants material_constants{};
+            for (std::size_t slot = 0;
+                 slot < batch.material_slot_count; ++slot)
+            {
+                const ALMetalWorldMaterialSlot& source =
+                    batch.material_slots[slot];
+                WorldMaterialSlotConstants& destination =
+                    material_constants.slots[slot];
+                std::memcpy(destination.specular_color,
+                            source.specular_color,
+                            sizeof(destination.specular_color));
+                destination.properties[0] = source.env_intensity;
+                destination.properties[1] = source.alpha_cutoff;
+                destination.properties[2] = source.fullbright;
+            }
+            material_constants.config[0] = batch.material_slot_count;
+            material_constants.config[1] = batch.material_alpha_mode;
+            encoded = encoder->setFragmentBytes(
+                0, &material_constants, sizeof(material_constants), error);
         }
         for (std::size_t texture_index = 0;
              encoded && texture_index <

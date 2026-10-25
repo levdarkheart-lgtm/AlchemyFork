@@ -180,6 +180,10 @@ static void pushMaterialBatchIndexed(LLGLSLShader& program, U32 type, bool rigge
 
         LLRenderPass::applyModelMatrix(params);
 
+#if LL_DARWIN
+        gPipeline.captureMetalWorldMaterialBatch(params, true);
+#endif
+
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
     }
@@ -265,6 +269,16 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
     {
         type += 1;
     }
+
+#if LL_DARWIN
+    const bool capture_plain_material = pass < 3;
+    if (capture_plain_material)
+    {
+        static constexpr U32 alpha_modes[] = {0, 2, 3};
+        gPipeline.beginMetalWorldMaterialPass(
+            rigged, alpha_modes[pass]);
+    }
+#endif
 
     LLCullResult::drawinfo_iterator begin = gPipeline.beginRenderMap(type);
     LLCullResult::drawinfo_iterator end = gPipeline.endRenderMap(type);
@@ -409,6 +423,13 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
             params.mGroup->rebuildMesh();
         }*/
 
+#if LL_DARWIN
+        if (capture_plain_material)
+        {
+            gPipeline.captureMetalWorldMaterialBatch(params, false);
+        }
+#endif
+
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 
@@ -430,4 +451,11 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
             pushMaterialBatchIndexed(*prog, type, rigged);
         }
     }
+
+#if LL_DARWIN
+    if (capture_plain_material)
+    {
+        gPipeline.endMetalWorldGBufferPass();
+    }
+#endif
 }

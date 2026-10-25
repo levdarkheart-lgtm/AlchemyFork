@@ -389,6 +389,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 failed_frames = 0;
     bool rigged = false;
     bool alpha_mask = false;
+    U32 material_alpha_mode = 0;
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
@@ -789,6 +790,33 @@ void LLPipeline::beginMetalWorldGBufferPass(bool rigged, bool alpha_mask)
     }
     capture.rigged = rigged;
     capture.alpha_mask = alpha_mask;
+    capture.material_alpha_mode = 0;
+    capture.pass_active = true;
+}
+
+void LLPipeline::beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    if (alpha_mode != 0 && alpha_mode != 2 && alpha_mode != 3)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    capture.rigged = rigged;
+    capture.alpha_mask = false;
+    capture.material_alpha_mode = alpha_mode;
     capture.pass_active = true;
 }
 
@@ -960,6 +988,96 @@ void LLPipeline::captureMetalWorldBumpBatch(
     ALMetalWorldSimpleBatch& batch = capture.batches.back();
     batch.tangent_offset = buffer->getOffset(LLVertexBuffer::TYPE_TANGENT);
     batch.normal_texture = normal_image->getMetalTexture();
+}
+
+void LLPipeline::captureMetalWorldMaterialBatch(
+    const LLDrawInfo& params, bool indexed_materials)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->pass_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const std::size_t slot_count = indexed_materials
+        ? params.mMaterialSlotList.size() : 1;
+    LLVertexBuffer* buffer = params.mVertexBuffer.get();
+    if (!capture.complete || !buffer || slot_count == 0 ||
+        slot_count > ALMetalWorldSimpleBatch::max_material_slots ||
+        (indexed_materials &&
+         (slot_count < 2 ||
+          !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX))))
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+
+    const std::size_t prior_count = capture.batches.size();
+    captureMetalWorldGBufferBatch(params, false);
+    if (!capture.complete || capture.batches.size() == prior_count)
+    {
+        return;
+    }
+
+    ALMetalWorldSimpleBatch& batch = capture.batches.back();
+    batch.material_slot_count = static_cast<U32>(slot_count);
+    batch.material_alpha_mode = capture.material_alpha_mode;
+    batch.texture_count = static_cast<U32>(slot_count);
+    if (indexed_materials)
+    {
+        std::memset(batch.texture_matrix, 0,
+                    sizeof(batch.texture_matrix));
+        for (U32 diagonal = 0; diagonal < 4; ++diagonal)
+        {
+            batch.texture_matrix[diagonal * 4 + diagonal] = 1.f;
+        }
+    }
+
+    for (std::size_t slot_index = 0;
+         slot_index < slot_count; ++slot_index)
+    {
+        LLViewerTexture* texture = nullptr;
+        ALMetalWorldMaterialSlot& destination =
+            batch.material_slots[slot_index];
+        if (indexed_materials)
+        {
+            const LLDrawInfo::MaterialSlot& source =
+                params.mMaterialSlotList[slot_index];
+            texture = source.mDiffuse.notNull()
+                ? source.mDiffuse.get()
+                : LLViewerFetchedTexture::sWhiteImagep.get();
+            std::memcpy(destination.specular_color,
+                        source.mSpecColor.mV,
+                        sizeof(destination.specular_color));
+            destination.env_intensity = source.mEnvIntensity;
+            destination.alpha_cutoff = source.mAlphaMaskCutoff;
+            destination.fullbright = source.mFullbright;
+        }
+        else
+        {
+            texture = params.mTexture
+                ? params.mTexture.get()
+                : LLViewerFetchedTexture::sWhiteImagep.get();
+            std::memcpy(destination.specular_color,
+                        params.mSpecColor.mV,
+                        sizeof(destination.specular_color));
+            destination.env_intensity = params.mEnvIntensity;
+            destination.alpha_cutoff = params.mAlphaMaskCutoff;
+            destination.fullbright = params.mFullbright ? 1.f : 0.f;
+        }
+
+        LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        batch.diffuse_textures[slot_index] = image
+            ? image->getMetalTexture() : nullptr;
+        if (!batch.diffuse_textures[slot_index])
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
+    }
 }
 
 void LLPipeline::captureMetalWorldTreeBatch(LLVertexBuffer* buffer,

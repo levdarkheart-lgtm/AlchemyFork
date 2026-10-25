@@ -489,6 +489,79 @@ fragment ALMetalWorldGBufferOutput almetal_world_alpha_mask_fragment(
     return output;
 }
 
+struct ALMetalWorldMaterialSlotConstants
+{
+    float4 specular_color;
+    // x = environment intensity, y = alpha cutoff,
+    // z = fullbright/emissive brightness.
+    float4 properties;
+};
+
+struct ALMetalWorldMaterialConstants
+{
+    ALMetalWorldMaterialSlotConstants slots[8];
+    // x = populated slot count, y = legacy diffuse alpha mode
+    // (0 opaque, 2 mask, 3 emissive).
+    uint4 config;
+};
+
+fragment ALMetalWorldGBufferOutput almetal_world_material_fragment(
+    ALMetalWorldSimpleVaryings input [[stage_in]],
+    array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    constant ALMetalWorldMaterialConstants& constants [[buffer(0)]])
+{
+    const uint slot_count = max(constants.config.x, 1u);
+    const uint material_index = min(input.texture_index, slot_count - 1u);
+    const ALMetalWorldMaterialSlotConstants material =
+        constants.slots[min(material_index, 7u)];
+    const float4 diffuse = diffuse_textures[min(material_index, 7u)].sample(
+        diffuse_sampler, input.texcoord);
+
+    constexpr uint alpha_mode_mask = 2u;
+    constexpr uint alpha_mode_emissive = 3u;
+    constexpr float quantization_bias = 1.0 / 512.0;
+    if (constants.config.y == alpha_mode_mask &&
+        diffuse.a < material.properties.y - quantization_bias)
+    {
+        discard_fragment();
+    }
+
+    const float3 color = diffuse.rgb * input.color.rgb;
+    const float3 normal = normalize(input.normal);
+    const float3 du = dfdx(normal);
+    const float3 dv = dfdy(normal);
+    const float variance = 0.15 * (dot(du, du) + dot(dv, dv));
+    const float spec_kernel = min(2.0 * variance, 0.25);
+    const float perceptual_roughness = 1.0 - material.specular_color.a;
+    const float alpha = perceptual_roughness * perceptual_roughness;
+    const float glossiness = 1.0 - sqrt(sqrt(clamp(
+        alpha * alpha + spec_kernel, 0.0, 1.0)));
+    const float emissive = constants.config.y == alpha_mode_emissive
+        ? max(diffuse.a, material.properties.z)
+        : material.properties.z;
+
+    const float denominator = abs(normal.x) + abs(normal.y) + abs(normal.z);
+    float2 oct = normal.xy / max(denominator, 1.0e-20);
+    if (normal.z < 0.0)
+    {
+        oct = (1.0 - abs(oct.yx)) *
+              select(float2(-1.0), float2(1.0), oct >= 0.0);
+    }
+
+    ALMetalWorldGBufferOutput output;
+    output.albedo = max(float4(color, emissive), float4(0.0));
+    // The legacy material G-buffer stores specular RGB encoded in its plain
+    // RGBA8 attachment. With no specular map, the GL shader's decode/encode
+    // pair is exactly the authored sRGB tint supplied here.
+    output.specular_orm = max(
+        float4(material.specular_color.rgb, glossiness), float4(0.0));
+    output.normal = float4(oct * 0.5 + 0.5,
+                           material.properties.x, 0.34);
+    output.emissive = 0.0;
+    return output;
+}
+
 fragment ALMetalWorldGBufferOutput almetal_world_bump_fragment(
     ALMetalWorldSimpleVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
