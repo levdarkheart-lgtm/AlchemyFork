@@ -153,6 +153,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_pbr_terrain_fragment",
             "almetal_world_local_light_vertex",
             "almetal_world_local_light_fragment",
+            "almetal_world_light_map_fragment",
+            "almetal_world_light_map_blur_fragment",
             "almetal_world_base_light_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
@@ -3586,6 +3588,294 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(pbr_pixels[center + 2] > 0);
         CHECK(pbr_pixels[center + 3] == 0);
         CHECK(pbr_pixels[center + 0] != legacy_pixels[center + 0]);
+
+        // The retained native G-buffer now owns the two-channel deferred
+        // light map as well. With no shadows or SSAO both geometry and the
+        // cleared sky are fully lit. Enabling the directional owner with no
+        // built cascades still applies the exact shading-normal facing cut.
+        ALMetalWorldLightMapScene light_map_scene;
+        light_map_scene.gbuffer = pbr_gbuffer.get();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            light_map_scene.constants
+                .inverse_projection[axis * 4 + axis] = 1.f;
+        }
+        light_map_scene.constants.inverse_projection[14] = -1.f;
+        light_map_scene.constants.light_direction[2] = 1.f;
+        light_map_scene.constants.screen[0] = 32.f;
+        light_map_scene.constants.screen[1] = 32.f;
+        light_map_scene.constants.config[3] = 1;
+        auto native_light_map = renderer->renderLightMap(
+            light_map_scene, &error);
+        INFO(error);
+        REQUIRE(native_light_map);
+        std::array<std::uint8_t, 32 * 32 * 2> native_light_pixels{};
+        REQUIRE(native_light_map->colorTexture(0)->readback(
+            *device, 0, 0, {}, native_light_pixels.data(), 32 * 2,
+            &error));
+        INFO(error);
+        const std::size_t light_center = (16 * 32 + 16) * 2;
+        const std::size_t light_outside = (2 * 32 + 2) * 2;
+        CHECK(native_light_pixels[light_center + 0] == 255);
+        CHECK(native_light_pixels[light_center + 1] == 255);
+        CHECK(native_light_pixels[light_outside + 0] == 255);
+        CHECK(native_light_pixels[light_outside + 1] == 255);
+
+        light_map_scene.constants.config[1] = 1;
+        light_map_scene.constants.light_direction[2] = -1.f;
+        auto back_facing_light_map = renderer->renderLightMap(
+            light_map_scene, &error);
+        INFO(error);
+        REQUIRE(back_facing_light_map);
+        std::array<std::uint8_t, 32 * 32 * 2> back_facing_pixels{};
+        REQUIRE(back_facing_light_map->colorTexture(0)->readback(
+            *device, 0, 0, {}, back_facing_pixels.data(), 32 * 2,
+            &error));
+        INFO(error);
+        CHECK(back_facing_pixels[light_center + 0] == 0);
+        CHECK(back_facing_pixels[light_center + 1] == 255);
+        CHECK(back_facing_pixels[light_outside + 0] == 255);
+
+        // A constant raw-depth cascade maps the receiver to depth 0.5. Its
+        // stored 0.25 is shadowing under forward-Z, while declaring the same
+        // cascade unbuilt restores fully lit without sampling it.
+        ALMetalTextureDescriptor world_shadow_descriptor;
+        world_shadow_descriptor.type =
+            ALMetalTextureType::texture_2d_array;
+        world_shadow_descriptor.format = ALMetalPixelFormat::r32_float;
+        world_shadow_descriptor.width = 8;
+        world_shadow_descriptor.height = 8;
+        world_shadow_descriptor.array_length = 4;
+        world_shadow_descriptor.storage = ALMetalStorageMode::private_gpu;
+        world_shadow_descriptor.usage = ALMetalTextureUsage::shader_read;
+        world_shadow_descriptor.label =
+            "Alchemy world light-map directional-shadow test";
+        auto world_shadow_texture = ALMetalTexture::create(
+            *device, world_shadow_descriptor, &error);
+        INFO(error);
+        REQUIRE(world_shadow_texture);
+        const std::array<float, 8 * 8> shadowed_depth = []
+        {
+            std::array<float, 8 * 8> value{};
+            value.fill(0.25f);
+            return value;
+        }();
+        const std::array<float, 8 * 8> fully_lit_depth = []
+        {
+            std::array<float, 8 * 8> value{};
+            value.fill(1.f);
+            return value;
+        }();
+        auto world_shadow_upload = device->makeCommandBuffer(
+            "Alchemy world light-map directional-shadow upload", &error);
+        INFO(error);
+        REQUIRE(world_shadow_upload);
+        for (std::uint32_t cascade = 0; cascade < 4; ++cascade)
+        {
+            const auto& values = cascade == 0
+                ? shadowed_depth : fully_lit_depth;
+            REQUIRE(world_shadow_texture->upload(
+                *world_shadow_upload, 0, cascade, {}, values.data(),
+                8 * sizeof(float), &error));
+        }
+        REQUIRE(world_shadow_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldDirectionalShadows world_shadows;
+        world_shadows.depth_texture = world_shadow_texture.get();
+        for (std::size_t cascade = 0; cascade < 4; ++cascade)
+        {
+            float* matrix = world_shadows.constants
+                                .shadow_matrix[cascade];
+            matrix[12] = 0.5f;
+            matrix[13] = 0.5f;
+            matrix[14] = 0.5f;
+            matrix[15] = 1.f;
+        }
+        world_shadows.constants.shadow_clip[0] = 4.f;
+        world_shadows.constants.shadow_clip[1] = 8.f;
+        world_shadows.constants.shadow_clip[2] = 12.f;
+        world_shadows.constants.shadow_clip[3] = 16.f;
+        world_shadows.constants.resolution[0] = 8.f;
+        world_shadows.constants.resolution[1] = 8.f;
+        world_shadows.constants.resolution[2] = 32.f;
+        world_shadows.constants.resolution[3] = 32.f;
+        world_shadows.constants.parameters[2] = 200.f;
+        world_shadows.constants.parameters[3] = 32.f;
+        world_shadows.constants.config[0] = 4;
+        world_shadows.constants.config[1] = 0xeu;
+        world_shadows.constants.config[3] = 1;
+        light_map_scene.directional_shadows = &world_shadows;
+        light_map_scene.constants.light_direction[2] = 1.f;
+        auto shadowed_light_map = renderer->renderLightMap(
+            light_map_scene, &error);
+        INFO(error);
+        REQUIRE(shadowed_light_map);
+        std::array<std::uint8_t, 32 * 32 * 2> shadowed_light_pixels{};
+        REQUIRE(shadowed_light_map->colorTexture(0)->readback(
+            *device, 0, 0, {}, shadowed_light_pixels.data(), 32 * 2,
+            &error));
+        INFO(error);
+        CHECK(shadowed_light_pixels[light_center + 0] == 0);
+        CHECK(shadowed_light_pixels[light_center + 1] == 255);
+        world_shadows.constants.config[1] = 0xfu;
+        auto unbuilt_light_map = renderer->renderLightMap(
+            light_map_scene, &error);
+        INFO(error);
+        REQUIRE(unbuilt_light_map);
+        std::array<std::uint8_t, 32 * 32 * 2> unbuilt_light_pixels{};
+        REQUIRE(unbuilt_light_map->colorTexture(0)->readback(
+            *device, 0, 0, {}, unbuilt_light_pixels.data(), 32 * 2,
+            &error));
+        INFO(error);
+        CHECK(unbuilt_light_pixels[light_center + 0] == 255);
+        light_map_scene.directional_shadows = nullptr;
+        light_map_scene.constants.config[1] = 0;
+
+        light_map_scene.gbuffer = pbr_reverse_gbuffer.get();
+        light_map_scene.constants.inverse_projection[10] = -1.f;
+        light_map_scene.constants.config[0] = 1;
+        auto reverse_light_map = renderer->renderLightMap(
+            light_map_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_light_map);
+        std::array<std::uint8_t, 32 * 32 * 2> reverse_light_pixels{};
+        REQUIRE(reverse_light_map->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_light_pixels.data(), 32 * 2,
+            &error));
+        INFO(error);
+        CHECK(reverse_light_pixels[light_center + 0] ==
+              native_light_pixels[light_center + 0]);
+        CHECK(reverse_light_pixels[light_center + 1] ==
+              native_light_pixels[light_center + 1]);
+        light_map_scene.gbuffer = pbr_gbuffer.get();
+        light_map_scene.constants.inverse_projection[10] = 1.f;
+        light_map_scene.constants.config[0] = 0;
+
+        // SSAO consumes the exact 128-square reflected-noise contract and
+        // applies the same twelve-tap bilateral blur on each axis. A stepped
+        // retained G-buffer must contain occlusion, and a non-zero blur must
+        // redistribute at least one occluded texel without touching R.
+        ALMetalTextureDescriptor noise_descriptor;
+        noise_descriptor.format = ALMetalPixelFormat::rg32_float;
+        noise_descriptor.width = 128;
+        noise_descriptor.height = 128;
+        noise_descriptor.storage = ALMetalStorageMode::private_gpu;
+        noise_descriptor.usage = ALMetalTextureUsage::shader_read;
+        noise_descriptor.label = "Alchemy world SSAO reflected noise";
+        auto noise_texture = ALMetalTexture::create(
+            *device, noise_descriptor, &error);
+        INFO(error);
+        REQUIRE(noise_texture);
+        std::array<float, 128 * 128 * 2> noise_values{};
+        for (std::size_t texel = 0; texel < 128 * 128; ++texel)
+        {
+            constexpr float directions[4][2] = {
+                {1.f, 0.f}, {0.f, 1.f},
+                {-1.f, 0.f}, {0.f, -1.f},
+            };
+            noise_values[texel * 2 + 0] =
+                directions[texel & 3u][0];
+            noise_values[texel * 2 + 1] =
+                directions[texel & 3u][1];
+        }
+        auto noise_upload = device->makeCommandBuffer(
+            "Alchemy world SSAO reflected-noise upload", &error);
+        INFO(error);
+        REQUIRE(noise_upload);
+        REQUIRE(noise_texture->upload(
+            *noise_upload, 0, 0, {}, noise_values.data(),
+            128 * 2 * sizeof(float), &error));
+        REQUIRE(noise_upload->commitAndWait(&error));
+        INFO(error);
+
+        std::array<ALMetalWorldSimpleBatch, 2> occlusion_batches{{
+            batch, batch,
+        }};
+        occlusion_batches[0].impostor_left[0] = 0.9f;
+        occlusion_batches[0].impostor_up[1] = 0.9f;
+        occlusion_batches[1].impostor_center[0] = 0.25f;
+        occlusion_batches[1].impostor_center[2] = -0.9f;
+        occlusion_batches[1].impostor_left[0] = 0.2f;
+        occlusion_batches[1].impostor_up[1] = 0.6f;
+        ALMetalWorldGBufferScene occlusion_scene = gbuffer_scene;
+        occlusion_scene.batches = occlusion_batches.data();
+        occlusion_scene.batch_count = occlusion_batches.size();
+        auto occlusion_gbuffer = renderer->render(
+            occlusion_scene, &error);
+        INFO(error);
+        REQUIRE(occlusion_gbuffer);
+
+        light_map_scene.gbuffer = occlusion_gbuffer.get();
+        light_map_scene.noise_texture = noise_texture.get();
+        light_map_scene.constants.ssao[0] = 96.f;
+        light_map_scene.constants.ssao[1] = 96.f;
+        light_map_scene.constants.ssao[2] = 4.f;
+        light_map_scene.constants.ssao[3] = 0.25f;
+        for (std::size_t tap = 0; tap < 4; ++tap)
+        {
+            const float offset = static_cast<float>(tap);
+            const float weight = std::exp(
+                -(offset * offset) / 8.f);
+            light_map_scene.constants.blur_taps[tap][0] = weight;
+            light_map_scene.constants.blur_taps[tap][1] = weight;
+            light_map_scene.constants.blur_taps[tap][2] = offset;
+        }
+        light_map_scene.constants.blur[1] = 0.1f;
+        light_map_scene.constants.config[2] = 1;
+        auto unblurred_ssao = renderer->renderLightMap(
+            light_map_scene, &error);
+        INFO(error);
+        REQUIRE(unblurred_ssao);
+        std::array<std::uint8_t, 32 * 32 * 2> unblurred_ssao_pixels{};
+        REQUIRE(unblurred_ssao->colorTexture(0)->readback(
+            *device, 0, 0, {}, unblurred_ssao_pixels.data(), 32 * 2,
+            &error));
+        INFO(error);
+        light_map_scene.constants.blur[0] = 1.5f;
+        auto blurred_ssao = renderer->renderLightMap(
+            light_map_scene, &error);
+        INFO(error);
+        REQUIRE(blurred_ssao);
+        std::array<std::uint8_t, 32 * 32 * 2> blurred_ssao_pixels{};
+        REQUIRE(blurred_ssao->colorTexture(0)->readback(
+            *device, 0, 0, {}, blurred_ssao_pixels.data(), 32 * 2,
+            &error));
+        INFO(error);
+        bool found_occlusion = false;
+        bool found_blur_change = false;
+        std::uint8_t minimum_unblurred = 255;
+        std::uint8_t minimum_blurred = 255;
+        std::size_t changed_pixels = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            CHECK(blurred_ssao_pixels[pixel * 2 + 0] ==
+                  unblurred_ssao_pixels[pixel * 2 + 0]);
+            found_occlusion = found_occlusion ||
+                unblurred_ssao_pixels[pixel * 2 + 1] < 255;
+            minimum_unblurred = std::min(
+                minimum_unblurred,
+                unblurred_ssao_pixels[pixel * 2 + 1]);
+            minimum_blurred = std::min(
+                minimum_blurred,
+                blurred_ssao_pixels[pixel * 2 + 1]);
+            if (blurred_ssao_pixels[pixel * 2 + 1] !=
+                unblurred_ssao_pixels[pixel * 2 + 1])
+            {
+                found_blur_change = true;
+                ++changed_pixels;
+            }
+        }
+        CAPTURE(minimum_unblurred, minimum_blurred, changed_pixels);
+        CHECK(found_occlusion);
+        CHECK(found_blur_change);
+
+        ALMetalWorldLightMapScene invalid_light_map_scene;
+        error.clear();
+        CHECK_FALSE(renderer->renderLightMap(
+            invalid_light_map_scene, &error));
+        CHECK(error == "Metal world light-map scene is incomplete");
+        error.clear();
 
         // Consume the same retained PBR G-buffer through the base deferred
         // owner. One constant ordinary probe proves that its packed SH row

@@ -305,6 +305,32 @@ struct ALMetalWorldLocalLightingScene
     bool classic_mode = false;
 };
 
+struct alignas(16) ALMetalWorldLightMapConstants
+{
+    float inverse_projection[16]{};
+    // xyz = active sun/moon direction in eye space.
+    float light_direction[4]{};
+    // x = radius, y = maximum radius, z = factor, w = inverse factor.
+    float ssao[4]{};
+    // xyz = the four (shadow weight, AO weight, offset) kernel taps.
+    float blur_taps[4][4]{};
+    // x = kernel scale, y = distance factor.
+    float blur[4]{};
+    // xy = destination dimensions.
+    float screen[4]{};
+    // x = reverse Z, y = directional shadows, z = SSAO,
+    // w = high-precision geometric-normal packing.
+    std::uint32_t config[4]{};
+};
+
+struct ALMetalWorldLightMapScene
+{
+    const ALMetalRenderTarget* gbuffer = nullptr;
+    const ALMetalWorldDirectionalShadows* directional_shadows = nullptr;
+    const ALMetalTexture* noise_texture = nullptr;
+    ALMetalWorldLightMapConstants constants;
+};
+
 struct alignas(16) ALMetalWorldBaseLightingConstants
 {
     float inverse_projection[16]{};
@@ -367,6 +393,12 @@ public:
     // composition passes are native as well.
     std::unique_ptr<ALMetalRenderTarget> renderLocalLights(
         const ALMetalWorldLocalLightingScene& scene,
+        std::string* error = nullptr);
+
+    // Produce the deferred RG light map from native G-buffer depth/normals:
+    // directional visibility in R and bilateral two-axis SSAO in G.
+    std::unique_ptr<ALMetalRenderTarget> renderLightMap(
+        const ALMetalWorldLightMapScene& scene,
         std::string* error = nullptr);
 
     // Shade the retained world G-buffer with the deferred base-light owner:

@@ -362,6 +362,17 @@ struct ALMetalWorldLocalLightingConstants
     uint4 config;
 };
 
+struct ALMetalWorldLightMapConstants
+{
+    float4x4 inverse_projection;
+    float4 light_direction;
+    float4 ssao;
+    float4 blur_taps[4];
+    float4 blur;
+    float4 screen;
+    uint4 config;
+};
+
 struct ALMetalWorldBaseLightingConstants
 {
     float4x4 inverse_projection;
@@ -5663,6 +5674,301 @@ static float3 almetal_world_unpack_geometric_normal(
     const float x = floor(value / (levels + 1.0));
     const float y = value - x * (levels + 1.0);
     return almetal_world_oct_decode(float2(x, y) / levels);
+}
+
+static float4 almetal_world_light_map_position(
+    float2 texcoord, texture2d<float> depth_texture,
+    sampler point_sampler,
+    constant ALMetalWorldLightMapConstants& constants)
+{
+    const float depth = depth_texture.sample(point_sampler, texcoord).r;
+    const float ndc_z = constants.config.x != 0u
+        ? depth : depth * 2.0 - 1.0;
+    float4 position = constants.inverse_projection *
+        float4(texcoord * 2.0 - 1.0, ndc_z, 1.0);
+    position.w = max(position.w, 0.000001);
+    position /= position.w;
+    position.w = 1.0;
+    return position;
+}
+
+static float2 almetal_world_ssao_kernel(uint index)
+{
+    constexpr float2 taps[8] = {
+        float2(-1.0, 0.0) * (0.125 * 0.125),
+        float2(1.0, 0.0) * (0.250 * 0.250),
+        float2(0.0, 1.0) * (0.375 * 0.375),
+        float2(0.0, -1.0) * (0.500 * 0.500),
+        float2(0.7071, 0.7071) * (0.625 * 0.625),
+        float2(-0.7071, -0.7071) * (0.750 * 0.750),
+        float2(-0.7071, 0.7071) * (0.875 * 0.875),
+        float2(0.7071, -0.7071),
+    };
+    return taps[index];
+}
+
+static float almetal_world_ambient_occlusion(
+    float4 position, float3 normal, float2 texcoord,
+    texture2d<float> depth_texture,
+    texture2d<float> noise_texture,
+    sampler point_sampler, sampler repeat_sampler,
+    constant ALMetalWorldLightMapConstants& constants)
+{
+    const float2 noise_reflect = noise_texture.sample(
+        repeat_sampler, texcoord * (constants.screen.xy / 128.0)).xy;
+    const float scale = min(
+        constants.ssao.x / -position.z, constants.ssao.y);
+    float angle_hidden = 0.0;
+    float points = 0.0;
+    for (uint index = 0; index < 8; ++index)
+    {
+        const float2 tap =
+            almetal_world_ssao_kernel(index) / constants.screen.xy;
+        const float2 sample_texcoord = texcoord +
+            scale * reflect(tap, noise_reflect);
+        const float3 sample_position = almetal_world_light_map_position(
+            sample_texcoord, depth_texture, point_sampler, constants).xyz;
+        const float3 difference = position.xyz - sample_position;
+        const float distance_squared = dot(difference, difference);
+        const float hidden = dot(
+            sample_position - 0.05 * normal - position.xyz,
+            normal) > 0.0 ? 1.0 : 0.0;
+        angle_hidden += hidden * min(
+            1.0 / distance_squared, constants.ssao.w);
+        points += difference.z > -1.0 ? 1.0 : 0.0;
+    }
+    angle_hidden = points > 0.0
+        ? min(constants.ssao.z * angle_hidden / points, 1.0)
+        : 0.0;
+    return clamp(1.0 - angle_hidden, 0.0, 1.0);
+}
+
+fragment float2 almetal_world_light_map_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    constant ALMetalWorldLightMapConstants& constants [[buffer(0)]],
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(1)]],
+    texture2d<float> normal_texture [[texture(0)]],
+    texture2d<float> depth_texture [[texture(1)]],
+    texture2d_array<float> shadow_maps [[texture(2)]],
+    texture2d<float> noise_texture [[texture(3)]],
+    sampler point_sampler [[sampler(0)]],
+    sampler repeat_sampler [[sampler(1)]])
+{
+    const float depth = depth_texture.sample(
+        point_sampler, input.texcoord).r;
+    const bool reverse_z = constants.config.x != 0u;
+    if ((reverse_z && depth <= 0.0) || (!reverse_z && depth >= 1.0))
+    {
+        discard_fragment();
+    }
+
+    const float4 position = almetal_world_light_map_position(
+        input.texcoord, depth_texture, point_sampler, constants);
+    const float4 normal_sample = normal_texture.sample(
+        point_sampler, input.texcoord);
+    const float3 normal = almetal_world_oct_decode(normal_sample.xy);
+    const float3 geometric_normal =
+        almetal_world_unpack_geometric_normal(
+            normal_sample.z, constants.config.w != 0u);
+
+    float directional_visibility = 1.0;
+    if (constants.config.y != 0u)
+    {
+        const float3 light_direction = normalize(
+            constants.light_direction.xyz);
+        // Keep the receiver derivatives in uniform control flow before the
+        // per-pixel facing test, matching surfaceDerivatives in shadowUtil.
+        float3 position_dx = dfdx(position.xyz);
+        float3 position_dy = dfdy(position.xyz);
+        const float3 plane = cross(position_dx, position_dy);
+        const float along = dot(plane, geometric_normal);
+        if (along * along < 0.25 * dot(plane, plane) *
+                                 dot(geometric_normal,
+                                     geometric_normal))
+        {
+            position_dx = 0.0;
+            position_dy = 0.0;
+        }
+        if (dot(normal, light_direction) <= 0.0)
+        {
+            directional_visibility = 0.0;
+        }
+        else
+        {
+            const float2 gl_fragment_position = float2(
+                input.position.x,
+                constants.screen.y - input.position.y);
+            directional_visibility =
+                (shadows.config.y & 0xfu) == 0xfu
+                ? 1.0
+                : almetal_directional_shadow(
+                      shadow_maps, shadows, position.xyz, normal,
+                      position_dx, position_dy,
+                      gl_fragment_position / shadows.resolution.zw,
+                      light_direction);
+        }
+    }
+
+    const float ambient_occlusion = constants.config.z != 0u
+        ? almetal_world_ambient_occlusion(
+              position, geometric_normal, input.texcoord,
+              depth_texture, noise_texture,
+              point_sampler, repeat_sampler, constants)
+        : 1.0;
+    return clamp(
+        float2(directional_visibility, ambient_occlusion),
+        float2(0.0), float2(1.0));
+}
+
+static int almetal_world_light_map_mirror(int value, int size)
+{
+    if (value >= -size && value < 2 * size)
+    {
+        return value < 0 ? -1 - value
+                         : (value < size ? value : 2 * size - 1 - value);
+    }
+    const int period = 2 * size;
+    const int mirrored = (value < 0 ? -1 - value : value) % period;
+    return mirrored < size ? mirrored : period - 1 - mirrored;
+}
+
+static float almetal_world_light_map_view_depth(
+    int2 texel, texture2d<float> depth_texture,
+    constant ALMetalWorldLightMapConstants& constants)
+{
+    const int2 size = int2(constants.screen.xy);
+    const int2 clamped = clamp(texel, int2(0), size - 1);
+    const float depth = depth_texture.read(uint2(clamped)).r;
+    const bool reverse_z = constants.config.x != 0u;
+    if ((reverse_z && depth <= 0.0) || (!reverse_z && depth >= 1.0))
+    {
+        return -1.0;
+    }
+    const float2 texcoord =
+        (float2(clamped) + 0.5) / constants.screen.xy;
+    const float2 screen_position = texcoord * 2.0 - 1.0;
+    const float ndc_z = reverse_z ? depth : depth * 2.0 - 1.0;
+    const float w =
+        constants.inverse_projection[0].w * screen_position.x +
+        constants.inverse_projection[1].w * screen_position.y +
+        constants.inverse_projection[2].w * ndc_z +
+        constants.inverse_projection[3].w;
+    return 1.0 / max(w, 0.000001);
+}
+
+static float3 almetal_world_light_map_blur_kernel(
+    int step, constant ALMetalWorldLightMapConstants& constants)
+{
+    const int index = step >> 1;
+    return (step & 1) == 0
+        ? constants.blur_taps[index].xyz
+        : (constants.blur_taps[index].xyz +
+           constants.blur_taps[index + 1].xyz) * 0.5;
+}
+
+struct ALMetalWorldLightMapBlurPixel
+{
+    float2 step;
+    float2 origin;
+    float3 plane;
+    float offset;
+    float tolerance;
+};
+
+static ALMetalWorldLightMapBlurPixel almetal_world_light_map_blur_pixel(
+    int2 pixel, float2 delta, float view_depth,
+    texture2d<float> normal_texture,
+    constant ALMetalWorldLightMapConstants& constants)
+{
+    ALMetalWorldLightMapBlurPixel result;
+    const float2 texcoord =
+        (float2(pixel) + 0.5) / constants.screen.xy;
+    const float4 normal_sample = normal_texture.read(uint2(pixel));
+    const float3 normal = almetal_world_oct_decode(normal_sample.xy);
+    const float2 texel_size = 2.0 / constants.screen.xy;
+    const float across = dot(
+        normal, constants.inverse_projection[0].xyz) * texel_size.x;
+    const float down = dot(
+        normal, constants.inverse_projection[1].xyz) * texel_size.y;
+    result.plane = float3(
+        dot(normal, constants.inverse_projection[3].xyz) +
+            (across + down) * 0.5 -
+            dot(normal, constants.inverse_projection[0].xyz +
+                        constants.inverse_projection[1].xyz),
+        across, down);
+    const float3 position =
+        (constants.inverse_projection[0].xyz *
+             (texcoord.x * 2.0 - 1.0) +
+         constants.inverse_projection[1].xyz *
+             (texcoord.y * 2.0 - 1.0) +
+         constants.inverse_projection[3].xyz) * view_depth;
+    result.offset =
+        (result.plane.x + float(pixel.x) * result.plane.y +
+         float(pixel.y) * result.plane.z) * view_depth;
+    result.step = constants.blur.x * delta /
+        (1.0 + normal.xy * normal.xy);
+    result.step /= max(-position.z * constants.blur.y, 1.0);
+    result.tolerance = position.z * position.z * 0.00005;
+    const float checker = float((pixel.x + pixel.y + 1) & 1);
+    result.origin = float2(pixel) + 0.5 +
+        (checker - 0.5) * constants.blur_taps[1].z *
+            result.step * 0.5;
+    return result;
+}
+
+fragment float2 almetal_world_light_map_blur_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    constant ALMetalWorldLightMapConstants& constants [[buffer(0)]],
+    constant float4& blur_delta [[buffer(1)]],
+    texture2d<float> light_map [[texture(0)]],
+    texture2d<float> normal_texture [[texture(1)]],
+    texture2d<float> depth_texture [[texture(2)]],
+    sampler point_sampler [[sampler(0)]])
+{
+    const int2 pixel = int2(input.position.xy);
+    const float2 center = light_map.read(uint2(pixel)).rg;
+    const float center_depth = almetal_world_light_map_view_depth(
+        pixel, depth_texture, constants);
+    if (center_depth <= 0.0)
+    {
+        return center;
+    }
+
+    const ALMetalWorldLightMapBlurPixel blur =
+        almetal_world_light_map_blur_pixel(
+            pixel, blur_delta.xy, center_depth,
+            normal_texture, constants);
+    float defined_weight = constants.blur_taps[0].y;
+    float ambient_occlusion = defined_weight * center.y;
+    const int2 size = int2(constants.screen.xy);
+    for (int index = 0; index < 12; ++index)
+    {
+        const int step = index < 6 ? index + 1 : index - 5;
+        const float side = index < 6 ? 1.0 : -1.0;
+        const float3 tap = almetal_world_light_map_blur_kernel(
+            step, constants);
+        const int2 unmirrored = int2(floor(
+            blur.origin + side * tap.z * blur.step * 2.0));
+        const float view_depth = almetal_world_light_map_view_depth(
+            unmirrored, depth_texture, constants);
+        const float distance =
+            (blur.plane.x + float(unmirrored.x) * blur.plane.y +
+             float(unmirrored.y) * blur.plane.z) * view_depth -
+            blur.offset;
+        const float weight = view_depth > 0.0 &&
+            distance * distance <= blur.tolerance ? tap.y : 0.0;
+        if (weight > 0.0)
+        {
+            const int2 texel(
+                almetal_world_light_map_mirror(unmirrored.x, size.x),
+                almetal_world_light_map_mirror(unmirrored.y, size.y));
+            ambient_occlusion +=
+                light_map.read(uint2(texel)).g * weight;
+            defined_weight += weight;
+        }
+    }
+    return float2(
+        center.r, max(ambient_occlusion / defined_weight, 0.0));
 }
 
 static float almetal_world_ssao_visibility(

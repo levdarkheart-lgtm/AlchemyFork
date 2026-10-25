@@ -107,6 +107,7 @@ namespace
     };
     static_assert(sizeof(WorldLocalLightingConstants) == 96);
     static_assert(sizeof(ALMetalWorldLocalLight) == 32);
+    static_assert(sizeof(ALMetalWorldLightMapConstants) == 208);
     static_assert(sizeof(ALMetalWorldBaseLightingConstants) == 224);
 
     struct alignas(16) WorldTerrainConstants
@@ -443,6 +444,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<TerrainPartitionPipelines, 2> pbr_terrain_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         local_light_pipelines;
+    std::unique_ptr<ALMetalRenderPipeline> light_map_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> light_map_blur_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         base_light_pipelines;
     std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
@@ -455,6 +458,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalSamplerState> diffuse_sampler;
     std::unique_ptr<ALMetalSamplerState> probe_sampler;
     std::unique_ptr<ALMetalSamplerState> point_clamp_sampler;
+    std::unique_ptr<ALMetalSamplerState> point_repeat_sampler;
     std::unique_ptr<ALMetalSamplerState> linear_clamp_sampler;
     std::unique_ptr<ALMetalSamplerState> ramp_sampler;
     std::unique_ptr<ALMetalTexture> brdf_lut;
@@ -529,6 +533,9 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_pbr_terrain_fragment") ||
         !impl->library->hasFunction("almetal_world_local_light_vertex") ||
         !impl->library->hasFunction("almetal_world_local_light_fragment") ||
+        !impl->library->hasFunction("almetal_world_light_map_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_light_map_blur_fragment") ||
         !impl->library->hasFunction("almetal_world_base_light_fragment") ||
         !impl->library->hasFunction("almetal_pbr_preview_brdf_lut"))
     {
@@ -537,6 +544,30 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             setError(error,
                      "Built-in Metal library is missing world G-buffer functions");
         }
+        return nullptr;
+    }
+
+    ALMetalRenderPipelineDescriptor light_map_descriptor;
+    light_map_descriptor.library = impl->library.get();
+    light_map_descriptor.vertex_function =
+        "almetal_world_local_light_vertex";
+    light_map_descriptor.fragment_function =
+        "almetal_world_light_map_fragment";
+    light_map_descriptor.colors[0].format = ALMetalPixelFormat::rg8_unorm;
+    light_map_descriptor.label = "Alchemy world shadow/SSAO light-map pipeline";
+    impl->light_map_pipeline = ALMetalRenderPipeline::create(
+        device, light_map_descriptor, error);
+    if (!impl->light_map_pipeline)
+    {
+        return nullptr;
+    }
+    light_map_descriptor.fragment_function =
+        "almetal_world_light_map_blur_fragment";
+    light_map_descriptor.label = "Alchemy world SSAO bilateral-blur pipeline";
+    impl->light_map_blur_pipeline = ALMetalRenderPipeline::create(
+        device, light_map_descriptor, error);
+    if (!impl->light_map_blur_pipeline)
+    {
         return nullptr;
     }
 
@@ -1267,8 +1298,22 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         return nullptr;
     }
 
+    sampler.address_s = ALMetalSamplerAddressMode::repeat;
+    sampler.address_t = ALMetalSamplerAddressMode::repeat;
+    sampler.address_r = ALMetalSamplerAddressMode::repeat;
+    sampler.label = "Alchemy world point repeat sampler";
+    impl->point_repeat_sampler = ALMetalSamplerState::create(
+        device, sampler, error);
+    if (!impl->point_repeat_sampler)
+    {
+        return nullptr;
+    }
+
     sampler.min_filter = ALMetalSamplerFilter::linear;
     sampler.mag_filter = ALMetalSamplerFilter::linear;
+    sampler.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
     sampler.label = "Alchemy world terrain linear clamp sampler";
     impl->linear_clamp_sampler = ALMetalSamplerState::create(device, sampler, error);
     if (!impl->linear_clamp_sampler)
@@ -2599,6 +2644,190 @@ ALMetalWorldGBufferRenderer::renderLocalLights(
         mImpl->brdf_lut_ready = true;
     }
     return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderLightMap(
+    const ALMetalWorldLightMapScene& scene,
+    std::string* error)
+{
+    const ALMetalWorldLightMapConstants& constants = scene.constants;
+    const bool directional_shadows = constants.config[1] != 0;
+    const bool ssao = constants.config[2] != 0;
+    if (!mImpl || !mImpl->device || !scene.gbuffer ||
+        !finiteValues(constants.inverse_projection, 16) ||
+        !finiteValues(constants.light_direction, 4) ||
+        !finiteValues(constants.ssao, 4) ||
+        !finiteValues(&constants.blur_taps[0][0], 16) ||
+        !finiteValues(constants.blur, 4) ||
+        !finiteValues(constants.screen, 4) ||
+        constants.config[0] > 1 || constants.config[1] > 1 ||
+        constants.config[2] > 1 || constants.config[3] > 1 ||
+        (scene.directional_shadows &&
+         !validDirectionalShadows(scene.directional_shadows)) ||
+        (ssao && (!sampleableTexture(scene.noise_texture) ||
+                  constants.ssao[0] < 0.f || constants.ssao[1] < 0.f ||
+                  constants.ssao[2] < 0.f || constants.ssao[3] <= 0.f ||
+                  constants.blur_taps[0][1] <= 0.f ||
+                  constants.blur[0] < 0.f || constants.blur[1] < 0.f)))
+    {
+        setError(error, "Metal world light-map scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& input =
+        scene.gbuffer->descriptor();
+    const ALMetalTexture* normal = scene.gbuffer->colorTexture(2);
+    const ALMetalTexture* depth = scene.gbuffer->depthStencilTexture();
+    const bool normal_format =
+        input.colors[2].format == ALMetalPixelFormat::rgb10a2_unorm ||
+        input.colors[2].format == ALMetalPixelFormat::rgba16_unorm;
+    const ALMetalTextureDescriptor* noise = ssao
+        ? &scene.noise_texture->descriptor() : nullptr;
+    const bool valid_noise = !noise ||
+        (noise->format == ALMetalPixelFormat::rg32_float &&
+         noise->width == 128 && noise->height == 128 &&
+         noise->sample_count == 1 && noise->mipmap_level_count == 1);
+    if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
+        input.color_attachment_count != 4 || !normal_format ||
+        input.depth_stencil_format != ALMetalPixelFormat::depth32_float ||
+        !input.depth_stencil_shader_read ||
+        constants.screen[0] != static_cast<float>(input.width) ||
+        constants.screen[1] != static_cast<float>(input.height) ||
+        !valid_noise || !sampleableTexture(normal) ||
+        !sampleableTexture(depth))
+    {
+        setError(error, "Metal world light-map G-buffer is incompatible");
+        return nullptr;
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = input.width;
+    output_descriptor.height = input.height;
+    output_descriptor.colors[0].format = ALMetalPixelFormat::rg8_unorm;
+    output_descriptor.colors[0].label =
+        "Alchemy world directional-shadow and SSAO light map";
+    output_descriptor.label = "Alchemy native world light-map target";
+    auto raw = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!raw)
+    {
+        return nullptr;
+    }
+
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world light-map production", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::clear;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    pass_config.colors[0].clear = {1.0, 1.0, 0.0, 0.0};
+    auto pass = raw->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world light-map encoder", error)
+        : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    const ALMetalWorldDirectionalShadowConstants& shadow_constants =
+        directional_shadows && scene.directional_shadows
+            ? scene.directional_shadows->constants
+            : mImpl->unshadowed_constants;
+    const ALMetalTexture* shadow_texture =
+        directional_shadows && scene.directional_shadows
+            ? scene.directional_shadows->depth_texture
+            : mImpl->unshadowed_depth.get();
+    const ALMetalTexture* noise_texture = ssao
+        ? scene.noise_texture : mImpl->inactive_ssr_color.get();
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(input.width),
+        static_cast<double>(input.height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{0, 0, input.width, input.height};
+    bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(*mImpl->light_map_pipeline, error) &&
+        encoder->setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        encoder->setFragmentBytes(
+            1, &shadow_constants, sizeof(shadow_constants), error) &&
+        encoder->setFragmentTexture(0, normal, error) &&
+        encoder->setFragmentTexture(1, depth, error) &&
+        encoder->setFragmentTexture(2, shadow_texture, error) &&
+        encoder->setFragmentTexture(3, noise_texture, error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->point_clamp_sampler.get(), error) &&
+        encoder->setFragmentSampler(
+            1, mImpl->point_repeat_sampler.get(), error) &&
+        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+        encoder->end(error);
+    if (!encoded)
+    {
+        return nullptr;
+    }
+
+    if (!ssao)
+    {
+        return command->commit(error) ? std::move(raw) : nullptr;
+    }
+
+    auto scratch = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!scratch || !output)
+    {
+        return nullptr;
+    }
+    const float horizontal[4] = {1.f, 0.f, 0.f, 0.f};
+    const float vertical[4] = {0.f, 1.f, 0.f, 0.f};
+    ALMetalRenderTarget* destinations[2] = {scratch.get(), output.get()};
+    const ALMetalTexture* sources[2] = {
+        raw->colorTexture(0), scratch->colorTexture(0),
+    };
+    const float* deltas[2] = {horizontal, vertical};
+    for (std::size_t axis = 0; axis < 2; ++axis)
+    {
+        auto blur_pass = destinations[axis]->makeRenderPass(
+            pass_config, error);
+        auto blur_encoder = blur_pass ? ALMetalRenderEncoder::begin(
+            *command, *blur_pass,
+            axis == 0 ? "Alchemy world horizontal SSAO blur encoder"
+                      : "Alchemy world vertical SSAO blur encoder",
+            error) : nullptr;
+        encoded = blur_encoder &&
+            blur_encoder->setViewport(viewport, error) &&
+            blur_encoder->setScissor(scissor, error) &&
+            blur_encoder->setCullMode(ALMetalCullMode::none, error) &&
+            blur_encoder->setPipeline(
+                *mImpl->light_map_blur_pipeline, error) &&
+            blur_encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            blur_encoder->setFragmentBytes(
+                1, deltas[axis], sizeof(horizontal), error) &&
+            blur_encoder->setFragmentTexture(0, sources[axis], error) &&
+            blur_encoder->setFragmentTexture(1, normal, error) &&
+            blur_encoder->setFragmentTexture(2, depth, error) &&
+            blur_encoder->setFragmentSampler(
+                0, mImpl->point_clamp_sampler.get(), error) &&
+            blur_encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+            blur_encoder->end(error);
+        if (!encoded)
+        {
+            return nullptr;
+        }
+    }
+
+    return command->commit(error) ? std::move(output) : nullptr;
 }
 
 std::unique_ptr<ALMetalRenderTarget>
