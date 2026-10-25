@@ -45,6 +45,7 @@
 #include "lldrawpool.h"
 #include "lldrawpoolavatar.h"
 #include "llface.h"
+#include "llmaterial.h"
 #include "llmorphview.h"
 #include "llresmgr.h"
 #include "llselectmgr.h"
@@ -537,9 +538,10 @@ bool LLVisualParamHint::render()
             // post-deferred fullbright families follow it. Split texture-indexed
             // GL batches back into exact face ranges so each native batch can
             // bind the face's real diffuse mirror without a texture ladder.
-            // Other material/forward families remain fail-closed.
+            // Other forward/PBR families remain fail-closed.
             constexpr U32 rigged_pools[] = {
                 LLDrawPool::POOL_SIMPLE,
+                LLDrawPool::POOL_MATERIALS,
                 LLDrawPool::POOL_ALPHA_MASK,
                 LLDrawPool::POOL_FULLBRIGHT,
                 LLDrawPool::POOL_FULLBRIGHT_ALPHA_MASK,
@@ -548,6 +550,7 @@ bool LLVisualParamHint::render()
             {
                 complete = complete &&
                     (face->getPoolType() == LLDrawPool::POOL_SIMPLE ||
+                     face->getPoolType() == LLDrawPool::POOL_MATERIALS ||
                      face->getPoolType() == LLDrawPool::POOL_ALPHA_MASK ||
                      face->getPoolType() == LLDrawPool::POOL_FULLBRIGHT ||
                      face->getPoolType() ==
@@ -575,10 +578,41 @@ bool LLVisualParamHint::render()
                         pool == LLDrawPool::POOL_FULLBRIGHT_ALPHA_MASK;
                     const bool fullbright =
                         pool == LLDrawPool::POOL_FULLBRIGHT;
+                    const bool legacy_material =
+                        pool == LLDrawPool::POOL_MATERIALS;
                     const bool mask_pool =
                         pool == LLDrawPool::POOL_ALPHA_MASK ||
                         fullbright_mask;
+                    const U8 material_alpha_mode = draw_info
+                        ? draw_info->mDiffuseAlphaMode
+                        : LLMaterial::DIFFUSE_ALPHA_MODE_DEFAULT;
+                    const bool supported_material_mode = !legacy_material ||
+                        (material_alpha_mode ==
+                             LLMaterial::DIFFUSE_ALPHA_MODE_NONE ||
+                         material_alpha_mode ==
+                             LLMaterial::DIFFUSE_ALPHA_MODE_MASK ||
+                         material_alpha_mode ==
+                             LLMaterial::DIFFUSE_ALPHA_MODE_EMISSIVE);
+                    F32 material_alpha_cutoff = draw_info
+                        ? draw_info->mAlphaMaskCutoff : 0.f;
+                    if (legacy_material && draw_info &&
+                        draw_info->mMaterialSlotList.size() > 1)
+                    {
+                        const U8 material_slot = face->getTextureIndex();
+                        if (material_slot <
+                            draw_info->mMaterialSlotList.size())
+                        {
+                            material_alpha_cutoff =
+                                draw_info->mMaterialSlotList[material_slot]
+                                    .mAlphaMaskCutoff;
+                        }
+                        else
+                        {
+                            complete = false;
+                        }
+                    }
                     complete = draw_info && buffer && diffuse_texture &&
+                        supported_material_mode &&
                         (!mask_pool ||
                          draw_info->mMaterialSlotList.size() <= 1) &&
                         !uses_texture_matrix && face->getIndicesStart() >= 0 &&
@@ -640,11 +674,16 @@ bool LLVisualParamHint::render()
                     batch.skin_palette_float_count =
                         rigged_palettes.back().size();
                     batch.skin_joint_count = joint_count;
-                    batch.deferred_rigged = !fullbright && !fullbright_mask;
+                    batch.deferred_rigged = !legacy_material &&
+                        !fullbright && !fullbright_mask;
+                    batch.legacy_material_rigged = legacy_material;
                     batch.fullbright_rigged = fullbright;
                     batch.fullbright_mask_rigged = fullbright_mask;
-                    batch.alpha_cutoff =
-                        mask_pool ? draw_info->mAlphaMaskCutoff : 0.f;
+                    batch.alpha_cutoff = legacy_material
+                        ? (material_alpha_mode ==
+                               LLMaterial::DIFFUSE_ALPHA_MODE_MASK
+                               ? material_alpha_cutoff : 0.f)
+                        : (mask_pool ? draw_info->mAlphaMaskCutoff : 0.f);
                     std::memcpy(batch.modelview_projection,
                                 rigged_modelview_projection.getF32ptr(),
                                 sizeof(batch.modelview_projection));

@@ -739,6 +739,27 @@ fragment float4 almetal_lit_preview_deferred_rigged_fragment(
     return float4(almetal_linear_to_srgb(linear), 1.0);
 }
 
+fragment float4 almetal_lit_preview_legacy_material_rigged_fragment(
+    ALMetalLitPreviewTexturedVaryings input [[stage_in]],
+    texture2d<float> diffuse_map [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    constant float& alpha_cutoff [[buffer(1)]])
+{
+    const float4 diffuse = diffuse_map.sample(diffuse_sampler, input.texcoord);
+    // materialF.glsl's deferred mask tests diffuse alpha alone; vertex alpha
+    // is not folded into its G-buffer coverage. A zero cutoff also represents
+    // the opaque/emissive permutations without an extra pipeline family.
+    if (diffuse.a < alpha_cutoff - 0.001953125)
+    {
+        discard_fragment();
+    }
+    const float3 linear = diffuse.rgb *
+                          almetal_srgb_to_linear(input.color.rgb);
+    // Attachment 0 is sRGB in GL. Opaque coverage is stamped from depth after
+    // all deferred pools, so accepted material fragments finish with alpha 1.
+    return float4(almetal_linear_to_srgb(linear), 1.0);
+}
+
 vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_fullbright_mask_rigged_textured_vertex(
     const device float4* positions [[buffer(0)]],
     constant ALMetalLitPreviewConstants& constants [[buffer(2)]],

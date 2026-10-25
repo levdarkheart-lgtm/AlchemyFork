@@ -130,6 +130,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_avatar_skinned_unlit_cloth_textured_vertex",
             "almetal_lit_preview_deferred_rigged_textured_vertex",
             "almetal_lit_preview_deferred_rigged_fragment",
+            "almetal_lit_preview_legacy_material_rigged_fragment",
             "almetal_lit_preview_fullbright_mask_rigged_textured_vertex",
             "almetal_lit_preview_fullbright_rigged_fragment",
             "almetal_lit_preview_fullbright_mask_rigged_fragment",
@@ -1361,6 +1362,45 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(deferred_mask_pixels[translated_interior + 1] == 51);
         CHECK(deferred_mask_pixels[translated_interior + 2] == 77);
         CHECK(deferred_mask_pixels[translated_interior + 3] == 255);
+
+        // Legacy-material attachment 0 uses the same linear diffuse/tint
+        // product, but its mask tests texture alpha alone. Vertex alpha is
+        // unrelated to deferred coverage, which is stamped from depth.
+        ALMetalLitPreviewBatch legacy_material = deferred_rigged;
+        legacy_material.deferred_rigged = false;
+        legacy_material.legacy_material_rigged = true;
+        legacy_material.alpha_cutoff = 0.75f;
+        auto rendered_legacy_material = renderer->render(
+            legacy_material, &error);
+        INFO(error);
+        REQUIRE(rendered_legacy_material);
+        std::array<std::uint8_t, 32 * 32 * 4> legacy_material_pixels{};
+        REQUIRE(rendered_legacy_material->readback(
+            *device, 0, 0, {}, legacy_material_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+            legacy_material_pixels[translated_interior + 0]) - 61) <= 1);
+        CHECK(legacy_material_pixels[translated_interior + 1] == 64);
+        CHECK(legacy_material_pixels[translated_interior + 2] == 32);
+        CHECK(legacy_material_pixels[translated_interior + 3] == 255);
+
+        legacy_material.texture = half_alpha_diffuse_texture.get();
+        legacy_material.alpha_cutoff = 0.6f;
+        auto rendered_legacy_material_discard = renderer->render(
+            legacy_material, &error);
+        INFO(error);
+        REQUIRE(rendered_legacy_material_discard);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            legacy_material_discard_pixels{};
+        REQUIRE(rendered_legacy_material_discard->readback(
+            *device, 0, 0, {}, legacy_material_discard_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(legacy_material_discard_pixels[translated_interior + 0] == 38);
+        CHECK(legacy_material_discard_pixels[translated_interior + 1] == 51);
+        CHECK(legacy_material_discard_pixels[translated_interior + 2] == 77);
+        CHECK(legacy_material_discard_pixels[translated_interior + 3] == 255);
 
         // The post-deferred fullbright mask uses texture alpha alone: outside
         // the alpha pool the U8 vertex alpha is legacy shininess. A 0.75

@@ -80,6 +80,10 @@ struct ALMetalLitPreviewBatch
     // writer. The visual-hint target stores encoded bytes in linear RGBA8,
     // so its fragment performs the GL sRGB framebuffer blend explicitly.
     bool fullbright_rigged = false;
+    // Select an opaque, masked or emissive legacy-material G-buffer albedo
+    // writer. Normal/specular material inputs feed attachments which the
+    // visual-hint texture does not own; this batch reproduces attachment 0.
+    bool legacy_material_rigged = false;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;
