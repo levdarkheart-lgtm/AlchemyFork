@@ -72,6 +72,7 @@
 #include "llwindow.h"   // swapBuffers()
 #if LL_DARWIN
 #include "../almetal/almetalworld.h"
+#include "alhexlattice.h"
 #include "alwaterheightbake.h"
 #include "alterrainsurfacemaps.h"
 #include "llimagegl.h"
@@ -1637,7 +1638,7 @@ void LLPipeline::captureMetalWorldTerrainBatch(
     LLFace* face, LLViewerTexture* const* detail_textures,
     LLViewerTexture* alpha_ramp, LLViewerTexture* parcel_overlay,
     F32 detail_scale, const F32* detail_phase, F32 tess_density,
-    bool smoothing, bool triplanar, F32 triplanar_blend,
+    bool smoothing, bool triplanar, bool hex, F32 triplanar_blend,
     bool tessellation_pinned)
 {
     if (!mMetalWorldSimpleCapture ||
@@ -1747,7 +1748,28 @@ void LLPipeline::captureMetalWorldTerrainBatch(
     batch.terrain_triplanar_blend = triplanar_blend;
     batch.terrain_smoothing = smoothing;
     batch.terrain_triplanar = triplanar;
+    batch.terrain_hex = hex;
     batch.terrain_tessellation_pinned = tessellation_pinned;
+
+    if (hex)
+    {
+        // Match the float lattice scale compiled into both shader families
+        // before doing the large-world placement in double precision.
+        constexpr F64 hex_grid = static_cast<F64>(3.4641016f);
+        const LLVector3d& origin = region->getOriginGlobal();
+        const F64 du = detail_scale * origin.mdV[VX] - detail_phase[0];
+        const F64 dv = detail_scale * origin.mdV[VY] - detail_phase[1];
+        const F64 delta[3][2] = {{du, dv}, {dv, 0.0}, {du, 0.0}};
+        for (U32 projection = 0; projection < 3; ++projection)
+        {
+            const U32 element = projection >> 1;
+            const U32 half = (projection & 1) * 2;
+            ALHexLattice::place(
+                hex_grid, delta[projection][0], delta[projection][1],
+                &batch.terrain_hex_base[element][half],
+                &batch.terrain_hex_fraction[element][half]);
+        }
+    }
 
     const LLVector3& patch_origin = patch->getOriginRegion();
     const F32 patch_size = surface->getGridsPerPatchEdge() *

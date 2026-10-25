@@ -2115,9 +2115,48 @@ TEST_CASE("almetal: classic terrain tessellates its height field into the world 
         CHECK(albedo[outside + 2] == 255);
         CHECK(albedo[outside + 3] == 255);
 
+        // Exercise the world-stable hex lattice through every triplanar
+        // projection. The single-texel detail remains red through all cell
+        // rotations and blends, while the nontrivial places cover both the
+        // direct and mirrored-side placement paths.
+        batch.terrain_hex = true;
+        batch.terrain_triplanar_blend = 1.f;
+        const float hex_fraction[2][4] = {
+            {0.125f, 0.75f, 0.5f, 0.25f},
+            {0.875f, 0.375f, 0.625f, 0.9375f},
+        };
+        const std::int32_t hex_base[2][4] = {
+            {17, -31, std::numeric_limits<std::int32_t>::min(), -1048577},
+            {-2147483647, 2147483646, 0, 0},
+        };
+        std::memcpy(batch.terrain_hex_fraction,
+                    hex_fraction, sizeof(hex_fraction));
+        std::memcpy(batch.terrain_hex_base, hex_base, sizeof(hex_base));
+
+        batch.terrain_hex_fraction[1][3] = 1.f;
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal world terrain batch is invalid");
+        batch.terrain_hex_fraction[1][3] = hex_fraction[1][3];
+        error.clear();
+
+        auto hex_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(hex_result);
+        REQUIRE(device->waitUntilIdle(&error));
+        INFO(error);
+        albedo.fill(0);
+        REQUIRE(hex_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, albedo.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(albedo[center + 0] == 255);
+        CHECK(albedo[center + 1] == 0);
+        CHECK(albedo[center + 2] == 0);
+        CHECK(albedo[center + 3] == 0);
+
         // The collision-surface evaluator and dynamic fractional-odd
         // pipeline reproduce the same analytic plane through a different
         // production variant.
+        batch.terrain_hex = false;
         batch.terrain_smoothing = false;
         batch.terrain_triplanar = false;
         batch.terrain_tessellation_pinned = false;

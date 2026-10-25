@@ -604,7 +604,7 @@ public:
         LLFace* face, LLViewerTexture* const* detail_textures,
         LLViewerTexture* alpha_ramp, LLViewerTexture* parcel_overlay,
         F32 detail_scale, const F32* detail_phase, F32 tess_density,
-        bool smoothing, bool triplanar, F32 triplanar_blend,
+        bool smoothing, bool triplanar, bool hex, F32 triplanar_blend,
         bool tessellation_pinned);
     void captureMetalWorldAvatarBatch(const LLViewerJointMesh& mesh,
                                       LLVertexBuffer* buffer,

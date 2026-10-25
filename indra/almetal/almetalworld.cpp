@@ -78,6 +78,8 @@ namespace
         float surface[4]{};
         float detail[4]{};
         std::uint32_t config[4]{};
+        float hex_fraction[2][4]{};
+        std::int32_t hex_base[2][4]{};
     };
 
     bool finiteValues(const float* values, std::size_t count)
@@ -545,6 +547,15 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 !finiteValues(batch.terrain_detail_phase, 2) ||
                 !std::isfinite(batch.terrain_triplanar_blend) ||
                 batch.terrain_triplanar_blend <= 0.f ||
+                (batch.terrain_hex &&
+                 (!finiteValues(&batch.terrain_hex_fraction[0][0], 8) ||
+                  std::any_of(
+                      &batch.terrain_hex_fraction[0][0],
+                      &batch.terrain_hex_fraction[0][0] + 8,
+                      [](float value)
+                      {
+                          return value < 0.f || value >= 1.f;
+                      }))) ||
                 !finiteValues(batch.modelview_projection, 16) ||
                 !finiteValues(&batch.normal_matrix[0][0], 12))
             {
@@ -940,6 +951,13 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             constants.config[0] = scene.reverse_z ? 1u : 0u;
             constants.config[1] =
                 batch.terrain_parcel_overlay_texture ? 1u : 0u;
+            constants.config[2] = batch.terrain_hex ? 1u : 0u;
+            std::memcpy(constants.hex_fraction,
+                        batch.terrain_hex_fraction,
+                        sizeof(constants.hex_fraction));
+            std::memcpy(constants.hex_base,
+                        batch.terrain_hex_base,
+                        sizeof(constants.hex_base));
             const ALMetalRenderPipeline* pipeline =
                 mImpl->terrain_pipelines[scene.hdr ? 1 : 0]
                     [batch.terrain_tessellation_pinned ? 1 : 0]

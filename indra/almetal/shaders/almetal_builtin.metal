@@ -1034,8 +1034,10 @@ struct ALMetalWorldTerrainConstants
     float4 surface;
     // xy = detail phase, z = smooth surface, w = triplanar mapping.
     float4 detail;
-    // x = reverse-Z, y = parcel overlay present.
+    // x = reverse-Z, y = parcel overlay present, z = hex tiling.
     uint4 config;
+    float4 hex_fraction[2];
+    int4 hex_base[2];
 };
 
 struct ALMetalWorldTerrainSurface
@@ -1334,35 +1336,214 @@ static ALMetalWorldTerrainProjection almetal_world_terrain_projection(
     return projection;
 }
 
+struct ALMetalWorldTerrainHexPlace
+{
+    float2 fraction;
+    int2 base;
+};
+
+struct ALMetalWorldTerrainHexTile
+{
+    int2 corner[3];
+    int2 base;
+    float2 q;
+    float3 weight;
+    uint type;
+};
+
+static float2 almetal_world_terrain_hex_skew(float2 point)
+{
+    return float2(
+        point.x - 0.57735027 * point.y,
+        1.15470054 * point.y);
+}
+
+static void almetal_world_terrain_hex_triangle(
+    float2 fraction, thread int2& corner0, thread int2& corner1,
+    thread int2& corner2, thread float3& barycentric)
+{
+    const int upper = fraction.x + fraction.y >= 1.0 ? 1 : 0;
+    const float flip = float(upper) * 2.0 - 1.0;
+    corner0 = int2(upper);
+    corner1 = int2(upper, 1 - upper);
+    corner2 = int2(1 - upper, upper);
+    barycentric = max(float3(0.0), float3(
+        (fraction.x + fraction.y - 1.0) * flip,
+        float(upper) - fraction.y * flip,
+        float(upper) - fraction.x * flip));
+}
+
+static uint almetal_world_terrain_hex_sharpen(
+    float3 barycentric, thread float3& weight)
+{
+    float3 sharpened = pow(barycentric, 7.0);
+    sharpened /= dot(sharpened, float3(1.0));
+    sharpened -= 0.01;
+    const uint3 usage = select(
+        uint3(0), uint3(1), sharpened > 0.0);
+    weight = max(float3(0.0), sharpened);
+    weight /= dot(weight, float3(1.0));
+    return usage.x | (usage.y << 1) | (usage.z << 2);
+}
+
+static uint almetal_world_terrain_hex_hash(uint2 identifier)
+{
+    uint hash = identifier.x * 0x8da6b343u +
+                identifier.y * 0xd8163841u;
+    hash ^= hash >> 16;
+    hash *= 0x7feb352du;
+    hash ^= hash >> 15;
+    hash *= 0x846ca68bu;
+    hash ^= hash >> 16;
+    return hash;
+}
+
+static ALMetalWorldTerrainHexPlace almetal_world_terrain_hex_place(
+    constant ALMetalWorldTerrainConstants& constants,
+    uint projection, float side)
+{
+    const uint element = projection >> 1;
+    const bool upper = (projection & 1) != 0;
+    ALMetalWorldTerrainHexPlace place;
+    place.fraction = upper
+        ? constants.hex_fraction[element].zw
+        : constants.hex_fraction[element].xy;
+    place.base = upper
+        ? constants.hex_base[element].zw
+        : constants.hex_base[element].xy;
+    if (side < 0.0)
+    {
+        // -(base + fraction) floors one cell lower. Express -base-1 as
+        // an unsigned complement so INT_MIN retains its defined low bits.
+        place.base = as_type<int2>(~as_type<uint2>(place.base));
+        place.fraction = 1.0 - place.fraction;
+    }
+    return place;
+}
+
+static ALMetalWorldTerrainHexTile almetal_world_terrain_hex_tile(
+    float2 uv, ALMetalWorldTerrainHexPlace place)
+{
+    constexpr float grid_scale = 3.4641016;
+    const float2 q = place.fraction +
+        almetal_world_terrain_hex_skew(uv * grid_scale);
+    const float2 cell_float = floor(q);
+    const int2 cell = int2(cell_float);
+    int2 corner0;
+    int2 corner1;
+    int2 corner2;
+    float3 barycentric;
+    almetal_world_terrain_hex_triangle(
+        q - cell_float, corner0, corner1, corner2, barycentric);
+
+    ALMetalWorldTerrainHexTile tile;
+    tile.corner[0] = cell + corner0;
+    tile.corner[1] = cell + corner1;
+    tile.corner[2] = cell + corner2;
+    tile.base = place.base;
+    tile.q = q;
+    tile.type = almetal_world_terrain_hex_sharpen(
+        barycentric, tile.weight);
+    return tile;
+}
+
+static float2x2 almetal_world_terrain_hex_cell(
+    ALMetalWorldTerrainHexTile tile, uint cell,
+    thread float2& texcoord)
+{
+    const uint hash = almetal_world_terrain_hex_hash(
+        uint2(tile.base) + uint2(tile.corner[cell]));
+    const float2 offset = float2(
+        hash & 0x7ffu, (hash >> 11) & 0x7ffu) * (1.0 / 2048.0);
+    const float angle =
+        (float(hash >> 22) * (1.0 / 512.0) - 1.0) * M_PI_F;
+    const float cosine = cos(angle);
+    const float sine = sin(angle);
+    const float2x2 rotation = float2x2(
+        float2(cosine, sine), float2(-sine, cosine));
+    const float2 lattice = tile.q - float2(tile.corner[cell]);
+    const float2 from_center = float2(
+        lattice.x + 0.5 * lattice.y,
+        0.8660254 * lattice.y) * (1.0 / 3.4641016);
+    texcoord = rotation * from_center + offset;
+    return rotation;
+}
+
+static float4 almetal_world_terrain_detail_fetch(
+    texture2d<float> detail_texture, sampler detail_sampler,
+    float2 texcoord, float2 texcoord_dx, float2 texcoord_dy,
+    uint projection, float side,
+    constant ALMetalWorldTerrainConstants& constants)
+{
+    if (constants.config.z == 0)
+    {
+        return detail_texture.sample(
+            detail_sampler, texcoord,
+            gradient2d(texcoord_dx, texcoord_dy));
+    }
+
+    const ALMetalWorldTerrainHexTile tile =
+        almetal_world_terrain_hex_tile(
+            texcoord,
+            almetal_world_terrain_hex_place(
+                constants, projection, side));
+    float4 cells[3] = {};
+    float3 luma = 0.0;
+    for (uint cell = 0; cell < 3; ++cell)
+    {
+        if ((tile.type & (1u << cell)) != 0)
+        {
+            float2 cell_texcoord;
+            const float2x2 rotation = almetal_world_terrain_hex_cell(
+                tile, cell, cell_texcoord);
+            cells[cell] = detail_texture.sample(
+                detail_sampler, cell_texcoord,
+                gradient2d(rotation * texcoord_dx,
+                           rotation * texcoord_dy));
+            luma[cell] = dot(cells[cell].rgb,
+                             float3(0.299, 0.587, 0.114));
+        }
+    }
+    float3 weight = tile.weight * mix(float3(1.0), luma, 0.6);
+    weight /= dot(weight, float3(1.0));
+    return cells[0] * weight.x + cells[1] * weight.y +
+           cells[2] * weight.z;
+}
+
 static float4 almetal_world_terrain_detail_sample(
     texture2d<float> detail_texture,
     sampler detail_sampler,
     ALMetalWorldTerrainVaryings input,
-    ALMetalWorldTerrainProjection projection)
+    ALMetalWorldTerrainProjection projection,
+    constant ALMetalWorldTerrainConstants& constants)
 {
     float4 color = 0.0;
     if (projection.usage.x != 0.0)
     {
         const float2 flip = float2(projection.sx, 1.0);
-        color += detail_texture.sample(
-            detail_sampler, flip * input.side_texcoord.xy,
-            gradient2d(flip * projection.side_dx.xy,
-                       flip * projection.side_dy.xy)) * projection.weight.x;
+        color += almetal_world_terrain_detail_fetch(
+            detail_texture, detail_sampler,
+            flip * input.side_texcoord.xy,
+            flip * projection.side_dx.xy,
+            flip * projection.side_dy.xy,
+            1, projection.sx, constants) * projection.weight.x;
     }
     if (projection.usage.y != 0.0)
     {
         const float2 flip = float2(-projection.sy, 1.0);
-        color += detail_texture.sample(
-            detail_sampler, flip * input.side_texcoord.zw,
-            gradient2d(flip * projection.side_dx.zw,
-                       flip * projection.side_dy.zw)) * projection.weight.y;
+        color += almetal_world_terrain_detail_fetch(
+            detail_texture, detail_sampler,
+            flip * input.side_texcoord.zw,
+            flip * projection.side_dx.zw,
+            flip * projection.side_dy.zw,
+            2, -projection.sy, constants) * projection.weight.y;
     }
     if (projection.usage.z != 0.0)
     {
-        color += detail_texture.sample(
-            detail_sampler, input.detail_texcoord,
-            gradient2d(projection.top_dx,
-                       projection.top_dy)) * projection.weight.z;
+        color += almetal_world_terrain_detail_fetch(
+            detail_texture, detail_sampler, input.detail_texcoord,
+            projection.top_dx, projection.top_dy,
+            0, 1.0, constants) * projection.weight.z;
     }
     return color;
 }
@@ -1403,7 +1584,7 @@ fragment ALMetalWorldGBufferOutput almetal_world_terrain_fragment(
         {
             color += almetal_world_terrain_detail_sample(
                 detail_textures[detail], detail_sampler, input,
-                projection) * weight[detail];
+                projection, constants) * weight[detail];
         }
     }
     if (constants.config.y != 0)

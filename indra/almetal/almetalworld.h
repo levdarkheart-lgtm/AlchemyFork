@@ -108,8 +108,11 @@ struct ALMetalWorldSimpleBatch
     float terrain_detail_scale = 1.f / 12.f;
     float terrain_detail_phase[2]{};
     float terrain_triplanar_blend = 8.f;
+    float terrain_hex_fraction[2][4]{};
+    std::int32_t terrain_hex_base[2][4]{};
     bool terrain_smoothing = false;
     bool terrain_triplanar = true;
+    bool terrain_hex = false;
     bool terrain_tessellation_pinned = false;
 };
 
