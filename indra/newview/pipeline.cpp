@@ -446,6 +446,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool hdr = false;
     bool reverse_z = false;
     bool impostor_bake = false;
+    bool impostor_pbr_alpha_active = false;
     LLUUID impostor_bake_avatar_id;
     std::unordered_map<LLUUID, ImpostorMirror> impostor_mirrors;
 };
@@ -801,6 +802,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.impostor_mirrors.clear();
         capture.attempted = false;
         capture.impostor_bake_attempted = false;
+        capture.impostor_pbr_alpha_active = false;
         capture.failed_frames = 0;
         capture.device = device;
     }
@@ -1139,6 +1141,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.impostor_mirrors.clear();
         capture.attempted = false;
         capture.impostor_bake_attempted = false;
+        capture.impostor_pbr_alpha_active = false;
         capture.failed_frames = 0;
         capture.device = device;
     }
@@ -1172,6 +1175,79 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     capture.pass_active = false;
     capture.impostor_bake = true;
     capture.impostor_bake_avatar_id = avatar_id;
+}
+
+void LLPipeline::beginMetalImpostorPBRAlphaCapture(
+    const LLUUID& avatar_id)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.frame_active || !capture.renderer ||
+        !capture.impostor_bake_target ||
+        !capture.impostor_bake_attempted ||
+        capture.impostor_bake_avatar_id != avatar_id)
+    {
+        return;
+    }
+
+    capture.batches.clear();
+    capture.avatar_palettes.clear();
+    capture.complete = true;
+    capture.frame_active = true;
+    capture.pass_active = false;
+    capture.impostor_pbr_alpha_active = true;
+}
+
+void LLPipeline::endMetalImpostorPBRAlphaCapture()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->impostor_pbr_alpha_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.impostor_pbr_alpha_active = false;
+    capture.frame_active = false;
+    capture.pass_active = false;
+    if (!capture.complete || capture.batches.empty() ||
+        !capture.renderer || !capture.impostor_bake_target)
+    {
+        capture.batches.clear();
+        capture.avatar_palettes.clear();
+        return;
+    }
+
+    ALMetalWorldGBufferScene scene;
+    scene.batches = capture.batches.data();
+    scene.batch_count = capture.batches.size();
+    scene.width = capture.width;
+    scene.height = capture.height;
+    scene.normal_hdr = capture.normal_hdr;
+    scene.hdr = capture.hdr;
+    scene.reverse_z = capture.reverse_z;
+    std::string error;
+    if (!capture.renderer->compositePBRAlpha(
+            *capture.impostor_bake_target, scene, &error))
+    {
+        LL_WARNS("Metal")
+            << "Could not encode native PBR avatar-impostor alpha slice: "
+            << error << LL_ENDL;
+    }
+    else
+    {
+        LL_INFOS("Metal")
+            << "Native PBR avatar-impostor alpha slice encoded "
+            << capture.batches.size() << " batches at "
+            << capture.width << "x" << capture.height
+            << "; legacy alpha and other post-deferred contributors remain "
+               "on the GL transition path"
+            << LL_ENDL;
+    }
+    capture.batches.clear();
+    capture.avatar_palettes.clear();
 }
 
 void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
@@ -1646,6 +1722,39 @@ void LLPipeline::captureMetalWorldPBRBatch(
     }
 }
 
+void LLPipeline::captureMetalImpostorPBRAlphaBatch(
+    const LLDrawInfo& params)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->impostor_pbr_alpha_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (params.mGLTFMaterial.isNull() ||
+        params.mGLTFMaterial->mAlphaMode !=
+            LLGLTFMaterial::ALPHA_MODE_BLEND)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+
+    capture.rigged = params.mAvatar != nullptr;
+    capture.alpha_mask = false;
+    capture.material_alpha_mode = 0;
+    capture.material_normal_map = false;
+    capture.material_specular_map = false;
+    capture.pbr = true;
+    capture.terrain = false;
+    capture.avatar = false;
+    capture.impostor = false;
+    capture.pass_active = true;
+    captureMetalWorldPBRBatch(params, false);
+    capture.pass_active = false;
+    capture.pbr = false;
+}
+
 void LLPipeline::captureMetalWorldAvatarBatch(
     const LLViewerJointMesh& mesh, LLVertexBuffer* buffer,
     LLGLTexture* texture, U32 start, U32 end, U32 count, U32 offset)
@@ -2039,6 +2148,7 @@ void LLPipeline::releaseMetalImpostorMirror(const LLUUID& avatar_id)
             mMetalWorldSimpleCapture->impostor_bake_target.reset();
             mMetalWorldSimpleCapture->impostor_bake_avatar_id.setNull();
             mMetalWorldSimpleCapture->impostor_bake_attempted = false;
+            mMetalWorldSimpleCapture->impostor_pbr_alpha_active = false;
         }
     }
 }
@@ -17210,7 +17320,13 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
 
         stamp_opaque_coverage();
         forward_only_attachments();
+#if LL_DARWIN
+        beginMetalImpostorPBRAlphaCapture(avatar->getID());
+#endif
         renderGeomPostDeferred(camera);
+#if LL_DARWIN
+        endMetalImpostorPBRAlphaCapture();
+#endif
 
         // The scene used to be rendered a THIRD time here, colour-masked off, purely so
         // that blended geometry would lay down depth for a coverage mask that ran afterwards

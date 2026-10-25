@@ -171,6 +171,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<BumpPipelines, 2> pipelines;
     std::array<MaterialRiggedPipelines, 2> material_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
+    std::array<MaterialRiggedPipelines, 2> pbr_alpha_pipelines;
     std::array<AvatarVariantPipelines, 2> avatar_pipelines;
     std::array<NormalPipelines, 2> impostor_pipelines;
     std::array<NormalPipelines, 2> coverage_pipelines;
@@ -178,6 +179,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<TerrainPartitionPipelines, 2> pbr_terrain_pipelines;
     std::unique_ptr<ALMetalDepthStencilState> forward_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_depth;
+    std::unique_ptr<ALMetalDepthStencilState> forward_readonly_depth;
+    std::unique_ptr<ALMetalDepthStencilState> reverse_readonly_depth;
     std::unique_ptr<ALMetalDepthStencilState> forward_coverage_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_coverage_depth;
     std::unique_ptr<ALMetalSamplerState> diffuse_sampler;
@@ -223,6 +226,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_bump_fragment") ||
         !impl->library->hasFunction("almetal_world_material_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_fragment") ||
+        !impl->library->hasFunction("almetal_world_pbr_alpha_fragment") ||
         !impl->library->hasFunction("almetal_world_impostor_fragment") ||
         !impl->library->hasFunction("almetal_world_coverage_fragment") ||
         !impl->library->hasFunction("almetal_world_terrain_fragment") ||
@@ -435,6 +439,54 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 ALMetalRenderPipelineDescriptor descriptor;
                 descriptor.library = impl->library.get();
                 descriptor.vertex_function = rigged
+                    ? "almetal_world_pbr_skinned_vertex"
+                    : "almetal_world_pbr_vertex";
+                descriptor.fragment_function =
+                    "almetal_world_pbr_alpha_fragment";
+                descriptor.color_attachment_count = 4;
+                descriptor.colors[0].format =
+                    ALMetalPixelFormat::rgba8_unorm_srgb;
+                descriptor.colors[0].blending_enabled = true;
+                descriptor.colors[0].source_rgb =
+                    ALMetalBlendFactor::source_alpha;
+                descriptor.colors[0].destination_rgb =
+                    ALMetalBlendFactor::one_minus_source_alpha;
+                descriptor.colors[0].source_alpha = ALMetalBlendFactor::one;
+                descriptor.colors[0].destination_alpha =
+                    ALMetalBlendFactor::one_minus_source_alpha;
+                descriptor.colors[1].format = ALMetalPixelFormat::rgba8_unorm;
+                descriptor.colors[1].write_mask = ALMetalColorWriteMask::none;
+                descriptor.colors[2].format = normal_hdr
+                    ? ALMetalPixelFormat::rgba16_unorm
+                    : ALMetalPixelFormat::rgb10a2_unorm;
+                descriptor.colors[2].write_mask = ALMetalColorWriteMask::none;
+                descriptor.colors[3].format = emissive_formats[hdr];
+                descriptor.colors[3].write_mask = ALMetalColorWriteMask::none;
+                descriptor.depth_stencil_format =
+                    ALMetalPixelFormat::depth32_float;
+                descriptor.label =
+                    "Alchemy world PBR impostor-alpha pipeline";
+                auto& pipeline =
+                    impl->pbr_alpha_pipelines[hdr][rigged][normal_hdr];
+                pipeline = ALMetalRenderPipeline::create(
+                    device, descriptor, error);
+                if (!pipeline)
+                {
+                    return nullptr;
+                }
+            }
+        }
+    }
+
+    for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
+    {
+        for (std::size_t rigged = 0; rigged < 2; ++rigged)
+        {
+            for (std::size_t normal_hdr = 0; normal_hdr < 2; ++normal_hdr)
+            {
+                ALMetalRenderPipelineDescriptor descriptor;
+                descriptor.library = impl->library.get();
+                descriptor.vertex_function = rigged
                     ? "almetal_world_material_skinned_vertex"
                     : "almetal_world_material_vertex";
                 descriptor.fragment_function =
@@ -529,6 +581,23 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->reverse_depth = ALMetalDepthStencilState::create(
         device, depth, error);
     if (!impl->reverse_depth)
+    {
+        return nullptr;
+    }
+    depth.depth_compare = ALMetalCompareFunction::less_equal;
+    depth.depth_write_enabled = false;
+    depth.label = "Alchemy forward-Z world read-only depth";
+    impl->forward_readonly_depth = ALMetalDepthStencilState::create(
+        device, depth, error);
+    if (!impl->forward_readonly_depth)
+    {
+        return nullptr;
+    }
+    depth.depth_compare = ALMetalCompareFunction::greater_equal;
+    depth.label = "Alchemy reverse-Z world read-only depth";
+    impl->reverse_readonly_depth = ALMetalDepthStencilState::create(
+        device, depth, error);
+    if (!impl->reverse_readonly_depth)
     {
         return nullptr;
     }
@@ -1619,4 +1688,294 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         return nullptr;
     }
     return target;
+}
+
+bool ALMetalWorldGBufferRenderer::compositePBRAlpha(
+    ALMetalRenderTarget& target,
+    const ALMetalWorldGBufferScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.batches ||
+        scene.batch_count == 0 || scene.width == 0 || scene.height == 0)
+    {
+        setError(error, "Metal world PBR alpha scene is incomplete");
+        return false;
+    }
+
+    const ALMetalRenderTargetDescriptor& target_descriptor =
+        target.descriptor();
+    const ALMetalPixelFormat expected_normal = scene.normal_hdr
+        ? ALMetalPixelFormat::rgba16_unorm
+        : ALMetalPixelFormat::rgb10a2_unorm;
+    const ALMetalPixelFormat expected_emissive = scene.hdr
+        ? ALMetalPixelFormat::rg11b10_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    if (target_descriptor.width != scene.width ||
+        target_descriptor.height != scene.height ||
+        target_descriptor.sample_count != 1 ||
+        target_descriptor.color_attachment_count != 4 ||
+        target_descriptor.colors[0].format !=
+            ALMetalPixelFormat::rgba8_unorm_srgb ||
+        target_descriptor.colors[1].format !=
+            ALMetalPixelFormat::rgba8_unorm ||
+        target_descriptor.colors[2].format != expected_normal ||
+        target_descriptor.colors[3].format != expected_emissive ||
+        target_descriptor.depth_stencil_format !=
+            ALMetalPixelFormat::depth32_float)
+    {
+        setError(error, "Metal world PBR alpha target is incompatible");
+        return false;
+    }
+
+    constexpr std::size_t float4_stride = sizeof(float) * 4;
+    constexpr std::uint32_t max_skin_joints = 110;
+    for (std::size_t index = 0; index < scene.batch_count; ++index)
+    {
+        const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        const std::size_t index_stride =
+            batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
+        if (!batch.vertices || !batch.indices ||
+            batch.vertex_count == 0 || batch.index_count == 0 ||
+            batch.index_count % 3 != 0 ||
+            batch.texture_count == 0 ||
+            batch.texture_count >
+                ALMetalWorldSimpleBatch::max_material_slots ||
+            batch.pbr_slot_count != batch.texture_count ||
+            batch.material_slot_count != 0 || batch.normal_texture ||
+            batch.alpha_mask || batch.avatar_rigid ||
+            batch.avatar_skinning || batch.avatar_cloth ||
+            batch.impostor || batch.terrain ||
+            batch.position_offset % float4_stride != 0 ||
+            batch.normal_offset % float4_stride != 0 ||
+            batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
+            batch.color_offset % (sizeof(std::uint8_t) * 4) != 0 ||
+            batch.tangent_offset % float4_stride != 0 ||
+            batch.index_offset % index_stride != 0 ||
+            !finiteValues(batch.modelview_projection, 16) ||
+            !finiteValues(&batch.normal_matrix[0][0], 12) ||
+            !finiteValues(&batch.rigged_normal_matrix[0][0], 12) ||
+            !finiteValues(batch.texture_matrix, 16) ||
+            !rangeFits(batch.position_offset, batch.vertex_count,
+                       float4_stride, batch.vertices->length()) ||
+            !rangeFits(batch.normal_offset, batch.vertex_count,
+                       float4_stride, batch.vertices->length()) ||
+            !rangeFits(batch.texcoord_offset, batch.vertex_count,
+                       sizeof(float) * 2, batch.vertices->length()) ||
+            !rangeFits(batch.color_offset, batch.vertex_count,
+                       sizeof(std::uint8_t) * 4,
+                       batch.vertices->length()) ||
+            !rangeFits(batch.tangent_offset, batch.vertex_count,
+                       float4_stride, batch.vertices->length()) ||
+            !rangeFits(batch.index_offset, batch.index_count,
+                       index_stride, batch.indices->length()))
+        {
+            setError(error, "Metal world PBR alpha batch is invalid");
+            return false;
+        }
+        if (batch.skin_palette)
+        {
+            const std::size_t expected_palette_floats =
+                4 + static_cast<std::size_t>(batch.skin_joint_count) * 12;
+            if (batch.skin_joint_count == 0 ||
+                batch.skin_joint_count > max_skin_joints ||
+                batch.skin_palette_float_count != expected_palette_floats ||
+                batch.weight_offset % float4_stride != 0 ||
+                !rangeFits(batch.weight_offset, batch.vertex_count,
+                           float4_stride, batch.vertices->length()) ||
+                !finiteValues(batch.skin_palette,
+                              expected_palette_floats))
+            {
+                setError(error,
+                         "Metal world PBR alpha skinning data is invalid");
+                return false;
+            }
+        }
+        else if (batch.weight_offset != 0 ||
+                 batch.skin_palette_float_count != 0 ||
+                 batch.skin_joint_count != 0)
+        {
+            setError(error,
+                     "Metal world PBR alpha skinning data is incomplete");
+            return false;
+        }
+        for (std::uint32_t slot = 0; slot < batch.pbr_slot_count; ++slot)
+        {
+            if (!sampleableTexture(batch.diffuse_textures[slot]) ||
+                !finiteValues(
+                    &batch.pbr_slots[slot].texture_transform[0][0], 32) ||
+                batch.pbr_slots[slot].alpha_cutoff != -1.f)
+            {
+                setError(error,
+                         "Metal world PBR alpha material is invalid");
+                return false;
+            }
+        }
+    }
+
+    std::vector<std::unique_ptr<ALMetalBuffer>> palette_storage;
+    std::vector<const ALMetalBuffer*> palette_buffers(
+        scene.batch_count, nullptr);
+    for (std::size_t batch_index = 0;
+         batch_index < scene.batch_count; ++batch_index)
+    {
+        const ALMetalWorldSimpleBatch& batch = scene.batches[batch_index];
+        if (!batch.skin_palette)
+        {
+            continue;
+        }
+        for (std::size_t previous = 0; previous < batch_index; ++previous)
+        {
+            const ALMetalWorldSimpleBatch& candidate = scene.batches[previous];
+            if (candidate.skin_palette == batch.skin_palette &&
+                candidate.skin_palette_float_count ==
+                    batch.skin_palette_float_count &&
+                candidate.skin_joint_count == batch.skin_joint_count)
+            {
+                palette_buffers[batch_index] = palette_buffers[previous];
+                break;
+            }
+        }
+        if (palette_buffers[batch_index])
+        {
+            continue;
+        }
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = batch.skin_palette_float_count * sizeof(float);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world PBR alpha skin palette";
+        auto palette = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!palette || !palette->write(
+                0, batch.skin_palette, descriptor.length, error))
+        {
+            return false;
+        }
+        palette_buffers[batch_index] = palette.get();
+        palette_storage.push_back(std::move(palette));
+    }
+
+    ALMetalRenderPassConfig pass_config;
+    for (std::size_t attachment = 0; attachment < 4; ++attachment)
+    {
+        pass_config.colors[attachment].load = ALMetalLoadAction::load;
+        pass_config.colors[attachment].store = ALMetalStoreAction::store;
+    }
+    pass_config.depth_load = ALMetalLoadAction::load;
+    pass_config.depth_store = ALMetalStoreAction::store;
+    auto pass = target.makeRenderPass(pass_config, error);
+    if (!pass)
+    {
+        return false;
+    }
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native PBR avatar-impostor alpha", error);
+    if (!command)
+    {
+        return false;
+    }
+    auto encoder = ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world PBR impostor-alpha encoder", error);
+    if (!encoder)
+    {
+        return false;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(scene.width),
+        static_cast<double>(scene.height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{0, 0, scene.width, scene.height};
+    bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&
+        encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
+
+    for (std::size_t index = 0;
+         encoded && index < scene.batch_count; ++index)
+    {
+        const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        const bool rigged = batch.skin_palette != nullptr;
+        const ALMetalDepthStencilState* depth = rigged
+            ? (scene.reverse_z ? mImpl->reverse_depth.get()
+                               : mImpl->forward_depth.get())
+            : (scene.reverse_z ? mImpl->reverse_readonly_depth.get()
+                               : mImpl->forward_readonly_depth.get());
+        const ALMetalRenderPipeline* pipeline =
+            mImpl->pbr_alpha_pipelines[scene.hdr ? 1 : 0]
+                                      [rigged ? 1 : 0]
+                                      [scene.normal_hdr ? 1 : 0].get();
+
+        WorldSimpleConstants world{};
+        std::memcpy(world.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(world.modelview_projection));
+        std::memcpy(world.normal_matrix, batch.normal_matrix,
+                    sizeof(world.normal_matrix));
+        std::memcpy(world.rigged_normal_matrix,
+                    batch.rigged_normal_matrix,
+                    sizeof(world.rigged_normal_matrix));
+        std::memcpy(world.texture_matrix, batch.texture_matrix,
+                    sizeof(world.texture_matrix));
+        world.depth_convention[0] = scene.reverse_z ? 1u : 0u;
+        world.depth_convention[1] = batch.texture_count;
+
+        WorldPBRConstants pbr{};
+        for (std::size_t slot = 0; slot < batch.pbr_slot_count; ++slot)
+        {
+            const ALMetalWorldPBRSlot& source = batch.pbr_slots[slot];
+            std::memcpy(pbr.slots[slot].texture_transform,
+                        source.texture_transform,
+                        sizeof(pbr.slots[slot].texture_transform));
+        }
+        pbr.config[0] = batch.pbr_slot_count;
+
+        encoded =
+            encoder->setDepthStencilState(depth, error) &&
+            encoder->setCullMode(
+                batch.double_sided
+                    ? ALMetalCullMode::none : ALMetalCullMode::back,
+                error) &&
+            encoder->setPipeline(*pipeline, error) &&
+            encoder->setVertexBuffer(
+                0, *batch.vertices, batch.position_offset, error) &&
+            encoder->setVertexBuffer(
+                1, *batch.vertices, batch.normal_offset, error) &&
+            encoder->setVertexBuffer(
+                2, *batch.vertices, batch.texcoord_offset, error) &&
+            encoder->setVertexBuffer(
+                3, *batch.vertices, batch.color_offset, error) &&
+            encoder->setVertexBytes(4, &world, sizeof(world), error) &&
+            encoder->setVertexBuffer(
+                8, *batch.vertices, batch.tangent_offset, error) &&
+            encoder->setVertexBytes(11, &pbr, sizeof(pbr), error) &&
+            encoder->setFragmentBytes(0, &pbr, sizeof(pbr), error);
+        if (encoded && rigged)
+        {
+            encoded =
+                encoder->setVertexBuffer(
+                    5, *palette_buffers[index], 0, error) &&
+                encoder->setVertexBuffer(
+                    6, *batch.vertices, batch.weight_offset, error) &&
+                encoder->setVertexBytes(
+                    7, &batch.skin_joint_count,
+                    sizeof(batch.skin_joint_count), error);
+        }
+        for (std::size_t slot = 0;
+             encoded && slot <
+                 ALMetalWorldSimpleBatch::max_material_slots; ++slot)
+        {
+            const std::size_t source = std::min<std::size_t>(
+                slot, batch.pbr_slot_count - 1);
+            encoded = encoder->setFragmentTexture(
+                static_cast<std::uint32_t>(slot),
+                batch.diffuse_textures[source], error);
+        }
+        encoded = encoded && encoder->drawIndexed(
+            ALMetalPrimitiveType::triangle, batch.index_count,
+            batch.index_type, *batch.indices, batch.index_offset, 1, error);
+    }
+
+    return encoded && encoder->end(error) && command->commit(error);
 }

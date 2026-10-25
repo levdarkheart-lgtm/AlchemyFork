@@ -133,6 +133,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_bump_fragment",
             "almetal_world_material_fragment",
             "almetal_world_pbr_fragment",
+            "almetal_world_pbr_alpha_fragment",
             "almetal_world_impostor_fragment",
             "almetal_world_coverage_fragment",
             "almetal_world_terrain_vertex",
@@ -1689,6 +1690,103 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         batch.skin_palette_float_count = 0;
         batch.skin_joint_count = 0;
         batch.weight_offset = 0;
+
+        // Blend the glTF FOR_IMPOSTOR contract into the retained opaque bake:
+        // flat linear base colour, true coverage, attachment-zero only. Static
+        // alpha keeps depth read-only; rigged alpha writes it so later layers
+        // self-occlude, matching LLDrawPoolAlpha::forwardRender.
+        ALMetalWorldSimpleBatch alpha_batch = batch;
+        alpha_batch.texture_count = 1;
+        alpha_batch.pbr_slot_count = 1;
+        alpha_batch.modelview_projection[12] = 0.8f;
+        ALMetalWorldGBufferScene alpha_scene = scene;
+        alpha_scene.batches = &alpha_batch;
+        alpha_scene.batch_count = 1;
+        alpha_scene.hdr = true;
+        alpha_scene.normal_hdr = true;
+        alpha_scene.reverse_z = false;
+        alpha_batch.pbr_slots[0].alpha_cutoff = 0.5f;
+        CHECK_FALSE(renderer->compositePBRAlpha(
+            *coverage_result, alpha_scene, &error));
+        CHECK(error == "Metal world PBR alpha material is invalid");
+        alpha_batch.pbr_slots[0].alpha_cutoff = -1.f;
+        error.clear();
+        REQUIRE(renderer->compositePBRAlpha(
+            *coverage_result, alpha_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> alpha_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4> alpha_orm{};
+        std::array<float, 32 * 32> alpha_depth{};
+        REQUIRE(coverage_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, alpha_albedo.data(), 32 * 4, &error));
+        REQUIRE(coverage_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, alpha_orm.data(), 32 * 4, &error));
+        REQUIRE(coverage_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, alpha_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        const std::size_t alpha_right = (16 * 32 + 24) * 4;
+        CHECK(alpha_albedo[alpha_right + 0] == 0);
+        CHECK(std::abs(static_cast<int>(alpha_albedo[alpha_right + 1]) -
+                       137) <= 2);
+        CHECK(alpha_albedo[alpha_right + 2] == 0);
+        CHECK(std::abs(static_cast<int>(alpha_albedo[alpha_right + 3]) -
+                       64) <= 1);
+        CHECK(alpha_albedo[center + 0] == coverage_albedo[center + 0]);
+        CHECK(alpha_albedo[center + 1] == coverage_albedo[center + 1]);
+        CHECK(alpha_albedo[center + 2] == coverage_albedo[center + 2]);
+        CHECK(alpha_albedo[center + 3] == 255);
+        CHECK(alpha_orm[alpha_right + 0] == 0);
+        CHECK(alpha_orm[alpha_right + 1] == 0);
+        CHECK(alpha_orm[alpha_right + 2] == 0);
+        CHECK(alpha_orm[alpha_right + 3] == 0);
+        CHECK(std::abs(alpha_depth[16 * 32 + 24] - 1.f) < 0.0001f);
+
+        REQUIRE(renderer->compositePBRAlpha(
+            *coverage_result, alpha_scene, &error));
+        INFO(error);
+        REQUIRE(coverage_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, alpha_albedo.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(alpha_albedo[alpha_right + 1]) -
+                       177) <= 2);
+        CHECK(std::abs(static_cast<int>(alpha_albedo[alpha_right + 3]) -
+                       112) <= 1);
+
+        const std::array<float, 16> alpha_skin_palette{{
+            0.f, 0.f, 0.f, 0.f,
+            1.f, 0.f, 0.f, 0.f,
+            0.f, 1.f, 0.f, 0.f,
+            0.f, 0.f, 1.f, 0.f,
+        }};
+        alpha_batch.modelview_projection[12] = -0.8f;
+        alpha_batch.weight_offset = weight_offset;
+        alpha_batch.skin_palette = alpha_skin_palette.data();
+        alpha_batch.skin_palette_float_count = alpha_skin_palette.size();
+        alpha_batch.skin_joint_count = 1;
+        for (std::size_t column = 0; column < 3; ++column)
+        {
+            alpha_batch.rigged_normal_matrix[column][column] = 1.f;
+        }
+        REQUIRE(renderer->compositePBRAlpha(
+            *coverage_result, alpha_scene, &error));
+        INFO(error);
+        REQUIRE(coverage_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, alpha_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(alpha_depth[16 * 32 + 8] - 0.625f) < 0.0001f);
+
+        alpha_scene.reverse_z = true;
+        REQUIRE(renderer->compositePBRAlpha(
+            *reverse_coverage_result, alpha_scene, &error));
+        INFO(error);
+        REQUIRE(reverse_coverage_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, alpha_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(alpha_depth[16 * 32 + 8] - 0.25f) < 0.0001f);
+
         scene.hdr = false;
 
         batch.tangent_offset = vertex_bytes.size();

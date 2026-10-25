@@ -932,6 +932,28 @@ fragment ALMetalWorldGBufferOutput almetal_world_pbr_fragment(
     return output;
 }
 
+fragment float4 almetal_world_pbr_alpha_fragment(
+    ALMetalWorldPBRVaryings input [[stage_in]],
+    array<texture2d<float>, 8> base_color_textures [[texture(0)]],
+    sampler material_sampler [[sampler(0)]],
+    constant ALMetalWorldPBRConstants& constants [[buffer(0)]])
+{
+    const uint material_index = min(input.material_index, 7u);
+    const float4 base_color =
+        base_color_textures[material_index].sample(
+            material_sampler, input.base_color_texcoord) * input.color;
+    constexpr float minimum_alpha = 0.004;
+    if (base_color.a < minimum_alpha)
+    {
+        discard_fragment();
+    }
+
+    // pbralphaF's FOR_IMPOSTOR path deliberately emits flat, unlit base
+    // colour and true coverage. The sRGB attachment performs its transfer
+    // around fixed-function linear blending; alpha uses src + (1-src)*dst.
+    return max(base_color, float4(0.0));
+}
+
 fragment ALMetalWorldGBufferOutput almetal_world_simple_fragment(
     ALMetalWorldSimpleVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],

@@ -720,6 +720,9 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
 
                 if (gltf_mat && gltf_mat->mAlphaMode == LLGLTFMaterial::ALPHA_MODE_BLEND)
                 {
+#if LL_DARWIN
+                    gPipeline.captureMetalImpostorPBRAlphaBatch(params);
+#endif
                     target_shader = pbr_shader;
                     if (params.mAvatar != nullptr)
                     {
