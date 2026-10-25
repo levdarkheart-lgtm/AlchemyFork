@@ -77,6 +77,9 @@ void LLDrawPoolGLTFPBR::renderDeferred(S32 pass)
 
     LLGLSLShader* opaque = scalar_program.selectVariant();
 
+#if LL_DARWIN
+    gPipeline.beginMetalWorldPBRPass(false, alpha_mask);
+#endif
     opaque->bind();
     if (indexed)
     { // multi-material infos are drawn separately below; render only scalar here
@@ -86,6 +89,10 @@ void LLDrawPoolGLTFPBR::renderDeferred(S32 pass)
     {
         pushGLTFBatches(mRenderType);
     }
+#if LL_DARWIN
+    gPipeline.endMetalWorldGBufferPass();
+    gPipeline.beginMetalWorldPBRPass(true, alpha_mask);
+#endif
 
     opaque->bind(true);
     if (indexed)
@@ -96,15 +103,28 @@ void LLDrawPoolGLTFPBR::renderDeferred(S32 pass)
     {
         pushRiggedGLTFBatches(mRenderType + 1);
     }
+#if LL_DARWIN
+    gPipeline.endMetalWorldGBufferPass();
+#endif
 
     if (indexed)
     {
         LLGLSLShader* opaque_indexed = indexed_program.selectVariant();
+#if LL_DARWIN
+        gPipeline.beginMetalWorldPBRPass(false, alpha_mask);
+#endif
         opaque_indexed->bind();
         pushGLTFBatchesIndexed(mRenderType);
+#if LL_DARWIN
+        gPipeline.endMetalWorldGBufferPass();
+        gPipeline.beginMetalWorldPBRPass(true, alpha_mask);
+#endif
 
         opaque_indexed->bind(true); // rigged variant
         pushRiggedGLTFBatchesIndexed(mRenderType + 1);
+#if LL_DARWIN
+        gPipeline.endMetalWorldGBufferPass();
+#endif
     }
 }
 

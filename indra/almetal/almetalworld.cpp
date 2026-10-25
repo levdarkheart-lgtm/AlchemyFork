@@ -51,6 +51,22 @@ namespace
         std::uint32_t config[4]{};
     };
 
+    struct alignas(16) WorldPBRSlotConstants
+    {
+        float texture_transform[4][8];
+        float emissive_color[4];
+        // x = roughness factor, y = metallic factor, z = alpha cutoff.
+        float properties[4];
+    };
+
+    struct alignas(16) WorldPBRConstants
+    {
+        WorldPBRSlotConstants
+            slots[ALMetalWorldSimpleBatch::max_material_slots]{};
+        // x = populated slot count, y = alpha mask, z = HDR normal target.
+        std::uint32_t config[4]{};
+    };
+
     bool finiteValues(const float* values, std::size_t count)
     {
         for (std::size_t index = 0; index < count; ++index)
@@ -88,6 +104,11 @@ namespace
                batch.material_slots[0].specular_texture != nullptr;
     }
 
+    bool isPBRBatch(const ALMetalWorldSimpleBatch& batch)
+    {
+        return batch.pbr_slot_count != 0;
+    }
+
     bool sampleableTexture(const ALMetalTexture* texture)
     {
         return texture &&
@@ -110,6 +131,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::array<BumpPipelines, 2> pipelines;
     std::array<MaterialRiggedPipelines, 2> material_pipelines;
+    std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
     std::unique_ptr<ALMetalDepthStencilState> forward_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_depth;
     std::unique_ptr<ALMetalSamplerState> diffuse_sampler;
@@ -138,10 +160,13 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_material_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_material_skinned_vertex") ||
+        !impl->library->hasFunction("almetal_world_pbr_vertex") ||
+        !impl->library->hasFunction("almetal_world_pbr_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_fragment") ||
         !impl->library->hasFunction("almetal_world_alpha_mask_fragment") ||
         !impl->library->hasFunction("almetal_world_bump_fragment") ||
-        !impl->library->hasFunction("almetal_world_material_fragment"))
+        !impl->library->hasFunction("almetal_world_material_fragment") ||
+        !impl->library->hasFunction("almetal_world_pbr_fragment"))
     {
         if (impl->library)
         {
@@ -155,6 +180,41 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         ALMetalPixelFormat::rgba8_unorm,
         ALMetalPixelFormat::rg11b10_float,
     }};
+    for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
+    {
+        for (std::size_t rigged = 0; rigged < 2; ++rigged)
+        {
+            for (std::size_t normal_hdr = 0; normal_hdr < 2; ++normal_hdr)
+            {
+                ALMetalRenderPipelineDescriptor descriptor;
+                descriptor.library = impl->library.get();
+                descriptor.vertex_function = rigged
+                    ? "almetal_world_pbr_skinned_vertex"
+                    : "almetal_world_pbr_vertex";
+                descriptor.fragment_function = "almetal_world_pbr_fragment";
+                descriptor.color_attachment_count = 4;
+                descriptor.colors[0].format =
+                    ALMetalPixelFormat::rgba8_unorm_srgb;
+                descriptor.colors[1].format =
+                    ALMetalPixelFormat::rgba8_unorm;
+                descriptor.colors[2].format = normal_hdr
+                    ? ALMetalPixelFormat::rgba16_unorm
+                    : ALMetalPixelFormat::rgb10a2_unorm;
+                descriptor.colors[3].format = emissive_formats[hdr];
+                descriptor.depth_stencil_format =
+                    ALMetalPixelFormat::depth32_float;
+                descriptor.label = "Alchemy world PBR G-buffer pipeline";
+                auto& pipeline = impl->pbr_pipelines[hdr][rigged][normal_hdr];
+                pipeline = ALMetalRenderPipeline::create(
+                    device, descriptor, error);
+                if (!pipeline)
+                {
+                    return nullptr;
+                }
+            }
+        }
+    }
+
     for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
     {
         for (std::size_t rigged = 0; rigged < 2; ++rigged)
@@ -304,9 +364,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
         const bool bump = batch.normal_texture != nullptr;
         const bool material = batch.material_slot_count != 0;
+        const bool pbr = isPBRBatch(batch);
         const bool material_normal_map = materialHasNormalMap(batch);
         const bool material_specular_map = materialHasSpecularMap(batch);
-        const bool tangent_required = bump || material_normal_map;
+        const bool tangent_required = bump || material_normal_map || pbr;
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         if (!batch.vertices || !batch.indices || batch.texture_count == 0 ||
@@ -316,8 +377,13 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
              (batch.material_slot_count >
                   ALMetalWorldSimpleBatch::max_material_slots ||
               batch.material_slot_count != batch.texture_count ||
-              bump || batch.alpha_mask ||
+              bump || pbr || batch.alpha_mask ||
               !validMaterialAlphaMode(batch.material_alpha_mode))) ||
+            (pbr &&
+             (batch.pbr_slot_count >
+                  ALMetalWorldSimpleBatch::max_material_slots ||
+              batch.pbr_slot_count != batch.texture_count ||
+              material || bump)) ||
             (!material && batch.material_alpha_mode != 0) ||
             batch.vertex_count == 0 || batch.index_count == 0 ||
             batch.index_count % 3 != 0 ||
@@ -360,6 +426,28 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                  !sampleableTexture(material_slot.specular_texture)))
             {
                 setError(error, "Metal world material slot is invalid");
+                return nullptr;
+            }
+        }
+        for (std::uint32_t slot = 0; slot < batch.pbr_slot_count; ++slot)
+        {
+            const ALMetalWorldPBRSlot& pbr_slot = batch.pbr_slots[slot];
+            if (!sampleableTexture(pbr_slot.normal_texture) ||
+                !sampleableTexture(pbr_slot.orm_texture) ||
+                !sampleableTexture(pbr_slot.emissive_texture) ||
+                !finiteValues(&pbr_slot.texture_transform[0][0], 32) ||
+                !finiteValues(pbr_slot.emissive_color, 4) ||
+                !std::isfinite(pbr_slot.roughness_factor) ||
+                !std::isfinite(pbr_slot.metallic_factor) ||
+                !std::isfinite(pbr_slot.alpha_cutoff) ||
+                pbr_slot.roughness_factor < 0.f ||
+                pbr_slot.roughness_factor > 1.f ||
+                pbr_slot.metallic_factor < 0.f ||
+                pbr_slot.metallic_factor > 1.f ||
+                pbr_slot.alpha_cutoff < -1.f ||
+                pbr_slot.alpha_cutoff > 1.f)
+            {
+                setError(error, "Metal world PBR slot is invalid");
                 return nullptr;
             }
         }
@@ -579,19 +667,28 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         const bool rigged = batch.skin_palette != nullptr;
         const bool bump = batch.normal_texture != nullptr;
         const bool material = batch.material_slot_count != 0;
+        const bool pbr = isPBRBatch(batch);
         const bool material_normal_map = materialHasNormalMap(batch);
         const bool material_specular_map = materialHasSpecularMap(batch);
-        const ALMetalRenderPipeline* pipeline = material
-            ? mImpl->material_pipelines[scene.hdr ? 1 : 0]
-                                       [rigged ? 1 : 0]
-                                       [scene.normal_hdr ? 1 : 0].get()
-            : mImpl->pipelines[scene.hdr ? 1 : 0]
-                              [bump ? 1 : 0]
-                              [batch.alpha_mask ? 1 : 0]
-                              [rigged ? 1 : 0]
-                              [scene.normal_hdr ? 1 : 0].get();
+        const ALMetalRenderPipeline* pipeline = pbr
+            ? mImpl->pbr_pipelines[scene.hdr ? 1 : 0]
+                                  [rigged ? 1 : 0]
+                                  [scene.normal_hdr ? 1 : 0].get()
+            : (material
+                ? mImpl->material_pipelines[scene.hdr ? 1 : 0]
+                                           [rigged ? 1 : 0]
+                                           [scene.normal_hdr ? 1 : 0].get()
+                : mImpl->pipelines[scene.hdr ? 1 : 0]
+                                  [bump ? 1 : 0]
+                                  [batch.alpha_mask ? 1 : 0]
+                                  [rigged ? 1 : 0]
+                                  [scene.normal_hdr ? 1 : 0].get());
 
         encoded =
+            encoder->setCullMode(
+                pbr && batch.double_sided
+                    ? ALMetalCullMode::none : ALMetalCullMode::back,
+                error) &&
             encoder->setPipeline(*pipeline, error) &&
             encoder->setVertexBuffer(0, *batch.vertices,
                                      batch.position_offset, error) &&
@@ -662,6 +759,35 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             encoded = encoded && encoder->setFragmentBytes(
                 0, &material_constants, sizeof(material_constants), error);
         }
+        if (encoded && pbr)
+        {
+            encoded = encoder->setVertexBuffer(
+                8, *batch.vertices, batch.tangent_offset, error);
+            WorldPBRConstants pbr_constants{};
+            for (std::size_t slot = 0; slot < batch.pbr_slot_count; ++slot)
+            {
+                const ALMetalWorldPBRSlot& source = batch.pbr_slots[slot];
+                WorldPBRSlotConstants& destination =
+                    pbr_constants.slots[slot];
+                std::memcpy(destination.texture_transform,
+                            source.texture_transform,
+                            sizeof(destination.texture_transform));
+                std::memcpy(destination.emissive_color,
+                            source.emissive_color,
+                            sizeof(destination.emissive_color));
+                destination.properties[0] = source.roughness_factor;
+                destination.properties[1] = source.metallic_factor;
+                destination.properties[2] = source.alpha_cutoff;
+            }
+            pbr_constants.config[0] = batch.pbr_slot_count;
+            pbr_constants.config[1] = batch.alpha_mask ? 1u : 0u;
+            pbr_constants.config[2] = scene.normal_hdr ? 1u : 0u;
+            encoded = encoded &&
+                encoder->setVertexBytes(
+                    11, &pbr_constants, sizeof(pbr_constants), error) &&
+                encoder->setFragmentBytes(
+                    0, &pbr_constants, sizeof(pbr_constants), error);
+        }
         for (std::size_t texture_index = 0;
              encoded && texture_index <
                  ALMetalWorldSimpleBatch::max_diffuse_textures;
@@ -694,6 +820,28 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                     encoder->setFragmentTexture(
                         static_cast<std::uint32_t>(16 + slot),
                         specular_texture, error);
+            }
+        }
+        if (encoded && pbr)
+        {
+            for (std::size_t slot = 0;
+                 encoded && slot < ALMetalWorldSimpleBatch::max_material_slots;
+                 ++slot)
+            {
+                const std::size_t source = std::min<std::size_t>(
+                    slot, batch.pbr_slot_count - 1);
+                const ALMetalWorldPBRSlot& pbr_slot =
+                    batch.pbr_slots[source];
+                encoded =
+                    encoder->setFragmentTextureLinear(
+                        static_cast<std::uint32_t>(8 + slot),
+                        pbr_slot.normal_texture, error) &&
+                    encoder->setFragmentTextureLinear(
+                        static_cast<std::uint32_t>(16 + slot),
+                        pbr_slot.orm_texture, error) &&
+                    encoder->setFragmentTexture(
+                        static_cast<std::uint32_t>(24 + slot),
+                        pbr_slot.emissive_texture, error);
             }
         }
         encoded = encoded &&

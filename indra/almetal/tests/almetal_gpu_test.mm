@@ -121,10 +121,13 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_bump_skinned_vertex",
             "almetal_world_material_vertex",
             "almetal_world_material_skinned_vertex",
+            "almetal_world_pbr_vertex",
+            "almetal_world_pbr_skinned_vertex",
             "almetal_world_simple_fragment",
             "almetal_world_alpha_mask_fragment",
             "almetal_world_bump_fragment",
             "almetal_world_material_fragment",
+            "almetal_world_pbr_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
             "almetal_lit_preview_vertex",
@@ -960,6 +963,27 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         const std::array<std::uint8_t, 4> material_specular_pixel{{
             255, 255, 255, 128,
         }};
+        ALMetalTextureDescriptor pbr_orm_descriptor = normal_descriptor;
+        pbr_orm_descriptor.label = "Alchemy world PBR ORM";
+        auto pbr_orm_texture = ALMetalTexture::create(
+            *device, pbr_orm_descriptor, &error);
+        INFO(error);
+        REQUIRE(pbr_orm_texture);
+        const std::array<std::uint8_t, 4> pbr_orm_pixel{{
+            128, 128, 64, 255,
+        }};
+        ALMetalTextureDescriptor pbr_base_descriptor = diffuse_descriptor;
+        pbr_base_descriptor.width = 2;
+        pbr_base_descriptor.label =
+            "Alchemy world PBR transformed sRGB base color";
+        auto pbr_base_texture = ALMetalTexture::create(
+            *device, pbr_base_descriptor, &error);
+        INFO(error);
+        REQUIRE(pbr_base_texture);
+        const std::array<std::uint8_t, 8> pbr_base_pixels{{
+            255, 0, 0, 255,
+            0, 255, 0, 128,
+        }};
         auto upload = device->makeCommandBuffer(
             "Alchemy world simple diffuse upload", &error);
         INFO(error);
@@ -974,6 +998,10 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *upload, 0, 0, {}, bump_normal_pixel.data(), 4, &error));
         REQUIRE(material_specular_texture->upload(
             *upload, 0, 0, {}, material_specular_pixel.data(), 4, &error));
+        REQUIRE(pbr_orm_texture->upload(
+            *upload, 0, 0, {}, pbr_orm_pixel.data(), 4, &error));
+        REQUIRE(pbr_base_texture->upload(
+            *upload, 0, 0, {}, pbr_base_pixels.data(), 8, &error));
         REQUIRE(upload->commitAndWait(&error));
         INFO(error);
 
@@ -1548,6 +1576,156 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(
                            skinned_material_normal[translated_center + 2]) -
                        12336) <= 3);
+
+        // The glTF PBR owner uses four independently transformed maps and
+        // packs filtered ORM plus the geometric normal into the same target.
+        // Exercise the indexed static path first, including a KHR base-color
+        // offset that selects the green texel from a red/green texture.
+        batch.material_slot_count = 0;
+        batch.material_alpha_mode = 0;
+        batch.pbr_slot_count = 2;
+        batch.alpha_mask = false;
+        batch.double_sided = true;
+        batch.tangent_offset = tangent_offset;
+        batch.diffuse_textures[0] = pbr_base_texture.get();
+        batch.diffuse_textures[1] = pbr_base_texture.get();
+        for (std::size_t slot = 0; slot < batch.pbr_slot_count; ++slot)
+        {
+            ALMetalWorldPBRSlot& pbr = batch.pbr_slots[slot];
+            pbr.normal_texture = bump_normal.get();
+            pbr.orm_texture = pbr_orm_texture.get();
+            pbr.emissive_texture = diffuse.get();
+            pbr.texture_transform[0][4] = 0.75f;
+            pbr.emissive_color[0] = 0.5f;
+            pbr.emissive_color[1] = 1.f;
+            pbr.roughness_factor = 0.5f;
+            pbr.metallic_factor = 0.5f;
+            pbr.alpha_cutoff = -1.f;
+        }
+        batch.skin_palette = nullptr;
+        batch.skin_palette_float_count = 0;
+        batch.skin_joint_count = 0;
+        batch.weight_offset = 0;
+        scene.hdr = false;
+
+        batch.tangent_offset = vertex_bytes.size();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error ==
+              "Metal world simple geometry range exceeds its buffers");
+        batch.tangent_offset = tangent_offset;
+        error.clear();
+        auto pbr_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(pbr_result);
+        std::array<std::uint8_t, 32 * 32 * 4> pbr_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4> pbr_orm{};
+        std::array<std::uint16_t, 32 * 32 * 4> pbr_normal{};
+        std::array<std::uint8_t, 32 * 32 * 4> pbr_emissive{};
+        REQUIRE(pbr_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pbr_albedo.data(), 32 * 4, &error));
+        REQUIRE(pbr_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, pbr_orm.data(), 32 * 4, &error));
+        REQUIRE(pbr_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, pbr_normal.data(), 32 * 8, &error));
+        REQUIRE(pbr_result->colorTexture(3)->readback(
+            *device, 0, 0, {}, pbr_emissive.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(pbr_albedo[center + 0] == 0);
+        CHECK(pbr_albedo[center + 1] == 255);
+        CHECK(pbr_albedo[center + 2] == 0);
+        CHECK(pbr_albedo[center + 3] == 0);
+        CHECK(std::abs(static_cast<int>(pbr_orm[center + 0]) - 128) <= 1);
+        CHECK(std::abs(static_cast<int>(pbr_orm[center + 1]) - 64) <= 1);
+        CHECK(std::abs(static_cast<int>(pbr_orm[center + 2]) - 32) <= 1);
+        CHECK(pbr_orm[center + 3] <= 1);
+        CHECK(pbr_normal[center + 0] > 65000);
+        CHECK(std::abs(static_cast<int>(pbr_normal[center + 2]) -
+                       32896) <= 2);
+        CHECK(std::abs(static_cast<int>(pbr_normal[center + 3]) -
+                       43908) <= 2);
+        CHECK(std::abs(static_cast<int>(pbr_emissive[center + 0]) - 28) <= 1);
+        CHECK(std::abs(static_cast<int>(pbr_emissive[center + 1]) - 13) <= 1);
+        CHECK(pbr_emissive[center + 2] == 0);
+
+        constexpr float half_pi = 1.5707963267948966f;
+        batch.pbr_slots[0].texture_transform[1][2] = half_pi;
+        batch.pbr_slots[1].texture_transform[1][2] = half_pi;
+        auto rotated_pbr_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(rotated_pbr_result);
+        std::array<std::uint16_t, 32 * 32 * 4> rotated_pbr_normal{};
+        REQUIRE(rotated_pbr_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, rotated_pbr_normal.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(rotated_pbr_normal[center + 0]) -
+                       32768) < 512);
+        CHECK(rotated_pbr_normal[center + 1] < 512);
+        batch.pbr_slots[0].texture_transform[1][2] = 0.f;
+        batch.pbr_slots[1].texture_transform[1][2] = 0.f;
+
+        batch.pbr_slot_count = 1;
+        batch.texture_count = 1;
+        auto scalar_pbr_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(scalar_pbr_result);
+        std::array<std::uint8_t, 32 * 32 * 4> scalar_pbr_albedo{};
+        REQUIRE(scalar_pbr_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, scalar_pbr_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(scalar_pbr_albedo[center + 0] == 0);
+        CHECK(scalar_pbr_albedo[center + 1] == 255);
+        CHECK(scalar_pbr_albedo[center + 2] == 0);
+        batch.pbr_slot_count = 2;
+        batch.texture_count = 2;
+
+        // A masked PBR texel uses base texture alpha times streamed alpha and
+        // the same half-byte equality bias as the GL owner.
+        batch.alpha_mask = true;
+        batch.pbr_slots[0].alpha_cutoff = 0.6f;
+        batch.pbr_slots[1].alpha_cutoff = 0.6f;
+        auto pbr_masked_out = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(pbr_masked_out);
+        std::array<std::uint8_t, 32 * 32 * 4> pbr_masked_albedo{};
+        REQUIRE(pbr_masked_out->colorTexture(0)->readback(
+            *device, 0, 0, {}, pbr_masked_albedo.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(pbr_masked_albedo[center + 0] == 255);
+        CHECK(pbr_masked_albedo[center + 1] == 0);
+        CHECK(pbr_masked_albedo[center + 2] == 255);
+        batch.pbr_slots[0].alpha_cutoff = 0.253f;
+        batch.pbr_slots[1].alpha_cutoff = 0.253f;
+        auto pbr_masked_in = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(pbr_masked_in);
+        REQUIRE(pbr_masked_in->colorTexture(0)->readback(
+            *device, 0, 0, {}, pbr_masked_albedo.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(pbr_masked_albedo[center + 0] == 0);
+        CHECK(pbr_masked_albedo[center + 1] == 255);
+        CHECK(pbr_masked_albedo[center + 2] == 0);
+
+        // Reuse the same complete PBR contract through object skinning.
+        batch.alpha_mask = false;
+        batch.pbr_slots[0].alpha_cutoff = -1.f;
+        batch.pbr_slots[1].alpha_cutoff = -1.f;
+        batch.weight_offset = weight_offset;
+        batch.skin_palette = skin_palette.data();
+        batch.skin_palette_float_count = skin_palette.size();
+        batch.skin_joint_count = 1;
+        auto skinned_pbr_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(skinned_pbr_result);
+        std::array<std::uint8_t, 32 * 32 * 4> skinned_pbr_albedo{};
+        REQUIRE(skinned_pbr_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, skinned_pbr_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(skinned_pbr_albedo[translated_center + 0] == 0);
+        CHECK(skinned_pbr_albedo[translated_center + 1] == 255);
+        CHECK(skinned_pbr_albedo[translated_center + 2] == 0);
     }
 }
 

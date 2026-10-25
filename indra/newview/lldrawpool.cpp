@@ -1217,6 +1217,10 @@ void LLRenderPass::pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps map
 
     applyModelMatrix(params);
 
+#if LL_DARWIN
+    gPipeline.captureMetalWorldPBRBatch(params, true);
+#endif
+
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 }
@@ -1245,6 +1249,10 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params, LLFetchedGLTFMaterial*& las
     setup_texture_matrix(params);
 
     applyModelMatrix(params);
+
+#if LL_DARWIN
+    gPipeline.captureMetalWorldPBRBatch(params, false);
+#endif
 
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);

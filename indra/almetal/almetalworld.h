@@ -28,6 +28,23 @@ struct ALMetalWorldMaterialSlot
     float fullbright = 0.f;
 };
 
+struct ALMetalWorldPBRSlot
+{
+    const ALMetalTexture* normal_texture = nullptr;
+    const ALMetalTexture* orm_texture = nullptr;
+    const ALMetalTexture* emissive_texture = nullptr;
+    float texture_transform[4][8] = {
+        {1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+        {1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+        {1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+        {1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+    };
+    float emissive_color[4]{};
+    float roughness_factor = 1.f;
+    float metallic_factor = 1.f;
+    float alpha_cutoff = -1.f;
+};
+
 struct ALMetalWorldSimpleBatch
 {
     static constexpr std::size_t max_diffuse_textures = 32;
@@ -53,10 +70,13 @@ struct ALMetalWorldSimpleBatch
     std::array<ALMetalWorldMaterialSlot, max_material_slots> material_slots{};
     std::uint32_t material_slot_count = 0;
     std::uint32_t material_alpha_mode = 0;
+    std::array<ALMetalWorldPBRSlot, max_material_slots> pbr_slots{};
+    std::uint32_t pbr_slot_count = 0;
     const float* skin_palette = nullptr;
     std::size_t skin_palette_float_count = 0;
     std::uint32_t skin_joint_count = 0;
     bool alpha_mask = false;
+    bool double_sided = false;
     bool use_vertex_color = true;
     bool alpha_cutoff_bias = true;
     float alpha_cutoff = 0.f;
@@ -83,10 +103,10 @@ struct ALMetalWorldGBufferScene
     float clear_color[4] = {1.f, 0.f, 1.f, 1.f};
 };
 
-// The deliberately narrow world bootstrap owner: simple and alpha-mask
-// geometry into a native four-attachment G-buffer plus depth. It is not
-// presented yet. The viewer runs one bounded fail-closed probe so world
-// integration can advance without doubling these passes every migration frame.
+// The ordered native world G-buffer owner for legacy and PBR material families.
+// It writes four colour attachments plus depth and is not presented yet. The
+// viewer runs one bounded fail-closed probe so world integration can advance
+// without doubling these passes every migration frame.
 class ALMetalWorldGBufferRenderer final
 {
 public:

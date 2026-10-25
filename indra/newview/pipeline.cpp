@@ -392,6 +392,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 material_alpha_mode = 0;
     bool material_normal_map = false;
     bool material_specular_map = false;
+    bool pbr = false;
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
@@ -795,6 +796,7 @@ void LLPipeline::beginMetalWorldGBufferPass(bool rigged, bool alpha_mask)
     capture.material_alpha_mode = 0;
     capture.material_normal_map = false;
     capture.material_specular_map = false;
+    capture.pbr = false;
     capture.pass_active = true;
 }
 
@@ -825,6 +827,30 @@ void LLPipeline::beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode,
     capture.material_alpha_mode = alpha_mode;
     capture.material_normal_map = normal_map;
     capture.material_specular_map = specular_map;
+    capture.pbr = false;
+    capture.pass_active = true;
+}
+
+void LLPipeline::beginMetalWorldPBRPass(bool rigged, bool alpha_mask)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    capture.rigged = rigged;
+    capture.alpha_mask = alpha_mask;
+    capture.material_alpha_mode = 0;
+    capture.material_normal_map = false;
+    capture.material_specular_map = false;
+    capture.pbr = true;
     capture.pass_active = true;
 }
 
@@ -1157,6 +1183,149 @@ void LLPipeline::captureMetalWorldMaterialBatch(
     }
 }
 
+void LLPipeline::captureMetalWorldPBRBatch(
+    const LLDrawInfo& params, bool indexed_materials)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->pass_active ||
+        !mMetalWorldSimpleCapture->pbr)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const std::size_t slot_count = indexed_materials
+        ? params.mGLTFMaterialList.size() : 1;
+    LLVertexBuffer* buffer = params.mVertexBuffer.get();
+    if (!capture.complete || !buffer || slot_count == 0 ||
+        slot_count > ALMetalWorldSimpleBatch::max_material_slots ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TANGENT) ||
+        (indexed_materials &&
+         (slot_count < 2 ||
+          !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX))) ||
+        (!indexed_materials && params.mGLTFMaterial.isNull()))
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+
+    const std::size_t prior_count = capture.batches.size();
+    captureMetalWorldGBufferBatch(params, false);
+    if (!capture.complete || capture.batches.size() == prior_count)
+    {
+        return;
+    }
+
+    ALMetalWorldSimpleBatch& batch = capture.batches.back();
+    batch.tangent_offset = buffer->getOffset(LLVertexBuffer::TYPE_TANGENT);
+    batch.pbr_slot_count = static_cast<U32>(slot_count);
+    batch.texture_count = static_cast<U32>(slot_count);
+    batch.double_sided = false;
+    if (indexed_materials)
+    {
+        std::memset(batch.texture_matrix, 0,
+                    sizeof(batch.texture_matrix));
+        for (U32 diagonal = 0; diagonal < 4; ++diagonal)
+        {
+            batch.texture_matrix[diagonal * 4 + diagonal] = 1.f;
+        }
+    }
+
+    for (std::size_t slot_index = 0;
+         slot_index < slot_count; ++slot_index)
+    {
+        LLFetchedGLTFMaterial* material = indexed_materials
+            ? params.mGLTFMaterialList[slot_index].get()
+            : params.mGLTFMaterial.get();
+        ALMetalWorldPBRSlot& destination = batch.pbr_slots[slot_index];
+
+        LLViewerTexture* media_texture = !indexed_materials
+            ? params.mTexture.get() : nullptr;
+        LLViewerTexture* base_texture = media_texture;
+        LLViewerTexture* normal_texture = nullptr;
+        LLViewerTexture* orm_texture = nullptr;
+        LLViewerTexture* emissive_texture = media_texture;
+
+        if (material)
+        {
+            const bool masked = material->mAlphaMode ==
+                LLGLTFMaterial::ALPHA_MODE_MASK;
+            if (masked != capture.alpha_mask)
+            {
+                capture.complete = false;
+                capture.batches.clear();
+                return;
+            }
+            if (!base_texture)
+            {
+                base_texture = material->mBaseColorTexture.notNull()
+                    ? material->mBaseColorTexture.get()
+                    : LLViewerFetchedTexture::sWhiteImagep.get();
+            }
+            normal_texture =
+                material->mNormalTexture.notNull() &&
+                material->mNormalTexture->getDiscardLevel() <= 4
+                    ? material->mNormalTexture.get()
+                    : LLViewerFetchedTexture::sFlatNormalImagep.get();
+            orm_texture = material->mMetallicRoughnessTexture.notNull()
+                ? material->mMetallicRoughnessTexture.get()
+                : LLViewerFetchedTexture::sWhiteImagep.get();
+            if (!emissive_texture)
+            {
+                emissive_texture = material->mEmissiveTexture.notNull()
+                    ? material->mEmissiveTexture.get()
+                    : LLViewerFetchedTexture::sWhiteImagep.get();
+            }
+            for (U32 texture = 0;
+                 texture < LLGLTFMaterial::GLTF_TEXTURE_INFO_COUNT;
+                 ++texture)
+            {
+                LLGLTFMaterial::TextureTransform::Pack packed;
+                material->mTextureTransform[texture].getPacked(packed);
+                std::memcpy(destination.texture_transform[texture],
+                            packed, sizeof(packed));
+            }
+            std::memcpy(destination.emissive_color,
+                        material->mEmissiveColor.mV,
+                        sizeof(material->mEmissiveColor.mV));
+            destination.roughness_factor = material->mRoughnessFactor;
+            destination.metallic_factor = material->mMetallicFactor;
+            destination.alpha_cutoff = capture.alpha_mask
+                ? material->mAlphaCutoff : -1.f;
+            batch.double_sided = batch.double_sided ||
+                                 material->mDoubleSided;
+        }
+        else
+        {
+            base_texture = LLViewerFetchedTexture::sWhiteImagep.get();
+            normal_texture = LLViewerFetchedTexture::sFlatNormalImagep.get();
+            orm_texture = LLViewerFetchedTexture::sWhiteImagep.get();
+            emissive_texture = LLViewerFetchedTexture::sWhiteImagep.get();
+            destination.alpha_cutoff = -1.f;
+        }
+
+        const auto metal_texture = [](LLViewerTexture* texture)
+            -> ALMetalTexture*
+        {
+            LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+            return image ? image->getMetalTexture() : nullptr;
+        };
+        batch.diffuse_textures[slot_index] = metal_texture(base_texture);
+        destination.normal_texture = metal_texture(normal_texture);
+        destination.orm_texture = metal_texture(orm_texture);
+        destination.emissive_texture = metal_texture(emissive_texture);
+        if (!batch.diffuse_textures[slot_index] ||
+            !destination.normal_texture || !destination.orm_texture ||
+            !destination.emissive_texture)
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
+    }
+}
+
 void LLPipeline::captureMetalWorldTreeBatch(LLVertexBuffer* buffer,
                                             LLViewerTexture* texture)
 {
@@ -1299,9 +1468,9 @@ void LLPipeline::endMetalWorldGBufferCapture()
         capture.attempted = true;
         capture.failed_frames = 0;
         LL_INFOS("Metal")
-            << "Native world G-buffer bootstrap encoded "
+            << "Native world G-buffer owner encoded "
             << capture.batches.size()
-            << " simple/alpha-mask batches at " << capture.width << "x"
+            << " world batches at " << capture.width << "x"
             << capture.height
             << "; presentation remains on GL until the remaining world passes exist"
             << LL_ENDL;

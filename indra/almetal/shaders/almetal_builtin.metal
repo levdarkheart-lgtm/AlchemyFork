@@ -542,6 +542,265 @@ vertex ALMetalWorldSimpleVaryings almetal_world_material_skinned_vertex(
     return output;
 }
 
+struct ALMetalWorldPBRSlotConstants
+{
+    float4 texture_transform[4][2];
+    float4 emissive_color;
+    // x = roughness factor, y = metallic factor, z = alpha cutoff.
+    float4 properties;
+};
+
+struct ALMetalWorldPBRConstants
+{
+    ALMetalWorldPBRSlotConstants slots[8];
+    // x = populated slot count, y = alpha mask, z = HDR normal target.
+    uint4 config;
+};
+
+struct ALMetalWorldPBRVaryings
+{
+    float4 position [[position]];
+    float3 normal;
+    float3 tangent;
+    float3 bitangent;
+    float4 color;
+    float2 base_color_texcoord;
+    float2 normal_texcoord;
+    float2 orm_texcoord;
+    float2 emissive_texcoord;
+    uint material_index [[flat]];
+};
+
+static float2 almetal_world_pbr_texcoord(
+    float2 vertex_texcoord,
+    float4x4 sl_animation_transform,
+    constant float4* material_transform)
+{
+    float2 texcoord =
+        (sl_animation_transform * float4(vertex_texcoord, 0.0, 1.0)).xy;
+    texcoord.y = 1.0 - texcoord.y;
+    const float2 scaled = texcoord * material_transform[0].xy;
+    const float cosine = cos(material_transform[0].z);
+    const float sine = sin(material_transform[0].z);
+    texcoord = float2(cosine * scaled.x + sine * scaled.y,
+                      -sine * scaled.x + cosine * scaled.y) +
+               material_transform[1].xy;
+    texcoord.y = 1.0 - texcoord.y;
+    return texcoord;
+}
+
+static float4 almetal_world_pbr_tangent(
+    float4 tangent,
+    float3 normal,
+    float4x4 sl_animation_transform,
+    constant float4* normal_transform)
+{
+    const float inverse_rotation = -normal_transform[0].z;
+    float2 weights = float2(cos(inverse_rotation),
+                            -sin(inverse_rotation));
+    const float2 scale_sign = sign(normal_transform[0].xy);
+    weights *= scale_sign;
+    const float2x2 sl_rotation_scale = float2x2(
+        float2(sl_animation_transform[0][0],
+               sl_animation_transform[0][1]),
+        float2(sl_animation_transform[1][0],
+               sl_animation_transform[1][1]));
+    weights = sl_rotation_scale * weights;
+    if (abs(weights.x) + abs(weights.y) == 0.0)
+    {
+        weights = float2(1.0, 0.0);
+    }
+    weights = normalize(weights);
+    weights.y = -weights.y;
+    const float3 binormal = tangent.w * cross(normal, tangent.xyz);
+    return float4(weights.x * tangent.xyz + weights.y * binormal,
+                  tangent.w * scale_sign.x * scale_sign.y);
+}
+
+static ALMetalWorldPBRVaryings almetal_world_pbr_varyings(
+    float4 clip_position,
+    float3 normal,
+    float4 tangent,
+    float2 texcoord,
+    uchar4 encoded_color,
+    uint material_index,
+    constant ALMetalWorldSimpleConstants& world,
+    constant ALMetalWorldPBRConstants& pbr)
+{
+    ALMetalWorldPBRVaryings output;
+    clip_position.y = -clip_position.y;
+    output.position = world.depth_convention.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.normal = normalize(normal);
+    const uint slot = min(material_index, max(pbr.config.x, 1u) - 1u);
+    constant ALMetalWorldPBRSlotConstants& material =
+        pbr.slots[min(slot, 7u)];
+    const float4 adjusted_tangent = almetal_world_pbr_tangent(
+        float4(normalize(tangent.xyz), tangent.w), output.normal,
+        world.texture_matrix, material.texture_transform[1]);
+    output.tangent = normalize(adjusted_tangent.xyz);
+    output.bitangent = adjusted_tangent.w *
+                       cross(output.normal, output.tangent);
+    const float4 color = float4(encoded_color) / 255.0;
+    output.color = float4(almetal_srgb_to_linear(color.rgb), color.a);
+    output.base_color_texcoord = almetal_world_pbr_texcoord(
+        texcoord, world.texture_matrix, material.texture_transform[0]);
+    output.normal_texcoord = almetal_world_pbr_texcoord(
+        texcoord, world.texture_matrix, material.texture_transform[1]);
+    output.orm_texcoord = almetal_world_pbr_texcoord(
+        texcoord, world.texture_matrix, material.texture_transform[2]);
+    output.emissive_texcoord = almetal_world_pbr_texcoord(
+        texcoord, world.texture_matrix, material.texture_transform[3]);
+    output.material_index = slot;
+    return output;
+}
+
+vertex ALMetalWorldPBRVaryings almetal_world_pbr_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldSimpleConstants& world [[buffer(4)]],
+    const device float4* tangents [[buffer(8)]],
+    constant ALMetalWorldPBRConstants& pbr [[buffer(11)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float3x3 normal_matrix = float3x3(
+        world.normal_matrix[0].xyz,
+        world.normal_matrix[1].xyz,
+        world.normal_matrix[2].xyz);
+    const uint material_index = world.depth_convention.y > 1
+        ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
+    return almetal_world_pbr_varyings(
+        world.modelview_projection *
+            float4(positions[vertex_id].xyz, 1.0),
+        normal_matrix * normals[vertex_id].xyz,
+        float4(normal_matrix * tangents[vertex_id].xyz,
+               tangents[vertex_id].w),
+        texcoords[vertex_id], colors[vertex_id], material_index, world, pbr);
+}
+
+vertex ALMetalWorldPBRVaryings almetal_world_pbr_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldSimpleConstants& world [[buffer(4)]],
+    const device float4* skin_palette [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    constant uint& joint_count [[buffer(7)]],
+    const device float4* tangents [[buffer(8)]],
+    constant ALMetalWorldPBRConstants& pbr [[buffer(11)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        positions[vertex_id], normals[vertex_id],
+        encoded_weights[vertex_id], skin_palette, joint_count);
+    const float3x3 normal_matrix = float3x3(
+        world.rigged_normal_matrix[0].xyz,
+        world.rigged_normal_matrix[1].xyz,
+        world.rigged_normal_matrix[2].xyz);
+    const float3 tangent = almetal_object_skin_direction(
+        tangents[vertex_id].xyz, encoded_weights[vertex_id],
+        skin_palette, joint_count);
+    const uint material_index = world.depth_convention.y > 1
+        ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
+    return almetal_world_pbr_varyings(
+        world.modelview_projection * skinned.position +
+            world.modelview_projection * float4(skin_palette[0].xyz, 1.0),
+        normal_matrix * skinned.normal.xyz,
+        float4(normal_matrix * tangent, tangents[vertex_id].w),
+        texcoords[vertex_id], colors[vertex_id], material_index, world, pbr);
+}
+
+static float2 almetal_world_oct_encode(float3 normal)
+{
+    const float denominator =
+        abs(normal.x) + abs(normal.y) + abs(normal.z);
+    float2 oct = normal.xy / max(denominator, 1.0e-20);
+    if (normal.z < 0.0)
+    {
+        oct = (1.0 - abs(oct.yx)) *
+              select(float2(-1.0), float2(1.0), oct >= 0.0);
+    }
+    return oct * 0.5 + 0.5;
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_pbr_fragment(
+    ALMetalWorldPBRVaryings input [[stage_in]],
+    array<texture2d<float>, 8> base_color_textures [[texture(0)]],
+    array<texture2d<float>, 8> normal_textures [[texture(8)]],
+    array<texture2d<float>, 8> orm_textures [[texture(16)]],
+    array<texture2d<float>, 8> emissive_textures [[texture(24)]],
+    sampler material_sampler [[sampler(0)]],
+    constant ALMetalWorldPBRConstants& constants [[buffer(0)]],
+    bool front_facing [[front_facing]])
+{
+    const uint material_index = min(input.material_index, 7u);
+    const ALMetalWorldPBRSlotConstants material =
+        constants.slots[material_index];
+    const float4 base_color =
+        base_color_textures[material_index].sample(
+            material_sampler, input.base_color_texcoord) * input.color;
+    constexpr float quantization_bias = 1.0 / 512.0;
+    if (constants.config.y != 0 &&
+        base_color.a < material.properties.z - quantization_bias)
+    {
+        discard_fragment();
+    }
+
+    const float3 tangent_normal =
+        normal_textures[material_index].sample(
+            material_sampler, input.normal_texcoord).rgb * 2.0 - 1.0;
+    float3 normal = normalize(
+        tangent_normal.x * input.tangent +
+        tangent_normal.y * input.bitangent +
+        tangent_normal.z * input.normal);
+    float3 geometric_normal = normalize(input.normal);
+    if (!front_facing)
+    {
+        normal = -normal;
+        geometric_normal = -geometric_normal;
+    }
+
+    float3 orm = orm_textures[material_index].sample(
+        material_sampler, input.orm_texcoord).rgb;
+    orm.g *= material.properties.x;
+    orm.b *= material.properties.y;
+    const float3 du = dfdx(normal);
+    const float3 dv = dfdy(normal);
+    const float variance = 0.15 * (dot(du, du) + dot(dv, dv));
+    const float roughness_kernel = min(2.0 * variance, 0.25);
+    const float alpha = orm.g * orm.g;
+    orm.g = sqrt(sqrt(clamp(
+        alpha * alpha + roughness_kernel, 0.0, 1.0)));
+
+    const float3 emissive = material.emissive_color.rgb *
+        emissive_textures[material_index].sample(
+            material_sampler, input.emissive_texcoord).rgb;
+    const float roughness_high = floor(clamp(orm.g, 0.0, 1.0) * 255.0) /
+                                 255.0;
+    const float roughness_low = (orm.g - roughness_high) * 255.0;
+    const float2 geometric_oct = clamp(
+        almetal_world_oct_encode(geometric_normal), 0.0, 1.0);
+    const float geometric_levels = constants.config.z != 0 ? 255.0 : 31.0;
+    const float geometric_range = constants.config.z != 0 ? 65535.0 : 1023.0;
+    const float2 geometric_quantized =
+        floor(geometric_oct * geometric_levels + 0.5);
+    const float packed_geometric_normal =
+        (geometric_quantized.x * (geometric_levels + 1.0) +
+         geometric_quantized.y) / geometric_range;
+
+    ALMetalWorldGBufferOutput output;
+    output.albedo = max(float4(base_color.rgb, 0.0), float4(0.0));
+    output.specular_orm = max(
+        float4(orm.r, roughness_high, orm.b, roughness_low), float4(0.0));
+    output.normal = float4(
+        almetal_world_oct_encode(normal), packed_geometric_normal, 0.67);
+    output.emissive = max(float4(emissive, 0.0), float4(0.0));
+    return output;
+}
+
 fragment ALMetalWorldGBufferOutput almetal_world_simple_fragment(
     ALMetalWorldSimpleVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
