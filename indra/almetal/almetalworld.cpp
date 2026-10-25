@@ -196,7 +196,8 @@ namespace
         // x = cookie LOD range, y = shadow fade,
         // z = legacy specular exponent, w = classic output scale.
         float sampling[4]{};
-        // x = reverse Z, y = shadow channel + 1.
+        // x = reverse Z, y = shadow channel + 1,
+        // z = high-precision geometric-normal packing.
         std::uint32_t config[4]{};
     };
     static_assert(sizeof(WorldProjectorLightingConstants) == 240);
@@ -502,6 +503,40 @@ namespace
                constants.parameters[3] > 0.f &&
                constants.config[0] >= 1 && constants.config[0] <= 4 &&
                (constants.config[1] & ~0xfu) == 0 &&
+               constants.config[2] <= 1 && constants.config[3] <= 3 &&
+               (constants.config[3] < 3 || constants.parameters[2] > 0.f);
+    }
+
+    bool validProjectorShadows(
+        const ALMetalWorldDirectionalShadows* shadows)
+    {
+        if (!shadows || !shadows->depth_texture)
+        {
+            return false;
+        }
+        const ALMetalTextureDescriptor& descriptor =
+            shadows->depth_texture->descriptor();
+        const ALMetalWorldDirectionalShadowConstants& constants =
+            shadows->constants;
+        return descriptor.type == ALMetalTextureType::texture_2d_array &&
+               descriptor.format == ALMetalPixelFormat::r32_float &&
+               descriptor.width != 0 && descriptor.height != 0 &&
+               descriptor.array_length == 2 &&
+               descriptor.mipmap_level_count == 1 &&
+               descriptor.sample_count == 1 &&
+               alMetalHasUsage(
+                   descriptor.usage, ALMetalTextureUsage::shader_read) &&
+               finiteValues(&constants.shadow_matrix[0][0], 2 * 16) &&
+               finiteValues(constants.shadow_clip, 4) &&
+               finiteValues(constants.resolution, 4) &&
+               finiteValues(constants.parameters, 4) &&
+               constants.resolution[0] == descriptor.width &&
+               constants.resolution[1] == descriptor.height &&
+               constants.resolution[2] > 0.f &&
+               constants.resolution[3] > 0.f &&
+               constants.parameters[3] > 0.f &&
+               constants.config[0] == 2 &&
+               (constants.config[1] & ~0x3u) == 0 &&
                constants.config[2] <= 1 && constants.config[3] <= 3 &&
                (constants.config[3] < 3 || constants.parameters[2] > 0.f);
     }
@@ -3037,9 +3072,9 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
     const ALMetalTexture* normal = scene.gbuffer->colorTexture(2);
     const ALMetalTexture* emissive = scene.gbuffer->colorTexture(3);
     const ALMetalTexture* depth = scene.gbuffer->depthStencilTexture();
-    const bool normal_format =
-        input.colors[2].format == ALMetalPixelFormat::rgb10a2_unorm ||
-        input.colors[2].format == ALMetalPixelFormat::rgba16_unorm;
+    const ALMetalPixelFormat expected_normal = scene.normal_hdr
+        ? ALMetalPixelFormat::rgba16_unorm
+        : ALMetalPixelFormat::rgb10a2_unorm;
     const ALMetalPixelFormat expected_emissive = scene.hdr
         ? ALMetalPixelFormat::rg11b10_float
         : ALMetalPixelFormat::rgba8_unorm;
@@ -3047,7 +3082,8 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
         input.color_attachment_count != 4 ||
         input.colors[0].format != ALMetalPixelFormat::rgba8_unorm_srgb ||
         input.colors[1].format != ALMetalPixelFormat::rgba8_unorm ||
-        !normal_format || input.colors[3].format != expected_emissive ||
+        input.colors[2].format != expected_normal ||
+        input.colors[3].format != expected_emissive ||
         input.depth_stencil_format != ALMetalPixelFormat::depth32_float ||
         !input.depth_stencil_shader_read ||
         !sampleableTexture(albedo) || !sampleableTexture(specular) ||
@@ -3089,17 +3125,10 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
     }
     if (needs_shadows)
     {
-        const ALMetalTextureDescriptor* shadows = scene.shadow_factors
-            ? &scene.shadow_factors->descriptor() : nullptr;
-        if (!sampleableTexture(scene.shadow_factors) || !shadows ||
-            shadows->type != ALMetalTextureType::texture_2d ||
-            shadows->format != ALMetalPixelFormat::rg8_unorm ||
-            shadows->width != input.width ||
-            shadows->height != input.height ||
-            shadows->sample_count != 1)
+        if (!validProjectorShadows(scene.projector_shadows))
         {
             setError(error,
-                     "Metal world projector shadow factors are incompatible");
+                     "Metal world projector shadows are incompatible");
             return nullptr;
         }
     }
@@ -3165,6 +3194,13 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
         static_cast<double>(input.height), 0.0, 1.0,
     };
     const ALMetalScissorRect scissor{0, 0, input.width, input.height};
+    const ALMetalTexture* projector_shadow_depth = needs_shadows
+        ? scene.projector_shadows->depth_texture
+        : mImpl->unshadowed_depth.get();
+    const ALMetalWorldDirectionalShadowConstants& projector_shadows =
+        needs_shadows
+            ? scene.projector_shadows->constants
+            : mImpl->unshadowed_constants;
     bool encoded =
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
@@ -3176,7 +3212,9 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
         encoder->setFragmentTexture(2, normal, error) &&
         encoder->setFragmentTexture(3, depth, error) &&
         encoder->setFragmentTexture(4, mImpl->brdf_lut.get(), error) &&
-        encoder->setFragmentTexture(6, scene.shadow_factors, error) &&
+        encoder->setFragmentTexture(6, projector_shadow_depth, error) &&
+        encoder->setFragmentBytes(
+            1, &projector_shadows, sizeof(projector_shadows), error) &&
         encoder->setFragmentSampler(
             0, mImpl->point_clamp_sampler.get(), error) &&
         encoder->setFragmentSampler(
@@ -3212,6 +3250,7 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
         constants.config[0] = scene.reverse_z ? 1u : 0u;
         constants.config[1] = static_cast<std::uint32_t>(
             light.shadow_channel + 1);
+        constants.config[2] = scene.normal_hdr ? 1u : 0u;
         encoded =
             encoder->setFragmentBytes(
                 0, &constants, sizeof(constants), error) &&

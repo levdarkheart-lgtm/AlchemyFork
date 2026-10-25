@@ -610,6 +610,7 @@ public:
     void collectMetalScreenSpaceReflections();
     bool fillMetalImpostorScreenSpaceReflections();
     bool fillMetalImpostorDirectionalShadows();
+    bool fillMetalWorldProjectorShadows();
     void captureMetalImpostorPBRAlphaBatch(const LLDrawInfo& params);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
@@ -656,8 +657,7 @@ public:
         F32 light_scale, S32 local_light_count);
     void renderMetalWorldProjectorLights(
         LLViewerCamera& camera, const LLMatrix4a& modelview,
-        F32 light_scale, S32 local_light_count,
-        LLRenderTarget* shadow_source);
+        F32 light_scale, S32 local_light_count);
     void renderMetalWorldLightingComposition();
     bool renderMetalWorldLightMap(
         LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao);

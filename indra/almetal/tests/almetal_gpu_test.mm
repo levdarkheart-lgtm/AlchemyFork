@@ -3560,8 +3560,8 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(doubled_pixels[center + 2] > legacy_pixels[center + 2]);
 
         // The projector owner uses one draw per cookie so every light keeps
-        // its own sRGB mip chain. Its temporary shadow input is the exact
-        // pair of already-filtered GL light-map B/A factors, packed as RG.
+        // its own sRGB mip chain. Its transitional shadow input is the pair
+        // of raw GL spot-depth maps; Metal owns the exact filter and fade.
         ALMetalTextureDescriptor cookie_descriptor;
         cookie_descriptor.format = ALMetalPixelFormat::rgba8_unorm_srgb;
         cookie_descriptor.width = 1;
@@ -3575,13 +3575,15 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         REQUIRE(cookie);
 
         ALMetalTextureDescriptor shadow_descriptor;
-        shadow_descriptor.format = ALMetalPixelFormat::rg8_unorm;
+        shadow_descriptor.type = ALMetalTextureType::texture_2d_array;
+        shadow_descriptor.format = ALMetalPixelFormat::r32_float;
         shadow_descriptor.width = 32;
         shadow_descriptor.height = 32;
+        shadow_descriptor.array_length = 2;
         shadow_descriptor.storage = ALMetalStorageMode::private_gpu;
         shadow_descriptor.usage = ALMetalTextureUsage::shader_read;
         shadow_descriptor.label =
-            "Alchemy projector filtered shadow factors";
+            "Alchemy projector raw spot-shadow depths";
         auto projector_shadows = ALMetalTexture::create(
             *device, shadow_descriptor, &error);
         INFO(error);
@@ -3590,12 +3592,18 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         const std::array<std::uint8_t, 4> colored_cookie{{
             128, 192, 255, 255,
         }};
-        std::array<std::uint8_t, 32 * 32 * 2> shadow_pixels{};
-        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        const std::array<float, 32 * 32> projector_shadowed_depth = []
         {
-            shadow_pixels[pixel * 2 + 0] = 0;
-            shadow_pixels[pixel * 2 + 1] = 255;
-        }
+            std::array<float, 32 * 32> value{};
+            value.fill(0.f);
+            return value;
+        }();
+        const std::array<float, 32 * 32> projector_lit_depth = []
+        {
+            std::array<float, 32 * 32> value{};
+            value.fill(1.f);
+            return value;
+        }();
         auto projector_upload = device->makeCommandBuffer(
             "Alchemy projector input upload", &error);
         INFO(error);
@@ -3604,7 +3612,11 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             *projector_upload, 0, 0, {}, colored_cookie.data(), 4,
             &error));
         REQUIRE(projector_shadows->upload(
-            *projector_upload, 0, 0, {}, shadow_pixels.data(), 32 * 2,
+            *projector_upload, 0, 0, {}, projector_shadowed_depth.data(),
+            32 * sizeof(float), &error));
+        REQUIRE(projector_shadows->upload(
+            *projector_upload, 0, 1, {}, projector_lit_depth.data(),
+            32 * sizeof(float),
             &error));
         REQUIRE(projector_upload->commitAndWait(&error));
         INFO(error);
@@ -3636,12 +3648,37 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         projector.shadow_channel = 1;
         projectors[1] = projector;
 
+        ALMetalWorldDirectionalShadows projector_shadow_input;
+        projector_shadow_input.depth_texture = projector_shadows.get();
+        for (std::size_t slice = 0; slice < 2; ++slice)
+        {
+            float* matrix = projector_shadow_input.constants
+                                .shadow_matrix[slice];
+            matrix[0] = 0.5f;
+            matrix[5] = 0.5f;
+            matrix[12] = 0.5f;
+            matrix[13] = 0.5f;
+            matrix[14] = 0.5f;
+            matrix[15] = 1.f;
+        }
+        projector_shadow_input.constants.shadow_clip[2] = 1.f;
+        projector_shadow_input.constants.shadow_clip[3] = 2.f;
+        projector_shadow_input.constants.resolution[0] = 32.f;
+        projector_shadow_input.constants.resolution[1] = 32.f;
+        projector_shadow_input.constants.resolution[2] = 32.f;
+        projector_shadow_input.constants.resolution[3] = 32.f;
+        projector_shadow_input.constants.parameters[2] = 32.f;
+        projector_shadow_input.constants.parameters[3] = 32.f;
+        projector_shadow_input.constants.config[0] = 2;
+        projector_shadow_input.constants.config[3] = 1;
+
         ALMetalWorldProjectorLightingScene projector_scene;
         projector_scene.gbuffer = gbuffer.get();
         projector_scene.lights = projectors.data();
         projector_scene.light_count = 1;
-        projector_scene.shadow_factors = projector_shadows.get();
+        projector_scene.projector_shadows = &projector_shadow_input;
         projector_scene.specular_exponent = 128.f;
+        projector_scene.normal_hdr = true;
         for (std::size_t axis = 0; axis < 4; ++axis)
         {
             projector_scene.inverse_projection[axis * 4 + axis] = 1.f;
@@ -3688,6 +3725,72 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(shadowed_pixels[center + 0] == 0);
         CHECK(shadowed_pixels[center + 1] == 0);
         CHECK(shadowed_pixels[center + 2] == 0);
+
+        ALMetalWorldProjectorLightingScene missing_projector_shadows =
+            projector_scene;
+        missing_projector_shadows.projector_shadows = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderProjectorLights(
+            missing_projector_shadows, &error));
+        CHECK(error ==
+              "Metal world projector shadows are incompatible");
+        error.clear();
+
+        // The same raw map is lit when the receiver itself is outside the
+        // spot frustum; normal offset does not control this early decision.
+        projector_shadow_input.constants.shadow_matrix[0][12] = 2.f;
+        auto outside_shadow_frustum = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(outside_shadow_frustum);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            outside_shadow_frustum_pixels{};
+        REQUIRE(outside_shadow_frustum->colorTexture(0)->readback(
+            *device, 0, 0, {}, outside_shadow_frustum_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(std::abs(static_cast<int>(
+                      outside_shadow_frustum_pixels[center + channel]) -
+                  static_cast<int>(projected_pixels[center + channel])) <= 1);
+        }
+        projector_shadow_input.constants.shadow_matrix[0][12] = 0.5f;
+
+        projector_shadow_input.constants.config[1] = 1u;
+        auto unbuilt_projector_shadow = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(unbuilt_projector_shadow);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            unbuilt_projector_shadow_pixels{};
+        REQUIRE(unbuilt_projector_shadow->colorTexture(0)->readback(
+            *device, 0, 0, {}, unbuilt_projector_shadow_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(std::abs(static_cast<int>(
+                      unbuilt_projector_shadow_pixels[center + channel]) -
+                  static_cast<int>(projected_pixels[center + channel])) <= 1);
+        }
+        projector_shadow_input.constants.config[1] = 0u;
+
+        projector_shadow_input.constants.config[3] = 3u;
+        auto pcss_projector_shadow = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(pcss_projector_shadow);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            pcss_projector_shadow_pixels{};
+        REQUIRE(pcss_projector_shadow->colorTexture(0)->readback(
+            *device, 0, 0, {}, pcss_projector_shadow_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(pcss_projector_shadow_pixels[center + 0] == 0);
+        CHECK(pcss_projector_shadow_pixels[center + 1] == 0);
+        CHECK(pcss_projector_shadow_pixels[center + 2] == 0);
+        projector_shadow_input.constants.config[3] = 1u;
 
         projector.sampling[1] = 0.5f;
         auto fading_shadow = renderer->renderProjectorLights(
@@ -3783,6 +3886,31 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
               projected_pixels[center + 1]);
         projector_scene.classic_mode = false;
 
+        const std::array<float, 32 * 32> reverse_shadowed_depth = []
+        {
+            std::array<float, 32 * 32> value{};
+            value.fill(1.f);
+            return value;
+        }();
+        const std::array<float, 32 * 32> reverse_lit_depth = []
+        {
+            std::array<float, 32 * 32> value{};
+            value.fill(0.f);
+            return value;
+        }();
+        auto reverse_shadow_upload = device->makeCommandBuffer(
+            "Alchemy reverse-Z projector shadow upload", &error);
+        INFO(error);
+        REQUIRE(reverse_shadow_upload);
+        REQUIRE(projector_shadows->upload(
+            *reverse_shadow_upload, 0, 0, {},
+            reverse_shadowed_depth.data(), 32 * sizeof(float), &error));
+        REQUIRE(projector_shadows->upload(
+            *reverse_shadow_upload, 0, 1, {}, reverse_lit_depth.data(),
+            32 * sizeof(float), &error));
+        REQUIRE(reverse_shadow_upload->commitAndWait(&error));
+        INFO(error);
+        projector_shadow_input.constants.config[2] = 1u;
         projector_scene.gbuffer = reverse_gbuffer.get();
         projector_scene.inverse_projection[10] = -1.f;
         projector_scene.reverse_z = true;
@@ -3805,6 +3933,20 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         projector_scene.gbuffer = gbuffer.get();
         projector_scene.inverse_projection[10] = 1.f;
         projector_scene.reverse_z = false;
+        projector_shadow_input.constants.config[2] = 0u;
+        auto forward_shadow_upload = device->makeCommandBuffer(
+            "Alchemy forward-Z projector shadow restore", &error);
+        INFO(error);
+        REQUIRE(forward_shadow_upload);
+        REQUIRE(projector_shadows->upload(
+            *forward_shadow_upload, 0, 0, {},
+            projector_shadowed_depth.data(),
+            32 * sizeof(float), &error));
+        REQUIRE(projector_shadows->upload(
+            *forward_shadow_upload, 0, 1, {}, projector_lit_depth.data(),
+            32 * sizeof(float), &error));
+        REQUIRE(forward_shadow_upload->commitAndWait(&error));
+        INFO(error);
 
         projector_scene.light_count = 2;
         auto doubled_projector = renderer->renderProjectorLights(

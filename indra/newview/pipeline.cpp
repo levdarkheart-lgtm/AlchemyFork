@@ -429,8 +429,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> projector_light_target;
     std::unique_ptr<ALMetalRenderTarget> composed_light_target;
     std::unique_ptr<ALMetalTexture> projector_shadow_texture;
-    std::vector<U8> projector_shadow_readback_bytes;
-    std::vector<U8> projector_shadow_bytes;
+    ALMetalWorldDirectionalShadows projector_shadows;
+    std::vector<F32> projector_shadow_depth;
+    U32 projector_shadow_frame = std::numeric_limits<U32>::max();
     std::unique_ptr<ALMetalRenderTarget> base_light_map_target;
     std::unique_ptr<ALMetalTexture> base_noise_texture;
     std::unique_ptr<ALMetalTexture> base_light_map_texture;
@@ -932,8 +933,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.projector_light_target.reset();
         capture.composed_light_target.reset();
         capture.projector_shadow_texture.reset();
-        capture.projector_shadow_readback_bytes.clear();
-        capture.projector_shadow_bytes.clear();
+        capture.projector_shadows = {};
+        capture.projector_shadow_depth.clear();
+        capture.projector_shadow_frame = std::numeric_limits<U32>::max();
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
         capture.base_light_map_texture.reset();
@@ -2491,8 +2493,9 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.projector_light_target.reset();
         capture.composed_light_target.reset();
         capture.projector_shadow_texture.reset();
-        capture.projector_shadow_readback_bytes.clear();
-        capture.projector_shadow_bytes.clear();
+        capture.projector_shadows = {};
+        capture.projector_shadow_depth.clear();
+        capture.projector_shadow_frame = std::numeric_limits<U32>::max();
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
         capture.base_light_map_texture.reset();
@@ -4348,6 +4351,180 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
     return true;
 }
 
+bool LLPipeline::fillMetalWorldProjectorShadows()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->device)
+    {
+        return false;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.projector_shadow_frame == gFrameCount &&
+        capture.projector_shadows.depth_texture)
+    {
+        return true;
+    }
+
+    const U32 unbuilt = (unbuiltShadowMaps() >> 4u) & 0x3u;
+    U32 width = 0;
+    U32 height = 0;
+    for (U32 index = 0; index < 2; ++index)
+    {
+        if ((unbuilt & (1u << index)) != 0)
+        {
+            continue;
+        }
+        LLRenderTarget* target = getSpotShadowTarget(index);
+        if (!target || target->getUsage() != ALTextureSlot::TT_TEXTURE ||
+            !target->getDepth())
+        {
+            return false;
+        }
+        if (width == 0)
+        {
+            width = target->getWidth();
+            height = target->getHeight();
+        }
+        else if (target->getWidth() != width ||
+                 target->getHeight() != height)
+        {
+            return false;
+        }
+    }
+    if (width == 0 || height == 0)
+    {
+        return false;
+    }
+
+    const std::size_t slice_pixels =
+        static_cast<std::size_t>(width) * height;
+    if (slice_pixels >
+        std::numeric_limits<std::size_t>::max() / (sizeof(F32) * 2))
+    {
+        return false;
+    }
+    capture.projector_shadow_depth.assign(
+        slice_pixels * 2, capture.reverse_z ? 0.f : 1.f);
+
+    GLint previous_texture = 0;
+    GLint previous_pack_buffer = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture);
+    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING,
+                  &previous_pack_buffer);
+    clear_glerror();
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    for (U32 index = 0; index < 2; ++index)
+    {
+        if ((unbuilt & (1u << index)) != 0)
+        {
+            continue;
+        }
+        LLRenderTarget* target = getSpotShadowTarget(index);
+        glBindTexture(GL_TEXTURE_2D, target->getDepth());
+        glGetTexImage(
+            GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, GL_FLOAT,
+            capture.projector_shadow_depth.data() +
+                slice_pixels * index);
+    }
+    const GLenum read_error = glGetError();
+    glBindTexture(GL_TEXTURE_2D,
+                  static_cast<GLuint>(previous_texture));
+    glBindBuffer(GL_PIXEL_PACK_BUFFER,
+                 static_cast<GLuint>(previous_pack_buffer));
+    if (read_error != GL_NO_ERROR)
+    {
+        LL_WARNS("Metal")
+            << "Could not read the raw projector-shadow maps: GL error 0x"
+            << std::hex << read_error << std::dec << LL_ENDL;
+        return false;
+    }
+
+    ALMetalTextureDescriptor descriptor;
+    descriptor.type = ALMetalTextureType::texture_2d_array;
+    descriptor.format = ALMetalPixelFormat::r32_float;
+    descriptor.width = width;
+    descriptor.height = height;
+    descriptor.array_length = 2;
+    descriptor.storage = ALMetalStorageMode::private_gpu;
+    descriptor.usage = ALMetalTextureUsage::shader_read;
+    descriptor.label = "Alchemy live raw projector-shadow mirror";
+    const ALMetalTextureDescriptor* existing =
+        capture.projector_shadow_texture
+            ? &capture.projector_shadow_texture->descriptor()
+            : nullptr;
+    if (!existing || existing->type != descriptor.type ||
+        existing->format != descriptor.format ||
+        existing->width != descriptor.width ||
+        existing->height != descriptor.height ||
+        existing->array_length != descriptor.array_length)
+    {
+        std::string create_error;
+        capture.projector_shadow_texture = ALMetalTexture::create(
+            *capture.device, descriptor, &create_error);
+        if (!capture.projector_shadow_texture)
+        {
+            LL_WARNS("Metal")
+                << "Could not allocate the raw projector-shadow mirror: "
+                << create_error << LL_ENDL;
+            return false;
+        }
+    }
+
+    std::string error;
+    auto upload = capture.device->makeCommandBuffer(
+        "Alchemy live raw projector-shadow upload", &error);
+    bool uploaded = upload != nullptr;
+    for (U32 index = 0; uploaded && index < 2; ++index)
+    {
+        uploaded = capture.projector_shadow_texture->upload(
+            *upload, 0, index, {},
+            capture.projector_shadow_depth.data() +
+                slice_pixels * index,
+            static_cast<std::size_t>(width) * sizeof(F32), &error);
+    }
+    uploaded = uploaded && upload->commit(&error);
+    if (!uploaded)
+    {
+        LL_WARNS("Metal")
+            << "Could not upload the raw projector-shadow mirror: "
+            << error << LL_ENDL;
+        return false;
+    }
+
+    ALMetalWorldDirectionalShadowConstants constants;
+    std::memcpy(constants.shadow_matrix[0],
+                mDeferredUBOData.shadow_matrix[4],
+                sizeof(constants.shadow_matrix[0]));
+    std::memcpy(constants.shadow_matrix[1],
+                mDeferredUBOData.shadow_matrix[5],
+                sizeof(constants.shadow_matrix[1]));
+    std::memcpy(constants.shadow_clip,
+                mDeferredUBOData.shadow_clip,
+                sizeof(constants.shadow_clip));
+    constants.resolution[0] = static_cast<F32>(width);
+    constants.resolution[1] = static_cast<F32>(height);
+    constants.resolution[2] =
+        static_cast<F32>(mRT->deferredScreen.getWidth());
+    constants.resolution[3] =
+        static_cast<F32>(mRT->deferredScreen.getHeight());
+    constants.parameters[0] = mDeferredUBOData.spot_shadow_bias;
+    constants.parameters[1] = mDeferredUBOData.spot_shadow_offset;
+    constants.parameters[2] = mDeferredUBOData.shadow_pcss_scale;
+    constants.parameters[3] = static_cast<F32>(capture.height);
+    constants.config[0] = 2;
+    constants.config[1] = unbuilt;
+    constants.config[2] = capture.reverse_z ? 1u : 0u;
+    constants.config[3] = static_cast<U32>(std::clamp(
+        shaderInputs().mGlobal.mShadowFilterQuality, 0, 3));
+
+    capture.projector_shadows.depth_texture =
+        capture.projector_shadow_texture.get();
+    capture.projector_shadows.constants = constants;
+    capture.projector_shadow_frame = gFrameCount;
+    return true;
+}
+
 void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
     const LLDrawInfo& params, bool particle_or_hud_particle)
 {
@@ -6122,8 +6299,7 @@ void LLPipeline::renderMetalWorldLocalLights(
 
 void LLPipeline::renderMetalWorldProjectorLights(
     LLViewerCamera& camera, const LLMatrix4a& modelview,
-    F32 light_scale, S32 local_light_count,
-    LLRenderTarget* shadow_source)
+    F32 light_scale, S32 local_light_count)
 {
     if (!isMainWorldPass() || mRT != &mMainRT ||
         !mMetalWorldSimpleCapture)
@@ -6141,7 +6317,9 @@ void LLPipeline::renderMetalWorldProjectorLights(
     lights.reserve(std::min<std::size_t>(
         static_cast<std::size_t>(std::max(local_light_count, 0)),
         mNearbyLights.size()));
-    bool needs_shadow_factors = false;
+    const U32 unbuilt_projector_shadows =
+        (unbuiltShadowMaps() >> 4u) & 0x3u;
+    bool needs_projector_shadows = false;
     S32 count = 0;
     for (light_set_t::iterator iter = mNearbyLights.begin();
          iter != mNearbyLights.end(); ++iter)
@@ -6287,102 +6465,29 @@ void LLPipeline::renderMetalWorldProjectorLights(
             1.f);
         for (S32 shadow = 0; shadow < 2; ++shadow)
         {
-            if (mShadowSpotLight[shadow] == drawable)
+            if (mShadowSpotLight[shadow] == drawable &&
+                (unbuilt_projector_shadows & (1u << shadow)) == 0)
             {
                 light.shadow_channel = shadow;
                 light.sampling[1] = 1.f - mSpotLightFade[shadow];
-                needs_shadow_factors = true;
+                needs_projector_shadows = true;
                 break;
             }
         }
         lights.push_back(light);
     }
 
-    if (needs_shadow_factors && !capture.projector_shadow_texture)
+    if (needs_projector_shadows && !fillMetalWorldProjectorShadows())
     {
-        const U32 width = shadow_source ? shadow_source->getWidth() : 0;
-        const U32 height = shadow_source ? shadow_source->getHeight() : 0;
-        const std::size_t pixels =
-            static_cast<std::size_t>(width) * height;
-        if (!shadow_source || width != capture.width ||
-            height != capture.height || pixels == 0 ||
-            pixels > std::numeric_limits<std::size_t>::max() / 4)
-        {
-            return;
-        }
-
-        capture.projector_shadow_readback_bytes.resize(pixels * 4);
-        capture.projector_shadow_bytes.resize(pixels * 2);
-        GLint previous_pack_alignment = 4;
-        GLint previous_pack_buffer = 0;
-        glGetIntegerv(GL_PACK_ALIGNMENT, &previous_pack_alignment);
-        glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING,
-                      &previous_pack_buffer);
-        shadow_source->bindTarget();
-        clear_glerror();
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glReadPixels(
-            0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE,
-            capture.projector_shadow_readback_bytes.data());
-        const GLenum read_error = glGetError();
-        glPixelStorei(GL_PACK_ALIGNMENT, previous_pack_alignment);
-        glBindBuffer(GL_PIXEL_PACK_BUFFER,
-                     static_cast<GLuint>(previous_pack_buffer));
-        if (read_error != GL_NO_ERROR)
-        {
-            LL_WARNS("Metal")
-                << "Could not read the filtered projector-shadow factors: "
-                   "GL error 0x"
-                << std::hex << read_error << std::dec << LL_ENDL;
-            return;
-        }
-        for (std::size_t pixel = 0; pixel < pixels; ++pixel)
-        {
-            capture.projector_shadow_bytes[pixel * 2 + 0] =
-                capture.projector_shadow_readback_bytes[pixel * 4 + 2];
-            capture.projector_shadow_bytes[pixel * 2 + 1] =
-                capture.projector_shadow_readback_bytes[pixel * 4 + 3];
-        }
-
-        ALMetalTextureDescriptor descriptor;
-        descriptor.format = ALMetalPixelFormat::rg8_unorm;
-        descriptor.width = width;
-        descriptor.height = height;
-        descriptor.storage = ALMetalStorageMode::private_gpu;
-        descriptor.usage = ALMetalTextureUsage::shader_read;
-        descriptor.label =
-            "Alchemy filtered projector-shadow migration mirror";
-        std::string error;
-        capture.projector_shadow_texture = ALMetalTexture::create(
-            *capture.device, descriptor, &error);
-        auto upload = capture.projector_shadow_texture
-            ? capture.device->makeCommandBuffer(
-                  "Alchemy filtered projector-shadow migration upload",
-                  &error)
-            : nullptr;
-        const bool uploaded = upload &&
-            capture.projector_shadow_texture->upload(
-                *upload, 0, 0, {},
-                capture.projector_shadow_bytes.data(),
-                static_cast<std::size_t>(width) * 2, &error) &&
-            upload->commit(&error);
-        if (!uploaded)
-        {
-            capture.projector_shadow_texture.reset();
-            LL_WARNS("Metal")
-                << "Could not upload the filtered projector-shadow "
-                   "migration mirror: "
-                << error << LL_ENDL;
-            return;
-        }
+        return;
     }
 
     ALMetalWorldProjectorLightingScene scene;
     scene.gbuffer = capture.target.get();
     scene.lights = lights.empty() ? nullptr : lights.data();
     scene.light_count = lights.size();
-    scene.shadow_factors = capture.projector_shadow_texture.get();
+    scene.projector_shadows = needs_projector_shadows
+        ? &capture.projector_shadows : nullptr;
     LLMatrix4a inverse_projection;
     inverse_projection.setInverse(camera.getProjection());
     std::memcpy(scene.inverse_projection,
@@ -6391,18 +6496,20 @@ void LLPipeline::renderMetalWorldProjectorLights(
     scene.specular_exponent = mDeferredUBOData.specular_exponent;
     scene.reverse_z = capture.reverse_z;
     scene.hdr = capture.hdr;
+    scene.normal_hdr = capture.normal_hdr;
     scene.classic_mode = LLRender::sClassicMode;
 
     std::string error;
     auto target = capture.renderer->renderProjectorLights(scene, &error);
     if (!target)
     {
-        // The factors and the selected shadow-owning lights are one frame's
+        // The raw maps and selected shadow-owning lights are one frame's
         // transaction. A retry must capture both again rather than combine
-        // a later light list with stale screen-space visibility.
+        // a later light list with stale spot-map contents or matrices.
         capture.projector_shadow_texture.reset();
-        capture.projector_shadow_readback_bytes.clear();
-        capture.projector_shadow_bytes.clear();
+        capture.projector_shadows = {};
+        capture.projector_shadow_depth.clear();
+        capture.projector_shadow_frame = std::numeric_limits<U32>::max();
         if (++capture.projector_lighting_failed_frames >=
             MetalWorldSimpleCapture::max_failed_frames)
         {
@@ -6418,16 +6525,15 @@ void LLPipeline::renderMetalWorldProjectorLights(
     capture.projector_light_target = std::move(target);
     capture.projector_lighting_attempted = true;
     capture.projector_lighting_failed_frames = 0;
-    capture.projector_shadow_readback_bytes.clear();
-    capture.projector_shadow_bytes.clear();
+    capture.projector_shadow_depth.clear();
     LL_INFOS("Metal")
         << "Native world projector-light owner encoded "
         << lights.size() << " cookies at "
         << capture.projector_light_target->descriptor().width << "x"
         << capture.projector_light_target->descriptor().height
-        << (needs_shadow_factors
-                ? "; live filtered GL spot-shadow factors remain a "
-                  "transitional input mirror"
+        << (needs_projector_shadows
+                ? "; exact native spot-shadow filtering consumes "
+                  "transitional raw GL depth maps"
                 : "; no live spot-shadow channel was consumed")
         << LL_ENDL;
 }
@@ -18111,12 +18217,10 @@ void LLPipeline::renderDeferredLighting()
             *camera, mat, light_scale, std::max<S32>(local_light_count, 0));
         renderMetalWorldProjectorLights(
             *camera, mat, light_scale,
-            std::max<S32>(local_light_count, 0),
-            deferred_light_target);
+            std::max<S32>(local_light_count, 0));
         renderMetalWorldLightingComposition();
-        // The temporary projector-shadow bridge reads the light map. Put
-        // the visible GL fallback back on its accumulation target before it
-        // draws the same local-light owner.
+        // Keep the visible GL fallback on its accumulation target before it
+        // draws the same local-light owners.
         screen_target->bindTarget();
 #endif
         if (local_light_count > 0 && (!gCubeSnapshot || shaderInputs().mGlobal.mProbeLevel > 0))

@@ -4059,6 +4059,50 @@ static float almetal_directional_shadow(
     return shadow / weight_sum;
 }
 
+static float almetal_projector_shadow(
+    texture2d_array<float> shadow_maps,
+    constant ALMetalWorldDirectionalShadowConstants& shadows,
+    float3 position, float3 normal, float3 position_dx,
+    float3 position_dy, uint index, float2 screen_position)
+{
+    if (!almetal_shadow_map_built(index, shadows))
+    {
+        return 1.0;
+    }
+
+    const float4 receiver = float4(position, 1.0);
+    const float4 receiver_light =
+        shadows.shadow_matrix[index] * receiver;
+    if (receiver_light.w <= 0.0 ||
+        any(receiver_light.xy < float2(0.0)) ||
+        any(receiver_light.xy > receiver_light.ww))
+    {
+        return 1.0;
+    }
+
+    const float3 offset_position =
+        position + normal * shadows.parameters.y;
+    const float4 source = float4(offset_position, 1.0);
+    if (source.z <= -shadows.shadow_clip.w)
+    {
+        return 1.0;
+    }
+
+    const float4 source_dx = float4(position_dx, 0.0);
+    const float4 source_dy = float4(position_dy, 0.0);
+    const float filtered = almetal_filter_directional_shadow(
+        shadow_maps, index,
+        shadows.shadow_matrix[index] * source,
+        shadows.shadow_matrix[index] * source_dx,
+        shadows.shadow_matrix[index] * source_dy,
+        screen_position, shadows.parameters.x * 0.8, shadows);
+    const float to_lit = clamp(
+        (position.z + shadows.shadow_clip.z) /
+            (shadows.shadow_clip.z - shadows.shadow_clip.w) * 2.0 - 1.0,
+        0.0, 1.0);
+    return mix(filtered, 1.0, to_lit);
+}
+
 fragment float4 almetal_world_legacy_alpha_fragment(
     ALMetalWorldLegacyAlphaVaryings input [[stage_in]],
     array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
@@ -6765,13 +6809,14 @@ static float4 almetal_projector_specular_cookie(
 fragment float4 almetal_world_projector_light_fragment(
     ALMetalWorldLocalLightVaryings input [[stage_in]],
     constant ALMetalWorldProjectorLightingConstants& constants [[buffer(0)]],
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(1)]],
     texture2d<float> albedo_texture [[texture(0)]],
     texture2d<float> specular_texture [[texture(1)]],
     texture2d<float> normal_texture [[texture(2)]],
     texture2d<float> depth_texture [[texture(3)]],
     texture2d<float> brdf_lut [[texture(4)]],
     texture2d<float> cookie_texture [[texture(5)]],
-    texture2d<float> shadow_factors [[texture(6)]],
+    texture2d_array<float> shadow_maps [[texture(6)]],
     sampler point_sampler [[sampler(0)]],
     sampler brdf_sampler [[sampler(1)]],
     sampler cookie_sampler [[sampler(2)]])
@@ -6779,16 +6824,44 @@ fragment float4 almetal_world_projector_light_fragment(
     const float depth = depth_texture.sample(
         point_sampler, input.texcoord).r;
     const bool reverse_z = constants.config.x != 0u;
-    if ((reverse_z && depth <= 0.0) || (!reverse_z && depth >= 1.0))
-    {
-        discard_fragment();
-    }
-
     const float ndc_z = reverse_z ? depth : depth * 2.0 - 1.0;
     float4 position = constants.inverse_projection *
         float4(input.texcoord * 2.0 - 1.0, ndc_z, 1.0);
     position.w = max(position.w, 0.000001);
     position /= position.w;
+
+    const float4 normal_sample = normal_texture.sample(
+        point_sampler, input.texcoord);
+    const float3 normal = almetal_world_oct_decode(normal_sample.xy);
+    const bool has_pbr = abs(normal_sample.a - 0.67) < 0.1;
+    float3 geometric_normal = normal;
+    if (has_pbr)
+    {
+        const float levels = constants.config.z != 0u ? 255.0 : 31.0;
+        const float range = constants.config.z != 0u ? 65535.0 : 1023.0;
+        const float value = floor(normal_sample.z * range + 0.5);
+        const float x = floor(value / (levels + 1.0));
+        const float y = value - x * (levels + 1.0);
+        geometric_normal = almetal_world_oct_decode(
+            float2(x, y) / levels);
+    }
+    float3 position_dx = dfdx(position.xyz);
+    float3 position_dy = dfdy(position.xyz);
+    const float3 derivative_plane = cross(position_dx, position_dy);
+    const float derivative_along = dot(
+        derivative_plane, geometric_normal);
+    if (derivative_along * derivative_along <
+        0.25 * dot(derivative_plane, derivative_plane) *
+            dot(geometric_normal, geometric_normal))
+    {
+        position_dx = 0.0;
+        position_dy = 0.0;
+    }
+
+    if ((reverse_z && depth <= 0.0) || (!reverse_z && depth >= 1.0))
+    {
+        discard_fragment();
+    }
 
     const float3 center_vector =
         constants.position_radius.xyz - position.xyz;
@@ -6816,9 +6889,6 @@ fragment float4 almetal_world_projector_light_fragment(
         discard_fragment();
     }
 
-    const float4 normal_sample = normal_texture.sample(
-        point_sampler, input.texcoord);
-    const bool has_pbr = abs(normal_sample.a - 0.67) < 0.1;
     const bool in_cookie = projected.x > 0.0 && projected.x < 1.0 &&
                            projected.y > 0.0 && projected.y < 1.0 &&
                            (has_pbr || projected.z > 0.0);
@@ -6830,13 +6900,15 @@ fragment float4 almetal_world_projector_light_fragment(
     float shadow = 1.0;
     if (constants.config.y != 0u)
     {
-        const float2 factors = shadow_factors.sample(
-            point_sampler, input.texcoord).rg;
-        shadow = factors[constants.config.y - 1u];
+        const float2 gl_fragment_position = float2(
+            input.position.x, shadows.parameters.w - input.position.y);
+        shadow = almetal_projector_shadow(
+            shadow_maps, shadows, position.xyz, normal,
+            position_dx, position_dy, constants.config.y - 1u,
+            gl_fragment_position / shadows.resolution.zw);
         shadow = clamp(shadow + constants.sampling.y, 0.0, 1.0);
     }
 
-    const float3 normal = almetal_world_oct_decode(normal_sample.xy);
     const float3 base_color = albedo_texture.sample(
         point_sampler, input.texcoord).rgb;
     float4 specular = specular_texture.sample(

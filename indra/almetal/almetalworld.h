@@ -322,7 +322,7 @@ struct alignas(16) ALMetalWorldProjectorLight
     float projector_origin[4]{};
     // x = cookie LOD range, y = shadow fade.
     float sampling[4]{};
-    // -1 = unshadowed, otherwise the R/G channel in shadow_factors.
+    // -1 = unshadowed, otherwise the raw spot-shadow array slice.
     std::int32_t shadow_channel = -1;
 };
 
@@ -331,13 +331,15 @@ struct ALMetalWorldProjectorLightingScene
     const ALMetalRenderTarget* gbuffer = nullptr;
     const ALMetalWorldProjectorLight* lights = nullptr;
     std::size_t light_count = 0;
-    // The exact GL-filtered spot-shadow factors, packed from light-map BA
-    // during migration. Null is valid only when every light is unshadowed.
-    const ALMetalTexture* shadow_factors = nullptr;
+    // Two raw spot-shadow depth slices plus the exact matrix/filter block.
+    // The raw maps remain a migration input while Metal owns filtering.
+    // Null is valid only when every light is unshadowed.
+    const ALMetalWorldDirectionalShadows* projector_shadows = nullptr;
     float inverse_projection[16]{};
     float specular_exponent = 128.f;
     bool reverse_z = false;
     bool hdr = false;
+    bool normal_hdr = false;
     bool classic_mode = false;
 };
 
