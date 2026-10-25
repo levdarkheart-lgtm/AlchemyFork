@@ -154,6 +154,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_local_light_vertex",
             "almetal_world_local_light_fragment",
             "almetal_world_projector_light_fragment",
+            "almetal_world_lighting_composition_fragment",
             "almetal_world_light_map_fragment",
             "almetal_world_light_map_blur_fragment",
             "almetal_world_hdri_sky_vertex",
@@ -5534,6 +5535,39 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(base_pixels[outside + 1] == 0);
         CHECK(base_pixels[outside + 2] == 0);
 
+        // GL writes this base result into screen first, then adds ordinary
+        // and projector lights with ONE/ONE blending. The native owner keeps
+        // that boundary separate from post-deferred geometry and output
+        // transforms while reproducing the exact three-target sum.
+        ALMetalWorldLightingCompositionScene composition_scene;
+        composition_scene.base_lighting = base_lit.get();
+        composition_scene.local_lighting = legacy.get();
+        composition_scene.projector_lighting = projected.get();
+        auto composed = renderer->composeLighting(
+            composition_scene, &error);
+        INFO(error);
+        REQUIRE(composed);
+        REQUIRE(composed->descriptor().colors[0].format ==
+                ALMetalPixelFormat::rgba8_unorm);
+        std::array<std::uint8_t, 32 * 32 * 4> composed_pixels{};
+        REQUIRE(composed->colorTexture(0)->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const int expected = std::min(
+                static_cast<int>(base_pixels[center + channel]) +
+                    static_cast<int>(legacy_pixels[center + channel]) +
+                    static_cast<int>(projected_pixels[center + channel]),
+                255);
+            CHECK(std::abs(static_cast<int>(
+                      composed_pixels[center + channel]) - expected) <= 1);
+            CHECK(composed_pixels[outside + channel] == 0);
+        }
+        CHECK(composed_pixels[center + 3] == 0);
+        CHECK(composed_pixels[outside + 3] == 0);
+
         // Merely seeing clear depth and a normal alpha of one is not enough:
         // the base owner above discarded the sky until this explicit native
         // transaction bit is set. Once set, the sRGB attachment decodes the
@@ -6195,6 +6229,41 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(hdr_pixels[center + 1] > 0);
         CHECK(hdr_pixels[center + 2] > 0);
         CHECK(hdr_pixels[center + 3] == 0);
+
+        ALMetalWorldLightingCompositionScene hdr_composition_scene;
+        hdr_composition_scene.base_lighting = hdr.get();
+        hdr_composition_scene.local_lighting = hdr.get();
+        hdr_composition_scene.projector_lighting = hdr.get();
+        hdr_composition_scene.hdr = true;
+        auto hdr_composed = renderer->composeLighting(
+            hdr_composition_scene, &error);
+        INFO(error);
+        REQUIRE(hdr_composed);
+        REQUIRE(hdr_composed->descriptor().colors[0].format ==
+                ALMetalPixelFormat::rgba16_float);
+        std::array<std::uint16_t, 32 * 32 * 4> hdr_composed_pixels{};
+        REQUIRE(hdr_composed->colorTexture(0)->readback(
+            *device, 0, 0, {}, hdr_composed_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(hdr_composed_pixels[center + 0] > hdr_pixels[center + 0]);
+        CHECK(hdr_composed_pixels[center + 1] > hdr_pixels[center + 1]);
+        CHECK(hdr_composed_pixels[center + 2] > hdr_pixels[center + 2]);
+        CHECK(hdr_composed_pixels[center + 3] == 0);
+
+        composition_scene.local_lighting = hdr.get();
+        error.clear();
+        CHECK_FALSE(renderer->composeLighting(
+            composition_scene, &error));
+        CHECK(error ==
+              "Metal world lighting composition targets are incompatible");
+
+        ALMetalWorldLightingCompositionScene invalid_composition_scene;
+        error.clear();
+        CHECK_FALSE(renderer->composeLighting(
+            invalid_composition_scene, &error));
+        CHECK(error ==
+              "Metal world lighting composition is incomplete");
 
         ALMetalWorldProjectorLightingScene invalid_projector_scene;
         error.clear();

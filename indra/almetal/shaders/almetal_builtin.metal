@@ -7028,6 +7028,20 @@ fragment float4 almetal_world_projector_light_fragment(
         max(final_color * constants.sampling.w, float3(0.0)), 0.0);
 }
 
+fragment float4 almetal_world_lighting_composition_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    texture2d<float> base_lighting [[texture(0)]],
+    texture2d<float> local_lighting [[texture(1)]],
+    texture2d<float> projector_lighting [[texture(2)]],
+    sampler point_sampler [[sampler(0)]])
+{
+    // GL writes the soften/base result first, then uses ONE/ONE blending for
+    // both local-light families. Every contributing owner writes zero alpha.
+    return base_lighting.sample(point_sampler, input.texcoord) +
+        local_lighting.sample(point_sampler, input.texcoord) +
+        projector_lighting.sample(point_sampler, input.texcoord);
+}
+
 static float3 almetal_world_unpack_geometric_normal(
     float packed, bool high_precision)
 {

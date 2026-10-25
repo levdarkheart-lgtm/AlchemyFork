@@ -539,6 +539,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         local_light_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         projector_light_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        lighting_composition_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> light_map_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> light_map_blur_pipeline;
     std::array<NormalPipelines, 2> hdri_sky_pipelines;
@@ -639,6 +641,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_local_light_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_projector_light_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_lighting_composition_fragment") ||
         !impl->library->hasFunction("almetal_world_light_map_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_light_map_blur_fragment") ||
@@ -742,6 +746,18 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         descriptor.colors[0].blending_enabled = false;
         descriptor.colors[0].destination_rgb = ALMetalBlendFactor::zero;
         descriptor.colors[0].destination_alpha = ALMetalBlendFactor::zero;
+
+        descriptor.fragment_function =
+            "almetal_world_lighting_composition_fragment";
+        descriptor.label = hdr
+            ? "Alchemy HDR world lighting-composition pipeline"
+            : "Alchemy world lighting-composition pipeline";
+        impl->lighting_composition_pipelines[hdr] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->lighting_composition_pipelines[hdr])
+        {
+            return nullptr;
+        }
 
         descriptor.fragment_function = "almetal_world_base_light_fragment";
         descriptor.label = hdr
@@ -3212,6 +3228,110 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
     if (generate_brdf_lut)
     {
         mImpl->brdf_lut_ready = true;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::composeLighting(
+    const ALMetalWorldLightingCompositionScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.base_lighting ||
+        !scene.local_lighting || !scene.projector_lighting)
+    {
+        setError(error, "Metal world lighting composition is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalPixelFormat expected_format = scene.hdr
+        ? ALMetalPixelFormat::rgba16_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    const ALMetalRenderTargetDescriptor& base =
+        scene.base_lighting->descriptor();
+    const auto compatible = [&](const ALMetalRenderTarget& target)
+    {
+        const ALMetalRenderTargetDescriptor& descriptor =
+            target.descriptor();
+        return descriptor.width == base.width &&
+            descriptor.height == base.height &&
+            descriptor.sample_count == 1 &&
+            descriptor.color_attachment_count == 1 &&
+            descriptor.colors[0].format == expected_format &&
+            sampleableTexture(target.colorTexture(0));
+    };
+    if (base.width == 0 || base.height == 0 ||
+        !compatible(*scene.base_lighting) ||
+        !compatible(*scene.local_lighting) ||
+        !compatible(*scene.projector_lighting))
+    {
+        setError(error,
+                 "Metal world lighting composition targets are incompatible");
+        return nullptr;
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = base.width;
+    output_descriptor.height = base.height;
+    output_descriptor.colors[0].format = expected_format;
+    output_descriptor.colors[0].label =
+        "Alchemy world composed deferred lighting";
+    output_descriptor.label =
+        "Alchemy native world deferred-light composition target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world deferred-light composition", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::dont_care;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass,
+        "Alchemy world deferred-light composition encoder", error)
+        : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(base.width),
+        static_cast<double>(base.height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{
+        0, 0, base.width, base.height,
+    };
+    const bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(
+            *mImpl->lighting_composition_pipelines[scene.hdr ? 1 : 0],
+            error) &&
+        encoder->setFragmentTexture(
+            0, scene.base_lighting->colorTexture(0), error) &&
+        encoder->setFragmentTexture(
+            1, scene.local_lighting->colorTexture(0), error) &&
+        encoder->setFragmentTexture(
+            2, scene.projector_lighting->colorTexture(0), error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->point_clamp_sampler.get(), error) &&
+        encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
     }
     return output;
 }

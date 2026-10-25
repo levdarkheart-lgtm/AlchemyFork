@@ -427,6 +427,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> target;
     std::unique_ptr<ALMetalRenderTarget> local_light_target;
     std::unique_ptr<ALMetalRenderTarget> projector_light_target;
+    std::unique_ptr<ALMetalRenderTarget> composed_light_target;
     std::unique_ptr<ALMetalTexture> projector_shadow_texture;
     std::vector<U8> projector_shadow_readback_bytes;
     std::vector<U8> projector_shadow_bytes;
@@ -520,6 +521,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 local_lighting_failed_frames = 0;
     bool projector_lighting_attempted = false;
     U32 projector_lighting_failed_frames = 0;
+    bool lighting_composition_attempted = false;
+    U32 lighting_composition_failed_frames = 0;
     bool base_lighting_attempted = false;
     U32 base_lighting_failed_frames = 0;
     bool impostor_bake_attempted = false;
@@ -927,6 +930,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.target.reset();
         capture.local_light_target.reset();
         capture.projector_light_target.reset();
+        capture.composed_light_target.reset();
         capture.projector_shadow_texture.reset();
         capture.projector_shadow_readback_bytes.clear();
         capture.projector_shadow_bytes.clear();
@@ -1035,6 +1039,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.local_lighting_failed_frames = 0;
         capture.projector_lighting_attempted = false;
         capture.projector_lighting_failed_frames = 0;
+        capture.lighting_composition_attempted = false;
+        capture.lighting_composition_failed_frames = 0;
         capture.base_lighting_attempted = false;
         capture.base_lighting_failed_frames = 0;
         capture.impostor_bake_attempted = false;
@@ -2483,6 +2489,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.target.reset();
         capture.local_light_target.reset();
         capture.projector_light_target.reset();
+        capture.composed_light_target.reset();
         capture.projector_shadow_texture.reset();
         capture.projector_shadow_readback_bytes.clear();
         capture.projector_shadow_bytes.clear();
@@ -2580,6 +2587,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.local_lighting_failed_frames = 0;
         capture.projector_lighting_attempted = false;
         capture.projector_lighting_failed_frames = 0;
+        capture.lighting_composition_attempted = false;
+        capture.lighting_composition_failed_frames = 0;
         capture.base_lighting_attempted = false;
         capture.base_lighting_failed_frames = 0;
         capture.impostor_bake_attempted = false;
@@ -6423,6 +6432,57 @@ void LLPipeline::renderMetalWorldProjectorLights(
         << LL_ENDL;
 }
 
+void LLPipeline::renderMetalWorldLightingComposition()
+{
+    if (!isMainWorldPass() || mRT != &mMainRT ||
+        !mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.device || !capture.renderer ||
+        !capture.base_light_target || !capture.local_light_target ||
+        !capture.projector_light_target ||
+        capture.lighting_composition_attempted)
+    {
+        return;
+    }
+
+    ALMetalWorldLightingCompositionScene scene;
+    scene.base_lighting = capture.base_light_target.get();
+    scene.local_lighting = capture.local_light_target.get();
+    scene.projector_lighting = capture.projector_light_target.get();
+    scene.hdr = capture.hdr;
+
+    std::string error;
+    auto target = capture.renderer->composeLighting(scene, &error);
+    if (!target)
+    {
+        if (++capture.lighting_composition_failed_frames >=
+            MetalWorldSimpleCapture::max_failed_frames)
+        {
+            capture.lighting_composition_attempted = true;
+            LL_WARNS("Metal")
+                << "Native deferred-light composition retained GL after "
+                << capture.lighting_composition_failed_frames
+                << " failures: " << error << LL_ENDL;
+        }
+        return;
+    }
+
+    capture.composed_light_target = std::move(target);
+    capture.lighting_composition_attempted = true;
+    capture.lighting_composition_failed_frames = 0;
+    LL_INFOS("Metal")
+        << "Native world base, ordinary-light and projector-light targets "
+           "composed at "
+        << capture.composed_light_target->descriptor().width << "x"
+        << capture.composed_light_target->descriptor().height
+        << "; the result remains offscreen and visible GL authority is "
+           "unchanged"
+        << LL_ENDL;
+}
+
 bool LLPipeline::renderMetalWorldLightMap(
     LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao)
 {
@@ -6804,7 +6864,8 @@ void LLPipeline::renderMetalWorldBaseLighting(
                         ? "; WindLight haze/star clear-depth transfer is native"
                         : "; WindLight atmospheric clear-depth transfer is native"
                     : "; sky transfer remains GL-owned")
-        << "; GL remains authoritative while sky layers, projectors and composition are open"
+        << "; GL remains authoritative until the retained lighting outputs "
+           "are composed and later world owners are native"
         << LL_ENDL;
 }
 #endif
@@ -18052,6 +18113,7 @@ void LLPipeline::renderDeferredLighting()
             *camera, mat, light_scale,
             std::max<S32>(local_light_count, 0),
             deferred_light_target);
+        renderMetalWorldLightingComposition();
         // The temporary projector-shadow bridge reads the light map. Put
         // the visible GL fallback back on its accumulation target before it
         // draws the same local-light owner.

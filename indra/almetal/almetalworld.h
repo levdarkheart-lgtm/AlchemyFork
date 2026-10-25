@@ -341,6 +341,16 @@ struct ALMetalWorldProjectorLightingScene
     bool classic_mode = false;
 };
 
+struct ALMetalWorldLightingCompositionScene
+{
+    // These are the exact three owners accumulated into GL's screen target:
+    // soften/base first, then ordinary and projector lights additively.
+    const ALMetalRenderTarget* base_lighting = nullptr;
+    const ALMetalRenderTarget* local_lighting = nullptr;
+    const ALMetalRenderTarget* projector_lighting = nullptr;
+    bool hdr = false;
+};
+
 struct alignas(16) ALMetalWorldLightMapConstants
 {
     float inverse_projection[16]{};
@@ -691,6 +701,12 @@ public:
     // keeps each cookie's independent mip chain and sampler semantics.
     std::unique_ptr<ALMetalRenderTarget> renderProjectorLights(
         const ALMetalWorldProjectorLightingScene& scene,
+        std::string* error = nullptr);
+
+    // Reproduce the deferred screen-target accumulation boundary without
+    // folding in post-deferred geometry, tone mapping or presentation.
+    std::unique_ptr<ALMetalRenderTarget> composeLighting(
+        const ALMetalWorldLightingCompositionScene& scene,
         std::string* error = nullptr);
 
     // Produce the deferred RG light map from native G-buffer depth/normals:
