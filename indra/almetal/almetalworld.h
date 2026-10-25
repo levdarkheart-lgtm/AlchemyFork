@@ -305,6 +305,42 @@ struct ALMetalWorldLocalLightingScene
     bool classic_mode = false;
 };
 
+struct alignas(16) ALMetalWorldProjectorLight
+{
+    const ALMetalTexture* cookie_texture = nullptr;
+    // Eye-space centre in xyz, GL deferred radius in w.
+    float position_radius[4]{};
+    // Linear RGB after global/fade scaling, deferred falloff in w.
+    float color_falloff[4]{};
+    // Eye space to the projector's forward texture space.
+    float projector_matrix[16]{};
+    // xyz = emitting plane point, w = projector ambiance.
+    float projector_plane[4]{};
+    // xyz = emitting plane normal, w = far-minus-near range.
+    float projector_normal[4]{};
+    // xyz = projector origin, w = focus distance.
+    float projector_origin[4]{};
+    // x = cookie LOD range, y = shadow fade.
+    float sampling[4]{};
+    // -1 = unshadowed, otherwise the R/G channel in shadow_factors.
+    std::int32_t shadow_channel = -1;
+};
+
+struct ALMetalWorldProjectorLightingScene
+{
+    const ALMetalRenderTarget* gbuffer = nullptr;
+    const ALMetalWorldProjectorLight* lights = nullptr;
+    std::size_t light_count = 0;
+    // The exact GL-filtered spot-shadow factors, packed from light-map BA
+    // during migration. Null is valid only when every light is unshadowed.
+    const ALMetalTexture* shadow_factors = nullptr;
+    float inverse_projection[16]{};
+    float specular_exponent = 128.f;
+    bool reverse_z = false;
+    bool hdr = false;
+    bool classic_mode = false;
+};
+
 struct alignas(16) ALMetalWorldLightMapConstants
 {
     float inverse_projection[16]{};
@@ -648,6 +684,13 @@ public:
     // composition passes are native as well.
     std::unique_ptr<ALMetalRenderTarget> renderLocalLights(
         const ALMetalWorldLocalLightingScene& scene,
+        std::string* error = nullptr);
+
+    // Accumulate deferred projector cookies, ambiance, legacy reflection
+    // and the two live filtered spot-shadow channels. A draw per projector
+    // keeps each cookie's independent mip chain and sampler semantics.
+    std::unique_ptr<ALMetalRenderTarget> renderProjectorLights(
+        const ALMetalWorldProjectorLightingScene& scene,
         std::string* error = nullptr);
 
     // Produce the deferred RG light map from native G-buffer depth/normals:

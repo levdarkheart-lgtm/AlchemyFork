@@ -362,6 +362,19 @@ struct ALMetalWorldLocalLightingConstants
     uint4 config;
 };
 
+struct ALMetalWorldProjectorLightingConstants
+{
+    float4x4 inverse_projection;
+    float4x4 projector_matrix;
+    float4 position_radius;
+    float4 color_falloff;
+    float4 projector_plane;
+    float4 projector_normal;
+    float4 projector_origin;
+    float4 sampling;
+    uint4 config;
+};
+
 struct ALMetalWorldLightMapConstants
 {
     float4x4 inverse_projection;
@@ -6695,6 +6708,324 @@ fragment float4 almetal_world_local_light_fragment(
     }
 
     return float4(max(final_color * constants.surface.y, float3(0.0)), 0.0);
+}
+
+static float4 almetal_projector_diffuse_cookie(
+    texture2d<float> cookie,
+    sampler cookie_sampler,
+    float2 texcoord,
+    float lod,
+    float lod_range)
+{
+    float4 color = cookie.sample(
+        cookie_sampler, texcoord, level(lod));
+    const float2 distance_to_edge =
+        float2(0.5) - abs(texcoord - float2(0.5));
+    const float detail = min(lod / (lod_range * 0.5), 1.0);
+    const float edge = 0.25 * detail;
+    color *= clamp(min(distance_to_edge.x, distance_to_edge.y) /
+                       max(edge, 1.0e-6),
+                   0.0, 1.0);
+    return color;
+}
+
+static float4 almetal_projector_ambient_cookie(
+    texture2d<float> cookie,
+    sampler cookie_sampler,
+    float2 texcoord,
+    float lod_range)
+{
+    float4 color = cookie.sample(
+        cookie_sampler, texcoord, level(lod_range));
+    const float2 delta = texcoord - float2(0.5);
+    const float radial = dot(delta, delta);
+    color *= clamp((0.25 - radial) / 0.25, 0.0, 1.0);
+    return color;
+}
+
+static float4 almetal_projector_specular_cookie(
+    texture2d<float> cookie,
+    sampler cookie_sampler,
+    float2 texcoord,
+    float lod,
+    float lod_range)
+{
+    float4 color = cookie.sample(
+        cookie_sampler, texcoord, level(lod));
+    const float2 distance_to_edge =
+        float2(0.5) - abs(texcoord - float2(0.5));
+    const float detail = min(lod / (lod_range * 0.5), 1.0);
+    float distance = min(distance_to_edge.x, distance_to_edge.y);
+    distance *= min(1.0, distance * (lod_range - lod));
+    const float edge = 0.25 * detail;
+    color *= clamp(distance / max(edge, 1.0e-6), 0.0, 1.0);
+    return color;
+}
+
+fragment float4 almetal_world_projector_light_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    constant ALMetalWorldProjectorLightingConstants& constants [[buffer(0)]],
+    texture2d<float> albedo_texture [[texture(0)]],
+    texture2d<float> specular_texture [[texture(1)]],
+    texture2d<float> normal_texture [[texture(2)]],
+    texture2d<float> depth_texture [[texture(3)]],
+    texture2d<float> brdf_lut [[texture(4)]],
+    texture2d<float> cookie_texture [[texture(5)]],
+    texture2d<float> shadow_factors [[texture(6)]],
+    sampler point_sampler [[sampler(0)]],
+    sampler brdf_sampler [[sampler(1)]],
+    sampler cookie_sampler [[sampler(2)]])
+{
+    const float depth = depth_texture.sample(
+        point_sampler, input.texcoord).r;
+    const bool reverse_z = constants.config.x != 0u;
+    if ((reverse_z && depth <= 0.0) || (!reverse_z && depth >= 1.0))
+    {
+        discard_fragment();
+    }
+
+    const float ndc_z = reverse_z ? depth : depth * 2.0 - 1.0;
+    float4 position = constants.inverse_projection *
+        float4(input.texcoord * 2.0 - 1.0, ndc_z, 1.0);
+    position.w = max(position.w, 0.000001);
+    position /= position.w;
+
+    const float3 center_vector =
+        constants.position_radius.xyz - position.xyz;
+    const float center_distance = length(center_vector);
+    if (center_distance >= constants.position_radius.w)
+    {
+        discard_fragment();
+    }
+    const float normalized_distance =
+        center_distance / constants.position_radius.w;
+    const float light_distance =
+        -dot(center_vector, constants.projector_normal.xyz);
+    float4 projected = constants.projector_matrix * position;
+    if (projected.z < 0.0)
+    {
+        discard_fragment();
+    }
+    projected.xyz /= projected.w;
+
+    const float distance_attenuation =
+        almetal_legacy_distance_attenuation(
+            normalized_distance, constants.color_falloff.w);
+    if (distance_attenuation <= 0.0)
+    {
+        discard_fragment();
+    }
+
+    const float4 normal_sample = normal_texture.sample(
+        point_sampler, input.texcoord);
+    const bool has_pbr = abs(normal_sample.a - 0.67) < 0.1;
+    const bool in_cookie = projected.x > 0.0 && projected.x < 1.0 &&
+                           projected.y > 0.0 && projected.y < 1.0 &&
+                           (has_pbr || projected.z > 0.0);
+    if (!in_cookie && (has_pbr || !(normal_sample.b > 0.0)))
+    {
+        discard_fragment();
+    }
+
+    float shadow = 1.0;
+    if (constants.config.y != 0u)
+    {
+        const float2 factors = shadow_factors.sample(
+            point_sampler, input.texcoord).rg;
+        shadow = factors[constants.config.y - 1u];
+        shadow = clamp(shadow + constants.sampling.y, 0.0, 1.0);
+    }
+
+    const float3 normal = almetal_world_oct_decode(normal_sample.xy);
+    const float3 base_color = albedo_texture.sample(
+        point_sampler, input.texcoord).rgb;
+    float4 specular = specular_texture.sample(
+        point_sampler, input.texcoord);
+    const float3 view = -normalize(position.xyz);
+    const float3 origin_vector =
+        constants.projector_origin.xyz - position.xyz;
+    float3 half_vector;
+    float3 light_direction;
+    float nh;
+    float nl;
+    float nv;
+    float vh;
+    almetal_legacy_half_vectors(
+        origin_vector, normal, view, half_vector, light_direction,
+        nh, nl, nv, vh);
+
+    const float lod_range = constants.sampling.x;
+    const float focus = constants.projector_origin.w;
+    const float projector_range = constants.projector_normal.w;
+    const float ambiance = constants.projector_plane.w;
+    float3 final_color = 0.0;
+
+    if (has_pbr)
+    {
+        const float perceptual_roughness =
+            specular.g + specular.a / 255.0;
+        const float metallic = specular.b;
+        const float3 diffuse_color = base_color * (1.0 - metallic);
+        const float3 specular_color = mix(
+            float3(0.04), base_color, metallic);
+        const float3 energy_compensation =
+            almetal_pbr_energy_compensation(
+                brdf_lut, brdf_sampler, specular_color,
+                perceptual_roughness, dot(normal, view));
+
+        if (projected.x > 0.0 && projected.x < 1.0 &&
+            projected.y > 0.0 && projected.y < 1.0)
+        {
+            float lit = 0.0;
+            float ambient_amount = 0.0;
+            if (dot(normal, light_direction) > 0.0)
+            {
+                ambient_amount += (nl * 0.5 + 0.5) * ambiance;
+                const float lod = clamp(
+                    (light_distance - focus) / projector_range,
+                    0.0, 1.0) * lod_range;
+                const float4 cookie = almetal_projector_diffuse_cookie(
+                    cookie_texture, cookie_sampler, projected.xy,
+                    lod, lod_range);
+                const float3 projected_color =
+                    constants.color_falloff.rgb *
+                    cookie.rgb * cookie.a;
+                const ALMetalPBRPreviewPunctual punctual =
+                    almetal_pbr_punctual(
+                        diffuse_color, specular_color,
+                        perceptual_roughness, normal, view,
+                        light_direction);
+                nl = punctual.nl;
+                const float3 lobe = nl *
+                    (punctual.diffuse +
+                     punctual.specular * energy_compensation);
+                final_color += distance_attenuation * projected_color *
+                    3.0 * shadow *
+                    almetal_world_bounded_radiance(lobe);
+                lit = clamp(nl * distance_attenuation, 0.0, 1.0);
+            }
+
+            const float4 ambient_cookie =
+                almetal_projector_ambient_cookie(
+                    cookie_texture, cookie_sampler, projected.xy,
+                    lod_range);
+            ambient_amount += ambiance;
+            ambient_amount +=
+                (nl * nl * 0.5 + 0.5) * ambiance;
+            ambient_amount *= distance_attenuation;
+            ambient_amount = min(ambient_amount, 1.0 - lit);
+            const float3 ambient_color = ambient_amount *
+                constants.color_falloff.rgb * ambient_cookie.rgb *
+                ambient_cookie.a * 3.0;
+            final_color += diffuse_color * ambient_color / M_PI_F;
+        }
+    }
+    else
+    {
+        const float environment_intensity = normal_sample.b;
+        specular.rgb = almetal_srgb_to_linear(specular.rgb);
+        float3 direct_cookie = 0.0;
+        if (projected.z > 0.0 && projected.x > 0.0 &&
+            projected.x < 1.0 && projected.y > 0.0 &&
+            projected.y < 1.0)
+        {
+            float ambient_amount = 0.0;
+            float lit = 0.0;
+            if (nl > 0.0)
+            {
+                lit = nl * distance_attenuation;
+                const float lod = clamp(
+                    (light_distance - focus) / projector_range,
+                    0.0, 1.0) * lod_range;
+                const float4 cookie = almetal_projector_diffuse_cookie(
+                    cookie_texture, cookie_sampler, projected.xy,
+                    lod, lod_range);
+                direct_cookie = constants.color_falloff.rgb *
+                    cookie.rgb * cookie.a;
+                final_color = direct_cookie * lit * base_color * shadow;
+                ambient_amount +=
+                    (nl * 0.5 + 0.5) * ambiance;
+            }
+            const float4 ambient_cookie =
+                almetal_projector_ambient_cookie(
+                    cookie_texture, cookie_sampler, projected.xy,
+                    lod_range);
+            ambient_amount += ambiance;
+            ambient_amount +=
+                (nl * nl * 0.5 + 0.5) * ambiance;
+            ambient_amount *= distance_attenuation;
+            ambient_amount = min(ambient_amount, 1.0 - lit);
+            const float3 ambient_color = ambient_amount *
+                constants.color_falloff.rgb * ambient_cookie.rgb *
+                ambient_cookie.a;
+            final_color += base_color * ambient_color *
+                max(dot(-normalize(origin_vector), normal), 0.0);
+        }
+
+        if (specular.a > 0.0)
+        {
+            direct_cookie *=
+                min(nl * 6.0, 1.0) * distance_attenuation;
+            const float fresnel =
+                pow(1.0 - vh, 5.0) * 0.4 + 0.5;
+            const float geometry_denominator = 2.0 * nh;
+            const float geometry = max(
+                0.0, min(geometry_denominator * nv / vh,
+                         geometry_denominator * nl / vh));
+            if (nh > 0.0)
+            {
+                const float lobe = fresnel *
+                    almetal_legacy_blinn_phong_lobe(
+                        nh, specular.a, constants.sampling.z) *
+                    geometry / (nh * nl);
+                final_color += clamp(
+                    direct_cookie * lobe * specular.rgb * shadow,
+                    float3(0.0), float3(1.0));
+            }
+        }
+
+        if (environment_intensity > 0.0)
+        {
+            const float3 reflection = reflect(
+                normalize(position.xyz), normal);
+            const float3 plane_delta =
+                constants.projector_plane.xyz - position.xyz;
+            const float plane_distance = dot(
+                reflection, constants.projector_normal.xyz);
+            if (plane_distance < 0.0)
+            {
+                const float3 reflected_position = position.xyz +
+                    reflection * dot(
+                        plane_delta, constants.projector_normal.xyz) /
+                    plane_distance;
+                float4 reflected_texcoord =
+                    constants.projector_matrix *
+                    float4(reflected_position, 1.0);
+                if (reflected_texcoord.z > 0.0)
+                {
+                    reflected_texcoord /= reflected_texcoord.w;
+                    if (reflected_texcoord.x > 0.0 &&
+                        reflected_texcoord.x < 1.0 &&
+                        reflected_texcoord.y > 0.0 &&
+                        reflected_texcoord.y < 1.0)
+                    {
+                        const float lod = (1.0 - specular.a) *
+                            (lod_range * 0.6);
+                        const float4 cookie =
+                            almetal_projector_specular_cookie(
+                                cookie_texture, cookie_sampler,
+                                reflected_texcoord.xy, lod, lod_range);
+                        final_color += constants.color_falloff.rgb *
+                            cookie.rgb * shadow *
+                            environment_intensity;
+                    }
+                }
+            }
+        }
+    }
+
+    return float4(
+        max(final_color * constants.sampling.w, float3(0.0)), 0.0);
 }
 
 static float3 almetal_world_unpack_geometric_normal(

@@ -426,6 +426,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
     std::unique_ptr<ALMetalRenderTarget> target;
     std::unique_ptr<ALMetalRenderTarget> local_light_target;
+    std::unique_ptr<ALMetalRenderTarget> projector_light_target;
+    std::unique_ptr<ALMetalTexture> projector_shadow_texture;
+    std::vector<U8> projector_shadow_readback_bytes;
+    std::vector<U8> projector_shadow_bytes;
     std::unique_ptr<ALMetalRenderTarget> base_light_map_target;
     std::unique_ptr<ALMetalTexture> base_noise_texture;
     std::unique_ptr<ALMetalTexture> base_light_map_texture;
@@ -514,6 +518,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool attempted = false;
     bool local_lighting_attempted = false;
     U32 local_lighting_failed_frames = 0;
+    bool projector_lighting_attempted = false;
+    U32 projector_lighting_failed_frames = 0;
     bool base_lighting_attempted = false;
     U32 base_lighting_failed_frames = 0;
     bool impostor_bake_attempted = false;
@@ -920,6 +926,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.renderer.reset();
         capture.target.reset();
         capture.local_light_target.reset();
+        capture.projector_light_target.reset();
+        capture.projector_shadow_texture.reset();
+        capture.projector_shadow_readback_bytes.clear();
+        capture.projector_shadow_bytes.clear();
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
         capture.base_light_map_texture.reset();
@@ -1023,6 +1033,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.attempted = false;
         capture.local_lighting_attempted = false;
         capture.local_lighting_failed_frames = 0;
+        capture.projector_lighting_attempted = false;
+        capture.projector_lighting_failed_frames = 0;
         capture.base_lighting_attempted = false;
         capture.base_lighting_failed_frames = 0;
         capture.impostor_bake_attempted = false;
@@ -2470,6 +2482,10 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.renderer.reset();
         capture.target.reset();
         capture.local_light_target.reset();
+        capture.projector_light_target.reset();
+        capture.projector_shadow_texture.reset();
+        capture.projector_shadow_readback_bytes.clear();
+        capture.projector_shadow_bytes.clear();
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
         capture.base_light_map_texture.reset();
@@ -2562,6 +2578,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.attempted = false;
         capture.local_lighting_attempted = false;
         capture.local_lighting_failed_frames = 0;
+        capture.projector_lighting_attempted = false;
+        capture.projector_lighting_failed_frames = 0;
         capture.base_lighting_attempted = false;
         capture.base_lighting_failed_frames = 0;
         capture.impostor_bake_attempted = false;
@@ -6090,6 +6108,318 @@ void LLPipeline::renderMetalWorldLocalLights(
         << capture.local_light_target->descriptor().height
         << "; visible deferred lighting remains on GL until all lighting "
            "and composition owners exist"
+        << LL_ENDL;
+}
+
+void LLPipeline::renderMetalWorldProjectorLights(
+    LLViewerCamera& camera, const LLMatrix4a& modelview,
+    F32 light_scale, S32 local_light_count,
+    LLRenderTarget* shadow_source)
+{
+    if (!isMainWorldPass() || mRT != &mMainRT ||
+        !mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.device || !capture.renderer || !capture.target ||
+        capture.projector_lighting_attempted)
+    {
+        return;
+    }
+
+    std::vector<ALMetalWorldProjectorLight> lights;
+    lights.reserve(std::min<std::size_t>(
+        static_cast<std::size_t>(std::max(local_light_count, 0)),
+        mNearbyLights.size()));
+    bool needs_shadow_factors = false;
+    S32 count = 0;
+    for (light_set_t::iterator iter = mNearbyLights.begin();
+         iter != mNearbyLights.end(); ++iter)
+    {
+        ++count;
+        if (count > local_light_count)
+        {
+            break;
+        }
+
+        LLDrawable* drawable = iter->drawable;
+        LLVOVolume* volume = drawable ? drawable->getVOVolume() : nullptr;
+        if (!volume || !volume->isLightSpotlight() ||
+            (volume->isAttachment() && !sRenderAttachedLights))
+        {
+            continue;
+        }
+
+        LLVector4a center;
+        center.load3(drawable->getPositionAgent().mV);
+        const F32 radius = volume->getLightRadius() * 1.5f;
+        LLColor3 color = volume->getLightLinearColor() * light_scale;
+        color *= light_fade_brightness(iter->fade);
+        if (color.magVecSquared() < 0.001f || radius <= 0.001f)
+        {
+            continue;
+        }
+
+        LLVector4a extent;
+        extent.splat(radius);
+        if (camera.AABBInFrustumNoFarClip(center, extent) == 0)
+        {
+            continue;
+        }
+
+        LLViewerTexture* cookie = volume->getLightTexture();
+        if (!cookie)
+        {
+            cookie = LLViewerFetchedTexture::sWhiteImagep.get();
+        }
+        LLImageGL* cookie_image = cookie ? cookie->getGLTexture() : nullptr;
+        ALMetalTexture* cookie_texture = cookie_image
+            ? cookie_image->getMetalTexture() : nullptr;
+        if (!cookie_texture)
+        {
+            // A fetched cookie can arrive after the light itself. Publishing
+            // a partial accumulation would make the migration target lie;
+            // leave the probe armed and retry when its durable mirror exists.
+            return;
+        }
+
+        const LLVector3 parameters = volume->getSpotLightParams();
+        const F32 fov = parameters.mV[0];
+        const F32 focus = parameters.mV[1];
+        const LLVector3 position = drawable->getPositionAgent();
+        const LLQuaternion rotation = volume->getRenderRotation();
+        const LLVector3 scale = volume->getScale();
+        if (!std::isfinite(fov) || !std::isfinite(focus) ||
+            fov <= 0.f || scale.mV[VX] <= 0.f ||
+            scale.mV[VY] <= 0.f)
+        {
+            return;
+        }
+
+        LLVector3 at_axis(0.f, 0.f, -scale.mV[VZ] * 0.5f);
+        at_axis *= rotation;
+        const LLVector3 near_point = position + at_axis;
+        at_axis.normVec();
+        const F32 distance =
+            (scale.mV[VY] * 0.5f) / tanf(fov * 0.5f);
+        const LLVector3 origin = near_point - at_axis * distance;
+        LLMatrix4 light_matrix(rotation, LLVector4(origin, 1.f));
+        LLMatrix4a light_to_eye;
+        light_to_eye.setMul(LLMatrix4a(light_matrix), modelview);
+        LLMatrix4a eye_to_light;
+        eye_to_light.setInverse(light_to_eye);
+
+        const F32 near_clip = distance;
+        const F32 far_clip = radius + distance - scale.mV[VZ];
+        const F32 projector_range = far_clip - near_clip;
+        if (!std::isfinite(distance) || near_clip <= 0.f ||
+            far_clip <= near_clip || !std::isfinite(projector_range))
+        {
+            return;
+        }
+
+        LLVector4a plane_point;
+        LLVector4a direction_point;
+        LLVector4a eye_origin;
+        light_to_eye.affineTransform(
+            LLVector4a(0.f, 0.f, -(near_clip + 0.01f), 1.f),
+            plane_point);
+        light_to_eye.affineTransform(
+            LLVector4a(0.f, 0.f, -(near_clip + 1.f), 1.f),
+            direction_point);
+        light_to_eye.affineTransform(
+            LLVector4a(0.f, 0.f, 0.f, 1.f), eye_origin);
+        LLVector4a plane_normal;
+        plane_normal.setSub(direction_point, plane_point);
+        plane_normal.normalize3();
+
+        // setupSpotLight's cookie matrix is intentionally the forward
+        // projection even when the scene depth is reverse-Z. Keep this
+        // byte-for-byte construction paired with its [-1,1] z remap.
+        eye_to_light.setMul(
+            eye_to_light,
+            LLMatrix4a::perspective(
+                fov, scale.mV[VX] / scale.mV[VY],
+                near_clip, far_clip));
+        LLMatrix4a clip_to_cookie;
+        clip_to_cookie.mMatrix[0].set(0.5f, 0.f, 0.f, 0.f);
+        clip_to_cookie.mMatrix[1].set(0.f, 0.5f, 0.f, 0.f);
+        clip_to_cookie.mMatrix[2].set(0.f, 0.f, 0.5f, 0.f);
+        clip_to_cookie.mMatrix[3].set(0.5f, 0.5f, 0.5f, 1.f);
+        eye_to_light.setMul(eye_to_light, clip_to_cookie);
+
+        LLVector4a eye_center;
+        modelview.affineTransform(center, eye_center);
+        ALMetalWorldProjectorLight light;
+        light.cookie_texture = cookie_texture;
+        light.position_radius[0] = eye_center[0];
+        light.position_radius[1] = eye_center[1];
+        light.position_radius[2] = eye_center[2];
+        light.position_radius[3] = radius;
+        light.color_falloff[0] = color.mV[0];
+        light.color_falloff[1] = color.mV[1];
+        light.color_falloff[2] = color.mV[2];
+        light.color_falloff[3] =
+            volume->getLightFalloff(DEFERRED_LIGHT_FALLOFF);
+        std::memcpy(light.projector_matrix, eye_to_light.getF32ptr(),
+                    sizeof(light.projector_matrix));
+        std::memcpy(light.projector_plane, plane_point.getF32ptr(),
+                    sizeof(F32) * 3);
+        light.projector_plane[3] = parameters.mV[2];
+        std::memcpy(light.projector_normal, plane_normal.getF32ptr(),
+                    sizeof(F32) * 3);
+        light.projector_normal[3] = projector_range;
+        std::memcpy(light.projector_origin, eye_origin.getF32ptr(),
+                    sizeof(F32) * 3);
+        light.projector_origin[3] = focus;
+        light.sampling[0] = llmax(
+            logf(static_cast<F32>(cookie->getWidth())) / logf(2.f),
+            1.f);
+        for (S32 shadow = 0; shadow < 2; ++shadow)
+        {
+            if (mShadowSpotLight[shadow] == drawable)
+            {
+                light.shadow_channel = shadow;
+                light.sampling[1] = 1.f - mSpotLightFade[shadow];
+                needs_shadow_factors = true;
+                break;
+            }
+        }
+        lights.push_back(light);
+    }
+
+    if (needs_shadow_factors && !capture.projector_shadow_texture)
+    {
+        const U32 width = shadow_source ? shadow_source->getWidth() : 0;
+        const U32 height = shadow_source ? shadow_source->getHeight() : 0;
+        const std::size_t pixels =
+            static_cast<std::size_t>(width) * height;
+        if (!shadow_source || width != capture.width ||
+            height != capture.height || pixels == 0 ||
+            pixels > std::numeric_limits<std::size_t>::max() / 4)
+        {
+            return;
+        }
+
+        capture.projector_shadow_readback_bytes.resize(pixels * 4);
+        capture.projector_shadow_bytes.resize(pixels * 2);
+        GLint previous_pack_alignment = 4;
+        GLint previous_pack_buffer = 0;
+        glGetIntegerv(GL_PACK_ALIGNMENT, &previous_pack_alignment);
+        glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING,
+                      &previous_pack_buffer);
+        shadow_source->bindTarget();
+        clear_glerror();
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels(
+            0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE,
+            capture.projector_shadow_readback_bytes.data());
+        const GLenum read_error = glGetError();
+        glPixelStorei(GL_PACK_ALIGNMENT, previous_pack_alignment);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER,
+                     static_cast<GLuint>(previous_pack_buffer));
+        if (read_error != GL_NO_ERROR)
+        {
+            LL_WARNS("Metal")
+                << "Could not read the filtered projector-shadow factors: "
+                   "GL error 0x"
+                << std::hex << read_error << std::dec << LL_ENDL;
+            return;
+        }
+        for (std::size_t pixel = 0; pixel < pixels; ++pixel)
+        {
+            capture.projector_shadow_bytes[pixel * 2 + 0] =
+                capture.projector_shadow_readback_bytes[pixel * 4 + 2];
+            capture.projector_shadow_bytes[pixel * 2 + 1] =
+                capture.projector_shadow_readback_bytes[pixel * 4 + 3];
+        }
+
+        ALMetalTextureDescriptor descriptor;
+        descriptor.format = ALMetalPixelFormat::rg8_unorm;
+        descriptor.width = width;
+        descriptor.height = height;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.usage = ALMetalTextureUsage::shader_read;
+        descriptor.label =
+            "Alchemy filtered projector-shadow migration mirror";
+        std::string error;
+        capture.projector_shadow_texture = ALMetalTexture::create(
+            *capture.device, descriptor, &error);
+        auto upload = capture.projector_shadow_texture
+            ? capture.device->makeCommandBuffer(
+                  "Alchemy filtered projector-shadow migration upload",
+                  &error)
+            : nullptr;
+        const bool uploaded = upload &&
+            capture.projector_shadow_texture->upload(
+                *upload, 0, 0, {},
+                capture.projector_shadow_bytes.data(),
+                static_cast<std::size_t>(width) * 2, &error) &&
+            upload->commit(&error);
+        if (!uploaded)
+        {
+            capture.projector_shadow_texture.reset();
+            LL_WARNS("Metal")
+                << "Could not upload the filtered projector-shadow "
+                   "migration mirror: "
+                << error << LL_ENDL;
+            return;
+        }
+    }
+
+    ALMetalWorldProjectorLightingScene scene;
+    scene.gbuffer = capture.target.get();
+    scene.lights = lights.empty() ? nullptr : lights.data();
+    scene.light_count = lights.size();
+    scene.shadow_factors = capture.projector_shadow_texture.get();
+    LLMatrix4a inverse_projection;
+    inverse_projection.setInverse(camera.getProjection());
+    std::memcpy(scene.inverse_projection,
+                inverse_projection.getF32ptr(),
+                sizeof(scene.inverse_projection));
+    scene.specular_exponent = mDeferredUBOData.specular_exponent;
+    scene.reverse_z = capture.reverse_z;
+    scene.hdr = capture.hdr;
+    scene.classic_mode = LLRender::sClassicMode;
+
+    std::string error;
+    auto target = capture.renderer->renderProjectorLights(scene, &error);
+    if (!target)
+    {
+        // The factors and the selected shadow-owning lights are one frame's
+        // transaction. A retry must capture both again rather than combine
+        // a later light list with stale screen-space visibility.
+        capture.projector_shadow_texture.reset();
+        capture.projector_shadow_readback_bytes.clear();
+        capture.projector_shadow_bytes.clear();
+        if (++capture.projector_lighting_failed_frames >=
+            MetalWorldSimpleCapture::max_failed_frames)
+        {
+            capture.projector_lighting_attempted = true;
+            LL_WARNS("Metal")
+                << "Native world projector-light owner retained GL after "
+                << capture.projector_lighting_failed_frames
+                << " failures: " << error << LL_ENDL;
+        }
+        return;
+    }
+
+    capture.projector_light_target = std::move(target);
+    capture.projector_lighting_attempted = true;
+    capture.projector_lighting_failed_frames = 0;
+    capture.projector_shadow_readback_bytes.clear();
+    capture.projector_shadow_bytes.clear();
+    LL_INFOS("Metal")
+        << "Native world projector-light owner encoded "
+        << lights.size() << " cookies at "
+        << capture.projector_light_target->descriptor().width << "x"
+        << capture.projector_light_target->descriptor().height
+        << (needs_shadow_factors
+                ? "; live filtered GL spot-shadow factors remain a "
+                  "transitional input mirror"
+                : "; no live spot-shadow channel was consumed")
         << LL_ENDL;
 }
 
@@ -17718,6 +18048,14 @@ void LLPipeline::renderDeferredLighting()
         // has a native owner.
         renderMetalWorldLocalLights(
             *camera, mat, light_scale, std::max<S32>(local_light_count, 0));
+        renderMetalWorldProjectorLights(
+            *camera, mat, light_scale,
+            std::max<S32>(local_light_count, 0),
+            deferred_light_target);
+        // The temporary projector-shadow bridge reads the light map. Put
+        // the visible GL fallback back on its accumulation target before it
+        // draws the same local-light owner.
+        screen_target->bindTarget();
 #endif
         if (local_light_count > 0 && (!gCubeSnapshot || shaderInputs().mGlobal.mProbeLevel > 0))
         {

@@ -153,6 +153,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_pbr_terrain_fragment",
             "almetal_world_local_light_vertex",
             "almetal_world_local_light_fragment",
+            "almetal_world_projector_light_fragment",
             "almetal_world_light_map_fragment",
             "almetal_world_light_map_blur_fragment",
             "almetal_world_hdri_sky_vertex",
@@ -3557,6 +3558,315 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(doubled_pixels[center + 1] > legacy_pixels[center + 1]);
         CHECK(doubled_pixels[center + 2] > legacy_pixels[center + 2]);
 
+        // The projector owner uses one draw per cookie so every light keeps
+        // its own sRGB mip chain. Its temporary shadow input is the exact
+        // pair of already-filtered GL light-map B/A factors, packed as RG.
+        ALMetalTextureDescriptor cookie_descriptor;
+        cookie_descriptor.format = ALMetalPixelFormat::rgba8_unorm_srgb;
+        cookie_descriptor.width = 1;
+        cookie_descriptor.height = 1;
+        cookie_descriptor.storage = ALMetalStorageMode::private_gpu;
+        cookie_descriptor.usage = ALMetalTextureUsage::shader_read;
+        cookie_descriptor.label = "Alchemy projector colored sRGB cookie";
+        auto cookie = ALMetalTexture::create(
+            *device, cookie_descriptor, &error);
+        INFO(error);
+        REQUIRE(cookie);
+
+        ALMetalTextureDescriptor shadow_descriptor;
+        shadow_descriptor.format = ALMetalPixelFormat::rg8_unorm;
+        shadow_descriptor.width = 32;
+        shadow_descriptor.height = 32;
+        shadow_descriptor.storage = ALMetalStorageMode::private_gpu;
+        shadow_descriptor.usage = ALMetalTextureUsage::shader_read;
+        shadow_descriptor.label =
+            "Alchemy projector filtered shadow factors";
+        auto projector_shadows = ALMetalTexture::create(
+            *device, shadow_descriptor, &error);
+        INFO(error);
+        REQUIRE(projector_shadows);
+
+        const std::array<std::uint8_t, 4> colored_cookie{{
+            128, 192, 255, 255,
+        }};
+        std::array<std::uint8_t, 32 * 32 * 2> shadow_pixels{};
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            shadow_pixels[pixel * 2 + 0] = 0;
+            shadow_pixels[pixel * 2 + 1] = 255;
+        }
+        auto projector_upload = device->makeCommandBuffer(
+            "Alchemy projector input upload", &error);
+        INFO(error);
+        REQUIRE(projector_upload);
+        REQUIRE(cookie->upload(
+            *projector_upload, 0, 0, {}, colored_cookie.data(), 4,
+            &error));
+        REQUIRE(projector_shadows->upload(
+            *projector_upload, 0, 0, {}, shadow_pixels.data(), 32 * 2,
+            &error));
+        REQUIRE(projector_upload->commitAndWait(&error));
+        INFO(error);
+
+        std::array<ALMetalWorldProjectorLight, 2> projectors{};
+        ALMetalWorldProjectorLight& projector = projectors[0];
+        projector.cookie_texture = cookie.get();
+        std::copy(std::begin(lights[0].position_radius),
+                  std::end(lights[0].position_radius),
+                  projector.position_radius);
+        std::copy(std::begin(lights[0].color_falloff),
+                  std::end(lights[0].color_falloff),
+                  projector.color_falloff);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            projector.color_falloff[channel] *= 4.f;
+        }
+        projector.projector_matrix[0] = 0.5f;
+        projector.projector_matrix[5] = 0.5f;
+        projector.projector_matrix[12] = 0.5f;
+        projector.projector_matrix[13] = 0.5f;
+        projector.projector_matrix[14] = 1.f;
+        projector.projector_matrix[15] = 1.f;
+        projector.projector_normal[2] = -1.f;
+        projector.projector_normal[3] = 2.f;
+        projector.projector_origin[2] = 0.5f;
+        projector.projector_origin[3] = 2.f;
+        projector.sampling[0] = 1.f;
+        projector.shadow_channel = 1;
+        projectors[1] = projector;
+
+        ALMetalWorldProjectorLightingScene projector_scene;
+        projector_scene.gbuffer = gbuffer.get();
+        projector_scene.lights = projectors.data();
+        projector_scene.light_count = 1;
+        projector_scene.shadow_factors = projector_shadows.get();
+        projector_scene.specular_exponent = 128.f;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            projector_scene.inverse_projection[axis * 4 + axis] = 1.f;
+        }
+        auto projected = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(projected);
+        std::array<std::uint8_t, 32 * 32 * 4> projected_pixels{};
+        REQUIRE(projected->colorTexture(0)->readback(
+            *device, 0, 0, {}, projected_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(projected_pixels[center + 0] > 0);
+        CHECK(projected_pixels[center + 1] > 0);
+        CHECK(projected_pixels[center + 2] > 0);
+        CHECK(projected_pixels[center + 3] == 0);
+        CHECK(projected_pixels[outside + 0] == 0);
+        CHECK(projected_pixels[outside + 1] == 0);
+        CHECK(projected_pixels[outside + 2] == 0);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float expected_linear = srgb_to_linear(
+                albedo_pixel[channel] / 255.f) *
+                projector.color_falloff[channel] *
+                srgb_to_linear(colored_cookie[channel] / 255.f) *
+                normal_light * attenuation;
+            const int expected = static_cast<int>(std::lround(
+                std::clamp(expected_linear, 0.f, 1.f) * 255.f));
+            CHECK(std::abs(static_cast<int>(
+                      projected_pixels[center + channel]) - expected) <= 1);
+        }
+
+        projector.shadow_channel = 0;
+        auto shadowed = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(shadowed);
+        std::array<std::uint8_t, 32 * 32 * 4> shadowed_pixels{};
+        REQUIRE(shadowed->colorTexture(0)->readback(
+            *device, 0, 0, {}, shadowed_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(shadowed_pixels[center + 0] == 0);
+        CHECK(shadowed_pixels[center + 1] == 0);
+        CHECK(shadowed_pixels[center + 2] == 0);
+
+        projector.sampling[1] = 0.5f;
+        auto fading_shadow = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(fading_shadow);
+        std::array<std::uint8_t, 32 * 32 * 4> fading_pixels{};
+        REQUIRE(fading_shadow->colorTexture(0)->readback(
+            *device, 0, 0, {}, fading_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(std::abs(
+                      static_cast<int>(fading_pixels[center + channel]) * 2 -
+                      static_cast<int>(projected_pixels[center + channel]))
+                  <= 2);
+        }
+
+        projector.shadow_channel = 1;
+        projector.sampling[1] = 0.f;
+        const std::array<std::uint16_t, 4> backface_normal{{
+            65535, 65535, 0, 22282,
+        }};
+        auto backface_upload = device->makeCommandBuffer(
+            "Alchemy projector ambiance backface upload", &error);
+        INFO(error);
+        REQUIRE(backface_upload);
+        REQUIRE(normal->upload(
+            *backface_upload, 0, 0, {}, backface_normal.data(), 8,
+            &error));
+        REQUIRE(backface_upload->commitAndWait(&error));
+        INFO(error);
+        auto backface_gbuffer = renderer->render(gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(backface_gbuffer);
+        projector_scene.gbuffer = backface_gbuffer.get();
+        auto no_ambient_projector = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(no_ambient_projector);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            no_ambient_projector_pixels{};
+        REQUIRE(no_ambient_projector->colorTexture(0)->readback(
+            *device, 0, 0, {}, no_ambient_projector_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        projector.projector_plane[3] = 1.f;
+        auto ambient_projector = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(ambient_projector);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            ambient_projector_pixels{};
+        REQUIRE(ambient_projector->colorTexture(0)->readback(
+            *device, 0, 0, {}, ambient_projector_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(ambient_projector_pixels[center + 0] >
+              no_ambient_projector_pixels[center + 0]);
+        CHECK(ambient_projector_pixels[center + 1] >
+              no_ambient_projector_pixels[center + 1]);
+        projector.projector_plane[3] = 0.f;
+        projector_scene.gbuffer = gbuffer.get();
+
+        projector.projector_matrix[12] = 2.f;
+        auto outside_cookie = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(outside_cookie);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            outside_cookie_pixels{};
+        REQUIRE(outside_cookie->colorTexture(0)->readback(
+            *device, 0, 0, {}, outside_cookie_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(outside_cookie_pixels[center + 0] == 0);
+        CHECK(outside_cookie_pixels[center + 1] == 0);
+        CHECK(outside_cookie_pixels[center + 2] == 0);
+        projector.projector_matrix[12] = 0.5f;
+
+        projector_scene.classic_mode = true;
+        auto classic_projector = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(classic_projector);
+        std::array<std::uint8_t, 32 * 32 * 4> classic_projector_pixels{};
+        REQUIRE(classic_projector->colorTexture(0)->readback(
+            *device, 0, 0, {}, classic_projector_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(classic_projector_pixels[center + 1] <
+              projected_pixels[center + 1]);
+        projector_scene.classic_mode = false;
+
+        projector_scene.gbuffer = reverse_gbuffer.get();
+        projector_scene.inverse_projection[10] = -1.f;
+        projector_scene.reverse_z = true;
+        auto reverse_projector = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_projector);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            reverse_projector_pixels{};
+        REQUIRE(reverse_projector->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_projector_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(std::abs(static_cast<int>(
+                      reverse_projector_pixels[center + channel]) -
+                  static_cast<int>(projected_pixels[center + channel])) <= 1);
+        }
+        projector_scene.gbuffer = gbuffer.get();
+        projector_scene.inverse_projection[10] = 1.f;
+        projector_scene.reverse_z = false;
+
+        projector_scene.light_count = 2;
+        auto doubled_projector = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(doubled_projector);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            doubled_projector_pixels{};
+        REQUIRE(doubled_projector->colorTexture(0)->readback(
+            *device, 0, 0, {}, doubled_projector_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(doubled_projector_pixels[center + 0] >
+              projected_pixels[center + 0]);
+        CHECK(doubled_projector_pixels[center + 1] >
+              projected_pixels[center + 1]);
+        projector_scene.light_count = 1;
+
+        // A legacy environment-intensity payload keeps the fragment alive
+        // outside its direct receiver. Its reflected ray intersects the
+        // emitting plane and samples the cookie's specular LOD independently.
+        const std::array<std::uint8_t, 4> reflective_specular{{
+            255, 255, 255, 255,
+        }};
+        const std::array<std::uint16_t, 4> reflective_normal{{
+            32768, 32768, 32768, 22282,
+        }};
+        auto reflective_upload = device->makeCommandBuffer(
+            "Alchemy reflective projector G-buffer upload", &error);
+        INFO(error);
+        REQUIRE(reflective_upload);
+        REQUIRE(specular->upload(
+            *reflective_upload, 0, 0, {}, reflective_specular.data(),
+            4, &error));
+        REQUIRE(normal->upload(
+            *reflective_upload, 0, 0, {}, reflective_normal.data(),
+            8, &error));
+        REQUIRE(reflective_upload->commitAndWait(&error));
+        INFO(error);
+        auto reflective_gbuffer = renderer->render(
+            gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(reflective_gbuffer);
+        projector_scene.gbuffer = reflective_gbuffer.get();
+        projector.projector_matrix[12] = -0.02f;
+        projector.projector_plane[2] = 3.f;
+        auto reflected_projector = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(reflected_projector);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            reflected_projector_pixels{};
+        REQUIRE(reflected_projector->colorTexture(0)->readback(
+            *device, 0, 0, {}, reflected_projector_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(reflected_projector_pixels[center + 0] > 0);
+        CHECK(reflected_projector_pixels[center + 1] > 0);
+        CHECK(reflected_projector_pixels[center + 3] == 0);
+        projector.projector_matrix[12] = 0.5f;
+        projector.projector_plane[2] = 0.f;
+        projector_scene.gbuffer = gbuffer.get();
+
         // Switch the same native G-buffer owner to the packed PBR material
         // flag/roughness contract. The local-light pass must use the shared
         // GGX split and generated BRDF energy-compensation table rather than
@@ -3602,6 +3912,25 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(pbr_pixels[center + 2] > 0);
         CHECK(pbr_pixels[center + 3] == 0);
         CHECK(pbr_pixels[center + 0] != legacy_pixels[center + 0]);
+
+        projector_scene.gbuffer = pbr_gbuffer.get();
+        auto pbr_projector = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(pbr_projector);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            pbr_projector_pixels{};
+        REQUIRE(pbr_projector->colorTexture(0)->readback(
+            *device, 0, 0, {}, pbr_projector_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(pbr_projector_pixels[center + 0] > 0);
+        CHECK(pbr_projector_pixels[center + 1] > 0);
+        CHECK(pbr_projector_pixels[center + 2] > 0);
+        CHECK(pbr_projector_pixels[center + 3] == 0);
+        CHECK(pbr_projector_pixels[center + 0] !=
+              projected_pixels[center + 0]);
+        projector_scene.gbuffer = gbuffer.get();
 
         // Fill only the clear-depth pixels of both forward- and reverse-Z
         // retained G-buffers with a full HDRI dome. A one-texel panorama
@@ -5866,6 +6195,13 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(hdr_pixels[center + 1] > 0);
         CHECK(hdr_pixels[center + 2] > 0);
         CHECK(hdr_pixels[center + 3] == 0);
+
+        ALMetalWorldProjectorLightingScene invalid_projector_scene;
+        error.clear();
+        CHECK_FALSE(renderer->renderProjectorLights(
+            invalid_projector_scene, &error));
+        CHECK(error ==
+              "Metal world projector-light scene is incomplete");
 
         ALMetalWorldLocalLightingScene invalid_scene;
         error.clear();

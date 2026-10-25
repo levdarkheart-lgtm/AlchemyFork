@@ -183,6 +183,23 @@ namespace
     };
     static_assert(sizeof(WorldLocalLightingConstants) == 96);
     static_assert(sizeof(ALMetalWorldLocalLight) == 32);
+
+    struct alignas(16) WorldProjectorLightingConstants
+    {
+        float inverse_projection[16]{};
+        float projector_matrix[16]{};
+        float position_radius[4]{};
+        float color_falloff[4]{};
+        float projector_plane[4]{};
+        float projector_normal[4]{};
+        float projector_origin[4]{};
+        // x = cookie LOD range, y = shadow fade,
+        // z = legacy specular exponent, w = classic output scale.
+        float sampling[4]{};
+        // x = reverse Z, y = shadow channel + 1.
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldProjectorLightingConstants) == 240);
     static_assert(sizeof(ALMetalWorldLightMapConstants) == 208);
     static_assert(sizeof(ALMetalWorldBaseLightingConstants) == 256);
 
@@ -520,6 +537,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<TerrainPartitionPipelines, 2> pbr_terrain_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         local_light_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        projector_light_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> light_map_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> light_map_blur_pipeline;
     std::array<NormalPipelines, 2> hdri_sky_pipelines;
@@ -618,6 +637,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_pbr_terrain_fragment") ||
         !impl->library->hasFunction("almetal_world_local_light_vertex") ||
         !impl->library->hasFunction("almetal_world_local_light_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_projector_light_fragment") ||
         !impl->library->hasFunction("almetal_world_light_map_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_light_map_blur_fragment") ||
@@ -698,6 +719,29 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         {
             return nullptr;
         }
+
+        descriptor.fragment_function =
+            "almetal_world_projector_light_fragment";
+        descriptor.colors[0].blending_enabled = true;
+        descriptor.colors[0].source_rgb = ALMetalBlendFactor::one;
+        descriptor.colors[0].destination_rgb = ALMetalBlendFactor::one;
+        descriptor.colors[0].source_alpha = ALMetalBlendFactor::one;
+        descriptor.colors[0].destination_alpha = ALMetalBlendFactor::one;
+        descriptor.label = hdr
+            ? "Alchemy HDR world projector-light pipeline"
+            : "Alchemy world projector-light pipeline";
+        impl->projector_light_pipelines[hdr] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->projector_light_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        // The following owners replace the fragment function and do not
+        // accumulate multiple draws into one target.
+        descriptor.colors[0].blending_enabled = false;
+        descriptor.colors[0].destination_rgb = ALMetalBlendFactor::zero;
+        descriptor.colors[0].destination_alpha = ALMetalBlendFactor::zero;
 
         descriptor.fragment_function = "almetal_world_base_light_fragment";
         descriptor.label = hdr
@@ -2948,6 +2992,225 @@ ALMetalWorldGBufferRenderer::renderLocalLights(
         // The renderer uses one queue. A later command therefore sees this
         // generation without a CPU wait, while this command's tracked hazard
         // orders the fragment read after the compute write.
+        mImpl->brdf_lut_ready = true;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderProjectorLights(
+    const ALMetalWorldProjectorLightingScene& scene,
+    std::string* error)
+{
+    constexpr std::size_t max_light_count = 65535;
+    if (!mImpl || !mImpl->device || !scene.gbuffer ||
+        (scene.light_count != 0 && !scene.lights) ||
+        scene.light_count > max_light_count ||
+        !finiteValues(scene.inverse_projection, 16) ||
+        !std::isfinite(scene.specular_exponent) ||
+        scene.specular_exponent <= 0.f)
+    {
+        setError(error, "Metal world projector-light scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& input =
+        scene.gbuffer->descriptor();
+    const ALMetalTexture* albedo = scene.gbuffer->colorTexture(0);
+    const ALMetalTexture* specular = scene.gbuffer->colorTexture(1);
+    const ALMetalTexture* normal = scene.gbuffer->colorTexture(2);
+    const ALMetalTexture* emissive = scene.gbuffer->colorTexture(3);
+    const ALMetalTexture* depth = scene.gbuffer->depthStencilTexture();
+    const bool normal_format =
+        input.colors[2].format == ALMetalPixelFormat::rgb10a2_unorm ||
+        input.colors[2].format == ALMetalPixelFormat::rgba16_unorm;
+    const ALMetalPixelFormat expected_emissive = scene.hdr
+        ? ALMetalPixelFormat::rg11b10_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
+        input.color_attachment_count != 4 ||
+        input.colors[0].format != ALMetalPixelFormat::rgba8_unorm_srgb ||
+        input.colors[1].format != ALMetalPixelFormat::rgba8_unorm ||
+        !normal_format || input.colors[3].format != expected_emissive ||
+        input.depth_stencil_format != ALMetalPixelFormat::depth32_float ||
+        !input.depth_stencil_shader_read ||
+        !sampleableTexture(albedo) || !sampleableTexture(specular) ||
+        !sampleableTexture(normal) || !sampleableTexture(emissive) ||
+        !sampleableTexture(depth))
+    {
+        setError(error, "Metal world projector-light G-buffer is incompatible");
+        return nullptr;
+    }
+
+    bool needs_shadows = false;
+    for (std::size_t index = 0; index < scene.light_count; ++index)
+    {
+        const ALMetalWorldProjectorLight& light = scene.lights[index];
+        const ALMetalTextureDescriptor* cookie = light.cookie_texture
+            ? &light.cookie_texture->descriptor() : nullptr;
+        if (!sampleableTexture(light.cookie_texture) || !cookie ||
+            cookie->type != ALMetalTextureType::texture_2d ||
+            cookie->sample_count != 1 ||
+            !finiteValues(light.position_radius, 4) ||
+            !finiteValues(light.color_falloff, 4) ||
+            !finiteValues(light.projector_matrix, 16) ||
+            !finiteValues(light.projector_plane, 4) ||
+            !finiteValues(light.projector_normal, 4) ||
+            !finiteValues(light.projector_origin, 4) ||
+            !finiteValues(light.sampling, 4) ||
+            light.position_radius[3] <= 0.f ||
+            light.color_falloff[3] <= -1.f ||
+            light.projector_normal[3] <= 0.f ||
+            light.projector_origin[3] < 0.f ||
+            light.sampling[0] < 1.f || light.sampling[1] < 0.f ||
+            light.sampling[1] > 1.f || light.shadow_channel < -1 ||
+            light.shadow_channel > 1)
+        {
+            setError(error, "Metal world projector light is invalid");
+            return nullptr;
+        }
+        needs_shadows = needs_shadows || light.shadow_channel >= 0;
+    }
+    if (needs_shadows)
+    {
+        const ALMetalTextureDescriptor* shadows = scene.shadow_factors
+            ? &scene.shadow_factors->descriptor() : nullptr;
+        if (!sampleableTexture(scene.shadow_factors) || !shadows ||
+            shadows->type != ALMetalTextureType::texture_2d ||
+            shadows->format != ALMetalPixelFormat::rg8_unorm ||
+            shadows->width != input.width ||
+            shadows->height != input.height ||
+            shadows->sample_count != 1)
+        {
+            setError(error,
+                     "Metal world projector shadow factors are incompatible");
+            return nullptr;
+        }
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = input.width;
+    output_descriptor.height = input.height;
+    output_descriptor.colors[0].format = scene.hdr
+        ? ALMetalPixelFormat::rgba16_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    output_descriptor.colors[0].label =
+        "Alchemy world projector-light accumulation";
+    output_descriptor.label =
+        "Alchemy native world projector-light target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world projector-light accumulation", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+
+    constexpr std::uint32_t brdf_lut_size = 512;
+    const bool generate_brdf_lut =
+        scene.light_count != 0 && !mImpl->brdf_lut_ready;
+    if (generate_brdf_lut)
+    {
+        auto compute = ALMetalComputeEncoder::begin(
+            *command, "Alchemy world projector BRDF LUT encoder", error);
+        if (!compute ||
+            !compute->setPipeline(*mImpl->brdf_lut_pipeline, error) ||
+            !compute->setTexture(0, mImpl->brdf_lut.get(), error) ||
+            !compute->dispatch(
+                brdf_lut_size, brdf_lut_size, 1, 8, 8, 1, error) ||
+            !compute->end(error))
+        {
+            return nullptr;
+        }
+    }
+
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::clear;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    pass_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world projector-light encoder", error)
+        : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0,
+        static_cast<double>(input.width),
+        static_cast<double>(input.height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{0, 0, input.width, input.height};
+    bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(
+            *mImpl->projector_light_pipelines[scene.hdr ? 1 : 0], error) &&
+        encoder->setFragmentTexture(0, albedo, error) &&
+        encoder->setFragmentTexture(1, specular, error) &&
+        encoder->setFragmentTexture(2, normal, error) &&
+        encoder->setFragmentTexture(3, depth, error) &&
+        encoder->setFragmentTexture(4, mImpl->brdf_lut.get(), error) &&
+        encoder->setFragmentTexture(6, scene.shadow_factors, error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->point_clamp_sampler.get(), error) &&
+        encoder->setFragmentSampler(
+            1, mImpl->linear_clamp_sampler.get(), error) &&
+        encoder->setFragmentSampler(
+            2, mImpl->diffuse_sampler.get(), error);
+
+    for (std::size_t index = 0; encoded && index < scene.light_count;
+         ++index)
+    {
+        const ALMetalWorldProjectorLight& light = scene.lights[index];
+        WorldProjectorLightingConstants constants;
+        std::memcpy(constants.inverse_projection,
+                    scene.inverse_projection,
+                    sizeof(constants.inverse_projection));
+        std::memcpy(constants.projector_matrix,
+                    light.projector_matrix,
+                    sizeof(constants.projector_matrix));
+        std::memcpy(constants.position_radius, light.position_radius,
+                    sizeof(constants.position_radius));
+        std::memcpy(constants.color_falloff, light.color_falloff,
+                    sizeof(constants.color_falloff));
+        std::memcpy(constants.projector_plane, light.projector_plane,
+                    sizeof(constants.projector_plane));
+        std::memcpy(constants.projector_normal, light.projector_normal,
+                    sizeof(constants.projector_normal));
+        std::memcpy(constants.projector_origin, light.projector_origin,
+                    sizeof(constants.projector_origin));
+        constants.sampling[0] = light.sampling[0];
+        constants.sampling[1] = light.sampling[1];
+        constants.sampling[2] = scene.specular_exponent;
+        constants.sampling[3] = scene.classic_mode ? 0.9f : 1.f;
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        constants.config[1] = static_cast<std::uint32_t>(
+            light.shadow_channel + 1);
+        encoded =
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->setFragmentTexture(
+                5, light.cookie_texture, error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    }
+
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    if (generate_brdf_lut)
+    {
         mImpl->brdf_lut_ready = true;
     }
     return output;
