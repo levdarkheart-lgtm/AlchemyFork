@@ -101,6 +101,17 @@ struct ALMetalPBRPreviewScene
     float cross_filter_length = 1.f;
     float cross_filter_falloff = 1.5f;
     float cross_filter_chromatic = 0.f;
+
+    // colorCorrect's lateral chromatic aberration is applied to the complete
+    // linear HDR scene before bloom, exposure and tone mapping. These are the
+    // authored controls; the renderer bakes the squared strength, reciprocal
+    // falloff and angle sin/cos exactly as pipeline.cpp does.
+    float chromatic_aberration_strength = 0.f;
+    float chromatic_aberration_falloff = 1.f;
+    float chromatic_aberration_angle = 0.f;
+    float chromatic_aberration_offset_r[2] = {-1.f, 0.f};
+    float chromatic_aberration_offset_b[2] = {1.f, 0.f};
+    float chromatic_aberration_anisotropy = 0.f;
 };
 
 // A narrow owner for LLGLTFPreviewTexture's generated sphere. The GL render

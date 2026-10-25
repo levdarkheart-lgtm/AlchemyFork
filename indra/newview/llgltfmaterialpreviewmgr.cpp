@@ -942,6 +942,38 @@ bool LLGLTFPreviewTexture::render()
                 metal_scene.cross_filter_chromatic = llclamp(
                     gSavedSettings.get<F32>("RenderCrossFilterChromatic"),
                     0.f, 1.f);
+                metal_scene.chromatic_aberration_strength = llclamp(
+                    gSavedSettings.get<F32>(
+                        "RenderChromaticAberrationStrength"),
+                    0.f, 1.f);
+                metal_scene.chromatic_aberration_falloff = llclamp(
+                    gSavedSettings.get<F32>(
+                        "RenderChromaticAberrationFalloff"),
+                    0.5f, 4.f);
+                metal_scene.chromatic_aberration_angle = llclamp(
+                    gSavedSettings.get<F32>(
+                        "RenderChromaticAberrationAngle"),
+                    0.f, 360.f);
+                metal_scene.chromatic_aberration_offset_r[0] = llclamp(
+                    gSavedSettings.get<F32>(
+                        "RenderChromaticAberrationOffsetRX"),
+                    -1.f, 1.f);
+                metal_scene.chromatic_aberration_offset_r[1] = llclamp(
+                    gSavedSettings.get<F32>(
+                        "RenderChromaticAberrationOffsetRY"),
+                    -1.f, 1.f);
+                metal_scene.chromatic_aberration_offset_b[0] = llclamp(
+                    gSavedSettings.get<F32>(
+                        "RenderChromaticAberrationOffsetBX"),
+                    -1.f, 1.f);
+                metal_scene.chromatic_aberration_offset_b[1] = llclamp(
+                    gSavedSettings.get<F32>(
+                        "RenderChromaticAberrationOffsetBY"),
+                    -1.f, 1.f);
+                metal_scene.chromatic_aberration_anisotropy = llclamp(
+                    gSavedSettings.get<F32>(
+                        "RenderChromaticAberrationAnisotropy"),
+                    -1.f, 1.f);
                 mMetalPreview = renderer->render(metal_scene, &error);
             }
             if (!mMetalPreview)

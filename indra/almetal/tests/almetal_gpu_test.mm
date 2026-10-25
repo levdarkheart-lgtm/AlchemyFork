@@ -2436,6 +2436,77 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         CHECK(srgb_green[3] == 255);
         destination_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
 
+        // colorCorrect's lateral chromatic aberration samples R and B away
+        // from the centre tap while leaving G and coverage at the centre. Feed
+        // it a spatial step at one quarter of the frame (away from the clean
+        // optical centre), and prove both displaced channels change while the
+        // centre channels remain bit-identical.
+        std::array<std::uint8_t, 64 * 4> chromatic_emissive_bytes{};
+        for (std::size_t texel = 0; texel < 64; ++texel)
+        {
+            const bool left = texel < 16;
+            chromatic_emissive_bytes[texel * 4 + 0] = left ? 0 : 255;
+            chromatic_emissive_bytes[texel * 4 + 1] = 32;
+            chromatic_emissive_bytes[texel * 4 + 2] = left ? 255 : 0;
+            chromatic_emissive_bytes[texel * 4 + 3] = 255;
+        }
+        auto chromatic_emissive = make_texture(
+            ALMetalPixelFormat::rgba8_unorm_srgb, 64,
+            chromatic_emissive_bytes.data(), 64 * 4,
+            "Alchemy PBR preview chromatic-aberration test emissive");
+        const float screen_texcoords[3][2] = {
+            {0.f, 0.5f}, {2.f, 0.5f}, {0.f, 0.5f},
+        };
+        REQUIRE(vertex_buffer->write(
+            texcoord_offset, screen_texcoords, sizeof(screen_texcoords),
+            &error));
+        batch.texture_transform[3][4] = 0.f;
+        batch.emissive_texture = chromatic_emissive.get();
+        auto chromatic_baseline = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(chromatic_baseline);
+        scene.chromatic_aberration_strength = 1.f;
+        scene.chromatic_aberration_falloff = 1.f;
+        scene.chromatic_aberration_angle = 0.f;
+        auto chromatic_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(chromatic_output);
+        std::array<std::uint8_t, 32 * 32 * 4> baseline_pixels{};
+        std::array<std::uint8_t, 32 * 32 * 4> chromatic_pixels{};
+        REQUIRE(chromatic_baseline->readback(
+            *device, 0, 0, {}, baseline_pixels.data(), 32 * 4, &error));
+        REQUIRE(chromatic_output->readback(
+            *device, 0, 0, {}, chromatic_pixels.data(), 32 * 4, &error));
+        int red_delta = 0;
+        int blue_delta = 0;
+        bool green_unchanged = true;
+        bool alpha_unchanged = true;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            red_delta = std::max(
+                red_delta,
+                std::abs(static_cast<int>(chromatic_pixels[pixel * 4]) -
+                         static_cast<int>(baseline_pixels[pixel * 4])));
+            blue_delta = std::max(
+                blue_delta,
+                std::abs(static_cast<int>(chromatic_pixels[pixel * 4 + 2]) -
+                         static_cast<int>(baseline_pixels[pixel * 4 + 2])));
+            green_unchanged = green_unchanged &&
+                chromatic_pixels[pixel * 4 + 1] ==
+                    baseline_pixels[pixel * 4 + 1];
+            alpha_unchanged = alpha_unchanged &&
+                chromatic_pixels[pixel * 4 + 3] ==
+                    baseline_pixels[pixel * 4 + 3];
+        }
+        CHECK(red_delta > 8);
+        CHECK(blue_delta > 8);
+        CHECK(green_unchanged);
+        CHECK(alpha_unchanged);
+        scene.chromatic_aberration_strength = 0.f;
+        batch.emissive_texture = emissive.get();
+        REQUIRE(vertex_buffer->write(
+            texcoord_offset, texcoords, sizeof(texcoords), &error));
+
         // The GL owner alpha-composites linear HDR first, then applies the
         // full-frame post pass. Half-covered unit red therefore encodes 0.5
         // linear (~188), rather than blending an encoded 255 down to 128.
@@ -2621,6 +2692,11 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         CHECK_FALSE(renderer->render(scene, &error));
         CHECK(error == "Metal PBR preview post state is invalid");
         scene.cross_filter_points = 4;
+        scene.chromatic_aberration_falloff = 0.25f;
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal PBR preview post state is invalid");
+        scene.chromatic_aberration_falloff = 1.f;
         batch.normal_texture = nullptr;
         error.clear();
         CHECK_FALSE(renderer->render(scene, &error));

@@ -64,9 +64,15 @@ namespace
         // bloom strength, halation strength, enabled, cross-filter strength
         float bloom[4];
         float halation_tint[4];
+        // squared-and-scaled amount, reciprocal falloff, anisotropy
+        float chromatic[4];
+        // angle sin/cos, red radial/tangential offset
+        float chromatic_angle_offset_r[4];
+        // blue radial/tangential offset
+        float chromatic_offset_b[4];
     };
 
-    static_assert(sizeof(PBRPreviewPostConstants) == 64);
+    static_assert(sizeof(PBRPreviewPostConstants) == 112);
 
     struct alignas(16) PBRPreviewBloomExtractConstants
     {
@@ -135,6 +141,7 @@ struct ALMetalPBRPreviewRenderer::Impl
     std::unique_ptr<ALMetalSamplerState> data_sampler;
     std::unique_ptr<ALMetalSamplerState> meter_sampler;
     std::unique_ptr<ALMetalSamplerState> post_sampler;
+    std::unique_ptr<ALMetalSamplerState> chromatic_sampler;
     std::unique_ptr<ALMetalSamplerState> bloom_sampler;
     std::unique_ptr<ALMetalSamplerState> cross_filter_sampler;
 };
@@ -350,6 +357,13 @@ ALMetalPBRPreviewRenderer::create(const ALMetalDevice& device,
     sampler.address_s = ALMetalSamplerAddressMode::mirror_repeat;
     sampler.address_t = ALMetalSamplerAddressMode::mirror_repeat;
     sampler.address_r = ALMetalSamplerAddressMode::mirror_repeat;
+    sampler.label = "Alchemy PBR preview chromatic-aberration sampler";
+    impl->chromatic_sampler = ALMetalSamplerState::create(
+        device, sampler, error);
+    if (!impl->chromatic_sampler)
+    {
+        return nullptr;
+    }
     sampler.label = "Alchemy PBR preview bloom sampler";
     impl->bloom_sampler = ALMetalSamplerState::create(device, sampler, error);
     if (!impl->bloom_sampler)
@@ -428,6 +442,12 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         !std::isfinite(scene.cross_filter_length) ||
         !std::isfinite(scene.cross_filter_falloff) ||
         !std::isfinite(scene.cross_filter_chromatic) ||
+        !std::isfinite(scene.chromatic_aberration_strength) ||
+        !std::isfinite(scene.chromatic_aberration_falloff) ||
+        !std::isfinite(scene.chromatic_aberration_angle) ||
+        !finiteValues(scene.chromatic_aberration_offset_r, 2) ||
+        !finiteValues(scene.chromatic_aberration_offset_b, 2) ||
+        !std::isfinite(scene.chromatic_aberration_anisotropy) ||
         scene.bloom_knee < 0.f || scene.bloom_firefly_clamp < 0.f ||
         scene.bloom_scatter < 0.f ||
         scene.bloom_alpha_glow_boost < 0.f ||
@@ -444,6 +464,22 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         scene.cross_filter_falloff > 3.f ||
         scene.cross_filter_chromatic < 0.f ||
         scene.cross_filter_chromatic > 1.f ||
+        scene.chromatic_aberration_strength < 0.f ||
+        scene.chromatic_aberration_strength > 1.f ||
+        scene.chromatic_aberration_falloff < 0.5f ||
+        scene.chromatic_aberration_falloff > 4.f ||
+        scene.chromatic_aberration_angle < 0.f ||
+        scene.chromatic_aberration_angle > 360.f ||
+        scene.chromatic_aberration_offset_r[0] < -1.f ||
+        scene.chromatic_aberration_offset_r[0] > 1.f ||
+        scene.chromatic_aberration_offset_r[1] < -1.f ||
+        scene.chromatic_aberration_offset_r[1] > 1.f ||
+        scene.chromatic_aberration_offset_b[0] < -1.f ||
+        scene.chromatic_aberration_offset_b[0] > 1.f ||
+        scene.chromatic_aberration_offset_b[1] < -1.f ||
+        scene.chromatic_aberration_offset_b[1] > 1.f ||
+        scene.chromatic_aberration_anisotropy < -1.f ||
+        scene.chromatic_aberration_anisotropy > 1.f ||
         ((scene.tonemap_type == 2 || scene.tonemap_type == 3 ||
           scene.tonemap_type == 4) && scene.tonemap_params[0] <= 0.f) ||
         (scene.tonemap_type == 6 &&
@@ -965,6 +1001,28 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
     std::memcpy(post_constants.halation_tint,
                 scene.bloom_halation_tint,
                 sizeof(scene.bloom_halation_tint));
+    const float chromatic_amount =
+        scene.chromatic_aberration_strength *
+        scene.chromatic_aberration_strength * 0.02f;
+    const float chromatic_angle =
+        scene.chromatic_aberration_angle * 0.01745329252f;
+    post_constants.chromatic[0] = chromatic_amount;
+    post_constants.chromatic[1] =
+        1.f / scene.chromatic_aberration_falloff;
+    post_constants.chromatic[2] =
+        scene.chromatic_aberration_anisotropy;
+    post_constants.chromatic_angle_offset_r[0] =
+        std::sin(chromatic_angle);
+    post_constants.chromatic_angle_offset_r[1] =
+        std::cos(chromatic_angle);
+    post_constants.chromatic_angle_offset_r[2] =
+        scene.chromatic_aberration_offset_r[0];
+    post_constants.chromatic_angle_offset_r[3] =
+        scene.chromatic_aberration_offset_r[1];
+    post_constants.chromatic_offset_b[0] =
+        scene.chromatic_aberration_offset_b[0];
+    post_constants.chromatic_offset_b[1] =
+        scene.chromatic_aberration_offset_b[1];
     encoded = post_encoder &&
         post_encoder->setPipeline(
             *mImpl->post_pipelines[pipeline_index], error) &&
@@ -975,7 +1033,9 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         post_encoder->setFragmentTexture(2, bloom_color, error) &&
         post_encoder->setFragmentTexture(3, cross_filter_color, error) &&
         post_encoder->setFragmentSampler(
-            0, mImpl->post_sampler.get(), error) &&
+            0, chromatic_amount > 0.f
+                   ? mImpl->chromatic_sampler.get()
+                   : mImpl->post_sampler.get(), error) &&
         post_encoder->setFragmentSampler(
             1, mImpl->bloom_sampler.get(), error) &&
         post_encoder->setFragmentSampler(

@@ -1297,7 +1297,63 @@ struct ALMetalPBRPreviewPostConstants
     // bloom strength, halation strength, enabled, cross-filter strength
     float4 bloom;
     float4 halation_tint;
+    // squared-and-scaled amount, reciprocal falloff, anisotropy
+    float4 chromatic;
+    // angle sin/cos, red radial/tangential offset
+    float4 chromatic_angle_offset_r;
+    // blue radial/tangential offset
+    float4 chromatic_offset_b;
 };
+
+static float4 almetal_pbr_preview_chromatic_aberration(
+    texture2d<float> scene,
+    sampler scene_sampler,
+    float2 uv,
+    constant ALMetalPBRPreviewPostConstants& constants)
+{
+    const float amount = constants.chromatic.x;
+    if (amount <= 0.0)
+    {
+        return scene.sample(scene_sampler, uv);
+    }
+
+    float2 direction = uv - 0.5;
+    const float anisotropy = constants.chromatic.z;
+    direction *= float2(1.0 - max(anisotropy, 0.0),
+                        1.0 - max(-anisotropy, 0.0));
+
+    const float aspect = float(scene.get_width()) /
+                         max(float(scene.get_height()), 1.0);
+    const float2 scale = max(
+        float2(aspect, 1.0 / max(aspect, 1.0e-4)), float2(1.0));
+    const float normalized_distance = clamp(
+        length(direction * scale) / (0.5 * length(scale)), 0.0, 1.0);
+    const float strength = amount * pow(
+        normalized_distance, constants.chromatic.y);
+
+    const float sine = constants.chromatic_angle_offset_r.x;
+    const float cosine = constants.chromatic_angle_offset_r.y;
+    const float2 radial = float2(
+        cosine * direction.x - sine * direction.y,
+        sine * direction.x + cosine * direction.y);
+    const float2 tangential = float2(-radial.y, radial.x);
+    const float2 red_offset =
+        radial * constants.chromatic_angle_offset_r.z +
+        tangential * constants.chromatic_angle_offset_r.w;
+    const float2 blue_offset =
+        radial * constants.chromatic_offset_b.x +
+        tangential * constants.chromatic_offset_b.y;
+
+    float4 color;
+    color.r = scene.sample(
+        scene_sampler, uv + red_offset * strength).r;
+    const float4 center = scene.sample(scene_sampler, uv);
+    color.g = center.g;
+    color.a = center.a;
+    color.b = scene.sample(
+        scene_sampler, uv + blue_offset * strength).b;
+    return color;
+}
 
 struct ALMetalPBRPreviewBloomExtractConstants
 {
@@ -1519,7 +1575,8 @@ fragment float4 almetal_pbr_preview_post_fragment(
     sampler cross_filter_sampler [[sampler(2)]],
     constant ALMetalPBRPreviewPostConstants& constants [[buffer(0)]])
 {
-    const float4 scene_color = scene.sample(scene_sampler, input.texcoord);
+    const float4 scene_color = almetal_pbr_preview_chromatic_aberration(
+        scene, scene_sampler, input.texcoord, constants);
     float3 color = scene_color.rgb;
     if (constants.bloom.z > 0.5)
     {
