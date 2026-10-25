@@ -338,6 +338,17 @@ struct ALMetalWorldHeroProbeConstants
     uint4 config;
 };
 
+struct ALMetalWorldScreenSpaceReflectionConstants
+{
+    float4x4 projection;
+    float4x4 inverse_projection;
+    float4x4 inverse_modelview_delta;
+    float4 screen;
+    float4 trace;
+    float4 sampling;
+    uint4 config;
+};
+
 struct ALMetalWorldGBufferOutput
 {
     float4 albedo [[color(0)]];
@@ -1550,6 +1561,358 @@ static float3 almetal_finish_legacy_hero_probe(
     return mix(legacy_environment, hero_environment, weight);
 }
 
+constant float3 almetal_ssr_poisson[128] = {
+    float3(0.5433144, 0.1122154, 0.2501391),
+    float3(0.6575254, 0.7214090, 0.1628600),
+    float3(0.02888453, 0.05170321, 0.7573566),
+    float3(0.06635678, 0.8286457, 0.07157445),
+    float3(0.8957489, 0.4005505, 0.7916042),
+    float3(0.3423355, 0.5053263, 0.9193521),
+    float3(0.9694794, 0.9461077, 0.5406441),
+    float3(0.9975473, 0.02789414, 0.7320132),
+    float3(0.07781899, 0.3862341, 0.9185940),
+    float3(0.4439073, 0.9686955, 0.4055861),
+    float3(0.9657035, 0.6624081, 0.7082613),
+    float3(0.7712346, 0.07273269, 0.3292839),
+    float3(0.2489169, 0.2550394, 0.1950516),
+    float3(0.7249326, 0.9328285, 0.3352458),
+    float3(0.6028461, 0.4424961, 0.5393377),
+    float3(0.2879795, 0.7427881, 0.6619173),
+    float3(0.3193627, 0.0486145, 0.08109283),
+    float3(0.1233155, 0.6026410, 0.4378719),
+    float3(0.9800708, 0.2117290, 0.6771586),
+    float3(0.4894537, 0.3319927, 0.8087631),
+    float3(0.4802743, 0.6358885, 0.8149350),
+    float3(0.2692913, 0.9911493, 0.9934899),
+    float3(0.5648789, 0.8553897, 0.7784553),
+    float3(0.8497344, 0.7870212, 0.02065313),
+    float3(0.7503014, 0.2826185, 0.05412734),
+    float3(0.8045461, 0.6167251, 0.9532926),
+    float3(0.04225039, 0.2141281, 0.8678675),
+    float3(0.07116079, 0.9971236, 0.3396397),
+    float3(0.4640990, 0.4809590, 0.2775862),
+    float3(0.6346927, 0.3187100, 0.6588384),
+    float3(0.4490120, 0.8189669, 0.2736875),
+    float3(0.4529290, 0.2119148, 0.6720040),
+    float3(0.01506042, 0.7102436, 0.9800494),
+    float3(0.1970513, 0.4713539, 0.4644522),
+    float3(0.1371500, 0.7253224, 0.5056525),
+    float3(0.9006432, 0.5335414, 0.02206874),
+    float3(0.9960898, 0.7961011, 0.01468861),
+    float3(0.3386469, 0.6337739, 0.9310676),
+    float3(0.1745718, 0.9114985, 0.1728188),
+    float3(0.6342545, 0.5721557, 0.4553517),
+    float3(0.1347412, 0.1137158, 0.7793725),
+    float3(0.3574478, 0.3448052, 0.08741581),
+    float3(0.7283059, 0.4753885, 0.2240275),
+    float3(0.8293507, 0.9971212, 0.2747005),
+    float3(0.6501846, 0.000688076, 0.7795712),
+    float3(0.01149416, 0.4930083, 0.7926080),
+    float3(0.6661890, 0.1875442, 0.7256873),
+    float3(0.8538797, 0.2107637, 0.1547532),
+    float3(0.5826825, 0.9750752, 0.9105834),
+    float3(0.8914346, 0.08266425, 0.5484225),
+    float3(0.4374518, 0.02987111, 0.7810078),
+    float3(0.2287418, 0.1443802, 0.1176908),
+    float3(0.2671157, 0.8929081, 0.8989366),
+    float3(0.5425819, 0.5524959, 0.6963879),
+    float3(0.3515188, 0.8304397, 0.0502702),
+    float3(0.3354864, 0.2130747, 0.1411690),
+    float3(0.9729427, 0.3509927, 0.6098799),
+    float3(0.7585629, 0.7115368, 0.9099342),
+    float3(0.0140543, 0.6072157, 0.9436461),
+    float3(0.9190664, 0.8497264, 0.1643751),
+    float3(0.1538157, 0.3219983, 0.2984214),
+    float3(0.8854713, 0.2968667, 0.8511457),
+    float3(0.1910622, 0.03047311, 0.3571215),
+    float3(0.2456353, 0.5568692, 0.3530164),
+    float3(0.6927255, 0.8073994, 0.5808484),
+    float3(0.8089353, 0.8969175, 0.3427134),
+    float3(0.1944770, 0.7985603, 0.8712182),
+    float3(0.7256182, 0.5653068, 0.3985921),
+    float3(0.9889427, 0.4584851, 0.8363391),
+    float3(0.5718582, 0.2127113, 0.2950557),
+    float3(0.5480209, 0.0193435, 0.2992659),
+    float3(0.6598953, 0.09478426, 0.9218700),
+    float3(0.1385615, 0.2193868, 0.2052450),
+    float3(0.7623423, 0.1790726, 0.1508465),
+    float3(0.7569032, 0.3773386, 0.4393887),
+    float3(0.5842971, 0.6538072, 0.5224424),
+    float3(0.9954313, 0.5763943, 0.9169143),
+    float3(0.001311183, 0.3403630, 0.1488652),
+    float3(0.8167927, 0.4947158, 0.4454727),
+    float3(0.3978434, 0.7106082, 0.002727509),
+    float3(0.5459411, 0.7473233, 0.7062873),
+    float3(0.4151598, 0.5614617, 0.4748358),
+    float3(0.4440694, 0.1195122, 0.9624678),
+    float3(0.1081301, 0.4813806, 0.07047641),
+    float3(0.2402785, 0.3633997, 0.3898734),
+    float3(0.2317942, 0.6488295, 0.4221864),
+    float3(0.01145542, 0.9304277, 0.4105759),
+    float3(0.3563728, 0.9228861, 0.3282344),
+    float3(0.8553140, 0.6949819, 0.3175117),
+    float3(0.7308320, 0.01478493, 0.5728671),
+    float3(0.9304829, 0.02653277, 0.7125520),
+    float3(0.4132186, 0.4127623, 0.6084146),
+    float3(0.7517329, 0.9978395, 0.1330464),
+    float3(0.5210338, 0.4318751, 0.9721575),
+    float3(0.02953994, 0.1375937, 0.9458942),
+    float3(0.1835506, 0.9896691, 0.7919457),
+    float3(0.3857062, 0.2682322, 0.1264563),
+    float3(0.6319699, 0.8735335, 0.04390657),
+    float3(0.5630485, 0.3339024, 0.9939950),
+    float3(0.9070100, 0.1512893, 0.8970422),
+    float3(0.3027443, 0.1144253, 0.1488708),
+    float3(0.9149003, 0.7382028, 0.7914025),
+    float3(0.07979286, 0.6892691, 0.2866171),
+    float3(0.7743186, 0.8046008, 0.4399814),
+    float3(0.3128662, 0.4362317, 0.6030678),
+    float3(0.1133721, 0.01605821, 0.3918720),
+    float3(0.5185481, 0.9210006, 0.7889017),
+    float3(0.8217013, 0.3253050, 0.1668191),
+    float3(0.8358996, 0.1449739, 0.3668382),
+    float3(0.1778213, 0.5599256, 0.1327691),
+    float3(0.06690693, 0.5508637, 0.07212365),
+    float3(0.9750564, 0.2840660, 0.5727578),
+    float3(0.4350255, 0.8949825, 0.03574753),
+    float3(0.8931149, 0.9177974, 0.8123496),
+    float3(0.9055127, 0.9899030, 0.8132350),
+    float3(0.2897243, 0.3123978, 0.5083504),
+    float3(0.1519223, 0.3958645, 0.2640327),
+    float3(0.6840154, 0.6463035, 0.2346607),
+    float3(0.9864730, 0.8714055, 0.3960275),
+    float3(0.6819352, 0.4169535, 0.8379834),
+    float3(0.9147297, 0.6144146, 0.7313942),
+    float3(0.6554981, 0.5014008, 0.9748477),
+    float3(0.9805915, 0.1318207, 0.2371372),
+    float3(0.5980836, 0.06796348, 0.9941338),
+    float3(0.6836596, 0.9917196, 0.2319056),
+    float3(0.5276511, 0.2745509, 0.5422578),
+    float3(0.8294820, 0.03758276, 0.1240466),
+    float3(0.2698198, 0.0002266169, 0.3449324),
+};
+
+static float almetal_ssr_random(float2 uv)
+{
+    return fract(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453123);
+}
+
+static float2 almetal_ssr_project(
+    float3 position,
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr)
+{
+    const float4 projected = ssr.projection * float4(position, 1.0);
+    return projected.xy / projected.w * 0.5 + 0.5;
+}
+
+static float2 almetal_ssr_source_uv(float2 gl_uv)
+{
+    // glReadPixels writes GL's lower row first, and the upload preserves that
+    // byte order as Metal row zero. Keep the GL coordinate unchanged: a
+    // second origin conversion here would invert the mirrored history.
+    return gl_uv;
+}
+
+static float almetal_ssr_linear_depth(
+    float2 gl_uv, texture2d<float> scene_depth, sampler depth_sampler,
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr)
+{
+    const float depth = scene_depth.sample(
+        depth_sampler, almetal_ssr_source_uv(gl_uv)).r;
+    const float ndc_z = ssr.config.x != 0u ? depth : 2.0 * depth - 1.0;
+    const float4 position = ssr.inverse_projection *
+        float4(gl_uv * 2.0 - 1.0, ndc_z, 1.0);
+    return -position.z / max(position.w, 0.000001);
+}
+
+static bool almetal_ssr_trace(
+    float3 position, float3 reflection,
+    thread float4& hit_color, thread float& hit_depth,
+    texture2d<float> scene_color, texture2d<float> scene_depth,
+    sampler color_sampler, sampler depth_sampler,
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr)
+{
+    reflection += position;
+    position = (ssr.inverse_modelview_delta *
+                float4(position, 1.0)).xyz;
+    reflection = (ssr.inverse_modelview_delta *
+                  float4(reflection, 1.0)).xyz;
+    reflection -= position;
+
+    const float source_depth = -position.z;
+    float3 step = ssr.trace.y * reflection;
+    float3 marching_position = position + step;
+    float delta = 0.0;
+    bool hit = false;
+    bool crossed = false;
+    hit_color = 0.0;
+
+    int iteration = 0;
+    const int iteration_count = max(int(ssr.trace.x), 0);
+    if (source_depth > ssr.trace.w)
+    {
+        for (; iteration < iteration_count && !hit; ++iteration)
+        {
+            if (marching_position.z >= 0.0)
+            {
+                break;
+            }
+            const float2 screen_position =
+                almetal_ssr_project(marching_position, ssr);
+            if (any(screen_position > 1.0) || any(screen_position < 0.0))
+            {
+                break;
+            }
+            const float depth_from_screen = almetal_ssr_linear_depth(
+                screen_position, scene_depth, depth_sampler, ssr);
+            delta = abs(marching_position.z) - depth_from_screen;
+            if (source_depth < depth_from_screen + 0.1 &&
+                source_depth > depth_from_screen - 0.1)
+            {
+                break;
+            }
+            if (abs(delta) < ssr.trace.z)
+            {
+                hit_color = scene_color.sample(
+                    color_sampler,
+                    almetal_ssr_source_uv(screen_position));
+                hit_depth = depth_from_screen;
+                hit = true;
+                break;
+            }
+            if (delta > 0.0)
+            {
+                crossed = true;
+                break;
+            }
+            const float direction_sign = sign(
+                abs(marching_position.z) - depth_from_screen);
+            step *= 1.0 - ssr.trace.y * max(direction_sign, 0.0);
+            marching_position += step * -direction_sign;
+            step *= ssr.sampling.y;
+        }
+        if (crossed)
+        {
+            for (; iteration < iteration_count && !hit; ++iteration)
+            {
+                step *= 0.5;
+                marching_position -= step * sign(delta);
+                if (marching_position.z >= 0.0)
+                {
+                    break;
+                }
+                const float2 screen_position =
+                    almetal_ssr_project(marching_position, ssr);
+                if (any(screen_position > 1.0) ||
+                    any(screen_position < 0.0))
+                {
+                    break;
+                }
+                const float depth_from_screen = almetal_ssr_linear_depth(
+                    screen_position, scene_depth, depth_sampler, ssr);
+                delta = abs(marching_position.z) - depth_from_screen;
+                if (source_depth < depth_from_screen + 0.1 &&
+                    source_depth > depth_from_screen - 0.1)
+                {
+                    break;
+                }
+                if (abs(delta) < ssr.trace.z &&
+                    depth_from_screen != source_depth - ssr.trace.z)
+                {
+                    hit_color = scene_color.sample(
+                        color_sampler,
+                        almetal_ssr_source_uv(screen_position));
+                    hit_depth = depth_from_screen;
+                    hit = true;
+                    break;
+                }
+            }
+        }
+    }
+    return hit;
+}
+
+static float3 almetal_finish_legacy_ssr(
+    float3 legacy_environment, float2 gl_screen_position,
+    float3 position, float3 normal, float glossiness,
+    texture2d<float> scene_color, texture2d<float> scene_depth,
+    sampler color_sampler, sampler depth_sampler,
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr)
+{
+    if (ssr.config.y < 1u || glossiness <= 0.0)
+    {
+        return legacy_environment;
+    }
+
+    const float3 ray_direction = normalize(reflect(position, normal));
+    const float2 screen_position =
+        1.0 - abs(gl_screen_position * 2.0 - 1.0);
+    float vignette = clamp(
+        abs(screen_position.x) * abs(screen_position.y) * 16.0,
+        0.0, 1.0);
+    vignette *= clamp(
+        (dot(normalize(position), normal) * 0.5 + 0.5) * 5.5 - 0.8,
+        0.0, 1.0);
+    vignette *= clamp(1.0 + position.z / 128.0, 0.0, 1.0);
+    // materialF.glsl reaches this owner through legacyProbeFinish's
+    // transparent branch: it traces an unfaded mirror ray (glossiness 1)
+    // once, then applies the material glossiness only to the final hit
+    // weight. Keep that distinction so low-gloss transparent materials do
+    // not inherit the opaque path's 0.567 fade threshold.
+    const float trace_glossiness = 1.0;
+    vignette *= clamp(trace_glossiness * 3.0 - 1.7, 0.0, 1.0);
+    if (vignette <= 0.0)
+    {
+        return legacy_environment;
+    }
+
+    const float roughness = 1.0 - trace_glossiness;
+    const int maximum_samples = max(1, int(ssr.sampling.x));
+    const int total_samples = clamp(
+        int(ceil(ssr.sampling.x * roughness)), 1, maximum_samples);
+    float4 collected = 0.0;
+    int hits = 0;
+    for (int index = 0; index < total_samples; ++index)
+    {
+        const float3 poisson = almetal_ssr_poisson[index] * 2.0 - 1.0;
+        const float3 first_basis = normalize(cross(poisson, ray_direction));
+        const float3 second_basis = normalize(
+            cross(ray_direction, first_basis));
+        const float2 coefficients = float2(
+            almetal_ssr_random(
+                gl_screen_position + float2(0.0, float(index))),
+            almetal_ssr_random(
+                gl_screen_position + float2(float(index), 0.5))) *
+            2.0 - 1.0;
+        const float3 randomized = ray_direction +
+            (first_basis * coefficients.x +
+             second_basis * coefficients.y) * roughness;
+        float4 hit_color = 0.0;
+        float hit_depth = 0.0;
+        if (almetal_ssr_trace(
+                position, normalize(randomized), hit_color, hit_depth,
+                scene_color, scene_depth, color_sampler, depth_sampler,
+                ssr))
+        {
+            ++hits;
+            hit_color.a = 0.0;
+            collected += hit_color;
+            collected.a += 1.0;
+        }
+    }
+    if (hits > 0)
+    {
+        collected /= float(hits);
+    }
+    else
+    {
+        collected = 0.0;
+    }
+    const float alpha =
+        float(hits) / float(total_samples) * vignette * glossiness;
+    return mix(legacy_environment, collected.rgb, alpha);
+}
+
 fragment float4 almetal_world_shiny_fragment(
     ALMetalWorldShinyVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
@@ -2326,14 +2689,19 @@ fragment float4 almetal_world_legacy_alpha_fragment(
     array<texture2d<float>, 8> specular_textures [[texture(16)]],
     texturecube_array<float> reflection_probes [[texture(32)]],
     texturecube<float> hero_probe [[texture(34)]],
+    texture2d<float> ssr_scene_color [[texture(35)]],
+    texture2d<float> ssr_scene_depth [[texture(36)]],
     sampler material_sampler [[sampler(0)]],
     sampler probe_sampler [[sampler(1)]],
+    sampler ssr_color_sampler [[sampler(2)]],
+    sampler ssr_depth_sampler [[sampler(3)]],
     constant ALMetalWorldMaterialConstants& constants [[buffer(0)]],
     constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
     constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
     texture2d_array<float> shadow_maps [[texture(33)]],
     constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
-    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]])
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]])
 {
     // Keep the receiver derivatives in uniform control flow, before the
     // material cutoffs below can discard only part of a quad.
@@ -2444,6 +2812,15 @@ fragment float4 almetal_world_legacy_alpha_fragment(
         float3 legacy_environment = almetal_sample_legacy_probes(
             input.eye_position, normal,
             reflection_probes, probe_sampler, probes);
+        const float2 gl_fragment_position = float2(
+            input.position.x,
+            ssr.screen.z - input.position.y);
+        legacy_environment = almetal_finish_legacy_ssr(
+            legacy_environment,
+            gl_fragment_position / ssr.screen.xy,
+            input.eye_position, normal, glossiness,
+            ssr_scene_color, ssr_scene_depth,
+            ssr_color_sampler, ssr_depth_sampler, ssr);
         legacy_environment = almetal_finish_legacy_hero_probe(
             legacy_environment, input.eye_position, normal,
             hero_probe, probe_sampler, probes, hero);

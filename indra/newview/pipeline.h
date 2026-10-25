@@ -604,6 +604,9 @@ public:
     void captureMetalImpostorLegacyMaterialAlphaBatch(
         const LLDrawInfo& params, bool particle_or_hud_particle);
     bool fillMetalImpostorHeroProbe();
+    void requestMetalScreenSpaceReflections(const LLRenderTarget& source);
+    void collectMetalScreenSpaceReflections();
+    bool fillMetalImpostorScreenSpaceReflections();
     bool fillMetalImpostorDirectionalShadows();
     void captureMetalImpostorPBRAlphaBatch(const LLDrawInfo& params);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,

@@ -55,6 +55,7 @@ namespace
     static_assert(sizeof(ALMetalWorldLegacyAlphaLight) == 64);
     static_assert(sizeof(ALMetalWorldLegacyAlphaLighting) == 496);
     static_assert(sizeof(ALMetalWorldHeroProbeConstants) == 112);
+    static_assert(sizeof(ALMetalWorldScreenSpaceReflectionConstants) == 256);
     static_assert(sizeof(ALMetalWorldDirectionalShadowConstants) == 320);
 
     struct alignas(16) WorldMaterialSlotConstants
@@ -295,6 +296,54 @@ namespace
                    descriptor.usage, ALMetalTextureUsage::shader_read);
     }
 
+    bool validScreenSpaceReflections(
+        const ALMetalWorldScreenSpaceReflections* reflections)
+    {
+        if (!reflections || !reflections->scene_color ||
+            !reflections->scene_depth ||
+            !finiteValues(reflections->constants.projection, 16) ||
+            !finiteValues(reflections->constants.inverse_projection, 16) ||
+            !finiteValues(
+                reflections->constants.inverse_modelview_delta, 16) ||
+            !finiteValues(reflections->constants.screen, 4) ||
+            !finiteValues(reflections->constants.trace, 4) ||
+            !finiteValues(reflections->constants.sampling, 4) ||
+            reflections->constants.screen[0] <= 0.f ||
+            reflections->constants.screen[1] <= 0.f ||
+            reflections->constants.screen[2] <= 0.f ||
+            reflections->constants.trace[0] < 0.f ||
+            reflections->constants.sampling[0] < 1.f ||
+            reflections->constants.sampling[0] > 128.f ||
+            reflections->constants.config[0] > 1 ||
+            reflections->constants.config[1] != 1)
+        {
+            return false;
+        }
+
+        const ALMetalTextureDescriptor& color =
+            reflections->scene_color->descriptor();
+        const ALMetalTextureDescriptor& depth =
+            reflections->scene_depth->descriptor();
+        const bool color_format =
+            color.format == ALMetalPixelFormat::rg11b10_float ||
+            color.format == ALMetalPixelFormat::rgba8_unorm;
+        return color.type == ALMetalTextureType::texture_2d &&
+               depth.type == ALMetalTextureType::texture_2d &&
+               color_format &&
+               depth.format == ALMetalPixelFormat::r32_float &&
+               color.width != 0 && color.height != 0 &&
+               color.width == depth.width &&
+               color.height == depth.height &&
+               color.array_length == 1 && depth.array_length == 1 &&
+               color.mipmap_level_count == 1 &&
+               depth.mipmap_level_count == 1 &&
+               color.sample_count == 1 && depth.sample_count == 1 &&
+               alMetalHasUsage(
+                   color.usage, ALMetalTextureUsage::shader_read) &&
+               alMetalHasUsage(
+                   depth.usage, ALMetalTextureUsage::shader_read);
+    }
+
     bool validDirectionalShadows(
         const ALMetalWorldDirectionalShadows* shadows)
     {
@@ -371,6 +420,9 @@ struct ALMetalWorldGBufferRenderer::Impl
     ALMetalWorldDirectionalShadowConstants unshadowed_constants{};
     std::unique_ptr<ALMetalTexture> inactive_hero_probe;
     ALMetalWorldHeroProbeConstants inactive_hero_constants{};
+    std::unique_ptr<ALMetalTexture> inactive_ssr_color;
+    std::unique_ptr<ALMetalTexture> inactive_ssr_depth;
+    ALMetalWorldScreenSpaceReflectionConstants inactive_ssr_constants{};
 };
 
 ALMetalWorldGBufferRenderer::ALMetalWorldGBufferRenderer(
@@ -1194,6 +1246,39 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     {
         return nullptr;
     }
+
+    ALMetalTextureDescriptor ssr_descriptor;
+    ssr_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+    ssr_descriptor.width = 1;
+    ssr_descriptor.height = 1;
+    ssr_descriptor.storage = ALMetalStorageMode::private_gpu;
+    ssr_descriptor.usage = ALMetalTextureUsage::shader_read;
+    ssr_descriptor.label = "Alchemy world inactive SSR color fallback";
+    impl->inactive_ssr_color = ALMetalTexture::create(
+        device, ssr_descriptor, error);
+    ssr_descriptor.format = ALMetalPixelFormat::r32_float;
+    ssr_descriptor.label = "Alchemy world inactive SSR depth fallback";
+    impl->inactive_ssr_depth = ALMetalTexture::create(
+        device, ssr_descriptor, error);
+    auto ssr_upload = impl->inactive_ssr_color && impl->inactive_ssr_depth
+        ? device.makeCommandBuffer(
+              "Alchemy world inactive SSR fallback upload", error)
+        : nullptr;
+    const float far_depth = 1.f;
+    const bool ssr_ready = ssr_upload &&
+        impl->inactive_ssr_color->upload(
+            *ssr_upload, 0, 0, {}, &black, sizeof(black), error) &&
+        impl->inactive_ssr_depth->upload(
+            *ssr_upload, 0, 0, {}, &far_depth, sizeof(far_depth), error) &&
+        ssr_upload->commitAndWait(error);
+    if (!ssr_ready)
+    {
+        return nullptr;
+    }
+    impl->inactive_ssr_constants.screen[0] = 1.f;
+    impl->inactive_ssr_constants.screen[1] = 1.f;
+    impl->inactive_ssr_constants.screen[2] = 1.f;
+    impl->inactive_ssr_constants.sampling[0] = 1.f;
 
     return std::unique_ptr<ALMetalWorldGBufferRenderer>(
         new ALMetalWorldGBufferRenderer(std::move(impl)));
@@ -2299,6 +2384,13 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
                  "Metal world impostor hero probe is invalid");
         return false;
     }
+    if (scene.screen_space_reflections &&
+        !validScreenSpaceReflections(scene.screen_space_reflections))
+    {
+        setError(error,
+                 "Metal world impostor screen-space reflections are invalid");
+        return false;
+    }
     if (has_legacy_alpha &&
         !validLegacyAlphaLighting(scene.legacy_alpha_lighting))
     {
@@ -2593,6 +2685,28 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
                 34, hero_texture, error) &&
             encoder->setFragmentBytes(
                 4, &hero_constants, sizeof(hero_constants), error);
+    }
+    if (encoded && legacy_alpha_uses_probes)
+    {
+        const ALMetalTexture* ssr_color = scene.screen_space_reflections
+            ? scene.screen_space_reflections->scene_color
+            : mImpl->inactive_ssr_color.get();
+        const ALMetalTexture* ssr_depth = scene.screen_space_reflections
+            ? scene.screen_space_reflections->scene_depth
+            : mImpl->inactive_ssr_depth.get();
+        const ALMetalWorldScreenSpaceReflectionConstants& ssr_constants =
+            scene.screen_space_reflections
+                ? scene.screen_space_reflections->constants
+                : mImpl->inactive_ssr_constants;
+        encoded =
+            encoder->setFragmentSampler(
+                2, mImpl->linear_clamp_sampler.get(), error) &&
+            encoder->setFragmentSampler(
+                3, mImpl->point_clamp_sampler.get(), error) &&
+            encoder->setFragmentTexture(35, ssr_color, error) &&
+            encoder->setFragmentTexture(36, ssr_depth, error) &&
+            encoder->setFragmentBytes(
+                5, &ssr_constants, sizeof(ssr_constants), error);
     }
 
     for (std::size_t index = 0;

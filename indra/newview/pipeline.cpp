@@ -31,6 +31,7 @@
 
 #include "pipeline.h"
 #include <algorithm>
+#include <deque>
 #include <limits>
 #include <sstream>
 #include <unordered_map>
@@ -413,6 +414,13 @@ struct LLPipeline::MetalWorldSimpleCapture
         bool ready = false;
     };
 
+    struct SSRReadback
+    {
+        U32 width = 0;
+        U32 height = 0;
+        bool hdr = false;
+    };
+
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
     std::unique_ptr<ALMetalRenderTarget> target;
@@ -457,6 +465,19 @@ struct LLPipeline::MetalWorldSimpleCapture
     ALMetalWorldHeroProbe impostor_hero_probe;
     std::vector<U8> impostor_hero_probe_bytes;
     U64 impostor_hero_probe_generation = 0;
+    ALGPUReadback impostor_ssr_color_readback;
+    ALGPUReadback impostor_ssr_depth_readback;
+    std::deque<SSRReadback> impostor_ssr_pending;
+    std::vector<U8> impostor_ssr_color_bytes;
+    std::vector<F32> impostor_ssr_depth_values;
+    U32 impostor_ssr_readback_width = 0;
+    U32 impostor_ssr_readback_height = 0;
+    bool impostor_ssr_readback_hdr = false;
+    bool impostor_ssr_color_staged = false;
+    std::unique_ptr<ALMetalTexture> impostor_ssr_color_texture;
+    std::unique_ptr<ALMetalTexture> impostor_ssr_depth_texture;
+    ALMetalWorldScreenSpaceReflections impostor_screen_space_reflections;
+    bool impostor_ssr_needed = false;
     ALMetalWorldLegacyAlphaLighting impostor_legacy_alpha_lighting;
     bool impostor_legacy_alpha_lighting_valid = false;
     std::unique_ptr<ALMetalTexture> impostor_directional_shadow_texture;
@@ -819,6 +840,19 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.impostor_hero_probe = {};
         capture.impostor_hero_probe_bytes.clear();
         capture.impostor_hero_probe_generation = 0;
+        capture.impostor_ssr_color_readback.release();
+        capture.impostor_ssr_depth_readback.release();
+        capture.impostor_ssr_pending.clear();
+        capture.impostor_ssr_color_bytes.clear();
+        capture.impostor_ssr_depth_values.clear();
+        capture.impostor_ssr_readback_width = 0;
+        capture.impostor_ssr_readback_height = 0;
+        capture.impostor_ssr_readback_hdr = false;
+        capture.impostor_ssr_color_staged = false;
+        capture.impostor_ssr_color_texture.reset();
+        capture.impostor_ssr_depth_texture.reset();
+        capture.impostor_screen_space_reflections = {};
+        capture.impostor_ssr_needed = false;
         capture.impostor_directional_shadow_texture.reset();
         capture.impostor_directional_shadows = {};
         capture.impostor_directional_shadow_depth.clear();
@@ -837,6 +871,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.failed_frames = 0;
         capture.device = device;
     }
+
+    collectMetalScreenSpaceReflections();
 
     // An impostor bake is still produced by the GL draw pools. Its four
     // attachments cross to Metal through a PBO only after the frame fence
@@ -1190,6 +1226,19 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.impostor_hero_probe = {};
         capture.impostor_hero_probe_bytes.clear();
         capture.impostor_hero_probe_generation = 0;
+        capture.impostor_ssr_color_readback.release();
+        capture.impostor_ssr_depth_readback.release();
+        capture.impostor_ssr_pending.clear();
+        capture.impostor_ssr_color_bytes.clear();
+        capture.impostor_ssr_depth_values.clear();
+        capture.impostor_ssr_readback_width = 0;
+        capture.impostor_ssr_readback_height = 0;
+        capture.impostor_ssr_readback_hdr = false;
+        capture.impostor_ssr_color_staged = false;
+        capture.impostor_ssr_color_texture.reset();
+        capture.impostor_ssr_depth_texture.reset();
+        capture.impostor_screen_space_reflections = {};
+        capture.impostor_ssr_needed = false;
         capture.impostor_directional_shadow_texture.reset();
         capture.impostor_directional_shadows = {};
         capture.impostor_directional_shadow_depth.clear();
@@ -1473,8 +1522,27 @@ void LLPipeline::endMetalImpostorAlphaCapture()
                        LLMaterial::DIFFUSE_ALPHA_MODE_BLEND;
         });
     const bool legacy_alpha_uses_probes = has_legacy_alpha;
+    const bool legacy_alpha_uses_environment = std::any_of(
+        capture.batches.begin(), capture.batches.end(),
+        [](const ALMetalWorldSimpleBatch& batch)
+        {
+            const std::size_t slot_count = std::min<std::size_t>(
+                batch.material_slot_count, batch.material_slots.size());
+            return batch.material_alpha_mode ==
+                       LLMaterial::DIFFUSE_ALPHA_MODE_BLEND &&
+                   std::any_of(
+                       batch.material_slots.begin(),
+                       batch.material_slots.begin() + slot_count,
+                       [](const ALMetalWorldMaterialSlot& slot)
+                       {
+                           return slot.env_intensity > 0.f;
+                       });
+        });
     const bool hero_active =
         mHeroProbeManager.mHeroData.heroProbeCount > 0;
+    const bool ssr_active =
+        mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
+        !gCubeSnapshot;
     if (capture.complete && has_legacy_alpha &&
         (!capture.impostor_legacy_alpha_lighting_valid ||
          (legacy_alpha_uses_probes &&
@@ -1486,13 +1554,22 @@ void LLPipeline::endMetalImpostorAlphaCapture()
             << "Could not acquire a coherent glare-lighting pack for the "
                "native avatar-impostor legacy BLEND slice" << LL_ENDL;
     }
-    if (capture.complete && has_legacy_alpha && hero_active &&
+    if (capture.complete && legacy_alpha_uses_environment && hero_active &&
         !fillMetalImpostorHeroProbe())
     {
         capture.complete = false;
         LL_WARNS("Metal")
             << "Could not acquire the active hero probe for the native "
                "avatar-impostor legacy BLEND slice" << LL_ENDL;
+    }
+    if (capture.complete && legacy_alpha_uses_environment && ssr_active &&
+        !fillMetalImpostorScreenSpaceReflections())
+    {
+        capture.complete = false;
+        LL_WARNS("Metal")
+            << "Could not acquire coherent screen-space reflection history "
+               "for the native avatar-impostor legacy BLEND slice"
+            << LL_ENDL;
     }
 
     if (!capture.complete || capture.batches.empty() ||
@@ -1513,8 +1590,11 @@ void LLPipeline::endMetalImpostorAlphaCapture()
     scene.reverse_z = capture.reverse_z;
     scene.reflection_probes = legacy_alpha_uses_probes
         ? &capture.impostor_reflection_probes : nullptr;
-    scene.hero_probe = has_legacy_alpha && hero_active
+    scene.hero_probe = legacy_alpha_uses_environment && hero_active
         ? &capture.impostor_hero_probe : nullptr;
+    scene.screen_space_reflections =
+        legacy_alpha_uses_environment && ssr_active
+        ? &capture.impostor_screen_space_reflections : nullptr;
     scene.legacy_alpha_lighting = has_legacy_alpha
         ? &capture.impostor_legacy_alpha_lighting : nullptr;
     scene.directional_shadows =
@@ -2171,6 +2251,310 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     capture.pass_active = false;
 }
 
+void LLPipeline::requestMetalScreenSpaceReflections(
+    const LLRenderTarget& source)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->device ||
+        source.getUsage() != ALTextureSlot::TT_TEXTURE ||
+        source.getNumTextures() != 1 || !source.getTexture(0) ||
+        !source.getDepth() || source.getWidth() == 0 ||
+        source.getHeight() == 0)
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const bool hdr = source.getInternalFormat(0) == GL_R11F_G11F_B10F;
+    if (!hdr && source.getInternalFormat(0) != GL_RGBA8)
+    {
+        capture.impostor_screen_space_reflections = {};
+        return;
+    }
+
+    const std::size_t pixels =
+        static_cast<std::size_t>(source.getWidth()) * source.getHeight();
+    if (pixels > std::numeric_limits<std::size_t>::max() / sizeof(U32))
+    {
+        capture.impostor_screen_space_reflections = {};
+        return;
+    }
+    const std::size_t bytes = pixels * sizeof(U32);
+    const bool layout_changed =
+        capture.impostor_ssr_readback_width != source.getWidth() ||
+        capture.impostor_ssr_readback_height != source.getHeight() ||
+        capture.impostor_ssr_readback_hdr != hdr ||
+        !capture.impostor_ssr_color_readback.isAllocated() ||
+        !capture.impostor_ssr_depth_readback.isAllocated();
+    if (layout_changed)
+    {
+        capture.impostor_ssr_color_readback.release();
+        capture.impostor_ssr_depth_readback.release();
+        capture.impostor_ssr_pending.clear();
+        capture.impostor_ssr_color_staged = false;
+        capture.impostor_ssr_color_texture.reset();
+        capture.impostor_ssr_depth_texture.reset();
+        capture.impostor_screen_space_reflections = {};
+        capture.impostor_ssr_readback_width = 0;
+        capture.impostor_ssr_readback_height = 0;
+        if (!capture.impostor_ssr_color_readback.allocate(
+                bytes, 3, "avatar.impostor.ssr.color.readback") ||
+            !capture.impostor_ssr_depth_readback.allocate(
+                bytes, 3, "avatar.impostor.ssr.depth.readback"))
+        {
+            capture.impostor_ssr_color_readback.release();
+            capture.impostor_ssr_depth_readback.release();
+            return;
+        }
+        capture.impostor_ssr_readback_width = source.getWidth();
+        capture.impostor_ssr_readback_height = source.getHeight();
+        capture.impostor_ssr_readback_hdr = hdr;
+        capture.impostor_ssr_color_bytes.resize(bytes);
+        capture.impostor_ssr_depth_values.resize(pixels);
+    }
+
+    if (capture.impostor_ssr_color_readback.getPending() >= 3 ||
+        capture.impostor_ssr_depth_readback.getPending() >= 3)
+    {
+        capture.impostor_screen_space_reflections = {};
+        return;
+    }
+
+    GLint previous_read_framebuffer = 0;
+    GLint previous_pack_buffer = 0;
+    GLint previous_read_buffer = GL_BACK;
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previous_read_framebuffer);
+    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &previous_pack_buffer);
+    glGetIntegerv(GL_READ_BUFFER, &previous_read_buffer);
+
+    GLuint read_framebuffer = 0;
+    clear_glerror();
+    glGenFramebuffers(1, &read_framebuffer);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, read_framebuffer);
+    glFramebufferTexture2D(
+        GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+        source.getTexture(0), 0);
+    glFramebufferTexture2D(
+        GL_READ_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+        source.getDepth(), 0);
+    glReadBuffer(GL_COLOR_ATTACHMENT0);
+
+    bool requested = read_framebuffer != 0 &&
+        glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) ==
+            GL_FRAMEBUFFER_COMPLETE;
+    if (requested)
+    {
+        requested = capture.impostor_ssr_color_readback.requestPixels(
+            0, 0, source.getWidth(), source.getHeight(),
+            hdr ? GL_RGB : GL_RGBA,
+            hdr ? GL_UNSIGNED_INT_10F_11F_11F_REV : GL_UNSIGNED_BYTE,
+            bytes);
+    }
+    if (requested)
+    {
+        requested = capture.impostor_ssr_depth_readback.requestPixels(
+            0, 0, source.getWidth(), source.getHeight(),
+            GL_DEPTH_COMPONENT, GL_FLOAT, bytes);
+    }
+    const GLenum read_error = glGetError();
+
+    glBindFramebuffer(
+        GL_READ_FRAMEBUFFER,
+        static_cast<GLuint>(previous_read_framebuffer));
+    glReadBuffer(previous_read_buffer);
+    glBindBuffer(
+        GL_PIXEL_PACK_BUFFER, static_cast<GLuint>(previous_pack_buffer));
+    if (read_framebuffer != 0)
+    {
+        glDeleteFramebuffers(1, &read_framebuffer);
+    }
+
+    if (!requested || read_error != GL_NO_ERROR)
+    {
+        capture.impostor_ssr_color_readback.release();
+        capture.impostor_ssr_depth_readback.release();
+        capture.impostor_ssr_pending.clear();
+        capture.impostor_ssr_color_staged = false;
+        capture.impostor_screen_space_reflections = {};
+        capture.impostor_ssr_readback_width = 0;
+        capture.impostor_ssr_readback_height = 0;
+        LL_WARNS("Metal")
+            << "Could not queue the live SSR scene history for the native "
+               "avatar-impostor owner: GL error 0x"
+            << std::hex << read_error << std::dec << LL_ENDL;
+        return;
+    }
+
+    capture.impostor_ssr_pending.push_back({
+        source.getWidth(), source.getHeight(), hdr});
+}
+
+void LLPipeline::collectMetalScreenSpaceReflections()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->device)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    while (!capture.impostor_ssr_pending.empty())
+    {
+        const MetalWorldSimpleCapture::SSRReadback metadata =
+            capture.impostor_ssr_pending.front();
+        const std::size_t pixels =
+            static_cast<std::size_t>(metadata.width) * metadata.height;
+        const std::size_t bytes = pixels * sizeof(U32);
+        if (capture.impostor_ssr_color_bytes.size() != bytes ||
+            capture.impostor_ssr_depth_values.size() != pixels)
+        {
+            capture.impostor_screen_space_reflections = {};
+            return;
+        }
+        if (!capture.impostor_ssr_color_staged)
+        {
+            if (!capture.impostor_ssr_color_readback.collect(
+                    capture.impostor_ssr_color_bytes.data(), bytes))
+            {
+                return;
+            }
+            capture.impostor_ssr_color_staged = true;
+        }
+        if (!capture.impostor_ssr_depth_readback.collect(
+                capture.impostor_ssr_depth_values.data(), bytes))
+        {
+            return;
+        }
+        capture.impostor_ssr_color_staged = false;
+        capture.impostor_ssr_pending.pop_front();
+
+        ALMetalTextureDescriptor color_descriptor;
+        color_descriptor.format = metadata.hdr
+            ? ALMetalPixelFormat::rg11b10_float
+            : ALMetalPixelFormat::rgba8_unorm;
+        color_descriptor.width = metadata.width;
+        color_descriptor.height = metadata.height;
+        color_descriptor.storage = ALMetalStorageMode::private_gpu;
+        color_descriptor.usage = ALMetalTextureUsage::shader_read;
+        color_descriptor.label = "Alchemy live SSR scene-color mirror";
+        ALMetalTextureDescriptor depth_descriptor = color_descriptor;
+        depth_descriptor.format = ALMetalPixelFormat::r32_float;
+        depth_descriptor.label = "Alchemy live SSR scene-depth mirror";
+
+        const auto matches = [](
+            const std::unique_ptr<ALMetalTexture>& texture,
+            const ALMetalTextureDescriptor& descriptor)
+        {
+            if (!texture)
+            {
+                return false;
+            }
+            const ALMetalTextureDescriptor& current = texture->descriptor();
+            return current.type == descriptor.type &&
+                   current.format == descriptor.format &&
+                   current.width == descriptor.width &&
+                   current.height == descriptor.height;
+        };
+        std::string error;
+        if (!matches(capture.impostor_ssr_color_texture,
+                     color_descriptor))
+        {
+            capture.impostor_ssr_color_texture = ALMetalTexture::create(
+                *capture.device, color_descriptor, &error);
+        }
+        if (!matches(capture.impostor_ssr_depth_texture,
+                     depth_descriptor))
+        {
+            capture.impostor_ssr_depth_texture = ALMetalTexture::create(
+                *capture.device, depth_descriptor, &error);
+        }
+        auto upload = capture.impostor_ssr_color_texture &&
+                      capture.impostor_ssr_depth_texture
+            ? capture.device->makeCommandBuffer(
+                  "Alchemy live SSR scene-history upload", &error)
+            : nullptr;
+        const std::size_t row_bytes =
+            static_cast<std::size_t>(metadata.width) * sizeof(U32);
+        bool uploaded = upload &&
+            capture.impostor_ssr_color_texture->upload(
+                *upload, 0, 0, {},
+                capture.impostor_ssr_color_bytes.data(), row_bytes,
+                &error) &&
+            capture.impostor_ssr_depth_texture->upload(
+                *upload, 0, 0, {},
+                capture.impostor_ssr_depth_values.data(), row_bytes,
+                &error) &&
+            upload->commit(&error);
+        if (!uploaded)
+        {
+            capture.impostor_screen_space_reflections = {};
+            LL_WARNS("Metal")
+                << "Could not publish the live SSR scene-history mirror: "
+                << error << LL_ENDL;
+            continue;
+        }
+        capture.impostor_screen_space_reflections.scene_color =
+            capture.impostor_ssr_color_texture.get();
+        capture.impostor_screen_space_reflections.scene_depth =
+            capture.impostor_ssr_depth_texture.get();
+    }
+}
+
+bool LLPipeline::fillMetalImpostorScreenSpaceReflections()
+{
+    if (!mMetalWorldSimpleCapture || !mRT)
+    {
+        return false;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    ALMetalWorldScreenSpaceReflections& reflections =
+        capture.impostor_screen_space_reflections;
+    if (!reflections.scene_color || !reflections.scene_depth ||
+        mSceneMap.getWidth() == 0 || mSceneMap.getHeight() == 0 ||
+        reflections.scene_color->descriptor().width !=
+            mSceneMap.getWidth() ||
+        reflections.scene_color->descriptor().height !=
+            mSceneMap.getHeight() ||
+        reflections.scene_color->descriptor().format !=
+            (hdrEnabled() ? ALMetalPixelFormat::rg11b10_float
+                          : ALMetalPixelFormat::rgba8_unorm))
+    {
+        return false;
+    }
+
+    ALMetalWorldScreenSpaceReflectionConstants constants;
+    const LLCamera& camera = LLViewerCamera::getCurrent();
+    LLMatrix4a inverse_projection;
+    inverse_projection.setInverse(camera.getProjection());
+    std::memcpy(constants.projection,
+                camera.getProjection().getF32ptr(),
+                sizeof(constants.projection));
+    std::memcpy(constants.inverse_projection,
+                inverse_projection.getF32ptr(),
+                sizeof(constants.inverse_projection));
+    std::memcpy(constants.inverse_modelview_delta,
+                LLViewerCamera::getInstance()
+                    ->getInverseDeltaModelview().getF32ptr(),
+                sizeof(constants.inverse_modelview_delta));
+    constants.screen[0] =
+        static_cast<F32>(mRT->deferredScreen.getWidth());
+    constants.screen[1] =
+        static_cast<F32>(mRT->deferredScreen.getHeight());
+    constants.screen[2] = static_cast<F32>(capture.height);
+    constants.trace[0] = static_cast<F32>(
+        std::max(RenderScreenSpaceReflectionIterations, 0));
+    constants.trace[1] = RenderScreenSpaceReflectionRayStep;
+    constants.trace[2] = RenderScreenSpaceReflectionDistanceBias;
+    constants.trace[3] = RenderScreenSpaceReflectionDepthRejectBias;
+    constants.sampling[0] = static_cast<F32>(std::clamp(
+        RenderScreenSpaceReflectionGlossySamples, 1, 128));
+    constants.sampling[1] =
+        RenderScreenSpaceReflectionAdaptiveStepMultiplier;
+    constants.config[0] = capture.reverse_z ? 1u : 0u;
+    constants.config[1] = 1;
+    reflections.constants = constants;
+    return constants.screen[0] > 0.f && constants.screen[1] > 0.f;
+}
+
 bool LLPipeline::fillMetalImpostorHeroProbe()
 {
     if (!mMetalWorldSimpleCapture || !mMetalWorldSimpleCapture->device)
@@ -2570,17 +2954,9 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
         return;
     }
 
-    // The GL probe finish can replace cube radiance with SSR. Keep the
-    // complete native alpha replay fail-closed until that screen-space input
-    // is represented instead of silently changing the material contract.
-    // Directional shadows and the active hero probe now have exact mirrors.
     LLGLSLShader* material_shader =
         gDeferredMaterialProgram[shader_mask].selectVariant();
-    const bool unsupported_probe_finish =
-        mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
-        !gCubeSnapshot;
-    if (unsupported_probe_finish ||
-        (material_shader->mFeatures.hasShadows &&
+    if ((material_shader->mFeatures.hasShadows &&
          !fillMetalImpostorDirectionalShadows()))
     {
         capture.complete = false;
@@ -2654,6 +3030,20 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
     capture.pass_active = true;
     captureMetalWorldMaterialBatch(params, false);
     capture.pass_active = false;
+    if (capture.complete && !capture.batches.empty())
+    {
+        const ALMetalWorldSimpleBatch& batch = capture.batches.back();
+        const std::size_t slot_count = std::min<std::size_t>(
+            batch.material_slot_count, batch.material_slots.size());
+        capture.impostor_ssr_needed = capture.impostor_ssr_needed ||
+            std::any_of(
+                batch.material_slots.begin(),
+                batch.material_slots.begin() + slot_count,
+                [](const ALMetalWorldMaterialSlot& slot)
+                {
+                    return slot.env_intensity > 0.f;
+                });
+    }
     capture.material_alpha_mode = 0;
     capture.material_normal_map = false;
     capture.material_specular_map = false;
@@ -12345,6 +12735,17 @@ void LLPipeline::copyScreenSpaceReflections(LLRenderTarget* src, LLRenderTarget*
         dst->copyContents(*src, 0, 0, src->getWidth(), src->getHeight(), 0, 0, dst->getWidth(), dst->getHeight(),
                          GL_COLOR_BUFFER_BIT, GL_NEAREST);
         copySceneDepth(*dst);
+#if LL_DARWIN
+        // A full-screen readback is unnecessary until a retained legacy
+        // BLEND material proves it can consume SSR. The first demanded
+        // generation is deliberately asynchronous; native replay remains
+        // fail-closed until its paired color/depth PBOs are coherent.
+        if (mMetalWorldSimpleCapture &&
+            mMetalWorldSimpleCapture->impostor_ssr_needed)
+        {
+            requestMetalScreenSpaceReflections(*dst);
+        }
+#endif
     }
 }
 

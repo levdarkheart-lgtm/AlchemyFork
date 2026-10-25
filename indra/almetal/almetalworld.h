@@ -98,6 +98,33 @@ struct ALMetalWorldHeroProbe
     ALMetalWorldHeroProbeConstants constants;
 };
 
+// Previous-frame scene history plus the matrices and tuning values used by
+// legacyProbeFinish's transparent SSR branch. The source remains the GL
+// scene/depth copy during migration; both textures are mirrored as one
+// generation before an impostor replay may consume them.
+struct alignas(16) ALMetalWorldScreenSpaceReflectionConstants
+{
+    float projection[16]{};
+    float inverse_projection[16]{};
+    float inverse_modelview_delta[16]{};
+    // xy = GL screen_res, z = Metal destination height for gl_FragCoord.y.
+    float screen[4]{};
+    // x = iteration count, y = ray step, z = distance bias,
+    // w = depth-reject bias.
+    float trace[4]{};
+    // x = glossy sample count, y = adaptive-step multiplier.
+    float sampling[4]{};
+    // x = reverse-Z, y = active scene-history generation.
+    std::uint32_t config[4]{};
+};
+
+struct ALMetalWorldScreenSpaceReflections
+{
+    const ALMetalTexture* scene_color = nullptr;
+    const ALMetalTexture* scene_depth = nullptr;
+    ALMetalWorldScreenSpaceReflectionConstants constants;
+};
+
 struct alignas(16) ALMetalWorldLegacyAlphaLight
 {
     float position[4]{};
@@ -247,6 +274,7 @@ struct ALMetalWorldGBufferScene
     bool stamp_opaque_coverage = false;
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
     const ALMetalWorldHeroProbe* hero_probe = nullptr;
+    const ALMetalWorldScreenSpaceReflections* screen_space_reflections = nullptr;
     const ALMetalWorldLegacyAlphaLighting* legacy_alpha_lighting = nullptr;
     const ALMetalWorldDirectionalShadows* directional_shadows = nullptr;
     float clear_color[4] = {1.f, 0.f, 1.f, 1.f};

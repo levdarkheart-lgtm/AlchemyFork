@@ -2122,6 +2122,80 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         hero_probe.constants.clip_plane[3] = 1.f;
         hero_probe.constants.config[1] = 1;
 
+        ALMetalTextureDescriptor ssr_color_descriptor;
+        ssr_color_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        ssr_color_descriptor.width = 1;
+        ssr_color_descriptor.height = 2;
+        ssr_color_descriptor.storage = ALMetalStorageMode::private_gpu;
+        ssr_color_descriptor.usage = ALMetalTextureUsage::shader_read;
+        ssr_color_descriptor.label =
+            "Alchemy world SSR scene-color test";
+        auto ssr_color = ALMetalTexture::create(
+            *device, ssr_color_descriptor, &error);
+        INFO(error);
+        REQUIRE(ssr_color);
+        ALMetalTextureDescriptor ssr_depth_descriptor =
+            ssr_color_descriptor;
+        ssr_depth_descriptor.format = ALMetalPixelFormat::r32_float;
+        ssr_depth_descriptor.label =
+            "Alchemy world SSR scene-depth test";
+        auto ssr_depth = ALMetalTexture::create(
+            *device, ssr_depth_descriptor, &error);
+        INFO(error);
+        REQUIRE(ssr_depth);
+        ALMetalTextureDescriptor ssr_normal_descriptor =
+            ssr_color_descriptor;
+        ssr_normal_descriptor.height = 1;
+        ssr_normal_descriptor.label =
+            "Alchemy world SSR reverse-facing normal test";
+        auto ssr_normal = ALMetalTexture::create(
+            *device, ssr_normal_descriptor, &error);
+        INFO(error);
+        REQUIRE(ssr_normal);
+        auto ssr_upload = device->makeCommandBuffer(
+            "Alchemy world SSR scene-history upload", &error);
+        INFO(error);
+        REQUIRE(ssr_upload);
+        // The bridge uploads glReadPixels verbatim: row zero is GL's lower
+        // row. Keep the upper row black so a second Y flip in the Metal
+        // sampler makes the lower-half assertion below fail visibly.
+        const std::array<std::uint8_t, 8> red_lower_ssr{{
+            255, 0, 0, 255,
+              0, 0, 0, 255,
+        }};
+        const std::array<std::uint8_t, 4> reverse_normal{{128, 128, 0, 255}};
+        const std::array<float, 2> ssr_depth_values{{0.5f, 0.5f}};
+        REQUIRE(ssr_color->upload(
+            *ssr_upload, 0, 0, {}, red_lower_ssr.data(), 4, &error));
+        REQUIRE(ssr_depth->upload(
+            *ssr_upload, 0, 0, {}, ssr_depth_values.data(),
+            sizeof(float), &error));
+        REQUIRE(ssr_normal->upload(
+            *ssr_upload, 0, 0, {}, reverse_normal.data(), 4, &error));
+        REQUIRE(ssr_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldScreenSpaceReflections screen_space_reflections;
+        screen_space_reflections.scene_color = ssr_color.get();
+        screen_space_reflections.scene_depth = ssr_depth.get();
+        for (std::size_t index = 0; index < 4; ++index)
+        {
+            screen_space_reflections.constants.projection[index * 4 + index] = 1.f;
+            screen_space_reflections.constants.inverse_projection[index * 4 + index] = 1.f;
+            screen_space_reflections.constants.inverse_modelview_delta[index * 4 + index] = 1.f;
+        }
+        screen_space_reflections.constants.inverse_projection[14] = -1.5f;
+        screen_space_reflections.constants.screen[0] = 32.f;
+        screen_space_reflections.constants.screen[1] = 32.f;
+        screen_space_reflections.constants.screen[2] = 32.f;
+        screen_space_reflections.constants.trace[0] = 4.f;
+        screen_space_reflections.constants.trace[1] = 0.1f;
+        screen_space_reflections.constants.trace[2] = 0.2f;
+        screen_space_reflections.constants.trace[3] = 0.001f;
+        screen_space_reflections.constants.sampling[0] = 1.f;
+        screen_space_reflections.constants.sampling[1] = 1.6f;
+        screen_space_reflections.constants.config[1] = 1;
+
         // Legacy BLEND materials keep their authored diffuse alpha unless a
         // sun, reflection-probe or punctual highlight raises it. Build a
         // clean retained target so every assertion below observes the Metal
@@ -2159,6 +2233,15 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                 *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
             INFO(error);
             return pixels[center + 3];
+        };
+        auto read_legacy_alpha_at = [&](ALMetalRenderTarget& target,
+                                        std::size_t x, std::size_t y)
+        {
+            std::array<std::uint8_t, 32 * 32 * 4> pixels{};
+            REQUIRE(target.colorTexture(0)->readback(
+                *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+            INFO(error);
+            return pixels[(y * 32 + x) * 4 + 3];
         };
         auto read_legacy_depth = [&](ALMetalRenderTarget& target)
         {
@@ -2319,6 +2402,75 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         hero_probe.constants.clip_plane[3] = 1.f;
         legacy_alpha_scene.hero_probe = nullptr;
         legacy_lighting.sun_color[0] = 1.f;
+
+        // The transparent legacy finish blends a successful screen-space
+        // hit into both radiance taps before the hero override. Disable the
+        // ordinary cube contribution, flip the test normal toward the view,
+        // and require the red history hit to raise quarter coverage to one
+        // half. A partial pack must fail closed before encoding.
+        ALMetalWorldScreenSpaceReflections invalid_ssr;
+        invalid_ssr.constants.config[1] = 1;
+        legacy_alpha_scene.screen_space_reflections = &invalid_ssr;
+        auto invalid_ssr_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(invalid_ssr_target);
+        CHECK_FALSE(renderer->compositeImpostorPostDeferred(
+            *invalid_ssr_target, legacy_alpha_scene, &error));
+        CHECK(error ==
+              "Metal world impostor screen-space reflections are invalid");
+        error.clear();
+
+        const float saved_default_radiance_scale =
+            reflection_probes.constants.ref_params[0][1];
+        const float saved_radiance_scale =
+            reflection_probes.constants.ref_params[1][1];
+        reflection_probes.constants.ref_params[0][1] = 0.f;
+        reflection_probes.constants.ref_params[1][1] = 0.f;
+        legacy_alpha_batch.material_slots[0].normal_texture =
+            ssr_normal.get();
+        legacy_alpha_scene.screen_space_reflections = nullptr;
+        auto no_ssr_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(no_ssr_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *no_ssr_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha(*no_ssr_target)) - 64) <= 1);
+
+        legacy_alpha_scene.screen_space_reflections =
+            &screen_space_reflections;
+        auto ssr_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(ssr_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *ssr_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha_at(*ssr_target, 16, 8)) -
+                       128) <= 2);
+
+        // Transparent legacy SSR has no opaque roughness cutoff: GLSL
+        // traces one mirror ray at full gloss and applies the authored
+        // glossiness only to the final hit weight. A quarter-gloss hit is
+        // therefore still strong enough to saturate this environment glare.
+        legacy_alpha_batch.material_slots[0].specular_color[3] = 0.25f;
+        auto low_gloss_ssr_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(low_gloss_ssr_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *low_gloss_ssr_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(read_legacy_alpha_at(
+                           *low_gloss_ssr_target, 16, 8)) -
+                       128) <= 2);
+        legacy_alpha_batch.material_slots[0].specular_color[3] = 1.f;
+        legacy_alpha_scene.screen_space_reflections = nullptr;
+        legacy_alpha_batch.material_slots[0].normal_texture = nullptr;
+        reflection_probes.constants.ref_params[0][1] =
+            saved_default_radiance_scale;
+        reflection_probes.constants.ref_params[1][1] =
+            saved_radiance_scale;
 
         // With the probe term disabled, an aligned red sun saturates glare
         // and raises half-diffuse/half-vertex coverage from one quarter to
