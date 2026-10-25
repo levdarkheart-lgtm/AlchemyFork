@@ -3148,7 +3148,10 @@ bool ALMetalWorldGBufferRenderer::compositeHDRISky(
         scene.width == 0 || scene.height == 0 ||
         !finiteValues(scene.camera_local, 4) ||
         !finiteValues(&scene.environment_rotation[0][0], 12) ||
-        !std::isfinite(scene.exposure_scale) || scene.exposure_scale < 0.f)
+        !std::isfinite(scene.exposure_scale) || scene.exposure_scale < 0.f ||
+        !std::isfinite(scene.horizontal_fraction) ||
+        scene.horizontal_fraction < 0.f ||
+        scene.horizontal_fraction > 1.f)
     {
         setError(error, "Metal world HDRI sky scene is incomplete");
         return false;
@@ -3210,6 +3213,16 @@ bool ALMetalWorldGBufferRenderer::compositeHDRISky(
         }
     }
 
+    const double fractional_width =
+        static_cast<double>(scene.horizontal_fraction) * scene.width;
+    const std::uint32_t scissor_width = static_cast<std::uint32_t>(
+        std::clamp(std::ceil(fractional_width - 0.5),
+                   0.0, static_cast<double>(scene.width)));
+    if (scissor_width == 0)
+    {
+        return true;
+    }
+
     ALMetalRenderPassConfig pass_config;
     for (std::size_t attachment = 0; attachment < 4; ++attachment)
     {
@@ -3232,7 +3245,9 @@ bool ALMetalWorldGBufferRenderer::compositeHDRISky(
         0.0, 0.0, static_cast<double>(scene.width),
         static_cast<double>(scene.height), 0.0, 1.0,
     };
-    const ALMetalScissorRect scissor{0, 0, scene.width, scene.height};
+    const ALMetalScissorRect scissor{
+        0, 0, scissor_width, scene.height,
+    };
     const ALMetalDepthStencilState* depth = scene.reverse_z
         ? mImpl->reverse_readonly_depth.get()
         : mImpl->forward_readonly_depth.get();
@@ -4215,7 +4230,7 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         scene.constants.sky_transfer[0] < 0.f ||
         scene.constants.sky[0] > 1 ||
         scene.constants.sky[1] > 1 ||
-        scene.constants.sky[2] > 1 ||
+        scene.constants.sky[2] > 2 ||
         scene.constants.sky[3] != 0 ||
         (scene.constants.sky[0] != 0 &&
          scene.constants.sky[1] != (scene.hdr ? 1u : 0u)) ||

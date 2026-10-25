@@ -438,6 +438,16 @@ struct LLPipeline::MetalWorldSimpleCapture
     F32 hdri_sky_camera_local[4]{};
     F32 hdri_sky_environment_rotation[3][4]{};
     F32 hdri_sky_exposure_scale = 1.f;
+    std::vector<ALMetalWorldHDRISkyBatch> split_sky_batches;
+    const ALMetalTexture* split_sky_environment = nullptr;
+    const ALMetalTexture* split_sky_rainbow = nullptr;
+    const ALMetalTexture* split_sky_halo = nullptr;
+    F32 split_sky_camera_local[4]{};
+    F32 split_sky_environment_rotation[3][4]{};
+    F32 split_sky_exposure_scale = 1.f;
+    F32 split_sky_horizontal_fraction = 0.f;
+    ALMetalWorldWindLightSkyConstants split_sky_windlight_constants;
+    F32 split_sky_windlight_hdr_scale = 1.f;
     std::vector<ALMetalWorldHDRISkyBatch> windlight_sky_batches;
     const ALMetalTexture* windlight_sky_rainbow = nullptr;
     const ALMetalTexture* windlight_sky_halo = nullptr;
@@ -474,6 +484,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool hdri_sky_active = false;
     bool hdri_sky_complete = false;
     bool hdri_sky_native_available = false;
+    bool split_sky_active = false;
+    bool split_sky_complete = false;
+    bool split_sky_native_available = false;
     bool windlight_sky_active = false;
     bool windlight_sky_complete = false;
     bool windlight_sky_native_available = false;
@@ -917,6 +930,17 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.hdri_sky_active = false;
         capture.hdri_sky_complete = false;
         capture.hdri_sky_native_available = false;
+        capture.split_sky_batches.clear();
+        capture.split_sky_environment = nullptr;
+        capture.split_sky_rainbow = nullptr;
+        capture.split_sky_halo = nullptr;
+        capture.split_sky_exposure_scale = 1.f;
+        capture.split_sky_horizontal_fraction = 0.f;
+        capture.split_sky_windlight_constants = {};
+        capture.split_sky_windlight_hdr_scale = 1.f;
+        capture.split_sky_active = false;
+        capture.split_sky_complete = false;
+        capture.split_sky_native_available = false;
         capture.windlight_sky_batches.clear();
         capture.windlight_sky_rainbow = nullptr;
         capture.windlight_sky_halo = nullptr;
@@ -1124,6 +1148,17 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.hdri_sky_active = false;
     capture.hdri_sky_complete = false;
     capture.hdri_sky_native_available = false;
+    capture.split_sky_batches.clear();
+    capture.split_sky_environment = nullptr;
+    capture.split_sky_rainbow = nullptr;
+    capture.split_sky_halo = nullptr;
+    capture.split_sky_exposure_scale = 1.f;
+    capture.split_sky_horizontal_fraction = 0.f;
+    capture.split_sky_windlight_constants = {};
+    capture.split_sky_windlight_hdr_scale = 1.f;
+    capture.split_sky_active = false;
+    capture.split_sky_complete = false;
+    capture.split_sky_native_available = false;
     capture.windlight_sky_batches.clear();
     capture.windlight_sky_rainbow = nullptr;
     capture.windlight_sky_halo = nullptr;
@@ -1206,7 +1241,8 @@ void LLPipeline::beginMetalWorldHDRISky(
     capture.hdri_sky_native_available = false;
     ALMetalTexture* metal_environment = environment
         ? environment->getMetalTexture() : nullptr;
-    if (capture.pass_active || capture.windlight_sky_active ||
+    if (capture.pass_active || capture.split_sky_active ||
+        capture.split_sky_complete || capture.windlight_sky_active ||
         capture.windlight_sky_complete || !metal_environment ||
         !std::isfinite(exposure_scale) || exposure_scale < 0.f ||
         !std::isfinite(camera_height_local))
@@ -1297,6 +1333,183 @@ void LLPipeline::endMetalWorldHDRISky()
     }
 }
 
+void LLPipeline::beginMetalWorldSplitSky(
+    LLImageGL* environment, F32 exposure_scale,
+    const LLMatrix3& environment_rotation, F32 horizontal_fraction,
+    LLViewerTexture* rainbow, LLViewerTexture* halo,
+    F32 camera_height_local, F32 moisture_level,
+    F32 droplet_radius, F32 ice_level,
+    F32 sun_moon_glow_factor, F32 density_multiplier,
+    F32 sky_hdr_scale)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.split_sky_batches.clear();
+    capture.split_sky_environment = nullptr;
+    capture.split_sky_rainbow = nullptr;
+    capture.split_sky_halo = nullptr;
+    capture.split_sky_exposure_scale = 1.f;
+    capture.split_sky_horizontal_fraction = 0.f;
+    capture.split_sky_windlight_constants = {};
+    capture.split_sky_windlight_hdr_scale = 1.f;
+    capture.split_sky_active = false;
+    capture.split_sky_complete = false;
+    capture.split_sky_native_available = false;
+
+    ALMetalTexture* metal_environment = environment
+        ? environment->getMetalTexture() : nullptr;
+    LLImageGL* rainbow_image = rainbow ? rainbow->getGLTexture() : nullptr;
+    LLImageGL* halo_image = halo ? halo->getGLTexture() : nullptr;
+    ALMetalTexture* metal_rainbow = rainbow_image
+        ? rainbow_image->getMetalTexture() : nullptr;
+    ALMetalTexture* metal_halo = halo_image
+        ? halo_image->getMetalTexture() : nullptr;
+    const std::array<F32, 9> values{{
+        exposure_scale, horizontal_fraction, camera_height_local,
+        moisture_level, droplet_radius, ice_level,
+        sun_moon_glow_factor, density_multiplier, sky_hdr_scale,
+    }};
+    if (capture.pass_active || capture.hdri_sky_active ||
+        capture.hdri_sky_complete || capture.windlight_sky_active ||
+        capture.windlight_sky_complete || !metal_environment ||
+        !metal_rainbow || !metal_halo || exposure_scale < 0.f ||
+        horizontal_fraction <= 0.f || horizontal_fraction >= 1.f ||
+        moisture_level < 0.f || droplet_radius < 0.f ||
+        ice_level < 0.f || density_multiplier < 0.f ||
+        sky_hdr_scale < 0.f ||
+        std::any_of(values.begin(), values.end(),
+                    [](F32 value) { return !std::isfinite(value); }))
+    {
+        return;
+    }
+    for (U32 row = 0; row < 3; ++row)
+    {
+        for (U32 column = 0; column < 3; ++column)
+        {
+            if (!std::isfinite(environment_rotation.mMatrix[row][column]))
+            {
+                return;
+            }
+        }
+    }
+
+    capture.split_sky_environment = metal_environment;
+    capture.split_sky_rainbow = metal_rainbow;
+    capture.split_sky_halo = metal_halo;
+    capture.split_sky_camera_local[0] = 0.f;
+    capture.split_sky_camera_local[1] = camera_height_local;
+    capture.split_sky_camera_local[2] = 0.f;
+    capture.split_sky_camera_local[3] = 0.f;
+    for (U32 column = 0; column < 3; ++column)
+    {
+        for (U32 row = 0; row < 3; ++row)
+        {
+            capture.split_sky_environment_rotation[column][row] =
+                environment_rotation.mMatrix[column][row];
+        }
+        capture.split_sky_environment_rotation[column][3] = 0.f;
+    }
+    capture.split_sky_exposure_scale = exposure_scale;
+    capture.split_sky_horizontal_fraction = horizontal_fraction;
+    capture.split_sky_windlight_hdr_scale = sky_hdr_scale;
+
+    const LLEnvironment& current_environment = LLEnvironment::instance();
+    const LLEnvironment::EnvironmentUBOData& data =
+        current_environment.getEnvironmentUBOData();
+    ALMetalWorldWindLightSkyConstants& constants =
+        capture.split_sky_windlight_constants;
+    constants.camera_local[1] = camera_height_local;
+    const LLVector4 light_direction =
+        current_environment.getClampedLightNorm();
+    std::memcpy(constants.light_density, light_direction.mV,
+                sizeof(F32) * 3);
+    constants.light_density[3] = density_multiplier;
+    std::memcpy(constants.blue_horizon, data.blue_horizon,
+                sizeof(data.blue_horizon));
+    constants.blue_horizon[3] = data.haze_horizon;
+    std::memcpy(constants.glow, data.glow, sizeof(data.glow));
+    constants.glow[3] = data.max_y;
+    std::memcpy(constants.haze_extinction, data.haze_extinction,
+                sizeof(data.haze_extinction));
+    std::memcpy(constants.blue_weight, data.blue_weight,
+                sizeof(data.blue_weight));
+    std::memcpy(constants.haze_weight, data.haze_weight,
+                sizeof(data.haze_weight));
+    std::memcpy(constants.sky_light, data.sky_light,
+                sizeof(data.sky_light));
+    std::memcpy(constants.sky_ambient, data.sky_ambient,
+                sizeof(data.sky_ambient));
+    std::memcpy(constants.sky_light_atten, data.sky_light_atten,
+                sizeof(data.sky_light_atten));
+    std::memcpy(constants.sky_ambient_below, data.sky_ambient_below,
+                sizeof(data.sky_ambient_below));
+    constants.sky_ambient_below[3] = data.cloud_shadow;
+    constants.optics[0] = moisture_level;
+    constants.optics[1] = droplet_radius;
+    constants.optics[2] = ice_level;
+    constants.optics[3] = sun_moon_glow_factor;
+    capture.split_sky_complete = true;
+    capture.split_sky_active = true;
+}
+
+void LLPipeline::captureMetalWorldSplitSkyBatch(LLVertexBuffer* buffer)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->split_sky_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.split_sky_complete || !buffer ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer() ||
+        buffer->getNumVerts() == 0 || buffer->getNumIndices() < 3 ||
+        (buffer->getIndexStride() != 2 &&
+         buffer->getIndexStride() != 4))
+    {
+        capture.split_sky_complete = false;
+        capture.split_sky_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldHDRISkyBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset =
+        buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = buffer->getNumIndices();
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    capture.split_sky_batches.push_back(batch);
+}
+
+void LLPipeline::endMetalWorldSplitSky()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->split_sky_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.split_sky_active = false;
+    if (capture.split_sky_batches.empty())
+    {
+        capture.split_sky_complete = false;
+    }
+}
+
 void LLPipeline::beginMetalWorldWindLightSky(
     LLViewerTexture* rainbow, LLViewerTexture* halo,
     F32 camera_height_local, F32 moisture_level,
@@ -1331,7 +1544,8 @@ void LLPipeline::beginMetalWorldWindLightSky(
         sky_hdr_scale,
     }};
     if (capture.pass_active || capture.hdri_sky_active ||
-        capture.hdri_sky_complete || !metal_rainbow || !metal_halo ||
+        capture.hdri_sky_complete || capture.split_sky_active ||
+        capture.split_sky_complete || !metal_rainbow || !metal_halo ||
         std::any_of(loose_constants.begin(), loose_constants.end(),
                     [](F32 value) { return !std::isfinite(value); }) ||
         moisture_level < 0.f || droplet_radius < 0.f ||
@@ -2266,6 +2480,17 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.hdri_sky_active = false;
         capture.hdri_sky_complete = false;
         capture.hdri_sky_native_available = false;
+        capture.split_sky_batches.clear();
+        capture.split_sky_environment = nullptr;
+        capture.split_sky_rainbow = nullptr;
+        capture.split_sky_halo = nullptr;
+        capture.split_sky_exposure_scale = 1.f;
+        capture.split_sky_horizontal_fraction = 0.f;
+        capture.split_sky_windlight_constants = {};
+        capture.split_sky_windlight_hdr_scale = 1.f;
+        capture.split_sky_active = false;
+        capture.split_sky_complete = false;
+        capture.split_sky_native_available = false;
         capture.windlight_sky_batches.clear();
         capture.windlight_sky_rainbow = nullptr;
         capture.windlight_sky_halo = nullptr;
@@ -5348,6 +5573,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     else
     {
         capture.hdri_sky_native_available = false;
+        capture.split_sky_native_available = false;
         capture.windlight_sky_native_available = false;
         capture.windlight_stars_native_available = false;
         capture.windlight_heavenly_bodies_native_available = false;
@@ -5390,6 +5616,69 @@ void LLPipeline::endMetalWorldGBufferCapture()
             }
         }
         if (!capture.hdri_sky_native_available &&
+            capture.split_sky_complete &&
+            !capture.split_sky_active &&
+            !capture.split_sky_batches.empty() &&
+            capture.split_sky_environment &&
+            capture.split_sky_rainbow && capture.split_sky_halo)
+        {
+            ALMetalWorldWindLightSkyScene windlight_scene;
+            windlight_scene.batches = capture.split_sky_batches.data();
+            windlight_scene.batch_count = capture.split_sky_batches.size();
+            windlight_scene.rainbow_texture = capture.split_sky_rainbow;
+            windlight_scene.halo_texture = capture.split_sky_halo;
+            windlight_scene.constants =
+                capture.split_sky_windlight_constants;
+            windlight_scene.sky_hdr_scale =
+                capture.split_sky_windlight_hdr_scale;
+            windlight_scene.width = capture.width;
+            windlight_scene.height = capture.height;
+            windlight_scene.normal_hdr = capture.normal_hdr;
+            windlight_scene.hdr = capture.hdr;
+            windlight_scene.reverse_z = capture.reverse_z;
+            error.clear();
+            capture.split_sky_native_available =
+                capture.renderer->compositeWindLightSky(
+                    *target, windlight_scene, &error);
+
+            if (capture.split_sky_native_available)
+            {
+                ALMetalWorldHDRISkyScene hdri_scene;
+                hdri_scene.batches = capture.split_sky_batches.data();
+                hdri_scene.batch_count = capture.split_sky_batches.size();
+                hdri_scene.environment_texture =
+                    capture.split_sky_environment;
+                std::memcpy(hdri_scene.camera_local,
+                            capture.split_sky_camera_local,
+                            sizeof(hdri_scene.camera_local));
+                std::memcpy(hdri_scene.environment_rotation,
+                            capture.split_sky_environment_rotation,
+                            sizeof(hdri_scene.environment_rotation));
+                hdri_scene.exposure_scale =
+                    capture.split_sky_exposure_scale;
+                hdri_scene.horizontal_fraction =
+                    capture.split_sky_horizontal_fraction;
+                hdri_scene.width = capture.width;
+                hdri_scene.height = capture.height;
+                hdri_scene.normal_hdr = capture.normal_hdr;
+                hdri_scene.hdr = capture.hdr;
+                hdri_scene.reverse_z = capture.reverse_z;
+                error.clear();
+                capture.split_sky_native_available =
+                    capture.renderer->compositeHDRISky(
+                        *target, hdri_scene, &error);
+            }
+            if (!capture.split_sky_native_available)
+            {
+                LL_WARNS("Metal")
+                    << "Native partial-HDRI sky retained clear-depth GL "
+                       "authority after composite failure"
+                    << (error.empty() ? "" : ": ") << error
+                    << LL_ENDL;
+            }
+        }
+        if (!capture.hdri_sky_native_available &&
+            !capture.split_sky_native_available &&
             capture.windlight_sky_complete &&
             !capture.windlight_sky_active &&
             !capture.windlight_sky_batches.empty() &&
@@ -5621,6 +5910,8 @@ void LLPipeline::endMetalWorldGBufferCapture()
             << capture.height
             << (capture.hdri_sky_native_available
                     ? "; full HDRI sky is native"
+                    : capture.split_sky_native_available
+                        ? "; partial HDRI/WindLight sky split is native"
                     : capture.windlight_sky_native_available
                         ? capture.windlight_clouds_expected
                             ? "; full WindLight sky and clouds are native"
@@ -5642,6 +5933,15 @@ void LLPipeline::endMetalWorldGBufferCapture()
     capture.hdri_sky_environment = nullptr;
     capture.hdri_sky_active = false;
     capture.hdri_sky_complete = false;
+    capture.split_sky_batches.clear();
+    capture.split_sky_environment = nullptr;
+    capture.split_sky_rainbow = nullptr;
+    capture.split_sky_halo = nullptr;
+    capture.split_sky_exposure_scale = 1.f;
+    capture.split_sky_horizontal_fraction = 0.f;
+    capture.split_sky_windlight_constants = {};
+    capture.split_sky_active = false;
+    capture.split_sky_complete = false;
     capture.windlight_sky_batches.clear();
     capture.windlight_sky_rainbow = nullptr;
     capture.windlight_sky_halo = nullptr;
@@ -6130,12 +6430,16 @@ void LLPipeline::renderMetalWorldBaseLighting(
     constants.surface[0] = mDeferredUBOData.specular_exponent;
     constants.surface[1] = capture.normal_hdr ? 1.f : 0.f;
     const bool native_sky = capture.hdri_sky_native_available ||
+        capture.split_sky_native_available ||
         capture.windlight_sky_native_available;
-    constants.sky_transfer[0] = capture.windlight_sky_native_available
-        ? capture.windlight_sky_hdr_scale : 1.f;
+    constants.sky_transfer[0] = capture.split_sky_native_available
+        ? capture.split_sky_windlight_hdr_scale
+        : capture.windlight_sky_native_available
+            ? capture.windlight_sky_hdr_scale : 1.f;
     constants.sky[0] = native_sky ? 1u : 0u;
     constants.sky[1] = capture.hdr ? 1u : 0u;
-    constants.sky[2] = capture.windlight_sky_native_available ? 1u : 0u;
+    constants.sky[2] = capture.split_sky_native_available
+        ? 2u : capture.windlight_sky_native_available ? 1u : 0u;
     constants.config[0] = capture.reverse_z ? 1u : 0u;
     constants.config[1] = LLRender::sClassicMode ? 1u : 0u;
     constants.config[2] = has_sun_shadow ? 1u : 0u;

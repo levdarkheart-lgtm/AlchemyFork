@@ -7073,15 +7073,21 @@ fragment float4 almetal_world_base_light_fragment(
         // A clear target also has alpha one. Require the explicit
         // transaction bit and the family-specific zero-normal marker rather
         // than accepting diagnostic clear pixels as sky.
-        const bool windlight_sky = constants.sky.z != 0u;
+        // Family 0 is full HDRI, 1 is full WindLight and 2 is the
+        // split-screen transaction. The split decodes each clear-depth pixel
+        // from the exact family marker written by its branch.
+        const bool windlight_marker =
+            normal_sample.r < 0.001 &&
+            normal_sample.b < 0.001 &&
+            normal_sample.a < 0.1;
+        const bool hdri_marker =
+            max(normal_sample.r,
+                max(normal_sample.g, normal_sample.b)) < 0.001 &&
+            normal_sample.a > 0.9;
+        const bool windlight_sky = constants.sky.z == 1u ||
+            (constants.sky.z == 2u && windlight_marker);
         const bool sky_marker = constants.sky.x != 0u &&
-            (windlight_sky
-                ? normal_sample.r < 0.001 &&
-                  normal_sample.b < 0.001 &&
-                  normal_sample.a < 0.1
-                : max(normal_sample.r,
-                      max(normal_sample.g, normal_sample.b)) < 0.001 &&
-                  normal_sample.a > 0.9);
+            (windlight_sky ? windlight_marker : hdri_marker);
         if (!sky_marker)
         {
             discard_fragment();

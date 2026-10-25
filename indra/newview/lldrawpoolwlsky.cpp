@@ -206,8 +206,18 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
         const bool hdri_sky = use_hdri_sky();
 #if LL_DARWIN
         bool native_hdri_capture = false;
+        bool native_split_capture = false;
         bool native_windlight_capture = false;
 #endif
+        static LLCachedControl<F32> hdri_exposure(
+            gSavedSettings, "RenderHDRIExposure", 0.0f);
+        static LLCachedControl<F32> hdri_rotation(
+            gSavedSettings, "RenderHDRIRotation", 0.f);
+        static LLCachedControl<F32> hdri_split(
+            gSavedSettings, "RenderHDRISplitScreen", 1.f);
+        LLMatrix3 hdri_rotation_matrix;
+        hdri_rotation_matrix.setRot(
+            0.f, static_cast<F32>(hdri_rotation) * DEG_TO_RAD, 0.f);
         // The sky again, behind everything, for the haze pass to converge far water on (hazeF.glsl): the main view's
         // only, and only when water is in it; an HDRI sky is colour already shaded, which the haze cannot take the
         // same way. Whether any water shows is asked first, before the sky binds its textures.
@@ -230,25 +240,21 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
                 gGL.getTextureSlot(idx)->bindSampled(gEXRImage, ALSamplers::TrilinearClamp);
             }
 
-            static LLCachedControl<F32> hdri_exposure(gSavedSettings, "RenderHDRIExposure", 0.0f);
-            static LLCachedControl<F32> hdri_rotation(gSavedSettings, "RenderHDRIRotation", 0.f);
-            static LLCachedControl<F32> hdri_split(gSavedSettings, "RenderHDRISplitScreen", 1.f);
-
-            LLMatrix3 rot;
-            rot.setRot(0.f, hdri_rotation*DEG_TO_RAD, 0.f);
-
             sky_shader->uniform1f(LLShaderMgr::SKY_HDR_SCALE, powf(2.f, hdri_exposure));
-            sky_shader->uniformMatrix3fv(LLShaderMgr::DEFERRED_ENV_MAT, 1, GL_FALSE, (F32*) rot.mMatrix);
+            sky_shader->uniformMatrix3fv(
+                LLShaderMgr::DEFERRED_ENV_MAT, 1, GL_FALSE,
+                (F32*)hdri_rotation_matrix.mMatrix);
             sky_shader->uniform1f(LLShaderMgr::HDRI_SPLIT_SCREEN, gCubeSnapshot ? 1.f : hdri_split);
 #if LL_DARWIN
             // The full-HDRI case owns every visible sky layer: the pool's
             // later star/body/effect/cloud draws all opt out through
-            // use_hdri_sky(). A partial split still needs the complementary
-            // WindLight branch and therefore remains GL-owned fail-closed.
+            // use_hdri_sky(). A partial split is captured below once the
+            // complementary WindLight inputs have been resolved.
             if (!gCubeSnapshot && hdri_split >= 1.f)
             {
                 gPipeline.beginMetalWorldHDRISky(
-                    gEXRImage.get(), powf(2.f, hdri_exposure), rot,
+                    gEXRImage.get(), powf(2.f, hdri_exposure),
+                    hdri_rotation_matrix,
                     camHeightLocal);
                 native_hdri_capture = true;
             }
@@ -299,6 +305,18 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
                 windlight_sky_hdr_scale(psky));
             native_windlight_capture = true;
         }
+        else if (!gCubeSnapshot && hdri_split > 0.f && hdri_split < 1.f)
+        {
+            gPipeline.beginMetalWorldSplitSky(
+                gEXRImage.get(), powf(2.f, hdri_exposure),
+                hdri_rotation_matrix, hdri_split,
+                rainbow_tex, halo_tex, camHeightLocal,
+                moisture_level, droplet_radius, ice_level,
+                psky->getSunMoonGlowFactor(),
+                psky->getDensityMultiplier(),
+                windlight_sky_hdr_scale(psky));
+            native_split_capture = true;
+        }
 #endif
 
         /// Render the skydome
@@ -307,6 +325,10 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
         if (native_hdri_capture)
         {
             gPipeline.endMetalWorldHDRISky();
+        }
+        if (native_split_capture)
+        {
+            gPipeline.endMetalWorldSplitSky();
         }
         if (native_windlight_capture)
         {

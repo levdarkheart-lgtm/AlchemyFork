@@ -4702,6 +4702,86 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(error == "Metal world WindLight sky scene is incomplete");
         error.clear();
 
+        // Partial HDRI is one fail-closed transaction: WindLight first owns
+        // every clear-depth pixel, then HDRI overwrites exactly the left-hand
+        // pixel centers selected by skyF.glsl's split inequality.
+        auto split_gbuffer = renderer->render(gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(split_gbuffer);
+        REQUIRE(renderer->compositeWindLightSky(
+            *split_gbuffer, windlight_scene, &error));
+        sky_scene.horizontal_fraction = 0.5f;
+        REQUIRE(renderer->compositeHDRISky(
+            *split_gbuffer, sky_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> split_albedo{};
+        std::array<std::uint16_t, 32 * 32 * 4> split_normal{};
+        REQUIRE(split_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, split_albedo.data(), 32 * 4,
+            &error));
+        REQUIRE(split_gbuffer->colorTexture(2)->readback(
+            *device, 0, 0, {}, split_normal.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const std::size_t split_left = (2 * 32 + 2) * 4;
+        const std::size_t split_right = (2 * 32 + 29) * 4;
+        const std::size_t split_last_hdri = (2 * 32 + 15) * 4;
+        const std::size_t split_first_windlight = (2 * 32 + 16) * 4;
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(split_albedo[split_left + channel] ==
+                  sky_albedo[split_left + channel]);
+            CHECK(split_albedo[split_right + channel] ==
+                  windlight_albedo[split_right + channel]);
+            CHECK(split_albedo[center + channel] ==
+                  before_sky_albedo[center + channel]);
+        }
+        CHECK(split_normal[split_left + 3] == 65535);
+        CHECK(split_normal[split_right + 3] == 0);
+        CHECK(split_normal[split_last_hdri + 3] == 65535);
+        CHECK(split_normal[split_first_windlight + 3] == 0);
+
+        batch.modelview_projection[10] = -1.f;
+        gbuffer_scene.reverse_z = true;
+        auto reverse_split_gbuffer = renderer->render(
+            gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_split_gbuffer);
+        windlight_scene.reverse_z = true;
+        REQUIRE(renderer->compositeWindLightSky(
+            *reverse_split_gbuffer, windlight_scene, &error));
+        sky_scene.reverse_z = true;
+        REQUIRE(renderer->compositeHDRISky(
+            *reverse_split_gbuffer, sky_scene, &error));
+        std::array<std::uint8_t, 32 * 32 * 4> reverse_split_albedo{};
+        REQUIRE(reverse_split_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_split_albedo.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(reverse_split_albedo == split_albedo);
+        batch.modelview_projection[10] = 1.f;
+        gbuffer_scene.reverse_z = false;
+        windlight_scene.reverse_z = false;
+        sky_scene.reverse_z = false;
+
+        sky_scene.horizontal_fraction = 0.f;
+        REQUIRE(renderer->compositeHDRISky(
+            *split_gbuffer, sky_scene, &error));
+        std::array<std::uint8_t, 32 * 32 * 4> zero_split_albedo{};
+        REQUIRE(split_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, zero_split_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(zero_split_albedo == split_albedo);
+
+        sky_scene.horizontal_fraction = 1.1f;
+        error.clear();
+        CHECK_FALSE(renderer->compositeHDRISky(
+            *split_gbuffer, sky_scene, &error));
+        CHECK(error == "Metal world HDRI sky scene is incomplete");
+        error.clear();
+        sky_scene.horizontal_fraction = 1.f;
+
         // Restore the HDRI family before the existing light-map and base
         // checks so each transfer is independently identified by its marker.
         REQUIRE(renderer->compositeHDRISky(
@@ -5188,6 +5268,45 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         }
         CHECK(base_windlight_pixels[outside + 3] == 0);
 
+        // Family 2 decodes the partial split per pixel: the HDRI marker stays
+        // linear and unscaled, while the WindLight marker receives the exact
+        // display decode and sky_hdr_scale.
+        base_scene.gbuffer = split_gbuffer.get();
+        base_scene.constants.sky[2] = 2;
+        auto base_with_split = renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(base_with_split);
+        std::array<std::uint8_t, 32 * 32 * 4> base_split_pixels{};
+        REQUIRE(base_with_split->colorTexture(0)->readback(
+            *device, 0, 0, {}, base_split_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                  base_split_pixels[split_left + 0]) - 128) <= 1);
+        CHECK(std::abs(static_cast<int>(
+                  base_split_pixels[split_left + 1]) - 64) <= 1);
+        CHECK(std::abs(static_cast<int>(
+                  base_split_pixels[split_left + 2]) - 191) <= 1);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float expected_linear = std::clamp(
+                srgb_to_linear(
+                    windlight_albedo[split_right + channel] / 255.f) *
+                    2.f,
+                0.f, 1.f);
+            const int expected = static_cast<int>(std::lround(
+                expected_linear * 255.f));
+            CHECK(std::abs(static_cast<int>(
+                      base_split_pixels[split_right + channel]) -
+                  expected) <= 1);
+            CHECK(base_split_pixels[center + channel] ==
+                  base_pixels[center + channel]);
+        }
+        CHECK(base_split_pixels[split_left + 3] == 0);
+        CHECK(base_split_pixels[split_right + 3] == 0);
+        base_scene.gbuffer = pbr_gbuffer.get();
+
         REQUIRE(renderer->compositeHDRISky(
             *pbr_gbuffer, sky_scene, &error));
         INFO(error);
@@ -5561,6 +5680,31 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         REQUIRE(renderer->compositeHDRISky(
             *hdr_gbuffer, sky_scene, &error));
         INFO(error);
+        auto hdr_split_gbuffer = renderer->render(
+            gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(hdr_split_gbuffer);
+        windlight_scene.hdr = true;
+        REQUIRE(renderer->compositeWindLightSky(
+            *hdr_split_gbuffer, windlight_scene, &error));
+        sky_scene.horizontal_fraction = 0.5f;
+        REQUIRE(renderer->compositeHDRISky(
+            *hdr_split_gbuffer, sky_scene, &error));
+        INFO(error);
+        std::array<std::uint32_t, 32 * 32> hdr_split_emissive{};
+        std::array<std::uint16_t, 32 * 32 * 4> hdr_split_normal{};
+        REQUIRE(hdr_split_gbuffer->colorTexture(3)->readback(
+            *device, 0, 0, {}, hdr_split_emissive.data(), 32 * 4,
+            &error));
+        REQUIRE(hdr_split_gbuffer->colorTexture(2)->readback(
+            *device, 0, 0, {}, hdr_split_normal.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(hdr_split_emissive[split_left / 4] != 0);
+        CHECK(hdr_split_emissive[split_right / 4] != 0);
+        CHECK(hdr_split_normal[split_left + 3] == 65535);
+        CHECK(hdr_split_normal[split_right + 3] == 0);
+        sky_scene.horizontal_fraction = 1.f;
         base_scene.gbuffer = hdr_gbuffer.get();
         base_scene.hdr = true;
         base_scene.hero_probe = nullptr;
@@ -5587,9 +5731,34 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(hdr_base_pixels[outside + 2] <= 0x3a40);
         CHECK(hdr_base_pixels[outside + 3] == 0);
 
+        base_scene.gbuffer = hdr_split_gbuffer.get();
+        base_scene.constants.sky[2] = 2;
+        base_scene.constants.sky_transfer[0] = 2.f;
+        auto hdr_split_base = renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(hdr_split_base);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            hdr_split_base_pixels{};
+        REQUIRE(hdr_split_base->colorTexture(0)->readback(
+            *device, 0, 0, {}, hdr_split_base_pixels.data(),
+            32 * 8, &error));
+        INFO(error);
+        CHECK(hdr_split_base_pixels[split_left + 0] >= 0x37e0);
+        CHECK(hdr_split_base_pixels[split_left + 0] <= 0x3820);
+        CHECK(hdr_split_base_pixels[split_left + 1] >= 0x33e0);
+        CHECK(hdr_split_base_pixels[split_left + 1] <= 0x3420);
+        CHECK(hdr_split_base_pixels[split_left + 2] >= 0x39c0);
+        CHECK(hdr_split_base_pixels[split_left + 2] <= 0x3a40);
+        CHECK(hdr_split_base_pixels[split_right + 0] > 0);
+        CHECK(hdr_split_base_pixels[split_right + 1] > 0);
+        CHECK(hdr_split_base_pixels[split_right + 2] > 0);
+        base_scene.gbuffer = hdr_gbuffer.get();
+        base_scene.constants.sky[2] = 0;
+        base_scene.constants.sky_transfer[0] = 1.f;
+
         // Exercise the HDR WindLight variant: it retains display-encoded
         // color in R11G11B10F, then the base owner decodes and scales it.
-        windlight_scene.hdr = true;
         REQUIRE(renderer->compositeWindLightSky(
             *hdr_gbuffer, windlight_scene, &error));
         star_scene.hdr = true;

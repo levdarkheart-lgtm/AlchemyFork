@@ -363,6 +363,10 @@ struct ALMetalWorldHDRISkyScene
         {0.f, 0.f, 1.f, 0.f},
     };
     float exposure_scale = 1.f;
+    // Fraction of the target's left edge written by the HDRI branch. One is
+    // the ordinary full panorama; intermediate values reproduce the GLSL
+    // split-screen pixel-center test after WindLight fills the target.
+    float horizontal_fraction = 1.f;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     bool normal_hdr = false;
@@ -595,8 +599,8 @@ struct alignas(16) ALMetalWorldBaseLightingConstants
     // x = WindLight sky_hdr_scale. The HDRI path leaves this at one.
     float sky_transfer[4] = {1.f, 0.f, 0.f, 0.f};
     // x = a native sky transaction populated the clear-depth pixels,
-    // y = the G-buffer has an emissive attachment, z = WindLight rather than
-    // HDRI. w is reserved for future sky-family state.
+    // y = the G-buffer has an emissive attachment, z = sky family
+    // (0 HDRI, 1 WindLight, 2 split). w is reserved.
     std::uint32_t sky[4]{};
     // x = reverse Z, y = classic mode, z = sun shadow, w = SSAO.
     std::uint32_t config[4]{};

@@ -661,6 +661,16 @@ public:
         const LLMatrix3& environment_rotation, F32 camera_height_local);
     void captureMetalWorldHDRISkyBatch(LLVertexBuffer* buffer);
     void endMetalWorldHDRISky();
+    void beginMetalWorldSplitSky(
+        LLImageGL* environment, F32 exposure_scale,
+        const LLMatrix3& environment_rotation, F32 horizontal_fraction,
+        LLViewerTexture* rainbow, LLViewerTexture* halo,
+        F32 camera_height_local, F32 moisture_level,
+        F32 droplet_radius, F32 ice_level,
+        F32 sun_moon_glow_factor, F32 density_multiplier,
+        F32 sky_hdr_scale);
+    void captureMetalWorldSplitSkyBatch(LLVertexBuffer* buffer);
+    void endMetalWorldSplitSky();
     void beginMetalWorldWindLightSky(
         LLViewerTexture* rainbow, LLViewerTexture* halo,
         F32 camera_height_local, F32 moisture_level,
