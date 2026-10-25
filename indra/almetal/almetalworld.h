@@ -224,12 +224,15 @@ struct ALMetalWorldSimpleBatch
     bool water_surface = false;
     bool atmospheric_haze = false;
     bool pre_water_alpha = false;
+    bool post_water_alpha = false;
+    bool post_water_glow = false;
     bool pre_water_fullbright = false;
     bool pre_water_simple = false;
     bool pre_water_material = false;
     bool pre_water_pbr = false;
     bool pre_water_shadows = false;
     bool pre_water_particle = false;
+    bool pre_water_alpha_writes_coverage = false;
     float pre_water_minimum_alpha = 0.004f;
     ALMetalBlendFactor pre_water_source_rgb =
         ALMetalBlendFactor::source_alpha;

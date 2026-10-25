@@ -607,6 +607,8 @@ public:
     void beginMetalWorldPostDeferredCapture();
     void beginMetalWorldPreWaterAlphaPhase();
     void endMetalWorldPreWaterAlphaPhase();
+    void beginMetalWorldPostWaterAlphaPhase();
+    void endMetalWorldPostWaterAlphaPhase();
     void beginMetalWorldWaterExclusionPass();
     void captureMetalWorldWaterHaze();
     void captureMetalWorldWaterSurface(
@@ -640,6 +642,10 @@ public:
                                    bool indexed_materials);
     void captureMetalWorldLegacyGlowBatch(const LLDrawInfo& params,
                                           bool indexed_materials);
+    void captureMetalWorldPostWaterLegacyGlowBatch(
+        const LLDrawInfo& params);
+    void captureMetalWorldPostWaterPBRGlowBatch(
+        const LLDrawInfo& params);
     void captureMetalWorldBumpBatch(const LLDrawInfo& params,
                                    LLViewerTexture* normal_texture);
     void captureMetalWorldTreeBatch(LLVertexBuffer* buffer,

@@ -557,6 +557,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool world_post_deferred_active = false;
     bool world_post_deferred_phase = false;
     bool world_pre_water_alpha_active = false;
+    bool world_post_water_alpha_active = false;
     bool impostor_fullbright = false;
     bool impostor_shiny = false;
     bool impostor_emboss = false;
@@ -970,6 +971,8 @@ bool fillMetalWorldPreWaterAlphaDraw(
     bool particle_or_hud_particle)
 {
     batch.pre_water_particle = particle_or_hud_particle;
+    batch.pre_water_alpha_writes_coverage =
+        LLPipeline::alphaWritesCoverage();
     if (!metalWorldAlphaBlendFactor(
             static_cast<LLRender::eBlendFactor>(params.mBlendFuncSrc),
             batch.pre_water_source_rgb) ||
@@ -2797,6 +2800,7 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.world_post_deferred_active = true;
     capture.world_post_deferred_phase = false;
     capture.world_pre_water_alpha_active = false;
+    capture.world_post_water_alpha_active = false;
     capture.impostor_fullbright = false;
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
@@ -2950,6 +2954,7 @@ void LLPipeline::beginMetalWorldPreWaterAlphaPhase()
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (capture.pass_active || capture.world_pre_water_alpha_active ||
+        capture.world_post_water_alpha_active ||
         !fillMetalWorldAlphaEnvironment(capture.alpha_environment))
     {
         capture.complete = false;
@@ -2979,6 +2984,49 @@ void LLPipeline::endMetalWorldPreWaterAlphaPhase()
     capture.impostor_fullbright = false;
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
+}
+
+void LLPipeline::beginMetalWorldPostWaterAlphaPhase()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    // The optional post-alpha 0.33-cutoff depth replay is a distinct DoF
+    // attachment owner. Until that owner is native, retain the complete GL
+    // transaction rather than publish a colour-correct target with stale
+    // static-alpha depth.
+    if (capture.pass_active || capture.world_pre_water_alpha_active ||
+        capture.world_post_water_alpha_active ||
+        (RenderDepthOfField && !gCubeSnapshot) ||
+        !capture.atmospheric_haze_valid ||
+        !capture.alpha_environment_valid)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        capture.world_post_water_alpha_active = false;
+        return;
+    }
+    capture.world_post_water_alpha_active = true;
+}
+
+void LLPipeline::endMetalWorldPostWaterAlphaPhase()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_post_water_alpha_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.world_post_water_alpha_active = false;
+    capture.pass_active = false;
+    capture.rigged = false;
+    capture.pbr = false;
+    capture.legacy_glow = false;
+    capture.pbr_glow = false;
 }
 
 void LLPipeline::beginMetalWorldWaterExclusionPass()
@@ -3123,6 +3171,7 @@ void LLPipeline::captureMetalWorldWaterSurface(
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (capture.pass_active || capture.world_pre_water_alpha_active ||
+        capture.world_post_water_alpha_active ||
         capture.water_surface_valid || !capture.water_haze_valid ||
         (!surface.underwater && !capture.alpha_environment_valid))
     {
@@ -3178,6 +3227,7 @@ void LLPipeline::captureMetalWorldAtmospherics()
     const bool sky_behind = !gCubeSnapshot && mRT == &mMainRT &&
         mSkyBehind != nullptr;
     if (capture.pass_active || capture.world_pre_water_alpha_active ||
+        capture.world_post_water_alpha_active ||
         capture.atmospheric_haze_valid ||
         (sky_behind && !capture.sky_behind_target) ||
         (!capture.alpha_environment_valid &&
@@ -3252,6 +3302,18 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         [](const ALMetalWorldSimpleBatch& batch)
         {
             return batch.pre_water_pbr;
+        });
+    const bool has_post_water_alpha = std::any_of(
+        capture.batches.begin(), capture.batches.end(),
+        [](const ALMetalWorldSimpleBatch& batch)
+        {
+            return batch.post_water_alpha;
+        });
+    const bool has_post_water_glow = std::any_of(
+        capture.batches.begin(), capture.batches.end(),
+        [](const ALMetalWorldSimpleBatch& batch)
+        {
+            return batch.post_water_glow;
         });
     const bool has_water_surface = std::any_of(
         capture.batches.begin(), capture.batches.end(),
@@ -3412,7 +3474,11 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         ? "; including legacy-material pre-water alpha"
                         : "")
                 << (has_pbr_alpha
-                        ? "; including PBR pre-water alpha" : "")
+                        ? "; including PBR alpha" : "")
+                << (has_post_water_alpha
+                        ? "; including post-water alpha" : "")
+                << (has_post_water_glow
+                        ? "; including post-water emissive replay" : "")
                 << (has_water_surface
                         ? (has_above_water_surface
                                ? "; including flat above-water water"
@@ -3440,6 +3506,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
     capture.world_pre_water_alpha_active = false;
+    capture.world_post_water_alpha_active = false;
     capture.water_exclusion = false;
     capture.legacy_glow = false;
     capture.pbr_glow = false;
@@ -3471,6 +3538,7 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
     capture.world_post_deferred_active = false;
     capture.world_post_deferred_phase = false;
     capture.world_pre_water_alpha_active = false;
+    capture.world_post_water_alpha_active = false;
     capture.frame_active = false;
     capture.pass_active = false;
     capture.impostor_fullbright = false;
@@ -4404,6 +4472,81 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
     capture.batches.push_back(batch);
 }
 
+void LLPipeline::captureMetalWorldPostWaterLegacyGlowBatch(
+    const LLDrawInfo& params)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        !mMetalWorldSimpleCapture->world_post_water_alpha_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    const std::size_t first_batch = capture.batches.size();
+    capture.rigged = params.mAvatar != nullptr;
+    capture.legacy_glow = true;
+    capture.pbr_glow = false;
+    capture.pass_active = true;
+    captureMetalWorldLegacyGlowBatch(params, false);
+    capture.pass_active = false;
+    capture.legacy_glow = false;
+    if (capture.complete &&
+        capture.batches.size() == first_batch + 1)
+    {
+        capture.batches.back().post_water_glow = true;
+    }
+}
+
+void LLPipeline::captureMetalWorldPostWaterPBRGlowBatch(
+    const LLDrawInfo& params)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        !mMetalWorldSimpleCapture->world_post_water_alpha_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    const std::size_t first_batch = capture.batches.size();
+    capture.rigged = params.mAvatar != nullptr;
+    capture.alpha_mask = false;
+    capture.pbr = true;
+    capture.legacy_glow = false;
+    capture.pbr_glow = true;
+    capture.pass_active = true;
+    captureMetalWorldPBRBatch(params, false);
+    capture.pass_active = false;
+    capture.pbr = false;
+    capture.pbr_glow = false;
+    if (capture.complete &&
+        capture.batches.size() == first_batch + 1)
+    {
+        ALMetalWorldSimpleBatch& batch = capture.batches.back();
+        batch.post_water_glow = true;
+        for (std::size_t slot = 0; slot < batch.pbr_slot_count; ++slot)
+        {
+            // The alpha pool restores its ordinary 0.004 coverage floor
+            // before the group-local emissive replay. BLEND glow also
+            // weights luminosity by that sampled base coverage.
+            batch.pbr_slots[slot].alpha_cutoff = 0.004f;
+        }
+    }
+}
+
 void LLPipeline::captureMetalWorldPBRBatch(
     const LLDrawInfo& params, bool indexed_materials)
 {
@@ -4570,14 +4713,17 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     const bool world_pre_water = capture.world_post_deferred_active &&
         capture.world_pre_water_alpha_active;
-    if (!capture.impostor_alpha_active && !world_pre_water)
+    const bool world_post_water = capture.world_post_deferred_active &&
+        capture.world_post_water_alpha_active;
+    const bool world_alpha = world_pre_water || world_post_water;
+    if (!capture.impostor_alpha_active && !world_alpha)
     {
         return;
     }
     if (params.mGLTFMaterial.isNull() ||
         params.mGLTFMaterial->mAlphaMode !=
             LLGLTFMaterial::ALPHA_MODE_BLEND ||
-        (!world_pre_water &&
+        (!world_alpha &&
          (particle_or_hud_particle ||
           params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA ||
           params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)))
@@ -4588,7 +4734,7 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
     }
 
     bool uses_shadows = false;
-    if (world_pre_water)
+    if (world_alpha)
     {
         LLGLSLShader* pbr_shader =
             gDeferredPBRAlphaProgram.selectVariant();
@@ -4634,11 +4780,12 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
     captureMetalWorldPBRBatch(params, false);
     capture.pass_active = false;
     capture.pbr = false;
-    if (capture.complete && world_pre_water &&
+    if (capture.complete && world_alpha &&
         capture.batches.size() == first_batch + 1)
     {
         ALMetalWorldSimpleBatch& batch = capture.batches.back();
-        batch.pre_water_alpha = true;
+        batch.pre_water_alpha = world_pre_water;
+        batch.post_water_alpha = world_post_water;
         batch.pre_water_pbr = true;
         batch.pre_water_shadows = uses_shadows;
         if (!fillMetalWorldPreWaterAlphaDraw(
@@ -4666,7 +4813,10 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     const bool world_pre_water = capture.world_post_deferred_active &&
         capture.world_pre_water_alpha_active;
-    if (!capture.impostor_alpha_active && !world_pre_water)
+    const bool world_post_water = capture.world_post_deferred_active &&
+        capture.world_post_water_alpha_active;
+    const bool world_alpha = world_pre_water || world_post_water;
+    if (!capture.impostor_alpha_active && !world_alpha)
     {
         return;
     }
@@ -4676,12 +4826,12 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     // capture also retains particle clamp/cull state and custom RGB blend
     // factors; the avatar-impostor bake keeps its narrower source-over set.
     if (params.mGLTFMaterial.notNull() || params.mMaterial ||
-        (!world_pre_water &&
+        (!world_alpha &&
          (particle_or_hud_particle ||
           params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA ||
           params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)))
     {
-        if (world_pre_water)
+        if (world_alpha)
         {
             capture.complete = false;
             capture.batches.clear();
@@ -4690,7 +4840,7 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     }
 
     bool world_simple_shadows = false;
-    if (world_pre_water && !params.mFullbright)
+    if (world_alpha && !params.mFullbright)
     {
         if (!capture.world_alpha_lighting_valid)
         {
@@ -4739,11 +4889,12 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     capture.pass_active = true;
     captureMetalWorldGBufferBatch(params, true);
     capture.pass_active = false;
-    if (world_pre_water && capture.complete &&
+    if (world_alpha && capture.complete &&
         capture.batches.size() == first_batch + 1)
     {
         ALMetalWorldSimpleBatch& batch = capture.batches.back();
-        batch.pre_water_alpha = true;
+        batch.pre_water_alpha = world_pre_water;
+        batch.post_water_alpha = world_post_water;
         batch.pre_water_fullbright = params.mFullbright;
         batch.pre_water_simple = !params.mFullbright;
         batch.pre_water_shadows = world_simple_shadows;
@@ -5690,7 +5841,10 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     const bool world_pre_water = capture.world_post_deferred_active &&
         capture.world_pre_water_alpha_active;
-    if (!capture.impostor_alpha_active && !world_pre_water)
+    const bool world_post_water = capture.world_post_deferred_active &&
+        capture.world_post_water_alpha_active;
+    const bool world_alpha = world_pre_water || world_post_water;
+    if (!capture.impostor_alpha_active && !world_alpha)
     {
         return;
     }
@@ -5698,7 +5852,7 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
     if (shader_mask >= LLMaterial::SHADER_COUNT ||
         (shader_mask & 0x3u) != LLMaterial::DIFFUSE_ALPHA_MODE_BLEND ||
         params.mGLTFMaterial.notNull() ||
-        (!world_pre_water &&
+        (!world_alpha &&
          (particle_or_hud_particle ||
           params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA ||
           params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)))
@@ -5717,7 +5871,7 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
         capture.batches.clear();
         return;
     }
-    if (world_pre_water)
+    if (world_alpha)
     {
         uses_shadows = uses_shadows &&
             capture.impostor_directional_shadows.depth_texture != nullptr;
@@ -5730,10 +5884,10 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
             capture.impostor_legacy_alpha_uses_shadows || uses_shadows;
     }
 
-    bool& lighting_valid = world_pre_water
+    bool& lighting_valid = world_alpha
         ? capture.world_alpha_lighting_valid
         : capture.impostor_legacy_alpha_lighting_valid;
-    ALMetalWorldLegacyAlphaLighting& captured_lighting = world_pre_water
+    ALMetalWorldLegacyAlphaLighting& captured_lighting = world_alpha
         ? capture.world_alpha_lighting
         : capture.impostor_legacy_alpha_lighting;
     if (!lighting_valid)
@@ -5769,9 +5923,10 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
         capture.batches.size() == first_batch + 1)
     {
         ALMetalWorldSimpleBatch& batch = capture.batches.back();
-        if (world_pre_water)
+        if (world_alpha)
         {
-            batch.pre_water_alpha = true;
+            batch.pre_water_alpha = world_pre_water;
+            batch.post_water_alpha = world_post_water;
             batch.pre_water_material = true;
             batch.pre_water_shadows = uses_shadows;
             if (!fillMetalWorldPreWaterAlphaDraw(

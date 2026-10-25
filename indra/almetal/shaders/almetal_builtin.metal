@@ -3257,7 +3257,9 @@ fragment float4 almetal_world_pbr_glow_fragment(
         base_color_textures[material_index].sample(
             material_sampler, input.base_color_texcoord).a *
         material.properties.w;
-    constexpr float quantization_bias = 1.0 / 512.0;
+    const bool coverage_weights_glow = constants.config.y != 0u;
+    const float quantization_bias = coverage_weights_glow
+        ? 0.0 : 1.0 / 512.0;
     if (coverage < material.properties.z - quantization_bias)
     {
         discard_fragment();
@@ -3266,7 +3268,8 @@ fragment float4 almetal_world_pbr_glow_fragment(
         emissive_textures[material_index].sample(
             material_sampler, input.emissive_texcoord).rgb;
     const float luminosity = max(max(emissive.r, emissive.g), emissive.b) *
-                             input.emissive_alpha;
+                             input.emissive_alpha *
+                             (coverage_weights_glow ? coverage : 1.0);
     return float4(0.0, 0.0, 0.0, max(luminosity, 0.0));
 }
 

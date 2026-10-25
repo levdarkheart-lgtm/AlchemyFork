@@ -168,9 +168,15 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
 #if LL_DARWIN
     const bool metal_pre_water =
         getType() == LLDrawPool::POOL_ALPHA_PRE_WATER;
+    const bool metal_post_water =
+        getType() == LLDrawPool::POOL_ALPHA_POST_WATER;
     if (metal_pre_water)
     {
         gPipeline.beginMetalWorldPreWaterAlphaPhase();
+    }
+    else if (metal_post_water)
+    {
+        gPipeline.beginMetalWorldPostWaterAlphaPhase();
     }
 #endif
 
@@ -268,6 +274,10 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     if (metal_pre_water)
     {
         gPipeline.endMetalWorldPreWaterAlphaPhase();
+    }
+    else if (metal_post_water)
+    {
+        gPipeline.endMetalWorldPostWaterAlphaPhase();
     }
 #endif
 }
@@ -563,6 +573,9 @@ void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
 
     for (LLDrawInfo* draw : emissives)
     {
+#if LL_DARWIN
+        gPipeline.captureMetalWorldPostWaterLegacyGlowBatch(*draw);
+#endif
         bool tex_setup = TexSetup(draw, false, emissive_shader);
         drawEmissive(draw);
         popTextureMatrix(tex_setup);
@@ -575,6 +588,9 @@ void LLDrawPoolAlpha::renderPbrEmissives(std::vector<LLDrawInfo*>& emissives)
 
     for (LLDrawInfo* draw : emissives)
     {
+#if LL_DARWIN
+        gPipeline.captureMetalWorldPostWaterPBRGlowBatch(*draw);
+#endif
         llassert(draw->mGLTFMaterial);
         LLGLDisable cull_face(draw->mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
         draw->mGLTFMaterial->bind(draw->mTexture);
@@ -602,6 +618,9 @@ void LLDrawPoolAlpha::renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives)
 
         if (uploadMatrixPalette(draw->mAvatar, draw->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
         {
+#if LL_DARWIN
+            gPipeline.captureMetalWorldPostWaterLegacyGlowBatch(*draw);
+#endif
             bool tex_setup = TexSetup(draw, false, shader);
             drawEmissive(draw);
             popTextureMatrix(tex_setup);
@@ -624,6 +643,10 @@ void LLDrawPoolAlpha::renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissiv
         { // failed to upload matrix palette, skip rendering
             continue;
         }
+
+#if LL_DARWIN
+        gPipeline.captureMetalWorldPostWaterPBRGlowBatch(*draw);
+#endif
 
         LLGLDisable cull_face(draw->mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
         draw->mGLTFMaterial->bind(draw->mTexture);
@@ -744,8 +767,11 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                 if (gltf_mat && gltf_mat->mAlphaMode == LLGLTFMaterial::ALPHA_MODE_BLEND)
                 {
 #if LL_DARWIN
-                    gPipeline.captureMetalImpostorPBRAlphaBatch(
-                        params, is_particle_or_hud_particle);
+                    if (!depth_only)
+                    {
+                        gPipeline.captureMetalImpostorPBRAlphaBatch(
+                            params, is_particle_or_hud_particle);
+                    }
 #endif
                     target_shader = pbr_shader;
                     if (params.mAvatar != nullptr)
@@ -788,12 +814,12 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                     mat = LLPipeline::sRenderingHUDs ? nullptr : params.mMaterial;
 
 #if LL_DARWIN
-                    if (mat)
+                    if (!depth_only && mat)
                     {
                         gPipeline.captureMetalImpostorLegacyMaterialAlphaBatch(
                             params, is_particle_or_hud_particle);
                     }
-                    else
+                    else if (!depth_only)
                     {
                         gPipeline.captureMetalImpostorFlatAlphaBatch(
                             params, is_particle_or_hud_particle);

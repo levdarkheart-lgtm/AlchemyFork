@@ -5068,6 +5068,203 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(error == "Metal world atmospheric-haze marker is invalid");
         error.clear();
 
+        // Post-water alpha starts only after the atmospheric boundary and
+        // selects the camera side of the same live water plane. Static draws
+        // depth-test without writing; rigged draws retain the pool's depth
+        // write. The group-local emissive replay changes alpha only and has
+        // no legacy polygon offset.
+        atmospheric_haze.sky_behind = false;
+        atmospheric_haze.water_ground_fade = 0.f;
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.water_exclusion_surface = nullptr;
+        opaque_forward_scene.water_haze = nullptr;
+        opaque_forward_scene.water_surface = nullptr;
+        opaque_forward_scene.atmospheric_haze = &atmospheric_haze;
+        opaque_forward_scene.sky_behind = nullptr;
+        alpha_environment.water_plane[3] = 1.f;
+        alpha_environment.water_fog[2] = -1.f;
+        opaque_forward_scene.batches = &atmospheric_marker;
+        opaque_forward_scene.batch_count = 1;
+        auto post_water_atmospheric_baseline =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(post_water_atmospheric_baseline);
+        REQUIRE(post_water_atmospheric_baseline->colorTexture(0)->readback(
+            *device, 0, 0, {}, atmospheric_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+
+        ALMetalWorldSimpleBatch post_water_alpha = pre_water_alpha;
+        post_water_alpha.pre_water_alpha = false;
+        post_water_alpha.post_water_alpha = true;
+        post_water_alpha.modelview_projection[12] = 0.f;
+        std::array<ALMetalWorldSimpleBatch, 2> post_water_batches{{
+            atmospheric_marker,
+            post_water_alpha,
+        }};
+        opaque_forward_scene.batches = post_water_batches.data();
+        opaque_forward_scene.batch_count = post_water_batches.size();
+        auto post_water_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(post_water_result);
+        std::array<std::uint16_t, 32 * 32 * 4> post_water_pixels{};
+        std::array<float, 32 * 32> post_water_depth{};
+        REQUIRE(post_water_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(post_water_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, post_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(post_water_pixels[stencil_center + 1] >
+              atmospheric_pixels[stencil_center + 1]);
+        CHECK(std::abs(
+                  post_water_depth[stencil_center / 4] - 0.625f) <
+              0.0001f);
+
+        post_water_batches[1].pre_water_alpha_writes_coverage = true;
+        auto post_water_coverage_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(post_water_coverage_result);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            post_water_coverage_pixels{};
+        REQUIRE(post_water_coverage_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_coverage_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(post_water_coverage_pixels[stencil_center + 3] >
+              post_water_pixels[stencil_center + 3]);
+        post_water_batches[1].pre_water_alpha_writes_coverage = false;
+
+        ALMetalWorldSimpleBatch post_water_rigged = post_water_alpha;
+        post_water_rigged.weight_offset = weight_offset;
+        post_water_rigged.skin_palette = alpha_skin_palette.data();
+        post_water_rigged.skin_palette_float_count =
+            alpha_skin_palette.size();
+        post_water_rigged.skin_joint_count = 1;
+        post_water_batches[1] = post_water_rigged;
+        auto post_water_rigged_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(post_water_rigged_result);
+        REQUIRE(post_water_rigged_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, post_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(
+                  post_water_depth[stencil_center / 4] - 0.5f) <
+              0.0001f);
+
+        post_water_batches[1] = post_water_alpha;
+        ALMetalWorldSimpleBatch post_water_legacy_glow =
+            legacy_glow_batch;
+        post_water_legacy_glow.post_water_glow = true;
+        std::array<ALMetalWorldSimpleBatch, 3> post_water_glow_batches{{
+            atmospheric_marker,
+            post_water_alpha,
+            post_water_legacy_glow,
+        }};
+        opaque_forward_scene.batches = post_water_glow_batches.data();
+        opaque_forward_scene.batch_count =
+            post_water_glow_batches.size();
+        auto post_water_glow_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(post_water_glow_result);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            post_water_glow_pixels{};
+        REQUIRE(post_water_glow_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_glow_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(post_water_glow_pixels[stencil_center + 0] ==
+              post_water_pixels[stencil_center + 0]);
+        CHECK(post_water_glow_pixels[stencil_center + 1] ==
+              post_water_pixels[stencil_center + 1]);
+        CHECK(post_water_glow_pixels[stencil_center + 2] ==
+              post_water_pixels[stencil_center + 2]);
+        CHECK(post_water_glow_pixels[stencil_center + 3] >
+              post_water_pixels[stencil_center + 3]);
+
+        ALMetalWorldSimpleBatch post_water_pbr_glow = pbr_glow_batch;
+        post_water_pbr_glow.post_water_glow = true;
+        post_water_pbr_glow.pbr_slots[0].alpha_cutoff = 0.004f;
+        post_water_glow_batches[2] = post_water_pbr_glow;
+        auto post_water_pbr_glow_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(post_water_pbr_glow_result);
+        REQUIRE(post_water_pbr_glow_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_glow_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(post_water_glow_pixels[stencil_center + 0] ==
+              post_water_pixels[stencil_center + 0]);
+        CHECK(post_water_glow_pixels[stencil_center + 1] ==
+              post_water_pixels[stencil_center + 1]);
+        CHECK(post_water_glow_pixels[stencil_center + 2] ==
+              post_water_pixels[stencil_center + 2]);
+        CHECK(post_water_glow_pixels[stencil_center + 3] >
+              post_water_pixels[stencil_center + 3]);
+
+        post_water_batches[1].modelview[14] = -2.f;
+        opaque_forward_scene.batches = post_water_batches.data();
+        opaque_forward_scene.batch_count = post_water_batches.size();
+        auto clipped_post_water = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(clipped_post_water);
+        REQUIRE(clipped_post_water->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_glow_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(post_water_glow_pixels[stencil_center + 0] ==
+              atmospheric_pixels[stencil_center + 0]);
+        CHECK(post_water_glow_pixels[stencil_center + 1] ==
+              atmospheric_pixels[stencil_center + 1]);
+        CHECK(post_water_glow_pixels[stencil_center + 2] ==
+              atmospheric_pixels[stencil_center + 2]);
+
+        std::array<ALMetalWorldSimpleBatch, 2>
+            post_water_before_atmosphere{{
+                post_water_alpha,
+                atmospheric_marker,
+            }};
+        opaque_forward_scene.batches =
+            post_water_before_atmosphere.data();
+        opaque_forward_scene.batch_count =
+            post_water_before_atmosphere.size();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world water-haze ordering is invalid");
+        error.clear();
+
+        post_water_batches[1] = post_water_alpha;
+        post_water_batches[1].modelview_projection[14] = 0.25f;
+        opaque_forward_scene.batches = post_water_batches.data();
+        opaque_forward_scene.batch_count = post_water_batches.size();
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        auto reverse_post_water = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_post_water);
+        REQUIRE(reverse_post_water->depthStencilTexture()->readback(
+            *device, 0, 0, {}, post_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(
+                  post_water_depth[stencil_center / 4] - 0.25f) <
+              0.0001f);
+
         atmospheric_haze = {};
         opaque_forward_scene.batches = &fullbright_batch;
         opaque_forward_scene.batch_count = 1;
