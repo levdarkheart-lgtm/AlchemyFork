@@ -54,6 +54,9 @@
 #include "llmatrix4a.h"
 #include "llperfstats.h"
 
+#include <algorithm>
+#include <array>
+
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 // LLViewerJointMesh
@@ -87,98 +90,114 @@ const S32 NUM_AXES = 3;
 // rotation Z 0-n
 // pivot parent 0-n -- child = n+1
 
-static LLMatrix4    gJointMatUnaligned[LL_CHARACTER_MAX_JOINTS_PER_MESH];
-static LLMatrix3    gJointRotUnaligned[LL_CHARACTER_MAX_JOINTS_PER_MESH];
-static LLVector4    gJointPivot[LL_CHARACTER_MAX_JOINTS_PER_MESH];
+bool LLViewerJointMesh::buildJointMatrixPalette(
+    F32* destination,
+    std::size_t float_count) const
+{
+    constexpr std::size_t PALETTE_FLOAT_COUNT =
+        LL_CHARACTER_MAX_JOINTS_PER_MESH * NUM_AXES * 4;
+    if (!destination || float_count < PALETTE_FLOAT_COUNT || !mMesh)
+    {
+        return false;
+    }
+
+    LLPolyMesh* reference_mesh = mMesh->getReferenceMesh();
+    if (!reference_mesh)
+    {
+        return false;
+    }
+
+    std::fill_n(destination, PALETTE_FLOAT_COUNT, 0.f);
+    std::array<LLMatrix4, LL_CHARACTER_MAX_JOINTS_PER_MESH> joint_matrices{};
+    std::array<LLMatrix3, LL_CHARACTER_MAX_JOINTS_PER_MESH> joint_rotations{};
+    std::array<LLVector4, LL_CHARACTER_MAX_JOINTS_PER_MESH> joint_pivots{};
+
+    LLMatrix4a model_view;
+    model_view.loadu(&LLDrawPoolAvatar::getModelView().mMatrix[0][0]);
+    const std::size_t num_joints = llmin(
+        reference_mesh->mJointRenderData.size(),
+        static_cast<std::size_t>(LL_CHARACTER_MAX_JOINTS_PER_MESH));
+    for (std::size_t joint_num = 0; joint_num < num_joints; ++joint_num)
+    {
+        LLMatrix4a joint_matrix;
+        joint_matrix.setMulNoAlias(
+            reference_mesh->mJointRenderData[joint_num]->mJoint->getWorldMatrix(),
+            model_view);
+        joint_matrices[joint_num] = joint_matrix.toMatrix4();
+        joint_rotations[joint_num] = joint_matrices[joint_num].getMat3();
+    }
+
+    bool last_pivot_added = false;
+    std::size_t pivot_count = 0;
+    for (std::size_t joint_num = 0;
+         joint_num < reference_mesh->mJointRenderData.size() &&
+         pivot_count < joint_pivots.size();
+         ++joint_num)
+    {
+        LLSkinJoint* skin_joint =
+            reference_mesh->mJointRenderData[joint_num]->mSkinJoint;
+        if (!skin_joint)
+        {
+            last_pivot_added = false;
+            continue;
+        }
+        if (!last_pivot_added)
+        {
+            joint_pivots[pivot_count] =
+                LLVector4(skin_joint->mRootToParentJointSkinOffset);
+            joint_pivots[pivot_count].mV[VW] = 0.f;
+            if (++pivot_count >= joint_pivots.size())
+            {
+                break;
+            }
+        }
+        joint_pivots[pivot_count] =
+            LLVector4(skin_joint->mRootToJointSkinOffset);
+        joint_pivots[pivot_count].mV[VW] = 0.f;
+        ++pivot_count;
+        last_pivot_added = true;
+    }
+
+    for (std::size_t index = 0; index < pivot_count && index < num_joints;
+         ++index)
+    {
+        LLVector3 pivot(joint_pivots[index]);
+        pivot = pivot * joint_rotations[index];
+        joint_matrices[index].translate(pivot);
+    }
+
+    for (std::size_t joint_num = 0; joint_num < num_joints; ++joint_num)
+    {
+        joint_matrices[joint_num].transpose();
+        for (std::size_t axis = 0; axis < NUM_AXES; ++axis)
+        {
+            const F32* vector = joint_matrices[joint_num].mMatrix[axis];
+            const std::size_t offset =
+                (LL_CHARACTER_MAX_JOINTS_PER_MESH * axis + joint_num) * 4;
+            std::memcpy(destination + offset, vector, sizeof(F32) * 4);
+        }
+    }
+    return true;
+}
 
 //-----------------------------------------------------------------------------
 // uploadJointMatrices()
 //-----------------------------------------------------------------------------
 void LLViewerJointMesh::uploadJointMatrices()
 {
-    S32 joint_num;
-    LLPolyMesh *reference_mesh = mMesh->getReferenceMesh();
-
-    //calculate joint matrices
-    LLMatrix4a model_view;
-    model_view.loadu(&LLDrawPoolAvatar::getModelView().mMatrix[0][0]);
-    size_t num_joints = llmin(reference_mesh->mJointRenderData.size(), LL_CHARACTER_MAX_JOINTS_PER_MESH);
-    for (joint_num = 0; joint_num < num_joints; joint_num++)
+    std::array<GLfloat, LL_CHARACTER_MAX_JOINTS_PER_MESH * NUM_AXES * 4>
+        matrix_palette{};
+    if (!buildJointMatrixPalette(matrix_palette.data(), matrix_palette.size()))
     {
-        // joint to world to eye, in registers; only the result is stored
-        LLMatrix4a joint_mat;
-        joint_mat.setMulNoAlias(reference_mesh->mJointRenderData[joint_num]->mJoint->getWorldMatrix(), model_view);
-        gJointMatUnaligned[joint_num] = joint_mat.toMatrix4();
-        gJointRotUnaligned[joint_num] = gJointMatUnaligned[joint_num].getMat3();
+        return;
     }
-
-    bool last_pivot_uploaded{ false };
-    S32 j = 0;
-
-    //upload joint pivots
-    for (joint_num = 0; joint_num < reference_mesh->mJointRenderData.size(); joint_num++)
+    stop_glerror();
+    if (LLGLSLShader::sCurBoundShaderPtr)
     {
-        LLSkinJoint *sj = reference_mesh->mJointRenderData[joint_num]->mSkinJoint;
-        if (sj)
-        {
-            if (!last_pivot_uploaded)
-            {
-                LLVector4 parent_pivot(sj->mRootToParentJointSkinOffset);
-                parent_pivot.mV[VW] = 0.f;
-                gJointPivot[j++] = parent_pivot;
-                if (j >= LL_CHARACTER_MAX_JOINTS_PER_MESH)
-                {
-                    break;
-                }
-            }
-
-            LLVector4 child_pivot(sj->mRootToJointSkinOffset);
-            child_pivot.mV[VW] = 0.f;
-
-            gJointPivot[j++] = child_pivot;
-            if (j >= LL_CHARACTER_MAX_JOINTS_PER_MESH)
-            {
-                break;
-            }
-
-            last_pivot_uploaded = true;
-        }
-        else
-        {
-            last_pivot_uploaded = false;
-        }
+        LLGLSLShader::sCurBoundShaderPtr->uniform4fv(
+            LLViewerShaderMgr::AVATAR_MATRIX, 45, matrix_palette.data());
     }
-
-    //add pivot point into transform
-    for (S32 i = 0; i < j; i++)
-    {
-        LLVector3 pivot;
-        pivot = LLVector3(gJointPivot[i]);
-        pivot = pivot * gJointRotUnaligned[i];
-        gJointMatUnaligned[i].translate(pivot);
-    }
-
-    // upload matrices
-        GLfloat mat[45*4];
-        memset(mat, 0, sizeof(GLfloat)*45*4);
-
-        for (joint_num = 0; joint_num < num_joints; joint_num++)
-        {
-            gJointMatUnaligned[joint_num].transpose();
-
-            for (S32 axis = 0; axis < NUM_AXES; axis++)
-            {
-                F32* vector = gJointMatUnaligned[joint_num].mMatrix[axis];
-                U32 offset = LL_CHARACTER_MAX_JOINTS_PER_MESH*axis+joint_num;
-                memcpy(mat+offset*4, vector, sizeof(GLfloat)*4);
-            }
-        }
-        stop_glerror();
-        if (LLGLSLShader::sCurBoundShaderPtr)
-        {
-            LLGLSLShader::sCurBoundShaderPtr->uniform4fv(LLViewerShaderMgr::AVATAR_MATRIX, 45, mat);
-        }
-        stop_glerror();
+    stop_glerror();
 }
 
 //--------------------------------------------------------------------

@@ -268,6 +268,57 @@ struct ALMetalLitPreviewSkinnedVertex
     float4 normal;
 };
 
+// Legacy system-avatar meshes predate the four-influence object stream below.
+// Their scalar weight stores joint i in the integer part and the blend toward
+// min(i + 1, 14) in the fraction. The palette is exactly the 45 float4 layout
+// built by LLViewerJointMesh: three contiguous rows of fifteen transforms.
+static ALMetalLitPreviewSkinnedVertex almetal_lit_preview_avatar_skin_vertex(
+    float4 position,
+    float4 normal_value,
+    float encoded_weight,
+    const device float4* skin_palette)
+{
+    const uint i = uint(clamp(floor(encoded_weight), 0.0, 14.0));
+    const uint j = min(i + 1u, 14u);
+    const float blend = fract(encoded_weight);
+    const float4 row0 = mix(skin_palette[i], skin_palette[j], blend);
+    const float4 row1 = mix(skin_palette[15u + i],
+                            skin_palette[15u + j], blend);
+    const float4 row2 = mix(skin_palette[30u + i],
+                            skin_palette[30u + j], blend);
+
+    ALMetalLitPreviewSkinnedVertex output;
+    output.position = float4(dot(row0, position), dot(row1, position),
+                             dot(row2, position), 1.0);
+    const float3 normal = normal_value.xyz;
+    output.normal = float4(
+        dot(cross(row1.xyz, row2.xyz), normal),
+        dot(cross(row2.xyz, row0.xyz), normal),
+        dot(cross(row0.xyz, row1.xyz), normal), 0.0);
+    return output;
+}
+
+static ALMetalLitPreviewVaryings almetal_lit_preview_avatar_vertex_common(
+    float4 eye_position,
+    float4 eye_normal,
+    constant ALMetalLitPreviewConstants& constants)
+{
+    ALMetalLitPreviewVaryings output;
+    output.position = almetal_lit_preview_clip_position(
+        eye_position, constants);
+    const float3 normal = normalize(eye_normal.xyz);
+    const float3 direction = constants.light_direction[0].xyz;
+    const float front = max(dot(normal, direction), 0.0);
+    const float wrapped_back = sqrt(
+        max(dot(normal, -direction), 0.0) * 0.5 + 0.25);
+    const float3 lighting = constants.light_diffuse[0].rgb *
+                            (front + wrapped_back);
+    output.color = float4(
+        min(lighting * constants.diffuse_color.rgb, float3(1.0)),
+        constants.diffuse_color.a);
+    return output;
+}
+
 // Decode the viewer's object-skinning stream without changing its precision
 // contract. Palette element zero is the agent-space rebase origin; each joint
 // then contributes the three float4 columns packed by
@@ -361,6 +412,22 @@ vertex ALMetalLitPreviewVaryings almetal_lit_preview_skinned_vertex(
     return output;
 }
 
+vertex ALMetalLitPreviewVaryings almetal_lit_preview_avatar_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device float* encoded_weights [[buffer(6)]],
+    const device float4* skin_palette [[buffer(7)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalLitPreviewSkinnedVertex skinned =
+        almetal_lit_preview_avatar_skin_vertex(
+            positions[vertex_id], normals[vertex_id],
+            encoded_weights[vertex_id], skin_palette);
+    return almetal_lit_preview_avatar_vertex_common(
+        skinned.position, skinned.normal, constants);
+}
+
 fragment float4 almetal_lit_preview_fragment(
     ALMetalLitPreviewVaryings input [[stage_in]])
 {
@@ -408,6 +475,29 @@ vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_skinned_textured_ve
     return output;
 }
 
+vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_avatar_skinned_textured_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device float2* texcoords [[buffer(3)]],
+    const device float* encoded_weights [[buffer(6)]],
+    const device float4* skin_palette [[buffer(7)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalLitPreviewSkinnedVertex skinned =
+        almetal_lit_preview_avatar_skin_vertex(
+            positions[vertex_id], normals[vertex_id],
+            encoded_weights[vertex_id], skin_palette);
+    const ALMetalLitPreviewVaryings lit =
+        almetal_lit_preview_avatar_vertex_common(
+            skinned.position, skinned.normal, constants);
+    ALMetalLitPreviewTexturedVaryings output;
+    output.position = lit.position;
+    output.color = lit.color;
+    output.texcoord = texcoords[vertex_id];
+    return output;
+}
+
 fragment float4 almetal_lit_preview_textured_fragment(
     ALMetalLitPreviewTexturedVaryings input [[stage_in]],
     texture2d<float> diffuse_map [[texture(0)]],
@@ -415,6 +505,19 @@ fragment float4 almetal_lit_preview_textured_fragment(
 {
     return max(diffuse_map.sample(diffuse_sampler, input.texcoord) *
                input.color, float4(0.0));
+}
+
+fragment float4 almetal_lit_preview_avatar_fragment(
+    ALMetalLitPreviewTexturedVaryings input [[stage_in]],
+    texture2d<float> diffuse_map [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]])
+{
+    const float4 diffuse = diffuse_map.sample(diffuse_sampler, input.texcoord);
+    if (diffuse.a < 0.2)
+    {
+        discard_fragment();
+    }
+    return max(diffuse * input.color, float4(0.0));
 }
 
 static uint almetal_lit_preview_edge_index(uint vertex_id)

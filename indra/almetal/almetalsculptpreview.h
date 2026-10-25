@@ -45,6 +45,13 @@ struct ALMetalLitPreviewBatch
     const float* skin_palette = nullptr;
     std::size_t skin_palette_float_count = 0;
     std::uint32_t skin_joint_count = 0;
+    // Legacy avatar body meshes use one float per vertex: integer joint i plus
+    // a fractional blend toward min(i + 1, 14). Their fixed palette is 45
+    // float4 rows, laid out as three runs of 15 by
+    // LLViewerJointMesh::buildJointMatrixPalette. Object skinning above keeps
+    // its packed four-influence convention; the two modes are mutually
+    // exclusive even though they share the palette upload storage.
+    bool avatar_skinning = false;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;

@@ -72,6 +72,8 @@
 #include "../almetal/almetalsculptpreview.h"
 #endif
 
+#include <array>
+
 const S32 PREVIEW_BORDER_WIDTH = 2;
 const S32 PREVIEW_RESIZE_HANDLE_SIZE = S32(RESIZE_HANDLE_WIDTH * OO_SQRT2) + PREVIEW_BORDER_WIDTH;
 const S32 PREVIEW_HPAD = PREVIEW_RESIZE_HANDLE_SIZE;
@@ -351,7 +353,7 @@ void LLFloaterImagePreview::draw()
                 stop_glerror();
                 if (mAvatarPreview)
                 {
-                    mAvatarPreview->setTexture(mImagep->getTexName());
+                    mAvatarPreview->setTexture(mImagep.get());
                     mSculptedPreview->setTexture(mImagep->getTexName());
                 }
             }
@@ -729,6 +731,16 @@ S8 LLImagePreviewAvatar::getType() const
     return LLViewerDynamicTexture::LL_IMAGE_PREVIEW_AVATAR ;
 }
 
+void LLImagePreviewAvatar::setTexture(LLViewerTexture* texture)
+{
+    mPreviewTexture = texture;
+    mTextureName = texture ? texture->getTexName() : 0;
+    if (mTargetMesh)
+    {
+        mTargetMesh->setTestTexture(mTextureName);
+    }
+}
+
 void LLImagePreviewAvatar::setPreviewTarget(const std::string& joint_name, const std::string& mesh_name, LLImageRaw* imagep, F32 distance, bool male)
 {
     mTargetJoint = mDummyAvatar->mRoot->findJoint(joint_name);
@@ -784,6 +796,15 @@ void LLImagePreviewAvatar::clearPreviewTexture(const std::string& mesh_name)
 bool LLImagePreviewAvatar::render()
 {
     mNeedsUpdate = false;
+#if LL_DARWIN
+    mMetalPreview.reset();
+    mMetalPreviewDescriptor.reset();
+    if (mGLTexturep.notNull() && mGLTexturep->getMetalTexture())
+    {
+        mMetalPreviewDescriptor = std::make_unique<ALMetalTextureDescriptor>(
+            mGLTexturep->getMetalTexture()->descriptor());
+    }
+#endif
     LLVOAvatar* avatarp = mDummyAvatar;
 
     gGL.pushUIMatrix();
@@ -845,12 +866,144 @@ bool LLImagePreviewAvatar::render()
             LLDrawPoolAvatar *avatarPoolp = (LLDrawPoolAvatar *)face->getPool();
             gPipeline.enableLightsPreview();
             avatarPoolp->renderAvatars(avatarp);  // renders only one avatar
+
+#if LL_DARWIN
+            ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+            LLVertexBuffer* buffer = face->getVertexBuffer();
+            LLPolyMesh* mesh = mTargetMesh ? mTargetMesh->getMesh() : nullptr;
+            LLImageGL* preview_image = mPreviewTexture.notNull()
+                ? mPreviewTexture->getGLTexture() : nullptr;
+            const ALMetalTexture* preview_texture = preview_image
+                ? preview_image->getMetalTexture() : nullptr;
+            if (metal_device && mMetalPreviewDescriptor && buffer && mesh &&
+                preview_texture &&
+                buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) &&
+                buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) &&
+                buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) &&
+                buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT) &&
+                buffer->getMetalVertexBuffer() &&
+                buffer->getMetalIndexBuffer())
+            {
+                static ALMetalDevice* renderer_device = nullptr;
+                static std::unique_ptr<ALMetalLitPreviewRenderer> renderer;
+                std::string error;
+                if (renderer_device != metal_device)
+                {
+                    renderer.reset();
+                    renderer_device = metal_device;
+                }
+                if (!renderer)
+                {
+                    renderer = ALMetalLitPreviewRenderer::create(
+                        *metal_device, &error);
+                }
+
+                constexpr std::size_t AVATAR_PALETTE_FLOATS =
+                    LL_CHARACTER_MAX_JOINTS_PER_MESH * 3 * 4;
+                std::array<F32, AVATAR_PALETTE_FLOATS> palette{};
+                if (renderer && mTargetMesh->buildJointMatrixPalette(
+                                    palette.data(), palette.size()))
+                {
+                    ALMetalLitPreviewBatch batch;
+                    batch.vertices = buffer->getMetalVertexBuffer();
+                    batch.position_offset = buffer->getOffset(
+                        LLVertexBuffer::TYPE_VERTEX);
+                    batch.normal_offset = buffer->getOffset(
+                        LLVertexBuffer::TYPE_NORMAL);
+                    batch.texcoord_offset = buffer->getOffset(
+                        LLVertexBuffer::TYPE_TEXCOORD0);
+                    batch.weight_offset = buffer->getOffset(
+                        LLVertexBuffer::TYPE_WEIGHT);
+                    batch.skin_palette = palette.data();
+                    batch.skin_palette_float_count = palette.size();
+                    batch.skin_joint_count =
+                        LL_CHARACTER_MAX_JOINTS_PER_MESH;
+                    batch.avatar_skinning = true;
+                    batch.vertex_count = buffer->getNumVerts();
+                    batch.indices = buffer->getMetalIndexBuffer();
+                    batch.index_type = buffer->getIndexStride() == 4
+                        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+                    batch.index_offset = static_cast<std::size_t>(
+                        mesh->mFaceIndexOffset) * buffer->getIndexStride();
+                    batch.index_count = mesh->mFaceIndexCount;
+                    batch.texture = preview_texture;
+                    batch.destination_descriptor =
+                        mMetalPreviewDescriptor.get();
+                    std::memcpy(batch.modelview_projection,
+                                gGL.getProjectionMatrix().getF32ptr(),
+                                sizeof(batch.modelview_projection));
+                    for (U32 axis = 0; axis < 3; ++axis)
+                    {
+                        batch.normal_matrix[axis][axis] = 1.f;
+                    }
+
+                    LLVector4 light(LLPipeline::PreviewDirection0, 0.f);
+                    LLVector4a source;
+                    source.loadua(light.mV);
+                    LLVector4a transformed;
+                    gGL.getModelviewMatrix().transform4(source, transformed);
+                    LLVector3 direction(transformed.getF32ptr());
+                    direction.normVec();
+                    std::memcpy(batch.light_direction[0], direction.mV,
+                                sizeof(F32) * 3);
+                    std::memcpy(batch.light_diffuse[0],
+                                LLPipeline::PreviewDiffuse0.mV,
+                                sizeof(F32) * 3);
+                    const LLColor4 preview_color = mTargetMesh->isTransparent()
+                        ? LLColor4::white
+                        : LLColor4(0.7f, 0.6f, 0.3f, 1.f);
+                    std::memcpy(batch.diffuse_color, preview_color.mV,
+                                sizeof(batch.diffuse_color));
+                    mMetalPreview = renderer->render(batch, &error);
+                }
+                else if (error.empty())
+                {
+                    error = "avatar joint palette is unavailable";
+                }
+                if (!mMetalPreview)
+                {
+                    LL_WARNS("Metal")
+                        << "Could not mirror the avatar image preview: "
+                        << error << LL_ENDL;
+                }
+            }
+            else
+            {
+                LL_WARNS_ONCE("Metal")
+                    << "Avatar image preview retained GL because its native "
+                       "geometry, texture, device or destination is incomplete"
+                    << LL_ENDL;
+            }
+#endif
         }
     }
 
     gGL.popUIMatrix();
     gGL.color4f(1,1,1,1);
     return true;
+}
+
+void LLImagePreviewAvatar::postRender(bool success)
+{
+    LLViewerDynamicTexture::postRender(success);
+#if LL_DARWIN
+    if (lastPostRenderSucceeded() && mMetalPreview)
+    {
+        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
+        {
+            LL_INFOS_ONCE("Metal")
+                << "Avatar image previews own a native Metal render target"
+                << LL_ENDL;
+        }
+        else
+        {
+            LL_WARNS("Metal")
+                << "Could not publish the native avatar image preview mirror"
+                << LL_ENDL;
+        }
+    }
+    mMetalPreview.reset();
+#endif
 }
 
 //-----------------------------------------------------------------------------

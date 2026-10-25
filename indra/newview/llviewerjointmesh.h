@@ -33,6 +33,8 @@
 #include "llpolymesh.h"
 #include "v4color.h"
 
+#include <cstddef>
+
 class LLDrawable;
 class LLFace;
 class LLCharacter;
@@ -52,6 +54,12 @@ public:
 
     // Render time method to upload batches of joint matrices
     void uploadJointMatrices();
+
+    // Build the same fixed 45-float4 legacy avatar palette without touching
+    // GL. Native preview passes consume these bytes directly, while the GL
+    // upload below remains the transition authority.
+    bool buildJointMatrixPalette(F32* destination,
+                                 std::size_t float_count) const;
 
     // overloaded from base class
     U32 drawShape( F32 pixelArea, bool first_pass, bool is_dummy ) override;

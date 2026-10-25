@@ -24,6 +24,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
@@ -120,6 +121,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_textured_vertex",
             "almetal_lit_preview_skinned_textured_vertex",
             "almetal_lit_preview_textured_fragment",
+            "almetal_lit_preview_avatar_skinned_vertex",
+            "almetal_lit_preview_avatar_skinned_textured_vertex",
+            "almetal_lit_preview_avatar_fragment",
             "almetal_lit_preview_edge_u16_vertex",
             "almetal_lit_preview_edge_u32_vertex",
             "almetal_lit_preview_skinned_edge_u16_vertex",
@@ -817,9 +821,12 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             {{0.5f, 0.f, 0.f, 0.f}}, {{0.5f, 0.f, 0.f, 0.f}},
             {{0.5f, 0.f, 0.f, 0.f}}, {{0.5f, 0.f, 0.f, 0.f}},
         }};
+        const std::array<float, 6> avatar_weights{{
+            0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f,
+        }};
         std::array<std::uint8_t,
                    sizeof(positions) + sizeof(normals) + sizeof(texcoords) +
-                       sizeof(skin_weights)>
+                       sizeof(skin_weights) + sizeof(avatar_weights)>
             vertex_bytes{};
         std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
         std::memcpy(vertex_bytes.data() + sizeof(positions), normals.data(), sizeof(normals));
@@ -829,6 +836,10 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             sizeof(positions) + sizeof(normals) + sizeof(texcoords);
         std::memcpy(vertex_bytes.data() + skin_weight_offset,
                     skin_weights.data(), sizeof(skin_weights));
+        const std::size_t avatar_weight_offset =
+            skin_weight_offset + sizeof(skin_weights);
+        std::memcpy(vertex_bytes.data() + avatar_weight_offset,
+                    avatar_weights.data(), sizeof(avatar_weights));
         const std::array<std::uint16_t, 9> indices{{
             0, 1, 2, 3, 4, 5,
             // The same near triangle with reversed winding verifies that the
@@ -1292,6 +1303,71 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             }
         }
         CHECK(preserved_local_pixels > 50);
+
+        // Exercise the legacy system-avatar scalar weight convention used by
+        // clothing/body previews. Weight 0.5 blends joint 0 identity with a
+        // joint 1 transform translated +0.5 X, producing +0.25 X. The chosen
+        // sample lies inside only the translated triangle.
+        std::array<float, 45 * 4> avatar_palette{};
+        for (std::size_t joint = 0; joint < 15; ++joint)
+        {
+            avatar_palette[joint * 4 + 0] = 1.f;
+            avatar_palette[(15 + joint) * 4 + 1] = 1.f;
+            avatar_palette[(30 + joint) * 4 + 2] = 1.f;
+        }
+        avatar_palette[1 * 4 + 3] = 0.5f;
+
+        ALMetalLitPreviewBatch avatar_skinned = batch;
+        avatar_skinned.index_offset = 0;
+        avatar_skinned.index_count = 3;
+        avatar_skinned.weight_offset = avatar_weight_offset;
+        avatar_skinned.skin_palette = avatar_palette.data();
+        avatar_skinned.skin_palette_float_count = avatar_palette.size();
+        avatar_skinned.skin_joint_count = 15;
+        avatar_skinned.avatar_skinning = true;
+        std::memset(avatar_skinned.light_direction, 0,
+                    sizeof(avatar_skinned.light_direction));
+        std::memset(avatar_skinned.light_diffuse, 0,
+                    sizeof(avatar_skinned.light_diffuse));
+        avatar_skinned.light_direction[0][1] = 1.f;
+        avatar_skinned.light_diffuse[0][0] = 1.f;
+        std::fill(std::begin(avatar_skinned.diffuse_color),
+                  std::end(avatar_skinned.diffuse_color), 1.f);
+
+        auto rendered_avatar = renderer->render(avatar_skinned, &error);
+        INFO(error);
+        REQUIRE(rendered_avatar);
+        std::array<std::uint8_t, 32 * 32 * 4> avatar_pixels{};
+        REQUIRE(rendered_avatar->readback(
+            *device, 0, 0, {}, avatar_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        const std::size_t avatar_translated_interior = (16 * 32 + 24) * 4;
+        CHECK(avatar_pixels[avatar_translated_interior + 0] >= 254);
+        CHECK(avatar_pixels[avatar_translated_interior + 1] <= 1);
+        CHECK(avatar_pixels[avatar_translated_interior + 2] <= 1);
+        CHECK(avatar_pixels[avatar_translated_interior + 3] == 255);
+
+        avatar_skinned.texture = diffuse_texture.get();
+        auto rendered_avatar_textured = renderer->render(
+            avatar_skinned, &error);
+        INFO(error);
+        REQUIRE(rendered_avatar_textured);
+        std::array<std::uint8_t, 32 * 32 * 4> avatar_textured_pixels{};
+        REQUIRE(rendered_avatar_textured->readback(
+            *device, 0, 0, {}, avatar_textured_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(avatar_textured_pixels[avatar_translated_interior + 0] > 0);
+        CHECK(avatar_textured_pixels[avatar_translated_interior + 3] == 255);
+
+        avatar_skinned.skin_joint_count = 14;
+        CHECK_FALSE(renderer->render(avatar_skinned, &error));
+        CHECK(error == "Metal lit preview skinning data is invalid");
+        avatar_skinned.skin_joint_count = 15;
+        avatar_skinned.show_edges = true;
+        error.clear();
+        CHECK_FALSE(renderer->render(avatar_skinned, &error));
+        CHECK(error == "Metal lit preview skinning data is invalid");
 
         skinned.skin_joint_count = 0;
         CHECK_FALSE(renderer->render(skinned, &error));

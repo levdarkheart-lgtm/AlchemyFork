@@ -45,6 +45,7 @@ class LLViewerJointMesh;
 class LLVOAvatar;
 class LLTextBox;
 class LLVertexBuffer;
+class LLViewerTexture;
 class LLVolume;
 
 class LLImagePreviewSculpted : public LLViewerDynamicTexture
@@ -96,10 +97,11 @@ public:
     S8 getType() const override;
 
     void setPreviewTarget(const std::string& joint_name, const std::string& mesh_name, LLImageRaw* imagep, F32 distance, bool male);
-    void setTexture(U32 name) { mTextureName = name; }
+    void setTexture(LLViewerTexture* texture);
     void clearPreviewTexture(const std::string& mesh_name);
 
     bool    render() override;
+    void    postRender(bool success) override;
     void    refresh();
     void    rotate(F32 yaw_radians, F32 pitch_radians);
     void    zoom(F32 zoom_amt);
@@ -116,7 +118,12 @@ protected:
     F32         mCameraZoom;
     LLVector3   mCameraOffset;
     LLPointer<LLVOAvatar> mDummyAvatar;
+    LLPointer<LLViewerTexture> mPreviewTexture;
     U32         mTextureName;
+#if LL_DARWIN
+    std::unique_ptr<ALMetalTexture> mMetalPreview;
+    std::unique_ptr<ALMetalTextureDescriptor> mMetalPreviewDescriptor;
+#endif
 };
 
 class LLFloaterImagePreview final : public LLFloaterNameDesc
