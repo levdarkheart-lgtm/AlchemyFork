@@ -46,6 +46,11 @@
 #include "llvolumemgr.h"
 #include "pipeline.h"
 
+#if LL_DARWIN
+#include "../almetal/almetalpbrpreview.h"
+#include "../almetal/almetalresource.h"
+#endif
+
 LLGLTFMaterialPreviewMgr gGLTFMaterialPreviewMgr;
 
 namespace
@@ -465,6 +470,17 @@ bool LLGLTFPreviewTexture::render()
 
     if (!mShouldRender) { return false; }
 
+#if LL_DARWIN
+    mMetalPreview.reset();
+    if (mGLTexturep.notNull() && mGLTexturep->getMetalTexture())
+    {
+        mMetalPreviewDescriptor =
+            std::make_unique<ALMetalTextureDescriptor>(
+                mGLTexturep->getMetalTexture()->descriptor());
+    }
+    std::vector<ALMetalPBRPreviewBatch> metal_preview_batches;
+#endif
+
     // The probe pack's post target the colour correction writes, from the pool with the bloom
     // until the preview is drawn; acquired ahead of every bind below.
     ALTransientTargets    post(gPipeline.mTransientTargets);
@@ -575,6 +591,180 @@ bool LLGLTFPreviewTexture::render()
             LLRenderPass::pushGLTFBatch(*part->mDrawInfo, lastMat, lastTex);
         }
 
+#if LL_DARWIN
+        ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+        LLViewerTexture* base_color_image = mGLTFMaterial->mBaseColorTexture
+            ? mGLTFMaterial->mBaseColorTexture.get()
+            : LLViewerFetchedTexture::sWhiteImagep.get();
+        LLViewerTexture* normal_image =
+            mGLTFMaterial->mNormalTexture.notNull() &&
+            mGLTFMaterial->mNormalTexture->getDiscardLevel() <= 4
+                ? mGLTFMaterial->mNormalTexture.get()
+                : LLViewerFetchedTexture::sFlatNormalImagep.get();
+        LLViewerTexture* orm_image = mGLTFMaterial->mMetallicRoughnessTexture
+            ? mGLTFMaterial->mMetallicRoughnessTexture.get()
+            : LLViewerFetchedTexture::sWhiteImagep.get();
+        LLViewerTexture* emissive_image = mGLTFMaterial->mEmissiveTexture
+            ? mGLTFMaterial->mEmissiveTexture.get()
+            : LLViewerFetchedTexture::sWhiteImagep.get();
+        const auto metal_texture = [](LLViewerTexture* texture)
+            -> const ALMetalTexture*
+        {
+            LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+            return image ? image->getMetalTexture() : nullptr;
+        };
+        const ALMetalTexture* base_color_texture =
+            metal_texture(base_color_image);
+        const ALMetalTexture* normal_texture = metal_texture(normal_image);
+        const ALMetalTexture* orm_texture = metal_texture(orm_image);
+        const ALMetalTexture* emissive_texture = metal_texture(emissive_image);
+
+        bool metal_preview_eligible = metal_device &&
+            mMetalPreviewDescriptor && base_color_texture && normal_texture &&
+            orm_texture && emissive_texture;
+        const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+        LLMatrix4a inverse_modelview;
+        LLMatrix4a modelview_projection;
+        if (metal_preview_eligible &&
+            !inverse_modelview.setAffineInverse(modelview))
+        {
+            metal_preview_eligible = false;
+        }
+        if (metal_preview_eligible)
+        {
+            modelview_projection.setMul(
+                modelview, gGL.getProjectionMatrix());
+        }
+
+        for (PreviewSpherePart& part : preview_sphere)
+        {
+            LLDrawInfo* info = part->mDrawInfo.get();
+            LLVertexBuffer* buffer = info ? info->mVertexBuffer.get() : nullptr;
+            if (!metal_preview_eligible || !buffer ||
+                !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+                !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
+                !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+                !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
+                !buffer->hasDataType(LLVertexBuffer::TYPE_TANGENT) ||
+                !buffer->getMetalVertexBuffer() ||
+                !buffer->getMetalIndexBuffer())
+            {
+                metal_preview_eligible = false;
+                metal_preview_batches.clear();
+                break;
+            }
+
+            ALMetalPBRPreviewBatch batch;
+            batch.vertices = buffer->getMetalVertexBuffer();
+            batch.position_offset = buffer->getOffset(
+                LLVertexBuffer::TYPE_VERTEX);
+            batch.normal_offset = buffer->getOffset(
+                LLVertexBuffer::TYPE_NORMAL);
+            batch.texcoord_offset = buffer->getOffset(
+                LLVertexBuffer::TYPE_TEXCOORD0);
+            batch.color_offset = buffer->getOffset(
+                LLVertexBuffer::TYPE_COLOR);
+            batch.tangent_offset = buffer->getOffset(
+                LLVertexBuffer::TYPE_TANGENT);
+            batch.vertex_count = buffer->getNumVerts();
+            batch.indices = buffer->getMetalIndexBuffer();
+            batch.index_type = buffer->getIndexStride() == 4
+                ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+            batch.index_offset = static_cast<std::size_t>(info->mOffset) *
+                                 buffer->getIndexStride();
+            batch.index_count = info->mCount;
+            batch.base_color_texture = base_color_texture;
+            batch.normal_texture = normal_texture;
+            batch.orm_texture = orm_texture;
+            batch.emissive_texture = emissive_texture;
+            std::memcpy(batch.modelview_projection,
+                        modelview_projection.getF32ptr(),
+                        sizeof(batch.modelview_projection));
+            std::memcpy(batch.modelview, modelview.getF32ptr(),
+                        sizeof(batch.modelview));
+            const F32* inverse = inverse_modelview.getF32ptr();
+            for (U32 column = 0; column < 3; ++column)
+            {
+                batch.normal_matrix[column][0] = inverse[0 * 4 + column];
+                batch.normal_matrix[column][1] = inverse[1 * 4 + column];
+                batch.normal_matrix[column][2] = inverse[2 * 4 + column];
+            }
+            for (U32 texture = 0;
+                 texture < LLGLTFMaterial::GLTF_TEXTURE_INFO_COUNT;
+                 ++texture)
+            {
+                mGLTFMaterial->mTextureTransform[texture].getPacked(
+                    batch.texture_transform[texture]);
+            }
+            std::memcpy(batch.emissive_color,
+                        mGLTFMaterial->mEmissiveColor.mV,
+                        sizeof(F32) * 3);
+            std::memcpy(batch.sun_direction,
+                        gPipeline.mTransformedSunDir.mV,
+                        sizeof(F32) * 3);
+            batch.metallic_factor = mGLTFMaterial->mMetallicFactor;
+            batch.roughness_factor = mGLTFMaterial->mRoughnessFactor;
+            batch.alpha_cutoff =
+                mGLTFMaterial->mAlphaMode ==
+                    LLGLTFMaterial::ALPHA_MODE_MASK
+                ? mGLTFMaterial->mAlphaCutoff
+                : mGLTFMaterial->mAlphaMode ==
+                    LLGLTFMaterial::ALPHA_MODE_BLEND
+                    ? 0.004f : -1.f;
+            batch.exposure = llmax(
+                gSavedSettings.get<F32>("RenderExposure"), 0.f);
+            LLSettingsSky::ptr_t sky =
+                LLEnvironment::instance().getCurrentSky();
+            const bool auto_adjust = gSavedSettings.get<bool>(
+                "RenderSkyAutoAdjustLegacy");
+            batch.tonemap_mix = sky
+                ? llclamp(sky->getTonemapMix(auto_adjust), 0.f, 1.f) : 1.f;
+            batch.tonemap_type = static_cast<U32>(llmax(
+                gSavedSettings.get<S32>("AlchemyRenderTonemapType"), 0));
+            batch.double_sided = mGLTFMaterial->mDoubleSided;
+            metal_preview_batches.push_back(batch);
+        }
+
+        if (metal_preview_eligible && !metal_preview_batches.empty())
+        {
+            static ALMetalDevice* renderer_device = nullptr;
+            static std::unique_ptr<ALMetalPBRPreviewRenderer> renderer;
+            std::string error;
+            if (renderer_device != metal_device)
+            {
+                renderer.reset();
+                renderer_device = metal_device;
+            }
+            if (!renderer)
+            {
+                renderer = ALMetalPBRPreviewRenderer::create(
+                    *metal_device, &error);
+            }
+            if (renderer)
+            {
+                ALMetalPBRPreviewScene metal_scene;
+                metal_scene.batches = metal_preview_batches.data();
+                metal_scene.batch_count = metal_preview_batches.size();
+                metal_scene.destination_descriptor =
+                    mMetalPreviewDescriptor.get();
+                mMetalPreview = renderer->render(metal_scene, &error);
+            }
+            if (!mMetalPreview)
+            {
+                LL_WARNS("Metal")
+                    << "Could not mirror the PBR material preview: "
+                    << error << LL_ENDL;
+            }
+        }
+        else
+        {
+            LL_WARNS_ONCE("Metal")
+                << "PBR material preview retained GL because its native "
+                   "geometry, textures, device or destination is incomplete"
+                << LL_ENDL;
+        }
+#endif
+
         LLEnvironment::instance().bindEnvironmentUBO();
 
         gPipeline.unbindDeferredShader(shader);
@@ -652,6 +842,24 @@ void LLGLTFPreviewTexture::postRender(bool success)
     }
 
     LLViewerDynamicTexture::postRender(success);
+#if LL_DARWIN
+    if (lastPostRenderSucceeded() && mMetalPreview)
+    {
+        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
+        {
+            LL_INFOS_ONCE("Metal")
+                << "PBR material previews own a native Metal render target"
+                << LL_ENDL;
+        }
+        else
+        {
+            LL_WARNS("Metal")
+                << "Could not publish the native PBR material preview"
+                << LL_ENDL;
+        }
+    }
+    mMetalPreview.reset();
+#endif
 }
 
 LLPointer<LLViewerTexture> LLGLTFMaterialPreviewMgr::getPreview(LLPointer<LLFetchedGLTFMaterial> &material)

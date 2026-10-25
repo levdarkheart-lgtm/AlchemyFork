@@ -815,6 +815,277 @@ static float3 almetal_linear_to_srgb(float3 linear)
                   value > 0.0031308);
 }
 
+struct ALMetalPBRPreviewConstants
+{
+    float4x4 modelview_projection;
+    float4x4 modelview;
+    float4 normal_matrix[3];
+    float4 texture_transform[4][2];
+    float4 emissive_color;
+    float4 sun_direction;
+    float4 sun_color;
+    // metallic, roughness, alpha cutoff, exposure
+    float4 material;
+    // tonemap mix, tonemap type, target is sRGB, reserved
+    float4 post;
+};
+
+struct ALMetalPBRPreviewVaryings
+{
+    float4 position [[position]];
+    float3 eye_position;
+    float3 normal;
+    float3 tangent;
+    float tangent_sign [[flat]];
+    float4 color;
+    float2 base_color_texcoord;
+    float2 normal_texcoord;
+    float2 orm_texcoord;
+    float2 emissive_texcoord;
+};
+
+static float2 almetal_pbr_preview_texcoord(
+    float2 vertex_texcoord,
+    constant float4* transform)
+{
+    // Match deferred/textureUtilV.glsl::texture_transform with the preview's
+    // identity SL animation matrix. KHR_texture_transform is evaluated in its
+    // left-handed UV convention, then returned to SL's handedness.
+    float2 texcoord = vertex_texcoord;
+    texcoord.y = 1.0 - texcoord.y;
+    const float2 scaled = texcoord * transform[0].xy;
+    const float cosine = cos(transform[0].z);
+    const float sine = sin(transform[0].z);
+    texcoord = float2(cosine * scaled.x + sine * scaled.y,
+                      -sine * scaled.x + cosine * scaled.y) +
+               transform[1].xy;
+    texcoord.y = 1.0 - texcoord.y;
+    return texcoord;
+}
+
+static float4 almetal_pbr_preview_tangent(
+    float4 tangent,
+    float3 normal,
+    constant float4* normal_transform)
+{
+    const float inverse_rotation = -normal_transform[0].z;
+    float2 weights = float2(cos(inverse_rotation),
+                            -sin(inverse_rotation));
+    const float2 scale_sign = sign(normal_transform[0].xy);
+    weights *= scale_sign;
+    if (abs(weights.x) + abs(weights.y) == 0.0)
+    {
+        weights = float2(1.0, 0.0);
+    }
+    weights = normalize(weights);
+    weights.y = -weights.y;
+    const float3 binormal = tangent.w * cross(normal, tangent.xyz);
+    return float4(weights.x * tangent.xyz + weights.y * binormal,
+                  tangent.w * scale_sign.x * scale_sign.y);
+}
+
+vertex ALMetalPBRPreviewVaryings almetal_pbr_preview_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    const device float4* tangents [[buffer(4)]],
+    constant ALMetalPBRPreviewConstants& constants [[buffer(5)]],
+    uint vertex_id [[vertex_id]])
+{
+    ALMetalPBRPreviewVaryings output;
+    float4 clip_position = constants.modelview_projection *
+                           float4(positions[vertex_id].xyz, 1.0);
+    // The adopted LLImageGL mirror retains GL's lower-left row-zero bytes.
+    clip_position.y = -clip_position.y;
+    output.position = almetal_clip_from_gl(clip_position);
+    output.eye_position = (constants.modelview *
+                           float4(positions[vertex_id].xyz, 1.0)).xyz;
+    const float3x3 normal_matrix = float3x3(
+        constants.normal_matrix[0].xyz,
+        constants.normal_matrix[1].xyz,
+        constants.normal_matrix[2].xyz);
+    output.normal = normalize(normal_matrix * normals[vertex_id].xyz);
+    const float3 transformed_tangent =
+        normalize(normal_matrix * tangents[vertex_id].xyz);
+    const float4 adjusted_tangent = almetal_pbr_preview_tangent(
+        float4(transformed_tangent, tangents[vertex_id].w),
+        output.normal, constants.texture_transform[1]);
+    output.tangent = normalize(adjusted_tangent.xyz);
+    output.tangent_sign = adjusted_tangent.w;
+    output.color = float4(colors[vertex_id]) / 255.0;
+    output.base_color_texcoord = almetal_pbr_preview_texcoord(
+        texcoords[vertex_id], constants.texture_transform[0]);
+    output.normal_texcoord = almetal_pbr_preview_texcoord(
+        texcoords[vertex_id], constants.texture_transform[1]);
+    output.orm_texcoord = almetal_pbr_preview_texcoord(
+        texcoords[vertex_id], constants.texture_transform[2]);
+    output.emissive_texcoord = almetal_pbr_preview_texcoord(
+        texcoords[vertex_id], constants.texture_transform[3]);
+    return output;
+}
+
+static float3 almetal_pbr_fresnel(float cosine, float3 f0)
+{
+    return f0 + (1.0 - f0) * pow(clamp(1.0 - cosine, 0.0, 1.0), 5.0);
+}
+
+static float almetal_pbr_distribution(float3 normal, float3 half_vector,
+                                      float roughness)
+{
+    const float alpha = roughness * roughness;
+    const float alpha2 = alpha * alpha;
+    const float nh = max(dot(normal, half_vector), 0.0);
+    const float denominator = nh * nh * (alpha2 - 1.0) + 1.0;
+    return alpha2 / max(M_PI_F * denominator * denominator, 1.0e-6);
+}
+
+static float almetal_pbr_geometry_term(float cosine, float roughness)
+{
+    const float k = (roughness + 1.0) * (roughness + 1.0) * 0.125;
+    return cosine / max(cosine * (1.0 - k) + k, 1.0e-6);
+}
+
+static float3 almetal_pbr_neutral_tonemap(float3 color)
+{
+    constexpr float start_compression = 0.76;
+    constexpr float desaturation = 0.15;
+    const float minimum_channel = min(color.r, min(color.g, color.b));
+    const float offset = minimum_channel < 0.08
+        ? minimum_channel - 6.25 * minimum_channel * minimum_channel : 0.04;
+    color -= offset;
+    const float peak = max(color.r, max(color.g, color.b));
+    if (peak < start_compression)
+    {
+        return color;
+    }
+    constexpr float distance = 1.0 - start_compression;
+    const float new_peak = 1.0 - distance * distance /
+        (peak + distance - start_compression);
+    color *= new_peak / peak;
+    const float grey_mix = 1.0 - 1.0 /
+        (desaturation * (peak - new_peak) + 1.0);
+    return mix(color, float3(new_peak), grey_mix);
+}
+
+static float3 almetal_pbr_aces_hill(float3 color)
+{
+    const float3x3 input_matrix = float3x3(
+        float3(0.59719, 0.07600, 0.02840),
+        float3(0.35458, 0.90834, 0.13383),
+        float3(0.04823, 0.01566, 0.83777));
+    const float3x3 output_matrix = float3x3(
+        float3(1.60475, -0.10208, -0.00327),
+        float3(-0.53108, 1.10813, -0.07276),
+        float3(-0.07367, -0.00605, 1.07602));
+    color = input_matrix * color;
+    const float3 fitted =
+        (color * (color + 0.0245786) - 0.000090537) /
+        (color * (0.983729 * color + 0.4329510) + 0.238081);
+    return output_matrix * fitted;
+}
+
+static float3 almetal_pbr_aces_boosted(float3 color)
+{
+    return almetal_pbr_aces_hill(color * 1.2);
+}
+
+static float3 almetal_pbr_tonemap(float3 color, uint type)
+{
+    color = max(color, float3(0.0));
+    switch (type)
+    {
+        case 0: return almetal_pbr_neutral_tonemap(color);
+        case 1: return almetal_pbr_aces_hill(color);
+        case 2: return almetal_pbr_aces_boosted(color);
+        case 3: return color / (1.0 + color);
+    }
+    return color;
+}
+
+fragment float4 almetal_pbr_preview_fragment(
+    ALMetalPBRPreviewVaryings input [[stage_in]],
+    bool front_facing [[front_facing]],
+    texture2d<float> base_color_map [[texture(0)]],
+    texture2d<float> normal_map [[texture(1)]],
+    texture2d<float> orm_map [[texture(2)]],
+    texture2d<float> emissive_map [[texture(3)]],
+    sampler color_sampler [[sampler(0)]],
+    sampler normal_sampler [[sampler(1)]],
+    sampler orm_sampler [[sampler(2)]],
+    sampler emissive_sampler [[sampler(3)]],
+    constant ALMetalPBRPreviewConstants& constants [[buffer(0)]])
+{
+    const float4 base_sample = base_color_map.sample(
+        color_sampler, input.base_color_texcoord);
+    const float coverage = base_sample.a * input.color.a;
+    if (coverage < constants.material.z)
+    {
+        discard_fragment();
+    }
+
+    const float3 base_color = base_sample.rgb *
+                              almetal_srgb_to_linear(input.color.rgb);
+    const float3 tangent_normal = normal_map.sample(
+        normal_sampler, input.normal_texcoord).xyz * 2.0 - 1.0;
+    const float3 vertex_normal = normalize(input.normal);
+    const float3 vertex_tangent = normalize(input.tangent);
+    const float3 vertex_binormal = input.tangent_sign *
+                                   cross(vertex_normal, vertex_tangent);
+    float3 normal = normalize(tangent_normal.x * vertex_tangent +
+                              tangent_normal.y * vertex_binormal +
+                              tangent_normal.z * vertex_normal);
+    normal *= front_facing ? 1.0 : -1.0;
+
+    const float3 orm = orm_map.sample(orm_sampler, input.orm_texcoord).rgb;
+    const float ao = clamp(orm.r, 0.0, 1.0);
+    const float roughness = clamp(
+        orm.g * constants.material.y, 0.045, 1.0);
+    const float metallic = clamp(
+        orm.b * constants.material.x, 0.0, 1.0);
+    const float3 view = normalize(-input.eye_position);
+    const float3 light = normalize(constants.sun_direction.xyz);
+    const float3 half_vector = normalize(view + light);
+    const float nv = max(dot(normal, view), 0.001);
+    const float nl = max(dot(normal, light), 0.0);
+    const float vh = max(dot(view, half_vector), 0.0);
+    const float3 f0 = mix(float3(0.04), base_color, metallic);
+    const float3 fresnel = almetal_pbr_fresnel(vh, f0);
+    const float distribution = almetal_pbr_distribution(
+        normal, half_vector, roughness);
+    const float geometry = almetal_pbr_geometry_term(nv, roughness) *
+                           almetal_pbr_geometry_term(nl, roughness);
+    const float3 specular = distribution * geometry * fresnel /
+                            max(4.0 * nv * max(nl, 0.001), 0.001);
+    const float3 diffuse_weight = (1.0 - fresnel) * (1.0 - metallic);
+    const float3 direct = (diffuse_weight * base_color / M_PI_F + specular) *
+                          constants.sun_color.rgb * nl;
+
+    // The GL owner forces the default reflection probe and a white sun. This
+    // compact split-sum approximation keeps roughness/metal/occlusion response
+    // in the native swatch without borrowing world-owned probe textures.
+    const float3 ambient_diffuse = base_color * (1.0 - metallic) * 0.18 * ao;
+    const float3 ambient_specular = f0 * mix(0.12, 0.035, roughness) * ao;
+    const float3 emissive = constants.emissive_color.rgb *
+        emissive_map.sample(emissive_sampler, input.emissive_texcoord).rgb;
+    float3 color = direct + ambient_diffuse + ambient_specular + emissive;
+
+    color *= constants.material.w;
+    const float3 clamped = clamp(color, float3(0.0), float3(1.0));
+    const uint tonemap_type = uint(round(constants.post.y));
+    color = mix(clamped,
+                clamp(almetal_pbr_tonemap(color, tonemap_type),
+                      float3(0.0), float3(1.0)),
+                constants.post.x);
+    // An sRGB attachment performs the final transfer itself. The ordinary
+    // RGBA8 dynamic texture stores the same encoded bytes explicitly.
+    if (constants.post.z < 0.5)
+    {
+        color = almetal_linear_to_srgb(color);
+    }
+    return float4(max(color, float3(0.0)), coverage);
+}
+
 fragment float4 almetal_lit_preview_deferred_rigged_fragment(
     ALMetalLitPreviewTexturedVaryings input [[stage_in]],
     texture2d<float> diffuse_map [[texture(0)]],

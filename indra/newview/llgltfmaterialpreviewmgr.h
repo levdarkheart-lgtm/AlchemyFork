@@ -31,6 +31,13 @@
 #include "llsingleton.h"
 #include "lltexture.h"
 
+#include <memory>
+
+#if LL_DARWIN
+class ALMetalTexture;
+struct ALMetalTextureDescriptor;
+#endif
+
 class LLGLTFPreviewTexture : public LLViewerDynamicTexture
 {
 protected:
@@ -75,6 +82,10 @@ private:
     // finds no target to draw into leaves the first as it was, so the next frame asks again.
     MaterialLoadLevels mBestLoad;
     MaterialLoadLevels mPendingLoad;
+#if LL_DARWIN
+    std::unique_ptr<ALMetalTexture> mMetalPreview;
+    std::unique_ptr<ALMetalTextureDescriptor> mMetalPreviewDescriptor;
+#endif
 };
 
 class LLGLTFMaterialPreviewMgr

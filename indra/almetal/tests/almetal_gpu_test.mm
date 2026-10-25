@@ -10,6 +10,7 @@
 
 #include "../almetaldevice.h"
 #include "../almetalframe.h"
+#include "../almetalpbrpreview.h"
 #include "../almetalpipeline.h"
 #include "../almetalresource.h"
 #include "../almetalsculptpreview.h"
@@ -150,6 +151,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_alpha_mask_solid_fragment",
             "almetal_solid_vertex",
             "almetal_solid_fragment",
+            "almetal_pbr_preview_vertex",
+            "almetal_pbr_preview_fragment",
         };
         for (const char* function : functions)
         {
@@ -2193,6 +2196,267 @@ TEST_CASE("almetal: bundled MSL render pipeline draws a typed triangle", "[almet
         CHECK(std::abs(static_cast<int>(pixels[center + 1]) - 128) <= 1);
         CHECK(std::abs(static_cast<int>(pixels[center + 2]) - 223) <= 1);
         CHECK(pixels[center + 3] == 255);
+    }
+}
+
+TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalPBRPreviewRenderer::create(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::size_t position_offset = 0;
+        constexpr std::size_t normal_offset =
+            position_offset + sizeof(float) * 4 * 3;
+        constexpr std::size_t texcoord_offset =
+            normal_offset + sizeof(float) * 4 * 3;
+        constexpr std::size_t color_offset =
+            texcoord_offset + sizeof(float) * 2 * 3;
+        constexpr std::size_t tangent_offset =
+            (color_offset + sizeof(std::uint8_t) * 4 * 3 + 15) & ~std::size_t{15};
+        std::array<std::uint8_t,
+                   tangent_offset + sizeof(float) * 4 * 3> vertex_bytes{};
+        const float positions[3][4] = {
+            {-0.9f, -0.9f, 0.f, 1.f},
+            { 0.9f, -0.9f, 0.f, 1.f},
+            { 0.0f,  0.9f, 0.f, 1.f},
+        };
+        const float normals[3][4] = {
+            {0.f, 0.f, 1.f, 0.f},
+            {0.f, 0.f, 1.f, 0.f},
+            {0.f, 0.f, 1.f, 0.f},
+        };
+        const float texcoords[3][2] = {
+            {0.25f, 0.5f}, {0.25f, 0.5f}, {0.25f, 0.5f},
+        };
+        const std::uint8_t colors[3][4] = {
+            {255, 255, 255, 255},
+            {255, 255, 255, 255},
+            {255, 255, 255, 255},
+        };
+        const float tangents[3][4] = {
+            {1.f, 0.f, 0.f, 1.f},
+            {1.f, 0.f, 0.f, 1.f},
+            {1.f, 0.f, 0.f, 1.f},
+        };
+        std::memcpy(vertex_bytes.data() + position_offset,
+                    positions, sizeof(positions));
+        std::memcpy(vertex_bytes.data() + normal_offset,
+                    normals, sizeof(normals));
+        std::memcpy(vertex_bytes.data() + texcoord_offset,
+                    texcoords, sizeof(texcoords));
+        std::memcpy(vertex_bytes.data() + color_offset,
+                    colors, sizeof(colors));
+        std::memcpy(vertex_bytes.data() + tangent_offset,
+                    tangents, sizeof(tangents));
+
+        ALMetalBufferDescriptor vertex_descriptor;
+        vertex_descriptor.length = vertex_bytes.size();
+        vertex_descriptor.storage = ALMetalStorageMode::shared;
+        vertex_descriptor.label = "Alchemy PBR preview test vertices";
+        auto vertex_buffer = ALMetalBuffer::create(
+            *device, vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(vertex_buffer);
+        REQUIRE(vertex_buffer->write(
+            0, vertex_bytes.data(), vertex_bytes.size(), &error));
+
+        const std::array<std::uint16_t, 3> indices{{0, 1, 2}};
+        ALMetalBufferDescriptor index_descriptor;
+        index_descriptor.length = sizeof(indices);
+        index_descriptor.storage = ALMetalStorageMode::shared;
+        index_descriptor.label = "Alchemy PBR preview test indices";
+        auto index_buffer = ALMetalBuffer::create(
+            *device, index_descriptor, &error);
+        INFO(error);
+        REQUIRE(index_buffer);
+        REQUIRE(index_buffer->write(
+            0, indices.data(), sizeof(indices), &error));
+
+        auto make_texture = [&](ALMetalPixelFormat format,
+                                std::uint32_t width,
+                                const std::uint8_t* bytes,
+                                std::size_t bytes_per_row,
+                                const char* label)
+        {
+            ALMetalTextureDescriptor descriptor;
+            descriptor.format = format;
+            descriptor.width = width;
+            descriptor.height = 1;
+            descriptor.storage = ALMetalStorageMode::private_gpu;
+            descriptor.usage = ALMetalTextureUsage::shader_read;
+            descriptor.label = label;
+            auto texture = ALMetalTexture::create(*device, descriptor, &error);
+            INFO(error);
+            REQUIRE(texture);
+            auto upload = device->makeCommandBuffer(label, &error);
+            INFO(error);
+            REQUIRE(upload);
+            REQUIRE(texture->upload(
+                *upload, 0, 0, {}, bytes, bytes_per_row, &error));
+            REQUIRE(upload->commitAndWait(&error));
+            INFO(error);
+            return texture;
+        };
+
+        const std::array<std::uint8_t, 4> opaque_black{{0, 0, 0, 255}};
+        const std::array<std::uint8_t, 4> half_alpha_black{{0, 0, 0, 128}};
+        const std::array<std::uint8_t, 4> flat_normal{{128, 128, 255, 255}};
+        const std::array<std::uint8_t, 4> zero_ambient_orm{{0, 255, 0, 255}};
+        const std::array<std::uint8_t, 8> red_green_emissive{{
+            255, 0, 0, 255, 0, 255, 0, 255,
+        }};
+        auto base = make_texture(
+            ALMetalPixelFormat::rgba8_unorm_srgb, 1,
+            opaque_black.data(), 4, "Alchemy PBR preview test base");
+        auto cutout_base = make_texture(
+            ALMetalPixelFormat::rgba8_unorm_srgb, 1,
+            half_alpha_black.data(), 4,
+            "Alchemy PBR preview test cutout base");
+        auto normal = make_texture(
+            ALMetalPixelFormat::rgba8_unorm, 1,
+            flat_normal.data(), 4, "Alchemy PBR preview test normal");
+        auto orm = make_texture(
+            ALMetalPixelFormat::rgba8_unorm, 1,
+            zero_ambient_orm.data(), 4, "Alchemy PBR preview test ORM");
+        auto emissive = make_texture(
+            ALMetalPixelFormat::rgba8_unorm_srgb, 2,
+            red_green_emissive.data(), 8,
+            "Alchemy PBR preview test emissive");
+
+        ALMetalTextureDescriptor destination_descriptor;
+        destination_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        destination_descriptor.width = 32;
+        destination_descriptor.height = 32;
+        destination_descriptor.storage = ALMetalStorageMode::private_gpu;
+        destination_descriptor.usage = ALMetalTextureUsage::shader_read;
+        destination_descriptor.label = "Alchemy PBR preview test output";
+
+        ALMetalPBRPreviewBatch batch;
+        batch.vertices = vertex_buffer.get();
+        batch.position_offset = position_offset;
+        batch.normal_offset = normal_offset;
+        batch.texcoord_offset = texcoord_offset;
+        batch.color_offset = color_offset;
+        batch.tangent_offset = tangent_offset;
+        batch.vertex_count = 3;
+        batch.indices = index_buffer.get();
+        batch.index_type = ALMetalIndexType::uint16;
+        batch.index_count = 3;
+        batch.base_color_texture = base.get();
+        batch.normal_texture = normal.get();
+        batch.orm_texture = orm.get();
+        batch.emissive_texture = emissive.get();
+        const float identity[16] = {
+            1.f, 0.f, 0.f, 0.f,
+            0.f, 1.f, 0.f, 0.f,
+            0.f, 0.f, 1.f, 0.f,
+            0.f, 0.f, 0.f, 1.f,
+        };
+        std::memcpy(batch.modelview_projection, identity, sizeof(identity));
+        std::memcpy(batch.modelview, identity, sizeof(identity));
+        batch.modelview[14] = -2.f;
+        batch.normal_matrix[0][0] = 1.f;
+        batch.normal_matrix[1][1] = 1.f;
+        batch.normal_matrix[2][2] = 1.f;
+        batch.emissive_color[0] = 1.f;
+        batch.emissive_color[1] = 1.f;
+        batch.emissive_color[2] = 1.f;
+        batch.sun_color[0] = 0.f;
+        batch.sun_color[1] = 0.f;
+        batch.sun_color[2] = 0.f;
+        batch.metallic_factor = 0.f;
+        batch.roughness_factor = 1.f;
+        batch.alpha_cutoff = 0.f;
+        batch.exposure = 1.f;
+        batch.tonemap_mix = 0.f;
+        batch.tonemap_type = 1;
+        batch.double_sided = true;
+
+        ALMetalPBRPreviewScene scene;
+        scene.batches = &batch;
+        scene.batch_count = 1;
+        scene.destination_descriptor = &destination_descriptor;
+
+        auto read_center = [&](const ALMetalTexture& texture)
+        {
+            std::array<std::uint8_t, 32 * 32 * 4> pixels{};
+            REQUIRE(texture.readback(
+                *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+            INFO(error);
+            const std::size_t center = (16 * 32 + 16) * 4;
+            return std::array<std::uint8_t, 4>{{
+                pixels[center], pixels[center + 1],
+                pixels[center + 2], pixels[center + 3],
+            }};
+        };
+
+        auto red_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(red_output);
+        const auto red = read_center(*red_output);
+        CHECK(red[0] == 255);
+        CHECK(red[1] == 0);
+        CHECK(red[2] == 0);
+        CHECK(red[3] == 255);
+
+        batch.texture_transform[3][4] = 0.5f;
+        auto green_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(green_output);
+        const auto green = read_center(*green_output);
+        CHECK(green[0] == 0);
+        CHECK(green[1] == 255);
+        CHECK(green[2] == 0);
+        CHECK(green[3] == 255);
+
+        destination_descriptor.format =
+            ALMetalPixelFormat::rgba8_unorm_srgb;
+        auto srgb_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(srgb_output);
+        CHECK(srgb_output->descriptor().format ==
+              ALMetalPixelFormat::rgba8_unorm_srgb);
+        const auto srgb_green = read_center(*srgb_output);
+        CHECK(srgb_green[0] == 0);
+        CHECK(srgb_green[1] == 255);
+        CHECK(srgb_green[2] == 0);
+        CHECK(srgb_green[3] == 255);
+        destination_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+
+        batch.base_color_texture = cutout_base.get();
+        batch.alpha_cutoff = 0.75f;
+        auto cutout_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(cutout_output);
+        const auto cutout = read_center(*cutout_output);
+        CHECK(cutout[0] == 0);
+        CHECK(cutout[1] == 0);
+        CHECK(cutout[2] == 0);
+        CHECK(cutout[3] == 0);
+
+        batch.base_color_texture = base.get();
+        batch.alpha_cutoff = 0.f;
+        batch.tonemap_type = 4;
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal PBR preview batch is invalid");
+        batch.tonemap_type = 1;
+        batch.normal_texture = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal PBR preview batch is invalid");
+        batch.normal_texture = normal.get();
+        batch.tangent_offset += sizeof(float);
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal PBR preview batch is invalid");
     }
 }
 

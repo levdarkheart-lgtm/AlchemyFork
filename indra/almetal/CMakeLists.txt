@@ -76,6 +76,7 @@ target_sources(
   PRIVATE
     almetaldevice.mm
     almetalframe.mm
+    almetalpbrpreview.cpp
     almetalpipeline.mm
     almetalresource.mm
     almetalsculptpreview.cpp
@@ -88,6 +89,7 @@ target_sources(
     FILES
       almetaldevice.h
       almetalframe.h
+      almetalpbrpreview.h
       almetalpipeline.h
       almetalresource.h
       almetalsculptpreview.h
