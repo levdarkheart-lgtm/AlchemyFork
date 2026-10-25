@@ -155,6 +155,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_pbr_preview_fragment",
             "almetal_pbr_preview_exposure",
             "almetal_pbr_preview_post_fragment",
+            "almetal_pbr_preview_bloom_extract_fragment",
+            "almetal_pbr_preview_bloom_downsample_fragment",
+            "almetal_pbr_preview_bloom_upsample_fragment",
         };
         for (const char* function : functions)
         {
@@ -2481,6 +2484,57 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         CHECK(metered[3] == 255);
         scene.meter_exposure = false;
 
+        // A uniform 0.25-red HDR target with a threshold above the scene and
+        // alpha-glow boost 0.5 extracts 0.25 at every level. Three pyramid
+        // levels add back to 0.75, bringing the post input to unit red.
+        batch.emissive_color[0] = 0.25f;
+        auto quarter_red_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(quarter_red_output);
+        const auto quarter_red = read_center(*quarter_red_output);
+        CHECK(std::abs(static_cast<int>(quarter_red[0]) - 137) <= 1);
+        scene.bloom_enabled = true;
+        scene.bloom_mip_count = 3;
+        scene.bloom_threshold = 100.f;
+        scene.bloom_knee = 0.f;
+        scene.bloom_alpha_glow_boost = 0.5f;
+        scene.bloom_strength = 1.f;
+        scene.bloom_scatter = 1.f;
+        auto bloomed_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(bloomed_output);
+        const auto bloomed = read_center(*bloomed_output);
+        CHECK(bloomed[0] == 255);
+        CHECK(bloomed[1] == 0);
+        CHECK(bloomed[2] == 0);
+        CHECK(bloomed[3] == 255);
+
+        // Halation travels independently in alpha and is tinted only at the
+        // pre-exposure composite. A 0.05 uniform excess sums to 0.15 here.
+        scene.bloom_strength = 0.f;
+        scene.bloom_halation = true;
+        scene.bloom_halation_strength = 1.f;
+        scene.bloom_threshold = 0.2f;
+        scene.bloom_halation_tint[0] = 0.f;
+        scene.bloom_halation_tint[1] = 1.f;
+        scene.bloom_halation_tint[2] = 0.f;
+        scene.bloom_halation_weights[0] = 1.f;
+        scene.bloom_halation_weights[1] = 0.f;
+        scene.bloom_halation_weights[2] = 0.f;
+        auto halation_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(halation_output);
+        const auto halation = read_center(*halation_output);
+        CHECK(std::abs(static_cast<int>(halation[0]) - 137) <= 1);
+        CHECK(std::abs(static_cast<int>(halation[1]) - 108) <= 2);
+        CHECK(halation[2] == 0);
+        CHECK(halation[3] == 255);
+        batch.emissive_color[0] = 1.f;
+        scene.bloom_enabled = false;
+        scene.bloom_strength = 0.325f;
+        scene.bloom_halation = false;
+        scene.bloom_halation_strength = 0.f;
+
         batch.base_color_texture = cutout_base.get();
         batch.alpha_cutoff = 0.75f;
         auto cutout_output = renderer->render(scene, &error);
@@ -2528,6 +2582,11 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         CHECK(error == "Metal PBR preview post state is invalid");
         scene.tonemap_type = 1;
         scene.tonemap_mix = 0.f;
+        scene.bloom_mip_count = 2;
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal PBR preview post state is invalid");
+        scene.bloom_mip_count = 3;
         batch.normal_texture = nullptr;
         error.clear();
         CHECK_FALSE(renderer->render(scene, &error));

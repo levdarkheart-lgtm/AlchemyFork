@@ -38,6 +38,7 @@
 #include "llavatarappearancedefines.h"
 #include "lldrawpoolalpha.h"
 #include "llenvironment.h"
+#include "llfloatertools.h"
 #include "llselectmgr.h"
 #include "llviewercamera.h"
 #include "llviewercontrol.h"
@@ -716,10 +717,33 @@ bool LLGLTFPreviewTexture::render()
             gSavedSettings.get<F32>("AlchemyExposureHighPercent") * 0.01f,
             metal_preview_low_fraction + 0.01f, 1.f);
         const bool metal_preview_hdr = LLPipeline::hdrEnabled();
+        const bool metal_preview_legacy_gamma = metal_preview_sky &&
+            metal_preview_sky->getReflectionProbeAmbiance(
+                metal_preview_auto_adjust) == 0.f;
+        const bool metal_preview_no_post =
+            LLPipeline::suppressesLensAndPrintEffects() ||
+            metal_preview_legacy_gamma ||
+            (gSavedSettings.get<bool>("RenderDisablePostProcessing") &&
+             gFloaterTools && gFloaterTools->isAvailable());
+        const F32 metal_preview_bloom_strength = llmax(
+            gSavedSettings.get<F32>("RenderBloomStrength"), 0.f);
+        const bool metal_preview_halation =
+            gSavedSettings.get<bool>("RenderBloomHalation");
+        const F32 metal_preview_halation_strength = llmax(
+            gSavedSettings.get<F32>("RenderBloomHalationStrength"), 0.f);
+        const bool metal_preview_bloom = metal_preview_hdr &&
+            (metal_preview_bloom_strength > 0.f ||
+             (metal_preview_halation &&
+              metal_preview_halation_strength > 0.f));
+        const bool metal_preview_cross_filter = metal_preview_bloom &&
+            metal_preview_bloom_strength > 0.f &&
+            gSavedSettings.get<F32>("RenderCrossFilterStrength") > 0.f &&
+            !LLPipeline::suppressesLensAndPrintEffects();
 
         bool metal_preview_eligible = metal_device &&
             mMetalPreviewDescriptor && base_color_texture && normal_texture &&
-            orm_texture && emissive_texture;
+            orm_texture && emissive_texture && metal_preview_hdr &&
+            !metal_preview_no_post && !metal_preview_cross_filter;
         const LLMatrix4a& modelview = gGL.getModelviewMatrix();
         LLMatrix4a inverse_modelview;
         LLMatrix4a modelview_projection;
@@ -860,6 +884,39 @@ bool LLGLTFPreviewTexture::render()
                 metal_scene.exposure_metering_mode =
                     gSavedSettings.get<U32>(
                         "AlchemyExposureMeteringMode");
+                metal_scene.bloom_enabled = metal_preview_bloom;
+                metal_scene.bloom_mip_count = static_cast<U32>(llclamp(
+                    gSavedSettings.get<S32>("RenderBloomMipCount"),
+                    3, 7));
+                metal_scene.bloom_resolution_scale = static_cast<U32>(
+                    llclamp(gSavedSettings.get<S32>(
+                                "RenderBloomResolutionScale"),
+                            0, 4));
+                metal_scene.bloom_threshold = llmax(
+                    gSavedSettings.get<F32>("RenderBloomThreshold"), 0.f);
+                metal_scene.bloom_knee = llmax(
+                    gSavedSettings.get<F32>("RenderBloomKnee"), 0.f);
+                metal_scene.bloom_firefly_clamp = llmax(
+                    gSavedSettings.get<F32>("RenderBloomFireflyClamp"),
+                    0.f);
+                metal_scene.bloom_scatter = llmax(
+                    gSavedSettings.get<F32>("RenderBloomScatter"), 0.f);
+                metal_scene.bloom_alpha_glow_boost = llmax(
+                    gSavedSettings.get<F32>("RenderBloomAlphaGlowBoost"),
+                    0.f);
+                metal_scene.bloom_strength = metal_preview_bloom_strength;
+                metal_scene.bloom_halation = metal_preview_halation;
+                metal_scene.bloom_halation_strength =
+                    metal_preview_halation_strength;
+                const LLColor3 halation_tint =
+                    gSavedSettings.get<LLColor3>(
+                        "RenderBloomHalationTint");
+                std::memcpy(metal_scene.bloom_halation_tint,
+                            halation_tint.mV,
+                            sizeof(metal_scene.bloom_halation_tint));
+                std::memcpy(metal_scene.bloom_halation_weights,
+                            LLPipeline::RenderGlowWarmthWeights.mV,
+                            sizeof(metal_scene.bloom_halation_weights));
                 mMetalPreview = renderer->render(metal_scene, &error);
             }
             if (!mMetalPreview)

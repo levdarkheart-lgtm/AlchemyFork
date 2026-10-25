@@ -16,6 +16,7 @@
 #include <cstring>
 #include <limits>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -60,9 +61,29 @@ namespace
         // static exposure, tonemap mix, tonemap type, target is sRGB
         float post[4];
         float tonemap_params[4];
+        // bloom strength, halation strength, enabled, reserved
+        float bloom[4];
+        float halation_tint[4];
     };
 
-    static_assert(sizeof(PBRPreviewPostConstants) == 32);
+    static_assert(sizeof(PBRPreviewPostConstants) == 64);
+
+    struct alignas(16) PBRPreviewBloomExtractConstants
+    {
+        // threshold, knee, firefly clamp, alpha glow boost
+        float params[4];
+        float halation_weights[4];
+    };
+
+    static_assert(sizeof(PBRPreviewBloomExtractConstants) == 32);
+
+    struct alignas(16) PBRPreviewBloomFilterConstants
+    {
+        // inverse source width/height, scatter or first-downsample flag
+        float params[4];
+    };
+
+    static_assert(sizeof(PBRPreviewBloomFilterConstants) == 16);
 
     bool finiteValues(const float* values, std::size_t count)
     {
@@ -92,10 +113,17 @@ struct ALMetalPBRPreviewRenderer::Impl
     std::unique_ptr<ALMetalRenderPipeline> shade_pipeline;
     std::unique_ptr<ALMetalComputePipeline> exposure_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2> post_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        bloom_extract_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        bloom_downsample_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        bloom_upsample_pipelines;
     std::unique_ptr<ALMetalSamplerState> color_sampler;
     std::unique_ptr<ALMetalSamplerState> data_sampler;
     std::unique_ptr<ALMetalSamplerState> meter_sampler;
     std::unique_ptr<ALMetalSamplerState> post_sampler;
+    std::unique_ptr<ALMetalSamplerState> bloom_sampler;
 };
 
 ALMetalPBRPreviewRenderer::ALMetalPBRPreviewRenderer(
@@ -117,7 +145,13 @@ ALMetalPBRPreviewRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_pbr_preview_vertex") ||
         !impl->library->hasFunction("almetal_pbr_preview_fragment") ||
         !impl->library->hasFunction("almetal_pbr_preview_exposure") ||
-        !impl->library->hasFunction("almetal_pbr_preview_post_fragment"))
+        !impl->library->hasFunction("almetal_pbr_preview_post_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_pbr_preview_bloom_extract_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_pbr_preview_bloom_downsample_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_pbr_preview_bloom_upsample_fragment"))
     {
         if (impl->library)
         {
@@ -180,6 +214,55 @@ ALMetalPBRPreviewRenderer::create(const ALMetalDevice& device,
         }
     }
 
+    constexpr std::array<ALMetalPixelFormat, 2> bloom_formats{{
+        ALMetalPixelFormat::rg11b10_float,
+        ALMetalPixelFormat::rgba16_float,
+    }};
+    for (std::size_t index = 0; index < bloom_formats.size(); ++index)
+    {
+        const auto make_bloom_pipeline = [&](const char* fragment,
+                                             const char* label,
+                                             bool additive)
+        {
+            ALMetalRenderPipelineDescriptor descriptor;
+            descriptor.library = impl->library.get();
+            descriptor.vertex_function = "almetal_resample_vertex";
+            descriptor.fragment_function = fragment;
+            descriptor.colors[0].format = bloom_formats[index];
+            descriptor.colors[0].blending_enabled = additive;
+            if (additive)
+            {
+                descriptor.colors[0].source_rgb = ALMetalBlendFactor::one;
+                descriptor.colors[0].destination_rgb = ALMetalBlendFactor::one;
+                descriptor.colors[0].source_alpha = ALMetalBlendFactor::one;
+                descriptor.colors[0].destination_alpha = ALMetalBlendFactor::one;
+            }
+            descriptor.label = label;
+            return ALMetalRenderPipeline::create(device, descriptor, error);
+        };
+        impl->bloom_extract_pipelines[index] = make_bloom_pipeline(
+            "almetal_pbr_preview_bloom_extract_fragment",
+            index == 0 ? "Alchemy PBR preview bloom extract pipeline"
+                       : "Alchemy PBR preview halation extract pipeline",
+            false);
+        impl->bloom_downsample_pipelines[index] = make_bloom_pipeline(
+            "almetal_pbr_preview_bloom_downsample_fragment",
+            index == 0 ? "Alchemy PBR preview bloom downsample pipeline"
+                       : "Alchemy PBR preview halation downsample pipeline",
+            false);
+        impl->bloom_upsample_pipelines[index] = make_bloom_pipeline(
+            "almetal_pbr_preview_bloom_upsample_fragment",
+            index == 0 ? "Alchemy PBR preview bloom upsample pipeline"
+                       : "Alchemy PBR preview halation upsample pipeline",
+            true);
+        if (!impl->bloom_extract_pipelines[index] ||
+            !impl->bloom_downsample_pipelines[index] ||
+            !impl->bloom_upsample_pipelines[index])
+        {
+            return nullptr;
+        }
+    }
+
     ALMetalSamplerDescriptor sampler;
     sampler.max_anisotropy = 16;
     sampler.label = "Alchemy PBR preview color sampler";
@@ -214,6 +297,18 @@ ALMetalPBRPreviewRenderer::create(const ALMetalDevice& device,
     sampler.label = "Alchemy PBR preview post sampler";
     impl->post_sampler = ALMetalSamplerState::create(device, sampler, error);
     if (!impl->post_sampler)
+    {
+        return nullptr;
+    }
+    sampler.min_filter = ALMetalSamplerFilter::linear;
+    sampler.mag_filter = ALMetalSamplerFilter::linear;
+    sampler.mip_filter = ALMetalSamplerMipFilter::none;
+    sampler.address_s = ALMetalSamplerAddressMode::mirror_repeat;
+    sampler.address_t = ALMetalSamplerAddressMode::mirror_repeat;
+    sampler.address_r = ALMetalSamplerAddressMode::mirror_repeat;
+    sampler.label = "Alchemy PBR preview bloom sampler";
+    impl->bloom_sampler = ALMetalSamplerState::create(device, sampler, error);
+    if (!impl->bloom_sampler)
     {
         return nullptr;
     }
@@ -263,6 +358,22 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         scene.exposure_high_fraction <
             scene.exposure_low_fraction + 0.01f ||
         scene.exposure_high_fraction > 1.f ||
+        scene.bloom_mip_count < 3 || scene.bloom_mip_count > 7 ||
+        scene.bloom_resolution_scale > 4 ||
+        !std::isfinite(scene.bloom_threshold) ||
+        !std::isfinite(scene.bloom_knee) ||
+        !std::isfinite(scene.bloom_firefly_clamp) ||
+        !std::isfinite(scene.bloom_scatter) ||
+        !std::isfinite(scene.bloom_alpha_glow_boost) ||
+        !std::isfinite(scene.bloom_strength) ||
+        !std::isfinite(scene.bloom_halation_strength) ||
+        !finiteValues(scene.bloom_halation_tint, 3) ||
+        !finiteValues(scene.bloom_halation_weights, 3) ||
+        scene.bloom_knee < 0.f || scene.bloom_firefly_clamp < 0.f ||
+        scene.bloom_scatter < 0.f ||
+        scene.bloom_alpha_glow_boost < 0.f ||
+        scene.bloom_strength < 0.f ||
+        scene.bloom_halation_strength < 0.f ||
         ((scene.tonemap_type == 2 || scene.tonemap_type == 3 ||
           scene.tonemap_type == 4) && scene.tonemap_params[0] <= 0.f) ||
         (scene.tonemap_type == 6 &&
@@ -361,6 +472,66 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
     if (!exposure)
     {
         return nullptr;
+    }
+
+    const bool bloom_requested = scene.bloom_enabled &&
+        (scene.bloom_strength > 0.f ||
+         (scene.bloom_halation &&
+          scene.bloom_halation_strength > 0.f));
+    const std::size_t bloom_pipeline_index =
+        scene.bloom_halation ? 1 : 0;
+    const ALMetalPixelFormat bloom_format = scene.bloom_halation
+        ? ALMetalPixelFormat::rgba16_float
+        : ALMetalPixelFormat::rg11b10_float;
+    constexpr std::array<std::uint32_t, 5> bloom_scale_numerator{{
+        1, 3, 1, 1, 1,
+    }};
+    constexpr std::array<std::uint32_t, 5> bloom_scale_denominator{{
+        1, 4, 2, 4, 8,
+    }};
+    const std::uint32_t bloom_base_width = std::max(
+        1u,
+        output_template.width *
+            bloom_scale_numerator[scene.bloom_resolution_scale] /
+            bloom_scale_denominator[scene.bloom_resolution_scale]);
+    const std::uint32_t bloom_base_height = std::max(
+        1u,
+        output_template.height *
+            bloom_scale_numerator[scene.bloom_resolution_scale] /
+            bloom_scale_denominator[scene.bloom_resolution_scale]);
+    std::vector<std::unique_ptr<ALMetalRenderTarget>> bloom_targets;
+    if (bloom_requested)
+    {
+        for (std::uint32_t mip = 0; mip < scene.bloom_mip_count; ++mip)
+        {
+            const std::uint32_t width = std::max(
+                1u, bloom_base_width >> mip);
+            const std::uint32_t height = std::max(
+                1u, bloom_base_height >> mip);
+            ALMetalRenderTargetDescriptor descriptor;
+            descriptor.width = width;
+            descriptor.height = height;
+            descriptor.colors[0].format = bloom_format;
+            descriptor.colors[0].shader_read = true;
+            descriptor.colors[0].label = "Alchemy PBR preview bloom color";
+            descriptor.label = "Alchemy PBR preview bloom target";
+            auto target = ALMetalRenderTarget::create(
+                *mImpl->device, descriptor, error);
+            if (!target)
+            {
+                return nullptr;
+            }
+            bloom_targets.push_back(std::move(target));
+            if (width == 1 && height == 1)
+            {
+                break;
+            }
+        }
+    }
+    const bool bloom_active = bloom_targets.size() >= 3;
+    if (!bloom_active)
+    {
+        bloom_targets.clear();
     }
 
     ALMetalTextureDescriptor output_descriptor = output_template;
@@ -499,6 +670,110 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         return nullptr;
     }
 
+    const auto encode_bloom_pass = [&](ALMetalRenderTarget& target,
+                                       const ALMetalRenderPipeline& pipeline,
+                                       const ALMetalTexture& source,
+                                       const void* constants,
+                                       std::size_t constants_size,
+                                       ALMetalLoadAction load)
+    {
+        ALMetalRenderPassConfig config;
+        config.colors[0].load = load;
+        config.colors[0].store = ALMetalStoreAction::store;
+        config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+        auto pass = target.makeRenderPass(config, error);
+        auto encoder = pass ? ALMetalRenderEncoder::begin(
+            *command, *pass, "Alchemy PBR preview bloom encoder", error)
+            : nullptr;
+        const ALMetalRenderTargetDescriptor& descriptor = target.descriptor();
+        return encoder &&
+            encoder->setPipeline(pipeline, error) &&
+            encoder->setViewport(
+                {0.0, 0.0,
+                 static_cast<double>(descriptor.width),
+                 static_cast<double>(descriptor.height), 0.0, 1.0},
+                error) &&
+            encoder->setScissor(
+                {0, 0, descriptor.width, descriptor.height}, error) &&
+            encoder->setFragmentTexture(0, &source, error) &&
+            encoder->setFragmentSampler(
+                0, mImpl->bloom_sampler.get(), error) &&
+            encoder->setFragmentBytes(
+                0, constants, constants_size, error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+            encoder->end(error);
+    };
+
+    const ALMetalTexture* bloom_color = hdr_color;
+    if (bloom_active)
+    {
+        PBRPreviewBloomExtractConstants extract_constants{};
+        extract_constants.params[0] = scene.bloom_threshold;
+        extract_constants.params[1] = scene.bloom_knee;
+        extract_constants.params[2] = scene.bloom_firefly_clamp;
+        extract_constants.params[3] = scene.bloom_alpha_glow_boost;
+        std::memcpy(extract_constants.halation_weights,
+                    scene.bloom_halation_weights,
+                    sizeof(scene.bloom_halation_weights));
+        encoded = encode_bloom_pass(
+            *bloom_targets[0],
+            *mImpl->bloom_extract_pipelines[bloom_pipeline_index],
+            *hdr_color, &extract_constants, sizeof(extract_constants),
+            ALMetalLoadAction::clear);
+
+        for (std::size_t mip = 1;
+             encoded && mip < bloom_targets.size(); ++mip)
+        {
+            const ALMetalTexture* source =
+                bloom_targets[mip - 1]->colorTexture(0);
+            if (!source)
+            {
+                encoded = false;
+                break;
+            }
+            PBRPreviewBloomFilterConstants filter_constants{};
+            filter_constants.params[0] = 1.f /
+                static_cast<float>(source->width());
+            filter_constants.params[1] = 1.f /
+                static_cast<float>(source->height());
+            filter_constants.params[2] = mip == 1 ? 1.f : 0.f;
+            encoded = encode_bloom_pass(
+                *bloom_targets[mip],
+                *mImpl->bloom_downsample_pipelines[bloom_pipeline_index],
+                *source, &filter_constants, sizeof(filter_constants),
+                ALMetalLoadAction::clear);
+        }
+
+        for (std::size_t mip = bloom_targets.size() - 1;
+             encoded && mip > 0; --mip)
+        {
+            const ALMetalTexture* source =
+                bloom_targets[mip]->colorTexture(0);
+            if (!source)
+            {
+                encoded = false;
+                break;
+            }
+            PBRPreviewBloomFilterConstants filter_constants{};
+            filter_constants.params[0] = 1.f /
+                static_cast<float>(source->width());
+            filter_constants.params[1] = 1.f /
+                static_cast<float>(source->height());
+            filter_constants.params[2] = scene.bloom_scatter;
+            encoded = encode_bloom_pass(
+                *bloom_targets[mip - 1],
+                *mImpl->bloom_upsample_pipelines[bloom_pipeline_index],
+                *source, &filter_constants, sizeof(filter_constants),
+                ALMetalLoadAction::load);
+        }
+        bloom_color = encoded ? bloom_targets[0]->colorTexture(0) : nullptr;
+    }
+    if (!encoded || !bloom_color)
+    {
+        return nullptr;
+    }
+
     auto post_pass = post_target->makeRenderPass(pass_config, error);
     auto post_encoder = post_pass ? ALMetalRenderEncoder::begin(
         *command, *post_pass, "Alchemy PBR preview post encoder", error)
@@ -510,6 +785,13 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
     post_constants.post[3] = pipeline_index == 1 ? 1.f : 0.f;
     std::memcpy(post_constants.tonemap_params, scene.tonemap_params,
                 sizeof(post_constants.tonemap_params));
+    post_constants.bloom[0] = bloom_active ? scene.bloom_strength : 0.f;
+    post_constants.bloom[1] = bloom_active && scene.bloom_halation
+        ? scene.bloom_halation_strength : 0.f;
+    post_constants.bloom[2] = bloom_active ? 1.f : 0.f;
+    std::memcpy(post_constants.halation_tint,
+                scene.bloom_halation_tint,
+                sizeof(scene.bloom_halation_tint));
     encoded = post_encoder &&
         post_encoder->setPipeline(
             *mImpl->post_pipelines[pipeline_index], error) &&
@@ -517,8 +799,11 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         post_encoder->setScissor(scissor, error) &&
         post_encoder->setFragmentTexture(0, hdr_color, error) &&
         post_encoder->setFragmentTexture(1, exposure.get(), error) &&
+        post_encoder->setFragmentTexture(2, bloom_color, error) &&
         post_encoder->setFragmentSampler(
             0, mImpl->post_sampler.get(), error) &&
+        post_encoder->setFragmentSampler(
+            1, mImpl->bloom_sampler.get(), error) &&
         post_encoder->setFragmentBytes(
             0, &post_constants, sizeof(post_constants), error) &&
         post_encoder->draw(

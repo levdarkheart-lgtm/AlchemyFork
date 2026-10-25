@@ -1294,18 +1294,188 @@ struct ALMetalPBRPreviewPostConstants
     // static exposure, tonemap mix, tonemap type, target is sRGB
     float4 post;
     float4 tonemap_params;
+    // bloom strength, halation strength, enabled, reserved
+    float4 bloom;
+    float4 halation_tint;
 };
+
+struct ALMetalPBRPreviewBloomExtractConstants
+{
+    // threshold, knee, firefly clamp, alpha glow boost
+    float4 params;
+    float4 halation_weights;
+};
+
+struct ALMetalPBRPreviewBloomFilterConstants
+{
+    // inverse source width/height, scatter or first-downsample flag
+    float4 params;
+};
+
+static float almetal_pbr_preview_bloom_soft_threshold(
+    float luminance, float threshold, float knee)
+{
+    const float width = max(knee, 1.0e-4);
+    float soft = clamp(luminance - threshold + width,
+                       0.0, 2.0 * width);
+    soft = soft * soft / (4.0 * width + 1.0e-4);
+    return max(soft, luminance - threshold);
+}
+
+fragment float4 almetal_pbr_preview_bloom_extract_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> scene [[texture(0)]],
+    sampler scene_sampler [[sampler(0)]],
+    constant ALMetalPBRPreviewBloomExtractConstants& constants [[buffer(0)]])
+{
+    const float4 source = scene.sample(scene_sampler, input.texcoord);
+    float3 color = max(source.rgb, float3(0.0));
+    const float peak = max(color.r, max(color.g, color.b));
+    color *= peak > constants.params.z ? constants.params.z / peak : 1.0;
+    const float luminance = max(color.r, max(color.g, color.b));
+    const float factor = almetal_pbr_preview_bloom_soft_threshold(
+        luminance, constants.params.x, constants.params.y) /
+        max(luminance, 1.0e-4);
+    constexpr float legacy_tonemap_compensation = 2.0;
+    const float3 bloom = color * factor +
+        color * source.a * constants.params.w *
+        legacy_tonemap_compensation;
+    const float warmth = max(
+        color.r * constants.halation_weights.r,
+        max(color.g * constants.halation_weights.g,
+            color.b * constants.halation_weights.b));
+    const float halation = almetal_pbr_preview_bloom_soft_threshold(
+        warmth, constants.params.x, constants.params.y);
+    return float4(bloom, halation);
+}
+
+static float almetal_pbr_preview_bloom_max_luminance(float4 color)
+{
+    return max(color.r, max(color.g, color.b));
+}
+
+static float4 almetal_pbr_preview_bloom_karis_box(
+    float4 a, float4 b, float4 c, float4 d)
+{
+    const float la = almetal_pbr_preview_bloom_max_luminance(a);
+    const float lb = almetal_pbr_preview_bloom_max_luminance(b);
+    const float lc = almetal_pbr_preview_bloom_max_luminance(c);
+    const float ld = almetal_pbr_preview_bloom_max_luminance(d);
+    const float wa = 1.0 / (1.0 + max(la - max(max(lb, lc), ld), 0.0));
+    const float wb = 1.0 / (1.0 + max(lb - max(max(la, lc), ld), 0.0));
+    const float wc = 1.0 / (1.0 + max(lc - max(max(la, lb), ld), 0.0));
+    const float wd = 1.0 / (1.0 + max(ld - max(max(la, lb), lc), 0.0));
+    return (a * wa + b * wb + c * wc + d * wd) /
+           (wa + wb + wc + wd);
+}
+
+fragment float4 almetal_pbr_preview_bloom_downsample_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]],
+    constant ALMetalPBRPreviewBloomFilterConstants& constants [[buffer(0)]])
+{
+    const float2 uv = input.texcoord;
+    const float2 texel = constants.params.xy;
+    const float4 a = source.sample(
+        source_sampler, uv + texel * float2(-2.0, -2.0));
+    const float4 b = source.sample(
+        source_sampler, uv + texel * float2( 0.0, -2.0));
+    const float4 c = source.sample(
+        source_sampler, uv + texel * float2( 2.0, -2.0));
+    const float4 d = source.sample(
+        source_sampler, uv + texel * float2(-1.0, -1.0));
+    const float4 e = source.sample(
+        source_sampler, uv + texel * float2( 1.0, -1.0));
+    const float4 f = source.sample(
+        source_sampler, uv + texel * float2(-2.0,  0.0));
+    const float4 g = source.sample(source_sampler, uv);
+    const float4 h = source.sample(
+        source_sampler, uv + texel * float2( 2.0,  0.0));
+    const float4 i = source.sample(
+        source_sampler, uv + texel * float2(-1.0,  1.0));
+    const float4 j = source.sample(
+        source_sampler, uv + texel * float2( 1.0,  1.0));
+    const float4 k = source.sample(
+        source_sampler, uv + texel * float2(-2.0,  2.0));
+    const float4 l = source.sample(
+        source_sampler, uv + texel * float2( 0.0,  2.0));
+    const float4 m = source.sample(
+        source_sampler, uv + texel * float2( 2.0,  2.0));
+
+    float4 group0;
+    float4 group1;
+    float4 group2;
+    float4 group3;
+    float4 group4;
+    if (constants.params.z > 0.5)
+    {
+        group0 = almetal_pbr_preview_bloom_karis_box(d, e, i, j);
+        group1 = almetal_pbr_preview_bloom_karis_box(a, b, f, g);
+        group2 = almetal_pbr_preview_bloom_karis_box(b, c, g, h);
+        group3 = almetal_pbr_preview_bloom_karis_box(f, g, k, l);
+        group4 = almetal_pbr_preview_bloom_karis_box(g, h, l, m);
+    }
+    else
+    {
+        group0 = (d + e + i + j) * 0.25;
+        group1 = (a + b + f + g) * 0.25;
+        group2 = (b + c + g + h) * 0.25;
+        group3 = (f + g + k + l) * 0.25;
+        group4 = (g + h + l + m) * 0.25;
+    }
+    return group0 * 0.5 +
+           (group1 + group2 + group3 + group4) * 0.125;
+}
+
+fragment float4 almetal_pbr_preview_bloom_upsample_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]],
+    constant ALMetalPBRPreviewBloomFilterConstants& constants [[buffer(0)]])
+{
+    const float2 uv = input.texcoord;
+    const float2 texel = constants.params.xy * constants.params.z;
+    float4 result = source.sample(
+        source_sampler, uv + texel * float2(-1.0, -1.0)) * (1.0 / 16.0);
+    result += source.sample(
+        source_sampler, uv + texel * float2( 0.0, -1.0)) * (2.0 / 16.0);
+    result += source.sample(
+        source_sampler, uv + texel * float2( 1.0, -1.0)) * (1.0 / 16.0);
+    result += source.sample(
+        source_sampler, uv + texel * float2(-1.0,  0.0)) * (2.0 / 16.0);
+    result += source.sample(source_sampler, uv) * (4.0 / 16.0);
+    result += source.sample(
+        source_sampler, uv + texel * float2( 1.0,  0.0)) * (2.0 / 16.0);
+    result += source.sample(
+        source_sampler, uv + texel * float2(-1.0,  1.0)) * (1.0 / 16.0);
+    result += source.sample(
+        source_sampler, uv + texel * float2( 0.0,  1.0)) * (2.0 / 16.0);
+    result += source.sample(
+        source_sampler, uv + texel * float2( 1.0,  1.0)) * (1.0 / 16.0);
+    return result;
+}
 
 fragment float4 almetal_pbr_preview_post_fragment(
     ALMetalResampleVaryings input [[stage_in]],
     texture2d<float> scene [[texture(0)]],
     texture2d<float> exposure [[texture(1)]],
+    texture2d<float> bloom_map [[texture(2)]],
     sampler scene_sampler [[sampler(0)]],
+    sampler bloom_sampler [[sampler(1)]],
     constant ALMetalPBRPreviewPostConstants& constants [[buffer(0)]])
 {
     const float4 scene_color = scene.sample(scene_sampler, input.texcoord);
-    float3 color = scene_color.rgb * constants.post.x *
-                   exposure.read(uint2(0)).r;
+    float3 color = scene_color.rgb;
+    if (constants.bloom.z > 0.5)
+    {
+        const float4 bloom = bloom_map.sample(
+            bloom_sampler, input.texcoord);
+        color += bloom.rgb * constants.bloom.x +
+                 bloom.a * constants.bloom.y *
+                     constants.halation_tint.rgb;
+    }
+    color *= constants.post.x * exposure.read(uint2(0)).r;
     const float3 clamped = clamp(color, float3(0.0), float3(1.0));
     const uint tonemap_type = uint(round(constants.post.z));
     color = mix(clamped,

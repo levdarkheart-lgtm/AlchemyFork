@@ -78,6 +78,23 @@ struct ALMetalPBRPreviewScene
     float exposure_low_fraction = 0.1f;
     float exposure_high_fraction = 0.95f;
     std::uint32_t exposure_metering_mode = 1;
+
+    // HDR bloom is generated from the same pre-exposure linear target as GL.
+    // Cross-filter streaks are deliberately not represented here yet; the
+    // integration rejects the native result while that effect is active.
+    bool bloom_enabled = false;
+    std::uint32_t bloom_mip_count = 5;
+    std::uint32_t bloom_resolution_scale = 0;
+    float bloom_threshold = 1.f;
+    float bloom_knee = 0.5f;
+    float bloom_firefly_clamp = 24.f;
+    float bloom_scatter = 0.7f;
+    float bloom_alpha_glow_boost = 2.f;
+    float bloom_strength = 0.325f;
+    bool bloom_halation = false;
+    float bloom_halation_strength = 0.f;
+    float bloom_halation_tint[3] = {1.f, 0.35f, 0.15f};
+    float bloom_halation_weights[3] = {1.f, 1.f, 1.f};
 };
 
 // A narrow owner for LLGLTFPreviewTexture's generated sphere. The GL render
