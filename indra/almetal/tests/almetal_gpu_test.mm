@@ -2090,6 +2090,38 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         reflection_probes.constants.ref_index[1][3] = 1;
         reflection_probes.constants.config[0] = 2.f;
 
+        ALMetalTextureDescriptor hero_descriptor;
+        hero_descriptor.type = ALMetalTextureType::texture_cube;
+        hero_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        hero_descriptor.width = 1;
+        hero_descriptor.height = 1;
+        hero_descriptor.storage = ALMetalStorageMode::private_gpu;
+        hero_descriptor.usage = ALMetalTextureUsage::shader_read;
+        hero_descriptor.label =
+            "Alchemy world hero-probe test cube";
+        auto hero_texture = ALMetalTexture::create(
+            *device, hero_descriptor, &error);
+        INFO(error);
+        REQUIRE(hero_texture);
+        auto hero_upload = device->makeCommandBuffer(
+            "Alchemy world hero-probe black upload", &error);
+        INFO(error);
+        REQUIRE(hero_upload);
+        const std::array<std::uint8_t, 4> black_hero{{0, 0, 0, 255}};
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            REQUIRE(hero_texture->upload(
+                *hero_upload, 0, face, {}, black_hero.data(), 4,
+                &error));
+        }
+        REQUIRE(hero_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldHeroProbe hero_probe;
+        hero_probe.radiance_texture = hero_texture.get();
+        hero_probe.constants.clip_plane[3] = 1.f;
+        hero_probe.constants.config[1] = 1;
+
         // Legacy BLEND materials keep their authored diffuse alpha unless a
         // sun, reflection-probe or punctual highlight raises it. Build a
         // clean retained target so every assertion below observes the Metal
@@ -2236,6 +2268,57 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         }
         CHECK(legacy_emissive_after[center / 4] ==
               legacy_emissive_before[center / 4]);
+
+        // A full-weight box hero replaces the ordinary bright probe with a
+        // black sharp cube, returning coverage to authored diffuse alpha.
+        // The sphere branch reaches the same result at its centre, while a
+        // rejected mirror clip plane leaves the ordinary probe untouched.
+        legacy_lighting.sun_color[0] = 0.f;
+        ALMetalWorldHeroProbe invalid_hero;
+        invalid_hero.constants.config[1] = 1;
+        legacy_alpha_scene.hero_probe = &invalid_hero;
+        auto invalid_hero_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(invalid_hero_target);
+        CHECK_FALSE(renderer->compositeImpostorPostDeferred(
+            *invalid_hero_target, legacy_alpha_scene, &error));
+        CHECK(error == "Metal world impostor hero probe is invalid");
+        error.clear();
+        legacy_alpha_scene.hero_probe = &hero_probe;
+        auto hero_box_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(hero_box_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *hero_box_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha(*hero_box_target)) - 64) <= 1);
+
+        hero_probe.constants.config[0] = 1;
+        hero_probe.constants.hero_sphere[2] = -2.f;
+        hero_probe.constants.hero_sphere[3] = 100.f;
+        auto hero_sphere_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(hero_sphere_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *hero_sphere_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha(*hero_sphere_target)) - 64) <= 1);
+
+        hero_probe.constants.clip_plane[3] = -1.f;
+        auto hero_clipped_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(hero_clipped_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *hero_clipped_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha(*hero_clipped_target)) - 128) <= 1);
+        hero_probe.constants.config[0] = 0;
+        hero_probe.constants.clip_plane[3] = 1.f;
+        legacy_alpha_scene.hero_probe = nullptr;
+        legacy_lighting.sun_color[0] = 1.f;
 
         // With the probe term disabled, an aligned red sun saturates glare
         // and raises half-diffuse/half-vertex coverage from one quarter to
@@ -2486,6 +2569,38 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(alpha_orm[fullbright_top + 2] == 0);
         CHECK(alpha_orm[fullbright_top + 3] == 0);
         CHECK(std::abs(alpha_depth[24 * 32 + 8] - 0.625f) < 0.0001f);
+
+        // fullbrightShinyF also finishes its legacy radiance tap with the
+        // hero probe at glossiness one. Replace blue cube radiance with red
+        // and require the reflected channel to move without changing the
+        // diffuse green contribution or opaque coverage.
+        auto red_hero_upload = device->makeCommandBuffer(
+            "Alchemy world hero-probe red upload", &error);
+        INFO(error);
+        REQUIRE(red_hero_upload);
+        const std::array<std::uint8_t, 4> red_hero{{255, 0, 0, 255}};
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            REQUIRE(hero_texture->upload(
+                *red_hero_upload, 0, face, {}, red_hero.data(), 4,
+                &error));
+        }
+        REQUIRE(red_hero_upload->commitAndWait(&error));
+        INFO(error);
+        alpha_scene.hero_probe = &hero_probe;
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *coverage_result, alpha_scene, &error));
+        INFO(error);
+        REQUIRE(coverage_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, alpha_albedo.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           alpha_albedo[fullbright_top + 0]) - 99) <= 2);
+        CHECK(std::abs(static_cast<int>(
+                           alpha_albedo[fullbright_top + 1]) - 188) <= 2);
+        CHECK(alpha_albedo[fullbright_top + 2] == 0);
+        CHECK(alpha_albedo[fullbright_top + 3] == 255);
+        alpha_scene.hero_probe = nullptr;
 
         // The rigged owner uses the same probe traversal after applying its
         // rebased palette to eye position and normal, and remains an opaque

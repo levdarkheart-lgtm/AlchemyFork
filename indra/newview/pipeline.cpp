@@ -453,6 +453,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool impostor_shiny = false;
     bool impostor_emboss = false;
     ALMetalWorldReflectionProbes impostor_reflection_probes;
+    std::unique_ptr<ALMetalTexture> impostor_hero_probe_texture;
+    ALMetalWorldHeroProbe impostor_hero_probe;
+    std::vector<U8> impostor_hero_probe_bytes;
+    U64 impostor_hero_probe_generation = 0;
     ALMetalWorldLegacyAlphaLighting impostor_legacy_alpha_lighting;
     bool impostor_legacy_alpha_lighting_valid = false;
     std::unique_ptr<ALMetalTexture> impostor_directional_shadow_texture;
@@ -811,6 +815,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.renderer.reset();
         capture.target.reset();
         capture.impostor_bake_target.reset();
+        capture.impostor_hero_probe_texture.reset();
+        capture.impostor_hero_probe = {};
+        capture.impostor_hero_probe_bytes.clear();
+        capture.impostor_hero_probe_generation = 0;
         capture.impostor_directional_shadow_texture.reset();
         capture.impostor_directional_shadows = {};
         capture.impostor_directional_shadow_depth.clear();
@@ -1178,6 +1186,10 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.renderer.reset();
         capture.target.reset();
         capture.impostor_bake_target.reset();
+        capture.impostor_hero_probe_texture.reset();
+        capture.impostor_hero_probe = {};
+        capture.impostor_hero_probe_bytes.clear();
+        capture.impostor_hero_probe_generation = 0;
         capture.impostor_directional_shadow_texture.reset();
         capture.impostor_directional_shadows = {};
         capture.impostor_directional_shadow_depth.clear();
@@ -1304,18 +1316,9 @@ void LLPipeline::beginMetalImpostorShinyPass(bool rigged)
         capture.batches.clear();
         return;
     }
-    // The cube-array mirror covers the base reflection-probe traversal, but
-    // the GL finish can still replace that radiance with screen-space or hero
-    // reflection data. Until those live inputs are mirrored too, a shiny
-    // replay under either feature would not be the same owner.
-    if ((mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
-         !gCubeSnapshot) ||
-        mReflectionMapManager.mProbeData.heroProbeCount > 0)
-    {
-        capture.complete = false;
-        capture.batches.clear();
-        return;
-    }
+    // fullbrightShinyF supplies zero glossiness to legacyProbeFinish, so its
+    // SSR gate is always false. The active hero probe still replaces the
+    // legacy radiance tap, but that sharp cube is mirrored before encoding.
     capture.rigged = rigged;
     capture.alpha_mask = false;
     capture.material_alpha_mode = 0;
@@ -1379,6 +1382,8 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
         {
             return batch.impostor_shiny;
         });
+    const bool hero_active =
+        mHeroProbeManager.mHeroData.heroProbeCount > 0;
     if (capture.complete && has_shiny &&
         !mReflectionMapManager.fillMetalReflectionProbes(
             capture.impostor_reflection_probes))
@@ -1390,6 +1395,14 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
         LL_WARNS("Metal")
             << "Could not acquire a coherent reflection-probe pack for the "
                "native avatar-impostor opaque-forward slice" << LL_ENDL;
+    }
+    if (capture.complete && has_shiny && hero_active &&
+        !fillMetalImpostorHeroProbe())
+    {
+        capture.complete = false;
+        LL_WARNS("Metal")
+            << "Could not acquire the active hero probe for the native "
+               "avatar-impostor opaque-forward slice" << LL_ENDL;
     }
 
     if (capture.complete && !capture.batches.empty() &&
@@ -1406,6 +1419,8 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
         scene.stamp_opaque_coverage = true;
         scene.reflection_probes = has_shiny
             ? &capture.impostor_reflection_probes : nullptr;
+        scene.hero_probe = has_shiny && hero_active
+            ? &capture.impostor_hero_probe : nullptr;
         std::string error;
         if (!capture.renderer->compositeImpostorPostDeferred(
                 *capture.impostor_bake_target, scene, &error))
@@ -1458,6 +1473,8 @@ void LLPipeline::endMetalImpostorAlphaCapture()
                        LLMaterial::DIFFUSE_ALPHA_MODE_BLEND;
         });
     const bool legacy_alpha_uses_probes = has_legacy_alpha;
+    const bool hero_active =
+        mHeroProbeManager.mHeroData.heroProbeCount > 0;
     if (capture.complete && has_legacy_alpha &&
         (!capture.impostor_legacy_alpha_lighting_valid ||
          (legacy_alpha_uses_probes &&
@@ -1468,6 +1485,14 @@ void LLPipeline::endMetalImpostorAlphaCapture()
         LL_WARNS("Metal")
             << "Could not acquire a coherent glare-lighting pack for the "
                "native avatar-impostor legacy BLEND slice" << LL_ENDL;
+    }
+    if (capture.complete && has_legacy_alpha && hero_active &&
+        !fillMetalImpostorHeroProbe())
+    {
+        capture.complete = false;
+        LL_WARNS("Metal")
+            << "Could not acquire the active hero probe for the native "
+               "avatar-impostor legacy BLEND slice" << LL_ENDL;
     }
 
     if (!capture.complete || capture.batches.empty() ||
@@ -1488,6 +1513,8 @@ void LLPipeline::endMetalImpostorAlphaCapture()
     scene.reverse_z = capture.reverse_z;
     scene.reflection_probes = legacy_alpha_uses_probes
         ? &capture.impostor_reflection_probes : nullptr;
+    scene.hero_probe = has_legacy_alpha && hero_active
+        ? &capture.impostor_hero_probe : nullptr;
     scene.legacy_alpha_lighting = has_legacy_alpha
         ? &capture.impostor_legacy_alpha_lighting : nullptr;
     scene.directional_shadows =
@@ -2144,6 +2171,210 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     capture.pass_active = false;
 }
 
+bool LLPipeline::fillMetalImpostorHeroProbe()
+{
+    if (!mMetalWorldSimpleCapture || !mMetalWorldSimpleCapture->device)
+    {
+        return false;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    LLHeroProbeManager& manager = mHeroProbeManager;
+    if (manager.mHeroData.heroProbeCount != 1 ||
+        manager.mHeroData.heroShape < 0 ||
+        manager.mHeroData.heroShape > 1 ||
+        !manager.mMetalRadianceReady ||
+        manager.mMetalRadianceGeneration == 0 ||
+        manager.mTexture.isNull() ||
+        manager.mTexture->getGLName() == 0 ||
+        manager.mTexture->getWidth() == 0 ||
+        manager.mTexture->getCount() == 0)
+    {
+        return false;
+    }
+
+    const U32 resolution = manager.mTexture->getWidth();
+    const ALMetalPixelFormat metal_format = manager.mHDR
+        ? ALMetalPixelFormat::rg11b10_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    const ALMetalTextureDescriptor* mirrored =
+        capture.impostor_hero_probe_texture
+            ? &capture.impostor_hero_probe_texture->descriptor()
+            : nullptr;
+    const bool needs_radiance =
+        capture.impostor_hero_probe_generation !=
+            manager.mMetalRadianceGeneration ||
+        !mirrored ||
+        mirrored->type != ALMetalTextureType::texture_cube ||
+        mirrored->format != metal_format ||
+        mirrored->width != resolution ||
+        mirrored->height != resolution ||
+        mirrored->mipmap_level_count != 1;
+
+    if (needs_radiance)
+    {
+        const std::size_t face_pixels =
+            static_cast<std::size_t>(resolution) * resolution;
+        if (face_pixels >
+            std::numeric_limits<std::size_t>::max() / (6 * sizeof(U32)))
+        {
+            return false;
+        }
+        capture.impostor_hero_probe_bytes.assign(
+            face_pixels * 6 * sizeof(U32), U8{0});
+
+        GLint previous_read_framebuffer = 0;
+        GLint previous_pack_buffer = 0;
+        GLint previous_read_buffer = GL_BACK;
+        GLint previous_pack_alignment = 4;
+        GLint previous_pack_row_length = 0;
+        GLint previous_pack_skip_pixels = 0;
+        GLint previous_pack_skip_rows = 0;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,
+                      &previous_read_framebuffer);
+        glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING,
+                      &previous_pack_buffer);
+        glGetIntegerv(GL_READ_BUFFER, &previous_read_buffer);
+        glGetIntegerv(GL_PACK_ALIGNMENT, &previous_pack_alignment);
+        glGetIntegerv(GL_PACK_ROW_LENGTH, &previous_pack_row_length);
+        glGetIntegerv(GL_PACK_SKIP_PIXELS, &previous_pack_skip_pixels);
+        glGetIntegerv(GL_PACK_SKIP_ROWS, &previous_pack_skip_rows);
+
+        GLuint read_framebuffer = 0;
+        clear_glerror();
+        glGenFramebuffers(1, &read_framebuffer);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, read_framebuffer);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+        glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
+        glPixelStorei(GL_PACK_SKIP_ROWS, 0);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+
+        bool read_ok = read_framebuffer != 0;
+        const GLenum gl_format = manager.mHDR ? GL_RGB : GL_RGBA;
+        const GLenum gl_type = manager.mHDR
+            ? GL_UNSIGNED_INT_10F_11F_11F_REV
+            : GL_UNSIGNED_BYTE;
+        for (U32 face = 0; read_ok && face < 6; ++face)
+        {
+            glFramebufferTextureLayer(
+                GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                manager.mTexture->getGLName(), 0,
+                static_cast<GLint>(face));
+            read_ok = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) ==
+                GL_FRAMEBUFFER_COMPLETE;
+            if (read_ok)
+            {
+                glReadPixels(
+                    0, 0, resolution, resolution, gl_format, gl_type,
+                    capture.impostor_hero_probe_bytes.data() +
+                        face_pixels * face * sizeof(U32));
+            }
+        }
+        const GLenum read_error = glGetError();
+
+        glBindFramebuffer(
+            GL_READ_FRAMEBUFFER,
+            static_cast<GLuint>(previous_read_framebuffer));
+        glReadBuffer(previous_read_buffer);
+        glBindBuffer(
+            GL_PIXEL_PACK_BUFFER,
+            static_cast<GLuint>(previous_pack_buffer));
+        glPixelStorei(GL_PACK_ALIGNMENT, previous_pack_alignment);
+        glPixelStorei(GL_PACK_ROW_LENGTH, previous_pack_row_length);
+        glPixelStorei(GL_PACK_SKIP_PIXELS, previous_pack_skip_pixels);
+        glPixelStorei(GL_PACK_SKIP_ROWS, previous_pack_skip_rows);
+        if (read_framebuffer != 0)
+        {
+            glDeleteFramebuffers(1, &read_framebuffer);
+        }
+
+        if (!read_ok || read_error != GL_NO_ERROR)
+        {
+            LL_WARNS("Metal")
+                << "Could not read the live hero-probe cube for the native "
+                   "avatar-impostor owner: GL error 0x"
+                << std::hex << read_error << std::dec << LL_ENDL;
+            return false;
+        }
+
+        ALMetalTextureDescriptor descriptor;
+        descriptor.type = ALMetalTextureType::texture_cube;
+        descriptor.format = metal_format;
+        descriptor.width = resolution;
+        descriptor.height = resolution;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.usage = ALMetalTextureUsage::shader_read;
+        descriptor.label = "Alchemy live hero-probe mirror";
+        std::string error;
+        auto hero_texture = ALMetalTexture::create(
+            *capture.device, descriptor, &error);
+        auto upload = hero_texture
+            ? capture.device->makeCommandBuffer(
+                  "Alchemy live hero-probe upload", &error)
+            : nullptr;
+        bool uploaded = upload != nullptr;
+        for (U32 face = 0; uploaded && face < 6; ++face)
+        {
+            uploaded = hero_texture->upload(
+                *upload, 0, face, {},
+                capture.impostor_hero_probe_bytes.data() +
+                    face_pixels * face * sizeof(U32),
+                static_cast<std::size_t>(resolution) * sizeof(U32),
+                &error);
+        }
+        uploaded = uploaded && upload->commit(&error);
+        if (!uploaded)
+        {
+            LL_WARNS("Metal")
+                << "Could not upload the live hero-probe mirror: "
+                << error << LL_ENDL;
+            return false;
+        }
+        capture.impostor_hero_probe_texture = std::move(hero_texture);
+        capture.impostor_hero_probe_generation =
+            manager.mMetalRadianceGeneration;
+    }
+
+    static_assert(sizeof(LLMatrix4) == sizeof(F32) * 16);
+    ALMetalWorldHeroProbeConstants constants;
+    std::memcpy(constants.hero_box, manager.mHeroData.heroBox.mMatrix,
+                sizeof(constants.hero_box));
+    std::memcpy(constants.hero_sphere,
+                manager.mHeroData.heroSphere.mV,
+                sizeof(constants.hero_sphere));
+
+    const LLMatrix4a& modelview =
+        LLViewerCamera::getCurrent().getModelview();
+    LLMatrix4a normal_matrix;
+    normal_matrix.setNormalMatrix(modelview);
+    LLVector4a mirror_normal(
+        manager.mMirrorNormal.mV[0], manager.mMirrorNormal.mV[1],
+        manager.mMirrorNormal.mV[2], 0.f);
+    LLVector4a mirror_position(
+        manager.mMirrorPosition.mV[0], manager.mMirrorPosition.mV[1],
+        manager.mMirrorPosition.mV[2], 1.f);
+    LLVector4a eye_normal;
+    LLVector4a eye_position;
+    normal_matrix.rotate(mirror_normal, eye_normal);
+    eye_normal.normalize3();
+    modelview.affineTransform(mirror_position, eye_position);
+    constants.clip_plane[0] = eye_normal[0];
+    constants.clip_plane[1] = eye_normal[1];
+    constants.clip_plane[2] = eye_normal[2];
+    constants.clip_plane[3] =
+        -eye_position.dot3(eye_normal).getF32();
+    constants.config[0] =
+        static_cast<U32>(manager.mHeroData.heroShape);
+    constants.config[1] = 1;
+
+    capture.impostor_hero_probe.radiance_texture =
+        capture.impostor_hero_probe_texture.get();
+    capture.impostor_hero_probe.constants = constants;
+    return true;
+}
+
 bool LLPipeline::fillMetalImpostorDirectionalShadows()
 {
     if (!mMetalWorldSimpleCapture || !mMetalWorldSimpleCapture->device)
@@ -2339,17 +2570,15 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
         return;
     }
 
-    // The GL probe finish can replace cube radiance with SSR or an active
-    // hero probe. Keep the complete native alpha replay fail-closed until
-    // those inputs are represented instead of silently changing the
-    // material contract. Directional shadows have an exact raw-depth mirror
-    // below and therefore no longer need that gate.
+    // The GL probe finish can replace cube radiance with SSR. Keep the
+    // complete native alpha replay fail-closed until that screen-space input
+    // is represented instead of silently changing the material contract.
+    // Directional shadows and the active hero probe now have exact mirrors.
     LLGLSLShader* material_shader =
         gDeferredMaterialProgram[shader_mask].selectVariant();
     const bool unsupported_probe_finish =
-        (mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
-         !gCubeSnapshot) ||
-        mReflectionMapManager.mProbeData.heroProbeCount > 0;
+        mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
+        !gCubeSnapshot;
     if (unsupported_probe_finish ||
         (material_shader->mFeatures.hasShadows &&
          !fillMetalImpostorDirectionalShadows()))

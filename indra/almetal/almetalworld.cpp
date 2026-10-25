@@ -54,6 +54,7 @@ namespace
     static_assert(sizeof(WorldShinyConstants) == 304);
     static_assert(sizeof(ALMetalWorldLegacyAlphaLight) == 64);
     static_assert(sizeof(ALMetalWorldLegacyAlphaLighting) == 496);
+    static_assert(sizeof(ALMetalWorldHeroProbeConstants) == 112);
     static_assert(sizeof(ALMetalWorldDirectionalShadowConstants) == 320);
 
     struct alignas(16) WorldMaterialSlotConstants
@@ -268,6 +269,32 @@ namespace
         return true;
     }
 
+    bool validHeroProbe(const ALMetalWorldHeroProbe* hero)
+    {
+        if (!hero || !hero->radiance_texture ||
+            !finiteValues(hero->constants.hero_box, 16) ||
+            !finiteValues(hero->constants.hero_sphere, 4) ||
+            !finiteValues(hero->constants.clip_plane, 4) ||
+            hero->constants.config[0] > 1 ||
+            hero->constants.config[1] != 1)
+        {
+            return false;
+        }
+
+        const ALMetalTextureDescriptor& descriptor =
+            hero->radiance_texture->descriptor();
+        return descriptor.type == ALMetalTextureType::texture_cube &&
+               (descriptor.format == ALMetalPixelFormat::rg11b10_float ||
+                descriptor.format == ALMetalPixelFormat::rgba8_unorm) &&
+               descriptor.width != 0 &&
+               descriptor.width == descriptor.height &&
+               descriptor.array_length == 1 &&
+               descriptor.mipmap_level_count == 1 &&
+               descriptor.sample_count == 1 &&
+               alMetalHasUsage(
+                   descriptor.usage, ALMetalTextureUsage::shader_read);
+    }
+
     bool validDirectionalShadows(
         const ALMetalWorldDirectionalShadows* shadows)
     {
@@ -342,6 +369,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalSamplerState> ramp_sampler;
     std::unique_ptr<ALMetalTexture> unshadowed_depth;
     ALMetalWorldDirectionalShadowConstants unshadowed_constants{};
+    std::unique_ptr<ALMetalTexture> inactive_hero_probe;
+    ALMetalWorldHeroProbeConstants inactive_hero_constants{};
 };
 
 ALMetalWorldGBufferRenderer::ALMetalWorldGBufferRenderer(
@@ -1138,6 +1167,33 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->unshadowed_constants.parameters[2] = 1.f;
     impl->unshadowed_constants.config[0] = 4;
     impl->unshadowed_constants.config[1] = 0xfu;
+
+    ALMetalTextureDescriptor hero_descriptor;
+    hero_descriptor.type = ALMetalTextureType::texture_cube;
+    hero_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+    hero_descriptor.width = 1;
+    hero_descriptor.height = 1;
+    hero_descriptor.storage = ALMetalStorageMode::private_gpu;
+    hero_descriptor.usage = ALMetalTextureUsage::shader_read;
+    hero_descriptor.label = "Alchemy world inactive hero-probe fallback";
+    impl->inactive_hero_probe = ALMetalTexture::create(
+        device, hero_descriptor, error);
+    auto hero_upload = impl->inactive_hero_probe
+        ? device.makeCommandBuffer(
+              "Alchemy world inactive hero-probe fallback upload", error)
+        : nullptr;
+    const std::uint32_t black = 0;
+    bool hero_ready = hero_upload != nullptr;
+    for (std::uint32_t face = 0; hero_ready && face < 6; ++face)
+    {
+        hero_ready = impl->inactive_hero_probe->upload(
+            *hero_upload, 0, face, {}, &black, sizeof(black), error);
+    }
+    hero_ready = hero_ready && hero_upload->commitAndWait(error);
+    if (!hero_ready)
+    {
+        return nullptr;
+    }
 
     return std::unique_ptr<ALMetalWorldGBufferRenderer>(
         new ALMetalWorldGBufferRenderer(std::move(impl)));
@@ -2237,6 +2293,12 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
                      : "Metal world legacy alpha reflection probes are invalid");
         return false;
     }
+    if (scene.hero_probe && !validHeroProbe(scene.hero_probe))
+    {
+        setError(error,
+                 "Metal world impostor hero probe is invalid");
+        return false;
+    }
     if (has_legacy_alpha &&
         !validLegacyAlphaLighting(scene.legacy_alpha_lighting))
     {
@@ -2513,13 +2575,24 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
         encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
     if (encoded && (has_shiny || legacy_alpha_uses_probes))
     {
+        const ALMetalTexture* hero_texture = scene.hero_probe
+            ? scene.hero_probe->radiance_texture
+            : mImpl->inactive_hero_probe.get();
+        const ALMetalWorldHeroProbeConstants& hero_constants =
+            scene.hero_probe
+                ? scene.hero_probe->constants
+                : mImpl->inactive_hero_constants;
         encoded =
             encoder->setFragmentSampler(
                 1, mImpl->probe_sampler.get(), error) &&
             encoder->setFragmentTexture(
                 32, scene.reflection_probes->radiance_texture, error) &&
             encoder->setFragmentBuffer(
-                1, *probe_constants_buffer, 0, error);
+                1, *probe_constants_buffer, 0, error) &&
+            encoder->setFragmentTexture(
+                34, hero_texture, error) &&
+            encoder->setFragmentBytes(
+                4, &hero_constants, sizeof(hero_constants), error);
     }
 
     for (std::size_t index = 0;

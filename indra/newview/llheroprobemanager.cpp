@@ -485,6 +485,13 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
 
         mMipChain[0].flush();
     }
+
+    ++mMetalRadianceGeneration;
+    if (mMetalRadianceGeneration == 0)
+    {
+        ++mMetalRadianceGeneration;
+    }
+    mMetalRadianceReady = true;
 }
 
 void LLHeroProbeManager::updateUniforms()
@@ -628,6 +635,13 @@ void LLHeroProbeManager::initReflectionMaps()
 
 void LLHeroProbeManager::cleanup()
 {
+    ++mMetalRadianceGeneration;
+    if (mMetalRadianceGeneration == 0)
+    {
+        ++mMetalRadianceGeneration;
+    }
+    mMetalRadianceReady = false;
+
     mVertexBuffer = nullptr;
     mRenderTarget.release();
 

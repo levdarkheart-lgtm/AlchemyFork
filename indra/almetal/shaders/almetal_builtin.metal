@@ -330,6 +330,14 @@ struct ALMetalWorldReflectionProbeConstants
     float4 config;
 };
 
+struct ALMetalWorldHeroProbeConstants
+{
+    float4x4 hero_box;
+    float4 hero_sphere;
+    float4 clip_plane;
+    uint4 config;
+};
+
 struct ALMetalWorldGBufferOutput
 {
     float4 albedo [[color(0)]];
@@ -1492,13 +1500,65 @@ static float3 almetal_sample_legacy_probes(
     return almetal_legacy_probe_mix(sums, automatic);
 }
 
+static float3 almetal_finish_legacy_hero_probe(
+    float3 legacy_environment, float3 position, float3 normal,
+    texturecube<float> hero_radiance, sampler probe_sampler,
+    constant ALMetalWorldReflectionProbeConstants& probes,
+    constant ALMetalWorldHeroProbeConstants& hero)
+{
+    if (hero.config.y < 1u)
+    {
+        return legacy_environment;
+    }
+
+    float weight;
+    const float3 reflected = reflect(position, normal);
+    if (hero.config.x < 1u)
+    {
+        const float3 box_position =
+            (hero.hero_box * float4(position, 1.0)).xyz;
+        weight = max(almetal_probe_box_depth(box_position), 0.0);
+    }
+    else
+    {
+        const float radius = hero.hero_sphere.w;
+        const float inner_radius = radius * 0.5;
+        const float distance = max(
+            length(position - hero.hero_sphere.xyz), 0.001);
+        const float attenuation = 1.0 -
+            max(distance - inner_radius, 0.0) /
+            max(radius - inner_radius, 0.001);
+        weight = attenuation / distance;
+    }
+
+    float clip_distance =
+        dot(position, hero.clip_plane.xyz) + hero.clip_plane.w;
+    clip_distance = clamp((clip_distance * 0.95 + 0.05) * 10.0,
+                          0.0, 1.0);
+    weight = clamp(weight * 10.0 * clip_distance, 0.0, 1.0);
+    if (weight <= 0.0)
+    {
+        return legacy_environment;
+    }
+
+    const float3x3 environment = float3x3(
+        probes.env_matrix[0].xyz,
+        probes.env_matrix[1].xyz,
+        probes.env_matrix[2].xyz);
+    const float3 hero_environment = hero_radiance.sample(
+        probe_sampler, environment * reflected, level(0.0)).rgb;
+    return mix(legacy_environment, hero_environment, weight);
+}
+
 fragment float4 almetal_world_shiny_fragment(
     ALMetalWorldShinyVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
     texturecube_array<float> reflection_probes [[texture(32)]],
+    texturecube<float> hero_probe [[texture(34)]],
     sampler diffuse_sampler [[sampler(0)]],
     sampler probe_sampler [[sampler(1)]],
-    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]])
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]])
 {
     const float4 diffuse = input.texture_index < input.texture_count
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
@@ -1507,9 +1567,12 @@ fragment float4 almetal_world_shiny_fragment(
     float3 color = diffuse.rgb * input.color.rgb;
     const float3 normal = normalize(input.normal);
     const float environment_intensity = input.color.a;
-    const float3 legacy_environment = almetal_sample_legacy_probes(
+    float3 legacy_environment = almetal_sample_legacy_probes(
         input.eye_position, normal,
         reflection_probes, probe_sampler, probes);
+    legacy_environment = almetal_finish_legacy_hero_probe(
+        legacy_environment, input.eye_position, normal,
+        hero_probe, probe_sampler, probes, hero);
     float fresnel = 1.0 + dot(normalize(input.eye_position), normal);
     fresnel *= fresnel;
     fresnel = min(fresnel + environment_intensity, 1.0);
@@ -2262,13 +2325,15 @@ fragment float4 almetal_world_legacy_alpha_fragment(
     array<texture2d<float>, 8> normal_textures [[texture(8)]],
     array<texture2d<float>, 8> specular_textures [[texture(16)]],
     texturecube_array<float> reflection_probes [[texture(32)]],
+    texturecube<float> hero_probe [[texture(34)]],
     sampler material_sampler [[sampler(0)]],
     sampler probe_sampler [[sampler(1)]],
     constant ALMetalWorldMaterialConstants& constants [[buffer(0)]],
     constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
     constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
     texture2d_array<float> shadow_maps [[texture(33)]],
-    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]])
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]])
 {
     // Keep the receiver derivatives in uniform control flow, before the
     // material cutoffs below can discard only part of a quad.
@@ -2376,9 +2441,12 @@ fragment float4 almetal_world_legacy_alpha_fragment(
 
     if (environment_intensity > 0.0)
     {
-        const float3 legacy_environment = almetal_sample_legacy_probes(
+        float3 legacy_environment = almetal_sample_legacy_probes(
             input.eye_position, normal,
             reflection_probes, probe_sampler, probes);
+        legacy_environment = almetal_finish_legacy_hero_probe(
+            legacy_environment, input.eye_position, normal,
+            hero_probe, probe_sampler, probes, hero);
         const float environment_glare = max(
             max(legacy_environment.r, legacy_environment.g),
             legacy_environment.b);
