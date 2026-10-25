@@ -1444,6 +1444,38 @@ const ALMetalTexture* ALMetalRenderTarget::depthStencilTexture() const noexcept
     return mImpl ? mImpl->depth_stencil.get() : nullptr;
 }
 
+bool ALMetalRenderTarget::copyColorFrom(
+    ALMetalCommandBuffer& command_buffer,
+    std::uint32_t destination_index,
+    const ALMetalTexture& source,
+    ALMetalTextureCopy copy,
+    std::string* error)
+{
+    if (!mImpl || destination_index >= mDescriptor.color_attachment_count ||
+        !mImpl->colors[destination_index])
+    {
+        setError(error, "Metal render-target color copy destination is unavailable");
+        return false;
+    }
+    return mImpl->colors[destination_index]->copyFrom(
+        command_buffer, source, copy, error);
+}
+
+bool ALMetalRenderTarget::copyDepthStencilFrom(
+    ALMetalCommandBuffer& command_buffer,
+    const ALMetalTexture& source,
+    ALMetalTextureCopy copy,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->depth_stencil)
+    {
+        setError(error, "Metal render-target depth copy destination is unavailable");
+        return false;
+    }
+    return mImpl->depth_stencil->copyFrom(
+        command_buffer, source, copy, error);
+}
+
 std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
     const ALMetalRenderPassConfig& config,
     std::string* error) const

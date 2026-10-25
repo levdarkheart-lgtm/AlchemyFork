@@ -2060,6 +2060,86 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(alpha_orm[fullbright_top + 3] == 0);
         CHECK(std::abs(alpha_depth[24 * 32 + 8] - 0.625f) < 0.0001f);
 
+        // The main-world owner starts from independently produced lighting
+        // color and G-buffer depth. It copies both on-GPU, then replays this
+        // opaque-forward batch into a single final-color attachment without
+        // disturbing pixels outside the geometry.
+        ALMetalRenderTargetDescriptor final_light_descriptor;
+        final_light_descriptor.width = 32;
+        final_light_descriptor.height = 32;
+        final_light_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba16_float;
+        final_light_descriptor.label =
+            "Alchemy opaque post-deferred test lighting";
+        auto final_light = ALMetalRenderTarget::create(
+            *device, final_light_descriptor, &error);
+        INFO(error);
+        REQUIRE(final_light);
+        ALMetalRenderPassConfig final_light_clear;
+        final_light_clear.colors[0].load = ALMetalLoadAction::clear;
+        final_light_clear.colors[0].store = ALMetalStoreAction::store;
+        final_light_clear.colors[0].clear = {0.25, 0.125, 0.0625, 0.5};
+        auto final_light_pass = final_light->makeRenderPass(
+            final_light_clear, &error);
+        auto final_light_command = device->makeCommandBuffer(
+            "Alchemy opaque post-deferred test lighting clear", &error);
+        auto final_light_encoder = final_light_pass && final_light_command
+            ? ALMetalRenderEncoder::begin(
+                  *final_light_command, *final_light_pass,
+                  "Alchemy opaque post-deferred test clear encoder",
+                  &error)
+            : nullptr;
+        INFO(error);
+        REQUIRE(final_light_encoder);
+        REQUIRE(final_light_encoder->end(&error));
+        REQUIRE(final_light_command->commitAndWait(&error));
+
+        ALMetalWorldOpaquePostDeferredScene opaque_forward_scene;
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.composed_lighting = final_light.get();
+        opaque_forward_scene.batches = &fullbright_batch;
+        opaque_forward_scene.batch_count = 1;
+        opaque_forward_scene.width = 32;
+        opaque_forward_scene.height = 32;
+        opaque_forward_scene.hdr = true;
+        fullbright_batch.diffuse_textures[0] = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world opaque post-deferred texture is invalid");
+        fullbright_batch.diffuse_textures[0] = indexed_diffuse.get();
+        error.clear();
+        auto opaque_forward = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(opaque_forward);
+        CHECK(opaque_forward->descriptor().color_attachment_count == 1);
+        CHECK(opaque_forward->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba16_float);
+        CHECK(opaque_forward->descriptor().depth_stencil_format ==
+              ALMetalPixelFormat::depth32_float);
+        std::array<std::uint16_t, 32 * 32 * 4> opaque_forward_pixels{};
+        std::array<float, 32 * 32> opaque_forward_depth{};
+        REQUIRE(opaque_forward->colorTexture(0)->readback(
+            *device, 0, 0, {}, opaque_forward_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(opaque_forward->depthStencilTexture()->readback(
+            *device, 0, 0, {}, opaque_forward_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(opaque_forward_pixels[0] == 0x3400);
+        CHECK(opaque_forward_pixels[1] == 0x3000);
+        CHECK(opaque_forward_pixels[2] == 0x2c00);
+        CHECK(opaque_forward_pixels[3] == 0x3800);
+        CHECK(opaque_forward_pixels[fullbright_top + 0] == 0);
+        CHECK(opaque_forward_pixels[fullbright_top + 1] == 0x3c00);
+        CHECK(opaque_forward_pixels[fullbright_top + 2] == 0);
+        CHECK(opaque_forward_pixels[fullbright_top + 3] >= 0x3800);
+        CHECK(opaque_forward_pixels[fullbright_top + 3] <= 0x3808);
+        CHECK(std::abs(
+                  opaque_forward_depth[24 * 32 + 8] - 0.625f) < 0.0001f);
+        CHECK(std::abs(opaque_forward_depth[0] - 1.f) < 0.0001f);
+
         // Fullbright shiny is opaque in the impostor bake, but its RGB is
         // the exact legacy reflection-probe result: decoded diffuse times
         // linear tint mixed with the selected live cubemap at vertex-alpha

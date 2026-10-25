@@ -353,6 +353,24 @@ struct ALMetalWorldLightingCompositionScene
     bool hdr = false;
 };
 
+// The first ordered post-deferred world slice. The composed lighting color
+// and retained G-buffer depth are copied into one final-color target before
+// opaque-forward fullbright, shiny and emboss batches are replayed. Blended
+// alpha, water, haze, glow and presentation remain later owners.
+struct ALMetalWorldOpaquePostDeferredScene
+{
+    const ALMetalRenderTarget* gbuffer = nullptr;
+    const ALMetalRenderTarget* composed_lighting = nullptr;
+    const ALMetalWorldSimpleBatch* batches = nullptr;
+    std::size_t batch_count = 0;
+    const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
+    const ALMetalWorldHeroProbe* hero_probe = nullptr;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    bool reverse_z = false;
+    bool hdr = false;
+};
+
 struct alignas(16) ALMetalWorldLightMapConstants
 {
     float inverse_projection[16]{};
@@ -709,6 +727,12 @@ public:
     // folding in post-deferred geometry, tone mapping or presentation.
     std::unique_ptr<ALMetalRenderTarget> composeLighting(
         const ALMetalWorldLightingCompositionScene& scene,
+        std::string* error = nullptr);
+
+    // Retain composed lighting and scene depth, then render the supported
+    // opaque-forward post-deferred families into a one-color output target.
+    std::unique_ptr<ALMetalRenderTarget> renderOpaquePostDeferred(
+        const ALMetalWorldOpaquePostDeferredScene& scene,
         std::string* error = nullptr);
 
     // Produce the deferred RG light map from native G-buffer depth/normals:

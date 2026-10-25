@@ -601,6 +601,9 @@ public:
     void beginMetalImpostorEmbossPass(bool rigged);
     void beginMetalImpostorAlphaPhase();
     void endMetalImpostorAlphaCapture();
+    void beginMetalWorldPostDeferredCapture();
+    void encodeMetalWorldOpaquePostDeferredCapture();
+    void endMetalWorldPostDeferredCapture();
     void captureMetalImpostorFlatAlphaBatch(
         const LLDrawInfo& params, bool particle_or_hud_particle);
     void captureMetalImpostorLegacyMaterialAlphaBatch(

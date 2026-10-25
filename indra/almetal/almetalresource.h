@@ -435,6 +435,19 @@ public:
     const ALMetalTexture* multisampleColorTexture(std::uint32_t index) const noexcept;
     const ALMetalTexture* depthStencilTexture() const noexcept;
 
+    // Encode GPU-only copies into this target's owned attachments. These are
+    // the safe bridge between independently produced render targets when a
+    // later pass must retain both an earlier color result and scene depth.
+    bool copyColorFrom(ALMetalCommandBuffer& command_buffer,
+                       std::uint32_t destination_index,
+                       const ALMetalTexture& source,
+                       ALMetalTextureCopy copy = {},
+                       std::string* error = nullptr);
+    bool copyDepthStencilFrom(ALMetalCommandBuffer& command_buffer,
+                              const ALMetalTexture& source,
+                              ALMetalTextureCopy copy = {},
+                              std::string* error = nullptr);
+
     std::unique_ptr<ALMetalRenderPass> makeRenderPass(
         const ALMetalRenderPassConfig& config,
         std::string* error = nullptr) const;

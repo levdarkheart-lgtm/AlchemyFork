@@ -553,6 +553,10 @@ struct ALMetalWorldGBufferRenderer::Impl
     using MaterialRiggedPipelines = std::array<NormalPipelines, 2>;
     using AvatarVariantPipelines = std::array<NormalPipelines, 3>;
     using TerrainPartitionPipelines = std::array<NormalPipelines, 2>;
+    using OpaqueForwardRiggedPipelines =
+        std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>;
+    using OpaqueForwardMaskPipelines =
+        std::array<OpaqueForwardRiggedPipelines, 2>;
 
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalShaderLibrary> library;
@@ -576,6 +580,12 @@ struct ALMetalWorldGBufferRenderer::Impl
         projector_light_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         lighting_composition_pipelines;
+    std::array<OpaqueForwardMaskPipelines, 2>
+        opaque_forward_fullbright_pipelines;
+    std::array<OpaqueForwardRiggedPipelines, 2>
+        opaque_forward_shiny_pipelines;
+    std::array<OpaqueForwardRiggedPipelines, 2>
+        opaque_forward_emboss_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> light_map_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> light_map_blur_pipeline;
     std::array<NormalPipelines, 2> hdri_sky_pipelines;
@@ -1079,6 +1089,25 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                     {
                         return nullptr;
                     }
+
+                    if (normal_hdr == 0)
+                    {
+                        descriptor.color_attachment_count = 1;
+                        descriptor.colors[0].format = screen_formats[hdr];
+                        descriptor.label = alpha_mask
+                            ? "Alchemy world final-color fullbright-mask pipeline"
+                            : "Alchemy world final-color fullbright pipeline";
+                        auto& opaque_pipeline =
+                            impl->opaque_forward_fullbright_pipelines[hdr]
+                                                                      [alpha_mask]
+                                                                      [rigged];
+                        opaque_pipeline = ALMetalRenderPipeline::create(
+                            device, descriptor, error);
+                        if (!opaque_pipeline)
+                        {
+                            return nullptr;
+                        }
+                    }
                 }
             }
         }
@@ -1121,6 +1150,22 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 if (!pipeline)
                 {
                     return nullptr;
+                }
+
+                if (normal_hdr == 0)
+                {
+                    descriptor.color_attachment_count = 1;
+                    descriptor.colors[0].format = screen_formats[hdr];
+                    descriptor.label =
+                        "Alchemy world final-color shiny pipeline";
+                    auto& opaque_pipeline =
+                        impl->opaque_forward_shiny_pipelines[hdr][rigged];
+                    opaque_pipeline = ALMetalRenderPipeline::create(
+                        device, descriptor, error);
+                    if (!opaque_pipeline)
+                    {
+                        return nullptr;
+                    }
                 }
             }
         }
@@ -1175,6 +1220,22 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 if (!pipeline)
                 {
                     return nullptr;
+                }
+
+                if (normal_hdr == 0)
+                {
+                    descriptor.color_attachment_count = 1;
+                    descriptor.colors[0].format = screen_formats[hdr];
+                    descriptor.label =
+                        "Alchemy world final-color emboss pipeline";
+                    auto& opaque_pipeline =
+                        impl->opaque_forward_emboss_pipelines[hdr][rigged];
+                    opaque_pipeline = ALMetalRenderPipeline::create(
+                        device, descriptor, error);
+                    if (!opaque_pipeline)
+                    {
+                        return nullptr;
+                    }
                 }
             }
         }
@@ -3368,6 +3429,385 @@ ALMetalWorldGBufferRenderer::composeLighting(
             0, mImpl->point_clamp_sampler.get(), error) &&
         encoder->draw(
             ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
+    const ALMetalWorldOpaquePostDeferredScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.gbuffer ||
+        !scene.composed_lighting || !scene.batches ||
+        scene.batch_count == 0 || scene.width == 0 || scene.height == 0)
+    {
+        setError(error, "Metal world opaque post-deferred scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalPixelFormat color_format = scene.hdr
+        ? ALMetalPixelFormat::rgba16_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    const ALMetalRenderTargetDescriptor& gbuffer =
+        scene.gbuffer->descriptor();
+    const ALMetalRenderTargetDescriptor& lighting =
+        scene.composed_lighting->descriptor();
+    if (gbuffer.width != scene.width || gbuffer.height != scene.height ||
+        gbuffer.sample_count != 1 || gbuffer.color_attachment_count != 4 ||
+        gbuffer.depth_stencil_format != ALMetalPixelFormat::depth32_float ||
+        !scene.gbuffer->depthStencilTexture() ||
+        lighting.width != scene.width || lighting.height != scene.height ||
+        lighting.sample_count != 1 || lighting.color_attachment_count != 1 ||
+        lighting.colors[0].format != color_format ||
+        !sampleableTexture(scene.composed_lighting->colorTexture(0)))
+    {
+        setError(error, "Metal world opaque post-deferred inputs are incompatible");
+        return nullptr;
+    }
+
+    constexpr std::size_t float4_stride = sizeof(float) * 4;
+    constexpr std::size_t float2_stride = sizeof(float) * 2;
+    constexpr std::size_t color_stride = sizeof(std::uint32_t);
+    constexpr std::uint32_t max_skin_joints = 110;
+    bool has_shiny = false;
+    for (std::size_t index = 0; index < scene.batch_count; ++index)
+    {
+        const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        const std::uint32_t family_count =
+            (batch.impostor_fullbright ? 1u : 0u) +
+            (batch.impostor_shiny ? 1u : 0u) +
+            (batch.impostor_emboss ? 1u : 0u);
+        const bool rigged = batch.skin_palette != nullptr;
+        const std::size_t index_stride =
+            batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
+        if (family_count != 1 || !batch.vertices || !batch.indices ||
+            batch.vertex_count == 0 || batch.index_count == 0 ||
+            batch.texture_count == 0 ||
+            batch.texture_count >
+                ALMetalWorldSimpleBatch::max_diffuse_textures ||
+            batch.material_slot_count != 0 || batch.pbr_slot_count != 0 ||
+            batch.normal_texture || batch.impostor || batch.terrain ||
+            batch.avatar_rigid || batch.avatar_skinning ||
+            batch.avatar_cloth ||
+            batch.index_offset % index_stride != 0 ||
+            !rangeFits(batch.index_offset, batch.index_count,
+                       index_stride, batch.indices->length()) ||
+            batch.position_offset % float4_stride != 0 ||
+            !rangeFits(batch.position_offset, batch.vertex_count,
+                       float4_stride, batch.vertices->length()) ||
+            batch.texcoord_offset % float2_stride != 0 ||
+            !rangeFits(batch.texcoord_offset, batch.vertex_count,
+                       float2_stride, batch.vertices->length()) ||
+            !finiteValues(batch.modelview_projection, 16) ||
+            !finiteValues(batch.texture_matrix, 16) ||
+            (batch.impostor_fullbright &&
+             (!std::isfinite(batch.alpha_cutoff) ||
+              batch.alpha_cutoff < 0.f || batch.alpha_cutoff > 1.f)) ||
+            (!batch.impostor_emboss &&
+             (batch.normal_offset % float4_stride != 0 ||
+              batch.color_offset % color_stride != 0 ||
+              !rangeFits(batch.normal_offset, batch.vertex_count,
+                         float4_stride, batch.vertices->length()) ||
+              !rangeFits(batch.color_offset, batch.vertex_count,
+                         color_stride, batch.vertices->length()))) ||
+            (batch.impostor_emboss &&
+             (batch.texcoord1_offset % float2_stride != 0 ||
+              !rangeFits(batch.texcoord1_offset, batch.vertex_count,
+                         float2_stride, batch.vertices->length()))) ||
+            (batch.impostor_shiny &&
+             (!finiteValues(batch.modelview, 16) ||
+              !finiteValues(&batch.normal_matrix[0][0], 12) ||
+              !finiteValues(&batch.rigged_normal_matrix[0][0], 12))) ||
+            (rigged &&
+             (batch.skin_joint_count == 0 ||
+              batch.skin_joint_count > max_skin_joints ||
+              batch.skin_palette_float_count !=
+                  4 + static_cast<std::size_t>(batch.skin_joint_count) * 12 ||
+              batch.weight_offset % float4_stride != 0 ||
+              !rangeFits(batch.weight_offset, batch.vertex_count,
+                         float4_stride, batch.vertices->length()))) ||
+            (!rigged &&
+             (batch.skin_palette_float_count != 0 ||
+              batch.skin_joint_count != 0)))
+        {
+            setError(error, "Metal world opaque post-deferred batch is invalid");
+            return nullptr;
+        }
+        for (std::uint32_t texture = 0;
+             texture < batch.texture_count; ++texture)
+        {
+            if (!sampleableTexture(batch.diffuse_textures[texture]))
+            {
+                setError(error,
+                         "Metal world opaque post-deferred texture is invalid");
+                return nullptr;
+            }
+        }
+        has_shiny = has_shiny || batch.impostor_shiny;
+    }
+    if (has_shiny && !validReflectionProbes(scene.reflection_probes))
+    {
+        setError(error,
+                 "Metal world opaque post-deferred reflection probes are invalid");
+        return nullptr;
+    }
+    if (scene.hero_probe && !validHeroProbe(scene.hero_probe))
+    {
+        setError(error,
+                 "Metal world opaque post-deferred hero probe is invalid");
+        return nullptr;
+    }
+
+    std::vector<std::unique_ptr<ALMetalBuffer>> palette_storage;
+    std::vector<const ALMetalBuffer*> palette_buffers(
+        scene.batch_count, nullptr);
+    for (std::size_t batch_index = 0;
+         batch_index < scene.batch_count; ++batch_index)
+    {
+        const ALMetalWorldSimpleBatch& batch = scene.batches[batch_index];
+        if (!batch.skin_palette)
+        {
+            continue;
+        }
+        for (std::size_t previous = 0; previous < batch_index; ++previous)
+        {
+            const ALMetalWorldSimpleBatch& candidate = scene.batches[previous];
+            if (candidate.skin_palette == batch.skin_palette &&
+                candidate.skin_palette_float_count ==
+                    batch.skin_palette_float_count &&
+                candidate.skin_joint_count == batch.skin_joint_count)
+            {
+                palette_buffers[batch_index] = palette_buffers[previous];
+                break;
+            }
+        }
+        if (palette_buffers[batch_index])
+        {
+            continue;
+        }
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = batch.skin_palette_float_count * sizeof(float);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world opaque post-deferred skin palette";
+        auto palette = ALMetalBuffer::create(*mImpl->device, descriptor, error);
+        if (!palette || !palette->write(
+                0, batch.skin_palette, descriptor.length, error))
+        {
+            return nullptr;
+        }
+        palette_buffers[batch_index] = palette.get();
+        palette_storage.push_back(std::move(palette));
+    }
+
+    std::unique_ptr<ALMetalBuffer> probe_constants_buffer;
+    if (has_shiny)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = sizeof(ALMetalWorldReflectionProbeConstants);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label =
+            "Alchemy world opaque post-deferred reflection constants";
+        probe_constants_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!probe_constants_buffer || !probe_constants_buffer->write(
+                0, &scene.reflection_probes->constants,
+                descriptor.length, error))
+        {
+            return nullptr;
+        }
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = scene.width;
+    output_descriptor.height = scene.height;
+    output_descriptor.colors[0].format = color_format;
+    output_descriptor.colors[0].label =
+        "Alchemy world post-deferred final color";
+    output_descriptor.depth_stencil_format =
+        ALMetalPixelFormat::depth32_float;
+    output_descriptor.label =
+        "Alchemy native world opaque post-deferred target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world opaque post-deferred", error);
+    if (!command ||
+        !output->copyColorFrom(
+            *command, 0, *scene.composed_lighting->colorTexture(0), {},
+            error) ||
+        !output->copyDepthStencilFrom(
+            *command, *scene.gbuffer->depthStencilTexture(), {}, error))
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::load;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    pass_config.depth_load = ALMetalLoadAction::load;
+    pass_config.depth_store = ALMetalStoreAction::store;
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass,
+        "Alchemy world opaque post-deferred encoder", error) : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(scene.width),
+        static_cast<double>(scene.height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{0, 0, scene.width, scene.height};
+    bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&
+        encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
+    if (encoded && has_shiny)
+    {
+        const ALMetalTexture* hero_texture = scene.hero_probe
+            ? scene.hero_probe->radiance_texture
+            : mImpl->inactive_hero_probe.get();
+        const ALMetalWorldHeroProbeConstants& hero_constants =
+            scene.hero_probe
+                ? scene.hero_probe->constants
+                : mImpl->inactive_hero_constants;
+        encoded =
+            encoder->setFragmentSampler(
+                1, mImpl->probe_sampler.get(), error) &&
+            encoder->setFragmentTexture(
+                32, scene.reflection_probes->radiance_texture, error) &&
+            encoder->setFragmentBuffer(
+                1, *probe_constants_buffer, 0, error) &&
+            encoder->setFragmentTexture(34, hero_texture, error) &&
+            encoder->setFragmentBytes(
+                4, &hero_constants, sizeof(hero_constants), error);
+    }
+
+    for (std::size_t index = 0;
+         encoded && index < scene.batch_count; ++index)
+    {
+        const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        const bool rigged = batch.skin_palette != nullptr;
+        const ALMetalRenderPipeline* pipeline = nullptr;
+        if (batch.impostor_emboss)
+        {
+            pipeline = mImpl->opaque_forward_emboss_pipelines
+                [scene.hdr ? 1 : 0][rigged ? 1 : 0].get();
+        }
+        else if (batch.impostor_shiny)
+        {
+            pipeline = mImpl->opaque_forward_shiny_pipelines
+                [scene.hdr ? 1 : 0][rigged ? 1 : 0].get();
+        }
+        else
+        {
+            pipeline = mImpl->opaque_forward_fullbright_pipelines
+                [scene.hdr ? 1 : 0][batch.alpha_mask ? 1 : 0]
+                [rigged ? 1 : 0].get();
+        }
+
+        WorldSimpleConstants world{};
+        std::memcpy(world.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(world.modelview_projection));
+        std::memcpy(world.normal_matrix, batch.normal_matrix,
+                    sizeof(world.normal_matrix));
+        std::memcpy(world.rigged_normal_matrix,
+                    batch.rigged_normal_matrix,
+                    sizeof(world.rigged_normal_matrix));
+        std::memcpy(world.texture_matrix, batch.texture_matrix,
+                    sizeof(world.texture_matrix));
+        world.material[0] = batch.alpha_cutoff;
+        world.material[3] = batch.alpha_mask ? 1.f : 0.f;
+        world.depth_convention[0] = scene.reverse_z ? 1u : 0u;
+        world.depth_convention[1] = batch.texture_count;
+
+        WorldShinyConstants shiny_world{};
+        std::memcpy(shiny_world.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(shiny_world.modelview_projection));
+        std::memcpy(shiny_world.modelview, batch.modelview,
+                    sizeof(shiny_world.modelview));
+        std::memcpy(shiny_world.normal_matrix, batch.normal_matrix,
+                    sizeof(shiny_world.normal_matrix));
+        std::memcpy(shiny_world.rigged_normal_matrix,
+                    batch.rigged_normal_matrix,
+                    sizeof(shiny_world.rigged_normal_matrix));
+        std::memcpy(shiny_world.texture_matrix, batch.texture_matrix,
+                    sizeof(shiny_world.texture_matrix));
+        shiny_world.config[0] = scene.reverse_z ? 1u : 0u;
+        shiny_world.config[1] = batch.texture_count;
+
+        const ALMetalDepthStencilState* depth = batch.impostor_emboss
+            ? (scene.reverse_z ? mImpl->reverse_readonly_depth.get()
+                               : mImpl->forward_readonly_depth.get())
+            : (scene.reverse_z ? mImpl->reverse_depth.get()
+                               : mImpl->forward_depth.get());
+        encoded =
+            encoder->setDepthStencilState(depth, error) &&
+            encoder->setCullMode(ALMetalCullMode::back, error) &&
+            encoder->setPipeline(*pipeline, error) &&
+            encoder->setVertexBuffer(
+                0, *batch.vertices, batch.position_offset, error) &&
+            encoder->setVertexBuffer(
+                2, *batch.vertices, batch.texcoord_offset, error) &&
+            encoder->setVertexBytes(
+                4,
+                batch.impostor_shiny
+                    ? static_cast<const void*>(&shiny_world)
+                    : static_cast<const void*>(&world),
+                batch.impostor_shiny
+                    ? sizeof(shiny_world) : sizeof(world),
+                error);
+        if (encoded && batch.impostor_emboss)
+        {
+            encoded = encoder->setVertexBuffer(
+                9, *batch.vertices, batch.texcoord1_offset, error);
+        }
+        else if (encoded)
+        {
+            encoded =
+                encoder->setVertexBuffer(
+                    1, *batch.vertices, batch.normal_offset, error) &&
+                encoder->setVertexBuffer(
+                    3, *batch.vertices, batch.color_offset, error);
+        }
+        if (encoded && rigged)
+        {
+            encoded =
+                encoder->setVertexBuffer(
+                    5, *palette_buffers[index], 0, error) &&
+                encoder->setVertexBuffer(
+                    6, *batch.vertices, batch.weight_offset, error) &&
+                encoder->setVertexBytes(
+                    7, &batch.skin_joint_count,
+                    sizeof(batch.skin_joint_count), error);
+        }
+        for (std::size_t texture = 0;
+             encoded && texture < batch.texture_count; ++texture)
+        {
+            encoded = encoder->setFragmentTexture(
+                static_cast<std::uint32_t>(texture),
+                batch.diffuse_textures[texture], error);
+        }
+        encoded = encoded && encoder->drawIndexed(
+            ALMetalPrimitiveType::triangle, batch.index_count,
+            batch.index_type, *batch.indices, batch.index_offset, 1, error);
+    }
+
     if (!encoded || !encoder->end(error) || !command->commit(error))
     {
         return nullptr;

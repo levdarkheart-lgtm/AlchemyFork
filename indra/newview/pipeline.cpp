@@ -428,6 +428,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> local_light_target;
     std::unique_ptr<ALMetalRenderTarget> projector_light_target;
     std::unique_ptr<ALMetalRenderTarget> composed_light_target;
+    std::unique_ptr<ALMetalRenderTarget> opaque_post_deferred_target;
     std::unique_ptr<ALMetalTexture> projector_shadow_texture;
     ALMetalWorldDirectionalShadows projector_shadows;
     std::vector<F32> projector_shadow_depth;
@@ -524,6 +525,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 projector_lighting_failed_frames = 0;
     bool lighting_composition_attempted = false;
     U32 lighting_composition_failed_frames = 0;
+    bool opaque_post_deferred_attempted = false;
     bool base_lighting_attempted = false;
     U32 base_lighting_failed_frames = 0;
     bool impostor_bake_attempted = false;
@@ -551,6 +553,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool impostor_bake = false;
     bool impostor_alpha_active = false;
     bool impostor_alpha_phase = false;
+    bool world_post_deferred_active = false;
+    bool world_post_deferred_phase = false;
     bool impostor_fullbright = false;
     bool impostor_shiny = false;
     bool impostor_emboss = false;
@@ -932,6 +936,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.local_light_target.reset();
         capture.projector_light_target.reset();
         capture.composed_light_target.reset();
+        capture.opaque_post_deferred_target.reset();
         capture.projector_shadow_texture.reset();
         capture.projector_shadows = {};
         capture.projector_shadow_depth.clear();
@@ -1043,6 +1048,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.projector_lighting_failed_frames = 0;
         capture.lighting_composition_attempted = false;
         capture.lighting_composition_failed_frames = 0;
+        capture.opaque_post_deferred_attempted = false;
         capture.base_lighting_attempted = false;
         capture.base_lighting_failed_frames = 0;
         capture.impostor_bake_attempted = false;
@@ -1050,6 +1056,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.impostor_bake_native_complete = false;
         capture.impostor_alpha_active = false;
         capture.impostor_alpha_phase = false;
+        capture.world_post_deferred_active = false;
+        capture.world_post_deferred_phase = false;
         capture.impostor_fullbright = false;
         capture.impostor_shiny = false;
         capture.impostor_emboss = false;
@@ -2492,6 +2500,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.local_light_target.reset();
         capture.projector_light_target.reset();
         capture.composed_light_target.reset();
+        capture.opaque_post_deferred_target.reset();
         capture.projector_shadow_texture.reset();
         capture.projector_shadows = {};
         capture.projector_shadow_depth.clear();
@@ -2592,6 +2601,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.projector_lighting_failed_frames = 0;
         capture.lighting_composition_attempted = false;
         capture.lighting_composition_failed_frames = 0;
+        capture.opaque_post_deferred_attempted = false;
         capture.base_lighting_attempted = false;
         capture.base_lighting_failed_frames = 0;
         capture.impostor_bake_attempted = false;
@@ -2599,6 +2609,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.impostor_bake_native_complete = false;
         capture.impostor_alpha_active = false;
         capture.impostor_alpha_phase = false;
+        capture.world_post_deferred_active = false;
+        capture.world_post_deferred_phase = false;
         capture.impostor_fullbright = false;
         capture.impostor_shiny = false;
         capture.impostor_emboss = false;
@@ -2678,12 +2690,154 @@ void LLPipeline::beginMetalImpostorAlphaCapture(
     capture.impostor_legacy_alpha_uses_shadows = false;
 }
 
+void LLPipeline::beginMetalWorldPostDeferredCapture()
+{
+    if (!isMainWorldPass() || mRT != &mMainRT ||
+        !mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.frame_active || capture.opaque_post_deferred_attempted ||
+        !capture.renderer || !capture.target ||
+        !capture.composed_light_target)
+    {
+        return;
+    }
+
+    capture.batches.clear();
+    capture.avatar_palettes.clear();
+    capture.complete = true;
+    capture.frame_active = true;
+    capture.pass_active = false;
+    capture.world_post_deferred_active = true;
+    capture.world_post_deferred_phase = false;
+    capture.impostor_fullbright = false;
+    capture.impostor_shiny = false;
+    capture.impostor_emboss = false;
+}
+
+void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.pass_active = false;
+    capture.world_post_deferred_phase = true;
+    capture.opaque_post_deferred_attempted = true;
+
+    const bool has_shiny = std::any_of(
+        capture.batches.begin(), capture.batches.end(),
+        [](const ALMetalWorldSimpleBatch& batch)
+        {
+            return batch.impostor_shiny;
+        });
+    const bool hero_active =
+        mHeroProbeManager.mHeroData.heroProbeCount > 0;
+    if (capture.complete && has_shiny &&
+        !mReflectionMapManager.fillMetalReflectionProbes(
+            capture.impostor_reflection_probes))
+    {
+        capture.complete = false;
+        LL_WARNS("Metal")
+            << "Could not acquire a coherent reflection-probe pack for "
+               "the native world opaque-forward slice" << LL_ENDL;
+    }
+    if (capture.complete && has_shiny && hero_active &&
+        !fillMetalImpostorHeroProbe())
+    {
+        capture.complete = false;
+        LL_WARNS("Metal")
+            << "Could not acquire the active hero probe for the native "
+               "world opaque-forward slice" << LL_ENDL;
+    }
+
+    if (capture.complete && !capture.batches.empty() &&
+        capture.renderer && capture.target &&
+        capture.composed_light_target)
+    {
+        ALMetalWorldOpaquePostDeferredScene scene;
+        scene.gbuffer = capture.target.get();
+        scene.composed_lighting = capture.composed_light_target.get();
+        scene.batches = capture.batches.data();
+        scene.batch_count = capture.batches.size();
+        scene.reflection_probes = has_shiny
+            ? &capture.impostor_reflection_probes : nullptr;
+        scene.hero_probe = has_shiny && hero_active
+            ? &capture.impostor_hero_probe : nullptr;
+        scene.width = capture.width;
+        scene.height = capture.height;
+        scene.reverse_z = capture.reverse_z;
+        scene.hdr = capture.hdr;
+        std::string error;
+        auto target = capture.renderer->renderOpaquePostDeferred(
+            scene, &error);
+        if (!target)
+        {
+            capture.complete = false;
+            LL_WARNS("Metal")
+                << "Native world opaque-forward slice retained GL after "
+                   "encode failure: " << error << LL_ENDL;
+        }
+        else
+        {
+            capture.opaque_post_deferred_target = std::move(target);
+            LL_INFOS("Metal")
+                << "Native world opaque-forward slice encoded "
+                << capture.batches.size() << " batches at "
+                << capture.width << "x" << capture.height
+                << (has_shiny ? "; including live shiny reflection" : "")
+                << "; result remains offscreen and visible GL authority is "
+                   "unchanged" << LL_ENDL;
+        }
+    }
+    else if (capture.complete && !capture.batches.empty())
+    {
+        capture.complete = false;
+    }
+
+    if (!capture.complete)
+    {
+        capture.opaque_post_deferred_target.reset();
+    }
+    capture.batches.clear();
+    capture.avatar_palettes.clear();
+    capture.complete = true;
+    capture.impostor_fullbright = false;
+    capture.impostor_shiny = false;
+    capture.impostor_emboss = false;
+}
+
+void LLPipeline::endMetalWorldPostDeferredCapture()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active)
+    {
+        return;
+    }
+    encodeMetalWorldOpaquePostDeferredCapture();
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.world_post_deferred_active = false;
+    capture.world_post_deferred_phase = false;
+    capture.frame_active = false;
+    capture.pass_active = false;
+    capture.impostor_fullbright = false;
+    capture.impostor_shiny = false;
+    capture.impostor_emboss = false;
+}
+
 void LLPipeline::beginMetalImpostorFullbrightPass(bool rigged,
                                                   bool alpha_mask)
 {
     if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->impostor_alpha_active ||
-        mMetalWorldSimpleCapture->impostor_alpha_phase)
+        (!mMetalWorldSimpleCapture->impostor_alpha_active &&
+         !mMetalWorldSimpleCapture->world_post_deferred_active) ||
+        mMetalWorldSimpleCapture->impostor_alpha_phase ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
     {
         return;
     }
@@ -2712,8 +2866,10 @@ void LLPipeline::beginMetalImpostorFullbrightPass(bool rigged,
 void LLPipeline::beginMetalImpostorShinyPass(bool rigged)
 {
     if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->impostor_alpha_active ||
-        mMetalWorldSimpleCapture->impostor_alpha_phase)
+        (!mMetalWorldSimpleCapture->impostor_alpha_active &&
+         !mMetalWorldSimpleCapture->world_post_deferred_active) ||
+        mMetalWorldSimpleCapture->impostor_alpha_phase ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
     {
         return;
     }
@@ -2745,8 +2901,10 @@ void LLPipeline::beginMetalImpostorShinyPass(bool rigged)
 void LLPipeline::beginMetalImpostorEmbossPass(bool rigged)
 {
     if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->impostor_alpha_active ||
-        mMetalWorldSimpleCapture->impostor_alpha_phase)
+        (!mMetalWorldSimpleCapture->impostor_alpha_active &&
+         !mMetalWorldSimpleCapture->world_post_deferred_active) ||
+        mMetalWorldSimpleCapture->impostor_alpha_phase ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
     {
         return;
     }
@@ -2774,6 +2932,12 @@ void LLPipeline::beginMetalImpostorEmbossPass(bool rigged)
 
 void LLPipeline::beginMetalImpostorAlphaPhase()
 {
+    if (mMetalWorldSimpleCapture &&
+        mMetalWorldSimpleCapture->world_post_deferred_active)
+    {
+        encodeMetalWorldOpaquePostDeferredCapture();
+        return;
+    }
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->impostor_alpha_active ||
         mMetalWorldSimpleCapture->impostor_alpha_phase)
@@ -18591,7 +18755,13 @@ void LLPipeline::renderDeferredLighting()
                           LLPipeline::RENDER_TYPE_WATEREXCLUSION,
                           END_RENDER_TYPES);
 
+#if LL_DARWIN
+        beginMetalWorldPostDeferredCapture();
+#endif
         renderGeomPostDeferred(*LLViewerCamera::getInstance());
+#if LL_DARWIN
+        endMetalWorldPostDeferredCapture();
+#endif
         popRenderTypeMask();
     }
 
