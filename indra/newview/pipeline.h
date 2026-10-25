@@ -652,6 +652,10 @@ public:
     void renderMetalWorldLocalLights(
         LLViewerCamera& camera, const LLMatrix4a& modelview,
         F32 light_scale, S32 local_light_count);
+    bool mirrorMetalWorldBaseLightMap(LLRenderTarget* source);
+    void renderMetalWorldBaseLighting(
+        LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao,
+        F32 ssao_scale, F32 ssao_max);
     void endMetalWorldGBufferPass();
     void endMetalWorldGBufferCapture();
 #endif

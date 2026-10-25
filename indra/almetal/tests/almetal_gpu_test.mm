@@ -153,6 +153,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_pbr_terrain_fragment",
             "almetal_world_local_light_vertex",
             "almetal_world_local_light_fragment",
+            "almetal_world_base_light_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
             "almetal_lit_preview_vertex",
@@ -3563,6 +3564,14 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         auto pbr_gbuffer = renderer->render(gbuffer_scene, &error);
         INFO(error);
         REQUIRE(pbr_gbuffer);
+        batch.modelview_projection[10] = -1.f;
+        gbuffer_scene.reverse_z = true;
+        auto pbr_reverse_gbuffer = renderer->render(
+            gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(pbr_reverse_gbuffer);
+        batch.modelview_projection[10] = 1.f;
+        gbuffer_scene.reverse_z = false;
         lighting_scene.gbuffer = pbr_gbuffer.get();
         lighting_scene.light_count = 1;
         auto pbr = renderer->renderLocalLights(lighting_scene, &error);
@@ -3577,6 +3586,227 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(pbr_pixels[center + 2] > 0);
         CHECK(pbr_pixels[center + 3] == 0);
         CHECK(pbr_pixels[center + 0] != legacy_pixels[center + 0]);
+
+        // Consume the same retained PBR G-buffer through the base deferred
+        // owner. One constant ordinary probe proves that its packed SH row
+        // and roughness-selected radiance cube are both live inputs; the
+        // borrowed RG light map then proves direct shadow and SSAO response.
+        ALMetalTextureDescriptor radiance_descriptor;
+        radiance_descriptor.type = ALMetalTextureType::texture_cube_array;
+        radiance_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        radiance_descriptor.width = 1;
+        radiance_descriptor.height = 1;
+        radiance_descriptor.array_length = 1;
+        radiance_descriptor.storage = ALMetalStorageMode::private_gpu;
+        radiance_descriptor.usage = ALMetalTextureUsage::shader_read;
+        radiance_descriptor.label = "Alchemy base-light probe radiance";
+        auto radiance = ALMetalTexture::create(
+            *device, radiance_descriptor, &error);
+        INFO(error);
+        REQUIRE(radiance);
+
+        ALMetalTextureDescriptor irradiance_descriptor;
+        irradiance_descriptor.format = ALMetalPixelFormat::rgba32_uint;
+        irradiance_descriptor.width = 4;
+        irradiance_descriptor.height = 1;
+        irradiance_descriptor.storage = ALMetalStorageMode::private_gpu;
+        irradiance_descriptor.usage = ALMetalTextureUsage::shader_read;
+        irradiance_descriptor.label = "Alchemy base-light packed SH row";
+        auto irradiance = ALMetalTexture::create(
+            *device, irradiance_descriptor, &error);
+        INFO(error);
+        REQUIRE(irradiance);
+
+        ALMetalTextureDescriptor light_map_descriptor;
+        light_map_descriptor.format = ALMetalPixelFormat::rg8_unorm;
+        light_map_descriptor.width = 32;
+        light_map_descriptor.height = 32;
+        light_map_descriptor.storage = ALMetalStorageMode::private_gpu;
+        light_map_descriptor.usage = ALMetalTextureUsage::shader_read;
+        light_map_descriptor.label = "Alchemy base-light borrowed light map";
+        auto light_map = ALMetalTexture::create(
+            *device, light_map_descriptor, &error);
+        INFO(error);
+        REQUIRE(light_map);
+
+        const std::array<std::uint8_t, 4> green_radiance{{
+            0, 128, 0, 255,
+        }};
+        std::array<std::uint32_t, 16> packed_sh{};
+        packed_sh[0] = 0x3c003c00u;
+        packed_sh[1] = 0x00003c00u;
+        std::array<std::uint8_t, 32 * 32 * 2> full_light_map{};
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            full_light_map[pixel * 2 + 0] = 255;
+            full_light_map[pixel * 2 + 1] = 255;
+        }
+        auto base_upload = device->makeCommandBuffer(
+            "Alchemy base-light inputs upload", &error);
+        INFO(error);
+        REQUIRE(base_upload);
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            REQUIRE(radiance->upload(
+                *base_upload, 0, face, {}, green_radiance.data(), 4,
+                &error));
+        }
+        REQUIRE(irradiance->upload(
+            *base_upload, 0, 0, {}, packed_sh.data(), 4 * 16, &error));
+        REQUIRE(light_map->upload(
+            *base_upload, 0, 0, {}, full_light_map.data(), 32 * 2,
+            &error));
+        REQUIRE(base_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldReflectionProbes base_probes;
+        base_probes.radiance_texture = radiance.get();
+        base_probes.irradiance_texture = irradiance.get();
+        base_probes.constants.ref_sphere[0][3] = 100.f;
+        base_probes.constants.ref_params[0][0] = 1.f;
+        base_probes.constants.ref_params[0][1] = 1.f;
+        base_probes.constants.ref_params[0][2] = 1.f;
+        base_probes.constants.ref_index[0][0] = 0;
+        base_probes.constants.ref_index[0][1] = -1;
+        base_probes.constants.env_matrix[0][0] = 1.f;
+        base_probes.constants.env_matrix[1][1] = 1.f;
+        base_probes.constants.env_matrix[2][2] = 1.f;
+        base_probes.constants.config[0] = 1.f;
+        base_probes.constants.config[1] = 0.f;
+
+        ALMetalWorldBaseLightingScene base_scene;
+        base_scene.gbuffer = pbr_gbuffer.get();
+        base_scene.light_map = light_map.get();
+        base_scene.reflection_probes = &base_probes;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            base_scene.constants.inverse_projection[axis * 4 + axis] = 1.f;
+        }
+        base_scene.constants.light_direction[2] = 1.f;
+        base_scene.constants.atmos_sunlit_linear[0] = 1.f;
+        base_scene.constants.atmos_sunlit_linear[1] = 1.f;
+        base_scene.constants.atmos_sunlit_linear[2] = 1.f;
+        base_scene.constants.lighting[0] = 1.f;
+        base_scene.constants.lighting[1] = 1.f;
+        base_scene.constants.lighting[2] = 0.25f;
+        base_scene.constants.lighting[3] = 0.25f;
+        base_scene.constants.surface[0] = 128.f;
+        base_scene.constants.surface[1] = 1.f;
+        base_scene.constants.ssao_effect[0][0] = 1.f;
+        base_scene.constants.ssao_effect[1][1] = 1.f;
+        base_scene.constants.ssao_effect[2][2] = 1.f;
+        base_scene.constants.config[2] = 1;
+
+        auto base_lit = renderer->renderBaseLighting(base_scene, &error);
+        INFO(error);
+        REQUIRE(base_lit);
+        std::array<std::uint8_t, 32 * 32 * 4> base_pixels{};
+        REQUIRE(base_lit->colorTexture(0)->readback(
+            *device, 0, 0, {}, base_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(base_pixels[center + 0] > 0);
+        CHECK(base_pixels[center + 1] > 0);
+        CHECK(base_pixels[center + 2] > 0);
+        CHECK(base_pixels[center + 3] == 0);
+
+        std::array<std::uint8_t, 32 * 32 * 2> occluded_light_map{};
+        auto occluded_upload = device->makeCommandBuffer(
+            "Alchemy occluded base-light map upload", &error);
+        INFO(error);
+        REQUIRE(occluded_upload);
+        REQUIRE(light_map->upload(
+            *occluded_upload, 0, 0, {}, occluded_light_map.data(),
+            32 * 2, &error));
+        REQUIRE(occluded_upload->commitAndWait(&error));
+        INFO(error);
+        base_scene.constants.config[3] = 1;
+        auto base_occluded = renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(base_occluded);
+        std::array<std::uint8_t, 32 * 32 * 4> base_occluded_pixels{};
+        REQUIRE(base_occluded->colorTexture(0)->readback(
+            *device, 0, 0, {}, base_occluded_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(base_occluded_pixels[center + 0] <
+              base_pixels[center + 0]);
+        CHECK(base_occluded_pixels[center + 1] <
+              base_pixels[center + 1]);
+        CHECK(base_occluded_pixels[center + 2] <
+              base_pixels[center + 2]);
+
+        auto restored_upload = device->makeCommandBuffer(
+            "Alchemy restored base-light map upload", &error);
+        INFO(error);
+        REQUIRE(restored_upload);
+        REQUIRE(light_map->upload(
+            *restored_upload, 0, 0, {}, full_light_map.data(),
+            32 * 2, &error));
+        REQUIRE(restored_upload->commitAndWait(&error));
+        INFO(error);
+
+        base_scene.constants.config[3] = 0;
+        base_scene.gbuffer = pbr_reverse_gbuffer.get();
+        base_scene.constants.inverse_projection[10] = -1.f;
+        base_scene.constants.config[0] = 1;
+        auto base_reverse = renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(base_reverse);
+        std::array<std::uint8_t, 32 * 32 * 4> base_reverse_pixels{};
+        REQUIRE(base_reverse->colorTexture(0)->readback(
+            *device, 0, 0, {}, base_reverse_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(std::abs(static_cast<int>(
+                      base_reverse_pixels[center + channel]) -
+                  static_cast<int>(base_pixels[center + channel])) <= 1);
+        }
+
+        base_scene.gbuffer = gbuffer.get();
+        base_scene.constants.inverse_projection[10] = 1.f;
+        base_scene.constants.config[0] = 0;
+        base_scene.constants.atmos_amblit[0] = 0.25f;
+        base_scene.constants.atmos_amblit[1] = 0.25f;
+        base_scene.constants.atmos_amblit[2] = 0.25f;
+        auto base_legacy = renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(base_legacy);
+        std::array<std::uint8_t, 32 * 32 * 4> base_legacy_pixels{};
+        REQUIRE(base_legacy->colorTexture(0)->readback(
+            *device, 0, 0, {}, base_legacy_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(base_legacy_pixels[center + 0] > 0);
+        CHECK(base_legacy_pixels[center + 1] > 0);
+        CHECK(base_legacy_pixels[center + 2] > 0);
+
+        base_scene.constants.config[1] = 1;
+        base_scene.constants.atmos_sunlit[0] = 1.f;
+        base_scene.constants.atmos_sunlit[1] = 1.f;
+        base_scene.constants.atmos_sunlit[2] = 1.f;
+        auto base_classic = renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(base_classic);
+        std::array<std::uint8_t, 32 * 32 * 4> base_classic_pixels{};
+        REQUIRE(base_classic->colorTexture(0)->readback(
+            *device, 0, 0, {}, base_classic_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(base_classic_pixels[center + 0] > 0);
+        CHECK(base_classic_pixels[center + 1] > 0);
+        CHECK(base_classic_pixels[center + 2] > 0);
+
+        ALMetalWorldBaseLightingScene invalid_base_scene;
+        error.clear();
+        CHECK_FALSE(renderer->renderBaseLighting(
+            invalid_base_scene, &error));
+        CHECK(error == "Metal world base-light scene is incomplete");
 
         // The same owner must preserve the HDR screen format. A zero R11G11B10
         // emissive plane is sufficient because local point lights do not add

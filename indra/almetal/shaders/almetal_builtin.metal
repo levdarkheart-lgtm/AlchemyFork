@@ -362,6 +362,19 @@ struct ALMetalWorldLocalLightingConstants
     uint4 config;
 };
 
+struct ALMetalWorldBaseLightingConstants
+{
+    float4x4 inverse_projection;
+    float4 light_direction;
+    float4 atmos_sunlit;
+    float4 atmos_sunlit_linear;
+    float4 atmos_amblit;
+    float4 ssao_effect[3];
+    float4 lighting;
+    float4 surface;
+    uint4 config;
+};
+
 struct ALMetalWorldLocalLightVaryings
 {
     float4 position [[position]];
@@ -1356,6 +1369,7 @@ static float almetal_probe_weight(
 
 static float3 almetal_probe_radiance(
     int index, float3 position, float3 box_position, float3 direction,
+    float lod,
     texturecube_array<float> radiance, sampler probe_sampler,
     constant ALMetalWorldReflectionProbeConstants& probes)
 {
@@ -1382,7 +1396,7 @@ static float3 almetal_probe_radiance(
         environment * (sample_position - center);
     return radiance.sample(
         probe_sampler, sample_direction,
-        uint(probes.ref_index[index].x), level(0.0)).rgb *
+        uint(probes.ref_index[index].x), level(lod)).rgb *
         probes.ref_params[index].y;
 }
 
@@ -1407,7 +1421,7 @@ static void almetal_legacy_probe_tap(
         index, position, box_position, distance_weight, probes);
     const float3 color = almetal_probe_radiance(
         index, position, box_position, direction,
-        radiance, probe_sampler, probes);
+        0.0, radiance, probe_sampler, probes);
     if (clamp(abs(probes.ref_index[index].w), 0, 1) == 0)
     {
         sums.automatic_color += color * weight;
@@ -1528,6 +1542,277 @@ static float3 almetal_sample_legacy_probes(
             radiance, probe_sampler, probes, sums);
     }
     return almetal_legacy_probe_mix(sums, automatic);
+}
+
+static float3 almetal_probe_sh_irradiance(
+    int index, float3 position, float3 box_position, float3 direction,
+    float3 ambient, texture2d<uint> irradiance,
+    constant ALMetalWorldReflectionProbeConstants& probes)
+{
+    const float3 center = probes.ref_sphere[index].xyz;
+    float3 sample_position;
+    if (probes.ref_index[index].w < 0)
+    {
+        sample_position = almetal_probe_box_intersect_from(
+            position, box_position, direction,
+            probes.ref_box[index], 3.0);
+    }
+    else
+    {
+        const float radius = probes.ref_sphere[index].w;
+        const float radius_squared = probes.ref_index[index].w < 1
+            ? 4096.0 * 4096.0 : radius * radius;
+        sample_position = almetal_probe_sphere_intersect(
+            position, direction, center, radius_squared);
+    }
+    const float3x3 environment = float3x3(
+        probes.env_matrix[0].xyz,
+        probes.env_matrix[1].xyz,
+        probes.env_matrix[2].xyz);
+    float3 sample_direction = environment * (sample_position - center);
+    const float direction_length_squared =
+        dot(sample_direction, sample_direction);
+    sample_direction = direction_length_squared > 1.0e-12
+        ? sample_direction * rsqrt(direction_length_squared)
+        : normalize(environment * direction);
+
+    const uint layer = uint(probes.ref_index[index].x);
+    const uint4 t0 = irradiance.read(uint2(0, layer));
+    const uint4 t1 = irradiance.read(uint2(1, layer));
+    const uint4 t2 = irradiance.read(uint2(2, layer));
+    const uint4 t3 = irradiance.read(uint2(3, layer));
+    const float2 h0 = float2(as_type<half2>(t0.x));
+    const float2 h1 = float2(as_type<half2>(t0.y));
+    const float2 h2 = float2(as_type<half2>(t0.z));
+    const float2 h3 = float2(as_type<half2>(t0.w));
+    const float2 h4 = float2(as_type<half2>(t1.x));
+    const float2 h5 = float2(as_type<half2>(t1.y));
+    const float2 h6 = float2(as_type<half2>(t1.z));
+    const float2 h7 = float2(as_type<half2>(t1.w));
+    const float2 h8 = float2(as_type<half2>(t2.x));
+    const float2 h9 = float2(as_type<half2>(t2.y));
+    const float2 h10 = float2(as_type<half2>(t2.z));
+    const float2 h11 = float2(as_type<half2>(t2.w));
+    const float2 h12 = float2(as_type<half2>(t3.x));
+    const float2 h13 = float2(as_type<half2>(t3.y));
+    const float3 l0 = float3(h0, h1.x);
+    const float3 l1 = float3(h1.y, h2);
+    const float3 l2 = float3(h3, h4.x);
+    const float3 l3 = float3(h4.y, h5);
+    const float3 l4 = float3(h6, h7.x);
+    const float3 l5 = float3(h7.y, h8);
+    const float3 l6 = float3(h9, h10.x);
+    const float3 l7 = float3(h10.y, h11);
+    const float3 l8 = float3(h12, h13.x);
+    float3 value =
+        0.282095 * l0 +
+        0.6666667 * 0.488603 *
+            (sample_direction.y * l1 + sample_direction.z * l2 +
+             sample_direction.x * l3) +
+        0.25 *
+            (1.092548 *
+                 (sample_direction.x * sample_direction.y * l4 +
+                  sample_direction.y * sample_direction.z * l5 +
+                  sample_direction.x * sample_direction.z * l7) +
+             0.315392 *
+                 (3.0 * sample_direction.z * sample_direction.z - 1.0) * l6 +
+             0.546274 *
+                 (sample_direction.x * sample_direction.x -
+                  sample_direction.y * sample_direction.y) * l8);
+    value = max(value, float3(0.0));
+    value *= max(probes.ref_params[index].x, 1.0);
+    return mix(ambient, value, min(probes.ref_params[index].x, 1.0));
+}
+
+struct ALMetalBaseProbeSums
+{
+    float3 ambient[2];
+    float3 gloss[2];
+    float3 legacy[2];
+    float weight[2];
+    float distance_weight[2];
+};
+
+static void almetal_base_probe_tap(
+    int index, float3 position, float3 box_position,
+    float3 normal, float3 ambient, bool sample_ambient,
+    float3 gloss_direction, float gloss_lod, bool sample_gloss,
+    float3 legacy_direction, bool sample_legacy,
+    texturecube_array<float> radiance, texture2d<uint> irradiance,
+    sampler probe_sampler,
+    constant ALMetalWorldReflectionProbeConstants& probes,
+    thread ALMetalBaseProbeSums& sums)
+{
+    float distance_weight = 0.0;
+    const float weight = almetal_probe_weight(
+        index, position, box_position, distance_weight, probes);
+    const uint family =
+        clamp(abs(probes.ref_index[index].w), 0, 1) == 0 ? 0u : 1u;
+    if (sample_ambient)
+    {
+        sums.ambient[family] += almetal_probe_sh_irradiance(
+            index, position, box_position, normal, ambient,
+            irradiance, probes) * weight;
+    }
+    if (sample_gloss)
+    {
+        sums.gloss[family] += almetal_probe_radiance(
+            index, position, box_position, gloss_direction, gloss_lod,
+            radiance, probe_sampler, probes) * weight;
+    }
+    if (sample_legacy)
+    {
+        sums.legacy[family] += almetal_probe_radiance(
+            index, position, box_position, legacy_direction, 0.0,
+            radiance, probe_sampler, probes) * weight;
+    }
+    sums.weight[family] += weight;
+    sums.distance_weight[family] += distance_weight;
+}
+
+static float3 almetal_base_probe_mix(
+    float3 automatic_color, float3 manual_color,
+    ALMetalBaseProbeSums sums, bool automatic)
+{
+    if (!automatic)
+    {
+        automatic_color = 0.0;
+    }
+    if (automatic && sums.weight[0] > 0.0)
+    {
+        automatic_color /= sums.weight[0];
+        if (sums.weight[1] > 0.0)
+        {
+            manual_color /= sums.weight[1];
+            manual_color = mix(
+                automatic_color, manual_color,
+                min(sums.distance_weight[1], 1.0));
+            automatic_color = 0.0;
+        }
+    }
+    else if (sums.weight[1] > 0.0)
+    {
+        manual_color /= sums.weight[1];
+        automatic_color = 0.0;
+    }
+    return automatic_color + manual_color;
+}
+
+static float3 almetal_base_dominant_direction(
+    float3 normal, float3 reflection, float perceptual_roughness)
+{
+    const float smoothness = 1.0 - perceptual_roughness;
+    const float factor = smoothness *
+        (sqrt(smoothness) + perceptual_roughness);
+    return normalize(mix(normal, reflection, factor));
+}
+
+static void almetal_sample_base_probes(
+    bool pbr, float3 position, float3 normal, float glossiness,
+    float environment_intensity, float3 ambient, bool classic_mode,
+    texturecube_array<float> radiance, texture2d<uint> irradiance,
+    sampler probe_sampler,
+    constant ALMetalWorldReflectionProbeConstants& probes,
+    thread float3& ambient_environment,
+    thread float3& gloss_environment,
+    thread float3& legacy_environment)
+{
+    const float3 reflection = normalize(reflect(position, normal));
+    const float perceptual_roughness = 1.0 - glossiness;
+    const float3 gloss_direction = almetal_base_dominant_direction(
+        normal, reflection, perceptual_roughness);
+    const bool sample_ambient = !classic_mode;
+    const bool sample_gloss = pbr || glossiness > 0.0;
+    const bool sample_legacy = !pbr && environment_intensity > 0.0;
+    const float gloss_lod = perceptual_roughness * probes.config.y;
+    ALMetalBaseProbeSums sums{};
+    bool automatic = true;
+    int accepted_count = 0;
+    const int probe_count = clamp(int(probes.config.x), 1, 256);
+    int index = almetal_probe_start_index(position, probe_count, probes);
+    int neighbor = -1;
+    int neighbor_base = 0;
+    int neighbor_count = 0;
+    while (accepted_count < 32)
+    {
+        int candidate;
+        if (neighbor < 0)
+        {
+            if (index >= probe_count ||
+                probes.ref_params[index].w > -position.z)
+            {
+                break;
+            }
+            candidate = index++;
+        }
+        else
+        {
+            if (neighbor >= neighbor_count)
+            {
+                break;
+            }
+            const int vector_index = neighbor_base + (neighbor >> 2);
+            if (vector_index < 0 || vector_index >= 1024)
+            {
+                break;
+            }
+            candidate = probes.ref_neighbor[vector_index][neighbor & 3];
+            ++neighbor;
+            if (candidate < 0 || candidate >= probe_count)
+            {
+                continue;
+            }
+        }
+        bool boxed = false;
+        float3 box_position = 0.0;
+        if (!almetal_probe_holds(
+                candidate, position, automatic,
+                boxed, box_position, probes))
+        {
+            continue;
+        }
+        if (boxed)
+        {
+            automatic = false;
+        }
+        almetal_base_probe_tap(
+            candidate, position, box_position, normal, ambient,
+            sample_ambient, gloss_direction, gloss_lod, sample_gloss,
+            reflection, sample_legacy, radiance, irradiance,
+            probe_sampler, probes, sums);
+        ++accepted_count;
+        if (neighbor < 0 && probes.ref_index[candidate].y != -1)
+        {
+            neighbor_base = probes.ref_index[candidate].y;
+            neighbor_count = clamp(
+                probes.ref_index[candidate].z, 0, 31);
+            neighbor = 0;
+        }
+    }
+
+    if (automatic && accepted_count < 32)
+    {
+        const float3 box_position = probes.ref_index[0].w < 0
+            ? (probes.ref_box[0] * float4(position, 1.0)).xyz
+            : float3(0.0);
+        almetal_base_probe_tap(
+            0, position, box_position, normal, ambient,
+            sample_ambient, gloss_direction, gloss_lod, sample_gloss,
+            reflection, sample_legacy, radiance, irradiance,
+            probe_sampler, probes, sums);
+    }
+    ambient_environment = sample_ambient
+        ? almetal_base_probe_mix(
+              sums.ambient[0], sums.ambient[1], sums, automatic)
+        : ambient;
+    gloss_environment = sample_gloss
+        ? almetal_base_probe_mix(
+              sums.gloss[0], sums.gloss[1], sums, automatic)
+        : float3(0.0);
+    legacy_environment = sample_legacy
+        ? almetal_base_probe_mix(
+              sums.legacy[0], sums.legacy[1], sums, automatic)
+        : float3(0.0);
 }
 
 static float3 almetal_finish_legacy_hero_probe(
@@ -5350,6 +5635,290 @@ fragment float4 almetal_world_local_light_fragment(
     }
 
     return float4(max(final_color * constants.surface.y, float3(0.0)), 0.0);
+}
+
+static float3 almetal_world_unpack_geometric_normal(
+    float packed, bool high_precision)
+{
+    const float levels = high_precision ? 255.0 : 31.0;
+    const float range = high_precision ? 65535.0 : 1023.0;
+    const float value = floor(packed * range + 0.5);
+    const float x = floor(value / (levels + 1.0));
+    const float y = value - x * (levels + 1.0);
+    return almetal_world_oct_decode(float2(x, y) / levels);
+}
+
+static float almetal_world_ssao_visibility(
+    float ambient_occlusion,
+    constant ALMetalWorldBaseLightingConstants& constants)
+{
+    if (constants.config.w == 0u)
+    {
+        return 1.0;
+    }
+    const float3x3 effect = float3x3(
+        constants.ssao_effect[0].xyz,
+        constants.ssao_effect[1].xyz,
+        constants.ssao_effect[2].xyz);
+    const float value_factor = dot(
+        effect * float3(1.0), float3(1.0 / 3.0));
+    const float occluded = clamp(
+        constants.lighting.z * value_factor, 0.0, 1.0);
+    return clamp(mix(occluded, 1.0, ambient_occlusion), 0.0, 1.0);
+}
+
+static float3 almetal_world_base_ambient(
+    float3 normal,
+    constant ALMetalWorldBaseLightingConstants& constants)
+{
+    float factor = min(abs(dot(normal, constants.light_direction.xyz)),
+                       1.0) * 0.5;
+    factor = 1.0 - factor * factor;
+    float3 ambient = constants.atmos_amblit.rgb * factor;
+    if (constants.config.y == 0u)
+    {
+        ambient = almetal_srgb_to_linear(ambient);
+        ambient = float3(dot(
+            ambient, float3(0.2126, 0.7152, 0.0722)));
+    }
+    return ambient * constants.lighting.y;
+}
+
+fragment float4 almetal_world_base_light_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    constant ALMetalWorldBaseLightingConstants& constants [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    texture2d<float> albedo_texture [[texture(0)]],
+    texture2d<float> specular_texture [[texture(1)]],
+    texture2d<float> normal_texture [[texture(2)]],
+    texture2d<float> emissive_texture [[texture(3)]],
+    texture2d<float> depth_texture [[texture(4)]],
+    texture2d<float> light_map [[texture(5)]],
+    texturecube_array<float> probe_radiance [[texture(6)]],
+    texture2d<uint> probe_irradiance [[texture(7)]],
+    texture2d<float> brdf_lut [[texture(8)]],
+    sampler point_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    sampler brdf_sampler [[sampler(2)]])
+{
+    const float depth = depth_texture.sample(
+        point_sampler, input.texcoord).r;
+    const bool reverse_z = constants.config.x != 0u;
+    if ((reverse_z && depth <= 0.0) || (!reverse_z && depth >= 1.0))
+    {
+        discard_fragment();
+    }
+
+    const float ndc_z = reverse_z ? depth : depth * 2.0 - 1.0;
+    float4 position = constants.inverse_projection *
+        float4(input.texcoord * 2.0 - 1.0, ndc_z, 1.0);
+    position.w = max(position.w, 0.000001);
+    position /= position.w;
+
+    const float4 normal_sample = normal_texture.sample(
+        point_sampler, input.texcoord);
+    const float3 normal = almetal_world_oct_decode(normal_sample.xy);
+    const float4 base_color = albedo_texture.sample(
+        point_sampler, input.texcoord);
+    float4 specular = specular_texture.sample(
+        point_sampler, input.texcoord);
+    const float3 emissive = emissive_texture.sample(
+        point_sampler, input.texcoord).rgb;
+    const bool pbr = abs(normal_sample.a - 0.67) < 0.1;
+    const bool classic_mode = constants.config.y != 0u;
+    const float2 shadow_occlusion = light_map.sample(
+        point_sampler, input.texcoord).rg;
+    const float sun_visibility = constants.config.z != 0u
+        ? max(shadow_occlusion.r, base_color.a) : 1.0;
+    const float ambient_occlusion = constants.config.w != 0u
+        ? shadow_occlusion.g : 1.0;
+
+    float3 sunlit = classic_mode
+        ? constants.atmos_sunlit.rgb
+        : constants.atmos_sunlit_linear.rgb;
+    if (classic_mode)
+    {
+        sunlit *= 1.35;
+    }
+    sunlit *= constants.lighting.x;
+    const float3 ambient = almetal_world_base_ambient(normal, constants);
+    const float environment_intensity = normal_sample.z;
+    const float glossiness = pbr
+        ? 1.0 - (specular.g + specular.a / 255.0)
+        : specular.a;
+    float3 irradiance = ambient;
+    float3 radiance = 0.0;
+    float3 legacy_environment = 0.0;
+    almetal_sample_base_probes(
+        pbr, position.xyz, normal, glossiness,
+        environment_intensity, ambient, classic_mode,
+        probe_radiance, probe_irradiance, probe_sampler, probes,
+        irradiance, radiance, legacy_environment);
+
+    float3 color = 0.0;
+    const float3 view = -normalize(position.xyz);
+    const float3 light_direction = normalize(
+        constants.light_direction.xyz);
+    if (pbr)
+    {
+        const float perceptual_roughness =
+            specular.g + specular.a / 255.0;
+        const float metallic = specular.b;
+        const float material_ao = specular.r;
+        const float3 diffuse_color = base_color.rgb * (1.0 - metallic);
+        const float3 specular_color = mix(
+            float3(0.04), base_color.rgb, metallic);
+        const float3 geometric_normal =
+            almetal_world_unpack_geometric_normal(
+                normal_sample.z, constants.surface.y != 0.0);
+        radiance *= almetal_pbr_horizon_occlusion(
+            reflect(normalize(position.xyz), normal), geometric_normal);
+        const float visibility = min(
+            material_ao,
+            almetal_world_ssao_visibility(
+                ambient_occlusion, constants));
+        const float nv = clamp(abs(dot(normal, view)), 0.001, 1.0);
+        const float roughness = max(perceptual_roughness, 0.045);
+        const ALMetalPBRPreviewIBL ibl = almetal_pbr_ibl(
+            brdf_lut, brdf_sampler, diffuse_color, specular_color,
+            radiance, irradiance, visibility, nv, roughness);
+        const float alpha = perceptual_roughness * perceptual_roughness;
+        const float sun_roughness = sqrt(clamp(alpha + 0.00465,
+                                                0.0, 1.0));
+        ALMetalPBRPreviewPunctual punctual = almetal_pbr_punctual(
+            diffuse_color, specular_color, sun_roughness,
+            normal, view, light_direction);
+        punctual.specular *= almetal_pbr_energy_compensation(
+            brdf_lut, brdf_sampler, specular_color, roughness, nv);
+
+        if (classic_mode)
+        {
+            const float3 classic_irradiance = almetal_srgb_to_linear(
+                irradiance * 0.9);
+            const float directional = pow(punctual.nl, 1.2);
+            float3 sun_contribution = float3(
+                min(directional, sun_visibility));
+            sun_contribution = almetal_srgb_to_linear(
+                almetal_linear_to_srgb(sun_contribution) *
+                sunlit * 0.7) * M_PI_F;
+            const float3 final_ambient = classic_irradiance *
+                diffuse_color *
+                almetal_pbr_gtao_multibounce(
+                    visibility, diffuse_color);
+            const float3 final_sun = almetal_world_bounded_radiance(
+                sun_contribution *
+                ((punctual.diffuse + punctual.specular) *
+                 sun_visibility));
+            color = almetal_srgb_to_linear(
+                almetal_linear_to_srgb(final_ambient) +
+                almetal_linear_to_srgb(final_sun) * 1.1);
+        }
+        else
+        {
+            color = ibl.diffuse +
+                almetal_world_bounded_radiance(
+                    punctual.nl *
+                    (punctual.diffuse + punctual.specular)) *
+                sunlit * 3.0 * sun_visibility;
+        }
+        color += ibl.specular + emissive;
+    }
+    else
+    {
+        specular.rgb = almetal_srgb_to_linear(specular.rgb);
+        float3 legacy_irradiance = irradiance;
+        if (constants.config.w != 0u)
+        {
+            const float3x3 effect = float3x3(
+                constants.ssao_effect[0].xyz,
+                constants.ssao_effect[1].xyz,
+                constants.ssao_effect[2].xyz);
+            legacy_irradiance = mix(
+                effect * min(
+                    legacy_irradiance * constants.lighting.z,
+                    float3(constants.lighting.w)),
+                legacy_irradiance, ambient_occlusion);
+        }
+        const float environment_visibility =
+            almetal_world_ssao_visibility(
+                ambient_occlusion, constants);
+        radiance *= environment_visibility;
+        legacy_environment *= environment_visibility;
+        float directional = clamp(dot(normal, light_direction), 0.0, 1.0);
+        color = legacy_irradiance;
+        float3 legacy_sunlit = sunlit;
+        if (classic_mode)
+        {
+            directional = pow(directional, 1.2);
+            const float3 sun_contribution = float3(
+                min(directional, sun_visibility));
+            color = almetal_srgb_to_linear(
+                color * 0.9 +
+                almetal_linear_to_srgb(sun_contribution) *
+                legacy_sunlit * 0.7);
+            legacy_sunlit = almetal_srgb_to_linear(legacy_sunlit);
+        }
+        else
+        {
+            color += min(directional, sun_visibility) * legacy_sunlit;
+        }
+        color *= base_color.rgb;
+
+        if (specular.a > 0.0)
+        {
+            float3 half_vector;
+            float3 normalized_light;
+            float nh;
+            float nl;
+            float nv;
+            float vh;
+            almetal_legacy_half_vectors(
+                light_direction, normal, view, half_vector,
+                normalized_light, nh, nl, nv, vh);
+            if (dot(normal, normalized_light) > 0.0 &&
+                dot(normal, half_vector) > 0.0)
+            {
+                const float lit = min(nl * 6.0, 1.0);
+                const float fresnel =
+                    pow(1.0 - vh, 5.0) * 0.4 + 0.5;
+                const float geometry_denominator = 2.0 * nh;
+                const float geometry = max(
+                    0.0, min(geometry_denominator * nv / vh,
+                             geometry_denominator * nl / vh));
+                const float lobe = sun_visibility * fresnel *
+                    almetal_legacy_blinn_phong_lobe(
+                        nh, specular.a, constants.surface.x) *
+                    geometry / (nh * nl);
+                color += lit * lobe * legacy_sunlit * specular.rgb;
+            }
+
+            float3 gloss_environment = radiance * 0.5;
+            float fresnel = clamp(
+                1.0 + dot(normalize(position.xyz), normal),
+                0.3, 1.0);
+            fresnel *= fresnel * specular.a;
+            gloss_environment *= specular.rgb * fresnel;
+            gloss_environment *= float3(1.0) - color;
+            color += gloss_environment * 0.5;
+        }
+        color = mix(color, base_color.rgb, base_color.a);
+        if (environment_intensity > 0.0)
+        {
+            const float3 look_at = normalize(position.xyz);
+            float fresnel = 1.0 + dot(look_at, normal);
+            fresnel *= fresnel;
+            fresnel = min(fresnel + environment_intensity, 1.0);
+            const float3 reflected = legacy_environment *
+                (environment_intensity * fresnel);
+            color = mix(
+                color, reflected * 0.5, environment_intensity);
+        }
+    }
+
+    const float output_scale = classic_mode ? 1.1 : 1.0;
+    return float4(max(
+        almetal_world_bounded_radiance(color * output_scale),
+        float3(0.0)), 0.0);
 }
 
 static float3 almetal_pbr_neutral_tonemap(float3 color)

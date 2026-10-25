@@ -304,6 +304,38 @@ struct ALMetalWorldLocalLightingScene
     bool classic_mode = false;
 };
 
+struct alignas(16) ALMetalWorldBaseLightingConstants
+{
+    float inverse_projection[16]{};
+    // xyz = active sun/moon direction in eye space.
+    float light_direction[4]{};
+    // The already packed Environment block terms used by softenLightF.
+    float atmos_sunlit[4]{};
+    float atmos_sunlit_linear[4]{};
+    float atmos_amblit[4]{};
+    // xyz columns, vec4-strided, matching the deferred SSAO matrix.
+    float ssao_effect[3][4]{};
+    // x = sky sunlight scale, y = sky ambient scale,
+    // z = SSAO irradiance scale, w = SSAO irradiance maximum.
+    float lighting[4]{};
+    // x = legacy specular exponent.
+    float surface[4] = {128.f, 0.f, 0.f, 0.f};
+    // x = reverse Z, y = classic mode, z = sun shadow, w = SSAO.
+    std::uint32_t config[4]{};
+};
+
+struct ALMetalWorldBaseLightingScene
+{
+    const ALMetalRenderTarget* gbuffer = nullptr;
+    // Transitional producer: the exact GL sun-shadow/SSAO result after its
+    // configured blur. The native soften owner consumes it without changing
+    // its response curve while the shadow/SSAO producers are migrated.
+    const ALMetalTexture* light_map = nullptr;
+    const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
+    ALMetalWorldBaseLightingConstants constants;
+    bool hdr = false;
+};
+
 // The ordered native world G-buffer owner for supported object, material and
 // system-avatar families.
 // It writes four colour attachments plus depth and is not presented yet. The
@@ -331,6 +363,14 @@ public:
     // composition passes are native as well.
     std::unique_ptr<ALMetalRenderTarget> renderLocalLights(
         const ALMetalWorldLocalLightingScene& scene,
+        std::string* error = nullptr);
+
+    // Shade the retained world G-buffer with the deferred base-light owner:
+    // ordinary-probe irradiance/radiance, sun/moon, SSAO and legacy/PBR
+    // ambient semantics. The result remains offscreen until every downstream
+    // deferred owner and final composition are native.
+    std::unique_ptr<ALMetalRenderTarget> renderBaseLighting(
+        const ALMetalWorldBaseLightingScene& scene,
         std::string* error = nullptr);
 
     // Composite supported post-deferred impostor owners into an existing
