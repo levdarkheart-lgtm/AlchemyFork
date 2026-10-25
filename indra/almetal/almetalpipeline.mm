@@ -14,6 +14,7 @@
 #import <Metal/Metal.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <utility>
 
@@ -234,6 +235,46 @@ namespace
         return value == ALMetalWinding::clockwise ? MTLWindingClockwise : MTLWindingCounterClockwise;
     }
 
+    MTLTessellationPartitionMode tessellationPartitionMode(
+        ALMetalTessellationPartitionMode mode)
+    {
+        switch (mode)
+        {
+            case ALMetalTessellationPartitionMode::power_of_two:
+                return MTLTessellationPartitionModePow2;
+            case ALMetalTessellationPartitionMode::integer:
+                return MTLTessellationPartitionModeInteger;
+            case ALMetalTessellationPartitionMode::fractional_odd:
+                return MTLTessellationPartitionModeFractionalOdd;
+            case ALMetalTessellationPartitionMode::fractional_even:
+                return MTLTessellationPartitionModeFractionalEven;
+        }
+        return MTLTessellationPartitionModeInteger;
+    }
+
+    MTLTessellationFactorStepFunction tessellationFactorStepFunction(
+        ALMetalTessellationFactorStepFunction function)
+    {
+        switch (function)
+        {
+            case ALMetalTessellationFactorStepFunction::constant:
+                return MTLTessellationFactorStepFunctionConstant;
+            case ALMetalTessellationFactorStepFunction::per_patch:
+                return MTLTessellationFactorStepFunctionPerPatch;
+            case ALMetalTessellationFactorStepFunction::per_instance:
+                return MTLTessellationFactorStepFunctionPerInstance;
+            case ALMetalTessellationFactorStepFunction::per_patch_and_instance:
+                return MTLTessellationFactorStepFunctionPerPatchAndPerInstance;
+        }
+        return MTLTessellationFactorStepFunctionConstant;
+    }
+
+    MTLWinding tessellationOutputWinding(ALMetalTessellationOutputWinding value)
+    {
+        return value == ALMetalTessellationOutputWinding::clockwise
+            ? MTLWindingClockwise : MTLWindingCounterClockwise;
+    }
+
     bool validBindingIndex(std::uint32_t index, std::uint32_t limit,
                            const char* kind, std::string* error)
     {
@@ -402,7 +443,10 @@ std::unique_ptr<ALMetalRenderPipeline> ALMetalRenderPipeline::create(
         }
         if (descriptor.vertex_function.empty() ||
             descriptor.color_attachment_count > AL_METAL_MAX_COLOR_ATTACHMENTS ||
-            descriptor.sample_count == 0)
+            descriptor.sample_count == 0 ||
+            (descriptor.tessellation.enabled &&
+             (descriptor.tessellation.maximum_factor == 0 ||
+              descriptor.tessellation.maximum_factor > 64)))
         {
             setError(error, "Metal render pipeline descriptor is incomplete");
             return nullptr;
@@ -429,6 +473,21 @@ std::unique_ptr<ALMetalRenderPipeline> ALMetalRenderPipeline::create(
         native_descriptor.vertexFunction = vertex;
         native_descriptor.fragmentFunction = fragment;
         native_descriptor.rasterSampleCount = descriptor.sample_count;
+        if (descriptor.tessellation.enabled)
+        {
+            native_descriptor.tessellationPartitionMode =
+                tessellationPartitionMode(descriptor.tessellation.partition_mode);
+            native_descriptor.maxTessellationFactor = descriptor.tessellation.maximum_factor;
+            native_descriptor.tessellationFactorScaleEnabled =
+                descriptor.tessellation.factor_scale_enabled;
+            native_descriptor.tessellationFactorFormat = MTLTessellationFactorFormatHalf;
+            native_descriptor.tessellationControlPointIndexType =
+                MTLTessellationControlPointIndexTypeNone;
+            native_descriptor.tessellationFactorStepFunction =
+                tessellationFactorStepFunction(descriptor.tessellation.factor_step_function);
+            native_descriptor.tessellationOutputWindingOrder =
+                tessellationOutputWinding(descriptor.tessellation.output_winding);
+        }
         for (std::uint32_t index = 0; index < descriptor.color_attachment_count; ++index)
         {
             const auto& color = descriptor.colors[index];
@@ -662,6 +721,8 @@ struct ALMetalRenderEncoder::Impl
     id<MTLRenderCommandEncoder> encoder = nil;
     bool ended = false;
     bool pipeline_set = false;
+    bool tessellation_enabled = false;
+    bool tessellation_factor_buffer_set = false;
 };
 
 ALMetalRenderEncoder::ALMetalRenderEncoder(std::unique_ptr<Impl> impl)
@@ -716,6 +777,8 @@ bool ALMetalRenderEncoder::setPipeline(const ALMetalRenderPipeline& pipeline, st
     }
     [mImpl->encoder setRenderPipelineState:pipeline.mImpl->state];
     mImpl->pipeline_set = true;
+    mImpl->tessellation_enabled = pipeline.mDescriptor.tessellation.enabled;
+    mImpl->tessellation_factor_buffer_set = false;
     return true;
 }
 
@@ -922,11 +985,48 @@ bool ALMetalRenderEncoder::setFrontFacingWinding(ALMetalWinding value, std::stri
     return true;
 }
 
+bool ALMetalRenderEncoder::setTessellationFactorBuffer(const ALMetalBuffer& buffer,
+                                                        std::size_t offset,
+                                                        std::size_t instance_stride,
+                                                        std::string* error)
+{
+    if (!mImpl || mImpl->ended || !mImpl->pipeline_set || !mImpl->tessellation_enabled ||
+        offset >= buffer.length() || offset % 4 != 0 || instance_stride % 4 != 0)
+    {
+        setError(error, "Metal tessellation factors require an active tessellation pipeline and 4-byte-aligned range");
+        return false;
+    }
+    id<MTLBuffer> native_buffer = (__bridge id<MTLBuffer>)buffer.nativeHandle();
+    if (!native_buffer || native_buffer.device != mImpl->device)
+    {
+        setError(error, "Metal tessellation factor buffer belongs to another device");
+        return false;
+    }
+    [mImpl->encoder setTessellationFactorBuffer:native_buffer
+                                          offset:offset
+                                  instanceStride:instance_stride];
+    mImpl->tessellation_factor_buffer_set = true;
+    return true;
+}
+
+bool ALMetalRenderEncoder::setTessellationFactorScale(float scale, std::string* error)
+{
+    if (!mImpl || mImpl->ended || !mImpl->pipeline_set || !mImpl->tessellation_enabled ||
+        !std::isnormal(scale) || scale <= 0.f)
+    {
+        setError(error, "Metal tessellation factor scale requires an active pipeline and a positive normal value");
+        return false;
+    }
+    [mImpl->encoder setTessellationFactorScale:scale];
+    return true;
+}
+
 bool ALMetalRenderEncoder::draw(ALMetalPrimitiveType primitive, std::uint32_t vertex_start,
                                 std::uint32_t vertex_count, std::uint32_t instance_count,
                                 std::string* error)
 {
-    if (!mImpl || mImpl->ended || !mImpl->pipeline_set || vertex_count == 0 || instance_count == 0)
+    if (!mImpl || mImpl->ended || !mImpl->pipeline_set || mImpl->tessellation_enabled ||
+        vertex_count == 0 || instance_count == 0)
     {
         setError(error, "Metal draw requires an active encoder, pipeline, vertices and instances");
         return false;
@@ -944,7 +1044,8 @@ bool ALMetalRenderEncoder::drawIndexed(ALMetalPrimitiveType primitive, std::uint
                                        std::string* error)
 {
     const std::size_t index_size = index_type == ALMetalIndexType::uint16 ? 2 : 4;
-    if (!mImpl || mImpl->ended || !mImpl->pipeline_set || index_count == 0 || instance_count == 0 ||
+    if (!mImpl || mImpl->ended || !mImpl->pipeline_set || mImpl->tessellation_enabled ||
+        index_count == 0 || instance_count == 0 ||
         index_buffer_offset > index_buffer.length() ||
         static_cast<std::size_t>(index_count) > (index_buffer.length() - index_buffer_offset) / index_size)
     {
@@ -963,6 +1064,30 @@ bool ALMetalRenderEncoder::drawIndexed(ALMetalPrimitiveType primitive, std::uint
                               indexBuffer:native_buffer
                         indexBufferOffset:index_buffer_offset
                             instanceCount:instance_count];
+    return true;
+}
+
+bool ALMetalRenderEncoder::drawPatches(std::uint32_t control_point_count,
+                                       std::uint32_t patch_start,
+                                       std::uint32_t patch_count,
+                                       std::uint32_t instance_count,
+                                       std::uint32_t base_instance,
+                                       std::string* error)
+{
+    if (!mImpl || mImpl->ended || !mImpl->pipeline_set || !mImpl->tessellation_enabled ||
+        !mImpl->tessellation_factor_buffer_set || control_point_count == 0 ||
+        control_point_count > 32 || patch_count == 0 || instance_count == 0)
+    {
+        setError(error, "Metal patch draw has invalid tessellation state or dimensions");
+        return false;
+    }
+    [mImpl->encoder drawPatches:control_point_count
+                     patchStart:patch_start
+                     patchCount:patch_count
+               patchIndexBuffer:nil
+         patchIndexBufferOffset:0
+                  instanceCount:instance_count
+                   baseInstance:base_instance];
     return true;
 }
 

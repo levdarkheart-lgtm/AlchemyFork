@@ -103,6 +103,40 @@ struct ALMetalColorPipelineDescriptor
     ALMetalColorWriteMask write_mask = ALMetalColorWriteMask::all;
 };
 
+enum class ALMetalTessellationPartitionMode
+{
+    power_of_two,
+    integer,
+    fractional_odd,
+    fractional_even,
+};
+
+enum class ALMetalTessellationFactorStepFunction
+{
+    constant,
+    per_patch,
+    per_instance,
+    per_patch_and_instance,
+};
+
+enum class ALMetalTessellationOutputWinding
+{
+    clockwise,
+    counter_clockwise,
+};
+
+struct ALMetalTessellationDescriptor
+{
+    bool enabled = false;
+    ALMetalTessellationPartitionMode partition_mode = ALMetalTessellationPartitionMode::integer;
+    std::uint32_t maximum_factor = 1;
+    bool factor_scale_enabled = false;
+    ALMetalTessellationFactorStepFunction factor_step_function =
+        ALMetalTessellationFactorStepFunction::constant;
+    ALMetalTessellationOutputWinding output_winding =
+        ALMetalTessellationOutputWinding::counter_clockwise;
+};
+
 struct ALMetalRenderPipelineDescriptor
 {
     const ALMetalShaderLibrary* library = nullptr;
@@ -112,6 +146,7 @@ struct ALMetalRenderPipelineDescriptor
     std::array<ALMetalColorPipelineDescriptor, AL_METAL_MAX_COLOR_ATTACHMENTS> colors{};
     ALMetalPixelFormat depth_stencil_format = ALMetalPixelFormat::invalid;
     std::uint32_t sample_count = 1;
+    ALMetalTessellationDescriptor tessellation;
     std::string label;
 };
 
@@ -316,6 +351,10 @@ public:
     bool setScissor(const ALMetalScissorRect& scissor, std::string* error = nullptr);
     bool setCullMode(ALMetalCullMode mode, std::string* error = nullptr);
     bool setFrontFacingWinding(ALMetalWinding winding, std::string* error = nullptr);
+    bool setTessellationFactorBuffer(const ALMetalBuffer& buffer, std::size_t offset = 0,
+                                     std::size_t instance_stride = 0,
+                                     std::string* error = nullptr);
+    bool setTessellationFactorScale(float scale, std::string* error = nullptr);
     bool draw(ALMetalPrimitiveType primitive, std::uint32_t vertex_start,
               std::uint32_t vertex_count, std::uint32_t instance_count = 1,
               std::string* error = nullptr);
@@ -323,6 +362,9 @@ public:
                      ALMetalIndexType index_type, const ALMetalBuffer& index_buffer,
                      std::size_t index_buffer_offset = 0, std::uint32_t instance_count = 1,
                      std::string* error = nullptr);
+    bool drawPatches(std::uint32_t control_point_count, std::uint32_t patch_start,
+                     std::uint32_t patch_count, std::uint32_t instance_count = 1,
+                     std::uint32_t base_instance = 0, std::string* error = nullptr);
     bool end(std::string* error = nullptr);
 
 private:

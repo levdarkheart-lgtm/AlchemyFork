@@ -3354,6 +3354,176 @@ TEST_CASE("almetal: bundled MSL render pipeline draws a typed triangle", "[almet
     }
 }
 
+TEST_CASE("almetal: a native quad patch tessellates through the typed render encoder", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        const std::string source = R"metal(
+#include <metal_stdlib>
+using namespace metal;
+
+struct TessellatedVertex
+{
+    float4 position [[position]];
+    float2 uv;
+};
+
+[[patch(quad, 4)]]
+vertex TessellatedVertex almetal_test_tessellated_quad(
+    const device float2* control_points [[buffer(0)]],
+    uint patch_id [[patch_id]],
+    float2 uv [[position_in_patch]])
+{
+    const uint base = patch_id * 4;
+    const float2 bottom = mix(control_points[base], control_points[base + 1], uv.x);
+    const float2 top = mix(control_points[base + 3], control_points[base + 2], uv.x);
+
+    TessellatedVertex result;
+    result.position = float4(mix(bottom, top, uv.y), 0.0f, 1.0f);
+    result.uv = uv;
+    return result;
+}
+
+fragment float4 almetal_test_tessellated_color(TessellatedVertex input [[stage_in]])
+{
+    return float4(input.uv, 0.25f, 1.0f);
+}
+)metal";
+        auto library = ALMetalShaderLibrary::compileSource(
+            *device, source, "Alchemy tessellation test library", &error);
+        INFO(error);
+        REQUIRE(library);
+
+        ALMetalRenderPipelineDescriptor pipeline_descriptor;
+        pipeline_descriptor.library = library.get();
+        pipeline_descriptor.vertex_function = "almetal_test_tessellated_quad";
+        pipeline_descriptor.fragment_function = "almetal_test_tessellated_color";
+        pipeline_descriptor.color_attachment_count = 1;
+        pipeline_descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        pipeline_descriptor.tessellation.enabled = true;
+        pipeline_descriptor.tessellation.partition_mode =
+            ALMetalTessellationPartitionMode::integer;
+        pipeline_descriptor.tessellation.maximum_factor = 16;
+        pipeline_descriptor.tessellation.factor_scale_enabled = true;
+        pipeline_descriptor.tessellation.factor_step_function =
+            ALMetalTessellationFactorStepFunction::per_patch;
+        pipeline_descriptor.tessellation.output_winding =
+            ALMetalTessellationOutputWinding::counter_clockwise;
+        pipeline_descriptor.label = "Alchemy typed quad tessellation pipeline";
+
+        ALMetalRenderPipelineDescriptor invalid_descriptor = pipeline_descriptor;
+        invalid_descriptor.tessellation.maximum_factor = 65;
+        CHECK_FALSE(ALMetalRenderPipeline::create(*device, invalid_descriptor, &error));
+        CHECK_FALSE(error.empty());
+        error.clear();
+
+        auto pipeline = ALMetalRenderPipeline::create(*device, pipeline_descriptor, &error);
+        INFO(error);
+        REQUIRE(pipeline);
+        CHECK(pipeline->descriptor().tessellation.enabled);
+        CHECK(pipeline->descriptor().tessellation.maximum_factor == 16);
+
+        ALMetalRenderTargetDescriptor target_descriptor;
+        target_descriptor.width = 32;
+        target_descriptor.height = 32;
+        target_descriptor.color_attachment_count = 1;
+        target_descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        target_descriptor.label = "Alchemy tessellation target";
+        auto target = ALMetalRenderTarget::create(*device, target_descriptor, &error);
+        INFO(error);
+        REQUIRE(target);
+
+        const std::array<std::array<float, 2>, 4> control_points{{
+            {{-0.8f, -0.8f}},
+            {{ 0.8f, -0.8f}},
+            {{ 0.8f,  0.8f}},
+            {{-0.8f,  0.8f}},
+        }};
+        ALMetalBufferDescriptor control_point_descriptor;
+        control_point_descriptor.length = sizeof(control_points);
+        control_point_descriptor.storage = ALMetalStorageMode::shared;
+        control_point_descriptor.label = "Alchemy quad control points";
+        auto control_point_buffer = ALMetalBuffer::create(
+            *device, control_point_descriptor, &error);
+        INFO(error);
+        REQUIRE(control_point_buffer);
+        REQUIRE(control_point_buffer->write(
+            0, control_points.data(), sizeof(control_points), &error));
+
+        // Four outer and two inner half-precision factors, each set to 4.0.
+        std::array<std::uint16_t, 128> tessellation_factors{};
+        std::fill_n(tessellation_factors.begin(), 6, std::uint16_t{0x4400});
+        ALMetalBufferDescriptor factor_descriptor;
+        factor_descriptor.length = sizeof(tessellation_factors);
+        factor_descriptor.storage = ALMetalStorageMode::shared;
+        factor_descriptor.label = "Alchemy quad tessellation factors";
+        auto factor_buffer = ALMetalBuffer::create(*device, factor_descriptor, &error);
+        INFO(error);
+        REQUIRE(factor_buffer);
+        REQUIRE(factor_buffer->write(
+            0, tessellation_factors.data(), sizeof(tessellation_factors), &error));
+
+        ALMetalRenderPassConfig pass_config;
+        pass_config.colors[0].load = ALMetalLoadAction::clear;
+        pass_config.colors[0].store = ALMetalStoreAction::store;
+        pass_config.colors[0].clear = {0.0, 0.0, 0.0, 1.0};
+        auto pass = target->makeRenderPass(pass_config, &error);
+        INFO(error);
+        REQUIRE(pass);
+
+        auto command = device->makeCommandBuffer("Alchemy typed quad tessellation", &error);
+        INFO(error);
+        REQUIRE(command);
+        auto encoder = ALMetalRenderEncoder::begin(
+            *command, *pass, "Alchemy tessellation encoder", &error);
+        INFO(error);
+        REQUIRE(encoder);
+        REQUIRE(encoder->setPipeline(*pipeline, &error));
+        REQUIRE(encoder->setVertexBuffer(0, *control_point_buffer, 0, &error));
+        REQUIRE(encoder->setViewport({0.0, 0.0, 32.0, 32.0, 0.0, 1.0}, &error));
+        REQUIRE(encoder->setScissor({0, 0, 32, 32}, &error));
+        REQUIRE(encoder->setCullMode(ALMetalCullMode::none, &error));
+
+        CHECK_FALSE(encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, &error));
+        CHECK_FALSE(encoder->drawPatches(4, 0, 1, 1, 0, &error));
+        CHECK_FALSE(encoder->setTessellationFactorBuffer(
+            *factor_buffer, factor_buffer->length(), 0, &error));
+        CHECK_FALSE(encoder->setTessellationFactorBuffer(*factor_buffer, 2, 0, &error));
+        CHECK_FALSE(encoder->setTessellationFactorBuffer(*factor_buffer, 0, 2, &error));
+        CHECK_FALSE(encoder->setTessellationFactorScale(
+            std::numeric_limits<float>::quiet_NaN(), &error));
+        error.clear();
+
+        REQUIRE(encoder->setTessellationFactorBuffer(*factor_buffer, 0, 0, &error));
+        REQUIRE(encoder->setTessellationFactorScale(1.0f, &error));
+        REQUIRE(encoder->drawPatches(4, 0, 1, 1, 0, &error));
+        REQUIRE(encoder->end(&error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 32 * 32 * 4> pixels{};
+        REQUIRE(target->colorTexture(0)->readback(
+            *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        INFO(error);
+        const std::size_t center = (16 * 32 + 16) * 4;
+        CHECK(std::abs(static_cast<int>(pixels[center + 0]) - 128) <= 9);
+        CHECK(std::abs(static_cast<int>(pixels[center + 1]) - 128) <= 9);
+        CHECK(std::abs(static_cast<int>(pixels[center + 2]) - 64) <= 1);
+        CHECK(pixels[center + 3] == 255);
+
+        const std::size_t outside = (1 * 32 + 1) * 4;
+        CHECK(pixels[outside + 0] == 0);
+        CHECK(pixels[outside + 1] == 0);
+        CHECK(pixels[outside + 2] == 0);
+        CHECK(pixels[outside + 3] == 255);
+    }
+}
+
 TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[almetal]")
 {
     @autoreleasepool
