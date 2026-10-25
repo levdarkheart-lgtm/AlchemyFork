@@ -547,6 +547,9 @@ struct ALMetalWorldWaterSurface
     std::uint32_t patch_count = 0;
     std::vector<std::uint16_t> tessellation_factors;
     bool waves = false;
+    // Cull wave patches against a Metal pyramid built from the exact retained
+    // pre-water depth. This is independent of the transitional GL pyramid.
+    bool wave_occlusion = false;
     bool underwater = true;
     bool refracts = false;
     bool has_excluded_surface = false;

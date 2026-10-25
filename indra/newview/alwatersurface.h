@@ -170,15 +170,15 @@ public:
         ALMetalWorldWaterHaze& haze, const LLViewerCamera& camera,
         bool above_water) const;
 
-    /// Add the exact wave patch rectangle, ordering, height maps and CPU
-    /// tessellation factors to a native water snapshot. Depth-pyramid
-    /// occlusion is deliberately fail-closed until its native owner lands.
+    /// Add the exact wave patch rectangle, ordering, height maps, CPU
+    /// tessellation factors and native depth-pyramid request to a water
+    /// snapshot. The renderer builds that pyramid from its retained depth.
     bool fillMetalWaterWaves(
         ALMetalWorldWaterSurface& surface,
         const LLViewerCamera& camera,
         const LLViewerTexture* current,
         const LLViewerTexture* next,
-        bool occlusion) const;
+        bool native_occlusion) const;
 #endif
 
 private:

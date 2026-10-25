@@ -149,6 +149,19 @@ namespace
     };
     static_assert(sizeof(WorldWaterSurfaceConstants) == 416);
 
+    struct alignas(16) WorldWaterOcclusionConstants
+    {
+        float modelview_projection[16]{};
+        float cell_square[4]{};
+        // xy = source depth size, z = maximum wave displacement.
+        float screen_displacement[4]{};
+        std::int32_t patch_rect[4]{};
+        std::int32_t patch_order[4]{};
+        // x = patch count, y = pyramid levels, z = reverse-Z.
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldWaterOcclusionConstants) == 144);
+
     struct alignas(16) WorldShinyConstants
     {
         float modelview_projection[16];
@@ -781,6 +794,14 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         base_light_pipelines;
     std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
+    std::unique_ptr<ALMetalComputePipeline>
+        water_depth_pyramid_first_pipeline;
+    std::unique_ptr<ALMetalComputePipeline>
+        water_depth_pyramid_last_pipeline;
+    std::unique_ptr<ALMetalComputePipeline>
+        water_wave_occlusion_pipeline;
+    std::array<std::unique_ptr<ALMetalTexture>, 8>
+        water_depth_pyramid;
     std::unique_ptr<ALMetalDepthStencilState> forward_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_depth;
     std::unique_ptr<ALMetalDepthStencilState> forward_spot_shadow_depth;
@@ -1059,6 +1080,12 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_cloud_vertex") ||
         !impl->library->hasFunction("almetal_world_cloud_fragment") ||
         !impl->library->hasFunction("almetal_world_base_light_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_depth_pyramid_first") ||
+        !impl->library->hasFunction(
+            "almetal_world_depth_pyramid_last") ||
+        !impl->library->hasFunction(
+            "almetal_world_water_wave_occlusion") ||
         !impl->library->hasFunction("almetal_pbr_preview_brdf_lut"))
     {
         if (impl->library)
@@ -1481,6 +1508,42 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->brdf_lut_pipeline = ALMetalComputePipeline::create(
         device, brdf_descriptor, error);
     if (!impl->brdf_lut_pipeline)
+    {
+        return nullptr;
+    }
+
+    ALMetalComputePipelineDescriptor water_compute_descriptor;
+    water_compute_descriptor.library = impl->library.get();
+    water_compute_descriptor.function =
+        "almetal_world_depth_pyramid_first";
+    water_compute_descriptor.label =
+        "Alchemy world water depth-pyramid first pipeline";
+    impl->water_depth_pyramid_first_pipeline =
+        ALMetalComputePipeline::create(
+            device, water_compute_descriptor, error);
+    if (!impl->water_depth_pyramid_first_pipeline)
+    {
+        return nullptr;
+    }
+    water_compute_descriptor.function =
+        "almetal_world_depth_pyramid_last";
+    water_compute_descriptor.label =
+        "Alchemy world water depth-pyramid last pipeline";
+    impl->water_depth_pyramid_last_pipeline =
+        ALMetalComputePipeline::create(
+            device, water_compute_descriptor, error);
+    if (!impl->water_depth_pyramid_last_pipeline)
+    {
+        return nullptr;
+    }
+    water_compute_descriptor.function =
+        "almetal_world_water_wave_occlusion";
+    water_compute_descriptor.label =
+        "Alchemy world water wave-occlusion pipeline";
+    impl->water_wave_occlusion_pipeline =
+        ALMetalComputePipeline::create(
+            device, water_compute_descriptor, error);
+    if (!impl->water_wave_occlusion_pipeline)
     {
         return nullptr;
     }
@@ -5608,7 +5671,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         else if (surface->height_maps[0] || surface->height_maps[1] ||
                  surface->patch_count != 0 ||
-                 !surface->tessellation_factors.empty())
+                 !surface->tessellation_factors.empty() ||
+                 surface->wave_occlusion)
         {
             setError(error,
                      "Metal world flat water-surface inputs are invalid");
@@ -5866,6 +5930,60 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
     }
 
+    const bool water_wave_occlusion = has_water_surface &&
+        scene.water_surface->waves &&
+        scene.water_surface->wave_occlusion;
+    if (water_wave_occlusion)
+    {
+        constexpr std::uint64_t base_alignment = 128u;
+        const auto base_size = [](std::uint32_t value)
+        {
+            constexpr std::uint64_t alignment = 128u;
+            const std::uint64_t half =
+                (static_cast<std::uint64_t>(value) + 1u) / 2u;
+            return (half + alignment - 1u) / alignment * alignment;
+        };
+        const std::uint64_t base_width = base_size(scene.width);
+        const std::uint64_t base_height = base_size(scene.height);
+        if (base_width > std::numeric_limits<std::uint32_t>::max() ||
+            base_height > std::numeric_limits<std::uint32_t>::max() ||
+            base_width < base_alignment || base_height < base_alignment)
+        {
+            setError(error,
+                     "Metal world water depth-pyramid size is invalid");
+            return nullptr;
+        }
+        const bool recreate = !mImpl->water_depth_pyramid[0] ||
+            mImpl->water_depth_pyramid[0]->width() != base_width ||
+            mImpl->water_depth_pyramid[0]->height() != base_height;
+        if (recreate)
+        {
+            std::array<std::unique_ptr<ALMetalTexture>, 8> pyramid;
+            ALMetalTextureDescriptor descriptor;
+            descriptor.format = ALMetalPixelFormat::r32_float;
+            descriptor.storage = ALMetalStorageMode::private_gpu;
+            descriptor.usage = ALMetalTextureUsage::shader_read |
+                               ALMetalTextureUsage::shader_write;
+            for (std::size_t level = 0; level < pyramid.size(); ++level)
+            {
+                descriptor.width = static_cast<std::uint32_t>(
+                    base_width >> level);
+                descriptor.height = static_cast<std::uint32_t>(
+                    base_height >> level);
+                descriptor.label =
+                    "Alchemy world water depth pyramid level " +
+                    std::to_string(level);
+                pyramid[level] = ALMetalTexture::create(
+                    *mImpl->device, descriptor, error);
+                if (!pyramid[level])
+                {
+                    return nullptr;
+                }
+            }
+            mImpl->water_depth_pyramid = std::move(pyramid);
+        }
+    }
+
     ALMetalRenderTargetDescriptor output_descriptor;
     output_descriptor.width = scene.width;
     output_descriptor.height = scene.height;
@@ -5874,6 +5992,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         "Alchemy world post-deferred final color";
     output_descriptor.depth_stencil_format =
         ALMetalPixelFormat::depth32_float_stencil8;
+    output_descriptor.depth_stencil_shader_read = water_wave_occlusion;
     output_descriptor.label =
         "Alchemy native world opaque post-deferred target";
     auto output = ALMetalRenderTarget::create(
@@ -6317,6 +6436,111 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                       error))))
             {
                 return nullptr;
+            }
+
+            if (water.wave_occlusion)
+            {
+                const std::uint32_t reverse_z =
+                    scene.reverse_z ? 1u : 0u;
+                auto first = ALMetalComputeEncoder::begin(
+                    *command,
+                    "Alchemy world water depth-pyramid first encoder",
+                    error);
+                bool computed = first && first->setPipeline(
+                    *mImpl->water_depth_pyramid_first_pipeline, error) &&
+                    first->setTexture(
+                        0, output->depthStencilTexture(), error) &&
+                    first->setBytes(
+                        0, &reverse_z, sizeof(reverse_z), error);
+                for (std::size_t level = 0;
+                     computed && level < 5; ++level)
+                {
+                    computed = first->setTexture(
+                        static_cast<std::uint32_t>(level + 1),
+                        mImpl->water_depth_pyramid[level].get(), error);
+                }
+                computed = computed && first->dispatch(
+                    mImpl->water_depth_pyramid[0]->width(),
+                    mImpl->water_depth_pyramid[0]->height(), 1,
+                    16, 16, 1, error) && first->end(error);
+                if (!computed)
+                {
+                    return nullptr;
+                }
+
+                auto last = ALMetalComputeEncoder::begin(
+                    *command,
+                    "Alchemy world water depth-pyramid last encoder",
+                    error);
+                computed = last && last->setPipeline(
+                    *mImpl->water_depth_pyramid_last_pipeline, error) &&
+                    last->setTexture(
+                        0, mImpl->water_depth_pyramid[4].get(), error) &&
+                    last->setBytes(
+                        0, &reverse_z, sizeof(reverse_z), error);
+                for (std::size_t level = 5;
+                     computed && level < 8; ++level)
+                {
+                    computed = last->setTexture(
+                        static_cast<std::uint32_t>(level - 4),
+                        mImpl->water_depth_pyramid[level].get(), error);
+                }
+                const std::uint32_t last_width =
+                    (mImpl->water_depth_pyramid[5]->width() + 15u) & ~15u;
+                const std::uint32_t last_height =
+                    (mImpl->water_depth_pyramid[5]->height() + 15u) & ~15u;
+                computed = computed && last->dispatch(
+                    last_width, last_height, 1, 16, 16, 1, error) &&
+                    last->end(error);
+                if (!computed)
+                {
+                    return nullptr;
+                }
+
+                WorldWaterOcclusionConstants constants{};
+                std::memcpy(constants.modelview_projection,
+                            field.modelview_projection,
+                            sizeof(constants.modelview_projection));
+                std::memcpy(constants.cell_square, field.cell_square,
+                            sizeof(constants.cell_square));
+                constants.screen_displacement[0] =
+                    static_cast<float>(scene.width);
+                constants.screen_displacement[1] =
+                    static_cast<float>(scene.height);
+                constants.screen_displacement[2] =
+                    water.wave_reach_amplitude[1];
+                std::memcpy(constants.patch_rect, water.patch_rect,
+                            sizeof(constants.patch_rect));
+                std::memcpy(constants.patch_order, water.patch_order,
+                            sizeof(constants.patch_order));
+                constants.config[0] = water.patch_count;
+                constants.config[1] = 8u;
+                constants.config[2] = reverse_z;
+
+                auto cull = ALMetalComputeEncoder::begin(
+                    *command,
+                    "Alchemy world water wave-occlusion encoder", error);
+                computed = cull && cull->setPipeline(
+                    *mImpl->water_wave_occlusion_pipeline, error) &&
+                    water_factor_buffer && cull->setBuffer(
+                        0, *water_factor_buffer, 0, error) &&
+                    cull->setBytes(
+                        1, &constants, sizeof(constants), error) &&
+                    cull->setTexture(0, field.cell_map, error);
+                for (std::size_t level = 0;
+                     computed && level < 8; ++level)
+                {
+                    computed = cull->setTexture(
+                        static_cast<std::uint32_t>(level + 1),
+                        mImpl->water_depth_pyramid[level].get(), error);
+                }
+                computed = computed && cull->dispatch(
+                    water.patch_count, 1, 1, 64, 1, 1, error) &&
+                    cull->end(error);
+                if (!computed)
+                {
+                    return nullptr;
+                }
             }
 
             ALMetalRenderPassConfig water_pass_config;

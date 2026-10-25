@@ -340,9 +340,9 @@ bool ALWaterSurface::fillMetalWaterWaves(
     const LLViewerCamera& camera,
     const LLViewerTexture* current,
     const LLViewerTexture* next,
-    bool occlusion) const
+    bool native_occlusion) const
 {
-    if (!mWavesDrawn || occlusion || mCellMap.isNull() ||
+    if (!mWavesDrawn || mCellMap.isNull() ||
         mTexels.size() < static_cast<size_t>(
             ALWaterField::MAP_SIZE * ALWaterField::MAP_SIZE * 2))
     {
@@ -606,6 +606,7 @@ bool ALWaterSurface::fillMetalWaterWaves(
         surface.tessellation_factors[factor + 5] =
             ALWaterHeightBake::halfOf(inner[1]);
     }
+    surface.wave_occlusion = native_occlusion;
     surface.waves = true;
     return true;
 }

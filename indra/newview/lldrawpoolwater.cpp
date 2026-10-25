@@ -315,8 +315,8 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
 #if LL_DARWIN
     // The class-3 family is one native boundary above and below the surface.
     // Wave frames join it only after their exact patch factors and height-map
-    // mirrors are complete; unsupported depth-pyramid occlusion fails closed
-    // and retains the already validated pre-water target.
+    // mirrors are complete. The native owner builds its own pyramid from the
+    // retained pre-water depth rather than consuming this GL pass's texture.
     if (mShaderLevel > 2 && bound_a)
     {
         ALMetalWorldWaterSurface metal_water;
@@ -391,8 +391,10 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
                        ? gWaterOpaqueProgram : gWaterProgram);
             metal_water.uses_shadows = !underwater &&
                 metal_flat_program.selectVariant()->mFeatures.hasShadows;
+            const bool metal_occlusion = main_view && occlusion_cull;
             if (!waves || surface.fillMetalWaterWaves(
-                    metal_water, camera, bound_a, bound_b, occlusion))
+                    metal_water, camera, bound_a, bound_b,
+                    metal_occlusion))
             {
                 gPipeline.captureMetalWorldWaterSurface(metal_water);
             }

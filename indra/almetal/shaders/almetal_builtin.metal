@@ -341,6 +341,16 @@ struct ALMetalWorldWaterSurfaceConstants
     uint4 config;
 };
 
+struct ALMetalWorldWaterOcclusionConstants
+{
+    float4x4 modelview_projection;
+    float4 cell_square;
+    float4 screen_displacement;
+    int4 patch_rect;
+    int4 patch_order;
+    uint4 config;
+};
+
 struct ALMetalWorldWaterSurfaceVaryings
 {
     float4 position [[position]];
@@ -2093,6 +2103,272 @@ static float2 almetal_world_water_square_point(
     const float2 centre = constants.cell_square.xy +
         0.5 * side * constants.cell_square.z;
     return centre + (at - 0.5 * side) * constants.cell_square.z;
+}
+
+static float almetal_world_depth_pyramid_farthest(
+    float a, float b, uint reverse_z)
+{
+    return reverse_z != 0u ? min(a, b) : max(a, b);
+}
+
+static float almetal_world_depth_pyramid_farthest4(
+    float4 value, uint reverse_z)
+{
+    return almetal_world_depth_pyramid_farthest(
+        almetal_world_depth_pyramid_farthest(
+            value.x, value.y, reverse_z),
+        almetal_world_depth_pyramid_farthest(
+            value.z, value.w, reverse_z),
+        reverse_z);
+}
+
+kernel void almetal_world_depth_pyramid_first(
+    texture2d<float> source [[texture(0)]],
+    texture2d<float, access::write> level0 [[texture(1)]],
+    texture2d<float, access::write> level1 [[texture(2)]],
+    texture2d<float, access::write> level2 [[texture(3)]],
+    texture2d<float, access::write> level3 [[texture(4)]],
+    texture2d<float, access::write> level4 [[texture(5)]],
+    constant uint& reverse_z [[buffer(0)]],
+    uint2 position [[thread_position_in_grid]],
+    uint2 local [[thread_position_in_threadgroup]],
+    uint2 group [[threadgroup_position_in_grid]])
+{
+    threadgroup float tile[16][16];
+    const uint2 source_last = uint2(
+        source.get_width() - 1u, source.get_height() - 1u);
+    const uint2 below = 2u * position;
+    float depth = almetal_world_depth_pyramid_farthest4(
+        float4(
+            source.read(min(below, source_last)).r,
+            source.read(min(below + uint2(1u, 0u), source_last)).r,
+            source.read(min(below + uint2(0u, 1u), source_last)).r,
+            source.read(min(below + uint2(1u), source_last)).r),
+        reverse_z);
+    level0.write(float4(depth), position);
+    tile[local.y][local.x] = depth;
+
+    for (uint level = 1u; level < 5u; ++level)
+    {
+        const uint side = 16u >> level;
+        const bool reduces = all(local < uint2(side));
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        if (reduces)
+        {
+            const uint2 at = 2u * local;
+            depth = almetal_world_depth_pyramid_farthest4(
+                float4(tile[at.y][at.x], tile[at.y][at.x + 1u],
+                       tile[at.y + 1u][at.x],
+                       tile[at.y + 1u][at.x + 1u]),
+                reverse_z);
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        if (reduces)
+        {
+            tile[local.y][local.x] = depth;
+            const uint2 target = group * side + local;
+            switch (level)
+            {
+                case 1u: level1.write(float4(depth), target); break;
+                case 2u: level2.write(float4(depth), target); break;
+                case 3u: level3.write(float4(depth), target); break;
+                default: level4.write(float4(depth), target); break;
+            }
+        }
+    }
+}
+
+kernel void almetal_world_depth_pyramid_last(
+    texture2d<float, access::read> source [[texture(0)]],
+    texture2d<float, access::write> level5 [[texture(1)]],
+    texture2d<float, access::write> level6 [[texture(2)]],
+    texture2d<float, access::write> level7 [[texture(3)]],
+    constant uint& reverse_z [[buffer(0)]],
+    uint2 position [[thread_position_in_grid]],
+    uint2 local [[thread_position_in_threadgroup]],
+    uint2 group [[threadgroup_position_in_grid]])
+{
+    threadgroup float tile[16][16];
+    const uint2 source_last = uint2(
+        source.get_width() - 1u, source.get_height() - 1u);
+    const uint2 below = 2u * position;
+    float depth = almetal_world_depth_pyramid_farthest4(
+        float4(
+            source.read(min(below, source_last)).r,
+            source.read(min(below + uint2(1u, 0u), source_last)).r,
+            source.read(min(below + uint2(0u, 1u), source_last)).r,
+            source.read(min(below + uint2(1u), source_last)).r),
+        reverse_z);
+    const uint2 level5_size = uint2(
+        level5.get_width(), level5.get_height());
+    if (all(position < level5_size))
+    {
+        level5.write(float4(depth), position);
+    }
+    tile[local.y][local.x] = depth;
+
+    for (uint level = 1u; level < 3u; ++level)
+    {
+        const uint side = 16u >> level;
+        const bool reduces = all(local < uint2(side));
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        if (reduces)
+        {
+            const uint2 at = 2u * local;
+            depth = almetal_world_depth_pyramid_farthest4(
+                float4(tile[at.y][at.x], tile[at.y][at.x + 1u],
+                       tile[at.y + 1u][at.x],
+                       tile[at.y + 1u][at.x + 1u]),
+                reverse_z);
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        if (reduces)
+        {
+            tile[local.y][local.x] = depth;
+            const uint2 target = group * side + local;
+            if (level == 1u)
+            {
+                if (target.x < level6.get_width() &&
+                    target.y < level6.get_height())
+                {
+                    level6.write(float4(depth), target);
+                }
+            }
+            else if (target.x < level7.get_width() &&
+                     target.y < level7.get_height())
+            {
+                level7.write(float4(depth), target);
+            }
+        }
+    }
+}
+
+kernel void almetal_world_water_wave_occlusion(
+    device ushort* factors [[buffer(0)]],
+    constant ALMetalWorldWaterOcclusionConstants& constants [[buffer(1)]],
+    texture2d<float, access::read> cell_map [[texture(0)]],
+    array<texture2d<float, access::read>, 8> pyramid [[texture(1)]],
+    uint patch_id [[thread_position_in_grid]])
+{
+    if (patch_id >= constants.config.x)
+    {
+        return;
+    }
+    const uint factor = patch_id * 6u;
+    if (factors[factor] == 0u)
+    {
+        return;
+    }
+
+    constexpr int patches_per_cell = 8;
+    const int2 patch_dimensions = max(
+        constants.patch_rect.zw - constants.patch_rect.xy,
+        int2(1)) * patches_per_cell;
+    const bool slow_x = constants.patch_order.x != 0;
+    const int run = slow_x ? patch_dimensions.y : patch_dimensions.x;
+    int slow = int(patch_id) / run;
+    int fast = int(patch_id) - slow * run;
+    slow = constants.patch_order.y != 0
+        ? (slow_x ? patch_dimensions.x : patch_dimensions.y) - 1 - slow
+        : slow;
+    fast = constants.patch_order.z != 0 ? run - 1 - fast : fast;
+    const int2 at_patch = slow_x
+        ? int2(slow, fast) : int2(fast, slow);
+    const int2 cell = constants.patch_rect.xy +
+        at_patch / patches_per_cell;
+    const int2 square = at_patch -
+        (at_patch / patches_per_cell) * patches_per_cell;
+    const float side = constants.cell_square.w;
+    const float2 centre = constants.cell_square.xy +
+        0.5 * side * constants.cell_square.z;
+    const float2 south_west = centre +
+        (float2(cell) + float2(square) / float(patches_per_cell) -
+         0.5 * side) * constants.cell_square.z;
+    const float2 north_east = centre +
+        (float2(cell) + float2(square + 1) /
+             float(patches_per_cell) - 0.5 * side) *
+            constants.cell_square.z;
+    const float water_height = cell_map.read(uint2(cell)).r;
+    const float displacement = constants.screen_displacement.z;
+    const float3 lo = float3(
+        min(south_west, north_east), water_height - displacement);
+    const float3 hi = float3(
+        max(south_west, north_east), water_height + displacement);
+
+    float2 ndc_lo = float2(1.0);
+    float2 ndc_hi = float2(-1.0);
+    const bool reverse_z = constants.config.z != 0u;
+    float nearest = reverse_z ? 0.0 : 1.0;
+    bool visible = false;
+    for (uint corner_index = 0u; corner_index < 8u; ++corner_index)
+    {
+        const float3 corner = float3(
+            (corner_index & 1u) != 0u ? hi.x : lo.x,
+            (corner_index & 2u) != 0u ? hi.y : lo.y,
+            (corner_index & 4u) != 0u ? hi.z : lo.z);
+        const float4 clip = constants.modelview_projection *
+            float4(corner, 1.0);
+        if (clip.w <= 0.0)
+        {
+            visible = true;
+            break;
+        }
+        const float3 ndc = clip.xyz / clip.w;
+        ndc_lo = min(ndc_lo, ndc.xy);
+        ndc_hi = max(ndc_hi, ndc.xy);
+        nearest = reverse_z
+            ? max(nearest, ndc.z)
+            : min(nearest, ndc.z * 0.5 + 0.5);
+    }
+    if (!visible)
+    {
+        const int2 size = int2(constants.screen_displacement.xy);
+        const int2 p_lo = clamp(
+            int2(floor((ndc_lo * 0.5 + 0.5) * float2(size))),
+            int2(0), size - 1);
+        const int2 p_hi = clamp(
+            int2(floor((ndc_hi * 0.5 + 0.5) * float2(size))),
+            int2(0), size - 1);
+        uint level = 0u;
+        while (level < constants.config.y - 1u &&
+               any((p_hi >> int(level + 1u)) -
+                   (p_lo >> int(level + 1u)) > int2(1)))
+        {
+            ++level;
+        }
+        const int2 t_lo = p_lo >> int(level + 1u);
+        const int2 t_hi = p_hi >> int(level + 1u);
+        if (any(t_hi - t_lo >= int2(4)))
+        {
+            visible = true;
+        }
+        else
+        {
+            float farthest = pyramid[level].read(uint2(t_lo)).r;
+            for (int y = t_lo.y; y <= t_hi.y; ++y)
+            {
+                const int first_x = y == t_lo.y
+                    ? t_lo.x + 1 : t_lo.x;
+                for (int x = first_x; x <= t_hi.x; ++x)
+                {
+                    farthest = almetal_world_depth_pyramid_farthest(
+                        farthest,
+                        pyramid[level].read(uint2(x, y)).r,
+                        constants.config.z);
+                }
+            }
+            visible = reverse_z
+                ? !(nearest < farthest)
+                : !(nearest > farthest);
+        }
+    }
+    if (!visible)
+    {
+        for (uint index = 0u; index < 6u; ++index)
+        {
+            factors[factor + index] = 0u;
+        }
+    }
 }
 
 static float2 almetal_world_water_turn(float2 value, uint edge)

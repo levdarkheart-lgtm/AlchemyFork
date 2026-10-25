@@ -163,6 +163,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_atmospheric_haze_fragment",
             "almetal_world_flat_water_vertex",
             "almetal_world_wave_water_vertex",
+            "almetal_world_depth_pyramid_first",
+            "almetal_world_depth_pyramid_last",
+            "almetal_world_water_wave_occlusion",
             "almetal_world_underwater_fragment",
             "almetal_world_above_water_fragment",
             "almetal_world_pre_water_fullbright_fragment",
@@ -5084,6 +5087,14 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         }
         underwater_surface.parameters[3] = 0.f;
 
+        underwater_surface.wave_occlusion = true;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world flat water-surface inputs are invalid");
+        underwater_surface.wave_occlusion = false;
+        error.clear();
+
         // Opaque water has no screen copy: its source is the authored fog
         // colour. With zero density the colour reaches the target unchanged.
         underwater_surface.refracts = false;
@@ -5247,6 +5258,15 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         REQUIRE(culled_wave_patch);
         std::fill_n(
             underwater_wave.tessellation_factors.begin(), 6, 0x3c00u);
+
+        underwater_wave.wave_occlusion = true;
+        auto native_occlusion_wave =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(native_occlusion_wave);
+        CHECK(native_occlusion_wave->descriptor().depth_stencil_shader_read);
+        underwater_wave.wave_occlusion = false;
 
         underwater_wave.tessellation_factors.pop_back();
         CHECK_FALSE(renderer->renderOpaquePostDeferred(
@@ -11840,6 +11860,255 @@ TEST_CASE("almetal: bundled MSL compute pipeline dispatches through typed bindin
         {
             CHECK(result[index] == values[index] * 3u + addend);
         }
+    }
+}
+
+TEST_CASE("almetal: water depth pyramid culls only wholly hidden wave patches", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto library = ALMetalShaderLibrary::loadBuiltin(*device, &error);
+        INFO(error);
+        REQUIRE(library);
+
+        const auto make_pipeline = [&](const char* function)
+        {
+            ALMetalComputePipelineDescriptor descriptor;
+            descriptor.library = library.get();
+            descriptor.function = function;
+            descriptor.label = function;
+            return ALMetalComputePipeline::create(
+                *device, descriptor, &error);
+        };
+        auto first_pipeline = make_pipeline(
+            "almetal_world_depth_pyramid_first");
+        auto last_pipeline = make_pipeline(
+            "almetal_world_depth_pyramid_last");
+        auto cull_pipeline = make_pipeline(
+            "almetal_world_water_wave_occlusion");
+        INFO(error);
+        REQUIRE(first_pipeline);
+        REQUIRE(last_pipeline);
+        REQUIRE(cull_pipeline);
+
+        ALMetalTextureDescriptor source_descriptor;
+        source_descriptor.format = ALMetalPixelFormat::r32_float;
+        source_descriptor.width = 5;
+        source_descriptor.height = 3;
+        source_descriptor.storage = ALMetalStorageMode::private_gpu;
+        source_descriptor.usage = ALMetalTextureUsage::shader_read;
+        source_descriptor.label =
+            "Alchemy water depth-pyramid test source";
+        auto source = ALMetalTexture::create(
+            *device, source_descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        std::array<std::unique_ptr<ALMetalTexture>, 8> pyramid;
+        ALMetalTextureDescriptor level_descriptor;
+        level_descriptor.format = ALMetalPixelFormat::r32_float;
+        level_descriptor.storage = ALMetalStorageMode::private_gpu;
+        level_descriptor.usage = ALMetalTextureUsage::shader_read |
+                                 ALMetalTextureUsage::shader_write;
+        for (std::size_t level = 0; level < pyramid.size(); ++level)
+        {
+            level_descriptor.width = 128u >> level;
+            level_descriptor.height = 128u >> level;
+            level_descriptor.label =
+                "Alchemy water depth-pyramid test level " +
+                std::to_string(level);
+            pyramid[level] = ALMetalTexture::create(
+                *device, level_descriptor, &error);
+            INFO(error);
+            REQUIRE(pyramid[level]);
+        }
+
+        const auto upload_source = [&](const std::array<float, 15>& values)
+        {
+            auto command = device->makeCommandBuffer(
+                "Alchemy water depth-pyramid source upload", &error);
+            REQUIRE(command);
+            REQUIRE(source->upload(
+                *command, 0, 0, {}, values.data(),
+                5 * sizeof(float), &error));
+            REQUIRE(command->commitAndWait(&error));
+            INFO(error);
+        };
+        const auto build_pyramid = [&](std::uint32_t reverse_z)
+        {
+            auto command = device->makeCommandBuffer(
+                "Alchemy water depth-pyramid test", &error);
+            REQUIRE(command);
+            auto first = ALMetalComputeEncoder::begin(
+                *command, "Alchemy water depth-pyramid first test", &error);
+            REQUIRE(first);
+            REQUIRE(first->setPipeline(*first_pipeline, &error));
+            REQUIRE(first->setTexture(0, source.get(), &error));
+            REQUIRE(first->setBytes(
+                0, &reverse_z, sizeof(reverse_z), &error));
+            for (std::size_t level = 0; level < 5; ++level)
+            {
+                REQUIRE(first->setTexture(
+                    static_cast<std::uint32_t>(level + 1),
+                    pyramid[level].get(), &error));
+            }
+            REQUIRE(first->dispatch(
+                128, 128, 1, 16, 16, 1, &error));
+            REQUIRE(first->end(&error));
+
+            auto last = ALMetalComputeEncoder::begin(
+                *command, "Alchemy water depth-pyramid last test", &error);
+            REQUIRE(last);
+            REQUIRE(last->setPipeline(*last_pipeline, &error));
+            REQUIRE(last->setTexture(0, pyramid[4].get(), &error));
+            REQUIRE(last->setBytes(
+                0, &reverse_z, sizeof(reverse_z), &error));
+            for (std::size_t level = 5; level < 8; ++level)
+            {
+                REQUIRE(last->setTexture(
+                    static_cast<std::uint32_t>(level - 4),
+                    pyramid[level].get(), &error));
+            }
+            REQUIRE(last->dispatch(
+                16, 16, 1, 16, 16, 1, &error));
+            REQUIRE(last->end(&error));
+            REQUIRE(command->commitAndWait(&error));
+            INFO(error);
+        };
+
+        std::array<float, 15> depth_values{};
+        depth_values.fill(0.1f);
+        depth_values.back() = 0.9f;
+        upload_source(depth_values);
+        build_pyramid(0u);
+        float coarsest = 0.f;
+        REQUIRE(pyramid[7]->readback(
+            *device, 0, 0, {}, &coarsest, sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(coarsest - 0.9f) < 0.0001f);
+        build_pyramid(1u);
+        REQUIRE(pyramid[7]->readback(
+            *device, 0, 0, {}, &coarsest, sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(coarsest - 0.1f) < 0.0001f);
+
+        ALMetalTextureDescriptor cell_descriptor;
+        cell_descriptor.format = ALMetalPixelFormat::rg32_float;
+        cell_descriptor.width = 3;
+        cell_descriptor.height = 3;
+        cell_descriptor.storage = ALMetalStorageMode::private_gpu;
+        cell_descriptor.usage = ALMetalTextureUsage::shader_read;
+        cell_descriptor.label =
+            "Alchemy water wave-occlusion test cell map";
+        auto cell_map = ALMetalTexture::create(
+            *device, cell_descriptor, &error);
+        INFO(error);
+        REQUIRE(cell_map);
+        std::array<float, 3 * 3 * 2> cells{};
+        for (std::size_t cell = 0; cell < 9; ++cell)
+        {
+            cells[cell * 2] = 0.5f;
+            cells[cell * 2 + 1] = 1.f;
+        }
+        auto cell_upload = device->makeCommandBuffer(
+            "Alchemy water wave-occlusion cell upload", &error);
+        REQUIRE(cell_upload);
+        REQUIRE(cell_map->upload(
+            *cell_upload, 0, 0, {}, cells.data(),
+            3 * 2 * sizeof(float), &error));
+        REQUIRE(cell_upload->commitAndWait(&error));
+
+        std::array<std::uint16_t, 64 * 6> factor_values{};
+        factor_values.fill(0x3c00u);
+        ALMetalBufferDescriptor factor_descriptor;
+        factor_descriptor.length = sizeof(factor_values);
+        factor_descriptor.storage = ALMetalStorageMode::shared;
+        factor_descriptor.label =
+            "Alchemy water wave-occlusion test factors";
+        auto factors = ALMetalBuffer::create(
+            *device, factor_descriptor, &error);
+        INFO(error);
+        REQUIRE(factors);
+
+        struct alignas(16) WaterOcclusionConstants
+        {
+            float modelview_projection[16]{};
+            float cell_square[4]{};
+            float screen_displacement[4]{};
+            std::int32_t patch_rect[4]{};
+            std::int32_t patch_order[4]{};
+            std::uint32_t config[4]{};
+        } constants;
+        static_assert(sizeof(WaterOcclusionConstants) == 144);
+        constants.modelview_projection[0] = 1.f;
+        constants.modelview_projection[5] = 1.f;
+        constants.modelview_projection[10] = 1.f;
+        constants.modelview_projection[15] = 1.f;
+        constants.cell_square[0] = -1.5f;
+        constants.cell_square[1] = -1.5f;
+        constants.cell_square[2] = 1.f;
+        constants.cell_square[3] = 3.f;
+        constants.screen_displacement[0] = 5.f;
+        constants.screen_displacement[1] = 3.f;
+        constants.screen_displacement[2] = 0.1f;
+        constants.patch_rect[0] = 1;
+        constants.patch_rect[1] = 1;
+        constants.patch_rect[2] = 2;
+        constants.patch_rect[3] = 2;
+        constants.config[0] = 64;
+        constants.config[1] = 8;
+
+        const auto run_cull = [&](float scene_depth,
+                                  std::uint32_t reverse_z,
+                                  bool expect_culled)
+        {
+            depth_values.fill(scene_depth);
+            upload_source(depth_values);
+            build_pyramid(reverse_z);
+            factor_values.fill(0x3c00u);
+            REQUIRE(factors->write(
+                0, factor_values.data(), sizeof(factor_values), &error));
+            constants.config[2] = reverse_z;
+            auto command = device->makeCommandBuffer(
+                "Alchemy water wave-occlusion test", &error);
+            REQUIRE(command);
+            auto cull = ALMetalComputeEncoder::begin(
+                *command, "Alchemy water wave-occlusion test", &error);
+            REQUIRE(cull);
+            REQUIRE(cull->setPipeline(*cull_pipeline, &error));
+            REQUIRE(cull->setBuffer(0, *factors, 0, &error));
+            REQUIRE(cull->setBytes(
+                1, &constants, sizeof(constants), &error));
+            REQUIRE(cull->setTexture(0, cell_map.get(), &error));
+            for (std::size_t level = 0; level < pyramid.size(); ++level)
+            {
+                REQUIRE(cull->setTexture(
+                    static_cast<std::uint32_t>(level + 1),
+                    pyramid[level].get(), &error));
+            }
+            REQUIRE(cull->dispatch(64, 1, 1, 64, 1, 1, &error));
+            REQUIRE(cull->end(&error));
+            REQUIRE(command->commitAndWait(&error));
+            INFO(error);
+            REQUIRE(factors->read(
+                0, factor_values.data(), sizeof(factor_values), &error));
+            const std::uint16_t expected =
+                expect_culled ? 0u : 0x3c00u;
+            CHECK(std::all_of(
+                factor_values.begin(), factor_values.end(),
+                [expected](std::uint16_t value)
+                {
+                    return value == expected;
+                }));
+        };
+        run_cull(0.1f, 0u, true);
+        run_cull(0.9f, 0u, false);
+        run_cull(0.9f, 1u, true);
+        run_cull(0.1f, 1u, false);
     }
 }
 
