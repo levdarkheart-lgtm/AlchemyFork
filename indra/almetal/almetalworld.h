@@ -139,10 +139,9 @@ struct alignas(16) ALMetalWorldLegacyAlphaLight
     float parameters[4]{};
 };
 
-// The forward-light subset that can affect a legacy BLEND material's alpha.
-// RGB is deliberately not lit in the impostor bake: the billboard is lit once
-// when it is consumed. These constants reproduce only the legacy glare term
-// that raises coverage above the diffuse map's alpha.
+// The forward-light subset used by a legacy BLEND material. The main-world
+// owner consumes its RGB and glare terms; the impostor bake deliberately uses
+// only glare because the billboard is lit again when it is consumed.
 struct alignas(16) ALMetalWorldLegacyAlphaLighting
 {
     float sun_direction[4]{};
@@ -223,6 +222,7 @@ struct ALMetalWorldSimpleBatch
     bool pre_water_alpha = false;
     bool pre_water_fullbright = false;
     bool pre_water_simple = false;
+    bool pre_water_material = false;
     bool pre_water_shadows = false;
     bool legacy_glow = false;
     bool pbr_glow = false;
@@ -455,6 +455,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t batch_count = 0;
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
     const ALMetalWorldHeroProbe* hero_probe = nullptr;
+    const ALMetalWorldScreenSpaceReflections* screen_space_reflections =
+        nullptr;
     const ALMetalWorldWaterExclusionSurface* water_exclusion_surface =
         nullptr;
     const ALMetalWorldWaterHaze* water_haze = nullptr;

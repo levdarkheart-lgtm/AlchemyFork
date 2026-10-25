@@ -4379,6 +4379,74 @@ static void almetal_legacy_local_glare(
     glare += current_glare;
 }
 
+static float3 almetal_legacy_local_light(
+    ALMetalWorldLegacyAlphaLight light,
+    float3 diffuse, float3 normal, float3 position, float3 view,
+    float3 specular, float glossiness, float specular_exponent,
+    bool classic_mode, thread float& glare)
+{
+    const float light_size = light.parameters.x;
+    if (light_size <= 0.0)
+    {
+        return 0.0;
+    }
+    const float3 light_vector = light.position.xyz - position;
+    const float light_distance = length(light_vector);
+    const float distance = light_distance / light_size;
+    if (distance > 1.0 || dot(normal, light_vector) <= 0.0 ||
+        light_distance <= 0.0)
+    {
+        return 0.0;
+    }
+
+    float3 half_vector;
+    float3 light_direction;
+    float nh;
+    float nl;
+    float nv;
+    float vh;
+    almetal_legacy_half_vectors(
+        light_vector, normal, view, half_vector, light_direction,
+        nh, nl, nv, vh);
+    const float distance_attenuation = almetal_legacy_distance_attenuation(
+        distance, light.parameters.y);
+    const float spot = max(
+        dot(-light.direction.xyz, light_direction), light.parameters.z);
+    const float spot_attenuation = spot * spot;
+    float3 color = light.diffuse.rgb *
+        (nl * distance_attenuation) * diffuse;
+
+    if (glossiness > 0.0)
+    {
+        const float lit = min(nl * 6.0, 1.0) * distance_attenuation;
+        const float fresnel = pow(1.0 - vh, 5.0) * 0.4 + 0.5;
+        const float geometry_denominator = 2.0 * nh;
+        const float geometry = max(
+            0.0, min(geometry_denominator * nv / vh,
+                     geometry_denominator * nl / vh));
+        const float lobe = fresnel * almetal_legacy_blinn_phong_lobe(
+            nh, glossiness, specular_exponent) * geometry / (nh * nl);
+        const float3 specular_contribution =
+            lit * lobe * light.diffuse.rgb * specular;
+        color += specular_contribution;
+
+        const float3 glare_source = clamp(
+            specular_contribution * spot_attenuation, 0.0, 1.0);
+        const float current_glare = max(
+            max(glare_source.r, glare_source.g), glare_source.b);
+        glare = max(glare, glare_source.r);
+        glare += current_glare;
+    }
+
+    color = max(color * spot_attenuation, float3(0.0));
+    const float peak = max(color.r, max(color.g, color.b));
+    if (peak > 65504.0)
+    {
+        color *= 65504.0 / peak;
+    }
+    return color * (classic_mode ? 0.9 : 1.0);
+}
+
 static float almetal_shadow_depth(
     texture2d_array<float> shadow_maps, uint cascade,
     int2 texel, uint2 resolution)
@@ -4946,7 +5014,7 @@ fragment float4 almetal_world_pre_water_simple_fragment(
     ALMetalWorldShinyVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
     texturecube_array<float> reflection_radiance [[texture(32)]],
-    texture2d<uint> reflection_irradiance [[texture(36)]],
+    texture2d<uint> reflection_irradiance [[texture(37)]],
     sampler diffuse_sampler [[sampler(0)]],
     sampler probe_sampler [[sampler(1)]],
     constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
@@ -4968,8 +5036,8 @@ fragment float4 almetal_world_pre_water_simple_shadow_fragment(
     ALMetalWorldShinyVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
     texturecube_array<float> reflection_radiance [[texture(32)]],
-    texture2d<uint> reflection_irradiance [[texture(36)]],
-    texture2d_array<float> shadow_maps [[texture(35)]],
+    texture2d<uint> reflection_irradiance [[texture(37)]],
+    texture2d_array<float> shadow_maps [[texture(33)]],
     sampler diffuse_sampler [[sampler(0)]],
     sampler probe_sampler [[sampler(1)]],
     constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
@@ -4995,6 +5063,274 @@ fragment float4 almetal_world_pre_water_simple_shadow_fragment(
         input, diffuse, normal, directional_visibility,
         reflection_radiance, reflection_irradiance,
         probe_sampler, environment, probes, lighting);
+}
+
+fragment float4 almetal_world_pre_water_material_fragment(
+    ALMetalWorldLegacyAlphaVaryings input [[stage_in]],
+    array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
+    array<texture2d<float>, 8> normal_textures [[texture(8)]],
+    array<texture2d<float>, 8> specular_textures [[texture(16)]],
+    texturecube_array<float> reflection_radiance [[texture(32)]],
+    texture2d_array<float> shadow_maps [[texture(33)]],
+    texturecube<float> hero_probe [[texture(34)]],
+    texture2d<float> ssr_scene_color [[texture(35)]],
+    texture2d<float> ssr_scene_depth [[texture(36)]],
+    texture2d<uint> reflection_irradiance [[texture(37)]],
+    sampler material_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    sampler ssr_color_sampler [[sampler(2)]],
+    sampler ssr_depth_sampler [[sampler(3)]],
+    constant ALMetalWorldMaterialConstants& constants [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]],
+    constant ALMetalWorldDirectionalShadowConstants& shadows [[buffer(3)]],
+    constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]],
+    constant ALMetalWorldScreenSpaceReflectionConstants& ssr [[buffer(5)]],
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(6)]])
+{
+    // Receiver and normal derivatives must remain outside all non-uniform
+    // alpha and water discards, matching materialF.glsl's shadow and
+    // specular-AA contract.
+    const float3 position_dx = dfdx(input.eye_position);
+    const float3 position_dy = dfdy(input.eye_position);
+    const float water_side =
+        dot(input.eye_position, environment.water_plane.xyz) +
+        environment.water_plane.w;
+    if ((environment.water_fog.z > 0.0 && water_side < 0.0) ||
+        (environment.water_fog.z <= 0.0 && water_side > 0.0))
+    {
+        discard_fragment();
+    }
+
+    const uint slot_count = max(constants.config.x, 1u);
+    const uint material_index = min(input.material_index, slot_count - 1u);
+    const uint slot = min(material_index, 7u);
+    const ALMetalWorldMaterialSlotConstants material =
+        constants.slots[slot];
+    float4 diffuse = diffuse_textures[slot].sample(
+        material_sampler, input.texcoord);
+    diffuse.rgb *= input.color.rgb;
+
+    float glossiness = material.specular_color.a;
+    float3 normal = normalize(input.normal);
+    if (constants.config.z != 0u)
+    {
+        const float4 tangent_sample = normal_textures[slot].sample(
+            material_sampler, input.texcoord1);
+        glossiness *= tangent_sample.a;
+        const float3 tangent_normal = tangent_sample.rgb * 2.0 - 1.0;
+        normal = normalize(
+            tangent_normal.x * input.tangent +
+            tangent_normal.y * input.bitangent +
+            tangent_normal.z * input.normal);
+    }
+
+    float4 specular = float4(
+        almetal_srgb_to_linear(material.specular_color.rgb), 1.0);
+    if (constants.config.w != 0u)
+    {
+        const float4 specular_sample = specular_textures[slot].sample(
+            material_sampler, input.texcoord2);
+        specular = float4(
+            specular_sample.rgb * specular.rgb, specular_sample.a);
+    }
+    const float environment_intensity =
+        material.properties.x * specular.a;
+
+    const float3 normal_dx = dfdx(normal);
+    const float3 normal_dy = dfdy(normal);
+    const float variance = 0.15 *
+        (dot(normal_dx, normal_dx) + dot(normal_dy, normal_dy));
+    const float specular_kernel = min(2.0 * variance, 0.25);
+    const float perceptual_roughness = 1.0 - glossiness;
+    const float roughness_alpha =
+        perceptual_roughness * perceptual_roughness;
+    glossiness = 1.0 - sqrt(sqrt(clamp(
+        roughness_alpha * roughness_alpha + specular_kernel,
+        0.0, 1.0)));
+    specular.a = glossiness;
+
+    const float minimum_alpha = lighting.parameters.y;
+    if (input.color.a < minimum_alpha ||
+        (diffuse.a * input.color.a < minimum_alpha &&
+         glossiness <= 0.0 && environment_intensity <= 0.0))
+    {
+        discard_fragment();
+    }
+
+    float directional_visibility = lighting.parameters.z;
+    if ((shadows.config.y & 0xfu) != 0xfu)
+    {
+        const float2 gl_fragment_position = float2(
+            input.position.x, shadows.parameters.w - input.position.y);
+        directional_visibility *= almetal_directional_shadow(
+            shadow_maps, shadows, input.eye_position, normal,
+            position_dx, position_dy,
+            gl_fragment_position / shadows.resolution.zw,
+            lighting.sun_direction.xyz);
+    }
+
+    const bool classic_mode = lighting.parameters.w != 0.0;
+    const float ambient_facing = 1.0 -
+        pow(0.5 * min(abs(dot(
+            normal, environment.light_direction.xyz)), 1.0), 2.0);
+    float3 sunlit = classic_mode
+        ? environment.atmos_sunlit.rgb
+        : environment.atmos_sunlit_linear.rgb;
+    float3 ambient = environment.atmos_amblit.rgb * ambient_facing;
+    if (!classic_mode)
+    {
+        ambient = almetal_srgb_to_linear(ambient);
+        ambient = float3(dot(
+            ambient, float3(0.2126, 0.7152, 0.0722)));
+    }
+    else
+    {
+        sunlit *= 1.35;
+    }
+    sunlit *= environment.atmos_sunlit.w;
+    ambient *= environment.atmos_sunlit_linear.w;
+
+    float3 ambient_environment = ambient;
+    float3 gloss_environment = 0.0;
+    float3 legacy_environment = 0.0;
+    almetal_sample_base_probes(
+        false, input.eye_position, normal, glossiness,
+        environment_intensity, ambient, classic_mode,
+        reflection_radiance, reflection_irradiance,
+        probe_sampler, probes,
+        ambient_environment, gloss_environment, legacy_environment);
+    if (glossiness > 0.0)
+    {
+        gloss_environment = almetal_finish_legacy_ssr(
+            gloss_environment,
+            float2(input.position.x, ssr.screen.z - input.position.y) /
+                ssr.screen.xy,
+            input.eye_position, normal, glossiness,
+            ssr_scene_color, ssr_scene_depth,
+            ssr_color_sampler, ssr_depth_sampler, ssr);
+    }
+    if (environment_intensity > 0.0)
+    {
+        legacy_environment = almetal_finish_legacy_ssr(
+            legacy_environment,
+            float2(input.position.x, ssr.screen.z - input.position.y) /
+                ssr.screen.xy,
+            input.eye_position, normal, glossiness,
+            ssr_scene_color, ssr_scene_depth,
+            ssr_color_sampler, ssr_depth_sampler, ssr);
+    }
+    gloss_environment = almetal_finish_hero_probe(
+        gloss_environment, input.eye_position, normal, glossiness,
+        hero_probe, probe_sampler, probes, hero);
+    legacy_environment = almetal_finish_hero_probe(
+        legacy_environment, input.eye_position, normal, 1.0,
+        hero_probe, probe_sampler, probes, hero);
+
+    float directional = clamp(dot(
+        normal, environment.light_direction.xyz), 0.0, 1.0);
+    float3 sunlit_linear = sunlit;
+    float3 color = ambient_environment;
+    if (classic_mode)
+    {
+        directional = pow(directional, 1.2);
+        const float3 sun_contribution = float3(
+            min(directional, directional_visibility));
+        color = almetal_srgb_to_linear(
+            color * 0.9 +
+            almetal_linear_to_srgb(sun_contribution) * sunlit * 0.7);
+        sunlit_linear = almetal_srgb_to_linear(sunlit);
+    }
+    else
+    {
+        color += min(directional, directional_visibility) * sunlit_linear;
+    }
+    color *= diffuse.rgb;
+
+    float glare = 0.0;
+    const float3 view = -normalize(input.eye_position);
+    if (glossiness > 0.0)
+    {
+        float3 half_vector;
+        float3 light_direction;
+        float nh;
+        float nl;
+        float nv;
+        float vh;
+        almetal_legacy_half_vectors(
+            lighting.sun_direction.xyz, normal, view,
+            half_vector, light_direction, nh, nl, nv, vh);
+        if (dot(normal, light_direction) > 0.0 &&
+            dot(normal, half_vector) > 0.0)
+        {
+            const float lit = min(nl * 6.0, 1.0);
+            const float fresnel = pow(1.0 - vh, 5.0) * 0.4 + 0.5;
+            const float geometry_denominator = 2.0 * nh;
+            const float geometry = max(
+                0.0, min(geometry_denominator * nv / vh,
+                         geometry_denominator * nl / vh));
+            const float lobe = directional_visibility * fresnel *
+                almetal_legacy_blinn_phong_lobe(
+                    nh, glossiness, lighting.parameters.x) *
+                geometry / (nh * nl);
+            const float3 contribution = lit * lobe *
+                sunlit_linear * specular.rgb;
+            color += contribution;
+            glare = max(max(contribution.r, contribution.g),
+                        contribution.b);
+        }
+
+        gloss_environment *= 0.5;
+        float fresnel = clamp(
+            1.0 + dot(normalize(input.eye_position), normal),
+            0.3, 1.0);
+        fresnel *= fresnel * specular.a;
+        gloss_environment *= specular.rgb * fresnel;
+        gloss_environment *= float3(1.0) - color;
+        color += gloss_environment * 0.5;
+    }
+
+    const float emissive = material.properties.z;
+    color = mix(color, diffuse.rgb, emissive);
+    if (environment_intensity > 0.0)
+    {
+        float fresnel = 1.0 +
+            dot(normalize(input.eye_position), normal);
+        fresnel *= fresnel;
+        fresnel = min(fresnel + environment_intensity, 1.0);
+        const float3 reflected = legacy_environment *
+            (environment_intensity * fresnel);
+        color = mix(color, reflected * 0.5, environment_intensity);
+        const float environment_glare = max(
+            max(legacy_environment.r, legacy_environment.g),
+            legacy_environment.b);
+        glare += max(environment_glare, 0.0) *
+            environment_intensity * 4.0;
+    }
+    if (classic_mode)
+    {
+        color *= 1.1;
+    }
+
+    for (uint light_index = 0; light_index < 7; ++light_index)
+    {
+        color += almetal_legacy_local_light(
+            lighting.local_lights[light_index], diffuse.rgb,
+            normal, input.eye_position, view,
+            specular.rgb, glossiness, lighting.parameters.x,
+            classic_mode, glare);
+    }
+    color = almetal_world_alpha_fog(
+        input.eye_position, color, environment);
+
+    glare *= 1.0 - emissive;
+    glare = min(glare, 1.0);
+    const float coverage = max(diffuse.a, glare) * input.color.a;
+    if (coverage < minimum_alpha)
+    {
+        discard_fragment();
+    }
+    return max(float4(color, coverage), float4(0.0));
 }
 
 fragment float4 almetal_world_legacy_alpha_fragment(

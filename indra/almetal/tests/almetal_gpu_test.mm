@@ -152,6 +152,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_pre_water_fullbright_fragment",
             "almetal_world_pre_water_simple_fragment",
             "almetal_world_pre_water_simple_shadow_fragment",
+            "almetal_world_pre_water_material_fragment",
             "almetal_world_legacy_glow_vertex",
             "almetal_world_legacy_glow_skinned_vertex",
             "almetal_world_legacy_glow_fragment",
@@ -3004,13 +3005,13 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK_FALSE(renderer->renderOpaquePostDeferred(
             opaque_forward_scene, &error));
         CHECK(error ==
-              "Metal world pre-water simple-alpha lighting is invalid");
+              "Metal world pre-water alpha lighting is invalid");
         opaque_forward_scene.alpha_lighting = &simple_alpha_lighting;
         reflection_probes.irradiance_texture = nullptr;
         CHECK_FALSE(renderer->renderOpaquePostDeferred(
             opaque_forward_scene, &error));
         CHECK(error ==
-              "Metal world pre-water simple-alpha lighting is invalid");
+              "Metal world pre-water alpha lighting is invalid");
         reflection_probes.irradiance_texture = irradiance_texture.get();
         error.clear();
         auto simple_pre_water_result = renderer->renderOpaquePostDeferred(
@@ -3570,7 +3571,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK_FALSE(renderer->renderOpaquePostDeferred(
             opaque_forward_scene, &error));
         CHECK(error ==
-              "Metal world pre-water simple-alpha shadows are invalid");
+              "Metal world pre-water alpha shadows are invalid");
         opaque_forward_scene.alpha_directional_shadows =
             &directional_shadows;
         error.clear();
@@ -3723,6 +3724,264 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         legacy_alpha_batch.skin_palette_float_count = 0;
         legacy_alpha_batch.skin_joint_count = 0;
         legacy_alpha_batch.weight_offset = 0;
+
+        // The main-world legacy-material owner keeps materialF's lit RGB,
+        // unlike the impostor fragment above, while retaining the same
+        // glare-dependent coverage. Start with its fullbright mix so the
+        // expected source is exactly decoded diffuse times decoded vertex
+        // tint, then execute the same draw through static and rigged
+        // pipelines over the retained final-color/depth target.
+        ALMetalWorldSimpleBatch pre_water_material = legacy_alpha_batch;
+        pre_water_material.pre_water_alpha = true;
+        pre_water_material.pre_water_material = true;
+        pre_water_material.pre_water_shadows = false;
+        pre_water_material.material_slots[0].specular_color[3] = 0.f;
+        pre_water_material.material_slots[0].env_intensity = 0.f;
+        pre_water_material.material_slots[0].fullbright = 1.f;
+        ALMetalWorldSimpleBatch pre_water_material_rigged =
+            pre_water_material;
+        pre_water_material_rigged.skin_palette = alpha_skin_palette.data();
+        pre_water_material_rigged.skin_palette_float_count =
+            alpha_skin_palette.size();
+        pre_water_material_rigged.skin_joint_count = 1;
+        pre_water_material_rigged.weight_offset = weight_offset;
+
+        opaque_forward_scene.batches = &pre_water_material;
+        opaque_forward_scene.batch_count = 1;
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.reflection_probes = &reflection_probes;
+        opaque_forward_scene.hero_probe = nullptr;
+        opaque_forward_scene.screen_space_reflections = nullptr;
+        opaque_forward_scene.alpha_environment = &alpha_environment;
+        opaque_forward_scene.alpha_lighting = nullptr;
+        opaque_forward_scene.alpha_directional_shadows = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world pre-water alpha lighting is invalid");
+        opaque_forward_scene.alpha_lighting = &simple_alpha_lighting;
+        error.clear();
+        auto material_fullbright_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(material_fullbright_result);
+        REQUIRE(material_fullbright_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(material_fullbright_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        const float material_coverage = coverage * coverage;
+        const float material_uncovered = 1.f - material_coverage;
+        const std::array<float, 3> material_source{{
+            srgb_to_linear(128.f / 255.f) *
+                srgb_to_linear(128.f / 255.f),
+            srgb_to_linear(64.f / 255.f),
+            srgb_to_linear(32.f / 255.f),
+        }};
+        const std::array<float, 3> retained_color{{
+            0.25f, 0.125f, 0.0625f,
+        }};
+        const std::size_t material_pixel = center;
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(std::abs(
+                half_to_float(pre_water_pixels[
+                    material_pixel + channel]) -
+                (material_source[channel] * material_coverage +
+                 retained_color[channel] * material_uncovered)) <
+                0.002f);
+        }
+        CHECK(std::abs(
+            half_to_float(pre_water_pixels[material_pixel + 3]) -
+            0.5f * material_uncovered) < 0.002f);
+        CHECK(std::abs(pre_water_depth[material_pixel / 4] - 0.625f) <
+              0.0001f);
+
+        opaque_forward_scene.batches = &pre_water_material_rigged;
+        auto material_rigged_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(material_rigged_result);
+        REQUIRE(material_rigged_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(std::abs(
+                half_to_float(pre_water_pixels[
+                    material_pixel + channel]) -
+                (material_source[channel] * material_coverage +
+                 retained_color[channel] * material_uncovered)) <
+                0.002f);
+        }
+
+        // Restore lit material behavior. A shadowed cascade removes the
+        // modern directional term without changing authored coverage; the
+        // all-unbuilt mask restores the fully lit result.
+        pre_water_material.material_slots[0].fullbright = 0.f;
+        pre_water_material.pre_water_shadows = true;
+        opaque_forward_scene.batches = &pre_water_material;
+        directional_shadows.constants.config[1] = 0xeu;
+        directional_shadows.constants.config[2] = 0;
+        directional_shadows.constants.config[3] = 1;
+        opaque_forward_scene.alpha_directional_shadows =
+            &directional_shadows;
+        auto shadowed_material_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(shadowed_material_result);
+        REQUIRE(shadowed_material_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(std::abs(
+                half_to_float(pre_water_pixels[
+                    material_pixel + channel]) -
+                retained_color[channel] * material_uncovered) < 0.002f);
+        }
+        directional_shadows.constants.config[1] = 0xfu;
+        auto unbuilt_material_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(unbuilt_material_result);
+        REQUIRE(unbuilt_material_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(half_to_float(
+                  pre_water_pixels[material_pixel + 1]) >
+              retained_color[1] * material_uncovered);
+        opaque_forward_scene.alpha_directional_shadows = nullptr;
+        directional_shadows.constants.config[1] = 0xeu;
+
+        // The material fragment's fixed resource contract consumes the
+        // same coherent hero/SSR finish as materialF.glsl. Invalid partial
+        // packs fail before encoding. With direct light disabled, the
+        // ordinary bright probe raises blue radiance and glare; the valid
+        // black hero override removes both.
+        pre_water_material.pre_water_shadows = false;
+        pre_water_material.material_slots[0].specular_color[3] = 1.f;
+        pre_water_material.material_slots[0].env_intensity = 1.f;
+        alpha_environment.atmos_sunlit_linear[0] = 0.f;
+        alpha_environment.atmos_sunlit_linear[1] = 0.f;
+        alpha_environment.atmos_sunlit_linear[2] = 0.f;
+        opaque_forward_scene.hero_probe = &invalid_hero;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world opaque post-deferred hero probe is invalid");
+        opaque_forward_scene.hero_probe = nullptr;
+        opaque_forward_scene.screen_space_reflections = &invalid_ssr;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world opaque post-deferred screen-space reflections are invalid");
+        opaque_forward_scene.screen_space_reflections = nullptr;
+        error.clear();
+        auto ordinary_material_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(ordinary_material_result);
+        REQUIRE(ordinary_material_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float ordinary_material_blue = half_to_float(
+            pre_water_pixels[material_pixel + 2]);
+        const float ordinary_material_alpha = half_to_float(
+            pre_water_pixels[material_pixel + 3]);
+
+        opaque_forward_scene.hero_probe = &hero_probe;
+        auto hero_material_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(hero_material_result);
+        REQUIRE(hero_material_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(ordinary_material_blue > half_to_float(
+                  pre_water_pixels[material_pixel + 2]));
+        CHECK(ordinary_material_alpha < half_to_float(
+                  pre_water_pixels[material_pixel + 3]));
+        opaque_forward_scene.hero_probe = nullptr;
+
+        // A tangent-space reverse normal makes the transparent one-ray SSR
+        // fixture hit its red lower-row history. Disable ordinary radiance
+        // so the comparison isolates normal-map sampling, screen Y
+        // orientation and the paired color/depth finish.
+        const float material_default_radiance_scale =
+            reflection_probes.constants.ref_params[0][1];
+        const float material_radiance_scale =
+            reflection_probes.constants.ref_params[1][1];
+        reflection_probes.constants.ref_params[0][1] = 0.f;
+        reflection_probes.constants.ref_params[1][1] = 0.f;
+        pre_water_material.material_slots[0].normal_texture =
+            ssr_normal.get();
+        auto no_ssr_material_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_ssr_material_result);
+        REQUIRE(no_ssr_material_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float no_ssr_material_red = half_to_float(
+            pre_water_pixels[material_pixel + 0]);
+        opaque_forward_scene.screen_space_reflections =
+            &screen_space_reflections;
+        auto ssr_material_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(ssr_material_result);
+        REQUIRE(ssr_material_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(half_to_float(pre_water_pixels[material_pixel + 0]) >
+              no_ssr_material_red);
+        opaque_forward_scene.screen_space_reflections = nullptr;
+        pre_water_material.material_slots[0].normal_texture = nullptr;
+        reflection_probes.constants.ref_params[0][1] =
+            material_default_radiance_scale;
+        reflection_probes.constants.ref_params[1][1] =
+            material_radiance_scale;
+
+        // Local-light RGB uses the full legacy diffuse/specular model, not
+        // the simple-alpha diffuse-only helper. With authored gloss and the
+        // environment disabled it must add visible green over the retained
+        // background while also preserving the coverage contract.
+        pre_water_material.material_slots[0].env_intensity = 0.f;
+        pre_water_material.material_slots[0].specular_color[3] = 0.f;
+        simple_alpha_lighting.local_lights[0].position[2] = 10.f;
+        simple_alpha_lighting.local_lights[0].diffuse[1] = 0.5f;
+        simple_alpha_lighting.local_lights[0].parameters[0] = 100.f;
+        simple_alpha_lighting.local_lights[0].parameters[2] = 1.f;
+        auto local_material_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(local_material_result);
+        REQUIRE(local_material_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(half_to_float(pre_water_pixels[material_pixel + 1]) >
+              retained_color[1] * material_uncovered);
+        simple_alpha_lighting.local_lights[0] = {};
+        alpha_environment.atmos_sunlit_linear[0] = 1.f;
+        alpha_environment.atmos_sunlit_linear[1] = 0.5f;
+        alpha_environment.atmos_sunlit_linear[2] = 0.25f;
 
         ALMetalWorldSimpleBatch shiny_batch = fullbright_batch;
         shiny_batch.impostor_fullbright = false;

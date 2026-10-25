@@ -3060,9 +3060,37 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         {
             return batch.pre_water_simple;
         });
-    const bool needs_reflection_probes = has_shiny || has_simple_alpha;
+    const bool has_material_alpha = std::any_of(
+        capture.batches.begin(), capture.batches.end(),
+        [](const ALMetalWorldSimpleBatch& batch)
+        {
+            return batch.pre_water_material;
+        });
+    const bool material_uses_environment = std::any_of(
+        capture.batches.begin(), capture.batches.end(),
+        [](const ALMetalWorldSimpleBatch& batch)
+        {
+            if (!batch.pre_water_material)
+            {
+                return false;
+            }
+            const std::size_t slot_count = std::min<std::size_t>(
+                batch.material_slot_count, batch.material_slots.size());
+            return std::any_of(
+                batch.material_slots.begin(),
+                batch.material_slots.begin() + slot_count,
+                [](const ALMetalWorldMaterialSlot& slot)
+                {
+                    return slot.env_intensity > 0.f;
+                });
+        });
+    const bool needs_reflection_probes =
+        has_shiny || has_simple_alpha || has_material_alpha;
     const bool hero_active =
         mHeroProbeManager.mHeroData.heroProbeCount > 0;
+    const bool ssr_active =
+        mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
+        !gCubeSnapshot;
     if (capture.complete && needs_reflection_probes &&
         !mReflectionMapManager.fillMetalReflectionProbes(
             capture.impostor_reflection_probes))
@@ -3072,7 +3100,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             << "Could not acquire a coherent reflection-probe pack for "
                "the native world post-deferred slice" << LL_ENDL;
     }
-    if (capture.complete && has_simple_alpha &&
+    if (capture.complete && (has_simple_alpha || has_material_alpha) &&
         !capture.world_alpha_lighting_valid)
     {
         capture.complete = false;
@@ -3088,13 +3116,23 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             << "Could not acquire the live directional shadows for the "
                "native world pre-water alpha slice" << LL_ENDL;
     }
-    if (capture.complete && has_shiny && hero_active &&
+    if (capture.complete &&
+        (has_shiny || material_uses_environment) && hero_active &&
         !fillMetalImpostorHeroProbe())
     {
         capture.complete = false;
         LL_WARNS("Metal")
             << "Could not acquire the active hero probe for the native "
                "world opaque-forward slice" << LL_ENDL;
+    }
+    if (capture.complete && material_uses_environment && ssr_active &&
+        !fillMetalImpostorScreenSpaceReflections())
+    {
+        capture.complete = false;
+        LL_WARNS("Metal")
+            << "Could not acquire coherent screen-space reflection history "
+               "for the native world pre-water legacy-material slice"
+            << LL_ENDL;
     }
 
     if (capture.complete && !capture.batches.empty() &&
@@ -3108,8 +3146,12 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.batch_count = capture.batches.size();
         scene.reflection_probes = needs_reflection_probes
             ? &capture.impostor_reflection_probes : nullptr;
-        scene.hero_probe = has_shiny && hero_active
+        scene.hero_probe =
+            (has_shiny || material_uses_environment) && hero_active
             ? &capture.impostor_hero_probe : nullptr;
+        scene.screen_space_reflections =
+            material_uses_environment && ssr_active
+                ? &capture.impostor_screen_space_reflections : nullptr;
         scene.water_exclusion_surface =
             capture.water_exclusion_surface_valid
                 ? &capture.water_exclusion_surface : nullptr;
@@ -3146,6 +3188,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 << (has_shiny ? "; including live shiny reflection" : "")
                 << (has_simple_alpha
                         ? "; including lit pre-water alpha" : "")
+                << (has_material_alpha
+                        ? "; including legacy-material pre-water alpha"
+                        : "")
                 << "; result remains offscreen and visible GL authority is "
                    "unchanged" << LL_ENDL;
         }
@@ -5347,14 +5392,9 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
     }
 
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    if (capture.world_post_deferred_active &&
-        capture.world_pre_water_alpha_active)
-    {
-        capture.complete = false;
-        capture.batches.clear();
-        return;
-    }
-    if (!capture.impostor_alpha_active)
+    const bool world_pre_water = capture.world_post_deferred_active &&
+        capture.world_pre_water_alpha_active;
+    if (!capture.impostor_alpha_active && !world_pre_water)
     {
         return;
     }
@@ -5372,18 +5412,33 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
 
     LLGLSLShader* material_shader =
         gDeferredMaterialProgram[shader_mask].selectVariant();
-    if ((material_shader->mFeatures.hasShadows &&
-         !fillMetalImpostorDirectionalShadows()))
+    bool uses_shadows = material_shader->mFeatures.hasShadows;
+    if (uses_shadows && !fillMetalImpostorDirectionalShadows())
     {
         capture.complete = false;
         capture.batches.clear();
         return;
     }
-    capture.impostor_legacy_alpha_uses_shadows =
-        capture.impostor_legacy_alpha_uses_shadows ||
-        material_shader->mFeatures.hasShadows;
+    if (world_pre_water)
+    {
+        uses_shadows = uses_shadows &&
+            capture.impostor_directional_shadows.depth_texture != nullptr;
+        capture.world_alpha_uses_shadows =
+            capture.world_alpha_uses_shadows || uses_shadows;
+    }
+    else
+    {
+        capture.impostor_legacy_alpha_uses_shadows =
+            capture.impostor_legacy_alpha_uses_shadows || uses_shadows;
+    }
 
-    if (!capture.impostor_legacy_alpha_lighting_valid)
+    bool& lighting_valid = world_pre_water
+        ? capture.world_alpha_lighting_valid
+        : capture.impostor_legacy_alpha_lighting_valid;
+    ALMetalWorldLegacyAlphaLighting& captured_lighting = world_pre_water
+        ? capture.world_alpha_lighting
+        : capture.impostor_legacy_alpha_lighting;
+    if (!lighting_valid)
     {
         ALMetalWorldLegacyAlphaLighting lighting;
         if (!fillMetalWorldAlphaLighting(lighting))
@@ -5392,10 +5447,11 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
             capture.batches.clear();
             return;
         }
-        capture.impostor_legacy_alpha_lighting = lighting;
-        capture.impostor_legacy_alpha_lighting_valid = true;
+        captured_lighting = lighting;
+        lighting_valid = true;
     }
 
+    const std::size_t first_batch = capture.batches.size();
     capture.rigged = params.mAvatar != nullptr;
     capture.alpha_mask = false;
     capture.material_alpha_mode = LLMaterial::DIFFUSE_ALPHA_MODE_BLEND;
@@ -5411,9 +5467,16 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
     capture.pass_active = true;
     captureMetalWorldMaterialBatch(params, false);
     capture.pass_active = false;
-    if (capture.complete && !capture.batches.empty())
+    if (capture.complete &&
+        capture.batches.size() == first_batch + 1)
     {
-        const ALMetalWorldSimpleBatch& batch = capture.batches.back();
+        ALMetalWorldSimpleBatch& batch = capture.batches.back();
+        if (world_pre_water)
+        {
+            batch.pre_water_alpha = true;
+            batch.pre_water_material = true;
+            batch.pre_water_shadows = uses_shadows;
+        }
         const std::size_t slot_count = std::min<std::size_t>(
             batch.material_slot_count, batch.material_slots.size());
         capture.impostor_ssr_needed = capture.impostor_ssr_needed ||
