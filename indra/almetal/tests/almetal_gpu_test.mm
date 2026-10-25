@@ -133,6 +133,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_deferred_rigged_fragment",
             "almetal_lit_preview_legacy_material_rigged_fragment",
             "almetal_lit_preview_pbr_rigged_textured_vertex",
+            "almetal_lit_preview_pbr_glow_rigged_textured_vertex",
+            "almetal_lit_preview_pbr_glow_rigged_fragment",
             "almetal_lit_preview_fullbright_mask_rigged_textured_vertex",
             "almetal_lit_preview_fullbright_rigged_fragment",
             "almetal_lit_preview_fullbright_mask_rigged_fragment",
@@ -848,12 +850,18 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             {{128, 255, 255, 128}}, {{128, 255, 255, 128}},
             {{128, 255, 255, 128}}, {{128, 255, 255, 128}},
         }};
+        const std::array<std::array<std::uint8_t, 4>, 6> emissive_colors{{
+            {{0, 0, 0, 128}}, {{0, 0, 0, 128}},
+            {{0, 0, 0, 128}}, {{0, 0, 0, 128}},
+            {{0, 0, 0, 128}}, {{0, 0, 0, 128}},
+        }};
         constexpr std::size_t rigged_color_alignment_padding = 8;
         std::array<std::uint8_t,
                    sizeof(positions) + sizeof(normals) + sizeof(texcoords) +
                        sizeof(skin_weights) + sizeof(avatar_weights) +
                        sizeof(avatar_clothing) +
-                       rigged_color_alignment_padding + sizeof(rigged_colors)>
+                       rigged_color_alignment_padding + sizeof(rigged_colors) +
+                       sizeof(emissive_colors)>
             vertex_bytes{};
         std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
         std::memcpy(vertex_bytes.data() + sizeof(positions), normals.data(), sizeof(normals));
@@ -876,6 +884,10 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             rigged_color_alignment_padding;
         std::memcpy(vertex_bytes.data() + rigged_color_offset,
                     rigged_colors.data(), sizeof(rigged_colors));
+        const std::size_t emissive_color_offset =
+            rigged_color_offset + sizeof(rigged_colors);
+        std::memcpy(vertex_bytes.data() + emissive_color_offset,
+                    emissive_colors.data(), sizeof(emissive_colors));
         const std::array<std::uint16_t, 9> indices{{
             0, 1, 2, 3, 4, 5,
             // The same near triangle with reversed winding verifies that the
@@ -994,6 +1006,26 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             *pbr_transform_upload, 0, 0, {}, pbr_transform_pixels.data(), 8,
             &error));
         REQUIRE(pbr_transform_upload->commitAndWait(&error));
+        INFO(error);
+
+        diffuse_descriptor.label =
+            "Alchemy PBR preview emissive UV-transform source";
+        auto pbr_emissive_texture = ALMetalTexture::create(
+            *device, diffuse_descriptor, &error);
+        INFO(error);
+        REQUIRE(pbr_emissive_texture);
+        const std::array<std::uint8_t, 8> pbr_emissive_pixels{{
+            0, 0, 0, 255,
+            255, 255, 255, 255,
+        }};
+        auto pbr_emissive_upload = device->makeCommandBuffer(
+            "Alchemy PBR preview emissive upload", &error);
+        INFO(error);
+        REQUIRE(pbr_emissive_upload);
+        REQUIRE(pbr_emissive_texture->upload(
+            *pbr_emissive_upload, 0, 0, {}, pbr_emissive_pixels.data(), 8,
+            &error));
+        REQUIRE(pbr_emissive_upload->commitAndWait(&error));
         INFO(error);
 
         ALMetalLitPreviewBatch batch;
@@ -1444,6 +1476,37 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(pbr_pixels[translated_interior + 1] == 64);
         CHECK(pbr_pixels[translated_interior + 2] == 32);
         CHECK(pbr_pixels[translated_interior + 3] == 255);
+
+        // Opaque PBR glow replaces the coverage stamp's alpha with emissive
+        // luminance. Its texture transform is independent from base colour:
+        // offset U=0.75 selects the white emissive texel, whose 0.75 factor
+        // and 128/255 streamed TE glow produce exactly 96/255.
+        ALMetalLitPreviewBatch pbr_glow = pbr;
+        pbr_glow.pbr_glow = true;
+        pbr_glow.pbr_emissive_texture = pbr_emissive_texture.get();
+        pbr_glow.emissive_offset = emissive_color_offset;
+        pbr_glow.pbr_emissive_transform[4] = 0.75f;
+        pbr_glow.pbr_emissive_color[0] = 0.25f;
+        pbr_glow.pbr_emissive_color[1] = 0.5f;
+        pbr_glow.pbr_emissive_color[2] = 0.75f;
+        auto rendered_pbr_glow = renderer->render(pbr_glow, &error);
+        INFO(error);
+        REQUIRE(rendered_pbr_glow);
+        std::array<std::uint8_t, 32 * 32 * 4> pbr_glow_pixels{};
+        REQUIRE(rendered_pbr_glow->readback(
+            *device, 0, 0, {}, pbr_glow_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+            pbr_glow_pixels[translated_interior + 0]) - 61) <= 1);
+        CHECK(pbr_glow_pixels[translated_interior + 1] == 64);
+        CHECK(pbr_glow_pixels[translated_interior + 2] == 32);
+        CHECK(std::abs(static_cast<int>(
+            pbr_glow_pixels[translated_interior + 3]) - 96) <= 1);
+
+        pbr_glow.pbr_emissive_texture = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->render(pbr_glow, &error));
+        CHECK(error == "Metal PBR rigged preview data is invalid");
 
         pbr.alpha_cutoff = 0.6f;
         auto rendered_pbr_mask = renderer->render(pbr, &error);

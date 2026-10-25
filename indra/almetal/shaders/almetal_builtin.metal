@@ -200,6 +200,8 @@ struct ALMetalLitPreviewConstants
     float4 avatar_gravity;
     float4 avatar_cloth_depth;
     float4 pbr_base_color_transform[2];
+    float4 pbr_emissive_transform[2];
+    float4 pbr_emissive_color;
     float4x4 texture_matrix;
 };
 
@@ -214,6 +216,16 @@ struct ALMetalLitPreviewTexturedVaryings
     float4 position [[position]];
     float4 color;
     float2 texcoord;
+};
+
+struct ALMetalLitPreviewPBRGlowVaryings
+{
+    float4 position [[position]];
+    float4 color;
+    float4 emissive;
+    float3 emissive_color;
+    float2 base_color_texcoord;
+    float2 emissive_texcoord;
 };
 
 static float4 almetal_lit_preview_clip_position(
@@ -706,6 +718,7 @@ vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_deferred_rigged_tex
 
 static float2 almetal_lit_preview_pbr_texcoord(
     float2 vertex_texcoord,
+    constant float4* material_transform,
     constant ALMetalLitPreviewConstants& constants)
 {
     // Keep this operation order and handedness aligned with
@@ -716,9 +729,9 @@ static float2 almetal_lit_preview_pbr_texcoord(
         (constants.texture_matrix * float4(vertex_texcoord, 0.0, 1.0)).xy;
     texcoord.y = 1.0 - texcoord.y;
 
-    const float2 scale = constants.pbr_base_color_transform[0].xy;
-    const float rotation = constants.pbr_base_color_transform[0].z;
-    const float2 offset = constants.pbr_base_color_transform[1].xy;
+    const float2 scale = material_transform[0].xy;
+    const float rotation = material_transform[0].z;
+    const float2 offset = material_transform[1].xy;
     const float2 scaled = texcoord * scale;
     const float cosine = cos(rotation);
     const float sine = sin(rotation);
@@ -748,7 +761,36 @@ vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_pbr_rigged_textured
         skinned.position, skin_palette[0].xyz, constants);
     output.color = float4(colors[vertex_id]) / 255.0;
     output.texcoord = almetal_lit_preview_pbr_texcoord(
-        texcoords[vertex_id], constants);
+        texcoords[vertex_id], constants.pbr_base_color_transform, constants);
+    return output;
+}
+
+vertex ALMetalLitPreviewPBRGlowVaryings almetal_lit_preview_pbr_glow_rigged_textured_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device float2* texcoords [[buffer(3)]],
+    const device uchar4* colors [[buffer(4)]],
+    const device uchar4* emissive [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    const device float4* skin_palette [[buffer(7)]],
+    constant uint& joint_count [[buffer(8)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalLitPreviewSkinnedVertex skinned =
+        almetal_lit_preview_skin_vertex(
+            positions[vertex_id], normals[vertex_id],
+            encoded_weights[vertex_id], skin_palette, joint_count);
+    ALMetalLitPreviewPBRGlowVaryings output;
+    output.position = almetal_lit_preview_rebased_clip_position(
+        skinned.position, skin_palette[0].xyz, constants);
+    output.color = float4(colors[vertex_id]) / 255.0;
+    output.emissive = float4(emissive[vertex_id]) / 255.0;
+    output.emissive_color = constants.pbr_emissive_color.rgb;
+    output.base_color_texcoord = almetal_lit_preview_pbr_texcoord(
+        texcoords[vertex_id], constants.pbr_base_color_transform, constants);
+    output.emissive_texcoord = almetal_lit_preview_pbr_texcoord(
+        texcoords[vertex_id], constants.pbr_emissive_transform, constants);
     return output;
 }
 
@@ -787,6 +829,35 @@ fragment float4 almetal_lit_preview_deferred_rigged_fragment(
     const float3 linear = diffuse.rgb *
                           almetal_srgb_to_linear(input.color.rgb);
     return float4(almetal_linear_to_srgb(linear), 1.0);
+}
+
+fragment float4 almetal_lit_preview_pbr_glow_rigged_fragment(
+    ALMetalLitPreviewPBRGlowVaryings input [[stage_in]],
+    texture2d<float> diffuse_map [[texture(0)]],
+    texture2d<float> emissive_map [[texture(1)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    sampler emissive_sampler [[sampler(1)]],
+    constant float& alpha_cutoff [[buffer(1)]])
+{
+    const float4 diffuse =
+        diffuse_map.sample(diffuse_sampler, input.base_color_texcoord);
+    const float coverage = diffuse.a * input.color.a;
+    if (coverage < alpha_cutoff - 0.001953125)
+    {
+        discard_fragment();
+    }
+
+    const float3 linear = diffuse.rgb *
+                          almetal_srgb_to_linear(input.color.rgb);
+    const float3 emissive = input.emissive_color *
+        emissive_map.sample(emissive_sampler, input.emissive_texcoord).rgb;
+    const float glow = max(max(emissive.r, emissive.g), emissive.b) *
+                       input.emissive.a;
+
+    // The GL owner first stamps opaque coverage to one and then overwrites
+    // alpha with pbrglowF's luminance. Combining those two owner passes is
+    // exact for opaque PBR and avoids a second depth-equal native draw.
+    return float4(almetal_linear_to_srgb(linear), glow);
 }
 
 fragment float4 almetal_lit_preview_legacy_material_rigged_fragment(

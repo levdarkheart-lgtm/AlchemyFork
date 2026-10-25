@@ -610,10 +610,32 @@ bool LLVisualParamHint::render()
                                 ? pbr_material->mBaseColorTexture.get()
                                 : LLViewerFetchedTexture::sWhiteImagep.get());
                     }
+                    const bool pbr_glow = pbr && pbr_material &&
+                        pbr_material->mAlphaMode ==
+                            LLGLTFMaterial::ALPHA_MODE_OPAQUE &&
+                        LLPipeline::sRenderGlow &&
+                        face->getTextureEntry() &&
+                        face->getTextureEntry()->getGlow() > 0.f;
+                    LLViewerTexture* pbr_emissive = nullptr;
+                    if (pbr_glow)
+                    {
+                        const bool indexed_pbr = draw_info &&
+                            draw_info->mGLTFMaterialList.size() > 1;
+                        pbr_emissive = !indexed_pbr && draw_info &&
+                                draw_info->mTexture
+                            ? draw_info->mTexture.get()
+                            : (pbr_material->mEmissiveTexture
+                                ? pbr_material->mEmissiveTexture.get()
+                                : LLViewerFetchedTexture::sWhiteImagep.get());
+                    }
                     LLImageGL* diffuse_image = diffuse
                         ? diffuse->getGLTexture() : nullptr;
                     const ALMetalTexture* diffuse_texture = diffuse_image
                         ? diffuse_image->getMetalTexture() : nullptr;
+                    LLImageGL* emissive_image = pbr_emissive
+                        ? pbr_emissive->getGLTexture() : nullptr;
+                    const ALMetalTexture* emissive_texture = emissive_image
+                        ? emissive_image->getMetalTexture() : nullptr;
                     const bool uses_texture_matrix = draw_info &&
                         draw_info->mTextureList.size() <= 1 &&
                         draw_info->mGLTFMaterialList.size() <= 1 &&
@@ -642,12 +664,7 @@ bool LLVisualParamHint::render()
                          (pbr_material->mAlphaMode ==
                               LLGLTFMaterial::ALPHA_MODE_OPAQUE ||
                           pbr_material->mAlphaMode ==
-                              LLGLTFMaterial::ALPHA_MODE_MASK) &&
-                         !(pbr_material->mAlphaMode ==
-                               LLGLTFMaterial::ALPHA_MODE_OPAQUE &&
-                           LLPipeline::sRenderGlow &&
-                           face->getTextureEntry() &&
-                           face->getTextureEntry()->getGlow() > 0.f));
+                              LLGLTFMaterial::ALPHA_MODE_MASK));
                     F32 material_alpha_cutoff = draw_info
                         ? draw_info->mAlphaMaskCutoff : 0.f;
                     if (legacy_material && draw_info &&
@@ -667,6 +684,7 @@ bool LLVisualParamHint::render()
                         }
                     }
                     complete = draw_info && buffer && diffuse_texture &&
+                        (!pbr_glow || emissive_texture) &&
                         supported_material_mode && supported_pbr_mode &&
                         (!mask_pool ||
                          draw_info->mMaterialSlotList.size() <= 1) &&
@@ -678,6 +696,8 @@ bool LLVisualParamHint::render()
                             LLVertexBuffer::TYPE_NORMAL)) &&
                         (!pbr || buffer->hasDataType(
                             LLVertexBuffer::TYPE_TANGENT)) &&
+                        (!pbr_glow || buffer->hasDataType(
+                            LLVertexBuffer::TYPE_EMISSIVE)) &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4) &&
@@ -736,6 +756,7 @@ bool LLVisualParamHint::render()
                         !pbr && !fullbright && !fullbright_mask;
                     batch.legacy_material_rigged = legacy_material;
                     batch.pbr_rigged = pbr;
+                    batch.pbr_glow = pbr_glow;
                     batch.pbr_double_sided = pbr_batch_double_sided;
                     batch.fullbright_rigged = fullbright;
                     batch.fullbright_mask_rigged = fullbright_mask;
@@ -758,6 +779,19 @@ bool LLVisualParamHint::render()
                             std::memcpy(batch.texture_matrix,
                                         draw_info->mTextureMatrix->mMatrix,
                                         sizeof(batch.texture_matrix));
+                        }
+                        if (pbr_glow)
+                        {
+                            batch.pbr_emissive_texture = emissive_texture;
+                            batch.emissive_offset = buffer->getOffset(
+                                LLVertexBuffer::TYPE_EMISSIVE);
+                            pbr_material->mTextureTransform[
+                                LLGLTFMaterial::GLTF_TEXTURE_INFO_EMISSIVE]
+                                    .getPacked(
+                                        batch.pbr_emissive_transform);
+                            std::memcpy(batch.pbr_emissive_color,
+                                        pbr_material->mEmissiveColor.mV,
+                                        sizeof(F32) * 3);
                         }
                     }
                     std::memcpy(batch.modelview_projection,

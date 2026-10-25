@@ -90,6 +90,11 @@ struct ALMetalLitPreviewBatch
     // G-buffer attachments. The vertex path applies SL texture animation
     // followed by the material's KHR_texture_transform exactly as GLSL does.
     bool pbr_rigged = false;
+    // Opaque PBR glow is an alpha-only post-deferred overwrite in the GL
+    // owner. Fold that final alpha into the native attachment-0 draw while
+    // retaining its independently transformed emissive map and U8 glow
+    // stream. Masked PBR never runs this owner pass.
+    bool pbr_glow = false;
     bool pbr_double_sided = false;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
@@ -100,6 +105,8 @@ struct ALMetalLitPreviewBatch
     // encoded-space anisotropic wrap sampler. A null texture selects the
     // solid-lit pipeline and does not require texture coordinates.
     const ALMetalTexture* texture = nullptr;
+    const ALMetalTexture* pbr_emissive_texture = nullptr;
+    std::size_t emissive_offset = 0;
     // Re-emit the three edges of every indexed triangle as one-pixel Metal
     // line primitives after its fill. The edge vertex path reads the same
     // index buffer directly, so no CPU expansion or transient buffer is
@@ -146,6 +153,11 @@ struct ALMetalLitPreviewBatch
         1.f, 1.f, 0.f, 0.f,
         0.f, 0.f, 0.f, 0.f,
     };
+    float pbr_emissive_transform[8] = {
+        1.f, 1.f, 0.f, 0.f,
+        0.f, 0.f, 0.f, 0.f,
+    };
+    float pbr_emissive_color[4] = {0.f, 0.f, 0.f, 0.f};
     float texture_matrix[16] = {
         1.f, 0.f, 0.f, 0.f,
         0.f, 1.f, 0.f, 0.f,
