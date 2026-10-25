@@ -36,6 +36,10 @@
 
 class LLVOAvatar;
 class LLViewerJointMesh;
+#if LL_DARWIN
+class ALMetalTexture;
+struct ALMetalTextureDescriptor;
+#endif
 
 class LLPreviewAnimation : public LLViewerDynamicTexture
 {
@@ -45,15 +49,16 @@ protected:
 public:
     LLPreviewAnimation(S32 width, S32 height);
 
-    /*virtual*/ S8 getType() const ;
+    S8 getType() const override;
 
-    bool    render();
+    bool    render() override;
+    void    postRender(bool success) override;
     void    requestUpdate();
     void    rotate(F32 yaw_radians, F32 pitch_radians);
     void    zoom(F32 zoom_delta);
     void    setZoom(F32 zoom_amt);
     void    pan(F32 right, F32 up);
-    virtual bool needsUpdate() { return mNeedsUpdate; }
+    bool needsUpdate() { return mNeedsUpdate; }
 
     LLVOAvatar* getDummyAvatar() { return mDummyAvatar; }
 
@@ -65,6 +70,10 @@ protected:
     F32                 mCameraZoom;
     LLVector3           mCameraOffset;
     LLPointer<LLVOAvatar>           mDummyAvatar;
+#if LL_DARWIN
+    std::unique_ptr<ALMetalTexture> mMetalPreview;
+    std::unique_ptr<ALMetalTextureDescriptor> mMetalPreviewDescriptor;
+#endif
 };
 
 class LLFloaterBvhPreview final : public LLFloaterNameDesc

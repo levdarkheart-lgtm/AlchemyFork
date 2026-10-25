@@ -61,6 +61,11 @@ public:
     bool buildJointMatrixPalette(F32* destination,
                                  std::size_t float_count) const;
 
+    // Return the exact active LOD geometry used by drawShape(). Preview
+    // owners use this only after their authoritative GL avatar draw has
+    // refreshed the shared face buffers.
+    bool getPreviewGeometry(LLFace*& face, LLPolyMesh*& mesh) const;
+
     // overloaded from base class
     U32 drawShape( F32 pixelArea, bool first_pass, bool is_dummy ) override;
 

@@ -62,6 +62,8 @@ struct ALMetalLitPreviewRenderer::Impl
         std::unique_ptr<ALMetalRenderPipeline> skinned_textured_blended;
         std::unique_ptr<ALMetalRenderPipeline> skinned_edge_u16_blended;
         std::unique_ptr<ALMetalRenderPipeline> skinned_edge_u32_blended;
+        std::unique_ptr<ALMetalRenderPipeline> avatar_solid;
+        std::unique_ptr<ALMetalRenderPipeline> avatar_textured;
         std::unique_ptr<ALMetalRenderPipeline> avatar_skinned_solid;
         std::unique_ptr<ALMetalRenderPipeline> avatar_skinned_textured;
     };
@@ -102,6 +104,8 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
         !impl->library->hasFunction("almetal_lit_preview_edge_u32_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_skinned_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_skinned_textured_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_avatar_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_avatar_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_fragment") ||
@@ -178,6 +182,14 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
                              "almetal_lit_preview_skinned_edge_u32_vertex",
                              "almetal_lit_preview_fragment",
                              "Alchemy skinned U32 lit preview edge" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.avatar_solid,
+                             "almetal_lit_preview_avatar_vertex",
+                             "almetal_lit_preview_fragment",
+                             "Alchemy rigid-avatar lit preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.avatar_textured,
+                             "almetal_lit_preview_avatar_textured_vertex",
+                             "almetal_lit_preview_avatar_fragment",
+                             "Alchemy textured rigid-avatar lit preview" + suffix + " pipeline") ||
             !create_pipeline(pipelines.avatar_skinned_solid,
                              "almetal_lit_preview_avatar_skinned_vertex",
                              "almetal_lit_preview_fragment",
@@ -417,7 +429,8 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             if (batch.vertices || batch.vertex_count != 0 || batch.indices ||
                 batch.index_count != 0 || batch.texture || batch.show_edges ||
                 batch.skin_palette || batch.skin_palette_float_count != 0 ||
-                batch.skin_joint_count != 0 || batch.avatar_skinning ||
+                batch.skin_joint_count != 0 || batch.avatar_lighting ||
+                batch.avatar_skinning ||
                 batch.depth_prepass)
             {
                 setError(error, "Metal unit-sphere preview batch has external geometry");
@@ -436,7 +449,8 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 batch.indices || batch.index_count != 0 || batch.texture ||
                 batch.show_edges || batch.skin_palette ||
                 batch.skin_palette_float_count != 0 ||
-                batch.skin_joint_count != 0 || batch.avatar_skinning ||
+                batch.skin_joint_count != 0 || batch.avatar_lighting ||
+                batch.avatar_skinning ||
                 batch.vertex_count % (triangles ? 3 : 2) != 0)
             {
                 setError(error, triangles
@@ -469,6 +483,12 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
         if (batch.depth_prepass)
         {
             setError(error, "Metal lit preview depth prepass requires flat geometry");
+            return nullptr;
+        }
+        if (batch.avatar_lighting &&
+            (batch.skin_palette || batch.show_edges || batch.alpha_blending))
+        {
+            setError(error, "Metal avatar preview mode is invalid");
             return nullptr;
         }
         if (!range_fits(batch.position_offset, batch.vertex_count, vector_stride,
@@ -735,12 +755,17 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
 
             const bool skinned = batch.skin_palette != nullptr;
             const bool avatar_skinned = skinned && batch.avatar_skinning;
+            const bool avatar_lit = batch.avatar_lighting || avatar_skinned;
             const ALMetalRenderPipeline* fill_pipeline = nullptr;
             if (batch.texture)
             {
                 if (avatar_skinned)
                 {
                     fill_pipeline = pipelines.avatar_skinned_textured.get();
+                }
+                else if (avatar_lit)
+                {
+                    fill_pipeline = pipelines.avatar_textured.get();
                 }
                 else if (skinned)
                 {
@@ -760,6 +785,10 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 if (avatar_skinned)
                 {
                     fill_pipeline = pipelines.avatar_skinned_solid.get();
+                }
+                else if (avatar_lit)
+                {
+                    fill_pipeline = pipelines.avatar_solid.get();
                 }
                 else if (skinned)
                 {

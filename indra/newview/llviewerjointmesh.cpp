@@ -90,6 +90,23 @@ const S32 NUM_AXES = 3;
 // rotation Z 0-n
 // pivot parent 0-n -- child = n+1
 
+bool LLViewerJointMesh::getPreviewGeometry(
+    LLFace*& face,
+    LLPolyMesh*& mesh) const
+{
+    face = nullptr;
+    mesh = nullptr;
+    if (!mValid || !mVisible || !mFace || !mMesh ||
+        mMesh->getNumFaces() == 0 || mMesh->mFaceVertexCount == 0 ||
+        mMesh->mFaceIndexCount == 0)
+    {
+        return false;
+    }
+    face = mFace;
+    mesh = mMesh;
+    return true;
+}
+
 bool LLViewerJointMesh::buildJointMatrixPalette(
     F32* destination,
     std::size_t float_count) const

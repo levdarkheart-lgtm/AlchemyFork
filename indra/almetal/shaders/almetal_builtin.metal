@@ -319,6 +319,19 @@ static ALMetalLitPreviewVaryings almetal_lit_preview_avatar_vertex_common(
     return output;
 }
 
+static ALMetalLitPreviewVaryings almetal_lit_preview_rigid_avatar_vertex_common(
+    float4 position,
+    float4 normal_value,
+    constant ALMetalLitPreviewConstants& constants)
+{
+    const float3x3 normal_matrix = float3x3(
+        constants.normal_matrix[0].xyz,
+        constants.normal_matrix[1].xyz,
+        constants.normal_matrix[2].xyz);
+    return almetal_lit_preview_avatar_vertex_common(
+        position, float4(normal_matrix * normal_value.xyz, 0.0), constants);
+}
+
 // Decode the viewer's object-skinning stream without changing its precision
 // contract. Palette element zero is the agent-space rebase origin; each joint
 // then contributes the three float4 columns packed by
@@ -412,6 +425,16 @@ vertex ALMetalLitPreviewVaryings almetal_lit_preview_skinned_vertex(
     return output;
 }
 
+vertex ALMetalLitPreviewVaryings almetal_lit_preview_avatar_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    uint vertex_id [[vertex_id]])
+{
+    return almetal_lit_preview_rigid_avatar_vertex_common(
+        positions[vertex_id], normals[vertex_id], constants);
+}
+
 vertex ALMetalLitPreviewVaryings almetal_lit_preview_avatar_skinned_vertex(
     const device float4* positions [[buffer(0)]],
     const device float4* normals [[buffer(1)]],
@@ -472,6 +495,23 @@ vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_skinned_textured_ve
     output.texcoord = texcoords[vertex_id];
     output.position = almetal_lit_preview_rebased_clip_position(
         skinned.position, skin_palette[0].xyz, constants);
+    return output;
+}
+
+vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_avatar_textured_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device float2* texcoords [[buffer(3)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalLitPreviewVaryings lit =
+        almetal_lit_preview_rigid_avatar_vertex_common(
+            positions[vertex_id], normals[vertex_id], constants);
+    ALMetalLitPreviewTexturedVaryings output;
+    output.position = lit.position;
+    output.color = lit.color;
+    output.texcoord = texcoords[vertex_id];
     return output;
 }
 

@@ -45,6 +45,10 @@ struct ALMetalLitPreviewBatch
     const float* skin_palette = nullptr;
     std::size_t skin_palette_float_count = 0;
     std::uint32_t skin_joint_count = 0;
+    // Select the legacy system-avatar one-light/wrapped-back lighting and
+    // alpha-tested texture fragment. Rigid avatar parts use this without a
+    // palette; scalar-weight body meshes select it implicitly below.
+    bool avatar_lighting = false;
     // Legacy avatar body meshes use one float per vertex: integer joint i plus
     // a fractional blend toward min(i + 1, 14). Their fixed palette is 45
     // float4 rows, laid out as three runs of 15 by

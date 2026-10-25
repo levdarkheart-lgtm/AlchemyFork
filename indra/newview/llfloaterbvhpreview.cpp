@@ -58,12 +58,21 @@
 #include "llui.h"
 #include "llviewercamera.h"
 #include "llviewerobjectlist.h"
+#include "llviewerjointmesh.h"
+#include "llviewertexturelist.h"
 #include "llviewerwindow.h"
 #include "llviewermenufile.h"   // upload_new_resource()
 #include "llvoavatar.h"
 #include "pipeline.h"
 #include "lluictrlfactory.h"
 #include "lltrans.h"
+
+#if LL_DARWIN
+#include "../almetal/almetalsculptpreview.h"
+#endif
+
+#include <array>
+#include <vector>
 
 const S32 PREVIEW_BORDER_WIDTH = 2;
 const S32 PREVIEW_RESIZE_HANDLE_SIZE = S32(RESIZE_HANDLE_WIDTH * OO_SQRT2) + PREVIEW_BORDER_WIDTH;
@@ -1062,6 +1071,15 @@ S8 LLPreviewAnimation::getType() const
 bool    LLPreviewAnimation::render()
 {
     mNeedsUpdate = false;
+#if LL_DARWIN
+    mMetalPreview.reset();
+    mMetalPreviewDescriptor.reset();
+    if (mGLTexturep.notNull() && mGLTexturep->getMetalTexture())
+    {
+        mMetalPreviewDescriptor = std::make_unique<ALMetalTextureDescriptor>(
+            mGLTexturep->getMetalTexture()->descriptor());
+    }
+#endif
     LLVOAvatar* avatarp = mDummyAvatar;
 
     gGL.matrixMode(LLRender::MM_PROJECTION);
@@ -1122,11 +1140,257 @@ bool    LLPreviewAnimation::render()
             avatarp->dirtyMesh();
             gPipeline.enableLightsPreview();
             avatarPoolp->renderAvatars(avatarp);  // renders only one avatar
+
+#if LL_DARWIN
+            ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+            LLPointer<LLViewerFetchedTexture> default_texture =
+                LLViewerTextureManager::getFetchedTexture(IMG_DEFAULT);
+            LLImageGL* default_image = default_texture.notNull()
+                ? default_texture->getGLTexture() : nullptr;
+            const ALMetalTexture* metal_texture = default_image
+                ? default_image->getMetalTexture() : nullptr;
+            if (metal_device && mMetalPreviewDescriptor && metal_texture)
+            {
+                static ALMetalDevice* renderer_device = nullptr;
+                static std::unique_ptr<ALMetalLitPreviewRenderer> renderer;
+                std::string error;
+                if (renderer_device != metal_device)
+                {
+                    renderer.reset();
+                    renderer_device = metal_device;
+                }
+                if (!renderer)
+                {
+                    renderer = ALMetalLitPreviewRenderer::create(
+                        *metal_device, &error);
+                }
+
+                using namespace LLAvatarAppearanceDefines;
+                const std::array<EMeshIndex, 6> required_meshes{{
+                    MESH_ID_EYEBALL_LEFT,
+                    MESH_ID_EYEBALL_RIGHT,
+                    MESH_ID_HEAD,
+                    MESH_ID_UPPER_BODY,
+                    MESH_ID_LOWER_BODY,
+                    MESH_ID_EYELASH,
+                }};
+                std::vector<LLViewerJointMesh*> preview_meshes;
+                preview_meshes.reserve(required_meshes.size());
+                bool complete = renderer != nullptr;
+                for (EMeshIndex mesh_index : required_meshes)
+                {
+                    if (mesh_index == MESH_ID_EYELASH &&
+                        !avatarp->isTextureVisible(TEX_HEAD_BAKED))
+                    {
+                        continue;
+                    }
+                    const auto* entry = LLAvatarAppearance::getDictionary()
+                        ->getMeshEntry(mesh_index);
+                    auto* joint = entry
+                        ? dynamic_cast<LLAvatarJoint*>(
+                            avatarp->mRoot->findJoint(std::string(entry->mName)))
+                        : nullptr;
+                    std::size_t active_parts = 0;
+                    if (joint)
+                    {
+                        for (LLAvatarJointMesh* part : joint->mMeshParts)
+                        {
+                            auto* viewer_mesh =
+                                dynamic_cast<LLViewerJointMesh*>(part);
+                            LLFace* preview_face = nullptr;
+                            LLPolyMesh* preview_mesh = nullptr;
+                            if (viewer_mesh && viewer_mesh->getPreviewGeometry(
+                                                   preview_face, preview_mesh))
+                            {
+                                preview_meshes.push_back(viewer_mesh);
+                                ++active_parts;
+                            }
+                        }
+                    }
+                    complete = complete && active_parts == 1;
+                }
+
+                constexpr std::size_t AVATAR_PALETTE_FLOATS =
+                    LL_CHARACTER_MAX_JOINTS_PER_MESH * 3 * 4;
+                std::vector<std::array<F32, AVATAR_PALETTE_FLOATS>> palettes;
+                std::vector<ALMetalLitPreviewBatch> batches;
+                palettes.reserve(preview_meshes.size());
+                batches.reserve(preview_meshes.size());
+
+                const LLMatrix4a modelview = gGL.getModelviewMatrix();
+                const LLMatrix4a projection = gGL.getProjectionMatrix();
+                LLVector4 light(LLPipeline::PreviewDirection0, 0.f);
+                LLVector4a source;
+                source.loadua(light.mV);
+                LLVector4a transformed;
+                modelview.transform4(source, transformed);
+                LLVector3 light_direction(transformed.getF32ptr());
+                light_direction.normVec();
+                const LLColor4 dummy_color = LLVOAvatar::getDummyColor();
+
+                for (LLViewerJointMesh* viewer_mesh : preview_meshes)
+                {
+                    LLFace* preview_face = nullptr;
+                    LLPolyMesh* preview_mesh = nullptr;
+                    complete = complete && viewer_mesh->getPreviewGeometry(
+                        preview_face, preview_mesh);
+                    LLVertexBuffer* buffer = preview_face
+                        ? preview_face->getVertexBuffer() : nullptr;
+                    complete = complete && buffer && preview_mesh &&
+                        buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) &&
+                        buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) &&
+                        buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) &&
+                        buffer->getMetalVertexBuffer() &&
+                        buffer->getMetalIndexBuffer();
+                    if (!complete)
+                    {
+                        break;
+                    }
+
+                    ALMetalLitPreviewBatch batch;
+                    batch.vertices = buffer->getMetalVertexBuffer();
+                    batch.position_offset = buffer->getOffset(
+                        LLVertexBuffer::TYPE_VERTEX);
+                    batch.normal_offset = buffer->getOffset(
+                        LLVertexBuffer::TYPE_NORMAL);
+                    batch.texcoord_offset = buffer->getOffset(
+                        LLVertexBuffer::TYPE_TEXCOORD0);
+                    batch.vertex_count = buffer->getNumVerts();
+                    batch.indices = buffer->getMetalIndexBuffer();
+                    batch.index_type = buffer->getIndexStride() == 4
+                        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+                    batch.index_offset = static_cast<std::size_t>(
+                        preview_mesh->mFaceIndexOffset) *
+                        buffer->getIndexStride();
+                    batch.index_count = preview_mesh->mFaceIndexCount;
+                    batch.texture = metal_texture;
+                    batch.destination_descriptor =
+                        mMetalPreviewDescriptor.get();
+                    std::memcpy(batch.light_direction[0],
+                                light_direction.mV, sizeof(F32) * 3);
+                    std::memcpy(batch.light_diffuse[0],
+                                LLPipeline::PreviewDiffuse0.mV,
+                                sizeof(F32) * 3);
+                    std::memcpy(batch.diffuse_color, dummy_color.mV,
+                                sizeof(batch.diffuse_color));
+
+                    if (preview_mesh->hasWeights())
+                    {
+                        complete = buffer->hasDataType(
+                            LLVertexBuffer::TYPE_WEIGHT);
+                        if (!complete)
+                        {
+                            break;
+                        }
+                        palettes.emplace_back();
+                        complete = viewer_mesh->buildJointMatrixPalette(
+                            palettes.back().data(), palettes.back().size());
+                        if (!complete)
+                        {
+                            break;
+                        }
+                        batch.weight_offset = buffer->getOffset(
+                            LLVertexBuffer::TYPE_WEIGHT);
+                        batch.skin_palette = palettes.back().data();
+                        batch.skin_palette_float_count =
+                            palettes.back().size();
+                        batch.skin_joint_count =
+                            LL_CHARACTER_MAX_JOINTS_PER_MESH;
+                        batch.avatar_skinning = true;
+                        std::memcpy(batch.modelview_projection,
+                                    projection.getF32ptr(),
+                                    sizeof(batch.modelview_projection));
+                    }
+                    else
+                    {
+                        batch.avatar_lighting = true;
+                        const LLMatrix4a& joint_world =
+                            viewer_mesh->getWorldMatrix();
+                        LLMatrix4a rigid_modelview;
+                        rigid_modelview.setMul(joint_world, modelview);
+                        LLMatrix4a modelview_projection;
+                        modelview_projection.setMul(
+                            rigid_modelview, projection);
+                        std::memcpy(batch.modelview_projection,
+                                    modelview_projection.getF32ptr(),
+                                    sizeof(batch.modelview_projection));
+                        LLMatrix4a inverse_modelview;
+                        complete = inverse_modelview.setAffineInverse(
+                            rigid_modelview);
+                        if (!complete)
+                        {
+                            break;
+                        }
+                        const F32* inverse = inverse_modelview.getF32ptr();
+                        for (U32 column = 0; column < 3; ++column)
+                        {
+                            batch.normal_matrix[column][0] =
+                                inverse[0 * 4 + column];
+                            batch.normal_matrix[column][1] =
+                                inverse[1 * 4 + column];
+                            batch.normal_matrix[column][2] =
+                                inverse[2 * 4 + column];
+                        }
+                    }
+                    batches.push_back(batch);
+                }
+
+                if (complete && !batches.empty())
+                {
+                    ALMetalLitPreviewScene scene;
+                    scene.batches = batches.data();
+                    scene.batch_count = batches.size();
+                    scene.destination_descriptor =
+                        mMetalPreviewDescriptor.get();
+                    mMetalPreview = renderer->render(scene, &error);
+                }
+                else if (error.empty())
+                {
+                    error = "animation avatar geometry is incomplete";
+                }
+                if (!mMetalPreview)
+                {
+                    LL_WARNS("Metal")
+                        << "Could not mirror the animation preview: "
+                        << error << LL_ENDL;
+                }
+            }
+            else
+            {
+                LL_WARNS_ONCE("Metal")
+                    << "Animation preview retained GL because its native "
+                       "texture, device or destination is incomplete"
+                    << LL_ENDL;
+            }
+#endif
         }
     }
 
     gGL.color4f(1,1,1,1);
     return true;
+}
+
+void LLPreviewAnimation::postRender(bool success)
+{
+    LLViewerDynamicTexture::postRender(success);
+#if LL_DARWIN
+    if (lastPostRenderSucceeded() && mMetalPreview)
+    {
+        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
+        {
+            LL_INFOS_ONCE("Metal")
+                << "Animation previews own a native Metal render target"
+                << LL_ENDL;
+        }
+        else
+        {
+            LL_WARNS("Metal")
+                << "Could not publish the native animation preview mirror"
+                << LL_ENDL;
+        }
+    }
+    mMetalPreview.reset();
+#endif
 }
 
 //-----------------------------------------------------------------------------
