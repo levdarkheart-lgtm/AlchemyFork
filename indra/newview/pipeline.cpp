@@ -925,6 +925,84 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
     capture.batches.push_back(batch);
 }
 
+void LLPipeline::captureMetalWorldTreeBatch(LLVertexBuffer* buffer,
+                                            LLViewerTexture* texture)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->pass_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete)
+    {
+        return;
+    }
+    LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+    if (!buffer || !image ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer() || !image->getMetalTexture() ||
+        buffer->getNumVerts() == 0 || buffer->getNumIndices() == 0)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+
+    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    LLMatrix4a inverse_modelview;
+    if (!inverse_modelview.setAffineInverse(modelview))
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+
+    ALMetalWorldSimpleBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.normal_offset = buffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
+    batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = buffer->getNumIndices();
+    batch.diffuse_textures[0] = image->getMetalTexture();
+    batch.texture_count = 1;
+    batch.alpha_mask = true;
+    batch.use_vertex_color = false;
+    batch.alpha_cutoff_bias = false;
+    batch.alpha_cutoff = 0.5f;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+
+    const F32* inverse = inverse_modelview.getF32ptr();
+    const F32* modelview_values = modelview.getF32ptr();
+    for (U32 column = 0; column < 3; ++column)
+    {
+        batch.normal_matrix[column][0] = inverse[0 * 4 + column];
+        batch.normal_matrix[column][1] = inverse[1 * 4 + column];
+        batch.normal_matrix[column][2] = inverse[2 * 4 + column];
+        batch.rigged_normal_matrix[column][0] =
+            modelview_values[column * 4 + 0];
+        batch.rigged_normal_matrix[column][1] =
+            modelview_values[column * 4 + 1];
+        batch.rigged_normal_matrix[column][2] =
+            modelview_values[column * 4 + 2];
+    }
+    capture.batches.push_back(batch);
+}
+
 void LLPipeline::endMetalWorldGBufferPass()
 {
     if (!mMetalWorldSimpleCapture ||

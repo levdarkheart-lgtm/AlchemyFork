@@ -83,6 +83,10 @@ void LLDrawPoolTree::renderDeferred(S32 pass)
 //  gGL.getTextureSlot(sDiffTex)->bindFast(mTexturep, ALSamplers::AnisoWrap);
     mTexturep->addTextureStats(1024.f * 1024.f); // <=== keep Linden tree textures at full res
 
+#if LL_DARWIN
+    gPipeline.beginMetalWorldGBufferPass(false, true);
+#endif
+
     for (std::vector<LLFace*>::iterator iter = mDrawFace.begin();
         iter != mDrawFace.end(); iter++)
     {
@@ -96,10 +100,17 @@ void LLDrawPoolTree::renderDeferred(S32 pass)
             llassert(gGL.getMatrixMode() == LLRender::MM_MODELVIEW);
             LLRenderPass::applyModelMatrix(model_matrix);
 
+#if LL_DARWIN
+            gPipeline.captureMetalWorldTreeBatch(buff, pTexture);
+#endif
             buff->setBuffer();
             buff->drawRange(LLRender::TRIANGLES, 0, buff->getNumVerts() - 1, buff->getNumIndices(), 0);
         }
     }
+
+#if LL_DARWIN
+    gPipeline.endMetalWorldGBufferPass();
+#endif
 }
 
 void LLDrawPoolTree::endDeferredPass(S32 pass)

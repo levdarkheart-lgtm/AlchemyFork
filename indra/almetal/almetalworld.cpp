@@ -417,6 +417,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         std::memcpy(constants.texture_matrix, batch.texture_matrix,
                     sizeof(constants.texture_matrix));
         constants.material[0] = batch.alpha_cutoff;
+        constants.material[1] = batch.use_vertex_color ? 1.f : 0.f;
+        constants.material[2] = batch.alpha_cutoff_bias ? 1.f : 0.f;
         constants.depth_convention[0] = scene.reverse_z ? 1u : 0u;
         constants.depth_convention[1] = batch.texture_count;
         const bool rigged = batch.skin_palette != nullptr;

@@ -209,6 +209,7 @@ struct ALMetalWorldSimpleVaryings
     uint texture_index [[flat]];
     uint texture_count [[flat]];
     float alpha_cutoff [[flat]];
+    uint2 material_flags [[flat]];
 };
 
 struct ALMetalWorldGBufferOutput
@@ -250,6 +251,9 @@ vertex ALMetalWorldSimpleVaryings almetal_world_simple_vertex(
         ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
     output.texture_count = constants.depth_convention.y;
     output.alpha_cutoff = constants.material.x;
+    output.material_flags = uint2(
+        constants.material.y != 0.0,
+        constants.material.z != 0.0);
     return output;
 }
 
@@ -290,6 +294,9 @@ vertex ALMetalWorldSimpleVaryings almetal_world_simple_skinned_vertex(
         ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
     output.texture_count = constants.depth_convention.y;
     output.alpha_cutoff = constants.material.x;
+    output.material_flags = uint2(
+        constants.material.y != 0.0,
+        constants.material.z != 0.0);
     return output;
 }
 
@@ -330,8 +337,10 @@ fragment ALMetalWorldGBufferOutput almetal_world_alpha_mask_fragment(
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
               diffuse_sampler, input.texcoord)
         : float4(1.0, 0.0, 1.0, 1.0);
-    const float4 color = input.color * diffuse;
-    constexpr float quantization_bias = 1.0 / 512.0;
+    const bool use_vertex_color = input.material_flags.x != 0;
+    const float4 color = use_vertex_color ? input.color * diffuse : diffuse;
+    const float quantization_bias = input.material_flags.y != 0
+        ? 1.0 / 512.0 : 0.0;
     if (color.a < input.alpha_cutoff - quantization_bias)
     {
         discard_fragment();

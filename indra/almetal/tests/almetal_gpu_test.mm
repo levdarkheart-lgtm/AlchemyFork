@@ -915,6 +915,15 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         const std::array<std::uint8_t, 4> indexed_diffuse_pixel{{
             0, 255, 0, 255,
         }};
+        diffuse_descriptor.label =
+            "Alchemy world tree half-alpha sRGB diffuse";
+        auto tree_diffuse = ALMetalTexture::create(
+            *device, diffuse_descriptor, &error);
+        INFO(error);
+        REQUIRE(tree_diffuse);
+        const std::array<std::uint8_t, 4> tree_diffuse_pixel{{
+            128, 64, 32, 128,
+        }};
         auto upload = device->makeCommandBuffer(
             "Alchemy world simple diffuse upload", &error);
         INFO(error);
@@ -923,6 +932,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *upload, 0, 0, {}, diffuse_pixel.data(), 4, &error));
         REQUIRE(indexed_diffuse->upload(
             *upload, 0, 0, {}, indexed_diffuse_pixel.data(), 4, &error));
+        REQUIRE(tree_diffuse->upload(
+            *upload, 0, 0, {}, tree_diffuse_pixel.data(), 4, &error));
         REQUIRE(upload->commitAndWait(&error));
         INFO(error);
 
@@ -1087,6 +1098,44 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(masked_normal[center + 3]) -
                        22282) <= 2);
 
+        // Tree cutouts share the alpha-mask pipeline but intentionally ignore
+        // the streamed vertex tint and compare alpha without the generic
+        // diffuse-mask half-byte bias. A cutoff just above 128/255 therefore
+        // discards here, then passes when the generic bias is restored.
+        batch.diffuse_textures[1] = tree_diffuse.get();
+        batch.use_vertex_color = false;
+        batch.alpha_cutoff_bias = false;
+        batch.alpha_cutoff = 0.503f;
+        auto tree_discarded_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(tree_discarded_result);
+        std::array<std::uint8_t, 32 * 32 * 4> tree_discarded_albedo{};
+        REQUIRE(tree_discarded_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, tree_discarded_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(tree_discarded_albedo[center + 0] == 255);
+        CHECK(tree_discarded_albedo[center + 1] == 0);
+        CHECK(tree_discarded_albedo[center + 2] == 255);
+
+        batch.alpha_cutoff_bias = true;
+        auto tree_biased_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(tree_biased_result);
+        std::array<std::uint8_t, 32 * 32 * 4> tree_biased_albedo{};
+        REQUIRE(tree_biased_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, tree_biased_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(tree_biased_albedo[center + 0]) -
+                       128) <= 1);
+        CHECK(std::abs(static_cast<int>(tree_biased_albedo[center + 1]) -
+                       64) <= 1);
+        CHECK(std::abs(static_cast<int>(tree_biased_albedo[center + 2]) -
+                       32) <= 1);
+
+        batch.diffuse_textures[1] = indexed_diffuse.get();
+        batch.use_vertex_color = true;
         batch.alpha_cutoff = 0.6f;
         auto discarded_result = renderer->render(scene, &error);
         INFO(error);

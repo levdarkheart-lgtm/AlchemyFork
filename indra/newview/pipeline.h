@@ -581,6 +581,8 @@ public:
     void beginMetalWorldGBufferPass(bool rigged, bool alpha_mask);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
+    void captureMetalWorldTreeBatch(LLVertexBuffer* buffer,
+                                    LLViewerTexture* texture);
     void endMetalWorldGBufferPass();
     void endMetalWorldGBufferCapture();
 #endif

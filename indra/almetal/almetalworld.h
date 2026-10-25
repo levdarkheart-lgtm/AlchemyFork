@@ -39,6 +39,8 @@ struct ALMetalWorldSimpleBatch
     std::size_t skin_palette_float_count = 0;
     std::uint32_t skin_joint_count = 0;
     bool alpha_mask = false;
+    bool use_vertex_color = true;
+    bool alpha_cutoff_bias = true;
     float alpha_cutoff = 0.f;
     float modelview_projection[16]{};
     float normal_matrix[3][4]{};

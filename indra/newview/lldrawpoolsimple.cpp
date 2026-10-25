@@ -211,7 +211,13 @@ void LLDrawPoolGrass::renderDeferred(S32 pass)
         shader->setMinimumAlpha(0.5f);
 
         //render grass
+#if LL_DARWIN
+        gPipeline.beginMetalWorldGBufferPass(false, true);
+#endif
         LLRenderPass::pushBatches(LLRenderPass::PASS_GRASS);
+#if LL_DARWIN
+        gPipeline.endMetalWorldGBufferPass();
+#endif
     }
 }
 
