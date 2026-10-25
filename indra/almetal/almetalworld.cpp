@@ -68,8 +68,14 @@ namespace
         float pbr_base_color_transforms[8][2][4];
         float alpha_cutoffs[32];
         std::uint32_t config[4]{};
+        float avatar_wind[4]{};
+        float avatar_sin_wave[4]{};
+        float avatar_gravity[4]{};
+        float avatar_cloth_depth[4]{};
+        // x = per-mesh alpha used by avatarAlphaShadowF.
+        float avatar_draw[4] = {1.f, 0.f, 0.f, 0.f};
     };
-    static_assert(sizeof(WorldSpotShadowConstants) == 528);
+    static_assert(sizeof(WorldSpotShadowConstants) == 608);
 
     struct alignas(16) WorldTerrainSpotShadowConstants
     {
@@ -697,6 +703,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         spot_shadow_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         spot_shadow_coverage_pipelines;
+    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>
+        spot_shadow_avatar_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         spot_shadow_terrain_pipelines;
     std::array<BumpPipelines, 2> pipelines;
@@ -930,6 +938,12 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_spot_shadow_coverage_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_terrain_spot_shadow_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_avatar_spot_shadow_rigid_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_avatar_spot_shadow_skinned_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_avatar_spot_shadow_cloth_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_bump_vertex") ||
@@ -1090,6 +1104,39 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         if (!impl->spot_shadow_coverage_pipelines[rigged])
         {
             return nullptr;
+        }
+    }
+
+    constexpr std::array<const char*, 3> avatar_spot_vertices{{
+        "almetal_world_avatar_spot_shadow_rigid_vertex",
+        "almetal_world_avatar_spot_shadow_skinned_vertex",
+        "almetal_world_avatar_spot_shadow_cloth_vertex",
+    }};
+    for (std::size_t covered = 0; covered < 2; ++covered)
+    {
+        for (std::size_t variant = 0;
+             variant < avatar_spot_vertices.size(); ++variant)
+        {
+            ALMetalRenderPipelineDescriptor descriptor;
+            descriptor.library = impl->library.get();
+            descriptor.vertex_function = avatar_spot_vertices[variant];
+            descriptor.fragment_function = covered
+                ? "almetal_world_spot_shadow_coverage_fragment"
+                : "almetal_world_spot_shadow_fragment";
+            descriptor.color_attachment_count = 1;
+            descriptor.colors[0].format = ALMetalPixelFormat::r32_float;
+            descriptor.depth_stencil_format =
+                ALMetalPixelFormat::depth32_float;
+            descriptor.label = covered
+                ? "Alchemy covered avatar spot-shadow depth pipeline"
+                : "Alchemy opaque avatar spot-shadow depth pipeline";
+            impl->spot_shadow_avatar_pipelines[covered][variant] =
+                ALMetalRenderPipeline::create(
+                    device, descriptor, error);
+            if (!impl->spot_shadow_avatar_pipelines[covered][variant])
+            {
+                return nullptr;
+            }
         }
     }
 
@@ -2899,6 +2946,9 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
         const bool pbr_coverage =
             batch.coverage == ALMetalWorldSpotShadowCoverage::pbr_mask ||
             batch.coverage == ALMetalWorldSpotShadowCoverage::pbr_blend;
+        const bool avatar_coverage =
+            batch.coverage == ALMetalWorldSpotShadowCoverage::avatar_mask ||
+            batch.coverage == ALMetalWorldSpotShadowCoverage::avatar_blend;
         if (batch.terrain)
         {
             bool valid_factors = true;
@@ -2924,7 +2974,8 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
                 batch.terrain_grid_scale <= 0.f || !valid_factors ||
                 batch.skin_palette || batch.weight_offset != 0 ||
                 batch.skin_palette_float_count != 0 ||
-                batch.skin_joint_count != 0 || batch.double_sided)
+                batch.skin_joint_count != 0 || batch.double_sided ||
+                batch.avatar || batch.avatar_cloth)
             {
                 setError(error,
                          "Metal spot-shadow terrain batch is invalid");
@@ -2935,7 +2986,7 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
         if (!batch.vertices || !batch.indices || batch.vertex_count == 0 ||
             batch.index_count == 0 || !valid_index_type ||
             coverage > static_cast<std::uint32_t>(
-                ALMetalWorldSpotShadowCoverage::pbr_blend) ||
+                ALMetalWorldSpotShadowCoverage::avatar_blend) ||
             batch.position_offset % float4_stride != 0 ||
             batch.index_offset % index_stride != 0 ||
             !finiteValues(batch.modelview_projection, 16) ||
@@ -2948,7 +2999,49 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
             return nullptr;
         }
 
-        if (covered)
+        if (batch.avatar)
+        {
+            if ((covered && !avatar_coverage) ||
+                (!covered && batch.coverage !=
+                    ALMetalWorldSpotShadowCoverage::opaque) ||
+                batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
+                !rangeFits(batch.texcoord_offset, batch.vertex_count,
+                           sizeof(float) * 2, batch.vertices->length()) ||
+                !finiteValues(batch.texture_matrix, 16) ||
+                !std::isfinite(batch.avatar_draw_alpha) ||
+                batch.avatar_draw_alpha < 0.f ||
+                batch.avatar_draw_alpha > 1.f ||
+                (covered &&
+                 (batch.texture_count != 1 ||
+                  !finiteValues(batch.alpha_cutoffs.data(), 1) ||
+                  batch.alpha_cutoffs[0] < 0.f ||
+                  batch.alpha_cutoffs[0] > 1.f ||
+                  !sampleableTexture(batch.textures[0]))) ||
+                (!covered && batch.texture_count != 0) ||
+                (batch.avatar_cloth &&
+                 (!batch.skin_palette ||
+                  batch.normal_offset % float4_stride != 0 ||
+                  batch.cloth_offset % float4_stride != 0 ||
+                  !rangeFits(batch.normal_offset, batch.vertex_count,
+                             float4_stride, batch.vertices->length()) ||
+                  !rangeFits(batch.cloth_offset, batch.vertex_count,
+                             float4_stride, batch.vertices->length()) ||
+                  !finiteValues(batch.avatar_wind, 4) ||
+                  !finiteValues(batch.avatar_sin_wave, 4) ||
+                  !finiteValues(batch.avatar_gravity, 4) ||
+                  !finiteValues(batch.avatar_cloth_depth, 4))))
+            {
+                setError(error,
+                         "Metal spot-shadow avatar batch is invalid");
+                return nullptr;
+            }
+        }
+        else if (avatar_coverage || batch.avatar_cloth)
+        {
+            setError(error, "Metal spot-shadow avatar data is incomplete");
+            return nullptr;
+        }
+        else if (covered)
         {
             if (batch.texture_count == 0 ||
                 batch.texture_count >
@@ -2996,14 +3089,20 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
 
         if (batch.skin_palette)
         {
-            const std::size_t expected_palette_floats =
-                4 + static_cast<std::size_t>(batch.skin_joint_count) * 12;
-            if (batch.skin_joint_count == 0 ||
-                batch.skin_joint_count > max_skin_joints ||
+            const std::size_t expected_palette_floats = batch.avatar
+                ? 45 * 4
+                : 4 + static_cast<std::size_t>(
+                      batch.skin_joint_count) * 12;
+            const std::size_t weight_stride = batch.avatar
+                ? sizeof(float) : float4_stride;
+            if ((batch.avatar && batch.skin_joint_count != 15) ||
+                (!batch.avatar &&
+                 (batch.skin_joint_count == 0 ||
+                  batch.skin_joint_count > max_skin_joints)) ||
                 batch.skin_palette_float_count != expected_palette_floats ||
-                batch.weight_offset % float4_stride != 0 ||
+                batch.weight_offset % weight_stride != 0 ||
                 !rangeFits(batch.weight_offset, batch.vertex_count,
-                           float4_stride, batch.vertices->length()) ||
+                           weight_stride, batch.vertices->length()) ||
                 !finiteValues(batch.skin_palette,
                               batch.skin_palette_float_count))
             {
@@ -3164,11 +3263,75 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
         std::memcpy(constants.alpha_cutoffs,
                     batch.alpha_cutoffs.data(),
                     sizeof(constants.alpha_cutoffs));
+        std::memcpy(constants.avatar_wind, batch.avatar_wind,
+                    sizeof(constants.avatar_wind));
+        std::memcpy(constants.avatar_sin_wave, batch.avatar_sin_wave,
+                    sizeof(constants.avatar_sin_wave));
+        std::memcpy(constants.avatar_gravity, batch.avatar_gravity,
+                    sizeof(constants.avatar_gravity));
+        std::memcpy(constants.avatar_cloth_depth,
+                    batch.avatar_cloth_depth,
+                    sizeof(constants.avatar_cloth_depth));
+        constants.avatar_draw[0] = batch.avatar_draw_alpha;
         constants.config[0] = scene.reverse_z ? 1u : 0u;
         constants.config[1] =
             static_cast<std::uint32_t>(batch.coverage);
         constants.config[2] = batch.texture_count;
         constants.config[3] = scene.height;
+        if (batch.avatar)
+        {
+            const std::size_t variant = !rigged
+                ? 0 : (batch.avatar_cloth ? 2 : 1);
+            encoded =
+                encoder->setCullMode(ALMetalCullMode::back, error) &&
+                encoder->setPipeline(
+                    *mImpl->spot_shadow_avatar_pipelines[
+                        covered ? 1 : 0][variant], error) &&
+                encoder->setVertexBuffer(
+                    0, *batch.vertices, batch.position_offset, error) &&
+                encoder->setVertexBytes(
+                    1, &constants, sizeof(constants), error) &&
+                encoder->setVertexBuffer(
+                    2, *batch.vertices, batch.texcoord_offset, error);
+            if (encoded && covered)
+            {
+                encoded =
+                    encoder->setFragmentBytes(
+                        0, &constants, sizeof(constants), error) &&
+                    encoder->setFragmentSampler(
+                        0, mImpl->diffuse_sampler.get(), error);
+                for (std::size_t texture = 0;
+                     encoded && texture <
+                         ALMetalWorldSpotShadowBatch::max_textures;
+                     ++texture)
+                {
+                    encoded = encoder->setFragmentTexture(
+                        static_cast<std::uint32_t>(texture),
+                        batch.textures[0], error);
+                }
+            }
+            if (encoded && rigged)
+            {
+                encoded =
+                    encoder->setVertexBuffer(
+                        4, *palette_buffers[index], 0, error) &&
+                    encoder->setVertexBuffer(
+                        5, *batch.vertices, batch.weight_offset, error);
+            }
+            if (encoded && batch.avatar_cloth)
+            {
+                encoded =
+                    encoder->setVertexBuffer(
+                        6, *batch.vertices, batch.normal_offset, error) &&
+                    encoder->setVertexBuffer(
+                        7, *batch.vertices, batch.cloth_offset, error);
+            }
+            encoded = encoded && encoder->drawIndexed(
+                ALMetalPrimitiveType::triangle, batch.index_count,
+                batch.index_type, *batch.indices, batch.index_offset,
+                1, error);
+            continue;
+        }
         encoded =
             encoder->setCullMode(
                 batch.double_sided ? ALMetalCullMode::none

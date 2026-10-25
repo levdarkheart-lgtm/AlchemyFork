@@ -650,6 +650,15 @@ public:
     void captureMetalSpotShadowTerrainBatch(
         LLFace* face, F32 tess_density, F32 raster_segment,
         bool smoothing, bool tessellation_pinned);
+    void beginMetalSpotShadowAvatarPass(
+        bool cloth, const F32* wind = nullptr,
+        const F32* sin_wave = nullptr, const F32* gravity = nullptr,
+        const F32* cloth_depth = nullptr);
+    void endMetalSpotShadowAvatarPass();
+    void captureMetalSpotShadowAvatarBatch(
+        const LLViewerJointMesh& mesh, LLVertexBuffer* buffer,
+        LLGLTexture* texture, U32 start, U32 end, U32 count,
+        U32 offset, bool skinned, F32 draw_alpha);
     void captureMetalImpostorPBRAlphaBatch(
         const LLDrawInfo& params, bool particle_or_hud_particle,
         bool depth_only = false);

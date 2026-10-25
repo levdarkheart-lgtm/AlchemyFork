@@ -187,6 +187,8 @@ enum class ALMetalWorldSpotShadowCoverage : std::uint32_t
     texture_mask = 4,
     pbr_mask = 5,
     pbr_blend = 6,
+    avatar_mask = 7,
+    avatar_blend = 8,
 };
 
 // One exact draw seen by a spotlight's own shadow camera. Object casters are
@@ -202,9 +204,11 @@ struct ALMetalWorldSpotShadowBatch
 
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
+    std::size_t normal_offset = 0;
     std::size_t texcoord_offset = 0;
     std::size_t color_offset = 0;
     std::size_t weight_offset = 0;
+    std::size_t cloth_offset = 0;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;
@@ -220,6 +224,11 @@ struct ALMetalWorldSpotShadowBatch
         0.f, 0.f, 1.f, 0.f,
         0.f, 0.f, 0.f, 1.f,
     };
+    float avatar_wind[4]{};
+    float avatar_sin_wave[4]{};
+    float avatar_gravity[4]{};
+    float avatar_cloth_depth[4]{};
+    float avatar_draw_alpha = 1.f;
     std::array<const ALMetalTexture*, max_textures> textures{};
     std::array<float, max_textures> alpha_cutoffs{};
     std::array<std::array<std::array<float, 4>, 2>, max_pbr_slots>
@@ -232,6 +241,8 @@ struct ALMetalWorldSpotShadowBatch
         ALMetalWorldSpotShadowCoverage::opaque;
     bool double_sided = false;
     bool terrain = false;
+    bool avatar = false;
+    bool avatar_cloth = false;
     bool terrain_smoothing = false;
     bool terrain_tessellation_pinned = false;
 };

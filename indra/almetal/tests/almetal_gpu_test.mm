@@ -123,6 +123,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_spot_shadow_coverage_skinned_vertex",
             "almetal_world_spot_shadow_coverage_fragment",
             "almetal_world_terrain_spot_shadow_vertex",
+            "almetal_world_avatar_spot_shadow_rigid_vertex",
+            "almetal_world_avatar_spot_shadow_skinned_vertex",
+            "almetal_world_avatar_spot_shadow_cloth_vertex",
             "almetal_world_simple_vertex",
             "almetal_world_simple_skinned_vertex",
             "almetal_world_bump_vertex",
@@ -1253,13 +1256,23 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
             *device, coverage_descriptor, &error);
         auto opaque_coverage = ALMetalTexture::create(
             *device, coverage_descriptor, &error);
+        auto avatar_below_cutoff = ALMetalTexture::create(
+            *device, coverage_descriptor, &error);
+        auto avatar_at_cutoff = ALMetalTexture::create(
+            *device, coverage_descriptor, &error);
         INFO(error);
         REQUIRE(below_cutoff);
         REQUIRE(above_cutoff);
         REQUIRE(opaque_coverage);
+        REQUIRE(avatar_below_cutoff);
+        REQUIRE(avatar_at_cutoff);
         const std::array<std::uint8_t, 4> below_pixel{{255, 255, 255, 127}};
         const std::array<std::uint8_t, 4> above_pixel{{255, 255, 255, 128}};
         const std::array<std::uint8_t, 4> opaque_pixel{{255, 255, 255, 255}};
+        const std::array<std::uint8_t, 4> avatar_below_pixel{{
+            255, 255, 255, 50}};
+        const std::array<std::uint8_t, 4> avatar_at_pixel{{
+            255, 255, 255, 51}};
 
         ALMetalTextureDescriptor transform_descriptor = coverage_descriptor;
         transform_descriptor.width = 4;
@@ -1283,13 +1296,150 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
             *coverage_upload, 0, 0, {}, above_pixel.data(), 4, &error));
         REQUIRE(opaque_coverage->upload(
             *coverage_upload, 0, 0, {}, opaque_pixel.data(), 4, &error));
+        REQUIRE(avatar_below_cutoff->upload(
+            *coverage_upload, 0, 0, {}, avatar_below_pixel.data(), 4,
+            &error));
+        REQUIRE(avatar_at_cutoff->upload(
+            *coverage_upload, 0, 0, {}, avatar_at_pixel.data(), 4,
+            &error));
         REQUIRE(transform_coverage->upload(
             *coverage_upload, 0, 0, {}, transform_pixels.data(), 16,
             &error));
         REQUIRE(coverage_upload->commitAndWait(&error));
         INFO(error);
 
+        const std::array<std::array<float, 4>, 3> avatar_normals{{
+            {{0.f, 0.f, 1.f, 0.f}},
+            {{0.f, 0.f, 1.f, 0.f}},
+            {{0.f, 0.f, 1.f, 0.f}},
+        }};
+        const std::array<std::array<float, 4>, 3> avatar_clothing{};
+        const std::array<float, 3> avatar_weights{{0.f, 0.f, 0.f}};
+        constexpr std::size_t avatar_texcoord_offset = sizeof(positions);
+        constexpr std::size_t avatar_weight_offset = 72;
+        constexpr std::size_t avatar_normal_offset = 96;
+        constexpr std::size_t avatar_cloth_offset =
+            avatar_normal_offset + sizeof(avatar_normals);
+        std::array<std::uint8_t,
+                   avatar_cloth_offset + sizeof(avatar_clothing)>
+            avatar_vertex_bytes{};
+        std::memcpy(avatar_vertex_bytes.data(), positions.data(),
+                    sizeof(positions));
+        std::memcpy(
+            avatar_vertex_bytes.data() + avatar_texcoord_offset,
+            texcoords.data(), sizeof(texcoords));
+        std::memcpy(avatar_vertex_bytes.data() + avatar_weight_offset,
+                    avatar_weights.data(), sizeof(avatar_weights));
+        std::memcpy(avatar_vertex_bytes.data() + avatar_normal_offset,
+                    avatar_normals.data(), sizeof(avatar_normals));
+        std::memcpy(avatar_vertex_bytes.data() + avatar_cloth_offset,
+                    avatar_clothing.data(), sizeof(avatar_clothing));
+        descriptor.length = avatar_vertex_bytes.size();
+        descriptor.label = "Alchemy avatar spot-shadow test vertices";
+        auto avatar_vertices = ALMetalBuffer::create(
+            *device, descriptor, &error);
+        INFO(error);
+        REQUIRE(avatar_vertices);
+        REQUIRE(avatar_vertices->write(
+            0, avatar_vertex_bytes.data(), avatar_vertex_bytes.size(),
+            &error));
+
+        std::array<std::array<float, 4>, 45> avatar_palette{};
+        for (std::size_t joint = 0; joint < 15; ++joint)
+        {
+            avatar_palette[joint][0] = 1.f;
+            avatar_palette[15 + joint][1] = 1.f;
+            avatar_palette[30 + joint][2] = 1.f;
+        }
+        ALMetalWorldSpotShadowBatch avatar_batch;
+        avatar_batch.avatar = true;
+        avatar_batch.vertices = avatar_vertices.get();
+        avatar_batch.vertex_count = positions.size();
+        avatar_batch.indices = indices.get();
+        avatar_batch.index_count = index_values.size();
+        avatar_batch.texcoord_offset = avatar_texcoord_offset;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            avatar_batch.modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        scene.batches = &avatar_batch;
         scene.reverse_z = false;
+        auto rigid_avatar = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(rigid_avatar);
+
+        avatar_batch.skin_palette = &avatar_palette[0][0];
+        avatar_batch.skin_palette_float_count = 45 * 4;
+        avatar_batch.skin_joint_count = 15;
+        avatar_batch.weight_offset = avatar_weight_offset;
+        auto skinned_avatar = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(skinned_avatar);
+        std::array<float, 32 * 32> skinned_avatar_depth{};
+        REQUIRE(skinned_avatar->colorTexture(0)->readback(
+            *device, 0, 0, {}, skinned_avatar_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(skinned_avatar_depth[16 * 32 + 16] - 0.5f) <
+              0.0001f);
+
+        avatar_batch.avatar_cloth = true;
+        avatar_batch.normal_offset = avatar_normal_offset;
+        avatar_batch.cloth_offset = avatar_cloth_offset;
+        auto cloth_avatar = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(cloth_avatar);
+        avatar_batch.avatar_cloth = false;
+
+        avatar_batch.coverage =
+            ALMetalWorldSpotShadowCoverage::avatar_mask;
+        avatar_batch.texture_count = 1;
+        avatar_batch.alpha_cutoffs[0] = 0.2f;
+        avatar_batch.textures[0] = avatar_below_cutoff.get();
+        auto rejected_avatar_mask = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(rejected_avatar_mask);
+        std::array<float, 32 * 32> rejected_avatar_mask_depth{};
+        REQUIRE(rejected_avatar_mask->colorTexture(0)->readback(
+            *device, 0, 0, {}, rejected_avatar_mask_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(std::abs(rejected_avatar_mask_depth[16 * 32 + 16] - 1.f) <
+              0.0001f);
+
+        avatar_batch.textures[0] = avatar_at_cutoff.get();
+        auto accepted_avatar_mask = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(accepted_avatar_mask);
+        std::array<float, 32 * 32> accepted_avatar_mask_depth{};
+        REQUIRE(accepted_avatar_mask->colorTexture(0)->readback(
+            *device, 0, 0, {}, accepted_avatar_mask_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(std::abs(accepted_avatar_mask_depth[16 * 32 + 16] - 0.5f) <
+              0.0001f);
+
+        avatar_batch.coverage =
+            ALMetalWorldSpotShadowCoverage::avatar_blend;
+        avatar_batch.textures[0] = opaque_coverage.get();
+        avatar_batch.avatar_draw_alpha = 0.5f;
+        auto blended_avatar = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(blended_avatar);
+        std::array<float, 32 * 32> blended_avatar_depth{};
+        REQUIRE(blended_avatar->colorTexture(0)->readback(
+            *device, 0, 0, {}, blended_avatar_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(std::abs(blended_avatar_depth[16 * 32 + 16] - 0.5f) <
+              0.0001f);
+        CHECK(std::abs(blended_avatar_depth[16 * 32 + 17] - 1.f) <
+              0.0001f);
+
+        avatar_batch.skin_palette_float_count = 45 * 4 - 1;
+        error.clear();
+        CHECK_FALSE(renderer->renderSpotShadow(scene, &error));
+        CHECK(error == "Metal spot-shadow skinning data is invalid");
+
+        scene.reverse_z = false;
+        scene.batches = &batch;
         batch.modelview_projection[14] = 0.f;
         batch.texcoord_offset = texcoord_offset;
         batch.color_offset = color_offset;

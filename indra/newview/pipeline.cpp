@@ -437,6 +437,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 projector_shadow_frame = std::numeric_limits<U32>::max();
     std::array<bool, 2> direct_projector_shadow_valid{};
     std::vector<ALMetalWorldSpotShadowBatch> spot_shadow_batches;
+    std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
+        spot_shadow_avatar_palettes;
     U32 spot_shadow_map = 0;
     U32 spot_shadow_width = 0;
     U32 spot_shadow_height = 0;
@@ -445,6 +447,12 @@ struct LLPipeline::MetalWorldSimpleCapture
         ALMetalWorldSpotShadowCoverage::opaque;
     bool spot_shadow_capture_active = false;
     bool spot_shadow_capture_complete = false;
+    bool spot_shadow_avatar_pass_active = false;
+    bool spot_shadow_avatar_cloth = false;
+    F32 spot_shadow_avatar_wind[4]{};
+    F32 spot_shadow_avatar_sin_wave[4]{};
+    F32 spot_shadow_avatar_gravity[4]{};
+    F32 spot_shadow_avatar_cloth_depth[4]{};
     std::unique_ptr<ALMetalRenderTarget> base_light_map_target;
     std::unique_ptr<ALMetalTexture> base_noise_texture;
     std::unique_ptr<ALMetalTexture> base_light_map_texture;
@@ -5706,6 +5714,7 @@ void LLPipeline::beginMetalSpotShadowCapture(
     }
     capture.direct_projector_shadow_valid[map] = false;
     capture.spot_shadow_batches.clear();
+    capture.spot_shadow_avatar_palettes.clear();
     capture.spot_shadow_map = map;
     capture.spot_shadow_width = width;
     capture.spot_shadow_height = height;
@@ -5713,8 +5722,62 @@ void LLPipeline::beginMetalSpotShadowCapture(
     capture.spot_shadow_coverage =
         ALMetalWorldSpotShadowCoverage::opaque;
     capture.spot_shadow_capture_complete = complete;
+    capture.spot_shadow_avatar_pass_active = false;
+    capture.spot_shadow_avatar_cloth = false;
     capture.reverse_z = LLRender::sReverseZ;
     capture.spot_shadow_capture_active = true;
+}
+
+void LLPipeline::beginMetalSpotShadowAvatarPass(
+    bool cloth, const F32* wind, const F32* sin_wave,
+    const F32* gravity, const F32* cloth_depth)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.spot_shadow_avatar_pass_active ||
+        (cloth && (!wind || !sin_wave || !gravity || !cloth_depth)))
+    {
+        capture.spot_shadow_capture_complete = false;
+        capture.spot_shadow_batches.clear();
+        capture.spot_shadow_avatar_palettes.clear();
+        return;
+    }
+    capture.spot_shadow_avatar_pass_active = true;
+    capture.spot_shadow_avatar_cloth = cloth;
+    if (cloth)
+    {
+        std::memcpy(capture.spot_shadow_avatar_wind, wind,
+                    sizeof(capture.spot_shadow_avatar_wind));
+        std::memcpy(capture.spot_shadow_avatar_sin_wave, sin_wave,
+                    sizeof(capture.spot_shadow_avatar_sin_wave));
+        std::memcpy(capture.spot_shadow_avatar_gravity, gravity,
+                    sizeof(capture.spot_shadow_avatar_gravity));
+        std::memcpy(capture.spot_shadow_avatar_cloth_depth, cloth_depth,
+                    sizeof(capture.spot_shadow_avatar_cloth_depth));
+    }
+}
+
+void LLPipeline::endMetalSpotShadowAvatarPass()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.spot_shadow_avatar_pass_active)
+    {
+        capture.spot_shadow_capture_complete = false;
+        capture.spot_shadow_batches.clear();
+        capture.spot_shadow_avatar_palettes.clear();
+        return;
+    }
+    capture.spot_shadow_avatar_pass_active = false;
+    capture.spot_shadow_avatar_cloth = false;
 }
 
 void LLPipeline::setMetalSpotShadowCoverage(
@@ -6307,6 +6370,163 @@ void LLPipeline::captureMetalSpotShadowTerrainBatch(
     capture.spot_shadow_batches.push_back(batch);
 }
 
+void LLPipeline::captureMetalSpotShadowAvatarBatch(
+    const LLViewerJointMesh& mesh, LLVertexBuffer* buffer,
+    LLGLTexture* texture, U32 start, U32 end, U32 count,
+    U32 offset, bool skinned, F32 draw_alpha)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_active ||
+        !mMetalWorldSimpleCapture->spot_shadow_avatar_pass_active)
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const auto fail = [&capture]()
+    {
+        capture.spot_shadow_capture_complete = false;
+        capture.spot_shadow_batches.clear();
+        capture.spot_shadow_avatar_palettes.clear();
+    };
+    if (capture.spot_shadow_expected_batches ==
+        std::numeric_limits<std::size_t>::max())
+    {
+        fail();
+        return;
+    }
+    // This hook is immediately adjacent to the authoritative GL draw. Count
+    // every draw attempt before validating its mirror so a missing/invalid
+    // native batch cannot accidentally satisfy final reconciliation.
+    ++capture.spot_shadow_expected_batches;
+
+    ALMetalWorldSpotShadowCoverage coverage;
+    switch (LLDrawPoolAvatar::sShadowPass)
+    {
+        case LLDrawPoolAvatar::SHADOW_PASS_AVATAR_OPAQUE:
+            coverage = ALMetalWorldSpotShadowCoverage::opaque;
+            break;
+        case LLDrawPoolAvatar::SHADOW_PASS_AVATAR_OPAQUE_CUT:
+        case LLDrawPoolAvatar::SHADOW_PASS_AVATAR_ALPHA_MASK:
+            coverage = ALMetalWorldSpotShadowCoverage::avatar_mask;
+            break;
+        case LLDrawPoolAvatar::SHADOW_PASS_AVATAR_ALPHA_BLEND:
+            coverage = ALMetalWorldSpotShadowCoverage::avatar_blend;
+            break;
+        default:
+            fail();
+            return;
+    }
+
+    const bool covered = coverage !=
+        ALMetalWorldSpotShadowCoverage::opaque;
+    LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+    if (!capture.spot_shadow_capture_complete || !buffer || count == 0 ||
+        start > end || end >= buffer->getNumVerts() ||
+        !std::isfinite(draw_alpha) || draw_alpha < 0.f || draw_alpha > 1.f ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer() ||
+        (covered && (!image || !image->getMetalTexture())) ||
+        (skinned && !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT)) ||
+        (capture.spot_shadow_avatar_cloth &&
+         (!skinned || !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
+          !buffer->hasDataType(LLVertexBuffer::TYPE_CLOTHWEIGHT))))
+    {
+        fail();
+        return;
+    }
+    const std::size_t index_stride = buffer->getIndexStride();
+    if (index_stride != 2 && index_stride != 4)
+    {
+        fail();
+        return;
+    }
+    const std::size_t index_offset =
+        static_cast<std::size_t>(offset) * index_stride;
+    if (count > (std::numeric_limits<std::size_t>::max() - index_offset) /
+                    index_stride ||
+        index_offset + static_cast<std::size_t>(count) * index_stride >
+            buffer->getMetalIndexBuffer()->length())
+    {
+        fail();
+        return;
+    }
+
+    ALMetalWorldSpotShadowBatch batch;
+    batch.avatar = true;
+    batch.avatar_cloth = capture.spot_shadow_avatar_cloth;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.texcoord_offset = buffer->getOffset(
+        LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_offset = index_offset;
+    batch.index_type = index_stride == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = count;
+    batch.coverage = coverage;
+    batch.avatar_draw_alpha = draw_alpha;
+    if (covered)
+    {
+        batch.textures[0] = image->getMetalTexture();
+        batch.texture_count = 1;
+        batch.alpha_cutoffs[0] = LLDrawPoolAvatar::sMinimumAlpha;
+    }
+
+    if (skinned)
+    {
+        auto palette =
+            std::make_unique<std::array<F32, 45 * 4>>();
+        if (!mesh.buildJointMatrixPalette(
+                palette->data(), palette->size()))
+        {
+            fail();
+            return;
+        }
+        batch.weight_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_WEIGHT);
+        batch.skin_palette = palette->data();
+        batch.skin_palette_float_count = palette->size();
+        batch.skin_joint_count = 15;
+        capture.spot_shadow_avatar_palettes.push_back(
+            std::move(palette));
+        std::memcpy(batch.modelview_projection,
+                    gGL.getProjectionMatrix().getF32ptr(),
+                    sizeof(batch.modelview_projection));
+        if (batch.avatar_cloth)
+        {
+            batch.normal_offset = buffer->getOffset(
+                LLVertexBuffer::TYPE_NORMAL);
+            batch.cloth_offset = buffer->getOffset(
+                LLVertexBuffer::TYPE_CLOTHWEIGHT);
+            std::memcpy(batch.avatar_wind,
+                        capture.spot_shadow_avatar_wind,
+                        sizeof(batch.avatar_wind));
+            std::memcpy(batch.avatar_sin_wave,
+                        capture.spot_shadow_avatar_sin_wave,
+                        sizeof(batch.avatar_sin_wave));
+            std::memcpy(batch.avatar_gravity,
+                        capture.spot_shadow_avatar_gravity,
+                        sizeof(batch.avatar_gravity));
+            std::memcpy(batch.avatar_cloth_depth,
+                        capture.spot_shadow_avatar_cloth_depth,
+                        sizeof(batch.avatar_cloth_depth));
+        }
+    }
+    else
+    {
+        LLMatrix4a modelview_projection;
+        modelview_projection.setMul(
+            gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+        std::memcpy(batch.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.modelview_projection));
+    }
+    capture.spot_shadow_batches.push_back(batch);
+}
+
 void LLPipeline::endMetalSpotShadowCapture()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -6316,6 +6536,12 @@ void LLPipeline::endMetalSpotShadowCapture()
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     capture.spot_shadow_capture_active = false;
+    if (capture.spot_shadow_avatar_pass_active)
+    {
+        capture.spot_shadow_capture_complete = false;
+    }
+    capture.spot_shadow_avatar_pass_active = false;
+    capture.spot_shadow_avatar_cloth = false;
     const U32 map = capture.spot_shadow_map;
     const bool complete = capture.spot_shadow_capture_complete &&
         capture.spot_shadow_batches.size() ==
@@ -6324,6 +6550,7 @@ void LLPipeline::endMetalSpotShadowCapture()
     if (!complete)
     {
         capture.spot_shadow_batches.clear();
+        capture.spot_shadow_avatar_palettes.clear();
         return;
     }
 
@@ -6336,6 +6563,7 @@ void LLPipeline::endMetalSpotShadowCapture()
     std::string error;
     auto slice = capture.renderer->renderSpotShadow(scene, &error);
     capture.spot_shadow_batches.clear();
+    capture.spot_shadow_avatar_palettes.clear();
     if (!slice)
     {
         LL_WARNS("Metal")
@@ -23025,6 +23253,19 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                                 // changed or incomplete draw loop.
                                 native_batches += pool_casters.count() == 0
                                     ? 0 : pool_casters.count() - 1;
+                            }
+                            else if ((pool->getType() ==
+                                          LLDrawPool::POOL_AVATAR ||
+                                      pool->getType() ==
+                                          LLDrawPool::POOL_CONTROL_AV) &&
+                                     pool_casters.count() == 0)
+                            {
+                                // System-avatar visibility, bake splitting
+                                // and detail filtering are resolved inside
+                                // renderShadow. The drawShape hook increments
+                                // the expected count immediately before each
+                                // GL draw, then either appends its exact mirror
+                                // or fails the whole direct slice closed.
                             }
                             else
                             {

@@ -351,6 +351,10 @@ U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
     U32 offset = mMesh->mFaceIndexOffset;
 
     LLVertexBuffer* buff = mFace->getVertexBuffer();
+    const F32 draw_alpha = mTestImageName
+        ? 1.f
+        : (is_dummy ? LLVOAvatar::getDummyColor().mV[VW]
+                    : mColor.mV[VW]);
 
     if (mMesh->hasWeights())
     {
@@ -362,6 +366,9 @@ U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
 #if LL_DARWIN
         gPipeline.captureMetalWorldAvatarBatch(
             *this, buff, diffuse, start, end, count, offset);
+        gPipeline.captureMetalSpotShadowAvatarBatch(
+            *this, buff, diffuse, start, end, count, offset,
+            true, draw_alpha);
 #endif
         buff->setBuffer();
         buff->drawRange(LLRender::TRIANGLES, start, end, count, offset);
@@ -374,6 +381,9 @@ U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
 #if LL_DARWIN
         gPipeline.captureMetalWorldAvatarBatch(
             *this, buff, diffuse, start, end, count, offset);
+        gPipeline.captureMetalSpotShadowAvatarBatch(
+            *this, buff, diffuse, start, end, count, offset,
+            false, draw_alpha);
 #endif
         buff->setBuffer();
         buff->drawRange(LLRender::TRIANGLES, start, end, count, offset);

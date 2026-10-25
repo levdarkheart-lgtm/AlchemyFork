@@ -130,12 +130,6 @@ static void set_cloth_uniforms(LLGLSLShader* shader,
                        uniforms.depth.mV);
 }
 
-static void set_cloth_uniforms(LLGLSLShader* shader,
-                               const LLVOAvatar* avatarp)
-{
-    set_cloth_uniforms(shader, avatar_cloth_uniforms(avatarp));
-}
-
 // Format for gAGPVertices
 // vertex format for bumpmapping:
 //  vertices   12
@@ -514,17 +508,40 @@ void LLDrawPoolAvatar::renderShadow(S32 pass)
 
     LLDrawPoolAvatar::sShadowPass = pass;
 
-    // The bodies cast the cloth they are drawn with; hair, skirts and eyelashes have none.
-    if (gPipeline.shaderInputs().mLocal.mAvatarCloth && (pass == SHADOW_PASS_AVATAR_OPAQUE || (pass == SHADOW_PASS_AVATAR_OPAQUE_CUT && mShadowCutBakes)))
+    // The bodies cast the cloth they are drawn with; hair, skirts and
+    // eyelashes have none.
+    const bool avatar_cloth =
+        gPipeline.shaderInputs().mLocal.mAvatarCloth &&
+        (pass == SHADOW_PASS_AVATAR_OPAQUE ||
+         (pass == SHADOW_PASS_AVATAR_OPAQUE_CUT && mShadowCutBakes));
+    AvatarClothUniforms cloth_uniforms;
+    if (avatar_cloth)
     {
-        set_cloth_uniforms(sVertexProgram, avatarp);
+        cloth_uniforms = avatar_cloth_uniforms(avatarp);
+        set_cloth_uniforms(sVertexProgram, cloth_uniforms);
     }
+
+    const auto render_skinned = [&]()
+    {
+#if LL_DARWIN
+        gPipeline.beginMetalSpotShadowAvatarPass(
+            avatar_cloth,
+            avatar_cloth ? cloth_uniforms.wind.mV : nullptr,
+            avatar_cloth ? cloth_uniforms.sin_wave.mV : nullptr,
+            avatar_cloth ? cloth_uniforms.gravity.mV : nullptr,
+            avatar_cloth ? cloth_uniforms.depth.mV : nullptr);
+#endif
+        avatarp->renderSkinned();
+#if LL_DARWIN
+        gPipeline.endMetalSpotShadowAvatarPass();
+#endif
+    };
 
     if (pass == SHADOW_PASS_AVATAR_OPAQUE)
     {
         LLDrawPoolAvatar::sSkipTransparent = true;
         sShadowCutBakeLeft = false;
-        avatarp->renderSkinned();
+        render_skinned();
         mShadowCutBakes = sShadowCutBakeLeft;
         LLDrawPoolAvatar::sSkipTransparent = false;
     }
@@ -534,20 +551,20 @@ void LLDrawPoolAvatar::renderShadow(S32 pass)
         if (mShadowCutBakes)
         {
             LLDrawPoolAvatar::sSkipTransparent = true;
-            avatarp->renderSkinned();
+            render_skinned();
             LLDrawPoolAvatar::sSkipTransparent = false;
         }
     }
     else if (pass == SHADOW_PASS_AVATAR_ALPHA_BLEND)
     {
         LLDrawPoolAvatar::sSkipOpaque = true;
-        avatarp->renderSkinned();
+        render_skinned();
         LLDrawPoolAvatar::sSkipOpaque = false;
     }
     else if (pass == SHADOW_PASS_AVATAR_ALPHA_MASK)
     {
         LLDrawPoolAvatar::sSkipOpaque = true;
-        avatarp->renderSkinned();
+        render_skinned();
         LLDrawPoolAvatar::sSkipOpaque = false;
     }
 }

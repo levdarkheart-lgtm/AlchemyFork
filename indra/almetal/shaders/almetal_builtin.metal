@@ -265,6 +265,11 @@ struct ALMetalWorldSpotShadowConstants
     float4 pbr_base_color_transforms[8][2];
     float alpha_cutoffs[32];
     uint4 config;
+    float4 avatar_wind;
+    float4 avatar_sin_wave;
+    float4 avatar_gravity;
+    float4 avatar_cloth_depth;
+    float4 avatar_draw;
 };
 
 struct ALMetalWorldSpotShadowVaryings
@@ -1821,6 +1826,137 @@ almetal_world_spot_shadow_coverage_skinned_vertex(
         position, texcoords[vertex_id], colors[vertex_id], constants);
 }
 
+static ALMetalWorldSpotShadowVaryings
+almetal_world_avatar_spot_shadow_output(
+    float4 clip_position, float2 texcoord,
+    constant ALMetalWorldSpotShadowConstants& constants)
+{
+    ALMetalWorldSpotShadowVaryings output =
+        almetal_world_spot_shadow_output(clip_position, constants);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoord, 0.0, 1.0)).xy;
+    output.vertex_alpha = constants.avatar_draw.x;
+    return output;
+}
+
+static void almetal_world_avatar_spot_shadow_rows(
+    float encoded_weight, const device float4* skin_palette,
+    thread float4& row0, thread float4& row1, thread float4& row2)
+{
+    const uint i = uint(clamp(floor(encoded_weight), 0.0, 14.0));
+    const uint j = min(i + 1u, 14u);
+    const float blend = fract(encoded_weight);
+    row0 = mix(skin_palette[i], skin_palette[j], blend);
+    row1 = mix(skin_palette[15u + i], skin_palette[15u + j], blend);
+    row2 = mix(skin_palette[30u + i], skin_palette[30u + j], blend);
+}
+
+vertex ALMetalWorldSpotShadowVaryings
+almetal_world_avatar_spot_shadow_rigid_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldSpotShadowConstants& constants [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    uint vertex_id [[vertex_id]])
+{
+    return almetal_world_avatar_spot_shadow_output(
+        constants.modelview_projection *
+            float4(positions[vertex_id].xyz, 1.0),
+        texcoords[vertex_id], constants);
+}
+
+vertex ALMetalWorldSpotShadowVaryings
+almetal_world_avatar_spot_shadow_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldSpotShadowConstants& constants [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device float4* skin_palette [[buffer(4)]],
+    const device float* encoded_weights [[buffer(5)]],
+    uint vertex_id [[vertex_id]])
+{
+    float4 row0;
+    float4 row1;
+    float4 row2;
+    almetal_world_avatar_spot_shadow_rows(
+        encoded_weights[vertex_id], skin_palette, row0, row1, row2);
+    const float4 position = float4(positions[vertex_id].xyz, 1.0);
+    const float4 skinned = float4(
+        dot(row0, position), dot(row1, position),
+        dot(row2, position), 1.0);
+    return almetal_world_avatar_spot_shadow_output(
+        constants.modelview_projection * skinned,
+        texcoords[vertex_id], constants);
+}
+
+vertex ALMetalWorldSpotShadowVaryings
+almetal_world_avatar_spot_shadow_cloth_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldSpotShadowConstants& constants [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device float4* skin_palette [[buffer(4)]],
+    const device float* encoded_weights [[buffer(5)]],
+    const device float4* normals [[buffer(6)]],
+    const device float4* clothing [[buffer(7)]],
+    uint vertex_id [[vertex_id]])
+{
+    float4 row0;
+    float4 row1;
+    float4 row2;
+    almetal_world_avatar_spot_shadow_rows(
+        encoded_weights[vertex_id], skin_palette, row0, row1, row2);
+
+    float3 normal = normalize(float3(
+        dot(cross(row1.xyz, row2.xyz), normals[vertex_id].xyz),
+        dot(cross(row2.xyz, row0.xyz), normals[vertex_id].xyz),
+        dot(cross(row0.xyz, row1.xyz), normals[vertex_id].xyz)));
+    const float4 position = float4(positions[vertex_id].xyz, 1.0);
+    const float wind_dot = dot(normal, constants.avatar_wind.xyz);
+    float4 wind_effect = float4(wind_dot);
+    const float4 eye_position = float4(
+        dot(row0, position), dot(row1, position),
+        dot(row2, position), 1.0);
+    const float main_depth = dot(
+        constants.avatar_cloth_depth, eye_position);
+    wind_effect.xyz = main_depth * float3(0.015) + wind_effect.xyz;
+    wind_effect.w = (wind_effect.w * 2.0 + 1.0) *
+                    constants.avatar_wind.w;
+    wind_effect.xyz = wind_effect.xyz *
+                      constants.avatar_sin_wave.xyz +
+                      float3(constants.avatar_sin_wave.w);
+
+    constexpr float inverse_two_pi = 0.159154943;
+    constexpr float two_pi = 6.28318530;
+    constexpr float half_pi = 1.5707963;
+    float3 periods = wind_effect.xyz * inverse_two_pi;
+    wind_effect.x = (periods.x - floor(periods.x)) * two_pi;
+    periods.z -= half_pi;
+    wind_effect.z = (periods.z - floor(periods.z)) * two_pi;
+    wind_effect.xyz -= float3(3.141592);
+
+    const float4 squared = wind_effect * wind_effect;
+    float4 sin_wave = -squared * 0.00018542 + float4(0.0083143);
+    sin_wave = sin_wave * -squared + float4(0.166666);
+    sin_wave = sin_wave * -squared + float4(1.0);
+    sin_wave *= wind_effect;
+    sin_wave.xyz = sin_wave.xyz * constants.avatar_wind.w +
+                   float3(wind_effect.w);
+
+    float4 gravity = float4(dot(normal, constants.avatar_gravity.xyz));
+    gravity = min(gravity, float4(0.2, 0.0, 0.0, 0.0));
+    gravity *= float4(1.5, 0.0, 0.0, 0.0);
+    sin_wave.x += gravity.x;
+    sin_wave.xyz *= clothing[vertex_id].w;
+    sin_wave.xyz = max(sin_wave.xyz, float3(-1.0));
+    const float4 offset_position =
+        float4(1.0, 1.0, 1.0, 0.0) *
+            (clothing[vertex_id] * sin_wave.x) + position;
+    const float4 skinned = float4(
+        dot(row0, offset_position), dot(row1, offset_position),
+        dot(row2, offset_position), 1.0);
+    return almetal_world_avatar_spot_shadow_output(
+        constants.modelview_projection * skinned,
+        texcoords[vertex_id], constants);
+}
+
 fragment float almetal_world_spot_shadow_fragment(
     ALMetalWorldSpotShadowVaryings input [[stage_in]])
 {
@@ -1840,7 +1976,25 @@ fragment float almetal_world_spot_shadow_coverage_fragment(
     const uint coverage = constants.config.y;
     constexpr float quantization_bias = 1.0 / 512.0;
 
-    if (coverage == 4u)
+    if (coverage == 7u || coverage == 8u)
+    {
+        const float alpha = coverage == 8u
+            ? texture_alpha * input.vertex_alpha : texture_alpha;
+        if (alpha < cutoff)
+        {
+            discard_fragment();
+        }
+        if (coverage == 8u && alpha < 0.88)
+        {
+            const int gl_y = int(float(constants.config.w) -
+                                 input.position.y);
+            if (((int(input.position.x) + gl_y) & 1) == 0)
+            {
+                discard_fragment();
+            }
+        }
+    }
+    else if (coverage == 4u)
     {
         if (texture_alpha < cutoff - quantization_bias)
         {
