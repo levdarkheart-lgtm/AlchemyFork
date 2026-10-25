@@ -72,7 +72,11 @@
 #include "llwindow.h"   // swapBuffers()
 #if LL_DARWIN
 #include "../almetal/almetalworld.h"
+#include "alwaterheightbake.h"
+#include "alterrainsurfacemaps.h"
 #include "llimagegl.h"
+#include "llsurface.h"
+#include "llsurfacepatch.h"
 #endif
 
 // newview includes
@@ -396,6 +400,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool material_normal_map = false;
     bool material_specular_map = false;
     bool pbr = false;
+    bool terrain = false;
     bool avatar = false;
     bool avatar_skinned = false;
     bool avatar_cloth = false;
@@ -808,6 +813,7 @@ void LLPipeline::beginMetalWorldGBufferPass(bool rigged, bool alpha_mask)
     capture.material_normal_map = false;
     capture.material_specular_map = false;
     capture.pbr = false;
+    capture.terrain = false;
     capture.avatar = false;
     capture.pass_active = true;
 }
@@ -840,6 +846,7 @@ void LLPipeline::beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode,
     capture.material_normal_map = normal_map;
     capture.material_specular_map = specular_map;
     capture.pbr = false;
+    capture.terrain = false;
     capture.avatar = false;
     capture.pass_active = true;
 }
@@ -864,6 +871,7 @@ void LLPipeline::beginMetalWorldPBRPass(bool rigged, bool alpha_mask)
     capture.material_normal_map = false;
     capture.material_specular_map = false;
     capture.pbr = true;
+    capture.terrain = false;
     capture.avatar = false;
     capture.pass_active = true;
 }
@@ -892,6 +900,7 @@ void LLPipeline::beginMetalWorldAvatarPass(
     capture.material_normal_map = false;
     capture.material_specular_map = false;
     capture.pbr = false;
+    capture.terrain = false;
     capture.avatar = true;
     capture.avatar_skinned = skinned;
     capture.avatar_cloth = cloth;
@@ -913,6 +922,31 @@ void LLPipeline::beginMetalWorldAvatarPass(
         std::memcpy(capture.avatar_cloth_depth, cloth_depth,
                     sizeof(capture.avatar_cloth_depth));
     }
+    capture.pass_active = true;
+}
+
+void LLPipeline::beginMetalWorldTerrainPass()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    capture.rigged = false;
+    capture.alpha_mask = false;
+    capture.material_alpha_mode = 0;
+    capture.material_normal_map = false;
+    capture.material_specular_map = false;
+    capture.pbr = false;
+    capture.avatar = false;
+    capture.terrain = true;
     capture.pass_active = true;
 }
 
@@ -1595,6 +1629,188 @@ void LLPipeline::captureMetalWorldTreeBatch(LLVertexBuffer* buffer,
             modelview_values[column * 4 + 1];
         batch.rigged_normal_matrix[column][2] =
             modelview_values[column * 4 + 2];
+    }
+    capture.batches.push_back(batch);
+}
+
+void LLPipeline::captureMetalWorldTerrainBatch(
+    LLFace* face, LLViewerTexture* const* detail_textures,
+    LLViewerTexture* alpha_ramp, LLViewerTexture* parcel_overlay,
+    F32 detail_scale, const F32* detail_phase, F32 tess_density,
+    bool smoothing, bool triplanar, F32 triplanar_blend,
+    bool tessellation_pinned)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->pass_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || !capture.terrain)
+    {
+        return;
+    }
+
+    LLDrawable* drawable = face ? face->getDrawable() : nullptr;
+    LLVOSurfacePatch* object = drawable
+        ? dynamic_cast<LLVOSurfacePatch*>(drawable->getVObj().get()) : nullptr;
+    LLSurfacePatch* patch = object ? object->getPatch() : nullptr;
+    LLSurface* surface = patch ? patch->getSurface() : nullptr;
+    LLViewerRegion* region = surface ? surface->getRegion() : nullptr;
+    LLVertexBuffer* buffer = face ? face->getVertexBuffer() : nullptr;
+    if (!face || !detail_textures || !alpha_ramp || !detail_phase ||
+        !patch || !surface || !region || !buffer ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        face->getGeomCount() != LLVOSurfacePatch::PATCH_CORNERS ||
+        face->getGeomIndex() + LLVOSurfacePatch::PATCH_CORNERS >
+            buffer->getNumVerts() ||
+        !std::isfinite(detail_scale) || detail_scale <= 0.f ||
+        !std::isfinite(detail_phase[0]) ||
+        !std::isfinite(detail_phase[1]) ||
+        !std::isfinite(tess_density) ||
+        (!tessellation_pinned && tess_density <= 0.f) ||
+        !std::isfinite(triplanar_blend) || triplanar_blend <= 0.f)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+
+    ALTerrainSurfaceMaps& maps = surface->getSurfaceMaps();
+    ALMetalWorldSimpleBatch batch;
+    batch.terrain = true;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX) +
+        static_cast<std::size_t>(face->getGeomIndex()) * sizeof(LLVector4a);
+    batch.vertex_count = LLVOSurfacePatch::PATCH_CORNERS;
+    batch.texture_count = 4;
+    for (U32 texture = 0; texture < batch.texture_count; ++texture)
+    {
+        LLImageGL* image = detail_textures[texture]
+            ? detail_textures[texture]->getGLTexture() : nullptr;
+        batch.diffuse_textures[texture] = image
+            ? image->getMetalTexture() : nullptr;
+    }
+    LLImageGL* ramp_image = alpha_ramp->getGLTexture();
+    LLImageGL* overlay_image = parcel_overlay
+        ? parcel_overlay->getGLTexture() : nullptr;
+    batch.terrain_height_texture = maps.getMetalHeightTexture();
+    batch.terrain_composition_texture = maps.getMetalCompositionTexture();
+    batch.terrain_alpha_ramp_texture = ramp_image
+        ? ramp_image->getMetalTexture() : nullptr;
+    batch.terrain_parcel_overlay_texture = overlay_image
+        ? overlay_image->getMetalTexture() : nullptr;
+    if (!batch.terrain_height_texture ||
+        !batch.terrain_composition_texture ||
+        !batch.terrain_alpha_ramp_texture ||
+        (parcel_overlay && !batch.terrain_parcel_overlay_texture) ||
+        std::any_of(batch.diffuse_textures.begin(),
+                    batch.diffuse_textures.begin() + batch.texture_count,
+                    [](const ALMetalTexture* texture)
+                    {
+                        return texture == nullptr;
+                    }))
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+
+    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    LLMatrix4a inverse_modelview;
+    if (!inverse_modelview.setAffineInverse(modelview))
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    const F32* inverse = inverse_modelview.getF32ptr();
+    for (U32 column = 0; column < 3; ++column)
+    {
+        batch.normal_matrix[column][0] = inverse[0 * 4 + column];
+        batch.normal_matrix[column][1] = inverse[1 * 4 + column];
+        batch.normal_matrix[column][2] = inverse[2 * 4 + column];
+    }
+
+    batch.terrain_grid_scale = surface->getMetersPerGrid();
+    batch.terrain_region_scale = region->getWidth();
+    batch.terrain_detail_scale = detail_scale;
+    batch.terrain_detail_phase[0] = detail_phase[0];
+    batch.terrain_detail_phase[1] = detail_phase[1];
+    batch.terrain_triplanar_blend = triplanar_blend;
+    batch.terrain_smoothing = smoothing;
+    batch.terrain_triplanar = triplanar;
+    batch.terrain_tessellation_pinned = tessellation_pinned;
+
+    const LLVector3& patch_origin = patch->getOriginRegion();
+    const F32 patch_size = surface->getGridsPerPatchEdge() *
+                           batch.terrain_grid_scale;
+    struct TerrainCorner
+    {
+        F32 x;
+        F32 y;
+        F32 z;
+    };
+    const auto corner = [&](F32 x, F32 y)
+    {
+        const S32 gx = ll_round(x / batch.terrain_grid_scale);
+        const S32 gy = ll_round(y / batch.terrain_grid_scale);
+        return TerrainCorner{x, y, surface->sampleZ(gx, gy)};
+    };
+    const std::array<TerrainCorner, 4> corners{{
+        corner(patch_origin.mV[VX], patch_origin.mV[VY]),
+        corner(patch_origin.mV[VX] + patch_size, patch_origin.mV[VY]),
+        corner(patch_origin.mV[VX] + patch_size,
+               patch_origin.mV[VY] + patch_size),
+        corner(patch_origin.mV[VX], patch_origin.mV[VY] + patch_size),
+    }};
+    const LLVector3 tessellation_origin =
+        LLViewerCamera::getInstance()->getOrigin() -
+        region->getOriginAgent();
+    const auto edge_level = [&](const TerrainCorner& a,
+                                const TerrainCorner& b)
+    {
+        if (tessellation_pinned)
+        {
+            return 16.f;
+        }
+        const F32 dx = b.x - a.x;
+        const F32 dy = b.y - a.y;
+        const F32 dz = b.z - a.z;
+        const F32 length = sqrtf(dx * dx + dy * dy + dz * dz);
+        const F32 mx = 0.5f * (a.x + b.x) - tessellation_origin.mV[VX];
+        const F32 my = 0.5f * (a.y + b.y) - tessellation_origin.mV[VY];
+        const F32 mz = 0.5f * (a.z + b.z) - tessellation_origin.mV[VZ];
+        const F32 distance = sqrtf(mx * mx + my * my + mz * mz);
+        return llclamp(length * tess_density / llmax(distance, 1.f),
+                       1.f, 64.f);
+    };
+    const std::array<F32, 4> outer{{
+        edge_level(corners[0], corners[3]),
+        edge_level(corners[0], corners[1]),
+        edge_level(corners[1], corners[2]),
+        edge_level(corners[3], corners[2]),
+    }};
+    const std::array<F32, 2> inner{{
+        llmax(outer[1], outer[3]),
+        llmax(outer[0], outer[2]),
+    }};
+    for (U32 edge = 0; edge < outer.size(); ++edge)
+    {
+        batch.terrain_tessellation_factors[edge] =
+            ALWaterHeightBake::halfOf(outer[edge]);
+    }
+    for (U32 inside = 0; inside < inner.size(); ++inside)
+    {
+        batch.terrain_tessellation_factors[4 + inside] =
+            ALWaterHeightBake::halfOf(inner[inside]);
     }
     capture.batches.push_back(batch);
 }

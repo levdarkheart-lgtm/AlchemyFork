@@ -499,7 +499,56 @@ void LLDrawPoolTerrain::renderFullShaderTextures()
     gGL.getTextureSlot(alpha_ramp)->bindSampled(m2DAlphaRampImagep, ALSamplers::AnisoClamp);
 
     // GL_BLEND disabled by default
+#if LL_DARWIN
+    // The native path presently owns the classic planar/triplanar family.
+    // Hex tiling has a different world-lattice sampling contract and stays
+    // on GL until its native variant exists.
+    const bool capture_metal =
+        !gPipeline.shaderInputs().mGlobal.mTerrainHexTiling;
+    if (capture_metal)
+    {
+        gPipeline.beginMetalWorldTerrainPass();
+    }
+    LLViewerTexture* detail_textures[4] = {
+        detail_texture0p, detail_texture1p,
+        detail_texture2p, detail_texture3p,
+    };
+    LLViewerTexture* parcel_overlay = nullptr;
+    static const LLCachedControl<bool> show_parcel_owners(
+        gSavedSettings, "ShowParcelOwners");
+    if (show_parcel_owners)
+    {
+        LLViewerParcelOverlay* overlayp = regionp->getParcelOverlay();
+        parcel_overlay = overlayp ? overlayp->getTexture() : nullptr;
+    }
+    const F32 detail_phase[2] = {offset_x, offset_y};
+    const TessLevels levels = tess_levels();
+    static LLCachedControl<F32> triplanar_blend(
+        gSavedSettings, "RenderTerrainPBRTriplanarBlendFactor", 8.f);
+    for (LLFace* facep : mDrawFace)
+    {
+        llassert(gGL.getMatrixMode() == LLRender::MM_MODELVIEW);
+        LLRenderPass::applyModelMatrix(
+            &facep->getDrawable()->getRegion()->mRenderMatrix);
+        if (capture_metal)
+        {
+            gPipeline.captureMetalWorldTerrainBatch(
+                facep, detail_textures, m2DAlphaRampImagep.get(),
+                parcel_overlay, sDetailScale, detail_phase,
+                levels.mDensity, LLSurface::isSmoothing(),
+                gPipeline.shaderInputs().mGlobal.mTerrainPlanarSampleCount == 3,
+                triplanar_blend,
+                gPipeline.shaderInputs().mLocal.mTerrainTessPinned);
+        }
+        facep->renderIndexed(LLRender::PATCHES);
+    }
+    if (capture_metal)
+    {
+        gPipeline.endMetalWorldGBufferPass();
+    }
+#else
     drawLoop();
+#endif
 
     // Disable multitexture
     sShader->disableTexture(LLViewerShaderMgr::TERRAIN_ALPHARAMP);

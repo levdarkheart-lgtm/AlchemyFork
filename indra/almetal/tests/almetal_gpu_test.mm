@@ -131,6 +131,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_bump_fragment",
             "almetal_world_material_fragment",
             "almetal_world_pbr_fragment",
+            "almetal_world_terrain_vertex",
+            "almetal_world_terrain_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
             "almetal_lit_preview_vertex",
@@ -1887,6 +1889,253 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(
                            avatar_cloth_normal[
                                avatar_cloth_translated + 1]) - 32768) <= 2);
+    }
+}
+
+TEST_CASE("almetal: classic terrain tessellates its height field into the world G-buffer", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        const std::array<std::array<float, 4>, 4> control_points{{
+            {{0.f, 0.f, 0.f, 1.f}},
+            {{2.f, 0.f, 0.f, 1.f}},
+            {{2.f, 2.f, 0.f, 1.f}},
+            {{0.f, 2.f, 0.f, 1.f}},
+        }};
+        ALMetalBufferDescriptor vertex_descriptor;
+        vertex_descriptor.length = sizeof(control_points);
+        vertex_descriptor.storage = ALMetalStorageMode::shared;
+        vertex_descriptor.label = "Alchemy terrain test control points";
+        auto vertices = ALMetalBuffer::create(
+            *device, vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(vertices);
+        REQUIRE(vertices->write(
+            0, control_points.data(), sizeof(control_points), &error));
+
+        ALMetalTextureDescriptor detail_descriptor;
+        detail_descriptor.format = ALMetalPixelFormat::rgba8_unorm_srgb;
+        detail_descriptor.width = 1;
+        detail_descriptor.height = 1;
+        detail_descriptor.storage = ALMetalStorageMode::private_gpu;
+        detail_descriptor.usage = ALMetalTextureUsage::shader_read;
+        detail_descriptor.label = "Alchemy terrain red sRGB detail";
+        auto detail = ALMetalTexture::create(
+            *device, detail_descriptor, &error);
+        INFO(error);
+        REQUIRE(detail);
+
+        ALMetalTextureDescriptor ramp_descriptor = detail_descriptor;
+        ramp_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        ramp_descriptor.label = "Alchemy terrain opaque alpha ramp";
+        auto ramp = ALMetalTexture::create(*device, ramp_descriptor, &error);
+        INFO(error);
+        REQUIRE(ramp);
+
+        ALMetalTextureDescriptor overlay_descriptor = detail_descriptor;
+        overlay_descriptor.label = "Alchemy terrain encoded parcel overlay";
+        auto overlay = ALMetalTexture::create(
+            *device, overlay_descriptor, &error);
+        INFO(error);
+        REQUIRE(overlay);
+
+        ALMetalTextureDescriptor height_descriptor;
+        height_descriptor.format = ALMetalPixelFormat::r32_float;
+        height_descriptor.width = 8;
+        height_descriptor.height = 8;
+        height_descriptor.storage = ALMetalStorageMode::private_gpu;
+        height_descriptor.usage = ALMetalTextureUsage::shader_read;
+        height_descriptor.label = "Alchemy terrain flat height map";
+        auto height = ALMetalTexture::create(
+            *device, height_descriptor, &error);
+        INFO(error);
+        REQUIRE(height);
+
+        ALMetalTextureDescriptor composition_descriptor = height_descriptor;
+        composition_descriptor.format = ALMetalPixelFormat::rg16_float;
+        composition_descriptor.label = "Alchemy terrain composition map";
+        auto composition = ALMetalTexture::create(
+            *device, composition_descriptor, &error);
+        INFO(error);
+        REQUIRE(composition);
+
+        const std::array<std::uint8_t, 4> detail_pixel{{255, 0, 0, 255}};
+        const std::array<std::uint8_t, 4> ramp_pixel{{0, 0, 0, 255}};
+        const std::array<std::uint8_t, 4> overlay_pixel{{128, 128, 128, 255}};
+        std::array<float, 64> height_pixels{};
+        for (std::size_t row = 0; row < 8; ++row)
+        {
+            for (std::size_t column = 0; column < 8; ++column)
+            {
+                // Texel (x,y) holds grid x + 2*y: one and two metres of
+                // rise per metre, so both surface modes must emit the same
+                // non-axis-aligned slope.
+                height_pixels[row * 8 + column] =
+                    (static_cast<float>(column) - 2.f) +
+                    2.f * (static_cast<float>(row) - 2.f);
+            }
+        }
+        const std::array<std::uint16_t, 128> composition_pixels{};
+        auto upload = device->makeCommandBuffer(
+            "Alchemy terrain test texture upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        REQUIRE(detail->upload(
+            *upload, 0, 0, {}, detail_pixel.data(), 4, &error));
+        REQUIRE(ramp->upload(
+            *upload, 0, 0, {}, ramp_pixel.data(), 4, &error));
+        REQUIRE(overlay->upload(
+            *upload, 0, 0, {}, overlay_pixel.data(), 4, &error));
+        REQUIRE(height->upload(
+            *upload, 0, 0, {}, height_pixels.data(), 8 * sizeof(float),
+            &error));
+        REQUIRE(composition->upload(
+            *upload, 0, 0, {}, composition_pixels.data(),
+            8 * 2 * sizeof(std::uint16_t), &error));
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldSimpleBatch batch;
+        batch.terrain = true;
+        batch.vertices = vertices.get();
+        batch.vertex_count = control_points.size();
+        batch.texture_count = 4;
+        for (std::size_t texture = 0; texture < 4; ++texture)
+        {
+            batch.diffuse_textures[texture] = detail.get();
+        }
+        batch.terrain_height_texture = height.get();
+        batch.terrain_composition_texture = composition.get();
+        batch.terrain_alpha_ramp_texture = ramp.get();
+        std::fill_n(
+            batch.terrain_tessellation_factors, 6, std::uint16_t{0x4400});
+        batch.terrain_grid_scale = 1.f;
+        batch.terrain_region_scale = 4.f;
+        batch.terrain_detail_scale = 1.f;
+        batch.terrain_triplanar_blend = 8.f;
+        batch.terrain_smoothing = true;
+        batch.terrain_triplanar = true;
+        batch.terrain_tessellation_pinned = true;
+        batch.modelview_projection[0] = 0.8f;
+        batch.modelview_projection[5] = 0.8f;
+        // Flatten clip Z so the test can exercise heights beyond the
+        // canonical clip volume without changing the expected footprint.
+        batch.modelview_projection[10] = 0.f;
+        batch.modelview_projection[12] = -0.8f;
+        batch.modelview_projection[13] = -0.8f;
+        batch.modelview_projection[15] = 1.f;
+        for (std::size_t axis = 0; axis < 3; ++axis)
+        {
+            batch.normal_matrix[axis][axis] = 1.f;
+        }
+
+        ALMetalWorldGBufferScene scene;
+        scene.batches = &batch;
+        scene.batch_count = 1;
+        scene.width = 32;
+        scene.height = 32;
+        scene.normal_hdr = true;
+        scene.hdr = true;
+
+        batch.terrain_tessellation_factors[0] = 0;
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal world terrain batch is invalid");
+        batch.terrain_tessellation_factors[0] = 0x4400;
+        error.clear();
+
+        batch.terrain_parcel_overlay_texture = ramp.get();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal world terrain batch is invalid");
+        batch.terrain_parcel_overlay_texture = nullptr;
+        error.clear();
+
+        auto result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(result);
+        REQUIRE(device->waitUntilIdle(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 32 * 32 * 4> albedo{};
+        REQUIRE(result->colorTexture(0)->readback(
+            *device, 0, 0, {}, albedo.data(), 32 * 4, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> specular{};
+        REQUIRE(result->colorTexture(1)->readback(
+            *device, 0, 0, {}, specular.data(), 32 * 4, &error));
+        INFO(error);
+        std::array<std::uint16_t, 32 * 32 * 4> normal{};
+        REQUIRE(result->colorTexture(2)->readback(
+            *device, 0, 0, {}, normal.data(), 32 * 8, &error));
+        INFO(error);
+
+        const std::size_t center = (16 * 32 + 16) * 4;
+        CHECK(albedo[center + 0] == 255);
+        CHECK(albedo[center + 1] == 0);
+        CHECK(albedo[center + 2] == 0);
+        CHECK(albedo[center + 3] == 0);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(specular[center + channel] == 0);
+        }
+        CHECK(std::abs(static_cast<int>(normal[center + 0]) - 24576) <= 1);
+        CHECK(std::abs(static_cast<int>(normal[center + 1]) - 16384) <= 1);
+        CHECK(normal[center + 2] == 0);
+        CHECK(std::abs(static_cast<int>(normal[center + 3]) - 22282) <= 2);
+
+        // The live parcel overlay's Metal mirror is sRGB, so sampling decodes
+        // before blending and the sRGB G-buffer store encodes it back to the
+        // original byte. This guards against a missing or double decode.
+        batch.terrain_parcel_overlay_texture = overlay.get();
+        auto overlay_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(overlay_result);
+        REQUIRE(device->waitUntilIdle(&error));
+        INFO(error);
+        albedo.fill(0);
+        REQUIRE(overlay_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, albedo.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(albedo[center + 0]) - 128) <= 1);
+        CHECK(std::abs(static_cast<int>(albedo[center + 1]) - 128) <= 1);
+        CHECK(std::abs(static_cast<int>(albedo[center + 2]) - 128) <= 1);
+        CHECK(albedo[center + 3] == 0);
+        batch.terrain_parcel_overlay_texture = nullptr;
+
+        const std::size_t outside = (1 * 32 + 1) * 4;
+        CHECK(albedo[outside + 0] == 255);
+        CHECK(albedo[outside + 1] == 0);
+        CHECK(albedo[outside + 2] == 255);
+        CHECK(albedo[outside + 3] == 255);
+
+        // The collision-surface evaluator and dynamic fractional-odd
+        // pipeline reproduce the same analytic plane through a different
+        // production variant.
+        batch.terrain_smoothing = false;
+        batch.terrain_triplanar = false;
+        batch.terrain_tessellation_pinned = false;
+        std::fill_n(
+            batch.terrain_tessellation_factors, 6, std::uint16_t{0x4200});
+        auto dynamic_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(dynamic_result);
+        REQUIRE(device->waitUntilIdle(&error));
+        INFO(error);
+        normal.fill(0);
+        REQUIRE(dynamic_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, normal.data(), 32 * 8, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(normal[center + 0]) - 24576) <= 1);
+        CHECK(std::abs(static_cast<int>(normal[center + 1]) - 16384) <= 1);
+        CHECK(normal[center + 2] == 0);
+        CHECK(std::abs(static_cast<int>(normal[center + 3]) - 22282) <= 2);
     }
 }
 

@@ -584,6 +584,7 @@ public:
     void beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode,
                                      bool normal_map, bool specular_map);
     void beginMetalWorldPBRPass(bool rigged, bool alpha_mask);
+    void beginMetalWorldTerrainPass();
     void beginMetalWorldAvatarPass(bool skinned, bool cloth,
                                    const F32* wind = nullptr,
                                    const F32* sin_wave = nullptr,
@@ -599,6 +600,12 @@ public:
                                    LLViewerTexture* normal_texture);
     void captureMetalWorldTreeBatch(LLVertexBuffer* buffer,
                                     LLViewerTexture* texture);
+    void captureMetalWorldTerrainBatch(
+        LLFace* face, LLViewerTexture* const* detail_textures,
+        LLViewerTexture* alpha_ramp, LLViewerTexture* parcel_overlay,
+        F32 detail_scale, const F32* detail_phase, F32 tess_density,
+        bool smoothing, bool triplanar, F32 triplanar_blend,
+        bool tessellation_pinned);
     void captureMetalWorldAvatarBatch(const LLViewerJointMesh& mesh,
                                       LLVertexBuffer* buffer,
                                       LLGLTexture* texture,

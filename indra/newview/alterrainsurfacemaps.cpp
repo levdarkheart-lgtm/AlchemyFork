@@ -78,6 +78,18 @@ void ALTerrainSurfaceMaps::bind(S32 height_slot, S32 composition_slot)
     }
 }
 
+#if LL_DARWIN
+const ALMetalTexture* ALTerrainSurfaceMaps::getMetalHeightTexture() const
+{
+    return mHeight.notNull() ? mHeight->getMetalTexture() : nullptr;
+}
+
+const ALMetalTexture* ALTerrainSurfaceMaps::getMetalCompositionTexture() const
+{
+    return mComposition.notNull() ? mComposition->getMetalTexture() : nullptr;
+}
+#endif
+
 void ALTerrainSurfaceMaps::refresh()
 {
     LL_PROFILE_ZONE_SCOPED;

@@ -35,6 +35,9 @@
 
 class LLImageGL;
 class LLSurface;
+#if LL_DARWIN
+class ALMetalTexture;
+#endif
 
 // The terrain surface of one region, uploaded for the GPU to reconstruct.
 //
@@ -75,6 +78,10 @@ public:
     // GL context; the terrain pool calls it before its first draw of the frame.
     void ensureUploaded();
     void bind(S32 height_slot, S32 composition_slot);
+#if LL_DARWIN
+    const ALMetalTexture* getMetalHeightTexture() const;
+    const ALMetalTexture* getMetalCompositionTexture() const;
+#endif
     S32  getSize() const { return mSize; }
     // Moves whenever the maps are marked dirty. With the surface's hasZData, it says what the next bind holds: the
     // upload a dirty map takes there carries what was marked.

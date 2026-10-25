@@ -81,6 +81,7 @@ struct ALMetalWorldSimpleBatch
     bool avatar_rigid = false;
     bool avatar_skinning = false;
     bool avatar_cloth = false;
+    bool terrain = false;
     bool use_vertex_color = true;
     bool alpha_cutoff_bias = true;
     float alpha_cutoff = 0.f;
@@ -97,6 +98,19 @@ struct ALMetalWorldSimpleBatch
     float avatar_sin_wave[4]{};
     float avatar_gravity[4]{};
     float avatar_cloth_depth[4]{};
+    const ALMetalTexture* terrain_height_texture = nullptr;
+    const ALMetalTexture* terrain_composition_texture = nullptr;
+    const ALMetalTexture* terrain_alpha_ramp_texture = nullptr;
+    const ALMetalTexture* terrain_parcel_overlay_texture = nullptr;
+    std::uint16_t terrain_tessellation_factors[6]{};
+    float terrain_grid_scale = 1.f;
+    float terrain_region_scale = 256.f;
+    float terrain_detail_scale = 1.f / 12.f;
+    float terrain_detail_phase[2]{};
+    float terrain_triplanar_blend = 8.f;
+    bool terrain_smoothing = false;
+    bool terrain_triplanar = true;
+    bool terrain_tessellation_pinned = false;
 };
 
 struct ALMetalWorldGBufferScene
