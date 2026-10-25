@@ -258,6 +258,39 @@ struct ALMetalWorldSimpleVaryings
     uint3 material_flags [[flat]];
 };
 
+struct ALMetalWorldShinyConstants
+{
+    float4x4 modelview_projection;
+    float4x4 modelview;
+    float4 normal_matrix[3];
+    float4 rigged_normal_matrix[3];
+    float4x4 texture_matrix;
+    uint4 config;
+};
+
+struct ALMetalWorldShinyVaryings
+{
+    float4 position [[position]];
+    float3 eye_position;
+    float3 normal;
+    float4 color;
+    float2 texcoord;
+    uint texture_index [[flat]];
+    uint texture_count [[flat]];
+};
+
+struct ALMetalWorldReflectionProbeConstants
+{
+    float4x4 ref_box[256];
+    float4 ref_sphere[256];
+    float4 ref_params[256];
+    int4 ref_index[256];
+    int4 ref_neighbor[1024];
+    int4 ref_bucket[256];
+    float4 env_matrix[3];
+    float4 config;
+};
+
 struct ALMetalWorldGBufferOutput
 {
     float4 albedo [[color(0)]];
@@ -961,6 +994,389 @@ fragment float4 almetal_world_fullbright_fragment(
     // sRGB target store. Outside the alpha pool their mask tests texture
     // coverage alone; streamed alpha carries shininess and is not a cutoff.
     return max(diffuse * input.color, float4(0.0));
+}
+
+vertex ALMetalWorldShinyVaryings almetal_world_shiny_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldShinyConstants& constants [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 object_position = float4(positions[vertex_id].xyz, 1.0);
+    float4 clip_position = constants.modelview_projection * object_position;
+    clip_position.y = -clip_position.y;
+
+    const float3x3 normal_matrix = float3x3(
+        constants.normal_matrix[0].xyz,
+        constants.normal_matrix[1].xyz,
+        constants.normal_matrix[2].xyz);
+    const float4 encoded_color = float4(colors[vertex_id]) / 255.0;
+    ALMetalWorldShinyVaryings output;
+    output.position = constants.config.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.eye_position =
+        (constants.modelview * object_position).xyz;
+    output.normal = normalize(normal_matrix * normals[vertex_id].xyz);
+    output.color = float4(
+        almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.texture_index = constants.config.y > 1
+        ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
+    output.texture_count = constants.config.y;
+    return output;
+}
+
+vertex ALMetalWorldShinyVaryings almetal_world_shiny_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldShinyConstants& constants [[buffer(4)]],
+    const device float4* skin_palette [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    constant uint& joint_count [[buffer(7)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        positions[vertex_id], normals[vertex_id],
+        encoded_weights[vertex_id], skin_palette, joint_count);
+    const float4 origin = float4(skin_palette[0].xyz, 1.0);
+    float4 clip_position =
+        constants.modelview_projection * skinned.position +
+        constants.modelview_projection * origin;
+    clip_position.y = -clip_position.y;
+
+    const float3x3 normal_matrix = float3x3(
+        constants.rigged_normal_matrix[0].xyz,
+        constants.rigged_normal_matrix[1].xyz,
+        constants.rigged_normal_matrix[2].xyz);
+    const float4 encoded_color = float4(colors[vertex_id]) / 255.0;
+    ALMetalWorldShinyVaryings output;
+    output.position = constants.config.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.eye_position =
+        (constants.modelview * skinned.position +
+         constants.modelview * origin).xyz;
+    output.normal = normalize(normal_matrix * skinned.normal.xyz);
+    output.color = float4(
+        almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.texture_index = constants.config.y > 1
+        ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
+    output.texture_count = constants.config.y;
+    return output;
+}
+
+static bool almetal_probe_holds(
+    int index, float3 position, bool automatic,
+    thread bool& boxed, thread float3& box_position,
+    constant ALMetalWorldReflectionProbeConstants& probes)
+{
+    boxed = false;
+    box_position = 0.0;
+    if (probes.ref_index[index].w < 0)
+    {
+        const float4 local = probes.ref_box[index] * float4(position, 1.0);
+        if (any(abs(local.xyz) > float3(1.0)))
+        {
+            return false;
+        }
+        boxed = true;
+        box_position = local.xyz;
+        return true;
+    }
+    if (probes.ref_index[index].w == 0 && !automatic)
+    {
+        return false;
+    }
+    const float3 delta = position - probes.ref_sphere[index].xyz;
+    const float radius = probes.ref_sphere[index].w;
+    return dot(delta, delta) <= radius * radius;
+}
+
+static int almetal_probe_start_index(
+    float3 position, int probe_count,
+    constant ALMetalWorldReflectionProbeConstants& probes)
+{
+    const int bucket = clamp(int(floor(-position.z)), 0, 255);
+    return clamp(probes.ref_bucket[bucket].x, 1, probe_count + 1);
+}
+
+static float3 almetal_probe_sphere_intersect(
+    float3 origin, float3 direction, float3 center, float radius_squared)
+{
+    const float3 to_center = center - origin;
+    if (dot(to_center, to_center) > radius_squared)
+    {
+        return center + direction;
+    }
+    const float nearest = dot(to_center, direction);
+    const float perpendicular_squared =
+        dot(to_center, to_center) - nearest * nearest;
+    const float half_chord =
+        sqrt(max(radius_squared - perpendicular_squared, 0.0));
+    return origin + direction * (nearest + half_chord);
+}
+
+static float3 almetal_probe_box_intersect_from(
+    float3 origin, float3 box_position, float3 direction,
+    float4x4 clip_to_local, float scale)
+{
+    const float3 local_ray = float3x3(
+        clip_to_local[0].xyz,
+        clip_to_local[1].xyz,
+        clip_to_local[2].xyz) * direction;
+    const float3 ray_sign = float3(
+        local_ray.x < 0.0 ? -1.0 : 1.0,
+        local_ray.y < 0.0 ? -1.0 : 1.0,
+        local_ray.z < 0.0 ? -1.0 : 1.0);
+    const float3 denominator =
+        ray_sign * max(abs(local_ray), float3(1e-6));
+    const float3 unitary = float3(scale);
+    const float3 first = (unitary - box_position) / denominator;
+    const float3 second = (-unitary - box_position) / denominator;
+    const float3 furthest = max(first, second);
+    const float distance = min(furthest.x, min(furthest.y, furthest.z));
+    return origin + direction * distance;
+}
+
+static float almetal_probe_box_depth(float3 box_position)
+{
+    return 1.0 - max(max(abs(box_position.x), abs(box_position.y)),
+                     abs(box_position.z));
+}
+
+static float almetal_probe_weight(
+    int index, float3 position, float3 box_position,
+    thread float& distance_weight,
+    constant ALMetalWorldReflectionProbeConstants& probes)
+{
+    if (probes.ref_index[index].w < 0)
+    {
+        const float depth = almetal_probe_box_depth(box_position);
+        distance_weight = clamp(depth, 0.0, 1.0) *
+                          probes.ref_params[index].z;
+        return max(depth, 0.001);
+    }
+
+    const float radius = probes.ref_sphere[index].w;
+    const float inner_radius = radius * 0.5;
+    const float distance = max(
+        length(position - probes.ref_sphere[index].xyz), 0.001);
+    const float attenuation = 1.0 -
+        max(distance - inner_radius, 0.0) /
+        max(radius - inner_radius, 0.001);
+    float weight = probes.ref_params[index].z / distance;
+    distance_weight = weight * attenuation * max(radius, 1.0) * 4.0;
+    weight *= attenuation;
+    return index == 0 ? max(weight, 1e-6) : weight;
+}
+
+static float3 almetal_probe_radiance(
+    int index, float3 position, float3 box_position, float3 direction,
+    texturecube_array<float> radiance, sampler probe_sampler,
+    constant ALMetalWorldReflectionProbeConstants& probes)
+{
+    const float3 center = probes.ref_sphere[index].xyz;
+    float3 sample_position;
+    if (probes.ref_index[index].w < 0)
+    {
+        sample_position = almetal_probe_box_intersect_from(
+            position, box_position, direction, probes.ref_box[index], 1.0);
+    }
+    else
+    {
+        const float radius = probes.ref_sphere[index].w;
+        const float radius_squared = probes.ref_index[index].w < 1
+            ? 4096.0 * 4096.0 : radius * radius;
+        sample_position = almetal_probe_sphere_intersect(
+            position, direction, center, radius_squared);
+    }
+    const float3x3 environment = float3x3(
+        probes.env_matrix[0].xyz,
+        probes.env_matrix[1].xyz,
+        probes.env_matrix[2].xyz);
+    const float3 sample_direction =
+        environment * (sample_position - center);
+    return radiance.sample(
+        probe_sampler, sample_direction,
+        uint(probes.ref_index[index].x), level(0.0)).rgb *
+        probes.ref_params[index].y;
+}
+
+struct ALMetalLegacyProbeSums
+{
+    float3 automatic_color;
+    float3 manual_color;
+    float automatic_weight;
+    float manual_weight;
+    float automatic_distance_weight;
+    float manual_distance_weight;
+};
+
+static void almetal_legacy_probe_tap(
+    int index, float3 position, float3 box_position, float3 direction,
+    texturecube_array<float> radiance, sampler probe_sampler,
+    constant ALMetalWorldReflectionProbeConstants& probes,
+    thread ALMetalLegacyProbeSums& sums)
+{
+    float distance_weight = 0.0;
+    const float weight = almetal_probe_weight(
+        index, position, box_position, distance_weight, probes);
+    const float3 color = almetal_probe_radiance(
+        index, position, box_position, direction,
+        radiance, probe_sampler, probes);
+    if (clamp(abs(probes.ref_index[index].w), 0, 1) == 0)
+    {
+        sums.automatic_color += color * weight;
+        sums.automatic_weight += weight;
+        sums.automatic_distance_weight += distance_weight;
+    }
+    else
+    {
+        sums.manual_color += color * weight;
+        sums.manual_weight += weight;
+        sums.manual_distance_weight += distance_weight;
+    }
+}
+
+static float3 almetal_legacy_probe_mix(
+    ALMetalLegacyProbeSums sums, bool automatic)
+{
+    float3 automatic_color = automatic
+        ? sums.automatic_color : float3(0.0);
+    float3 manual_color = sums.manual_color;
+    if (automatic && sums.automatic_weight > 0.0)
+    {
+        automatic_color /= sums.automatic_weight;
+        if (sums.manual_weight > 0.0)
+        {
+            manual_color /= sums.manual_weight;
+            manual_color = mix(
+                automatic_color, manual_color,
+                min(sums.manual_distance_weight, 1.0));
+            automatic_color = 0.0;
+        }
+    }
+    else if (sums.manual_weight > 0.0)
+    {
+        manual_color /= sums.manual_weight;
+        automatic_color = 0.0;
+    }
+    return automatic_color + manual_color;
+}
+
+static float3 almetal_sample_legacy_probes(
+    float3 position, float3 normal,
+    texturecube_array<float> radiance, sampler probe_sampler,
+    constant ALMetalWorldReflectionProbeConstants& probes)
+{
+    ALMetalLegacyProbeSums sums{};
+    const int probe_count = clamp(int(probes.config.x), 1, 256);
+    const float3 reflection_direction = normalize(reflect(position, normal));
+    bool automatic = true;
+    int accepted_count = 0;
+    int index = almetal_probe_start_index(position, probe_count, probes);
+    int neighbor = -1;
+    int neighbor_base = 0;
+    int neighbor_count = 0;
+    while (accepted_count < 32)
+    {
+        int candidate;
+        if (neighbor < 0)
+        {
+            if (index >= probe_count ||
+                probes.ref_params[index].w > -position.z)
+            {
+                break;
+            }
+            candidate = index++;
+        }
+        else
+        {
+            if (neighbor >= neighbor_count)
+            {
+                break;
+            }
+            const int vector_index = neighbor_base + (neighbor >> 2);
+            if (vector_index < 0 || vector_index >= 1024)
+            {
+                break;
+            }
+            candidate = probes.ref_neighbor[vector_index][neighbor & 3];
+            ++neighbor;
+            if (candidate < 0 || candidate >= probe_count)
+            {
+                continue;
+            }
+        }
+
+        bool boxed = false;
+        float3 box_position = 0.0;
+        if (!almetal_probe_holds(
+                candidate, position, automatic,
+                boxed, box_position, probes))
+        {
+            continue;
+        }
+        if (boxed)
+        {
+            automatic = false;
+        }
+        almetal_legacy_probe_tap(
+            candidate, position, box_position, reflection_direction,
+            radiance, probe_sampler, probes, sums);
+        ++accepted_count;
+
+        if (neighbor < 0 && probes.ref_index[candidate].y != -1)
+        {
+            neighbor_base = probes.ref_index[candidate].y;
+            neighbor_count = clamp(probes.ref_index[candidate].z, 0, 31);
+            neighbor = 0;
+        }
+    }
+
+    if (automatic && accepted_count < 32)
+    {
+        const float3 default_box_position = probes.ref_index[0].w < 0
+            ? (probes.ref_box[0] * float4(position, 1.0)).xyz
+            : float3(0.0);
+        almetal_legacy_probe_tap(
+            0, position, default_box_position, reflection_direction,
+            radiance, probe_sampler, probes, sums);
+    }
+    return almetal_legacy_probe_mix(sums, automatic);
+}
+
+fragment float4 almetal_world_shiny_fragment(
+    ALMetalWorldShinyVaryings input [[stage_in]],
+    array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
+    texturecube_array<float> reflection_probes [[texture(32)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]])
+{
+    const float4 diffuse = input.texture_index < input.texture_count
+        ? diffuse_textures[min(input.texture_index, 31u)].sample(
+              diffuse_sampler, input.texcoord)
+        : float4(1.0, 0.0, 1.0, 1.0);
+    float3 color = diffuse.rgb * input.color.rgb;
+    const float3 normal = normalize(input.normal);
+    const float environment_intensity = input.color.a;
+    const float3 legacy_environment = almetal_sample_legacy_probes(
+        input.eye_position, normal,
+        reflection_probes, probe_sampler, probes);
+    float fresnel = 1.0 + dot(normalize(input.eye_position), normal);
+    fresnel *= fresnel;
+    fresnel = min(fresnel + environment_intensity, 1.0);
+    const float3 reflected_color = legacy_environment *
+        (environment_intensity * fresnel);
+    color = mix(color, reflected_color * 0.5, environment_intensity);
+    return max(float4(color, 1.0), float4(0.0));
 }
 
 struct ALMetalWorldEmbossVaryings

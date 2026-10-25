@@ -115,12 +115,14 @@ struct ALMetalWorldSimpleBatch
     bool avatar_cloth = false;
     bool impostor = false;
     bool impostor_fullbright = false;
+    bool impostor_shiny = false;
     bool impostor_emboss = false;
     bool terrain = false;
     bool use_vertex_color = true;
     bool alpha_cutoff_bias = true;
     float alpha_cutoff = 0.f;
     float modelview_projection[16]{};
+    float modelview[16]{};
     float normal_matrix[3][4]{};
     float rigged_normal_matrix[3][4]{};
     float texture_matrix[16] = {
@@ -175,6 +177,7 @@ struct ALMetalWorldGBufferScene
     bool hdr = false;
     bool reverse_z = false;
     bool stamp_opaque_coverage = false;
+    const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
     float clear_color[4] = {1.f, 0.f, 1.f, 1.f};
 };
 

@@ -691,7 +691,13 @@ void LLDrawPoolBump::renderPostDeferred(S32 pass)
 
         // render shiny
         beginFullbrightShiny();
+#if LL_DARWIN
+        gPipeline.beginMetalImpostorShinyPass(mRigged);
+#endif
         renderFullbrightShiny();
+#if LL_DARWIN
+        gPipeline.endMetalWorldGBufferPass();
+#endif
         endFullbrightShiny();
 
         //render bump

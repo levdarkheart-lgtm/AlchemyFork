@@ -135,6 +135,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_material_fragment",
             "almetal_world_pbr_fragment",
             "almetal_world_fullbright_fragment",
+            "almetal_world_shiny_vertex",
+            "almetal_world_shiny_skinned_vertex",
+            "almetal_world_shiny_fragment",
             "almetal_world_emboss_vertex",
             "almetal_world_emboss_skinned_vertex",
             "almetal_world_emboss_fragment",
@@ -2032,6 +2035,133 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(alpha_orm[fullbright_top + 2] == 0);
         CHECK(alpha_orm[fullbright_top + 3] == 0);
         CHECK(std::abs(alpha_depth[24 * 32 + 8] - 0.625f) < 0.0001f);
+
+        // Fullbright shiny is opaque in the impostor bake, but its RGB is
+        // the exact legacy reflection-probe result: decoded diffuse times
+        // linear tint mixed with the selected live cubemap at vertex-alpha
+        // intensity. Use two single-texel cubes with distinct colours to
+        // prove that refIndex selects the requested array element rather
+        // than silently sampling cube zero.
+        ALMetalTextureDescriptor probe_descriptor;
+        probe_descriptor.type = ALMetalTextureType::texture_cube_array;
+        probe_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        probe_descriptor.width = 1;
+        probe_descriptor.height = 1;
+        probe_descriptor.array_length = 2;
+        probe_descriptor.storage = ALMetalStorageMode::private_gpu;
+        probe_descriptor.usage = ALMetalTextureUsage::shader_read;
+        probe_descriptor.label =
+            "Alchemy world shiny reflection-probe array";
+        auto probe_texture = ALMetalTexture::create(
+            *device, probe_descriptor, &error);
+        INFO(error);
+        REQUIRE(probe_texture);
+        auto probe_upload = device->makeCommandBuffer(
+            "Alchemy world shiny reflection-probe upload", &error);
+        INFO(error);
+        REQUIRE(probe_upload);
+        for (std::uint32_t slice = 0; slice < 12; ++slice)
+        {
+            const std::array<std::uint8_t, 4> pixel = slice < 6
+                ? std::array<std::uint8_t, 4>{{255, 0, 0, 255}}
+                : std::array<std::uint8_t, 4>{{0, 0, 255, 255}};
+            REQUIRE(probe_texture->upload(
+                *probe_upload, 0, slice, {}, pixel.data(), 4, &error));
+        }
+        REQUIRE(probe_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldReflectionProbes reflection_probes;
+        reflection_probes.radiance_texture = probe_texture.get();
+        reflection_probes.constants.ref_sphere[0][3] = 100.f;
+        reflection_probes.constants.ref_params[0][1] = 1.f;
+        reflection_probes.constants.ref_params[0][2] = 1.f;
+        reflection_probes.constants.ref_index[0][0] = 0;
+        reflection_probes.constants.ref_index[0][1] = -1;
+        reflection_probes.constants.ref_sphere[1][3] = 100.f;
+        reflection_probes.constants.ref_params[1][1] = 1.f;
+        reflection_probes.constants.ref_params[1][2] = 1.f;
+        reflection_probes.constants.ref_params[1][3] = -100.f;
+        reflection_probes.constants.ref_index[1][0] = 1;
+        reflection_probes.constants.ref_index[1][1] = -1;
+        reflection_probes.constants.ref_index[1][3] = 1;
+        reflection_probes.constants.config[0] = 2.f;
+
+        ALMetalWorldSimpleBatch shiny_batch = fullbright_batch;
+        shiny_batch.impostor_fullbright = false;
+        shiny_batch.impostor_shiny = true;
+        shiny_batch.alpha_mask = false;
+        for (std::size_t index = 0; index < 4; ++index)
+        {
+            shiny_batch.modelview[index * 4 + index] = 1.f;
+        }
+        alpha_scene.batches = &shiny_batch;
+        alpha_scene.stamp_opaque_coverage = false;
+        alpha_scene.reflection_probes = nullptr;
+        CHECK_FALSE(renderer->compositeImpostorPostDeferred(
+            *coverage_result, alpha_scene, &error));
+        CHECK(error ==
+              "Metal world shiny impostor reflection probes are invalid");
+        error.clear();
+        alpha_scene.reflection_probes = &reflection_probes;
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *coverage_result, alpha_scene, &error));
+        INFO(error);
+        REQUIRE(coverage_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, alpha_albedo.data(), 32 * 4, &error));
+        REQUIRE(coverage_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, alpha_orm.data(), 32 * 4, &error));
+        REQUIRE(coverage_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, alpha_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(alpha_albedo[fullbright_top + 0] == 0);
+        CHECK(std::abs(static_cast<int>(
+                           alpha_albedo[fullbright_top + 1]) - 188) <= 2);
+        CHECK(std::abs(static_cast<int>(
+                           alpha_albedo[fullbright_top + 2]) - 99) <= 2);
+        CHECK(alpha_albedo[fullbright_top + 3] == 255);
+        CHECK(alpha_orm[fullbright_top + 0] == 0);
+        CHECK(alpha_orm[fullbright_top + 1] == 0);
+        CHECK(alpha_orm[fullbright_top + 2] == 0);
+        CHECK(alpha_orm[fullbright_top + 3] == 0);
+        CHECK(std::abs(alpha_depth[24 * 32 + 8] - 0.625f) < 0.0001f);
+
+        // The rigged owner uses the same probe traversal after applying its
+        // rebased palette to eye position and normal, and remains an opaque
+        // depth-writing pass.
+        shiny_batch.modelview_projection[12] = 0.8f;
+        shiny_batch.weight_offset = weight_offset;
+        shiny_batch.skin_palette = alpha_skin_palette.data();
+        shiny_batch.skin_palette_float_count = alpha_skin_palette.size();
+        shiny_batch.skin_joint_count = 1;
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *coverage_result, alpha_scene, &error));
+        INFO(error);
+        REQUIRE(coverage_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, alpha_albedo.data(), 32 * 4, &error));
+        REQUIRE(coverage_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, alpha_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        const std::size_t shiny_top_right = (24 * 32 + 24) * 4;
+        CHECK(alpha_albedo[shiny_top_right + 0] == 0);
+        CHECK(std::abs(static_cast<int>(
+                           alpha_albedo[shiny_top_right + 1]) - 188) <= 2);
+        CHECK(std::abs(static_cast<int>(
+                           alpha_albedo[shiny_top_right + 2]) - 99) <= 2);
+        CHECK(alpha_albedo[shiny_top_right + 3] == 255);
+        CHECK(std::abs(alpha_depth[24 * 32 + 24] - 0.625f) < 0.0001f);
+
+        // Restore the original fullbright source colour before the chained
+        // emboss assertions below; shiny was deliberately tested at the same
+        // static pixel so its probe mix could be compared directly.
+        alpha_scene.batches = &fullbright_batch;
+        alpha_scene.reflection_probes = nullptr;
+        alpha_scene.stamp_opaque_coverage = true;
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *coverage_result, alpha_scene, &error));
+        INFO(error);
 
         // The post-bump owner samples one bump texture at its two precomputed
         // UV streams, then applies GL's BT_MULT_X2 blend to RGB only. A
