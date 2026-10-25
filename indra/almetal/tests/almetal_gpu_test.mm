@@ -158,6 +158,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_pbr_preview_bloom_extract_fragment",
             "almetal_pbr_preview_bloom_downsample_fragment",
             "almetal_pbr_preview_bloom_upsample_fragment",
+            "almetal_pbr_preview_cross_filter_fragment",
         };
         for (const char* function : functions)
         {
@@ -2509,6 +2510,34 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         CHECK(bloomed[2] == 0);
         CHECK(bloomed[3] == 255);
 
+        // A uniform field remains uniform through every normalized four-tap
+        // streak pass. Four arms therefore sum four copies of the 0.25 bloom
+        // extract; the final composite scales both the pyramid and streaks by
+        // bloom strength, matching colorCorrectF.glsl.
+        scene.bloom_strength = 0.25f;
+        auto quarter_bloom_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(quarter_bloom_output);
+        const auto quarter_bloom = read_center(*quarter_bloom_output);
+        CHECK(std::abs(static_cast<int>(quarter_bloom[0]) - 177) <= 2);
+        scene.cross_filter_enabled = true;
+        scene.cross_filter_strength = 1.f;
+        scene.cross_filter_points = 4;
+        scene.cross_filter_angle = 13.f;
+        scene.cross_filter_length = 1.f;
+        scene.cross_filter_falloff = 1.5f;
+        scene.cross_filter_chromatic = 1.f;
+        auto streaked_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(streaked_output);
+        const auto streaked = read_center(*streaked_output);
+        CHECK(std::abs(static_cast<int>(streaked[0]) - 216) <= 2);
+        CHECK(streaked[1] == 0);
+        CHECK(streaked[2] == 0);
+        CHECK(streaked[3] == 255);
+        scene.cross_filter_enabled = false;
+        scene.cross_filter_strength = 0.f;
+
         // Halation travels independently in alpha and is tinted only at the
         // pre-exposure composite. A 0.05 uniform excess sums to 0.15 here.
         scene.bloom_strength = 0.f;
@@ -2587,6 +2616,11 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         CHECK_FALSE(renderer->render(scene, &error));
         CHECK(error == "Metal PBR preview post state is invalid");
         scene.bloom_mip_count = 3;
+        scene.cross_filter_points = 1;
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal PBR preview post state is invalid");
+        scene.cross_filter_points = 4;
         batch.normal_texture = nullptr;
         error.clear();
         CHECK_FALSE(renderer->render(scene, &error));

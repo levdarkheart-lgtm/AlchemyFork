@@ -1294,7 +1294,7 @@ struct ALMetalPBRPreviewPostConstants
     // static exposure, tonemap mix, tonemap type, target is sRGB
     float4 post;
     float4 tonemap_params;
-    // bloom strength, halation strength, enabled, reserved
+    // bloom strength, halation strength, enabled, cross-filter strength
     float4 bloom;
     float4 halation_tint;
 };
@@ -1310,6 +1310,14 @@ struct ALMetalPBRPreviewBloomFilterConstants
 {
     // inverse source width/height, scatter or first-downsample flag
     float4 params;
+};
+
+struct ALMetalPBRPreviewCrossFilterConstants
+{
+    // target texel x/y, authored length, chromatic dispersion
+    float4 sampling;
+    // arm direction x/y, pass scale, exponential falloff base
+    float4 filtering;
 };
 
 static float almetal_pbr_preview_bloom_soft_threshold(
@@ -1456,13 +1464,59 @@ fragment float4 almetal_pbr_preview_bloom_upsample_fragment(
     return result;
 }
 
+fragment float4 almetal_pbr_preview_cross_filter_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]],
+    constant ALMetalPBRPreviewCrossFilterConstants& constants [[buffer(0)]])
+{
+    constexpr int taps = 4;
+    constexpr float3 dispersion = float3(0.3, 0.0, -0.3);
+    const float length = constants.sampling.z;
+    float3 stride = float3(1.0) +
+        clamp(constants.sampling.w, 0.0, 1.0) * dispersion;
+    stride = min(stride, float3(2.0 / max(length, 1.0e-4)));
+
+    float3 accumulated = float3(0.0);
+    float total_weight = 0.0;
+    for (int tap = 0; tap < taps; ++tap)
+    {
+        const float step_index =
+            float(tap) * constants.filtering.z;
+        const float2 offset = constants.filtering.xy *
+            constants.sampling.xy * length * step_index;
+        const float weight = pow(constants.filtering.w, -step_index);
+
+        float3 color;
+        if (constants.sampling.w > 0.0)
+        {
+            color.r = source.sample(
+                source_sampler, input.texcoord + offset * stride.r).r;
+            color.g = source.sample(
+                source_sampler, input.texcoord + offset * stride.g).g;
+            color.b = source.sample(
+                source_sampler, input.texcoord + offset * stride.b).b;
+        }
+        else
+        {
+            color = source.sample(
+                source_sampler, input.texcoord + offset).rgb;
+        }
+        accumulated += color * weight;
+        total_weight += weight;
+    }
+    return float4(accumulated / max(total_weight, 1.0e-4), 0.0);
+}
+
 fragment float4 almetal_pbr_preview_post_fragment(
     ALMetalResampleVaryings input [[stage_in]],
     texture2d<float> scene [[texture(0)]],
     texture2d<float> exposure [[texture(1)]],
     texture2d<float> bloom_map [[texture(2)]],
+    texture2d<float> cross_filter_map [[texture(3)]],
     sampler scene_sampler [[sampler(0)]],
     sampler bloom_sampler [[sampler(1)]],
+    sampler cross_filter_sampler [[sampler(2)]],
     constant ALMetalPBRPreviewPostConstants& constants [[buffer(0)]])
 {
     const float4 scene_color = scene.sample(scene_sampler, input.texcoord);
@@ -1474,6 +1528,12 @@ fragment float4 almetal_pbr_preview_post_fragment(
         color += bloom.rgb * constants.bloom.x +
                  bloom.a * constants.bloom.y *
                      constants.halation_tint.rgb;
+        if (constants.bloom.w > 0.0)
+        {
+            color += cross_filter_map.sample(
+                cross_filter_sampler, input.texcoord).rgb *
+                constants.bloom.w * constants.bloom.x;
+        }
     }
     color *= constants.post.x * exposure.read(uint2(0)).r;
     const float3 clamped = clamp(color, float3(0.0), float3(1.0));

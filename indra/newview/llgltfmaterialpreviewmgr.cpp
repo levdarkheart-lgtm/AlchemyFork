@@ -735,15 +735,21 @@ bool LLGLTFPreviewTexture::render()
             (metal_preview_bloom_strength > 0.f ||
              (metal_preview_halation &&
               metal_preview_halation_strength > 0.f));
-        const bool metal_preview_cross_filter = metal_preview_bloom &&
+        const F32 metal_preview_cross_filter_strength =
+            metal_preview_bloom &&
             metal_preview_bloom_strength > 0.f &&
-            gSavedSettings.get<F32>("RenderCrossFilterStrength") > 0.f &&
-            !LLPipeline::suppressesLensAndPrintEffects();
+            !LLPipeline::suppressesLensAndPrintEffects()
+                ? llclamp(gSavedSettings.get<F32>(
+                              "RenderCrossFilterStrength"),
+                          0.f, CROSS_FILTER_MAX_STRENGTH)
+                : 0.f;
+        const bool metal_preview_cross_filter =
+            metal_preview_cross_filter_strength > 0.f;
 
         bool metal_preview_eligible = metal_device &&
             mMetalPreviewDescriptor && base_color_texture && normal_texture &&
             orm_texture && emissive_texture && metal_preview_hdr &&
-            !metal_preview_no_post && !metal_preview_cross_filter;
+            !metal_preview_no_post;
         const LLMatrix4a& modelview = gGL.getModelviewMatrix();
         LLMatrix4a inverse_modelview;
         LLMatrix4a modelview_projection;
@@ -917,6 +923,25 @@ bool LLGLTFPreviewTexture::render()
                 std::memcpy(metal_scene.bloom_halation_weights,
                             LLPipeline::RenderGlowWarmthWeights.mV,
                             sizeof(metal_scene.bloom_halation_weights));
+                metal_scene.cross_filter_enabled =
+                    metal_preview_cross_filter;
+                metal_scene.cross_filter_strength =
+                    metal_preview_cross_filter_strength;
+                metal_scene.cross_filter_points = static_cast<U32>(llclamp(
+                    gSavedSettings.get<S32>("RenderCrossFilterPoints"),
+                    2, 12));
+                metal_scene.cross_filter_angle = llclamp(
+                    gSavedSettings.get<F32>("RenderCrossFilterAngle"),
+                    0.f, 360.f);
+                metal_scene.cross_filter_length = llclamp(
+                    gSavedSettings.get<F32>("RenderCrossFilterLength"),
+                    0.25f, 2.f);
+                metal_scene.cross_filter_falloff = llclamp(
+                    gSavedSettings.get<F32>("RenderCrossFilterFalloff"),
+                    0.1f, 3.f);
+                metal_scene.cross_filter_chromatic = llclamp(
+                    gSavedSettings.get<F32>("RenderCrossFilterChromatic"),
+                    0.f, 1.f);
                 mMetalPreview = renderer->render(metal_scene, &error);
             }
             if (!mMetalPreview)
