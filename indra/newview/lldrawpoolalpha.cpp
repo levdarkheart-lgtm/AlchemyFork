@@ -771,8 +771,16 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                     mat = LLPipeline::sRenderingHUDs ? nullptr : params.mMaterial;
 
 #if LL_DARWIN
-                    gPipeline.captureMetalImpostorFlatAlphaBatch(
-                        params, is_particle_or_hud_particle);
+                    if (mat)
+                    {
+                        gPipeline.captureMetalImpostorLegacyMaterialAlphaBatch(
+                            params, is_particle_or_hud_particle);
+                    }
+                    else
+                    {
+                        gPipeline.captureMetalImpostorFlatAlphaBatch(
+                            params, is_particle_or_hud_particle);
+                    }
 #endif
 
                     if (params.mFullbright)

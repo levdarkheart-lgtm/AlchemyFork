@@ -279,6 +279,36 @@ struct ALMetalWorldShinyVaryings
     uint texture_count [[flat]];
 };
 
+struct ALMetalWorldLegacyAlphaVaryings
+{
+    float4 position [[position]];
+    float3 eye_position;
+    float3 normal;
+    float3 tangent;
+    float3 bitangent;
+    float4 color;
+    float2 texcoord;
+    float2 texcoord1;
+    float2 texcoord2;
+    uint material_index [[flat]];
+};
+
+struct ALMetalWorldLegacyAlphaLight
+{
+    float4 position;
+    float4 direction;
+    float4 diffuse;
+    float4 parameters;
+};
+
+struct ALMetalWorldLegacyAlphaLighting
+{
+    float4 sun_direction;
+    float4 sun_color;
+    ALMetalWorldLegacyAlphaLight local_lights[7];
+    float4 parameters;
+};
+
 struct ALMetalWorldReflectionProbeConstants
 {
     float4x4 ref_box[256];
@@ -1071,6 +1101,107 @@ vertex ALMetalWorldShinyVaryings almetal_world_shiny_skinned_vertex(
     return output;
 }
 
+vertex ALMetalWorldLegacyAlphaVaryings almetal_world_legacy_alpha_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldShinyConstants& constants [[buffer(4)]],
+    const device float4* tangents [[buffer(8)]],
+    const device float2* texcoords1 [[buffer(9)]],
+    const device float2* texcoords2 [[buffer(10)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 object_position = float4(positions[vertex_id].xyz, 1.0);
+    float4 clip_position = constants.modelview_projection * object_position;
+    clip_position.y = -clip_position.y;
+    const float3x3 normal_matrix = float3x3(
+        constants.normal_matrix[0].xyz,
+        constants.normal_matrix[1].xyz,
+        constants.normal_matrix[2].xyz);
+    const float3 normal = normalize(
+        normal_matrix * normals[vertex_id].xyz);
+    const float3 tangent = normalize(
+        normal_matrix * tangents[vertex_id].xyz);
+    const float4 encoded_color = float4(colors[vertex_id]) / 255.0;
+
+    ALMetalWorldLegacyAlphaVaryings output;
+    output.position = constants.config.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.eye_position =
+        (constants.modelview * object_position).xyz;
+    output.normal = normal;
+    output.tangent = tangent;
+    output.bitangent = tangents[vertex_id].w * cross(normal, tangent);
+    output.color = float4(
+        almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord1 = (constants.texture_matrix *
+                        float4(texcoords1[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord2 = (constants.texture_matrix *
+                        float4(texcoords2[vertex_id], 0.0, 1.0)).xy;
+    output.material_index = constants.config.y > 1
+        ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
+    return output;
+}
+
+vertex ALMetalWorldLegacyAlphaVaryings
+almetal_world_legacy_alpha_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldShinyConstants& constants [[buffer(4)]],
+    const device float4* skin_palette [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    constant uint& joint_count [[buffer(7)]],
+    const device float4* tangents [[buffer(8)]],
+    const device float2* texcoords1 [[buffer(9)]],
+    const device float2* texcoords2 [[buffer(10)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        positions[vertex_id], normals[vertex_id],
+        encoded_weights[vertex_id], skin_palette, joint_count);
+    const float4 origin = float4(skin_palette[0].xyz, 1.0);
+    float4 clip_position =
+        constants.modelview_projection * skinned.position +
+        constants.modelview_projection * origin;
+    clip_position.y = -clip_position.y;
+    const float3x3 normal_matrix = float3x3(
+        constants.rigged_normal_matrix[0].xyz,
+        constants.rigged_normal_matrix[1].xyz,
+        constants.rigged_normal_matrix[2].xyz);
+    const float3 normal = normalize(normal_matrix * skinned.normal.xyz);
+    const float3 skinned_tangent = almetal_object_skin_direction(
+        tangents[vertex_id].xyz, encoded_weights[vertex_id],
+        skin_palette, joint_count);
+    const float3 tangent = normalize(normal_matrix * skinned_tangent);
+    const float4 encoded_color = float4(colors[vertex_id]) / 255.0;
+
+    ALMetalWorldLegacyAlphaVaryings output;
+    output.position = constants.config.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.eye_position =
+        (constants.modelview * skinned.position +
+         constants.modelview * origin).xyz;
+    output.normal = normal;
+    output.tangent = tangent;
+    output.bitangent = tangents[vertex_id].w * cross(normal, tangent);
+    output.color = float4(
+        almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord1 = (constants.texture_matrix *
+                        float4(texcoords1[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord2 = (constants.texture_matrix *
+                        float4(texcoords2[vertex_id], 0.0, 1.0)).xy;
+    output.material_index = constants.config.y > 1
+        ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
+    return output;
+}
+
 static bool almetal_probe_holds(
     int index, float3 position, bool automatic,
     thread bool& boxed, thread float3& box_position,
@@ -1651,6 +1782,221 @@ fragment ALMetalWorldGBufferOutput almetal_world_material_fragment(
                            material.properties.x * specular.a, 0.34);
     output.emissive = 0.0;
     return output;
+}
+
+static float almetal_legacy_blinn_phong_lobe(
+    float nh, float glossiness, float specular_exponent)
+{
+    constexpr float pi = 3.14159265358979323846;
+    const float exponent = glossiness * glossiness * specular_exponent;
+    const float normalization =
+        ((exponent + 2.0) * (exponent + 4.0)) /
+        (8.0 * pi * (exp2(-exponent * 0.5) + exponent));
+    return pow(nh, exponent) * normalization;
+}
+
+static void almetal_legacy_half_vectors(
+    float3 light_vector, float3 normal, float3 view,
+    thread float3& half_vector, thread float3& light_direction,
+    thread float& nh, thread float& nl,
+    thread float& nv, thread float& vh)
+{
+    constexpr float epsilon = 0.000001;
+    light_direction = normalize(light_vector);
+    half_vector = normalize(light_direction + view);
+    nh = clamp(dot(normal, half_vector), epsilon, 1.0);
+    nl = clamp(dot(normal, light_direction), epsilon, 1.0);
+    nv = clamp(dot(normal, view), epsilon, 1.0);
+    vh = clamp(dot(view, half_vector), epsilon, 1.0);
+}
+
+static float almetal_legacy_distance_attenuation(
+    float distance, float falloff)
+{
+    float attenuation = 1.0 -
+        clamp((distance + falloff) / (1.0 + falloff), 0.0, 1.0);
+    return attenuation * attenuation * 2.0;
+}
+
+static void almetal_legacy_local_glare(
+    ALMetalWorldLegacyAlphaLight light,
+    float3 normal, float3 position, float3 view,
+    float3 specular, float glossiness, float specular_exponent,
+    thread float& glare)
+{
+    const float light_size = light.parameters.x;
+    if (light_size <= 0.0)
+    {
+        return;
+    }
+    const float3 light_vector = light.position.xyz - position;
+    const float light_distance = length(light_vector);
+    const float distance = light_distance / light_size;
+    if (distance > 1.0 || dot(normal, light_vector) <= 0.0 ||
+        light_distance <= 0.0 || glossiness <= 0.0)
+    {
+        return;
+    }
+
+    float3 half_vector;
+    float3 light_direction;
+    float nh;
+    float nl;
+    float nv;
+    float vh;
+    almetal_legacy_half_vectors(
+        light_vector, normal, view, half_vector, light_direction,
+        nh, nl, nv, vh);
+    const float distance_attenuation = almetal_legacy_distance_attenuation(
+        distance, light.parameters.y);
+    const float spot = max(
+        dot(-light.direction.xyz, light_direction), light.parameters.z);
+    const float spot_attenuation = spot * spot;
+    const float lit = min(nl * 6.0, 1.0) * distance_attenuation;
+    const float fresnel = pow(1.0 - vh, 5.0) * 0.4 + 0.5;
+    const float geometry_denominator = 2.0 * nh;
+    const float geometry = max(
+        0.0, min(geometry_denominator * nv / vh,
+                 geometry_denominator * nl / vh));
+    const float lobe = fresnel * almetal_legacy_blinn_phong_lobe(
+        nh, glossiness, specular_exponent) * geometry / (nh * nl);
+    const float3 specular_contribution =
+        lit * lobe * light.diffuse.rgb * specular;
+    const float3 glare_source = clamp(
+        specular_contribution * spot_attenuation, 0.0, 1.0);
+    const float current_glare = max(
+        max(glare_source.r, glare_source.g), glare_source.b);
+    glare = max(glare, glare_source.r);
+    glare += current_glare;
+}
+
+fragment float4 almetal_world_legacy_alpha_fragment(
+    ALMetalWorldLegacyAlphaVaryings input [[stage_in]],
+    array<texture2d<float>, 8> diffuse_textures [[texture(0)]],
+    array<texture2d<float>, 8> normal_textures [[texture(8)]],
+    array<texture2d<float>, 8> specular_textures [[texture(16)]],
+    texturecube_array<float> reflection_probes [[texture(32)]],
+    sampler material_sampler [[sampler(0)]],
+    sampler probe_sampler [[sampler(1)]],
+    constant ALMetalWorldMaterialConstants& constants [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
+    constant ALMetalWorldLegacyAlphaLighting& lighting [[buffer(2)]])
+{
+    const uint slot_count = max(constants.config.x, 1u);
+    const uint material_index = min(input.material_index, slot_count - 1u);
+    const uint slot = min(material_index, 7u);
+    const ALMetalWorldMaterialSlotConstants material =
+        constants.slots[slot];
+    const float4 diffuse = diffuse_textures[slot].sample(
+        material_sampler, input.texcoord);
+
+    float3 normal = normalize(input.normal);
+    float glossiness = material.specular_color.a;
+    if (constants.config.z != 0u)
+    {
+        const float4 tangent_sample = normal_textures[slot].sample(
+            material_sampler, input.texcoord1);
+        glossiness *= tangent_sample.a;
+        const float3 tangent_normal = tangent_sample.rgb * 2.0 - 1.0;
+        normal = normalize(
+            tangent_normal.x * input.tangent +
+            tangent_normal.y * input.bitangent +
+            tangent_normal.z * input.normal);
+    }
+
+    float4 specular = float4(
+        almetal_srgb_to_linear(material.specular_color.rgb), 1.0);
+    if (constants.config.w != 0u)
+    {
+        const float4 specular_sample = specular_textures[slot].sample(
+            material_sampler, input.texcoord2);
+        specular = float4(
+            specular_sample.rgb * specular.rgb, specular_sample.a);
+    }
+    const float environment_intensity =
+        material.properties.x * specular.a;
+
+    const float3 normal_dx = dfdx(normal);
+    const float3 normal_dy = dfdy(normal);
+    const float variance = 0.15 *
+        (dot(normal_dx, normal_dx) + dot(normal_dy, normal_dy));
+    const float specular_kernel = min(2.0 * variance, 0.25);
+    const float perceptual_roughness = 1.0 - glossiness;
+    const float alpha = perceptual_roughness * perceptual_roughness;
+    glossiness = 1.0 - sqrt(sqrt(clamp(
+        alpha * alpha + specular_kernel, 0.0, 1.0)));
+
+    const float minimum_alpha = lighting.parameters.y;
+    if (input.color.a < minimum_alpha ||
+        (diffuse.a * input.color.a < minimum_alpha &&
+         glossiness <= 0.0 && environment_intensity <= 0.0))
+    {
+        discard_fragment();
+    }
+
+    float glare = 0.0;
+    const float3 view = -normalize(input.eye_position);
+    if (glossiness > 0.0)
+    {
+        const float3 light_vector = normalize(lighting.sun_direction.xyz);
+        float3 half_vector;
+        float3 light_direction;
+        float nh;
+        float nl;
+        float nv;
+        float vh;
+        almetal_legacy_half_vectors(
+            light_vector, normal, view, half_vector, light_direction,
+            nh, nl, nv, vh);
+        if (dot(normal, light_direction) > 0.0 &&
+            dot(normal, half_vector) > 0.0)
+        {
+            const float lit = min(nl * 6.0, 1.0);
+            const float fresnel = pow(1.0 - vh, 5.0) * 0.4 + 0.5;
+            const float geometry_denominator = 2.0 * nh;
+            const float geometry = max(
+                0.0, min(geometry_denominator * nv / vh,
+                         geometry_denominator * nl / vh));
+            const float lobe = lighting.parameters.z * fresnel *
+                almetal_legacy_blinn_phong_lobe(
+                    nh, glossiness, lighting.parameters.x) *
+                geometry / (nh * nl);
+            const float3 contribution =
+                lit * lobe * lighting.sun_color.rgb * specular.rgb;
+            glare = max(max(contribution.r, contribution.g),
+                        contribution.b);
+        }
+    }
+
+    if (environment_intensity > 0.0)
+    {
+        const float3 legacy_environment = almetal_sample_legacy_probes(
+            input.eye_position, normal,
+            reflection_probes, probe_sampler, probes);
+        const float environment_glare = max(
+            max(legacy_environment.r, legacy_environment.g),
+            legacy_environment.b);
+        glare += max(environment_glare, 0.0) *
+                 environment_intensity * 4.0;
+    }
+
+    for (uint light_index = 0; light_index < 7; ++light_index)
+    {
+        almetal_legacy_local_glare(
+            lighting.local_lights[light_index], normal,
+            input.eye_position, view, specular.rgb, glossiness,
+            lighting.parameters.x, glare);
+    }
+
+    glare *= 1.0 - material.properties.z;
+    glare = min(glare, 1.0);
+    const float coverage = max(diffuse.a, glare) * input.color.a;
+    if (coverage < minimum_alpha)
+    {
+        discard_fragment();
+    }
+    const float3 flat_color = diffuse.rgb * input.color.rgb;
+    return max(float4(flat_color, coverage), float4(0.0));
 }
 
 fragment ALMetalWorldGBufferOutput almetal_world_bump_fragment(

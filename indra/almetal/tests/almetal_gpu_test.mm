@@ -138,6 +138,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_shiny_vertex",
             "almetal_world_shiny_skinned_vertex",
             "almetal_world_shiny_fragment",
+            "almetal_world_legacy_alpha_vertex",
+            "almetal_world_legacy_alpha_skinned_vertex",
+            "almetal_world_legacy_alpha_fragment",
             "almetal_world_emboss_vertex",
             "almetal_world_emboss_skinned_vertex",
             "almetal_world_emboss_fragment",
@@ -2086,6 +2089,246 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         reflection_probes.constants.ref_index[1][1] = -1;
         reflection_probes.constants.ref_index[1][3] = 1;
         reflection_probes.constants.config[0] = 2.f;
+
+        // Legacy BLEND materials keep their authored diffuse alpha unless a
+        // sun, reflection-probe or punctual highlight raises it. Build a
+        // clean retained target so every assertion below observes the Metal
+        // fragment directly rather than a preceding alpha layer.
+        ALMetalWorldSimpleBatch legacy_seed_batch = flat_alpha_batch;
+        legacy_seed_batch.skin_palette = nullptr;
+        legacy_seed_batch.skin_palette_float_count = 0;
+        legacy_seed_batch.skin_joint_count = 0;
+        legacy_seed_batch.weight_offset = 0;
+        std::fill(std::begin(legacy_seed_batch.modelview_projection),
+                  std::end(legacy_seed_batch.modelview_projection), 0.f);
+        for (std::size_t index = 0; index < 4; ++index)
+        {
+            legacy_seed_batch.modelview_projection[index * 4 + index] = 1.f;
+        }
+        legacy_seed_batch.modelview_projection[12] = 3.f;
+        ALMetalWorldGBufferScene legacy_seed_scene = scene;
+        legacy_seed_scene.batches = &legacy_seed_batch;
+        legacy_seed_scene.batch_count = 1;
+        legacy_seed_scene.reverse_z = false;
+        legacy_seed_scene.stamp_opaque_coverage = false;
+        legacy_seed_scene.reflection_probes = nullptr;
+        legacy_seed_scene.legacy_alpha_lighting = nullptr;
+        std::fill(std::begin(legacy_seed_scene.clear_color),
+                  std::end(legacy_seed_scene.clear_color), 0.f);
+        auto make_legacy_target = [&]()
+        {
+            error.clear();
+            return renderer->render(legacy_seed_scene, &error);
+        };
+        auto read_legacy_alpha = [&](ALMetalRenderTarget& target)
+        {
+            std::array<std::uint8_t, 32 * 32 * 4> pixels{};
+            REQUIRE(target.colorTexture(0)->readback(
+                *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+            INFO(error);
+            return pixels[center + 3];
+        };
+        auto read_legacy_depth = [&](ALMetalRenderTarget& target)
+        {
+            std::array<float, 32 * 32> pixels{};
+            REQUIRE(target.depthStencilTexture()->readback(
+                *device, 0, 0, {}, pixels.data(), 32 * sizeof(float),
+                &error));
+            INFO(error);
+            return pixels[center / 4];
+        };
+
+        ALMetalWorldSimpleBatch legacy_alpha_batch = flat_alpha_batch;
+        legacy_alpha_batch.diffuse_textures[0] = tree_diffuse.get();
+        legacy_alpha_batch.texture_count = 1;
+        legacy_alpha_batch.material_slot_count = 1;
+        legacy_alpha_batch.material_alpha_mode = 1;
+        legacy_alpha_batch.tangent_offset = tangent_offset;
+        legacy_alpha_batch.texcoord1_offset = texcoord_offset;
+        legacy_alpha_batch.texcoord2_offset = texcoord_offset;
+        legacy_alpha_batch.pbr_slot_count = 0;
+        legacy_alpha_batch.skin_palette = nullptr;
+        legacy_alpha_batch.skin_palette_float_count = 0;
+        legacy_alpha_batch.skin_joint_count = 0;
+        legacy_alpha_batch.weight_offset = 0;
+        std::fill(std::begin(legacy_alpha_batch.modelview_projection),
+                  std::end(legacy_alpha_batch.modelview_projection), 0.f);
+        std::fill(std::begin(legacy_alpha_batch.modelview),
+                  std::end(legacy_alpha_batch.modelview), 0.f);
+        for (std::size_t index = 0; index < 4; ++index)
+        {
+            legacy_alpha_batch.modelview_projection[index * 4 + index] = 1.f;
+            legacy_alpha_batch.modelview[index * 4 + index] = 1.f;
+        }
+        legacy_alpha_batch.modelview[14] = -2.f;
+        legacy_alpha_batch.material_slots[0].specular_color[0] = 1.f;
+        legacy_alpha_batch.material_slots[0].specular_color[1] = 1.f;
+        legacy_alpha_batch.material_slots[0].specular_color[2] = 1.f;
+        legacy_alpha_batch.material_slots[0].specular_color[3] = 1.f;
+        legacy_alpha_batch.material_slots[0].normal_texture = nullptr;
+        legacy_alpha_batch.material_slots[0].specular_texture = nullptr;
+        legacy_alpha_batch.material_slots[0].env_intensity = 1.f;
+        legacy_alpha_batch.material_slots[0].fullbright = 0.f;
+
+        ALMetalWorldLegacyAlphaLighting legacy_lighting;
+        legacy_lighting.sun_direction[2] = 1.f;
+        legacy_lighting.sun_color[0] = 1.f;
+        legacy_lighting.parameters[0] = 128.f;
+        legacy_lighting.parameters[1] = 0.004f;
+        legacy_lighting.parameters[2] = 1.f;
+
+        ALMetalWorldGBufferScene legacy_alpha_scene = legacy_seed_scene;
+        legacy_alpha_scene.batches = &legacy_alpha_batch;
+        legacy_alpha_scene.reflection_probes = &reflection_probes;
+        legacy_alpha_scene.legacy_alpha_lighting = nullptr;
+        auto legacy_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(legacy_target);
+        CHECK_FALSE(renderer->compositeImpostorPostDeferred(
+            *legacy_target, legacy_alpha_scene, &error));
+        CHECK(error == "Metal world legacy alpha lighting is invalid");
+        error.clear();
+        legacy_alpha_scene.legacy_alpha_lighting = &legacy_lighting;
+        legacy_alpha_scene.reflection_probes = nullptr;
+        CHECK_FALSE(renderer->compositeImpostorPostDeferred(
+            *legacy_target, legacy_alpha_scene, &error));
+        CHECK(error ==
+              "Metal world legacy alpha reflection probes are invalid");
+        error.clear();
+        legacy_alpha_scene.reflection_probes = &reflection_probes;
+
+        std::array<std::uint8_t, 32 * 32 * 4> legacy_orm_before{};
+        std::array<std::uint16_t, 32 * 32 * 4> legacy_normal_before{};
+        std::array<std::uint32_t, 32 * 32> legacy_emissive_before{};
+        REQUIRE(legacy_target->colorTexture(1)->readback(
+            *device, 0, 0, {}, legacy_orm_before.data(), 32 * 4,
+            &error));
+        REQUIRE(legacy_target->colorTexture(2)->readback(
+            *device, 0, 0, {}, legacy_normal_before.data(), 32 * 8,
+            &error));
+        REQUIRE(legacy_target->colorTexture(3)->readback(
+            *device, 0, 0, {}, legacy_emissive_before.data(), 32 * 4,
+            &error));
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *legacy_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(read_legacy_alpha(*legacy_target)) -
+                       128) <= 1);
+        CHECK(std::abs(read_legacy_depth(*legacy_target) - 1.f) < 0.0001f);
+        std::array<std::uint8_t, 32 * 32 * 4> legacy_orm_after{};
+        std::array<std::uint16_t, 32 * 32 * 4> legacy_normal_after{};
+        std::array<std::uint32_t, 32 * 32> legacy_emissive_after{};
+        REQUIRE(legacy_target->colorTexture(1)->readback(
+            *device, 0, 0, {}, legacy_orm_after.data(), 32 * 4,
+            &error));
+        REQUIRE(legacy_target->colorTexture(2)->readback(
+            *device, 0, 0, {}, legacy_normal_after.data(), 32 * 8,
+            &error));
+        REQUIRE(legacy_target->colorTexture(3)->readback(
+            *device, 0, 0, {}, legacy_emissive_after.data(), 32 * 4,
+            &error));
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(legacy_orm_after[center + channel] ==
+                  legacy_orm_before[center + channel]);
+            CHECK(legacy_normal_after[center + channel] ==
+                  legacy_normal_before[center + channel]);
+        }
+        CHECK(legacy_emissive_after[center / 4] ==
+              legacy_emissive_before[center / 4]);
+
+        // With the probe term disabled, an aligned red sun saturates glare
+        // and raises half-diffuse/half-vertex coverage from one quarter to
+        // one half. Tangent-space +X and an orthogonal green specular map
+        // each remove that same red highlight, proving both authored maps
+        // participate in the coverage calculation.
+        legacy_alpha_batch.material_slots[0].env_intensity = 0.f;
+        auto sun_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(sun_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *sun_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(read_legacy_alpha(*sun_target)) -
+                       128) <= 1);
+
+        legacy_alpha_batch.material_slots[0].normal_texture =
+            bump_normal.get();
+        auto normal_map_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(normal_map_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *normal_map_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha(*normal_map_target)) - 64) <= 1);
+
+        legacy_alpha_batch.material_slots[0].normal_texture = nullptr;
+        legacy_alpha_batch.material_slots[0].specular_texture =
+            indexed_diffuse.get();
+        auto specular_map_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(specular_map_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *specular_map_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha(*specular_map_target)) - 64) <= 1);
+
+        legacy_alpha_batch.material_slots[0].specular_texture = nullptr;
+        legacy_alpha_batch.material_slots[0].fullbright = 1.f;
+        auto emissive_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(emissive_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *emissive_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha(*emissive_target)) - 64) <= 1);
+
+        // Punctual glare follows the same legacy attenuation and spot/omni
+        // contract as deferredUtil.glsl. Disable the sun, place an omni light
+        // one metre above the eye-space surface and require raised coverage.
+        legacy_alpha_batch.material_slots[0].fullbright = 0.f;
+        legacy_lighting.sun_color[0] = 0.f;
+        legacy_lighting.local_lights[0].position[2] = -0.75f;
+        legacy_lighting.local_lights[0].diffuse[0] = 1.f;
+        legacy_lighting.local_lights[0].parameters[0] = 4.f;
+        legacy_lighting.local_lights[0].parameters[1] = 0.f;
+        legacy_lighting.local_lights[0].parameters[2] = 1.f;
+        auto local_light_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(local_light_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *local_light_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha(*local_light_target)) - 128) <= 1);
+
+        // Object-skinned legacy alpha uses the same probe/material inputs but
+        // writes depth, while the static variant above kept depth read-only.
+        legacy_lighting.local_lights[0] = {};
+        legacy_alpha_batch.material_slots[0].env_intensity = 1.f;
+        legacy_alpha_batch.skin_palette = alpha_skin_palette.data();
+        legacy_alpha_batch.skin_palette_float_count =
+            alpha_skin_palette.size();
+        legacy_alpha_batch.skin_joint_count = 1;
+        legacy_alpha_batch.weight_offset = weight_offset;
+        auto rigged_legacy_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(rigged_legacy_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *rigged_legacy_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           read_legacy_alpha(*rigged_legacy_target)) -
+                       128) <= 1);
+        CHECK(std::abs(read_legacy_depth(*rigged_legacy_target) - 0.625f) <
+              0.0001f);
+        legacy_alpha_batch.skin_palette = nullptr;
+        legacy_alpha_batch.skin_palette_float_count = 0;
+        legacy_alpha_batch.skin_joint_count = 0;
+        legacy_alpha_batch.weight_offset = 0;
 
         ALMetalWorldSimpleBatch shiny_batch = fullbright_batch;
         shiny_batch.impostor_fullbright = false;

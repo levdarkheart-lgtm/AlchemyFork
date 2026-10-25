@@ -435,6 +435,14 @@ public:
                eBlendFactor alpha_sfactor, eBlendFactor alpha_dfactor);
 
     LLLightState* getLight(U32 index);
+    // Snapshot the exact CPU mirror consumed by UB_LIGHTS. This updates only
+    // the packed bytes; it performs no GL upload or bind, so native sidecar
+    // encoders can capture the forward-light contract at a draw boundary.
+    const LightsUBOData& getLightsUBOData()
+    {
+        packLightsUBO();
+        return mLightsUBOData;
+    }
     void setAmbientLightColor(const LLColor4& color);
 
     void setLineWidth(F32 width);

@@ -452,6 +452,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool impostor_shiny = false;
     bool impostor_emboss = false;
     ALMetalWorldReflectionProbes impostor_reflection_probes;
+    ALMetalWorldLegacyAlphaLighting impostor_legacy_alpha_lighting;
+    bool impostor_legacy_alpha_lighting_valid = false;
     LLUUID impostor_bake_avatar_id;
     std::unordered_map<LLUUID, ImpostorMirror> impostor_mirrors;
 };
@@ -1234,6 +1236,7 @@ void LLPipeline::beginMetalImpostorAlphaCapture(
     capture.impostor_fullbright = false;
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
+    capture.impostor_legacy_alpha_lighting_valid = false;
 }
 
 void LLPipeline::beginMetalImpostorFullbrightPass(bool rigged,
@@ -1277,6 +1280,18 @@ void LLPipeline::beginMetalImpostorShinyPass(bool rigged)
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (capture.pass_active)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    // The cube-array mirror covers the base reflection-probe traversal, but
+    // the GL finish can still replace that radiance with screen-space or hero
+    // reflection data. Until those live inputs are mirrored too, a shiny
+    // replay under either feature would not be the same owner.
+    if ((mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
+         !gCubeSnapshot) ||
+        mReflectionMapManager.mProbeData.heroProbeCount > 0)
     {
         capture.complete = false;
         capture.batches.clear();
@@ -1415,6 +1430,27 @@ void LLPipeline::endMetalImpostorAlphaCapture()
     capture.impostor_emboss = false;
     capture.frame_active = false;
     capture.pass_active = false;
+    const bool has_legacy_alpha = std::any_of(
+        capture.batches.begin(), capture.batches.end(),
+        [](const ALMetalWorldSimpleBatch& batch)
+        {
+            return batch.material_slot_count != 0 &&
+                   batch.material_alpha_mode ==
+                       LLMaterial::DIFFUSE_ALPHA_MODE_BLEND;
+        });
+    const bool legacy_alpha_uses_probes = has_legacy_alpha;
+    if (capture.complete && has_legacy_alpha &&
+        (!capture.impostor_legacy_alpha_lighting_valid ||
+         (legacy_alpha_uses_probes &&
+          !mReflectionMapManager.fillMetalReflectionProbes(
+              capture.impostor_reflection_probes))))
+    {
+        capture.complete = false;
+        LL_WARNS("Metal")
+            << "Could not acquire a coherent glare-lighting pack for the "
+               "native avatar-impostor legacy BLEND slice" << LL_ENDL;
+    }
+
     if (!capture.complete || capture.batches.empty() ||
         !capture.renderer || !capture.impostor_bake_target)
     {
@@ -1431,6 +1467,10 @@ void LLPipeline::endMetalImpostorAlphaCapture()
     scene.normal_hdr = capture.normal_hdr;
     scene.hdr = capture.hdr;
     scene.reverse_z = capture.reverse_z;
+    scene.reflection_probes = legacy_alpha_uses_probes
+        ? &capture.impostor_reflection_probes : nullptr;
+    scene.legacy_alpha_lighting = has_legacy_alpha
+        ? &capture.impostor_legacy_alpha_lighting : nullptr;
     std::string error;
     if (!capture.renderer->compositeImpostorPostDeferred(
             *capture.impostor_bake_target, scene, &error))
@@ -1445,8 +1485,10 @@ void LLPipeline::endMetalImpostorAlphaCapture()
             << "Native avatar-impostor alpha slice encoded "
             << capture.batches.size() << " batches at "
             << capture.width << "x" << capture.height
-            << "; glare-dependent legacy material alpha remains on the "
-               "GL transition path" << LL_ENDL;
+            << (has_legacy_alpha
+                    ? "; including glare-dependent legacy BLEND coverage"
+                    : "")
+            << LL_ENDL;
     }
     capture.batches.clear();
     capture.avatar_palettes.clear();
@@ -2076,6 +2118,118 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     capture.pass_active = true;
     captureMetalWorldGBufferBatch(params, true);
     capture.pass_active = false;
+}
+
+void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
+    const LLDrawInfo& params, bool particle_or_hud_particle)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->impostor_alpha_active ||
+        !params.mMaterial)
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const U32 shader_mask = params.mShaderMask;
+    if (shader_mask >= LLMaterial::SHADER_COUNT ||
+        (shader_mask & 0x3u) != LLMaterial::DIFFUSE_ALPHA_MODE_BLEND ||
+        params.mGLTFMaterial.notNull() || particle_or_hud_particle ||
+        params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA ||
+        params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+
+    // The current Metal owner has no native shadow-map mirror yet. A shader
+    // compiled with HAS_SUN_SHADOW can lower the sun-glint contribution per
+    // pixel, so accepting it with visibility one would inflate coverage.
+    // The GL probe finish can likewise replace cube radiance with SSR or an
+    // active hero probe. Keep the complete native alpha replay fail-closed
+    // until those inputs are represented instead of silently changing the
+    // material contract.
+    LLGLSLShader* material_shader =
+        gDeferredMaterialProgram[shader_mask].selectVariant();
+    const bool unsupported_probe_finish =
+        (mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
+         !gCubeSnapshot) ||
+        mReflectionMapManager.mProbeData.heroProbeCount > 0;
+    if (material_shader->mFeatures.hasShadows ||
+        unsupported_probe_finish)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+
+    if (!capture.impostor_legacy_alpha_lighting_valid)
+    {
+        ALMetalWorldLegacyAlphaLighting lighting;
+        const LLRender::LightsUBOData& lights = gGL.getLightsUBOData();
+        const LLEnvironment::EnvironmentUBOData& environment =
+            LLEnvironment::instance().getEnvironmentUBOData();
+        const bool sun_up = LLEnvironment::instance().getIsSunUp();
+        const LLVector4& sun_direction = sun_up
+            ? mTransformedSunDir : mTransformedMoonDir;
+        std::memcpy(lighting.sun_direction, sun_direction.mV,
+                    sizeof(sun_direction.mV));
+        for (U32 channel = 0; channel < 3; ++channel)
+        {
+            lighting.sun_color[channel] = LLRender::sClassicMode
+                ? sRGBtoLinear(environment.atmos_sunlit[channel] *
+                               environment.sky_sunlight_scale * 1.35f)
+                : environment.atmos_sunlit_linear[channel] *
+                      environment.sky_sunlight_scale;
+        }
+        for (U32 light_index = 1; light_index < LL_NUM_LIGHT_UNITS;
+             ++light_index)
+        {
+            ALMetalWorldLegacyAlphaLight& destination =
+                lighting.local_lights[light_index - 1];
+            std::memcpy(destination.position,
+                        lights.light_position[light_index],
+                        sizeof(destination.position));
+            std::memcpy(destination.direction,
+                        lights.light_direction[light_index],
+                        sizeof(destination.direction));
+            std::memcpy(destination.diffuse,
+                        lights.light_diffuse[light_index],
+                        sizeof(destination.diffuse));
+            destination.parameters[0] =
+                lights.light_deferred_attenuation[light_index][0];
+            destination.parameters[1] =
+                lights.light_deferred_attenuation[light_index][1];
+            destination.parameters[2] =
+                lights.light_attenuation[light_index][2];
+        }
+        lighting.parameters[0] = mDeferredUBOData.specular_exponent;
+        lighting.parameters[1] = 0.004f;
+        lighting.parameters[2] = 1.f;
+        lighting.parameters[3] = LLRender::sClassicMode ? 1.f : 0.f;
+        capture.impostor_legacy_alpha_lighting = lighting;
+        capture.impostor_legacy_alpha_lighting_valid = true;
+    }
+
+    capture.rigged = params.mAvatar != nullptr;
+    capture.alpha_mask = false;
+    capture.material_alpha_mode = LLMaterial::DIFFUSE_ALPHA_MODE_BLEND;
+    capture.material_normal_map = (shader_mask & 0x8u) != 0;
+    capture.material_specular_map = (shader_mask & 0x4u) != 0;
+    capture.pbr = false;
+    capture.terrain = false;
+    capture.avatar = false;
+    capture.impostor = false;
+    capture.impostor_fullbright = false;
+    capture.impostor_shiny = false;
+    capture.impostor_emboss = false;
+    capture.pass_active = true;
+    captureMetalWorldMaterialBatch(params, false);
+    capture.pass_active = false;
+    capture.material_alpha_mode = 0;
+    capture.material_normal_map = false;
+    capture.material_specular_map = false;
 }
 
 void LLPipeline::captureMetalWorldAvatarBatch(

@@ -77,6 +77,29 @@ struct ALMetalWorldReflectionProbes
     ALMetalWorldReflectionProbeConstants constants;
 };
 
+struct alignas(16) ALMetalWorldLegacyAlphaLight
+{
+    float position[4]{};
+    float direction[4]{};
+    float diffuse[4]{};
+    // x = radius/size, y = falloff, z = point-light flag.
+    float parameters[4]{};
+};
+
+// The forward-light subset that can affect a legacy BLEND material's alpha.
+// RGB is deliberately not lit in the impostor bake: the billboard is lit once
+// when it is consumed. These constants reproduce only the legacy glare term
+// that raises coverage above the diffuse map's alpha.
+struct alignas(16) ALMetalWorldLegacyAlphaLighting
+{
+    float sun_direction[4]{};
+    float sun_color[4]{};
+    std::array<ALMetalWorldLegacyAlphaLight, 7> local_lights{};
+    // x = Blinn-Phong exponent, y = coverage cutoff,
+    // z = directional-light visibility, w = classic-mode flag.
+    float parameters[4] = {128.f, 0.004f, 1.f, 0.f};
+};
+
 struct ALMetalWorldSimpleBatch
 {
     static constexpr std::size_t max_diffuse_textures = 32;
@@ -178,6 +201,7 @@ struct ALMetalWorldGBufferScene
     bool reverse_z = false;
     bool stamp_opaque_coverage = false;
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
+    const ALMetalWorldLegacyAlphaLighting* legacy_alpha_lighting = nullptr;
     float clear_color[4] = {1.f, 0.f, 1.f, 1.f};
 };
 

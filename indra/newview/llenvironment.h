@@ -330,6 +330,14 @@ public:
         F32 sky_ambient_below[3];      F32 _pad15;
     };
 
+    // CPU-side bytes currently bound by the shared environment block. Native
+    // render owners use this read-only snapshot instead of re-deriving sky
+    // lighting from settings independently.
+    const EnvironmentUBOData&   getEnvironmentUBOData() const
+    {
+        return mEnvUBOData;
+    }
+
     // Pack mSky/mWaterUniforms into the CPU-side block and mark it for upload (no GL calls).
     void                        packEnvironmentUBO();
 

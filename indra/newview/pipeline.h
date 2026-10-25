@@ -601,6 +601,8 @@ public:
     void endMetalImpostorAlphaCapture();
     void captureMetalImpostorFlatAlphaBatch(
         const LLDrawInfo& params, bool particle_or_hud_particle);
+    void captureMetalImpostorLegacyMaterialAlphaBatch(
+        const LLDrawInfo& params, bool particle_or_hud_particle);
     void captureMetalImpostorPBRAlphaBatch(const LLDrawInfo& params);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
