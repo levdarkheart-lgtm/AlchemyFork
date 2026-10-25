@@ -45,6 +45,7 @@
 #include "lldrawpool.h"
 #include "lldrawpoolavatar.h"
 #include "llface.h"
+#include "llfetchedgltfmaterial.h"
 #include "llmaterial.h"
 #include "llmorphview.h"
 #include "llresmgr.h"
@@ -538,10 +539,11 @@ bool LLVisualParamHint::render()
             // post-deferred fullbright families follow it. Split texture-indexed
             // GL batches back into exact face ranges so each native batch can
             // bind the face's real diffuse mirror without a texture ladder.
-            // Other forward/PBR families remain fail-closed.
+            // Other forward families remain fail-closed.
             constexpr U32 rigged_pools[] = {
                 LLDrawPool::POOL_SIMPLE,
                 LLDrawPool::POOL_MATERIALS,
+                LLDrawPool::POOL_GLTF_PBR,
                 LLDrawPool::POOL_ALPHA_MASK,
                 LLDrawPool::POOL_FULLBRIGHT,
                 LLDrawPool::POOL_FULLBRIGHT_ALPHA_MASK,
@@ -551,6 +553,7 @@ bool LLVisualParamHint::render()
                 complete = complete &&
                     (face->getPoolType() == LLDrawPool::POOL_SIMPLE ||
                      face->getPoolType() == LLDrawPool::POOL_MATERIALS ||
+                     face->getPoolType() == LLDrawPool::POOL_GLTF_PBR ||
                      face->getPoolType() == LLDrawPool::POOL_ALPHA_MASK ||
                      face->getPoolType() == LLDrawPool::POOL_FULLBRIGHT ||
                      face->getPoolType() ==
@@ -566,13 +569,54 @@ bool LLVisualParamHint::render()
                     }
                     LLDrawInfo* draw_info = face->mDrawInfo;
                     LLVertexBuffer* buffer = face->getVertexBuffer();
+                    const bool pbr = pool == LLDrawPool::POOL_GLTF_PBR;
+                    LLFetchedGLTFMaterial* pbr_material = nullptr;
+                    bool pbr_batch_double_sided = false;
+                    if (pbr && draw_info)
+                    {
+                        if (draw_info->mGLTFMaterialList.size() > 1)
+                        {
+                            const U8 material_slot = face->getTextureIndex();
+                            if (material_slot <
+                                draw_info->mGLTFMaterialList.size())
+                            {
+                                pbr_material = draw_info
+                                    ->mGLTFMaterialList[material_slot].get();
+                            }
+                            for (const auto& material :
+                                 draw_info->mGLTFMaterialList)
+                            {
+                                pbr_batch_double_sided =
+                                    pbr_batch_double_sided ||
+                                    (material && material->mDoubleSided);
+                            }
+                        }
+                        else
+                        {
+                            pbr_material = draw_info->mGLTFMaterial.get();
+                            pbr_batch_double_sided = pbr_material &&
+                                pbr_material->mDoubleSided;
+                        }
+                    }
                     LLViewerTexture* diffuse = face->getTexture();
+                    if (pbr)
+                    {
+                        const bool indexed_pbr = draw_info &&
+                            draw_info->mGLTFMaterialList.size() > 1;
+                        diffuse = !indexed_pbr && draw_info &&
+                                draw_info->mTexture
+                            ? draw_info->mTexture.get()
+                            : (pbr_material && pbr_material->mBaseColorTexture
+                                ? pbr_material->mBaseColorTexture.get()
+                                : LLViewerFetchedTexture::sWhiteImagep.get());
+                    }
                     LLImageGL* diffuse_image = diffuse
                         ? diffuse->getGLTexture() : nullptr;
                     const ALMetalTexture* diffuse_texture = diffuse_image
                         ? diffuse_image->getMetalTexture() : nullptr;
                     const bool uses_texture_matrix = draw_info &&
                         draw_info->mTextureList.size() <= 1 &&
+                        draw_info->mGLTFMaterialList.size() <= 1 &&
                         draw_info->mTextureMatrix;
                     const bool fullbright_mask =
                         pool == LLDrawPool::POOL_FULLBRIGHT_ALPHA_MASK;
@@ -593,6 +637,17 @@ bool LLVisualParamHint::render()
                              LLMaterial::DIFFUSE_ALPHA_MODE_MASK ||
                          material_alpha_mode ==
                              LLMaterial::DIFFUSE_ALPHA_MODE_EMISSIVE);
+                    const bool supported_pbr_mode = !pbr ||
+                        (pbr_material &&
+                         (pbr_material->mAlphaMode ==
+                              LLGLTFMaterial::ALPHA_MODE_OPAQUE ||
+                          pbr_material->mAlphaMode ==
+                              LLGLTFMaterial::ALPHA_MODE_MASK) &&
+                         !(pbr_material->mAlphaMode ==
+                               LLGLTFMaterial::ALPHA_MODE_OPAQUE &&
+                           LLPipeline::sRenderGlow &&
+                           face->getTextureEntry() &&
+                           face->getTextureEntry()->getGlow() > 0.f));
                     F32 material_alpha_cutoff = draw_info
                         ? draw_info->mAlphaMaskCutoff : 0.f;
                     if (legacy_material && draw_info &&
@@ -612,14 +667,17 @@ bool LLVisualParamHint::render()
                         }
                     }
                     complete = draw_info && buffer && diffuse_texture &&
-                        supported_material_mode &&
+                        supported_material_mode && supported_pbr_mode &&
                         (!mask_pool ||
                          draw_info->mMaterialSlotList.size() <= 1) &&
-                        !uses_texture_matrix && face->getIndicesStart() >= 0 &&
+                        (!uses_texture_matrix || pbr) &&
+                        face->getIndicesStart() >= 0 &&
                         face->getIndicesCount() > 0 &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) &&
                         (fullbright || fullbright_mask || buffer->hasDataType(
                             LLVertexBuffer::TYPE_NORMAL)) &&
+                        (!pbr || buffer->hasDataType(
+                            LLVertexBuffer::TYPE_TANGENT)) &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) &&
                         buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4) &&
@@ -675,15 +733,33 @@ bool LLVisualParamHint::render()
                         rigged_palettes.back().size();
                     batch.skin_joint_count = joint_count;
                     batch.deferred_rigged = !legacy_material &&
-                        !fullbright && !fullbright_mask;
+                        !pbr && !fullbright && !fullbright_mask;
                     batch.legacy_material_rigged = legacy_material;
+                    batch.pbr_rigged = pbr;
+                    batch.pbr_double_sided = pbr_batch_double_sided;
                     batch.fullbright_rigged = fullbright;
                     batch.fullbright_mask_rigged = fullbright_mask;
-                    batch.alpha_cutoff = legacy_material
+                    batch.alpha_cutoff = pbr
+                        ? (pbr_material->mAlphaMode ==
+                               LLGLTFMaterial::ALPHA_MODE_MASK
+                               ? pbr_material->mAlphaCutoff : 0.f)
+                        : legacy_material
                         ? (material_alpha_mode ==
                                LLMaterial::DIFFUSE_ALPHA_MODE_MASK
                                ? material_alpha_cutoff : 0.f)
                         : (mask_pool ? draw_info->mAlphaMaskCutoff : 0.f);
+                    if (pbr)
+                    {
+                        pbr_material->mTextureTransform[
+                            LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR]
+                                .getPacked(batch.pbr_base_color_transform);
+                        if (uses_texture_matrix)
+                        {
+                            std::memcpy(batch.texture_matrix,
+                                        draw_info->mTextureMatrix->mMatrix,
+                                        sizeof(batch.texture_matrix));
+                        }
+                    }
                     std::memcpy(batch.modelview_projection,
                                 rigged_modelview_projection.getF32ptr(),
                                 sizeof(batch.modelview_projection));

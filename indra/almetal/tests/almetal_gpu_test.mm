@@ -28,6 +28,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -131,6 +132,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_deferred_rigged_textured_vertex",
             "almetal_lit_preview_deferred_rigged_fragment",
             "almetal_lit_preview_legacy_material_rigged_fragment",
+            "almetal_lit_preview_pbr_rigged_textured_vertex",
             "almetal_lit_preview_fullbright_mask_rigged_textured_vertex",
             "almetal_lit_preview_fullbright_rigged_fragment",
             "almetal_lit_preview_fullbright_mask_rigged_fragment",
@@ -973,6 +975,27 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         REQUIRE(half_alpha_upload->commitAndWait(&error));
         INFO(error);
 
+        diffuse_descriptor.width = 2;
+        diffuse_descriptor.label =
+            "Alchemy PBR preview UV-transform source";
+        auto pbr_transform_texture = ALMetalTexture::create(
+            *device, diffuse_descriptor, &error);
+        INFO(error);
+        REQUIRE(pbr_transform_texture);
+        const std::array<std::uint8_t, 8> pbr_transform_pixels{{
+            128, 0, 0, 255,
+            0, 128, 0, 255,
+        }};
+        auto pbr_transform_upload = device->makeCommandBuffer(
+            "Alchemy PBR preview UV-transform upload", &error);
+        INFO(error);
+        REQUIRE(pbr_transform_upload);
+        REQUIRE(pbr_transform_texture->upload(
+            *pbr_transform_upload, 0, 0, {}, pbr_transform_pixels.data(), 8,
+            &error));
+        REQUIRE(pbr_transform_upload->commitAndWait(&error));
+        INFO(error);
+
         ALMetalLitPreviewBatch batch;
         batch.vertices = vertices.get();
         batch.position_offset = 0;
@@ -1401,6 +1424,72 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(legacy_material_discard_pixels[translated_interior + 1] == 51);
         CHECK(legacy_material_discard_pixels[translated_interior + 2] == 77);
         CHECK(legacy_material_discard_pixels[translated_interior + 3] == 255);
+
+        // Opaque/masked PBR writes the same attachment-0 base-color product,
+        // but its MASK cutoff uses texture alpha times the streamed
+        // baseColorFactor alpha. The U8 vertex color is that streamed factor.
+        ALMetalLitPreviewBatch pbr = deferred_rigged;
+        pbr.deferred_rigged = false;
+        pbr.pbr_rigged = true;
+        pbr.alpha_cutoff = 0.f;
+        auto rendered_pbr = renderer->render(pbr, &error);
+        INFO(error);
+        REQUIRE(rendered_pbr);
+        std::array<std::uint8_t, 32 * 32 * 4> pbr_pixels{};
+        REQUIRE(rendered_pbr->readback(
+            *device, 0, 0, {}, pbr_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+            pbr_pixels[translated_interior + 0]) - 61) <= 1);
+        CHECK(pbr_pixels[translated_interior + 1] == 64);
+        CHECK(pbr_pixels[translated_interior + 2] == 32);
+        CHECK(pbr_pixels[translated_interior + 3] == 255);
+
+        pbr.alpha_cutoff = 0.6f;
+        auto rendered_pbr_mask = renderer->render(pbr, &error);
+        INFO(error);
+        REQUIRE(rendered_pbr_mask);
+        std::array<std::uint8_t, 32 * 32 * 4> pbr_mask_pixels{};
+        REQUIRE(rendered_pbr_mask->readback(
+            *device, 0, 0, {}, pbr_mask_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(pbr_mask_pixels[translated_interior + 0] == 38);
+        CHECK(pbr_mask_pixels[translated_interior + 1] == 51);
+        CHECK(pbr_mask_pixels[translated_interior + 2] == 77);
+        CHECK(pbr_mask_pixels[translated_interior + 3] == 255);
+
+        // Mirror the PBR vertex shader's texture animation followed by the
+        // handed KHR transform. UV 0 becomes 0.5 under texture_matrix0, then
+        // scale 0.5 plus offset 0.5 selects the green texel at U=0.75. The
+        // reversed triangle verifies material-driven double-sided culling.
+        pbr.texture = pbr_transform_texture.get();
+        pbr.alpha_cutoff = 0.f;
+        pbr.index_offset = sizeof(std::uint16_t) * 6;
+        pbr.index_count = 3;
+        pbr.pbr_double_sided = true;
+        pbr.pbr_base_color_transform[0] = 0.5f;
+        pbr.pbr_base_color_transform[1] = 1.f;
+        pbr.pbr_base_color_transform[4] = 0.5f;
+        pbr.texture_matrix[12] = 0.5f;
+        auto rendered_pbr_transform = renderer->render(pbr, &error);
+        INFO(error);
+        REQUIRE(rendered_pbr_transform);
+        std::array<std::uint8_t, 32 * 32 * 4> pbr_transform_output{};
+        REQUIRE(rendered_pbr_transform->readback(
+            *device, 0, 0, {}, pbr_transform_output.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(pbr_transform_output[translated_interior + 0] <= 1);
+        CHECK(std::abs(static_cast<int>(
+            pbr_transform_output[translated_interior + 1]) - 128) <= 1);
+        CHECK(pbr_transform_output[translated_interior + 2] <= 1);
+        CHECK(pbr_transform_output[translated_interior + 3] == 255);
+
+        pbr.pbr_base_color_transform[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->render(pbr, &error));
+        CHECK(error == "Metal PBR rigged preview data is invalid");
 
         // The post-deferred fullbright mask uses texture alpha alone: outside
         // the alpha pool the U8 vertex alpha is legacy shininess. A 0.75

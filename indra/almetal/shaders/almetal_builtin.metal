@@ -199,6 +199,8 @@ struct ALMetalLitPreviewConstants
     float4 avatar_sin_wave;
     float4 avatar_gravity;
     float4 avatar_cloth_depth;
+    float4 pbr_base_color_transform[2];
+    float4x4 texture_matrix;
 };
 
 struct ALMetalLitPreviewVaryings
@@ -699,6 +701,54 @@ vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_deferred_rigged_tex
         skinned.position, skin_palette[0].xyz, constants);
     output.color = float4(colors[vertex_id]) / 255.0;
     output.texcoord = texcoords[vertex_id];
+    return output;
+}
+
+static float2 almetal_lit_preview_pbr_texcoord(
+    float2 vertex_texcoord,
+    constant ALMetalLitPreviewConstants& constants)
+{
+    // Keep this operation order and handedness aligned with
+    // deferred/textureUtilV.glsl::texture_transform. SL texture animation is
+    // right-handed; KHR_texture_transform is defined in glTF's left-handed
+    // UV space and is evaluated in-shader to retain reference precision.
+    float2 texcoord =
+        (constants.texture_matrix * float4(vertex_texcoord, 0.0, 1.0)).xy;
+    texcoord.y = 1.0 - texcoord.y;
+
+    const float2 scale = constants.pbr_base_color_transform[0].xy;
+    const float rotation = constants.pbr_base_color_transform[0].z;
+    const float2 offset = constants.pbr_base_color_transform[1].xy;
+    const float2 scaled = texcoord * scale;
+    const float cosine = cos(rotation);
+    const float sine = sin(rotation);
+    texcoord = float2(cosine * scaled.x + sine * scaled.y,
+                      -sine * scaled.x + cosine * scaled.y) + offset;
+    texcoord.y = 1.0 - texcoord.y;
+    return texcoord;
+}
+
+vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_pbr_rigged_textured_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device float2* texcoords [[buffer(3)]],
+    const device uchar4* colors [[buffer(4)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    const device float4* skin_palette [[buffer(7)]],
+    constant uint& joint_count [[buffer(8)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalLitPreviewSkinnedVertex skinned =
+        almetal_lit_preview_skin_vertex(
+            positions[vertex_id], normals[vertex_id],
+            encoded_weights[vertex_id], skin_palette, joint_count);
+    ALMetalLitPreviewTexturedVaryings output;
+    output.position = almetal_lit_preview_rebased_clip_position(
+        skinned.position, skin_palette[0].xyz, constants);
+    output.color = float4(colors[vertex_id]) / 255.0;
+    output.texcoord = almetal_lit_preview_pbr_texcoord(
+        texcoords[vertex_id], constants);
     return output;
 }
 

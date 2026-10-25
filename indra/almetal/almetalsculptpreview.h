@@ -84,6 +84,13 @@ struct ALMetalLitPreviewBatch
     // writer. Normal/specular material inputs feed attachments which the
     // visual-hint texture does not own; this batch reproduces attachment 0.
     bool legacy_material_rigged = false;
+    // Select an opaque or alpha-masked glTF PBR G-buffer albedo writer. The
+    // base-color map and streamed baseColorFactor are the only inputs to the
+    // visual-hint texture's attachment 0; normal/ORM/emissive maps feed other
+    // G-buffer attachments. The vertex path applies SL texture animation
+    // followed by the material's KHR_texture_transform exactly as GLSL does.
+    bool pbr_rigged = false;
+    bool pbr_double_sided = false;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;
@@ -132,6 +139,19 @@ struct ALMetalLitPreviewBatch
     float avatar_sin_wave[4]{};
     float avatar_gravity[4]{};
     float avatar_cloth_depth[4]{};
+    // Packed as TextureTransform::getPacked(): scale.xy, rotation, padding,
+    // offset.xy, padding. The matrix uses the same column-major byte layout
+    // uploaded to GLSL's texture_matrix0.
+    float pbr_base_color_transform[8] = {
+        1.f, 1.f, 0.f, 0.f,
+        0.f, 0.f, 0.f, 0.f,
+    };
+    float texture_matrix[16] = {
+        1.f, 0.f, 0.f, 0.f,
+        0.f, 1.f, 0.f, 0.f,
+        0.f, 0.f, 1.f, 0.f,
+        0.f, 0.f, 0.f, 1.f,
+    };
     float alpha_cutoff = 0.f;
     float edge_color[4] = {0.4f, 0.4f, 0.4f, 1.f};
 };
