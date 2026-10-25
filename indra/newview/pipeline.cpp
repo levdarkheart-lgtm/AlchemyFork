@@ -6077,6 +6077,57 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
     capture.spot_shadow_batches.push_back(batch);
 }
 
+void LLPipeline::captureMetalSpotShadowTreeBatch(
+    LLVertexBuffer* buffer, LLViewerTexture* texture)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_active ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_complete)
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+    if (!buffer || !image ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer() || !image->getMetalTexture() ||
+        buffer->getNumVerts() == 0 || buffer->getNumIndices() == 0 ||
+        (buffer->getIndexStride() != 2 && buffer->getIndexStride() != 4))
+    {
+        capture.spot_shadow_capture_complete = false;
+        capture.spot_shadow_batches.clear();
+        return;
+    }
+
+    ALMetalWorldSpotShadowBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.texcoord_offset = buffer->getOffset(
+        LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = buffer->getNumIndices();
+    batch.textures[0] = image->getMetalTexture();
+    batch.texture_count = 1;
+    batch.alpha_cutoffs[0] = 0.5f;
+    batch.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    capture.spot_shadow_batches.push_back(batch);
+}
+
 void LLPipeline::endMetalSpotShadowCapture()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -22772,9 +22823,22 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                         {
                             ALSpotShadowCache::Casters pool_casters;
                             pool->addShadowCasters(pool_casters);
-                            native_complete =
-                                pool_casters.count() == 0 &&
-                                !pool_casters.changing();
+                            if (pool->getType() == LLDrawPool::POOL_TREE &&
+                                !pool_casters.changing())
+                            {
+                                // LLDrawPoolTree adds one caster record for
+                                // every indexed face renderDeferred draws.
+                                // The direct capture below observes the same
+                                // loop, so strict final batch accounting also
+                                // catches any divergence.
+                                native_batches += pool_casters.count();
+                            }
+                            else
+                            {
+                                native_complete =
+                                    pool_casters.count() == 0 &&
+                                    !pool_casters.changing();
+                            }
                         }
                     }
                     beginMetalSpotShadowCapture(

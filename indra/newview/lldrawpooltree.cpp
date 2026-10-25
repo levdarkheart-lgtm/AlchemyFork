@@ -102,6 +102,10 @@ void LLDrawPoolTree::renderDeferred(S32 pass)
 
 #if LL_DARWIN
             gPipeline.captureMetalWorldTreeBatch(buff, pTexture);
+            // This call is inert during the ordinary deferred pass. While a
+            // direct spotlight slice is being captured, retain the exact
+            // pool-owned indexed draw and its texture-only 0.5 alpha test.
+            gPipeline.captureMetalSpotShadowTreeBatch(buff, pTexture);
 #endif
             buff->setBuffer();
             buff->drawRange(LLRender::TRIANGLES, 0, buff->getNumVerts() - 1, buff->getNumIndices(), 0);

@@ -645,6 +645,8 @@ public:
         bool indexed_materials = false);
     void captureMetalSpotShadowPBRBatch(
         const LLDrawInfo& params, bool indexed_materials);
+    void captureMetalSpotShadowTreeBatch(
+        LLVertexBuffer* buffer, LLViewerTexture* texture);
     void captureMetalImpostorPBRAlphaBatch(
         const LLDrawInfo& params, bool particle_or_hud_particle,
         bool depth_only = false);
