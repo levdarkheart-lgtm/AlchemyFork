@@ -146,6 +146,12 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_emboss_fragment",
             "almetal_world_water_exclusion_vertex",
             "almetal_world_water_exclusion_fragment",
+            "almetal_world_legacy_glow_vertex",
+            "almetal_world_legacy_glow_skinned_vertex",
+            "almetal_world_legacy_glow_fragment",
+            "almetal_world_pbr_glow_vertex",
+            "almetal_world_pbr_glow_skinned_vertex",
+            "almetal_world_pbr_glow_fragment",
             "almetal_world_flat_alpha_fragment",
             "almetal_world_pbr_alpha_fragment",
             "almetal_world_impostor_fragment",
@@ -1027,6 +1033,11 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         const std::array<std::array<float, 2>, 3> emboss_texcoords{{
             {{0.5f, 0.f}}, {{0.5f, 0.f}}, {{0.5f, 0.f}},
         }};
+        const std::array<std::array<std::uint8_t, 4>, 3> emissive{{
+            {{0, 0, 0, 128}},
+            {{0, 0, 0, 128}},
+            {{0, 0, 0, 128}},
+        }};
         const std::array<float, 3> avatar_weights{{0.f, 0.f, 0.f}};
         const std::array<std::array<float, 4>, 3> avatar_clothing{{
             {{0.25f, 0.f, 0.f, 1.f}},
@@ -1044,14 +1055,16 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             tangent_offset + sizeof(tangents);
         constexpr std::size_t emboss_texcoord_offset =
             weight_offset + sizeof(weights);
+        constexpr std::size_t emissive_offset =
+            emboss_texcoord_offset + sizeof(emboss_texcoords);
+        constexpr std::size_t vertex_storage_size =
+            (emissive_offset + sizeof(emissive) + 15) & ~std::size_t{15};
         constexpr std::size_t avatar_weight_offset =
             texcoord_offset + sizeof(texcoords);
         constexpr std::size_t avatar_cloth_offset =
             (avatar_weight_offset + sizeof(avatar_weights) + 15) &
             ~std::size_t{15};
-        std::array<std::uint8_t,
-                   emboss_texcoord_offset + sizeof(emboss_texcoords)>
-            vertex_bytes{};
+        std::array<std::uint8_t, vertex_storage_size> vertex_bytes{};
         std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
         std::memcpy(vertex_bytes.data() + normal_offset,
                     normals.data(), sizeof(normals));
@@ -1065,6 +1078,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                     weights.data(), sizeof(weights));
         std::memcpy(vertex_bytes.data() + emboss_texcoord_offset,
                     emboss_texcoords.data(), sizeof(emboss_texcoords));
+        std::memcpy(vertex_bytes.data() + emissive_offset,
+                    emissive.data(), sizeof(emissive));
         std::array<std::uint8_t,
                    avatar_cloth_offset + sizeof(avatar_clothing)>
             avatar_vertex_bytes{};
@@ -2326,6 +2341,119 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.batches = &fullbright_batch;
         opaque_forward_scene.batch_count = 1;
         opaque_forward_scene.water_exclusion_surface = nullptr;
+
+        // The two glow owners share alpha-only output but not blending:
+        // opaque PBR glow replaces destination alpha, then legacy glow adds
+        // its diffuse-alpha-times-emissive coverage. Replay both static and
+        // rigged variants at retained equal depth and prove RGB/depth survive.
+        ALMetalWorldSimpleBatch pbr_glow_batch;
+        pbr_glow_batch.vertices = vertices.get();
+        pbr_glow_batch.position_offset = 0;
+        pbr_glow_batch.texcoord_offset = texcoord_offset;
+        pbr_glow_batch.emissive_offset = emissive_offset;
+        pbr_glow_batch.vertex_count = positions.size();
+        pbr_glow_batch.indices = indices.get();
+        pbr_glow_batch.index_count = index_values.size();
+        pbr_glow_batch.diffuse_textures[0] = indexed_diffuse.get();
+        pbr_glow_batch.texture_count = 1;
+        pbr_glow_batch.pbr_slots[0].emissive_texture =
+            indexed_diffuse.get();
+        pbr_glow_batch.pbr_slots[0].emissive_color[1] = 0.5f;
+        pbr_glow_batch.pbr_slots[0].base_color_factor[3] = 1.f;
+        pbr_glow_batch.pbr_slots[0].alpha_cutoff = -1.f;
+        pbr_glow_batch.pbr_slot_count = 1;
+        pbr_glow_batch.pbr_glow = true;
+        std::memcpy(pbr_glow_batch.modelview_projection,
+                    identity.data(), sizeof(identity));
+
+        ALMetalWorldSimpleBatch pbr_glow_rigged = pbr_glow_batch;
+        pbr_glow_rigged.weight_offset = weight_offset;
+        pbr_glow_rigged.skin_palette = alpha_skin_palette.data();
+        pbr_glow_rigged.skin_palette_float_count =
+            alpha_skin_palette.size();
+        pbr_glow_rigged.skin_joint_count = 1;
+        std::array<ALMetalWorldSimpleBatch, 2> pbr_glow_batches{{
+            pbr_glow_batch,
+            pbr_glow_rigged,
+        }};
+        opaque_forward_scene.batches = pbr_glow_batches.data();
+        opaque_forward_scene.batch_count = pbr_glow_batches.size();
+
+        pbr_glow_batches[0].emissive_offset = vertex_bytes.size();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world opaque post-deferred batch is invalid");
+        pbr_glow_batches[0].emissive_offset = emissive_offset;
+        pbr_glow_batches[0].pbr_slots[0].emissive_texture = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world PBR glow slot is invalid");
+        pbr_glow_batches[0].pbr_slots[0].emissive_texture =
+            indexed_diffuse.get();
+        error.clear();
+        auto pbr_glow_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(pbr_glow_result);
+        std::array<std::uint16_t, 32 * 32 * 4> glow_pixels{};
+        std::array<float, 32 * 32> glow_depth{};
+        REQUIRE(pbr_glow_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, glow_pixels.data(), 32 * 8, &error));
+        REQUIRE(pbr_glow_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, glow_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(glow_pixels[center + 0] == 0x3400);
+        CHECK(glow_pixels[center + 1] == 0x3000);
+        CHECK(glow_pixels[center + 2] == 0x2c00);
+        CHECK(glow_pixels[center + 3] >= 0x3400);
+        CHECK(glow_pixels[center + 3] <= 0x3410);
+        CHECK(std::abs(glow_depth[center / 4] - 0.625f) < 0.0001f);
+
+        ALMetalWorldSimpleBatch legacy_glow_batch = pbr_glow_batch;
+        legacy_glow_batch.diffuse_textures[0] = tree_diffuse.get();
+        legacy_glow_batch.pbr_slot_count = 0;
+        legacy_glow_batch.pbr_glow = false;
+        legacy_glow_batch.legacy_glow = true;
+        ALMetalWorldSimpleBatch legacy_glow_rigged = legacy_glow_batch;
+        legacy_glow_rigged.weight_offset = weight_offset;
+        legacy_glow_rigged.skin_palette = alpha_skin_palette.data();
+        legacy_glow_rigged.skin_palette_float_count =
+            alpha_skin_palette.size();
+        legacy_glow_rigged.skin_joint_count = 1;
+        std::array<ALMetalWorldSimpleBatch, 4> glow_batches{{
+            pbr_glow_batch,
+            pbr_glow_rigged,
+            legacy_glow_batch,
+            legacy_glow_rigged,
+        }};
+        opaque_forward_scene.batches = glow_batches.data();
+        opaque_forward_scene.batch_count = glow_batches.size();
+        auto glow_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(glow_result);
+        REQUIRE(glow_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, glow_pixels.data(), 32 * 8, &error));
+        REQUIRE(glow_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, glow_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(glow_pixels[center + 0] == 0x3400);
+        CHECK(glow_pixels[center + 1] == 0x3000);
+        CHECK(glow_pixels[center + 2] == 0x2c00);
+        CHECK(glow_pixels[center + 3] > 0x3a00);
+        CHECK(glow_pixels[center + 3] < 0x3a20);
+        CHECK(std::abs(glow_depth[center / 4] - 0.625f) < 0.0001f);
+        CHECK(glow_pixels[0] == 0x3400);
+        CHECK(glow_pixels[1] == 0x3000);
+        CHECK(glow_pixels[2] == 0x2c00);
+        CHECK(glow_pixels[3] == 0x3800);
+
+        opaque_forward_scene.batches = &fullbright_batch;
+        opaque_forward_scene.batch_count = 1;
 
         // Fullbright shiny is opaque in the impostor bake, but its RGB is
         // the exact legacy reflection-probe result: decoded diffuse times

@@ -156,6 +156,9 @@ void LLDrawPoolGLTFPBR::renderPostDeferred(S32 pass)
                             gPBRGlowIndexedProgram.mRiggedVariant->isComplete();
 
         gPBRGlowProgram.bind();
+#if LL_DARWIN
+        gPipeline.beginMetalWorldPBRGlowPass(false);
+#endif
         if (glow_indexed)
         {
             pushGLTFBatchesScalar(LLRenderPass::PASS_GLTF_GLOW);
@@ -164,8 +167,14 @@ void LLDrawPoolGLTFPBR::renderPostDeferred(S32 pass)
         {
             pushGLTFBatches(LLRenderPass::PASS_GLTF_GLOW);
         }
+#if LL_DARWIN
+        gPipeline.endMetalWorldGBufferPass();
+#endif
 
         gPBRGlowProgram.bind(true);
+#if LL_DARWIN
+        gPipeline.beginMetalWorldPBRGlowPass(true);
+#endif
         if (glow_indexed)
         {
             pushRiggedGLTFBatchesScalar(LLRenderPass::PASS_GLTF_GLOW_RIGGED);
@@ -174,14 +183,29 @@ void LLDrawPoolGLTFPBR::renderPostDeferred(S32 pass)
         {
             pushRiggedGLTFBatches(LLRenderPass::PASS_GLTF_GLOW_RIGGED);
         }
+#if LL_DARWIN
+        gPipeline.endMetalWorldGBufferPass();
+#endif
 
         if (glow_indexed)
         {
             gPBRGlowIndexedProgram.bind();
+#if LL_DARWIN
+            gPipeline.beginMetalWorldPBRGlowPass(false);
+#endif
             pushGLTFBatchesIndexed(LLRenderPass::PASS_GLTF_GLOW, GLTF_MAPS_GLOW);
+#if LL_DARWIN
+            gPipeline.endMetalWorldGBufferPass();
+#endif
 
             gPBRGlowIndexedProgram.bind(true); // rigged variant
+#if LL_DARWIN
+            gPipeline.beginMetalWorldPBRGlowPass(true);
+#endif
             pushRiggedGLTFBatchesIndexed(LLRenderPass::PASS_GLTF_GLOW_RIGGED, GLTF_MAPS_GLOW);
+#if LL_DARWIN
+            gPipeline.endMetalWorldGBufferPass();
+#endif
         }
 
         gGL.setColorMask(true, false);

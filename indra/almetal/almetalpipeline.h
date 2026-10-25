@@ -381,6 +381,8 @@ public:
     bool setScissor(const ALMetalScissorRect& scissor, std::string* error = nullptr);
     bool setCullMode(ALMetalCullMode mode, std::string* error = nullptr);
     bool setFrontFacingWinding(ALMetalWinding winding, std::string* error = nullptr);
+    bool setDepthBias(float constant_bias, float slope_scale, float clamp,
+                      std::string* error = nullptr);
     bool setTessellationFactorBuffer(const ALMetalBuffer& buffer, std::size_t offset = 0,
                                      std::size_t instance_stride = 0,
                                      std::string* error = nullptr);

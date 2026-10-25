@@ -172,7 +172,8 @@ namespace
     {
         float texture_transform[4][8];
         float emissive_color[4];
-        // x = roughness factor, y = metallic factor, z = alpha cutoff.
+        // x = roughness, y = metallic, z = alpha cutoff,
+        // w = streamed base-colour alpha factor.
         float properties[4];
     };
 
@@ -599,6 +600,10 @@ struct ALMetalWorldGBufferRenderer::Impl
         opaque_forward_emboss_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         water_exclusion_pipelines;
+    std::array<OpaqueForwardRiggedPipelines, 2>
+        legacy_glow_pipelines;
+    std::array<OpaqueForwardRiggedPipelines, 2>
+        pbr_glow_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> light_map_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> light_map_blur_pipeline;
     std::array<NormalPipelines, 2> hdri_sky_pipelines;
@@ -691,6 +696,18 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_water_exclusion_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_water_exclusion_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_legacy_glow_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_legacy_glow_skinned_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_legacy_glow_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_pbr_glow_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_pbr_glow_skinned_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_pbr_glow_fragment") ||
         !impl->library->hasFunction("almetal_world_flat_alpha_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_alpha_fragment") ||
         !impl->library->hasFunction(
@@ -1153,6 +1170,55 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         if (!impl->water_exclusion_pipelines[hdr])
         {
             return nullptr;
+        }
+
+        for (std::size_t rigged = 0; rigged < 2; ++rigged)
+        {
+            ALMetalRenderPipelineDescriptor glow_descriptor;
+            glow_descriptor.library = impl->library.get();
+            glow_descriptor.vertex_function = rigged
+                ? "almetal_world_legacy_glow_skinned_vertex"
+                : "almetal_world_legacy_glow_vertex";
+            glow_descriptor.fragment_function =
+                "almetal_world_legacy_glow_fragment";
+            glow_descriptor.color_attachment_count = 1;
+            glow_descriptor.colors[0].format = screen_formats[hdr];
+            glow_descriptor.colors[0].blending_enabled = true;
+            glow_descriptor.colors[0].source_alpha =
+                ALMetalBlendFactor::one;
+            glow_descriptor.colors[0].destination_alpha =
+                ALMetalBlendFactor::one;
+            glow_descriptor.colors[0].write_mask =
+                ALMetalColorWriteMask::alpha;
+            glow_descriptor.depth_stencil_format =
+                ALMetalPixelFormat::depth32_float_stencil8;
+            glow_descriptor.label =
+                "Alchemy world legacy additive-glow pipeline";
+            impl->legacy_glow_pipelines[hdr][rigged] =
+                ALMetalRenderPipeline::create(
+                    device, glow_descriptor, error);
+            if (!impl->legacy_glow_pipelines[hdr][rigged])
+            {
+                return nullptr;
+            }
+
+            glow_descriptor.vertex_function = rigged
+                ? "almetal_world_pbr_glow_skinned_vertex"
+                : "almetal_world_pbr_glow_vertex";
+            glow_descriptor.fragment_function =
+                "almetal_world_pbr_glow_fragment";
+            glow_descriptor.colors[0].blending_enabled = false;
+            glow_descriptor.colors[0].destination_alpha =
+                ALMetalBlendFactor::zero;
+            glow_descriptor.label =
+                "Alchemy world PBR glow-replacement pipeline";
+            impl->pbr_glow_pipelines[hdr][rigged] =
+                ALMetalRenderPipeline::create(
+                    device, glow_descriptor, error);
+            if (!impl->pbr_glow_pipelines[hdr][rigged])
+            {
+                return nullptr;
+            }
         }
     }
 
@@ -2631,6 +2697,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 destination.properties[0] = source.roughness_factor;
                 destination.properties[1] = source.metallic_factor;
                 destination.properties[2] = source.alpha_cutoff;
+                destination.properties[3] = source.base_color_factor[3];
             }
             const auto& terrain_pipelines = batch.terrain_pbr
                 ? mImpl->pbr_terrain_pipelines
@@ -3556,7 +3623,24 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     constexpr std::uint32_t max_skin_joints = 110;
     bool has_shiny = false;
     bool has_water_exclusion = false;
-    bool saw_opaque_forward = false;
+    bool saw_post_exclusion = false;
+    const auto valid_skinning = [=](
+        const ALMetalWorldSimpleBatch& batch, bool rigged)
+    {
+        return rigged
+            ? batch.skin_joint_count != 0 &&
+                  batch.skin_joint_count <= max_skin_joints &&
+                  batch.skin_palette_float_count ==
+                      4 + static_cast<std::size_t>(
+                              batch.skin_joint_count) * 12 &&
+                  batch.weight_offset % float4_stride == 0 &&
+                  rangeFits(batch.weight_offset, batch.vertex_count,
+                            float4_stride, batch.vertices->length()) &&
+                  finiteValues(batch.skin_palette,
+                               batch.skin_palette_float_count)
+            : batch.skin_palette_float_count == 0 &&
+                  batch.skin_joint_count == 0;
+    };
     for (std::size_t index = 0; index < scene.batch_count; ++index)
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
@@ -3564,13 +3648,14 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             (batch.impostor_fullbright ? 1u : 0u) +
             (batch.impostor_shiny ? 1u : 0u) +
             (batch.impostor_emboss ? 1u : 0u) +
-            (batch.water_exclusion ? 1u : 0u);
+            (batch.water_exclusion ? 1u : 0u) +
+            (batch.legacy_glow ? 1u : 0u) +
+            (batch.pbr_glow ? 1u : 0u);
         const bool rigged = batch.skin_palette != nullptr;
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         if (family_count != 1 || !batch.vertices || !batch.indices ||
             batch.vertex_count == 0 || batch.index_count == 0 ||
-            batch.material_slot_count != 0 || batch.pbr_slot_count != 0 ||
             batch.normal_texture || batch.impostor || batch.terrain ||
             batch.avatar_rigid || batch.avatar_skinning ||
             batch.avatar_cloth ||
@@ -3587,7 +3672,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         if (batch.water_exclusion)
         {
-            if (saw_opaque_forward || batch.texture_count != 0 || rigged ||
+            if (saw_post_exclusion || batch.texture_count != 0 || rigged ||
+                batch.material_slot_count != 0 ||
+                batch.pbr_slot_count != 0 ||
                 batch.skin_palette_float_count != 0 ||
                 batch.skin_joint_count != 0 ||
                 !finiteValues(batch.modelview, 16))
@@ -3600,7 +3687,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             has_water_exclusion = true;
             continue;
         }
-        saw_opaque_forward = true;
+        saw_post_exclusion = true;
+        const bool glow = batch.legacy_glow || batch.pbr_glow;
         if (batch.texture_count == 0 ||
             batch.texture_count >
                 ALMetalWorldSimpleBatch::max_diffuse_textures ||
@@ -3608,10 +3696,27 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             !rangeFits(batch.texcoord_offset, batch.vertex_count,
                        float2_stride, batch.vertices->length()) ||
             !finiteValues(batch.texture_matrix, 16) ||
+            !valid_skinning(batch, rigged) ||
+            (glow &&
+             (batch.material_slot_count != 0 || batch.alpha_mask ||
+              batch.material_alpha_mode != 0 ||
+              batch.emissive_offset % color_stride != 0 ||
+              !rangeFits(batch.emissive_offset, batch.vertex_count,
+                         color_stride, batch.vertices->length()))) ||
+            (batch.legacy_glow &&
+             (batch.pbr_slot_count != 0 || batch.double_sided)) ||
+            (batch.pbr_glow &&
+             (batch.pbr_slot_count == 0 ||
+              batch.pbr_slot_count != batch.texture_count ||
+              batch.pbr_slot_count >
+                  ALMetalWorldSimpleBatch::max_material_slots)) ||
+            (!glow &&
+             (batch.material_slot_count != 0 ||
+              batch.pbr_slot_count != 0)) ||
             (batch.impostor_fullbright &&
              (!std::isfinite(batch.alpha_cutoff) ||
               batch.alpha_cutoff < 0.f || batch.alpha_cutoff > 1.f)) ||
-            (!batch.impostor_emboss &&
+            (!glow && !batch.impostor_emboss &&
              (batch.normal_offset % float4_stride != 0 ||
               batch.color_offset % color_stride != 0 ||
               !rangeFits(batch.normal_offset, batch.vertex_count,
@@ -3625,18 +3730,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             (batch.impostor_shiny &&
              (!finiteValues(batch.modelview, 16) ||
               !finiteValues(&batch.normal_matrix[0][0], 12) ||
-              !finiteValues(&batch.rigged_normal_matrix[0][0], 12))) ||
-            (rigged &&
-             (batch.skin_joint_count == 0 ||
-              batch.skin_joint_count > max_skin_joints ||
-              batch.skin_palette_float_count !=
-                  4 + static_cast<std::size_t>(batch.skin_joint_count) * 12 ||
-              batch.weight_offset % float4_stride != 0 ||
-              !rangeFits(batch.weight_offset, batch.vertex_count,
-                         float4_stride, batch.vertices->length()))) ||
-            (!rigged &&
-             (batch.skin_palette_float_count != 0 ||
-              batch.skin_joint_count != 0)))
+              !finiteValues(&batch.rigged_normal_matrix[0][0], 12))))
         {
             setError(error, "Metal world opaque post-deferred batch is invalid");
             return nullptr;
@@ -3649,6 +3743,30 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 setError(error,
                          "Metal world opaque post-deferred texture is invalid");
                 return nullptr;
+            }
+        }
+        if (batch.pbr_glow)
+        {
+            for (std::uint32_t slot = 0;
+                 slot < batch.pbr_slot_count; ++slot)
+            {
+                const ALMetalWorldPBRSlot& material =
+                    batch.pbr_slots[slot];
+                if (!sampleableTexture(material.emissive_texture) ||
+                    !finiteValues(
+                        &material.texture_transform[0][0], 32) ||
+                    !finiteValues(material.emissive_color, 4) ||
+                    !finiteValues(material.base_color_factor, 4) ||
+                    material.base_color_factor[3] < 0.f ||
+                    material.base_color_factor[3] > 1.f ||
+                    !std::isfinite(material.alpha_cutoff) ||
+                    material.alpha_cutoff < -1.f ||
+                    material.alpha_cutoff > 1.f)
+                {
+                    setError(error,
+                             "Metal world PBR glow slot is invalid");
+                    return nullptr;
+                }
             }
         }
         has_shiny = has_shiny || batch.impostor_shiny;
@@ -3859,6 +3977,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 : mImpl->forward_water_exclusion_depth.get();
             encoded =
                 encoder->setDepthStencilState(water_depth, error) &&
+                encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
                 encoder->setStencilReferenceValue(1u, error) &&
                 encoder->setCullMode(ALMetalCullMode::back, error) &&
                 encoder->setPipeline(
@@ -3877,6 +3996,119 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     ALMetalPrimitiveType::triangle, batch.index_count,
                     batch.index_type, *batch.indices,
                     batch.index_offset, 1, error);
+            continue;
+        }
+        if (batch.legacy_glow || batch.pbr_glow)
+        {
+            WorldSimpleConstants world{};
+            std::memcpy(world.modelview_projection,
+                        batch.modelview_projection,
+                        sizeof(world.modelview_projection));
+            std::memcpy(world.texture_matrix, batch.texture_matrix,
+                        sizeof(world.texture_matrix));
+            world.depth_convention[0] = scene.reverse_z ? 1u : 0u;
+            world.depth_convention[1] = batch.texture_count;
+
+            const ALMetalDepthStencilState* depth = scene.reverse_z
+                ? mImpl->reverse_readonly_depth.get()
+                : mImpl->forward_readonly_depth.get();
+            const ALMetalRenderPipeline* glow_pipeline = batch.pbr_glow
+                ? mImpl->pbr_glow_pipelines[scene.hdr ? 1 : 0]
+                                                 [rigged ? 1 : 0].get()
+                : mImpl->legacy_glow_pipelines[scene.hdr ? 1 : 0]
+                                                    [rigged ? 1 : 0].get();
+            encoded =
+                encoder->setDepthStencilState(depth, error) &&
+                encoder->setDepthBias(
+                    batch.legacy_glow
+                        ? (scene.reverse_z ? 1.f : -1.f) : 0.f,
+                    batch.legacy_glow
+                        ? (scene.reverse_z ? 1.f : -1.f) : 0.f,
+                    0.f, error) &&
+                encoder->setCullMode(
+                    batch.pbr_glow && batch.double_sided
+                        ? ALMetalCullMode::none : ALMetalCullMode::back,
+                    error) &&
+                encoder->setPipeline(*glow_pipeline, error) &&
+                encoder->setVertexBuffer(
+                    0, *batch.vertices, batch.position_offset, error) &&
+                encoder->setVertexBuffer(
+                    2, *batch.vertices, batch.texcoord_offset, error) &&
+                encoder->setVertexBuffer(
+                    3, *batch.vertices, batch.emissive_offset, error) &&
+                encoder->setVertexBytes(
+                    4, &world, sizeof(world), error);
+            if (encoded && rigged)
+            {
+                encoded =
+                    encoder->setVertexBuffer(
+                        5, *palette_buffers[index], 0, error) &&
+                    encoder->setVertexBuffer(
+                        6, *batch.vertices, batch.weight_offset, error) &&
+                    encoder->setVertexBytes(
+                        7, &batch.skin_joint_count,
+                        sizeof(batch.skin_joint_count), error);
+            }
+            if (encoded && batch.pbr_glow)
+            {
+                WorldPBRConstants pbr{};
+                for (std::size_t slot = 0;
+                     slot < batch.pbr_slot_count; ++slot)
+                {
+                    const ALMetalWorldPBRSlot& source =
+                        batch.pbr_slots[slot];
+                    WorldPBRSlotConstants& destination = pbr.slots[slot];
+                    std::memcpy(destination.texture_transform,
+                                source.texture_transform,
+                                sizeof(destination.texture_transform));
+                    std::memcpy(destination.emissive_color,
+                                source.emissive_color,
+                                sizeof(destination.emissive_color));
+                    destination.properties[0] = source.roughness_factor;
+                    destination.properties[1] = source.metallic_factor;
+                    destination.properties[2] = source.alpha_cutoff;
+                    destination.properties[3] =
+                        source.base_color_factor[3];
+                }
+                pbr.config[0] = batch.pbr_slot_count;
+                encoded =
+                    encoder->setVertexBytes(
+                        11, &pbr, sizeof(pbr), error) &&
+                    encoder->setFragmentBytes(
+                        0, &pbr, sizeof(pbr), error);
+                for (std::size_t slot = 0;
+                     encoded && slot <
+                         ALMetalWorldSimpleBatch::max_material_slots; ++slot)
+                {
+                    const std::size_t source = std::min<std::size_t>(
+                        slot, batch.pbr_slot_count - 1);
+                    encoded =
+                        encoder->setFragmentTexture(
+                            static_cast<std::uint32_t>(slot),
+                            batch.diffuse_textures[source], error) &&
+                        encoder->setFragmentTexture(
+                            static_cast<std::uint32_t>(8 + slot),
+                            batch.pbr_slots[source].emissive_texture, error);
+                }
+            }
+            else
+            {
+                for (std::size_t texture = 0;
+                     encoded && texture <
+                         ALMetalWorldSimpleBatch::max_diffuse_textures;
+                     ++texture)
+                {
+                    const std::size_t source = std::min<std::size_t>(
+                        texture, batch.texture_count - 1);
+                    encoded = encoder->setFragmentTexture(
+                        static_cast<std::uint32_t>(texture),
+                        batch.diffuse_textures[source], error);
+                }
+            }
+            encoded = encoded && encoder->drawIndexed(
+                ALMetalPrimitiveType::triangle, batch.index_count,
+                batch.index_type, *batch.indices,
+                batch.index_offset, 1, error);
             continue;
         }
         const ALMetalRenderPipeline* pipeline = nullptr;
@@ -3936,6 +4168,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                                : mImpl->forward_depth.get());
         encoded =
             encoder->setDepthStencilState(depth, error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
             encoder->setCullMode(ALMetalCullMode::back, error) &&
             encoder->setPipeline(*pipeline, error) &&
             encoder->setVertexBuffer(

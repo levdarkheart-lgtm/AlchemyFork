@@ -603,6 +603,8 @@ public:
     void endMetalImpostorAlphaCapture();
     void beginMetalWorldPostDeferredCapture();
     void beginMetalWorldWaterExclusionPass();
+    void beginMetalWorldLegacyGlowPass(bool rigged);
+    void beginMetalWorldPBRGlowPass(bool rigged);
     void encodeMetalWorldOpaquePostDeferredCapture();
     void endMetalWorldPostDeferredCapture();
     void captureMetalImpostorFlatAlphaBatch(
@@ -622,6 +624,8 @@ public:
                                         bool indexed_materials);
     void captureMetalWorldPBRBatch(const LLDrawInfo& params,
                                    bool indexed_materials);
+    void captureMetalWorldLegacyGlowBatch(const LLDrawInfo& params,
+                                          bool indexed_materials);
     void captureMetalWorldBumpBatch(const LLDrawInfo& params,
                                    LLViewerTexture* normal_texture);
     void captureMetalWorldTreeBatch(LLVertexBuffer* buffer,

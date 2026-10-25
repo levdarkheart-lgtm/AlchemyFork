@@ -189,6 +189,7 @@ struct ALMetalWorldSimpleBatch
     std::size_t texcoord1_offset = 0;
     std::size_t texcoord2_offset = 0;
     std::size_t color_offset = 0;
+    std::size_t emissive_offset = 0;
     std::size_t tangent_offset = 0;
     std::size_t weight_offset = 0;
     std::size_t cloth_offset = 0;
@@ -218,6 +219,8 @@ struct ALMetalWorldSimpleBatch
     bool impostor_shiny = false;
     bool impostor_emboss = false;
     bool water_exclusion = false;
+    bool legacy_glow = false;
+    bool pbr_glow = false;
     bool terrain = false;
     bool use_vertex_color = true;
     bool alpha_cutoff_bias = true;

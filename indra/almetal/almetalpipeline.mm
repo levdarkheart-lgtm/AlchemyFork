@@ -1046,6 +1046,23 @@ bool ALMetalRenderEncoder::setFrontFacingWinding(ALMetalWinding value, std::stri
     return true;
 }
 
+bool ALMetalRenderEncoder::setDepthBias(float constant_bias,
+                                        float slope_scale,
+                                        float clamp,
+                                        std::string* error)
+{
+    if (!mImpl || mImpl->ended || !std::isfinite(constant_bias) ||
+        !std::isfinite(slope_scale) || !std::isfinite(clamp) || clamp < 0.f)
+    {
+        setError(error, "Metal depth bias is invalid or encoder has ended");
+        return false;
+    }
+    [mImpl->encoder setDepthBias:constant_bias
+                      slopeScale:slope_scale
+                            clamp:clamp];
+    return true;
+}
+
 bool ALMetalRenderEncoder::setTessellationFactorBuffer(const ALMetalBuffer& buffer,
                                                         std::size_t offset,
                                                         std::size_t instance_stride,

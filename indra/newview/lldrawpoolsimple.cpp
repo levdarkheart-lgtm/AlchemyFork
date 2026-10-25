@@ -75,6 +75,9 @@ void LLDrawPoolGlow::renderPostDeferred(S32 pass)
 
     //first pass -- static objects
     shader->bind();
+#if LL_DARWIN
+    gPipeline.beginMetalWorldLegacyGlowPass(false);
+#endif
     if (glow_indexed)
     {
         pushEmissiveBatchesScalar(LLRenderPass::PASS_GLOW, false);
@@ -83,10 +86,16 @@ void LLDrawPoolGlow::renderPostDeferred(S32 pass)
     {
         pushBatches(LLRenderPass::PASS_GLOW, true, true);
     }
+#if LL_DARWIN
+    gPipeline.endMetalWorldGBufferPass();
+#endif
 
     // second pass -- rigged objects
     shader = shader->riggedVariant();
     shader->bind();
+#if LL_DARWIN
+    gPipeline.beginMetalWorldLegacyGlowPass(true);
+#endif
     if (glow_indexed)
     {
         pushEmissiveBatchesScalar(LLRenderPass::PASS_GLOW_RIGGED, true);
@@ -95,15 +104,30 @@ void LLDrawPoolGlow::renderPostDeferred(S32 pass)
     {
         pushRiggedBatches(LLRenderPass::PASS_GLOW_RIGGED, true, true);
     }
+#if LL_DARWIN
+    gPipeline.endMetalWorldGBufferPass();
+#endif
 
     // indexed (multi-material) passes
     if (glow_indexed)
     {
         gDeferredEmissiveIndexedProgram.bind();
+#if LL_DARWIN
+        gPipeline.beginMetalWorldLegacyGlowPass(false);
+#endif
         pushEmissiveBatchesIndexed(LLRenderPass::PASS_GLOW, false);
+#if LL_DARWIN
+        gPipeline.endMetalWorldGBufferPass();
+#endif
 
         gDeferredEmissiveIndexedProgram.bind(true); // rigged variant
+#if LL_DARWIN
+        gPipeline.beginMetalWorldLegacyGlowPass(true);
+#endif
         pushEmissiveBatchesIndexed(LLRenderPass::PASS_GLOW_RIGGED, true);
+#if LL_DARWIN
+        gPipeline.endMetalWorldGBufferPass();
+#endif
     }
 
     gGL.setColorMask(true, false);

@@ -1614,6 +1614,82 @@ fragment float4 almetal_world_water_exclusion_fragment(
     return 0.0;
 }
 
+struct ALMetalWorldLegacyGlowVaryings
+{
+    float4 position [[position]];
+    float2 texcoord;
+    float emissive_alpha;
+    uint texture_index [[flat]];
+    uint texture_count [[flat]];
+};
+
+static ALMetalWorldLegacyGlowVaryings almetal_world_legacy_glow_varyings(
+    float4 clip_position,
+    float4 packed_position,
+    float2 texcoord,
+    uchar4 emissive,
+    constant ALMetalWorldSimpleConstants& constants)
+{
+    clip_position.y = -clip_position.y;
+    ALMetalWorldLegacyGlowVaryings output;
+    output.position = constants.depth_convention.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoord, 0.0, 1.0)).xy;
+    output.emissive_alpha = float(emissive.a) / 255.0;
+    output.texture_index = constants.depth_convention.y > 1u
+        ? uint(max(as_type<int>(packed_position.w), 0)) : 0u;
+    output.texture_count = constants.depth_convention.y;
+    return output;
+}
+
+vertex ALMetalWorldLegacyGlowVaryings almetal_world_legacy_glow_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* emissive [[buffer(3)]],
+    constant ALMetalWorldSimpleConstants& constants [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 position = positions[vertex_id];
+    return almetal_world_legacy_glow_varyings(
+        constants.modelview_projection * float4(position.xyz, 1.0),
+        position, texcoords[vertex_id], emissive[vertex_id], constants);
+}
+
+vertex ALMetalWorldLegacyGlowVaryings
+almetal_world_legacy_glow_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* emissive [[buffer(3)]],
+    constant ALMetalWorldSimpleConstants& constants [[buffer(4)]],
+    const device float4* skin_palette [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    constant uint& joint_count [[buffer(7)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 position = positions[vertex_id];
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        position, float4(0.0), encoded_weights[vertex_id],
+        skin_palette, joint_count);
+    return almetal_world_legacy_glow_varyings(
+        constants.modelview_projection * skinned.position +
+            constants.modelview_projection *
+                float4(skin_palette[0].xyz, 1.0),
+        position, texcoords[vertex_id], emissive[vertex_id], constants);
+}
+
+fragment float4 almetal_world_legacy_glow_fragment(
+    ALMetalWorldLegacyGlowVaryings input [[stage_in]],
+    array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]])
+{
+    const float alpha = input.texture_index < input.texture_count
+        ? diffuse_textures[min(input.texture_index, 31u)].sample(
+              diffuse_sampler, input.texcoord).a * input.emissive_alpha
+        : 0.0;
+    return float4(0.0, 0.0, 0.0, max(alpha, 0.0));
+}
+
 vertex ALMetalWorldSimpleVaryings almetal_world_simple_skinned_vertex(
     const device float4* positions [[buffer(0)]],
     const device float4* normals [[buffer(1)]],
@@ -1866,7 +1942,8 @@ struct ALMetalWorldPBRSlotConstants
 {
     float4 texture_transform[4][2];
     float4 emissive_color;
-    // x = roughness factor, y = metallic factor, z = alpha cutoff.
+    // x = roughness, y = metallic, z = alpha cutoff,
+    // w = streamed base-colour alpha factor.
     float4 properties;
 };
 
@@ -1907,6 +1984,105 @@ static float2 almetal_world_pbr_texcoord(
                material_transform[1].xy;
     texcoord.y = 1.0 - texcoord.y;
     return texcoord;
+}
+
+struct ALMetalWorldPBRGlowVaryings
+{
+    float4 position [[position]];
+    float2 base_color_texcoord;
+    float2 emissive_texcoord;
+    float emissive_alpha;
+    uint material_index [[flat]];
+};
+
+static ALMetalWorldPBRGlowVaryings almetal_world_pbr_glow_varyings(
+    float4 clip_position,
+    float4 packed_position,
+    float2 texcoord,
+    uchar4 emissive,
+    constant ALMetalWorldSimpleConstants& world,
+    constant ALMetalWorldPBRConstants& pbr)
+{
+    clip_position.y = -clip_position.y;
+    const uint material_index = world.depth_convention.y > 1u
+        ? uint(max(as_type<int>(packed_position.w), 0)) : 0u;
+    const uint slot = min(
+        material_index, min(max(pbr.config.x, 1u) - 1u, 7u));
+    constant ALMetalWorldPBRSlotConstants& material = pbr.slots[slot];
+
+    ALMetalWorldPBRGlowVaryings output;
+    output.position = world.depth_convention.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.base_color_texcoord = almetal_world_pbr_texcoord(
+        texcoord, world.texture_matrix, material.texture_transform[0]);
+    output.emissive_texcoord = almetal_world_pbr_texcoord(
+        texcoord, world.texture_matrix, material.texture_transform[3]);
+    output.emissive_alpha = float(emissive.a) / 255.0;
+    output.material_index = slot;
+    return output;
+}
+
+vertex ALMetalWorldPBRGlowVaryings almetal_world_pbr_glow_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* emissive [[buffer(3)]],
+    constant ALMetalWorldSimpleConstants& world [[buffer(4)]],
+    constant ALMetalWorldPBRConstants& pbr [[buffer(11)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 position = positions[vertex_id];
+    return almetal_world_pbr_glow_varyings(
+        world.modelview_projection * float4(position.xyz, 1.0),
+        position, texcoords[vertex_id], emissive[vertex_id], world, pbr);
+}
+
+vertex ALMetalWorldPBRGlowVaryings
+almetal_world_pbr_glow_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* emissive [[buffer(3)]],
+    constant ALMetalWorldSimpleConstants& world [[buffer(4)]],
+    const device float4* skin_palette [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    constant uint& joint_count [[buffer(7)]],
+    constant ALMetalWorldPBRConstants& pbr [[buffer(11)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 position = positions[vertex_id];
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        position, float4(0.0), encoded_weights[vertex_id],
+        skin_palette, joint_count);
+    return almetal_world_pbr_glow_varyings(
+        world.modelview_projection * skinned.position +
+            world.modelview_projection * float4(skin_palette[0].xyz, 1.0),
+        position, texcoords[vertex_id], emissive[vertex_id], world, pbr);
+}
+
+fragment float4 almetal_world_pbr_glow_fragment(
+    ALMetalWorldPBRGlowVaryings input [[stage_in]],
+    array<texture2d<float>, 8> base_color_textures [[texture(0)]],
+    array<texture2d<float>, 8> emissive_textures [[texture(8)]],
+    sampler material_sampler [[sampler(0)]],
+    constant ALMetalWorldPBRConstants& constants [[buffer(0)]])
+{
+    const uint material_index = min(input.material_index, 7u);
+    const ALMetalWorldPBRSlotConstants material =
+        constants.slots[material_index];
+    const float coverage =
+        base_color_textures[material_index].sample(
+            material_sampler, input.base_color_texcoord).a *
+        material.properties.w;
+    constexpr float quantization_bias = 1.0 / 512.0;
+    if (coverage < material.properties.z - quantization_bias)
+    {
+        discard_fragment();
+    }
+    const float3 emissive = material.emissive_color.rgb *
+        emissive_textures[material_index].sample(
+            material_sampler, input.emissive_texcoord).rgb;
+    const float luminosity = max(max(emissive.r, emissive.g), emissive.b) *
+                             input.emissive_alpha;
+    return float4(0.0, 0.0, 0.0, max(luminosity, 0.0));
 }
 
 static float4 almetal_world_pbr_tangent(

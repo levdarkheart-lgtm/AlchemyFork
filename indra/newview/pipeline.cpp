@@ -559,6 +559,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool impostor_shiny = false;
     bool impostor_emboss = false;
     bool water_exclusion = false;
+    bool legacy_glow = false;
+    bool pbr_glow = false;
     ALMetalWorldWaterExclusionSurface water_exclusion_surface;
     bool water_exclusion_surface_valid = false;
     ALMetalWorldReflectionProbes impostor_reflection_probes;
@@ -2719,6 +2721,8 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
     capture.water_exclusion = false;
+    capture.legacy_glow = false;
+    capture.pbr_glow = false;
     capture.water_exclusion_surface = {};
     capture.water_exclusion_surface_valid = false;
 }
@@ -2755,7 +2759,75 @@ void LLPipeline::beginMetalWorldWaterExclusionPass()
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
     capture.water_exclusion = true;
+    capture.legacy_glow = false;
+    capture.pbr_glow = false;
     capture.water_exclusion_surface_valid = true;
+    capture.pass_active = true;
+}
+
+void LLPipeline::beginMetalWorldLegacyGlowPass(bool rigged)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    capture.rigged = rigged;
+    capture.alpha_mask = false;
+    capture.material_alpha_mode = 0;
+    capture.material_normal_map = false;
+    capture.material_specular_map = false;
+    capture.pbr = false;
+    capture.terrain = false;
+    capture.avatar = false;
+    capture.impostor = false;
+    capture.impostor_fullbright = false;
+    capture.impostor_shiny = false;
+    capture.impostor_emboss = false;
+    capture.water_exclusion = false;
+    capture.legacy_glow = true;
+    capture.pbr_glow = false;
+    capture.pass_active = true;
+}
+
+void LLPipeline::beginMetalWorldPBRGlowPass(bool rigged)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    capture.rigged = rigged;
+    capture.alpha_mask = false;
+    capture.material_alpha_mode = 0;
+    capture.material_normal_map = false;
+    capture.material_specular_map = false;
+    capture.pbr = true;
+    capture.terrain = false;
+    capture.avatar = false;
+    capture.impostor = false;
+    capture.impostor_fullbright = false;
+    capture.impostor_shiny = false;
+    capture.impostor_emboss = false;
+    capture.water_exclusion = false;
+    capture.legacy_glow = false;
+    capture.pbr_glow = true;
     capture.pass_active = true;
 }
 
@@ -2856,6 +2928,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
     capture.water_exclusion = false;
+    capture.legacy_glow = false;
+    capture.pbr_glow = false;
     capture.water_exclusion_surface = {};
     capture.water_exclusion_surface_valid = false;
 }
@@ -2877,6 +2951,8 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
     capture.water_exclusion = false;
+    capture.legacy_glow = false;
+    capture.pbr_glow = false;
     capture.water_exclusion_surface = {};
     capture.water_exclusion_surface_valid = false;
 }
@@ -3226,6 +3302,13 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.complete || !params.mCount)
+    {
+        return;
+    }
+    // Legacy glow has a deliberately smaller vertex contract and is captured
+    // explicitly by captureMetalWorldLegacyGlowBatch before pushBatch reaches
+    // this generic hook.
+    if (capture.legacy_glow)
     {
         return;
     }
@@ -3658,6 +3741,132 @@ void LLPipeline::captureMetalWorldMaterialBatch(
     }
 }
 
+void LLPipeline::captureMetalWorldLegacyGlowBatch(
+    const LLDrawInfo& params, bool indexed_materials)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->pass_active ||
+        !mMetalWorldSimpleCapture->legacy_glow)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    LLVertexBuffer* buffer = params.mVertexBuffer.get();
+    const bool indexed_textures = !indexed_materials &&
+        params.mTextureList.size() > 1;
+    const std::size_t texture_count = indexed_materials
+        ? params.mMaterialSlotList.size()
+        : indexed_textures ? params.mTextureList.size() : 1;
+    if (!capture.complete || !params.mCount || !buffer ||
+        texture_count == 0 ||
+        texture_count > ALMetalWorldSimpleBatch::max_diffuse_textures ||
+        (indexed_materials &&
+         texture_count > ALMetalWorldSimpleBatch::max_material_slots) ||
+        (indexed_materials && texture_count < 2) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_EMISSIVE) ||
+        ((indexed_materials || indexed_textures) &&
+         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX)) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer())
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+
+    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+
+    ALMetalWorldSimpleBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.emissive_offset = buffer->getOffset(LLVertexBuffer::TYPE_EMISSIVE);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_offset = static_cast<std::size_t>(params.mOffset) *
+                         buffer->getIndexStride();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = params.mCount;
+    batch.texture_count = static_cast<U32>(texture_count);
+    batch.legacy_glow = true;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    if (!indexed_materials && !indexed_textures &&
+        params.mTextureMatrix &&
+        (!gCubeSnapshot || mHeroProbeManager.isMirrorPass()))
+    {
+        std::memcpy(batch.texture_matrix, params.mTextureMatrix->mMatrix,
+                    sizeof(batch.texture_matrix));
+    }
+
+    for (std::size_t slot = 0; slot < texture_count; ++slot)
+    {
+        LLViewerTexture* texture = nullptr;
+        if (indexed_materials)
+        {
+            const LLDrawInfo::MaterialSlot& material =
+                params.mMaterialSlotList[slot];
+            texture = material.mDiffuse.get();
+        }
+        else if (indexed_textures)
+        {
+            texture = params.mTextureList[slot].get();
+        }
+        else
+        {
+            texture = params.mTexture.get();
+        }
+        if (!texture)
+        {
+            texture = LLViewerFetchedTexture::sWhiteImagep.get();
+        }
+        LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        batch.diffuse_textures[slot] = image
+            ? image->getMetalTexture() : nullptr;
+        if (!batch.diffuse_textures[slot])
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
+    }
+
+    if (capture.rigged)
+    {
+        if (!params.mAvatar || !params.mSkinInfo ||
+            !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
+        const LLVOAvatar::MatrixPaletteCache& palette =
+            params.mAvatar->updateSkinInfoMatrixPalette(params.mSkinInfo);
+        const U32 joint_count =
+            static_cast<U32>(palette.mMatrixPalette.size());
+        if (joint_count == 0 || palette.mGLMp.size() !=
+                4 + static_cast<std::size_t>(joint_count) * 12)
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
+        batch.weight_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_WEIGHT4);
+        batch.skin_palette = palette.mGLMp.data();
+        batch.skin_palette_float_count = palette.mGLMp.size();
+        batch.skin_joint_count = joint_count;
+    }
+    capture.batches.push_back(batch);
+}
+
 void LLPipeline::captureMetalWorldPBRBatch(
     const LLDrawInfo& params, bool indexed_materials)
 {
@@ -3675,6 +3884,8 @@ void LLPipeline::captureMetalWorldPBRBatch(
     if (!capture.complete || !buffer || slot_count == 0 ||
         slot_count > ALMetalWorldSimpleBatch::max_material_slots ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TANGENT) ||
+        (capture.pbr_glow &&
+         !buffer->hasDataType(LLVertexBuffer::TYPE_EMISSIVE)) ||
         (indexed_materials &&
          (slot_count < 2 ||
           !buffer->hasDataType(LLVertexBuffer::TYPE_TEXTURE_INDEX))) ||
@@ -3694,6 +3905,12 @@ void LLPipeline::captureMetalWorldPBRBatch(
 
     ALMetalWorldSimpleBatch& batch = capture.batches.back();
     batch.tangent_offset = buffer->getOffset(LLVertexBuffer::TYPE_TANGENT);
+    batch.pbr_glow = capture.pbr_glow;
+    if (capture.pbr_glow)
+    {
+        batch.emissive_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_EMISSIVE);
+    }
     batch.pbr_slot_count = static_cast<U32>(slot_count);
     batch.texture_count = static_cast<U32>(slot_count);
     batch.double_sided = false;
@@ -3764,6 +3981,11 @@ void LLPipeline::captureMetalWorldPBRBatch(
             std::memcpy(destination.emissive_color,
                         material->mEmissiveColor.mV,
                         sizeof(material->mEmissiveColor.mV));
+            std::memcpy(destination.base_color_factor,
+                        material->mBaseColor.mV,
+                        sizeof(destination.base_color_factor));
+            destination.base_color_factor[3] =
+                material->getStreamedBaseAlpha();
             destination.roughness_factor = material->mRoughnessFactor;
             destination.metallic_factor = material->mMetallicFactor;
             destination.alpha_cutoff = capture.alpha_mask
@@ -5940,6 +6162,8 @@ void LLPipeline::endMetalWorldGBufferPass()
     }
     mMetalWorldSimpleCapture->pass_active = false;
     mMetalWorldSimpleCapture->water_exclusion = false;
+    mMetalWorldSimpleCapture->legacy_glow = false;
+    mMetalWorldSimpleCapture->pbr_glow = false;
 }
 
 void LLPipeline::endMetalWorldGBufferCapture()

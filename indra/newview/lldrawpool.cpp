@@ -711,6 +711,10 @@ void LLRenderPass::pushEmissiveBatchesIndexed(U32 type, bool rigged)
 
         applyModelMatrix(params);
 
+#if LL_DARWIN
+        gPipeline.captureMetalWorldLegacyGlowBatch(params, true);
+#endif
+
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
     }
@@ -810,6 +814,7 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
     }
 
 #if LL_DARWIN
+    gPipeline.captureMetalWorldLegacyGlowBatch(params, false);
     gPipeline.captureMetalWorldGBufferBatch(params, batch_textures);
 #endif
 
