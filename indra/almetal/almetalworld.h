@@ -82,6 +82,7 @@ struct ALMetalWorldSimpleBatch
     bool avatar_rigid = false;
     bool avatar_skinning = false;
     bool avatar_cloth = false;
+    bool impostor = false;
     bool terrain = false;
     bool use_vertex_color = true;
     bool alpha_cutoff_bias = true;
@@ -99,6 +100,11 @@ struct ALMetalWorldSimpleBatch
     float avatar_sin_wave[4]{};
     float avatar_gravity[4]{};
     float avatar_cloth_depth[4]{};
+    std::array<const ALMetalTexture*, 4> impostor_textures{};
+    float impostor_center[4]{};
+    float impostor_left[4]{};
+    float impostor_up[4]{};
+    float impostor_normal_rotation[3][4]{};
     const ALMetalTexture* terrain_height_texture = nullptr;
     const ALMetalTexture* terrain_composition_texture = nullptr;
     const ALMetalTexture* terrain_alpha_ramp_texture = nullptr;

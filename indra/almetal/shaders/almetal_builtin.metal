@@ -256,6 +256,50 @@ struct ALMetalWorldGBufferOutput
     float4 emissive [[color(3)]];
 };
 
+struct ALMetalWorldImpostorConstants
+{
+    float4x4 modelview_projection;
+    float4 center;
+    float4 left;
+    float4 up;
+    float4 normal_rotation[3];
+    uint4 depth_convention;
+};
+
+struct ALMetalWorldImpostorVaryings
+{
+    float4 position [[position]];
+    float2 texcoord;
+};
+
+vertex ALMetalWorldImpostorVaryings almetal_world_impostor_vertex(
+    constant ALMetalWorldImpostorConstants& constants [[buffer(0)]],
+    uint vertex_id [[vertex_id]])
+{
+    constexpr float2 corner[6] = {
+        float2( 1.0, -1.0), float2(-1.0, -1.0),
+        float2(-1.0,  1.0), float2( 1.0, -1.0),
+        float2(-1.0,  1.0), float2( 1.0,  1.0),
+    };
+    constexpr float2 texcoord[6] = {
+        float2(0.0, 0.0), float2(1.0, 0.0),
+        float2(1.0, 1.0), float2(0.0, 0.0),
+        float2(1.0, 1.0), float2(0.0, 1.0),
+    };
+    const float3 world_position = constants.center.xyz +
+        corner[vertex_id].x * constants.left.xyz +
+        corner[vertex_id].y * constants.up.xyz;
+    float4 clip_position = constants.modelview_projection *
+                           float4(world_position, 1.0);
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldImpostorVaryings output;
+    output.position = constants.depth_convention.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord = texcoord[vertex_id];
+    return output;
+}
+
 vertex ALMetalWorldSimpleVaryings almetal_world_simple_vertex(
     const device float4* positions [[buffer(0)]],
     const device float4* normals [[buffer(1)]],
@@ -728,6 +772,66 @@ static float2 almetal_world_oct_encode(float3 normal)
               select(float2(-1.0), float2(1.0), oct >= 0.0);
     }
     return oct * 0.5 + 0.5;
+}
+
+static float3 almetal_world_oct_decode(float2 encoded)
+{
+    const float2 oct = encoded * 2.0 - 1.0;
+    float3 normal = float3(
+        oct, 1.0 - abs(oct.x) - abs(oct.y));
+    const float fold = clamp(-normal.z, 0.0, 1.0);
+    normal.xy += select(float2(fold), float2(-fold), normal.xy >= 0.0);
+    return normalize(normal);
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_impostor_fragment(
+    ALMetalWorldImpostorVaryings input [[stage_in]],
+    texture2d<float> albedo_texture [[texture(0)]],
+    texture2d<float> specular_texture [[texture(1)]],
+    texture2d<float> normal_texture [[texture(2)]],
+    texture2d<float> emissive_texture [[texture(3)]],
+    sampler point_sampler [[sampler(0)]],
+    constant ALMetalWorldImpostorConstants& constants [[buffer(0)]])
+{
+    constexpr float minimum_alpha = 0.01;
+    const float4 encoded_albedo = albedo_texture.sample(
+        point_sampler, input.texcoord);
+    if (encoded_albedo.a < minimum_alpha)
+    {
+        discard_fragment();
+    }
+
+    const float4 normal_sample = normal_texture.sample(
+        point_sampler, input.texcoord);
+    const bool has_gbuffer = normal_sample.a > 0.17;
+    const float material_flag =
+        has_gbuffer && abs(normal_sample.a - 0.67) < 0.1
+            ? 0.67 : 0.34;
+    const float3x3 normal_rotation = float3x3(
+        constants.normal_rotation[0].xyz,
+        constants.normal_rotation[1].xyz,
+        constants.normal_rotation[2].xyz);
+    const float3 view_normal = has_gbuffer
+        ? normalize(normal_rotation *
+                    almetal_world_oct_decode(normal_sample.xy))
+        : float3(0.0, 0.0, 1.0);
+
+    ALMetalWorldGBufferOutput output;
+    // Attachment zero is sRGB. Returning the recovered linear colour lets
+    // the Metal render target perform the final encode, matching the GL
+    // impostor path's explicit decode/unpremultiply/encode plus raw store.
+    output.albedo = float4(
+        almetal_srgb_to_linear(encoded_albedo.rgb) /
+            max(encoded_albedo.a, minimum_alpha),
+        0.0);
+    output.specular_orm = specular_texture.sample(
+        point_sampler, input.texcoord);
+    output.normal = float4(
+        almetal_world_oct_encode(view_normal), normal_sample.z,
+        material_flag);
+    output.emissive = float4(
+        emissive_texture.sample(point_sampler, input.texcoord).rgb, 0.0);
+    return output;
 }
 
 fragment ALMetalWorldGBufferOutput almetal_world_pbr_fragment(

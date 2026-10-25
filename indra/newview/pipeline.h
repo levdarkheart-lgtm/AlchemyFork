@@ -590,6 +590,7 @@ public:
                                    const F32* sin_wave = nullptr,
                                    const F32* gravity = nullptr,
                                    const F32* cloth_depth = nullptr);
+    void beginMetalWorldImpostorPass();
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
     void captureMetalWorldMaterialBatch(const LLDrawInfo& params,
@@ -624,6 +625,12 @@ public:
                                       LLGLTexture* texture,
                                       U32 start, U32 end,
                                       U32 count, U32 offset);
+    void captureMetalWorldImpostorBatch(
+        LLVOAvatar& avatar, const LLVector3& center,
+        const LLVector3& left, const LLVector3& up,
+        const LLMatrix3a& normal_rotation);
+    void captureMetalImpostorMirror(LLVOAvatar& avatar);
+    void releaseMetalImpostorMirror(const LLUUID& avatar_id);
     void endMetalWorldGBufferPass();
     void endMetalWorldGBufferCapture();
 #endif

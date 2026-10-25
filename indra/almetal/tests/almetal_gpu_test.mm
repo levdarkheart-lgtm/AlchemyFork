@@ -126,11 +126,13 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_avatar_rigid_vertex",
             "almetal_world_avatar_skinned_vertex",
             "almetal_world_avatar_cloth_skinned_vertex",
+            "almetal_world_impostor_vertex",
             "almetal_world_simple_fragment",
             "almetal_world_alpha_mask_fragment",
             "almetal_world_bump_fragment",
             "almetal_world_material_fragment",
             "almetal_world_pbr_fragment",
+            "almetal_world_impostor_fragment",
             "almetal_world_terrain_vertex",
             "almetal_world_terrain_fragment",
             "almetal_world_pbr_terrain_fragment",
@@ -1890,6 +1892,191 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(
                            avatar_cloth_normal[
                                avatar_cloth_translated + 1]) - 32768) <= 2);
+    }
+}
+
+TEST_CASE("almetal: avatar impostor replays a coherent baked G-buffer", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        const auto make_texture = [&device, &error](
+            ALMetalPixelFormat format, const char* label)
+        {
+            ALMetalTextureDescriptor descriptor;
+            descriptor.format = format;
+            descriptor.width = 1;
+            descriptor.height = 1;
+            descriptor.storage = ALMetalStorageMode::private_gpu;
+            descriptor.usage = ALMetalTextureUsage::shader_read;
+            descriptor.label = label;
+            auto texture = ALMetalTexture::create(
+                *device, descriptor, &error);
+            INFO(error);
+            REQUIRE(texture);
+            return texture;
+        };
+
+        auto albedo = make_texture(
+            ALMetalPixelFormat::rgba8_unorm_srgb,
+            "Alchemy impostor baked albedo");
+        auto specular = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy impostor baked specular ORM");
+        auto normal = make_texture(
+            ALMetalPixelFormat::rgba16_unorm,
+            "Alchemy impostor baked normal");
+        auto emissive = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy impostor baked emissive");
+
+        const std::array<std::uint8_t, 4> albedo_pixel{{
+            128, 64, 32, 128,
+        }};
+        const std::array<std::uint8_t, 4> specular_pixel{{
+            17, 34, 51, 68,
+        }};
+        const std::array<std::uint16_t, 4> normal_pixel{{
+            65535, 32768, 16384, 43908,
+        }};
+        const std::array<std::uint8_t, 4> emissive_pixel{{
+            11, 22, 33, 255,
+        }};
+        auto upload = device->makeCommandBuffer(
+            "Alchemy impostor G-buffer upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        REQUIRE(albedo->upload(
+            *upload, 0, 0, {}, albedo_pixel.data(), 4, &error));
+        REQUIRE(specular->upload(
+            *upload, 0, 0, {}, specular_pixel.data(), 4, &error));
+        REQUIRE(normal->upload(
+            *upload, 0, 0, {}, normal_pixel.data(), 8, &error));
+        REQUIRE(emissive->upload(
+            *upload, 0, 0, {}, emissive_pixel.data(), 4, &error));
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldSimpleBatch batch;
+        batch.impostor = true;
+        batch.impostor_textures = {
+            albedo.get(), specular.get(), normal.get(), emissive.get(),
+        };
+        batch.impostor_left[0] = 0.8f;
+        batch.impostor_up[1] = 0.8f;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            batch.modelview_projection[axis * 4 + axis] = 1.f;
+            if (axis < 3)
+            {
+                batch.impostor_normal_rotation[axis][axis] = 1.f;
+            }
+        }
+
+        ALMetalWorldGBufferScene scene;
+        scene.batches = &batch;
+        scene.batch_count = 1;
+        scene.width = 32;
+        scene.height = 32;
+        scene.normal_hdr = true;
+        scene.hdr = false;
+
+        auto result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(result);
+        REQUIRE(device->waitUntilIdle(&error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> output_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4> output_specular{};
+        std::array<std::uint16_t, 32 * 32 * 4> output_normal{};
+        std::array<std::uint8_t, 32 * 32 * 4> output_emissive{};
+        REQUIRE(result->colorTexture(0)->readback(
+            *device, 0, 0, {}, output_albedo.data(), 32 * 4, &error));
+        REQUIRE(result->colorTexture(1)->readback(
+            *device, 0, 0, {}, output_specular.data(), 32 * 4, &error));
+        REQUIRE(result->colorTexture(2)->readback(
+            *device, 0, 0, {}, output_normal.data(), 32 * 8, &error));
+        REQUIRE(result->colorTexture(3)->readback(
+            *device, 0, 0, {}, output_emissive.data(), 32 * 4, &error));
+        INFO(error);
+
+        const auto srgb_to_linear = [](float encoded)
+        {
+            return encoded <= 0.04045f
+                ? encoded / 12.92f
+                : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
+        };
+        const auto linear_to_srgb = [](float linear)
+        {
+            return linear <= 0.0031308f
+                ? linear * 12.92f
+                : 1.055f * std::pow(linear, 1.f / 2.4f) - 0.055f;
+        };
+        const std::size_t center = (16 * 32 + 16) * 4;
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float encoded = albedo_pixel[channel] / 255.f;
+            const float recovered = srgb_to_linear(encoded) /
+                                    (albedo_pixel[3] / 255.f);
+            const int expected = static_cast<int>(std::lround(
+                std::clamp(linear_to_srgb(recovered), 0.f, 1.f) * 255.f));
+            CHECK(std::abs(static_cast<int>(
+                      output_albedo[center + channel]) - expected) <= 1);
+        }
+        CHECK(output_albedo[center + 3] == 0);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(output_specular[center + channel] ==
+                  specular_pixel[channel]);
+        }
+        CHECK(std::abs(static_cast<int>(output_normal[center + 0]) -
+                       65535) <= 2);
+        CHECK(std::abs(static_cast<int>(output_normal[center + 1]) -
+                       32768) <= 2);
+        CHECK(std::abs(static_cast<int>(output_normal[center + 2]) -
+                       16384) <= 2);
+        CHECK(std::abs(static_cast<int>(output_normal[center + 3]) -
+                       43908) <= 2);
+        CHECK(output_emissive[center + 0] == emissive_pixel[0]);
+        CHECK(output_emissive[center + 1] == emissive_pixel[1]);
+        CHECK(output_emissive[center + 2] == emissive_pixel[2]);
+        CHECK(output_emissive[center + 3] == 0);
+
+        // Rotate the baked +X normal to +Y. The PBR flag and the blue
+        // geometric-normal payload remain byte-for-byte material data.
+        std::memset(batch.impostor_normal_rotation, 0,
+                    sizeof(batch.impostor_normal_rotation));
+        batch.impostor_normal_rotation[0][1] = 1.f;
+        batch.impostor_normal_rotation[1][0] = -1.f;
+        batch.impostor_normal_rotation[2][2] = 1.f;
+        auto rotated = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(rotated);
+        REQUIRE(device->waitUntilIdle(&error));
+        output_normal.fill(0);
+        REQUIRE(rotated->colorTexture(2)->readback(
+            *device, 0, 0, {}, output_normal.data(), 32 * 8, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(output_normal[center + 0]) -
+                       32768) <= 2);
+        CHECK(std::abs(static_cast<int>(output_normal[center + 1]) -
+                       65535) <= 2);
+        CHECK(std::abs(static_cast<int>(output_normal[center + 2]) -
+                       16384) <= 2);
+        CHECK(std::abs(static_cast<int>(output_normal[center + 3]) -
+                       43908) <= 2);
+
+        batch.impostor_textures[3] = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal world impostor batch is invalid");
     }
 }
 

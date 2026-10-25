@@ -722,12 +722,18 @@ void LLDrawPoolAvatar::beginDeferredImpostor()
     sDiffuseChannel = sVertexProgram->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
     sVertexProgram->bind();
     sVertexProgram->setMinimumAlpha(0.01f);
+#if LL_DARWIN
+    gPipeline.beginMetalWorldImpostorPass();
+#endif
 }
 
 void LLDrawPoolAvatar::endDeferredImpostor()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
+#if LL_DARWIN
+    gPipeline.endMetalWorldGBufferPass();
+#endif
     sShaderLevel = mShaderLevel;
     sVertexProgram->disableTexture(LLViewerShaderMgr::NORMAL_MAP);
     sVertexProgram->disableTexture(LLViewerShaderMgr::SPECULAR_MAP);

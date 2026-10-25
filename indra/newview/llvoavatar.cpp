@@ -954,6 +954,9 @@ void LLVOAvatar::debugAvatarRezTime(std::string notification_name, std::string c
 //------------------------------------------------------------------------
 LLVOAvatar::~LLVOAvatar()
 {
+#if LL_DARWIN
+    gPipeline.releaseMetalImpostorMirror(mID);
+#endif
     sInstances.remove(this);
 
     if (!mFullyLoaded)
@@ -6033,21 +6036,26 @@ U32 LLVOAvatar::renderImpostor(LLColor4U color, S32 diffuse_channel)
     // Both are pure rotations sharing an origin, so the inverse is the transpose. Uploaded
     // per avatar because each impostor was baked aiming at its own subject, and re-derived
     // every frame because the impostor outlives the camera position that produced it.
+    const LLMatrix4a& mv = LLViewerCamera::getCurrent().getModelview();
+    LLMatrix3a main_view;
+    main_view.setRows(mv.getRow<0>(), mv.getRow<1>(), mv.getRow<2>());
+    LLMatrix3a bake_view;
+    bake_view.loadu(getImpostorViewRotation());
+    LLMatrix3a rebase;
+    rebase.setMul(bake_view, main_view);
     if (LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr)
     {
         if (shader->hasUniform(LLShaderMgr::IMPOSTOR_NORM_ROTATION))
         {
             // the bake's rotation out, then the main view's in
-            const LLMatrix4a& mv = LLViewerCamera::getCurrent().getModelview();
-            LLMatrix3a main_view;
-            main_view.setRows(mv.getRow<0>(), mv.getRow<1>(), mv.getRow<2>());
-            LLMatrix3a bake_view;
-            bake_view.loadu(getImpostorViewRotation());
-            LLMatrix3a rebase;
-            rebase.setMul(bake_view, main_view);
             shader->uniformMatrix3fv(LLShaderMgr::IMPOSTOR_NORM_ROTATION, rebase);
         }
     }
+
+#if LL_DARWIN
+    gPipeline.captureMetalWorldImpostorBatch(
+        *this, pos, left, up, rebase);
+#endif
 
     gGL.color4ubv(color.mV);
     // TFO_POINT: an impostor is a screen-aligned billboard rendered at its own resolution,

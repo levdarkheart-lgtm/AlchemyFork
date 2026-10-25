@@ -48,6 +48,16 @@ namespace
         float properties[4];
     };
 
+    struct alignas(16) WorldImpostorConstants
+    {
+        float modelview_projection[16];
+        float center[4];
+        float left[4];
+        float up[4];
+        float normal_rotation[3][4];
+        std::uint32_t depth_convention[4]{};
+    };
+
     struct alignas(16) WorldMaterialConstants
     {
         WorldMaterialSlotConstants
@@ -162,6 +172,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<MaterialRiggedPipelines, 2> material_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
     std::array<AvatarVariantPipelines, 2> avatar_pipelines;
+    std::array<NormalPipelines, 2> impostor_pipelines;
     std::array<TerrainPartitionPipelines, 2> terrain_pipelines;
     std::array<TerrainPartitionPipelines, 2> pbr_terrain_pipelines;
     std::unique_ptr<ALMetalDepthStencilState> forward_depth;
@@ -201,12 +212,14 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_avatar_skinned_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_avatar_cloth_skinned_vertex") ||
+        !impl->library->hasFunction("almetal_world_impostor_vertex") ||
         !impl->library->hasFunction("almetal_world_terrain_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_fragment") ||
         !impl->library->hasFunction("almetal_world_alpha_mask_fragment") ||
         !impl->library->hasFunction("almetal_world_bump_fragment") ||
         !impl->library->hasFunction("almetal_world_material_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_fragment") ||
+        !impl->library->hasFunction("almetal_world_impostor_fragment") ||
         !impl->library->hasFunction("almetal_world_terrain_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_terrain_fragment"))
     {
@@ -227,6 +240,33 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         "almetal_world_avatar_skinned_vertex",
         "almetal_world_avatar_cloth_skinned_vertex",
     }};
+    for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
+    {
+        for (std::size_t normal_hdr = 0; normal_hdr < 2; ++normal_hdr)
+        {
+            ALMetalRenderPipelineDescriptor descriptor;
+            descriptor.library = impl->library.get();
+            descriptor.vertex_function = "almetal_world_impostor_vertex";
+            descriptor.fragment_function = "almetal_world_impostor_fragment";
+            descriptor.color_attachment_count = 4;
+            descriptor.colors[0].format =
+                ALMetalPixelFormat::rgba8_unorm_srgb;
+            descriptor.colors[1].format = ALMetalPixelFormat::rgba8_unorm;
+            descriptor.colors[2].format = normal_hdr
+                ? ALMetalPixelFormat::rgba16_unorm
+                : ALMetalPixelFormat::rgb10a2_unorm;
+            descriptor.colors[3].format = emissive_formats[hdr];
+            descriptor.depth_stencil_format =
+                ALMetalPixelFormat::depth32_float;
+            descriptor.label = "Alchemy world impostor G-buffer pipeline";
+            impl->impostor_pipelines[hdr][normal_hdr] =
+                ALMetalRenderPipeline::create(device, descriptor, error);
+            if (!impl->impostor_pipelines[hdr][normal_hdr])
+            {
+                return nullptr;
+            }
+        }
+    }
     for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
     {
         for (std::size_t pinned = 0; pinned < 2; ++pinned)
@@ -529,6 +569,43 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     for (std::size_t index = 0; index < scene.batch_count; ++index)
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        if (batch.impostor)
+        {
+            const ALMetalPixelFormat expected_normal = scene.normal_hdr
+                ? ALMetalPixelFormat::rgba16_unorm
+                : ALMetalPixelFormat::rgb10a2_unorm;
+            const ALMetalPixelFormat expected_emissive = scene.hdr
+                ? ALMetalPixelFormat::rg11b10_float
+                : ALMetalPixelFormat::rgba8_unorm;
+            if (batch.vertices || batch.indices || batch.vertex_count != 0 ||
+                batch.index_count != 0 || batch.texture_count != 0 ||
+                batch.normal_texture || batch.material_slot_count != 0 ||
+                batch.pbr_slot_count != 0 || batch.skin_palette ||
+                batch.avatar_rigid || batch.avatar_skinning ||
+                batch.avatar_cloth || batch.terrain ||
+                !finiteValues(batch.modelview_projection, 16) ||
+                !finiteValues(batch.impostor_center, 4) ||
+                !finiteValues(batch.impostor_left, 4) ||
+                !finiteValues(batch.impostor_up, 4) ||
+                !finiteValues(&batch.impostor_normal_rotation[0][0], 12) ||
+                !sampleableTexture(batch.impostor_textures[0]) ||
+                !sampleableTexture(batch.impostor_textures[1]) ||
+                !sampleableTexture(batch.impostor_textures[2]) ||
+                !sampleableTexture(batch.impostor_textures[3]) ||
+                batch.impostor_textures[0]->descriptor().format !=
+                    ALMetalPixelFormat::rgba8_unorm_srgb ||
+                batch.impostor_textures[1]->descriptor().format !=
+                    ALMetalPixelFormat::rgba8_unorm ||
+                batch.impostor_textures[2]->descriptor().format !=
+                    expected_normal ||
+                batch.impostor_textures[3]->descriptor().format !=
+                    expected_emissive)
+            {
+                setError(error, "Metal world impostor batch is invalid");
+                return nullptr;
+            }
+            continue;
+        }
         if (batch.terrain)
         {
             const bool pbr_terrain = batch.terrain_pbr;
@@ -1018,6 +1095,50 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     for (std::size_t index = 0; encoded && index < scene.batch_count; ++index)
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
+        if (batch.impostor)
+        {
+            WorldImpostorConstants constants{};
+            std::memcpy(constants.modelview_projection,
+                        batch.modelview_projection,
+                        sizeof(constants.modelview_projection));
+            std::memcpy(constants.center, batch.impostor_center,
+                        sizeof(constants.center));
+            std::memcpy(constants.left, batch.impostor_left,
+                        sizeof(constants.left));
+            std::memcpy(constants.up, batch.impostor_up,
+                        sizeof(constants.up));
+            std::memcpy(constants.normal_rotation,
+                        batch.impostor_normal_rotation,
+                        sizeof(constants.normal_rotation));
+            constants.depth_convention[0] = scene.reverse_z ? 1u : 0u;
+            const ALMetalRenderPipeline* pipeline =
+                mImpl->impostor_pipelines[scene.hdr ? 1 : 0]
+                                         [scene.normal_hdr ? 1 : 0].get();
+            encoded =
+                // A camera-facing impostor is intrinsically two-sided. The
+                // GL path inherits culling state, but its generated winding
+                // changes sign with the viewer basis; accepting both avoids
+                // dropping the billboard at those basis transitions.
+                encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setPipeline(*pipeline, error) &&
+                encoder->setVertexBytes(
+                    0, &constants, sizeof(constants), error) &&
+                encoder->setFragmentBytes(
+                    0, &constants, sizeof(constants), error) &&
+                encoder->setFragmentTextureLinear(
+                    0, batch.impostor_textures[0], error) &&
+                encoder->setFragmentTexture(
+                    1, batch.impostor_textures[1], error) &&
+                encoder->setFragmentTexture(
+                    2, batch.impostor_textures[2], error) &&
+                encoder->setFragmentTexture(
+                    3, batch.impostor_textures[3], error) &&
+                encoder->setFragmentSampler(
+                    0, mImpl->point_clamp_sampler.get(), error) &&
+                encoder->draw(
+                    ALMetalPrimitiveType::triangle, 0, 6, 1, error);
+            continue;
+        }
         if (batch.terrain)
         {
             WorldTerrainConstants constants{};
