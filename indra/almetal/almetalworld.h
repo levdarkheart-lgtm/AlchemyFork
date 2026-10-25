@@ -506,6 +506,20 @@ struct ALMetalWorldMeteorScene
     bool reverse_z = false;
 };
 
+struct ALMetalWorldAuroraScene
+{
+    const ALMetalWorldHDRISkyBatch* batches = nullptr;
+    std::size_t batch_count = 0;
+    float camera_local[4]{};
+    float intensity = 0.f;
+    float time = 0.f;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    bool normal_hdr = false;
+    bool hdr = false;
+    bool reverse_z = false;
+};
+
 struct alignas(16) ALMetalWorldBaseLightingConstants
 {
     float inverse_projection[16]{};
@@ -620,6 +634,12 @@ public:
     bool compositeWindLightMeteors(
         ALMetalRenderTarget& target,
         const ALMetalWorldMeteorScene& scene,
+        std::string* error = nullptr);
+
+    // Add the exact procedural aurora dome after the meteor layer.
+    bool compositeWindLightAurora(
+        ALMetalRenderTarget& target,
+        const ALMetalWorldAuroraScene& scene,
         std::string* error = nullptr);
 
     // Shade the retained world G-buffer with the deferred base-light owner:

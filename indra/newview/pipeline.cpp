@@ -456,6 +456,10 @@ struct LLPipeline::MetalWorldSimpleCapture
         windlight_heavenly_body_batches;
     ALMetalWorldMeteorBatch windlight_meteor_batch;
     F32 windlight_meteor_width_pixels = 0.f;
+    std::vector<ALMetalWorldHDRISkyBatch> windlight_aurora_batches;
+    F32 windlight_aurora_camera_local[4]{};
+    F32 windlight_aurora_intensity = 0.f;
+    F32 windlight_aurora_time = 0.f;
     std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
         avatar_palettes;
     U32 width = 0;
@@ -482,6 +486,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool windlight_meteors_active = false;
     bool windlight_meteors_complete = false;
     bool windlight_meteors_native_available = false;
+    bool windlight_aurora_expected = false;
+    bool windlight_aurora_active = false;
+    bool windlight_aurora_complete = false;
+    bool windlight_aurora_native_available = false;
     bool attempted = false;
     bool local_lighting_attempted = false;
     U32 local_lighting_failed_frames = 0;
@@ -938,6 +946,15 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.windlight_meteors_active = false;
         capture.windlight_meteors_complete = false;
         capture.windlight_meteors_native_available = false;
+        capture.windlight_aurora_batches.clear();
+        std::fill(std::begin(capture.windlight_aurora_camera_local),
+                  std::end(capture.windlight_aurora_camera_local), 0.f);
+        capture.windlight_aurora_intensity = 0.f;
+        capture.windlight_aurora_time = 0.f;
+        capture.windlight_aurora_expected = false;
+        capture.windlight_aurora_active = false;
+        capture.windlight_aurora_complete = false;
+        capture.windlight_aurora_native_available = false;
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
@@ -1128,6 +1145,15 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.windlight_meteors_active = false;
     capture.windlight_meteors_complete = false;
     capture.windlight_meteors_native_available = false;
+    capture.windlight_aurora_batches.clear();
+    std::fill(std::begin(capture.windlight_aurora_camera_local),
+              std::end(capture.windlight_aurora_camera_local), 0.f);
+    capture.windlight_aurora_intensity = 0.f;
+    capture.windlight_aurora_time = 0.f;
+    capture.windlight_aurora_expected = false;
+    capture.windlight_aurora_active = false;
+    capture.windlight_aurora_complete = false;
+    capture.windlight_aurora_native_available = false;
     capture.avatar_palettes.clear();
     capture.width = descriptor->width;
     capture.height = descriptor->height;
@@ -1721,6 +1747,96 @@ void LLPipeline::endMetalWorldWindLightMeteors()
     }
 }
 
+void LLPipeline::beginMetalWorldWindLightAurora(
+    F32 intensity, F32 time, F32 camera_height_local)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.windlight_aurora_batches.clear();
+    std::fill(std::begin(capture.windlight_aurora_camera_local),
+              std::end(capture.windlight_aurora_camera_local), 0.f);
+    capture.windlight_aurora_camera_local[1] = camera_height_local;
+    capture.windlight_aurora_intensity = intensity;
+    capture.windlight_aurora_time = time;
+    capture.windlight_aurora_expected = true;
+    capture.windlight_aurora_active = true;
+    capture.windlight_aurora_complete =
+        !capture.pass_active && !capture.hdri_sky_complete &&
+        !capture.windlight_sky_active &&
+        capture.windlight_sky_complete &&
+        !capture.windlight_stars_active &&
+        (!capture.windlight_stars_expected ||
+         capture.windlight_stars_complete) &&
+        !capture.windlight_heavenly_bodies_active &&
+        (!capture.windlight_heavenly_bodies_expected ||
+         capture.windlight_heavenly_bodies_complete) &&
+        !capture.windlight_meteors_active &&
+        (!capture.windlight_meteors_expected ||
+         capture.windlight_meteors_complete) &&
+        std::isfinite(intensity) && intensity > 0.001f &&
+        std::isfinite(time) && std::isfinite(camera_height_local);
+    capture.windlight_aurora_native_available = false;
+}
+
+void LLPipeline::captureMetalWorldWindLightAuroraBatch(
+    LLVertexBuffer* buffer)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->windlight_aurora_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.windlight_aurora_complete || !buffer ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer() || buffer->getNumVerts() < 3 ||
+        buffer->getNumIndices() < 3 ||
+        (buffer->getIndexStride() != 2 &&
+         buffer->getIndexStride() != 4))
+    {
+        capture.windlight_aurora_complete = false;
+        capture.windlight_aurora_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldHDRISkyBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset =
+        buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = buffer->getNumIndices();
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    capture.windlight_aurora_batches.push_back(batch);
+}
+
+void LLPipeline::endMetalWorldWindLightAurora()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->windlight_aurora_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.windlight_aurora_active = false;
+    if (capture.windlight_aurora_batches.empty())
+    {
+        capture.windlight_aurora_complete = false;
+    }
+}
+
 void LLPipeline::beginMetalWorldGBufferPass(bool rigged, bool alpha_mask)
 {
     if (!mMetalWorldSimpleCapture ||
@@ -1991,6 +2107,15 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.windlight_meteors_active = false;
         capture.windlight_meteors_complete = false;
         capture.windlight_meteors_native_available = false;
+        capture.windlight_aurora_batches.clear();
+        std::fill(std::begin(capture.windlight_aurora_camera_local),
+                  std::end(capture.windlight_aurora_camera_local), 0.f);
+        capture.windlight_aurora_intensity = 0.f;
+        capture.windlight_aurora_time = 0.f;
+        capture.windlight_aurora_expected = false;
+        capture.windlight_aurora_active = false;
+        capture.windlight_aurora_complete = false;
+        capture.windlight_aurora_native_available = false;
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
@@ -5034,6 +5159,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
         capture.windlight_stars_native_available = false;
         capture.windlight_heavenly_bodies_native_available = false;
         capture.windlight_meteors_native_available = false;
+        capture.windlight_aurora_native_available = false;
         if (capture.hdri_sky_complete &&
             !capture.hdri_sky_active &&
             !capture.hdri_sky_batches.empty() &&
@@ -5213,6 +5339,44 @@ void LLPipeline::endMetalWorldGBufferCapture()
                     << LL_ENDL;
             }
         }
+        if (capture.windlight_sky_native_available &&
+            capture.windlight_aurora_expected)
+        {
+            if (capture.windlight_aurora_complete &&
+                !capture.windlight_aurora_active &&
+                !capture.windlight_aurora_batches.empty())
+            {
+                ALMetalWorldAuroraScene aurora_scene;
+                aurora_scene.batches =
+                    capture.windlight_aurora_batches.data();
+                aurora_scene.batch_count =
+                    capture.windlight_aurora_batches.size();
+                std::memcpy(aurora_scene.camera_local,
+                            capture.windlight_aurora_camera_local,
+                            sizeof(aurora_scene.camera_local));
+                aurora_scene.intensity =
+                    capture.windlight_aurora_intensity;
+                aurora_scene.time = capture.windlight_aurora_time;
+                aurora_scene.width = capture.width;
+                aurora_scene.height = capture.height;
+                aurora_scene.normal_hdr = capture.normal_hdr;
+                aurora_scene.hdr = capture.hdr;
+                aurora_scene.reverse_z = capture.reverse_z;
+                error.clear();
+                capture.windlight_aurora_native_available =
+                    capture.renderer->compositeWindLightAurora(
+                        *target, aurora_scene, &error);
+            }
+            if (!capture.windlight_aurora_native_available)
+            {
+                capture.windlight_sky_native_available = false;
+                LL_WARNS("Metal")
+                    << "Native WindLight sky retained GL authority because "
+                       "its expected aurora layer was incomplete"
+                    << (error.empty() ? "" : ": ") << error
+                    << LL_ENDL;
+            }
+        }
         capture.target = std::move(target);
         capture.attempted = true;
         capture.failed_frames = 0;
@@ -5224,8 +5388,10 @@ void LLPipeline::endMetalWorldGBufferCapture()
             << (capture.hdri_sky_native_available
                     ? "; full HDRI sky is native"
                     : capture.windlight_sky_native_available
-                        ? capture.windlight_meteors_expected
-                            ? "; WindLight haze, stars, heavenly bodies and meteors are native"
+                        ? capture.windlight_aurora_expected
+                            ? "; WindLight haze through aurora are native"
+                            : capture.windlight_meteors_expected
+                                ? "; WindLight haze, stars, heavenly bodies and meteors are native"
                             : capture.windlight_heavenly_bodies_expected
                                 ? "; WindLight haze, stars and heavenly bodies are native"
                             : capture.windlight_stars_expected
@@ -5260,6 +5426,12 @@ void LLPipeline::endMetalWorldGBufferCapture()
     capture.windlight_meteors_expected = false;
     capture.windlight_meteors_active = false;
     capture.windlight_meteors_complete = false;
+    capture.windlight_aurora_batches.clear();
+    capture.windlight_aurora_intensity = 0.f;
+    capture.windlight_aurora_time = 0.f;
+    capture.windlight_aurora_expected = false;
+    capture.windlight_aurora_active = false;
+    capture.windlight_aurora_complete = false;
     capture.avatar_palettes.clear();
 }
 

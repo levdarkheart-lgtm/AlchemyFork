@@ -165,6 +165,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_heavenly_body_fragment",
             "almetal_world_meteor_vertex",
             "almetal_world_meteor_fragment",
+            "almetal_world_aurora_vertex",
+            "almetal_world_aurora_fragment",
             "almetal_world_base_light_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
@@ -4383,6 +4385,118 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         error.clear();
         meteor_scene.width_pixels = 1.5f;
 
+        // The procedural aurora reuses the indexed dome. Give its physical
+        // fixture a positive local Z so screen pixels span elevation and
+        // azimuth while the identity MVP still covers the full target.
+        const std::array<std::array<float, 4>, 4> aurora_vertices{{
+            {{-1.f, -1.f, 1.f, 1.f}},
+            {{ 1.f, -1.f, 1.f, 1.f}},
+            {{-1.f,  1.f, 1.f, 1.f}},
+            {{ 1.f,  1.f, 1.f, 1.f}},
+        }};
+        ALMetalBufferDescriptor aurora_vertex_descriptor;
+        aurora_vertex_descriptor.length = sizeof(aurora_vertices);
+        aurora_vertex_descriptor.storage = ALMetalStorageMode::shared;
+        aurora_vertex_descriptor.label =
+            "Alchemy WindLight aurora dome vertices";
+        auto aurora_vertex_buffer = ALMetalBuffer::create(
+            *device, aurora_vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(aurora_vertex_buffer);
+        REQUIRE(aurora_vertex_buffer->write(
+            0, aurora_vertices.data(), sizeof(aurora_vertices), &error));
+        ALMetalWorldHDRISkyBatch aurora_batch = sky_batch;
+        aurora_batch.vertices = aurora_vertex_buffer.get();
+        ALMetalWorldAuroraScene aurora_scene;
+        aurora_scene.batches = &aurora_batch;
+        aurora_scene.batch_count = 1;
+        aurora_scene.intensity = 1.f;
+        aurora_scene.time = 123.f;
+        aurora_scene.width = 32;
+        aurora_scene.height = 32;
+        aurora_scene.normal_hdr = true;
+
+        REQUIRE(renderer->compositeWindLightAurora(
+            *pbr_gbuffer, aurora_scene, &error));
+        INFO(error);
+        aurora_scene.reverse_z = true;
+        REQUIRE(renderer->compositeWindLightAurora(
+            *pbr_reverse_gbuffer, aurora_scene, &error));
+        INFO(error);
+        aurora_scene.reverse_z = false;
+        std::array<std::uint8_t, 32 * 32 * 4> aurora_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4>
+            reverse_aurora_albedo{};
+        REQUIRE(pbr_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, aurora_albedo.data(), 32 * 4,
+            &error));
+        REQUIRE(pbr_reverse_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_aurora_albedo.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(reverse_aurora_albedo == aurora_albedo);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(aurora_albedo[center + channel] ==
+                  meteor_albedo[center + channel]);
+        }
+
+        auto aurora_source_gbuffer = renderer->render(
+            gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(aurora_source_gbuffer);
+        REQUIRE(renderer->compositeWindLightSky(
+            *aurora_source_gbuffer, black_windlight_scene, &error));
+        std::array<std::uint8_t, 32 * 32 * 4>
+            aurora_source_before{};
+        REQUIRE(aurora_source_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, aurora_source_before.data(),
+            32 * 4, &error));
+        REQUIRE(renderer->compositeWindLightAurora(
+            *aurora_source_gbuffer, aurora_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            aurora_source_albedo{};
+        REQUIRE(aurora_source_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, aurora_source_albedo.data(),
+            32 * 4, &error));
+        INFO(error);
+        bool found_aurora = false;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t byte = pixel * 4;
+            if (aurora_source_albedo[byte + 0] ==
+                    aurora_source_before[byte + 0] &&
+                aurora_source_albedo[byte + 1] ==
+                    aurora_source_before[byte + 1] &&
+                aurora_source_albedo[byte + 2] ==
+                    aurora_source_before[byte + 2])
+            {
+                continue;
+            }
+            found_aurora = true;
+            for (std::size_t channel = 0; channel < 3; ++channel)
+            {
+                const int raw_sum = std::min(
+                    255, static_cast<int>(meteor_albedo[byte + channel]) +
+                         static_cast<int>(
+                             aurora_source_albedo[byte + channel]) -
+                         static_cast<int>(
+                             aurora_source_before[byte + channel]));
+                CHECK(std::abs(static_cast<int>(
+                          aurora_albedo[byte + channel]) - raw_sum) <= 1);
+            }
+            break;
+        }
+        CHECK(found_aurora);
+        aurora_scene.intensity = 0.f;
+        error.clear();
+        CHECK_FALSE(renderer->compositeWindLightAurora(
+            *aurora_source_gbuffer, aurora_scene, &error));
+        CHECK(error == "Metal world WindLight aurora scene is incomplete");
+        error.clear();
+        aurora_scene.intensity = 1.f;
+
         ALMetalWorldWindLightSkyScene invalid_windlight_scene =
             windlight_scene;
         invalid_windlight_scene.halo_texture = nullptr;
@@ -5315,6 +5429,18 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
               hdr_body_after[outside / 4]);
         CHECK(hdr_meteor_after[center / 4] ==
               hdr_body_after[center / 4]);
+        aurora_scene.hdr = true;
+        REQUIRE(renderer->compositeWindLightAurora(
+            *hdr_gbuffer, aurora_scene, &error));
+        INFO(error);
+        std::array<std::uint32_t, 32 * 32> hdr_aurora_after{};
+        REQUIRE(hdr_gbuffer->colorTexture(3)->readback(
+            *device, 0, 0, {}, hdr_aurora_after.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(hdr_aurora_after != hdr_meteor_after);
+        CHECK(hdr_aurora_after[center / 4] ==
+              hdr_meteor_after[center / 4]);
         std::array<std::uint16_t, 32 * 32 * 4> hdr_windlight_normal{};
         REQUIRE(hdr_gbuffer->colorTexture(2)->readback(
             *device, 0, 0, {}, hdr_windlight_normal.data(),

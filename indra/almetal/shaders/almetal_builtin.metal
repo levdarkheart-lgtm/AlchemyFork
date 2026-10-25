@@ -453,6 +453,17 @@ struct ALMetalWorldMeteorConstants
     uint4 config;
 };
 
+struct ALMetalWorldAuroraConstants
+{
+    float4x4 modelview_projection;
+    // xyz = camera in dome-local space, w = intensity.
+    float4 camera_intensity;
+    // x = wrapped time, yz = target dimensions.
+    float4 time_screen;
+    // x = reverse Z, y = emissive/HDR G-buffer.
+    uint4 config;
+};
+
 struct ALMetalWorldLocalLightVaryings
 {
     float4 position [[position]];
@@ -1020,6 +1031,166 @@ fragment ALMetalWorldGBufferOutput almetal_world_meteor_fragment(
     else
     {
         output.albedo = float4(color * 2.0, shape);
+        output.emissive = 0.0;
+    }
+    return output;
+}
+
+struct ALMetalWorldAuroraVaryings
+{
+    float4 position [[position]];
+    float3 local_position;
+};
+
+vertex ALMetalWorldAuroraVaryings almetal_world_aurora_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldAuroraConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float3 local_position = positions[vertex_id].xyz;
+    float4 clip_position = constants.modelview_projection *
+                           float4(local_position, 1.0);
+    clip_position.y = -clip_position.y;
+    clip_position.z = constants.config.x != 0u
+        ? 0.0 : clip_position.w;
+    ALMetalWorldAuroraVaryings output;
+    output.position = clip_position;
+    output.local_position = local_position;
+    return output;
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_aurora_fragment(
+    ALMetalWorldAuroraVaryings input [[stage_in]],
+    constant ALMetalWorldAuroraConstants& constants [[buffer(0)]])
+{
+    const float3 direction = normalize(
+        input.local_position - constants.camera_intensity.xyz);
+    const float elevation = direction.y;
+    const float2 horizontal = direction.xz;
+    const float horizontal_length = length(horizontal);
+    if (horizontal_length < 1e-3 || elevation < -0.05 || elevation > 0.90)
+    {
+        discard_fragment();
+    }
+    const float2 azimuth = horizontal / horizontal_length;
+    const float time = constants.time_screen.x;
+
+    const float coverage_big = almetal_star_value_noise(
+        float3(azimuth * 1.0, time * 0.03));
+    const float coverage_medium = almetal_star_value_noise(
+        float3(azimuth * 2.8, time * 0.07));
+    const float coverage = smoothstep(
+        0.22, 0.90, coverage_big * 0.62 + coverage_medium * 0.38);
+
+    const float fold =
+        0.06 * sin(azimuth.x * 2.0 + time * 0.18) +
+        0.04 * sin(azimuth.y * 3.1 + time * 0.27 + 1.4) +
+        0.03 * sin(azimuth.x * 4.3 - time * 0.33) +
+        0.03 * almetal_star_value_noise(
+            float3(azimuth * 2.5, time * 0.11));
+    const float base = 0.10 + fold;
+    const float distance_above = elevation - base;
+    if (distance_above > 0.55)
+    {
+        discard_fragment();
+    }
+
+    const float2 drift = float2(time * 0.045, time * 0.028);
+    const float3 noise_position = float3(
+        azimuth * 16.0 + drift, elevation * 2.0);
+    float noise = 0.50 * almetal_star_value_noise(
+        noise_position + float3(0.0, 0.0, time * 0.09));
+    noise += 0.28 * almetal_star_value_noise(
+        noise_position * 2.1 + float3(drift, time * 0.14));
+    noise += 0.14 * almetal_star_value_noise(
+        noise_position * 4.5 + float3(drift * 1.4, time * 0.22));
+    noise += 0.08 * almetal_star_value_noise(
+        noise_position * 9.5 + float3(drift * 1.9, time * 0.33));
+    const float curtain_mask = pow(
+        smoothstep(0.05, 0.92, noise), 1.6);
+
+    const float horizon_fade = smoothstep(-0.03, 0.28, elevation);
+    const float zenith_fade = 1.0 - smoothstep(0.38, 0.88, elevation);
+    const float elevation_envelope = horizon_fade * zenith_fade;
+    const float body_top = 0.30;
+    float body_envelope = exp(min(distance_above, 0.0) * 3.5) *
+        (1.0 - smoothstep(
+            body_top * 0.15, body_top, distance_above));
+    body_envelope *= elevation_envelope;
+
+    const float halo_low = 0.18;
+    const float halo_high = 0.45;
+    float halo_envelope = smoothstep(
+        halo_low * 0.40, halo_low, distance_above) *
+        (1.0 - smoothstep(
+            halo_high * 0.55, halo_high * 1.15, distance_above));
+    halo_envelope *= elevation_envelope;
+    const float halo_mask = 0.5 + 0.5 * sqrt(curtain_mask);
+
+    const float base_coordinate = (distance_above - 0.02) * 20.0;
+    float base_line = exp(-base_coordinate * base_coordinate);
+    base_line *= smoothstep(-0.22, -0.02, distance_above);
+    base_line *= 0.45 + 0.55 * almetal_star_value_noise(
+        float3(azimuth * 6.0, time * 0.10));
+    base_line *= elevation_envelope;
+
+    const float breath_phase = almetal_star_value_noise(
+        float3(azimuth * 1.2, 0.0)) * 6.28318;
+    const float breath = 0.80 + 0.20 * sin(time * 0.18 + breath_phase);
+    const float pulse = 0.88 + 0.12 * sin(time * 0.65);
+    const float shimmer = 0.88 + 0.12 * almetal_star_value_noise(
+        float3(azimuth * 22.0, time * 1.4));
+
+    const float3 green = float3(0.30, 1.50, 0.60);
+    const float3 magenta = float3(1.15, 0.50, 0.95);
+    const float3 purple = float3(0.60, 0.35, 1.10);
+    const float3 base_color = float3(0.50, 1.80, 0.80);
+    const float halo_fraction = clamp(
+        (distance_above - halo_low) / (halo_high - halo_low),
+        0.0, 1.0);
+    const float3 halo_color = mix(
+        magenta, purple, smoothstep(0.35, 1.00, halo_fraction));
+    const float3 body_rgb = green * body_envelope * curtain_mask;
+    const float3 halo_rgb = halo_color * halo_envelope *
+                            halo_mask * 0.60;
+    const float3 base_rgb = base_color * base_line;
+    float strength = body_envelope * curtain_mask +
+        halo_envelope * halo_mask * 0.40 + base_line;
+    strength *= coverage * breath * pulse * shimmer;
+    if (strength <= 0.003)
+    {
+        discard_fragment();
+    }
+
+    float3 aurora = (body_rgb + halo_rgb + base_rgb) *
+        coverage * breath * pulse * shimmer *
+        constants.camera_intensity.w;
+    const float chroma = almetal_star_value_noise(
+        float3(azimuth * 11.0, 0.0));
+    aurora *= mix(float3(0.95, 1.05, 0.98),
+                  float3(1.05, 0.98, 1.02), chroma);
+    const float alpha = clamp(strength, 0.0, 1.0);
+
+    ALMetalWorldGBufferOutput output;
+    output.specular_orm = 0.0;
+    output.normal = float4(0.0, 1.0, 0.0, 0.0);
+    if (constants.config.y != 0u)
+    {
+        const float2 gl_fragment_position = float2(
+            input.position.x, constants.time_screen.z - input.position.y);
+        const float noise_value = fract(
+            52.9829189 * fract(dot(
+                gl_fragment_position,
+                float2(0.06711056, 0.00583715)))) - 0.5;
+        output.albedo = 0.0;
+        output.emissive = float4(
+            aurora * 1.5 * (1.0 + noise_value *
+                float3(1.0 / 64.0, 1.0 / 64.0, 1.0 / 32.0)),
+            alpha);
+    }
+    else
+    {
+        output.albedo = float4(aurora, alpha);
         output.emissive = 0.0;
     }
     return output;

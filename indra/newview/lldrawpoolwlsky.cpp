@@ -549,7 +549,14 @@ void LLDrawPoolWLSky::renderAuroraDeferred(const LLVector3& camPosLocal, F32 cam
 
     // Re-use the WL sky dome mesh — a ready-made hemisphere. Aurora shader
     // discards the zenith cap and below-horizon region.
+#if LL_DARWIN
+    gPipeline.beginMetalWorldWindLightAurora(
+        intensity, (F32)s_aurora_time, camHeightLocal);
+#endif
     renderDome(camPosLocal, camHeightLocal, &gDeferredAuroraProgram);
+#if LL_DARWIN
+    gPipeline.endMetalWorldWindLightAurora();
+#endif
 
     gDeferredAuroraProgram.unbind();
 }
