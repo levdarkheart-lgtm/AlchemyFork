@@ -82,17 +82,18 @@ struct ALMetalWorldReflectionProbes
 };
 
 // The active mirror/hero probe overrides ordinary reflection-probe radiance
-// after selection. Legacy impostor owners only consume its sharpest level:
-// fullbright-shiny passes zero glossiness but use the legacy radiance tap,
-// while legacy BLEND coverage explicitly finishes that tap at glossiness one.
-// Keeping this separate from the fixed probe-selection block avoids changing
-// its 49,216-byte ABI while the GL owner remains the transitional producer.
+// after selection. The base-light owner consumes the glossiest quarter of its
+// authored mip chain; legacy impostor owners finish at glossiness one and
+// therefore consume the sharpest level. Keeping this separate from the fixed
+// probe-selection block avoids changing its 49,216-byte ABI while the GL
+// owner remains the transitional producer.
 struct alignas(16) ALMetalWorldHeroProbeConstants
 {
     float hero_box[16]{};
     float hero_sphere[4]{};
     float clip_plane[4]{};
-    // x = shape (0 box, 1 sphere), y = active probe count (0 or 1).
+    // x = shape (0 box, 1 sphere), y = active probe count (0 or 1),
+    // z = the LOD that radiance generation maps to perceptual roughness one.
     std::uint32_t config[4]{};
 };
 
@@ -332,6 +333,9 @@ struct ALMetalWorldBaseLightingScene
     // its response curve while the shadow/SSAO producers are migrated.
     const ALMetalTexture* light_map = nullptr;
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
+    const ALMetalWorldHeroProbe* hero_probe = nullptr;
+    const ALMetalWorldScreenSpaceReflections* screen_space_reflections =
+        nullptr;
     ALMetalWorldBaseLightingConstants constants;
     bool hdr = false;
 };

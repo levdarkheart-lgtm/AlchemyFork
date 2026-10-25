@@ -139,9 +139,9 @@ private:
     // maximum LoD of reflection probes (mip levels - 1)
     F32 mMaxProbeLOD = 6.f;
 
-    // Monotonic content identity for the sharp hero-radiance cube mirrored by
-    // the transitional Metal impostor owner. Readiness is separate because a
-    // recreated GL array has an identity but no generated radiance yet.
+    // Monotonic content identity for the generated hero-radiance mip family
+    // mirrored by transitional Metal consumers. Readiness is separate because
+    // a recreated GL array has an identity but no generated radiance yet.
     U64 mMetalRadianceGeneration = 0;
     bool mMetalRadianceReady = false;
 

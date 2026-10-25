@@ -316,13 +316,17 @@ namespace
 
         const ALMetalTextureDescriptor& descriptor =
             hero->radiance_texture->descriptor();
+        const std::uint32_t hero_max_lod = hero->constants.config[2];
+        const std::uint32_t required_levels =
+            static_cast<std::uint32_t>(
+                std::ceil(static_cast<float>(hero_max_lod) * 0.25f)) + 1;
         return descriptor.type == ALMetalTextureType::texture_cube &&
                (descriptor.format == ALMetalPixelFormat::rg11b10_float ||
                 descriptor.format == ALMetalPixelFormat::rgba8_unorm) &&
                descriptor.width != 0 &&
                descriptor.width == descriptor.height &&
                descriptor.array_length == 1 &&
-               descriptor.mipmap_level_count == 1 &&
+               descriptor.mipmap_level_count == required_levels &&
                descriptor.sample_count == 1 &&
                alMetalHasUsage(
                    descriptor.usage, ALMetalTextureUsage::shader_read);
@@ -2622,6 +2626,19 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         setError(error, "Metal world base-light scene is incomplete");
         return nullptr;
     }
+    if (scene.hero_probe && !validHeroProbe(scene.hero_probe))
+    {
+        setError(error, "Metal world base-light hero probe is invalid");
+        return nullptr;
+    }
+    if (scene.screen_space_reflections &&
+        !validScreenSpaceReflections(scene.screen_space_reflections))
+    {
+        setError(
+            error,
+            "Metal world base-light screen-space reflections are invalid");
+        return nullptr;
+    }
 
     const ALMetalRenderTargetDescriptor& input =
         scene.gbuffer->descriptor();
@@ -2732,6 +2749,23 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
     const ALMetalScissorRect scissor{0, 0, input.width, input.height};
     const ALMetalWorldReflectionProbes& probes =
         *scene.reflection_probes;
+    const ALMetalTexture* hero_texture = scene.hero_probe
+        ? scene.hero_probe->radiance_texture
+        : mImpl->inactive_hero_probe.get();
+    const ALMetalWorldHeroProbeConstants& hero_constants =
+        scene.hero_probe
+            ? scene.hero_probe->constants
+            : mImpl->inactive_hero_constants;
+    const ALMetalTexture* ssr_color = scene.screen_space_reflections
+        ? scene.screen_space_reflections->scene_color
+        : mImpl->inactive_ssr_color.get();
+    const ALMetalTexture* ssr_depth = scene.screen_space_reflections
+        ? scene.screen_space_reflections->scene_depth
+        : mImpl->inactive_ssr_depth.get();
+    const ALMetalWorldScreenSpaceReflectionConstants& ssr_constants =
+        scene.screen_space_reflections
+            ? scene.screen_space_reflections->constants
+            : mImpl->inactive_ssr_constants;
     const bool encoded =
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
@@ -2742,6 +2776,10 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
             0, &scene.constants, sizeof(scene.constants), error) &&
         encoder->setFragmentBuffer(
             1, *probe_constants_buffer, 0, error) &&
+        encoder->setFragmentBytes(
+            2, &hero_constants, sizeof(hero_constants), error) &&
+        encoder->setFragmentBytes(
+            3, &ssr_constants, sizeof(ssr_constants), error) &&
         encoder->setFragmentTexture(0, albedo, error) &&
         encoder->setFragmentTexture(1, specular, error) &&
         encoder->setFragmentTexture(2, normal, error) &&
@@ -2751,6 +2789,9 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         encoder->setFragmentTexture(6, probes.radiance_texture, error) &&
         encoder->setFragmentTexture(7, probes.irradiance_texture, error) &&
         encoder->setFragmentTexture(8, mImpl->brdf_lut.get(), error) &&
+        encoder->setFragmentTexture(9, hero_texture, error) &&
+        encoder->setFragmentTexture(10, ssr_color, error) &&
+        encoder->setFragmentTexture(11, ssr_depth, error) &&
         encoder->setFragmentSampler(
             0, mImpl->point_clamp_sampler.get(), error) &&
         encoder->setFragmentSampler(

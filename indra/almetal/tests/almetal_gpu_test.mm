@@ -3709,6 +3709,248 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(base_pixels[center + 2] > 0);
         CHECK(base_pixels[center + 3] == 0);
 
+        // Finish the ordinary probe result the same way as the deferred GLSL
+        // owner. A 0.8-gloss PBR surface reads the hero probe at LOD 0.8:
+        // its two-level red-to-blue cube therefore raises blue over the
+        // ordinary green probe. The declared heroMaxLod also proves that an
+        // incomplete glossiest-quarter mip family fails before encoding.
+        const std::array<std::uint8_t, 4> glossy_pbr_orm{{
+            255, 51, 255, 0,
+        }};
+        const std::array<std::uint16_t, 4> glossy_pbr_normal{{
+            32768, 32768, 32896, 43908,
+        }};
+        auto glossy_upload = device->makeCommandBuffer(
+            "Alchemy glossy base-light G-buffer upload", &error);
+        INFO(error);
+        REQUIRE(glossy_upload);
+        REQUIRE(specular->upload(
+            *glossy_upload, 0, 0, {}, glossy_pbr_orm.data(), 4,
+            &error));
+        REQUIRE(normal->upload(
+            *glossy_upload, 0, 0, {}, glossy_pbr_normal.data(), 8,
+            &error));
+        REQUIRE(glossy_upload->commitAndWait(&error));
+        INFO(error);
+        auto glossy_gbuffer = renderer->render(gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(glossy_gbuffer);
+
+        auto restore_pbr_upload = device->makeCommandBuffer(
+            "Alchemy restore PBR base-light G-buffer upload", &error);
+        INFO(error);
+        REQUIRE(restore_pbr_upload);
+        REQUIRE(specular->upload(
+            *restore_pbr_upload, 0, 0, {}, pbr_orm.data(), 4, &error));
+        REQUIRE(normal->upload(
+            *restore_pbr_upload, 0, 0, {}, pbr_normal.data(), 8,
+            &error));
+        REQUIRE(restore_pbr_upload->commitAndWait(&error));
+        INFO(error);
+
+        base_scene.gbuffer = glossy_gbuffer.get();
+        base_scene.constants.lighting[0] = 0.f;
+        base_scene.constants.lighting[1] = 0.f;
+        auto glossy_ordinary = renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(glossy_ordinary);
+        std::array<std::uint8_t, 32 * 32 * 4> glossy_ordinary_pixels{};
+        REQUIRE(glossy_ordinary->colorTexture(0)->readback(
+            *device, 0, 0, {}, glossy_ordinary_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+
+        ALMetalTextureDescriptor base_hero_descriptor;
+        base_hero_descriptor.type = ALMetalTextureType::texture_cube;
+        base_hero_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        base_hero_descriptor.width = 2;
+        base_hero_descriptor.height = 2;
+        base_hero_descriptor.mipmap_level_count = 2;
+        base_hero_descriptor.storage = ALMetalStorageMode::private_gpu;
+        base_hero_descriptor.usage = ALMetalTextureUsage::shader_read;
+        base_hero_descriptor.label =
+            "Alchemy base-light hero-probe mip family";
+        auto base_hero_texture = ALMetalTexture::create(
+            *device, base_hero_descriptor, &error);
+        INFO(error);
+        REQUIRE(base_hero_texture);
+        const std::array<std::uint8_t, 2 * 2 * 4> red_hero_mip{{
+            255, 0, 0, 255, 255, 0, 0, 255,
+            255, 0, 0, 255, 255, 0, 0, 255,
+        }};
+        const std::array<std::uint8_t, 4> blue_hero_mip{{
+            0, 0, 255, 255,
+        }};
+        auto base_hero_upload = device->makeCommandBuffer(
+            "Alchemy base-light hero-probe upload", &error);
+        INFO(error);
+        REQUIRE(base_hero_upload);
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            REQUIRE(base_hero_texture->upload(
+                *base_hero_upload, 0, face, {}, red_hero_mip.data(),
+                2 * 4, &error));
+            REQUIRE(base_hero_texture->upload(
+                *base_hero_upload, 1, face, {}, blue_hero_mip.data(),
+                4, &error));
+        }
+        REQUIRE(base_hero_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldHeroProbe base_hero;
+        base_hero.radiance_texture = base_hero_texture.get();
+        base_hero.constants.clip_plane[3] = 1.f;
+        base_hero.constants.config[1] = 1;
+        base_hero.constants.config[2] = 4;
+        base_scene.hero_probe = &base_hero;
+        auto glossy_hero = renderer->renderBaseLighting(base_scene, &error);
+        INFO(error);
+        REQUIRE(glossy_hero);
+        std::array<std::uint8_t, 32 * 32 * 4> glossy_hero_pixels{};
+        REQUIRE(glossy_hero->colorTexture(0)->readback(
+            *device, 0, 0, {}, glossy_hero_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(glossy_hero_pixels[center + 2] >
+              glossy_ordinary_pixels[center + 2]);
+
+        base_hero.constants.config[2] = 8;
+        error.clear();
+        CHECK_FALSE(renderer->renderBaseLighting(base_scene, &error));
+        CHECK(error == "Metal world base-light hero probe is invalid");
+        error.clear();
+        base_hero.constants.config[2] = 4;
+        base_scene.hero_probe = nullptr;
+
+        // The opaque SSR finish uses the same 0.567 gloss threshold and GGX
+        // dominant ray as reflectionProbeF. Turn the surface toward the view,
+        // arrange a first-step red history hit, and require that hit to raise
+        // red over the ordinary-probe-only result. Incomplete paired history
+        // remains fail-closed.
+        const std::array<std::uint8_t, 4> glossy_legacy_specular{{
+            255, 255, 255, 204,
+        }};
+        const std::array<std::uint16_t, 4> reverse_legacy_normal{{
+            65535, 65535, 65535, 22282,
+        }};
+        auto ssr_gbuffer_upload = device->makeCommandBuffer(
+            "Alchemy base-light SSR G-buffer upload", &error);
+        INFO(error);
+        REQUIRE(ssr_gbuffer_upload);
+        REQUIRE(specular->upload(
+            *ssr_gbuffer_upload, 0, 0, {},
+            glossy_legacy_specular.data(), 4,
+            &error));
+        REQUIRE(normal->upload(
+            *ssr_gbuffer_upload, 0, 0, {}, reverse_legacy_normal.data(), 8,
+            &error));
+        REQUIRE(ssr_gbuffer_upload->commitAndWait(&error));
+        INFO(error);
+        auto ssr_gbuffer = renderer->render(gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(ssr_gbuffer);
+
+        auto ssr_restore_upload = device->makeCommandBuffer(
+            "Alchemy restore base-light SSR inputs", &error);
+        INFO(error);
+        REQUIRE(ssr_restore_upload);
+        REQUIRE(specular->upload(
+            *ssr_restore_upload, 0, 0, {}, pbr_orm.data(), 4, &error));
+        REQUIRE(normal->upload(
+            *ssr_restore_upload, 0, 0, {}, pbr_normal.data(), 8,
+            &error));
+        REQUIRE(ssr_restore_upload->commitAndWait(&error));
+        INFO(error);
+
+        base_scene.gbuffer = ssr_gbuffer.get();
+        auto no_ssr = renderer->renderBaseLighting(base_scene, &error);
+        INFO(error);
+        REQUIRE(no_ssr);
+        std::array<std::uint8_t, 32 * 32 * 4> no_ssr_pixels{};
+        REQUIRE(no_ssr->colorTexture(0)->readback(
+            *device, 0, 0, {}, no_ssr_pixels.data(), 32 * 4, &error));
+        INFO(error);
+
+        ALMetalWorldScreenSpaceReflections invalid_base_ssr;
+        invalid_base_ssr.constants.config[1] = 1;
+        base_scene.screen_space_reflections = &invalid_base_ssr;
+        error.clear();
+        CHECK_FALSE(renderer->renderBaseLighting(base_scene, &error));
+        CHECK(error ==
+              "Metal world base-light screen-space reflections are invalid");
+        error.clear();
+
+        ALMetalTextureDescriptor base_ssr_color_descriptor;
+        base_ssr_color_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        base_ssr_color_descriptor.width = 1;
+        base_ssr_color_descriptor.height = 1;
+        base_ssr_color_descriptor.storage = ALMetalStorageMode::private_gpu;
+        base_ssr_color_descriptor.usage = ALMetalTextureUsage::shader_read;
+        base_ssr_color_descriptor.label =
+            "Alchemy base-light SSR scene color";
+        auto base_ssr_color = ALMetalTexture::create(
+            *device, base_ssr_color_descriptor, &error);
+        INFO(error);
+        REQUIRE(base_ssr_color);
+        ALMetalTextureDescriptor base_ssr_depth_descriptor =
+            base_ssr_color_descriptor;
+        base_ssr_depth_descriptor.format = ALMetalPixelFormat::r32_float;
+        base_ssr_depth_descriptor.label =
+            "Alchemy base-light SSR scene depth";
+        auto base_ssr_depth = ALMetalTexture::create(
+            *device, base_ssr_depth_descriptor, &error);
+        INFO(error);
+        REQUIRE(base_ssr_depth);
+        const std::array<std::uint8_t, 4> red_ssr{{255, 0, 0, 255}};
+        const float ssr_hit_depth = 0.5f;
+        auto base_ssr_upload = device->makeCommandBuffer(
+            "Alchemy base-light SSR history upload", &error);
+        INFO(error);
+        REQUIRE(base_ssr_upload);
+        REQUIRE(base_ssr_color->upload(
+            *base_ssr_upload, 0, 0, {}, red_ssr.data(), 4, &error));
+        REQUIRE(base_ssr_depth->upload(
+            *base_ssr_upload, 0, 0, {}, &ssr_hit_depth, sizeof(float),
+            &error));
+        REQUIRE(base_ssr_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldScreenSpaceReflections base_ssr;
+        base_ssr.scene_color = base_ssr_color.get();
+        base_ssr.scene_depth = base_ssr_depth.get();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            base_ssr.constants.projection[axis * 4 + axis] = 1.f;
+            base_ssr.constants.inverse_projection[axis * 4 + axis] = 1.f;
+            base_ssr.constants.inverse_modelview_delta[axis * 4 + axis] =
+                1.f;
+        }
+        base_ssr.constants.inverse_projection[14] = -0.4f;
+        base_ssr.constants.screen[0] = 32.f;
+        base_ssr.constants.screen[1] = 32.f;
+        base_ssr.constants.screen[2] = 32.f;
+        base_ssr.constants.trace[0] = 4.f;
+        base_ssr.constants.trace[1] = 0.1f;
+        base_ssr.constants.trace[2] = 0.2f;
+        base_ssr.constants.trace[3] = 0.001f;
+        base_ssr.constants.sampling[0] = 1.f;
+        base_ssr.constants.sampling[1] = 1.6f;
+        base_ssr.constants.config[1] = 1;
+        base_scene.screen_space_reflections = &base_ssr;
+        auto with_ssr = renderer->renderBaseLighting(base_scene, &error);
+        INFO(error);
+        REQUIRE(with_ssr);
+        std::array<std::uint8_t, 32 * 32 * 4> with_ssr_pixels{};
+        REQUIRE(with_ssr->colorTexture(0)->readback(
+            *device, 0, 0, {}, with_ssr_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(with_ssr_pixels[center + 0] > no_ssr_pixels[center + 0]);
+        base_scene.screen_space_reflections = nullptr;
+        base_scene.gbuffer = pbr_gbuffer.get();
+        base_scene.constants.lighting[0] = 1.f;
+        base_scene.constants.lighting[1] = 1.f;
+
         std::array<std::uint8_t, 32 * 32 * 2> occluded_light_map{};
         auto occluded_upload = device->makeCommandBuffer(
             "Alchemy occluded base-light map upload", &error);
