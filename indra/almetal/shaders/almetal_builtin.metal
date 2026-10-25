@@ -932,6 +932,26 @@ fragment ALMetalWorldGBufferOutput almetal_world_pbr_fragment(
     return output;
 }
 
+fragment float4 almetal_world_flat_alpha_fragment(
+    ALMetalWorldSimpleVaryings input [[stage_in]],
+    array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]])
+{
+    const float4 color = input.texture_index < input.texture_count
+        ? diffuse_textures[min(input.texture_index, 31u)].sample(
+              diffuse_sampler, input.texcoord) * input.color
+        : float4(1.0, 0.0, 1.0, 1.0);
+    constexpr float minimum_alpha = 0.004;
+    if (color.a < minimum_alpha)
+    {
+        discard_fragment();
+    }
+
+    // Both deferred/alphaF's FOR_IMPOSTOR branch and the fullbright program
+    // emit this same flat decoded diffuse times linearised streamed tint.
+    return max(color, float4(0.0));
+}
+
 fragment float4 almetal_world_pbr_alpha_fragment(
     ALMetalWorldPBRVaryings input [[stage_in]],
     array<texture2d<float>, 8> base_color_textures [[texture(0)]],

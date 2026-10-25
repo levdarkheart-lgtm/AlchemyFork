@@ -165,10 +165,10 @@ public:
         const ALMetalWorldGBufferScene& scene,
         std::string* error = nullptr);
 
-    // Blend the flat glTF/PBR impostor-alpha contract into an existing native
-    // G-buffer target. Attachment zero and depth are loaded in place; the
-    // remaining G-buffer attachments are preserved byte-for-byte.
-    bool compositePBRAlpha(
+    // Blend flat simple/fullbright and glTF/PBR impostor-alpha contracts into
+    // an existing native G-buffer target. Attachment zero and depth are
+    // loaded in place; the remaining attachments are preserved byte-for-byte.
+    bool compositeImpostorAlpha(
         ALMetalRenderTarget& target,
         const ALMetalWorldGBufferScene& scene,
         std::string* error = nullptr);

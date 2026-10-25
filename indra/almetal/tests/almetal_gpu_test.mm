@@ -133,6 +133,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_bump_fragment",
             "almetal_world_material_fragment",
             "almetal_world_pbr_fragment",
+            "almetal_world_flat_alpha_fragment",
             "almetal_world_pbr_alpha_fragment",
             "almetal_world_impostor_fragment",
             "almetal_world_coverage_fragment",
@@ -1706,12 +1707,12 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         alpha_scene.normal_hdr = true;
         alpha_scene.reverse_z = false;
         alpha_batch.pbr_slots[0].alpha_cutoff = 0.5f;
-        CHECK_FALSE(renderer->compositePBRAlpha(
+        CHECK_FALSE(renderer->compositeImpostorAlpha(
             *coverage_result, alpha_scene, &error));
         CHECK(error == "Metal world PBR alpha material is invalid");
         alpha_batch.pbr_slots[0].alpha_cutoff = -1.f;
         error.clear();
-        REQUIRE(renderer->compositePBRAlpha(
+        REQUIRE(renderer->compositeImpostorAlpha(
             *coverage_result, alpha_scene, &error));
         INFO(error);
         std::array<std::uint8_t, 32 * 32 * 4> alpha_albedo{};
@@ -1742,7 +1743,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(alpha_orm[alpha_right + 3] == 0);
         CHECK(std::abs(alpha_depth[16 * 32 + 24] - 1.f) < 0.0001f);
 
-        REQUIRE(renderer->compositePBRAlpha(
+        REQUIRE(renderer->compositeImpostorAlpha(
             *coverage_result, alpha_scene, &error));
         INFO(error);
         REQUIRE(coverage_result->colorTexture(0)->readback(
@@ -1768,7 +1769,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         {
             alpha_batch.rigged_normal_matrix[column][column] = 1.f;
         }
-        REQUIRE(renderer->compositePBRAlpha(
+        REQUIRE(renderer->compositeImpostorAlpha(
             *coverage_result, alpha_scene, &error));
         INFO(error);
         REQUIRE(coverage_result->depthStencilTexture()->readback(
@@ -1778,7 +1779,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(alpha_depth[16 * 32 + 8] - 0.625f) < 0.0001f);
 
         alpha_scene.reverse_z = true;
-        REQUIRE(renderer->compositePBRAlpha(
+        REQUIRE(renderer->compositeImpostorAlpha(
             *reverse_coverage_result, alpha_scene, &error));
         INFO(error);
         REQUIRE(reverse_coverage_result->depthStencilTexture()->readback(
@@ -1786,6 +1787,67 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             &error));
         INFO(error);
         CHECK(std::abs(alpha_depth[16 * 32 + 8] - 0.25f) < 0.0001f);
+
+        // The legacy simple and fullbright impostor programs converge on the
+        // same flat diffuse-times-tint contract. Exercise that pipeline with
+        // static read-only depth and the object-skinned depth-writing variant.
+        ALMetalWorldSimpleBatch flat_alpha_batch = alpha_batch;
+        flat_alpha_batch.pbr_slot_count = 0;
+        flat_alpha_batch.double_sided = false;
+        flat_alpha_batch.tangent_offset = 0;
+        flat_alpha_batch.diffuse_textures[0] = indexed_diffuse.get();
+        flat_alpha_batch.skin_palette = nullptr;
+        flat_alpha_batch.skin_palette_float_count = 0;
+        flat_alpha_batch.skin_joint_count = 0;
+        flat_alpha_batch.weight_offset = 0;
+        flat_alpha_batch.modelview_projection[12] = 0.8f;
+        flat_alpha_batch.modelview_projection[13] = 0.8f;
+        alpha_scene.batches = &flat_alpha_batch;
+        alpha_scene.reverse_z = false;
+        flat_alpha_batch.diffuse_textures[0] = nullptr;
+        CHECK_FALSE(renderer->compositeImpostorAlpha(
+            *coverage_result, alpha_scene, &error));
+        CHECK(error == "Metal world impostor alpha texture is invalid");
+        flat_alpha_batch.diffuse_textures[0] = indexed_diffuse.get();
+        error.clear();
+        REQUIRE(renderer->compositeImpostorAlpha(
+            *coverage_result, alpha_scene, &error));
+        INFO(error);
+        REQUIRE(coverage_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, alpha_albedo.data(), 32 * 4, &error));
+        REQUIRE(coverage_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, alpha_orm.data(), 32 * 4, &error));
+        REQUIRE(coverage_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, alpha_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        const std::size_t alpha_top = (24 * 32 + 24) * 4;
+        CHECK(alpha_albedo[alpha_top + 0] == 0);
+        CHECK(std::abs(static_cast<int>(alpha_albedo[alpha_top + 1]) -
+                       188) <= 2);
+        CHECK(alpha_albedo[alpha_top + 2] == 0);
+        CHECK(std::abs(static_cast<int>(alpha_albedo[alpha_top + 3]) -
+                       128) <= 1);
+        CHECK(alpha_orm[alpha_top + 0] == 0);
+        CHECK(alpha_orm[alpha_top + 1] == 0);
+        CHECK(alpha_orm[alpha_top + 2] == 0);
+        CHECK(alpha_orm[alpha_top + 3] == 0);
+        CHECK(std::abs(alpha_depth[24 * 32 + 24] - 1.f) < 0.0001f);
+
+        flat_alpha_batch.modelview_projection[13] = -0.8f;
+        flat_alpha_batch.weight_offset = weight_offset;
+        flat_alpha_batch.skin_palette = alpha_skin_palette.data();
+        flat_alpha_batch.skin_palette_float_count =
+            alpha_skin_palette.size();
+        flat_alpha_batch.skin_joint_count = 1;
+        REQUIRE(renderer->compositeImpostorAlpha(
+            *coverage_result, alpha_scene, &error));
+        INFO(error);
+        REQUIRE(coverage_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, alpha_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(alpha_depth[8 * 32 + 28] - 0.625f) < 0.0001f);
 
         scene.hdr = false;
 

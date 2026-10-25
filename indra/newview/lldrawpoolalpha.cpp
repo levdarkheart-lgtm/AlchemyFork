@@ -763,6 +763,11 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                     // have always had, rather than a transparency error we would be adding.
                     mat = LLPipeline::sRenderingHUDs ? nullptr : params.mMaterial;
 
+#if LL_DARWIN
+                    gPipeline.captureMetalImpostorFlatAlphaBatch(
+                        params, is_particle_or_hud_particle);
+#endif
+
                     if (params.mFullbright)
                     {
                         // Turn off lighting if it hasn't already been so.

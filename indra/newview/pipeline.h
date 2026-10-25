@@ -593,8 +593,10 @@ public:
     void beginMetalWorldImpostorPass();
     void beginMetalImpostorBakeCapture(
         const LLUUID& avatar_id, U32 width, U32 height);
-    void beginMetalImpostorPBRAlphaCapture(const LLUUID& avatar_id);
-    void endMetalImpostorPBRAlphaCapture();
+    void beginMetalImpostorAlphaCapture(const LLUUID& avatar_id);
+    void endMetalImpostorAlphaCapture();
+    void captureMetalImpostorFlatAlphaBatch(
+        const LLDrawInfo& params, bool particle_or_hud_particle);
     void captureMetalImpostorPBRAlphaBatch(const LLDrawInfo& params);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
