@@ -932,6 +932,27 @@ fragment ALMetalWorldGBufferOutput almetal_world_pbr_fragment(
     return output;
 }
 
+fragment float4 almetal_world_fullbright_fragment(
+    ALMetalWorldSimpleVaryings input [[stage_in]],
+    array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]])
+{
+    const float4 diffuse = input.texture_index < input.texture_count
+        ? diffuse_textures[min(input.texture_index, 31u)].sample(
+              diffuse_sampler, input.texcoord)
+        : float4(1.0, 0.0, 1.0, 1.0);
+    if (input.material_flags.z != 0u &&
+        diffuse.a < input.alpha_cutoff - (1.0 / 512.0))
+    {
+        discard_fragment();
+    }
+
+    // The post-deferred fullbright owners shade in linear and rely on the
+    // sRGB target store. Outside the alpha pool their mask tests texture
+    // coverage alone; streamed alpha carries shininess and is not a cutoff.
+    return max(diffuse * input.color, float4(0.0));
+}
+
 fragment float4 almetal_world_flat_alpha_fragment(
     ALMetalWorldSimpleVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],

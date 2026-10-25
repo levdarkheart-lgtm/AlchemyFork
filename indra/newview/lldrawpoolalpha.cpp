@@ -153,6 +153,13 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
 
+#if LL_DARWIN
+    // Fullbright/post-bump owners precede this pool. Flush the supported
+    // opaque-forward subset and stamp its depth into coverage before any
+    // partial-alpha layer can write depth of its own.
+    gPipeline.beginMetalImpostorAlphaPhase();
+#endif
+
     if (LLPipeline::isWaterClip() && getType() == LLDrawPool::POOL_ALPHA_PRE_WATER)
     { // don't render alpha objects on the other side of the water plane if water is opaque
         return;

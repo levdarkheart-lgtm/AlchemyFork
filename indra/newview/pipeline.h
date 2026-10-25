@@ -594,6 +594,8 @@ public:
     void beginMetalImpostorBakeCapture(
         const LLUUID& avatar_id, U32 width, U32 height);
     void beginMetalImpostorAlphaCapture(const LLUUID& avatar_id);
+    void beginMetalImpostorFullbrightPass(bool rigged, bool alpha_mask);
+    void beginMetalImpostorAlphaPhase();
     void endMetalImpostorAlphaCapture();
     void captureMetalImpostorFlatAlphaBatch(
         const LLDrawInfo& params, bool particle_or_hud_particle);

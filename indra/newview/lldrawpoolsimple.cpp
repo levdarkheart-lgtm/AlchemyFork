@@ -246,13 +246,25 @@ void LLDrawPoolFullbright::renderPostDeferred(S32 pass)
 
     // render static
     shader->bind();
+#if LL_DARWIN
+    gPipeline.beginMetalImpostorFullbrightPass(false, false);
+#endif
     pushBatches(LLRenderPass::PASS_FULLBRIGHT, true, true);
+#if LL_DARWIN
+    gPipeline.endMetalWorldGBufferPass();
+#endif
 
     if (!LLPipeline::sRenderingHUDs)
     {
         // render rigged
         shader->bind(true);
+#if LL_DARWIN
+        gPipeline.beginMetalImpostorFullbrightPass(true, false);
+#endif
         pushRiggedBatches(LLRenderPass::PASS_FULLBRIGHT_RIGGED, true, true);
+#if LL_DARWIN
+        gPipeline.endMetalWorldGBufferPass();
+#endif
     }
 }
 
@@ -278,14 +290,26 @@ void LLDrawPoolFullbrightAlphaMask::renderPostDeferred(S32 pass)
     // render static
     shader->bind();
     shader->uniform1f(LLShaderMgr::VERTEX_ALPHA_COVERAGE, 0.f);
+#if LL_DARWIN
+    gPipeline.beginMetalImpostorFullbrightPass(false, true);
+#endif
     pushMaskBatches(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, true, true);
+#if LL_DARWIN
+    gPipeline.endMetalWorldGBufferPass();
+#endif
 
     if (!LLPipeline::sRenderingHUDs)
     {
         // render rigged
         shader->bind(true);
         LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::VERTEX_ALPHA_COVERAGE, 0.f);
+#if LL_DARWIN
+        gPipeline.beginMetalImpostorFullbrightPass(true, true);
+#endif
         pushRiggedMaskBatches(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED, true, true);
+#if LL_DARWIN
+        gPipeline.endMetalWorldGBufferPass();
+#endif
     }
 }
 

@@ -83,6 +83,7 @@ struct ALMetalWorldSimpleBatch
     bool avatar_skinning = false;
     bool avatar_cloth = false;
     bool impostor = false;
+    bool impostor_fullbright = false;
     bool terrain = false;
     bool use_vertex_color = true;
     bool alpha_cutoff_bias = true;
@@ -165,10 +166,11 @@ public:
         const ALMetalWorldGBufferScene& scene,
         std::string* error = nullptr);
 
-    // Blend flat simple/fullbright and glTF/PBR impostor-alpha contracts into
-    // an existing native G-buffer target. Attachment zero and depth are
-    // loaded in place; the remaining attachments are preserved byte-for-byte.
-    bool compositeImpostorAlpha(
+    // Composite supported post-deferred impostor owners into an existing
+    // native G-buffer target. Attachment zero and depth are loaded in place;
+    // the remaining attachments are preserved byte-for-byte. Callers may
+    // request a depth-derived coverage stamp after an opaque forward phase.
+    bool compositeImpostorPostDeferred(
         ALMetalRenderTarget& target,
         const ALMetalWorldGBufferScene& scene,
         std::string* error = nullptr);

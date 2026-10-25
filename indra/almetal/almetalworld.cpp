@@ -171,6 +171,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<BumpPipelines, 2> pipelines;
     std::array<MaterialRiggedPipelines, 2> material_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
+    std::array<MaskPipelines, 2> fullbright_pipelines;
     std::array<MaterialRiggedPipelines, 2> flat_alpha_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_alpha_pipelines;
     std::array<AvatarVariantPipelines, 2> avatar_pipelines;
@@ -227,6 +228,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_bump_fragment") ||
         !impl->library->hasFunction("almetal_world_material_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_fullbright_fragment") ||
         !impl->library->hasFunction("almetal_world_flat_alpha_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_alpha_fragment") ||
         !impl->library->hasFunction("almetal_world_impostor_fragment") ||
@@ -251,6 +254,65 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         "almetal_world_avatar_skinned_vertex",
         "almetal_world_avatar_cloth_skinned_vertex",
     }};
+    for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
+    {
+        for (std::size_t alpha_mask = 0; alpha_mask < 2; ++alpha_mask)
+        {
+            for (std::size_t rigged = 0; rigged < 2; ++rigged)
+            {
+                for (std::size_t normal_hdr = 0; normal_hdr < 2;
+                     ++normal_hdr)
+                {
+                    ALMetalRenderPipelineDescriptor descriptor;
+                    descriptor.library = impl->library.get();
+                    descriptor.vertex_function = rigged
+                        ? "almetal_world_simple_skinned_vertex"
+                        : "almetal_world_simple_vertex";
+                    descriptor.fragment_function =
+                        "almetal_world_fullbright_fragment";
+                    descriptor.color_attachment_count = 4;
+                    descriptor.colors[0].format =
+                        ALMetalPixelFormat::rgba8_unorm_srgb;
+                    descriptor.colors[0].blending_enabled = !alpha_mask;
+                    descriptor.colors[0].source_rgb =
+                        ALMetalBlendFactor::source_alpha;
+                    descriptor.colors[0].destination_rgb =
+                        ALMetalBlendFactor::one_minus_source_alpha;
+                    descriptor.colors[0].source_alpha =
+                        ALMetalBlendFactor::one;
+                    descriptor.colors[0].destination_alpha =
+                        ALMetalBlendFactor::one_minus_source_alpha;
+                    descriptor.colors[1].format =
+                        ALMetalPixelFormat::rgba8_unorm;
+                    descriptor.colors[1].write_mask =
+                        ALMetalColorWriteMask::none;
+                    descriptor.colors[2].format = normal_hdr
+                        ? ALMetalPixelFormat::rgba16_unorm
+                        : ALMetalPixelFormat::rgb10a2_unorm;
+                    descriptor.colors[2].write_mask =
+                        ALMetalColorWriteMask::none;
+                    descriptor.colors[3].format = emissive_formats[hdr];
+                    descriptor.colors[3].write_mask =
+                        ALMetalColorWriteMask::none;
+                    descriptor.depth_stencil_format =
+                        ALMetalPixelFormat::depth32_float;
+                    descriptor.label = alpha_mask
+                        ? "Alchemy world fullbright-mask impostor pipeline"
+                        : "Alchemy world fullbright impostor pipeline";
+                    auto& pipeline =
+                        impl->fullbright_pipelines[hdr][alpha_mask]
+                                                   [rigged][normal_hdr];
+                    pipeline = ALMetalRenderPipeline::create(
+                        device, descriptor, error);
+                    if (!pipeline)
+                    {
+                        return nullptr;
+                    }
+                }
+            }
+        }
+    }
+
     for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
     {
         for (std::size_t rigged = 0; rigged < 2; ++rigged)
@@ -754,7 +816,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 batch.normal_texture || batch.material_slot_count != 0 ||
                 batch.pbr_slot_count != 0 || batch.skin_palette ||
                 batch.avatar_rigid || batch.avatar_skinning ||
-                batch.avatar_cloth || batch.terrain ||
+                batch.avatar_cloth || batch.impostor_fullbright ||
+                batch.terrain ||
                 !finiteValues(batch.modelview_projection, 16) ||
                 !finiteValues(batch.impostor_center, 4) ||
                 !finiteValues(batch.impostor_left, 4) ||
@@ -838,6 +901,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                     batch.terrain_composition_texture->descriptor().height ||
                 !std::isfinite(batch.terrain_grid_scale) ||
                 batch.terrain_grid_scale <= 0.f ||
+                batch.impostor_fullbright ||
                 !std::isfinite(batch.terrain_region_scale) ||
                 batch.terrain_region_scale <= 0.f ||
                 !std::isfinite(batch.terrain_detail_scale) ||
@@ -921,6 +985,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         if (!batch.vertices || !batch.indices || batch.texture_count == 0 ||
+            batch.impostor_fullbright ||
             batch.texture_count >
                 ALMetalWorldSimpleBatch::max_diffuse_textures ||
             (material &&
@@ -1740,7 +1805,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     return target;
 }
 
-bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
+bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
     ALMetalRenderTarget& target,
     const ALMetalWorldGBufferScene& scene,
     std::string* error)
@@ -1748,7 +1813,8 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
     if (!mImpl || !mImpl->device || !scene.batches ||
         scene.batch_count == 0 || scene.width == 0 || scene.height == 0)
     {
-        setError(error, "Metal world impostor alpha scene is incomplete");
+        setError(error,
+                 "Metal world impostor post-deferred scene is incomplete");
         return false;
     }
 
@@ -1773,7 +1839,8 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
         target_descriptor.depth_stencil_format !=
             ALMetalPixelFormat::depth32_float)
     {
-        setError(error, "Metal world impostor alpha target is incompatible");
+        setError(error,
+                 "Metal world impostor post-deferred target is incompatible");
         return false;
     }
 
@@ -1783,6 +1850,7 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
         const bool pbr = isPBRBatch(batch);
+        const bool fullbright = batch.impostor_fullbright;
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         if (!batch.vertices || !batch.indices ||
@@ -1796,7 +1864,8 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
                   ALMetalWorldSimpleBatch::max_material_slots ||
               batch.pbr_slot_count != batch.texture_count)) ||
             batch.material_slot_count != 0 || batch.normal_texture ||
-            batch.alpha_mask || batch.avatar_rigid ||
+            (!fullbright && batch.alpha_mask) ||
+            (fullbright && pbr) || batch.avatar_rigid ||
             batch.avatar_skinning || batch.avatar_cloth ||
             batch.impostor || batch.terrain || !batch.use_vertex_color ||
             (!pbr && batch.double_sided) ||
@@ -1810,6 +1879,9 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
             !finiteValues(&batch.normal_matrix[0][0], 12) ||
             !finiteValues(&batch.rigged_normal_matrix[0][0], 12) ||
             !finiteValues(batch.texture_matrix, 16) ||
+            (fullbright &&
+             (!std::isfinite(batch.alpha_cutoff) ||
+              batch.alpha_cutoff < 0.f || batch.alpha_cutoff > 1.f)) ||
             !rangeFits(batch.position_offset, batch.vertex_count,
                        float4_stride, batch.vertices->length()) ||
             !rangeFits(batch.normal_offset, batch.vertex_count,
@@ -1825,7 +1897,8 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
             !rangeFits(batch.index_offset, batch.index_count,
                        index_stride, batch.indices->length()))
         {
-            setError(error, "Metal world impostor alpha batch is invalid");
+            setError(error,
+                     "Metal world impostor post-deferred batch is invalid");
             return false;
         }
         if (batch.skin_palette)
@@ -1842,7 +1915,7 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
                               expected_palette_floats))
             {
                 setError(error,
-                         "Metal world impostor alpha skinning data is invalid");
+                         "Metal world impostor post-deferred skinning data is invalid");
                 return false;
             }
         }
@@ -1851,7 +1924,7 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
                  batch.skin_joint_count != 0)
         {
             setError(error,
-                     "Metal world impostor alpha skinning data is incomplete");
+                     "Metal world impostor post-deferred skinning data is incomplete");
             return false;
         }
         for (std::uint32_t slot = 0; slot < batch.texture_count; ++slot)
@@ -1859,7 +1932,7 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
             if (!sampleableTexture(batch.diffuse_textures[slot]))
             {
                 setError(error,
-                         "Metal world impostor alpha texture is invalid");
+                         "Metal world impostor post-deferred texture is invalid");
                 return false;
             }
             if (pbr &&
@@ -1905,7 +1978,7 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
         descriptor.length = batch.skin_palette_float_count * sizeof(float);
         descriptor.storage = ALMetalStorageMode::shared;
         descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
-        descriptor.label = "Alchemy world impostor alpha skin palette";
+        descriptor.label = "Alchemy world impostor post-deferred skin palette";
         auto palette = ALMetalBuffer::create(
             *mImpl->device, descriptor, error);
         if (!palette || !palette->write(
@@ -1931,13 +2004,14 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
         return false;
     }
     auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native avatar-impostor alpha", error);
+        "Alchemy native avatar-impostor post-deferred", error);
     if (!command)
     {
         return false;
     }
     auto encoder = ALMetalRenderEncoder::begin(
-        *command, *pass, "Alchemy world impostor-alpha encoder", error);
+        *command, *pass, "Alchemy world impostor post-deferred encoder",
+        error);
     if (!encoder)
     {
         return false;
@@ -1959,19 +2033,26 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
     {
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
         const bool pbr_batch = isPBRBatch(batch);
+        const bool fullbright_batch = batch.impostor_fullbright;
         const bool rigged = batch.skin_palette != nullptr;
-        const ALMetalDepthStencilState* depth = rigged
+        const bool depth_writable = fullbright_batch || rigged;
+        const ALMetalDepthStencilState* depth = depth_writable
             ? (scene.reverse_z ? mImpl->reverse_depth.get()
                                : mImpl->forward_depth.get())
             : (scene.reverse_z ? mImpl->reverse_readonly_depth.get()
                                : mImpl->forward_readonly_depth.get());
-        const ALMetalRenderPipeline* pipeline = pbr_batch
-            ? mImpl->pbr_alpha_pipelines[scene.hdr ? 1 : 0]
+        const ALMetalRenderPipeline* pipeline = fullbright_batch
+            ? mImpl->fullbright_pipelines[scene.hdr ? 1 : 0]
+                                              [batch.alpha_mask ? 1 : 0]
                                               [rigged ? 1 : 0]
                                               [scene.normal_hdr ? 1 : 0].get()
-            : mImpl->flat_alpha_pipelines[scene.hdr ? 1 : 0]
-                                               [rigged ? 1 : 0]
-                                               [scene.normal_hdr ? 1 : 0].get();
+            : (pbr_batch
+                ? mImpl->pbr_alpha_pipelines[scene.hdr ? 1 : 0]
+                                                  [rigged ? 1 : 0]
+                                                  [scene.normal_hdr ? 1 : 0].get()
+                : mImpl->flat_alpha_pipelines[scene.hdr ? 1 : 0]
+                                                   [rigged ? 1 : 0]
+                                                   [scene.normal_hdr ? 1 : 0].get());
 
         WorldSimpleConstants world{};
         std::memcpy(world.modelview_projection,
@@ -1984,6 +2065,8 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
                     sizeof(world.rigged_normal_matrix));
         std::memcpy(world.texture_matrix, batch.texture_matrix,
                     sizeof(world.texture_matrix));
+        world.material[0] = batch.alpha_cutoff;
+        world.material[3] = batch.alpha_mask ? 1.f : 0.f;
         world.depth_convention[0] = scene.reverse_z ? 1u : 0u;
         world.depth_convention[1] = batch.texture_count;
 
@@ -2057,5 +2140,46 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorAlpha(
             batch.index_type, *batch.indices, batch.index_offset, 1, error);
     }
 
-    return encoded && encoder->end(error) && command->commit(error);
+    if (!encoded || !encoder->end(error))
+    {
+        return false;
+    }
+    if (scene.stamp_opaque_coverage)
+    {
+        auto coverage_pass = target.makeRenderPass(pass_config, error);
+        if (!coverage_pass)
+        {
+            return false;
+        }
+        auto coverage_encoder = ALMetalRenderEncoder::begin(
+            *command, *coverage_pass,
+            "Alchemy world post-deferred coverage encoder", error);
+        if (!coverage_encoder)
+        {
+            return false;
+        }
+        const std::uint32_t reverse_z = scene.reverse_z ? 1u : 0u;
+        const ALMetalDepthStencilState* coverage_depth = scene.reverse_z
+            ? mImpl->reverse_coverage_depth.get()
+            : mImpl->forward_coverage_depth.get();
+        const ALMetalRenderPipeline* coverage_pipeline =
+            mImpl->coverage_pipelines[scene.hdr ? 1 : 0]
+                                     [scene.normal_hdr ? 1 : 0].get();
+        encoded =
+            coverage_encoder->setDepthStencilState(coverage_depth, error) &&
+            coverage_encoder->setViewport(viewport, error) &&
+            coverage_encoder->setScissor(scissor, error) &&
+            coverage_encoder->setCullMode(ALMetalCullMode::none, error) &&
+            coverage_encoder->setPipeline(*coverage_pipeline, error) &&
+            coverage_encoder->setVertexBytes(
+                0, &reverse_z, sizeof(reverse_z), error) &&
+            coverage_encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+            coverage_encoder->end(error);
+        if (!encoded)
+        {
+            return false;
+        }
+    }
+    return command->commit(error);
 }
