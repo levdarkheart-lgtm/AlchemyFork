@@ -6128,6 +6128,185 @@ void LLPipeline::captureMetalSpotShadowTreeBatch(
     capture.spot_shadow_batches.push_back(batch);
 }
 
+void LLPipeline::captureMetalSpotShadowTerrainBatch(
+    LLFace* face, F32 tess_density, F32 raster_segment,
+    bool smoothing, bool tessellation_pinned)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_active ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_complete)
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const auto fail = [&capture]()
+    {
+        capture.spot_shadow_capture_complete = false;
+        capture.spot_shadow_batches.clear();
+    };
+    LLDrawable* drawable = face ? face->getDrawable() : nullptr;
+    LLVOSurfacePatch* object = drawable
+        ? dynamic_cast<LLVOSurfacePatch*>(drawable->getVObj().get())
+        : nullptr;
+    LLSurfacePatch* patch = object ? object->getPatch() : nullptr;
+    LLSurface* surface = patch ? patch->getSurface() : nullptr;
+    LLViewerRegion* region = surface ? surface->getRegion() : nullptr;
+    LLVertexBuffer* buffer = face ? face->getVertexBuffer() : nullptr;
+    const ALMetalTexture* height_texture = surface
+        ? surface->getSurfaceMaps().getMetalHeightTexture() : nullptr;
+    if (!face || !patch || !surface || !region || !buffer ||
+        !height_texture || !buffer->getMetalVertexBuffer() ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        face->getGeomCount() != LLVOSurfacePatch::PATCH_CORNERS ||
+        face->getGeomIndex() + LLVOSurfacePatch::PATCH_CORNERS >
+            buffer->getNumVerts() ||
+        !std::isfinite(tess_density) ||
+        (!tessellation_pinned && tess_density <= 0.f) ||
+        !std::isfinite(raster_segment) ||
+        !std::isfinite(surface->getMetersPerGrid()) ||
+        surface->getMetersPerGrid() <= 0.f)
+    {
+        fail();
+        return;
+    }
+
+    ALMetalWorldSpotShadowBatch batch;
+    batch.terrain = true;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX) +
+        static_cast<std::size_t>(face->getGeomIndex()) *
+            sizeof(LLVector4a);
+    batch.vertex_count = LLVOSurfacePatch::PATCH_CORNERS;
+    batch.terrain_height_texture = height_texture;
+    batch.terrain_grid_scale = surface->getMetersPerGrid();
+    batch.terrain_smoothing = smoothing;
+    batch.terrain_tessellation_pinned = tessellation_pinned;
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+
+    struct TerrainCorner
+    {
+        F32 x;
+        F32 y;
+        F32 z;
+    };
+    const LLVector3& patch_origin = patch->getOriginRegion();
+    const F32 patch_size = surface->getGridsPerPatchEdge() *
+                           batch.terrain_grid_scale;
+    const auto corner = [&](F32 x, F32 y)
+    {
+        const S32 gx = ll_round(x / batch.terrain_grid_scale);
+        const S32 gy = ll_round(y / batch.terrain_grid_scale);
+        return TerrainCorner{x, y, surface->sampleZ(gx, gy)};
+    };
+    const std::array<TerrainCorner, 4> corners{{
+        corner(patch_origin.mV[VX], patch_origin.mV[VY]),
+        corner(patch_origin.mV[VX] + patch_size,
+               patch_origin.mV[VY]),
+        corner(patch_origin.mV[VX] + patch_size,
+               patch_origin.mV[VY] + patch_size),
+        corner(patch_origin.mV[VX],
+               patch_origin.mV[VY] + patch_size),
+    }};
+    const LLVector3& camera_agent =
+        LLViewerCamera::getInstance()->getOrigin();
+    const LLVector3 tessellation_origin =
+        camera_agent - region->getOriginAgent();
+
+    LLMatrix4a clip;
+    LLVector4a clip_origin;
+    const bool raster_cap = raster_segment > 0.f &&
+        tess_density > 0.f;
+    F32 raster_x = 0.f;
+    F32 raster_y = 0.f;
+    if (raster_cap)
+    {
+        const LLCamera& pass = LLViewerCamera::getCurrent();
+        clip.setMul(pass.getModelview(), pass.getProjection());
+        clip.transform4(
+            LLVector4a(camera_agent.mV[VX], camera_agent.mV[VY],
+                       camera_agent.mV[VZ], 1.f),
+            clip_origin);
+        raster_x = 0.5f * static_cast<F32>(capture.spot_shadow_width) /
+                   raster_segment;
+        raster_y = 0.5f * static_cast<F32>(capture.spot_shadow_height) /
+                   raster_segment;
+    }
+
+    const auto clip_corner = [&](const TerrainCorner& value)
+    {
+        LLVector4a relative(
+            value.x - tessellation_origin.mV[VX],
+            value.y - tessellation_origin.mV[VY],
+            value.z - tessellation_origin.mV[VZ], 0.f);
+        LLVector4a result;
+        clip.transform4(relative, result);
+        result.add(clip_origin);
+        return result;
+    };
+    const auto edge_level = [&](const TerrainCorner& a,
+                                const TerrainCorner& b)
+    {
+        if (tessellation_pinned)
+        {
+            return 16.f;
+        }
+        const F32 dx = b.x - a.x;
+        const F32 dy = b.y - a.y;
+        const F32 dz = b.z - a.z;
+        const F32 length = sqrtf(dx * dx + dy * dy + dz * dz);
+        const F32 mx = 0.5f * (a.x + b.x) -
+                       tessellation_origin.mV[VX];
+        const F32 my = 0.5f * (a.y + b.y) -
+                       tessellation_origin.mV[VY];
+        const F32 mz = 0.5f * (a.z + b.z) -
+                       tessellation_origin.mV[VZ];
+        const F32 distance = sqrtf(mx * mx + my * my + mz * mz);
+        F32 level = length * tess_density / llmax(distance, 1.f);
+        if (raster_cap)
+        {
+            const LLVector4a ca = clip_corner(a);
+            const LLVector4a cb = clip_corner(b);
+            if (llmin(ca[VW], cb[VW]) > 0.f)
+            {
+                const F32 sx = (cb[VX] / cb[VW] - ca[VX] / ca[VW]) *
+                               raster_x;
+                const F32 sy = (cb[VY] / cb[VW] - ca[VY] / ca[VW]) *
+                               raster_y;
+                level = llmin(level, sqrtf(sx * sx + sy * sy));
+            }
+        }
+        return llclamp(level, 1.f, 64.f);
+    };
+    const std::array<F32, 4> outer{{
+        edge_level(corners[0], corners[3]),
+        edge_level(corners[0], corners[1]),
+        edge_level(corners[1], corners[2]),
+        edge_level(corners[3], corners[2]),
+    }};
+    const std::array<F32, 2> inner{{
+        llmax(outer[1], outer[3]),
+        llmax(outer[0], outer[2]),
+    }};
+    for (U32 edge = 0; edge < outer.size(); ++edge)
+    {
+        batch.terrain_tessellation_factors[edge] =
+            ALWaterHeightBake::halfOf(outer[edge]);
+    }
+    for (U32 inside = 0; inside < inner.size(); ++inside)
+    {
+        batch.terrain_tessellation_factors[4 + inside] =
+            ALWaterHeightBake::halfOf(inner[inside]);
+    }
+    capture.spot_shadow_batches.push_back(batch);
+}
+
 void LLPipeline::endMetalSpotShadowCapture()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -22823,15 +23002,29 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                         {
                             ALSpotShadowCache::Casters pool_casters;
                             pool->addShadowCasters(pool_casters);
-                            if (pool->getType() == LLDrawPool::POOL_TREE &&
-                                !pool_casters.changing())
+                            if (pool->getType() == LLDrawPool::POOL_TREE)
                             {
                                 // LLDrawPoolTree adds one caster record for
                                 // every indexed face renderDeferred draws.
+                                // A changing texture already makes the cache
+                                // redraw this map every frame; it does not
+                                // make the current Metal mirror incomplete.
                                 // The direct capture below observes the same
-                                // loop, so strict final batch accounting also
-                                // catches any divergence.
+                                // loop, and strict final batch accounting also
+                                // catches any divergence or missing mirror.
                                 native_batches += pool_casters.count();
+                            }
+                            else if (pool->getType() ==
+                                         LLDrawPool::POOL_TERRAIN &&
+                                     !pool_casters.changing())
+                            {
+                                // Terrain records one region-wide surface
+                                // dependency followed by one record per
+                                // patch draw. Only the latter become Metal
+                                // batches; exact final accounting catches a
+                                // changed or incomplete draw loop.
+                                native_batches += pool_casters.count() == 0
+                                    ? 0 : pool_casters.count() - 1;
                             }
                             else
                             {

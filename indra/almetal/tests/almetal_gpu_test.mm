@@ -122,6 +122,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_spot_shadow_coverage_vertex",
             "almetal_world_spot_shadow_coverage_skinned_vertex",
             "almetal_world_spot_shadow_coverage_fragment",
+            "almetal_world_terrain_spot_shadow_vertex",
             "almetal_world_simple_vertex",
             "almetal_world_simple_skinned_vertex",
             "almetal_world_bump_vertex",
@@ -1143,6 +1144,100 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         INFO(error);
         CHECK(std::abs(reverse_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
         CHECK(std::abs(reverse_depth[1 * 32 + 1]) < 0.0001f);
+
+        const std::array<std::array<float, 4>, 4>
+            terrain_control_points{{
+                {{-0.75f, -0.75f, 0.f, 1.f}},
+                {{ 0.75f, -0.75f, 0.f, 1.f}},
+                {{ 0.75f,  0.75f, 0.f, 1.f}},
+                {{-0.75f,  0.75f, 0.f, 1.f}},
+            }};
+        descriptor.length = sizeof(terrain_control_points);
+        descriptor.label =
+            "Alchemy direct terrain spot-shadow control points";
+        auto terrain_vertices = ALMetalBuffer::create(
+            *device, descriptor, &error);
+        INFO(error);
+        REQUIRE(terrain_vertices);
+        REQUIRE(terrain_vertices->write(
+            0, terrain_control_points.data(),
+            sizeof(terrain_control_points), &error));
+
+        ALMetalTextureDescriptor terrain_height_descriptor;
+        terrain_height_descriptor.format = ALMetalPixelFormat::r32_float;
+        terrain_height_descriptor.width = 8;
+        terrain_height_descriptor.height = 8;
+        terrain_height_descriptor.storage = ALMetalStorageMode::private_gpu;
+        terrain_height_descriptor.usage = ALMetalTextureUsage::shader_read;
+        terrain_height_descriptor.label =
+            "Alchemy direct terrain spot-shadow height map";
+        auto terrain_height = ALMetalTexture::create(
+            *device, terrain_height_descriptor, &error);
+        INFO(error);
+        REQUIRE(terrain_height);
+        const std::array<float, 8 * 8> flat_terrain{};
+        auto terrain_upload = device->makeCommandBuffer(
+            "Alchemy direct terrain spot-shadow upload", &error);
+        INFO(error);
+        REQUIRE(terrain_upload);
+        REQUIRE(terrain_height->upload(
+            *terrain_upload, 0, 0, {}, flat_terrain.data(),
+            8 * sizeof(float), &error));
+        REQUIRE(terrain_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldSpotShadowBatch terrain_batch;
+        terrain_batch.terrain = true;
+        terrain_batch.vertices = terrain_vertices.get();
+        terrain_batch.vertex_count = terrain_control_points.size();
+        terrain_batch.terrain_height_texture = terrain_height.get();
+        terrain_batch.terrain_grid_scale = 1.f;
+        std::fill_n(terrain_batch.terrain_tessellation_factors, 6,
+                    std::uint16_t{0x4400});
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            terrain_batch.modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        scene.batches = &terrain_batch;
+        scene.reverse_z = false;
+        auto terrain_shadow = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(terrain_shadow);
+        std::array<float, 32 * 32> terrain_depth{};
+        REQUIRE(terrain_shadow->colorTexture(0)->readback(
+            *device, 0, 0, {}, terrain_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(terrain_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
+
+        terrain_batch.terrain_smoothing = true;
+        terrain_batch.terrain_tessellation_pinned = true;
+        std::fill_n(terrain_batch.terrain_tessellation_factors, 6,
+                    std::uint16_t{0x4c00});
+        auto pinned_terrain_shadow = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(pinned_terrain_shadow);
+        scene.reverse_z = true;
+        terrain_batch.modelview_projection[14] = 0.5f;
+        auto reverse_terrain_shadow = renderer->renderSpotShadow(scene, &error);
+        INFO(error);
+        REQUIRE(reverse_terrain_shadow);
+        std::array<float, 32 * 32> reverse_terrain_depth{};
+        REQUIRE(reverse_terrain_shadow->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_terrain_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(reverse_terrain_depth[16 * 32 + 16] - 0.5f) <
+              0.0001f);
+        CHECK(std::abs(reverse_terrain_depth[1 * 32 + 1]) < 0.0001f);
+        scene.reverse_z = false;
+        terrain_batch.modelview_projection[14] = 0.f;
+        terrain_batch.terrain_tessellation_factors[0] = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderSpotShadow(scene, &error));
+        CHECK(error == "Metal spot-shadow terrain batch is invalid");
+
+        scene.batches = &batch;
 
         ALMetalTextureDescriptor coverage_descriptor;
         coverage_descriptor.format = ALMetalPixelFormat::rgba8_unorm;

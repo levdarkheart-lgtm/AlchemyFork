@@ -350,6 +350,13 @@ void LLDrawPoolTerrain::drawLoop()
             llassert(gGL.getMatrixMode() == LLRender::MM_MODELVIEW);
             LLRenderPass::applyModelMatrix(&facep->getDrawable()->getRegion()->mRenderMatrix);
 
+#if LL_DARWIN
+            const TessLevels levels = tess_levels();
+            gPipeline.captureMetalSpotShadowTerrainBatch(
+                facep, levels.mDensity, levels.mSegment,
+                LLSurface::isSmoothing(),
+                gPipeline.shaderInputs().mLocal.mTerrainTessPinned);
+#endif
             facep->renderIndexed(LLRender::PATCHES);
         }
     }

@@ -189,11 +189,12 @@ enum class ALMetalWorldSpotShadowCoverage : std::uint32_t
     pbr_blend = 6,
 };
 
-// One exact indexed triangle batch seen by a spotlight's own shadow camera.
-// Opaque casters need only position. Cutout/stippled casters retain their
-// diffuse UV, streamed alpha, texture ladder and exact live-shader cutoff
-// contract. Rigged casters additionally retain the same packed object-skin
-// palette and four-weight plane used by the live GLSL shadow vertex program.
+// One exact draw seen by a spotlight's own shadow camera. Object casters are
+// indexed triangles. Opaque ones need only position; cutout/stippled ones
+// retain diffuse UV, streamed alpha, texture ladders and exact live-shader
+// cutoffs; rigged ones also retain the packed object-skin palette and weight
+// plane. Terrain instead retains one four-control-point tessellated patch,
+// its height surface and the six factors computed by the live shadow pass.
 struct ALMetalWorldSpotShadowBatch
 {
     static constexpr std::size_t max_textures = 32;
@@ -223,10 +224,16 @@ struct ALMetalWorldSpotShadowBatch
     std::array<float, max_textures> alpha_cutoffs{};
     std::array<std::array<std::array<float, 4>, 2>, max_pbr_slots>
         pbr_base_color_transforms{};
+    const ALMetalTexture* terrain_height_texture = nullptr;
+    std::uint16_t terrain_tessellation_factors[6]{};
+    float terrain_grid_scale = 0.f;
     std::uint32_t texture_count = 0;
     ALMetalWorldSpotShadowCoverage coverage =
         ALMetalWorldSpotShadowCoverage::opaque;
     bool double_sided = false;
+    bool terrain = false;
+    bool terrain_smoothing = false;
+    bool terrain_tessellation_pinned = false;
 };
 
 struct ALMetalWorldSpotShadowScene

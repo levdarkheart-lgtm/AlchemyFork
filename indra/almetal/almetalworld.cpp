@@ -71,6 +71,16 @@ namespace
     };
     static_assert(sizeof(WorldSpotShadowConstants) == 528);
 
+    struct alignas(16) WorldTerrainSpotShadowConstants
+    {
+        float modelview_projection[16]{};
+        // x = metres per terrain grid.
+        float surface[4]{};
+        // x = reverse-Z convention, y = smooth terrain surface.
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldTerrainSpotShadowConstants) == 96);
+
     struct alignas(16) WorldWaterExclusionConstants
     {
         float modelview_projection[16]{};
@@ -687,6 +697,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         spot_shadow_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         spot_shadow_coverage_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        spot_shadow_terrain_pipelines;
     std::array<BumpPipelines, 2> pipelines;
     std::array<MaterialRiggedPipelines, 2> material_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
@@ -916,6 +928,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_spot_shadow_coverage_skinned_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_spot_shadow_coverage_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_terrain_spot_shadow_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_bump_vertex") ||
@@ -1074,6 +1088,37 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         impl->spot_shadow_coverage_pipelines[rigged] =
             ALMetalRenderPipeline::create(device, descriptor, error);
         if (!impl->spot_shadow_coverage_pipelines[rigged])
+        {
+            return nullptr;
+        }
+    }
+
+    for (std::size_t pinned = 0; pinned < 2; ++pinned)
+    {
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = impl->library.get();
+        descriptor.vertex_function =
+            "almetal_world_terrain_spot_shadow_vertex";
+        descriptor.fragment_function =
+            "almetal_world_spot_shadow_fragment";
+        descriptor.color_attachment_count = 1;
+        descriptor.colors[0].format = ALMetalPixelFormat::r32_float;
+        descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float;
+        descriptor.tessellation.enabled = true;
+        descriptor.tessellation.partition_mode = pinned
+            ? ALMetalTessellationPartitionMode::integer
+            : ALMetalTessellationPartitionMode::fractional_odd;
+        descriptor.tessellation.maximum_factor = 64;
+        descriptor.tessellation.factor_step_function =
+            ALMetalTessellationFactorStepFunction::per_patch;
+        descriptor.tessellation.output_winding =
+            ALMetalTessellationOutputWinding::counter_clockwise;
+        descriptor.label = pinned
+            ? "Alchemy pinned terrain spot-shadow depth pipeline"
+            : "Alchemy terrain spot-shadow depth pipeline";
+        impl->spot_shadow_terrain_pipelines[pinned] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->spot_shadow_terrain_pipelines[pinned])
         {
             return nullptr;
         }
@@ -2854,6 +2899,39 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
         const bool pbr_coverage =
             batch.coverage == ALMetalWorldSpotShadowCoverage::pbr_mask ||
             batch.coverage == ALMetalWorldSpotShadowCoverage::pbr_blend;
+        if (batch.terrain)
+        {
+            bool valid_factors = true;
+            for (std::uint16_t factor :
+                 batch.terrain_tessellation_factors)
+            {
+                valid_factors = valid_factors &&
+                    (factor & 0x8000u) == 0 &&
+                    (factor & 0x7fffu) != 0 &&
+                    (factor & 0x7c00u) != 0x7c00u;
+            }
+            if (!batch.vertices || batch.indices ||
+                batch.vertex_count != 4 || batch.index_count != 0 ||
+                covered || batch.texture_count != 0 ||
+                batch.position_offset % float4_stride != 0 ||
+                !rangeFits(batch.position_offset, batch.vertex_count,
+                           float4_stride, batch.vertices->length()) ||
+                !finiteValues(batch.modelview_projection, 16) ||
+                !sampleableTexture(batch.terrain_height_texture) ||
+                batch.terrain_height_texture->descriptor().format !=
+                    ALMetalPixelFormat::r32_float ||
+                !std::isfinite(batch.terrain_grid_scale) ||
+                batch.terrain_grid_scale <= 0.f || !valid_factors ||
+                batch.skin_palette || batch.weight_offset != 0 ||
+                batch.skin_palette_float_count != 0 ||
+                batch.skin_joint_count != 0 || batch.double_sided)
+            {
+                setError(error,
+                         "Metal spot-shadow terrain batch is invalid");
+                return nullptr;
+            }
+            continue;
+        }
         if (!batch.vertices || !batch.indices || batch.vertex_count == 0 ||
             batch.index_count == 0 || !valid_index_type ||
             coverage > static_cast<std::uint32_t>(
@@ -2958,6 +3036,38 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
         }
     }
 
+    std::unique_ptr<ALMetalBuffer> terrain_factor_buffer;
+    std::vector<std::uint16_t> terrain_factors(scene.batch_count * 6, 0);
+    bool has_terrain = false;
+    for (std::size_t index = 0; index < scene.batch_count; ++index)
+    {
+        const ALMetalWorldSpotShadowBatch& batch = scene.batches[index];
+        if (!batch.terrain)
+        {
+            continue;
+        }
+        has_terrain = true;
+        std::memcpy(terrain_factors.data() + index * 6,
+                    batch.terrain_tessellation_factors,
+                    sizeof(batch.terrain_tessellation_factors));
+    }
+    if (has_terrain)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = terrain_factors.size() *
+                            sizeof(terrain_factors.front());
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy spot-shadow terrain tessellation factors";
+        terrain_factor_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!terrain_factor_buffer || !terrain_factor_buffer->write(
+                0, terrain_factors.data(), descriptor.length, error))
+        {
+            return nullptr;
+        }
+    }
+
     ALMetalRenderTargetDescriptor target_descriptor;
     target_descriptor.width = scene.width;
     target_descriptor.height = scene.height;
@@ -3011,6 +3121,34 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
          encoded && index < scene.batch_count; ++index)
     {
         const ALMetalWorldSpotShadowBatch& batch = scene.batches[index];
+        if (batch.terrain)
+        {
+            WorldTerrainSpotShadowConstants constants{};
+            std::memcpy(constants.modelview_projection,
+                        batch.modelview_projection,
+                        sizeof(constants.modelview_projection));
+            constants.surface[0] = batch.terrain_grid_scale;
+            constants.config[0] = scene.reverse_z ? 1u : 0u;
+            constants.config[1] = batch.terrain_smoothing ? 1u : 0u;
+            encoded =
+                encoder->setCullMode(ALMetalCullMode::back, error) &&
+                encoder->setPipeline(
+                    *mImpl->spot_shadow_terrain_pipelines[
+                        batch.terrain_tessellation_pinned ? 1 : 0],
+                    error) &&
+                encoder->setVertexBuffer(
+                    0, *batch.vertices, batch.position_offset, error) &&
+                encoder->setVertexBytes(
+                    1, &constants, sizeof(constants), error) &&
+                encoder->setVertexTexture(
+                    0, batch.terrain_height_texture, error) &&
+                encoder->setTessellationFactorBuffer(
+                    *terrain_factor_buffer,
+                    index * sizeof(batch.terrain_tessellation_factors),
+                    0, error) &&
+                encoder->drawPatches(4, 0, 1, 1, 0, error);
+            continue;
+        }
         const bool rigged = batch.skin_palette != nullptr;
         const bool covered = batch.coverage !=
             ALMetalWorldSpotShadowCoverage::opaque;

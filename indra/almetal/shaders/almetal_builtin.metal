@@ -7036,6 +7036,47 @@ static float3 almetal_world_terrain_surface(
         almetal_world_terrain_height_linear(height_map, grid));
 }
 
+struct ALMetalWorldTerrainSpotShadowConstants
+{
+    float4x4 modelview_projection;
+    float4 surface;
+    uint4 config;
+};
+
+[[patch(quad, 4)]]
+vertex ALMetalWorldSpotShadowVaryings
+almetal_world_terrain_spot_shadow_vertex(
+    const device float4* control_points [[buffer(0)]],
+    constant ALMetalWorldTerrainSpotShadowConstants& constants [[buffer(1)]],
+    texture2d<float> height_map [[texture(0)]],
+    uint patch_id [[patch_id]],
+    float2 patch_position [[position_in_patch]])
+{
+    const uint base = patch_id * 4;
+    const float2 bottom = mix(
+        control_points[base].xy, control_points[base + 1].xy,
+        patch_position.x);
+    const float2 top = mix(
+        control_points[base + 3].xy, control_points[base + 2].xy,
+        patch_position.x);
+    const float2 xy = mix(bottom, top, patch_position.y);
+    const float2 grid = xy / constants.surface.x;
+    const float height = constants.config.y != 0u
+        ? almetal_world_terrain_height_smooth(height_map, grid).height
+        : almetal_world_terrain_height_linear(height_map, grid);
+    float4 clip_position = constants.modelview_projection *
+                           float4(xy, height, 1.0);
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldSpotShadowVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord = 0.0;
+    output.vertex_alpha = 1.0;
+    output.texture_index = 0u;
+    return output;
+}
+
 struct ALMetalWorldTerrainVaryings
 {
     float4 position [[position]];

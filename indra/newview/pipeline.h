@@ -647,6 +647,9 @@ public:
         const LLDrawInfo& params, bool indexed_materials);
     void captureMetalSpotShadowTreeBatch(
         LLVertexBuffer* buffer, LLViewerTexture* texture);
+    void captureMetalSpotShadowTerrainBatch(
+        LLFace* face, F32 tess_density, F32 raster_segment,
+        bool smoothing, bool tessellation_pinned);
     void captureMetalImpostorPBRAlphaBatch(
         const LLDrawInfo& params, bool particle_or_hud_particle,
         bool depth_only = false);
