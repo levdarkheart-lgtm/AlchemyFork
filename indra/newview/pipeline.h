@@ -591,6 +591,8 @@ public:
                                    const F32* gravity = nullptr,
                                    const F32* cloth_depth = nullptr);
     void beginMetalWorldImpostorPass();
+    void beginMetalImpostorBakeCapture(
+        const LLUUID& avatar_id, U32 width, U32 height);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
     void captureMetalWorldMaterialBatch(const LLDrawInfo& params,

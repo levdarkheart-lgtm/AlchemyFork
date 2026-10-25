@@ -415,6 +415,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
     std::unique_ptr<ALMetalRenderTarget> target;
+    std::unique_ptr<ALMetalRenderTarget> impostor_bake_target;
     std::vector<ALMetalWorldSimpleBatch> batches;
     std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
         avatar_palettes;
@@ -424,6 +425,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool pass_active = false;
     bool complete = false;
     bool attempted = false;
+    bool impostor_bake_attempted = false;
     U32 failed_frames = 0;
     bool rigged = false;
     bool alpha_mask = false;
@@ -443,6 +445,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
+    bool impostor_bake = false;
+    LLUUID impostor_bake_avatar_id;
     std::unordered_map<LLUUID, ImpostorMirror> impostor_mirrors;
 };
 #endif
@@ -792,7 +796,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     {
         capture.renderer.reset();
         capture.target.reset();
+        capture.impostor_bake_target.reset();
+        capture.impostor_bake_avatar_id.setNull();
         capture.impostor_mirrors.clear();
+        capture.attempted = false;
+        capture.impostor_bake_attempted = false;
+        capture.failed_frames = 0;
         capture.device = device;
     }
 
@@ -1096,6 +1105,73 @@ void LLPipeline::beginMetalWorldImpostorPass()
     capture.terrain = false;
     capture.impostor = true;
     capture.pass_active = true;
+}
+
+void LLPipeline::beginMetalImpostorBakeCapture(
+    const LLUUID& avatar_id, U32 width, U32 height)
+{
+    if (width == 0 || height == 0)
+    {
+        return;
+    }
+    if (!mMetalWorldSimpleCapture)
+    {
+        mMetalWorldSimpleCapture =
+            std::make_unique<MetalWorldSimpleCapture>();
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.frame_active)
+    {
+        return;
+    }
+
+    ALMetalDevice* device = LLImageGL::getMetalDevice();
+    if (!device)
+    {
+        return;
+    }
+    if (capture.device != device)
+    {
+        capture.renderer.reset();
+        capture.target.reset();
+        capture.impostor_bake_target.reset();
+        capture.impostor_bake_avatar_id.setNull();
+        capture.impostor_mirrors.clear();
+        capture.attempted = false;
+        capture.impostor_bake_attempted = false;
+        capture.failed_frames = 0;
+        capture.device = device;
+    }
+    if (capture.impostor_bake_attempted)
+    {
+        return;
+    }
+    if (!capture.renderer)
+    {
+        std::string error;
+        capture.renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        if (!capture.renderer)
+        {
+            LL_WARNS("Metal")
+                << "Could not initialize the native avatar-impostor bake: "
+                << error << LL_ENDL;
+            return;
+        }
+    }
+
+    capture.batches.clear();
+    capture.avatar_palettes.clear();
+    capture.width = width;
+    capture.height = height;
+    capture.normal_hdr = LLRender::sGBufferNormHDR;
+    capture.hdr = hdrEnabled();
+    capture.reverse_z = LLRender::sReverseZ;
+    capture.complete = true;
+    capture.frame_active = true;
+    capture.pass_active = false;
+    capture.impostor_bake = true;
+    capture.impostor_bake_avatar_id = avatar_id;
 }
 
 void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
@@ -1958,6 +2034,12 @@ void LLPipeline::releaseMetalImpostorMirror(const LLUUID& avatar_id)
     if (mMetalWorldSimpleCapture)
     {
         mMetalWorldSimpleCapture->impostor_mirrors.erase(avatar_id);
+        if (mMetalWorldSimpleCapture->impostor_bake_avatar_id == avatar_id)
+        {
+            mMetalWorldSimpleCapture->impostor_bake_target.reset();
+            mMetalWorldSimpleCapture->impostor_bake_avatar_id.setNull();
+            mMetalWorldSimpleCapture->impostor_bake_attempted = false;
+        }
     }
 }
 
@@ -2523,12 +2605,18 @@ void LLPipeline::endMetalWorldGBufferCapture()
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const bool impostor_bake = capture.impostor_bake;
+    capture.impostor_bake = false;
     capture.frame_active = false;
     capture.pass_active = false;
     if (!capture.complete || capture.batches.empty())
     {
         capture.batches.clear();
         capture.avatar_palettes.clear();
+        if (impostor_bake)
+        {
+            return;
+        }
         if (++capture.failed_frames >=
             MetalWorldSimpleCapture::max_failed_frames)
         {
@@ -2551,10 +2639,24 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.normal_hdr = capture.normal_hdr;
     scene.hdr = capture.hdr;
     scene.reverse_z = capture.reverse_z;
-    std::string error;
-    capture.target = capture.renderer->render(scene, &error);
-    if (!capture.target)
+    scene.stamp_opaque_coverage = impostor_bake;
+    if (impostor_bake)
     {
+        std::fill(scene.clear_color, scene.clear_color + 4, 0.f);
+    }
+    std::string error;
+    auto target = capture.renderer->render(scene, &error);
+    if (!target)
+    {
+        if (impostor_bake)
+        {
+            LL_WARNS("Metal")
+                << "Could not encode native opaque avatar-impostor bake: "
+                << error << LL_ENDL;
+            capture.batches.clear();
+            capture.avatar_palettes.clear();
+            return;
+        }
         if (++capture.failed_frames >=
             MetalWorldSimpleCapture::max_failed_frames)
         {
@@ -2565,8 +2667,20 @@ void LLPipeline::endMetalWorldGBufferCapture()
                 << error << LL_ENDL;
         }
     }
+    else if (impostor_bake)
+    {
+        capture.impostor_bake_target = std::move(target);
+        capture.impostor_bake_attempted = true;
+        LL_INFOS("Metal")
+            << "Native opaque avatar-impostor bake encoded "
+            << capture.batches.size() << " batches at "
+            << capture.width << "x" << capture.height
+            << "; forward alpha remains on the GL transition path"
+            << LL_ENDL;
+    }
     else
     {
+        capture.target = std::move(target);
         capture.attempted = true;
         capture.failed_frames = 0;
         LL_INFOS("Metal")
@@ -17089,6 +17203,9 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
     else
     {
         avatar->mImpostor.clear();
+#if LL_DARWIN
+        beginMetalImpostorBakeCapture(avatar->getID(), resX, resY);
+#endif
         renderGeomDeferred(camera);
 
         stamp_opaque_coverage();

@@ -141,6 +141,7 @@ struct ALMetalWorldGBufferScene
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
+    bool stamp_opaque_coverage = false;
     float clear_color[4] = {1.f, 0.f, 1.f, 1.f};
 };
 

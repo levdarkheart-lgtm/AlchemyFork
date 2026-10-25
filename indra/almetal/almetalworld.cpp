@@ -173,10 +173,13 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
     std::array<AvatarVariantPipelines, 2> avatar_pipelines;
     std::array<NormalPipelines, 2> impostor_pipelines;
+    std::array<NormalPipelines, 2> coverage_pipelines;
     std::array<TerrainPartitionPipelines, 2> terrain_pipelines;
     std::array<TerrainPartitionPipelines, 2> pbr_terrain_pipelines;
     std::unique_ptr<ALMetalDepthStencilState> forward_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_depth;
+    std::unique_ptr<ALMetalDepthStencilState> forward_coverage_depth;
+    std::unique_ptr<ALMetalDepthStencilState> reverse_coverage_depth;
     std::unique_ptr<ALMetalSamplerState> diffuse_sampler;
     std::unique_ptr<ALMetalSamplerState> point_clamp_sampler;
     std::unique_ptr<ALMetalSamplerState> linear_clamp_sampler;
@@ -213,6 +216,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction(
             "almetal_world_avatar_cloth_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_impostor_vertex") ||
+        !impl->library->hasFunction("almetal_world_coverage_vertex") ||
         !impl->library->hasFunction("almetal_world_terrain_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_fragment") ||
         !impl->library->hasFunction("almetal_world_alpha_mask_fragment") ||
@@ -220,6 +224,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_material_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_fragment") ||
         !impl->library->hasFunction("almetal_world_impostor_fragment") ||
+        !impl->library->hasFunction("almetal_world_coverage_fragment") ||
         !impl->library->hasFunction("almetal_world_terrain_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_terrain_fragment"))
     {
@@ -262,6 +267,37 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             impl->impostor_pipelines[hdr][normal_hdr] =
                 ALMetalRenderPipeline::create(device, descriptor, error);
             if (!impl->impostor_pipelines[hdr][normal_hdr])
+            {
+                return nullptr;
+            }
+        }
+    }
+    for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
+    {
+        for (std::size_t normal_hdr = 0; normal_hdr < 2; ++normal_hdr)
+        {
+            ALMetalRenderPipelineDescriptor descriptor;
+            descriptor.library = impl->library.get();
+            descriptor.vertex_function = "almetal_world_coverage_vertex";
+            descriptor.fragment_function = "almetal_world_coverage_fragment";
+            descriptor.color_attachment_count = 4;
+            descriptor.colors[0].format =
+                ALMetalPixelFormat::rgba8_unorm_srgb;
+            descriptor.colors[0].write_mask = ALMetalColorWriteMask::alpha;
+            descriptor.colors[1].format = ALMetalPixelFormat::rgba8_unorm;
+            descriptor.colors[1].write_mask = ALMetalColorWriteMask::none;
+            descriptor.colors[2].format = normal_hdr
+                ? ALMetalPixelFormat::rgba16_unorm
+                : ALMetalPixelFormat::rgb10a2_unorm;
+            descriptor.colors[2].write_mask = ALMetalColorWriteMask::none;
+            descriptor.colors[3].format = emissive_formats[hdr];
+            descriptor.colors[3].write_mask = ALMetalColorWriteMask::none;
+            descriptor.depth_stencil_format =
+                ALMetalPixelFormat::depth32_float;
+            descriptor.label = "Alchemy world opaque-coverage pipeline";
+            impl->coverage_pipelines[hdr][normal_hdr] =
+                ALMetalRenderPipeline::create(device, descriptor, error);
+            if (!impl->coverage_pipelines[hdr][normal_hdr])
             {
                 return nullptr;
             }
@@ -493,6 +529,23 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->reverse_depth = ALMetalDepthStencilState::create(
         device, depth, error);
     if (!impl->reverse_depth)
+    {
+        return nullptr;
+    }
+    depth.depth_compare = ALMetalCompareFunction::greater;
+    depth.depth_write_enabled = false;
+    depth.label = "Alchemy forward-Z world coverage depth";
+    impl->forward_coverage_depth = ALMetalDepthStencilState::create(
+        device, depth, error);
+    if (!impl->forward_coverage_depth)
+    {
+        return nullptr;
+    }
+    depth.depth_compare = ALMetalCompareFunction::less;
+    depth.label = "Alchemy reverse-Z world coverage depth";
+    impl->reverse_coverage_depth = ALMetalDepthStencilState::create(
+        device, depth, error);
+    if (!impl->reverse_coverage_depth)
     {
         return nullptr;
     }
@@ -1510,7 +1563,58 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                                  *batch.indices, batch.index_offset, 1, error);
     }
 
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    if (!encoded || !encoder->end(error))
+    {
+        return nullptr;
+    }
+    if (scene.stamp_opaque_coverage)
+    {
+        ALMetalRenderPassConfig coverage_config;
+        for (std::size_t attachment = 0; attachment < 4; ++attachment)
+        {
+            coverage_config.colors[attachment].load =
+                ALMetalLoadAction::load;
+            coverage_config.colors[attachment].store =
+                ALMetalStoreAction::store;
+        }
+        coverage_config.depth_load = ALMetalLoadAction::load;
+        coverage_config.depth_store = ALMetalStoreAction::store;
+        auto coverage_pass = target->makeRenderPass(coverage_config, error);
+        if (!coverage_pass)
+        {
+            return nullptr;
+        }
+        auto coverage_encoder = ALMetalRenderEncoder::begin(
+            *command, *coverage_pass,
+            "Alchemy world opaque-coverage encoder", error);
+        if (!coverage_encoder)
+        {
+            return nullptr;
+        }
+        const std::uint32_t reverse_z = scene.reverse_z ? 1u : 0u;
+        const ALMetalDepthStencilState* coverage_depth = scene.reverse_z
+            ? mImpl->reverse_coverage_depth.get()
+            : mImpl->forward_coverage_depth.get();
+        const ALMetalRenderPipeline* coverage_pipeline =
+            mImpl->coverage_pipelines[scene.hdr ? 1 : 0]
+                                     [scene.normal_hdr ? 1 : 0].get();
+        encoded =
+            coverage_encoder->setDepthStencilState(coverage_depth, error) &&
+            coverage_encoder->setViewport(viewport, error) &&
+            coverage_encoder->setScissor(scissor, error) &&
+            coverage_encoder->setCullMode(ALMetalCullMode::none, error) &&
+            coverage_encoder->setPipeline(*coverage_pipeline, error) &&
+            coverage_encoder->setVertexBytes(
+                0, &reverse_z, sizeof(reverse_z), error) &&
+            coverage_encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+            coverage_encoder->end(error);
+        if (!encoded)
+        {
+            return nullptr;
+        }
+    }
+    if (!command->commit(error))
     {
         return nullptr;
     }

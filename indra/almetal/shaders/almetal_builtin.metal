@@ -272,6 +272,29 @@ struct ALMetalWorldImpostorVaryings
     float2 texcoord;
 };
 
+struct ALMetalWorldCoverageVaryings
+{
+    float4 position [[position]];
+};
+
+vertex ALMetalWorldCoverageVaryings almetal_world_coverage_vertex(
+    constant uint& reverse_z [[buffer(0)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float2 texcoord = float2((vertex_id << 1) & 2, vertex_id & 2);
+    ALMetalWorldCoverageVaryings output;
+    output.position = float4(texcoord.x * 2.0 - 1.0,
+                             1.0 - texcoord.y * 2.0,
+                             reverse_z != 0 ? 0.0 : 1.0, 1.0);
+    return output;
+}
+
+fragment float4 almetal_world_coverage_fragment(
+    ALMetalWorldCoverageVaryings input [[stage_in]])
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+
 vertex ALMetalWorldImpostorVaryings almetal_world_impostor_vertex(
     constant ALMetalWorldImpostorConstants& constants [[buffer(0)]],
     uint vertex_id [[vertex_id]])

@@ -127,12 +127,14 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_avatar_skinned_vertex",
             "almetal_world_avatar_cloth_skinned_vertex",
             "almetal_world_impostor_vertex",
+            "almetal_world_coverage_vertex",
             "almetal_world_simple_fragment",
             "almetal_world_alpha_mask_fragment",
             "almetal_world_bump_fragment",
             "almetal_world_material_fragment",
             "almetal_world_pbr_fragment",
             "almetal_world_impostor_fragment",
+            "almetal_world_coverage_fragment",
             "almetal_world_terrain_vertex",
             "almetal_world_terrain_fragment",
             "almetal_world_pbr_terrain_fragment",
@@ -1147,6 +1149,44 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             &error));
         INFO(error);
         CHECK(std::abs(reverse_depth[16 * 32 + 16] - 0.25f) < 0.0001f);
+
+        // The impostor bake turns every opaque depth-covered texel into full
+        // albedo coverage before forward alpha accumulates over it. Stamp it
+        // on the GPU with strict far-plane depth tests: equal clear depth
+        // remains transparent in both forward and reverse Z.
+        scene.stamp_opaque_coverage = true;
+        scene.reverse_z = false;
+        std::fill(std::begin(scene.clear_color),
+                  std::end(scene.clear_color), 0.f);
+        auto coverage_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(coverage_result);
+        std::array<std::uint8_t, 32 * 32 * 4> coverage_albedo{};
+        REQUIRE(coverage_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, coverage_albedo.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(coverage_albedo[center + 0] == albedo[center + 0]);
+        CHECK(coverage_albedo[center + 1] == albedo[center + 1]);
+        CHECK(coverage_albedo[center + 2] == albedo[center + 2]);
+        CHECK(coverage_albedo[center + 3] == 255);
+        CHECK(coverage_albedo[3] == 0);
+
+        scene.reverse_z = true;
+        auto reverse_coverage_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(reverse_coverage_result);
+        coverage_albedo.fill(0);
+        REQUIRE(reverse_coverage_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, coverage_albedo.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(coverage_albedo[center + 3] == 255);
+        CHECK(coverage_albedo[3] == 0);
+
+        scene.stamp_opaque_coverage = false;
+        scene.clear_color[0] = 1.f;
+        scene.clear_color[1] = 0.f;
+        scene.clear_color[2] = 1.f;
+        scene.clear_color[3] = 1.f;
 
         // TYPE_TEXTURE_INDEX aliases the fourth 32-bit word of the packed
         // position stream. Verify the Metal vertex function reads that exact
