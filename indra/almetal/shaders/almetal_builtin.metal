@@ -140,11 +140,63 @@ static float4 almetal_clip_from_gl(float4 position)
 
 static float3 almetal_srgb_to_linear(float3 encoded);
 
+struct ALMetalObjectSkinnedVertex
+{
+    float4 position;
+    float4 normal;
+};
+
+// Decode objectSkinV.glsl's packed four-influence stream. Element zero is the
+// agent-space rebase origin; every joint contributes three float4 columns.
+static ALMetalObjectSkinnedVertex almetal_object_skin_vertex(
+    float4 position,
+    float4 normal_value,
+    float4 encoded_weights,
+    const device float4* skin_palette,
+    uint joint_count)
+{
+    float4 weights = fract(encoded_weights);
+    const float weight_sum = dot(weights, float4(1.0));
+    weights = weight_sum > 0.0
+        ? weights / weight_sum : float4(1.0, 0.0, 0.0, 0.0);
+    const float4 clamped_indices = clamp(
+        floor(encoded_weights), float4(0.0),
+        float4(float(max(joint_count, 1u) - 1u)));
+    const uint4 indices = uint4(clamped_indices);
+
+    float4 column0 = 0.0;
+    float4 column1 = 0.0;
+    float4 column2 = 0.0;
+    for (uint influence = 0; influence < 4; ++influence)
+    {
+        const uint palette_base = 1u + indices[influence] * 3u;
+        column0 += skin_palette[palette_base] * weights[influence];
+        column1 += skin_palette[palette_base + 1u] * weights[influence];
+        column2 += skin_palette[palette_base + 2u] * weights[influence];
+    }
+
+    const float3x3 skin_matrix = float3x3(
+        column0.xyz, column1.xyz, column2.xyz);
+    ALMetalObjectSkinnedVertex output;
+    output.position = float4(
+        skin_matrix * position.xyz +
+            float3(column0.w, column1.w, column2.w),
+        0.0);
+    const float3x3 skin_normal_matrix = float3x3(
+        cross(skin_matrix[1], skin_matrix[2]),
+        cross(skin_matrix[2], skin_matrix[0]),
+        cross(skin_matrix[0], skin_matrix[1]));
+    output.normal = float4(skin_normal_matrix * normal_value.xyz, 0.0);
+    return output;
+}
+
 struct ALMetalWorldSimpleConstants
 {
     float4x4 modelview_projection;
     float4 normal_matrix[3];
+    float4 rigged_normal_matrix[3];
     float4x4 texture_matrix;
+    float4 material;
     uint4 depth_convention;
 };
 
@@ -156,6 +208,7 @@ struct ALMetalWorldSimpleVaryings
     float2 texcoord;
     uint texture_index [[flat]];
     uint texture_count [[flat]];
+    float alpha_cutoff [[flat]];
 };
 
 struct ALMetalWorldGBufferOutput
@@ -196,6 +249,47 @@ vertex ALMetalWorldSimpleVaryings almetal_world_simple_vertex(
     output.texture_index = constants.depth_convention.y > 1
         ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
     output.texture_count = constants.depth_convention.y;
+    output.alpha_cutoff = constants.material.x;
+    return output;
+}
+
+vertex ALMetalWorldSimpleVaryings almetal_world_simple_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldSimpleConstants& constants [[buffer(4)]],
+    const device float4* skin_palette [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    constant uint& joint_count [[buffer(7)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        positions[vertex_id], normals[vertex_id],
+        encoded_weights[vertex_id], skin_palette, joint_count);
+    float4 clip_position =
+        constants.modelview_projection * skinned.position +
+        constants.modelview_projection * float4(skin_palette[0].xyz, 1.0);
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldSimpleVaryings output;
+    output.position = constants.depth_convention.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    const float3x3 rigged_normal_matrix = float3x3(
+        constants.rigged_normal_matrix[0].xyz,
+        constants.rigged_normal_matrix[1].xyz,
+        constants.rigged_normal_matrix[2].xyz);
+    output.normal = normalize(
+        rigged_normal_matrix * skinned.normal.xyz);
+    const float4 encoded_color = float4(colors[vertex_id]) / 255.0;
+    output.color = float4(
+        almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.texture_index = constants.depth_convention.y > 1
+        ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0;
+    output.texture_count = constants.depth_convention.y;
+    output.alpha_cutoff = constants.material.x;
     return output;
 }
 
@@ -223,6 +317,38 @@ fragment ALMetalWorldGBufferOutput almetal_world_simple_fragment(
     output.specular_orm = float4(input.color.aaa, input.color.a);
     output.normal = float4(oct * 0.5 + 0.5,
                            input.color.a, 0.34);
+    output.emissive = 0.0;
+    return output;
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_alpha_mask_fragment(
+    ALMetalWorldSimpleVaryings input [[stage_in]],
+    array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]])
+{
+    const float4 diffuse = input.texture_index < input.texture_count
+        ? diffuse_textures[min(input.texture_index, 31u)].sample(
+              diffuse_sampler, input.texcoord)
+        : float4(1.0, 0.0, 1.0, 1.0);
+    const float4 color = input.color * diffuse;
+    constexpr float quantization_bias = 1.0 / 512.0;
+    if (color.a < input.alpha_cutoff - quantization_bias)
+    {
+        discard_fragment();
+    }
+    const float3 normal = normalize(input.normal);
+    const float denominator = abs(normal.x) + abs(normal.y) + abs(normal.z);
+    float2 oct = normal.xy / max(denominator, 1.0e-20);
+    if (normal.z < 0.0)
+    {
+        oct = (1.0 - abs(oct.yx)) *
+              select(float2(-1.0), float2(1.0), oct >= 0.0);
+    }
+
+    ALMetalWorldGBufferOutput output;
+    output.albedo = float4(color.rgb, 0.0);
+    output.specular_orm = 0.0;
+    output.normal = float4(oct * 0.5 + 0.5, 0.0, 0.34);
     output.emissive = 0.0;
     return output;
 }
@@ -536,43 +662,11 @@ static ALMetalLitPreviewSkinnedVertex almetal_lit_preview_skin_vertex(
     const device float4* skin_palette,
     uint joint_count)
 {
-    float4 weights = fract(encoded_weights);
-    const float weight_sum = dot(weights, float4(1.0));
-    // Imported skin weights are guaranteed non-zero by LLModel::loadModel.
-    // Keep malformed data finite here so a preview cannot poison a frame.
-    weights = weight_sum > 0.0
-        ? weights / weight_sum : float4(1.0, 0.0, 0.0, 0.0);
-    const float4 clamped_indices = clamp(
-        floor(encoded_weights), float4(0.0),
-        float4(float(max(joint_count, 1u) - 1u)));
-    const uint4 indices = uint4(clamped_indices);
-
-    float4 column0 = 0.0;
-    float4 column1 = 0.0;
-    float4 column2 = 0.0;
-    for (uint influence = 0; influence < 4; ++influence)
-    {
-        const uint palette_base = 1u + indices[influence] * 3u;
-        column0 += skin_palette[palette_base] * weights[influence];
-        column1 += skin_palette[palette_base + 1u] * weights[influence];
-        column2 += skin_palette[palette_base + 2u] * weights[influence];
-    }
-
-    const float3x3 skin_matrix = float3x3(
-        column0.xyz, column1.xyz, column2.xyz);
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        position, normal_value, encoded_weights, skin_palette, joint_count);
     ALMetalLitPreviewSkinnedVertex output;
-    output.position = float4(
-        skin_matrix * position.xyz +
-            float3(column0.w, column1.w, column2.w),
-        0.0);
-    // Match objectSkinV.glsl's cofactor transform. It is the inverse
-    // transpose times the determinant and is normalized by the shared lit
-    // preview path afterwards.
-    const float3x3 skin_normal_matrix = float3x3(
-        cross(skin_matrix[1], skin_matrix[2]),
-        cross(skin_matrix[2], skin_matrix[0]),
-        cross(skin_matrix[0], skin_matrix[1]));
-    output.normal = float4(skin_normal_matrix * normal_value.xyz, 0.0);
+    output.position = skinned.position;
+    output.normal = skinned.normal;
     return output;
 }
 

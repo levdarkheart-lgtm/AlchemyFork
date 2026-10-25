@@ -147,16 +147,22 @@ void LLDrawPoolSimple::renderDeferred(S32 pass)
     //render static
     shader->bind();
 #if LL_DARWIN
-    gPipeline.beginMetalWorldSimpleCapture();
+    gPipeline.beginMetalWorldGBufferPass(false, false);
 #endif
     pushBatches(LLRenderPass::PASS_SIMPLE, true, true);
 #if LL_DARWIN
-    gPipeline.endMetalWorldSimpleCapture();
+    gPipeline.endMetalWorldGBufferPass();
 #endif
 
     //render rigged
     shader->bind(true);
+#if LL_DARWIN
+    gPipeline.beginMetalWorldGBufferPass(true, false);
+#endif
     pushRiggedBatches(LLRenderPass::PASS_SIMPLE_RIGGED, true, true);
+#if LL_DARWIN
+    gPipeline.endMetalWorldGBufferPass();
+#endif
 }
 
 void LLDrawPoolAlphaMask::renderDeferred(S32 pass)
@@ -167,11 +173,23 @@ void LLDrawPoolAlphaMask::renderDeferred(S32 pass)
 
     //render static
     shader->bind();
+#if LL_DARWIN
+    gPipeline.beginMetalWorldGBufferPass(false, true);
+#endif
     pushMaskBatches(LLRenderPass::PASS_ALPHA_MASK, true, true);
+#if LL_DARWIN
+    gPipeline.endMetalWorldGBufferPass();
+#endif
 
     //render rigged
     shader->bind(true);
+#if LL_DARWIN
+    gPipeline.beginMetalWorldGBufferPass(true, true);
+#endif
     pushRiggedMaskBatches(LLRenderPass::PASS_ALPHA_MASK_RIGGED, true, true);
+#if LL_DARWIN
+    gPipeline.endMetalWorldGBufferPass();
+#endif
 }
 
 // grass drawpool

@@ -810,7 +810,7 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
     }
 
 #if LL_DARWIN
-    gPipeline.captureMetalWorldSimpleBatch(params, batch_textures);
+    gPipeline.captureMetalWorldGBufferBatch(params, batch_textures);
 #endif
 
     params.mVertexBuffer->setBuffer();

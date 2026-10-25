@@ -116,7 +116,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_resample_vertex",
             "almetal_resample_fragment",
             "almetal_world_simple_vertex",
+            "almetal_world_simple_skinned_vertex",
             "almetal_world_simple_fragment",
+            "almetal_world_alpha_mask_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
             "almetal_lit_preview_vertex",
@@ -846,12 +848,19 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             {{128, 255, 255, 128}},
             {{128, 255, 255, 128}},
         }};
+        const std::array<std::array<float, 4>, 3> weights{{
+            {{0.5f, 0.f, 0.f, 0.f}},
+            {{0.5f, 0.f, 0.f, 0.f}},
+            {{0.5f, 0.f, 0.f, 0.f}},
+        }};
         constexpr std::size_t normal_offset = sizeof(positions);
         constexpr std::size_t texcoord_offset =
             normal_offset + sizeof(normals);
         constexpr std::size_t color_offset =
             texcoord_offset + sizeof(texcoords);
-        std::array<std::uint8_t, color_offset + sizeof(colors)> vertex_bytes{};
+        constexpr std::size_t weight_offset =
+            (color_offset + sizeof(colors) + 15) & ~std::size_t{15};
+        std::array<std::uint8_t, weight_offset + sizeof(weights)> vertex_bytes{};
         std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
         std::memcpy(vertex_bytes.data() + normal_offset,
                     normals.data(), sizeof(normals));
@@ -859,6 +868,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                     texcoords.data(), sizeof(texcoords));
         std::memcpy(vertex_bytes.data() + color_offset,
                     colors.data(), sizeof(colors));
+        std::memcpy(vertex_bytes.data() + weight_offset,
+                    weights.data(), sizeof(weights));
 
         ALMetalBufferDescriptor vertex_descriptor;
         vertex_descriptor.length = vertex_bytes.size();
@@ -1042,6 +1053,109 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(indexed_albedo[center + 1] == 255);
         CHECK(indexed_albedo[center + 2] == 0);
         CHECK(indexed_albedo[center + 3] == 0);
+
+        // The alpha-mask owner uses combined texture/vertex coverage with the
+        // legacy half-byte bias, but clears specular/environment while
+        // retaining the same encoded albedo and atmospheric normal flag.
+        batch.alpha_mask = true;
+        batch.alpha_cutoff = 0.5f;
+        auto masked_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(masked_result);
+        std::array<std::uint8_t, 32 * 32 * 4> masked_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4> masked_specular{};
+        std::array<std::uint16_t, 32 * 32 * 4> masked_normal{};
+        REQUIRE(masked_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, masked_albedo.data(), 32 * 4, &error));
+        REQUIRE(masked_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, masked_specular.data(), 32 * 4, &error));
+        REQUIRE(masked_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, masked_normal.data(), 32 * 8, &error));
+        INFO(error);
+        CHECK(masked_albedo[center + 0] == 0);
+        CHECK(masked_albedo[center + 1] == 255);
+        CHECK(masked_albedo[center + 2] == 0);
+        CHECK(masked_specular[center + 0] == 0);
+        CHECK(masked_specular[center + 1] == 0);
+        CHECK(masked_specular[center + 2] == 0);
+        CHECK(masked_specular[center + 3] == 0);
+        CHECK(std::abs(static_cast<int>(masked_normal[center + 0]) -
+                       32768) <= 1);
+        CHECK(std::abs(static_cast<int>(masked_normal[center + 1]) -
+                       32768) <= 1);
+        CHECK(masked_normal[center + 2] == 0);
+        CHECK(std::abs(static_cast<int>(masked_normal[center + 3]) -
+                       22282) <= 2);
+
+        batch.alpha_cutoff = 0.6f;
+        auto discarded_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(discarded_result);
+        std::array<std::uint8_t, 32 * 32 * 4> discarded_albedo{};
+        REQUIRE(discarded_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, discarded_albedo.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(discarded_albedo[center + 0] == 255);
+        CHECK(discarded_albedo[center + 1] == 0);
+        CHECK(discarded_albedo[center + 2] == 255);
+        CHECK(discarded_albedo[center + 3] == 255);
+
+        // Reproduce the world owner's rebased object skinning. Joint-local
+        // and origin translations each contribute +0.25 clip X, so the
+        // indexed green triangle moves by exactly half the target width.
+        const std::array<float, 16> skin_palette{{
+            0.25f, 0.f, 0.f, 0.f,
+            1.f, 0.f, 0.f, 0.25f,
+            0.f, 1.f, 0.f, 0.f,
+            0.f, 0.f, 1.f, 0.f,
+        }};
+        batch.alpha_mask = false;
+        batch.alpha_cutoff = 0.f;
+        batch.weight_offset = weight_offset;
+        batch.skin_palette = skin_palette.data();
+        batch.skin_palette_float_count = skin_palette.size() - 1;
+        batch.skin_joint_count = 1;
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal world simple skinning data is invalid");
+        batch.skin_palette_float_count = skin_palette.size();
+        for (std::size_t column = 0; column < 3; ++column)
+        {
+            batch.rigged_normal_matrix[column][column] = 1.f;
+        }
+        error.clear();
+        auto skinned_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(skinned_result);
+        std::array<std::uint8_t, 32 * 32 * 4> skinned_albedo{};
+        REQUIRE(skinned_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, skinned_albedo.data(), 32 * 4, &error));
+        INFO(error);
+        const std::size_t translated_center = (16 * 32 + 24) * 4;
+        CHECK(skinned_albedo[translated_center + 0] == 0);
+        CHECK(skinned_albedo[translated_center + 1] == 255);
+        CHECK(skinned_albedo[translated_center + 2] == 0);
+        CHECK(skinned_albedo[translated_center + 3] == 0);
+
+        batch.alpha_mask = true;
+        batch.alpha_cutoff = 0.5f;
+        auto skinned_mask_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(skinned_mask_result);
+        std::array<std::uint8_t, 32 * 32 * 4> skinned_mask_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4> skinned_mask_specular{};
+        REQUIRE(skinned_mask_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, skinned_mask_albedo.data(), 32 * 4, &error));
+        REQUIRE(skinned_mask_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, skinned_mask_specular.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(skinned_mask_albedo[translated_center + 0] == 0);
+        CHECK(skinned_mask_albedo[translated_center + 1] == 255);
+        CHECK(skinned_mask_albedo[translated_center + 2] == 0);
+        CHECK(skinned_mask_specular[translated_center + 0] == 0);
+        CHECK(skinned_mask_specular[translated_center + 1] == 0);
+        CHECK(skinned_mask_specular[translated_center + 2] == 0);
+        CHECK(skinned_mask_specular[translated_center + 3] == 0);
     }
 }
 

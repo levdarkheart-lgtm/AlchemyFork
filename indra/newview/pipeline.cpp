@@ -382,10 +382,13 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::vector<ALMetalWorldSimpleBatch> batches;
     U32 width = 0;
     U32 height = 0;
-    bool active = false;
+    bool frame_active = false;
+    bool pass_active = false;
     bool complete = false;
     bool attempted = false;
     U32 failed_frames = 0;
+    bool rigged = false;
+    bool alpha_mask = false;
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
@@ -708,7 +711,7 @@ void LLPipeline::init()
 }
 
 #if LL_DARWIN
-void LLPipeline::beginMetalWorldSimpleCapture()
+void LLPipeline::beginMetalWorldGBufferCapture()
 {
     if (!isMainWorldPass() || gSnapshot || !mGLResourcesLive)
     {
@@ -720,7 +723,7 @@ void LLPipeline::beginMetalWorldSimpleCapture()
             std::make_unique<MetalWorldSimpleCapture>();
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    if (capture.active || capture.attempted)
+    if (capture.frame_active || capture.attempted)
     {
         return;
     }
@@ -766,13 +769,35 @@ void LLPipeline::beginMetalWorldSimpleCapture()
     capture.hdr = hdrEnabled();
     capture.reverse_z = LLRender::sReverseZ;
     capture.complete = true;
-    capture.active = true;
+    capture.frame_active = true;
+    capture.pass_active = false;
 }
 
-void LLPipeline::captureMetalWorldSimpleBatch(const LLDrawInfo& params,
-                                              bool batch_textures)
+void LLPipeline::beginMetalWorldGBufferPass(bool rigged, bool alpha_mask)
 {
-    if (!mMetalWorldSimpleCapture || !mMetalWorldSimpleCapture->active)
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    capture.rigged = rigged;
+    capture.alpha_mask = alpha_mask;
+    capture.pass_active = true;
+}
+
+void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
+                                               bool batch_textures)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->pass_active)
     {
         return;
     }
@@ -825,6 +850,9 @@ void LLPipeline::captureMetalWorldSimpleBatch(const LLDrawInfo& params,
     batch.index_type = buffer->getIndexStride() == 4
         ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
     batch.index_count = params.mCount;
+    batch.alpha_mask = capture.alpha_mask;
+    batch.alpha_cutoff = capture.alpha_mask
+        ? params.mAlphaMaskCutoff : 0.f;
     batch.texture_count = static_cast<U32>(texture_count);
     for (std::size_t index = 0; index < texture_count; ++index)
     {
@@ -849,11 +877,18 @@ void LLPipeline::captureMetalWorldSimpleBatch(const LLDrawInfo& params,
                 sizeof(batch.modelview_projection));
 
     const F32* inverse = inverse_modelview.getF32ptr();
+    const F32* modelview_values = modelview.getF32ptr();
     for (U32 column = 0; column < 3; ++column)
     {
         batch.normal_matrix[column][0] = inverse[0 * 4 + column];
         batch.normal_matrix[column][1] = inverse[1 * 4 + column];
         batch.normal_matrix[column][2] = inverse[2 * 4 + column];
+        batch.rigged_normal_matrix[column][0] =
+            modelview_values[column * 4 + 0];
+        batch.rigged_normal_matrix[column][1] =
+            modelview_values[column * 4 + 1];
+        batch.rigged_normal_matrix[column][2] =
+            modelview_values[column * 4 + 2];
     }
     if (!indexed_textures && params.mTextureMatrix &&
         (!gCubeSnapshot || mHeroProbeManager.isMirrorPass()))
@@ -861,17 +896,55 @@ void LLPipeline::captureMetalWorldSimpleBatch(const LLDrawInfo& params,
         std::memcpy(batch.texture_matrix, params.mTextureMatrix->mMatrix,
                     sizeof(batch.texture_matrix));
     }
+    if (capture.rigged)
+    {
+        if (!params.mAvatar || !params.mSkinInfo ||
+            !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
+        const LLVOAvatar::MatrixPaletteCache& palette =
+            params.mAvatar->updateSkinInfoMatrixPalette(params.mSkinInfo);
+        const U32 joint_count =
+            static_cast<U32>(palette.mMatrixPalette.size());
+        if (joint_count == 0 || palette.mGLMp.size() !=
+                4 + static_cast<std::size_t>(joint_count) * 12)
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
+        batch.weight_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_WEIGHT4);
+        batch.skin_palette = palette.mGLMp.data();
+        batch.skin_palette_float_count = palette.mGLMp.size();
+        batch.skin_joint_count = joint_count;
+    }
     capture.batches.push_back(batch);
 }
 
-void LLPipeline::endMetalWorldSimpleCapture()
+void LLPipeline::endMetalWorldGBufferPass()
 {
-    if (!mMetalWorldSimpleCapture || !mMetalWorldSimpleCapture->active)
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
+    {
+        return;
+    }
+    mMetalWorldSimpleCapture->pass_active = false;
+}
+
+void LLPipeline::endMetalWorldGBufferCapture()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
     {
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    capture.active = false;
+    capture.frame_active = false;
+    capture.pass_active = false;
     if (!capture.complete || capture.batches.empty())
     {
         capture.batches.clear();
@@ -882,7 +955,7 @@ void LLPipeline::endMetalWorldSimpleCapture()
             LL_WARNS("Metal")
                 << "Native world G-buffer probe retained GL after "
                 << capture.failed_frames
-                << " PASS_SIMPLE frames contained incomplete native "
+                << " deferred frames contained incomplete native "
                    "geometry or texture mirrors"
                 << LL_ENDL;
         }
@@ -918,7 +991,7 @@ void LLPipeline::endMetalWorldSimpleCapture()
         LL_INFOS("Metal")
             << "Native world G-buffer bootstrap encoded "
             << capture.batches.size()
-            << " static PASS_SIMPLE batches at " << capture.width << "x"
+            << " simple/alpha-mask batches at " << capture.width << "x"
             << capture.height
             << "; presentation remains on GL until the remaining world passes exist"
             << LL_ENDL;
@@ -5373,6 +5446,10 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
 
         pool_set_t::iterator iter1 = mPools.begin();
 
+#if LL_DARWIN
+        beginMetalWorldGBufferCapture();
+#endif
+
         while ( iter1 != mPools.end() )
         {
             LLDrawPool *poolp = *iter1;
@@ -5431,6 +5508,10 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
             iter1 = iter2;
             stop_glerror();
         }
+
+#if LL_DARWIN
+        endMetalWorldGBufferCapture();
+#endif
 
         gGLLastMatrix = NULL;
         gGL.matrixMode(LLRender::MM_MODELVIEW);

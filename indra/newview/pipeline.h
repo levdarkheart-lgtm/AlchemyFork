@@ -574,13 +574,15 @@ public:
     void bindBrdfLut(LLGLSLShader& shader);
 
 #if LL_DARWIN
-    // One fail-closed production probe of the first native world slice. The
-    // static PASS_SIMPLE owner brackets its ordinary GL sweep with these
-    // calls; pushBatch snapshots each exact draw after applying its matrices.
-    void beginMetalWorldSimpleCapture();
-    void captureMetalWorldSimpleBatch(const LLDrawInfo& params,
-                                      bool batch_textures);
-    void endMetalWorldSimpleCapture();
+    // One bounded fail-closed production probe of the first native world
+    // slices. renderGeomDeferred owns the frame capture; eligible draw pools
+    // bracket their GL sweeps so pushBatch snapshots only those exact draws.
+    void beginMetalWorldGBufferCapture();
+    void beginMetalWorldGBufferPass(bool rigged, bool alpha_mask);
+    void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
+                                       bool batch_textures);
+    void endMetalWorldGBufferPass();
+    void endMetalWorldGBufferCapture();
 #endif
 
     // bind shadow maps

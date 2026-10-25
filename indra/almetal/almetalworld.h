@@ -27,6 +27,7 @@ struct ALMetalWorldSimpleBatch
     std::size_t normal_offset = 0;
     std::size_t texcoord_offset = 0;
     std::size_t color_offset = 0;
+    std::size_t weight_offset = 0;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;
@@ -34,8 +35,14 @@ struct ALMetalWorldSimpleBatch
     std::uint32_t index_count = 0;
     std::array<const ALMetalTexture*, max_diffuse_textures> diffuse_textures{};
     std::uint32_t texture_count = 0;
+    const float* skin_palette = nullptr;
+    std::size_t skin_palette_float_count = 0;
+    std::uint32_t skin_joint_count = 0;
+    bool alpha_mask = false;
+    float alpha_cutoff = 0.f;
     float modelview_projection[16]{};
     float normal_matrix[3][4]{};
+    float rigged_normal_matrix[3][4]{};
     float texture_matrix[16] = {
         1.f, 0.f, 0.f, 0.f,
         0.f, 1.f, 0.f, 0.f,
@@ -56,10 +63,10 @@ struct ALMetalWorldGBufferScene
     float clear_color[4] = {1.f, 0.f, 1.f, 1.f};
 };
 
-// The first deliberately narrow world owner: static PASS_SIMPLE geometry into
-// a native four-attachment G-buffer plus depth. It is not presented yet. The
-// viewer runs one fail-closed probe frame so world integration can advance
-// without doubling this pass on every migration frame.
+// The deliberately narrow world bootstrap owner: simple and alpha-mask
+// geometry into a native four-attachment G-buffer plus depth. It is not
+// presented yet. The viewer runs one bounded fail-closed probe so world
+// integration can advance without doubling these passes every migration frame.
 class ALMetalWorldGBufferRenderer final
 {
 public:
