@@ -591,6 +591,10 @@ void LLDrawPoolTerrain::renderFullShaderPBR(bool use_local_materials)
     S32 detail_normal[terrain_material_count];
     S32 detail_metalrough[terrain_material_count];
     S32 detail_emissive[terrain_material_count];
+    LLViewerTexture* base_color_textures[terrain_material_count];
+    LLViewerTexture* normal_textures[terrain_material_count];
+    LLViewerTexture* orm_textures[terrain_material_count];
+    LLViewerTexture* emissive_textures[terrain_material_count];
 
     for (U32 i = 0; i < terrain_material_count; ++i)
     {
@@ -607,36 +611,44 @@ void LLDrawPoolTerrain::renderFullShaderPBR(bool use_local_materials)
             detail_metalrough_texturep = fetched_material->mMetallicRoughnessTexture;
             detail_emissive_texturep = fetched_material->mEmissiveTexture;
         }
+        base_color_textures[i] = detail_basecolor_texturep
+            ? detail_basecolor_texturep
+            : LLViewerFetchedTexture::sWhiteImagep.get();
+        normal_textures[i] = detail_normal_texturep
+            ? detail_normal_texturep
+            : LLViewerFetchedTexture::sFlatNormalImagep.get();
+        orm_textures[i] = detail_metalrough_texturep
+            ? detail_metalrough_texturep
+            : LLViewerFetchedTexture::sWhiteImagep.get();
+        emissive_textures[i] = detail_emissive_texturep
+            ? detail_emissive_texturep
+            : LLViewerFetchedTexture::sWhiteImagep.get();
 
         // Colour decodes, data does not -- the same split LLFetchedGLTFMaterial::bind makes,
         // which is what these textures came from. The matching encode on store is the
         // deferred pass's hoisted GL_FRAMEBUFFER_SRGB (renderGeomDeferred).
         detail_basecolor[i] = sShader->enableTexture(LLViewerShaderMgr::TERRAIN_DETAIL0_BASE_COLOR + i);
-        gGL.getTextureSlot(detail_basecolor[i])->bindSampled(detail_basecolor_texturep ? detail_basecolor_texturep
-                                                      : LLViewerFetchedTexture::sWhiteImagep.get(),
+        gGL.getTextureSlot(detail_basecolor[i])->bindSampled(base_color_textures[i],
                                                   ALSamplers::AnisoWrapSRGB);
 
         if (sPBRDetailMode >= TERRAIN_PBR_DETAIL_NORMAL)
         {
             detail_normal[i] = sShader->enableTexture(LLViewerShaderMgr::TERRAIN_DETAIL0_NORMAL + i);
-            gGL.getTextureSlot(detail_normal[i])->bindSampled(detail_normal_texturep ? detail_normal_texturep
-                                                          : LLViewerFetchedTexture::sFlatNormalImagep.get(),
+            gGL.getTextureSlot(detail_normal[i])->bindSampled(normal_textures[i],
                                                       ALSamplers::AnisoWrap);
         }
 
         if (sPBRDetailMode >= TERRAIN_PBR_DETAIL_METALLIC_ROUGHNESS)
         {
             detail_metalrough[i] = sShader->enableTexture(LLViewerShaderMgr::TERRAIN_DETAIL0_METALLIC_ROUGHNESS + i);
-            gGL.getTextureSlot(detail_metalrough[i])->bindSampled(detail_metalrough_texturep ? detail_metalrough_texturep
-                                                          : LLViewerFetchedTexture::sWhiteImagep.get(),
+            gGL.getTextureSlot(detail_metalrough[i])->bindSampled(orm_textures[i],
                                                       ALSamplers::AnisoWrap);
         }
 
         if (sPBRDetailMode >= TERRAIN_PBR_DETAIL_EMISSIVE)
         {
             detail_emissive[i] = sShader->enableTexture(LLViewerShaderMgr::TERRAIN_DETAIL0_EMISSIVE + i);
-            gGL.getTextureSlot(detail_emissive[i])->bindSampled(detail_emissive_texturep ? detail_emissive_texturep
-                                                          : LLViewerFetchedTexture::sWhiteImagep.get(),
+            gGL.getTextureSlot(detail_emissive[i])->bindSampled(emissive_textures[i],
                                                       ALSamplers::AnisoWrapSRGB);
         }
     }
@@ -751,10 +763,12 @@ void LLDrawPoolTerrain::renderFullShaderPBR(bool use_local_materials)
     //
     S32 alpha_ramp = -1;
     S32 paint_map = -1;
+    LLViewerTexture* blend_texture = nullptr;
     if (paint_type == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE)
     {
+        blend_texture = m2DAlphaRampImagep.get();
         alpha_ramp = sShader->enableTexture(LLViewerShaderMgr::TERRAIN_ALPHARAMP);
-        gGL.getTextureSlot(alpha_ramp)->bindSampled(m2DAlphaRampImagep, ALSamplers::AnisoClamp);
+        gGL.getTextureSlot(alpha_ramp)->bindSampled(blend_texture, ALSamplers::AnisoClamp);
     }
     else if (paint_type == TERRAIN_PAINT_TYPE_PBR_PAINTMAP)
     {
@@ -762,6 +776,7 @@ void LLDrawPoolTerrain::renderFullShaderPBR(bool use_local_materials)
         LLViewerTexture* tex_paint_map = use_local_materials ? gLocalTerrainMaterials.getPaintMap() : compp->getPaintMap();
         // If no paintmap is available, fall back to rendering just material slot 1 (by binding the appropriate image)
         if (!tex_paint_map) { tex_paint_map = LLViewerTexture::sBlackImagep.get(); }
+        blend_texture = tex_paint_map;
         // This is a paint map for four materials, but we save a channel by
         // storing the paintmap as the "difference" between slot 1 and the
         // other 3 slots.
@@ -808,7 +823,43 @@ void LLDrawPoolTerrain::renderFullShaderPBR(bool use_local_materials)
     shader->uniform4f(LLShaderMgr::TERRAIN_MINIMUM_ALPHAS, minimum_alphas[0], minimum_alphas[1], minimum_alphas[2], minimum_alphas[3]);
 
     // GL_BLEND disabled by default
+#if LL_DARWIN
+    LLViewerTexture* parcel_overlay = nullptr;
+    static const LLCachedControl<bool> show_parcel_owners(
+        gSavedSettings, "ShowParcelOwners");
+    if (show_parcel_owners)
+    {
+        LLViewerParcelOverlay* overlayp = regionp->getParcelOverlay();
+        parcel_overlay = overlayp ? overlayp->getTexture() : nullptr;
+    }
+    const TessLevels levels = tess_levels();
+    static LLCachedControl<F32> triplanar_blend(
+        gSavedSettings, "RenderTerrainPBRTriplanarBlendFactor", 8.f);
+    gPipeline.beginMetalWorldTerrainPass();
+    for (LLFace* facep : mDrawFace)
+    {
+        llassert(gGL.getMatrixMode() == LLRender::MM_MODELVIEW);
+        LLRenderPass::applyModelMatrix(
+            &facep->getDrawable()->getRegion()->mRenderMatrix);
+        gPipeline.captureMetalWorldPBRTerrainBatch(
+            facep, base_color_textures, normal_textures, orm_textures,
+            emissive_textures, blend_texture, parcel_overlay,
+            uv_transform, uv_offset, normal_axes, base_color_factors,
+            metallic_factors, roughness_factors, emissive_colors,
+            minimum_alphas, paint_type,
+            gPipeline.shaderInputs().mGlobal.mTerrainPBRDetail,
+            levels.mDensity, LLSurface::isSmoothing(),
+            gPipeline.shaderInputs().mGlobal.mTerrainPlanarSampleCount == 3,
+            gPipeline.shaderInputs().mGlobal.mTerrainHexTiling,
+            gPipeline.shaderInputs().mLocal.mTerrainPBRNormals,
+            triplanar_blend,
+            gPipeline.shaderInputs().mLocal.mTerrainTessPinned);
+        facep->renderIndexed(LLRender::PATCHES);
+    }
+    gPipeline.endMetalWorldGBufferPass();
+#else
     drawLoop();
+#endif
 
     // Disable multitexture
 

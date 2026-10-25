@@ -119,6 +119,7 @@
 #include "llviewerobjectlist.h"
 #include "llviewerparcelmgr.h"
 #include "llviewerregion.h" // for audio debugging.
+#include "llvlcomposition.h"
 #include "llviewerwindow.h" // For getSpinAxis
 #include "llvoavatarself.h"
 #include "llvocache.h"
@@ -1810,6 +1811,269 @@ void LLPipeline::captureMetalWorldTerrainBatch(
         const F32 mx = 0.5f * (a.x + b.x) - tessellation_origin.mV[VX];
         const F32 my = 0.5f * (a.y + b.y) - tessellation_origin.mV[VY];
         const F32 mz = 0.5f * (a.z + b.z) - tessellation_origin.mV[VZ];
+        const F32 distance = sqrtf(mx * mx + my * my + mz * mz);
+        return llclamp(length * tess_density / llmax(distance, 1.f),
+                       1.f, 64.f);
+    };
+    const std::array<F32, 4> outer{{
+        edge_level(corners[0], corners[3]),
+        edge_level(corners[0], corners[1]),
+        edge_level(corners[1], corners[2]),
+        edge_level(corners[3], corners[2]),
+    }};
+    const std::array<F32, 2> inner{{
+        llmax(outer[1], outer[3]),
+        llmax(outer[0], outer[2]),
+    }};
+    for (U32 edge = 0; edge < outer.size(); ++edge)
+    {
+        batch.terrain_tessellation_factors[edge] =
+            ALWaterHeightBake::halfOf(outer[edge]);
+    }
+    for (U32 inside = 0; inside < inner.size(); ++inside)
+    {
+        batch.terrain_tessellation_factors[4 + inside] =
+            ALWaterHeightBake::halfOf(inner[inside]);
+    }
+    capture.batches.push_back(batch);
+}
+
+void LLPipeline::captureMetalWorldPBRTerrainBatch(
+    LLFace* face, LLViewerTexture* const* base_color_textures,
+    LLViewerTexture* const* normal_textures,
+    LLViewerTexture* const* orm_textures,
+    LLViewerTexture* const* emissive_textures,
+    LLViewerTexture* blend_texture, LLViewerTexture* parcel_overlay,
+    const F32 (*uv_transform)[4], const F32 (*uv_offset)[2],
+    const F32 (*normal_axes)[4], const LLColor4* base_color_factors,
+    const F32* metallic_factors, const F32* roughness_factors,
+    const LLColor3* emissive_colors, const F32* minimum_alphas,
+    U32 paint_type, S32 pbr_detail, F32 tess_density,
+    bool smoothing, bool triplanar, bool hex, bool flat_normals,
+    F32 triplanar_blend, bool tessellation_pinned)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->pass_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || !capture.terrain)
+    {
+        return;
+    }
+
+    const auto fail = [&capture]()
+    {
+        capture.complete = false;
+        capture.batches.clear();
+    };
+    LLDrawable* drawable = face ? face->getDrawable() : nullptr;
+    LLVOSurfacePatch* object = drawable
+        ? dynamic_cast<LLVOSurfacePatch*>(drawable->getVObj().get()) : nullptr;
+    LLSurfacePatch* patch = object ? object->getPatch() : nullptr;
+    LLSurface* surface = patch ? patch->getSurface() : nullptr;
+    LLViewerRegion* region = surface ? surface->getRegion() : nullptr;
+    LLVertexBuffer* buffer = face ? face->getVertexBuffer() : nullptr;
+    if (!face || !base_color_textures || !normal_textures ||
+        !orm_textures || !emissive_textures || !blend_texture ||
+        !uv_transform || !uv_offset || !normal_axes ||
+        !base_color_factors || !metallic_factors ||
+        !roughness_factors || !emissive_colors || !minimum_alphas ||
+        !patch || !surface || !region || !buffer ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        face->getGeomCount() != LLVOSurfacePatch::PATCH_CORNERS ||
+        face->getGeomIndex() + LLVOSurfacePatch::PATCH_CORNERS >
+            buffer->getNumVerts() ||
+        paint_type >= TERRAIN_PAINT_TYPE_COUNT ||
+        pbr_detail < TERRAIN_PBR_DETAIL_MIN ||
+        pbr_detail > TERRAIN_PBR_DETAIL_MAX ||
+        !std::isfinite(tess_density) ||
+        (!tessellation_pinned && tess_density <= 0.f) ||
+        !std::isfinite(triplanar_blend) || triplanar_blend <= 0.f)
+    {
+        fail();
+        return;
+    }
+
+    const auto metal_texture = [](LLViewerTexture* texture)
+        -> ALMetalTexture*
+    {
+        LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        return image ? image->getMetalTexture() : nullptr;
+    };
+    ALTerrainSurfaceMaps& maps = surface->getSurfaceMaps();
+    ALMetalWorldSimpleBatch batch;
+    batch.terrain = true;
+    batch.terrain_pbr = true;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX) +
+        static_cast<std::size_t>(face->getGeomIndex()) * sizeof(LLVector4a);
+    batch.vertex_count = LLVOSurfacePatch::PATCH_CORNERS;
+    batch.texture_count = LLVLComposition::ASSET_COUNT;
+    batch.pbr_slot_count = LLVLComposition::ASSET_COUNT;
+    for (U32 material = 0; material < batch.texture_count; ++material)
+    {
+        batch.diffuse_textures[material] =
+            metal_texture(base_color_textures[material]);
+        ALMetalWorldPBRSlot& slot = batch.pbr_slots[material];
+        slot.normal_texture = metal_texture(normal_textures[material]);
+        slot.orm_texture = metal_texture(orm_textures[material]);
+        slot.emissive_texture = metal_texture(emissive_textures[material]);
+        std::memcpy(slot.base_color_factor,
+                    base_color_factors[material].mV,
+                    sizeof(slot.base_color_factor));
+        std::memcpy(slot.emissive_color, emissive_colors[material].mV,
+                    sizeof(emissive_colors[material].mV));
+        slot.roughness_factor = roughness_factors[material];
+        slot.metallic_factor = metallic_factors[material];
+        slot.alpha_cutoff = minimum_alphas[material];
+        std::memcpy(batch.terrain_uv_transform[material],
+                    uv_transform[material],
+                    sizeof(batch.terrain_uv_transform[material]));
+        std::memcpy(batch.terrain_uv_offset[material],
+                    uv_offset[material],
+                    sizeof(batch.terrain_uv_offset[material]));
+        std::memcpy(batch.terrain_normal_axes[material],
+                    normal_axes[material],
+                    sizeof(batch.terrain_normal_axes[material]));
+        if (!batch.diffuse_textures[material] ||
+            !slot.normal_texture || !slot.orm_texture ||
+            !slot.emissive_texture)
+        {
+            fail();
+            return;
+        }
+        batch.alpha_mask = batch.alpha_mask || slot.alpha_cutoff >= 0.f;
+    }
+
+    batch.terrain_height_texture = maps.getMetalHeightTexture();
+    batch.terrain_composition_texture = maps.getMetalCompositionTexture();
+    ALMetalTexture* blend = metal_texture(blend_texture);
+    if (paint_type == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE)
+    {
+        batch.terrain_alpha_ramp_texture = blend;
+    }
+    else
+    {
+        batch.terrain_paint_texture = blend;
+    }
+    batch.terrain_parcel_overlay_texture =
+        metal_texture(parcel_overlay);
+    if (!batch.terrain_height_texture ||
+        !batch.terrain_composition_texture || !blend ||
+        (parcel_overlay && !batch.terrain_parcel_overlay_texture))
+    {
+        fail();
+        return;
+    }
+
+    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    LLMatrix4a inverse_modelview;
+    if (!inverse_modelview.setAffineInverse(modelview))
+    {
+        fail();
+        return;
+    }
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.terrain_modelview, modelview.getF32ptr(),
+                sizeof(batch.terrain_modelview));
+    const F32* inverse = inverse_modelview.getF32ptr();
+    for (U32 column = 0; column < 3; ++column)
+    {
+        batch.normal_matrix[column][0] = inverse[0 * 4 + column];
+        batch.normal_matrix[column][1] = inverse[1 * 4 + column];
+        batch.normal_matrix[column][2] = inverse[2 * 4 + column];
+    }
+
+    batch.terrain_grid_scale = surface->getMetersPerGrid();
+    batch.terrain_region_scale = region->getWidth();
+    batch.terrain_triplanar_blend = triplanar_blend;
+    batch.terrain_smoothing = smoothing;
+    batch.terrain_triplanar = triplanar;
+    batch.terrain_hex = hex;
+    batch.terrain_flat_normals = flat_normals;
+    batch.terrain_pbr_detail = pbr_detail;
+    batch.terrain_paint_type = paint_type;
+    batch.terrain_tessellation_pinned = tessellation_pinned;
+
+    if (hex)
+    {
+        constexpr F64 hex_grid = static_cast<F64>(3.4641016f);
+        const LLVector3d& origin = region->getOriginGlobal();
+        const F64 x = origin.mdV[VX];
+        const F64 y = origin.mdV[VY];
+        for (U32 material = 0; material < batch.texture_count; ++material)
+        {
+            const F64 a = uv_transform[material][0];
+            const F64 b = uv_transform[material][1];
+            const F64 c = uv_transform[material][2];
+            const F64 d = uv_transform[material][3];
+            const F64 delta[3][2] = {
+                {a * x + c * y, b * x + d * y},
+                {a * y, b * y},
+                {a * x, b * x},
+            };
+            for (U32 projection = 0; projection < 3; ++projection)
+            {
+                const U32 element = 2 * material + (projection >> 1);
+                const U32 half = (projection & 1) * 2;
+                ALHexLattice::place(
+                    hex_grid, delta[projection][0], delta[projection][1],
+                    &batch.terrain_hex_base[element][half],
+                    &batch.terrain_hex_fraction[element][half]);
+            }
+        }
+    }
+
+    const LLVector3& patch_origin = patch->getOriginRegion();
+    const F32 patch_size = surface->getGridsPerPatchEdge() *
+                           batch.terrain_grid_scale;
+    struct TerrainCorner
+    {
+        F32 x;
+        F32 y;
+        F32 z;
+    };
+    const auto corner = [&](F32 x, F32 y)
+    {
+        const S32 gx = ll_round(x / batch.terrain_grid_scale);
+        const S32 gy = ll_round(y / batch.terrain_grid_scale);
+        return TerrainCorner{x, y, surface->sampleZ(gx, gy)};
+    };
+    const std::array<TerrainCorner, 4> corners{{
+        corner(patch_origin.mV[VX], patch_origin.mV[VY]),
+        corner(patch_origin.mV[VX] + patch_size, patch_origin.mV[VY]),
+        corner(patch_origin.mV[VX] + patch_size,
+               patch_origin.mV[VY] + patch_size),
+        corner(patch_origin.mV[VX], patch_origin.mV[VY] + patch_size),
+    }};
+    const LLVector3 tessellation_origin =
+        LLViewerCamera::getInstance()->getOrigin() -
+        region->getOriginAgent();
+    const auto edge_level = [&](const TerrainCorner& a,
+                                const TerrainCorner& b)
+    {
+        if (tessellation_pinned)
+        {
+            return 16.f;
+        }
+        const F32 dx = b.x - a.x;
+        const F32 dy = b.y - a.y;
+        const F32 dz = b.z - a.z;
+        const F32 length = sqrtf(dx * dx + dy * dy + dz * dz);
+        const F32 mx = 0.5f * (a.x + b.x) -
+                       tessellation_origin.mV[VX];
+        const F32 my = 0.5f * (a.y + b.y) -
+                       tessellation_origin.mV[VY];
+        const F32 mz = 0.5f * (a.z + b.z) -
+                       tessellation_origin.mV[VZ];
         const F32 distance = sqrtf(mx * mx + my * my + mz * mz);
         return llclamp(length * tess_density / llmax(distance, 1.f),
                        1.f, 64.f);

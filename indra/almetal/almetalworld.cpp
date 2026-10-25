@@ -74,12 +74,24 @@ namespace
     struct alignas(16) WorldTerrainConstants
     {
         float modelview_projection[16];
+        float modelview[16];
         float normal_matrix[3][4];
         float surface[4]{};
         float detail[4]{};
         std::uint32_t config[4]{};
-        float hex_fraction[2][4]{};
-        std::int32_t hex_base[2][4]{};
+        std::uint32_t pbr_config[4]{};
+        float hex_fraction[8][4]{};
+        std::int32_t hex_base[8][4]{};
+        struct alignas(16) PBRSlot
+        {
+            float uv_transform[4]{};
+            float uv_offset[4]{};
+            float normal_axes[4]{};
+            float base_color_factor[4]{};
+            float emissive_color[4]{};
+            // x = roughness, y = metallic, z = alpha cutoff.
+            float properties[4]{};
+        } pbr_slots[4];
     };
 
     bool finiteValues(const float* values, std::size_t count)
@@ -151,6 +163,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
     std::array<AvatarVariantPipelines, 2> avatar_pipelines;
     std::array<TerrainPartitionPipelines, 2> terrain_pipelines;
+    std::array<TerrainPartitionPipelines, 2> pbr_terrain_pipelines;
     std::unique_ptr<ALMetalDepthStencilState> forward_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_depth;
     std::unique_ptr<ALMetalSamplerState> diffuse_sampler;
@@ -194,7 +207,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_bump_fragment") ||
         !impl->library->hasFunction("almetal_world_material_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_fragment") ||
-        !impl->library->hasFunction("almetal_world_terrain_fragment"))
+        !impl->library->hasFunction("almetal_world_terrain_fragment") ||
+        !impl->library->hasFunction("almetal_world_pbr_terrain_fragment"))
     {
         if (impl->library)
         {
@@ -245,6 +259,19 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 auto& pipeline = impl->terrain_pipelines[hdr][pinned][normal_hdr];
                 pipeline = ALMetalRenderPipeline::create(device, descriptor, error);
                 if (!pipeline)
+                {
+                    return nullptr;
+                }
+
+                descriptor.fragment_function =
+                    "almetal_world_pbr_terrain_fragment";
+                descriptor.label =
+                    "Alchemy world PBR terrain G-buffer pipeline";
+                auto& pbr_pipeline =
+                    impl->pbr_terrain_pipelines[hdr][pinned][normal_hdr];
+                pbr_pipeline = ALMetalRenderPipeline::create(
+                    device, descriptor, error);
+                if (!pbr_pipeline)
                 {
                     return nullptr;
                 }
@@ -504,6 +531,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
         if (batch.terrain)
         {
+            const bool pbr_terrain = batch.terrain_pbr;
+            const bool height_paint = batch.terrain_paint_type == 0;
+            const std::size_t hex_value_count = pbr_terrain ? 32 : 8;
             bool valid_factors = true;
             for (std::uint16_t factor : batch.terrain_tessellation_factors)
             {
@@ -515,15 +545,34 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             if (!batch.vertices || batch.indices || batch.vertex_count != 4 ||
                 batch.index_count != 0 || batch.texture_count != 4 ||
                 batch.normal_texture || batch.material_slot_count != 0 ||
-                batch.pbr_slot_count != 0 || batch.skin_palette ||
+                batch.pbr_slot_count != (pbr_terrain ? 4u : 0u) ||
+                batch.skin_palette ||
                 batch.avatar_rigid || batch.avatar_skinning ||
                 batch.avatar_cloth || !valid_factors ||
+                (!pbr_terrain &&
+                 (batch.terrain_paint_texture || batch.alpha_mask ||
+                  batch.terrain_flat_normals)) ||
+                (pbr_terrain &&
+                 (batch.terrain_paint_type > 1 ||
+                  batch.terrain_pbr_detail < -4 ||
+                  batch.terrain_pbr_detail > 0 ||
+                  !finiteValues(batch.terrain_modelview, 16) ||
+                  !finiteValues(&batch.terrain_uv_transform[0][0], 16) ||
+                  !finiteValues(&batch.terrain_uv_offset[0][0], 8) ||
+                  !finiteValues(&batch.terrain_normal_axes[0][0], 16))) ||
                 batch.position_offset % float4_stride != 0 ||
                 !rangeFits(batch.position_offset, batch.vertex_count,
                            float4_stride, batch.vertices->length()) ||
                 !sampleableTexture(batch.terrain_height_texture) ||
                 !sampleableTexture(batch.terrain_composition_texture) ||
-                !sampleableTexture(batch.terrain_alpha_ramp_texture) ||
+                (!pbr_terrain &&
+                 !sampleableTexture(batch.terrain_alpha_ramp_texture)) ||
+                (pbr_terrain &&
+                 (!sampleableTexture(
+                      height_paint ? batch.terrain_alpha_ramp_texture
+                                   : batch.terrain_paint_texture) ||
+                  (height_paint && batch.terrain_paint_texture) ||
+                  (!height_paint && batch.terrain_alpha_ramp_texture))) ||
                 (batch.terrain_parcel_overlay_texture &&
                  !sampleableTexture(
                      batch.terrain_parcel_overlay_texture)) ||
@@ -548,10 +597,11 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 !std::isfinite(batch.terrain_triplanar_blend) ||
                 batch.terrain_triplanar_blend <= 0.f ||
                 (batch.terrain_hex &&
-                 (!finiteValues(&batch.terrain_hex_fraction[0][0], 8) ||
+                 (!finiteValues(&batch.terrain_hex_fraction[0][0],
+                                hex_value_count) ||
                   std::any_of(
                       &batch.terrain_hex_fraction[0][0],
-                      &batch.terrain_hex_fraction[0][0] + 8,
+                      &batch.terrain_hex_fraction[0][0] + hex_value_count,
                       [](float value)
                       {
                           return value < 0.f || value >= 1.f;
@@ -570,6 +620,43 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 {
                     setError(error,
                              "Metal world terrain detail texture is invalid");
+                    return nullptr;
+                }
+            }
+            if (pbr_terrain)
+            {
+                bool has_masked_material = false;
+                for (std::uint32_t slot_index = 0;
+                     slot_index < batch.pbr_slot_count; ++slot_index)
+                {
+                    const ALMetalWorldPBRSlot& slot =
+                        batch.pbr_slots[slot_index];
+                    has_masked_material = has_masked_material ||
+                                          slot.alpha_cutoff >= 0.f;
+                    if (!sampleableTexture(slot.normal_texture) ||
+                        !sampleableTexture(slot.orm_texture) ||
+                        !sampleableTexture(slot.emissive_texture) ||
+                        !finiteValues(slot.base_color_factor, 4) ||
+                        !finiteValues(slot.emissive_color, 4) ||
+                        !std::isfinite(slot.roughness_factor) ||
+                        !std::isfinite(slot.metallic_factor) ||
+                        !std::isfinite(slot.alpha_cutoff) ||
+                        slot.roughness_factor < 0.f ||
+                        slot.roughness_factor > 1.f ||
+                        slot.metallic_factor < 0.f ||
+                        slot.metallic_factor > 1.f ||
+                        slot.alpha_cutoff < -1.f ||
+                        slot.alpha_cutoff > 1.f)
+                    {
+                        setError(error,
+                                 "Metal world PBR terrain slot is invalid");
+                        return nullptr;
+                    }
+                }
+                if (has_masked_material != batch.alpha_mask)
+                {
+                    setError(error,
+                             "Metal world PBR terrain mask state is invalid");
                     return nullptr;
                 }
             }
@@ -937,6 +1024,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             std::memcpy(constants.modelview_projection,
                         batch.modelview_projection,
                         sizeof(constants.modelview_projection));
+            std::memcpy(constants.modelview, batch.terrain_modelview,
+                        sizeof(constants.modelview));
             std::memcpy(constants.normal_matrix,
                         batch.normal_matrix,
                         sizeof(constants.normal_matrix));
@@ -952,14 +1041,49 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             constants.config[1] =
                 batch.terrain_parcel_overlay_texture ? 1u : 0u;
             constants.config[2] = batch.terrain_hex ? 1u : 0u;
+            constants.config[3] = scene.normal_hdr ? 1u : 0u;
+            constants.pbr_config[0] = static_cast<std::uint32_t>(
+                batch.terrain_pbr_detail + 4);
+            constants.pbr_config[1] = batch.terrain_paint_type;
+            constants.pbr_config[2] = batch.alpha_mask ? 1u : 0u;
+            constants.pbr_config[3] =
+                batch.terrain_flat_normals ? 1u : 0u;
             std::memcpy(constants.hex_fraction,
                         batch.terrain_hex_fraction,
                         sizeof(constants.hex_fraction));
             std::memcpy(constants.hex_base,
                         batch.terrain_hex_base,
                         sizeof(constants.hex_base));
+            for (std::size_t slot = 0;
+                 slot < batch.pbr_slot_count; ++slot)
+            {
+                const ALMetalWorldPBRSlot& source = batch.pbr_slots[slot];
+                WorldTerrainConstants::PBRSlot& destination =
+                    constants.pbr_slots[slot];
+                std::memcpy(destination.uv_transform,
+                            batch.terrain_uv_transform[slot],
+                            sizeof(destination.uv_transform));
+                std::memcpy(destination.uv_offset,
+                            batch.terrain_uv_offset[slot],
+                            sizeof(batch.terrain_uv_offset[slot]));
+                std::memcpy(destination.normal_axes,
+                            batch.terrain_normal_axes[slot],
+                            sizeof(destination.normal_axes));
+                std::memcpy(destination.base_color_factor,
+                            source.base_color_factor,
+                            sizeof(destination.base_color_factor));
+                std::memcpy(destination.emissive_color,
+                            source.emissive_color,
+                            sizeof(destination.emissive_color));
+                destination.properties[0] = source.roughness_factor;
+                destination.properties[1] = source.metallic_factor;
+                destination.properties[2] = source.alpha_cutoff;
+            }
+            const auto& terrain_pipelines = batch.terrain_pbr
+                ? mImpl->pbr_terrain_pipelines
+                : mImpl->terrain_pipelines;
             const ALMetalRenderPipeline* pipeline =
-                mImpl->terrain_pipelines[scene.hdr ? 1 : 0]
+                terrain_pipelines[scene.hdr ? 1 : 0]
                     [batch.terrain_tessellation_pinned ? 1 : 0]
                     [scene.normal_hdr ? 1 : 0].get();
 
@@ -983,21 +1107,52 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 encoder->setFragmentSampler(
                     1, mImpl->point_clamp_sampler.get(), error) &&
                 encoder->setFragmentSampler(
-                    3, mImpl->ramp_sampler.get(), error) &&
-                encoder->setFragmentTexture(
-                    4, batch.terrain_height_texture, error) &&
-                encoder->setFragmentTexture(
-                    5, batch.terrain_alpha_ramp_texture, error) &&
-                encoder->setFragmentTexture(
-                    6, batch.terrain_parcel_overlay_texture
-                        ? batch.terrain_parcel_overlay_texture
-                        : batch.terrain_alpha_ramp_texture,
-                    error);
+                    3, mImpl->ramp_sampler.get(), error);
             for (std::uint32_t texture = 0;
                  encoded && texture < batch.texture_count; ++texture)
             {
                 encoded = encoder->setFragmentTexture(
                     texture, batch.diffuse_textures[texture], error);
+            }
+            if (encoded && batch.terrain_pbr)
+            {
+                const ALMetalTexture* blend = batch.terrain_paint_type == 0
+                    ? batch.terrain_alpha_ramp_texture
+                    : batch.terrain_paint_texture;
+                for (std::uint32_t slot = 0;
+                     encoded && slot < batch.pbr_slot_count; ++slot)
+                {
+                    const ALMetalWorldPBRSlot& pbr_slot =
+                        batch.pbr_slots[slot];
+                    encoded =
+                        encoder->setFragmentTextureLinear(
+                            4 + slot, pbr_slot.normal_texture, error) &&
+                        encoder->setFragmentTextureLinear(
+                            8 + slot, pbr_slot.orm_texture, error) &&
+                        encoder->setFragmentTexture(
+                            12 + slot, pbr_slot.emissive_texture, error);
+                }
+                encoded = encoded &&
+                    encoder->setFragmentTexture(
+                        16, batch.terrain_height_texture, error) &&
+                    encoder->setFragmentTexture(17, blend, error) &&
+                    encoder->setFragmentTexture(
+                        18, batch.terrain_parcel_overlay_texture
+                            ? batch.terrain_parcel_overlay_texture : blend,
+                        error);
+            }
+            else if (encoded)
+            {
+                encoded =
+                    encoder->setFragmentTexture(
+                        4, batch.terrain_height_texture, error) &&
+                    encoder->setFragmentTexture(
+                        5, batch.terrain_alpha_ramp_texture, error) &&
+                    encoder->setFragmentTexture(
+                        6, batch.terrain_parcel_overlay_texture
+                            ? batch.terrain_parcel_overlay_texture
+                            : batch.terrain_alpha_ramp_texture,
+                        error);
             }
             encoded = encoded &&
                 encoder->setTessellationFactorBuffer(

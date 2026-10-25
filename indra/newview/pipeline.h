@@ -606,6 +606,19 @@ public:
         F32 detail_scale, const F32* detail_phase, F32 tess_density,
         bool smoothing, bool triplanar, bool hex, F32 triplanar_blend,
         bool tessellation_pinned);
+    void captureMetalWorldPBRTerrainBatch(
+        LLFace* face, LLViewerTexture* const* base_color_textures,
+        LLViewerTexture* const* normal_textures,
+        LLViewerTexture* const* orm_textures,
+        LLViewerTexture* const* emissive_textures,
+        LLViewerTexture* blend_texture, LLViewerTexture* parcel_overlay,
+        const F32 (*uv_transform)[4], const F32 (*uv_offset)[2],
+        const F32 (*normal_axes)[4], const LLColor4* base_color_factors,
+        const F32* metallic_factors, const F32* roughness_factors,
+        const LLColor3* emissive_colors, const F32* minimum_alphas,
+        U32 paint_type, S32 pbr_detail, F32 tess_density,
+        bool smoothing, bool triplanar, bool hex, bool flat_normals,
+        F32 triplanar_blend, bool tessellation_pinned);
     void captureMetalWorldAvatarBatch(const LLViewerJointMesh& mesh,
                                       LLVertexBuffer* buffer,
                                       LLGLTexture* texture,

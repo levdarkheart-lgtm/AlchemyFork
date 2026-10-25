@@ -33,6 +33,7 @@ struct ALMetalWorldPBRSlot
     const ALMetalTexture* normal_texture = nullptr;
     const ALMetalTexture* orm_texture = nullptr;
     const ALMetalTexture* emissive_texture = nullptr;
+    float base_color_factor[4] = {1.f, 1.f, 1.f, 1.f};
     float texture_transform[4][8] = {
         {1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
         {1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
@@ -101,18 +102,27 @@ struct ALMetalWorldSimpleBatch
     const ALMetalTexture* terrain_height_texture = nullptr;
     const ALMetalTexture* terrain_composition_texture = nullptr;
     const ALMetalTexture* terrain_alpha_ramp_texture = nullptr;
+    const ALMetalTexture* terrain_paint_texture = nullptr;
     const ALMetalTexture* terrain_parcel_overlay_texture = nullptr;
     std::uint16_t terrain_tessellation_factors[6]{};
+    float terrain_modelview[16]{};
     float terrain_grid_scale = 1.f;
     float terrain_region_scale = 256.f;
     float terrain_detail_scale = 1.f / 12.f;
     float terrain_detail_phase[2]{};
     float terrain_triplanar_blend = 8.f;
-    float terrain_hex_fraction[2][4]{};
-    std::int32_t terrain_hex_base[2][4]{};
+    float terrain_uv_transform[4][4]{};
+    float terrain_uv_offset[4][2]{};
+    float terrain_normal_axes[4][4]{};
+    float terrain_hex_fraction[8][4]{};
+    std::int32_t terrain_hex_base[8][4]{};
+    std::int32_t terrain_pbr_detail = -4;
+    std::uint32_t terrain_paint_type = 0;
     bool terrain_smoothing = false;
     bool terrain_triplanar = true;
     bool terrain_hex = false;
+    bool terrain_pbr = false;
+    bool terrain_flat_normals = false;
     bool terrain_tessellation_pinned = false;
 };
 

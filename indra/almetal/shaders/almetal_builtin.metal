@@ -1025,19 +1025,35 @@ fragment ALMetalWorldGBufferOutput almetal_world_bump_fragment(
     return output;
 }
 
+struct ALMetalWorldTerrainPBRSlot
+{
+    float4 uv_transform;
+    float4 uv_offset;
+    float4 normal_axes;
+    float4 base_color_factor;
+    float4 emissive_color;
+    float4 properties;
+};
+
 struct ALMetalWorldTerrainConstants
 {
     float4x4 modelview_projection;
+    float4x4 modelview;
     float4 normal_matrix[3];
     // x = metres/grid, y = region width, z = detail scale,
     // w = triplanar sharpness.
     float4 surface;
     // xy = detail phase, z = smooth surface, w = triplanar mapping.
     float4 detail;
-    // x = reverse-Z, y = parcel overlay present, z = hex tiling.
+    // x = reverse-Z, y = parcel overlay present, z = hex tiling,
+    // w = high-precision normal target.
     uint4 config;
-    float4 hex_fraction[2];
-    int4 hex_base[2];
+    // x = PBR detail + 4, y = paint type, z = alpha mask,
+    // w = faceted geometric normals.
+    uint4 pbr_config;
+    float4 hex_fraction[8];
+    int4 hex_base[8];
+    ALMetalWorldTerrainPBRSlot pbr_slots[4];
 };
 
 struct ALMetalWorldTerrainSurface
@@ -1227,6 +1243,7 @@ static float3 almetal_world_terrain_surface(
 struct ALMetalWorldTerrainVaryings
 {
     float4 position [[position]];
+    float3 view_position;
     float3 normal;
     float3 region_position;
     float2 detail_texcoord;
@@ -1270,6 +1287,8 @@ vertex ALMetalWorldTerrainVaryings almetal_world_terrain_vertex(
         constants.normal_matrix[1].xyz,
         constants.normal_matrix[2].xyz);
     output.normal = normalize(normal_matrix * region_normal);
+    output.view_position =
+        (constants.modelview * float4(region_position, 1.0)).xyz;
     output.region_position = region_position;
     output.detail_texcoord =
         region_position.xy * constants.surface.z + constants.detail.xy;
@@ -1400,9 +1419,9 @@ static uint almetal_world_terrain_hex_hash(uint2 identifier)
 
 static ALMetalWorldTerrainHexPlace almetal_world_terrain_hex_place(
     constant ALMetalWorldTerrainConstants& constants,
-    uint projection, float side)
+    uint material, uint projection, float side)
 {
-    const uint element = projection >> 1;
+    const uint element = 2 * material + (projection >> 1);
     const bool upper = (projection & 1) != 0;
     ALMetalWorldTerrainHexPlace place;
     place.fraction = upper
@@ -1486,7 +1505,7 @@ static float4 almetal_world_terrain_detail_fetch(
         almetal_world_terrain_hex_tile(
             texcoord,
             almetal_world_terrain_hex_place(
-                constants, projection, side));
+                constants, 0, projection, side));
     float4 cells[3] = {};
     float3 luma = 0.0;
     for (uint cell = 0; cell < 3; ++cell)
@@ -1601,6 +1620,434 @@ fragment ALMetalWorldGBufferOutput almetal_world_terrain_fragment(
     output.normal = float4(
         almetal_world_oct_encode(normalize(input.normal)), 0.0, 0.34);
     output.emissive = 0.0;
+    return output;
+}
+
+struct ALMetalWorldTerrainPBRMix
+{
+    float4 color;
+    float3 orm;
+    float3 normal;
+    float3 emissive;
+};
+
+static ALMetalWorldTerrainPBRMix almetal_world_terrain_pbr_zero()
+{
+    ALMetalWorldTerrainPBRMix result;
+    result.color = 0.0;
+    result.orm = 0.0;
+    result.normal = 0.0;
+    result.emissive = 0.0;
+    return result;
+}
+
+static ALMetalWorldTerrainPBRMix almetal_world_terrain_pbr_add(
+    ALMetalWorldTerrainPBRMix destination,
+    ALMetalWorldTerrainPBRMix source, float weight)
+{
+    destination.color += source.color * weight;
+    destination.orm += source.orm * weight;
+    destination.normal += source.normal * weight;
+    destination.emissive += source.emissive * weight;
+    return destination;
+}
+
+static ALMetalWorldTerrainPBRMix almetal_world_terrain_pbr_fetch(
+    texture2d<float> base_color_texture,
+    texture2d<float> normal_texture,
+    texture2d<float> orm_texture,
+    texture2d<float> emissive_texture,
+    sampler material_sampler, float2 texcoord,
+    float2 texcoord_dx, float2 texcoord_dy, uint detail)
+{
+    ALMetalWorldTerrainPBRMix result;
+    result.color = base_color_texture.sample(
+        material_sampler, texcoord,
+        gradient2d(texcoord_dx, texcoord_dy));
+    if (detail >= 1)
+    {
+        result.orm = orm_texture.sample(
+            material_sampler, texcoord,
+            gradient2d(texcoord_dx, texcoord_dy)).rgb;
+        if (detail < 3)
+        {
+            result.orm.r = 1.0;
+        }
+    }
+    else
+    {
+        result.orm = float3(1.0, 1.0, 0.0);
+    }
+    result.normal = detail >= 2
+        ? normal_texture.sample(
+              material_sampler, texcoord,
+              gradient2d(texcoord_dx, texcoord_dy)).rgb * 2.0 - 1.0
+        : float3(0.0, 0.0, 1.0);
+    result.emissive = detail >= 4
+        ? emissive_texture.sample(
+              material_sampler, texcoord,
+              gradient2d(texcoord_dx, texcoord_dy)).rgb
+        : float3(0.0);
+    return result;
+}
+
+static ALMetalWorldTerrainPBRMix almetal_world_terrain_pbr_sample(
+    texture2d<float> base_color_texture,
+    texture2d<float> normal_texture,
+    texture2d<float> orm_texture,
+    texture2d<float> emissive_texture,
+    sampler material_sampler, float2 texcoord,
+    float2 texcoord_dx, float2 texcoord_dy,
+    uint material, uint projection, float side,
+    constant ALMetalWorldTerrainConstants& constants)
+{
+    const uint detail = constants.pbr_config.x;
+    if (constants.config.z == 0)
+    {
+        return almetal_world_terrain_pbr_fetch(
+            base_color_texture, normal_texture, orm_texture,
+            emissive_texture, material_sampler, texcoord,
+            texcoord_dx, texcoord_dy, detail);
+    }
+
+    const ALMetalWorldTerrainHexTile tile =
+        almetal_world_terrain_hex_tile(
+            texcoord,
+            almetal_world_terrain_hex_place(
+                constants, material, projection, side));
+    ALMetalWorldTerrainPBRMix cells[3];
+    float2 slopes[3];
+    float3 luma = 0.0;
+    for (uint cell = 0; cell < 3; ++cell)
+    {
+        cells[cell] = almetal_world_terrain_pbr_zero();
+        slopes[cell] = 0.0;
+        if ((tile.type & (1u << cell)) != 0)
+        {
+            float2 cell_texcoord;
+            const float2x2 rotation = almetal_world_terrain_hex_cell(
+                tile, cell, cell_texcoord);
+            cells[cell] = almetal_world_terrain_pbr_fetch(
+                base_color_texture, normal_texture, orm_texture,
+                emissive_texture, material_sampler, cell_texcoord,
+                rotation * texcoord_dx, rotation * texcoord_dy, detail);
+            luma[cell] = dot(cells[cell].color.rgb,
+                             float3(0.299, 0.587, 0.114));
+            if (detail >= 2)
+            {
+                slopes[cell] =
+                    (cells[cell].normal.xy * rotation) /
+                    max(cells[cell].normal.z, 0.015625);
+            }
+        }
+    }
+    float3 weight = tile.weight * mix(float3(1.0), luma, 0.6);
+    weight /= dot(weight, float3(1.0));
+    ALMetalWorldTerrainPBRMix result =
+        almetal_world_terrain_pbr_zero();
+    result = almetal_world_terrain_pbr_add(result, cells[0], weight.x);
+    result = almetal_world_terrain_pbr_add(result, cells[1], weight.y);
+    result = almetal_world_terrain_pbr_add(result, cells[2], weight.z);
+    if (detail >= 2)
+    {
+        result.normal = float3(
+            slopes[0] * weight.x + slopes[1] * weight.y +
+            slopes[2] * weight.z, 1.0);
+    }
+    return result;
+}
+
+static float3 almetal_world_terrain_pbr_compose_normal(
+    float3 sampled, float2x2 axes, float3 geometric)
+{
+    sampled.xy = axes * sampled.xy;
+    return normalize(float3(
+        sampled.xy * geometric.z + geometric.xy * sampled.z,
+        sampled.z * geometric.z));
+}
+
+static ALMetalWorldTerrainPBRMix
+almetal_world_terrain_pbr_sample_material(
+    ALMetalWorldTerrainVaryings input,
+    ALMetalWorldTerrainProjection projection,
+    float3 point_dx, float3 point_dy,
+    float3 geometric_normal_region,
+    texture2d<float> base_color_texture,
+    texture2d<float> normal_texture,
+    texture2d<float> orm_texture,
+    texture2d<float> emissive_texture,
+    sampler material_sampler, uint material,
+    constant ALMetalWorldTerrainConstants& constants)
+{
+    const ALMetalWorldTerrainPBRSlot slot = constants.pbr_slots[material];
+    const float2x2 transform = float2x2(
+        slot.uv_transform.xy, slot.uv_transform.zw);
+    const float2x2 normal_axes = float2x2(
+        slot.normal_axes.xy, slot.normal_axes.zw);
+    const float2 offset = slot.uv_offset.xy;
+    const uint detail = constants.pbr_config.x;
+    ALMetalWorldTerrainPBRMix result =
+        almetal_world_terrain_pbr_zero();
+
+    if (constants.detail.w == 0.0)
+    {
+        result = almetal_world_terrain_pbr_sample(
+            base_color_texture, normal_texture, orm_texture,
+            emissive_texture, material_sampler,
+            transform * input.region_position.xy + offset,
+            transform * point_dx.xy, transform * point_dy.xy,
+            material, 0, 1.0, constants);
+        if (detail >= 2)
+        {
+            result.normal = almetal_world_terrain_pbr_compose_normal(
+                result.normal, normal_axes, geometric_normal_region);
+        }
+    }
+    else
+    {
+        if (projection.usage.x != 0.0)
+        {
+            const float sx = projection.sx;
+            ALMetalWorldTerrainPBRMix sample =
+                almetal_world_terrain_pbr_sample(
+                    base_color_texture, normal_texture, orm_texture,
+                    emissive_texture, material_sampler,
+                    transform * float2(
+                        sx * input.region_position.y,
+                        input.region_position.z) + offset,
+                    transform * float2(sx * point_dx.y, point_dx.z),
+                    transform * float2(sx * point_dy.y, point_dy.z),
+                    material, 1, sx, constants);
+            if (detail >= 2)
+            {
+                const float3 frame_normal = float3(
+                    sx * geometric_normal_region.y,
+                    geometric_normal_region.z,
+                    sx * geometric_normal_region.x);
+                const float3 composed =
+                    almetal_world_terrain_pbr_compose_normal(
+                        sample.normal, normal_axes, frame_normal);
+                sample.normal = float3(
+                    sx * composed.z, sx * composed.x, composed.y);
+            }
+            result = almetal_world_terrain_pbr_add(
+                result, sample, projection.weight.x);
+        }
+        if (projection.usage.y != 0.0)
+        {
+            const float sy = projection.sy;
+            ALMetalWorldTerrainPBRMix sample =
+                almetal_world_terrain_pbr_sample(
+                    base_color_texture, normal_texture, orm_texture,
+                    emissive_texture, material_sampler,
+                    transform * float2(
+                        -sy * input.region_position.x,
+                        input.region_position.z) + offset,
+                    transform * float2(-sy * point_dx.x, point_dx.z),
+                    transform * float2(-sy * point_dy.x, point_dy.z),
+                    material, 2, -sy, constants);
+            if (detail >= 2)
+            {
+                const float3 frame_normal = float3(
+                    -sy * geometric_normal_region.x,
+                    geometric_normal_region.z,
+                    sy * geometric_normal_region.y);
+                const float3 composed =
+                    almetal_world_terrain_pbr_compose_normal(
+                        sample.normal, normal_axes, frame_normal);
+                sample.normal = float3(
+                    -sy * composed.x, sy * composed.z, composed.y);
+            }
+            result = almetal_world_terrain_pbr_add(
+                result, sample, projection.weight.y);
+        }
+        if (projection.usage.z != 0.0)
+        {
+            ALMetalWorldTerrainPBRMix sample =
+                almetal_world_terrain_pbr_sample(
+                    base_color_texture, normal_texture, orm_texture,
+                    emissive_texture, material_sampler,
+                    transform * input.region_position.xy + offset,
+                    transform * point_dx.xy, transform * point_dy.xy,
+                    material, 0, 1.0, constants);
+            if (detail >= 2)
+            {
+                sample.normal =
+                    almetal_world_terrain_pbr_compose_normal(
+                        sample.normal, normal_axes,
+                        geometric_normal_region);
+            }
+            result = almetal_world_terrain_pbr_add(
+                result, sample, projection.weight.z);
+        }
+        if (detail >= 2)
+        {
+            result.normal = normalize(result.normal);
+        }
+    }
+
+    result.color *= slot.base_color_factor;
+    if (detail >= 1)
+    {
+        result.orm.g *= slot.properties.x;
+        result.orm.b *= slot.properties.y;
+    }
+    if (detail >= 4)
+    {
+        result.emissive *= slot.emissive_color.rgb;
+    }
+    return result;
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_pbr_terrain_fragment(
+    ALMetalWorldTerrainVaryings input [[stage_in]],
+    array<texture2d<float>, 4> base_color_textures [[texture(0)]],
+    array<texture2d<float>, 4> normal_textures [[texture(4)]],
+    array<texture2d<float>, 4> orm_textures [[texture(8)]],
+    array<texture2d<float>, 4> emissive_textures [[texture(12)]],
+    texture2d<float> height_map [[texture(16)]],
+    texture2d<float> blend_map [[texture(17)]],
+    texture2d<float> parcel_overlay [[texture(18)]],
+    sampler material_sampler [[sampler(0)]],
+    sampler parcel_sampler [[sampler(1)]],
+    sampler blend_sampler [[sampler(3)]],
+    constant ALMetalWorldTerrainConstants& constants [[buffer(0)]],
+    bool front_facing [[front_facing]])
+{
+    const float3 point_dx = dfdx(input.region_position);
+    const float3 point_dy = dfdy(input.region_position);
+    float3 geometric_normal = normalize(input.normal);
+    if (constants.pbr_config.w != 0)
+    {
+        float3 triangle_normal = normalize(cross(
+            dfdx(input.view_position), dfdy(input.view_position)));
+        if (dot(triangle_normal, geometric_normal) < 0.0)
+        {
+            triangle_normal = -triangle_normal;
+        }
+        geometric_normal = triangle_normal;
+    }
+    const float3x3 normal_matrix = float3x3(
+        constants.normal_matrix[0].xyz,
+        constants.normal_matrix[1].xyz,
+        constants.normal_matrix[2].xyz);
+    const float3 geometric_normal_region =
+        transpose(normal_matrix) * geometric_normal;
+
+    float4 material_weight;
+    if (constants.pbr_config.y == 0)
+    {
+        const float alpha1 = blend_map.sample(
+            blend_sampler, input.composition).a;
+        const float alpha2 = blend_map.sample(
+            blend_sampler, input.composition - float2(2.0, 0.0)).a;
+        const float alpha_final = blend_map.sample(
+            blend_sampler, input.composition - float2(1.0, 0.0)).a;
+        material_weight = mix(
+            mix(float4(0.0, 0.0, 0.0, 1.0),
+                float4(0.0, 0.0, 1.0, 0.0), alpha2),
+            mix(float4(0.0, 1.0, 0.0, 0.0),
+                float4(1.0, 0.0, 0.0, 0.0), alpha1),
+            alpha_final) - 0.1;
+        material_weight = max(material_weight, 0.0);
+        material_weight /= dot(material_weight, float4(1.0));
+    }
+    else
+    {
+        float3 stored_weight = max(
+            blend_map.sample(
+                blend_sampler, input.region_texcoord).rgb,
+            float3(0.0));
+        stored_weight /= max(dot(stored_weight, float3(1.0)), 1.0);
+        material_weight = float4(
+            1.0 - dot(stored_weight, float3(1.0)), stored_weight);
+    }
+
+    const ALMetalWorldTerrainProjection projection =
+        almetal_world_terrain_projection(input, height_map, constants);
+    ALMetalWorldTerrainPBRMix mixed =
+        almetal_world_terrain_pbr_zero();
+    float coverage = 0.0;
+    float minimum_alpha = 0.0;
+    for (uint material = 0; material < 4; ++material)
+    {
+        if (material_weight[material] > 0.0)
+        {
+            const ALMetalWorldTerrainPBRMix sample =
+                almetal_world_terrain_pbr_sample_material(
+                    input, projection, point_dx, point_dy,
+                    geometric_normal_region,
+                    base_color_textures[material],
+                    normal_textures[material], orm_textures[material],
+                    emissive_textures[material], material_sampler,
+                    material, constants);
+            mixed = almetal_world_terrain_pbr_add(
+                mixed, sample, material_weight[material]);
+            const float cutoff =
+                constants.pbr_slots[material].properties.z;
+            coverage += material_weight[material] *
+                (cutoff < 0.0 ? 1.0 : sample.color.a);
+            minimum_alpha += material_weight[material] * max(cutoff, 0.0);
+        }
+    }
+    constexpr float quantization_bias = 1.0 / 512.0;
+    if (constants.pbr_config.z != 0 &&
+        coverage < minimum_alpha - quantization_bias)
+    {
+        discard_fragment();
+    }
+
+    float3 normal = constants.pbr_config.x >= 2
+        ? normalize(normal_matrix * mixed.normal)
+        : geometric_normal;
+    float3 output_geometric_normal = geometric_normal;
+    if (!front_facing)
+    {
+        normal = -normal;
+        output_geometric_normal = -output_geometric_normal;
+    }
+    const float3 normal_dx = dfdx(normal);
+    const float3 normal_dy = dfdy(normal);
+    const float variance = 0.15 *
+        (dot(normal_dx, normal_dx) + dot(normal_dy, normal_dy));
+    const float roughness_kernel = min(2.0 * variance, 0.25);
+    const float alpha = mixed.orm.g * mixed.orm.g;
+    mixed.orm.g = sqrt(sqrt(clamp(
+        alpha * alpha + roughness_kernel, 0.0, 1.0)));
+
+    if (constants.config.y != 0)
+    {
+        const float4 overlay = parcel_overlay.sample(
+            parcel_sampler, input.region_texcoord);
+        mixed.color.rgb = mix(
+            mixed.color.rgb, overlay.rgb, overlay.a);
+    }
+
+    const float roughness_high =
+        floor(clamp(mixed.orm.g, 0.0, 1.0) * 255.0) / 255.0;
+    const float roughness_low =
+        (mixed.orm.g - roughness_high) * 255.0;
+    const float2 geometric_oct = clamp(
+        almetal_world_oct_encode(output_geometric_normal), 0.0, 1.0);
+    const float geometric_quantization_levels =
+        constants.config.w != 0 ? 255.0 : 31.0;
+    const float geometric_range =
+        constants.config.w != 0 ? 65535.0 : 1023.0;
+    const float2 geometric_quantized = floor(
+        geometric_oct * geometric_quantization_levels + 0.5);
+    const float packed_geometric_normal =
+        (geometric_quantized.x *
+             (geometric_quantization_levels + 1.0) +
+         geometric_quantized.y) / geometric_range;
+
+    ALMetalWorldGBufferOutput output;
+    output.albedo = max(float4(mixed.color.rgb, 0.0), float4(0.0));
+    output.specular_orm = max(float4(
+        mixed.orm.r, roughness_high, mixed.orm.b, roughness_low),
+        float4(0.0));
+    output.normal = float4(
+        almetal_world_oct_encode(normal), packed_geometric_normal, 0.67);
+    output.emissive = max(float4(mixed.emissive, 0.0), float4(0.0));
     return output;
 }
 
