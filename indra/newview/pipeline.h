@@ -595,6 +595,7 @@ public:
         const LLUUID& avatar_id, U32 width, U32 height);
     void beginMetalImpostorAlphaCapture(const LLUUID& avatar_id);
     void beginMetalImpostorFullbrightPass(bool rigged, bool alpha_mask);
+    void beginMetalImpostorEmbossPass(bool rigged);
     void beginMetalImpostorAlphaPhase();
     void endMetalImpostorAlphaCapture();
     void captureMetalImpostorFlatAlphaBatch(

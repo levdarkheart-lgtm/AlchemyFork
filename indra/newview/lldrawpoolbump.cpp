@@ -696,7 +696,13 @@ void LLDrawPoolBump::renderPostDeferred(S32 pass)
 
         //render bump
         beginBump();
+#if LL_DARWIN
+        gPipeline.beginMetalImpostorEmbossPass(mRigged);
+#endif
         renderBump(LLRenderPass::PASS_POST_BUMP);
+#if LL_DARWIN
+        gPipeline.endMetalWorldGBufferPass();
+#endif
         endBump();
     }
 }
@@ -1080,7 +1086,9 @@ void LLDrawPoolBump::pushBumpBatches(U32 type)
     {
         LLDrawInfo& params = **i;
 
-        if (LLDrawPoolBump::bindBumpMap(params))
+        LLViewerTexture* bump_texture = nullptr;
+        if (LLDrawPoolBump::bindBumpMap(
+                params, -2, &bump_texture))
         {
             if (mRigged)
             {
@@ -1089,7 +1097,7 @@ void LLDrawPoolBump::pushBumpBatches(U32 type)
                     continue;
                 }
             }
-            pushBumpBatch(params, false);
+            pushBumpBatch(params, false, false, bump_texture);
         }
     }
 }

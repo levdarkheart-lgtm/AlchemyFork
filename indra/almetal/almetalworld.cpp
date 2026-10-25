@@ -172,6 +172,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<MaterialRiggedPipelines, 2> material_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_pipelines;
     std::array<MaskPipelines, 2> fullbright_pipelines;
+    std::array<RiggedPipelines, 2> emboss_pipelines;
     std::array<MaterialRiggedPipelines, 2> flat_alpha_pipelines;
     std::array<MaterialRiggedPipelines, 2> pbr_alpha_pipelines;
     std::array<AvatarVariantPipelines, 2> avatar_pipelines;
@@ -230,6 +231,10 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_pbr_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_fullbright_fragment") ||
+        !impl->library->hasFunction("almetal_world_emboss_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_emboss_skinned_vertex") ||
+        !impl->library->hasFunction("almetal_world_emboss_fragment") ||
         !impl->library->hasFunction("almetal_world_flat_alpha_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_alpha_fragment") ||
         !impl->library->hasFunction("almetal_world_impostor_fragment") ||
@@ -308,6 +313,60 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                     {
                         return nullptr;
                     }
+                }
+            }
+        }
+    }
+
+    const auto rgb_write_mask = static_cast<ALMetalColorWriteMask>(
+        static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+        static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+        static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+    for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
+    {
+        for (std::size_t rigged = 0; rigged < 2; ++rigged)
+        {
+            for (std::size_t normal_hdr = 0; normal_hdr < 2; ++normal_hdr)
+            {
+                ALMetalRenderPipelineDescriptor descriptor;
+                descriptor.library = impl->library.get();
+                descriptor.vertex_function = rigged
+                    ? "almetal_world_emboss_skinned_vertex"
+                    : "almetal_world_emboss_vertex";
+                descriptor.fragment_function =
+                    "almetal_world_emboss_fragment";
+                descriptor.color_attachment_count = 4;
+                descriptor.colors[0].format =
+                    ALMetalPixelFormat::rgba8_unorm_srgb;
+                descriptor.colors[0].blending_enabled = true;
+                descriptor.colors[0].source_rgb =
+                    ALMetalBlendFactor::destination_color;
+                descriptor.colors[0].destination_rgb =
+                    ALMetalBlendFactor::source_color;
+                descriptor.colors[0].write_mask = rgb_write_mask;
+                descriptor.colors[1].format =
+                    ALMetalPixelFormat::rgba8_unorm;
+                descriptor.colors[1].write_mask =
+                    ALMetalColorWriteMask::none;
+                descriptor.colors[2].format = normal_hdr
+                    ? ALMetalPixelFormat::rgba16_unorm
+                    : ALMetalPixelFormat::rgb10a2_unorm;
+                descriptor.colors[2].write_mask =
+                    ALMetalColorWriteMask::none;
+                descriptor.colors[3].format = emissive_formats[hdr];
+                descriptor.colors[3].write_mask =
+                    ALMetalColorWriteMask::none;
+                descriptor.depth_stencil_format =
+                    ALMetalPixelFormat::depth32_float;
+                descriptor.label =
+                    "Alchemy world emboss impostor pipeline";
+                auto& pipeline =
+                    impl->emboss_pipelines[hdr][rigged][normal_hdr];
+                pipeline = ALMetalRenderPipeline::create(
+                    device, descriptor, error);
+                if (!pipeline)
+                {
+                    return nullptr;
                 }
             }
         }
@@ -817,6 +876,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 batch.pbr_slot_count != 0 || batch.skin_palette ||
                 batch.avatar_rigid || batch.avatar_skinning ||
                 batch.avatar_cloth || batch.impostor_fullbright ||
+                batch.impostor_emboss ||
                 batch.terrain ||
                 !finiteValues(batch.modelview_projection, 16) ||
                 !finiteValues(batch.impostor_center, 4) ||
@@ -901,7 +961,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                     batch.terrain_composition_texture->descriptor().height ||
                 !std::isfinite(batch.terrain_grid_scale) ||
                 batch.terrain_grid_scale <= 0.f ||
-                batch.impostor_fullbright ||
+                batch.impostor_fullbright || batch.impostor_emboss ||
                 !std::isfinite(batch.terrain_region_scale) ||
                 batch.terrain_region_scale <= 0.f ||
                 !std::isfinite(batch.terrain_detail_scale) ||
@@ -985,7 +1045,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         if (!batch.vertices || !batch.indices || batch.texture_count == 0 ||
-            batch.impostor_fullbright ||
+            batch.impostor_fullbright || batch.impostor_emboss ||
             batch.texture_count >
                 ALMetalWorldSimpleBatch::max_diffuse_textures ||
             (material &&
@@ -1851,6 +1911,7 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
         const bool pbr = isPBRBatch(batch);
         const bool fullbright = batch.impostor_fullbright;
+        const bool emboss = batch.impostor_emboss;
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         if (!batch.vertices || !batch.indices ||
@@ -1859,20 +1920,26 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
             batch.texture_count == 0 ||
             batch.texture_count >
                 ALMetalWorldSimpleBatch::max_diffuse_textures ||
+            (emboss && batch.texture_count != 1) ||
             (pbr &&
              (batch.texture_count >
                   ALMetalWorldSimpleBatch::max_material_slots ||
               batch.pbr_slot_count != batch.texture_count)) ||
             batch.material_slot_count != 0 || batch.normal_texture ||
             (!fullbright && batch.alpha_mask) ||
-            (fullbright && pbr) || batch.avatar_rigid ||
+            (fullbright && (pbr || emboss)) || (emboss && pbr) ||
+            batch.avatar_rigid ||
             batch.avatar_skinning || batch.avatar_cloth ||
-            batch.impostor || batch.terrain || !batch.use_vertex_color ||
+            batch.impostor || batch.terrain ||
+            (!emboss && !batch.use_vertex_color) ||
             (!pbr && batch.double_sided) ||
             batch.position_offset % float4_stride != 0 ||
-            batch.normal_offset % float4_stride != 0 ||
+            (!emboss && batch.normal_offset % float4_stride != 0) ||
             batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
-            batch.color_offset % (sizeof(std::uint8_t) * 4) != 0 ||
+            (emboss &&
+             batch.texcoord1_offset % (sizeof(float) * 2) != 0) ||
+            (!emboss &&
+             batch.color_offset % (sizeof(std::uint8_t) * 4) != 0) ||
             (pbr && batch.tangent_offset % float4_stride != 0) ||
             batch.index_offset % index_stride != 0 ||
             !finiteValues(batch.modelview_projection, 16) ||
@@ -1884,13 +1951,19 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
               batch.alpha_cutoff < 0.f || batch.alpha_cutoff > 1.f)) ||
             !rangeFits(batch.position_offset, batch.vertex_count,
                        float4_stride, batch.vertices->length()) ||
-            !rangeFits(batch.normal_offset, batch.vertex_count,
-                       float4_stride, batch.vertices->length()) ||
+            (!emboss &&
+             !rangeFits(batch.normal_offset, batch.vertex_count,
+                        float4_stride, batch.vertices->length())) ||
             !rangeFits(batch.texcoord_offset, batch.vertex_count,
                        sizeof(float) * 2, batch.vertices->length()) ||
-            !rangeFits(batch.color_offset, batch.vertex_count,
-                       sizeof(std::uint8_t) * 4,
-                       batch.vertices->length()) ||
+            (emboss &&
+             !rangeFits(batch.texcoord1_offset, batch.vertex_count,
+                        sizeof(float) * 2,
+                        batch.vertices->length())) ||
+            (!emboss &&
+             !rangeFits(batch.color_offset, batch.vertex_count,
+                        sizeof(std::uint8_t) * 4,
+                        batch.vertices->length())) ||
             (pbr && !rangeFits(batch.tangent_offset, batch.vertex_count,
                                float4_stride,
                                batch.vertices->length())) ||
@@ -2034,25 +2107,41 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
         const ALMetalWorldSimpleBatch& batch = scene.batches[index];
         const bool pbr_batch = isPBRBatch(batch);
         const bool fullbright_batch = batch.impostor_fullbright;
+        const bool emboss_batch = batch.impostor_emboss;
         const bool rigged = batch.skin_palette != nullptr;
-        const bool depth_writable = fullbright_batch || rigged;
+        const bool depth_writable =
+            fullbright_batch || (rigged && !emboss_batch);
         const ALMetalDepthStencilState* depth = depth_writable
             ? (scene.reverse_z ? mImpl->reverse_depth.get()
                                : mImpl->forward_depth.get())
             : (scene.reverse_z ? mImpl->reverse_readonly_depth.get()
                                : mImpl->forward_readonly_depth.get());
-        const ALMetalRenderPipeline* pipeline = fullbright_batch
-            ? mImpl->fullbright_pipelines[scene.hdr ? 1 : 0]
-                                              [batch.alpha_mask ? 1 : 0]
-                                              [rigged ? 1 : 0]
-                                              [scene.normal_hdr ? 1 : 0].get()
-            : (pbr_batch
-                ? mImpl->pbr_alpha_pipelines[scene.hdr ? 1 : 0]
-                                                  [rigged ? 1 : 0]
-                                                  [scene.normal_hdr ? 1 : 0].get()
-                : mImpl->flat_alpha_pipelines[scene.hdr ? 1 : 0]
+        const ALMetalRenderPipeline* pipeline = nullptr;
+        if (emboss_batch)
+        {
+            pipeline = mImpl->emboss_pipelines[scene.hdr ? 1 : 0]
+                                                [rigged ? 1 : 0]
+                                                [scene.normal_hdr ? 1 : 0].get();
+        }
+        else if (fullbright_batch)
+        {
+            pipeline = mImpl->fullbright_pipelines[scene.hdr ? 1 : 0]
+                                                   [batch.alpha_mask ? 1 : 0]
                                                    [rigged ? 1 : 0]
-                                                   [scene.normal_hdr ? 1 : 0].get());
+                                                   [scene.normal_hdr ? 1 : 0].get();
+        }
+        else if (pbr_batch)
+        {
+            pipeline = mImpl->pbr_alpha_pipelines[scene.hdr ? 1 : 0]
+                                                  [rigged ? 1 : 0]
+                                                  [scene.normal_hdr ? 1 : 0].get();
+        }
+        else
+        {
+            pipeline = mImpl->flat_alpha_pipelines[scene.hdr ? 1 : 0]
+                                                   [rigged ? 1 : 0]
+                                                   [scene.normal_hdr ? 1 : 0].get();
+        }
 
         WorldSimpleConstants world{};
         std::memcpy(world.modelview_projection,
@@ -2080,12 +2169,21 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
             encoder->setVertexBuffer(
                 0, *batch.vertices, batch.position_offset, error) &&
             encoder->setVertexBuffer(
-                1, *batch.vertices, batch.normal_offset, error) &&
-            encoder->setVertexBuffer(
                 2, *batch.vertices, batch.texcoord_offset, error) &&
-            encoder->setVertexBuffer(
-                3, *batch.vertices, batch.color_offset, error) &&
             encoder->setVertexBytes(4, &world, sizeof(world), error);
+        if (encoded && emboss_batch)
+        {
+            encoded = encoder->setVertexBuffer(
+                9, *batch.vertices, batch.texcoord1_offset, error);
+        }
+        else if (encoded)
+        {
+            encoded =
+                encoder->setVertexBuffer(
+                    1, *batch.vertices, batch.normal_offset, error) &&
+                encoder->setVertexBuffer(
+                    3, *batch.vertices, batch.color_offset, error);
+        }
         if (encoded && rigged)
         {
             encoded =

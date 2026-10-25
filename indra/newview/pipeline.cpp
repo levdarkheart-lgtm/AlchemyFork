@@ -449,6 +449,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool impostor_alpha_active = false;
     bool impostor_alpha_phase = false;
     bool impostor_fullbright = false;
+    bool impostor_emboss = false;
     LLUUID impostor_bake_avatar_id;
     std::unordered_map<LLUUID, ImpostorMirror> impostor_mirrors;
 };
@@ -807,6 +808,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.impostor_alpha_active = false;
         capture.impostor_alpha_phase = false;
         capture.impostor_fullbright = false;
+        capture.impostor_emboss = false;
         capture.failed_frames = 0;
         capture.device = device;
     }
@@ -949,6 +951,7 @@ void LLPipeline::beginMetalWorldGBufferPass(bool rigged, bool alpha_mask)
     capture.avatar = false;
     capture.impostor = false;
     capture.impostor_fullbright = false;
+    capture.impostor_emboss = false;
     capture.pass_active = true;
 }
 
@@ -984,6 +987,7 @@ void LLPipeline::beginMetalWorldMaterialPass(bool rigged, U32 alpha_mode,
     capture.avatar = false;
     capture.impostor = false;
     capture.impostor_fullbright = false;
+    capture.impostor_emboss = false;
     capture.pass_active = true;
 }
 
@@ -1011,6 +1015,7 @@ void LLPipeline::beginMetalWorldPBRPass(bool rigged, bool alpha_mask)
     capture.avatar = false;
     capture.impostor = false;
     capture.impostor_fullbright = false;
+    capture.impostor_emboss = false;
     capture.pass_active = true;
 }
 
@@ -1042,6 +1047,7 @@ void LLPipeline::beginMetalWorldAvatarPass(
     capture.avatar = true;
     capture.impostor = false;
     capture.impostor_fullbright = false;
+    capture.impostor_emboss = false;
     capture.avatar_skinned = skinned;
     capture.avatar_cloth = cloth;
     std::memset(capture.avatar_wind, 0, sizeof(capture.avatar_wind));
@@ -1089,6 +1095,7 @@ void LLPipeline::beginMetalWorldTerrainPass()
     capture.terrain = true;
     capture.impostor = false;
     capture.impostor_fullbright = false;
+    capture.impostor_emboss = false;
     capture.pass_active = true;
 }
 
@@ -1116,6 +1123,7 @@ void LLPipeline::beginMetalWorldImpostorPass()
     capture.terrain = false;
     capture.impostor = true;
     capture.impostor_fullbright = false;
+    capture.impostor_emboss = false;
     capture.pass_active = true;
 }
 
@@ -1154,6 +1162,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.impostor_alpha_active = false;
         capture.impostor_alpha_phase = false;
         capture.impostor_fullbright = false;
+        capture.impostor_emboss = false;
         capture.failed_frames = 0;
         capture.device = device;
     }
@@ -1213,6 +1222,7 @@ void LLPipeline::beginMetalImpostorAlphaCapture(
     capture.impostor_alpha_active = true;
     capture.impostor_alpha_phase = false;
     capture.impostor_fullbright = false;
+    capture.impostor_emboss = false;
 }
 
 void LLPipeline::beginMetalImpostorFullbrightPass(bool rigged,
@@ -1241,6 +1251,36 @@ void LLPipeline::beginMetalImpostorFullbrightPass(bool rigged,
     capture.avatar = false;
     capture.impostor = false;
     capture.impostor_fullbright = true;
+    capture.impostor_emboss = false;
+    capture.pass_active = true;
+}
+
+void LLPipeline::beginMetalImpostorEmbossPass(bool rigged)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->impostor_alpha_active ||
+        mMetalWorldSimpleCapture->impostor_alpha_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    capture.rigged = rigged;
+    capture.alpha_mask = false;
+    capture.material_alpha_mode = 0;
+    capture.material_normal_map = false;
+    capture.material_specular_map = false;
+    capture.pbr = false;
+    capture.terrain = false;
+    capture.avatar = false;
+    capture.impostor = false;
+    capture.impostor_fullbright = false;
+    capture.impostor_emboss = true;
     capture.pass_active = true;
 }
 
@@ -1273,23 +1313,24 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
                 *capture.impostor_bake_target, scene, &error))
         {
             LL_WARNS("Metal")
-                << "Could not encode native avatar-impostor fullbright "
-                   "slice: " << error << LL_ENDL;
+                << "Could not encode native avatar-impostor "
+                   "opaque-forward slice: " << error << LL_ENDL;
         }
         else
         {
             LL_INFOS("Metal")
-                << "Native avatar-impostor fullbright slice encoded "
+                << "Native avatar-impostor opaque-forward slice encoded "
                 << capture.batches.size() << " batches at "
                 << capture.width << "x" << capture.height
-                << "; shiny reflection and emboss bump remain on the GL "
-                   "transition path" << LL_ENDL;
+                << "; shiny reflection remains on the GL transition path"
+                << LL_ENDL;
         }
     }
     capture.batches.clear();
     capture.avatar_palettes.clear();
     capture.complete = true;
     capture.impostor_fullbright = false;
+    capture.impostor_emboss = false;
 }
 
 void LLPipeline::endMetalImpostorAlphaCapture()
@@ -1304,6 +1345,7 @@ void LLPipeline::endMetalImpostorAlphaCapture()
     capture.impostor_alpha_active = false;
     capture.impostor_alpha_phase = false;
     capture.impostor_fullbright = false;
+    capture.impostor_emboss = false;
     capture.frame_active = false;
     capture.pass_active = false;
     if (!capture.complete || capture.batches.empty() ||
@@ -1402,6 +1444,7 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
         ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
     batch.index_count = params.mCount;
     batch.impostor_fullbright = capture.impostor_fullbright;
+    batch.impostor_emboss = capture.impostor_emboss;
     batch.alpha_mask = capture.alpha_mask;
     batch.alpha_cutoff = capture.alpha_mask
         ? params.mAlphaMaskCutoff : 0.f;
@@ -1494,6 +1537,80 @@ void LLPipeline::captureMetalWorldBumpBatch(
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
     LLImageGL* normal_image = normal_texture
         ? normal_texture->getGLTexture() : nullptr;
+    if (capture.impostor_emboss)
+    {
+        if (!params.mCount || !buffer || !normal_image ||
+            !normal_image->getMetalTexture() ||
+            !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+            !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+            !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD1) ||
+            !buffer->getMetalVertexBuffer() ||
+            !buffer->getMetalIndexBuffer() ||
+            (capture.rigged &&
+             (!params.mAvatar || !params.mSkinInfo ||
+              !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))))
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            return;
+        }
+
+        const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+        LLMatrix4a modelview_projection;
+        modelview_projection.setMul(
+            modelview, gGL.getProjectionMatrix());
+
+        ALMetalWorldSimpleBatch batch;
+        batch.vertices = buffer->getMetalVertexBuffer();
+        batch.position_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_VERTEX);
+        batch.texcoord_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_TEXCOORD0);
+        batch.texcoord1_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_TEXCOORD1);
+        batch.vertex_count = buffer->getNumVerts();
+        batch.indices = buffer->getMetalIndexBuffer();
+        batch.index_offset = static_cast<std::size_t>(params.mOffset) *
+                             buffer->getIndexStride();
+        batch.index_type = buffer->getIndexStride() == 4
+            ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+        batch.index_count = params.mCount;
+        batch.diffuse_textures[0] = normal_image->getMetalTexture();
+        batch.texture_count = 1;
+        batch.impostor_emboss = true;
+        std::memcpy(batch.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.modelview_projection));
+        if (params.mTextureMatrix &&
+            (!gCubeSnapshot || mHeroProbeManager.isMirrorPass()))
+        {
+            std::memcpy(batch.texture_matrix,
+                        params.mTextureMatrix->mMatrix,
+                        sizeof(batch.texture_matrix));
+        }
+        if (capture.rigged)
+        {
+            const LLVOAvatar::MatrixPaletteCache& palette =
+                params.mAvatar->updateSkinInfoMatrixPalette(
+                    params.mSkinInfo);
+            const U32 joint_count = static_cast<U32>(
+                palette.mMatrixPalette.size());
+            if (joint_count == 0 || palette.mGLMp.size() !=
+                    4 + static_cast<std::size_t>(joint_count) * 12)
+            {
+                capture.complete = false;
+                capture.batches.clear();
+                return;
+            }
+            batch.weight_offset = buffer->getOffset(
+                LLVertexBuffer::TYPE_WEIGHT4);
+            batch.skin_palette = palette.mGLMp.data();
+            batch.skin_palette_float_count = palette.mGLMp.size();
+            batch.skin_joint_count = joint_count;
+        }
+        capture.batches.push_back(batch);
+        return;
+    }
     if (!buffer ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TANGENT) ||
         !normal_image || !normal_image->getMetalTexture())
@@ -1844,6 +1961,7 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
     capture.avatar = false;
     capture.impostor = false;
     capture.impostor_fullbright = false;
+    capture.impostor_emboss = false;
     capture.pass_active = true;
     captureMetalWorldPBRBatch(params, false);
     capture.pass_active = false;
@@ -1882,6 +2000,7 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     capture.avatar = false;
     capture.impostor = false;
     capture.impostor_fullbright = false;
+    capture.impostor_emboss = false;
     capture.pass_active = true;
     captureMetalWorldGBufferBatch(params, true);
     capture.pass_active = false;
@@ -2283,6 +2402,7 @@ void LLPipeline::releaseMetalImpostorMirror(const LLUUID& avatar_id)
             mMetalWorldSimpleCapture->impostor_alpha_active = false;
             mMetalWorldSimpleCapture->impostor_alpha_phase = false;
             mMetalWorldSimpleCapture->impostor_fullbright = false;
+            mMetalWorldSimpleCapture->impostor_emboss = false;
         }
     }
 }

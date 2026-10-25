@@ -84,6 +84,7 @@ struct ALMetalWorldSimpleBatch
     bool avatar_cloth = false;
     bool impostor = false;
     bool impostor_fullbright = false;
+    bool impostor_emboss = false;
     bool terrain = false;
     bool use_vertex_color = true;
     bool alpha_cutoff_bias = true;

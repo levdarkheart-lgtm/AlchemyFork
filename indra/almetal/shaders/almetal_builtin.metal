@@ -953,6 +953,73 @@ fragment float4 almetal_world_fullbright_fragment(
     return max(diffuse * input.color, float4(0.0));
 }
 
+struct ALMetalWorldEmbossVaryings
+{
+    float4 position [[position]];
+    float2 texcoord0;
+    float2 texcoord1;
+};
+
+vertex ALMetalWorldEmbossVaryings almetal_world_emboss_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords0 [[buffer(2)]],
+    constant ALMetalWorldSimpleConstants& constants [[buffer(4)]],
+    const device float2* texcoords1 [[buffer(9)]],
+    uint vertex_id [[vertex_id]])
+{
+    ALMetalWorldEmbossVaryings output;
+    float4 clip_position = constants.modelview_projection *
+                           float4(positions[vertex_id].xyz, 1.0);
+    clip_position.y = -clip_position.y;
+    output.position = constants.depth_convention.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord0 = (constants.texture_matrix *
+                        float4(texcoords0[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord1 = (constants.texture_matrix *
+                        float4(texcoords1[vertex_id], 0.0, 1.0)).xy;
+    return output;
+}
+
+vertex ALMetalWorldEmbossVaryings almetal_world_emboss_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords0 [[buffer(2)]],
+    constant ALMetalWorldSimpleConstants& constants [[buffer(4)]],
+    const device float4* skin_palette [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    constant uint& joint_count [[buffer(7)]],
+    const device float2* texcoords1 [[buffer(9)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        positions[vertex_id], float4(0.0), encoded_weights[vertex_id],
+        skin_palette, joint_count);
+    float4 clip_position =
+        constants.modelview_projection * skinned.position +
+        constants.modelview_projection * float4(skin_palette[0].xyz, 1.0);
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldEmbossVaryings output;
+    output.position = constants.depth_convention.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord0 = (constants.texture_matrix *
+                        float4(texcoords0[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord1 = (constants.texture_matrix *
+                        float4(texcoords1[vertex_id], 0.0, 1.0)).xy;
+    return output;
+}
+
+fragment float4 almetal_world_emboss_fragment(
+    ALMetalWorldEmbossVaryings input [[stage_in]],
+    texture2d<float> bump_texture [[texture(0)]],
+    sampler bump_sampler [[sampler(0)]])
+{
+    const float first = bump_texture.sample(
+        bump_sampler, input.texcoord0).a;
+    const float second = bump_texture.sample(
+        bump_sampler, input.texcoord1).a;
+    return max(float4(first + (1.0 - second) - 0.5), float4(0.0));
+}
+
 fragment float4 almetal_world_flat_alpha_fragment(
     ALMetalWorldSimpleVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],

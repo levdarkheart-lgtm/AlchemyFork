@@ -134,6 +134,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_material_fragment",
             "almetal_world_pbr_fragment",
             "almetal_world_fullbright_fragment",
+            "almetal_world_emboss_vertex",
+            "almetal_world_emboss_skinned_vertex",
+            "almetal_world_emboss_fragment",
             "almetal_world_flat_alpha_fragment",
             "almetal_world_pbr_alpha_fragment",
             "almetal_world_impostor_fragment",
@@ -880,6 +883,9 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             {{0.5f, 0.f, 0.f, 0.f}},
             {{0.5f, 0.f, 0.f, 0.f}},
         }};
+        const std::array<std::array<float, 2>, 3> emboss_texcoords{{
+            {{0.5f, 0.f}}, {{0.5f, 0.f}}, {{0.5f, 0.f}},
+        }};
         const std::array<float, 3> avatar_weights{{0.f, 0.f, 0.f}};
         const std::array<std::array<float, 4>, 3> avatar_clothing{{
             {{0.25f, 0.f, 0.f, 1.f}},
@@ -895,12 +901,16 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             (color_offset + sizeof(colors) + 15) & ~std::size_t{15};
         constexpr std::size_t weight_offset =
             tangent_offset + sizeof(tangents);
+        constexpr std::size_t emboss_texcoord_offset =
+            weight_offset + sizeof(weights);
         constexpr std::size_t avatar_weight_offset =
             texcoord_offset + sizeof(texcoords);
         constexpr std::size_t avatar_cloth_offset =
             (avatar_weight_offset + sizeof(avatar_weights) + 15) &
             ~std::size_t{15};
-        std::array<std::uint8_t, weight_offset + sizeof(weights)> vertex_bytes{};
+        std::array<std::uint8_t,
+                   emboss_texcoord_offset + sizeof(emboss_texcoords)>
+            vertex_bytes{};
         std::memcpy(vertex_bytes.data(), positions.data(), sizeof(positions));
         std::memcpy(vertex_bytes.data() + normal_offset,
                     normals.data(), sizeof(normals));
@@ -912,6 +922,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                     tangents.data(), sizeof(tangents));
         std::memcpy(vertex_bytes.data() + weight_offset,
                     weights.data(), sizeof(weights));
+        std::memcpy(vertex_bytes.data() + emboss_texcoord_offset,
+                    emboss_texcoords.data(), sizeof(emboss_texcoords));
         std::array<std::uint8_t,
                    avatar_cloth_offset + sizeof(avatar_clothing)>
             avatar_vertex_bytes{};
@@ -1000,6 +1012,17 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         const std::array<std::uint8_t, 4> bump_normal_pixel{{
             255, 128, 128, 128,
         }};
+        normal_descriptor.width = 2;
+        normal_descriptor.label = "Alchemy world two-tap emboss bump";
+        auto emboss_bump = ALMetalTexture::create(
+            *device, normal_descriptor, &error);
+        INFO(error);
+        REQUIRE(emboss_bump);
+        const std::array<std::uint8_t, 8> emboss_bump_pixels{{
+            0, 0, 0, 128,
+            0, 0, 0, 192,
+        }};
+        normal_descriptor.width = 1;
         ALMetalTextureDescriptor material_specular_descriptor =
             diffuse_descriptor;
         material_specular_descriptor.label =
@@ -1044,6 +1067,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *upload, 0, 0, {}, tree_diffuse_pixel.data(), 4, &error));
         REQUIRE(bump_normal->upload(
             *upload, 0, 0, {}, bump_normal_pixel.data(), 4, &error));
+        REQUIRE(emboss_bump->upload(
+            *upload, 0, 0, {}, emboss_bump_pixels.data(), 8, &error));
         REQUIRE(material_specular_texture->upload(
             *upload, 0, 0, {}, material_specular_pixel.data(), 4, &error));
         REQUIRE(pbr_orm_texture->upload(
@@ -1223,7 +1248,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // generated linear normal map. This +X tangent-space normal must turn
         // the encoded view normal away from the geometric +Z value while
         // retaining the vertex-alpha specular/gloss contract.
-        batch.tangent_offset = vertex_bytes.size();
+        batch.tangent_offset =
+            (vertex_bytes.size() + 15) & ~std::size_t{15};
         batch.normal_texture = bump_normal.get();
         CHECK_FALSE(renderer->render(scene, &error));
         CHECK(error ==
@@ -1895,9 +1921,63 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(alpha_orm[fullbright_top + 3] == 0);
         CHECK(std::abs(alpha_depth[24 * 32 + 8] - 0.625f) < 0.0001f);
 
+        // The post-bump owner samples one bump texture at its two precomputed
+        // UV streams, then applies GL's BT_MULT_X2 blend to RGB only. A
+        // half-strength emboss result dims linear green to its sRGB 188 byte
+        // while preserving full coverage, every other attachment and depth.
+        ALMetalWorldSimpleBatch emboss_batch = fullbright_batch;
+        emboss_batch.impostor_fullbright = false;
+        emboss_batch.impostor_emboss = true;
+        emboss_batch.alpha_mask = false;
+        emboss_batch.texcoord1_offset = emboss_texcoord_offset;
+        emboss_batch.diffuse_textures[0] = emboss_bump.get();
+        emboss_batch.texture_count = 1;
+        emboss_batch.texture_matrix[12] = 0.25f;
+        alpha_scene.batches = &emboss_batch;
+        alpha_scene.stamp_opaque_coverage = false;
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *coverage_result, alpha_scene, &error));
+        INFO(error);
+        REQUIRE(coverage_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, alpha_albedo.data(), 32 * 4, &error));
+        REQUIRE(coverage_result->colorTexture(1)->readback(
+            *device, 0, 0, {}, alpha_orm.data(), 32 * 4, &error));
+        REQUIRE(coverage_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, alpha_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           alpha_albedo[fullbright_top + 1]) - 188) <= 2);
+        CHECK(alpha_albedo[fullbright_top + 3] == 255);
+        CHECK(alpha_orm[fullbright_top + 0] == 0);
+        CHECK(alpha_orm[fullbright_top + 1] == 0);
+        CHECK(alpha_orm[fullbright_top + 2] == 0);
+        CHECK(alpha_orm[fullbright_top + 3] == 0);
+        CHECK(std::abs(alpha_depth[24 * 32 + 8] - 0.625f) < 0.0001f);
+
+        emboss_batch.weight_offset = weight_offset;
+        emboss_batch.skin_palette = alpha_skin_palette.data();
+        emboss_batch.skin_palette_float_count =
+            alpha_skin_palette.size();
+        emboss_batch.skin_joint_count = 1;
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *coverage_result, alpha_scene, &error));
+        INFO(error);
+        REQUIRE(coverage_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, alpha_albedo.data(), 32 * 4, &error));
+        REQUIRE(coverage_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, alpha_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+                           alpha_albedo[fullbright_top + 1]) - 137) <= 2);
+        CHECK(alpha_albedo[fullbright_top + 3] == 255);
+        CHECK(std::abs(alpha_depth[24 * 32 + 8] - 0.625f) < 0.0001f);
+
         scene.hdr = false;
 
-        batch.tangent_offset = vertex_bytes.size();
+        batch.tangent_offset =
+            (vertex_bytes.size() + 15) & ~std::size_t{15};
         CHECK_FALSE(renderer->render(scene, &error));
         CHECK(error ==
               "Metal world simple geometry range exceeds its buffers");
