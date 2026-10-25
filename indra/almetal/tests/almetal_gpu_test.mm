@@ -153,6 +153,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_solid_fragment",
             "almetal_pbr_preview_vertex",
             "almetal_pbr_preview_fragment",
+            "almetal_pbr_preview_brdf_lut",
             "almetal_pbr_preview_exposure",
             "almetal_pbr_preview_post_fragment",
             "almetal_pbr_preview_bloom_extract_fragment",
@@ -2312,15 +2313,21 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         };
 
         const std::array<std::uint8_t, 4> opaque_black{{0, 0, 0, 255}};
+        const std::array<std::uint8_t, 4> opaque_white{{255, 255, 255, 255}};
         const std::array<std::uint8_t, 4> half_alpha_black{{0, 0, 0, 128}};
         const std::array<std::uint8_t, 4> flat_normal{{128, 128, 255, 255}};
         const std::array<std::uint8_t, 4> zero_ambient_orm{{0, 255, 0, 255}};
+        const std::array<std::uint8_t, 4> black_emissive{{0, 0, 0, 255}};
         const std::array<std::uint8_t, 8> red_green_emissive{{
             255, 0, 0, 255, 0, 255, 0, 255,
         }};
         auto base = make_texture(
             ALMetalPixelFormat::rgba8_unorm_srgb, 1,
             opaque_black.data(), 4, "Alchemy PBR preview test base");
+        auto white_base = make_texture(
+            ALMetalPixelFormat::rgba8_unorm_srgb, 1,
+            opaque_white.data(), 4,
+            "Alchemy PBR preview direct-light test base");
         auto cutout_base = make_texture(
             ALMetalPixelFormat::rgba8_unorm_srgb, 1,
             half_alpha_black.data(), 4,
@@ -2335,6 +2342,10 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
             ALMetalPixelFormat::rgba8_unorm_srgb, 2,
             red_green_emissive.data(), 8,
             "Alchemy PBR preview test emissive");
+        auto unlit_emissive = make_texture(
+            ALMetalPixelFormat::rgba8_unorm_srgb, 1,
+            black_emissive.data(), 4,
+            "Alchemy PBR preview direct-light test emissive");
 
         ALMetalTextureDescriptor destination_descriptor;
         destination_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
@@ -2435,6 +2446,30 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         CHECK(srgb_green[2] == 0);
         CHECK(srgb_green[3] == 255);
         destination_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+
+        // At normal incidence with perceptual roughness 1, this is the GL
+        // forward path's height-correlated GGX plus its generated 1024-sample
+        // BRDF-table energy compensation, its real sun-disc widening and the
+        // shared punctual scale of 3. The table's half-float quantization and
+        // encoded output allow a two-byte envelope around the analytic 132.
+        batch.base_color_texture = white_base.get();
+        batch.emissive_texture = unlit_emissive.get();
+        batch.sun_color[0] = 0.25f;
+        batch.sun_color[1] = 0.25f;
+        batch.sun_color[2] = 0.25f;
+        auto direct_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(direct_output);
+        const auto direct = read_center(*direct_output);
+        CHECK(std::abs(static_cast<int>(direct[0]) - 132) <= 2);
+        CHECK(std::abs(static_cast<int>(direct[1]) - 132) <= 2);
+        CHECK(std::abs(static_cast<int>(direct[2]) - 132) <= 2);
+        CHECK(direct[3] == 255);
+        batch.base_color_texture = base.get();
+        batch.emissive_texture = emissive.get();
+        batch.sun_color[0] = 0.f;
+        batch.sun_color[1] = 0.f;
+        batch.sun_color[2] = 0.f;
 
         // colorCorrect's lateral chromatic aberration samples R and B away
         // from the centre tap while leaving G and coverage at the centre. Feed

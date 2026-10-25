@@ -830,6 +830,14 @@ bool LLGLTFPreviewTexture::render()
             std::memcpy(batch.sun_direction,
                         gPipeline.mTransformedSunDir.mV,
                         sizeof(F32) * 3);
+            // bindEnvironmentUBOLitBy(white) makes atmos_sunlit_linear one;
+            // calcAtmosphericVarsLinear then applies the HDR sunlight scale.
+            // Carry the same scalar explicitly into the native pass.
+            const F32 preview_sun_scale =
+                gSavedSettings.get<F32>("RenderHDRSkySunlightScale");
+            batch.sun_color[0] = preview_sun_scale;
+            batch.sun_color[1] = preview_sun_scale;
+            batch.sun_color[2] = preview_sun_scale;
             batch.metallic_factor = mGLTFMaterial->mMetallicFactor;
             batch.roughness_factor = mGLTFMaterial->mRoughnessFactor;
             batch.alpha_cutoff =

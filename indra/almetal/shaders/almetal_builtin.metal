@@ -928,20 +928,179 @@ static float3 almetal_pbr_fresnel(float cosine, float3 f0)
     return f0 + (1.0 - f0) * pow(clamp(1.0 - cosine, 0.0, 1.0), 5.0);
 }
 
-static float almetal_pbr_distribution(float3 normal, float3 half_vector,
-                                      float roughness)
+static float2 almetal_pbr_hammersley(uint index, uint count)
 {
-    const float alpha = roughness * roughness;
-    const float alpha2 = alpha * alpha;
-    const float nh = max(dot(normal, half_vector), 0.0);
-    const float denominator = nh * nh * (alpha2 - 1.0) + 1.0;
-    return alpha2 / max(M_PI_F * denominator * denominator, 1.0e-6);
+    uint bits = (index << 16u) | (index >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) |
+           ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) |
+           ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) |
+           ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) |
+           ((bits & 0xFF00FF00u) >> 8u);
+    return float2(float(index) / float(count),
+                  float(bits) * 2.3283064365386963e-10);
 }
 
-static float almetal_pbr_geometry_term(float cosine, float roughness)
+static float3 almetal_pbr_importance_sample_ggx(float2 xi,
+                                                float roughness,
+                                                float3 normal)
 {
-    const float k = (roughness + 1.0) * (roughness + 1.0) * 0.125;
-    return cosine / max(cosine * (1.0 - k) + k, 1.0e-6);
+    const float alpha = roughness * roughness;
+    const float phi = 2.0 * M_PI_F * xi.x;
+    const float cos_theta = sqrt((1.0 - xi.y) /
+        (1.0 + (alpha * alpha - 1.0) * xi.y));
+    const float sin_theta = sqrt(max(1.0 - cos_theta * cos_theta, 0.0));
+    const float3 half_tangent = float3(
+        sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
+    const float3 up = abs(normal.z) < 0.999
+        ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+    const float3 tangent_x = normalize(cross(up, normal));
+    const float3 tangent_y = normalize(cross(normal, tangent_x));
+    return normalize(tangent_x * half_tangent.x +
+                     tangent_y * half_tangent.y +
+                     normal * half_tangent.z);
+}
+
+// Height-correlated Smith visibility with the 1/(4 NdotL NdotV)
+// denominator folded in. This is the same term used by deferredUtil.glsl
+// and by the GL BRDF-table generator.
+static float almetal_pbr_visibility(float nv, float nl,
+                                    float perceptual_roughness)
+{
+    const float alpha = perceptual_roughness * perceptual_roughness;
+    const float alpha2 = alpha * alpha;
+    const float lambda_v = nl * sqrt(nv * nv * (1.0 - alpha2) + alpha2);
+    const float lambda_l = nv * sqrt(nl * nl * (1.0 - alpha2) + alpha2);
+    const float denominator = lambda_v + lambda_l;
+    return denominator > 0.0 ? 0.5 / denominator : 0.0;
+}
+
+static float2 almetal_pbr_integrate_brdf(float nv,
+                                         float perceptual_roughness)
+{
+    constexpr uint sample_count = 1024u;
+    constexpr float3 normal = float3(0.0, 0.0, 1.0);
+    const float3 view = float3(sqrt(max(1.0 - nv * nv, 0.0)), 0.0, nv);
+    float2 result = float2(0.0);
+    for (uint index = 0u; index < sample_count; ++index)
+    {
+        const float2 xi = almetal_pbr_hammersley(index, sample_count);
+        const float3 half_vector = almetal_pbr_importance_sample_ggx(
+            xi, perceptual_roughness, normal);
+        const float3 light = 2.0 * dot(view, half_vector) * half_vector - view;
+        const float nl = max(light.z, 0.0);
+        const float vh = max(dot(view, half_vector), 0.0);
+        const float nh = max(half_vector.z, 0.0);
+        if (nl > 0.0 && nh > 0.0)
+        {
+            const float visibility_pdf = almetal_pbr_visibility(
+                nv, nl, perceptual_roughness) * vh * nl / nh;
+            const float fresnel = pow(1.0 - vh, 5.0);
+            result += float2(1.0 - fresnel, fresnel) * visibility_pdf;
+        }
+    }
+    return 4.0 * result / float(sample_count);
+}
+
+kernel void almetal_pbr_preview_brdf_lut(
+    texture2d<float, access::write> output [[texture(0)]],
+    uint2 position [[thread_position_in_grid]])
+{
+    if (position.x >= output.get_width() || position.y >= output.get_height())
+    {
+        return;
+    }
+    const float2 uv = (float2(position) + 0.5) /
+                      float2(output.get_width(), output.get_height());
+    // Preserve the GL table's glossiness Y axis. Its consumers sample at
+    // 1-roughness, so a texel written at y integrates 1-y.
+    const float2 integrated = almetal_pbr_integrate_brdf(uv.x, 1.0 - uv.y);
+    output.write(float4(integrated, 0.0, 1.0), position);
+}
+
+static float almetal_pbr_distribution(float nh,
+                                      float perceptual_roughness)
+{
+    const float alpha = perceptual_roughness * perceptual_roughness;
+    const float alpha2 = alpha * alpha;
+    const float denominator = (nh * alpha2 - nh) * nh + 1.0;
+    return alpha2 / (M_PI_F * denominator * denominator);
+}
+
+static float almetal_pbr_filtered_roughness(float perceptual_roughness,
+                                            float3 normal)
+{
+    constexpr float variance_scale = 0.15;
+    constexpr float variance_threshold = 0.25;
+    const float3 du = dfdx(normal);
+    const float3 dv = dfdy(normal);
+    const float variance = variance_scale *
+        (dot(du, du) + dot(dv, dv));
+    const float roughness_kernel = min(2.0 * variance, variance_threshold);
+    const float alpha = perceptual_roughness * perceptual_roughness;
+    return sqrt(sqrt(clamp(alpha * alpha + roughness_kernel, 0.0, 1.0)));
+}
+
+static float3 almetal_pbr_clamp_radiance(float3 color)
+{
+    color = max(color, float3(0.0));
+    const float peak = max(color.r, max(color.g, color.b));
+    return peak > 65504.0 ? color * (65504.0 / peak) : color;
+}
+
+static float2 almetal_pbr_brdf(texture2d<float> lut,
+                               sampler lut_sampler,
+                               float nv,
+                               float perceptual_roughness)
+{
+    return lut.sample(lut_sampler,
+                      float2(nv, 1.0 - perceptual_roughness)).rg;
+}
+
+static float3 almetal_pbr_energy_compensation(texture2d<float> lut,
+                                               sampler lut_sampler,
+                                               float3 specular_color,
+                                               float perceptual_roughness,
+                                               float nv)
+{
+    const float2 brdf = almetal_pbr_brdf(
+        lut, lut_sampler, clamp(abs(nv), 0.001, 1.0),
+        max(perceptual_roughness, 0.045));
+    const float single_scatter = max(brdf.x + brdf.y, 1.0e-4);
+    return 1.0 + specular_color * (1.0 / single_scatter - 1.0);
+}
+
+struct ALMetalPBRPreviewPunctual
+{
+    float nl;
+    float3 diffuse;
+    float3 specular;
+};
+
+static ALMetalPBRPreviewPunctual almetal_pbr_punctual(
+    float3 diffuse_color,
+    float3 specular_color,
+    float perceptual_roughness,
+    float3 normal,
+    float3 view,
+    float3 light)
+{
+    ALMetalPBRPreviewPunctual result;
+    perceptual_roughness = max(perceptual_roughness, 0.045);
+    const float3 half_vector = normalize(light + view);
+    const float nl = clamp(dot(normal, light), 0.0, 1.0);
+    const float nv = clamp(abs(dot(normal, view)), 0.001, 1.0);
+    const float nh = clamp(dot(normal, half_vector), 0.0, 1.0);
+    const float vh = clamp(dot(view, half_vector), 0.0, 1.0);
+    const float3 fresnel = almetal_pbr_fresnel(vh, specular_color);
+    result.nl = nl;
+    result.diffuse = (1.0 - fresnel) * diffuse_color / M_PI_F;
+    result.specular = fresnel *
+        almetal_pbr_visibility(nv, nl, perceptual_roughness) *
+        almetal_pbr_distribution(nh, perceptual_roughness);
+    return result;
 }
 
 static float3 almetal_pbr_neutral_tonemap(float3 color)
@@ -1087,10 +1246,12 @@ fragment float4 almetal_pbr_preview_fragment(
     texture2d<float> normal_map [[texture(1)]],
     texture2d<float> orm_map [[texture(2)]],
     texture2d<float> emissive_map [[texture(3)]],
+    texture2d<float> brdf_lut [[texture(4)]],
     sampler color_sampler [[sampler(0)]],
     sampler normal_sampler [[sampler(1)]],
     sampler orm_sampler [[sampler(2)]],
     sampler emissive_sampler [[sampler(3)]],
+    sampler brdf_sampler [[sampler(4)]],
     constant ALMetalPBRPreviewConstants& constants [[buffer(0)]])
 {
     const float4 base_sample = base_color_map.sample(
@@ -1116,33 +1277,34 @@ fragment float4 almetal_pbr_preview_fragment(
 
     const float3 orm = orm_map.sample(orm_sampler, input.orm_texcoord).rgb;
     const float ao = clamp(orm.r, 0.0, 1.0);
-    const float roughness = clamp(
-        orm.g * constants.material.y, 0.045, 1.0);
+    const float authored_roughness = clamp(
+        orm.g * constants.material.y, 0.0, 1.0);
+    const float roughness = almetal_pbr_filtered_roughness(
+        authored_roughness, normal);
     const float metallic = clamp(
         orm.b * constants.material.x, 0.0, 1.0);
     const float3 view = normalize(-input.eye_position);
     const float3 light = normalize(constants.sun_direction.xyz);
-    const float3 half_vector = normalize(view + light);
-    const float nv = max(dot(normal, view), 0.001);
-    const float nl = max(dot(normal, light), 0.0);
-    const float vh = max(dot(view, half_vector), 0.0);
-    const float3 f0 = mix(float3(0.04), base_color, metallic);
-    const float3 fresnel = almetal_pbr_fresnel(vh, f0);
-    const float distribution = almetal_pbr_distribution(
-        normal, half_vector, roughness);
-    const float geometry = almetal_pbr_geometry_term(nv, roughness) *
-                           almetal_pbr_geometry_term(nl, roughness);
-    const float3 specular = distribution * geometry * fresnel /
-                            max(4.0 * nv * max(nl, 0.001), 0.001);
-    const float3 diffuse_weight = (1.0 - fresnel) * (1.0 - metallic);
-    const float3 direct = (diffuse_weight * base_color / M_PI_F + specular) *
-                          constants.sun_color.rgb * nl;
+    const float nv = clamp(abs(dot(normal, view)), 0.001, 1.0);
+    const float3 diffuse_color = base_color * (1.0 - metallic);
+    const float3 specular_color = mix(float3(0.04), base_color, metallic);
+    const float alpha = roughness * roughness;
+    const float sun_roughness = sqrt(clamp(alpha + 0.00465, 0.0, 1.0));
+    ALMetalPBRPreviewPunctual punctual = almetal_pbr_punctual(
+        diffuse_color, specular_color, sun_roughness,
+        normal, view, light);
+    punctual.specular *= almetal_pbr_energy_compensation(
+        brdf_lut, brdf_sampler, specular_color, max(roughness, 0.045), nv);
+    const float3 direct = almetal_pbr_clamp_radiance(
+        punctual.nl * (punctual.diffuse + punctual.specular)) *
+        constants.sun_color.rgb * 3.0;
 
     // The GL owner forces the default reflection probe and a white sun. This
     // compact split-sum approximation keeps roughness/metal/occlusion response
     // in the native swatch without borrowing world-owned probe textures.
-    const float3 ambient_diffuse = base_color * (1.0 - metallic) * 0.18 * ao;
-    const float3 ambient_specular = f0 * mix(0.12, 0.035, roughness) * ao;
+    const float3 ambient_diffuse = diffuse_color * 0.18 * ao;
+    const float3 ambient_specular = specular_color *
+        mix(0.12, 0.035, roughness) * ao;
     const float3 emissive = constants.emissive_color.rgb *
         emissive_map.sample(emissive_sampler, input.emissive_texcoord).rgb;
     const float3 color = direct + ambient_diffuse + ambient_specular + emissive;

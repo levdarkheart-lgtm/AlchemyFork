@@ -20,6 +20,8 @@
 
 namespace
 {
+    constexpr std::uint32_t PBR_PREVIEW_BRDF_LUT_SIZE = 512;
+
     void setError(std::string* error, const std::string& message)
     {
         if (error)
@@ -127,6 +129,7 @@ struct ALMetalPBRPreviewRenderer::Impl
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::unique_ptr<ALMetalRenderPipeline> shade_pipeline;
+    std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
     std::unique_ptr<ALMetalComputePipeline> exposure_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2> post_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -139,11 +142,14 @@ struct ALMetalPBRPreviewRenderer::Impl
     std::unique_ptr<ALMetalRenderPipeline> cross_filter_add_pipeline;
     std::unique_ptr<ALMetalSamplerState> color_sampler;
     std::unique_ptr<ALMetalSamplerState> data_sampler;
+    std::unique_ptr<ALMetalSamplerState> brdf_lut_sampler;
     std::unique_ptr<ALMetalSamplerState> meter_sampler;
     std::unique_ptr<ALMetalSamplerState> post_sampler;
     std::unique_ptr<ALMetalSamplerState> chromatic_sampler;
     std::unique_ptr<ALMetalSamplerState> bloom_sampler;
     std::unique_ptr<ALMetalSamplerState> cross_filter_sampler;
+    std::unique_ptr<ALMetalTexture> brdf_lut;
+    bool brdf_lut_ready = false;
 };
 
 ALMetalPBRPreviewRenderer::ALMetalPBRPreviewRenderer(
@@ -164,6 +170,7 @@ ALMetalPBRPreviewRenderer::create(const ALMetalDevice& device,
     if (!impl->library ||
         !impl->library->hasFunction("almetal_pbr_preview_vertex") ||
         !impl->library->hasFunction("almetal_pbr_preview_fragment") ||
+        !impl->library->hasFunction("almetal_pbr_preview_brdf_lut") ||
         !impl->library->hasFunction("almetal_pbr_preview_exposure") ||
         !impl->library->hasFunction("almetal_pbr_preview_post_fragment") ||
         !impl->library->hasFunction(
@@ -180,6 +187,33 @@ ALMetalPBRPreviewRenderer::create(const ALMetalDevice& device,
             setError(error,
                      "Built-in Metal library is missing PBR preview functions");
         }
+        return nullptr;
+    }
+
+    ALMetalComputePipelineDescriptor brdf_lut_pipeline_descriptor;
+    brdf_lut_pipeline_descriptor.library = impl->library.get();
+    brdf_lut_pipeline_descriptor.function = "almetal_pbr_preview_brdf_lut";
+    brdf_lut_pipeline_descriptor.label =
+        "Alchemy PBR material preview BRDF LUT pipeline";
+    impl->brdf_lut_pipeline = ALMetalComputePipeline::create(
+        device, brdf_lut_pipeline_descriptor, error);
+    if (!impl->brdf_lut_pipeline)
+    {
+        return nullptr;
+    }
+
+    ALMetalTextureDescriptor brdf_lut_descriptor;
+    brdf_lut_descriptor.format = ALMetalPixelFormat::rg16_float;
+    brdf_lut_descriptor.width = PBR_PREVIEW_BRDF_LUT_SIZE;
+    brdf_lut_descriptor.height = PBR_PREVIEW_BRDF_LUT_SIZE;
+    brdf_lut_descriptor.storage = ALMetalStorageMode::private_gpu;
+    brdf_lut_descriptor.usage = ALMetalTextureUsage::shader_read |
+                                ALMetalTextureUsage::shader_write;
+    brdf_lut_descriptor.label = "Alchemy PBR material preview BRDF LUT";
+    impl->brdf_lut = ALMetalTexture::create(
+        device, brdf_lut_descriptor, error);
+    if (!impl->brdf_lut)
+    {
         return nullptr;
     }
 
@@ -325,6 +359,18 @@ ALMetalPBRPreviewRenderer::create(const ALMetalDevice& device,
     sampler.label = "Alchemy PBR preview data sampler";
     impl->data_sampler = ALMetalSamplerState::create(device, sampler, error);
     if (!impl->data_sampler)
+    {
+        return nullptr;
+    }
+    sampler.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.mip_filter = ALMetalSamplerMipFilter::none;
+    sampler.max_anisotropy = 1;
+    sampler.label = "Alchemy PBR preview BRDF LUT sampler";
+    impl->brdf_lut_sampler = ALMetalSamplerState::create(
+        device, sampler, error);
+    if (!impl->brdf_lut_sampler)
     {
         return nullptr;
     }
@@ -687,6 +733,24 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         return nullptr;
     }
 
+    const bool generate_brdf_lut = !mImpl->brdf_lut_ready;
+    if (generate_brdf_lut)
+    {
+        auto brdf_encoder = ALMetalComputeEncoder::begin(
+            *command, "Alchemy PBR preview BRDF LUT encoder", error);
+        if (!brdf_encoder ||
+            !brdf_encoder->setPipeline(*mImpl->brdf_lut_pipeline, error) ||
+            !brdf_encoder->setTexture(0, mImpl->brdf_lut.get(), error) ||
+            !brdf_encoder->dispatch(
+                PBR_PREVIEW_BRDF_LUT_SIZE,
+                PBR_PREVIEW_BRDF_LUT_SIZE,
+                1, 8, 8, 1, error) ||
+            !brdf_encoder->end(error))
+        {
+            return nullptr;
+        }
+    }
+
     ALMetalRenderPassConfig pass_config;
     pass_config.colors[0].load = ALMetalLoadAction::clear;
     pass_config.colors[0].store = ALMetalStoreAction::store;
@@ -759,6 +823,8 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
                 2, batch.orm_texture, error) &&
             shade_encoder->setFragmentTexture(
                 3, batch.emissive_texture, error) &&
+            shade_encoder->setFragmentTexture(
+                4, mImpl->brdf_lut.get(), error) &&
             shade_encoder->setFragmentSampler(
                 0, mImpl->color_sampler.get(), error) &&
             shade_encoder->setFragmentSampler(
@@ -767,6 +833,8 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
                 2, mImpl->data_sampler.get(), error) &&
             shade_encoder->setFragmentSampler(
                 3, mImpl->color_sampler.get(), error) &&
+            shade_encoder->setFragmentSampler(
+                4, mImpl->brdf_lut_sampler.get(), error) &&
             shade_encoder->drawIndexed(
                 ALMetalPrimitiveType::triangle, batch.index_count,
                 batch.index_type, *batch.indices,
@@ -1054,6 +1122,14 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         !command->commit(error))
     {
         return nullptr;
+    }
+    if (generate_brdf_lut)
+    {
+        // Every preview command is committed to the device's one queue, so a
+        // later render observes this write without a CPU wait. Tracked texture
+        // hazards order the fragment read in this command after the compute
+        // encoder above.
+        mImpl->brdf_lut_ready = true;
     }
     return output;
 }
