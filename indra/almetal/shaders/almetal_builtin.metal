@@ -2028,6 +2028,37 @@ fragment float4 almetal_lit_preview_deferred_rigged_fragment(
     return float4(almetal_linear_to_srgb(linear), 1.0);
 }
 
+fragment float4 almetal_lit_preview_pbr_blend_rigged_fragment(
+    ALMetalLitPreviewTexturedVaryings input [[stage_in]],
+    float4 destination [[color(0), raster_order_group(0)]],
+    texture2d<float> diffuse_map [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    constant float& minimum_alpha [[buffer(1)]])
+{
+    const float4 diffuse = diffuse_map.sample(diffuse_sampler, input.texcoord);
+    const float coverage = diffuse.a * input.color.a;
+    if (coverage < minimum_alpha)
+    {
+        discard_fragment();
+    }
+
+    // pbralphaF's FOR_IMPOSTOR branch emits unlit base colour and coverage.
+    // The GL target is sRGB, so its fixed-function blend decodes the existing
+    // destination, blends in linear space, and encodes the store. Visual hints
+    // own ordinary RGBA8 bytes containing that encoded result; programmable
+    // blending reproduces both RGB and the alpha pool's coverage recurrence.
+    const float3 source_linear = diffuse.rgb *
+                                 almetal_srgb_to_linear(input.color.rgb);
+    const float3 destination_linear =
+        almetal_srgb_to_linear(destination.rgb);
+    const float3 blended_linear = source_linear * coverage +
+                                  destination_linear * (1.0 - coverage);
+    const float blended_coverage = coverage +
+                                   destination.a * (1.0 - coverage);
+    return float4(almetal_linear_to_srgb(blended_linear),
+                  blended_coverage);
+}
+
 fragment float4 almetal_lit_preview_pbr_glow_rigged_fragment(
     ALMetalLitPreviewPBRGlowVaryings input [[stage_in]],
     texture2d<float> diffuse_map [[texture(0)]],

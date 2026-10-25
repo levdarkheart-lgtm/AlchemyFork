@@ -84,12 +84,14 @@ struct ALMetalLitPreviewBatch
     // writer. Normal/specular material inputs feed attachments which the
     // visual-hint texture does not own; this batch reproduces attachment 0.
     bool legacy_material_rigged = false;
-    // Select an opaque or alpha-masked glTF PBR G-buffer albedo writer. The
-    // base-color map and streamed baseColorFactor are the only inputs to the
-    // visual-hint texture's attachment 0; normal/ORM/emissive maps feed other
-    // G-buffer attachments. The vertex path applies SL texture animation
-    // followed by the material's KHR_texture_transform exactly as GLSL does.
+    // Select a glTF PBR rigged-attachment writer. Opaque and masked batches
+    // reproduce G-buffer attachment 0; pbr_blend instead reproduces
+    // pbralphaF's FOR_IMPOSTOR branch, which deliberately flattens a blended
+    // material to base colour and true coverage so the billboard is not lit
+    // twice. The vertex path applies SL texture animation followed by the
+    // material's KHR_texture_transform exactly as GLSL does.
     bool pbr_rigged = false;
+    bool pbr_blend = false;
     // Opaque PBR glow is an alpha-only post-deferred overwrite in the GL
     // owner. Fold that final alpha into the native attachment-0 draw while
     // retaining its independently transformed emissive map and U8 glow

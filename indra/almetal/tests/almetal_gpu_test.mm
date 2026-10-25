@@ -134,6 +134,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_deferred_rigged_fragment",
             "almetal_lit_preview_legacy_material_rigged_fragment",
             "almetal_lit_preview_pbr_rigged_textured_vertex",
+            "almetal_lit_preview_pbr_blend_rigged_fragment",
             "almetal_lit_preview_pbr_glow_rigged_textured_vertex",
             "almetal_lit_preview_pbr_glow_rigged_fragment",
             "almetal_lit_preview_fullbright_mask_rigged_textured_vertex",
@@ -1489,6 +1490,70 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(pbr_pixels[translated_interior + 2] == 32);
         CHECK(pbr_pixels[translated_interior + 3] == 255);
 
+        // Blended PBR in an impostor bake is intentionally flat albedo, not
+        // forward lighting: pbralphaF writes base colour and true coverage.
+        // Reproduce the sRGB target's linear-space blend and the alpha pool's
+        // src.a + (1-src.a)*dst.a coverage recurrence. Both texture and
+        // streamed baseColorFactor alpha are 128/255 here.
+        ALMetalLitPreviewBatch pbr_blend = pbr;
+        pbr_blend.pbr_blend = true;
+        pbr_blend.texture = half_alpha_diffuse_texture.get();
+        pbr_blend.alpha_cutoff = 0.004f;
+        ALMetalLitPreviewScene pbr_blend_scene;
+        pbr_blend_scene.batches = &pbr_blend;
+        pbr_blend_scene.batch_count = 1;
+        pbr_blend_scene.destination_descriptor =
+            &destination_template->descriptor();
+        pbr_blend_scene.clear_color[0] = 0.169f;
+        pbr_blend_scene.clear_color[1] = 0.2f;
+        pbr_blend_scene.clear_color[2] = 0.3f;
+        pbr_blend_scene.clear_color[3] = 0.f;
+        auto rendered_pbr_blend = renderer->render(
+            pbr_blend_scene, &error);
+        INFO(error);
+        REQUIRE(rendered_pbr_blend);
+        std::array<std::uint8_t, 32 * 32 * 4> pbr_blend_pixels{};
+        REQUIRE(rendered_pbr_blend->readback(
+            *device, 0, 0, {}, pbr_blend_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        const auto srgb_to_linear = [](float encoded)
+        {
+            return encoded <= 0.04045f
+                ? encoded / 12.92f
+                : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
+        };
+        const auto linear_to_srgb = [](float linear)
+        {
+            return linear <= 0.0031308f
+                ? linear * 12.92f
+                : 1.055f * std::pow(linear, 1.f / 2.4f) - 0.055f;
+        };
+        const float half = 128.f / 255.f;
+        const float blend_coverage = half * half;
+        const std::array<float, 3> texture_encoded{{
+            128.f / 255.f, 64.f / 255.f, 32.f / 255.f,
+        }};
+        const std::array<float, 3> tint_encoded{{half, 1.f, 1.f}};
+        const std::array<float, 3> clear_encoded{{
+            43.f / 255.f, 51.f / 255.f, 77.f / 255.f,
+        }};
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float source = srgb_to_linear(texture_encoded[channel]) *
+                                 srgb_to_linear(tint_encoded[channel]);
+            const float destination =
+                srgb_to_linear(clear_encoded[channel]);
+            const int expected = static_cast<int>(std::lround(
+                linear_to_srgb(source * blend_coverage +
+                    destination * (1.f - blend_coverage)) * 255.f));
+            CHECK(std::abs(static_cast<int>(
+                pbr_blend_pixels[translated_interior + channel]) -
+                expected) <= 1);
+        }
+        CHECK(std::abs(static_cast<int>(
+            pbr_blend_pixels[translated_interior + 3]) -
+            static_cast<int>(std::lround(blend_coverage * 255.f))) <= 1);
+
         // Opaque PBR glow replaces the coverage stamp's alpha with emissive
         // luminance. Its texture transform is independent from base colour:
         // offset U=0.75 selects the white emissive texel, whose 0.75 factor
@@ -1516,6 +1581,12 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             pbr_glow_pixels[translated_interior + 3]) - 96) <= 1);
 
         pbr_glow.pbr_emissive_texture = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->render(pbr_glow, &error));
+        CHECK(error == "Metal PBR rigged preview data is invalid");
+
+        pbr_glow.pbr_emissive_texture = pbr_emissive_texture.get();
+        pbr_glow.pbr_blend = true;
         error.clear();
         CHECK_FALSE(renderer->render(pbr_glow, &error));
         CHECK(error == "Metal PBR rigged preview data is invalid");

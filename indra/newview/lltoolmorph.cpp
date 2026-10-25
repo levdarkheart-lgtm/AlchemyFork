@@ -69,7 +69,9 @@
 #include "../almetal/almetalsculptpreview.h"
 #endif
 
+#include <algorithm>
 #include <array>
+#include <unordered_map>
 #include <vector>
 
 //static
@@ -401,6 +403,67 @@ bool LLVisualParamHint::render()
                 }
             }
 
+            // LLDrawPoolAlpha draws rigged groups in attachment render order
+            // and each group's PASS_ALPHA_RIGGED draw infos in their stored
+            // order. The native path splits those draw infos back into face
+            // ranges, so retain the owner's ordering explicitly; attachment
+            // traversal order is not an alpha-compositing contract.
+            std::unordered_map<const LLDrawInfo*, std::size_t>
+                rigged_alpha_order;
+            std::size_t alpha_order = 0;
+            for (auto group_iter = gPipeline.beginRiggedAlphaGroups();
+                 group_iter != gPipeline.endRiggedAlphaGroups();
+                 ++group_iter)
+            {
+                LLSpatialGroup* group = *group_iter;
+                auto draw_map = group->mDrawMap.find(
+                    LLRenderPass::PASS_ALPHA_RIGGED);
+                if (draw_map == group->mDrawMap.end())
+                {
+                    continue;
+                }
+                for (const LLPointer<LLDrawInfo>& draw_info :
+                     draw_map->second)
+                {
+                    rigged_alpha_order.emplace(draw_info.get(),
+                                               alpha_order++);
+                }
+            }
+            std::vector<LLFace*> rigged_alpha_faces;
+            rigged_alpha_faces.reserve(rigged_faces.size());
+            for (LLFace* face : rigged_faces)
+            {
+                if (face->getPoolType() != LLDrawPool::POOL_ALPHA)
+                {
+                    continue;
+                }
+                complete = complete &&
+                    rigged_alpha_order.find(face->mDrawInfo) !=
+                        rigged_alpha_order.end();
+                rigged_alpha_faces.push_back(face);
+            }
+            std::stable_sort(
+                rigged_alpha_faces.begin(), rigged_alpha_faces.end(),
+                [&rigged_alpha_order](const LLFace* left,
+                                      const LLFace* right)
+                {
+                    const auto left_found =
+                        rigged_alpha_order.find(left->mDrawInfo);
+                    const auto right_found =
+                        rigged_alpha_order.find(right->mDrawInfo);
+                    const std::size_t missing_order =
+                        rigged_alpha_order.size();
+                    const std::size_t left_order = left_found ==
+                            rigged_alpha_order.end()
+                        ? missing_order : left_found->second;
+                    const std::size_t right_order = right_found ==
+                            rigged_alpha_order.end()
+                        ? missing_order : right_found->second;
+                    return left_order != right_order
+                        ? left_order < right_order
+                        : left->getIndicesStart() < right->getIndicesStart();
+                });
+
             using namespace LLAvatarAppearanceDefines;
             std::vector<EMeshIndex> required_meshes;
             required_meshes.reserve(8);
@@ -485,10 +548,12 @@ bool LLVisualParamHint::render()
             std::vector<std::vector<F32>> rigged_palettes;
             std::vector<ALMetalLitPreviewBatch> batches;
             std::vector<ALMetalLitPreviewBatch> post_avatar_rigged_batches;
+            std::vector<ALMetalLitPreviewBatch> alpha_rigged_batches;
             palettes.reserve(preview_meshes.size());
             rigged_palettes.reserve(rigged_faces.size());
             batches.reserve(preview_meshes.size() + rigged_faces.size());
             post_avatar_rigged_batches.reserve(rigged_faces.size());
+            alpha_rigged_batches.reserve(rigged_alpha_faces.size());
             const LLMatrix4a modelview = gGL.getModelviewMatrix();
             const LLMatrix4a projection = gGL.getProjectionMatrix();
             LLMatrix4a rigged_modelview_projection;
@@ -539,7 +604,9 @@ bool LLVisualParamHint::render()
             // post-deferred fullbright families follow it. Split texture-indexed
             // GL batches back into exact face ranges so each native batch can
             // bind the face's real diffuse mirror without a texture ladder.
-            // Other forward families remain fail-closed.
+            // Blended glTF is also exact here: pbralphaF's FOR_IMPOSTOR
+            // branch writes flat base colour and coverage, not forward
+            // lighting. Other forward families remain fail-closed.
             constexpr U32 rigged_pools[] = {
                 LLDrawPool::POOL_SIMPLE,
                 LLDrawPool::POOL_MATERIALS,
@@ -547,6 +614,7 @@ bool LLVisualParamHint::render()
                 LLDrawPool::POOL_ALPHA_MASK,
                 LLDrawPool::POOL_FULLBRIGHT,
                 LLDrawPool::POOL_FULLBRIGHT_ALPHA_MASK,
+                LLDrawPool::POOL_ALPHA,
             };
             for (LLFace* face : rigged_faces)
             {
@@ -557,11 +625,15 @@ bool LLVisualParamHint::render()
                      face->getPoolType() == LLDrawPool::POOL_ALPHA_MASK ||
                      face->getPoolType() == LLDrawPool::POOL_FULLBRIGHT ||
                      face->getPoolType() ==
-                         LLDrawPool::POOL_FULLBRIGHT_ALPHA_MASK);
+                         LLDrawPool::POOL_FULLBRIGHT_ALPHA_MASK ||
+                     face->getPoolType() == LLDrawPool::POOL_ALPHA);
             }
             for (U32 pool : rigged_pools)
             {
-                for (LLFace* face : rigged_faces)
+                const std::vector<LLFace*>& pool_faces =
+                    pool == LLDrawPool::POOL_ALPHA
+                        ? rigged_alpha_faces : rigged_faces;
+                for (LLFace* face : pool_faces)
                 {
                     if (!complete || face->getPoolType() != pool)
                     {
@@ -569,10 +641,13 @@ bool LLVisualParamHint::render()
                     }
                     LLDrawInfo* draw_info = face->mDrawInfo;
                     LLVertexBuffer* buffer = face->getVertexBuffer();
-                    const bool pbr = pool == LLDrawPool::POOL_GLTF_PBR;
+                    const bool alpha_pool =
+                        pool == LLDrawPool::POOL_ALPHA;
+                    const bool possible_pbr =
+                        pool == LLDrawPool::POOL_GLTF_PBR || alpha_pool;
                     LLFetchedGLTFMaterial* pbr_material = nullptr;
                     bool pbr_batch_double_sided = false;
-                    if (pbr && draw_info)
+                    if (possible_pbr && draw_info)
                     {
                         if (draw_info->mGLTFMaterialList.size() > 1)
                         {
@@ -598,6 +673,12 @@ bool LLVisualParamHint::render()
                                 pbr_material->mDoubleSided;
                         }
                     }
+                    const bool pbr =
+                        pool == LLDrawPool::POOL_GLTF_PBR ||
+                        pbr_material != nullptr;
+                    const bool pbr_blend = alpha_pool && pbr_material &&
+                        pbr_material->mAlphaMode ==
+                            LLGLTFMaterial::ALPHA_MODE_BLEND;
                     LLViewerTexture* diffuse = face->getTexture();
                     if (pbr)
                     {
@@ -661,10 +742,12 @@ bool LLVisualParamHint::render()
                              LLMaterial::DIFFUSE_ALPHA_MODE_EMISSIVE);
                     const bool supported_pbr_mode = !pbr ||
                         (pbr_material &&
-                         (pbr_material->mAlphaMode ==
-                              LLGLTFMaterial::ALPHA_MODE_OPAQUE ||
-                          pbr_material->mAlphaMode ==
-                              LLGLTFMaterial::ALPHA_MODE_MASK));
+                         (pbr_blend ||
+                          (!alpha_pool &&
+                           (pbr_material->mAlphaMode ==
+                                LLGLTFMaterial::ALPHA_MODE_OPAQUE ||
+                            pbr_material->mAlphaMode ==
+                                LLGLTFMaterial::ALPHA_MODE_MASK))));
                     F32 material_alpha_cutoff = draw_info
                         ? draw_info->mAlphaMaskCutoff : 0.f;
                     if (legacy_material && draw_info &&
@@ -686,6 +769,7 @@ bool LLVisualParamHint::render()
                     complete = draw_info && buffer && diffuse_texture &&
                         (!pbr_glow || emissive_texture) &&
                         supported_material_mode && supported_pbr_mode &&
+                        (!alpha_pool || pbr_blend) &&
                         (!mask_pool ||
                          draw_info->mMaterialSlotList.size() <= 1) &&
                         (!uses_texture_matrix || pbr) &&
@@ -756,12 +840,14 @@ bool LLVisualParamHint::render()
                         !pbr && !fullbright && !fullbright_mask;
                     batch.legacy_material_rigged = legacy_material;
                     batch.pbr_rigged = pbr;
+                    batch.pbr_blend = pbr_blend;
                     batch.pbr_glow = pbr_glow;
                     batch.pbr_double_sided = pbr_batch_double_sided;
                     batch.fullbright_rigged = fullbright;
                     batch.fullbright_mask_rigged = fullbright_mask;
                     batch.alpha_cutoff = pbr
-                        ? (pbr_material->mAlphaMode ==
+                        ? (pbr_blend ? 0.004f
+                           : pbr_material->mAlphaMode ==
                                LLGLTFMaterial::ALPHA_MODE_MASK
                                ? pbr_material->mAlphaCutoff : 0.f)
                         : legacy_material
@@ -797,7 +883,11 @@ bool LLVisualParamHint::render()
                     std::memcpy(batch.modelview_projection,
                                 rigged_modelview_projection.getF32ptr(),
                                 sizeof(batch.modelview_projection));
-                    if (fullbright || fullbright_mask)
+                    if (pbr_blend)
+                    {
+                        alpha_rigged_batches.push_back(batch);
+                    }
+                    else if (fullbright || fullbright_mask)
                     {
                         post_avatar_rigged_batches.push_back(batch);
                     }
@@ -922,6 +1012,11 @@ bool LLVisualParamHint::render()
             batches.insert(batches.end(),
                            post_avatar_rigged_batches.begin(),
                            post_avatar_rigged_batches.end());
+            // generateImpostor disables the pre-water alpha pool, so the
+            // surviving rigged alpha pass follows every opaque, avatar and
+            // fullbright pool and writes depth while it accumulates coverage.
+            batches.insert(batches.end(), alpha_rigged_batches.begin(),
+                           alpha_rigged_batches.end());
 
             if (complete && !batches.empty())
             {

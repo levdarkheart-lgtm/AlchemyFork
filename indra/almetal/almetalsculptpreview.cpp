@@ -83,6 +83,7 @@ struct ALMetalLitPreviewRenderer::Impl
         std::unique_ptr<ALMetalRenderPipeline>
             legacy_material_rigged_textured;
         std::unique_ptr<ALMetalRenderPipeline> pbr_rigged_textured;
+        std::unique_ptr<ALMetalRenderPipeline> pbr_blend_rigged_textured;
         std::unique_ptr<ALMetalRenderPipeline> pbr_glow_rigged_textured;
         std::unique_ptr<ALMetalRenderPipeline> fullbright_rigged_textured;
         std::unique_ptr<ALMetalRenderPipeline>
@@ -140,6 +141,7 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
         !impl->library->hasFunction("almetal_lit_preview_deferred_rigged_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_legacy_material_rigged_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_pbr_rigged_textured_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_pbr_blend_rigged_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_pbr_glow_rigged_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_pbr_glow_rigged_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_fullbright_mask_rigged_textured_vertex") ||
@@ -264,6 +266,10 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
                              "almetal_lit_preview_pbr_rigged_textured_vertex",
                              "almetal_lit_preview_deferred_rigged_fragment",
                              "Alchemy PBR rigged attachment preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.pbr_blend_rigged_textured,
+                             "almetal_lit_preview_pbr_rigged_textured_vertex",
+                             "almetal_lit_preview_pbr_blend_rigged_fragment",
+                             "Alchemy blended PBR rigged attachment preview" + suffix + " pipeline") ||
             !create_pipeline(pipelines.pbr_glow_rigged_textured,
                              "almetal_lit_preview_pbr_glow_rigged_textured_vertex",
                              "almetal_lit_preview_pbr_glow_rigged_fragment",
@@ -557,7 +563,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 batch.avatar_cloth || batch.deferred_rigged ||
                 batch.fullbright_mask_rigged || batch.fullbright_rigged ||
                 batch.legacy_material_rigged || batch.pbr_rigged ||
-                batch.pbr_glow ||
+                batch.pbr_glow || batch.pbr_blend ||
                 batch.pbr_double_sided ||
                 batch.depth_prepass)
             {
@@ -582,7 +588,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 batch.avatar_cloth || batch.deferred_rigged ||
                 batch.fullbright_mask_rigged || batch.fullbright_rigged ||
                 batch.legacy_material_rigged || batch.pbr_rigged ||
-                batch.pbr_glow ||
+                batch.pbr_glow || batch.pbr_blend ||
                 batch.pbr_double_sided ||
                 batch.vertex_count % (triangles ? 3 : 2) != 0)
             {
@@ -625,6 +631,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             return nullptr;
         }
         if ((batch.pbr_glow && !batch.pbr_rigged) ||
+            (batch.pbr_blend && !batch.pbr_rigged) ||
             (batch.pbr_emissive_texture && !batch.pbr_glow))
         {
             setError(error,
@@ -742,6 +749,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
              !std::isfinite(batch.alpha_cutoff) || batch.alpha_cutoff < 0.f ||
              batch.alpha_cutoff > 1.f ||
              !finite_values(batch.pbr_base_color_transform, 8) ||
+             (batch.pbr_blend && batch.pbr_glow) ||
              (batch.pbr_glow &&
               (!batch.pbr_emissive_texture || batch.alpha_cutoff != 0.f ||
                !finite_values(batch.pbr_emissive_transform, 8) ||
@@ -1070,9 +1078,11 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 }
                 else if (batch.pbr_rigged)
                 {
-                    fill_pipeline = batch.pbr_glow
-                        ? pipelines.pbr_glow_rigged_textured.get()
-                        : pipelines.pbr_rigged_textured.get();
+                    fill_pipeline = batch.pbr_blend
+                        ? pipelines.pbr_blend_rigged_textured.get()
+                        : batch.pbr_glow
+                            ? pipelines.pbr_glow_rigged_textured.get()
+                            : pipelines.pbr_rigged_textured.get();
                 }
                 else if (batch.legacy_material_rigged)
                 {
