@@ -151,6 +151,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_terrain_vertex",
             "almetal_world_terrain_fragment",
             "almetal_world_pbr_terrain_fragment",
+            "almetal_world_local_light_vertex",
+            "almetal_world_local_light_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
             "almetal_lit_preview_vertex",
@@ -3306,6 +3308,317 @@ TEST_CASE("almetal: avatar impostor replays a coherent baked G-buffer", "[almeta
         error.clear();
         CHECK_FALSE(renderer->render(scene, &error));
         CHECK(error == "Metal world impostor batch is invalid");
+    }
+}
+
+TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        const auto make_texture = [&device, &error](
+            ALMetalPixelFormat format, const char* label)
+        {
+            ALMetalTextureDescriptor descriptor;
+            descriptor.format = format;
+            descriptor.width = 1;
+            descriptor.height = 1;
+            descriptor.storage = ALMetalStorageMode::private_gpu;
+            descriptor.usage = ALMetalTextureUsage::shader_read;
+            descriptor.label = label;
+            auto texture = ALMetalTexture::create(
+                *device, descriptor, &error);
+            INFO(error);
+            REQUIRE(texture);
+            return texture;
+        };
+
+        auto albedo = make_texture(
+            ALMetalPixelFormat::rgba8_unorm_srgb,
+            "Alchemy local-light G-buffer albedo");
+        auto specular = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy local-light G-buffer specular ORM");
+        auto normal = make_texture(
+            ALMetalPixelFormat::rgba16_unorm,
+            "Alchemy local-light G-buffer normal");
+        auto emissive = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy local-light G-buffer emissive");
+
+        const std::array<std::uint8_t, 4> albedo_pixel{{
+            128, 96, 64, 255,
+        }};
+        const std::array<std::uint8_t, 4> legacy_specular{{
+            0, 0, 0, 0,
+        }};
+        const std::array<std::uint16_t, 4> legacy_normal{{
+            32768, 32768, 0, 22282,
+        }};
+        const std::array<std::uint8_t, 4> black{{0, 0, 0, 0}};
+        auto upload = device->makeCommandBuffer(
+            "Alchemy local-light G-buffer upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        REQUIRE(albedo->upload(
+            *upload, 0, 0, {}, albedo_pixel.data(), 4, &error));
+        REQUIRE(specular->upload(
+            *upload, 0, 0, {}, legacy_specular.data(), 4, &error));
+        REQUIRE(normal->upload(
+            *upload, 0, 0, {}, legacy_normal.data(), 8, &error));
+        REQUIRE(emissive->upload(
+            *upload, 0, 0, {}, black.data(), 4, &error));
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldSimpleBatch batch;
+        batch.impostor = true;
+        batch.impostor_textures = {
+            albedo.get(), specular.get(), normal.get(), emissive.get(),
+        };
+        batch.impostor_center[2] = -0.5f;
+        batch.impostor_left[0] = 0.75f;
+        batch.impostor_up[1] = 0.75f;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            batch.modelview_projection[axis * 4 + axis] = 1.f;
+            if (axis < 3)
+            {
+                batch.impostor_normal_rotation[axis][axis] = 1.f;
+            }
+        }
+
+        ALMetalWorldGBufferScene gbuffer_scene;
+        gbuffer_scene.batches = &batch;
+        gbuffer_scene.batch_count = 1;
+        gbuffer_scene.width = 32;
+        gbuffer_scene.height = 32;
+        gbuffer_scene.normal_hdr = true;
+        std::fill(std::begin(gbuffer_scene.clear_color),
+                  std::end(gbuffer_scene.clear_color), 0.f);
+        auto gbuffer = renderer->render(gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(gbuffer);
+
+        std::array<ALMetalWorldLocalLight, 2> lights{};
+        lights[0].position_radius[2] = 0.5f;
+        lights[0].position_radius[3] = 2.f;
+        lights[0].color_falloff[0] = 0.8f;
+        lights[0].color_falloff[1] = 0.4f;
+        lights[0].color_falloff[2] = 0.3f;
+        lights[0].color_falloff[3] = 0.5f;
+        lights[1] = lights[0];
+
+        ALMetalWorldLocalLightingScene lighting_scene;
+        lighting_scene.gbuffer = gbuffer.get();
+        lighting_scene.lights = lights.data();
+        lighting_scene.light_count = 1;
+        lighting_scene.specular_exponent = 128.f;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            lighting_scene.inverse_projection[axis * 4 + axis] = 1.f;
+        }
+
+        auto legacy = renderer->renderLocalLights(lighting_scene, &error);
+        INFO(error);
+        REQUIRE(legacy);
+        REQUIRE(legacy->descriptor().colors[0].format ==
+                ALMetalPixelFormat::rgba8_unorm);
+        std::array<std::uint8_t, 32 * 32 * 4> legacy_pixels{};
+        REQUIRE(legacy->colorTexture(0)->readback(
+            *device, 0, 0, {}, legacy_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        const std::size_t center = (16 * 32 + 16) * 4;
+        const std::size_t outside = (2 * 32 + 2) * 4;
+        CHECK(legacy_pixels[center + 0] > legacy_pixels[center + 1]);
+        CHECK(legacy_pixels[center + 1] > legacy_pixels[center + 2]);
+        CHECK(legacy_pixels[center + 2] > 0);
+        CHECK(legacy_pixels[center + 3] == 0);
+        CHECK(legacy_pixels[outside + 0] == 0);
+        CHECK(legacy_pixels[outside + 1] == 0);
+        CHECK(legacy_pixels[outside + 2] == 0);
+
+        const auto srgb_to_linear = [](float encoded)
+        {
+            return encoded <= 0.04045f
+                ? encoded / 12.92f
+                : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
+        };
+        const float center_ndc = 2.f * (16.5f / 32.f) - 1.f;
+        const float light_distance = std::sqrt(
+            1.f + 2.f * center_ndc * center_ndc);
+        const float normalized_distance = light_distance / 2.f;
+        float attenuation = 1.f - std::clamp(
+            (normalized_distance + 0.5f) / 1.5f, 0.f, 1.f);
+        attenuation = attenuation * attenuation * 2.f;
+        const float normal_light = 1.f / light_distance;
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float expected_linear = srgb_to_linear(
+                albedo_pixel[channel] / 255.f) *
+                lights[0].color_falloff[channel] *
+                normal_light * attenuation;
+            const int expected = static_cast<int>(std::lround(
+                std::clamp(expected_linear, 0.f, 1.f) * 255.f));
+            CHECK(std::abs(static_cast<int>(
+                      legacy_pixels[center + channel]) - expected) <= 1);
+        }
+
+        lighting_scene.lights = nullptr;
+        lighting_scene.light_count = 0;
+        auto unlit = renderer->renderLocalLights(lighting_scene, &error);
+        INFO(error);
+        REQUIRE(unlit);
+        std::array<std::uint8_t, 32 * 32 * 4> unlit_pixels{};
+        REQUIRE(unlit->colorTexture(0)->readback(
+            *device, 0, 0, {}, unlit_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(unlit_pixels[center + 0] == 0);
+        CHECK(unlit_pixels[center + 1] == 0);
+        CHECK(unlit_pixels[center + 2] == 0);
+        lighting_scene.lights = lights.data();
+        lighting_scene.light_count = 1;
+
+        // Reverse-Z stores zero-to-one clip depth directly. Use the matching
+        // projection/inverse pair and require the same reconstructed surface
+        // and local-light result as the forward-Z path.
+        batch.modelview_projection[10] = -1.f;
+        gbuffer_scene.reverse_z = true;
+        auto reverse_gbuffer = renderer->render(gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_gbuffer);
+        lighting_scene.gbuffer = reverse_gbuffer.get();
+        lighting_scene.inverse_projection[10] = -1.f;
+        lighting_scene.reverse_z = true;
+        auto reverse = renderer->renderLocalLights(lighting_scene, &error);
+        INFO(error);
+        REQUIRE(reverse);
+        std::array<std::uint8_t, 32 * 32 * 4> reverse_pixels{};
+        REQUIRE(reverse->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(std::abs(static_cast<int>(
+                      reverse_pixels[center + channel]) -
+                  static_cast<int>(legacy_pixels[center + channel])) <= 1);
+        }
+        batch.modelview_projection[10] = 1.f;
+        gbuffer_scene.reverse_z = false;
+        lighting_scene.gbuffer = gbuffer.get();
+        lighting_scene.inverse_projection[10] = 1.f;
+        lighting_scene.reverse_z = false;
+
+        lighting_scene.classic_mode = true;
+        auto classic = renderer->renderLocalLights(lighting_scene, &error);
+        INFO(error);
+        REQUIRE(classic);
+        std::array<std::uint8_t, 32 * 32 * 4> classic_pixels{};
+        REQUIRE(classic->colorTexture(0)->readback(
+            *device, 0, 0, {}, classic_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(classic_pixels[center + 0] < legacy_pixels[center + 0]);
+        CHECK(classic_pixels[center + 1] < legacy_pixels[center + 1]);
+
+        lighting_scene.classic_mode = false;
+        lighting_scene.light_count = 2;
+        auto doubled = renderer->renderLocalLights(lighting_scene, &error);
+        INFO(error);
+        REQUIRE(doubled);
+        std::array<std::uint8_t, 32 * 32 * 4> doubled_pixels{};
+        REQUIRE(doubled->colorTexture(0)->readback(
+            *device, 0, 0, {}, doubled_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(doubled_pixels[center + 0] > legacy_pixels[center + 0]);
+        CHECK(doubled_pixels[center + 1] > legacy_pixels[center + 1]);
+        CHECK(doubled_pixels[center + 2] > legacy_pixels[center + 2]);
+
+        // Switch the same native G-buffer owner to the packed PBR material
+        // flag/roughness contract. The local-light pass must use the shared
+        // GGX split and generated BRDF energy-compensation table rather than
+        // interpreting these bytes as legacy specular/glossiness.
+        const std::array<std::uint8_t, 4> pbr_orm{{
+            255, 128, 0, 0,
+        }};
+        const std::array<std::uint16_t, 4> pbr_normal{{
+            32768, 32768, 0, 43908,
+        }};
+        auto pbr_upload = device->makeCommandBuffer(
+            "Alchemy local-light PBR G-buffer upload", &error);
+        INFO(error);
+        REQUIRE(pbr_upload);
+        REQUIRE(specular->upload(
+            *pbr_upload, 0, 0, {}, pbr_orm.data(), 4, &error));
+        REQUIRE(normal->upload(
+            *pbr_upload, 0, 0, {}, pbr_normal.data(), 8, &error));
+        REQUIRE(pbr_upload->commitAndWait(&error));
+        INFO(error);
+        auto pbr_gbuffer = renderer->render(gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(pbr_gbuffer);
+        lighting_scene.gbuffer = pbr_gbuffer.get();
+        lighting_scene.light_count = 1;
+        auto pbr = renderer->renderLocalLights(lighting_scene, &error);
+        INFO(error);
+        REQUIRE(pbr);
+        std::array<std::uint8_t, 32 * 32 * 4> pbr_pixels{};
+        REQUIRE(pbr->colorTexture(0)->readback(
+            *device, 0, 0, {}, pbr_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(pbr_pixels[center + 0] > 0);
+        CHECK(pbr_pixels[center + 1] > 0);
+        CHECK(pbr_pixels[center + 2] > 0);
+        CHECK(pbr_pixels[center + 3] == 0);
+        CHECK(pbr_pixels[center + 0] != legacy_pixels[center + 0]);
+
+        // The same owner must preserve the HDR screen format. A zero R11G11B10
+        // emissive plane is sufficient because local point lights do not add
+        // the emissive attachment, but its format is part of the G-buffer ABI.
+        auto hdr_emissive = make_texture(
+            ALMetalPixelFormat::rg11b10_float,
+            "Alchemy local-light HDR G-buffer emissive");
+        const std::uint32_t zero_emissive = 0;
+        auto hdr_upload = device->makeCommandBuffer(
+            "Alchemy local-light HDR emissive upload", &error);
+        INFO(error);
+        REQUIRE(hdr_upload);
+        REQUIRE(hdr_emissive->upload(
+            *hdr_upload, 0, 0, {}, &zero_emissive,
+            sizeof(zero_emissive), &error));
+        REQUIRE(hdr_upload->commitAndWait(&error));
+        INFO(error);
+        batch.impostor_textures[3] = hdr_emissive.get();
+        gbuffer_scene.hdr = true;
+        auto hdr_gbuffer = renderer->render(gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(hdr_gbuffer);
+        lighting_scene.gbuffer = hdr_gbuffer.get();
+        lighting_scene.hdr = true;
+        auto hdr = renderer->renderLocalLights(lighting_scene, &error);
+        INFO(error);
+        REQUIRE(hdr);
+        CHECK(hdr->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba16_float);
+        std::array<std::uint16_t, 32 * 32 * 4> hdr_pixels{};
+        REQUIRE(hdr->colorTexture(0)->readback(
+            *device, 0, 0, {}, hdr_pixels.data(), 32 * 8, &error));
+        INFO(error);
+        CHECK(hdr_pixels[center + 0] > 0);
+        CHECK(hdr_pixels[center + 1] > 0);
+        CHECK(hdr_pixels[center + 2] > 0);
+        CHECK(hdr_pixels[center + 3] == 0);
+
+        ALMetalWorldLocalLightingScene invalid_scene;
+        error.clear();
+        CHECK_FALSE(renderer->renderLocalLights(invalid_scene, &error));
+        CHECK(error == "Metal world local-light scene is incomplete");
     }
 }
 

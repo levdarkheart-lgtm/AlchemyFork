@@ -649,6 +649,9 @@ public:
         const LLMatrix3a& normal_rotation);
     void captureMetalImpostorMirror(LLVOAvatar& avatar);
     void releaseMetalImpostorMirror(const LLUUID& avatar_id);
+    void renderMetalWorldLocalLights(
+        LLViewerCamera& camera, const LLMatrix4a& modelview,
+        F32 light_scale, S32 local_light_count);
     void endMetalWorldGBufferPass();
     void endMetalWorldGBufferCapture();
 #endif

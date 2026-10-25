@@ -97,6 +97,17 @@ namespace
         std::uint32_t config[4]{};
     };
 
+    struct alignas(16) WorldLocalLightingConstants
+    {
+        float inverse_projection[16]{};
+        // x = legacy specular exponent, y = classic-mode output scale.
+        float surface[4] = {128.f, 1.f, 0.f, 0.f};
+        // x = light count, y = reverse-Z convention.
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldLocalLightingConstants) == 96);
+    static_assert(sizeof(ALMetalWorldLocalLight) == 32);
+
     struct alignas(16) WorldTerrainConstants
     {
         float modelview_projection[16];
@@ -405,6 +416,9 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<NormalPipelines, 2> coverage_pipelines;
     std::array<TerrainPartitionPipelines, 2> terrain_pipelines;
     std::array<TerrainPartitionPipelines, 2> pbr_terrain_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        local_light_pipelines;
+    std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
     std::unique_ptr<ALMetalDepthStencilState> forward_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_depth;
     std::unique_ptr<ALMetalDepthStencilState> forward_readonly_depth;
@@ -416,6 +430,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalSamplerState> point_clamp_sampler;
     std::unique_ptr<ALMetalSamplerState> linear_clamp_sampler;
     std::unique_ptr<ALMetalSamplerState> ramp_sampler;
+    std::unique_ptr<ALMetalTexture> brdf_lut;
+    bool brdf_lut_ready = false;
     std::unique_ptr<ALMetalTexture> unshadowed_depth;
     ALMetalWorldDirectionalShadowConstants unshadowed_constants{};
     std::unique_ptr<ALMetalTexture> inactive_hero_probe;
@@ -483,7 +499,10 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_impostor_fragment") ||
         !impl->library->hasFunction("almetal_world_coverage_fragment") ||
         !impl->library->hasFunction("almetal_world_terrain_fragment") ||
-        !impl->library->hasFunction("almetal_world_pbr_terrain_fragment"))
+        !impl->library->hasFunction("almetal_world_pbr_terrain_fragment") ||
+        !impl->library->hasFunction("almetal_world_local_light_vertex") ||
+        !impl->library->hasFunction("almetal_world_local_light_fragment") ||
+        !impl->library->hasFunction("almetal_pbr_preview_brdf_lut"))
     {
         if (impl->library)
         {
@@ -497,6 +516,53 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         ALMetalPixelFormat::rgba8_unorm,
         ALMetalPixelFormat::rg11b10_float,
     }};
+    constexpr std::array<ALMetalPixelFormat, 2> screen_formats{{
+        ALMetalPixelFormat::rgba8_unorm,
+        ALMetalPixelFormat::rgba16_float,
+    }};
+    for (std::size_t hdr = 0; hdr < screen_formats.size(); ++hdr)
+    {
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = impl->library.get();
+        descriptor.vertex_function = "almetal_world_local_light_vertex";
+        descriptor.fragment_function = "almetal_world_local_light_fragment";
+        descriptor.colors[0].format = screen_formats[hdr];
+        descriptor.label = hdr
+            ? "Alchemy HDR world local-point-light pipeline"
+            : "Alchemy world local-point-light pipeline";
+        impl->local_light_pipelines[hdr] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->local_light_pipelines[hdr])
+        {
+            return nullptr;
+        }
+    }
+
+    ALMetalComputePipelineDescriptor brdf_descriptor;
+    brdf_descriptor.library = impl->library.get();
+    brdf_descriptor.function = "almetal_pbr_preview_brdf_lut";
+    brdf_descriptor.label = "Alchemy world PBR BRDF LUT pipeline";
+    impl->brdf_lut_pipeline = ALMetalComputePipeline::create(
+        device, brdf_descriptor, error);
+    if (!impl->brdf_lut_pipeline)
+    {
+        return nullptr;
+    }
+
+    constexpr std::uint32_t brdf_lut_size = 512;
+    ALMetalTextureDescriptor brdf_texture;
+    brdf_texture.format = ALMetalPixelFormat::rg16_float;
+    brdf_texture.width = brdf_lut_size;
+    brdf_texture.height = brdf_lut_size;
+    brdf_texture.storage = ALMetalStorageMode::private_gpu;
+    brdf_texture.usage = ALMetalTextureUsage::shader_read |
+                         ALMetalTextureUsage::shader_write;
+    brdf_texture.label = "Alchemy world PBR BRDF LUT";
+    impl->brdf_lut = ALMetalTexture::create(device, brdf_texture, error);
+    if (!impl->brdf_lut)
+    {
+        return nullptr;
+    }
     constexpr std::array<const char*, 3> avatar_vertex_functions{{
         "almetal_world_avatar_rigid_vertex",
         "almetal_world_avatar_skinned_vertex",
@@ -2309,6 +2375,191 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         return nullptr;
     }
     return target;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderLocalLights(
+    const ALMetalWorldLocalLightingScene& scene,
+    std::string* error)
+{
+    constexpr std::size_t max_light_count = 65535;
+    if (!mImpl || !mImpl->device || !scene.gbuffer ||
+        (scene.light_count != 0 && !scene.lights) ||
+        scene.light_count > max_light_count ||
+        !finiteValues(scene.inverse_projection, 16) ||
+        !std::isfinite(scene.specular_exponent) ||
+        scene.specular_exponent <= 0.f)
+    {
+        setError(error, "Metal world local-light scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& input =
+        scene.gbuffer->descriptor();
+    const ALMetalTexture* albedo = scene.gbuffer->colorTexture(0);
+    const ALMetalTexture* specular = scene.gbuffer->colorTexture(1);
+    const ALMetalTexture* normal = scene.gbuffer->colorTexture(2);
+    const ALMetalTexture* emissive = scene.gbuffer->colorTexture(3);
+    const ALMetalTexture* depth = scene.gbuffer->depthStencilTexture();
+    const bool normal_format =
+        input.colors[2].format == ALMetalPixelFormat::rgb10a2_unorm ||
+        input.colors[2].format == ALMetalPixelFormat::rgba16_unorm;
+    const ALMetalPixelFormat expected_emissive = scene.hdr
+        ? ALMetalPixelFormat::rg11b10_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
+        input.color_attachment_count != 4 ||
+        input.colors[0].format != ALMetalPixelFormat::rgba8_unorm_srgb ||
+        input.colors[1].format != ALMetalPixelFormat::rgba8_unorm ||
+        !normal_format || input.colors[3].format != expected_emissive ||
+        input.depth_stencil_format != ALMetalPixelFormat::depth32_float ||
+        !input.depth_stencil_shader_read ||
+        !sampleableTexture(albedo) || !sampleableTexture(specular) ||
+        !sampleableTexture(normal) || !sampleableTexture(emissive) ||
+        !sampleableTexture(depth))
+    {
+        setError(error, "Metal world local-light G-buffer is incompatible");
+        return nullptr;
+    }
+
+    for (std::size_t index = 0; index < scene.light_count; ++index)
+    {
+        const ALMetalWorldLocalLight& light = scene.lights[index];
+        if (!finiteValues(light.position_radius, 4) ||
+            !finiteValues(light.color_falloff, 4) ||
+            light.position_radius[3] <= 0.f ||
+            light.color_falloff[3] <= -1.f)
+        {
+            setError(error, "Metal world local point light is invalid");
+            return nullptr;
+        }
+    }
+
+    std::unique_ptr<ALMetalBuffer> light_buffer;
+    if (scene.light_count != 0)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = scene.light_count * sizeof(ALMetalWorldLocalLight);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world local-point-light list";
+        light_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!light_buffer || !light_buffer->write(
+                0, scene.lights, descriptor.length, error))
+        {
+            return nullptr;
+        }
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = input.width;
+    output_descriptor.height = input.height;
+    output_descriptor.colors[0].format = scene.hdr
+        ? ALMetalPixelFormat::rgba16_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    output_descriptor.colors[0].label =
+        "Alchemy world local-point-light accumulation";
+    output_descriptor.label =
+        "Alchemy native world local-point-light target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world local-point-light accumulation", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+
+    constexpr std::uint32_t brdf_lut_size = 512;
+    const bool generate_brdf_lut =
+        scene.light_count != 0 && !mImpl->brdf_lut_ready;
+    if (generate_brdf_lut)
+    {
+        auto compute = ALMetalComputeEncoder::begin(
+            *command, "Alchemy world PBR BRDF LUT encoder", error);
+        if (!compute ||
+            !compute->setPipeline(*mImpl->brdf_lut_pipeline, error) ||
+            !compute->setTexture(0, mImpl->brdf_lut.get(), error) ||
+            !compute->dispatch(
+                brdf_lut_size, brdf_lut_size, 1, 8, 8, 1, error) ||
+            !compute->end(error))
+        {
+            return nullptr;
+        }
+    }
+
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::clear;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    pass_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world local-point-light encoder", error)
+        : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    bool encoded = true;
+    if (scene.light_count != 0)
+    {
+        WorldLocalLightingConstants constants;
+        std::memcpy(constants.inverse_projection,
+                    scene.inverse_projection,
+                    sizeof(constants.inverse_projection));
+        constants.surface[0] = scene.specular_exponent;
+        constants.surface[1] = scene.classic_mode ? 0.9f : 1.f;
+        constants.config[0] =
+            static_cast<std::uint32_t>(scene.light_count);
+        constants.config[1] = scene.reverse_z ? 1u : 0u;
+        const ALMetalViewport viewport{
+            0.0, 0.0,
+            static_cast<double>(input.width),
+            static_cast<double>(input.height), 0.0, 1.0,
+        };
+        const ALMetalScissorRect scissor{
+            0, 0, input.width, input.height,
+        };
+        encoded =
+            encoder->setViewport(viewport, error) &&
+            encoder->setScissor(scissor, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setPipeline(
+                *mImpl->local_light_pipelines[scene.hdr ? 1 : 0], error) &&
+            encoder->setFragmentBuffer(0, *light_buffer, 0, error) &&
+            encoder->setFragmentBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->setFragmentTexture(0, albedo, error) &&
+            encoder->setFragmentTexture(1, specular, error) &&
+            encoder->setFragmentTexture(2, normal, error) &&
+            encoder->setFragmentTexture(3, depth, error) &&
+            encoder->setFragmentTexture(4, mImpl->brdf_lut.get(), error) &&
+            encoder->setFragmentSampler(
+                0, mImpl->point_clamp_sampler.get(), error) &&
+            encoder->setFragmentSampler(
+                1, mImpl->linear_clamp_sampler.get(), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    }
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    if (generate_brdf_lut)
+    {
+        // The renderer uses one queue. A later command therefore sees this
+        // generation without a CPU wait, while this command's tracked hazard
+        // orders the fragment read after the compute write.
+        mImpl->brdf_lut_ready = true;
+    }
+    return output;
 }
 
 bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(

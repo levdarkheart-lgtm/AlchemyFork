@@ -280,6 +280,26 @@ struct ALMetalWorldGBufferScene
     float clear_color[4] = {1.f, 0.f, 1.f, 1.f};
 };
 
+struct alignas(16) ALMetalWorldLocalLight
+{
+    // Eye-space centre in xyz, GL deferred radius in w.
+    float position_radius[4]{};
+    // Linear RGB after global/fade scaling, deferred falloff in w.
+    float color_falloff[4]{};
+};
+
+struct ALMetalWorldLocalLightingScene
+{
+    const ALMetalRenderTarget* gbuffer = nullptr;
+    const ALMetalWorldLocalLight* lights = nullptr;
+    std::size_t light_count = 0;
+    float inverse_projection[16]{};
+    float specular_exponent = 128.f;
+    bool reverse_z = false;
+    bool hdr = false;
+    bool classic_mode = false;
+};
+
 // The ordered native world G-buffer owner for supported object, material and
 // system-avatar families.
 // It writes four colour attachments plus depth and is not presented yet. The
@@ -298,6 +318,15 @@ public:
 
     std::unique_ptr<ALMetalRenderTarget> render(
         const ALMetalWorldGBufferScene& scene,
+        std::string* error = nullptr);
+
+    // Decode the retained native G-buffer and accumulate every ordinary
+    // (non-projector) deferred point light into a linear screen-format
+    // target. This is the first downstream native world owner; the result is
+    // deliberately retained offscreen until the remaining lighting and
+    // composition passes are native as well.
+    std::unique_ptr<ALMetalRenderTarget> renderLocalLights(
+        const ALMetalWorldLocalLightingScene& scene,
         std::string* error = nullptr);
 
     // Composite supported post-deferred impostor owners into an existing

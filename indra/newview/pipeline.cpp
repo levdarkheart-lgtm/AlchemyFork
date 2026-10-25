@@ -295,6 +295,7 @@ void drawBox(const LLVector4a& c, const LLVector4a& r);
 void drawBoxOutline(const LLVector3& pos, const LLVector3& size);
 U32 nhpo2(U32 v);
 LLVertexBuffer* ll_create_cube_vb(U32 type_mask);
+static F32 light_fade_brightness(F32 fade);
 
 void display_update_camera();
 //----------------------------------------
@@ -424,6 +425,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
     std::unique_ptr<ALMetalRenderTarget> target;
+    std::unique_ptr<ALMetalRenderTarget> local_light_target;
     std::unique_ptr<ALMetalRenderTarget> impostor_bake_target;
     std::vector<ALMetalWorldSimpleBatch> batches;
     std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
@@ -434,6 +436,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool pass_active = false;
     bool complete = false;
     bool attempted = false;
+    bool local_lighting_attempted = false;
+    U32 local_lighting_failed_frames = 0;
     bool impostor_bake_attempted = false;
     bool impostor_bake_native_valid = false;
     bool impostor_bake_native_complete = false;
@@ -837,6 +841,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     {
         capture.renderer.reset();
         capture.target.reset();
+        capture.local_light_target.reset();
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
@@ -863,6 +868,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.impostor_bake_avatar_id.setNull();
         capture.impostor_mirrors.clear();
         capture.attempted = false;
+        capture.local_lighting_attempted = false;
+        capture.local_lighting_failed_frames = 0;
         capture.impostor_bake_attempted = false;
         capture.impostor_bake_native_valid = false;
         capture.impostor_bake_native_complete = false;
@@ -1225,6 +1232,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     {
         capture.renderer.reset();
         capture.target.reset();
+        capture.local_light_target.reset();
         capture.impostor_bake_target.reset();
         capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
@@ -1251,6 +1259,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.impostor_bake_avatar_id.setNull();
         capture.impostor_mirrors.clear();
         capture.attempted = false;
+        capture.local_lighting_attempted = false;
+        capture.local_lighting_failed_frames = 0;
         capture.impostor_bake_attempted = false;
         capture.impostor_bake_native_valid = false;
         capture.impostor_bake_native_complete = false;
@@ -4227,6 +4237,121 @@ void LLPipeline::endMetalWorldGBufferCapture()
     }
     capture.batches.clear();
     capture.avatar_palettes.clear();
+}
+
+void LLPipeline::renderMetalWorldLocalLights(
+    LLViewerCamera& camera, const LLMatrix4a& modelview,
+    F32 light_scale, S32 local_light_count)
+{
+    if (!isMainWorldPass() || mRT != &mMainRT ||
+        !mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.device || !capture.renderer || !capture.target ||
+        capture.local_lighting_attempted)
+    {
+        return;
+    }
+
+    std::vector<ALMetalWorldLocalLight> lights;
+    lights.reserve(std::min<std::size_t>(
+        static_cast<std::size_t>(std::max(local_light_count, 0)),
+        mNearbyLights.size()));
+    S32 count = 0;
+    for (light_set_t::iterator iter = mNearbyLights.begin();
+         iter != mNearbyLights.end(); ++iter)
+    {
+        ++count;
+        if (count > local_light_count)
+        {
+            break;
+        }
+
+        LLDrawable* drawable = iter->drawable;
+        LLVOVolume* volume = drawable ? drawable->getVOVolume() : nullptr;
+        if (!volume || (volume->isAttachment() && !sRenderAttachedLights))
+        {
+            continue;
+        }
+
+        LLVector4a center;
+        center.load3(drawable->getPositionAgent().mV);
+        const F32 radius = volume->getLightRadius() * 1.5f;
+        LLColor3 color = volume->getLightLinearColor() * light_scale;
+        color *= light_fade_brightness(iter->fade);
+        if (color.magVecSquared() < 0.001f || radius <= 0.001f)
+        {
+            continue;
+        }
+
+        LLVector4a extent;
+        extent.splat(radius);
+        if (camera.AABBInFrustumNoFarClip(center, extent) == 0 ||
+            volume->isLightSpotlight())
+        {
+            // Projectors own cookie, ambiance and optional spot-shadow
+            // semantics and remain a separate downstream migration pass.
+            continue;
+        }
+
+        LLVector4a eye_center;
+        modelview.affineTransform(center, eye_center);
+        ALMetalWorldLocalLight light;
+        light.position_radius[0] = eye_center[0];
+        light.position_radius[1] = eye_center[1];
+        light.position_radius[2] = eye_center[2];
+        light.position_radius[3] = radius;
+        light.color_falloff[0] = color.mV[0];
+        light.color_falloff[1] = color.mV[1];
+        light.color_falloff[2] = color.mV[2];
+        light.color_falloff[3] =
+            volume->getLightFalloff(DEFERRED_LIGHT_FALLOFF);
+        lights.push_back(light);
+    }
+
+    ALMetalWorldLocalLightingScene scene;
+    scene.gbuffer = capture.target.get();
+    scene.lights = lights.empty() ? nullptr : lights.data();
+    scene.light_count = lights.size();
+    LLMatrix4a inverse_projection;
+    inverse_projection.setInverse(camera.getProjection());
+    std::memcpy(scene.inverse_projection,
+                inverse_projection.getF32ptr(),
+                sizeof(scene.inverse_projection));
+    scene.specular_exponent = mDeferredUBOData.specular_exponent;
+    scene.reverse_z = capture.reverse_z;
+    scene.hdr = capture.hdr;
+    scene.classic_mode = LLRender::sClassicMode;
+
+    std::string error;
+    auto target = capture.renderer->renderLocalLights(scene, &error);
+    if (!target)
+    {
+        if (++capture.local_lighting_failed_frames >=
+            MetalWorldSimpleCapture::max_failed_frames)
+        {
+            capture.local_lighting_attempted = true;
+            LL_WARNS("Metal")
+                << "Native world local-point-light owner retained GL after "
+                << capture.local_lighting_failed_frames
+                << " failures: " << error << LL_ENDL;
+        }
+        return;
+    }
+
+    capture.local_light_target = std::move(target);
+    capture.local_lighting_attempted = true;
+    capture.local_lighting_failed_frames = 0;
+    LL_INFOS("Metal")
+        << "Native world local-point-light owner encoded "
+        << lights.size() << " ordinary lights at "
+        << capture.local_light_target->descriptor().width << "x"
+        << capture.local_light_target->descriptor().height
+        << "; visible deferred lighting remains on GL until all lighting "
+           "and composition owners exist"
+        << LL_ENDL;
 }
 #endif
 
@@ -15441,6 +15566,14 @@ void LLPipeline::renderDeferredLighting()
         }
 
         static LLCachedControl<S32> local_light_count(gSavedSettings, "RenderLocalLightCount", 256);
+#if LL_DARWIN
+        // Consume the retained native G-buffer at the same owner boundary as
+        // the visible GL point-light passes. This one-shot migration target
+        // is not composed or presented until the rest of deferred lighting
+        // has a native owner.
+        renderMetalWorldLocalLights(
+            *camera, mat, light_scale, std::max<S32>(local_light_count, 0));
+#endif
         if (local_light_count > 0 && (!gCubeSnapshot || shaderInputs().mGlobal.mProbeLevel > 0))
         {
             // A projector's colour is worked out with its fade where it is sorted, and carried

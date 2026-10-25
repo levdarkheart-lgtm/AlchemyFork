@@ -349,6 +349,25 @@ struct ALMetalWorldScreenSpaceReflectionConstants
     uint4 config;
 };
 
+struct ALMetalWorldLocalLight
+{
+    float4 position_radius;
+    float4 color_falloff;
+};
+
+struct ALMetalWorldLocalLightingConstants
+{
+    float4x4 inverse_projection;
+    float4 surface;
+    uint4 config;
+};
+
+struct ALMetalWorldLocalLightVaryings
+{
+    float4 position [[position]];
+    float2 texcoord;
+};
+
 struct ALMetalWorldGBufferOutput
 {
     float4 albedo [[color(0)]];
@@ -5176,6 +5195,161 @@ static ALMetalPBRPreviewPunctual almetal_pbr_punctual(
         almetal_pbr_visibility(nv, nl, perceptual_roughness) *
         almetal_pbr_distribution(nh, perceptual_roughness);
     return result;
+}
+
+vertex ALMetalWorldLocalLightVaryings almetal_world_local_light_vertex(
+    uint vertex_id [[vertex_id]])
+{
+    const float2 texcoord = float2((vertex_id << 1) & 2, vertex_id & 2);
+    ALMetalWorldLocalLightVaryings output;
+    output.position = float4(texcoord.x * 2.0 - 1.0,
+                             1.0 - texcoord.y * 2.0,
+                             0.0, 1.0);
+    output.texcoord = texcoord;
+    return output;
+}
+
+static float3 almetal_world_bounded_radiance(float3 color)
+{
+    color = select(color, float3(65504.0), isinf(color));
+    color = select(color, float3(0.0), isnan(color));
+    return almetal_pbr_clamp_radiance(color);
+}
+
+fragment float4 almetal_world_local_light_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    const device ALMetalWorldLocalLight* lights [[buffer(0)]],
+    constant ALMetalWorldLocalLightingConstants& constants [[buffer(1)]],
+    texture2d<float> albedo_texture [[texture(0)]],
+    texture2d<float> specular_texture [[texture(1)]],
+    texture2d<float> normal_texture [[texture(2)]],
+    texture2d<float> depth_texture [[texture(3)]],
+    texture2d<float> brdf_lut [[texture(4)]],
+    sampler point_sampler [[sampler(0)]],
+    sampler brdf_sampler [[sampler(1)]])
+{
+    const float depth = depth_texture.sample(
+        point_sampler, input.texcoord).r;
+    const bool reverse_z = constants.config.y != 0u;
+    if ((reverse_z && depth <= 0.0) || (!reverse_z && depth >= 1.0))
+    {
+        discard_fragment();
+    }
+
+    const float ndc_z = reverse_z ? depth : depth * 2.0 - 1.0;
+    float4 position = constants.inverse_projection *
+        float4(input.texcoord * 2.0 - 1.0, ndc_z, 1.0);
+    position.w = max(position.w, 0.000001);
+    position /= position.w;
+
+    const float4 normal_sample = normal_texture.sample(
+        point_sampler, input.texcoord);
+    const float3 normal = almetal_world_oct_decode(normal_sample.xy);
+    const float3 base_color = albedo_texture.sample(
+        point_sampler, input.texcoord).rgb;
+    float4 specular = specular_texture.sample(
+        point_sampler, input.texcoord);
+    const bool has_pbr = abs(normal_sample.a - 0.67) < 0.1;
+    const float3 view = -normalize(position.xyz);
+    float3 final_color = 0.0;
+
+    if (has_pbr)
+    {
+        const float perceptual_roughness =
+            specular.g + specular.a / 255.0;
+        const float metallic = specular.b;
+        const float3 diffuse_color = base_color * (1.0 - metallic);
+        const float3 specular_color = mix(
+            float3(0.04), base_color, metallic);
+        const float3 energy_compensation =
+            almetal_pbr_energy_compensation(
+                brdf_lut, brdf_sampler, specular_color,
+                perceptual_roughness, dot(normal, view));
+
+        for (uint index = 0u; index < constants.config.x; ++index)
+        {
+            const device ALMetalWorldLocalLight& light = lights[index];
+            const float3 light_vector =
+                light.position_radius.xyz - position.xyz;
+            const float light_distance = length(light_vector);
+            const float normalized_distance =
+                light_distance / light.position_radius.w;
+            if (normalized_distance <= 1.0)
+            {
+                const float3 light_direction = normalize(light_vector);
+                const float distance_attenuation =
+                    almetal_legacy_distance_attenuation(
+                        normalized_distance, light.color_falloff.w);
+                const ALMetalPBRPreviewPunctual punctual =
+                    almetal_pbr_punctual(
+                        diffuse_color, specular_color,
+                        perceptual_roughness, normal, view,
+                        light_direction);
+                const float3 lobe = punctual.nl *
+                    (punctual.diffuse +
+                     punctual.specular * energy_compensation);
+                final_color +=
+                    distance_attenuation * light.color_falloff.rgb * 3.0 *
+                    almetal_world_bounded_radiance(lobe);
+            }
+        }
+    }
+    else
+    {
+        specular.rgb = almetal_srgb_to_linear(specular.rgb);
+        for (uint index = 0u; index < constants.config.x; ++index)
+        {
+            const device ALMetalWorldLocalLight& light = lights[index];
+            const float3 light_vector =
+                light.position_radius.xyz - position.xyz;
+            const float light_distance = length(light_vector);
+            const float normalized_distance =
+                light_distance / light.position_radius.w;
+            if (normalized_distance > 1.0 ||
+                dot(normal, light_vector) <= 0.0)
+            {
+                continue;
+            }
+
+            float3 half_vector;
+            float3 light_direction;
+            float nh;
+            float nl;
+            float nv;
+            float vh;
+            almetal_legacy_half_vectors(
+                light_vector, normal, view, half_vector,
+                light_direction, nh, nl, nv, vh);
+            const float distance_attenuation =
+                almetal_legacy_distance_attenuation(
+                    normalized_distance, light.color_falloff.w);
+            float lit = nl * distance_attenuation;
+            float3 contribution =
+                light.color_falloff.rgb * lit * base_color;
+            if (specular.a > 0.0)
+            {
+                lit = min(nl * 6.0, 1.0) * distance_attenuation;
+                const float fresnel =
+                    pow(1.0 - vh, 5.0) * 0.4 + 0.5;
+                const float geometry_denominator = 2.0 * nh;
+                const float geometry = max(
+                    0.0, min(geometry_denominator * nv / vh,
+                             geometry_denominator * nl / vh));
+                if (dot(normal, half_vector) > 0.0)
+                {
+                    const float lobe = fresnel *
+                        almetal_legacy_blinn_phong_lobe(
+                            nh, specular.a, constants.surface.x) *
+                        geometry / (nh * nl);
+                    contribution += lit * lobe *
+                        light.color_falloff.rgb * specular.rgb;
+                }
+            }
+            final_color += almetal_world_bounded_radiance(contribution);
+        }
+    }
+
+    return float4(max(final_color * constants.surface.y, float3(0.0)), 0.0);
 }
 
 static float3 almetal_pbr_neutral_tonemap(float3 color)
