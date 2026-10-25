@@ -480,6 +480,32 @@ struct ALMetalWorldHeavenlyBodyScene
     bool reverse_z = false;
 };
 
+// The retained non-indexed meteor field drawn after the heavenly bodies.
+// The source buffer uses independent float4 position/normal, packed RGBA8
+// color and float2 streak-coordinate planes.
+struct ALMetalWorldMeteorBatch
+{
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::size_t normal_offset = 0;
+    std::size_t color_offset = 0;
+    std::size_t texcoord_offset = 0;
+    std::uint32_t vertex_count = 0;
+    float modelview_projection[16]{};
+};
+
+struct ALMetalWorldMeteorScene
+{
+    const ALMetalWorldMeteorBatch* batches = nullptr;
+    std::size_t batch_count = 0;
+    float width_pixels = 1.5f;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    bool normal_hdr = false;
+    bool hdr = false;
+    bool reverse_z = false;
+};
+
 struct alignas(16) ALMetalWorldBaseLightingConstants
 {
     float inverse_projection[16]{};
@@ -588,6 +614,12 @@ public:
     bool compositeWindLightHeavenlyBodies(
         ALMetalRenderTarget& target,
         const ALMetalWorldHeavenlyBodyScene& scene,
+        std::string* error = nullptr);
+
+    // Add the exact meteorsV/meteorsF streak layer after the heavenly bodies.
+    bool compositeWindLightMeteors(
+        ALMetalRenderTarget& target,
+        const ALMetalWorldMeteorScene& scene,
         std::string* error = nullptr);
 
     // Shade the retained world G-buffer with the deferred base-light owner:

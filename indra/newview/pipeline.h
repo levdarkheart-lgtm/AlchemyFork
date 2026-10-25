@@ -684,6 +684,9 @@ public:
         LLViewerTexture* texture_b, F32 parameter,
         F32 moon_direction_z, bool moon);
     void endMetalWorldWindLightHeavenlyBodies();
+    void beginMetalWorldWindLightMeteors(F32 width_pixels);
+    void captureMetalWorldWindLightMeteorBatch(LLVertexBuffer* buffer);
+    void endMetalWorldWindLightMeteors();
     bool mirrorMetalWorldBaseLightMap(LLRenderTarget* source);
     void renderMetalWorldBaseLighting(
         LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao,

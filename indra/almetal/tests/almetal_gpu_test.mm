@@ -163,6 +163,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_star_fragment",
             "almetal_world_heavenly_body_vertex",
             "almetal_world_heavenly_body_fragment",
+            "almetal_world_meteor_vertex",
+            "almetal_world_meteor_fragment",
             "almetal_world_base_light_fragment",
             "almetal_terrain_paint_vertex",
             "almetal_terrain_paint_fragment",
@@ -4262,6 +4264,125 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         body_batch.parameters[0] = 0.25f;
         body_batch.parameters[1] = 0.f;
 
+        // Replay one production-layout meteor streak after the bodies. Its
+        // CPU-premultiplied packed color is linearized in the vertex stage,
+        // shaped along/across the streak and additively accumulated in the
+        // same raw encoded storage convention as stars.
+        struct MeteorBufferData
+        {
+            std::array<std::array<float, 4>, 6> positions{};
+            std::array<std::array<float, 4>, 6> normals{};
+            std::array<std::array<std::uint8_t, 4>, 6> colors{};
+            std::array<std::array<float, 2>, 6> texcoords{};
+        } meteor_data;
+        const std::array<std::array<float, 2>, 6> meteor_coordinates{{
+            {{-1.f, -1.f}}, {{ 1.f, -1.f}}, {{ 1.f,  1.f}},
+            {{-1.f, -1.f}}, {{ 1.f,  1.f}}, {{-1.f,  1.f}},
+        }};
+        for (std::size_t vertex = 0; vertex < 6; ++vertex)
+        {
+            meteor_data.positions[vertex] = {
+                star_coordinate, star_coordinate, 0.5f, 1.f,
+            };
+            meteor_data.normals[vertex] = {
+                body_extent, 0.f, 0.f, 0.f,
+            };
+            meteor_data.colors[vertex] = {180, 120, 60, 64};
+            meteor_data.texcoords[vertex] = meteor_coordinates[vertex];
+        }
+        ALMetalBufferDescriptor meteor_buffer_descriptor;
+        meteor_buffer_descriptor.length = sizeof(meteor_data);
+        meteor_buffer_descriptor.storage = ALMetalStorageMode::shared;
+        meteor_buffer_descriptor.label =
+            "Alchemy WindLight meteor production-layout vertices";
+        auto meteor_buffer = ALMetalBuffer::create(
+            *device, meteor_buffer_descriptor, &error);
+        INFO(error);
+        REQUIRE(meteor_buffer);
+        REQUIRE(meteor_buffer->write(
+            0, &meteor_data, sizeof(meteor_data), &error));
+        ALMetalWorldMeteorBatch meteor_batch;
+        meteor_batch.vertices = meteor_buffer.get();
+        meteor_batch.position_offset = offsetof(
+            MeteorBufferData, positions);
+        meteor_batch.normal_offset = offsetof(
+            MeteorBufferData, normals);
+        meteor_batch.color_offset = offsetof(
+            MeteorBufferData, colors);
+        meteor_batch.texcoord_offset = offsetof(
+            MeteorBufferData, texcoords);
+        meteor_batch.vertex_count = 6;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            meteor_batch.modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        ALMetalWorldMeteorScene meteor_scene;
+        meteor_scene.batches = &meteor_batch;
+        meteor_scene.batch_count = 1;
+        meteor_scene.width_pixels = 1.5f;
+        meteor_scene.width = 32;
+        meteor_scene.height = 32;
+        meteor_scene.normal_hdr = true;
+
+        REQUIRE(renderer->compositeWindLightMeteors(
+            *pbr_gbuffer, meteor_scene, &error));
+        INFO(error);
+        meteor_scene.reverse_z = true;
+        REQUIRE(renderer->compositeWindLightMeteors(
+            *pbr_reverse_gbuffer, meteor_scene, &error));
+        INFO(error);
+        meteor_scene.reverse_z = false;
+        std::array<std::uint8_t, 32 * 32 * 4> meteor_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4> reverse_meteor_albedo{};
+        REQUIRE(pbr_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, meteor_albedo.data(), 32 * 4,
+            &error));
+        REQUIRE(pbr_reverse_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_meteor_albedo.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(meteor_albedo[outside + 0] > sun_albedo[outside + 0]);
+        CHECK(meteor_albedo[outside + 1] > sun_albedo[outside + 1]);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(reverse_meteor_albedo[outside + channel] ==
+                  meteor_albedo[outside + channel]);
+            CHECK(meteor_albedo[center + channel] ==
+                  sun_albedo[center + channel]);
+        }
+
+        auto meteor_source_gbuffer = renderer->render(
+            gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(meteor_source_gbuffer);
+        REQUIRE(renderer->compositeWindLightSky(
+            *meteor_source_gbuffer, black_windlight_scene, &error));
+        REQUIRE(renderer->compositeWindLightMeteors(
+            *meteor_source_gbuffer, meteor_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            meteor_source_albedo{};
+        REQUIRE(meteor_source_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, meteor_source_albedo.data(),
+            32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const int raw_sum = std::min(
+                255, static_cast<int>(sun_albedo[outside + channel]) +
+                     static_cast<int>(
+                         meteor_source_albedo[outside + channel]));
+            CHECK(std::abs(static_cast<int>(
+                      meteor_albedo[outside + channel]) - raw_sum) <= 1);
+        }
+        meteor_scene.width_pixels = 0.f;
+        error.clear();
+        CHECK_FALSE(renderer->compositeWindLightMeteors(
+            *meteor_source_gbuffer, meteor_scene, &error));
+        CHECK(error == "Metal world WindLight meteor scene is incomplete");
+        error.clear();
+        meteor_scene.width_pixels = 1.5f;
+
         ALMetalWorldWindLightSkyScene invalid_windlight_scene =
             windlight_scene;
         invalid_windlight_scene.halo_texture = nullptr;
@@ -5181,6 +5302,19 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
               hdr_body_before[outside / 4]);
         CHECK(hdr_body_after[center / 4] ==
               hdr_body_before[center / 4]);
+        meteor_scene.hdr = true;
+        REQUIRE(renderer->compositeWindLightMeteors(
+            *hdr_gbuffer, meteor_scene, &error));
+        INFO(error);
+        std::array<std::uint32_t, 32 * 32> hdr_meteor_after{};
+        REQUIRE(hdr_gbuffer->colorTexture(3)->readback(
+            *device, 0, 0, {}, hdr_meteor_after.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(hdr_meteor_after[outside / 4] !=
+              hdr_body_after[outside / 4]);
+        CHECK(hdr_meteor_after[center / 4] ==
+              hdr_body_after[center / 4]);
         std::array<std::uint16_t, 32 * 32 * 4> hdr_windlight_normal{};
         REQUIRE(hdr_gbuffer->colorTexture(2)->readback(
             *device, 0, 0, {}, hdr_windlight_normal.data(),

@@ -501,7 +501,13 @@ void LLDrawPoolWLSky::renderMeteorsDeferred(const LLVector3& camPosLocal) const
                                      (GLfloat)deferred_target->getHeight());
     gDeferredMeteorProgram.uniform1f(LLShaderMgr::METEOR_WIDTH_PIXELS, 1.5f);
 
+#if LL_DARWIN
+    gPipeline.beginMetalWorldWindLightMeteors(1.5f);
+#endif
     gSky.mVOWLSkyp->drawMeteors();
+#if LL_DARWIN
+    gPipeline.endMetalWorldWindLightMeteors();
+#endif
 
     gDeferredMeteorProgram.unbind();
     gGL.popMatrix();

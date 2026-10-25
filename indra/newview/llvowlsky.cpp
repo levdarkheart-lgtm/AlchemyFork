@@ -981,6 +981,9 @@ void LLVOWLSky::drawMeteors()
     if (mMeteorVerts.isNull()) return;
     if (mMeteors.empty()) return;   // skip the GL call entirely when nothing's active
 
+#if LL_DARWIN
+    gPipeline.captureMetalWorldWindLightMeteorBatch(mMeteorVerts);
+#endif
     mMeteorVerts->setBuffer();
     mMeteorVerts->drawArrays(LLRender::TRIANGLES, 0, (S32)(kMeteorHardMax * kMeteorVertsPerQuad));
 }

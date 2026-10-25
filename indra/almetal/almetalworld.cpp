@@ -102,6 +102,16 @@ namespace
     };
     static_assert(sizeof(WorldHeavenlyBodyConstants) == 96);
 
+    struct alignas(16) WorldMeteorConstants
+    {
+        float modelview_projection[16]{};
+        // xy = target dimensions, z = half-width in pixels.
+        float screen_width[4]{};
+        // x = reverse Z, y = emissive/HDR G-buffer.
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldMeteorConstants) == 96);
+
     struct alignas(16) WorldMaterialSlotConstants
     {
         float specular_color[4];
@@ -495,6 +505,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<NormalPipelines, 2> windlight_star_pipelines;
     std::array<NormalPipelines, 2> windlight_sun_pipelines;
     std::array<NormalPipelines, 2> windlight_moon_pipelines;
+    std::array<NormalPipelines, 2> windlight_meteor_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         base_light_pipelines;
     std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
@@ -598,6 +609,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_heavenly_body_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_heavenly_body_fragment") ||
+        !impl->library->hasFunction("almetal_world_meteor_vertex") ||
+        !impl->library->hasFunction("almetal_world_meteor_fragment") ||
         !impl->library->hasFunction("almetal_world_base_light_fragment") ||
         !impl->library->hasFunction("almetal_pbr_preview_brdf_lut"))
     {
@@ -784,6 +797,33 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 ALMetalRenderPipeline::create(
                     device, sky_descriptor, error);
             if (!impl->windlight_moon_pipelines[hdr][normal_hdr])
+            {
+                return nullptr;
+            }
+
+            sky_descriptor.vertex_function =
+                "almetal_world_meteor_vertex";
+            sky_descriptor.fragment_function =
+                "almetal_world_meteor_fragment";
+            for (std::size_t attachment = 0; attachment < 4;
+                 ++attachment)
+            {
+                sky_descriptor.colors[attachment].source_rgb =
+                    ALMetalBlendFactor::one;
+                sky_descriptor.colors[attachment].destination_rgb =
+                    ALMetalBlendFactor::one;
+                sky_descriptor.colors[attachment].source_alpha =
+                    ALMetalBlendFactor::one;
+                sky_descriptor.colors[attachment].destination_alpha =
+                    ALMetalBlendFactor::one;
+            }
+            sky_descriptor.label = hdr
+                ? "Alchemy HDR WindLight meteor G-buffer pipeline"
+                : "Alchemy vintage WindLight raw-storage meteor G-buffer pipeline";
+            impl->windlight_meteor_pipelines[hdr][normal_hdr] =
+                ALMetalRenderPipeline::create(
+                    device, sky_descriptor, error);
+            if (!impl->windlight_meteor_pipelines[hdr][normal_hdr])
             {
                 return nullptr;
             }
@@ -3642,6 +3682,141 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightHeavenlyBodies(
                 ALMetalPrimitiveType::triangle,
                 batch.index_count, batch.index_type,
                 *batch.indices, batch.index_offset, 1, error);
+    }
+
+    return encoded && encoder->end(error) && command->commit(error);
+}
+
+bool ALMetalWorldGBufferRenderer::compositeWindLightMeteors(
+    ALMetalRenderTarget& target,
+    const ALMetalWorldMeteorScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.batches ||
+        scene.batch_count == 0 || scene.width == 0 || scene.height == 0 ||
+        !std::isfinite(scene.width_pixels) || scene.width_pixels <= 0.f)
+    {
+        setError(error, "Metal world WindLight meteor scene is incomplete");
+        return false;
+    }
+
+    const ALMetalRenderTargetDescriptor& descriptor = target.descriptor();
+    const ALMetalPixelFormat expected_normal = scene.normal_hdr
+        ? ALMetalPixelFormat::rgba16_unorm
+        : ALMetalPixelFormat::rgb10a2_unorm;
+    const ALMetalPixelFormat expected_emissive = scene.hdr
+        ? ALMetalPixelFormat::rg11b10_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    if (descriptor.width != scene.width ||
+        descriptor.height != scene.height || descriptor.sample_count != 1 ||
+        descriptor.color_attachment_count != 4 ||
+        descriptor.colors[0].format !=
+            ALMetalPixelFormat::rgba8_unorm_srgb ||
+        descriptor.colors[1].format != ALMetalPixelFormat::rgba8_unorm ||
+        descriptor.colors[2].format != expected_normal ||
+        descriptor.colors[3].format != expected_emissive ||
+        descriptor.depth_stencil_format !=
+            ALMetalPixelFormat::depth32_float)
+    {
+        setError(error, "Metal world WindLight meteor target is incompatible");
+        return false;
+    }
+
+    constexpr std::size_t vector_stride = sizeof(float) * 4;
+    constexpr std::size_t color_stride = sizeof(std::uint8_t) * 4;
+    constexpr std::size_t texcoord_stride = sizeof(float) * 2;
+    for (std::size_t index = 0; index < scene.batch_count; ++index)
+    {
+        const ALMetalWorldMeteorBatch& batch = scene.batches[index];
+        if (!batch.vertices || batch.vertex_count < 3 ||
+            batch.vertex_count % 3 != 0 ||
+            batch.position_offset % vector_stride != 0 ||
+            batch.normal_offset % vector_stride != 0 ||
+            batch.color_offset % color_stride != 0 ||
+            batch.texcoord_offset % alignof(float) != 0 ||
+            !finiteValues(batch.modelview_projection, 16) ||
+            !rangeFits(batch.position_offset, batch.vertex_count,
+                       vector_stride, batch.vertices->length()) ||
+            !rangeFits(batch.normal_offset, batch.vertex_count,
+                       vector_stride, batch.vertices->length()) ||
+            !rangeFits(batch.color_offset, batch.vertex_count,
+                       color_stride, batch.vertices->length()) ||
+            !rangeFits(batch.texcoord_offset, batch.vertex_count,
+                       texcoord_stride, batch.vertices->length()))
+        {
+            setError(error, "Metal world WindLight meteor batch is invalid");
+            return false;
+        }
+    }
+
+    ALMetalRenderPassConfig pass_config;
+    for (std::size_t attachment = 0; attachment < 4; ++attachment)
+    {
+        pass_config.colors[attachment].load = ALMetalLoadAction::load;
+        pass_config.colors[attachment].store = ALMetalStoreAction::store;
+    }
+    pass_config.colors[0].linear_storage_view = !scene.hdr;
+    pass_config.depth_load = ALMetalLoadAction::load;
+    pass_config.depth_store = ALMetalStoreAction::store;
+    auto pass = target.makeRenderPass(pass_config, error);
+    auto command = pass ? mImpl->device->makeCommandBuffer(
+        "Alchemy native world WindLight meteors", error) : nullptr;
+    auto encoder = command ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world WindLight meteor encoder", error)
+                           : nullptr;
+    if (!encoder)
+    {
+        return false;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(scene.width),
+        static_cast<double>(scene.height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{0, 0, scene.width, scene.height};
+    const ALMetalDepthStencilState* depth = scene.reverse_z
+        ? mImpl->reverse_readonly_depth.get()
+        : mImpl->forward_readonly_depth.get();
+    const ALMetalRenderPipeline* pipeline =
+        mImpl->windlight_meteor_pipelines[scene.hdr ? 1 : 0]
+                                           [scene.normal_hdr ? 1 : 0]
+            .get();
+    bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setDepthStencilState(depth, error) &&
+        encoder->setPipeline(*pipeline, error);
+
+    for (std::size_t index = 0;
+         encoded && index < scene.batch_count; ++index)
+    {
+        const ALMetalWorldMeteorBatch& batch = scene.batches[index];
+        WorldMeteorConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(constants.modelview_projection));
+        constants.screen_width[0] = static_cast<float>(scene.width);
+        constants.screen_width[1] = static_cast<float>(scene.height);
+        constants.screen_width[2] = scene.width_pixels;
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        constants.config[1] = scene.hdr ? 1u : 0u;
+        encoded =
+            encoder->setVertexBuffer(
+                0, *batch.vertices, batch.position_offset, error) &&
+            encoder->setVertexBuffer(
+                1, *batch.vertices, batch.normal_offset, error) &&
+            encoder->setVertexBuffer(
+                2, *batch.vertices, batch.color_offset, error) &&
+            encoder->setVertexBuffer(
+                3, *batch.vertices, batch.texcoord_offset, error) &&
+            encoder->setVertexBytes(
+                4, &constants, sizeof(constants), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle, 0,
+                batch.vertex_count, 1, error);
     }
 
     return encoded && encoder->end(error) && command->commit(error);

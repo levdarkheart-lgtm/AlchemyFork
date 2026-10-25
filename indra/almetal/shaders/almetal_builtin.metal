@@ -444,6 +444,15 @@ struct ALMetalWorldHeavenlyBodyConstants
     uint4 config;
 };
 
+struct ALMetalWorldMeteorConstants
+{
+    float4x4 modelview_projection;
+    // xy = target dimensions, z = half-width in pixels.
+    float4 screen_width;
+    // x = reverse Z, y = emissive/HDR G-buffer.
+    uint4 config;
+};
+
 struct ALMetalWorldLocalLightVaryings
 {
     float4 position [[position]];
@@ -922,6 +931,95 @@ almetal_world_heavenly_body_fragment(
     else
     {
         output.albedo = color;
+        output.emissive = 0.0;
+    }
+    return output;
+}
+
+struct ALMetalWorldMeteorVaryings
+{
+    float4 position [[position]];
+    float4 color;
+    float2 coordinate;
+};
+
+vertex ALMetalWorldMeteorVaryings almetal_world_meteor_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device uchar4* colors [[buffer(2)]],
+    const device float2* texcoords [[buffer(3)]],
+    constant ALMetalWorldMeteorConstants& constants [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 clip_mid = constants.modelview_projection *
+                            float4(positions[vertex_id].xyz, 1.0);
+    const float4 clip_head = constants.modelview_projection *
+        float4(positions[vertex_id].xyz + normals[vertex_id].xyz, 1.0);
+
+    ALMetalWorldMeteorVaryings output;
+    if (clip_mid.w < 0.01 || clip_head.w < 0.01)
+    {
+        output.position = float4(2.0, -2.0, 2.0, 1.0);
+        output.color = 0.0;
+        output.coordinate = 0.0;
+        return output;
+    }
+
+    const float2 ndc_mid = clip_mid.xy / clip_mid.w;
+    const float2 ndc_head = clip_head.xy / clip_head.w;
+    const float2 streak_ndc = ndc_head - ndc_mid;
+    float2 perpendicular = float2(-streak_ndc.y, streak_ndc.x);
+    perpendicular /= max(length(perpendicular), 1e-5);
+    perpendicular *= constants.screen_width.z *
+        (2.0 / max(constants.screen_width.xy, float2(1.0)));
+
+    float4 clip_position = clip_mid;
+    clip_position.xy += streak_ndc * texcoords[vertex_id].x *
+                        clip_position.w;
+    clip_position.xy += perpendicular * texcoords[vertex_id].y *
+                        clip_position.w;
+    clip_position.y = -clip_position.y;
+    clip_position.z = constants.config.x != 0u
+        ? 0.0 : clip_position.w;
+
+    const float4 packed_color = float4(colors[vertex_id]) / 255.0;
+    output.position = clip_position;
+    output.color = float4(
+        pow(max(packed_color.rgb, float3(0.0)), float3(2.2)),
+        packed_color.a * 4.0);
+    output.coordinate = texcoords[vertex_id];
+    return output;
+}
+
+fragment ALMetalWorldGBufferOutput almetal_world_meteor_fragment(
+    ALMetalWorldMeteorVaryings input [[stage_in]],
+    constant ALMetalWorldMeteorConstants& constants [[buffer(0)]])
+{
+    const float along_t = clamp(
+        (input.coordinate.x + 1.0) * 0.5, 0.0, 1.0);
+    const float head_flash = pow(along_t, 6.0);
+    const float along = along_t + head_flash * 1.2;
+    const float width_scale = max(input.color.a, 1e-3);
+    const float normalized_y = input.coordinate.y / width_scale;
+    const float across = exp(-normalized_y * normalized_y * 6.0);
+    const float shape = along * across;
+    if (shape < 0.003)
+    {
+        discard_fragment();
+    }
+    const float3 color = input.color.rgb * shape;
+
+    ALMetalWorldGBufferOutput output;
+    output.specular_orm = 0.0;
+    output.normal = float4(0.0, 1.0, 0.0, 0.0);
+    if (constants.config.y != 0u)
+    {
+        output.albedo = 0.0;
+        output.emissive = float4(color * 4.0, shape);
+    }
+    else
+    {
+        output.albedo = float4(color * 2.0, shape);
         output.emissive = 0.0;
     }
     return output;
