@@ -154,9 +154,9 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
 
 #if LL_DARWIN
-    // Fullbright/post-bump owners precede this pool. Flush the supported
-    // opaque-forward subset and stamp its depth into coverage before any
-    // partial-alpha layer can write depth of its own.
+    // Avatar impostors close their opaque-forward phase here. The retained
+    // main-world owner instead remains open through its ordered alpha/water
+    // sequence and is encoded at renderGeomPostDeferred's boundary.
     gPipeline.beginMetalImpostorAlphaPhase();
 #endif
 
@@ -164,6 +164,15 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     { // don't render alpha objects on the other side of the water plane if water is opaque
         return;
     }
+
+#if LL_DARWIN
+    const bool metal_pre_water =
+        getType() == LLDrawPool::POOL_ALPHA_PRE_WATER;
+    if (metal_pre_water)
+    {
+        gPipeline.beginMetalWorldPreWaterAlphaPhase();
+    }
+#endif
 
     F32 water_sign = 1.f;
 
@@ -254,6 +263,13 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
 
         gGL.setColorMask(true, false);
     }
+
+#if LL_DARWIN
+    if (metal_pre_water)
+    {
+        gPipeline.endMetalWorldPreWaterAlphaPhase();
+    }
+#endif
 }
 
 void LLDrawPoolAlpha::forwardRender(bool rigged)

@@ -76,6 +76,7 @@ class LLViewerJointMesh;
 class LLGLTexture;
 class LLImageGL;
 class LLVertexBuffer;
+struct ALMetalWorldAlphaEnvironment;
 
 typedef enum e_avatar_skinning_method
 {
@@ -602,6 +603,8 @@ public:
     void beginMetalImpostorAlphaPhase();
     void endMetalImpostorAlphaCapture();
     void beginMetalWorldPostDeferredCapture();
+    void beginMetalWorldPreWaterAlphaPhase();
+    void endMetalWorldPreWaterAlphaPhase();
     void beginMetalWorldWaterExclusionPass();
     void captureMetalWorldWaterHaze();
     void beginMetalWorldLegacyGlowPass(bool rigged);
@@ -619,6 +622,8 @@ public:
     bool fillMetalImpostorDirectionalShadows();
     bool fillMetalWorldProjectorShadows();
     void captureMetalImpostorPBRAlphaBatch(const LLDrawInfo& params);
+    bool fillMetalWorldAlphaEnvironment(
+        ALMetalWorldAlphaEnvironment& environment);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
     void captureMetalWorldMaterialBatch(const LLDrawInfo& params,

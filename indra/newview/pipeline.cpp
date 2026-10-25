@@ -555,6 +555,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool impostor_alpha_phase = false;
     bool world_post_deferred_active = false;
     bool world_post_deferred_phase = false;
+    bool world_pre_water_alpha_active = false;
     bool impostor_fullbright = false;
     bool impostor_shiny = false;
     bool impostor_emboss = false;
@@ -565,6 +566,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool water_exclusion_surface_valid = false;
     ALMetalWorldWaterHaze water_haze;
     bool water_haze_valid = false;
+    ALMetalWorldAlphaEnvironment alpha_environment;
+    bool alpha_environment_valid = false;
     ALMetalWorldReflectionProbes impostor_reflection_probes;
     std::unique_ptr<ALMetalTexture> impostor_hero_probe_texture;
     ALMetalWorldHeroProbe impostor_hero_probe;
@@ -2719,6 +2722,7 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.pass_active = false;
     capture.world_post_deferred_active = true;
     capture.world_post_deferred_phase = false;
+    capture.world_pre_water_alpha_active = false;
     capture.impostor_fullbright = false;
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
@@ -2729,6 +2733,106 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.water_exclusion_surface_valid = false;
     capture.water_haze = {};
     capture.water_haze_valid = false;
+    capture.alpha_environment = {};
+    capture.alpha_environment_valid = false;
+}
+
+bool LLPipeline::fillMetalWorldAlphaEnvironment(
+    ALMetalWorldAlphaEnvironment& alpha)
+{
+    const LLEnvironment& environment = LLEnvironment::instance();
+    const LLSettingsSky::ptr_t sky = environment.getCurrentSky();
+    if (!sky)
+    {
+        return false;
+    }
+
+    const LLEnvironment::EnvironmentUBOData& data =
+        environment.getEnvironmentUBOData();
+    alpha = {};
+    std::memcpy(alpha.water_plane, LLDrawPoolAlpha::sWaterPlane.mV,
+                sizeof(alpha.water_plane));
+    std::memcpy(alpha.eye_to_sky, data.eyeToSky,
+                sizeof(alpha.eye_to_sky));
+    std::memcpy(alpha.haze_extinction, data.haze_extinction,
+                sizeof(data.haze_extinction));
+    std::memcpy(alpha.glow_max_y, data.glow, sizeof(data.glow));
+    alpha.glow_max_y[3] = data.max_y;
+    std::memcpy(alpha.haze_additive, data.haze_additive,
+                sizeof(data.haze_additive));
+    std::memcpy(alpha.haze_additive_glow, data.haze_additive_glow,
+                sizeof(data.haze_additive_glow));
+    std::memcpy(alpha.water_fog_color, data.waterFogColorLinear,
+                sizeof(data.waterFogColorLinear));
+    const LLVector4& light_direction = environment.getIsSunUp()
+        ? mTransformedSunDir : mTransformedMoonDir;
+    std::memcpy(alpha.light_direction, light_direction.mV,
+                sizeof(alpha.light_direction));
+    alpha.atmospheric[0] = sky->getDensityMultiplier();
+    alpha.atmospheric[1] = data.distance_multiplier;
+    alpha.atmospheric[2] = sky->getSunMoonGlowFactor();
+
+    // LLSettingsVOSky::applySpecial owns this loose-uniform policy. The
+    // transparent owner must see the same value as the authoritative GLSL
+    // program even when the sky itself is an HDRI.
+    static LLCachedControl<bool> should_auto_adjust(
+        gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
+    static LLCachedControl<F32> auto_adjust_hdr_scale(
+        gSavedSettings, "RenderSkyAutoAdjustHDRScale", 2.f);
+    alpha.atmospheric[3] = sky->getReflectionProbeAmbiance() != 0.f
+        ? sqrtf(sky->getGamma()) * 2.f
+        : sky->canAutoAdjust() && should_auto_adjust
+            ? static_cast<F32>(auto_adjust_hdr_scale) : 1.f;
+    alpha.water_fog[0] = data.waterFogKS;
+    alpha.water_fog[1] = data.waterFogDensity;
+    alpha.water_fog[2] = sUnderWaterRender ? 1.f : -1.f;
+
+    static_assert(sizeof(ALMetalWorldAlphaEnvironment) == 192);
+    const F32* values = reinterpret_cast<const F32*>(&alpha);
+    return std::all_of(values, values + sizeof(alpha) / sizeof(F32),
+                       [](F32 value) { return std::isfinite(value); }) &&
+        alpha.atmospheric[0] >= 0.f &&
+        alpha.atmospheric[1] >= 0.f &&
+        alpha.atmospheric[3] >= 0.f &&
+        alpha.water_fog[0] > 0.f && alpha.water_fog[1] >= 0.f;
+}
+
+void LLPipeline::beginMetalWorldPreWaterAlphaPhase()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.pass_active || capture.world_pre_water_alpha_active ||
+        !fillMetalWorldAlphaEnvironment(capture.alpha_environment))
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        capture.alpha_environment = {};
+        capture.alpha_environment_valid = false;
+        return;
+    }
+    capture.world_pre_water_alpha_active = true;
+    capture.alpha_environment_valid = true;
+}
+
+void LLPipeline::endMetalWorldPreWaterAlphaPhase()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_pre_water_alpha_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.world_pre_water_alpha_active = false;
+    capture.pass_active = false;
+    capture.rigged = false;
+    capture.impostor_fullbright = false;
+    capture.impostor_shiny = false;
+    capture.impostor_emboss = false;
 }
 
 void LLPipeline::beginMetalWorldWaterExclusionPass()
@@ -2919,6 +3023,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 ? &capture.water_exclusion_surface : nullptr;
         scene.water_haze = capture.water_haze_valid
             ? &capture.water_haze : nullptr;
+        scene.alpha_environment = capture.alpha_environment_valid
+            ? &capture.alpha_environment : nullptr;
         scene.width = capture.width;
         scene.height = capture.height;
         scene.reverse_z = capture.reverse_z;
@@ -2960,6 +3066,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.impostor_fullbright = false;
     capture.impostor_shiny = false;
     capture.impostor_emboss = false;
+    capture.world_pre_water_alpha_active = false;
     capture.water_exclusion = false;
     capture.legacy_glow = false;
     capture.pbr_glow = false;
@@ -2967,6 +3074,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.water_exclusion_surface_valid = false;
     capture.water_haze = {};
     capture.water_haze_valid = false;
+    capture.alpha_environment = {};
+    capture.alpha_environment_valid = false;
 }
 
 void LLPipeline::endMetalWorldPostDeferredCapture()
@@ -2980,6 +3089,7 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     capture.world_post_deferred_active = false;
     capture.world_post_deferred_phase = false;
+    capture.world_pre_water_alpha_active = false;
     capture.frame_active = false;
     capture.pass_active = false;
     capture.impostor_fullbright = false;
@@ -2992,6 +3102,8 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
     capture.water_exclusion_surface_valid = false;
     capture.water_haze = {};
     capture.water_haze_valid = false;
+    capture.alpha_environment = {};
+    capture.alpha_environment_valid = false;
 }
 
 void LLPipeline::beginMetalImpostorFullbrightPass(bool rigged,
@@ -3099,7 +3211,6 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
     if (mMetalWorldSimpleCapture &&
         mMetalWorldSimpleCapture->world_post_deferred_active)
     {
-        encodeMetalWorldOpaquePostDeferredCapture();
         return;
     }
     if (!mMetalWorldSimpleCapture ||
@@ -4063,12 +4174,22 @@ void LLPipeline::captureMetalWorldPBRBatch(
 void LLPipeline::captureMetalImpostorPBRAlphaBatch(
     const LLDrawInfo& params)
 {
-    if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->impostor_alpha_active)
+    if (!mMetalWorldSimpleCapture)
     {
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.world_post_deferred_active &&
+        capture.world_pre_water_alpha_active)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    if (!capture.impostor_alpha_active)
+    {
+        return;
+    }
     if (params.mGLTFMaterial.isNull() ||
         params.mGLTFMaterial->mAlphaMode !=
             LLGLTFMaterial::ALPHA_MODE_BLEND)
@@ -4099,8 +4220,15 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
 void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     const LLDrawInfo& params, bool particle_or_hud_particle)
 {
-    if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->impostor_alpha_active)
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const bool world_pre_water = capture.world_post_deferred_active &&
+        capture.world_pre_water_alpha_active;
+    if (!capture.impostor_alpha_active && !world_pre_water)
     {
         return;
     }
@@ -4112,12 +4240,18 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     if (params.mGLTFMaterial.notNull() || params.mMaterial ||
         particle_or_hud_particle ||
         params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA ||
-        params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)
+        params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA ||
+        (world_pre_water && !params.mFullbright))
     {
+        if (world_pre_water)
+        {
+            capture.complete = false;
+            capture.batches.clear();
+        }
         return;
     }
 
-    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const std::size_t first_batch = capture.batches.size();
     capture.rigged = params.mAvatar != nullptr;
     capture.alpha_mask = false;
     capture.material_alpha_mode = 0;
@@ -4133,6 +4267,14 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
     capture.pass_active = true;
     captureMetalWorldGBufferBatch(params, true);
     capture.pass_active = false;
+    if (world_pre_water && capture.complete &&
+        capture.batches.size() == first_batch + 1)
+    {
+        ALMetalWorldSimpleBatch& batch = capture.batches.back();
+        batch.pre_water_alpha = true;
+        batch.pre_water_fullbright = true;
+        batch.impostor_fullbright = false;
+    }
 }
 
 void LLPipeline::requestMetalScreenSpaceReflections(
@@ -5037,14 +5179,23 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
 void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
     const LLDrawInfo& params, bool particle_or_hud_particle)
 {
-    if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->impostor_alpha_active ||
-        !params.mMaterial)
+    if (!mMetalWorldSimpleCapture || !params.mMaterial)
     {
         return;
     }
 
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.world_post_deferred_active &&
+        capture.world_pre_water_alpha_active)
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        return;
+    }
+    if (!capture.impostor_alpha_active)
+    {
+        return;
+    }
     const U32 shader_mask = params.mShaderMask;
     if (shader_mask >= LLMaterial::SHADER_COUNT ||
         (shader_mask & 0x3u) != LLMaterial::DIFFUSE_ALPHA_MODE_BLEND ||

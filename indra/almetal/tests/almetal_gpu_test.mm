@@ -149,6 +149,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_water_haze_field_vertex",
             "almetal_world_water_haze_fullscreen_vertex",
             "almetal_world_water_haze_fragment",
+            "almetal_world_pre_water_fullbright_fragment",
             "almetal_world_legacy_glow_vertex",
             "almetal_world_legacy_glow_skinned_vertex",
             "almetal_world_legacy_glow_fragment",
@@ -2474,12 +2475,295 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                   water_haze_depth[stencil_center / 4] - 0.25f) <
               0.0001f);
 
+        // Pre-water alpha follows water haze in the final-color owner. The
+        // first native family is the exact fogged fullbright program: source
+        // over RGB, destination alpha multiplied by uncovered coverage, and
+        // writable depth for both static and rigged geometry.
+        ALMetalWorldAlphaEnvironment alpha_environment;
+        alpha_environment.water_plane[2] = 1.f;
+        alpha_environment.water_plane[3] = -1.f;
+        alpha_environment.eye_to_sky[0][0] = 1.f;
+        alpha_environment.eye_to_sky[1][1] = 1.f;
+        alpha_environment.eye_to_sky[2][2] = 1.f;
+        alpha_environment.glow_max_y[0] = 1.f;
+        alpha_environment.glow_max_y[2] = -1.f;
+        alpha_environment.glow_max_y[3] = 1.f;
+        alpha_environment.light_direction[2] = 1.f;
+        alpha_environment.atmospheric[1] = 1.f;
+        alpha_environment.atmospheric[2] = 1.f;
+        alpha_environment.atmospheric[3] = 1.f;
+        alpha_environment.water_fog[0] = 1.f;
+        alpha_environment.water_fog[2] = -1.f;
+
+        ALMetalWorldSimpleBatch pre_water_alpha = fullbright_batch;
+        pre_water_alpha.impostor_fullbright = false;
+        pre_water_alpha.alpha_mask = false;
+        pre_water_alpha.alpha_cutoff = 0.f;
+        pre_water_alpha.pre_water_alpha = true;
+        pre_water_alpha.pre_water_fullbright = true;
+        std::fill(std::begin(pre_water_alpha.modelview),
+                  std::end(pre_water_alpha.modelview), 0.f);
+        pre_water_alpha.modelview[14] = 0.25f;
+        pre_water_alpha.modelview[15] = 1.f;
+        std::fill(std::begin(pre_water_alpha.modelview_projection),
+                  std::end(pre_water_alpha.modelview_projection), 0.f);
+        for (std::size_t diagonal = 0; diagonal < 4; ++diagonal)
+        {
+            pre_water_alpha.modelview_projection[
+                diagonal * 4 + diagonal] = 1.f;
+        }
+        pre_water_alpha.modelview_projection[12] = -0.8f;
+        pre_water_alpha.modelview_projection[14] = -0.25f;
+        pre_water_alpha.skin_palette = nullptr;
+        pre_water_alpha.skin_palette_float_count = 0;
+        pre_water_alpha.skin_joint_count = 0;
+        pre_water_alpha.weight_offset = 0;
+
+        ALMetalWorldSimpleBatch pre_water_alpha_rigged =
+            pre_water_alpha;
+        pre_water_alpha_rigged.modelview_projection[12] = 0.8f;
+        pre_water_alpha_rigged.weight_offset = weight_offset;
+        pre_water_alpha_rigged.skin_palette =
+            alpha_skin_palette.data();
+        pre_water_alpha_rigged.skin_palette_float_count =
+            alpha_skin_palette.size();
+        pre_water_alpha_rigged.skin_joint_count = 1;
+        for (std::size_t diagonal = 0; diagonal < 3; ++diagonal)
+        {
+            pre_water_alpha_rigged.rigged_normal_matrix
+                [diagonal][diagonal] = 1.f;
+        }
+        std::array<ALMetalWorldSimpleBatch, 2> pre_water_batches{{
+            pre_water_alpha,
+            pre_water_alpha_rigged,
+        }};
+        opaque_forward_scene.batches = pre_water_batches.data();
+        opaque_forward_scene.batch_count = pre_water_batches.size();
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.water_exclusion_surface = nullptr;
+        opaque_forward_scene.water_haze = nullptr;
+        opaque_forward_scene.alpha_environment = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world pre-water alpha environment is invalid");
+        opaque_forward_scene.alpha_environment = &alpha_environment;
+        error.clear();
+        auto pre_water_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(pre_water_result);
+        std::array<std::uint16_t, 32 * 32 * 4> pre_water_pixels{};
+        std::array<float, 32 * 32> pre_water_depth{};
+        REQUIRE(pre_water_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(pre_water_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        const std::size_t pre_water_left = (16 * 32 + 6) * 4;
+        const std::size_t pre_water_right = (16 * 32 + 26) * 4;
+        for (const std::size_t pixel : {pre_water_left,
+                                        pre_water_right})
+        {
+            CHECK(pre_water_pixels[pixel + 0] >= 0x2ff0);
+            CHECK(pre_water_pixels[pixel + 0] <= 0x3000);
+            CHECK(pre_water_pixels[pixel + 1] >= 0x3880);
+            CHECK(pre_water_pixels[pixel + 1] <= 0x3890);
+            CHECK(pre_water_pixels[pixel + 2] >= 0x27f0);
+            CHECK(pre_water_pixels[pixel + 2] <= 0x2800);
+            CHECK(pre_water_pixels[pixel + 3] >= 0x33f0);
+            CHECK(pre_water_pixels[pixel + 3] <= 0x3400);
+            CHECK(std::abs(pre_water_depth[pixel / 4] - 0.5f) <
+                  0.0001f);
+        }
+
+        const auto half_to_float = [](std::uint16_t value)
+        {
+            const float magnitude = ((value >> 10) & 0x1fu) == 0
+                ? std::ldexp(static_cast<float>(value & 0x3ffu), -24)
+                : std::ldexp(
+                      static_cast<float>((value & 0x3ffu) + 0x400u),
+                      static_cast<int>((value >> 10) & 0x1fu) - 25);
+            return (value & 0x8000u) != 0 ? -magnitude : magnitude;
+        };
+        const float coverage = 128.f / 255.f;
+        const float uncovered = 1.f - coverage;
+
+        // A constant eye-space position makes the reference water-fog line
+        // integral independent of raster position. Compare the actual half
+        // output against the GLSL equation, then do the same for atmospheric
+        // extinction and additive haze below.
+        alpha_environment.water_fog_color[0] = 0.2f;
+        alpha_environment.water_fog_color[1] = 0.4f;
+        alpha_environment.water_fog_color[2] = 0.6f;
+        alpha_environment.water_fog[1] = 2.f;
+        auto fogged_pre_water = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(fogged_pre_water);
+        REQUIRE(fogged_pre_water->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        constexpr float fog_base = 0.98f;
+        const float fog_t1 = -2.f * std::pow(fog_base, 1.f);
+        const float fog_t2 = 2.f - 1.f;
+        const float fog_t3 = std::pow(fog_base, fog_t2 * 0.25f) - 1.f;
+        const float fog_light = std::pow(
+            std::min(fog_t1 / fog_t2 * fog_t3, 1.f), 1.f / 1.7f);
+        const float fog_transmission = std::pow(fog_base, 0.5f);
+        const std::array<float, 4> expected_water_fog{{
+            (0.2f * fog_light) * coverage + 0.25f * uncovered,
+            (fog_transmission + 0.4f * fog_light) * coverage +
+                0.125f * uncovered,
+            (0.6f * fog_light) * coverage + 0.0625f * uncovered,
+            0.5f * uncovered,
+        }};
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(std::abs(
+                half_to_float(pre_water_pixels[pre_water_left + channel]) -
+                expected_water_fog[channel]) < 0.002f);
+        }
+
+        const auto srgb_to_linear = [](float value)
+        {
+            return value <= 0.04045f
+                ? value / 12.92f
+                : std::pow((value + 0.055f) / 1.055f, 2.4f);
+        };
+        alpha_environment.water_plane[3] = 1.f;
+        alpha_environment.water_fog[1] = 0.f;
+        alpha_environment.water_fog[2] = 1.f;
+        alpha_environment.atmospheric[0] = 1.f;
+        alpha_environment.haze_extinction[0] = 2.f;
+        alpha_environment.haze_extinction[1] = 2.f;
+        alpha_environment.haze_extinction[2] = 2.f;
+        alpha_environment.haze_additive[0] = 0.1f;
+        alpha_environment.haze_additive[1] = 0.2f;
+        alpha_environment.haze_additive[2] = 0.3f;
+        auto atmospheric_pre_water = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(atmospheric_pre_water);
+        REQUIRE(atmospheric_pre_water->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float attenuation = std::exp(-2.f * 0.25f);
+        const std::array<float, 3> haze_additive{{0.1f, 0.2f, 0.3f}};
+        std::array<float, 4> expected_atmosphere{{
+            0.f, attenuation, 0.f, 0.5f * uncovered,
+        }};
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float additive = srgb_to_linear(
+                haze_additive[channel] * (1.f - attenuation) * 2.f);
+            expected_atmosphere[channel] =
+                (expected_atmosphere[channel] + additive) * coverage +
+                std::array<float, 3>{{0.25f, 0.125f, 0.0625f}}[channel] *
+                    uncovered;
+        }
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(std::abs(
+                half_to_float(pre_water_pixels[pre_water_left + channel]) -
+                expected_atmosphere[channel]) < 0.002f);
+        }
+
+        // Flip the clip side: the same geometry must leave both color and
+        // depth at their copied inputs.
+        alpha_environment.water_fog[2] = -1.f;
+        auto clipped_pre_water = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(clipped_pre_water);
+        REQUIRE(clipped_pre_water->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(clipped_pre_water->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(pre_water_pixels[pre_water_left + 0] == 0x3400);
+        CHECK(pre_water_pixels[pre_water_left + 1] == 0x3000);
+        CHECK(pre_water_pixels[pre_water_left + 2] == 0x2c00);
+        CHECK(pre_water_pixels[pre_water_left + 3] == 0x3800);
+        CHECK(std::abs(pre_water_depth[pre_water_left / 4] - 0.625f) <
+              0.0001f);
+        alpha_environment.water_plane[3] = -1.f;
+        alpha_environment.water_fog[2] = -1.f;
+        alpha_environment.atmospheric[0] = 0.f;
+        alpha_environment.haze_extinction[0] = 0.f;
+        alpha_environment.haze_extinction[1] = 0.f;
+        alpha_environment.haze_extinction[2] = 0.f;
+        alpha_environment.haze_additive[0] = 0.f;
+        alpha_environment.haze_additive[1] = 0.f;
+        alpha_environment.haze_additive[2] = 0.f;
+
+        std::array<ALMetalWorldSimpleBatch, 2> ordered_haze_alpha{{
+            water_haze_marker,
+            pre_water_alpha,
+        }};
+        opaque_forward_scene.batches = ordered_haze_alpha.data();
+        opaque_forward_scene.batch_count = ordered_haze_alpha.size();
+        opaque_forward_scene.water_haze = &water_haze;
+        auto ordered_haze_alpha_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(ordered_haze_alpha_result);
+        REQUIRE(ordered_haze_alpha_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(pre_water_depth[pre_water_left / 4] - 0.5f) <
+              0.0001f);
+
+        // Alpha cannot precede the water-haze marker. The valid production
+        // order is haze followed by one or more alpha batches.
+        std::array<ALMetalWorldSimpleBatch, 2> alpha_before_haze{{
+            pre_water_alpha,
+            water_haze_marker,
+        }};
+        opaque_forward_scene.batches = alpha_before_haze.data();
+        opaque_forward_scene.batch_count = alpha_before_haze.size();
+        opaque_forward_scene.water_haze = &water_haze;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world water-haze ordering is invalid");
+
+        opaque_forward_scene.batches = pre_water_batches.data();
+        opaque_forward_scene.batch_count = pre_water_batches.size();
+        opaque_forward_scene.water_haze = nullptr;
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        pre_water_batches[0].modelview_projection[14] = 0.25f;
+        pre_water_batches[1].modelview_projection[14] = 0.25f;
+        error.clear();
+        auto reverse_pre_water = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_pre_water);
+        REQUIRE(reverse_pre_water->depthStencilTexture()->readback(
+            *device, 0, 0, {}, pre_water_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(pre_water_depth[pre_water_left / 4] - 0.5f) <
+              0.0001f);
+        CHECK(std::abs(pre_water_depth[pre_water_right / 4] - 0.5f) <
+              0.0001f);
+
         opaque_forward_scene.batches = &fullbright_batch;
         opaque_forward_scene.batch_count = 1;
         opaque_forward_scene.gbuffer = coverage_result.get();
         opaque_forward_scene.reverse_z = false;
         opaque_forward_scene.water_exclusion_surface = nullptr;
         opaque_forward_scene.water_haze = nullptr;
+        opaque_forward_scene.alpha_environment = nullptr;
 
         // The two glow owners share alpha-only output but not blending:
         // opaque PBR glow replaces destination alpha, then legacy glow adds

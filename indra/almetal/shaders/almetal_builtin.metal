@@ -293,6 +293,20 @@ struct ALMetalWorldWaterHazeVaryings
     float2 texcoord;
 };
 
+struct ALMetalWorldAlphaEnvironment
+{
+    float4 water_plane;
+    float4 eye_to_sky[3];
+    float4 haze_extinction;
+    float4 glow_max_y;
+    float4 haze_additive;
+    float4 haze_additive_glow;
+    float4 water_fog_color;
+    float4 light_direction;
+    float4 atmospheric;
+    float4 water_fog;
+};
+
 struct ALMetalWorldShinyConstants
 {
     float4x4 modelview_projection;
@@ -1923,6 +1937,139 @@ fragment float4 almetal_world_water_haze_fragment(
         transmission);
     fogged.a = max(pow(fogged.a, 1.7), 0.0);
     return max(fogged, float4(0.0));
+}
+
+static void almetal_world_alpha_atmospherics(
+    float3 eye_position,
+    constant ALMetalWorldAlphaEnvironment& environment,
+    thread float3& additive,
+    thread float3& attenuation)
+{
+    const float3x3 eye_to_sky = float3x3(
+        environment.eye_to_sky[0].xyz,
+        environment.eye_to_sky[1].xyz,
+        environment.eye_to_sky[2].xyz);
+    float3 relative_position = eye_to_sky * eye_position;
+    const float3 light_direction =
+        eye_to_sky * environment.light_direction.xyz;
+
+    const float height = max(relative_position.y, 0.0) /
+        max(environment.glow_max_y.w, 1.0);
+    const float maximum = max(height, 1.0);
+    float quotient = height / maximum;
+    float reciprocal = 1.0 / maximum;
+    quotient *= quotient;
+    quotient *= quotient;
+    quotient *= quotient;
+    reciprocal *= reciprocal;
+    reciprocal *= reciprocal;
+    reciprocal *= reciprocal;
+    relative_position *= pow(quotient + reciprocal, -0.125) /
+        maximum;
+
+    const float3 direction = normalize(relative_position);
+    const float distance = length(relative_position);
+    const float density_distance =
+        distance * environment.atmospheric.x;
+    const float3 combined_haze = exp(
+        -environment.haze_extinction.xyz * density_distance *
+        environment.atmospheric.y);
+    attenuation = combined_haze;
+
+    float haze_glow = max(
+        1.0 - dot(direction, light_direction), 0.03);
+    haze_glow *= environment.glow_max_y.x;
+    haze_glow = clamp(
+        pow(haze_glow, environment.glow_max_y.z),
+        -100000.0, 100000.0);
+    haze_glow = (haze_glow + 0.25) * environment.atmospheric.z;
+    additive = environment.haze_additive.xyz +
+        environment.haze_additive_glow.xyz * haze_glow;
+    additive *= 1.0 - combined_haze;
+    additive = min(additive, float3(10.0));
+}
+
+static float3 almetal_world_alpha_atmospheric_fog(
+    float3 color, float3 additive, float3 attenuation,
+    constant ALMetalWorldAlphaEnvironment& environment)
+{
+    color *= attenuation.r;
+    color += almetal_srgb_to_linear(additive * 2.0) *
+             environment.atmospheric.w;
+    return color;
+}
+
+static float3 almetal_world_alpha_water_fog(
+    float3 eye_position, float3 color,
+    constant ALMetalWorldAlphaEnvironment& environment)
+{
+    const float3 view = normalize(eye_position);
+    const float eye_surface = -dot(
+        view, environment.water_plane.xyz);
+    const float eye_depth = max(-environment.water_plane.w, 0.0);
+    const float3 intersection = environment.water_plane.w > 0.0
+        ? view * environment.water_plane.w / eye_surface
+        : float3(0.0);
+    const float length_in_water = max(
+        length(eye_position - intersection), 0.1);
+    const float density = environment.water_fog.y;
+    const float light_scale = environment.water_fog.x;
+    constexpr float base = 0.98;
+    const float term1 = -density * pow(base, light_scale * eye_depth);
+    const float term2 = density + light_scale * eye_surface;
+    const float term3 = pow(base, term2 * length_in_water) - 1.0;
+    const float light = pow(min(term1 / term2 * term3, 1.0),
+                            1.0 / 1.7);
+    const float transmission = pow(base, length_in_water * density);
+    return color * transmission +
+           environment.water_fog_color.rgb * light;
+}
+
+static float3 almetal_world_alpha_fog(
+    float3 eye_position, float3 color,
+    constant ALMetalWorldAlphaEnvironment& environment)
+{
+    float3 additive;
+    float3 attenuation;
+    almetal_world_alpha_atmospherics(
+        eye_position, environment, additive, attenuation);
+    const bool object_above =
+        dot(eye_position, environment.water_plane.xyz) +
+            environment.water_plane.w > 0.0;
+    return object_above
+        ? almetal_world_alpha_atmospheric_fog(
+              color, additive, attenuation, environment)
+        : almetal_world_alpha_water_fog(
+              eye_position, color, environment);
+}
+
+fragment float4 almetal_world_pre_water_fullbright_fragment(
+    ALMetalWorldShinyVaryings input [[stage_in]],
+    array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]])
+{
+    const float water_side =
+        dot(input.eye_position, environment.water_plane.xyz) +
+        environment.water_plane.w;
+    if ((environment.water_fog.z > 0.0 && water_side < 0.0) ||
+        (environment.water_fog.z <= 0.0 && water_side > 0.0))
+    {
+        discard_fragment();
+    }
+
+    float4 color = input.texture_index < input.texture_count
+        ? diffuse_textures[min(input.texture_index, 31u)].sample(
+              diffuse_sampler, input.texcoord) * input.color
+        : float4(1.0, 0.0, 1.0, 1.0);
+    constexpr float minimum_alpha = 0.004;
+    if (color.a < minimum_alpha)
+    {
+        discard_fragment();
+    }
+    color.rgb = almetal_world_alpha_fog(
+        input.eye_position, color.rgb, environment);
+    return max(color, float4(0.0));
 }
 
 struct ALMetalWorldLegacyGlowVaryings

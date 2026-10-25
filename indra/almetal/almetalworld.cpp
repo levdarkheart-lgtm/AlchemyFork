@@ -78,6 +78,7 @@ namespace
         std::uint32_t config[4]{};
     };
     static_assert(sizeof(WorldShinyConstants) == 304);
+    static_assert(sizeof(ALMetalWorldAlphaEnvironment) == 192);
     static_assert(sizeof(ALMetalWorldLegacyAlphaLight) == 64);
     static_assert(sizeof(ALMetalWorldLegacyAlphaLighting) == 496);
     static_assert(sizeof(ALMetalWorldHeroProbeConstants) == 112);
@@ -618,6 +619,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>
         water_haze_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
+        pre_water_fullbright_pipelines;
+    std::array<OpaqueForwardRiggedPipelines, 2>
         legacy_glow_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         pbr_glow_pipelines;
@@ -725,6 +728,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_water_haze_fullscreen_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_water_haze_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_pre_water_fullbright_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_legacy_glow_vertex") ||
         !impl->library->hasFunction(
@@ -1231,6 +1236,39 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 ALMetalRenderPipeline::create(
                     device, haze_descriptor, error);
             if (!impl->water_haze_pipelines[hdr][above_water])
+            {
+                return nullptr;
+            }
+        }
+
+        for (std::size_t rigged = 0; rigged < 2; ++rigged)
+        {
+            ALMetalRenderPipelineDescriptor alpha_descriptor;
+            alpha_descriptor.library = impl->library.get();
+            alpha_descriptor.vertex_function = rigged
+                ? "almetal_world_shiny_skinned_vertex"
+                : "almetal_world_shiny_vertex";
+            alpha_descriptor.fragment_function =
+                "almetal_world_pre_water_fullbright_fragment";
+            alpha_descriptor.color_attachment_count = 1;
+            alpha_descriptor.colors[0].format = screen_formats[hdr];
+            alpha_descriptor.colors[0].blending_enabled = true;
+            alpha_descriptor.colors[0].source_rgb =
+                ALMetalBlendFactor::source_alpha;
+            alpha_descriptor.colors[0].destination_rgb =
+                ALMetalBlendFactor::one_minus_source_alpha;
+            alpha_descriptor.colors[0].source_alpha =
+                ALMetalBlendFactor::zero;
+            alpha_descriptor.colors[0].destination_alpha =
+                ALMetalBlendFactor::one_minus_source_alpha;
+            alpha_descriptor.depth_stencil_format =
+                ALMetalPixelFormat::depth32_float_stencil8;
+            alpha_descriptor.label =
+                "Alchemy world pre-water fullbright-alpha pipeline";
+            impl->pre_water_fullbright_pipelines[hdr][rigged] =
+                ALMetalRenderPipeline::create(
+                    device, alpha_descriptor, error);
+            if (!impl->pre_water_fullbright_pipelines[hdr][rigged])
             {
                 return nullptr;
             }
@@ -3723,6 +3761,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     bool has_shiny = false;
     bool has_water_exclusion = false;
     bool has_water_haze = false;
+    bool has_pre_water_alpha = false;
+    bool saw_pre_water_alpha = false;
     bool saw_post_exclusion = false;
     const auto valid_skinning = [=](
         const ALMetalWorldSimpleBatch& batch, bool rigged)
@@ -3750,17 +3790,20 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             (batch.impostor_emboss ? 1u : 0u) +
             (batch.water_exclusion ? 1u : 0u) +
             (batch.water_haze ? 1u : 0u) +
+            (batch.pre_water_alpha ? 1u : 0u) +
             (batch.legacy_glow ? 1u : 0u) +
             (batch.pbr_glow ? 1u : 0u);
         const bool rigged = batch.skin_palette != nullptr;
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
-        if (family_count != 1)
+        if (family_count != 1 ||
+            (batch.pre_water_fullbright && !batch.pre_water_alpha))
         {
             setError(error, "Metal world opaque post-deferred batch is invalid");
             return nullptr;
         }
-        if (has_water_haze)
+        if ((has_water_haze && !batch.pre_water_alpha) ||
+            (saw_pre_water_alpha && !batch.pre_water_alpha))
         {
             setError(error,
                      "Metal world water-haze ordering is invalid");
@@ -3768,7 +3811,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         if (batch.water_haze)
         {
-            if (has_water_haze || batch.vertices || batch.indices ||
+            if (has_water_haze || saw_pre_water_alpha ||
+                batch.vertices || batch.indices ||
                 batch.vertex_count != 0 || batch.index_count != 0 ||
                 batch.texture_count != 0 || batch.normal_texture ||
                 batch.material_slot_count != 0 ||
@@ -3817,7 +3861,13 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             continue;
         }
         saw_post_exclusion = true;
+        if (batch.pre_water_alpha)
+        {
+            has_pre_water_alpha = true;
+            saw_pre_water_alpha = true;
+        }
         const bool glow = batch.legacy_glow || batch.pbr_glow;
+        const bool alpha = batch.pre_water_alpha;
         if (batch.texture_count == 0 ||
             batch.texture_count >
                 ALMetalWorldSimpleBatch::max_diffuse_textures ||
@@ -3839,6 +3889,14 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
               batch.pbr_slot_count != batch.texture_count ||
               batch.pbr_slot_count >
                   ALMetalWorldSimpleBatch::max_material_slots)) ||
+            (alpha &&
+             (!batch.pre_water_fullbright || batch.alpha_mask ||
+              batch.material_alpha_mode != 0 || batch.double_sided ||
+              batch.material_slot_count != 0 ||
+              batch.pbr_slot_count != 0 ||
+              !finiteValues(batch.modelview, 16) ||
+              !finiteValues(&batch.normal_matrix[0][0], 12) ||
+              !finiteValues(&batch.rigged_normal_matrix[0][0], 12))) ||
             (!glow &&
              (batch.material_slot_count != 0 ||
               batch.pbr_slot_count != 0)) ||
@@ -3983,6 +4041,47 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         else if (haze->cell_map || haze->draw_count != 0)
         {
             setError(error, "Metal world underwater haze is invalid");
+            return nullptr;
+        }
+    }
+    if (has_pre_water_alpha)
+    {
+        const ALMetalWorldAlphaEnvironment* environment =
+            scene.alpha_environment;
+        const float water_normal_length = environment
+            ? environment->water_plane[0] * environment->water_plane[0] +
+                  environment->water_plane[1] * environment->water_plane[1] +
+                  environment->water_plane[2] * environment->water_plane[2]
+            : 0.f;
+        const float light_length = environment
+            ? environment->light_direction[0] *
+                  environment->light_direction[0] +
+                  environment->light_direction[1] *
+                  environment->light_direction[1] +
+                  environment->light_direction[2] *
+                  environment->light_direction[2]
+            : 0.f;
+        if (!environment ||
+            !finiteValues(environment->water_plane, 4) ||
+            !finiteValues(&environment->eye_to_sky[0][0], 12) ||
+            !finiteValues(environment->haze_extinction, 4) ||
+            !finiteValues(environment->glow_max_y, 4) ||
+            !finiteValues(environment->haze_additive, 4) ||
+            !finiteValues(environment->haze_additive_glow, 4) ||
+            !finiteValues(environment->water_fog_color, 4) ||
+            !finiteValues(environment->light_direction, 4) ||
+            !finiteValues(environment->atmospheric, 4) ||
+            !finiteValues(environment->water_fog, 4) ||
+            water_normal_length <= 0.f || light_length <= 0.f ||
+            environment->atmospheric[0] < 0.f ||
+            environment->atmospheric[1] < 0.f ||
+            environment->atmospheric[3] < 0.f ||
+            environment->water_fog[0] <= 0.f ||
+            environment->water_fog[1] < 0.f ||
+            std::abs(environment->water_fog[2]) != 1.f)
+        {
+            setError(error,
+                     "Metal world pre-water alpha environment is invalid");
             return nullptr;
         }
     }
@@ -4289,6 +4388,71 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     encoder->draw(
                         ALMetalPrimitiveType::triangle, 0, 3, 1, error);
             }
+            continue;
+        }
+        if (batch.pre_water_alpha)
+        {
+            WorldShinyConstants world{};
+            std::memcpy(world.modelview_projection,
+                        batch.modelview_projection,
+                        sizeof(world.modelview_projection));
+            std::memcpy(world.modelview, batch.modelview,
+                        sizeof(world.modelview));
+            std::memcpy(world.normal_matrix, batch.normal_matrix,
+                        sizeof(world.normal_matrix));
+            std::memcpy(world.rigged_normal_matrix,
+                        batch.rigged_normal_matrix,
+                        sizeof(world.rigged_normal_matrix));
+            std::memcpy(world.texture_matrix, batch.texture_matrix,
+                        sizeof(world.texture_matrix));
+            world.config[0] = scene.reverse_z ? 1u : 0u;
+            world.config[1] = batch.texture_count;
+
+            const ALMetalDepthStencilState* depth = scene.reverse_z
+                ? mImpl->reverse_depth.get() : mImpl->forward_depth.get();
+            encoded =
+                encoder->setDepthStencilState(depth, error) &&
+                encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+                encoder->setCullMode(ALMetalCullMode::back, error) &&
+                encoder->setPipeline(
+                    *mImpl->pre_water_fullbright_pipelines
+                        [scene.hdr ? 1 : 0][rigged ? 1 : 0],
+                    error) &&
+                encoder->setVertexBuffer(
+                    0, *batch.vertices, batch.position_offset, error) &&
+                encoder->setVertexBuffer(
+                    1, *batch.vertices, batch.normal_offset, error) &&
+                encoder->setVertexBuffer(
+                    2, *batch.vertices, batch.texcoord_offset, error) &&
+                encoder->setVertexBuffer(
+                    3, *batch.vertices, batch.color_offset, error) &&
+                encoder->setVertexBytes(
+                    4, &world, sizeof(world), error) &&
+                encoder->setFragmentBytes(
+                    0, scene.alpha_environment,
+                    sizeof(*scene.alpha_environment), error);
+            if (encoded && rigged)
+            {
+                encoded =
+                    encoder->setVertexBuffer(
+                        5, *palette_buffers[index], 0, error) &&
+                    encoder->setVertexBuffer(
+                        6, *batch.vertices, batch.weight_offset, error) &&
+                    encoder->setVertexBytes(
+                        7, &batch.skin_joint_count,
+                        sizeof(batch.skin_joint_count), error);
+            }
+            for (std::size_t texture = 0;
+                 encoded && texture < batch.texture_count; ++texture)
+            {
+                encoded = encoder->setFragmentTexture(
+                    static_cast<std::uint32_t>(texture),
+                    batch.diffuse_textures[texture], error);
+            }
+            encoded = encoded && encoder->drawIndexed(
+                ALMetalPrimitiveType::triangle, batch.index_count,
+                batch.index_type, *batch.indices,
+                batch.index_offset, 1, error);
             continue;
         }
         if (batch.water_exclusion)

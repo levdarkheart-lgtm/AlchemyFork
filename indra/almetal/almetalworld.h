@@ -220,6 +220,8 @@ struct ALMetalWorldSimpleBatch
     bool impostor_emboss = false;
     bool water_exclusion = false;
     bool water_haze = false;
+    bool pre_water_alpha = false;
+    bool pre_water_fullbright = false;
     bool legacy_glow = false;
     bool pbr_glow = false;
     bool terrain = false;
@@ -404,12 +406,40 @@ struct ALMetalWorldWaterHaze
     bool above_water = false;
 };
 
+// The shared environment subset used by post-deferred transparent geometry.
+// These values are copied from the same live Environment block and loose sky
+// uniforms as the GLSL alpha programs; no settings are reinterpreted by the
+// renderer. The first native family is fogged fullbright pre-water alpha, and
+// the contract is deliberately broad enough for the lit alpha families that
+// follow it.
+struct alignas(16) ALMetalWorldAlphaEnvironment
+{
+    float water_plane[4]{};
+    // Three vec4-strided columns, matching EnvironmentUBOData::eyeToSky.
+    float eye_to_sky[3][4]{};
+    float haze_extinction[4]{};
+    // xyz = glow, w = maximum haze-layer height.
+    float glow_max_y[4]{};
+    float haze_additive[4]{};
+    float haze_additive_glow[4]{};
+    // RGB is already linear, copied from waterFogColorLinear.
+    float water_fog_color[4]{};
+    // xyz = active sun/moon direction in eye space.
+    float light_direction[4]{};
+    // x = density multiplier, y = distance multiplier,
+    // z = sun/moon glow factor, w = deferred sky HDR scale.
+    float atmospheric[4]{};
+    // x = waterFogKS, y = waterFogDensity,
+    // z = waterSign for this alpha pool.
+    float water_fog[4]{};
+};
+
 // The first ordered post-deferred world slice. The composed lighting color
 // and retained G-buffer depth/stencil attachment are copied into one
 // final-color target. Water-exclusion batches first rebuild EXCLUDE_BIT,
 // followed by opaque-forward fullbright, shiny and emboss replay, both
-// ordered glow families, and water haze. Blended alpha, water, atmospheric
-// haze and presentation remain later owners.
+// ordered glow families, water haze, and the exact supported pre-water alpha
+// families. Water, atmospheric haze and presentation remain later owners.
 struct ALMetalWorldOpaquePostDeferredScene
 {
     const ALMetalRenderTarget* gbuffer = nullptr;
@@ -421,6 +451,7 @@ struct ALMetalWorldOpaquePostDeferredScene
     const ALMetalWorldWaterExclusionSurface* water_exclusion_surface =
         nullptr;
     const ALMetalWorldWaterHaze* water_haze = nullptr;
+    const ALMetalWorldAlphaEnvironment* alpha_environment = nullptr;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     bool reverse_z = false;
