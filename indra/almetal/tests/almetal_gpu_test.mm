@@ -11822,7 +11822,7 @@ TEST_CASE("almetal: world FXAA matches every production quality preset", "[almet
     }
 }
 
-TEST_CASE("almetal: world SMAA edge stage matches color and predication rules", "[almetal]")
+TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "[almetal]")
 {
     @autoreleasepool
     {
@@ -12048,6 +12048,63 @@ TEST_CASE("almetal: world SMAA edge stage matches color and predication rules", 
         INFO(error);
         REQUIRE(predicated_output);
         check_output(*predicated_output, 1, true);
+
+        // Compose the already oracle-checked stages independently, then
+        // prove the production transaction publishes that exact final image.
+        ALMetalWorldSMAAWeightScene staged_weight_scene;
+        staged_weight_scene.edges = predicated_output.get();
+        staged_weight_scene.quality = predicated_scene.quality;
+        auto staged_weights = renderer->renderSMAABlendWeights(
+            staged_weight_scene, &error);
+        INFO(error);
+        REQUIRE(staged_weights);
+        ALMetalWorldSMAANeighborhoodScene staged_neighborhood_scene;
+        staged_neighborhood_scene.source = source.get();
+        staged_neighborhood_scene.weights = staged_weights.get();
+        auto staged_output = renderer->renderSMAANeighborhood(
+            staged_neighborhood_scene, &error);
+        INFO(error);
+        REQUIRE(staged_output);
+
+        ALMetalWorldSMAAScene complete_scene;
+        complete_scene.source = source.get();
+        complete_scene.predication_texture = predication.get();
+        complete_scene.quality = predicated_scene.quality;
+        complete_scene.predication_threshold =
+            predicated_scene.predication_threshold;
+        complete_scene.predication_scale =
+            predicated_scene.predication_scale;
+        complete_scene.predication_strength =
+            predicated_scene.predication_strength;
+        auto complete_output = renderer->renderSMAA(
+            complete_scene, &error);
+        INFO(error);
+        REQUIRE(complete_output);
+        CHECK(complete_output->descriptor().width == width);
+        CHECK(complete_output->descriptor().height == height);
+        CHECK(complete_output->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgb10a2_unorm);
+        std::array<std::uint32_t, width * height> staged_bytes{};
+        std::array<std::uint32_t, width * height> complete_bytes{};
+        REQUIRE(staged_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, staged_bytes.data(),
+            width * sizeof(std::uint32_t), &error));
+        INFO(error);
+        REQUIRE(complete_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, complete_bytes.data(),
+            width * sizeof(std::uint32_t), &error));
+        INFO(error);
+        CHECK(complete_bytes == staged_bytes);
+
+        ALMetalWorldSMAAScene invalid_complete;
+        error.clear();
+        CHECK_FALSE(renderer->renderSMAA(invalid_complete, &error));
+        CHECK(error == "Metal world SMAA edge scene is incomplete");
+        invalid_complete.source = source.get();
+        invalid_complete.quality = 4;
+        error.clear();
+        CHECK_FALSE(renderer->renderSMAA(invalid_complete, &error));
+        CHECK(error == "Metal world SMAA edge state is invalid");
 
         ALMetalWorldSMAAEdgeScene invalid;
         error.clear();

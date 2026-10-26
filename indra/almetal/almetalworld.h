@@ -712,6 +712,19 @@ struct ALMetalWorldSMAANeighborhoodScene
     const ALMetalRenderTarget* weights = nullptr;
 };
 
+// Complete production SMAA 1x transaction. No intermediate is published:
+// failure of any stage returns null so the caller can retain its existing
+// display owner.
+struct ALMetalWorldSMAAScene
+{
+    const ALMetalRenderTarget* source = nullptr;
+    const ALMetalTexture* predication_texture = nullptr;
+    std::uint32_t quality = 0;
+    float predication_threshold = 0.002f;
+    float predication_scale = 2.f;
+    float predication_strength = 0.4f;
+};
+
 // The production HDR bloom owner. It reproduces the world
 // resource plan's five resolution scales and 3..7-level transient pyramid:
 // soft-knee/legacy-alpha extract, outlier-aware first downsample, ordinary
@@ -1184,6 +1197,12 @@ public:
     // Production callers still own the transaction-level fallback decision.
     std::unique_ptr<ALMetalRenderTarget> renderSMAANeighborhood(
         const ALMetalWorldSMAANeighborhoodScene& scene,
+        std::string* error = nullptr);
+
+    // Execute edge detection, blending weights and neighborhood blending as
+    // one fail-closed publication transaction.
+    std::unique_ptr<ALMetalRenderTarget> renderSMAA(
+        const ALMetalWorldSMAAScene& scene,
         std::string* error = nullptr);
 
     // Meter and adapt one HDR world frame entirely on the Metal queue. The

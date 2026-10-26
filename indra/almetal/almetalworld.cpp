@@ -6780,6 +6780,39 @@ ALMetalWorldGBufferRenderer::renderSMAANeighborhood(
 }
 
 std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderSMAA(
+    const ALMetalWorldSMAAScene& scene,
+    std::string* error)
+{
+    ALMetalWorldSMAAEdgeScene edge_scene;
+    edge_scene.source = scene.source;
+    edge_scene.predication_texture = scene.predication_texture;
+    edge_scene.quality = scene.quality;
+    edge_scene.predication_threshold = scene.predication_threshold;
+    edge_scene.predication_scale = scene.predication_scale;
+    edge_scene.predication_strength = scene.predication_strength;
+    auto edges = renderSMAAEdges(edge_scene, error);
+    if (!edges)
+    {
+        return nullptr;
+    }
+
+    ALMetalWorldSMAAWeightScene weight_scene;
+    weight_scene.edges = edges.get();
+    weight_scene.quality = scene.quality;
+    auto weights = renderSMAABlendWeights(weight_scene, error);
+    if (!weights)
+    {
+        return nullptr;
+    }
+
+    ALMetalWorldSMAANeighborhoodScene neighborhood_scene;
+    neighborhood_scene.source = scene.source;
+    neighborhood_scene.weights = weights.get();
+    return renderSMAANeighborhood(neighborhood_scene, error);
+}
+
+std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderDisplaySample(
     const ALMetalRenderTarget& source,
     std::uint32_t width,

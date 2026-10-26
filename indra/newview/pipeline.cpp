@@ -380,6 +380,10 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         gSavedSettings, "RenderLensDirtStrength", 0.f);
     static LLCachedControl<F32> interval(
         gSavedSettings, "AlchemyScopeSampleInterval", 0.1f);
+    static LLCachedControl<U32> aa_quality(
+        gSavedSettings, "RenderFSAASamples", 0U);
+    static LLCachedControl<bool> use_smaa_sample(
+        gSavedSettings, "RenderSMAAUseSample", false);
 
     LLSettingsSky::ptr_t sky =
         LLEnvironment::instance().getCurrentSky();
@@ -387,6 +391,15 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         mScopeSampleTimer.getElapsedTimeF32() >= llmax(interval(), 0.f);
     const bool native_dynamic_exposure = !dynamic_exposure ||
         mMetalExposureHistoryReady || mMetalExposureLastWasFixed;
+    const U32 quality = std::clamp(aa_quality(), 0U, 3U);
+    const bool exact_antialiasing =
+        mResourceInputs.mFSAAType == 0 ||
+        (mResourceInputs.mFSAAType == 1 &&
+         gFXAAProgram[quality].isComplete()) ||
+        (mResourceInputs.mFSAAType == 2 && !use_smaa_sample &&
+         gSMAAEdgeDetectProgram[quality].isComplete() &&
+         gSMAABlendWeightsProgram[quality].isComplete() &&
+         gSMAANeighborhoodBlendProgram[quality].isComplete());
     return due && sScopeCapture && hdrEnabled() && isMainWorldPass() &&
         mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
         !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
@@ -396,9 +409,7 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         sky->getReflectionProbeAmbiance(auto_adjust) != 0.f &&
         chromatic_strength <= 0.f &&
         flare_strength <= 0.f && dirt_strength <= 0.f &&
-        (mResourceInputs.mFSAAType == 0 ||
-         (mResourceInputs.mFSAAType == 1 &&
-          gFXAAProgram[0].isComplete())) &&
+        exact_antialiasing &&
         !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) &&
         RenderBufferVisualization < 0;
 }
@@ -4266,22 +4277,24 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         display, &display_error);
                 if (display_target)
                 {
-                    // FXAA is the first post-colorCorrect owner. Keep SMAA
-                    // blocked by canCaptureMetalScopeSample, and fail closed
-                    // to GL/PBO if a demanded native FXAA pass cannot be
-                    // reproduced before CAS.
+                    // Antialiasing is the first post-colorCorrect owner.
+                    // Publish only a completed demanded transaction before
+                    // CAS; any failure retains the established GL/PBO path.
                     static LLCachedControl<U32> aa_quality(
                         gSavedSettings, "RenderFSAASamples", 0U);
+                    const U32 native_aa_quality =
+                        std::clamp(aa_quality(), 0U, 3U);
                     const bool wants_native_fxaa =
                         mResourceInputs.mFSAAType == 1 &&
-                        gFXAAProgram[0].isComplete();
-                    bool exact_fxaa = true;
+                        gFXAAProgram[native_aa_quality].isComplete();
+                    const bool wants_native_smaa =
+                        mResourceInputs.mFSAAType == 2;
+                    bool exact_antialiasing = true;
                     if (wants_native_fxaa)
                     {
                         std::string fxaa_error;
                         auto fxaa_target = capture.renderer->renderFXAA(
-                            *display_target,
-                            std::clamp(aa_quality(), 0U, 3U),
+                            *display_target, native_aa_quality,
                             &fxaa_error);
                         if (fxaa_target)
                         {
@@ -4289,10 +4302,57 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         }
                         else
                         {
-                            exact_fxaa = false;
+                            exact_antialiasing = false;
                             LL_WARNS("Metal")
                                 << "Native world FXAA retained GL: "
                                 << fxaa_error << LL_ENDL;
+                        }
+                    }
+                    else if (wants_native_smaa)
+                    {
+                        static LLCachedControl<F32> pred_threshold(
+                            gSavedSettings,
+                            "RenderSMAAPredicationThreshold", 0.002f);
+                        static LLCachedControl<F32> pred_scale(
+                            gSavedSettings,
+                            "RenderSMAAPredicationScale", 2.f);
+                        static LLCachedControl<F32> pred_strength(
+                            gSavedSettings,
+                            "RenderSMAAPredicationStrength", 0.4f);
+                        const bool use_predication =
+                            shaderInputs().mLocal.mSMAAPredication;
+                        ALMetalWorldSMAAScene smaa;
+                        smaa.source = display_target.get();
+                        smaa.predication_texture = use_predication &&
+                                capture.target
+                            ? capture.target->depthStencilTexture() : nullptr;
+                        smaa.quality = native_aa_quality;
+                        smaa.predication_threshold = pred_threshold();
+                        smaa.predication_scale = llclamp(
+                            static_cast<F32>(pred_scale()), 1.f, 5.f);
+                        smaa.predication_strength = llclamp(
+                            static_cast<F32>(pred_strength()), 0.f, 1.f);
+                        std::string smaa_error;
+                        auto smaa_target = use_predication &&
+                                !smaa.predication_texture
+                            ? nullptr
+                            : capture.renderer->renderSMAA(
+                                smaa, &smaa_error);
+                        if (smaa_target)
+                        {
+                            display_target = std::move(smaa_target);
+                        }
+                        else
+                        {
+                            exact_antialiasing = false;
+                            if (smaa_error.empty())
+                            {
+                                smaa_error =
+                                    "matching predication depth is absent";
+                            }
+                            LL_WARNS("Metal")
+                                << "Native world SMAA retained GL: "
+                                << smaa_error << LL_ENDL;
                         }
                     }
 
@@ -4304,8 +4364,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         gSavedSettings, "RenderCASSharpness", 0.4f);
                     const bool wants_native_cas =
                         cas_sharpness() > 0.f && gCASProgram.isComplete();
-                    bool exact_cas = exact_fxaa;
-                    if (exact_fxaa && wants_native_cas)
+                    bool exact_cas = exact_antialiasing;
+                    if (exact_antialiasing && wants_native_cas)
                     {
                         std::string cas_error;
                         auto cas_target = capture.renderer->renderCAS(
