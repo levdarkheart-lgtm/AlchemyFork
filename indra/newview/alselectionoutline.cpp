@@ -392,16 +392,17 @@ void ALSelectionOutline::render(const View& view)
     gGL.flush();
 
 #if LL_DARWIN
-    const bool native_edges = edges && !wireframe &&
-        view.mContrast != CONTRAST_SHIFT;
+    const bool native_edges = edges && !wireframe;
     if (ids && gGL.hasMetalUITextureCapture() &&
         !drawMetalIds(view, width, height,
-                      native_edges && contour, native_edges && glow))
+                      native_edges && contour, native_edges && glow,
+                      native_edges && contour &&
+                          view.mContrast == CONTRAST_SHIFT))
     {
         gGL.invalidateMetalUITextureCapture(
             native_edges
                 ? "an incomplete native selection edge transaction"
-                : "selection wireframe, contrast-shift or no edge pass");
+                : "selection wireframe or no edge pass");
     }
 #endif
 
@@ -807,7 +808,7 @@ void ALSelectionOutline::drawIds(const View& view, S32 width, S32 height)
 #if LL_DARWIN
 bool ALSelectionOutline::drawMetalIds(
     const View& view, S32 width, S32 height,
-    bool contour_enabled, bool glow_enabled)
+    bool contour_enabled, bool glow_enabled, bool contrast_shift)
 {
     LLMatrix4a inverse_projection;
     if (!inverse_projection.setInverse(view.mProjection))
@@ -1002,6 +1003,7 @@ bool ALSelectionOutline::drawMetalIds(
     contour.glow_brightness = glow_enabled
         ? view.mGlowBrightness : 0.f;
     contour.contour_enabled = contour_enabled;
+    contour.contrast_shift = contrast_shift;
     contour.reverse_z = LLRender::sReverseZ;
     return gGL.drawMetalSelectionContour(contour);
 }

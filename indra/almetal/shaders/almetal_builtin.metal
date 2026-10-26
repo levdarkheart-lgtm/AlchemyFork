@@ -15639,9 +15639,9 @@ fragment ALMetalSelectionIDOutput almetal_selection_id_fragment(
 }
 
 // The optimized selection edge transaction mirrors selectionJumpF.glsl,
-// selectionTileF.glsl, selectionGlowReachF.glsl, selectionGlowRowF.glsl and
-// the non-backdrop subset of selectionOutlineF.glsl. Its private id/depth
-// target and intermediates never leave the GPU.
+// selectionTileF.glsl, selectionGlowReachF.glsl, selectionGlowRowF.glsl,
+// selectionBackdropMaskF.glsl and selectionOutlineF.glsl. Its private
+// id/depth target and intermediates never leave the GPU.
 struct ALMetalSelectionContourConstants
 {
     float4x4 inverse_projection;
@@ -15649,7 +15649,7 @@ struct ALMetalSelectionContourConstants
     uint4 target;
     // x = contour width, y = inner width, z = rim width, w = reverse-Z.
     uint4 widths;
-    // x = glow radius, y = contour enabled.
+    // x = glow radius, y = contour enabled, z = contrast shift enabled.
     uint4 glow;
     // x = glow brightness.
     float4 glow_values;
@@ -15837,6 +15837,35 @@ fragment ALMetalSelectionTileOutput almetal_selection_tile_fragment(
         glow ? 1.0 : 0.0);
     output.nearest = nearest;
     return output;
+}
+
+fragment float4 almetal_selection_backdrop_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float, access::read> current_map [[texture(0)]],
+    texture2d<float, access::read> id_map [[texture(1)]],
+    texture2d<float, access::read> depth_map [[texture(2)]],
+    constant ALMetalSelectionContourConstants& constants [[buffer(0)]])
+{
+    const int2 size = int2(constants.target.xy);
+    const int2 origin = int2(input.position.xy) * 2;
+    const float cleared_depth = constants.widths.w != 0u ? 0.0 : 1.0;
+    float3 color = float3(0.0);
+    bool selected = false;
+    for (int y = 0; y < 2; ++y)
+    {
+        for (int x = 0; x < 2; ++x)
+        {
+            const int2 position = min(origin + int2(x, y), size - int2(1));
+            const float4 texel = id_map.read(uint2(position));
+            color += current_map.read(uint2(position)).rgb;
+            selected = selected ||
+                (almetal_selection_decode_id(texel) != 0u &&
+                 !almetal_selection_is_glow(texel) &&
+                 almetal_selection_is_visible(texel) &&
+                 depth_map.read(uint2(position)).r != cleared_depth);
+        }
+    }
+    return float4(color * 0.25, selected ? 0.0 : 1.0);
 }
 
 fragment float4 almetal_selection_glow_reach_fragment(
@@ -16056,6 +16085,133 @@ static float3 almetal_selection_rim_color(float3 line)
     return luminance > 0.18 ? float3(0.0) : float3(1.0);
 }
 
+static float3 almetal_selection_linear_to_oklab(float3 color)
+{
+    float3 lms = float3(
+        0.4122214708 * color.r + 0.5363325363 * color.g +
+            0.0514459929 * color.b,
+        0.2119034982 * color.r + 0.6806995451 * color.g +
+            0.1073969566 * color.b,
+        0.0883024619 * color.r + 0.2817188376 * color.g +
+            0.6299787005 * color.b);
+    lms = sign(lms) * pow(abs(lms), float3(1.0 / 3.0));
+    return float3(
+        0.2104542553 * lms.x + 0.7936177850 * lms.y -
+            0.0040720468 * lms.z,
+        1.9779984951 * lms.x - 2.4285922050 * lms.y +
+            0.4505937099 * lms.z,
+        0.0259040371 * lms.x + 0.7827717662 * lms.y -
+            0.8086757660 * lms.z);
+}
+
+static float3 almetal_selection_oklab_to_linear(float3 lab)
+{
+    float3 lms = float3(
+        lab.x + 0.3963377774 * lab.y + 0.2158037573 * lab.z,
+        lab.x - 0.1055613458 * lab.y - 0.0638541728 * lab.z,
+        lab.x - 0.0894841775 * lab.y - 1.2914855480 * lab.z);
+    lms = lms * lms * lms;
+    return float3(
+        4.0767416621 * lms.x - 1.2684380046 * lms.y -
+            0.0041960863 * lms.z,
+        -3.3077115913 * lms.x + 2.6097574011 * lms.y -
+            0.7034186147 * lms.z,
+        0.2309699292 * lms.x - 0.3413193965 * lms.y +
+            1.7076147010 * lms.z);
+}
+
+static float almetal_selection_contrast_lightness(float line, float back)
+{
+    const float turn = clamp(line, 0.3, 0.7);
+    if (back < turn)
+    {
+        return max(line, back + 0.3);
+    }
+    return line <= back - 0.3
+        ? line : max(back - 0.3 - (1.0 - line), 0.0);
+}
+
+static float3 almetal_selection_with_lightness(
+    float3 color, float lightness)
+{
+    const float2 ab = almetal_selection_linear_to_oklab(
+        almetal_srgb_to_linear(color)).yz;
+    float kept = 1.0;
+    float3 rgb = almetal_selection_oklab_to_linear(
+        float3(lightness, ab));
+    if (any(rgb < float3(0.0)) || any(rgb > float3(1.0)))
+    {
+        float low = 0.0;
+        float high = 1.0;
+        for (int iteration = 0; iteration < 10; ++iteration)
+        {
+            const float amount = 0.5 * (low + high);
+            rgb = almetal_selection_oklab_to_linear(
+                float3(lightness, ab * amount));
+            if (any(rgb < float3(0.0)) || any(rgb > float3(1.0)))
+            {
+                high = amount;
+            }
+            else
+            {
+                low = amount;
+            }
+        }
+        kept = low;
+    }
+    return almetal_linear_to_srgb(clamp(
+        almetal_selection_oklab_to_linear(
+            float3(lightness, ab * kept)), 0.0, 1.0));
+}
+
+static float4 almetal_selection_backdrop_color(
+    int2 position,
+    texture2d<float, access::read> backdrop,
+    constant ALMetalSelectionContourConstants& constants)
+{
+    if (constants.glow.z == 0u)
+    {
+        return float4(0.0);
+    }
+    const int2 last = int2(
+        backdrop.get_width(), backdrop.get_height()) - int2(1);
+    const int2 center = position / 2;
+    float3 sum = float3(0.0);
+    float weight = 0.0;
+    for (int dy = -2; dy < 2; ++dy)
+    {
+        for (int dx = -2; dx < 2; ++dx)
+        {
+            const float4 texel = backdrop.read(uint2(clamp(
+                center + int2(dx, dy), int2(0), last)));
+            sum += almetal_srgb_to_linear(texel.rgb) * texel.a;
+            weight += texel.a;
+        }
+    }
+    return weight > 0.0
+        ? float4(almetal_selection_linear_to_oklab(sum / weight), 1.0)
+        : float4(0.0);
+}
+
+static float3 almetal_selection_contrast_color(
+    float3 color, float4 back)
+{
+    if (back.w <= 0.0)
+    {
+        return color;
+    }
+    const float3 lab = almetal_selection_linear_to_oklab(
+        almetal_srgb_to_linear(color));
+    if (length(lab - back.xyz) >= 0.3)
+    {
+        return color;
+    }
+    const float lightness = almetal_selection_contrast_lightness(
+        lab.x, back.x);
+    return lightness == lab.x
+        ? color : almetal_selection_with_lightness(color, lightness);
+}
+
 static float4 almetal_selection_palette_color(
     uint id, bool visible,
     texture2d<float, access::read> palette)
@@ -16092,6 +16248,7 @@ fragment float4 almetal_selection_contour_fragment(
     texture2d<float, access::read> palette [[texture(5)]],
     texture2d<float, access::read> glow_reach_map [[texture(6)]],
     texture2d<float, access::read> glow_row_map [[texture(7)]],
+    texture2d<float, access::read> backdrop_map [[texture(8)]],
     constant ALMetalSelectionContourConstants& constants [[buffer(0)]])
 {
     const int2 size = int2(constants.target.xy);
@@ -16283,6 +16440,12 @@ fragment float4 almetal_selection_contour_fragment(
         }
     }
 
+    const float4 back = contour_enabled &&
+        (inner_distance <= float(inner_reach) || top_id != 0u)
+        ? almetal_selection_backdrop_color(
+              position, backdrop_map, constants)
+        : float4(0.0);
+
     float3 rgb = float3(0.0);
     float alpha = 0.0;
     if (glow_id != 0u)
@@ -16295,30 +16458,40 @@ fragment float4 almetal_selection_contour_fragment(
     }
     if (contour_enabled && own_drawn && !own_glows)
     {
-        const float4 color = almetal_selection_palette_color(
+        float4 color = almetal_selection_palette_color(
             own_id, almetal_selection_is_visible(own), palette);
         const float inner_alpha = color.a * 0.8 *
             almetal_selection_coverage(
                 inner_distance, float(constants.widths.y));
         if (inner_alpha > 0.0)
         {
-            rgb = color.rgb * inner_alpha;
-            alpha = inner_alpha;
+            color.rgb = almetal_selection_contrast_color(color.rgb, back);
+            rgb = color.rgb * inner_alpha + rgb * (1.0 - inner_alpha);
+            alpha = inner_alpha + alpha * (1.0 - inner_alpha);
         }
     }
     if (contour_enabled && top_id != 0u)
     {
-        const float4 top_layer = almetal_selection_contour_layer(
-            almetal_selection_palette_color(
-                top_id, top_visible, palette),
-            top_distance, constants);
-        float4 near_layer = float4(0.0);
-        if (near_id != top_id)
+        const float outer = float(constants.widths.x + constants.widths.z);
+        float4 top_color = almetal_selection_palette_color(
+            top_id, top_visible, palette);
+        if (almetal_selection_coverage(top_distance, outer) > 0.0)
         {
+            top_color.rgb = almetal_selection_contrast_color(
+                top_color.rgb, back);
+        }
+        const float4 top_layer = almetal_selection_contour_layer(
+            top_color, top_distance, constants);
+        float4 near_layer = float4(0.0);
+        if (near_id != top_id &&
+            almetal_selection_coverage(near_distance, outer) > 0.0)
+        {
+            float4 near_color = almetal_selection_palette_color(
+                near_id, near_visible, palette);
+            near_color.rgb = almetal_selection_contrast_color(
+                near_color.rgb, back);
             near_layer = almetal_selection_contour_layer(
-                almetal_selection_palette_color(
-                    near_id, near_visible, palette),
-                near_distance, constants);
+                near_color, near_distance, constants);
         }
         const float3 contour_rgb = top_layer.rgb +
             near_layer.rgb * (1.0 - top_layer.a);

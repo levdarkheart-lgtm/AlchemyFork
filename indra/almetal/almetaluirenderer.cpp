@@ -210,6 +210,7 @@ struct ALMetalUIRenderer::Impl
     std::unique_ptr<ALMetalRenderPipeline> selection_tile_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> selection_glow_reach_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> selection_glow_row_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> selection_backdrop_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> selection_contour_pipeline;
     ALMetalPixelFormat selection_contour_depth_format =
         ALMetalPixelFormat::invalid;
@@ -217,6 +218,7 @@ struct ALMetalUIRenderer::Impl
     std::unique_ptr<ALMetalRenderTarget> selection_tile_target;
     std::unique_ptr<ALMetalRenderTarget> selection_glow_reach_target;
     std::unique_ptr<ALMetalRenderTarget> selection_glow_row_target;
+    std::unique_ptr<ALMetalRenderTarget> selection_backdrop_target;
     std::unique_ptr<ALMetalTexture> selection_palette;
     std::vector<std::unique_ptr<ALMetalBuffer>> selection_frame_palettes;
     std::unique_ptr<ALMetalRenderTarget> target;
@@ -251,6 +253,7 @@ struct ALMetalUIRenderer::Impl
             (selection_tile_pipeline ? 1u : 0u) +
             (selection_glow_reach_pipeline ? 1u : 0u) +
             (selection_glow_row_pipeline ? 1u : 0u) +
+            (selection_backdrop_pipeline ? 1u : 0u) +
             (selection_contour_pipeline ? 1u : 0u);
     }
 
@@ -822,10 +825,34 @@ struct ALMetalUIRenderer::Impl
         return true;
     }
 
+    bool prepareSelectionBackdrop(std::string* error)
+    {
+        if (selection_backdrop_pipeline)
+        {
+            return true;
+        }
+
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = library.get();
+        descriptor.vertex_function = "almetal_resample_vertex";
+        descriptor.fragment_function =
+            "almetal_selection_backdrop_fragment";
+        descriptor.colors[0].format = ALMetalPixelFormat::bgra8_unorm;
+        descriptor.label = "Alchemy selection contrast backdrop pipeline";
+        selection_backdrop_pipeline = ALMetalRenderPipeline::create(
+            *device, descriptor, error);
+        if (!selection_backdrop_pipeline)
+        {
+            return false;
+        }
+        refreshPipelineCount();
+        return true;
+    }
+
     bool prepareSelectionContourTargets(
         std::uint32_t width, std::uint32_t height,
         std::uint32_t palette_width, std::uint32_t palette_height,
-        bool glow,
+        bool glow, bool contrast,
         std::string* error)
     {
         if (!selection_jump_target ||
@@ -931,6 +958,29 @@ struct ALMetalUIRenderer::Impl
             selection_glow_row_target = ALMetalRenderTarget::create(
                 *device, descriptor, error);
             if (!selection_glow_row_target)
+            {
+                return false;
+            }
+        }
+        const std::uint32_t backdrop_width = std::max(width / 2u, 1u);
+        const std::uint32_t backdrop_height = std::max(height / 2u, 1u);
+        if (contrast &&
+            (!selection_backdrop_target ||
+             selection_backdrop_target->descriptor().width != backdrop_width ||
+             selection_backdrop_target->descriptor().height != backdrop_height))
+        {
+            ALMetalRenderTargetDescriptor descriptor;
+            descriptor.width = backdrop_width;
+            descriptor.height = backdrop_height;
+            descriptor.color_attachment_count = 1;
+            descriptor.colors[0].format = ALMetalPixelFormat::bgra8_unorm;
+            descriptor.colors[0].shader_read = true;
+            descriptor.colors[0].label =
+                "Alchemy selection contrast backdrop";
+            descriptor.label = "Alchemy selection contrast backdrop target";
+            selection_backdrop_target = ALMetalRenderTarget::create(
+                *device, descriptor, error);
+            if (!selection_backdrop_target)
             {
                 return false;
             }
@@ -1195,6 +1245,7 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
         !library->hasFunction("almetal_selection_tile_fragment") ||
         !library->hasFunction("almetal_selection_glow_reach_fragment") ||
         !library->hasFunction("almetal_selection_glow_row_fragment") ||
+        !library->hasFunction("almetal_selection_backdrop_fragment") ||
         !library->hasFunction("almetal_selection_contour_fragment"))
     {
         setError(error, "Built-in Metal library is missing production UI functions");
@@ -1955,6 +2006,7 @@ bool ALMetalUIRenderer::drawSelectionContour(
     std::string* error)
 {
     const bool glow = scene.glow_radius != 0u;
+    const bool contrast = scene.contrast_shift && scene.contour_enabled;
     const bool palette_size_valid =
         scene.palette_width == 256u && scene.palette_height >= 2u &&
         scene.palette_height % 2u == 0u &&
@@ -1992,9 +2044,11 @@ bool ALMetalUIRenderer::drawSelectionContour(
     }
     if (!mImpl->prepareSelectionContour(error) ||
         (glow && !mImpl->prepareSelectionGlow(error)) ||
+        (contrast && !mImpl->prepareSelectionBackdrop(error)) ||
         !mImpl->prepareSelectionContourTargets(
             scene.width, scene.height,
-            scene.palette_width, scene.palette_height, glow, error))
+            scene.palette_width, scene.palette_height,
+            glow, contrast, error))
     {
         return false;
     }
@@ -2028,7 +2082,7 @@ bool ALMetalUIRenderer::drawSelectionContour(
     constants.widths[3] = scene.reverse_z ? 1u : 0u;
     constants.glow[0] = scene.glow_radius;
     constants.glow[1] = scene.contour_enabled ? 1u : 0u;
-    constants.glow[2] = 0u;
+    constants.glow[2] = contrast ? 1u : 0u;
     constants.glow[3] = 0u;
     constants.glow_values[0] = scene.glow_brightness;
     constants.glow_values[1] = 0.f;
@@ -2186,6 +2240,51 @@ bool ALMetalUIRenderer::drawSelectionContour(
         }
     }
 
+    if (encoded && contrast)
+    {
+        ALMetalRenderPassConfig backdrop_config;
+        backdrop_config.colors[0].load = ALMetalLoadAction::clear;
+        backdrop_config.colors[0].store = ALMetalStoreAction::store;
+        backdrop_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+        auto backdrop_pass =
+            mImpl->selection_backdrop_target->makeRenderPass(
+                backdrop_config, error);
+        auto backdrop_encoder = backdrop_pass
+            ? ALMetalRenderEncoder::begin(
+                  mImpl->frame->commandBuffer(), *backdrop_pass,
+                  "Alchemy selection contrast backdrop encoder", error)
+            : nullptr;
+        const ALMetalViewport backdrop_viewport{
+            0.0, 0.0,
+            static_cast<double>(
+                mImpl->selection_backdrop_target->descriptor().width),
+            static_cast<double>(
+                mImpl->selection_backdrop_target->descriptor().height),
+            0.0, 1.0};
+        const ALMetalScissorRect backdrop_scissor{
+            0, 0,
+            mImpl->selection_backdrop_target->descriptor().width,
+            mImpl->selection_backdrop_target->descriptor().height};
+        encoded = backdrop_encoder &&
+            backdrop_encoder->setPipeline(
+                *mImpl->selection_backdrop_pipeline, error) &&
+            backdrop_encoder->setFragmentTexture(
+                0, mImpl->target->colorTexture(0), error) &&
+            backdrop_encoder->setFragmentTexture(1, id_map, error) &&
+            backdrop_encoder->setFragmentTexture(2, depth_map, error) &&
+            backdrop_encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            backdrop_encoder->setViewport(backdrop_viewport, error) &&
+            backdrop_encoder->setScissor(backdrop_scissor, error) &&
+            backdrop_encoder->setCullMode(ALMetalCullMode::none, error) &&
+            backdrop_encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+        if (backdrop_encoder)
+        {
+            encoded = backdrop_encoder->end(error) && encoded;
+        }
+    }
+
     std::string resume_error;
     const bool resumed = mImpl->resumeMainPass(&resume_error);
     if (!resumed)
@@ -2230,6 +2329,11 @@ bool ALMetalUIRenderer::drawSelectionContour(
                 ? mImpl->selection_glow_row_target->colorTexture(0)
                 : mImpl->selection_jump_target->colorTexture(0),
             error) &&
+        contour_encoder.setFragmentTexture(
+            8, contrast
+                ? mImpl->selection_backdrop_target->colorTexture(0)
+                : mImpl->selection_tile_target->colorTexture(0),
+            error) &&
         contour_encoder.setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         contour_encoder.setViewport(full_viewport, error) &&
@@ -2241,8 +2345,10 @@ bool ALMetalUIRenderer::drawSelectionContour(
     {
         return false;
     }
-    mImpl->frame_batches += glow ? 5u : 3u;
-    mImpl->frame_vertices += glow ? 15u : 9u;
+    mImpl->frame_batches += 3u + (glow ? 2u : 0u) +
+        (contrast ? 1u : 0u);
+    mImpl->frame_vertices += 9u + (glow ? 6u : 0u) +
+        (contrast ? 3u : 0u);
     return true;
 }
 

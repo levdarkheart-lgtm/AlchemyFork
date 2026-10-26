@@ -746,7 +746,7 @@ private:
     // through the optimized screen-space passes. False keeps GL authoritative
     // and prevents publication of a partial transaction.
     bool drawMetalIds(const View& view, S32 width, S32 height,
-                      bool contour, bool glow);
+                      bool contour, bool glow, bool contrast_shift);
 #endif
 
     // The wireframe of what was added with one, over the bound framebuffer under the outline: the world's visible

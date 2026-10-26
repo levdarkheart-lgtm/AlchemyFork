@@ -1089,7 +1089,9 @@ bool LLRender::drawMetalSelectionContour(
             << error << LL_ENDL;
         return false;
     }
-    mMetalUICaptureBatches += 3u;
+    mMetalUICaptureBatches += 3u +
+        (scene.glow_radius != 0u ? 2u : 0u) +
+        (scene.contrast_shift && scene.contour_enabled ? 1u : 0u);
     return true;
 }
 

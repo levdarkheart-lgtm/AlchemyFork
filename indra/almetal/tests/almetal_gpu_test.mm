@@ -845,6 +845,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_selection_tile_fragment",
             "almetal_selection_glow_reach_fragment",
             "almetal_selection_glow_row_fragment",
+            "almetal_selection_backdrop_fragment",
             "almetal_selection_contour_fragment",
             "almetal_alpha_mask_fragment",
             "almetal_alpha_mask_solid_fragment",
@@ -20922,6 +20923,83 @@ TEST_CASE("almetal: selection contour consumes ids and resumes the ordered UI ta
         CHECK(glow_stats.vertices == 42);
         CHECK(glow_stats.pipeline_states == 8);
         CHECK(glow_stats.sampler_states == 1);
+
+        // A third transaction draws the selected surface into the current
+        // ordered target before the ID pass. The half-resolution backdrop
+        // must exclude that surface and shift a same-grey contour away from
+        // the surrounding grey while leaving both surface and far backdrop.
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            background_pixels[pixel * 4 + 0] = 128;
+            background_pixels[pixel * 4 + 1] = 128;
+            background_pixels[pixel * 4 + 2] = 128;
+            background_pixels[pixel * 4 + 3] = 255;
+        }
+        auto contrast_upload = device->makeCommandBuffer(
+            "Alchemy selection contrast background upload", &error);
+        REQUIRE(contrast_upload);
+        REQUIRE(background->upload(
+            *contrast_upload, 0, 0, {}, background_pixels.data(),
+            width * 4, &error));
+        REQUIRE(contrast_upload->commitAndWait(&error));
+        set_palette(0x1234, true, {128, 128, 128, 255});
+
+        REQUIRE(renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(renderer->setFrameDepth(
+            depth->depthStencilTexture(), &error));
+        ALMetalUIBatch selected_surface = ui;
+        selected_surface.shader = ALMetalUIShader::solid_color;
+        selected_surface.texture = background.get();
+        selected_surface.solid_color[0] = 1.f;
+        selected_surface.solid_color[1] = 1.f;
+        selected_surface.solid_color[2] = 1.f;
+        selected_surface.solid_color[3] = 1.f;
+        error.clear();
+        const bool selected_surface_drawn =
+            renderer->draw(selected_surface, &error);
+        INFO(error);
+        REQUIRE(selected_surface_drawn);
+        batches[0].priority = 2;
+        REQUIRE(renderer->drawSelectionIDs(scene, &error));
+        contour.contour_enabled = true;
+        contour.contrast_shift = true;
+        contour.glow_radius = 0;
+        contour.glow_brightness = 0.f;
+        REQUIRE(renderer->drawSelectionContour(contour, &error));
+        REQUIRE(renderer->endFrame(&error));
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+
+        std::array<std::uint8_t, width * height * 4> contrast_output{};
+        REQUIRE(renderer->outputTexture()->readback(
+            *device, 0, 0, {}, contrast_output.data(), width * 4, &error));
+        INFO(error);
+        std::size_t shifted_pixels = 0;
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            const std::size_t offset = pixel * 4u;
+            CHECK(contrast_output[offset + 3] == 255);
+            if (contrast_output[offset + 0] < 32 &&
+                contrast_output[offset + 1] < 32 &&
+                contrast_output[offset + 2] < 32)
+            {
+                ++shifted_pixels;
+            }
+        }
+        CHECK(shifted_pixels > 0);
+        CHECK(contrast_output[0] == 128);
+        CHECK(contrast_output[1] == 128);
+        CHECK(contrast_output[2] == 128);
+        CHECK(contrast_output[ui_pixel + 0] == 255);
+        CHECK(contrast_output[ui_pixel + 1] == 255);
+        CHECK(contrast_output[ui_pixel + 2] == 255);
+
+        const ALMetalUIRendererStats contrast_stats = renderer->stats();
+        CHECK(contrast_stats.frames == 3);
+        CHECK(contrast_stats.batches == 20);
+        CHECK(contrast_stats.vertices == 60);
+        CHECK(contrast_stats.pipeline_states == 10);
+        CHECK(contrast_stats.sampler_states == 1);
     }
 }
 
