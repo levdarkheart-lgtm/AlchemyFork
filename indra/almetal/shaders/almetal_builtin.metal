@@ -17146,6 +17146,15 @@ fragment float4 almetal_ui_vertex_color_fragment(
     return input.color;
 }
 
+fragment float4 almetal_uniform_color_fragment(
+    constant ALMetalSolidFragmentConstants& constants [[buffer(0)]])
+{
+    // interface/debugF.glsl ignores the streamed vertex colour and emits the
+    // current diffuse-color uniform. The position-only debug vertex contract
+    // is otherwise identical to the established immediate-mode transform.
+    return max(constants.color, float4(0.0));
+}
+
 fragment float4 almetal_alpha_mask_fragment(
     ALMetalUIVaryings input [[stage_in]],
     texture2d<float> diffuse_map [[texture(0)]],

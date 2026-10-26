@@ -834,6 +834,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_ui_vertex",
             "almetal_ui_fragment",
             "almetal_ui_vertex_color_fragment",
+            "almetal_uniform_color_fragment",
             "almetal_hud_fullbright_vertex",
             "almetal_hud_fullbright_fragment",
             "almetal_hud_pbr_alpha_vertex",
@@ -19386,6 +19387,34 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         INFO(error);
         CHECK(pixels[center + 0] == 16);  // BGRA target
         CHECK(pixels[center + 1] == 32);
+        CHECK(pixels[center + 2] == 255);
+        CHECK(pixels[center + 3] == 255);
+
+        // interface/debugF.glsl uses the current diffuse-color uniform and
+        // ignores both a sampled texture and streamed vertex colour. This is
+        // the immediate-mode contract used by rotation manipulators and
+        // position-only diagnostic overlays in the ordered world/UI pass.
+        auto uniform_color_renderer = ALMetalUIRenderer::create(
+            *device, *scheduler, &error);
+        INFO(error);
+        REQUIRE(uniform_color_renderer);
+        batch.shader = ALMetalUIShader::uniform_color;
+        batch.texture = nullptr;
+        batch.solid_color[0] = 1.f;
+        batch.solid_color[1] = 0.5f;
+        batch.solid_color[2] = 0.25f;
+        batch.solid_color[3] = 1.f;
+        REQUIRE(uniform_color_renderer->draw(batch, &error));
+        REQUIRE(uniform_color_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        pixels.fill(0);
+        REQUIRE(uniform_color_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(pixels[center + 0]) - 64) <= 1);
+        CHECK(std::abs(static_cast<int>(pixels[center + 1]) - 128) <= 1);
         CHECK(pixels[center + 2] == 255);
         CHECK(pixels[center + 3] == 255);
         batch.shader = ALMetalUIShader::textured;

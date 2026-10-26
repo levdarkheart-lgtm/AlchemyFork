@@ -802,7 +802,8 @@ bool LLRender::beginMetalUITextureCapture(
     ALMetalPixelFormat format,
     LLGLSLShader* alpha_mask_shader,
     const ALMetalTexture* background,
-    const ALMetalTexture* depth)
+    const ALMetalTexture* depth,
+    LLGLSLShader* uniform_color_shader)
 {
     if (!mMetalDevice || !mMetalFrames || !alpha_mask_shader ||
         mMetalUICaptureRenderer)
@@ -833,6 +834,7 @@ bool LLRender::beginMetalUITextureCapture(
     }
     mMetalUICaptureBatches = 0;
     mMetalUICaptureAlphaShader = alpha_mask_shader;
+    mMetalUICaptureUniformColorShader = uniform_color_shader;
     mMetalUICaptureComplete = true;
     mMetalUICaptureUsesDepth = depth != nullptr;
     if (depth)
@@ -1158,6 +1160,7 @@ std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
     mMetalUICaptureRenderer.reset();
     mMetalUICaptureBatches = 0;
     mMetalUICaptureAlphaShader = nullptr;
+    mMetalUICaptureUniformColorShader = nullptr;
     mMetalUICaptureComplete = false;
     mMetalUICaptureUsesDepth = false;
     mMetalUICaptureDepthWidth = 0;
@@ -2358,6 +2361,11 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     else if (shader == &gSolidColorProgram)
     {
         metal_shader = ALMetalUIShader::solid_color;
+    }
+    else if (capture && mMetalUICaptureUniformColorShader &&
+             shader == mMetalUICaptureUniformColorShader)
+    {
+        metal_shader = ALMetalUIShader::uniform_color;
     }
     else if (capture && shader == mMetalUICaptureAlphaShader)
     {

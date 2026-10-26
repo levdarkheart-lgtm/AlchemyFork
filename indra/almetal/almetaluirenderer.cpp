@@ -98,7 +98,8 @@ namespace
 
     const char* vertexFunction(ALMetalUIShader shader)
     {
-        return shader == ALMetalUIShader::solid_color
+        return shader == ALMetalUIShader::solid_color ||
+                       shader == ALMetalUIShader::uniform_color
             ? "almetal_solid_vertex" : "almetal_ui_vertex";
     }
 
@@ -108,6 +109,7 @@ namespace
         {
             case ALMetalUIShader::textured:            return "almetal_ui_fragment";
             case ALMetalUIShader::vertex_color:        return "almetal_ui_vertex_color_fragment";
+            case ALMetalUIShader::uniform_color:       return "almetal_uniform_color_fragment";
             case ALMetalUIShader::solid_color:         return "almetal_solid_fragment";
             case ALMetalUIShader::alpha_mask_textured: return "almetal_alpha_mask_fragment";
             case ALMetalUIShader::alpha_mask_solid:    return "almetal_alpha_mask_solid_fragment";
@@ -1606,7 +1608,8 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
     {
         // The fragment consumes only the interpolated vertex colour.
     }
-    else if (batch.shader == ALMetalUIShader::solid_color)
+    else if (batch.shader == ALMetalUIShader::solid_color ||
+             batch.shader == ALMetalUIShader::uniform_color)
     {
         if (!encoder.setFragmentBytes(0, batch.solid_color,
                                       sizeof(batch.solid_color), error))

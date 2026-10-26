@@ -290,7 +290,8 @@ public:
         ALMetalPixelFormat format,
         LLGLSLShader* alpha_mask_shader,
         const ALMetalTexture* background = nullptr,
-        const ALMetalTexture* depth = nullptr);
+        const ALMetalTexture* depth = nullptr,
+        LLGLSLShader* uniform_color_shader = nullptr);
     // Mirror GL's localized HUD depth bracket into an active retained-depth
     // capture. Coordinates are GL lower-left target pixels and are clipped to
     // the retained target before conversion to Metal's upper-left scissor.
@@ -892,6 +893,7 @@ private:
     U32 mMetalUICaptureDepthWidth = 0;
     U32 mMetalUICaptureDepthHeight = 0;
     LLGLSLShader* mMetalUICaptureAlphaShader = nullptr;
+    LLGLSLShader* mMetalUICaptureUniformColorShader = nullptr;
     bool mMetalUICaptureComplete = false;
     bool mMetalUICaptureUsesDepth = false;
     bool mMetalUIReplacementEnabled = true;

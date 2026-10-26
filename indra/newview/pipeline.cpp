@@ -5278,7 +5278,7 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
 
     if (!gGL.beginMetalUITextureCapture(
             ALMetalPixelFormat::bgra8_unorm, &gAlphaMaskProgram,
-            background, depth))
+            background, depth, &gDebugProgram))
     {
         return false;
     }
@@ -5298,8 +5298,8 @@ void LLPipeline::endMetalWorldUICompositionCapture()
 
     // The backing/color/depth lifecycle is now the production one, but the
     // ordered family census is deliberately incomplete: selection now has a
-    // native private id/depth producer plus contour/rim, hover-glow and
-    // backdrop-contrast consumers, while wireframe and the remaining
+    // native private id/depth producer plus wireframe, contour/rim,
+    // hover-glow and backdrop-contrast consumers, while the remaining
     // direct/non-immediate debug services do not all have exact native owners
     // yet. Force this bounded probe closed even
     // if every immediate/static-fullbright batch happened to encode. No
