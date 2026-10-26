@@ -415,7 +415,7 @@ public:
     static void captureMetalHUDBatch(
         const LLDrawInfo& params, bool batch_textures,
         bool alpha_mask, bool alpha_pool, bool pbr_alpha,
-        F32 minimum_alpha);
+        F32 minimum_alpha, bool force_double_sided = false);
 #endif
     void pushBatches(U32 type, bool texture = true, bool batch_textures = false);
     void pushUntexturedBatches(U32 type);

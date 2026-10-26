@@ -315,6 +315,14 @@ void ALSelectionOutline::render(const View& view)
         return;
     }
 
+#if LL_DARWIN
+    // The selection owner below uses dedicated GL id/depth, screen-space and
+    // optional wireframe passes rather than LLRender's captured batches. Keep
+    // the complete native composition fail closed until those passes have an
+    // exact Metal owner; the authoritative GL outline still renders.
+    gGL.invalidateMetalUITextureCapture("the multi-pass selection outline");
+#endif
+
     // The targets the passes that run read are made at the window's size; the others are given up once they are
     // stale.
     bool allocated = true;

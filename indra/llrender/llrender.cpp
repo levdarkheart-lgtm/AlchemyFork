@@ -1031,6 +1031,19 @@ bool LLRender::drawMetalHUDIndexedBatch(
     return true;
 }
 
+void LLRender::invalidateMetalUITextureCapture(const char* reason)
+{
+    if (!mMetalUICaptureRenderer || !mMetalUICaptureComplete)
+    {
+        return;
+    }
+    mMetalUICaptureComplete = false;
+    LL_DEBUGS("Metal")
+        << "Offscreen UI capture retained GL for "
+        << (reason ? reason : "an unsupported draw family")
+        << LL_ENDL;
+}
+
 std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
     bool source_success)
 {

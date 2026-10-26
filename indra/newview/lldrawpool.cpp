@@ -780,7 +780,8 @@ void LLRenderPass::captureMetalHUDBatch(
     bool alpha_mask,
     bool alpha_pool,
     bool pbr_alpha,
-    F32 minimum_alpha)
+    F32 minimum_alpha,
+    bool force_double_sided)
 {
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
     ALMetalHUDIndexedBatch batch;
@@ -871,10 +872,11 @@ void LLRenderPass::captureMetalHUDBatch(
         std::memcpy(batch.pbr_emissive_color,
                     material->mEmissiveColor.mV,
                     sizeof(material->mEmissiveColor.mV));
-        batch.double_sided = material->mDoubleSided;
+        batch.double_sided = force_double_sided || material->mDoubleSided;
     }
     else
     {
+        batch.double_sided = force_double_sided;
         const bool indexed_textures =
             batch_textures && params.mTextureList.size() > 1;
         const std::size_t texture_count = indexed_textures

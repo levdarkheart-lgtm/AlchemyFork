@@ -19918,6 +19918,19 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         REQUIRE(hud_indices->write(
             0, hud_index_values.data(), sizeof(hud_index_values), &error));
 
+        const std::array<std::uint16_t, 3> hud_reversed_index_values{{0, 2, 1}};
+        ALMetalBufferDescriptor hud_reversed_index_descriptor =
+            hud_index_descriptor;
+        hud_reversed_index_descriptor.label =
+            "Alchemy reversed indexed HUD particle test";
+        auto hud_reversed_indices = ALMetalBuffer::create(
+            *device, hud_reversed_index_descriptor, &error);
+        INFO(error);
+        REQUIRE(hud_reversed_indices);
+        REQUIRE(hud_reversed_indices->write(
+            0, hud_reversed_index_values.data(),
+            sizeof(hud_reversed_index_values), &error));
+
         auto make_hud_texture = [&](const char* label,
                                     std::array<std::uint8_t, 4> texel,
                                     ALMetalPixelFormat format)
@@ -20052,6 +20065,51 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         INFO(error);
         CHECK(std::abs(depth_region_values[16 * 32 + 16] - 0.25f) <
               0.0001f);
+
+        // Ordinary HUD volumes retain back-face culling. Particle and HUD-
+        // particle partitions disable it in the GL owner, however, because
+        // their generated quads can reach this bridge with either winding.
+        // Prove the explicit double-sided bit preserves that contract rather
+        // than relying on the source triangle's current orientation.
+        hud_batch.indices = hud_reversed_indices.get();
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(composed_pixels[center + 0] == 20u);
+        CHECK(composed_pixels[center + 1] == 40u);
+        CHECK(composed_pixels[center + 2] == 80u);
+        CHECK(composed_pixels[center + 3] == 255u);
+
+        hud_batch.double_sided = true;
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 0]) - 192) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 1]) - 32) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 2]) - 32) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 3]) - 8) <= 1);
+        hud_batch.indices = hud_indices.get();
+        hud_batch.double_sided = false;
 
         // Vertex alpha is legacy shininess in this pool: a low value must not
         // fail the mask while the selected texture is above the authored cut.

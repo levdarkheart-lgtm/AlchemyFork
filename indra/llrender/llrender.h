@@ -299,6 +299,10 @@ public:
     // Append one indexed HUD-attachment volume draw to an active offscreen
     // capture. GL remains authoritative regardless of the return value.
     bool drawMetalHUDIndexedBatch(const ALMetalHUDIndexedBatch& batch);
+    // Record one GL-owned draw family that an active offscreen transaction
+    // did not reproduce. This is a no-op outside a capture; the authoritative
+    // GL draw continues and end capture discards the incomplete native frame.
+    void invalidateMetalUITextureCapture(const char* reason);
     std::unique_ptr<ALMetalTexture> endMetalUITextureCapture(bool source_success);
 
     // A startup frame can replace the GL window presentation only when every

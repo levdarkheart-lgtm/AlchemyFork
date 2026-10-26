@@ -933,7 +933,8 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                         captureMetalHUDBatch(
                             params, true, false,
                             !pbr_hud_alpha, pbr_hud_alpha,
-                            reset_minimum_alpha ? 0.f : MINIMUM_ALPHA);
+                            reset_minimum_alpha ? 0.f : MINIMUM_ALPHA,
+                            is_particle_or_hud_particle);
                     }
 #endif
 
