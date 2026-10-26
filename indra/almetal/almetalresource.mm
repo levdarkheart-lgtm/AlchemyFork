@@ -18,6 +18,7 @@
 #include <limits>
 #include <mutex>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -1238,6 +1239,290 @@ bool ALMetalTexture::readback(const ALMetalDevice& device,
         }
         return true;
     }
+}
+
+struct ALMetalTextureReadbackRing::Impl
+{
+    struct Slot
+    {
+        std::unique_ptr<ALMetalBuffer> staging;
+        std::unique_ptr<ALMetalCommandBuffer> command;
+        std::size_t tight_row = 0;
+        std::size_t aligned_row = 0;
+        std::uint32_t rows = 0;
+    };
+
+    const ALMetalDevice* device = nullptr;
+    std::vector<Slot> slots;
+    std::string label;
+    std::size_t next = 0;
+    std::uint32_t pending = 0;
+};
+
+ALMetalTextureReadbackRing::ALMetalTextureReadbackRing() = default;
+
+ALMetalTextureReadbackRing::~ALMetalTextureReadbackRing()
+{
+    release();
+}
+
+bool ALMetalTextureReadbackRing::allocate(const ALMetalDevice& device,
+                                          std::uint32_t slots,
+                                          std::string label,
+                                          std::string* error)
+{
+    release();
+    if (!device.nativeHandle())
+    {
+        setError(error, "Cannot allocate a Metal texture readback ring without a device");
+        return false;
+    }
+    if (slots == 0)
+    {
+        setError(error, "Metal texture readback ring requires at least one slot");
+        return false;
+    }
+
+    auto impl = std::make_unique<Impl>();
+    impl->device = &device;
+    impl->slots.resize(slots);
+    impl->label = label.empty() ? "Alchemy texture readback ring" : std::move(label);
+    mImpl = std::move(impl);
+    return true;
+}
+
+void ALMetalTextureReadbackRing::release()
+{
+    if (!mImpl)
+    {
+        return;
+    }
+
+    for (auto& slot : mImpl->slots)
+    {
+        if (slot.command &&
+            slot.command->status() != ALMetalCommandStatus::completed &&
+            slot.command->status() != ALMetalCommandStatus::error)
+        {
+            slot.command->waitUntilCompleted();
+        }
+        slot.command.reset();
+    }
+    mImpl.reset();
+}
+
+bool ALMetalTextureReadbackRing::isAllocated() const noexcept
+{
+    return mImpl && mImpl->device && !mImpl->slots.empty();
+}
+
+std::uint32_t ALMetalTextureReadbackRing::pending() const noexcept
+{
+    return mImpl ? mImpl->pending : 0;
+}
+
+bool ALMetalTextureReadbackRing::request(const ALMetalTexture& source,
+                                         std::uint32_t mip_level,
+                                         std::uint32_t slice,
+                                         ALMetalRegion2D region,
+                                         std::string* error)
+{
+    if (!isAllocated())
+    {
+        setError(error, "Metal texture readback ring is not allocated");
+        return false;
+    }
+    if (!source.nativeHandle())
+    {
+        setError(error, "Cannot queue readback from an invalid Metal texture");
+        return false;
+    }
+    if (mImpl->pending == mImpl->slots.size())
+    {
+        return false;
+    }
+
+    const auto& descriptor = source.descriptor();
+    if (descriptor.type == ALMetalTextureType::texture_2d_multisample ||
+        descriptor.storage == ALMetalStorageMode::memoryless)
+    {
+        setError(error, "Multisample and memoryless Metal textures require a resolve before readback");
+        return false;
+    }
+    if (!normalizedRegion(descriptor, mip_level, slice, &region, error))
+    {
+        return false;
+    }
+
+    id<MTLTexture> texture = (__bridge id<MTLTexture>)source.nativeHandle();
+    if ((__bridge void*)texture.device != mImpl->device->nativeHandle())
+    {
+        setError(error, "Metal texture and readback ring device do not match");
+        return false;
+    }
+
+    TextureTransferLayout layout;
+    const bool depth_from_combined =
+        descriptor.format == ALMetalPixelFormat::depth32_float_stencil8;
+    if (depth_from_combined)
+    {
+        layout.tight_row = static_cast<std::size_t>(region.width) * sizeof(float);
+        layout.rows = region.height;
+    }
+    else if (!textureTransferLayout(descriptor, mip_level, region, &layout, error))
+    {
+        return false;
+    }
+
+    const std::size_t aligned_row = alignUp(layout.tight_row, 256);
+    if (aligned_row > std::numeric_limits<std::size_t>::max() / layout.rows)
+    {
+        setError(error, "Metal texture readback staging size overflowed");
+        return false;
+    }
+    const std::size_t staging_size = aligned_row * layout.rows;
+    auto& slot = mImpl->slots[mImpl->next];
+    if (!slot.staging || slot.staging->length() < staging_size)
+    {
+        ALMetalBufferDescriptor staging_descriptor;
+        staging_descriptor.length = staging_size;
+        staging_descriptor.storage = ALMetalStorageMode::shared;
+        staging_descriptor.label = mImpl->label + " slot " +
+                                   std::to_string(mImpl->next);
+        slot.staging = ALMetalBuffer::create(
+            *mImpl->device, staging_descriptor, error);
+        if (!slot.staging)
+        {
+            return false;
+        }
+    }
+
+    auto command = mImpl->device->makeCommandBuffer(mImpl->label, error);
+    if (!command)
+    {
+        return false;
+    }
+
+    @autoreleasepool
+    {
+        id<MTLCommandBuffer> native_command =
+            (__bridge id<MTLCommandBuffer>)command->nativeHandle();
+        id<MTLBuffer> staging = (__bridge id<MTLBuffer>)slot.staging->nativeHandle();
+        id<MTLBlitCommandEncoder> encoder = [native_command blitCommandEncoder];
+        if (!encoder)
+        {
+            setError(error, "Metal could not create a texture readback ring blit encoder");
+            return false;
+        }
+        [encoder copyFromTexture:texture
+                     sourceSlice:slice
+                     sourceLevel:mip_level
+                    sourceOrigin:MTLOriginMake(region.x, region.y, 0)
+                      sourceSize:MTLSizeMake(region.width, region.height, 1)
+                        toBuffer:staging
+               destinationOffset:0
+          destinationBytesPerRow:aligned_row
+        destinationBytesPerImage:staging_size
+                         options:depth_from_combined
+                             ? MTLBlitOptionDepthFromDepthStencil
+                             : MTLBlitOptionNone];
+        [encoder endEncoding];
+    }
+    if (!command->commit(error))
+    {
+        return false;
+    }
+
+    slot.command = std::move(command);
+    slot.tight_row = layout.tight_row;
+    slot.aligned_row = aligned_row;
+    slot.rows = layout.rows;
+    mImpl->next = (mImpl->next + 1) % mImpl->slots.size();
+    ++mImpl->pending;
+    return true;
+}
+
+bool ALMetalTextureReadbackRing::collect(void* bytes,
+                                         std::size_t bytes_per_row,
+                                         bool wait,
+                                         std::string* error)
+{
+    if (!isAllocated())
+    {
+        setError(error, "Metal texture readback ring is not allocated");
+        return false;
+    }
+    if (mImpl->pending == 0)
+    {
+        return false;
+    }
+    if (!bytes)
+    {
+        setError(error, "Cannot collect a Metal texture readback into a null destination");
+        return false;
+    }
+
+    const std::size_t oldest =
+        (mImpl->next + mImpl->slots.size() - mImpl->pending) %
+        mImpl->slots.size();
+    auto& slot = mImpl->slots[oldest];
+    if (bytes_per_row < slot.tight_row)
+    {
+        setError(error, "Metal texture readback ring row pitch is too small");
+        return false;
+    }
+
+    const auto retire = [&slot, this]()
+    {
+        slot.command.reset();
+        --mImpl->pending;
+    };
+
+    if (!slot.command)
+    {
+        setError(error, "Metal texture readback ring slot has no command buffer");
+        retire();
+        return false;
+    }
+    if (slot.command->status() == ALMetalCommandStatus::error)
+    {
+        const std::string description = slot.command->errorDescription();
+        setError(error, description.empty()
+                            ? "Metal texture readback ring command failed"
+                            : description);
+        retire();
+        return false;
+    }
+    if (slot.command->status() != ALMetalCommandStatus::completed)
+    {
+        if (!wait)
+        {
+            return false;
+        }
+        if (!slot.command->waitUntilCompleted(error))
+        {
+            retire();
+            return false;
+        }
+    }
+
+    const auto* source = static_cast<const std::uint8_t*>(
+        slot.staging->mappedBytes());
+    if (!source)
+    {
+        setError(error, "Metal texture readback ring staging buffer is not mapped");
+        retire();
+        return false;
+    }
+    auto* destination = static_cast<std::uint8_t*>(bytes);
+    for (std::uint32_t row = 0; row < slot.rows; ++row)
+    {
+        std::memcpy(destination + row * bytes_per_row,
+                    source + row * slot.aligned_row,
+                    slot.tight_row);
+    }
+    retire();
+    return true;
 }
 
 struct ALMetalRenderPass::Impl

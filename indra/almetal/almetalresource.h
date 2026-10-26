@@ -316,6 +316,58 @@ private:
     friend class ALMetalRenderTarget;
 };
 
+// A bounded FIFO of texture-to-shared-buffer copies for recurring CPU
+// consumers. request() commits a blit without waiting; collect() returns the
+// oldest completed result, or false without stalling while it is in flight.
+// Source rows are staged at Metal's alignment and compacted into the caller's
+// selected row pitch. Combined depth/stencil exposes the float depth plane,
+// matching ALMetalTexture::readback. Non-copyable and device-bound.
+class ALMetalTextureReadbackRing final
+{
+public:
+    ALMetalTextureReadbackRing();
+    ~ALMetalTextureReadbackRing();
+
+    ALMetalTextureReadbackRing(const ALMetalTextureReadbackRing&) = delete;
+    ALMetalTextureReadbackRing& operator=(
+        const ALMetalTextureReadbackRing&) = delete;
+    ALMetalTextureReadbackRing(ALMetalTextureReadbackRing&&) = delete;
+    ALMetalTextureReadbackRing& operator=(
+        ALMetalTextureReadbackRing&&) = delete;
+
+    // Replaces current state. Slot storage grows lazily to the largest request
+    // that reaches each slot and is then reused.
+    bool allocate(const ALMetalDevice& device,
+                  std::uint32_t slots = 3,
+                  std::string label = {},
+                  std::string* error = nullptr);
+    // Waits only for submitted slots during explicit teardown/reconfigure.
+    void release();
+
+    bool isAllocated() const noexcept;
+    std::uint32_t pending() const noexcept;
+
+    // A zero-sized region selects the complete mip. False without an error
+    // when every slot still holds an uncollected result.
+    bool request(const ALMetalTexture& source,
+                 std::uint32_t mip_level = 0,
+                 std::uint32_t slice = 0,
+                 ALMetalRegion2D region = {},
+                 std::string* error = nullptr);
+
+    // Copies the oldest completed request. `wait` is for tests and teardown-
+    // adjacent exceptional callers; steady-state consumers leave it false.
+    // An invalid destination leaves the request pending for a corrected retry.
+    bool collect(void* bytes,
+                 std::size_t bytes_per_row,
+                 bool wait = false,
+                 std::string* error = nullptr);
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> mImpl;
+};
+
 enum class ALMetalLoadAction
 {
     dont_care,

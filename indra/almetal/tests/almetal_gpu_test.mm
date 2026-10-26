@@ -478,6 +478,116 @@ TEST_CASE("almetal: private texture transfer handles unaligned CPU row pitches",
     }
 }
 
+TEST_CASE("almetal: texture readback ring stays bounded and preserves FIFO order", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        ALMetalTextureDescriptor descriptor;
+        descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        descriptor.width = 3;
+        descriptor.height = 2;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.usage = ALMetalTextureUsage::shader_read;
+        descriptor.label = "Alchemy ordered readback-ring texture";
+        auto texture = ALMetalTexture::create(*device, descriptor, &error);
+        INFO(error);
+        REQUIRE(texture);
+
+        std::array<std::uint8_t, 3 * 2 * 4> pattern_a{};
+        std::array<std::uint8_t, 3 * 2 * 4> pattern_b{};
+        std::array<std::uint8_t, 3 * 2 * 4> pattern_c{};
+        for (std::size_t index = 0; index < pattern_a.size(); ++index)
+        {
+            pattern_a[index] = static_cast<std::uint8_t>(10u + index);
+            pattern_b[index] = static_cast<std::uint8_t>(70u + index);
+            pattern_c[index] = static_cast<std::uint8_t>(130u + index);
+        }
+
+        const auto queue_upload = [&](const auto& pixels, const std::string& label)
+        {
+            auto command = device->makeCommandBuffer(label, &error);
+            return command &&
+                   texture->upload(
+                       *command, 0, 0, {}, pixels.data(), 3 * 4, &error) &&
+                   command->commit(&error);
+        };
+        const ALMetalRegion2D region{1, 0, 2, 2};
+        const auto check_region = [](const auto& pixels,
+                                     const std::array<std::uint8_t, 24>& result)
+        {
+            CHECK(std::memcmp(result.data(), pixels.data() + 4, 8) == 0);
+            CHECK(std::memcmp(result.data() + 12, pixels.data() + 16, 8) == 0);
+            for (std::size_t padding = 8; padding < 12; ++padding)
+            {
+                CHECK(result[padding] == 0xee);
+                CHECK(result[12 + padding] == 0xee);
+            }
+        };
+
+        ALMetalTextureReadbackRing ring;
+        CHECK_FALSE(ring.isAllocated());
+        CHECK(ring.pending() == 0);
+        CHECK_FALSE(ring.request(*texture, 0, 0, region, &error));
+        CHECK_FALSE(error.empty());
+
+        error.clear();
+        REQUIRE(ring.allocate(*device, 2, "Alchemy ordered readback ring", &error));
+        INFO(error);
+        CHECK(ring.isAllocated());
+
+        REQUIRE(queue_upload(pattern_a, "Alchemy readback-ring upload A"));
+        REQUIRE(ring.request(*texture, 0, 0, region, &error));
+        REQUIRE(queue_upload(pattern_b, "Alchemy readback-ring upload B"));
+        REQUIRE(ring.request(*texture, 0, 0, region, &error));
+        CHECK(ring.pending() == 2);
+
+        error.clear();
+        CHECK_FALSE(ring.request(*texture, 0, 0, region, &error));
+        CHECK(error.empty());
+        CHECK(ring.pending() == 2);
+
+        std::array<std::uint8_t, 24> result{};
+        error.clear();
+        CHECK_FALSE(ring.collect(result.data(), 7, true, &error));
+        CHECK_FALSE(error.empty());
+        CHECK(ring.pending() == 2);
+
+        result.fill(0xee);
+        error.clear();
+        REQUIRE(ring.collect(result.data(), 12, true, &error));
+        INFO(error);
+        check_region(pattern_a, result);
+        CHECK(ring.pending() == 1);
+
+        REQUIRE(queue_upload(pattern_c, "Alchemy readback-ring upload C"));
+        REQUIRE(ring.request(*texture, 0, 0, region, &error));
+        CHECK(ring.pending() == 2);
+
+        result.fill(0xee);
+        REQUIRE(ring.collect(result.data(), 12, true, &error));
+        INFO(error);
+        check_region(pattern_b, result);
+        CHECK(ring.pending() == 1);
+
+        result.fill(0xee);
+        REQUIRE(ring.collect(result.data(), 12, true, &error));
+        INFO(error);
+        check_region(pattern_c, result);
+        CHECK(ring.pending() == 0);
+
+        error.clear();
+        CHECK_FALSE(ring.collect(result.data(), 12, false, &error));
+        CHECK(error.empty());
+        ring.release();
+        CHECK_FALSE(ring.isAllocated());
+    }
+}
+
 TEST_CASE("almetal: texture swizzles and generated mipmaps survive private upload", "[almetal]")
 {
     @autoreleasepool
