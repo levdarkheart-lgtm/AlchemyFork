@@ -67,6 +67,28 @@ extern void APIENTRY gl_debug_callback(GLenum source,
 
 thread_local LLRender gGL;
 
+#if LL_DARWIN
+namespace
+{
+    U32 metal_ui_capture_cache_index(ALMetalPixelFormat format)
+    {
+        switch (format)
+        {
+            case ALMetalPixelFormat::rgba8_unorm:
+                return 0;
+            case ALMetalPixelFormat::rgba8_unorm_srgb:
+                return 1;
+            case ALMetalPixelFormat::bgra8_unorm:
+                return 2;
+            case ALMetalPixelFormat::bgra8_unorm_srgb:
+                return 3;
+            default:
+                return 4;
+        }
+    }
+}
+#endif
+
 #if !LL_RELEASE_FOR_DOWNLOAD
 namespace
 {
@@ -666,6 +688,42 @@ void LLRender::shutdown()
     // why mSamplerCache is a member: a static one would have the upload thread deleting
     // the render thread's samplers. mDummyVAO and mLightsUBO stay zero on worker threads.
 #if LL_DARWIN
+    if (mMetalUICaptureRenderer)
+    {
+        endMetalUITextureCapture(false);
+    }
+    if (mMetalUICaptureRendererCreations != 0)
+    {
+        ALMetalUIRendererStats capture_stats{};
+        for (const auto& cached : mMetalUICaptureCache)
+        {
+            if (!cached)
+            {
+                continue;
+            }
+            const ALMetalUIRendererStats stats = cached->stats();
+            capture_stats.frames += stats.frames;
+            capture_stats.batches += stats.batches;
+            capture_stats.vertices += stats.vertices;
+            capture_stats.pipeline_states += stats.pipeline_states;
+            capture_stats.sampler_states += stats.sampler_states;
+        }
+        LL_INFOS("Metal")
+            << "Offscreen native UI capture cache created "
+            << mMetalUICaptureRendererCreations << " renderer(s), reused "
+            << mMetalUICaptureRendererReuses << " renderer(s), and encoded "
+            << capture_stats.frames << " frames / " << capture_stats.batches
+            << " batches while retaining " << capture_stats.pipeline_states
+            << " pipeline states and " << capture_stats.sampler_states
+            << " sampler states" << LL_ENDL;
+    }
+    for (auto& cached : mMetalUICaptureCache)
+    {
+        cached.reset();
+    }
+    mMetalUICaptureRendererCreations = 0;
+    mMetalUICaptureRendererReuses = 0;
+    mMetalUICaptureCacheIndex = METAL_UI_CAPTURE_CACHE_SIZE;
     if (mMetalUIRenderer)
     {
         std::string error;
@@ -763,6 +821,10 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
                                 << error << LL_ENDL;
         }
     }
+    for (auto& cached : mMetalUICaptureCache)
+    {
+        cached.reset();
+    }
     mMetalUIRenderer.reset();
     mMetalDevice = nullptr;
     mMetalFrames = nullptr;
@@ -770,6 +832,9 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     mMetalUILoggedFrame = 0;
     mMetalUIFrameAttemptedBatches = 0;
     mMetalUIFrameFallbackBatches = 0;
+    mMetalUICaptureRendererCreations = 0;
+    mMetalUICaptureRendererReuses = 0;
+    mMetalUICaptureCacheIndex = METAL_UI_CAPTURE_CACHE_SIZE;
     mMetalUICaptureUsesDepth = false;
     mMetalUICaptureDepthWidth = 0;
     mMetalUICaptureDepthHeight = 0;
@@ -814,15 +879,34 @@ bool LLRender::beginMetalUITextureCapture(
     mMetalUICaptureUsesDepth = false;
     mMetalUICaptureDepthWidth = 0;
     mMetalUICaptureDepthHeight = 0;
+    const U32 cache_index = metal_ui_capture_cache_index(format);
+    if (cache_index >= mMetalUICaptureCache.size())
+    {
+        return false;
+    }
     std::string error;
-    mMetalUICaptureRenderer = ALMetalUIRenderer::createForTexture(
-        *mMetalDevice, *mMetalFrames, format, &error);
+    if (mMetalUICaptureCache[cache_index])
+    {
+        mMetalUICaptureRenderer =
+            std::move(mMetalUICaptureCache[cache_index]);
+        ++mMetalUICaptureRendererReuses;
+    }
+    else
+    {
+        mMetalUICaptureRenderer = ALMetalUIRenderer::createForTexture(
+            *mMetalDevice, *mMetalFrames, format, &error);
+        if (mMetalUICaptureRenderer)
+        {
+            ++mMetalUICaptureRendererCreations;
+        }
+    }
     if (!mMetalUICaptureRenderer)
     {
         LL_DEBUGS("Metal") << "Could not begin an offscreen immediate-mode capture: "
                             << error << LL_ENDL;
         return false;
     }
+    mMetalUICaptureCacheIndex = cache_index;
     if ((background && !mMetalUICaptureRenderer->setFrameBackground(
                            background, &error)) ||
         (depth && !mMetalUICaptureRenderer->setFrameDepth(depth, &error)))
@@ -831,6 +915,7 @@ bool LLRender::beginMetalUITextureCapture(
             << "Could not retain the offscreen composition backing: "
             << error << LL_ENDL;
         mMetalUICaptureRenderer.reset();
+        mMetalUICaptureCacheIndex = METAL_UI_CAPTURE_CACHE_SIZE;
         return false;
     }
     mMetalUICaptureBatches = 0;
@@ -1158,7 +1243,18 @@ std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
         LL_DEBUGS("Metal") << "Discarded an offscreen immediate-mode capture: "
                             << error << LL_ENDL;
     }
-    mMetalUICaptureRenderer.reset();
+    const U32 cache_index = mMetalUICaptureCacheIndex;
+    mMetalUICaptureCacheIndex = METAL_UI_CAPTURE_CACHE_SIZE;
+    if (submitted && cache_index < mMetalUICaptureCache.size() &&
+        !mMetalUICaptureCache[cache_index])
+    {
+        mMetalUICaptureCache[cache_index] =
+            std::move(mMetalUICaptureRenderer);
+    }
+    else
+    {
+        mMetalUICaptureRenderer.reset();
+    }
     mMetalUICaptureBatches = 0;
     mMetalUICaptureAlphaShader = nullptr;
     mMetalUICaptureUniformColorShader = nullptr;

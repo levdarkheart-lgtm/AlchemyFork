@@ -890,8 +890,16 @@ private:
     LLColor4 mMetalSolidColor = LLColor4(1.f, 1.f, 1.f, 1.f);
 
 #if LL_DARWIN
+    static constexpr U32 METAL_UI_CAPTURE_CACHE_SIZE = 4;
     std::unique_ptr<ALMetalUIRenderer> mMetalUIRenderer;
     std::unique_ptr<ALMetalUIRenderer> mMetalUICaptureRenderer;
+    // Offscreen capture output textures are transferred to their callers, but
+    // the format-specific renderer owns reusable shader libraries, pipeline
+    // states, samplers and intermediate selection targets. Keep one idle
+    // renderer per supported output format so continuous world/UI capture
+    // does not rebuild that state every frame.
+    std::array<std::unique_ptr<ALMetalUIRenderer>,
+               METAL_UI_CAPTURE_CACHE_SIZE> mMetalUICaptureCache;
     ALMetalDevice* mMetalDevice = nullptr;
     ALMetalFrameScheduler* mMetalFrames = nullptr;
     ALMetalSurface* mMetalUISurface = nullptr;
@@ -901,6 +909,9 @@ private:
     U64 mMetalUIFrameAttemptedBatches = 0;
     U64 mMetalUIFrameFallbackBatches = 0;
     U64 mMetalUICaptureBatches = 0;
+    U64 mMetalUICaptureRendererCreations = 0;
+    U64 mMetalUICaptureRendererReuses = 0;
+    U32 mMetalUICaptureCacheIndex = METAL_UI_CAPTURE_CACHE_SIZE;
     U32 mMetalUICaptureDepthWidth = 0;
     U32 mMetalUICaptureDepthHeight = 0;
     LLGLSLShader* mMetalUICaptureAlphaShader = nullptr;

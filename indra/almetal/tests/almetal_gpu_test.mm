@@ -20454,6 +20454,13 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         REQUIRE(scheduler->waitUntilIdle(1000, &error));
         INFO(error);
         REQUIRE(rgba_renderer->outputTexture());
+        const ALMetalUIRendererStats reused_output_stats =
+            rgba_renderer->stats();
+        CHECK(reused_output_stats.frames == 2);
+        CHECK(reused_output_stats.batches == 2);
+        CHECK(reused_output_stats.vertices == 6);
+        CHECK(reused_output_stats.pipeline_states == 1);
+        CHECK(reused_output_stats.sampler_states == 1);
 
         // The appearance compositor uses the same vertex layout with the
         // alpha-mask shader, including untextured clear/color rectangles.
