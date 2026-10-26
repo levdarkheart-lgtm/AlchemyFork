@@ -9304,6 +9304,113 @@ static float almetal_pbr_distribution(float nh,
     return alpha2 / (M_PI_F * denominator * denominator);
 }
 
+struct ALMetalWorldHeroProbeFilterConstants
+{
+    uint mip_level;
+    uint max_probe_lod;
+    uint resolution;
+    uint sample_scale;
+    float probe_strength;
+    packed_float3 padding;
+};
+
+static float almetal_world_hero_random(float2 value)
+{
+    const float dot_value = dot(value, float2(12.9898, 78.233));
+    return fract(sin(fmod(dot_value, 3.14)) * 43758.5453);
+}
+
+static float3 almetal_world_cube_direction(uint face, float2 uv)
+{
+    const float2 st = uv * 2.0 - 1.0;
+    switch (face)
+    {
+        case 0: return normalize(float3( 1.0, -st.y, -st.x));
+        case 1: return normalize(float3(-1.0, -st.y,  st.x));
+        case 2: return normalize(float3( st.x,  1.0,  st.y));
+        case 3: return normalize(float3( st.x, -1.0, -st.y));
+        case 4: return normalize(float3( st.x, -st.y,  1.0));
+        default:return normalize(float3(-st.x, -st.y, -1.0));
+    }
+}
+
+kernel void almetal_world_hero_probe_filter(
+    texturecube<float> source [[texture(0)]],
+    texturecube<float, access::write> destination [[texture(1)]],
+    constant ALMetalWorldHeroProbeFilterConstants& constants [[buffer(0)]],
+    uint3 position [[thread_position_in_grid]])
+{
+    if (position.x >= constants.resolution ||
+        position.y >= constants.resolution || position.z >= 6u)
+    {
+        return;
+    }
+
+    constexpr sampler cube_sampler(
+        coord::normalized, filter::linear, mip_filter::linear,
+        address::clamp_to_edge);
+    const float2 uv = (float2(position.xy) + 0.5) /
+                      float(constants.resolution);
+    const float3 normal = almetal_world_cube_direction(position.z, uv);
+    const float3 view = normal;
+    const float roughness = constants.max_probe_lod == 0u
+        ? 0.0 : float(constants.mip_level) /
+                    float(constants.max_probe_lod);
+    const uint sample_count = uint(max(
+        float(constants.sample_scale) * roughness, 1.0));
+    const float environment_dimension = float(source.get_width(0));
+    float4 color = 0.0;
+    float total_weight = 0.0;
+    for (uint index = 0u; index < sample_count; ++index)
+    {
+        const float2 xi = almetal_pbr_hammersley(index, sample_count);
+        const float alpha = roughness * roughness;
+        const float phi = 2.0 * M_PI_F * xi.x +
+            almetal_world_hero_random(normal.xz) * 0.1;
+        const float cos_theta = sqrt((1.0 - xi.y) /
+            (1.0 + (alpha * alpha - 1.0) * xi.y));
+        const float sin_theta = sqrt(max(
+            1.0 - cos_theta * cos_theta, 0.0));
+        const float3 tangent_half = float3(
+            sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
+        const float3 up = abs(normal.z) < 0.999
+            ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+        const float3 tangent_x = normalize(cross(up, normal));
+        const float3 tangent_y = normalize(cross(normal, tangent_x));
+        const float3 half_vector = normalize(
+            tangent_x * tangent_half.x + tangent_y * tangent_half.y +
+            normal * tangent_half.z);
+        const float3 light = 2.0 * dot(view, half_vector) * half_vector -
+                             view;
+        const float nl = clamp(dot(normal, light), 0.0, 1.0);
+        if (nl > 0.0)
+        {
+            const float nh = clamp(dot(normal, half_vector), 0.0, 1.0);
+            const float vh = clamp(dot(view, half_vector), 0.0, 1.0);
+            const float alpha2 = alpha * alpha;
+            const float denominator = nh * nh * (alpha2 - 1.0) + 1.0;
+            const float distribution = alpha2 /
+                (M_PI_F * denominator * denominator);
+            const float pdf = distribution * nh /
+                (4.0 * vh) + 0.0001;
+            const float sample_solid_angle = 1.0 /
+                (float(sample_count) * pdf);
+            const float texel_solid_angle = 4.0 * M_PI_F /
+                (6.0 * environment_dimension * environment_dimension);
+            const float sample_lod = roughness == 0.0 ? 0.0 : clamp(
+                0.5 * log2(sample_solid_angle / texel_solid_angle) + 1.0,
+                0.0, float(constants.max_probe_lod));
+            color += source.sample(
+                cube_sampler, light, level(sample_lod)) * nl;
+            total_weight += nl;
+        }
+    }
+    color = max(color / max(total_weight, 0.000001), float4(0.0));
+    color.a *= constants.probe_strength;
+    destination.write(
+        color, position.xy, position.z, constants.mip_level);
+}
+
 static float almetal_pbr_filtered_roughness(float perceptual_roughness,
                                             float3 normal)
 {

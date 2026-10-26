@@ -274,6 +274,9 @@ void LLHeroProbeManager::renderProbes()
             LL_PROFILE_ZONE_NUM(gFrameCount % rate);
             LL_PROFILE_ZONE_NUM(rate);
 
+#if LL_DARWIN
+            mMetalRadianceCaptureComplete = true;
+#endif
             bool dynamic = mNearestHero->getReflectionProbeIsDynamic() && sDetail() > 0;
             for (U32 i = 0; i < 6; ++i)
             {
@@ -312,7 +315,26 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
     // hacky hot-swap of camera specific render targets
     gPipeline.mRT = &gPipeline.mHeroProbeRT;
 
+#if LL_DARWIN
+    const bool native_face_capture = mNearestHero.notNull() &&
+        !mNearestHero->isDead() &&
+        gPipeline.beginMetalHeroProbeFaceCapture(
+            mNearestHero->getID(), mMetalRadianceEpoch, face,
+            static_cast<U32>(std::lround(mMaxProbeLOD)));
+#endif
     probe->update(mRenderTarget.getWidth(), face, is_dynamic, near_clip);
+#if LL_DARWIN
+    if (native_face_capture)
+    {
+        mMetalRadianceCaptureComplete =
+            gPipeline.endMetalHeroProbeFaceCapture() &&
+            mMetalRadianceCaptureComplete;
+    }
+    else
+    {
+        mMetalRadianceCaptureComplete = false;
+    }
+#endif
 
     gPipeline.mRT = &gPipeline.mMainRT;
 
@@ -492,6 +514,15 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
         ++mMetalRadianceGeneration;
     }
     mMetalRadianceReady = true;
+#if LL_DARWIN
+    if (mMetalRadianceCaptureComplete && mNearestHero.notNull() &&
+        !mNearestHero->isDead())
+    {
+        gPipeline.publishMetalHeroProbeRadiance(
+            mNearestHero->getID(), mMetalRadianceGeneration,
+            mHeroProbeStrength);
+    }
+#endif
 }
 
 void LLHeroProbeManager::updateUniforms()
@@ -635,12 +666,18 @@ void LLHeroProbeManager::initReflectionMaps()
 
 void LLHeroProbeManager::cleanup()
 {
+    ++mMetalRadianceEpoch;
+    if (mMetalRadianceEpoch == 0)
+    {
+        ++mMetalRadianceEpoch;
+    }
     ++mMetalRadianceGeneration;
     if (mMetalRadianceGeneration == 0)
     {
         ++mMetalRadianceGeneration;
     }
     mMetalRadianceReady = false;
+    mMetalRadianceCaptureComplete = false;
 
     mVertexBuffer = nullptr;
     mRenderTarget.release();

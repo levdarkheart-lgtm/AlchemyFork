@@ -191,6 +191,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_projector_light_fragment",
             "almetal_world_lighting_composition_fragment",
             "almetal_world_ssr_history_fragment",
+            "almetal_world_hero_probe_filter",
             "almetal_world_light_map_fragment",
             "almetal_world_light_map_blur_fragment",
             "almetal_world_hdri_sky_vertex",
@@ -10046,6 +10047,214 @@ TEST_CASE("almetal: native final color publishes coherent SSR history", "[almeta
             *source, history, &error));
         INFO(error);
         CHECK(history.get() == retained_history);
+    }
+}
+
+TEST_CASE("almetal: native hero faces publish filtered cube radiance", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        ALMetalRenderTargetDescriptor source_descriptor;
+        source_descriptor.width = 4;
+        source_descriptor.height = 4;
+        source_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        source_descriptor.label = "Alchemy native hero-face source test";
+        auto source = ALMetalRenderTarget::create(
+            *device, source_descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        std::array<std::array<std::uint8_t, 4 * 4 * 4>, 6>
+            source_faces{};
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            for (std::uint32_t y = 0; y < 4; ++y)
+            {
+                for (std::uint32_t x = 0; x < 4; ++x)
+                {
+                    const std::size_t texel = (y * 4 + x) * 4;
+                    source_faces[face][texel + 0] =
+                        static_cast<std::uint8_t>(face * 32 + x * 7 + y);
+                    source_faces[face][texel + 1] =
+                        static_cast<std::uint8_t>(face * 11 + x * 3 + y * 13);
+                    source_faces[face][texel + 2] =
+                        static_cast<std::uint8_t>(face * 19 + x * 17 + y * 5);
+                    source_faces[face][texel + 3] = 255;
+                }
+            }
+        }
+        std::unique_ptr<ALMetalTexture> source_cube;
+        std::unique_ptr<ALMetalTexture> radiance_cube;
+        std::uint32_t valid_faces = 0;
+
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            const std::array<std::uint8_t, 4 * 4 * 4>& pixels =
+                source_faces[face];
+            auto upload = device->makeCommandBuffer(
+                "Alchemy native hero-face test upload", &error);
+            INFO(error);
+            REQUIRE(upload);
+            id<MTLBuffer> staging = [nativeDevice(*device)
+                newBufferWithBytes:pixels.data()
+                          length:pixels.size()
+                         options:MTLResourceStorageModeShared];
+            REQUIRE(staging);
+            id<MTLBlitCommandEncoder> blit =
+                [nativeCommand(*upload) blitCommandEncoder];
+            REQUIRE(blit);
+            [blit copyFromBuffer:staging
+                    sourceOffset:0
+               sourceBytesPerRow:4 * 4
+             sourceBytesPerImage:pixels.size()
+                      sourceSize:MTLSizeMake(4, 4, 1)
+                       toTexture:(__bridge id<MTLTexture>)
+                           source->colorTexture(0)->nativeHandle()
+                destinationSlice:0
+                destinationLevel:0
+               destinationOrigin:MTLOriginMake(0, 0, 0)];
+            [blit endEncoding];
+            REQUIRE(upload->commit(&error));
+            INFO(error);
+            REQUIRE(renderer->updateHeroProbeFace(
+                *source, face, 1, source_cube, valid_faces, &error));
+            INFO(error);
+            CHECK(valid_faces == ((1u << (face + 1)) - 1u));
+            if (face == 0)
+            {
+                error.clear();
+                CHECK_FALSE(renderer->filterHeroProbeRadiance(
+                    *source_cube, valid_faces, 1, 0.5f,
+                    radiance_cube, &error));
+                CHECK(error ==
+                      "Metal hero-probe radiance source is incomplete");
+            }
+        }
+        REQUIRE(source_cube);
+        CHECK(source_cube->descriptor().type ==
+              ALMetalTextureType::texture_cube);
+        CHECK(source_cube->descriptor().mipmap_level_count == 2);
+        REQUIRE(renderer->filterHeroProbeRadiance(
+            *source_cube, valid_faces, 1, 0.5f,
+            radiance_cube, &error));
+        INFO(error);
+        REQUIRE(radiance_cube);
+        CHECK(radiance_cube->descriptor().type ==
+              ALMetalTextureType::texture_cube);
+        CHECK(radiance_cube->descriptor().format ==
+              ALMetalPixelFormat::rgba8_unorm);
+        CHECK(radiance_cube->descriptor().mipmap_level_count == 2);
+
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            std::array<std::uint8_t, 4 * 4 * 4> pixels{};
+            REQUIRE(radiance_cube->readback(
+                *device, 0, face, {}, pixels.data(), 4 * 4, &error));
+            INFO(error);
+            for (std::uint32_t y = 1; y <= 2; ++y)
+            {
+                for (std::uint32_t x = 1; x <= 2; ++x)
+                {
+                    const std::size_t texel = (y * 4 + x) * 4;
+                    CHECK(std::abs(static_cast<int>(pixels[texel + 0]) -
+                                   source_faces[face][texel + 0]) <= 1);
+                    CHECK(std::abs(static_cast<int>(pixels[texel + 1]) -
+                                   source_faces[face][texel + 1]) <= 1);
+                    CHECK(std::abs(static_cast<int>(pixels[texel + 2]) -
+                                   source_faces[face][texel + 2]) <= 1);
+                    CHECK(std::abs(
+                        static_cast<int>(pixels[texel + 3]) - 128) <= 1);
+                }
+            }
+        }
+
+        ALMetalTexture* retained_radiance = radiance_cube.get();
+        REQUIRE(renderer->filterHeroProbeRadiance(
+            *source_cube, valid_faces, 1, 1.f,
+            radiance_cube, &error));
+        INFO(error);
+        CHECK(radiance_cube.get() == retained_radiance);
+
+        ALMetalRenderTargetDescriptor invalid_descriptor =
+            source_descriptor;
+        invalid_descriptor.height = 2;
+        auto invalid = ALMetalRenderTarget::create(
+            *device, invalid_descriptor, &error);
+        INFO(error);
+        REQUIRE(invalid);
+        error.clear();
+        CHECK_FALSE(renderer->updateHeroProbeFace(
+            *invalid, 0, 1, source_cube, valid_faces, &error));
+        CHECK(error == "Metal hero-probe face source is incompatible");
+
+        // Production HDR faces use RGBA16F and publish filtered R11G11B10F.
+        // Clear each face to a distinct value so the test covers that format
+        // branch and preserves cube-slice addressing independently of the
+        // stronger per-pixel RGBA8 orientation checks above.
+        ALMetalRenderTargetDescriptor hdr_descriptor = source_descriptor;
+        hdr_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba16_float;
+        hdr_descriptor.label = "Alchemy native HDR hero-face source test";
+        auto hdr_source = ALMetalRenderTarget::create(
+            *device, hdr_descriptor, &error);
+        INFO(error);
+        REQUIRE(hdr_source);
+        std::unique_ptr<ALMetalTexture> hdr_source_cube;
+        std::unique_ptr<ALMetalTexture> hdr_radiance_cube;
+        std::uint32_t hdr_valid_faces = 0;
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            ALMetalRenderPassConfig clear;
+            clear.colors[0].load = ALMetalLoadAction::clear;
+            clear.colors[0].store = ALMetalStoreAction::store;
+            clear.colors[0].clear = {
+                0.125 * double(face + 1),
+                0.0625 * double(face + 1),
+                0.03125 * double(face + 1), 1.0};
+            auto pass = hdr_source->makeRenderPass(clear, &error);
+            auto command = pass ? device->makeCommandBuffer(
+                "Alchemy native HDR hero-face clear", &error) : nullptr;
+            auto encoder = command && pass ? ALMetalRenderEncoder::begin(
+                *command, *pass,
+                "Alchemy native HDR hero-face clear encoder", &error)
+                : nullptr;
+            INFO(error);
+            REQUIRE(encoder);
+            REQUIRE(encoder->end(&error));
+            REQUIRE(command->commitAndWait(&error));
+            REQUIRE(renderer->updateHeroProbeFace(
+                *hdr_source, face, 1, hdr_source_cube,
+                hdr_valid_faces, &error));
+            INFO(error);
+        }
+        REQUIRE(renderer->filterHeroProbeRadiance(
+            *hdr_source_cube, hdr_valid_faces, 1, 1.f,
+            hdr_radiance_cube, &error));
+        INFO(error);
+        REQUIRE(hdr_radiance_cube);
+        CHECK(hdr_radiance_cube->descriptor().format ==
+              ALMetalPixelFormat::rg11b10_float);
+        CHECK(hdr_radiance_cube->descriptor().mipmap_level_count == 2);
+        std::array<std::uint32_t, 4 * 4> hdr_face_zero{};
+        std::array<std::uint32_t, 4 * 4> hdr_face_five{};
+        REQUIRE(hdr_radiance_cube->readback(
+            *device, 0, 0, {}, hdr_face_zero.data(), 4 * 4, &error));
+        REQUIRE(hdr_radiance_cube->readback(
+            *device, 0, 5, {}, hdr_face_five.data(), 4 * 4, &error));
+        INFO(error);
+        CHECK(hdr_face_zero[4 + 1] != 0);
+        CHECK(hdr_face_five[4 + 1] != 0);
+        CHECK(hdr_face_zero[4 + 1] != hdr_face_five[4 + 1]);
     }
 }
 

@@ -263,6 +263,9 @@ private:
 #if LL_DARWIN
     struct MetalWorldSimpleCapture;
     std::unique_ptr<MetalWorldSimpleCapture> mMetalWorldSimpleCapture;
+    std::unique_ptr<MetalWorldSimpleCapture>
+        mMetalHeroWorldSimpleCapture;
+    bool mMetalHeroWorldCaptureActive = false;
 #endif
 
     // The changes marked since the last application, and how many the one running applies, for the log line.
@@ -627,6 +630,12 @@ public:
         const LLDrawInfo& params, bool particle_or_hud_particle,
         bool depth_only = false);
     bool fillMetalImpostorHeroProbe();
+    bool beginMetalHeroProbeFaceCapture(
+        const LLUUID& hero_id, U64 owner_epoch,
+        U32 face, U32 max_probe_lod);
+    bool endMetalHeroProbeFaceCapture();
+    bool publishMetalHeroProbeRadiance(
+        const LLUUID& hero_id, U64 generation, F32 strength);
     void requestMetalScreenSpaceReflections(const LLRenderTarget& source);
     void collectMetalScreenSpaceReflections();
     bool fillMetalImpostorScreenSpaceReflections();
@@ -1013,6 +1022,9 @@ private:
     void hideDrawable( LLDrawable *pDrawable );
     void unhideDrawable( LLDrawable *pDrawable );
     void skipRenderingShadows();
+#if LL_DARWIN
+    bool isMetalWorldCapturePass() const;
+#endif
 public:
     enum {GPU_CLASS_MAX = 3 };
 

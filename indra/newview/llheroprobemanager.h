@@ -143,7 +143,9 @@ private:
     // mirrored by transitional Metal consumers. Readiness is separate because
     // a recreated GL array has an identity but no generated radiance yet.
     U64 mMetalRadianceGeneration = 0;
+    U64 mMetalRadianceEpoch = 1;
     bool mMetalRadianceReady = false;
+    bool mMetalRadianceCaptureComplete = false;
 
     F32 mHeroProbeStrength = 1.f;
     bool mIsInTransition = false;

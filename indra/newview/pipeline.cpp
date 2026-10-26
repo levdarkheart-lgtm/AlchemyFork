@@ -352,6 +352,15 @@ bool LLPipeline::isMainWorldPass()
         && LLViewerCamera::sCurCameraID == LLViewerCamera::CAMERA_WORLD;
 }
 
+#if LL_DARWIN
+bool LLPipeline::isMetalWorldCapturePass() const
+{
+    return isMainWorldPass() ||
+        (mMetalHeroWorldCaptureActive && gCubeSnapshot &&
+         mHeroProbeManager.isMirrorPass() && mRT == &mHeroProbeRT);
+}
+#endif
+
 // static
 bool LLPipeline::suppressesLensAndPrintEffects()
 {
@@ -634,6 +643,15 @@ struct LLPipeline::MetalWorldSimpleCapture
     ALMetalWorldHeroProbe impostor_hero_probe;
     std::vector<U8> impostor_hero_probe_bytes;
     U64 impostor_hero_probe_generation = 0;
+    std::unique_ptr<ALMetalTexture> hero_probe_source_cube;
+    std::unique_ptr<ALMetalTexture> hero_probe_radiance_cube;
+    LLUUID hero_probe_owner_id;
+    U64 hero_probe_owner_epoch = 0;
+    U32 hero_probe_valid_faces = 0;
+    U32 hero_probe_face = 0;
+    U32 hero_probe_max_lod = 0;
+    U64 hero_probe_native_generation = 0;
+    bool hero_probe_face_capture = false;
     ALGPUReadback impostor_ssr_color_readback;
     ALGPUReadback impostor_ssr_depth_readback;
     std::deque<SSRReadback> impostor_ssr_pending;
@@ -1048,9 +1066,144 @@ bool fillMetalWorldPreWaterAlphaDraw(
 }
 }
 
+bool LLPipeline::beginMetalHeroProbeFaceCapture(
+    const LLUUID& hero_id, U64 owner_epoch,
+    U32 face, U32 max_probe_lod)
+{
+    if (mMetalHeroWorldCaptureActive || hero_id.isNull() ||
+        owner_epoch == 0 || face >= 6 || !mGLResourcesLive)
+    {
+        return false;
+    }
+
+    std::swap(mMetalWorldSimpleCapture, mMetalHeroWorldSimpleCapture);
+    if (!mMetalWorldSimpleCapture)
+    {
+        mMetalWorldSimpleCapture =
+            std::make_unique<MetalWorldSimpleCapture>();
+    }
+    mMetalHeroWorldCaptureActive = true;
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+
+    if (capture.hero_probe_owner_id != hero_id ||
+        capture.hero_probe_owner_epoch != owner_epoch)
+    {
+        capture.hero_probe_source_cube.reset();
+        capture.hero_probe_radiance_cube.reset();
+        capture.hero_probe_valid_faces = 0;
+        capture.hero_probe_native_generation = 0;
+        capture.hero_probe_owner_id = hero_id;
+        capture.hero_probe_owner_epoch = owner_epoch;
+    }
+
+    // A hero manager can update several faces in one viewer frame. Each face
+    // is its own complete native transaction; only the source/radiance cubes
+    // and renderer cache persist across those transactions.
+    capture.target.reset();
+    capture.local_light_target.reset();
+    capture.projector_light_target.reset();
+    capture.composed_light_target.reset();
+    capture.opaque_post_deferred_target.reset();
+    capture.base_light_map_target.reset();
+    capture.base_light_target.reset();
+    capture.sky_behind_target.reset();
+    capture.batches.clear();
+    capture.avatar_palettes.clear();
+    capture.frame_active = false;
+    capture.pass_active = false;
+    capture.complete = false;
+    capture.attempted = false;
+    capture.local_lighting_attempted = false;
+    capture.projector_lighting_attempted = false;
+    capture.lighting_composition_attempted = false;
+    capture.opaque_post_deferred_attempted = false;
+    capture.base_lighting_attempted = false;
+    capture.world_post_deferred_active = false;
+    capture.world_post_deferred_phase = false;
+    capture.world_pre_water_alpha_active = false;
+    capture.world_post_water_alpha_active = false;
+    capture.hero_probe_face_capture = true;
+    capture.hero_probe_face = face;
+    capture.hero_probe_max_lod = max_probe_lod;
+    return true;
+}
+
+bool LLPipeline::endMetalHeroProbeFaceCapture()
+{
+    if (!mMetalHeroWorldCaptureActive || !mMetalWorldSimpleCapture)
+    {
+        return false;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    bool published = false;
+    if (capture.hero_probe_face_capture && capture.renderer &&
+        capture.opaque_post_deferred_target)
+    {
+        std::string error;
+        published = capture.renderer->updateHeroProbeFace(
+            *capture.opaque_post_deferred_target,
+            capture.hero_probe_face, capture.hero_probe_max_lod,
+            capture.hero_probe_source_cube,
+            capture.hero_probe_valid_faces, &error);
+        if (!published)
+        {
+            LL_WARNS("Metal")
+                << "Could not publish native hero-probe face "
+                << capture.hero_probe_face << ": " << error << LL_ENDL;
+        }
+    }
+    capture.hero_probe_face_capture = false;
+    capture.opaque_post_deferred_target.reset();
+    capture.target.reset();
+    capture.local_light_target.reset();
+    capture.projector_light_target.reset();
+    capture.composed_light_target.reset();
+    capture.base_light_map_target.reset();
+    capture.base_light_target.reset();
+    capture.frame_active = false;
+    capture.pass_active = false;
+
+    std::swap(mMetalWorldSimpleCapture, mMetalHeroWorldSimpleCapture);
+    mMetalHeroWorldCaptureActive = false;
+    return published;
+}
+
+bool LLPipeline::publishMetalHeroProbeRadiance(
+    const LLUUID& hero_id, U64 generation, F32 strength)
+{
+    if (mMetalHeroWorldCaptureActive || hero_id.isNull() ||
+        generation == 0 || !mMetalHeroWorldSimpleCapture)
+    {
+        return false;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalHeroWorldSimpleCapture;
+    if (capture.hero_probe_owner_id != hero_id || !capture.renderer ||
+        !capture.hero_probe_source_cube ||
+        capture.hero_probe_valid_faces != 0x3fu)
+    {
+        return false;
+    }
+
+    std::string error;
+    if (!capture.renderer->filterHeroProbeRadiance(
+            *capture.hero_probe_source_cube,
+            capture.hero_probe_valid_faces,
+            capture.hero_probe_max_lod, strength,
+            capture.hero_probe_radiance_cube, &error))
+    {
+        LL_WARNS("Metal")
+            << "Could not publish native hero-probe radiance: "
+            << error << LL_ENDL;
+        return false;
+    }
+    capture.hero_probe_native_generation = generation;
+    return true;
+}
+
 void LLPipeline::beginMetalWorldGBufferCapture()
 {
-    if (!isMainWorldPass() || gSnapshot || !mGLResourcesLive)
+    if (!isMetalWorldCapturePass() || gSnapshot || !mGLResourcesLive)
     {
         return;
     }
@@ -1061,10 +1214,16 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     ALMetalDevice* device = LLImageGL::getMetalDevice();
+    const bool hero_face = mMetalHeroWorldCaptureActive;
     const std::optional<ALRenderTargetDesc>& descriptor =
         mResourcePlan.desc(ALRenderResourcePlan::Id::MainGBuffer);
-    if (!device || !descriptor || descriptor->width == 0 ||
-        descriptor->height == 0)
+    const U32 capture_width = hero_face && mRT
+        ? mRT->deferredScreen.getWidth()
+        : descriptor ? descriptor->width : 0;
+    const U32 capture_height = hero_face && mRT
+        ? mRT->deferredScreen.getHeight()
+        : descriptor ? descriptor->height : 0;
+    if (!device || capture_width == 0 || capture_height == 0)
     {
         // Startup can reach the draw-pool owner before the durable Metal
         // device/resource plan exists. Leave the probe armed for a later
@@ -1169,6 +1328,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.impostor_hero_probe = {};
         capture.impostor_hero_probe_bytes.clear();
         capture.impostor_hero_probe_generation = 0;
+        capture.hero_probe_source_cube.reset();
+        capture.hero_probe_radiance_cube.reset();
+        capture.hero_probe_valid_faces = 0;
+        capture.hero_probe_native_generation = 0;
         capture.impostor_ssr_color_readback.release();
         capture.impostor_ssr_depth_readback.release();
         capture.impostor_ssr_pending.clear();
@@ -1425,8 +1588,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.windlight_clouds_complete = false;
     capture.windlight_clouds_native_available = false;
     capture.avatar_palettes.clear();
-    capture.width = descriptor->width;
-    capture.height = descriptor->height;
+    capture.width = capture_width;
+    capture.height = capture_height;
     capture.normal_hdr = LLRender::sGBufferNormHDR;
     capture.hdr = hdrEnabled();
     capture.reverse_z = LLRender::sReverseZ;
@@ -2885,7 +3048,8 @@ void LLPipeline::beginMetalImpostorAlphaCapture(
 
 void LLPipeline::beginMetalWorldPostDeferredCapture()
 {
-    if (!isMainWorldPass() || mRT != &mMainRT ||
+    if (!isMetalWorldCapturePass() ||
+        (!mMetalHeroWorldCaptureActive && mRT != &mMainRT) ||
         !mMetalWorldSimpleCapture)
     {
         return;
@@ -3452,7 +3616,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     const bool needs_reflection_probes =
         has_shiny || has_simple_alpha || has_material_alpha ||
         has_pbr_alpha || has_above_water_surface;
-    const bool hero_active =
+    const bool hero_active = !gCubeSnapshot &&
         mHeroProbeManager.mHeroData.heroProbeCount > 0;
     const bool ssr_active =
         mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
@@ -3834,7 +3998,7 @@ void LLPipeline::beginMetalImpostorAlphaPhase()
         {
             return batch.impostor_shiny;
         });
-    const bool hero_active =
+    const bool hero_active = !gCubeSnapshot &&
         mHeroProbeManager.mHeroData.heroProbeCount > 0;
     if (capture.complete && has_shiny &&
         !mReflectionMapManager.fillMetalReflectionProbes(
@@ -3948,7 +4112,7 @@ void LLPipeline::endMetalImpostorAlphaCapture()
                            return slot.env_intensity > 0.f;
                        });
         });
-    const bool hero_active =
+    const bool hero_active = !gCubeSnapshot &&
         mHeroProbeManager.mHeroData.heroProbeCount > 0;
     const bool ssr_active =
         mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
@@ -5424,6 +5588,28 @@ bool LLPipeline::fillMetalImpostorHeroProbe()
     const ALMetalPixelFormat metal_format = manager.mHDR
         ? ALMetalPixelFormat::rg11b10_float
         : ALMetalPixelFormat::rgba8_unorm;
+    const MetalWorldSimpleCapture* native_capture =
+        !mMetalHeroWorldCaptureActive
+            ? mMetalHeroWorldSimpleCapture.get() : nullptr;
+    const ALMetalTextureDescriptor* native_descriptor =
+        native_capture && native_capture->hero_probe_radiance_cube
+            ? &native_capture->hero_probe_radiance_cube->descriptor()
+            : nullptr;
+    const bool native_radiance = native_capture && native_descriptor &&
+        native_capture->device == capture.device &&
+        manager.mNearestHero.notNull() &&
+        !manager.mNearestHero->isDead() &&
+        native_capture->hero_probe_owner_id ==
+            manager.mNearestHero->getID() &&
+        native_capture->hero_probe_owner_epoch ==
+            manager.mMetalRadianceEpoch &&
+        native_capture->hero_probe_native_generation ==
+            manager.mMetalRadianceGeneration &&
+        native_descriptor->type == ALMetalTextureType::texture_cube &&
+        native_descriptor->format == metal_format &&
+        native_descriptor->width == resolution &&
+        native_descriptor->height == resolution &&
+        native_descriptor->mipmap_level_count == radiance_mips;
     const ALMetalTextureDescriptor* mirrored =
         capture.impostor_hero_probe_texture
             ? &capture.impostor_hero_probe_texture->descriptor()
@@ -5438,7 +5624,7 @@ bool LLPipeline::fillMetalImpostorHeroProbe()
         mirrored->height != resolution ||
         mirrored->mipmap_level_count != radiance_mips;
 
-    if (needs_radiance)
+    if (!native_radiance && needs_radiance)
     {
         struct MipLayout
         {
@@ -5629,7 +5815,9 @@ bool LLPipeline::fillMetalImpostorHeroProbe()
     constants.config[2] = hero_max_lod;
 
     capture.impostor_hero_probe.radiance_texture =
-        capture.impostor_hero_probe_texture.get();
+        native_radiance
+            ? native_capture->hero_probe_radiance_cube.get()
+            : capture.impostor_hero_probe_texture.get();
     capture.impostor_hero_probe.constants = constants;
     return true;
 }
@@ -8809,7 +8997,8 @@ void LLPipeline::renderMetalWorldLocalLights(
     LLViewerCamera& camera, const LLMatrix4a& modelview,
     F32 light_scale, S32 local_light_count)
 {
-    if (!isMainWorldPass() || mRT != &mMainRT ||
+    if (!isMetalWorldCapturePass() ||
+        (!mMetalHeroWorldCaptureActive && mRT != &mMainRT) ||
         !mMetalWorldSimpleCapture)
     {
         return;
@@ -8927,7 +9116,8 @@ void LLPipeline::renderMetalWorldProjectorLights(
     LLViewerCamera& camera, const LLMatrix4a& modelview,
     F32 light_scale, S32 local_light_count)
 {
-    if (!isMainWorldPass() || mRT != &mMainRT ||
+    if (!isMetalWorldCapturePass() ||
+        (!mMetalHeroWorldCaptureActive && mRT != &mMainRT) ||
         !mMetalWorldSimpleCapture)
     {
         return;
@@ -9169,7 +9359,8 @@ void LLPipeline::renderMetalWorldProjectorLights(
 
 void LLPipeline::renderMetalWorldLightingComposition()
 {
-    if (!isMainWorldPass() || mRT != &mMainRT ||
+    if (!isMetalWorldCapturePass() ||
+        (!mMetalHeroWorldCaptureActive && mRT != &mMainRT) ||
         !mMetalWorldSimpleCapture)
     {
         return;
@@ -9224,7 +9415,8 @@ void LLPipeline::renderMetalWorldLightingComposition()
 bool LLPipeline::renderMetalWorldLightMap(
     LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao)
 {
-    if (!isMainWorldPass() || mRT != &mMainRT ||
+    if (!isMetalWorldCapturePass() ||
+        (!mMetalHeroWorldCaptureActive && mRT != &mMainRT) ||
         !mMetalWorldSimpleCapture)
     {
         return false;
@@ -9480,7 +9672,8 @@ void LLPipeline::renderMetalWorldBaseLighting(
     LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao,
     F32 ssao_scale, F32 ssao_max)
 {
-    if (!isMainWorldPass() || mRT != &mMainRT ||
+    if (!isMetalWorldCapturePass() ||
+        (!mMetalHeroWorldCaptureActive && mRT != &mMainRT) ||
         !mMetalWorldSimpleCapture)
     {
         return;
@@ -9501,7 +9694,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
         return;
     }
 
-    const bool hero_active =
+    const bool hero_active = !gCubeSnapshot &&
         mHeroProbeManager.mHeroData.heroProbeCount > 0;
     if (hero_active && !fillMetalImpostorHeroProbe())
     {
@@ -10475,7 +10668,14 @@ void LLPipeline::releaseAllGLResources()
     // Includes the impostor PBO mirrors. Drop them while the GL context that
     // allocated their names is still current; a restored context starts a
     // fresh bounded native-world probe.
+    if (mMetalHeroWorldCaptureActive)
+    {
+        std::swap(
+            mMetalWorldSimpleCapture, mMetalHeroWorldSimpleCapture);
+        mMetalHeroWorldCaptureActive = false;
+    }
     mMetalWorldSimpleCapture.reset();
+    mMetalHeroWorldSimpleCapture.reset();
 #endif
 
     releaseRenderTargets();

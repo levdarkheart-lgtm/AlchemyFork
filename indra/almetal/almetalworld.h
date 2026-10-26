@@ -1024,6 +1024,28 @@ public:
         std::unique_ptr<ALMetalRenderTarget>& history,
         std::string* error = nullptr);
 
+    // Retain one completed native hero-probe face in a private cube without
+    // crossing through CPU memory. Recreating the cube clears valid_faces;
+    // a successful copy publishes the selected bit only after submission.
+    bool updateHeroProbeFace(
+        const ALMetalRenderTarget& source,
+        std::uint32_t face,
+        std::uint32_t max_probe_lod,
+        std::unique_ptr<ALMetalTexture>& source_cube,
+        std::uint32_t& valid_faces,
+        std::string* error = nullptr);
+
+    // Build the source cube's mip chain and reproduce radianceGenF.glsl's
+    // gloss-quarter GGX filter directly on the Metal queue. All six native
+    // faces must belong to the same caller-managed generation.
+    bool filterHeroProbeRadiance(
+        ALMetalTexture& source_cube,
+        std::uint32_t valid_faces,
+        std::uint32_t max_probe_lod,
+        float probe_strength,
+        std::unique_ptr<ALMetalTexture>& radiance_cube,
+        std::string* error = nullptr);
+
     // Produce the deferred RG light map from native G-buffer depth/normals:
     // directional visibility in R and bilateral two-axis SSAO in G.
     std::unique_ptr<ALMetalRenderTarget> renderLightMap(
