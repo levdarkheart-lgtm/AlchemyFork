@@ -81,6 +81,30 @@ fragment float4 almetal_resample_fragment(
     return source.sample(source_sampler, input.texcoord);
 }
 
+struct ALMetalUIDepthOutput
+{
+    float depth [[depth(any)]];
+};
+
+fragment ALMetalUIDepthOutput almetal_ui_depth_clear_fragment(
+    constant float& clear_depth [[buffer(0)]])
+{
+    ALMetalUIDepthOutput output;
+    output.depth = clear_depth;
+    return output;
+}
+
+fragment ALMetalUIDepthOutput almetal_ui_depth_restore_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> retained_depth [[texture(0)]],
+    sampler point_sampler [[sampler(0)]])
+{
+    ALMetalUIDepthOutput output;
+    output.depth = retained_depth.sample(
+        point_sampler, input.texcoord, level(0.0)).r;
+    return output;
+}
+
 struct ALMetalMatrices
 {
     float4x4 modelview;

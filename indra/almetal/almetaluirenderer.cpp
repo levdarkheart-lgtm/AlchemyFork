@@ -18,6 +18,7 @@
 #include "almetalsurface.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <utility>
 #include <vector>
@@ -171,6 +172,10 @@ struct ALMetalUIRenderer::Impl
     ALMetalPixelFormat background_depth_format =
         ALMetalPixelFormat::invalid;
     std::unique_ptr<ALMetalSamplerState> background_sampler;
+    std::unique_ptr<ALMetalRenderPipeline> depth_clear_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> depth_restore_pipeline;
+    std::unique_ptr<ALMetalSamplerState> depth_restore_sampler;
+    ALMetalPixelFormat depth_region_format = ALMetalPixelFormat::invalid;
     std::unique_ptr<ALMetalRenderTarget> target;
     std::unique_ptr<ALMetalDrawable> drawable;
     std::unique_ptr<ALMetalRenderPass> pass;
@@ -226,6 +231,161 @@ struct ALMetalUIRenderer::Impl
         background_sampler = ALMetalSamplerState::create(
             *device, sampler_descriptor, error);
         return background_sampler != nullptr;
+    }
+
+    bool prepareDepthRegions(std::string* error)
+    {
+        const ALMetalPixelFormat depth_format = frameDepthFormat();
+        if (depth_clear_pipeline && depth_restore_pipeline &&
+            depth_restore_sampler && depth_region_format == depth_format)
+        {
+            return true;
+        }
+
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = library.get();
+        descriptor.vertex_function = "almetal_resample_vertex";
+        descriptor.fragment_function = "almetal_ui_depth_clear_fragment";
+        descriptor.colors[0].format = output_format;
+        descriptor.colors[0].write_mask = ALMetalColorWriteMask::none;
+        descriptor.depth_stencil_format = depth_format;
+        descriptor.label = "Alchemy localized HUD depth clear pipeline";
+        depth_clear_pipeline = ALMetalRenderPipeline::create(
+            *device, descriptor, error);
+        if (!depth_clear_pipeline)
+        {
+            return false;
+        }
+
+        descriptor.fragment_function = "almetal_ui_depth_restore_fragment";
+        descriptor.label = "Alchemy localized HUD depth restore pipeline";
+        depth_restore_pipeline = ALMetalRenderPipeline::create(
+            *device, descriptor, error);
+        if (!depth_restore_pipeline)
+        {
+            depth_clear_pipeline.reset();
+            return false;
+        }
+
+        ALMetalSamplerDescriptor sampler_descriptor;
+        sampler_descriptor.min_filter = ALMetalSamplerFilter::nearest;
+        sampler_descriptor.mag_filter = ALMetalSamplerFilter::nearest;
+        sampler_descriptor.mip_filter = ALMetalSamplerMipFilter::none;
+        sampler_descriptor.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.label = "Alchemy localized HUD depth restore sampler";
+        depth_restore_sampler = ALMetalSamplerState::create(
+            *device, sampler_descriptor, error);
+        if (!depth_restore_sampler)
+        {
+            depth_clear_pipeline.reset();
+            depth_restore_pipeline.reset();
+            return false;
+        }
+        depth_region_format = depth_format;
+        return true;
+    }
+
+    bool validateDepthRects(const ALMetalScissorRect* rects,
+                            std::size_t count,
+                            std::string* error) const
+    {
+        if (!frame_depth)
+        {
+            setError(error,
+                     "Metal UI depth regions require a frame depth backing");
+            return false;
+        }
+        if (count > 0 && !rects)
+        {
+            setError(error, "Metal UI depth regions are missing rectangles");
+            return false;
+        }
+        const ALMetalTextureDescriptor& descriptor =
+            frame_depth->descriptor();
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            const ALMetalScissorRect& rect = rects[index];
+            if (rect.width == 0 || rect.height == 0 ||
+                rect.x >= descriptor.width || rect.y >= descriptor.height ||
+                rect.width > descriptor.width - rect.x ||
+                rect.height > descriptor.height - rect.y)
+            {
+                setError(error,
+                         "Metal UI depth region is outside the retained depth target");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool drawDepthRects(const ALMetalScissorRect* rects,
+                        std::size_t count,
+                        bool restore,
+                        float clear_depth,
+                        std::string* error)
+    {
+        if (count == 0)
+        {
+            return true;
+        }
+        const ALMetalTextureDescriptor& descriptor =
+            frame_depth->descriptor();
+        if (!beginFrame(descriptor.width, descriptor.height, error) ||
+            !prepareDepthRegions(error))
+        {
+            return false;
+        }
+
+        ALMetalUIDepthState write_depth;
+        write_depth.enabled = true;
+        write_depth.write_enabled = true;
+        write_depth.compare = ALMetalCompareFunction::always;
+        ALMetalDepthStencilState* depth = depthState(write_depth, error);
+        if (!depth)
+        {
+            return false;
+        }
+
+        ALMetalRenderEncoder& active_encoder = *encoder;
+        ALMetalRenderPipeline* active_pipeline = restore
+            ? depth_restore_pipeline.get() : depth_clear_pipeline.get();
+        const ALMetalViewport viewport{
+            0.0, 0.0, static_cast<double>(descriptor.width),
+            static_cast<double>(descriptor.height), 0.0, 1.0};
+        if (!active_encoder.setPipeline(*active_pipeline, error) ||
+            !active_encoder.setDepthStencilState(depth, error) ||
+            !active_encoder.setViewport(viewport, error) ||
+            !active_encoder.setCullMode(ALMetalCullMode::none, error))
+        {
+            return false;
+        }
+        if (restore)
+        {
+            if (!active_encoder.setFragmentTexture(0, frame_depth, error) ||
+                !active_encoder.setFragmentSampler(
+                    0, depth_restore_sampler.get(), error))
+            {
+                return false;
+            }
+        }
+        else if (!active_encoder.setFragmentBytes(
+                     0, &clear_depth, sizeof(clear_depth), error))
+        {
+            return false;
+        }
+
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            if (!active_encoder.setScissor(rects[index], error) ||
+                !active_encoder.draw(
+                    ALMetalPrimitiveType::triangle, 0, 3, 1, error))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     ALMetalRenderPipeline* pipeline(ALMetalUIShader shader,
@@ -542,7 +702,9 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
         !library->hasFunction("almetal_solid_vertex") ||
         !library->hasFunction("almetal_solid_fragment") ||
         !library->hasFunction("almetal_resample_vertex") ||
-        !library->hasFunction("almetal_resample_fragment"))
+        !library->hasFunction("almetal_resample_fragment") ||
+        !library->hasFunction("almetal_ui_depth_clear_fragment") ||
+        !library->hasFunction("almetal_ui_depth_restore_fragment"))
     {
         setError(error, "Built-in Metal library is missing production UI functions");
         return nullptr;
@@ -665,6 +827,54 @@ bool ALMetalUIRenderer::setFrameDepth(
     }
     mImpl->frame_depth = depth;
     return true;
+}
+
+bool ALMetalUIRenderer::clearFrameDepthRects(
+    const ALMetalScissorRect* rects,
+    std::size_t count,
+    float depth,
+    std::string* error)
+{
+    if (!mImpl)
+    {
+        setError(error, "Metal UI renderer is unavailable");
+        return false;
+    }
+    if (!std::isfinite(depth) || depth < 0.f || depth > 1.f)
+    {
+        setError(error, "Metal UI clear depth must be finite and normalized");
+        return false;
+    }
+    if (!mImpl->validateDepthRects(rects, count, error))
+    {
+        return false;
+    }
+    return mImpl->drawDepthRects(rects, count, false, depth, error);
+}
+
+bool ALMetalUIRenderer::restoreFrameDepthRects(
+    const ALMetalScissorRect* rects,
+    std::size_t count,
+    std::string* error)
+{
+    if (!mImpl)
+    {
+        setError(error, "Metal UI renderer is unavailable");
+        return false;
+    }
+    if (!mImpl->validateDepthRects(rects, count, error))
+    {
+        return false;
+    }
+    if (!alMetalHasUsage(
+            mImpl->frame_depth->descriptor().usage,
+            ALMetalTextureUsage::shader_read))
+    {
+        setError(error,
+                 "Metal UI depth restore requires a shader-readable backing");
+        return false;
+    }
+    return mImpl->drawDepthRects(rects, count, true, 0.f, error);
 }
 
 bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)

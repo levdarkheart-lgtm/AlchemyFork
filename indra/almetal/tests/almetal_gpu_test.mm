@@ -691,6 +691,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_test_sample_cube_array",
             "almetal_resample_vertex",
             "almetal_resample_fragment",
+            "almetal_ui_depth_clear_fragment",
+            "almetal_ui_depth_restore_fragment",
             "almetal_world_spot_shadow_vertex",
             "almetal_world_spot_shadow_skinned_vertex",
             "almetal_world_spot_shadow_fragment",
@@ -19487,6 +19489,7 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         depth_source_descriptor.color_attachment_count = 0;
         depth_source_descriptor.depth_stencil_format =
             ALMetalPixelFormat::depth32_float_stencil8;
+        depth_source_descriptor.depth_stencil_shader_read = true;
         depth_source_descriptor.label =
             "Alchemy native world/UI retained depth source";
         auto depth_source = ALMetalRenderTarget::create(
@@ -19614,6 +19617,151 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         draw_with_depth(
             0.75f, ALMetalCompareFunction::greater_equal, true, true);
 
+        // HUD attachments clear only their own screen-space bounds, then the
+        // following selections/beacons recover the immutable scene depth.
+        // Prove both operations against physical color and depth readback.
+        auto depth_region_renderer = ALMetalUIRenderer::create(
+            *device, *scheduler, &error);
+        INFO(error);
+        REQUIRE(depth_region_renderer);
+        const ALMetalScissorRect hud_region{8, 8, 16, 16};
+        error.clear();
+        CHECK_FALSE(depth_region_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        CHECK(error ==
+              "Metal UI depth regions require a frame depth backing");
+        error.clear();
+        CHECK_FALSE(depth_region_renderer->restoreFrameDepthRects(
+            &hud_region, 1, &error));
+        CHECK(error ==
+              "Metal UI depth regions require a frame depth backing");
+
+        ALMetalRenderTargetDescriptor unreadable_depth_descriptor =
+            depth_source_descriptor;
+        unreadable_depth_descriptor.depth_stencil_shader_read = false;
+        unreadable_depth_descriptor.label =
+            "Alchemy non-sampleable retained UI depth";
+        auto unreadable_depth = ALMetalRenderTarget::create(
+            *device, unreadable_depth_descriptor, &error);
+        INFO(error);
+        REQUIRE(unreadable_depth);
+        auto unreadable_depth_renderer = ALMetalUIRenderer::create(
+            *device, *scheduler, &error);
+        INFO(error);
+        REQUIRE(unreadable_depth_renderer);
+        REQUIRE(unreadable_depth_renderer->setFrameDepth(
+            unreadable_depth->depthStencilTexture(), &error));
+        error.clear();
+        CHECK_FALSE(unreadable_depth_renderer->restoreFrameDepthRects(
+            &hud_region, 1, &error));
+        CHECK(error ==
+              "Metal UI depth restore requires a shader-readable backing");
+        REQUIRE(unreadable_depth_renderer->endFrame(&error));
+        CHECK(unreadable_depth_renderer->stats().frames == 0);
+
+        REQUIRE(depth_region_renderer->setFrameBackground(
+            background.get(), &error));
+        REQUIRE(depth_region_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        error.clear();
+        CHECK_FALSE(depth_region_renderer->clearFrameDepthRects(
+            nullptr, 1, 1.f, &error));
+        CHECK(error == "Metal UI depth regions are missing rectangles");
+        const ALMetalScissorRect invalid_hud_region{24, 24, 16, 16};
+        error.clear();
+        CHECK_FALSE(depth_region_renderer->clearFrameDepthRects(
+            &invalid_hud_region, 1, 1.f, &error));
+        CHECK(error ==
+              "Metal UI depth region is outside the retained depth target");
+        error.clear();
+        CHECK_FALSE(depth_region_renderer->clearFrameDepthRects(
+            &hud_region, 1,
+            std::numeric_limits<float>::quiet_NaN(), &error));
+        CHECK(error ==
+              "Metal UI clear depth must be finite and normalized");
+
+        REQUIRE(depth_region_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        float hud_positions[3][4];
+        std::memcpy(hud_positions, positions, sizeof(hud_positions));
+        for (auto& position : hud_positions)
+        {
+            position[2] = 0.5f;
+        }
+        REQUIRE(buffer->write(
+            position_offset, hud_positions, sizeof(hud_positions), &error));
+        REQUIRE(buffer->write(
+            color_offset, colors, sizeof(colors), &error));
+        batch.depth.enabled = true;
+        batch.depth.write_enabled = true;
+        batch.depth.reverse_z = false;
+        batch.depth.compare = ALMetalCompareFunction::less_equal;
+        REQUIRE(depth_region_renderer->draw(batch, &error));
+        REQUIRE(depth_region_renderer->restoreFrameDepthRects(
+            &hud_region, 1, &error));
+
+        const std::uint8_t green_colors[3][4] = {
+            {32, 255, 16, 255}, {32, 255, 16, 255},
+            {32, 255, 16, 255},
+        };
+        auto green_bytes = bytes;
+        std::memcpy(
+            green_bytes.data() + position_offset,
+            hud_positions, sizeof(hud_positions));
+        std::memcpy(
+            green_bytes.data() + color_offset,
+            green_colors, sizeof(green_colors));
+        ALMetalBufferDescriptor green_buffer_descriptor = buffer_descriptor;
+        green_buffer_descriptor.label =
+            "Alchemy post-restore UI test SoA";
+        auto green_buffer = ALMetalBuffer::create(
+            *device, green_buffer_descriptor, &error);
+        INFO(error);
+        REQUIRE(green_buffer);
+        REQUIRE(green_buffer->write(
+            0, green_bytes.data(), green_bytes.size(), &error));
+        batch.vertices = green_buffer.get();
+        batch.depth.write_enabled = false;
+        REQUIRE(depth_region_renderer->draw(batch, &error));
+        REQUIRE(depth_region_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+
+        const ALMetalTexture* depth_region_color =
+            depth_region_renderer->outputTexture();
+        const ALMetalTexture* depth_region_depth =
+            depth_region_renderer->outputDepthTexture();
+        REQUIRE(depth_region_color);
+        REQUIRE(depth_region_depth);
+        REQUIRE(depth_region_color->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(composed_pixels[center + 0] == 16u);
+        CHECK(composed_pixels[center + 1] == 32u);
+        CHECK(composed_pixels[center + 2] == 255u);
+        CHECK(composed_pixels[center + 3] == 255u);
+        const std::size_t outside_hud = (4 * 32 + 16) * 4;
+        CHECK(composed_pixels[outside_hud + 0] == 20u);
+        CHECK(composed_pixels[outside_hud + 1] == 40u);
+        CHECK(composed_pixels[outside_hud + 2] == 80u);
+        CHECK(composed_pixels[outside_hud + 3] == 255u);
+        std::array<float, 32 * 32> depth_region_values{};
+        REQUIRE(depth_region_depth->readback(
+            *device, 0, 0, {}, depth_region_values.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(depth_region_values[16 * 32 + 16] - 0.5f) <
+              0.0001f);
+        CHECK(std::abs(depth_region_values[4 * 32 + 16] - 0.5f) <
+              0.0001f);
+        const ALMetalUIRendererStats depth_region_stats =
+            depth_region_renderer->stats();
+        CHECK(depth_region_stats.frames == 1);
+        CHECK(depth_region_stats.batches == 2);
+        CHECK(depth_region_stats.vertices == 6);
+        batch.vertices = buffer.get();
+
         error.clear();
         CHECK_FALSE(depth_renderer->setFrameDepth(
             depth_renderer->outputDepthTexture(), &error));
@@ -19631,6 +19779,8 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         batch.depth.write_enabled = false;
         REQUIRE(buffer->write(
             position_offset, positions, sizeof(positions), &error));
+        REQUIRE(buffer->write(
+            color_offset, colors, sizeof(colors), &error));
 
         auto rgba_renderer = ALMetalUIRenderer::createForTexture(
             *device, *scheduler, ALMetalPixelFormat::rgba8_unorm, &error);

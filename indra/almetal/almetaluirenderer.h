@@ -167,6 +167,19 @@ public:
     bool setFrameDepth(
         const ALMetalTexture* depth,
         std::string* error = nullptr);
+    // Localized HUD depth brackets operate on the copied destination depth,
+    // while restore samples the immutable retained backing selected above.
+    // Rectangles use Metal's upper-left target coordinates and must be
+    // non-empty and fully contained by the retained depth dimensions.
+    bool clearFrameDepthRects(
+        const ALMetalScissorRect* rects,
+        std::size_t count,
+        float depth,
+        std::string* error = nullptr);
+    bool restoreFrameDepthRects(
+        const ALMetalScissorRect* rects,
+        std::size_t count,
+        std::string* error = nullptr);
     bool draw(const ALMetalUIBatch& batch, std::string* error = nullptr);
     bool endFrame(std::string* error = nullptr);
 
