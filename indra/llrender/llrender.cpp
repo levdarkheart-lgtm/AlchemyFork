@@ -2314,7 +2314,8 @@ void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
 #if LL_DARWIN
 bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                                  LLImageGL* image, const ALSamplerDesc& sampler,
-                                 bool texture_bound)
+                                 bool texture_bound, bool indexed,
+                                 U32 index_count, U32 indices_offset)
 {
     const bool capture = mMetalUICaptureRenderer != nullptr;
     const bool replace = mMetalUIRenderer && mMetalUIReplacementEnabled &&
@@ -2383,6 +2384,8 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         return fallback(MetalUIFallbackReason::primitive);
     }
     ALMetalBuffer* metal_buffer = buffer->getMetalVertexBuffer();
+    ALMetalBuffer* metal_indices = indexed
+        ? buffer->getMetalIndexBuffer() : nullptr;
     ALMetalTexture* metal_texture = image ? image->getMetalTexture() : nullptr;
     const bool needs_texture = metal_shader == ALMetalUIShader::textured ||
                                metal_shader == ALMetalUIShader::solid_color ||
@@ -2391,9 +2394,13 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                              metal_shader == ALMetalUIShader::vertex_color ||
                              metal_shader == ALMetalUIShader::alpha_mask_textured ||
                              metal_shader == ALMetalUIShader::alpha_mask_solid;
-    const U32 required = LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_TEXCOORD0 |
+    const bool needs_texcoord =
+        metal_shader != ALMetalUIShader::uniform_color;
+    const U32 required = LLVertexBuffer::MAP_VERTEX |
+        (needs_texcoord ? LLVertexBuffer::MAP_TEXCOORD0 : 0) |
         (needs_color ? LLVertexBuffer::MAP_COLOR : 0);
-    if (!metal_buffer || (needs_texture && !metal_texture) ||
+    if (!metal_buffer || (indexed && !metal_indices) ||
+        (needs_texture && !metal_texture) ||
         (buffer->getTypeMask() & required) != required)
     {
         static U32 warned = 0;
@@ -2421,6 +2428,35 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
     batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
     batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
+    batch.indices = metal_indices;
+    if (indexed)
+    {
+        const U32 index_stride = buffer->getIndexStride();
+        if (index_stride != sizeof(U16) && index_stride != sizeof(U32))
+        {
+            return fallback(MetalUIFallbackReason::mirror);
+        }
+        batch.index_offset =
+            static_cast<std::size_t>(indices_offset) * index_stride;
+        batch.index_type = index_stride == sizeof(U16)
+            ? ALMetalIndexType::uint16 : ALMetalIndexType::uint32;
+        batch.index_count = index_count;
+        if (LLGLState::isEnabled(GL_CULL_FACE))
+        {
+            if (getCullFace() == GL_BACK)
+            {
+                batch.cull_mode = ALMetalCullMode::back;
+            }
+            else if (getCullFace() == GL_FRONT)
+            {
+                batch.cull_mode = ALMetalCullMode::front;
+            }
+            else
+            {
+                return fallback(MetalUIFallbackReason::primitive);
+            }
+        }
+    }
     batch.texture = metal_texture;
     batch.sampler = metal_sampler_descriptor(sampler);
     batch.shader = metal_shader;
@@ -2534,6 +2570,21 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         return fallback(MetalUIFallbackReason::encoder);
     }
     return true;
+}
+
+bool LLRender::captureMetalUIIndexedBuffer(
+    LLVertexBuffer* buffer, U32 mode, U32 index_count, U32 indices_offset)
+{
+    if (!mMetalUICaptureRenderer || !buffer)
+    {
+        return false;
+    }
+    ALSamplerDesc sampler = ALSamplerCache::makeDesc(ALSamplers::BilinearClamp);
+    const U64 captured_batches = mMetalUICaptureBatches;
+    drawMetalUIBuffer(
+        buffer, mode, buffer->getNumVerts(), nullptr, sampler, false,
+        true, index_count, indices_offset);
+    return mMetalUICaptureBatches == captured_batches + 1;
 }
 #endif
 

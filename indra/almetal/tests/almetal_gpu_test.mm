@@ -834,6 +834,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_ui_vertex",
             "almetal_ui_fragment",
             "almetal_ui_vertex_color_fragment",
+            "almetal_uniform_color_vertex",
             "almetal_uniform_color_fragment",
             "almetal_hud_fullbright_vertex",
             "almetal_hud_fullbright_fragment",
@@ -19398,7 +19399,37 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
             *device, *scheduler, &error);
         INFO(error);
         REQUIRE(uniform_color_renderer);
+        ALMetalBufferDescriptor position_only_descriptor;
+        position_only_descriptor.length = sizeof(positions);
+        position_only_descriptor.storage = ALMetalStorageMode::shared;
+        position_only_descriptor.label =
+            "Alchemy production position-only debug UI test";
+        auto position_only_buffer = ALMetalBuffer::create(
+            *device, position_only_descriptor, &error);
+        INFO(error);
+        REQUIRE(position_only_buffer);
+        REQUIRE(position_only_buffer->write(
+            0, positions, sizeof(positions), &error));
+        constexpr std::array<std::uint16_t, 3> debug_indices{0, 1, 2};
+        ALMetalBufferDescriptor debug_index_descriptor;
+        debug_index_descriptor.length = sizeof(debug_indices);
+        debug_index_descriptor.storage = ALMetalStorageMode::shared;
+        debug_index_descriptor.label =
+            "Alchemy production indexed debug UI test";
+        auto debug_index_buffer = ALMetalBuffer::create(
+            *device, debug_index_descriptor, &error);
+        INFO(error);
+        REQUIRE(debug_index_buffer);
+        REQUIRE(debug_index_buffer->write(
+            0, debug_indices.data(), sizeof(debug_indices), &error));
         batch.shader = ALMetalUIShader::uniform_color;
+        batch.vertices = position_only_buffer.get();
+        batch.texcoord_offset = position_only_buffer->length();
+        batch.color_offset = position_only_buffer->length();
+        batch.indices = debug_index_buffer.get();
+        batch.index_type = ALMetalIndexType::uint16;
+        batch.index_count = static_cast<std::uint32_t>(debug_indices.size());
+        batch.cull_mode = ALMetalCullMode::back;
         batch.texture = nullptr;
         batch.solid_color[0] = 1.f;
         batch.solid_color[1] = 0.5f;
@@ -19418,6 +19449,12 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(pixels[center + 2] == 255);
         CHECK(pixels[center + 3] == 255);
         batch.shader = ALMetalUIShader::textured;
+        batch.vertices = buffer.get();
+        batch.texcoord_offset = texcoord_offset;
+        batch.color_offset = color_offset;
+        batch.indices = nullptr;
+        batch.index_count = 0;
+        batch.cull_mode = ALMetalCullMode::none;
         batch.texture = texture.get();
 
         const ALMetalUIRendererStats stats = renderer->stats();

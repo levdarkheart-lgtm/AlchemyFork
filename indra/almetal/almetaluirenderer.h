@@ -93,11 +93,16 @@ struct ALMetalUIBatch
     std::size_t position_offset = 0;
     std::size_t texcoord_offset = 0;
     std::size_t color_offset = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
     const ALMetalTexture* texture = nullptr;
     ALMetalSamplerDescriptor sampler{};
     ALMetalUIMatrices matrices{};
     ALMetalUIBlendState blend{};
     ALMetalUIDepthState depth{};
+    ALMetalCullMode cull_mode = ALMetalCullMode::none;
     ALMetalViewport viewport{};
     ALMetalScissorRect scissor{};
     ALMetalUIShader shader = ALMetalUIShader::textured;

@@ -82,6 +82,11 @@ namespace
                shader == ALMetalUIShader::alpha_mask_solid;
     }
 
+    bool shaderUsesTexcoord(ALMetalUIShader shader)
+    {
+        return shader != ALMetalUIShader::uniform_color;
+    }
+
     bool rangeFits(std::size_t offset, std::size_t count,
                    std::size_t stride, std::size_t length)
     {
@@ -98,8 +103,11 @@ namespace
 
     const char* vertexFunction(ALMetalUIShader shader)
     {
-        return shader == ALMetalUIShader::solid_color ||
-                       shader == ALMetalUIShader::uniform_color
+        if (shader == ALMetalUIShader::uniform_color)
+        {
+            return "almetal_uniform_color_vertex";
+        }
+        return shader == ALMetalUIShader::solid_color
             ? "almetal_solid_vertex" : "almetal_ui_vertex";
     }
 
@@ -1538,9 +1546,17 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
     }
 
     PrimitiveDraw draw;
-    if (!resolvePrimitive(batch.primitive, batch.vertex_count, draw))
+    const std::uint32_t draw_count = batch.indices
+        ? batch.index_count : batch.vertex_count;
+    if (!resolvePrimitive(batch.primitive, draw_count, draw))
     {
         setError(error, "Metal UI batch has too few vertices for its primitive");
+        return false;
+    }
+    if (batch.indices && draw.remap_mode != 0)
+    {
+        setError(error,
+                 "Metal indexed UI batches require a native Metal primitive");
         return false;
     }
     if (!mImpl->beginFrame(batch.target_width, batch.target_height, error))
@@ -1562,7 +1578,11 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
     ALMetalRenderEncoder& encoder = *mImpl->encoder;
     if (!encoder.setPipeline(*pipeline, error) ||
         !encoder.setDepthStencilState(depth, error) ||
-        !encoder.setVertexBuffer(0, *batch.vertices, batch.position_offset, error) ||
+        !encoder.setVertexBuffer(0, *batch.vertices, batch.position_offset, error))
+    {
+        return false;
+    }
+    if (shaderUsesTexcoord(batch.shader) &&
         !encoder.setVertexBuffer(1, *batch.vertices, batch.texcoord_offset, error))
     {
         return false;
@@ -1625,15 +1645,27 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
 
     if (!encoder.setViewport(batch.viewport, error) ||
         !encoder.setScissor(batch.scissor, error) ||
-        !encoder.setCullMode(ALMetalCullMode::none, error) ||
-        !encoder.setFrontFacingWinding(ALMetalWinding::counter_clockwise, error) ||
-        !encoder.draw(draw.primitive, 0, draw.vertex_count, 1, error))
+        !encoder.setCullMode(batch.cull_mode, error) ||
+        !encoder.setFrontFacingWinding(
+            mImpl->surface ? ALMetalWinding::counter_clockwise
+                           : ALMetalWinding::clockwise,
+            error))
+    {
+        return false;
+    }
+
+    const bool encoded = batch.indices
+        ? encoder.drawIndexed(
+              draw.primitive, batch.index_count, batch.index_type,
+              *batch.indices, batch.index_offset, 1, error)
+        : encoder.draw(draw.primitive, 0, draw.vertex_count, 1, error);
+    if (!encoded)
     {
         return false;
     }
 
     ++mImpl->frame_batches;
-    mImpl->frame_vertices += draw.vertex_count;
+    mImpl->frame_vertices += draw_count;
     return true;
 }
 

@@ -17146,6 +17146,27 @@ fragment float4 almetal_ui_vertex_color_fragment(
     return input.color;
 }
 
+vertex ALMetalUIVaryings almetal_uniform_color_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalMatrices& matrices [[buffer(3)]],
+    constant ALMetalVertexRemapConstants& remap [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint source_id = almetal_source_vertex(vertex_id, remap);
+    ALMetalUIVaryings output;
+    float4 clip_position =
+        matrices.modelview_projection * float4(positions[source_id].xyz, 1.0);
+    if (remap.flip_y != 0)
+    {
+        clip_position.y = -clip_position.y;
+    }
+    output.position = remap.reverse_z != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord = 0.0;
+    output.color = 1.0;
+    return output;
+}
+
 fragment float4 almetal_uniform_color_fragment(
     constant ALMetalSolidFragmentConstants& constants [[buffer(0)]])
 {
