@@ -60,6 +60,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <stack>
 #include <vector>
@@ -275,6 +276,12 @@ private:
     // createResourceTexture fills this beside the GL authority so the native
     // light-map owner never has to read the static noise back from GL.
     std::vector<U16> mMetalNoiseMapRG16;
+    // Dynamic exposure is accepted only while the native 1x1 history has
+    // advanced on every GL exposure frame since the same reset boundary.
+    U64 mMetalExposureHistoryEpoch = 1;
+    U32 mMetalExposureGLFrame = std::numeric_limits<U32>::max();
+    bool mMetalExposureLastWasFixed = true;
+    bool mMetalExposureHistoryReady = false;
     bool mMetalHeroWorldCaptureActive = false;
     bool mMetalReflectionWorldCaptureActive = false;
 #endif
