@@ -392,15 +392,16 @@ void ALSelectionOutline::render(const View& view)
     gGL.flush();
 
 #if LL_DARWIN
-    const bool native_contour = contour && !glow && !wireframe &&
+    const bool native_edges = edges && !wireframe &&
         view.mContrast != CONTRAST_SHIFT;
     if (ids && gGL.hasMetalUITextureCapture() &&
-        !drawMetalIds(view, width, height, native_contour))
+        !drawMetalIds(view, width, height,
+                      native_edges && contour, native_edges && glow))
     {
         gGL.invalidateMetalUITextureCapture(
-            native_contour
-                ? "an incomplete native selection contour transaction"
-                : "selection glow, wireframe, contrast-shift or no contour");
+            native_edges
+                ? "an incomplete native selection edge transaction"
+                : "selection wireframe, contrast-shift or no edge pass");
     }
 #endif
 
@@ -806,7 +807,7 @@ void ALSelectionOutline::drawIds(const View& view, S32 width, S32 height)
 #if LL_DARWIN
 bool ALSelectionOutline::drawMetalIds(
     const View& view, S32 width, S32 height,
-    bool contour_supported)
+    bool contour_enabled, bool glow_enabled)
 {
     LLMatrix4a inverse_projection;
     if (!inverse_projection.setInverse(view.mProjection))
@@ -975,7 +976,8 @@ bool ALSelectionOutline::drawMetalIds(
     scene.height = static_cast<U32>(height);
     scene.reverse_z = LLRender::sReverseZ;
     scene.use_scene_depth = !view.mHUD;
-    if (!gGL.drawMetalSelectionIDs(scene) || !contour_supported)
+    if (!gGL.drawMetalSelectionIDs(scene) ||
+        (!contour_enabled && !glow_enabled))
     {
         return false;
     }
@@ -995,6 +997,11 @@ bool ALSelectionOutline::drawMetalIds(
     contour.inner_width = static_cast<U32>(view.mInnerWidth);
     contour.rim_width = view.mContrast == CONTRAST_RIM
         ? static_cast<U32>(view.mRimWidth) : 0u;
+    contour.glow_radius = glow_enabled
+        ? static_cast<U32>(view.mGlowRadius) : 0u;
+    contour.glow_brightness = glow_enabled
+        ? view.mGlowBrightness : 0.f;
+    contour.contour_enabled = contour_enabled;
     contour.reverse_z = LLRender::sReverseZ;
     return gGL.drawMetalSelectionContour(contour);
 }

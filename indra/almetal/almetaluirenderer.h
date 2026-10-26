@@ -212,8 +212,8 @@ struct ALMetalSelectionIDScene
 // Inputs for the optimized screen-space contour consumer of the private
 // selection id/depth target. The palette is byte-identical to the legacy
 // RGBA8 texture: visible and hidden rows alternate for each 256 ids. This
-// stage intentionally owns only ordinary contours and their optional rim;
-// hover glow, wireframe and backdrop-dependent contrast remain fail-closed.
+// The optional hover glow uses the same palette and private id/depth data.
+// Wireframe and backdrop-dependent contrast remain fail-closed.
 struct ALMetalSelectionContourScene
 {
     const std::uint8_t* palette_rgba8 = nullptr;
@@ -226,6 +226,11 @@ struct ALMetalSelectionContourScene
     std::uint32_t outline_width = 0;
     std::uint32_t inner_width = 0;
     std::uint32_t rim_width = 0;
+    // A glow radius of zero disables hover glow. Contour can be disabled for
+    // a hover-only frame while retaining the shared edge transaction.
+    std::uint32_t glow_radius = 0;
+    float glow_brightness = 0.f;
+    bool contour_enabled = true;
     bool reverse_z = false;
 };
 

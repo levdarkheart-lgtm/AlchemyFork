@@ -843,6 +843,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_selection_id_fragment",
             "almetal_selection_jump_fragment",
             "almetal_selection_tile_fragment",
+            "almetal_selection_glow_reach_fragment",
+            "almetal_selection_glow_row_fragment",
             "almetal_selection_contour_fragment",
             "almetal_alpha_mask_fragment",
             "almetal_alpha_mask_solid_fragment",
@@ -20749,6 +20751,12 @@ TEST_CASE("almetal: selection contour consumes ids and resumes the ordered UI ta
         CHECK_FALSE(renderer->drawSelectionContour(
             invalid_contour, &error));
         CHECK(error == "Metal selection contour inputs are invalid");
+        invalid_contour = contour;
+        invalid_contour.glow_radius = 4;
+        invalid_contour.glow_brightness = 65.f;
+        CHECK_FALSE(renderer->drawSelectionContour(
+            invalid_contour, &error));
+        CHECK(error == "Metal selection contour inputs are invalid");
         REQUIRE(renderer->drawSelectionContour(contour, &error));
 
         // A normal UI draw after the private pass proves the main target was
@@ -20851,6 +20859,69 @@ TEST_CASE("almetal: selection contour consumes ids and resumes the ordered UI ta
         CHECK(stats.vertices == 24);
         CHECK(stats.pipeline_states == 6);
         CHECK(stats.sampler_states == 1);
+
+        // A second, hover-only transaction proves both glow acceleration
+        // passes and the optimized row search. The glow must surround the
+        // selected surface without painting over that surface itself.
+        auto first_output = renderer->takeOutputTexture();
+        REQUIRE(first_output);
+        batches[0].priority = 6;
+        scene.batch_count = 1;
+        REQUIRE(renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(renderer->setFrameDepth(
+            depth->depthStencilTexture(), &error));
+        REQUIRE(renderer->drawSelectionIDs(scene, &error));
+        contour.contour_enabled = false;
+        contour.rim_width = 0;
+        contour.glow_radius = 4;
+        contour.glow_brightness = 4.f;
+        REQUIRE(renderer->drawSelectionContour(contour, &error));
+        REQUIRE(renderer->endFrame(&error));
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+
+        std::array<std::uint8_t, width * height * 4> glow_ids{};
+        REQUIRE(renderer->selectionIDTexture()->readback(
+            *device, 0, 0, {}, glow_ids.data(), width * 4, &error));
+        std::array<std::uint8_t, width * height * 4> glow_output{};
+        REQUIRE(renderer->outputTexture()->readback(
+            *device, 0, 0, {}, glow_output.data(), width * 4, &error));
+        INFO(error);
+        std::size_t halo_pixels = 0;
+        std::size_t own_surface_pixels = 0;
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            const std::size_t offset = pixel * 4u;
+            const std::uint32_t id =
+                static_cast<std::uint32_t>(glow_ids[offset + 0]) |
+                (static_cast<std::uint32_t>(glow_ids[offset + 1]) << 8u);
+            CHECK(glow_output[offset + 3] == 255);
+            if (id != 0u)
+            {
+                ++own_surface_pixels;
+                CHECK(glow_output[offset + 0] == 7);
+                CHECK(glow_output[offset + 1] == 11);
+                CHECK(glow_output[offset + 2] == 13);
+            }
+            else if (glow_output[offset + 2] > 32 &&
+                     glow_output[offset + 2] > glow_output[offset + 0] + 16 &&
+                     glow_output[offset + 2] > glow_output[offset + 1] + 16)
+            {
+                ++halo_pixels;
+            }
+        }
+        CHECK(own_surface_pixels > 0);
+        CHECK(halo_pixels > 0);
+        CHECK(glow_output[0] == 7);
+        CHECK(glow_output[1] == 11);
+        CHECK(glow_output[2] == 13);
+
+        const ALMetalUIRendererStats glow_stats = renderer->stats();
+        CHECK(glow_stats.frames == 2);
+        CHECK(glow_stats.batches == 14);
+        CHECK(glow_stats.vertices == 42);
+        CHECK(glow_stats.pipeline_states == 8);
+        CHECK(glow_stats.sampler_states == 1);
     }
 }
 

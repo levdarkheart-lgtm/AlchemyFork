@@ -742,11 +742,11 @@ private:
     void drawIds(const View& view, S32 width, S32 height);
 #if LL_DARWIN
     // Mirror the private face-id/depth producer into the active native
-    // world/UI transaction and, when `contour_supported`, consume it through
-    // the optimized jump/tile/default contour passes. False keeps GL
-    // authoritative and prevents publication of a partial transaction.
+    // world/UI transaction and consume its requested contour and/or glow
+    // through the optimized screen-space passes. False keeps GL authoritative
+    // and prevents publication of a partial transaction.
     bool drawMetalIds(const View& view, S32 width, S32 height,
-                      bool contour_supported);
+                      bool contour, bool glow);
 #endif
 
     // The wireframe of what was added with one, over the bound framebuffer under the outline: the world's visible

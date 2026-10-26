@@ -208,11 +208,15 @@ struct ALMetalUIRenderer::Impl
     std::unique_ptr<ALMetalRenderTarget> selection_target;
     std::unique_ptr<ALMetalRenderPipeline> selection_jump_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> selection_tile_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> selection_glow_reach_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> selection_glow_row_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> selection_contour_pipeline;
     ALMetalPixelFormat selection_contour_depth_format =
         ALMetalPixelFormat::invalid;
     std::unique_ptr<ALMetalRenderTarget> selection_jump_target;
     std::unique_ptr<ALMetalRenderTarget> selection_tile_target;
+    std::unique_ptr<ALMetalRenderTarget> selection_glow_reach_target;
+    std::unique_ptr<ALMetalRenderTarget> selection_glow_row_target;
     std::unique_ptr<ALMetalTexture> selection_palette;
     std::vector<std::unique_ptr<ALMetalBuffer>> selection_frame_palettes;
     std::unique_ptr<ALMetalRenderTarget> target;
@@ -245,6 +249,8 @@ struct ALMetalUIRenderer::Impl
             (selection_id_skinned_pipeline ? 1u : 0u) +
             (selection_jump_pipeline ? 1u : 0u) +
             (selection_tile_pipeline ? 1u : 0u) +
+            (selection_glow_reach_pipeline ? 1u : 0u) +
+            (selection_glow_row_pipeline ? 1u : 0u) +
             (selection_contour_pipeline ? 1u : 0u);
     }
 
@@ -780,9 +786,46 @@ struct ALMetalUIRenderer::Impl
         return true;
     }
 
+    bool prepareSelectionGlow(std::string* error)
+    {
+        if (selection_glow_reach_pipeline && selection_glow_row_pipeline)
+        {
+            return true;
+        }
+
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = library.get();
+        descriptor.vertex_function = "almetal_resample_vertex";
+        descriptor.fragment_function =
+            "almetal_selection_glow_reach_fragment";
+        descriptor.colors[0].format = ALMetalPixelFormat::rgba16_unorm;
+        descriptor.label = "Alchemy selection glow reach pipeline";
+        selection_glow_reach_pipeline = ALMetalRenderPipeline::create(
+            *device, descriptor, error);
+        if (!selection_glow_reach_pipeline)
+        {
+            return false;
+        }
+
+        descriptor.fragment_function =
+            "almetal_selection_glow_row_fragment";
+        descriptor.colors[0].format = ALMetalPixelFormat::r8_unorm;
+        descriptor.label = "Alchemy selection glow row pipeline";
+        selection_glow_row_pipeline = ALMetalRenderPipeline::create(
+            *device, descriptor, error);
+        if (!selection_glow_row_pipeline)
+        {
+            selection_glow_reach_pipeline.reset();
+            return false;
+        }
+        refreshPipelineCount();
+        return true;
+    }
+
     bool prepareSelectionContourTargets(
         std::uint32_t width, std::uint32_t height,
         std::uint32_t palette_width, std::uint32_t palette_height,
+        bool glow,
         std::string* error)
     {
         if (!selection_jump_target ||
@@ -844,6 +887,50 @@ struct ALMetalUIRenderer::Impl
             selection_palette = ALMetalTexture::create(
                 *device, descriptor, error);
             if (!selection_palette)
+            {
+                return false;
+            }
+        }
+
+        if (glow &&
+            (!selection_glow_reach_target ||
+             selection_glow_reach_target->descriptor().width != tile_width ||
+             selection_glow_reach_target->descriptor().height != tile_height))
+        {
+            ALMetalRenderTargetDescriptor descriptor;
+            descriptor.width = tile_width;
+            descriptor.height = tile_height;
+            descriptor.color_attachment_count = 1;
+            descriptor.colors[0].format =
+                ALMetalPixelFormat::rgba16_unorm;
+            descriptor.colors[0].shader_read = true;
+            descriptor.colors[0].label =
+                "Alchemy selection glow tile reach";
+            descriptor.label = "Alchemy selection glow reach target";
+            selection_glow_reach_target = ALMetalRenderTarget::create(
+                *device, descriptor, error);
+            if (!selection_glow_reach_target)
+            {
+                return false;
+            }
+        }
+        if (glow &&
+            (!selection_glow_row_target ||
+             selection_glow_row_target->descriptor().width != width ||
+             selection_glow_row_target->descriptor().height != height))
+        {
+            ALMetalRenderTargetDescriptor descriptor;
+            descriptor.width = width;
+            descriptor.height = height;
+            descriptor.color_attachment_count = 1;
+            descriptor.colors[0].format = ALMetalPixelFormat::r8_unorm;
+            descriptor.colors[0].shader_read = true;
+            descriptor.colors[0].label =
+                "Alchemy selection glow row distance";
+            descriptor.label = "Alchemy selection glow row target";
+            selection_glow_row_target = ALMetalRenderTarget::create(
+                *device, descriptor, error);
+            if (!selection_glow_row_target)
             {
                 return false;
             }
@@ -1106,6 +1193,8 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
         !library->hasFunction("almetal_selection_id_fragment") ||
         !library->hasFunction("almetal_selection_jump_fragment") ||
         !library->hasFunction("almetal_selection_tile_fragment") ||
+        !library->hasFunction("almetal_selection_glow_reach_fragment") ||
+        !library->hasFunction("almetal_selection_glow_row_fragment") ||
         !library->hasFunction("almetal_selection_contour_fragment"))
     {
         setError(error, "Built-in Metal library is missing production UI functions");
@@ -1865,6 +1954,7 @@ bool ALMetalUIRenderer::drawSelectionContour(
     const ALMetalSelectionContourScene& scene,
     std::string* error)
 {
+    const bool glow = scene.glow_radius != 0u;
     const bool palette_size_valid =
         scene.palette_width == 256u && scene.palette_height >= 2u &&
         scene.palette_height % 2u == 0u &&
@@ -1874,9 +1964,12 @@ bool ALMetalUIRenderer::drawSelectionContour(
             static_cast<std::size_t>(scene.palette_height) * 4u;
     if (!mImpl || mImpl->surface || !scene.palette_rgba8 ||
         !palette_size_valid || scene.width == 0 || scene.height == 0 ||
+        (!scene.contour_enabled && !glow) ||
         scene.outline_width == 0 || scene.outline_width > 253u ||
         scene.inner_width == 0 || scene.inner_width > 253u ||
-        scene.rim_width > 253u)
+        scene.rim_width > 253u || scene.glow_radius > 253u ||
+        !std::isfinite(scene.glow_brightness) ||
+        scene.glow_brightness < 0.f || scene.glow_brightness > 64.f)
     {
         setError(error, "Metal selection contour inputs are invalid");
         return false;
@@ -1898,9 +1991,10 @@ bool ALMetalUIRenderer::drawSelectionContour(
         return false;
     }
     if (!mImpl->prepareSelectionContour(error) ||
+        (glow && !mImpl->prepareSelectionGlow(error)) ||
         !mImpl->prepareSelectionContourTargets(
             scene.width, scene.height,
-            scene.palette_width, scene.palette_height, error))
+            scene.palette_width, scene.palette_height, glow, error))
     {
         return false;
     }
@@ -1917,8 +2011,10 @@ bool ALMetalUIRenderer::drawSelectionContour(
         float inverse_projection[16];
         std::uint32_t target[4];
         std::uint32_t widths[4];
+        std::uint32_t glow[4];
+        float glow_values[4];
     } constants;
-    static_assert(sizeof(SelectionContourConstants) == 96);
+    static_assert(sizeof(SelectionContourConstants) == 128);
     std::memcpy(constants.inverse_projection,
                 scene.inverse_projection,
                 sizeof(constants.inverse_projection));
@@ -1930,6 +2026,14 @@ bool ALMetalUIRenderer::drawSelectionContour(
     constants.widths[1] = scene.inner_width;
     constants.widths[2] = scene.rim_width;
     constants.widths[3] = scene.reverse_z ? 1u : 0u;
+    constants.glow[0] = scene.glow_radius;
+    constants.glow[1] = scene.contour_enabled ? 1u : 0u;
+    constants.glow[2] = 0u;
+    constants.glow[3] = 0u;
+    constants.glow_values[0] = scene.glow_brightness;
+    constants.glow_values[1] = 0.f;
+    constants.glow_values[2] = 0.f;
+    constants.glow_values[3] = 0.f;
 
     bool encoded = mImpl->selection_palette->upload(
         mImpl->frame->commandBuffer(), 0, 0,
@@ -2018,6 +2122,70 @@ bool ALMetalUIRenderer::drawSelectionContour(
     tile_encoder.reset();
     tile_pass.reset();
 
+    if (encoded && glow)
+    {
+        ALMetalRenderPassConfig reach_config;
+        reach_config.colors[0].load = ALMetalLoadAction::clear;
+        reach_config.colors[0].store = ALMetalStoreAction::store;
+        reach_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+        auto reach_pass =
+            mImpl->selection_glow_reach_target->makeRenderPass(
+                reach_config, error);
+        auto reach_encoder = reach_pass
+            ? ALMetalRenderEncoder::begin(
+                  mImpl->frame->commandBuffer(), *reach_pass,
+                  "Alchemy selection glow reach encoder", error)
+            : nullptr;
+        encoded = reach_encoder &&
+            reach_encoder->setPipeline(
+                *mImpl->selection_glow_reach_pipeline, error) &&
+            reach_encoder->setFragmentTexture(
+                0, mImpl->selection_tile_target->colorTexture(0), error) &&
+            reach_encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            reach_encoder->setViewport(tile_viewport, error) &&
+            reach_encoder->setScissor(tile_scissor, error) &&
+            reach_encoder->setCullMode(ALMetalCullMode::none, error) &&
+            reach_encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+        if (reach_encoder)
+        {
+            encoded = reach_encoder->end(error) && encoded;
+        }
+
+        ALMetalRenderPassConfig row_config;
+        row_config.colors[0].load = ALMetalLoadAction::clear;
+        row_config.colors[0].store = ALMetalStoreAction::store;
+        row_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+        auto row_pass = encoded
+            ? mImpl->selection_glow_row_target->makeRenderPass(
+                  row_config, error)
+            : nullptr;
+        auto row_encoder = row_pass
+            ? ALMetalRenderEncoder::begin(
+                  mImpl->frame->commandBuffer(), *row_pass,
+                  "Alchemy selection glow row encoder", error)
+            : nullptr;
+        encoded = encoded && row_encoder &&
+            row_encoder->setPipeline(
+                *mImpl->selection_glow_row_pipeline, error) &&
+            row_encoder->setFragmentTexture(0, id_map, error) &&
+            row_encoder->setFragmentTexture(
+                1, mImpl->selection_glow_reach_target->colorTexture(0),
+                error) &&
+            row_encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            row_encoder->setViewport(full_viewport, error) &&
+            row_encoder->setScissor(full_scissor, error) &&
+            row_encoder->setCullMode(ALMetalCullMode::none, error) &&
+            row_encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+        if (row_encoder)
+        {
+            encoded = row_encoder->end(error) && encoded;
+        }
+    }
+
     std::string resume_error;
     const bool resumed = mImpl->resumeMainPass(&resume_error);
     if (!resumed)
@@ -2052,6 +2220,16 @@ bool ALMetalUIRenderer::drawSelectionContour(
             4, mImpl->selection_tile_target->colorTexture(1), error) &&
         contour_encoder.setFragmentTexture(
             5, mImpl->selection_palette.get(), error) &&
+        contour_encoder.setFragmentTexture(
+            6, glow
+                ? mImpl->selection_glow_reach_target->colorTexture(0)
+                : mImpl->selection_tile_target->colorTexture(0),
+            error) &&
+        contour_encoder.setFragmentTexture(
+            7, glow
+                ? mImpl->selection_glow_row_target->colorTexture(0)
+                : mImpl->selection_jump_target->colorTexture(0),
+            error) &&
         contour_encoder.setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         contour_encoder.setViewport(full_viewport, error) &&
@@ -2063,8 +2241,8 @@ bool ALMetalUIRenderer::drawSelectionContour(
     {
         return false;
     }
-    mImpl->frame_batches += 3u;
-    mImpl->frame_vertices += 9u;
+    mImpl->frame_batches += glow ? 5u : 3u;
+    mImpl->frame_vertices += glow ? 15u : 9u;
     return true;
 }
 

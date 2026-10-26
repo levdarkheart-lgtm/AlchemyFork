@@ -15638,9 +15638,10 @@ fragment ALMetalSelectionIDOutput almetal_selection_id_fragment(
     return output;
 }
 
-// The optimized selection contour mirrors selectionJumpF.glsl,
-// selectionTileF.glsl and the non-glow subset of selectionOutlineF.glsl.
-// Its private id/depth target and intermediates never leave the GPU.
+// The optimized selection edge transaction mirrors selectionJumpF.glsl,
+// selectionTileF.glsl, selectionGlowReachF.glsl, selectionGlowRowF.glsl and
+// the non-backdrop subset of selectionOutlineF.glsl. Its private id/depth
+// target and intermediates never leave the GPU.
 struct ALMetalSelectionContourConstants
 {
     float4x4 inverse_projection;
@@ -15648,6 +15649,10 @@ struct ALMetalSelectionContourConstants
     uint4 target;
     // x = contour width, y = inner width, z = rim width, w = reverse-Z.
     uint4 widths;
+    // x = glow radius, y = contour enabled.
+    uint4 glow;
+    // x = glow brightness.
+    float4 glow_values;
 };
 
 static uint almetal_selection_decode_id(float4 texel)
@@ -15834,6 +15839,80 @@ fragment ALMetalSelectionTileOutput almetal_selection_tile_fragment(
     return output;
 }
 
+fragment float4 almetal_selection_glow_reach_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float, access::read> tile_map [[texture(0)]],
+    constant ALMetalSelectionContourConstants& constants [[buffer(0)]])
+{
+    const int2 tile = int2(input.position.xy);
+    const int2 last = int2(constants.target.zw) - int2(1);
+    const int tile_reach =
+        (int(constants.glow.x) + 1 + 7) / 8;
+    const int2 low = max(tile - int2(tile_reach), int2(0));
+    const int2 high = min(tile + int2(tile_reach), last);
+    uint lowest = 65536u;
+    uint highest = 0u;
+    for (int y = low.y; y <= high.y; ++y)
+    {
+        for (int x = low.x; x <= high.x; ++x)
+        {
+            const float4 record = tile_map.read(uint2(x, y));
+            if (record.a > 0.5)
+            {
+                lowest = min(lowest,
+                    uint(record.r * 65535.0 + 0.5));
+                highest = max(highest,
+                    uint(record.g * 65535.0 + 0.5));
+            }
+        }
+    }
+    return float4(
+        highest != 0u ? float(lowest) / 65535.0 : 0.0,
+        float(highest) / 65535.0, 0.0, 0.0);
+}
+
+static bool almetal_selection_glows_at(
+    int2 position, int2 size,
+    texture2d<float, access::read> id_map)
+{
+    if (any(position < int2(0)) || any(position >= size))
+    {
+        return false;
+    }
+    const float4 texel = id_map.read(uint2(position));
+    return almetal_selection_decode_id(texel) != 0u &&
+        almetal_selection_is_glow(texel) &&
+        almetal_selection_is_drawn(texel);
+}
+
+fragment float almetal_selection_glow_row_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float, access::read> id_map [[texture(0)]],
+    texture2d<float, access::read> glow_reach_map [[texture(1)]],
+    constant ALMetalSelectionContourConstants& constants [[buffer(0)]])
+{
+    const int2 size = int2(constants.target.xy);
+    const int2 position = clamp(
+        int2(input.position.xy), int2(0), size - int2(1));
+    uint code = 0u;
+    if (glow_reach_map.read(uint2(position / 8)).g > 0.0)
+    {
+        const int reach = int(constants.glow.x) + 1;
+        for (int distance = 0; distance <= reach; ++distance)
+        {
+            if (almetal_selection_glows_at(
+                    position - int2(distance, 0), size, id_map) ||
+                almetal_selection_glows_at(
+                    position + int2(distance, 0), size, id_map))
+            {
+                code = uint(distance + 1);
+                break;
+            }
+        }
+    }
+    return float(code) / 255.0;
+}
+
 static float almetal_selection_depth_slope(
     int2 position, int2 size, int2 step, uint id, float depth,
     texture2d<float, access::read> id_map,
@@ -15887,9 +15966,87 @@ static bool almetal_selection_candidate_within(
     return found;
 }
 
+static bool almetal_selection_glow_within(
+    int2 position, uint own_id,
+    texture2d<float, access::read> glow_reach_map)
+{
+    const float4 record = glow_reach_map.read(uint2(position / 8));
+    const uint lowest = uint(record.r * 65535.0 + 0.5);
+    const uint highest = uint(record.g * 65535.0 + 0.5);
+    return highest != 0u &&
+        (lowest != own_id || highest != own_id);
+}
+
+static uint almetal_selection_glow_id_at(
+    int2 position, int2 size,
+    texture2d<float, access::read> id_map)
+{
+    if (any(position < int2(0)) || any(position >= size))
+    {
+        return 65536u;
+    }
+    const float4 texel = id_map.read(uint2(position));
+    const uint id = almetal_selection_decode_id(texel);
+    return id != 0u && almetal_selection_is_glow(texel) &&
+        almetal_selection_is_drawn(texel) ? id : 65536u;
+}
+
+static void almetal_selection_glow_from_rows(
+    int2 position, int2 size, int reach,
+    thread uint& glow_id, thread int& glow_distance_squared,
+    texture2d<float, access::read> id_map,
+    texture2d<float, access::read> glow_row_map)
+{
+    for (int dy = 0;
+         dy <= reach && dy * dy <= glow_distance_squared; ++dy)
+    {
+        const int sides = dy == 0 ? 1 : 2;
+        for (int side = 0; side < sides; ++side)
+        {
+            const int y = position.y + (side == 0 ? dy : -dy);
+            if (y < 0 || y >= size.y)
+            {
+                continue;
+            }
+            const int code = int(
+                glow_row_map.read(uint2(position.x, y)).r * 255.0 + 0.5);
+            if (code == 0)
+            {
+                continue;
+            }
+            const int dx = code - 1;
+            const int distance_squared = dx * dx + dy * dy;
+            if (distance_squared > glow_distance_squared)
+            {
+                continue;
+            }
+            const uint id = min(
+                almetal_selection_glow_id_at(
+                    int2(position.x - dx, y), size, id_map),
+                almetal_selection_glow_id_at(
+                    int2(position.x + dx, y), size, id_map));
+            if (distance_squared < glow_distance_squared || id < glow_id)
+            {
+                glow_id = id;
+                glow_distance_squared = distance_squared;
+            }
+        }
+    }
+}
+
 static float almetal_selection_coverage(float distance, float width)
 {
     return 1.0 - smoothstep(width, width + 1.0, distance);
+}
+
+static float almetal_selection_glow_opacity(
+    float distance,
+    constant ALMetalSelectionContourConstants& constants)
+{
+    const float x = max(distance - 0.5, 0.0) /
+        float(constants.glow.x);
+    const float profile = 0.25 * (1.0 - smoothstep(0.0, 1.0, x));
+    return clamp(constants.glow_values.x * profile, 0.0, 1.0);
 }
 
 static float3 almetal_selection_rim_color(float3 line)
@@ -15933,6 +16090,8 @@ fragment float4 almetal_selection_contour_fragment(
     texture2d<float, access::read> tile_map [[texture(3)]],
     texture2d<float, access::read> tile_depth_map [[texture(4)]],
     texture2d<float, access::read> palette [[texture(5)]],
+    texture2d<float, access::read> glow_reach_map [[texture(6)]],
+    texture2d<float, access::read> glow_row_map [[texture(7)]],
     constant ALMetalSelectionContourConstants& constants [[buffer(0)]])
 {
     const int2 size = int2(constants.target.xy);
@@ -15942,17 +16101,26 @@ fragment float4 almetal_selection_contour_fragment(
     const uint own_id = almetal_selection_decode_id(own);
     const bool own_drawn = own_id != 0u &&
         almetal_selection_is_drawn(own);
+    const bool own_glows = own_id != 0u &&
+        almetal_selection_is_glow(own);
+    const bool contour_enabled = constants.glow.y != 0u;
 
     const int line_reach = int(max(
         constants.widths.x + constants.widths.z,
         constants.widths.y)) + 1;
     const int inner_reach = int(constants.widths.y) + 1;
+    const int glow_reach = constants.glow.x != 0u
+        ? int(constants.glow.x) + 1 : 0;
+    const bool glow_near = glow_reach > 0 &&
+        almetal_selection_glow_within(
+            position, own_id, glow_reach_map);
     bool jump_near = false;
     float tile_nearest = 0.0;
-    const bool line_near = almetal_selection_candidate_within(
-        position, line_reach, own_id, jump_near, tile_nearest,
-        tile_map, tile_depth_map, constants);
-    if (!line_near)
+    const bool line_near = contour_enabled &&
+        almetal_selection_candidate_within(
+            position, line_reach, own_id, jump_near, tile_nearest,
+            tile_map, tile_depth_map, constants);
+    if (!glow_near && !line_near)
     {
         discard_fragment();
     }
@@ -15961,7 +16129,7 @@ fragment float4 almetal_selection_contour_fragment(
     float own_depth = 0.0;
     float2 slope = float2(0.0);
     int line_search = line_reach;
-    if (own_id != 0u && !jump_near)
+    if (line_near && own_id != 0u && !own_glows && !jump_near)
     {
         own_depth = depth_map.read(uint2(position)).r;
         slope = float2(
@@ -15989,6 +16157,19 @@ fragment float4 almetal_selection_contour_fragment(
         }
     }
 
+    const bool glow_rows = glow_near && own_id == 0u;
+    const bool glow_taps = glow_near && !glow_rows;
+    uint glow_id = 0u;
+    int glow_distance_squared = glow_reach * glow_reach + 1;
+    if (glow_rows)
+    {
+        almetal_selection_glow_from_rows(
+            position, size, glow_reach, glow_id,
+            glow_distance_squared, id_map, glow_row_map);
+    }
+    const int reach = glow_taps
+        ? max(line_search, glow_reach) : line_search;
+
     uint top_id = 0u;
     uint top_priority = 256u;
     float top_distance = 0.0;
@@ -15999,10 +16180,11 @@ fragment float4 almetal_selection_contour_fragment(
     bool near_visible = true;
     float inner_distance = float(inner_reach) + 1.0;
 
-    for (int dy = -line_search; dy <= line_search; ++dy)
+    const int disk = (line_near || glow_taps) ? reach : -1;
+    for (int dy = -disk; dy <= disk; ++dy)
     {
         const int span = int(sqrt(
-            float(line_search * line_search - dy * dy) + 0.5));
+            float(reach * reach - dy * dy) + 0.5));
         for (int dx = -span; dx <= span; ++dx)
         {
             const int2 tap_position = position + int2(dx, dy);
@@ -16020,7 +16202,10 @@ fragment float4 almetal_selection_contour_fragment(
                 continue;
             }
             const int distance_squared = dx * dx + dy * dy;
-            if (distance_squared > line_reach * line_reach)
+            const bool tap_glows = almetal_selection_is_glow(tap);
+            const int tap_reach = tap_glows ? glow_reach : line_reach;
+            if ((tap_glows && (own_object || !glow_taps)) ||
+                distance_squared > tap_reach * tap_reach)
             {
                 continue;
             }
@@ -16052,7 +16237,20 @@ fragment float4 almetal_selection_contour_fragment(
             }
 
             const bool tap_drawn = almetal_selection_is_drawn(tap);
-            if (relation == 0u && tap_drawn)
+            const bool in_front = relation == 0u ||
+                (own_glows && relation == 1u);
+            if (tap_glows)
+            {
+                if (relation == 0u && tap_drawn &&
+                    (distance_squared < glow_distance_squared ||
+                     (distance_squared == glow_distance_squared &&
+                      tap_id < glow_id)))
+                {
+                    glow_id = tap_id;
+                    glow_distance_squared = distance_squared;
+                }
+            }
+            else if (contour_enabled && in_front && tap_drawn)
             {
                 const uint tap_priority =
                     almetal_selection_decode_priority(tap);
@@ -16075,7 +16273,8 @@ fragment float4 almetal_selection_contour_fragment(
                     near_visible = almetal_selection_is_visible(tap);
                 }
             }
-            else if (relation == 1u && !own_object && own_drawn &&
+            else if (contour_enabled && relation == 1u && !own_object &&
+                     own_drawn && !own_glows &&
                      distance <= float(inner_reach) &&
                      (!tap_drawn || own_id < tap_id))
             {
@@ -16086,7 +16285,15 @@ fragment float4 almetal_selection_contour_fragment(
 
     float3 rgb = float3(0.0);
     float alpha = 0.0;
-    if (own_drawn)
+    if (glow_id != 0u)
+    {
+        const float4 glow_color = almetal_selection_palette_color(
+            glow_id, true, palette);
+        alpha = glow_color.a * almetal_selection_glow_opacity(
+            sqrt(float(glow_distance_squared)), constants);
+        rgb = glow_color.rgb * alpha;
+    }
+    if (contour_enabled && own_drawn && !own_glows)
     {
         const float4 color = almetal_selection_palette_color(
             own_id, almetal_selection_is_visible(own), palette);
@@ -16099,7 +16306,7 @@ fragment float4 almetal_selection_contour_fragment(
             alpha = inner_alpha;
         }
     }
-    if (top_id != 0u)
+    if (contour_enabled && top_id != 0u)
     {
         const float4 top_layer = almetal_selection_contour_layer(
             almetal_selection_palette_color(
