@@ -125,13 +125,28 @@ namespace
         // static exposure, adapted exposure, tonemap mix, tonemap type
         float post[4];
         float tonemap_params[4];
-        // non-HDR dither amount, bloom strength, halation strength, reserved
+        // non-HDR dither, bloom strength, halation, cross-filter strength
         float display[4];
         float halation_tint[4];
         // cutout-premultiplied, HDR/tonemap branch, animate dither, frame id
         std::uint32_t config[4];
+        float grade_white_balance[4];
+        float grade_lift[4];
+        float grade_inverse_gamma[4];
+        float grade_gain[4];
+        float grade_shadow_ratio[4];
+        float grade_midtone_ratio[4];
+        float grade_highlight_ratio[4];
+        // midtone/split amount, shadow ramp scale/bias.
+        float grade_split0[4];
+        // highlight ramp scale/bias, black/white scale/bias.
+        float grade_split1[4];
+        // brightness/contrast scale/bias, highlight/shadow recovery.
+        float grade_display0[4];
+        // saturation, vibrance, normalized hue shift, enabled.
+        float grade_display1[4];
     };
-    static_assert(sizeof(WorldDisplayPostConstants) == 80);
+    static_assert(sizeof(WorldDisplayPostConstants) == 256);
 
     struct alignas(16) WorldDepthOfFieldConstants
     {
@@ -509,6 +524,70 @@ namespace
             }
         }
         return true;
+    }
+
+    bool validWorldColorGrade(const ALMetalWorldColorGrade& grade)
+    {
+        if (!grade.enabled)
+        {
+            return true;
+        }
+
+        const auto valuesInRange = [](const float* values,
+                                      std::size_t count,
+                                      float minimum, float maximum)
+        {
+            for (std::size_t index = 0; index < count; ++index)
+            {
+                if (!std::isfinite(values[index]) ||
+                    values[index] < minimum ||
+                    values[index] > maximum)
+                {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        return finiteValues(grade.white_balance_gain, 3) &&
+               valuesInRange(grade.lift, 3, -0.5f, 0.5f) &&
+               valuesInRange(grade.inverse_gamma, 3, 2.f / 3.f, 2.f) &&
+               valuesInRange(grade.gain, 3, 0.5f, 1.5f) &&
+               valuesInRange(grade.shadow_ratio, 3, 0.f, 10000.f) &&
+               valuesInRange(grade.midtone_ratio, 3, 0.f, 10000.f) &&
+               valuesInRange(grade.highlight_ratio, 3, 0.f, 10000.f) &&
+               valuesInRange(grade.shadow_ramp, 2, -10000.f, 10000.f) &&
+               valuesInRange(grade.highlight_ramp, 2, -10000.f, 10000.f) &&
+               std::isfinite(grade.midtone_amount) &&
+               grade.midtone_amount >= 0.f && grade.midtone_amount <= 1.f &&
+               std::isfinite(grade.split_amount) &&
+               grade.split_amount >= 0.f && grade.split_amount <= 1.f &&
+               grade.shadow_ramp[0] > 0.f &&
+               grade.highlight_ramp[0] > 0.f &&
+               std::isfinite(grade.black_white_scale) &&
+               grade.black_white_scale >= 1.f &&
+               grade.black_white_scale <= 10000.f &&
+               std::isfinite(grade.black_white_bias) &&
+               grade.black_white_bias >= -5000.f &&
+               grade.black_white_bias <= 0.f &&
+               std::isfinite(grade.brightness_contrast_scale) &&
+               grade.brightness_contrast_scale >= 0.f &&
+               grade.brightness_contrast_scale <= 2.f &&
+               std::isfinite(grade.brightness_contrast_bias) &&
+               grade.brightness_contrast_bias >= -1.5f &&
+               grade.brightness_contrast_bias <= 1.5f &&
+               std::isfinite(grade.highlights_scaled) &&
+               grade.highlights_scaled >= -0.3f &&
+               grade.highlights_scaled <= 0.3f &&
+               std::isfinite(grade.shadows_scaled) &&
+               grade.shadows_scaled >= -0.3f &&
+               grade.shadows_scaled <= 0.3f &&
+               std::isfinite(grade.saturation) &&
+               grade.saturation >= 0.f && grade.saturation <= 2.f &&
+               std::isfinite(grade.vibrance) &&
+               grade.vibrance >= -1.f && grade.vibrance <= 1.f &&
+               std::isfinite(grade.hue_shift) &&
+               grade.hue_shift >= -0.5f && grade.hue_shift <= 0.5f;
     }
 
     bool rangeFits(std::size_t offset, std::size_t count,
@@ -6229,6 +6308,7 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         scene.bloom_strength < 0.f ||
         scene.halation_strength < 0.f ||
         scene.cross_filter_strength < 0.f ||
+        !validWorldColorGrade(scene.color_grade) ||
         (scene.bloom_texture == nullptr) !=
             (scene.bloom_strength == 0.f &&
              scene.halation_strength == 0.f) ||
@@ -6332,6 +6412,35 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     constants.config[1] = scene.hdr ? 1u : 0u;
     constants.config[2] = scene.dither_animated ? 1u : 0u;
     constants.config[3] = scene.frame_id;
+    const ALMetalWorldColorGrade& grade = scene.color_grade;
+    std::memcpy(constants.grade_white_balance, grade.white_balance_gain,
+                sizeof(grade.white_balance_gain));
+    std::memcpy(constants.grade_lift, grade.lift, sizeof(grade.lift));
+    std::memcpy(constants.grade_inverse_gamma, grade.inverse_gamma,
+                sizeof(grade.inverse_gamma));
+    std::memcpy(constants.grade_gain, grade.gain, sizeof(grade.gain));
+    std::memcpy(constants.grade_shadow_ratio, grade.shadow_ratio,
+                sizeof(grade.shadow_ratio));
+    std::memcpy(constants.grade_midtone_ratio, grade.midtone_ratio,
+                sizeof(grade.midtone_ratio));
+    std::memcpy(constants.grade_highlight_ratio, grade.highlight_ratio,
+                sizeof(grade.highlight_ratio));
+    constants.grade_split0[0] = grade.midtone_amount;
+    constants.grade_split0[1] = grade.split_amount;
+    constants.grade_split0[2] = grade.shadow_ramp[0];
+    constants.grade_split0[3] = grade.shadow_ramp[1];
+    constants.grade_split1[0] = grade.highlight_ramp[0];
+    constants.grade_split1[1] = grade.highlight_ramp[1];
+    constants.grade_split1[2] = grade.black_white_scale;
+    constants.grade_split1[3] = grade.black_white_bias;
+    constants.grade_display0[0] = grade.brightness_contrast_scale;
+    constants.grade_display0[1] = grade.brightness_contrast_bias;
+    constants.grade_display0[2] = grade.highlights_scaled;
+    constants.grade_display0[3] = grade.shadows_scaled;
+    constants.grade_display1[0] = grade.saturation;
+    constants.grade_display1[1] = grade.vibrance;
+    constants.grade_display1[2] = grade.hue_shift;
+    constants.grade_display1[3] = grade.enabled ? 1.f : 0.f;
 
     auto command = mImpl->device->makeCommandBuffer(
         "Alchemy native world display post", error);

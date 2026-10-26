@@ -646,10 +646,36 @@ struct ALMetalWorldOpaquePostDeferredScene
 // deliberately stops at the real post-chain storage boundary: HDR writes
 // RGB10_A2 after exposure and tonemapping, while the vintage path writes
 // RGBA8 after the display transfer and output dither. Optional ordinary
-// bloom/halation are folded in before exposure; color grading, cross-filter,
-// lens effects, legacy gamma/no-post, CAS/AA and legacy glow remain distinct
-// owners. Callers must not substitute this target when any omitted family or
-// bypass is live.
+// bloom/halation/cross-filter are folded in before exposure. Analytical color
+// grading can run in its exact pre/post-tonemap positions; the artist 3D LUT,
+// baked channel curves, lens effects, legacy gamma/no-post, CAS/AA and legacy
+// glow remain distinct owners. Callers must not substitute this target when
+// any omitted family or bypass is live.
+struct ALMetalWorldColorGrade
+{
+    bool enabled = false;
+    float white_balance_gain[3] = {1.f, 1.f, 1.f};
+    float lift[3] = {0.f, 0.f, 0.f};
+    float inverse_gamma[3] = {1.f, 1.f, 1.f};
+    float gain[3] = {1.f, 1.f, 1.f};
+    float shadow_ratio[3] = {1.f, 1.f, 1.f};
+    float midtone_ratio[3] = {1.f, 1.f, 1.f};
+    float highlight_ratio[3] = {1.f, 1.f, 1.f};
+    float midtone_amount = 0.f;
+    float split_amount = 0.f;
+    float shadow_ramp[2] = {1.f, 0.f};
+    float highlight_ramp[2] = {1.f, 0.f};
+    float black_white_scale = 1.f;
+    float black_white_bias = 0.f;
+    float brightness_contrast_scale = 1.f;
+    float brightness_contrast_bias = 0.f;
+    float highlights_scaled = 0.f;
+    float shadows_scaled = 0.f;
+    float saturation = 1.f;
+    float vibrance = 0.f;
+    float hue_shift = 0.f;
+};
+
 struct ALMetalWorldDisplayPostScene
 {
     const ALMetalRenderTarget* source = nullptr;
@@ -673,6 +699,7 @@ struct ALMetalWorldDisplayPostScene
     float halation_strength = 0.f;
     float halation_tint[3] = {1.f, 0.35f, 0.15f};
     float cross_filter_strength = 0.f;
+    ALMetalWorldColorGrade color_grade;
     bool cutout_premultiplied = false;
     // Non-HDR only: colorCorrectF applies output dither at this first 8-bit
     // boundary. HDR defers its 10-bit dither until final presentation.

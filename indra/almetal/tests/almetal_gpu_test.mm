@@ -13217,6 +13217,7 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
         REQUIRE(hdr_output->colorTexture(0)->readback(
             *device, 0, 0, {}, packed.data(), sizeof(packed), &error));
         INFO(error);
+        const auto identity_grade_expected = packed;
         CHECK(std::abs(static_cast<int>(channel10(packed[0], 0)) -
                        static_cast<int>(unorm10(srgb(0.5f)))) <= 1);
         CHECK(std::abs(static_cast<int>(channel10(packed[0], 1)) -
@@ -13306,6 +13307,212 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
                        static_cast<int>(unorm10(srgb(reinhard(0.5f))))) <= 1);
         CHECK(std::abs(static_cast<int>(channel10(packed[0], 2)) -
                        static_cast<int>(unorm10(srgb(reinhard(0.25f))))) <= 1);
+
+        // Exercise every analytical color-grade family in colorCorrectF's
+        // exact linear/tonemap/display ordering. The artist 3D LUT and baked
+        // channel curves remain separate texture-backed owners.
+        scene.static_exposure = 1.f;
+        scene.adapted_exposure = 1.f;
+        scene.tonemap_mix = 0.f;
+        scene.tonemap_type = 0;
+        scene.tonemap_params[0] = 0.f;
+        ALMetalWorldColorGrade& grade = scene.color_grade;
+        grade.enabled = true;
+        std::copy_n(std::array<float, 3>{{1.1f, 0.9f, 1.05f}}.begin(),
+                    3, grade.white_balance_gain);
+        std::copy_n(std::array<float, 3>{{0.02f, -0.01f, 0.03f}}.begin(),
+                    3, grade.lift);
+        std::copy_n(std::array<float, 3>{{0.9f, 1.1f, 0.8f}}.begin(),
+                    3, grade.inverse_gamma);
+        std::copy_n(std::array<float, 3>{{1.05f, 0.95f, 1.1f}}.begin(),
+                    3, grade.gain);
+        std::copy_n(std::array<float, 3>{{1.2f, 0.9f, 0.8f}}.begin(),
+                    3, grade.shadow_ratio);
+        std::copy_n(std::array<float, 3>{{0.9f, 1.1f, 1.f}}.begin(),
+                    3, grade.midtone_ratio);
+        std::copy_n(std::array<float, 3>{{0.8f, 1.f, 1.2f}}.begin(),
+                    3, grade.highlight_ratio);
+        grade.midtone_amount = 0.35f;
+        grade.split_amount = 0.45f;
+        grade.shadow_ramp[0] = 2.5f;
+        grade.shadow_ramp[1] = -0.375f;
+        grade.highlight_ramp[0] = 2.5f;
+        grade.highlight_ramp[1] = -1.25f;
+        grade.black_white_scale = 1.1f;
+        grade.black_white_bias = -0.05f;
+        grade.brightness_contrast_scale = 1.15f;
+        grade.brightness_contrast_bias = -0.04f;
+        grade.highlights_scaled = 0.12f;
+        grade.shadows_scaled = -0.08f;
+        grade.saturation = 1.2f;
+        grade.vibrance = 0.25f;
+        grade.hue_shift = 0.1f;
+        auto grade_output = renderer->renderDisplayPost(scene, &error);
+        INFO(error);
+        REQUIRE(grade_output);
+        REQUIRE(grade_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, packed.data(), sizeof(packed), &error));
+        INFO(error);
+
+        using Color3 = std::array<float, 3>;
+        const auto mix_color = [](const Color3& first,
+                                  const Color3& second, float amount)
+        {
+            Color3 result{};
+            for (std::size_t channel = 0; channel < 3; ++channel)
+            {
+                result[channel] = first[channel] +
+                    (second[channel] - first[channel]) * amount;
+            }
+            return result;
+        };
+        const auto luma = [](const Color3& color)
+        {
+            return color[0] * 0.2126f + color[1] * 0.7152f +
+                color[2] * 0.0722f;
+        };
+        const auto smoothstep = [](float edge0, float edge1, float value)
+        {
+            const float t = std::clamp(
+                (value - edge0) / (edge1 - edge0), 0.f, 1.f);
+            return t * t * (3.f - 2.f * t);
+        };
+        const auto ramp = [](float value, const float pair[2])
+        {
+            const float t = std::clamp(
+                value * pair[0] + pair[1], 0.f, 1.f);
+            return t * t * (3.f - 2.f * t);
+        };
+        const auto hue_shift = [](Color3 color, float shift)
+        {
+            const float maximum = std::max({color[0], color[1], color[2]});
+            const float minimum = std::min({color[0], color[1], color[2]});
+            const float delta = maximum - minimum;
+            float hue = 0.f;
+            if (delta > 1.e-10f)
+            {
+                if (maximum == color[0])
+                {
+                    hue = (color[1] - color[2]) / delta;
+                }
+                else if (maximum == color[1])
+                {
+                    hue = (color[2] - color[0]) / delta + 2.f;
+                }
+                else
+                {
+                    hue = (color[0] - color[1]) / delta + 4.f;
+                }
+                hue /= 6.f;
+                hue -= std::floor(hue);
+            }
+            hue = hue + shift - std::floor(hue + shift);
+            const float saturation = maximum > 1.e-10f
+                ? delta / maximum : 0.f;
+            const float sector = hue * 6.f;
+            const int index = static_cast<int>(std::floor(sector));
+            const float fraction = sector - std::floor(sector);
+            const float p = maximum * (1.f - saturation);
+            const float q = maximum * (1.f - saturation * fraction);
+            const float t = maximum *
+                (1.f - saturation * (1.f - fraction));
+            switch (index % 6)
+            {
+            case 0: return Color3{{maximum, t, p}};
+            case 1: return Color3{{q, maximum, p}};
+            case 2: return Color3{{p, maximum, t}};
+            case 3: return Color3{{p, q, maximum}};
+            case 4: return Color3{{t, p, maximum}};
+            default: return Color3{{maximum, p, q}};
+            }
+        };
+
+        Color3 expected_grade{{0.5f, 0.25f, 0.125f}};
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            expected_grade[channel] *= grade.white_balance_gain[channel];
+            expected_grade[channel] = std::pow(
+                std::max(expected_grade[channel] * grade.gain[channel] +
+                             grade.lift[channel],
+                         0.f),
+                grade.inverse_gamma[channel]);
+            expected_grade[channel] = std::clamp(
+                expected_grade[channel], 0.f, 1.f);
+        }
+        const float split_luma = luma(expected_grade);
+        const float high = ramp(split_luma, grade.highlight_ramp);
+        const float low = 1.f - ramp(split_luma, grade.shadow_ramp);
+        const float middle = std::max(1.f - high - low, 0.f);
+        expected_grade = mix_color(
+            expected_grade,
+            Color3{{grade.shadow_ratio[0] * split_luma,
+                    grade.shadow_ratio[1] * split_luma,
+                    grade.shadow_ratio[2] * split_luma}},
+            low * grade.split_amount);
+        expected_grade = mix_color(
+            expected_grade,
+            Color3{{grade.midtone_ratio[0] * split_luma,
+                    grade.midtone_ratio[1] * split_luma,
+                    grade.midtone_ratio[2] * split_luma}},
+            middle * grade.midtone_amount);
+        expected_grade = mix_color(
+            expected_grade,
+            Color3{{grade.highlight_ratio[0] * split_luma,
+                    grade.highlight_ratio[1] * split_luma,
+                    grade.highlight_ratio[2] * split_luma}},
+            high * grade.split_amount);
+        for (float& channel : expected_grade)
+        {
+            channel = srgb(channel) * grade.black_white_scale +
+                grade.black_white_bias;
+            channel = channel * grade.brightness_contrast_scale +
+                grade.brightness_contrast_bias;
+        }
+        const float recovery_luma = luma(expected_grade);
+        const float highlight_mask = smoothstep(0.5f, 1.f, recovery_luma);
+        const float shadow_mask = 1.f -
+            smoothstep(0.f, 0.5f, recovery_luma);
+        for (float& channel : expected_grade)
+        {
+            channel += (1.f - channel) *
+                (grade.highlights_scaled * highlight_mask);
+            channel += channel * (grade.shadows_scaled * shadow_mask);
+        }
+        const float saturation_luma = luma(expected_grade);
+        expected_grade = mix_color(
+            Color3{{saturation_luma, saturation_luma, saturation_luma}},
+            expected_grade, grade.saturation);
+        const float vibrance_luma = luma(expected_grade);
+        const float color_range =
+            *std::max_element(expected_grade.begin(), expected_grade.end()) -
+            *std::min_element(expected_grade.begin(), expected_grade.end());
+        expected_grade = mix_color(
+            Color3{{vibrance_luma, vibrance_luma, vibrance_luma}},
+            expected_grade, 1.f + grade.vibrance * (1.f - color_range));
+        for (float& channel : expected_grade)
+        {
+            channel = std::clamp(channel, 0.f, 1.f);
+        }
+        expected_grade = hue_shift(expected_grade, grade.hue_shift);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CAPTURE(channel, expected_grade[channel]);
+            CHECK(std::abs(static_cast<int>(channel10(packed[0], channel)) -
+                           static_cast<int>(unorm10(expected_grade[channel]))) <=
+                  3);
+        }
+        scene.color_grade = ALMetalWorldColorGrade{};
+        scene.color_grade.enabled = true;
+        auto identity_grade_output = renderer->renderDisplayPost(
+            scene, &error);
+        INFO(error);
+        REQUIRE(identity_grade_output);
+        std::array<std::uint32_t, 2> identity_grade_packed{};
+        REQUIRE(identity_grade_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, identity_grade_packed.data(),
+            sizeof(identity_grade_packed), &error));
+        CHECK(identity_grade_packed == identity_grade_expected);
+        scene.color_grade.enabled = false;
 
         // The non-HDR GLSL variant has no exposure/tonemap permutation; it
         // clamps the linear RGBA8 source and performs only the display
@@ -13414,6 +13621,12 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
         CHECK(error == "Metal world display-post state is invalid");
         invalid.tonemap_type = 0;
         invalid.dither_amount = 2.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
+        CHECK(error == "Metal world display-post state is invalid");
+        invalid.dither_amount = 0.f;
+        invalid.color_grade.enabled = true;
+        invalid.color_grade.saturation = 3.f;
         error.clear();
         CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
         CHECK(error == "Metal world display-post state is invalid");

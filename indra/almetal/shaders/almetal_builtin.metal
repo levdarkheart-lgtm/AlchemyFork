@@ -12156,6 +12156,17 @@ struct ALMetalWorldDisplayPostConstants
     float4 halation_tint;
     // cutout-premultiplied, HDR/tonemap branch, animate dither, frame id
     uint4 config;
+    float4 grade_white_balance;
+    float4 grade_lift;
+    float4 grade_inverse_gamma;
+    float4 grade_gain;
+    float4 grade_shadow_ratio;
+    float4 grade_midtone_ratio;
+    float4 grade_highlight_ratio;
+    float4 grade_split0;
+    float4 grade_split1;
+    float4 grade_display0;
+    float4 grade_display1;
 };
 
 struct ALMetalWorldCASConstants
@@ -12227,6 +12238,130 @@ static float3 almetal_world_display_dither(
     return color + triangular * (amount / 255.0) * room;
 }
 
+static float almetal_world_grade_ramp(float value, float2 ramp)
+{
+    const float t = clamp(value * ramp.x + ramp.y, 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+static float3 almetal_world_grade_rgb_to_hsv(float3 color)
+{
+    const float4 k = float4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    const float4 p = mix(
+        float4(color.bg, k.wz), float4(color.gb, k.xy),
+        step(color.b, color.g));
+    const float4 q = mix(
+        float4(p.xyw, color.r), float4(color.r, p.yzx),
+        step(p.x, color.r));
+    const float d = q.x - min(q.w, q.y);
+    return float3(
+        abs(q.z + (q.w - q.y) / (6.0 * d + 1.0e-10)),
+        d / (q.x + 1.0e-10), q.x);
+}
+
+static float3 almetal_world_grade_hsv_to_rgb(float3 color)
+{
+    const float4 k = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    const float3 p = abs(fract(color.xxx + k.xyz) * 6.0 - k.www);
+    return color.z * mix(k.xxx, clamp(p - k.xxx, 0.0, 1.0), color.y);
+}
+
+static float3 almetal_world_grade_linear_pre(
+    float3 color, constant ALMetalWorldDisplayPostConstants& constants)
+{
+    if (any(constants.grade_white_balance.rgb != float3(1.0)))
+    {
+        color *= constants.grade_white_balance.rgb;
+    }
+    if (any(constants.grade_lift.rgb != float3(0.0)) ||
+        any(constants.grade_gain.rgb != float3(1.0)) ||
+        any(constants.grade_inverse_gamma.rgb != float3(1.0)))
+    {
+        color = color * constants.grade_gain.rgb + constants.grade_lift.rgb;
+        color = pow(max(color, float3(0.0)),
+                    constants.grade_inverse_gamma.rgb);
+    }
+    return color;
+}
+
+static float3 almetal_world_grade_split(
+    float3 color, constant ALMetalWorldDisplayPostConstants& constants)
+{
+    const float midtone_amount = constants.grade_split0.x;
+    const float split_amount = constants.grade_split0.y;
+    if (split_amount <= 0.0 && midtone_amount <= 0.0)
+    {
+        return color;
+    }
+    const float3 luma_weights = float3(0.2126, 0.7152, 0.0722);
+    const float luma = dot(color, luma_weights);
+    const float high = almetal_world_grade_ramp(
+        luma, constants.grade_split1.xy);
+    const float low = 1.0 - almetal_world_grade_ramp(
+        luma, constants.grade_split0.zw);
+    const float middle = max(1.0 - high - low, 0.0);
+    color = mix(color, constants.grade_shadow_ratio.rgb * luma,
+                low * split_amount);
+    color = mix(color, constants.grade_midtone_ratio.rgb * luma,
+                middle * midtone_amount);
+    return mix(color, constants.grade_highlight_ratio.rgb * luma,
+               high * split_amount);
+}
+
+static float3 almetal_world_grade_display(
+    float3 color, constant ALMetalWorldDisplayPostConstants& constants)
+{
+    const float3 luma_weights = float3(0.2126, 0.7152, 0.0722);
+    if (constants.grade_split1.z != 1.0 ||
+        constants.grade_split1.w != 0.0)
+    {
+        color = color * constants.grade_split1.z +
+            constants.grade_split1.w;
+    }
+    if (constants.grade_display0.x != 1.0 ||
+        constants.grade_display0.y != 0.0)
+    {
+        color = color * constants.grade_display0.x +
+            constants.grade_display0.y;
+    }
+
+    if (constants.grade_display0.z != 0.0 ||
+        constants.grade_display0.w != 0.0)
+    {
+        const float luma = dot(color, luma_weights);
+        const float highlight_mask = smoothstep(0.5, 1.0, luma);
+        const float shadow_mask = 1.0 - smoothstep(0.0, 0.5, luma);
+        color += (float3(1.0) - color) *
+            (constants.grade_display0.z * highlight_mask);
+        color += color * (constants.grade_display0.w * shadow_mask);
+    }
+
+    if (constants.grade_display1.x != 1.0)
+    {
+        const float saturation_luma = dot(color, luma_weights);
+        color = mix(float3(saturation_luma), color,
+                    constants.grade_display1.x);
+    }
+    if (constants.grade_display1.y != 0.0)
+    {
+        const float vibrance_luma = dot(color, luma_weights);
+        const float maximum = max(color.r, max(color.g, color.b));
+        const float minimum = min(color.r, min(color.g, color.b));
+        color = mix(
+            float3(vibrance_luma), color,
+            1.0 + constants.grade_display1.y *
+                (1.0 - (maximum - minimum)));
+        color = clamp(color, float3(0.0), float3(1.0));
+    }
+    if (constants.grade_display1.z != 0.0)
+    {
+        float3 hsv = almetal_world_grade_rgb_to_hsv(color);
+        hsv.x = fract(hsv.x + constants.grade_display1.z);
+        color = almetal_world_grade_hsv_to_rgb(hsv);
+    }
+    return color;
+}
+
 static float4 almetal_world_display_post(
     ALMetalResampleVaryings input,
     float4 color,
@@ -12253,6 +12388,16 @@ static float4 almetal_world_display_post(
             cross_filter_sample * constants.display.w *
                 constants.display.y;
         color.rgb *= constants.post.x * adapted_exposure;
+    }
+
+    const bool color_grade = constants.grade_display1.w != 0.0;
+    if (color_grade)
+    {
+        color.rgb = almetal_world_grade_linear_pre(color.rgb, constants);
+    }
+
+    if (constants.config.y != 0)
+    {
         const float3 clamped = clamp(
             color.rgb, float3(0.0), float3(1.0));
         const uint tonemap_type = uint(round(constants.post.w));
@@ -12269,9 +12414,17 @@ static float4 almetal_world_display_post(
         color.rgb = clamp(color.rgb, float3(0.0), float3(1.0));
     }
 
-    color.rgb = clamp(
-        almetal_linear_to_srgb(color.rgb),
-        float3(0.0), float3(1.0));
+    if (color_grade)
+    {
+        color.rgb = almetal_world_grade_split(color.rgb, constants);
+    }
+
+    color.rgb = almetal_linear_to_srgb(color.rgb);
+    if (color_grade)
+    {
+        color.rgb = almetal_world_grade_display(color.rgb, constants);
+    }
+    color.rgb = clamp(color.rgb, float3(0.0), float3(1.0));
     if (constants.config.x != 0)
     {
         color.rgb *= coverage;
