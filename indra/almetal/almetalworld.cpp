@@ -740,6 +740,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         projector_light_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         lighting_composition_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        ssr_history_pipelines;
     std::array<OpaqueForwardMaskPipelines, 2>
         opaque_forward_fullbright_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
@@ -1081,6 +1083,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_cloud_fragment") ||
         !impl->library->hasFunction("almetal_world_base_light_fragment") ||
         !impl->library->hasFunction(
+            "almetal_world_ssr_history_fragment") ||
+        !impl->library->hasFunction(
             "almetal_world_depth_pyramid_first") ||
         !impl->library->hasFunction(
             "almetal_world_depth_pyramid_last") ||
@@ -1281,6 +1285,27 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         {
             return nullptr;
         }
+
+        descriptor.fragment_function =
+            "almetal_world_ssr_history_fragment";
+        descriptor.colors[0].format = hdr
+            ? ALMetalPixelFormat::rg11b10_float
+            : ALMetalPixelFormat::rgba8_unorm;
+        descriptor.color_attachment_count = 2;
+        descriptor.colors[1].format = ALMetalPixelFormat::r32_float;
+        descriptor.label = hdr
+            ? "Alchemy HDR world SSR-history publication pipeline"
+            : "Alchemy world SSR-history publication pipeline";
+        impl->ssr_history_pipelines[hdr] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->ssr_history_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        descriptor.colors[1] = {};
+        descriptor.color_attachment_count = 1;
+        descriptor.colors[0].format = screen_formats[hdr];
 
         descriptor.fragment_function = "almetal_world_base_light_fragment";
         descriptor.label = hdr
@@ -5018,6 +5043,113 @@ ALMetalWorldGBufferRenderer::composeLighting(
     return output;
 }
 
+bool ALMetalWorldGBufferRenderer::updateScreenSpaceReflectionHistory(
+    const ALMetalRenderTarget& source,
+    std::unique_ptr<ALMetalRenderTarget>& history,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device)
+    {
+        setError(error, "Metal world SSR-history renderer is unavailable");
+        return false;
+    }
+
+    const ALMetalRenderTargetDescriptor& input = source.descriptor();
+    const bool hdr = input.color_attachment_count == 1 &&
+        input.colors[0].format == ALMetalPixelFormat::rgba16_float;
+    const bool color_format = hdr ||
+        (input.color_attachment_count == 1 &&
+         input.colors[0].format == ALMetalPixelFormat::rgba8_unorm);
+    if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
+        !color_format ||
+        input.depth_stencil_format !=
+            ALMetalPixelFormat::depth32_float_stencil8 ||
+        !input.depth_stencil_shader_read ||
+        !sampleableTexture(source.colorTexture(0)) ||
+        !sampleableTexture(source.depthStencilTexture()))
+    {
+        setError(error,
+                 "Metal world SSR-history source is incompatible");
+        return false;
+    }
+
+    ALMetalRenderTargetDescriptor descriptor;
+    descriptor.width = input.width;
+    descriptor.height = input.height;
+    descriptor.color_attachment_count = 2;
+    descriptor.colors[0].format = hdr
+        ? ALMetalPixelFormat::rg11b10_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    descriptor.colors[0].label =
+        "Alchemy native SSR scene-color history";
+    descriptor.colors[1].format = ALMetalPixelFormat::r32_float;
+    descriptor.colors[1].label =
+        "Alchemy native SSR scene-depth history";
+    descriptor.label = "Alchemy native SSR scene-history target";
+
+    const auto matches = [&descriptor](
+        const std::unique_ptr<ALMetalRenderTarget>& target)
+    {
+        if (!target)
+        {
+            return false;
+        }
+        const ALMetalRenderTargetDescriptor& current = target->descriptor();
+        return current.width == descriptor.width &&
+               current.height == descriptor.height &&
+               current.sample_count == 1 &&
+               current.color_attachment_count == 2 &&
+               current.colors[0].format == descriptor.colors[0].format &&
+               current.colors[1].format == descriptor.colors[1].format &&
+               target->colorTexture(0) && target->colorTexture(1);
+    };
+
+    std::unique_ptr<ALMetalRenderTarget> replacement;
+    ALMetalRenderTarget* destination = history.get();
+    if (!matches(history))
+    {
+        replacement = ALMetalRenderTarget::create(
+            *mImpl->device, descriptor, error);
+        destination = replacement.get();
+    }
+    if (!destination)
+    {
+        return false;
+    }
+
+    ALMetalRenderPassConfig pass_config;
+    auto pass = destination->makeRenderPass(pass_config, error);
+    auto command = pass ? mImpl->device->makeCommandBuffer(
+        "Alchemy native SSR scene-history publication", error) : nullptr;
+    auto encoder = command && pass ? ALMetalRenderEncoder::begin(
+        *command, *pass,
+        "Alchemy native SSR scene-history encoder", error) : nullptr;
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(input.width),
+        static_cast<double>(input.height), 0.0, 1.0};
+    const ALMetalScissorRect scissor{0, 0, input.width, input.height};
+    const bool encoded = encoder &&
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(
+            *mImpl->ssr_history_pipelines[hdr ? 1 : 0], error) &&
+        encoder->setFragmentTexture(0, source.colorTexture(0), error) &&
+        encoder->setFragmentTexture(
+            1, source.depthStencilTexture(), error) &&
+        encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return false;
+    }
+    if (replacement)
+    {
+        history = std::move(replacement);
+    }
+    return true;
+}
+
 std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     const ALMetalWorldOpaquePostDeferredScene& scene,
@@ -5996,7 +6128,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         "Alchemy world post-deferred final color";
     output_descriptor.depth_stencil_format =
         ALMetalPixelFormat::depth32_float_stencil8;
-    output_descriptor.depth_stencil_shader_read = water_wave_occlusion;
+    output_descriptor.depth_stencil_shader_read = water_wave_occlusion ||
+        scene.publish_screen_space_reflection_history;
     output_descriptor.label =
         "Alchemy native world opaque post-deferred target";
     auto output = ALMetalRenderTarget::create(

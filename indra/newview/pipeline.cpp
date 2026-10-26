@@ -645,8 +645,12 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool impostor_ssr_color_staged = false;
     std::unique_ptr<ALMetalTexture> impostor_ssr_color_texture;
     std::unique_ptr<ALMetalTexture> impostor_ssr_depth_texture;
+    std::unique_ptr<ALMetalRenderTarget> impostor_ssr_history_target;
     ALMetalWorldScreenSpaceReflections impostor_screen_space_reflections;
     bool impostor_ssr_needed = false;
+    U32 impostor_ssr_native_frame = std::numeric_limits<U32>::max();
+    bool continuous_world_capture = false;
+    U32 continuous_world_frame = std::numeric_limits<U32>::max();
     ALMetalWorldLegacyAlphaLighting impostor_legacy_alpha_lighting;
     bool impostor_legacy_alpha_lighting_valid = false;
     std::unique_ptr<ALMetalTexture> impostor_directional_shadow_texture;
@@ -1176,8 +1180,13 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.impostor_ssr_color_staged = false;
         capture.impostor_ssr_color_texture.reset();
         capture.impostor_ssr_depth_texture.reset();
+        capture.impostor_ssr_history_target.reset();
         capture.impostor_screen_space_reflections = {};
         capture.impostor_ssr_needed = false;
+        capture.impostor_ssr_native_frame =
+            std::numeric_limits<U32>::max();
+        capture.continuous_world_capture = false;
+        capture.continuous_world_frame = std::numeric_limits<U32>::max();
         capture.impostor_directional_shadow_texture.reset();
         capture.impostor_directional_shadows = {};
         capture.impostor_directional_shadow_depth.clear();
@@ -1295,6 +1304,35 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         mirror.ready = true;
     }
 
+    if (!capture.frame_active && capture.attempted &&
+        capture.continuous_world_capture &&
+        capture.continuous_world_frame != gFrameCount)
+    {
+        // Once native final color can supply SSR history, each main-world
+        // frame is a fresh transaction. Retire only per-frame products and
+        // attempt gates; persistent probe, shadow and history resources stay
+        // live. A failed stage therefore falls back to GL for that frame and
+        // retries natively on the next instead of permanently wedging a gate.
+        capture.target.reset();
+        capture.local_light_target.reset();
+        capture.projector_light_target.reset();
+        capture.composed_light_target.reset();
+        capture.opaque_post_deferred_target.reset();
+        capture.base_light_map_target.reset();
+        capture.base_light_target.reset();
+        capture.attempted = false;
+        capture.local_lighting_attempted = false;
+        capture.local_lighting_failed_frames = 0;
+        capture.projector_lighting_attempted = false;
+        capture.projector_lighting_failed_frames = 0;
+        capture.lighting_composition_attempted = false;
+        capture.lighting_composition_failed_frames = 0;
+        capture.opaque_post_deferred_attempted = false;
+        capture.base_lighting_attempted = false;
+        capture.base_lighting_failed_frames = 0;
+        capture.failed_frames = 0;
+    }
+
     if (capture.frame_active || capture.attempted)
     {
         return;
@@ -1393,6 +1431,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.hdr = hdrEnabled();
     capture.reverse_z = LLRender::sReverseZ;
     capture.complete = true;
+    capture.continuous_world_frame = gFrameCount;
     capture.frame_active = true;
     capture.pass_active = false;
 }
@@ -2734,8 +2773,13 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.impostor_ssr_color_staged = false;
         capture.impostor_ssr_color_texture.reset();
         capture.impostor_ssr_depth_texture.reset();
+        capture.impostor_ssr_history_target.reset();
         capture.impostor_screen_space_reflections = {};
         capture.impostor_ssr_needed = false;
+        capture.impostor_ssr_native_frame =
+            std::numeric_limits<U32>::max();
+        capture.continuous_world_capture = false;
+        capture.continuous_world_frame = std::numeric_limits<U32>::max();
         capture.impostor_directional_shadow_texture.reset();
         capture.impostor_directional_shadows = {};
         capture.impostor_directional_shadow_depth.clear();
@@ -3507,6 +3551,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.height = capture.height;
         scene.reverse_z = capture.reverse_z;
         scene.hdr = capture.hdr;
+        scene.publish_screen_space_reflection_history = ssr_active;
         std::string error;
         auto target = capture.renderer->renderOpaquePostDeferred(
             scene, &error);
@@ -3519,32 +3564,78 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         }
         else
         {
+            const bool first_continuous_frame =
+                !capture.continuous_world_capture;
+            if (ssr_active)
+            {
+                // Once the complete offscreen native chain exists, keep it
+                // advancing so this frame's sharp pre-DoF color/depth can
+                // become the next frame's coherent SSR history. GL remains
+                // the visible authority and the per-frame fallback below.
+                capture.continuous_world_capture = true;
+                std::string history_error;
+                if (capture.renderer->updateScreenSpaceReflectionHistory(
+                        *target, capture.impostor_ssr_history_target,
+                        &history_error))
+                {
+                    capture.impostor_screen_space_reflections.scene_color =
+                        capture.impostor_ssr_history_target->colorTexture(0);
+                    capture.impostor_screen_space_reflections.scene_depth =
+                        capture.impostor_ssr_history_target->colorTexture(1);
+                    capture.impostor_ssr_native_frame = gFrameCount;
+
+                    // Native publication supersedes every older GL PBO
+                    // generation as one paired transaction.
+                    capture.impostor_ssr_color_readback.release();
+                    capture.impostor_ssr_depth_readback.release();
+                    capture.impostor_ssr_pending.clear();
+                    capture.impostor_ssr_color_staged = false;
+                    capture.impostor_ssr_readback_width = 0;
+                    capture.impostor_ssr_readback_height = 0;
+                    capture.impostor_ssr_readback_hdr = false;
+                    capture.impostor_ssr_color_bytes.clear();
+                    capture.impostor_ssr_depth_values.clear();
+                    capture.impostor_ssr_color_texture.reset();
+                    capture.impostor_ssr_depth_texture.reset();
+                }
+                else
+                {
+                    LL_WARNS("Metal")
+                        << "Native world final color retained the GL SSR "
+                           "history fallback after publication failed: "
+                        << history_error << LL_ENDL;
+                }
+            }
             capture.opaque_post_deferred_target = std::move(target);
-            LL_INFOS("Metal")
-                << "Native world opaque-forward slice encoded "
-                << capture.batches.size() << " batches at "
-                << capture.width << "x" << capture.height
-                << (has_shiny ? "; including live shiny reflection" : "")
-                << (has_simple_alpha
-                        ? "; including lit pre-water alpha" : "")
-                << (has_material_alpha
-                        ? "; including legacy-material pre-water alpha"
-                        : "")
-                << (has_pbr_alpha
-                        ? "; including PBR alpha" : "")
-                << (has_post_water_alpha
-                        ? "; including post-water alpha" : "")
-                << (has_post_water_glow
-                        ? "; including post-water emissive replay" : "")
-                << (has_water_surface
-                        ? (has_above_water_surface
-                               ? "; including flat above-water water"
-                               : "; including flat underwater water")
-                        : "")
-                << (has_atmospheric_haze
-                        ? "; including atmospheric haze" : "")
-                << "; result remains offscreen and visible GL authority is "
-                   "unchanged" << LL_ENDL;
+            if (first_continuous_frame)
+            {
+                LL_INFOS("Metal")
+                    << "Native world opaque-forward slice encoded "
+                    << capture.batches.size() << " batches at "
+                    << capture.width << "x" << capture.height
+                    << (has_shiny
+                            ? "; including live shiny reflection" : "")
+                    << (has_simple_alpha
+                            ? "; including lit pre-water alpha" : "")
+                    << (has_material_alpha
+                            ? "; including legacy-material pre-water alpha"
+                            : "")
+                    << (has_pbr_alpha
+                            ? "; including PBR alpha" : "")
+                    << (has_post_water_alpha
+                            ? "; including post-water alpha" : "")
+                    << (has_post_water_glow
+                            ? "; including post-water emissive replay" : "")
+                    << (has_water_surface
+                            ? (has_above_water_surface
+                                   ? "; including flat above-water water"
+                                   : "; including flat underwater water")
+                            : "")
+                    << (has_atmospheric_haze
+                            ? "; including atmospheric haze" : "")
+                    << "; result remains offscreen and visible GL authority "
+                       "is unchanged" << LL_ENDL;
+            }
         }
     }
     else if (capture.complete && !capture.batches.empty())
@@ -5233,6 +5324,8 @@ void LLPipeline::collectMetalScreenSpaceReflections()
             capture.impostor_ssr_color_texture.get();
         capture.impostor_screen_space_reflections.scene_depth =
             capture.impostor_ssr_depth_texture.get();
+        capture.impostor_ssr_native_frame =
+            std::numeric_limits<U32>::max();
     }
 }
 
@@ -8634,30 +8727,33 @@ void LLPipeline::endMetalWorldGBufferCapture()
         capture.target = std::move(target);
         capture.attempted = true;
         capture.failed_frames = 0;
-        LL_INFOS("Metal")
-            << "Native world G-buffer owner encoded "
-            << capture.batches.size()
-            << " world batches at " << capture.width << "x"
-            << capture.height
-            << (capture.hdri_sky_native_available
-                    ? "; full HDRI sky is native"
-                    : capture.split_sky_native_available
-                        ? "; partial HDRI/WindLight sky split is native"
-                    : capture.windlight_sky_native_available
-                        ? capture.windlight_clouds_expected
-                            ? "; full WindLight sky and clouds are native"
-                            : capture.windlight_aurora_expected
-                                ? "; WindLight haze through aurora are native"
-                            : capture.windlight_meteors_expected
-                                ? "; WindLight haze, stars, heavenly bodies and meteors are native"
-                            : capture.windlight_heavenly_bodies_expected
-                                ? "; WindLight haze, stars and heavenly bodies are native"
-                            : capture.windlight_stars_expected
-                                ? "; WindLight haze and stars are native"
-                                : "; WindLight atmospheric haze sky is native"
-                        : "; sky remains GL-owned")
-            << "; presentation remains on GL until the remaining world passes exist"
-            << LL_ENDL;
+        if (!capture.continuous_world_capture)
+        {
+            LL_INFOS("Metal")
+                << "Native world G-buffer owner encoded "
+                << capture.batches.size()
+                << " world batches at " << capture.width << "x"
+                << capture.height
+                << (capture.hdri_sky_native_available
+                        ? "; full HDRI sky is native"
+                        : capture.split_sky_native_available
+                            ? "; partial HDRI/WindLight sky split is native"
+                        : capture.windlight_sky_native_available
+                            ? capture.windlight_clouds_expected
+                                ? "; full WindLight sky and clouds are native"
+                                : capture.windlight_aurora_expected
+                                    ? "; WindLight haze through aurora are native"
+                                : capture.windlight_meteors_expected
+                                    ? "; WindLight haze, stars, heavenly bodies and meteors are native"
+                                : capture.windlight_heavenly_bodies_expected
+                                    ? "; WindLight haze, stars and heavenly bodies are native"
+                                : capture.windlight_stars_expected
+                                    ? "; WindLight haze and stars are native"
+                                    : "; WindLight atmospheric haze sky is native"
+                            : "; sky remains GL-owned")
+                << "; presentation remains on GL until the remaining world passes exist"
+                << LL_ENDL;
+        }
     }
     capture.batches.clear();
     capture.hdri_sky_batches.clear();
@@ -8814,14 +8910,17 @@ void LLPipeline::renderMetalWorldLocalLights(
     capture.local_light_target = std::move(target);
     capture.local_lighting_attempted = true;
     capture.local_lighting_failed_frames = 0;
-    LL_INFOS("Metal")
-        << "Native world local-point-light owner encoded "
-        << lights.size() << " ordinary lights at "
-        << capture.local_light_target->descriptor().width << "x"
-        << capture.local_light_target->descriptor().height
-        << "; visible deferred lighting remains on GL until all lighting "
-           "and composition owners exist"
-        << LL_ENDL;
+    if (!capture.continuous_world_capture)
+    {
+        LL_INFOS("Metal")
+            << "Native world local-point-light owner encoded "
+            << lights.size() << " ordinary lights at "
+            << capture.local_light_target->descriptor().width << "x"
+            << capture.local_light_target->descriptor().height
+            << "; visible deferred lighting remains on GL until all "
+               "lighting and composition owners exist"
+            << LL_ENDL;
+    }
 }
 
 void LLPipeline::renderMetalWorldProjectorLights(
@@ -9053,16 +9152,19 @@ void LLPipeline::renderMetalWorldProjectorLights(
     capture.projector_lighting_attempted = true;
     capture.projector_lighting_failed_frames = 0;
     capture.projector_shadow_depth.clear();
-    LL_INFOS("Metal")
-        << "Native world projector-light owner encoded "
-        << lights.size() << " cookies at "
-        << capture.projector_light_target->descriptor().width << "x"
-        << capture.projector_light_target->descriptor().height
-        << (needs_projector_shadows
-                ? "; exact native spot-shadow filtering consumes "
-                  "transitional raw GL depth maps"
-                : "; no live spot-shadow channel was consumed")
-        << LL_ENDL;
+    if (!capture.continuous_world_capture)
+    {
+        LL_INFOS("Metal")
+            << "Native world projector-light owner encoded "
+            << lights.size() << " cookies at "
+            << capture.projector_light_target->descriptor().width << "x"
+            << capture.projector_light_target->descriptor().height
+            << (needs_projector_shadows
+                    ? "; exact native spot-shadow filtering consumes "
+                      "transitional raw GL depth maps"
+                    : "; no live spot-shadow channel was consumed")
+            << LL_ENDL;
+    }
 }
 
 void LLPipeline::renderMetalWorldLightingComposition()
@@ -9106,14 +9208,17 @@ void LLPipeline::renderMetalWorldLightingComposition()
     capture.composed_light_target = std::move(target);
     capture.lighting_composition_attempted = true;
     capture.lighting_composition_failed_frames = 0;
-    LL_INFOS("Metal")
-        << "Native world base, ordinary-light and projector-light targets "
-           "composed at "
-        << capture.composed_light_target->descriptor().width << "x"
-        << capture.composed_light_target->descriptor().height
-        << "; the result remains offscreen and visible GL authority is "
-           "unchanged"
-        << LL_ENDL;
+    if (!capture.continuous_world_capture)
+    {
+        LL_INFOS("Metal")
+            << "Native world base, ordinary-light and projector-light "
+               "targets composed at "
+            << capture.composed_light_target->descriptor().width << "x"
+            << capture.composed_light_target->descriptor().height
+            << "; the result remains offscreen and visible GL authority "
+               "is unchanged"
+            << LL_ENDL;
+    }
 }
 
 bool LLPipeline::renderMetalWorldLightMap(
@@ -9257,13 +9362,17 @@ bool LLPipeline::renderMetalWorldLightMap(
         return false;
     }
     capture.base_light_map_target = std::move(target);
-    LL_INFOS("Metal")
-        << "Native world directional-shadow/SSAO light-map owner encoded at "
-        << capture.base_light_map_target->descriptor().width << "x"
-        << capture.base_light_map_target->descriptor().height
-        << "; the static noise and live cascades remain transitional GL "
-           "input mirrors"
-        << LL_ENDL;
+    if (!capture.continuous_world_capture)
+    {
+        LL_INFOS("Metal")
+            << "Native world directional-shadow/SSAO light-map owner "
+               "encoded at "
+            << capture.base_light_map_target->descriptor().width << "x"
+            << capture.base_light_map_target->descriptor().height
+            << "; the static noise and live cascades remain transitional "
+               "GL input mirrors"
+            << LL_ENDL;
+    }
     return true;
 }
 
@@ -9404,8 +9513,9 @@ void LLPipeline::renderMetalWorldBaseLighting(
     if (ssr_active)
     {
         // copyScreenSpaceReflections runs during finalize. Arm its paired
-        // asynchronous color/depth readback now; this one-shot base owner
-        // retries on a later frame rather than consuming mismatched history.
+        // asynchronous color/depth bootstrap/fallback now. Once a complete
+        // native final frame publishes history, this owner advances every
+        // frame and never consumes mismatched generations.
         capture.impostor_ssr_needed = true;
         if (!fillMetalImpostorScreenSpaceReflections())
         {
@@ -9476,7 +9586,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
         capture.base_lighting_attempted = true;
         LL_WARNS("Metal")
             << "Native world base-light owner retained GL after its "
-               "one-shot migration attempt failed: "
+               "migration attempt failed: "
             << error << LL_ENDL;
         return;
     }
@@ -9486,20 +9596,23 @@ void LLPipeline::renderMetalWorldBaseLighting(
     capture.base_lighting_failed_frames = 0;
     capture.base_light_map_texture.reset();
     capture.base_light_map_bytes.clear();
-    LL_INFOS("Metal")
-        << "Native world probe-finished base-light owner encoded at "
-        << capture.base_light_target->descriptor().width << "x"
-        << capture.base_light_target->descriptor().height
-        << (capture.hdri_sky_native_available
-                ? "; full HDRI clear-depth transfer is native"
-                : capture.windlight_sky_native_available
-                    ? capture.windlight_stars_native_available
-                        ? "; WindLight haze/star clear-depth transfer is native"
-                        : "; WindLight atmospheric clear-depth transfer is native"
-                    : "; sky transfer remains GL-owned")
-        << "; GL remains authoritative until the retained lighting outputs "
-           "are composed and later world owners are native"
-        << LL_ENDL;
+    if (!capture.continuous_world_capture)
+    {
+        LL_INFOS("Metal")
+            << "Native world probe-finished base-light owner encoded at "
+            << capture.base_light_target->descriptor().width << "x"
+            << capture.base_light_target->descriptor().height
+            << (capture.hdri_sky_native_available
+                    ? "; full HDRI clear-depth transfer is native"
+                    : capture.windlight_sky_native_available
+                        ? capture.windlight_stars_native_available
+                            ? "; WindLight haze/star clear-depth transfer is native"
+                            : "; WindLight atmospheric clear-depth transfer is native"
+                        : "; sky transfer remains GL-owned")
+            << "; GL remains authoritative until the retained lighting "
+               "outputs are composed and later world owners are native"
+            << LL_ENDL;
+    }
 }
 #endif
 
@@ -18136,11 +18249,13 @@ void LLPipeline::copyScreenSpaceReflections(LLRenderTarget* src, LLRenderTarget*
         copySceneDepth(*dst);
 #if LL_DARWIN
         // A full-screen readback is unnecessary until a retained legacy
-        // BLEND material proves it can consume SSR. The first demanded
-        // generation is deliberately asynchronous; native replay remains
-        // fail-closed until its paired color/depth PBOs are coherent.
+        // BLEND material proves it can consume SSR. GL asynchronously
+        // bootstraps the first coherent pair and remains the per-frame
+        // fallback; a native publication from this frame suppresses it.
         if (mMetalWorldSimpleCapture &&
-            mMetalWorldSimpleCapture->impostor_ssr_needed)
+            mMetalWorldSimpleCapture->impostor_ssr_needed &&
+            mMetalWorldSimpleCapture->impostor_ssr_native_frame !=
+                gFrameCount)
         {
             requestMetalScreenSpaceReflections(*dst);
         }
@@ -20737,9 +20852,9 @@ void LLPipeline::renderDeferredLighting()
                 mResourceInputs.mSSAO, ssao_scale, ssao_max);
         }
         // Consume the retained native G-buffer at the same owner boundary as
-        // the visible GL point-light passes. This one-shot migration target
-        // is not composed or presented until the rest of deferred lighting
-        // has a native owner.
+        // the visible GL point-light passes. After complete native final color
+        // starts publishing SSR history, this offscreen chain advances each
+        // frame; it still is not presented and GL remains visible authority.
         renderMetalWorldLocalLights(
             *camera, mat, light_scale, std::max<S32>(local_light_count, 0));
         renderMetalWorldProjectorLights(

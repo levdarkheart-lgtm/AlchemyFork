@@ -643,6 +643,12 @@ struct ALMetalWorldLocalLightVaryings
     float2 texcoord;
 };
 
+struct ALMetalWorldSSRHistoryOutput
+{
+    float4 scene_color [[color(0)]];
+    float scene_depth [[color(1)]];
+};
+
 struct ALMetalWorldGBufferOutput
 {
     float4 albedo [[color(0)]];
@@ -10339,6 +10345,20 @@ fragment float4 almetal_world_lighting_composition_fragment(
     return base_lighting.sample(point_sampler, input.texcoord) +
         local_lighting.sample(point_sampler, input.texcoord) +
         projector_lighting.sample(point_sampler, input.texcoord);
+}
+
+fragment ALMetalWorldSSRHistoryOutput almetal_world_ssr_history_fragment(
+    ALMetalWorldLocalLightVaryings input [[stage_in]],
+    texture2d<float> scene_color [[texture(0)]],
+    texture2d<float> scene_depth [[texture(1)]])
+{
+    const uint2 target = uint2(input.position.xy);
+    const uint2 source = uint2(
+        target.x, scene_color.get_height() - 1u - target.y);
+    ALMetalWorldSSRHistoryOutput output;
+    output.scene_color = scene_color.read(source);
+    output.scene_depth = scene_depth.read(source).r;
+    return output;
 }
 
 static float3 almetal_world_unpack_geometric_normal(

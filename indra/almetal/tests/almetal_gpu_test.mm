@@ -190,6 +190,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_local_light_fragment",
             "almetal_world_projector_light_fragment",
             "almetal_world_lighting_composition_fragment",
+            "almetal_world_ssr_history_fragment",
             "almetal_world_light_map_fragment",
             "almetal_world_light_map_blur_fragment",
             "almetal_world_hdri_sky_vertex",
@@ -2822,6 +2823,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
               ALMetalPixelFormat::rgba16_float);
         CHECK(opaque_forward->descriptor().depth_stencil_format ==
               ALMetalPixelFormat::depth32_float_stencil8);
+        CHECK_FALSE(opaque_forward->descriptor().depth_stencil_shader_read);
         std::array<std::uint16_t, 32 * 32 * 4> opaque_forward_pixels{};
         std::array<float, 32 * 32> opaque_forward_depth{};
         REQUIRE(opaque_forward->colorTexture(0)->readback(
@@ -2843,6 +2845,53 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(
                   opaque_forward_depth[24 * 32 + 8] - 0.625f) < 0.0001f);
         CHECK(std::abs(opaque_forward_depth[0] - 1.f) < 0.0001f);
+
+        // Final-color publication is opt-in because only the continuously
+        // advancing main-world path needs to sample combined depth. Prove
+        // that the ordinary retained target stays private, then publish the
+        // exact HDR color/depth pair with the historical GL row convention.
+        std::unique_ptr<ALMetalRenderTarget> ssr_history;
+        error.clear();
+        CHECK_FALSE(renderer->updateScreenSpaceReflectionHistory(
+            *opaque_forward, ssr_history, &error));
+        CHECK(error == "Metal world SSR-history source is incompatible");
+        opaque_forward_scene.publish_screen_space_reflection_history = true;
+        error.clear();
+        auto opaque_forward_history_source =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(opaque_forward_history_source);
+        CHECK(opaque_forward_history_source->descriptor()
+                  .depth_stencil_shader_read);
+        REQUIRE(renderer->updateScreenSpaceReflectionHistory(
+            *opaque_forward_history_source, ssr_history, &error));
+        INFO(error);
+        REQUIRE(ssr_history);
+        CHECK(ssr_history->descriptor().color_attachment_count == 2);
+        CHECK(ssr_history->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rg11b10_float);
+        CHECK(ssr_history->descriptor().colors[1].format ==
+              ALMetalPixelFormat::r32_float);
+        std::array<std::uint32_t, 32 * 32> ssr_history_color{};
+        std::array<float, 32 * 32> ssr_history_depth{};
+        REQUIRE(ssr_history->colorTexture(0)->readback(
+            *device, 0, 0, {}, ssr_history_color.data(), 32 * 4,
+            &error));
+        REQUIRE(ssr_history->colorTexture(1)->readback(
+            *device, 0, 0, {}, ssr_history_depth.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(ssr_history_color[7 * 32 + 8] != 0);
+        CHECK(std::abs(ssr_history_depth[7 * 32 + 8] - 0.625f) <
+              0.0001f);
+        CHECK(std::abs(ssr_history_depth[31 * 32] - 1.f) < 0.0001f);
+        ALMetalRenderTarget* retained_ssr_history = ssr_history.get();
+        REQUIRE(renderer->updateScreenSpaceReflectionHistory(
+            *opaque_forward_history_source, ssr_history, &error));
+        INFO(error);
+        CHECK(ssr_history.get() == retained_ssr_history);
+        opaque_forward_scene.publish_screen_space_reflection_history = false;
 
         // Water exclusion runs before opaque-forward geometry, tests the
         // retained scene depth without writing it, and marks only stencil
@@ -9876,6 +9925,127 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         error.clear();
         CHECK_FALSE(renderer->renderLocalLights(invalid_scene, &error));
         CHECK(error == "Metal world local-light scene is incomplete");
+    }
+}
+
+TEST_CASE("almetal: native final color publishes coherent SSR history", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        ALMetalRenderTargetDescriptor source_descriptor;
+        source_descriptor.width = 2;
+        source_descriptor.height = 2;
+        source_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        source_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        source_descriptor.depth_stencil_shader_read = true;
+        source_descriptor.label = "Alchemy SSR-history source test";
+        auto source = ALMetalRenderTarget::create(
+            *device, source_descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        // Metal row zero is the top row. The history publisher deliberately
+        // reverses it so the retained data matches glReadPixels' historical
+        // lower-row-first layout consumed by the existing SSR math.
+        const std::array<std::uint8_t, 16> source_pixels{{
+            255,   0,   0, 255,   0, 255,   0, 255,
+              0,   0, 255, 255, 255, 255, 255, 255,
+        }};
+        auto upload = device->makeCommandBuffer(
+            "Alchemy SSR-history source upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        id<MTLBuffer> source_staging = [nativeDevice(*device)
+            newBufferWithBytes:source_pixels.data()
+                      length:source_pixels.size()
+                     options:MTLResourceStorageModeShared];
+        REQUIRE(source_staging);
+        id<MTLBlitCommandEncoder> source_blit =
+            [nativeCommand(*upload) blitCommandEncoder];
+        REQUIRE(source_blit);
+        [source_blit copyFromBuffer:source_staging
+                       sourceOffset:0
+                  sourceBytesPerRow:2 * 4
+                sourceBytesPerImage:source_pixels.size()
+                         sourceSize:MTLSizeMake(2, 2, 1)
+                          toTexture:(__bridge id<MTLTexture>)
+                              source->colorTexture(0)->nativeHandle()
+                   destinationSlice:0
+                   destinationLevel:0
+                  destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [source_blit endEncoding];
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalRenderPassConfig source_config;
+        source_config.colors[0].load = ALMetalLoadAction::load;
+        source_config.colors[0].store = ALMetalStoreAction::store;
+        source_config.depth_load = ALMetalLoadAction::clear;
+        source_config.depth_store = ALMetalStoreAction::store;
+        source_config.clear_depth = 0.625;
+        source_config.stencil_load = ALMetalLoadAction::clear;
+        source_config.stencil_store = ALMetalStoreAction::store;
+        auto source_pass = source->makeRenderPass(source_config, &error);
+        auto source_command = source_pass
+            ? device->makeCommandBuffer(
+                  "Alchemy SSR-history source depth clear", &error)
+            : nullptr;
+        auto source_encoder = source_command && source_pass
+            ? ALMetalRenderEncoder::begin(
+                  *source_command, *source_pass,
+                  "Alchemy SSR-history source depth encoder", &error)
+            : nullptr;
+        INFO(error);
+        REQUIRE(source_encoder);
+        REQUIRE(source_encoder->end(&error));
+        REQUIRE(source_command->commitAndWait(&error));
+        INFO(error);
+
+        std::unique_ptr<ALMetalRenderTarget> history;
+        REQUIRE(renderer->updateScreenSpaceReflectionHistory(
+            *source, history, &error));
+        INFO(error);
+        REQUIRE(history);
+        CHECK(history->descriptor().color_attachment_count == 2);
+        CHECK(history->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba8_unorm);
+        CHECK(history->descriptor().colors[1].format ==
+              ALMetalPixelFormat::r32_float);
+
+        std::array<std::uint8_t, 16> history_pixels{};
+        std::array<float, 4> history_depth{};
+        REQUIRE(history->colorTexture(0)->readback(
+            *device, 0, 0, {}, history_pixels.data(), 2 * 4, &error));
+        REQUIRE(history->colorTexture(1)->readback(
+            *device, 0, 0, {}, history_depth.data(), 2 * sizeof(float),
+            &error));
+        INFO(error);
+        const std::array<std::uint8_t, 16> expected_pixels{{
+              0,   0, 255, 255, 255, 255, 255, 255,
+            255,   0,   0, 255,   0, 255,   0, 255,
+        }};
+        CHECK(history_pixels == expected_pixels);
+        for (float depth : history_depth)
+        {
+            CHECK(std::abs(depth - 0.625f) < 0.0001f);
+        }
+
+        ALMetalRenderTarget* retained_history = history.get();
+        REQUIRE(renderer->updateScreenSpaceReflectionHistory(
+            *source, history, &error));
+        INFO(error);
+        CHECK(history.get() == retained_history);
     }
 }
 

@@ -105,9 +105,9 @@ struct ALMetalWorldHeroProbe
 };
 
 // Previous-frame scene history plus the matrices and tuning values used by
-// legacyProbeFinish's transparent SSR branch. The source remains the GL
-// scene/depth copy during migration; both textures are mirrored as one
-// generation before an impostor replay may consume them.
+// legacyProbeFinish's transparent SSR branch. GL readback bootstraps and
+// fail-closes the migration path; a complete native final-color frame may
+// publish the same lower-row-first color/depth contract directly on-GPU.
 struct alignas(16) ALMetalWorldScreenSpaceReflectionConstants
 {
     float projection[16]{};
@@ -637,6 +637,9 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::uint32_t height = 0;
     bool reverse_z = false;
     bool hdr = false;
+    // Keep the combined depth plane shader-readable so the completed target
+    // can become the next frame's coherent SSR color/depth history pair.
+    bool publish_screen_space_reflection_history = false;
 };
 
 struct alignas(16) ALMetalWorldLightMapConstants
@@ -1009,6 +1012,16 @@ public:
     // ordered post-deferred families into a one-color output target.
     std::unique_ptr<ALMetalRenderTarget> renderOpaquePostDeferred(
         const ALMetalWorldOpaquePostDeferredScene& scene,
+        std::string* error = nullptr);
+
+    // Convert the completed native final-color target into the exact paired
+    // SSR history formats without a CPU readback. HDR RGBA16F is quantized at
+    // this boundary to R11G11B10F, combined depth is extracted to R32F, and
+    // both outputs are vertically reversed to retain glReadPixels' historical
+    // lower-row-first storage contract. A matching target is reused in place.
+    bool updateScreenSpaceReflectionHistory(
+        const ALMetalRenderTarget& source,
+        std::unique_ptr<ALMetalRenderTarget>& history,
         std::string* error = nullptr);
 
     // Produce the deferred RG light map from native G-buffer depth/normals:
