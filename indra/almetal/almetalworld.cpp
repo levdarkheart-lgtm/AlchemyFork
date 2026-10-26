@@ -146,6 +146,13 @@ namespace
     };
     static_assert(sizeof(WorldBloomFilterConstants) == 16);
 
+    struct alignas(16) WorldCASConstants
+    {
+        // x = the negative CAS peak produced by CasSetup.
+        float params[4]{};
+    };
+    static_assert(sizeof(WorldCASConstants) == 16);
+
     struct alignas(16) WorldExposureMeterConstants
     {
         float patch[4]{};
@@ -829,6 +836,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalRenderPipeline> bloom_extract_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> bloom_downsample_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> bloom_upsample_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> cas_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
     std::unique_ptr<ALMetalComputePipeline> exposure_meter_pipeline;
     std::array<std::unique_ptr<ALMetalComputePipeline>, 2>
@@ -1177,6 +1185,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_bloom_downsample_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_bloom_upsample_fragment") ||
+        !impl->library->hasFunction("almetal_world_cas_fragment") ||
         !impl->library->hasFunction("almetal_world_exposure_meter") ||
         !impl->library->hasFunction("almetal_world_exposure_initial") ||
         !impl->library->hasFunction("almetal_world_exposure_history") ||
@@ -1407,6 +1416,19 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     if (!impl->bloom_extract_pipeline ||
         !impl->bloom_downsample_pipeline ||
         !impl->bloom_upsample_pipeline)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderPipelineDescriptor cas_descriptor;
+    cas_descriptor.library = impl->library.get();
+    cas_descriptor.vertex_function = "almetal_resample_vertex";
+    cas_descriptor.fragment_function = "almetal_world_cas_fragment";
+    cas_descriptor.colors[0].format = ALMetalPixelFormat::rgb10a2_unorm;
+    cas_descriptor.label = "Alchemy world standalone CAS pipeline";
+    impl->cas_pipeline = ALMetalRenderPipeline::create(
+        device, cas_descriptor, error);
+    if (!impl->cas_pipeline)
     {
         return nullptr;
     }
@@ -5902,6 +5924,91 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
             0, &constants, sizeof(constants), error) &&
         encoder->draw(
             ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderCAS(
+    const ALMetalRenderTarget& source,
+    float sharpness,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device)
+    {
+        setError(error, "Metal world CAS is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& input = source.descriptor();
+    if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
+        input.color_attachment_count != 1 ||
+        input.colors[0].format != ALMetalPixelFormat::rgb10a2_unorm ||
+        !sampleableTexture(source.colorTexture(0)))
+    {
+        setError(error, "Metal world CAS source is incompatible");
+        return nullptr;
+    }
+    if (!std::isfinite(sharpness) || sharpness <= 0.f)
+    {
+        setError(error, "Metal world CAS state is invalid");
+        return nullptr;
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = input.width;
+    output_descriptor.height = input.height;
+    output_descriptor.colors[0].format =
+        ALMetalPixelFormat::rgb10a2_unorm;
+    output_descriptor.colors[0].label =
+        "Alchemy world CAS RGB10_A2 color";
+    output_descriptor.label = "Alchemy native world CAS target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    WorldCASConstants constants{};
+    const float clamped_sharpness = std::clamp(sharpness, 0.f, 1.f);
+    constants.params[0] = -1.f /
+        (8.f + (5.f - 8.f) * clamped_sharpness);
+
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world CAS", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::dont_care;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world CAS encoder", error) : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(input.width),
+        static_cast<double>(input.height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{0, 0, input.width, input.height};
+    const bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(*mImpl->cas_pipeline, error) &&
+        encoder->setFragmentTexture(0, source.colorTexture(0), error) &&
+        encoder->setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     if (!encoded || !encoder->end(error) || !command->commit(error))
     {
         return nullptr;

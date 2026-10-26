@@ -11651,6 +11651,11 @@ struct ALMetalWorldDisplayPostConstants
     uint4 config;
 };
 
+struct ALMetalWorldCASConstants
+{
+    float4 params;
+};
+
 static float almetal_world_display_hash12(float2 p)
 {
     float3 p3 = fract(float3(p.x, p.y, p.x) * 0.1031);
@@ -11794,6 +11799,73 @@ fragment float4 almetal_world_display_post_bloom_exposure_fragment(
         bloom.sample(bloom_sampler, input.texcoord).rgb *
             constants.display.y,
         constants, exposure.read(uint2(0)).r);
+}
+
+static float3 almetal_world_cas_load(
+    texture2d<float> source, int2 point)
+{
+    const int2 last = int2(
+        int(source.get_width()) - 1, int(source.get_height()) - 1);
+    return source.read(uint2(clamp(point, int2(0), last))).rgb;
+}
+
+static float3 almetal_world_cas_low_reciprocal(float3 value)
+{
+    return as_type<float3>(
+        uint3(0x7ef07ebbu) - as_type<uint3>(value));
+}
+
+static float3 almetal_world_cas_low_sqrt(float3 value)
+{
+    return as_type<float3>(
+        (as_type<uint3>(value) >> uint3(1u)) + uint3(0x1fbc4639u));
+}
+
+static float3 almetal_world_cas_medium_reciprocal(float3 value)
+{
+    const float3 estimate = as_type<float3>(
+        uint3(0x7ef19fffu) - as_type<uint3>(value));
+    return estimate * (-estimate * value + 2.0);
+}
+
+fragment float4 almetal_world_cas_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    constant ALMetalWorldCASConstants& constants [[buffer(0)]])
+{
+    const int2 p = int2(input.position.xy);
+    const float3 a = almetal_world_cas_load(source, p + int2(-1, -1));
+    const float3 b = almetal_world_cas_load(source, p + int2( 0, -1));
+    const float3 c = almetal_world_cas_load(source, p + int2( 1, -1));
+    const float3 d = almetal_world_cas_load(source, p + int2(-1,  0));
+    const float3 e = almetal_world_cas_load(source, p);
+    const float3 f = almetal_world_cas_load(source, p + int2( 1,  0));
+    const float3 g = almetal_world_cas_load(source, p + int2(-1,  1));
+    const float3 h = almetal_world_cas_load(source, p + int2( 0,  1));
+    const float3 i = almetal_world_cas_load(source, p + int2( 1,  1));
+
+    // CAS_BETTER_DIAGONALS: preserve the reference's factored 2x soft
+    // extrema rather than dividing both neighborhoods by two.
+    float3 minimum = min(min(min(d, e), f), min(b, h));
+    minimum += min(min(min(minimum, a), c), min(g, i));
+    float3 maximum = max(max(max(d, e), f), max(b, h));
+    maximum += max(max(max(maximum, a), c), max(g, i));
+
+    float3 amplitude = clamp(
+        min(minimum, 2.0 - maximum) *
+            almetal_world_cas_low_reciprocal(maximum),
+        float3(0.0), float3(1.0));
+    amplitude = almetal_world_cas_low_sqrt(amplitude);
+    const float3 weight = amplitude * constants.params.x;
+    const float3 reciprocal_weight =
+        almetal_world_cas_medium_reciprocal(1.0 + 4.0 * weight);
+    const float3 result = clamp(
+        ((b + d + f + h) * weight + e) * reciprocal_weight,
+        float3(0.0), float3(1.0));
+
+    // The standalone GLSL pass initializes a vec4 to zero and only writes
+    // RGB through CasFilter, so alpha intentionally remains zero.
+    return float4(result, 0.0);
 }
 
 fragment float4 almetal_pbr_preview_fragment(

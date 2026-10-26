@@ -271,6 +271,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_bloom_extract_fragment",
             "almetal_world_bloom_downsample_fragment",
             "almetal_world_bloom_upsample_fragment",
+            "almetal_world_cas_fragment",
         };
         for (const char* function : functions)
         {
@@ -10572,6 +10573,192 @@ TEST_CASE("almetal: world bloom matches the production HDR pyramid", "[almetal]"
         CHECK_FALSE(renderer->renderDisplayPost(display, &error));
         CHECK(error ==
               "Metal world display-post bloom is incompatible");
+    }
+}
+
+TEST_CASE("almetal: world CAS matches the standalone production kernel", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 5;
+        constexpr std::uint32_t height = 5;
+        std::array<std::uint32_t, width * height> input{};
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const std::uint32_t red =
+                    64u + (x * 173u + y * 71u) % 800u;
+                const std::uint32_t green =
+                    96u + (x * 43u + y * 191u) % 800u;
+                const std::uint32_t blue =
+                    128u + (x * 127u + y * 53u) % 760u;
+                input[y * width + x] = red | (green << 10u) |
+                    (blue << 20u) | (3u << 30u);
+            }
+        }
+
+        ALMetalRenderTargetDescriptor descriptor;
+        descriptor.width = width;
+        descriptor.height = height;
+        descriptor.colors[0].format =
+            ALMetalPixelFormat::rgb10a2_unorm;
+        descriptor.label = "Alchemy world CAS test source";
+        auto source = ALMetalRenderTarget::create(
+            *device, descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        auto upload = device->makeCommandBuffer(
+            "Alchemy world CAS test upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        id<MTLBuffer> staging = [nativeDevice(*device)
+            newBufferWithBytes:input.data()
+                      length:sizeof(input)
+                     options:MTLResourceStorageModeShared];
+        REQUIRE(staging);
+        id<MTLBlitCommandEncoder> blit =
+            [nativeCommand(*upload) blitCommandEncoder];
+        REQUIRE(blit);
+        [blit copyFromBuffer:staging
+                sourceOffset:0
+           sourceBytesPerRow:width * sizeof(std::uint32_t)
+         sourceBytesPerImage:sizeof(input)
+                  sourceSize:MTLSizeMake(width, height, 1)
+                   toTexture:(__bridge id<MTLTexture>)
+                       source->colorTexture(0)->nativeHandle()
+            destinationSlice:0
+            destinationLevel:0
+           destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [blit endEncoding];
+        REQUIRE(upload->commit(&error));
+        INFO(error);
+
+        constexpr float sharpness = 0.4f;
+        auto output = renderer->renderCAS(*source, sharpness, &error);
+        INFO(error);
+        REQUIRE(output);
+        CHECK(output->descriptor().width == width);
+        CHECK(output->descriptor().height == height);
+        CHECK(output->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgb10a2_unorm);
+
+        std::array<std::uint32_t, width * height> actual{};
+        REQUIRE(output->colorTexture(0)->readback(
+            *device, 0, 0, {}, actual.data(),
+            width * sizeof(std::uint32_t), &error));
+        INFO(error);
+
+        const auto bits_to_float = [](std::uint32_t bits)
+        {
+            float value = 0.f;
+            std::memcpy(&value, &bits, sizeof(value));
+            return value;
+        };
+        const auto float_to_bits = [](float value)
+        {
+            std::uint32_t bits = 0;
+            std::memcpy(&bits, &value, sizeof(bits));
+            return bits;
+        };
+        const auto low_reciprocal = [&](float value)
+        {
+            return bits_to_float(0x7ef07ebbu - float_to_bits(value));
+        };
+        const auto low_sqrt = [&](float value)
+        {
+            return bits_to_float(
+                (float_to_bits(value) >> 1u) + 0x1fbc4639u);
+        };
+        const auto medium_reciprocal = [&](float value)
+        {
+            const float estimate = bits_to_float(
+                0x7ef19fffu - float_to_bits(value));
+            return estimate * (-estimate * value + 2.f);
+        };
+        const auto sample = [&](int x, int y, std::uint32_t channel)
+        {
+            x = std::clamp(x, 0, static_cast<int>(width) - 1);
+            y = std::clamp(y, 0, static_cast<int>(height) - 1);
+            return static_cast<float>(
+                (input[static_cast<std::size_t>(y) * width +
+                       static_cast<std::size_t>(x)] >> (channel * 10u)) &
+                0x3ffu) / 1023.f;
+        };
+        const float peak = -1.f /
+            (8.f + (5.f - 8.f) * sharpness);
+        const auto oracle = [&](int x, int y, std::uint32_t channel)
+        {
+            const float a = sample(x - 1, y - 1, channel);
+            const float b = sample(x,     y - 1, channel);
+            const float c = sample(x + 1, y - 1, channel);
+            const float d = sample(x - 1, y,     channel);
+            const float e = sample(x,     y,     channel);
+            const float f = sample(x + 1, y,     channel);
+            const float g = sample(x - 1, y + 1, channel);
+            const float h = sample(x,     y + 1, channel);
+            const float i = sample(x + 1, y + 1, channel);
+            float minimum = std::min({d, e, f, b, h});
+            minimum += std::min({minimum, a, c, g, i});
+            float maximum = std::max({d, e, f, b, h});
+            maximum += std::max({maximum, a, c, g, i});
+            float amplitude = std::clamp(
+                std::min(minimum, 2.f - maximum) *
+                    low_reciprocal(maximum),
+                0.f, 1.f);
+            amplitude = low_sqrt(amplitude);
+            const float weight = amplitude * peak;
+            const float reciprocal_weight = medium_reciprocal(
+                1.f + 4.f * weight);
+            return std::clamp(
+                ((b + d + f + h) * weight + e) * reciprocal_weight,
+                0.f, 1.f);
+        };
+
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const std::uint32_t packed = actual[y * width + x];
+                CAPTURE(x, y, packed);
+                for (std::uint32_t channel = 0; channel < 3; ++channel)
+                {
+                    const int expected = static_cast<int>(std::lround(
+                        oracle(static_cast<int>(x), static_cast<int>(y),
+                               channel) * 1023.f));
+                    const int observed = static_cast<int>(
+                        (packed >> (channel * 10u)) & 0x3ffu);
+                    CAPTURE(channel, expected, observed);
+                    CHECK(std::abs(observed - expected) <= 1);
+                }
+                CHECK((packed >> 30u) == 0u);
+            }
+        }
+
+        error.clear();
+        CHECK_FALSE(renderer->renderCAS(*source, 0.f, &error));
+        CHECK(error == "Metal world CAS state is invalid");
+
+        ALMetalRenderTargetDescriptor wrong_descriptor = descriptor;
+        wrong_descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        auto wrong_source = ALMetalRenderTarget::create(
+            *device, wrong_descriptor, &error);
+        INFO(error);
+        REQUIRE(wrong_source);
+        error.clear();
+        CHECK_FALSE(renderer->renderCAS(
+            *wrong_source, sharpness, &error));
+        CHECK(error == "Metal world CAS source is incompatible");
     }
 }
 

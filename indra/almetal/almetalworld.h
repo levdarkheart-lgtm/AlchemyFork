@@ -1101,6 +1101,15 @@ public:
         const ALMetalWorldBloomScene& scene,
         std::string* error = nullptr);
 
+    // Apply the standalone, one-to-one FidelityFX CAS pass used whenever a
+    // scope or another post owner prevents sharpening from being folded into
+    // the final GL blit. The RGB10_A2 output intentionally carries alpha zero,
+    // matching CASF.glsl's vec4-zero initialization.
+    std::unique_ptr<ALMetalRenderTarget> renderCAS(
+        const ALMetalRenderTarget& source,
+        float sharpness,
+        std::string* error = nullptr);
+
     // Meter and adapt one HDR world frame entirely on the Metal queue. The
     // previous result is optional and EV 0 is used when no history exists.
     std::unique_ptr<ALMetalRenderTarget> renderExposure(

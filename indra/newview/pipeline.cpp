@@ -384,8 +384,6 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         gSavedSettings, "RenderLensFlareStrength", 0.f);
     static LLCachedControl<F32> dirt_strength(
         gSavedSettings, "RenderLensDirtStrength", 0.f);
-    static LLCachedControl<F32> cas_sharpness(
-        gSavedSettings, "RenderCASSharpness", 0.4f);
     static LLCachedControl<F32> interval(
         gSavedSettings, "AlchemyScopeSampleInterval", 0.1f);
 
@@ -406,7 +404,7 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         (bloom_strength <= 0.f || cross_strength <= 0.f) &&
         chromatic_strength <= 0.f &&
         flare_strength <= 0.f && dirt_strength <= 0.f &&
-        mResourceInputs.mFSAAType == 0 && cas_sharpness <= 0.f &&
+        mResourceInputs.mFSAAType == 0 &&
         !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) &&
         RenderBufferVisualization < 0;
 }
@@ -4213,13 +4211,43 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         display, &display_error);
                 if (display_target)
                 {
-                    capture.display_post_target =
-                        std::move(display_target);
-                    capture.display_post_frame = gFrameCount;
-                    LL_INFOS_ONCE("Metal")
-                        << "Native world display-post source is available; "
-                           "visible GL and scope fallback remain authoritative"
-                        << LL_ENDL;
+                    // Scope capture forces the GL CAS implementation into
+                    // its standalone one-to-one pass. Reproduce that exact
+                    // boundary here before publishing the native display
+                    // source; a demanded CAS failure retains GL/PBO.
+                    static LLCachedControl<F32> cas_sharpness(
+                        gSavedSettings, "RenderCASSharpness", 0.4f);
+                    const bool wants_native_cas =
+                        cas_sharpness() > 0.f && gCASProgram.isComplete();
+                    bool exact_cas = true;
+                    if (wants_native_cas)
+                    {
+                        std::string cas_error;
+                        auto cas_target = capture.renderer->renderCAS(
+                            *display_target, cas_sharpness(), &cas_error);
+                        if (cas_target)
+                        {
+                            display_target = std::move(cas_target);
+                        }
+                        else
+                        {
+                            exact_cas = false;
+                            LL_WARNS("Metal")
+                                << "Native world CAS retained GL: "
+                                << cas_error << LL_ENDL;
+                        }
+                    }
+                    if (exact_cas)
+                    {
+                        capture.display_post_target =
+                            std::move(display_target);
+                        capture.display_post_frame = gFrameCount;
+                        LL_INFOS_ONCE("Metal")
+                            << "Native world display-post source is "
+                               "available; visible GL and scope fallback "
+                               "remain authoritative"
+                            << LL_ENDL;
+                    }
                 }
                 else
                 {
