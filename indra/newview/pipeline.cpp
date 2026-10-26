@@ -428,7 +428,7 @@ static constexpr U32 SHADOW_MASKED_PASSES[] = {
 struct LLPipeline::MetalWorldSimpleCapture
 {
     static constexpr U32 max_failed_frames = 120;
-    static constexpr U32 max_world_ui_probe_retries = 3;
+    static constexpr U32 max_world_ui_probe_attempts = 3;
 
     struct ImpostorPlane
     {
@@ -476,9 +476,16 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 display_post_frame = std::numeric_limits<U32>::max();
     std::unique_ptr<ALMetalRenderTarget> presentation_target;
     U32 presentation_frame = std::numeric_limits<U32>::max();
+    // Complete world + ordered UI output. This remains offscreen until the
+    // drawable publication owner is explicitly unlocked; retaining it here
+    // lets the integrated renderer prove the whole transaction without
+    // disturbing the authoritative GL surface.
+    std::unique_ptr<ALMetalTexture> world_ui_target;
+    U32 world_ui_frame = std::numeric_limits<U32>::max();
     bool world_ui_capture_active = false;
     bool world_ui_probe_attempted = false;
-    U32 world_ui_probe_retries = 0;
+    U32 world_ui_probe_attempts = 0;
+    bool world_ui_overlay_exact = false;
     std::unique_ptr<ALMetalRenderTarget> depth_of_field_target;
     U32 depth_of_field_frame = std::numeric_limits<U32>::max();
     bool depth_of_field_applied = false;
@@ -1196,6 +1203,8 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     capture.display_post_frame = std::numeric_limits<U32>::max();
     capture.presentation_target.reset();
     capture.presentation_frame = std::numeric_limits<U32>::max();
+    capture.world_ui_target.reset();
+    capture.world_ui_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_target.reset();
     capture.depth_of_field_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_applied = false;
@@ -1256,6 +1265,8 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
     capture.display_post_frame = std::numeric_limits<U32>::max();
     capture.presentation_target.reset();
     capture.presentation_frame = std::numeric_limits<U32>::max();
+    capture.world_ui_target.reset();
+    capture.world_ui_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_target.reset();
     capture.depth_of_field_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_applied = false;
@@ -1336,6 +1347,8 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     capture.display_post_frame = std::numeric_limits<U32>::max();
     capture.presentation_target.reset();
     capture.presentation_frame = std::numeric_limits<U32>::max();
+    capture.world_ui_target.reset();
+    capture.world_ui_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_target.reset();
     capture.depth_of_field_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_applied = false;
@@ -1400,6 +1413,8 @@ bool LLPipeline::endMetalReflectionProbeFaceCapture()
     capture.display_post_frame = std::numeric_limits<U32>::max();
     capture.presentation_target.reset();
     capture.presentation_frame = std::numeric_limits<U32>::max();
+    capture.world_ui_target.reset();
+    capture.world_ui_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_target.reset();
     capture.depth_of_field_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_applied = false;
@@ -1463,9 +1478,11 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.display_post_frame = std::numeric_limits<U32>::max();
         capture.presentation_target.reset();
         capture.presentation_frame = std::numeric_limits<U32>::max();
+        capture.world_ui_target.reset();
+        capture.world_ui_frame = std::numeric_limits<U32>::max();
         capture.world_ui_capture_active = false;
         capture.world_ui_probe_attempted = false;
-        capture.world_ui_probe_retries = 0;
+        capture.world_ui_probe_attempts = 0;
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_applied = false;
@@ -1741,8 +1758,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     // handoff a few independent world transactions, but never turn an
     // incomplete UI census into permanent duplicate rendering.
     const bool retry_world_ui_probe = !capture.world_ui_probe_attempted &&
-        capture.world_ui_probe_retries <
-            MetalWorldSimpleCapture::max_world_ui_probe_retries &&
+        capture.world_ui_probe_attempts <
+            MetalWorldSimpleCapture::max_world_ui_probe_attempts &&
         canCaptureMetalWorldPresentation();
     if (!capture.frame_active && capture.attempted &&
         (capture.continuous_world_capture || mScenePixelPending ||
@@ -1766,6 +1783,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.display_post_frame = std::numeric_limits<U32>::max();
         capture.presentation_target.reset();
         capture.presentation_frame = std::numeric_limits<U32>::max();
+        capture.world_ui_target.reset();
+        capture.world_ui_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_applied = false;
@@ -1784,10 +1803,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.base_lighting_attempted = false;
         capture.base_lighting_failed_frames = 0;
         capture.failed_frames = 0;
-        if (retry_world_ui_probe)
-        {
-            ++capture.world_ui_probe_retries;
-        }
     }
 
     if (capture.frame_active || capture.attempted)
@@ -3176,9 +3191,11 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.display_post_frame = std::numeric_limits<U32>::max();
         capture.presentation_target.reset();
         capture.presentation_frame = std::numeric_limits<U32>::max();
+        capture.world_ui_target.reset();
+        capture.world_ui_frame = std::numeric_limits<U32>::max();
         capture.world_ui_capture_active = false;
         capture.world_ui_probe_attempted = false;
-        capture.world_ui_probe_retries = 0;
+        capture.world_ui_probe_attempts = 0;
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_applied = false;
@@ -3408,6 +3425,23 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     {
         return;
     }
+
+    // These services draw after the native world pass but before final
+    // presentation. They are deliberately outside the ordered UI capture.
+    // Keep the native base useful for independent probes, while preventing a
+    // later world/UI transaction from claiming exact coverage when one of
+    // these optional GL-only overlays actually contributed to the frame.
+    static LLCachedControl<bool> reflection_probe_volumes(
+        gSavedSettings, "RenderReflectionProbeVolumes", false);
+    static LLCachedControl<bool> far_plane_overlay(
+        gSavedSettings, "AlchemyRenderFarPlaneOverlay", false);
+    const bool legacy_highlight_overlay =
+        hasRenderDebugFeatureMask(RENDER_DEBUG_FEATURE_SELECTED) &&
+        (!mSelectedFaces.empty() || !mHighlightFaces.empty());
+    capture.world_ui_overlay_exact =
+        mRenderDebugMask == 0 && !gUseWireframe &&
+        !reflection_probe_volumes && !far_plane_overlay &&
+        !legacy_highlight_overlay;
 
     capture.batches.clear();
     capture.avatar_palettes.clear();
@@ -4081,6 +4115,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.presentation_target.reset();
             capture.presentation_frame =
                 std::numeric_limits<U32>::max();
+            capture.world_ui_target.reset();
+            capture.world_ui_frame = std::numeric_limits<U32>::max();
             capture.depth_of_field_target.reset();
             capture.depth_of_field_frame =
                 std::numeric_limits<U32>::max();
@@ -5048,7 +5084,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             wipe_mode == 0;
 
                         if (exact_presentation &&
-                            !capture.world_ui_probe_attempted)
+                            !capture.world_ui_probe_attempted &&
+                            capture.world_ui_probe_attempts <
+                                MetalWorldSimpleCapture::max_world_ui_probe_attempts)
                         {
                             std::string presentation_error;
                             auto final_target =
@@ -5173,6 +5211,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         capture.display_post_frame = std::numeric_limits<U32>::max();
         capture.presentation_target.reset();
         capture.presentation_frame = std::numeric_limits<U32>::max();
+        capture.world_ui_target.reset();
+        capture.world_ui_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_applied = false;
@@ -5247,13 +5287,17 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
 {
     if (!mMetalWorldSimpleCapture || gSnapshot || sCutoutRender ||
         mMetalHeroWorldCaptureActive || mMetalReflectionWorldCaptureActive ||
-        mRT != &mMainRT)
+        mRT != &mMainRT || gDisconnected ||
+        RlvActions::hasBehaviour(RLV_BHVR_SETOVERLAY))
     {
         return false;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (capture.world_ui_capture_active ||
         capture.world_ui_probe_attempted ||
+        capture.world_ui_probe_attempts >=
+            MetalWorldSimpleCapture::max_world_ui_probe_attempts ||
+        !capture.world_ui_overlay_exact ||
         !capture.presentation_target ||
         capture.presentation_frame != gFrameCount || !capture.target)
     {
@@ -5282,8 +5326,11 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
     {
         return false;
     }
+    capture.world_ui_target.reset();
+    capture.world_ui_frame = std::numeric_limits<U32>::max();
     capture.world_ui_capture_active = true;
     capture.world_ui_probe_attempted = true;
+    ++capture.world_ui_probe_attempts;
     return true;
 }
 
@@ -5296,23 +5343,34 @@ void LLPipeline::endMetalWorldUICompositionCapture()
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
 
-    // The backing/color/depth lifecycle is now the production one, but the
-    // ordered family census is deliberately incomplete: selection now has a
-    // native private id/depth producer plus wireframe, contour/rim,
-    // hover-glow and backdrop-contrast consumers, while the remaining
-    // direct/non-immediate debug services do not all have exact native owners
-    // yet. Force this bounded probe closed even
-    // if every immediate/static-fullbright batch happened to encode. No
-    // partial texture can reach the surface.
-    std::unique_ptr<ALMetalTexture> discarded =
-        gGL.endMetalUITextureCapture(false);
+    // Every batch owner fails the capture closed when it cannot reproduce its
+    // GL draw, and begin rejected the known world-side overlays that sit
+    // outside this ordered stream. Retain only a fully submitted texture.
+    // The drawable remains untouched: this is integrated offscreen evidence,
+    // not publication authority.
+    capture.world_ui_target = gGL.endMetalUITextureCapture(true);
     capture.world_ui_capture_active = false;
-    discarded.reset();
-    LL_INFOS_ONCE("Metal")
-        << "The current-frame native world BGRA8 color and retained depth "
-           "reached the ordered UI/HUD capture boundary; publication remains "
-           "locked until the complete ordered-family census is native"
-        << LL_ENDL;
+    if (capture.world_ui_target)
+    {
+        capture.world_ui_frame = gFrameCount;
+        LL_INFOS_ONCE("Metal")
+            << "A complete current-frame native world + ordered UI/HUD "
+               "texture was retained offscreen; drawable publication remains "
+               "locked and visible GL is unchanged"
+            << LL_ENDL;
+    }
+    else
+    {
+        capture.world_ui_frame = std::numeric_limits<U32>::max();
+        // An unsupported runtime family is evidence, not a permanent latch:
+        // let the bounded probe retry on another independent frame.
+        capture.world_ui_probe_attempted = false;
+        LL_INFOS_ONCE("Metal")
+            << "The ordered native world/UI transaction failed closed; "
+               "visible GL remains authoritative while the bounded probe "
+               "retries"
+            << LL_ENDL;
+    }
 }
 
 void LLPipeline::beginMetalImpostorFullbrightPass(bool rigged,
