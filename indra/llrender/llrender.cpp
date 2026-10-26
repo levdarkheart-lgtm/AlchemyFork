@@ -178,6 +178,22 @@ namespace
         }
     }
 
+    ALMetalCompareFunction metal_compare_function(U32 function)
+    {
+        switch (function)
+        {
+            case GL_NEVER:    return ALMetalCompareFunction::never;
+            case GL_LESS:     return ALMetalCompareFunction::less;
+            case GL_EQUAL:    return ALMetalCompareFunction::equal;
+            case GL_LEQUAL:   return ALMetalCompareFunction::less_equal;
+            case GL_GREATER:  return ALMetalCompareFunction::greater;
+            case GL_NOTEQUAL: return ALMetalCompareFunction::not_equal;
+            case GL_GEQUAL:   return ALMetalCompareFunction::greater_equal;
+            case GL_ALWAYS:
+            default:          return ALMetalCompareFunction::always;
+        }
+    }
+
     ALMetalSamplerFilter metal_sampler_filter(U32 filter)
     {
         return filter == GL_NEAREST ? ALMetalSamplerFilter::nearest
@@ -753,6 +769,7 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     mMetalUILoggedFrame = 0;
     mMetalUIFrameAttemptedBatches = 0;
     mMetalUIFrameFallbackBatches = 0;
+    mMetalUICaptureUsesDepth = false;
     mMetalUIReplacementEnabled = true;
     if (!device || !scheduler || !surface)
     {
@@ -778,14 +795,18 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     }
 }
 
-bool LLRender::beginMetalUITextureCapture(ALMetalPixelFormat format,
-                                          LLGLSLShader* alpha_mask_shader)
+bool LLRender::beginMetalUITextureCapture(
+    ALMetalPixelFormat format,
+    LLGLSLShader* alpha_mask_shader,
+    const ALMetalTexture* background,
+    const ALMetalTexture* depth)
 {
     if (!mMetalDevice || !mMetalFrames || !alpha_mask_shader ||
         mMetalUICaptureRenderer)
     {
         return false;
     }
+    mMetalUICaptureUsesDepth = false;
     std::string error;
     mMetalUICaptureRenderer = ALMetalUIRenderer::createForTexture(
         *mMetalDevice, *mMetalFrames, format, &error);
@@ -795,9 +816,20 @@ bool LLRender::beginMetalUITextureCapture(ALMetalPixelFormat format,
                             << error << LL_ENDL;
         return false;
     }
+    if ((background && !mMetalUICaptureRenderer->setFrameBackground(
+                           background, &error)) ||
+        (depth && !mMetalUICaptureRenderer->setFrameDepth(depth, &error)))
+    {
+        LL_DEBUGS("Metal")
+            << "Could not retain the offscreen composition backing: "
+            << error << LL_ENDL;
+        mMetalUICaptureRenderer.reset();
+        return false;
+    }
     mMetalUICaptureBatches = 0;
     mMetalUICaptureAlphaShader = alpha_mask_shader;
     mMetalUICaptureComplete = true;
+    mMetalUICaptureUsesDepth = depth != nullptr;
     return true;
 }
 
@@ -828,6 +860,7 @@ std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
     mMetalUICaptureBatches = 0;
     mMetalUICaptureAlphaShader = nullptr;
     mMetalUICaptureComplete = false;
+    mMetalUICaptureUsesDepth = false;
     return output;
 }
 
@@ -2142,6 +2175,15 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
 
     if (capture)
     {
+        if (mMetalUICaptureUsesDepth)
+        {
+            batch.depth.enabled = LLGLDepthTest::depthEnabled();
+            batch.depth.write_enabled = batch.depth.enabled &&
+                LLGLDepthTest::depthWriteEnabled();
+            batch.depth.reverse_z = sReverseZ;
+            batch.depth.compare = metal_compare_function(
+                LLGLDepthTest::remap(LLGLDepthTest::depthFunction()));
+        }
         std::string error;
         if (!mMetalUICaptureRenderer->draw(batch, &error))
         {
@@ -2153,6 +2195,10 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         {
             ++mMetalUICaptureBatches;
         }
+        // Drawable replacement remains color-only. A later complete world
+        // transaction will provide its own retained depth instead of leaking
+        // this offscreen capture state into the startup/login surface.
+        batch.depth = {};
     }
     if (!replace)
     {

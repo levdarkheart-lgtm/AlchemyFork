@@ -62,6 +62,13 @@ public:
     // static -- the ambient func was issued under the old translation.
     static void rebase();
 
+    // Read the semantic state already tracked for GL. Native sidecar encoders
+    // use this snapshot at the same materialized draw boundary; querying the
+    // driver here would serialize it and would lose the forward convention.
+    static bool depthEnabled() noexcept { return sDepthEnabled != GL_FALSE; }
+    static bool depthWriteEnabled() noexcept { return sWriteEnabled != GL_FALSE; }
+    static GLenum depthFunction() noexcept { return sDepthFunc; }
+
     GLboolean mPrevDepthEnabled;
     GLenum mPrevDepthFunc;
     GLboolean mPrevWriteEnabled;

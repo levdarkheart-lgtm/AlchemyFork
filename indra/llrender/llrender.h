@@ -279,8 +279,15 @@ public:
     // Parallel offscreen capture for GL-owned immediate-mode render-texture
     // producers. Captured draws never suppress GL. A single unsupported batch
     // fails the complete target closed and end returns no texture.
-    bool beginMetalUITextureCapture(ALMetalPixelFormat format,
-                                    LLGLSLShader* alpha_mask_shader);
+    // Optional retained color/depth inputs turn this into a world/UI
+    // composition capture. They are borrowed until end capture returns. The
+    // live surface is never affected and existing texture producers pass no
+    // inputs, preserving their color-only behavior.
+    bool beginMetalUITextureCapture(
+        ALMetalPixelFormat format,
+        LLGLSLShader* alpha_mask_shader,
+        const ALMetalTexture* background = nullptr,
+        const ALMetalTexture* depth = nullptr);
     std::unique_ptr<ALMetalTexture> endMetalUITextureCapture(bool source_success);
 
     // A startup frame can replace the GL window presentation only when every
@@ -853,6 +860,7 @@ private:
     U64 mMetalUICaptureBatches = 0;
     LLGLSLShader* mMetalUICaptureAlphaShader = nullptr;
     bool mMetalUICaptureComplete = false;
+    bool mMetalUICaptureUsesDepth = false;
     bool mMetalUIReplacementEnabled = true;
 #endif
 
