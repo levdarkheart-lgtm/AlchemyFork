@@ -62,6 +62,7 @@
 #include <cstdint>
 #include <memory>
 #include <stack>
+#include <vector>
 
 class LLViewerTexture;
 class LLFace;
@@ -265,6 +266,10 @@ private:
     std::unique_ptr<MetalWorldSimpleCapture> mMetalWorldSimpleCapture;
     std::unique_ptr<MetalWorldSimpleCapture>
         mMetalProbeWorldSimpleCapture;
+    // The first two channels of mNoiseMap at its RGB16F storage precision.
+    // createResourceTexture fills this beside the GL authority so the native
+    // light-map owner never has to read the static noise back from GL.
+    std::vector<U16> mMetalNoiseMapRG16;
     bool mMetalHeroWorldCaptureActive = false;
     bool mMetalReflectionWorldCaptureActive = false;
 #endif

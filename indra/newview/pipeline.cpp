@@ -9556,38 +9556,24 @@ bool LLPipeline::renderMetalWorldLightMap(
     if (has_ssao && !capture.base_noise_texture)
     {
         constexpr U32 noise_size = ALRenderResourcePlan::NOISE_SIZE;
-        std::vector<F32> noise(
-            static_cast<std::size_t>(noise_size) * noise_size * 2);
-        GLint previous_texture = 0;
-        GLint previous_pack_buffer = 0;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture);
-        glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &previous_pack_buffer);
-        clear_glerror();
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-        glBindTexture(GL_TEXTURE_2D, mNoiseMap);
-        glGetTexImage(
-            GL_TEXTURE_2D, 0, GL_RG, GL_FLOAT, noise.data());
-        const GLenum read_error = glGetError();
-        glBindTexture(GL_TEXTURE_2D,
-                      static_cast<GLuint>(previous_texture));
-        glBindBuffer(GL_PIXEL_PACK_BUFFER,
-                     static_cast<GLuint>(previous_pack_buffer));
-        if (read_error != GL_NO_ERROR)
+        const std::size_t texel_count =
+            static_cast<std::size_t>(noise_size) * noise_size;
+        if (mMetalNoiseMapRG16.size() != texel_count * 2)
         {
             LL_WARNS("Metal")
-                << "Could not read the static SSAO noise for native world "
-                   "lighting: GL error 0x"
-                << std::hex << read_error << std::dec << LL_ENDL;
+                << "Static SSAO noise has no matching CPU publication for "
+                   "native world lighting"
+                << LL_ENDL;
             return false;
         }
 
         ALMetalTextureDescriptor descriptor;
-        descriptor.format = ALMetalPixelFormat::rg32_float;
+        descriptor.format = ALMetalPixelFormat::rg16_float;
         descriptor.width = noise_size;
         descriptor.height = noise_size;
         descriptor.storage = ALMetalStorageMode::private_gpu;
         descriptor.usage = ALMetalTextureUsage::shader_read;
-        descriptor.label = "Alchemy static SSAO noise mirror";
+        descriptor.label = "Alchemy static SSAO noise publication";
         std::string error;
         capture.base_noise_texture = ALMetalTexture::create(
             *capture.device, descriptor, &error);
@@ -9597,8 +9583,8 @@ bool LLPipeline::renderMetalWorldLightMap(
             : nullptr;
         const bool uploaded = upload &&
             capture.base_noise_texture->upload(
-                *upload, 0, 0, {}, noise.data(),
-                static_cast<std::size_t>(noise_size) * 2 * sizeof(F32),
+                *upload, 0, 0, {}, mMetalNoiseMapRG16.data(),
+                static_cast<std::size_t>(noise_size) * 2 * sizeof(U16),
                 &error) &&
             upload->commit(&error);
         if (!uploaded)
@@ -10235,6 +10221,12 @@ void LLPipeline::ensureResources(const ALRenderResourcePlan& plan, const ALRende
                 {
                     LLImageGL::deleteTextures(1, texture);
                     *texture = 0;
+#if LL_DARWIN
+                    if (id == Id::Noise)
+                    {
+                        mMetalNoiseMapRG16.clear();
+                    }
+#endif
                     changes.mFreed.set(i);
                 }
                 else if (*texture)
@@ -10854,6 +10846,9 @@ void LLPipeline::releaseRenderTargets()
     mSkyBehindQueryFrame = 0;
     mLensFlareStateValid = false;
     mToneCurveLutDirty   = true;
+#if LL_DARWIN
+    mMetalNoiseMapRG16.clear();
+#endif
 
     mResourcePlan = {};
 }
@@ -11128,6 +11123,25 @@ void LLPipeline::createResourceTexture(ALRenderResourcePlan::Id id)
                 texel.normVec();
                 texel.mV[2] = ll_frand() * scaler + 1.f - scaler / 2.f;
             }
+#if LL_DARWIN
+            mMetalNoiseMapRG16.resize(noise.size() * 2);
+            for (std::size_t index = 0; index < noise.size(); ++index)
+            {
+                mMetalNoiseMapRG16[index * 2] =
+                    ALWaterHeightBake::halfOf(noise[index].mV[0]);
+                mMetalNoiseMapRG16[index * 2 + 1] =
+                    ALWaterHeightBake::halfOf(noise[index].mV[1]);
+            }
+            for (const auto* capture_owner :
+                 { &mMetalWorldSimpleCapture,
+                   &mMetalProbeWorldSimpleCapture })
+            {
+                if (*capture_owner)
+                {
+                    (*capture_owner)->base_noise_texture.reset();
+                }
+            }
+#endif
 
             LLImageGL::generateTextures(1, &mNoiseMap);
             gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mNoiseMap);
