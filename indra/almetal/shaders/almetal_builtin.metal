@@ -15474,6 +15474,170 @@ vertex ALMetalLitPreviewVaryings almetal_lit_preview_skinned_edge_u32_vertex(
         indices[triangle_start + 2u], constants);
 }
 
+struct ALMetalSelectionIDConstants
+{
+    float4x4 modelview_projection;
+    float4x4 texture_matrix;
+    float4x4 inverse_projection;
+    float4 base_color_transform[2];
+    // xy = target dimensions, z = alpha cutoff, w = visible slack.
+    float4 screen_material;
+    // x = id, y = priority. z bits: reverse-Z, scene depth,
+    // show-hidden, outlined and keep-cut. w = skin joint count.
+    uint4 config;
+};
+
+struct ALMetalSelectionIDVaryings
+{
+    float4 position [[position]];
+    float2 texcoord;
+};
+
+static float2 almetal_selection_texcoord(
+    float2 source,
+    constant ALMetalSelectionIDConstants& constants)
+{
+    float2 texcoord = (constants.texture_matrix *
+                       float4(source, 0.0, 1.0)).xy;
+    texcoord.y = 1.0 - texcoord.y;
+    const float2 scaled = texcoord * constants.base_color_transform[0].xy;
+    const float cosine = cos(constants.base_color_transform[0].z);
+    const float sine = sin(constants.base_color_transform[0].z);
+    texcoord = float2(cosine * scaled.x + sine * scaled.y,
+                      -sine * scaled.x + cosine * scaled.y) +
+               constants.base_color_transform[1].xy;
+    texcoord.y = 1.0 - texcoord.y;
+    return texcoord;
+}
+
+static ALMetalSelectionIDVaryings almetal_selection_id_varyings(
+    float4 object_position,
+    float2 source_texcoord,
+    constant ALMetalSelectionIDConstants& constants)
+{
+    float4 clip_position =
+        constants.modelview_projection * object_position;
+    // The ordered world/UI capture is a GL-compatible offscreen texture:
+    // row zero remains the lower row for its transitional consumer.
+    clip_position.y = -clip_position.y;
+    ALMetalSelectionIDVaryings output;
+    output.position = (constants.config.z & 1u) != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord = almetal_selection_texcoord(
+        source_texcoord, constants);
+    return output;
+}
+
+vertex ALMetalSelectionIDVaryings almetal_selection_id_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(1)]],
+    constant ALMetalSelectionIDConstants& constants [[buffer(3)]],
+    uint vertex_id [[vertex_id]])
+{
+    return almetal_selection_id_varyings(
+        float4(positions[vertex_id].xyz, 1.0), texcoords[vertex_id],
+        constants);
+}
+
+vertex ALMetalSelectionIDVaryings almetal_selection_id_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(1)]],
+    const device float4* encoded_weights [[buffer(2)]],
+    constant ALMetalSelectionIDConstants& constants [[buffer(3)]],
+    const device float4* skin_palette [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    // The selection pass needs position only; the helper's normal result is
+    // immaterial, so a fixed direction avoids another vertex stream.
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        positions[vertex_id], float4(0.0, 0.0, 1.0, 0.0),
+        encoded_weights[vertex_id], skin_palette, constants.config.w);
+    const float4 rebased_position =
+        skinned.position + float4(skin_palette[0].xyz, 1.0);
+    return almetal_selection_id_varyings(
+        rebased_position, texcoords[vertex_id], constants);
+}
+
+struct ALMetalSelectionIDOutput
+{
+    float4 color [[color(0)]];
+    float depth [[depth(any)]];
+};
+
+static float almetal_selection_eye_distance(
+    float depth,
+    constant ALMetalSelectionIDConstants& constants)
+{
+    const float ndc_depth = (constants.config.z & 1u) != 0u
+        ? depth : depth * 2.0 - 1.0;
+    const float4 eye = constants.inverse_projection *
+        float4(0.0, 0.0, ndc_depth, 1.0);
+    return -eye.z / max(eye.w, 0.000001);
+}
+
+fragment ALMetalSelectionIDOutput almetal_selection_id_fragment(
+    ALMetalSelectionIDVaryings input [[stage_in]],
+    texture2d<float> diffuse_map [[texture(0)]],
+    texture2d<float> scene_depth_map [[texture(1)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    sampler depth_sampler [[sampler(1)]],
+    constant ALMetalSelectionIDConstants& constants [[buffer(0)]])
+{
+    const float cutoff = constants.screen_material.z;
+    float alpha = 1.0;
+    if (cutoff > 1.0)
+    {
+        alpha = 0.0;
+    }
+    else if (cutoff > 0.0)
+    {
+        alpha = diffuse_map.sample(
+            diffuse_sampler, input.texcoord).a;
+    }
+
+    const float own_distance = almetal_selection_eye_distance(
+        input.position.z, constants);
+    const float slope = abs(dfdx(own_distance)) +
+                        abs(dfdy(own_distance));
+    float visible = 1.0;
+    if ((constants.config.z & 2u) != 0u)
+    {
+        const float2 screen = constants.screen_material.xy;
+        const float scene_depth = scene_depth_map.sample(
+            depth_sampler, input.position.xy / screen, level(0.0)).r;
+        const float scene_distance = almetal_selection_eye_distance(
+            scene_depth, constants);
+        const float2 texel_ratio = screen /
+            float2(scene_depth_map.get_width(),
+                   scene_depth_map.get_height());
+        const float reach = 0.5 *
+            max(max(texel_ratio.x, texel_ratio.y), 1.0) * slope;
+        visible = own_distance <= scene_distance + reach +
+            own_distance * constants.screen_material.w ? 1.0 : 0.0;
+    }
+
+    const bool cut = alpha < cutoff - (1.0 / 512.0);
+    if (cut && (constants.config.z & 16u) == 0u)
+    {
+        discard_fragment();
+    }
+
+    const bool outlined = (constants.config.z & 8u) != 0u;
+    const bool show_hidden = (constants.config.z & 4u) != 0u;
+    const float drawn = !outlined ? 0.0 :
+        (visible > 0.5 ? 1.0 : (show_hidden ? 0.5 : 0.0));
+    ALMetalSelectionIDOutput output;
+    output.color = float4(
+        float(constants.config.x & 255u) / 255.0,
+        float((constants.config.x >> 8u) & 255u) / 255.0,
+        drawn,
+        float(constants.config.y) / 255.0);
+    output.depth = cut
+        ? (((constants.config.z & 1u) != 0u) ? 0.0 : 1.0)
+        : input.position.z;
+    return output;
+}
+
 vertex ALMetalUIVaryings almetal_ui_vertex(
     const device float4* positions [[buffer(0)]],
     const device float2* texcoords [[buffer(1)]],

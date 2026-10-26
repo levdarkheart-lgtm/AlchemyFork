@@ -1031,6 +1031,46 @@ bool LLRender::drawMetalHUDIndexedBatch(
     return true;
 }
 
+bool LLRender::hasMetalUITextureCapture() const noexcept
+{
+    return mMetalUICaptureRenderer != nullptr && mMetalUICaptureComplete;
+}
+
+bool LLRender::drawMetalSelectionIDs(
+    const ALMetalSelectionIDScene& scene)
+{
+    if (!mMetalUICaptureRenderer || !scene.batches ||
+        scene.batch_count == 0)
+    {
+        return false;
+    }
+
+    std::vector<ALMetalSelectionIDBatch> batches(
+        scene.batches, scene.batches + scene.batch_count);
+    const ALSamplerDesc source_sampler =
+        ALSamplerCache::makeDesc(ALSamplers::AnisoWrap);
+    const ALMetalSamplerDescriptor sampler =
+        metal_sampler_descriptor(source_sampler);
+    for (ALMetalSelectionIDBatch& batch : batches)
+    {
+        batch.sampler = sampler;
+    }
+    ALMetalSelectionIDScene resolved = scene;
+    resolved.batches = batches.data();
+
+    std::string error;
+    if (!mMetalUICaptureRenderer->drawSelectionIDs(resolved, &error))
+    {
+        mMetalUICaptureComplete = false;
+        LL_DEBUGS("Metal")
+            << "Offscreen selection-id capture retained GL: "
+            << error << LL_ENDL;
+        return false;
+    }
+    mMetalUICaptureBatches += scene.batch_count;
+    return true;
+}
+
 void LLRender::invalidateMetalUITextureCapture(const char* reason)
 {
     if (!mMetalUICaptureRenderer || !mMetalUICaptureComplete)

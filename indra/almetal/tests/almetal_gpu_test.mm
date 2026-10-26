@@ -838,6 +838,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_hud_fullbright_fragment",
             "almetal_hud_pbr_alpha_vertex",
             "almetal_hud_pbr_alpha_fragment",
+            "almetal_selection_id_vertex",
+            "almetal_selection_id_skinned_vertex",
+            "almetal_selection_id_fragment",
             "almetal_alpha_mask_fragment",
             "almetal_alpha_mask_solid_fragment",
             "almetal_solid_vertex",
@@ -20455,6 +20458,329 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(pixels[gl_lower_row + 1] == 0);
         CHECK(pixels[gl_lower_row + 2] == 0);
         CHECK(pixels[gl_lower_row + 3] == 0);
+    }
+}
+
+TEST_CASE("almetal: selection ids interrupt and resume the ordered UI target", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto scheduler = ALMetalFrameScheduler::create(*device, 3, &error);
+        INFO(error);
+        REQUIRE(scheduler);
+        auto renderer = ALMetalUIRenderer::create(*device, *scheduler, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 48;
+        constexpr std::uint32_t height = 24;
+        // Standard GL perspective with near 1 and far 10. The retained depth
+        // is the z=-3 plane; the left and rigged triangles are at z=-2 and
+        // visible, while the right triangle at z=-5 is hidden.
+        constexpr float projection_a = -11.f / 9.f;
+        constexpr float projection_b = -20.f / 9.f;
+        const float projection[16] = {
+            1.f, 0.f, 0.f, 0.f,
+            0.f, 1.f, 0.f, 0.f,
+            0.f, 0.f, projection_a, -1.f,
+            0.f, 0.f, projection_b, 0.f,
+        };
+        const float inverse_projection[16] = {
+            1.f, 0.f, 0.f, 0.f,
+            0.f, 1.f, 0.f, 0.f,
+            0.f, 0.f, 0.f, 1.f / projection_b,
+            0.f, 0.f, -1.f, projection_a / projection_b,
+        };
+        const float positions[9][4] = {
+            {-1.8f, -1.4f, -2.f, 1.f},
+            {-0.6f, -1.4f, -2.f, 1.f},
+            {-1.2f,  1.4f, -2.f, 1.f},
+            {-0.4f, -1.4f, -2.f, 1.f},
+            { 0.4f, -1.4f, -2.f, 1.f},
+            { 0.0f,  1.4f, -2.f, 1.f},
+            { 1.5f, -3.5f, -5.f, 1.f},
+            { 4.5f, -3.5f, -5.f, 1.f},
+            { 3.0f,  3.5f, -5.f, 1.f},
+        };
+        const float texcoords[9][2] = {
+            {0.f, 0.f}, {0.f, 0.f}, {0.f, 0.f},
+            {0.f, 0.f}, {0.f, 0.f}, {0.f, 0.f},
+            {0.f, 0.f}, {0.f, 0.f}, {0.f, 0.f},
+        };
+        const float weights[9][4] = {
+            {0.5f, 0.f, 0.f, 0.f}, {0.5f, 0.f, 0.f, 0.f},
+            {0.5f, 0.f, 0.f, 0.f}, {0.5f, 0.f, 0.f, 0.f},
+            {0.5f, 0.f, 0.f, 0.f}, {0.5f, 0.f, 0.f, 0.f},
+            {0.5f, 0.f, 0.f, 0.f}, {0.5f, 0.f, 0.f, 0.f},
+            {0.5f, 0.f, 0.f, 0.f},
+        };
+        const std::uint8_t colors[9][4] = {
+            {100, 50, 25, 255}, {100, 50, 25, 255},
+            {100, 50, 25, 255}, {100, 50, 25, 255},
+            {100, 50, 25, 255}, {100, 50, 25, 255},
+            {100, 50, 25, 255}, {100, 50, 25, 255},
+            {100, 50, 25, 255},
+        };
+        constexpr std::size_t position_offset = 0;
+        constexpr std::size_t texcoord_offset =
+            position_offset + sizeof(positions);
+        constexpr std::size_t weight_offset =
+            (texcoord_offset + sizeof(texcoords) + 15u) & ~std::size_t(15u);
+        constexpr std::size_t color_offset =
+            weight_offset + sizeof(weights);
+        std::array<std::uint8_t, color_offset + sizeof(colors)> bytes{};
+        std::memcpy(bytes.data() + position_offset, positions,
+                    sizeof(positions));
+        std::memcpy(bytes.data() + texcoord_offset, texcoords,
+                    sizeof(texcoords));
+        std::memcpy(bytes.data() + weight_offset, weights,
+                    sizeof(weights));
+        std::memcpy(bytes.data() + color_offset, colors, sizeof(colors));
+
+        ALMetalBufferDescriptor vertex_descriptor;
+        vertex_descriptor.length = bytes.size();
+        vertex_descriptor.storage = ALMetalStorageMode::shared;
+        vertex_descriptor.label = "Alchemy selection id test vertices";
+        auto vertices = ALMetalBuffer::create(
+            *device, vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(vertices);
+        REQUIRE(vertices->write(0, bytes.data(), bytes.size(), &error));
+        const std::array<std::uint16_t, 9> index_values = {
+            0, 1, 2, 3, 4, 5, 6, 7, 8};
+        ALMetalBufferDescriptor index_descriptor;
+        index_descriptor.length = sizeof(index_values);
+        index_descriptor.storage = ALMetalStorageMode::shared;
+        index_descriptor.label = "Alchemy selection id test indices";
+        auto indices = ALMetalBuffer::create(
+            *device, index_descriptor, &error);
+        INFO(error);
+        REQUIRE(indices);
+        REQUIRE(indices->write(
+            0, index_values.data(), sizeof(index_values), &error));
+
+        ALMetalTextureDescriptor background_descriptor;
+        background_descriptor.format = ALMetalPixelFormat::bgra8_unorm;
+        background_descriptor.width = width;
+        background_descriptor.height = height;
+        background_descriptor.storage = ALMetalStorageMode::private_gpu;
+        background_descriptor.usage = ALMetalTextureUsage::shader_read;
+        background_descriptor.label = "Alchemy selection ordered background";
+        auto background = ALMetalTexture::create(
+            *device, background_descriptor, &error);
+        INFO(error);
+        REQUIRE(background);
+        std::array<std::uint8_t, width * height * 4> background_pixels{};
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            background_pixels[pixel * 4 + 0] = 7;
+            background_pixels[pixel * 4 + 1] = 11;
+            background_pixels[pixel * 4 + 2] = 13;
+            background_pixels[pixel * 4 + 3] = 255;
+        }
+        auto background_upload = device->makeCommandBuffer(
+            "Alchemy selection ordered background upload", &error);
+        INFO(error);
+        REQUIRE(background_upload);
+        REQUIRE(background->upload(
+            *background_upload, 0, 0, {}, background_pixels.data(),
+            width * 4, &error));
+        REQUIRE(background_upload->commitAndWait(&error));
+
+        ALMetalTextureDescriptor alpha_descriptor;
+        alpha_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        alpha_descriptor.width = 1;
+        alpha_descriptor.height = 1;
+        alpha_descriptor.storage = ALMetalStorageMode::private_gpu;
+        alpha_descriptor.usage = ALMetalTextureUsage::shader_read;
+        alpha_descriptor.label = "Alchemy transparent selection alpha";
+        auto transparent = ALMetalTexture::create(
+            *device, alpha_descriptor, &error);
+        INFO(error);
+        REQUIRE(transparent);
+        auto alpha_upload = device->makeCommandBuffer(
+            "Alchemy transparent selection alpha upload", &error);
+        REQUIRE(alpha_upload);
+        const std::array<std::uint8_t, 4> transparent_texel = {
+            255, 255, 255, 0};
+        REQUIRE(transparent->upload(
+            *alpha_upload, 0, 0, {}, transparent_texel.data(), 4, &error));
+        REQUIRE(alpha_upload->commitAndWait(&error));
+
+        ALMetalRenderTargetDescriptor depth_descriptor;
+        depth_descriptor.width = width;
+        depth_descriptor.height = height;
+        depth_descriptor.color_attachment_count = 0;
+        depth_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        depth_descriptor.depth_stencil_shader_read = true;
+        depth_descriptor.label = "Alchemy selection retained scene depth";
+        auto depth = ALMetalRenderTarget::create(
+            *device, depth_descriptor, &error);
+        INFO(error);
+        REQUIRE(depth);
+        ALMetalRenderPassConfig depth_clear;
+        depth_clear.depth_load = ALMetalLoadAction::clear;
+        depth_clear.depth_store = ALMetalStoreAction::store;
+        depth_clear.clear_depth = 20.f / 27.f;
+        depth_clear.stencil_load = ALMetalLoadAction::clear;
+        depth_clear.stencil_store = ALMetalStoreAction::store;
+        auto depth_pass = depth->makeRenderPass(depth_clear, &error);
+        INFO(error);
+        REQUIRE(depth_pass);
+        auto depth_command = device->makeCommandBuffer(
+            "Alchemy selection retained depth seed", &error);
+        REQUIRE(depth_command);
+        auto depth_encoder = ALMetalRenderEncoder::begin(
+            *depth_command, *depth_pass,
+            "Alchemy selection retained depth seed", &error);
+        REQUIRE(depth_encoder);
+        REQUIRE(depth_encoder->end(&error));
+        REQUIRE(depth_command->commitAndWait(&error));
+
+        std::array<float, 16> skin_palette{};
+        skin_palette[4] = 1.f;
+        skin_palette[9] = 1.f;
+        skin_palette[14] = 1.f;
+        std::array<ALMetalSelectionIDBatch, 4> batches{};
+        for (ALMetalSelectionIDBatch& batch : batches)
+        {
+            batch.vertices = vertices.get();
+            batch.position_offset = position_offset;
+            batch.texcoord_offset = texcoord_offset;
+            batch.vertex_count = 9;
+            batch.indices = indices.get();
+            batch.index_count = 3;
+            batch.sampler.min_filter = ALMetalSamplerFilter::nearest;
+            batch.sampler.mag_filter = ALMetalSamplerFilter::nearest;
+            batch.sampler.mip_filter = ALMetalSamplerMipFilter::none;
+            batch.sampler.address_s =
+                ALMetalSamplerAddressMode::clamp_to_edge;
+            batch.sampler.address_t =
+                ALMetalSamplerAddressMode::clamp_to_edge;
+            batch.sampler.address_r =
+                ALMetalSamplerAddressMode::clamp_to_edge;
+            std::memcpy(batch.modelview_projection, projection,
+                        sizeof(projection));
+        }
+        batches[0].id = 0x1234;
+        batches[0].priority = 2;
+        batches[1].index_offset = 3 * sizeof(std::uint16_t);
+        batches[1].id = 0x00aa;
+        batches[1].priority = 3;
+        batches[1].weight_offset = weight_offset;
+        batches[1].skin_palette = skin_palette.data();
+        batches[1].skin_palette_float_count = skin_palette.size();
+        batches[1].skin_joint_count = 1;
+        batches[2].index_offset = 6 * sizeof(std::uint16_t);
+        batches[2].id = 0x0201;
+        batches[2].priority = 4;
+        batches[2].show_hidden = true;
+        // Draw the transparent alpha-tested face last over the rigged one. A
+        // failed discard would replace id 0x00aa with this id.
+        batches[3].index_offset = 3 * sizeof(std::uint16_t);
+        batches[3].id = 0x00dd;
+        batches[3].priority = 5;
+        batches[3].texture = transparent.get();
+        batches[3].alpha_cutoff = 0.5f;
+
+        ALMetalSelectionIDScene scene;
+        scene.batches = batches.data();
+        scene.batch_count = batches.size();
+        std::memcpy(scene.inverse_projection, inverse_projection,
+                    sizeof(inverse_projection));
+        scene.width = width;
+        scene.height = height;
+        scene.use_scene_depth = true;
+
+        REQUIRE(renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(renderer->setFrameDepth(
+            depth->depthStencilTexture(), &error));
+        const bool selection_encoded =
+            renderer->drawSelectionIDs(scene, &error);
+        INFO(error);
+        REQUIRE(selection_encoded);
+        REQUIRE(renderer->selectionIDTexture());
+        REQUIRE(renderer->selectionDepthTexture());
+
+        // A normal UI draw after the private pass proves the main target was
+        // resumed with load rather than cleared or submitted separately.
+        ALMetalUIBatch ui;
+        ui.vertices = vertices.get();
+        ui.position_offset = position_offset;
+        ui.texcoord_offset = texcoord_offset;
+        ui.color_offset = color_offset;
+        ui.shader = ALMetalUIShader::vertex_color;
+        ui.texture = nullptr;
+        ui.sampler = batches[0].sampler;
+        ui.blend.enabled = false;
+        ui.vertex_count = 3;
+        ui.target_width = width;
+        ui.target_height = height;
+        ui.viewport = {0.0, 0.0, static_cast<double>(width),
+                       static_cast<double>(height), 0.0, 1.0};
+        ui.scissor = {0, 0, width, height};
+        std::memcpy(ui.matrices.modelview_projection, projection,
+                    sizeof(projection));
+        REQUIRE(renderer->draw(ui, &error));
+        REQUIRE(renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+
+        std::array<std::uint8_t, width * height * 4> ids{};
+        REQUIRE(renderer->selectionIDTexture()->readback(
+            *device, 0, 0, {}, ids.data(), width * 4, &error));
+        INFO(error);
+        const auto id_pixel = [&](std::uint32_t x, std::uint32_t y)
+        {
+            return &ids[(static_cast<std::size_t>(y) * width + x) * 4];
+        };
+        const std::uint8_t* visible = id_pixel(10, 12);
+        CHECK(visible[0] == 0x34);
+        CHECK(visible[1] == 0x12);
+        CHECK(visible[2] == 255);
+        CHECK(visible[3] == 2);
+        const std::uint8_t* rigged = id_pixel(24, 12);
+        CHECK(rigged[0] == 0xaa);
+        CHECK(rigged[1] == 0x00);
+        CHECK(rigged[2] == 255);
+        CHECK(rigged[3] == 3);
+        const std::uint8_t* hidden = id_pixel(38, 12);
+        CHECK(hidden[0] == 0x01);
+        CHECK(hidden[1] == 0x02);
+        CHECK(hidden[2] == 128);
+        CHECK(hidden[3] == 4);
+        const std::uint8_t* empty = id_pixel(0, 0);
+        CHECK(empty[0] == 0);
+        CHECK(empty[1] == 0);
+        CHECK(empty[2] == 0);
+        CHECK(empty[3] == 0);
+
+        std::array<std::uint8_t, width * height * 4> composed{};
+        REQUIRE(renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed.data(), width * 4, &error));
+        INFO(error);
+        const std::size_t ui_pixel = (12 * width + 10) * 4;
+        CHECK(composed[ui_pixel + 0] == 25);
+        CHECK(composed[ui_pixel + 1] == 50);
+        CHECK(composed[ui_pixel + 2] == 100);
+        CHECK(composed[ui_pixel + 3] == 255);
+        CHECK(composed[0] == 7);
+        CHECK(composed[1] == 11);
+        CHECK(composed[2] == 13);
+        CHECK(composed[3] == 255);
+
+        const ALMetalUIRendererStats stats = renderer->stats();
+        CHECK(stats.frames == 1);
+        CHECK(stats.batches == 5);
+        CHECK(stats.vertices == 15);
+        CHECK(stats.pipeline_states == 3);
+        CHECK(stats.sampler_states == 1);
     }
 }
 

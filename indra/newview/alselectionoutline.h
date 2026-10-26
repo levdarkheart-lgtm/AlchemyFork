@@ -740,6 +740,12 @@ private:
 
     // The id pass: what was added and is drawn into it (inIdPass) into mIdMap, a width x height target.
     void drawIds(const View& view, S32 width, S32 height);
+#if LL_DARWIN
+    // Mirror the private face-id/depth producer into the active native
+    // world/UI transaction. The GL pass below remains authoritative until
+    // its contour/glow consumers have native owners as well.
+    bool drawMetalIds(const View& view, S32 width, S32 height);
+#endif
 
     // The wireframe of what was added with one, over the bound framebuffer under the outline: the world's visible
     // lines and its hidden ones against the window's depth, the HUD's against the id target's; kept apart from

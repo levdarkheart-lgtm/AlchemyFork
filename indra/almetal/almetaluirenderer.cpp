@@ -200,6 +200,13 @@ struct ALMetalUIRenderer::Impl
     std::unique_ptr<ALMetalRenderPipeline> depth_restore_pipeline;
     std::unique_ptr<ALMetalSamplerState> depth_restore_sampler;
     ALMetalPixelFormat depth_region_format = ALMetalPixelFormat::invalid;
+    std::unique_ptr<ALMetalRenderPipeline> selection_id_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> selection_id_skinned_pipeline;
+    std::unique_ptr<ALMetalSamplerState> selection_depth_sampler;
+    std::unique_ptr<ALMetalDepthStencilState> selection_forward_depth;
+    std::unique_ptr<ALMetalDepthStencilState> selection_reverse_depth;
+    std::unique_ptr<ALMetalRenderTarget> selection_target;
+    std::vector<std::unique_ptr<ALMetalBuffer>> selection_frame_palettes;
     std::unique_ptr<ALMetalRenderTarget> target;
     std::unique_ptr<ALMetalDrawable> drawable;
     std::unique_ptr<ALMetalRenderPass> pass;
@@ -466,7 +473,9 @@ struct ALMetalUIRenderer::Impl
         }
         pipelines.push_back(
             {shader, target_blend, depth_format, std::move(state)});
-        totals.pipeline_states = pipelines.size() + hud_pipelines.size();
+        totals.pipeline_states = pipelines.size() + hud_pipelines.size() +
+            (selection_id_pipeline ? 1u : 0u) +
+            (selection_id_skinned_pipeline ? 1u : 0u);
         return pipelines.back().state.get();
     }
 
@@ -540,7 +549,9 @@ struct ALMetalUIRenderer::Impl
         }
         hud_pipelines.push_back(
             {shader, target_blend, depth_format, std::move(state)});
-        totals.pipeline_states = pipelines.size() + hud_pipelines.size();
+        totals.pipeline_states = pipelines.size() + hud_pipelines.size() +
+            (selection_id_pipeline ? 1u : 0u) +
+            (selection_id_skinned_pipeline ? 1u : 0u);
         return hud_pipelines.back().state.get();
     }
 
@@ -591,6 +602,134 @@ struct ALMetalUIRenderer::Impl
         }
         depths.push_back({descriptor, std::move(state)});
         return depths.back().state.get();
+    }
+
+    bool prepareSelectionIDs(std::string* error)
+    {
+        if (selection_id_pipeline && selection_id_skinned_pipeline &&
+            selection_depth_sampler && selection_forward_depth &&
+            selection_reverse_depth)
+        {
+            return true;
+        }
+
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = library.get();
+        descriptor.vertex_function = "almetal_selection_id_vertex";
+        descriptor.fragment_function = "almetal_selection_id_fragment";
+        descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float;
+        descriptor.label = "Alchemy selection id pipeline";
+        selection_id_pipeline = ALMetalRenderPipeline::create(
+            *device, descriptor, error);
+        if (!selection_id_pipeline)
+        {
+            return false;
+        }
+        descriptor.vertex_function = "almetal_selection_id_skinned_vertex";
+        descriptor.label = "Alchemy skinned selection id pipeline";
+        selection_id_skinned_pipeline = ALMetalRenderPipeline::create(
+            *device, descriptor, error);
+        if (!selection_id_skinned_pipeline)
+        {
+            selection_id_pipeline.reset();
+            return false;
+        }
+
+        ALMetalSamplerDescriptor sampler_descriptor;
+        sampler_descriptor.min_filter = ALMetalSamplerFilter::nearest;
+        sampler_descriptor.mag_filter = ALMetalSamplerFilter::nearest;
+        sampler_descriptor.mip_filter = ALMetalSamplerMipFilter::none;
+        sampler_descriptor.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.label = "Alchemy selection scene-depth sampler";
+        selection_depth_sampler = ALMetalSamplerState::create(
+            *device, sampler_descriptor, error);
+        if (!selection_depth_sampler)
+        {
+            selection_id_pipeline.reset();
+            selection_id_skinned_pipeline.reset();
+            return false;
+        }
+
+        ALMetalDepthStencilDescriptor depth_descriptor;
+        depth_descriptor.depth_compare = ALMetalCompareFunction::less_equal;
+        depth_descriptor.depth_write_enabled = true;
+        depth_descriptor.label = "Alchemy forward selection id depth";
+        selection_forward_depth = ALMetalDepthStencilState::create(
+            *device, depth_descriptor, error);
+        if (!selection_forward_depth)
+        {
+            return false;
+        }
+        depth_descriptor.depth_compare = ALMetalCompareFunction::greater_equal;
+        depth_descriptor.label = "Alchemy reverse selection id depth";
+        selection_reverse_depth = ALMetalDepthStencilState::create(
+            *device, depth_descriptor, error);
+        if (!selection_reverse_depth)
+        {
+            return false;
+        }
+        totals.pipeline_states = pipelines.size() + hud_pipelines.size() + 2;
+        return true;
+    }
+
+    bool prepareSelectionTarget(std::uint32_t width, std::uint32_t height,
+                                std::string* error)
+    {
+        if (selection_target &&
+            selection_target->descriptor().width == width &&
+            selection_target->descriptor().height == height)
+        {
+            return true;
+        }
+        ALMetalRenderTargetDescriptor descriptor;
+        descriptor.width = width;
+        descriptor.height = height;
+        descriptor.color_attachment_count = 1;
+        descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        descriptor.colors[0].shader_read = true;
+        descriptor.colors[0].label = "Alchemy selection id bytes";
+        descriptor.depth_stencil_format = ALMetalPixelFormat::depth32_float;
+        descriptor.depth_stencil_shader_read = true;
+        descriptor.label = "Alchemy selection id/depth target";
+        selection_target = ALMetalRenderTarget::create(
+            *device, descriptor, error);
+        return selection_target != nullptr;
+    }
+
+    bool resumeMainPass(std::string* error)
+    {
+        if (!frame || !target || surface)
+        {
+            setError(error,
+                     "Metal selection pass cannot resume a non-offscreen UI frame");
+            return false;
+        }
+        ALMetalRenderPassConfig config;
+        config.colors[0].load = ALMetalLoadAction::load;
+        config.colors[0].store = ALMetalStoreAction::store;
+        if (frame_depth)
+        {
+            config.depth_load = ALMetalLoadAction::load;
+            config.depth_store = ALMetalStoreAction::store;
+            if (frameDepthFormat() ==
+                ALMetalPixelFormat::depth32_float_stencil8)
+            {
+                config.stencil_load = ALMetalLoadAction::load;
+                config.stencil_store = ALMetalStoreAction::store;
+            }
+        }
+        pass = target->makeRenderPass(config, error);
+        if (!pass)
+        {
+            return false;
+        }
+        encoder = ALMetalRenderEncoder::begin(
+            frame->commandBuffer(), *pass,
+            "Alchemy resumed production UI encoder", error);
+        return encoder != nullptr;
     }
 
     bool beginFrame(std::uint32_t width, std::uint32_t height, std::string* error)
@@ -809,7 +948,10 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
         !library->hasFunction("almetal_hud_fullbright_vertex") ||
         !library->hasFunction("almetal_hud_fullbright_fragment") ||
         !library->hasFunction("almetal_hud_pbr_alpha_vertex") ||
-        !library->hasFunction("almetal_hud_pbr_alpha_fragment"))
+        !library->hasFunction("almetal_hud_pbr_alpha_fragment") ||
+        !library->hasFunction("almetal_selection_id_vertex") ||
+        !library->hasFunction("almetal_selection_id_skinned_vertex") ||
+        !library->hasFunction("almetal_selection_id_fragment"))
     {
         setError(error, "Built-in Metal library is missing production UI functions");
         return nullptr;
@@ -1295,6 +1437,275 @@ bool ALMetalUIRenderer::drawHUDIndexed(
     return true;
 }
 
+bool ALMetalUIRenderer::drawSelectionIDs(
+    const ALMetalSelectionIDScene& scene,
+    std::string* error)
+{
+    if (!mImpl || mImpl->surface || !scene.batches ||
+        scene.batch_count == 0 || scene.width == 0 || scene.height == 0)
+    {
+        setError(error,
+                 "Metal selection ids require an offscreen scene with batches");
+        return false;
+    }
+    if (!mImpl->frame_background || !mImpl->frame_depth)
+    {
+        setError(error,
+                 "Metal selection ids require retained world color and depth");
+        return false;
+    }
+    const ALMetalTextureDescriptor& background =
+        mImpl->frame_background->descriptor();
+    const ALMetalTextureDescriptor& retained_depth =
+        mImpl->frame_depth->descriptor();
+    if (background.width != scene.width ||
+        background.height != scene.height ||
+        retained_depth.width != scene.width ||
+        retained_depth.height != scene.height ||
+        !alMetalHasUsage(retained_depth.usage,
+                         ALMetalTextureUsage::shader_read))
+    {
+        setError(error,
+                 "Metal selection backings do not match the id target");
+        return false;
+    }
+    if (!finiteFloats(scene.inverse_projection, 16))
+    {
+        setError(error,
+                 "Metal selection inverse projection must be finite");
+        return false;
+    }
+
+    std::vector<std::unique_ptr<ALMetalBuffer>> palettes;
+    std::vector<const ALMetalBuffer*> palette_by_batch(
+        scene.batch_count, nullptr);
+    for (std::size_t index = 0; index < scene.batch_count; ++index)
+    {
+        const ALMetalSelectionIDBatch& batch = scene.batches[index];
+        const std::size_t index_stride =
+            batch.index_type == ALMetalIndexType::uint32 ? 4u : 2u;
+        const bool skinned = batch.skin_palette != nullptr ||
+                             batch.skin_palette_float_count != 0 ||
+                             batch.skin_joint_count != 0;
+        if (!batch.vertices || !batch.indices || batch.vertex_count == 0 ||
+            batch.index_count < 3 || batch.index_count % 3 != 0 ||
+            batch.id == 0 || batch.id > 65535 || batch.priority > 255 ||
+            batch.position_offset % (sizeof(float) * 4) != 0 ||
+            batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
+            batch.index_offset % index_stride != 0 ||
+            !rangeFits(batch.position_offset, batch.vertex_count,
+                       sizeof(float) * 4, batch.vertices->length()) ||
+            !rangeFits(batch.texcoord_offset, batch.vertex_count,
+                       sizeof(float) * 2, batch.vertices->length()) ||
+            !rangeFits(batch.index_offset, batch.index_count,
+                       index_stride, batch.indices->length()) ||
+            !finiteFloats(batch.modelview_projection, 16) ||
+            !finiteFloats(batch.texture_matrix, 16) ||
+            !finiteFloats(batch.base_color_transform, 8) ||
+            !std::isfinite(batch.alpha_cutoff) ||
+            batch.alpha_cutoff < -1.f || batch.alpha_cutoff > 2.f)
+        {
+            setError(error, "Metal selection id batch is invalid");
+            return false;
+        }
+        if (batch.alpha_cutoff > 0.f && batch.alpha_cutoff <= 1.f &&
+            (!batch.texture ||
+             !alMetalHasUsage(batch.texture->descriptor().usage,
+                              ALMetalTextureUsage::shader_read)))
+        {
+            setError(error,
+                     "Metal selection alpha test is missing its texture");
+            return false;
+        }
+        if (!skinned)
+        {
+            continue;
+        }
+        const std::size_t expected_palette_floats =
+            4u + static_cast<std::size_t>(batch.skin_joint_count) * 12u;
+        if (!batch.skin_palette || batch.skin_joint_count == 0 ||
+            batch.skin_palette_float_count != expected_palette_floats ||
+            batch.weight_offset % (sizeof(float) * 4) != 0 ||
+            !rangeFits(batch.weight_offset, batch.vertex_count,
+                       sizeof(float) * 4, batch.vertices->length()) ||
+            !finiteFloats(batch.skin_palette,
+                          batch.skin_palette_float_count))
+        {
+            setError(error,
+                     "Metal selection skinning data is invalid");
+            return false;
+        }
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = batch.skin_palette_float_count * sizeof(float);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy selection skin palette";
+        auto palette = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!palette || !palette->write(
+                0, batch.skin_palette, descriptor.length, error))
+        {
+            return false;
+        }
+        palette_by_batch[index] = palette.get();
+        palettes.push_back(std::move(palette));
+    }
+
+    if (!mImpl->prepareSelectionIDs(error) ||
+        !mImpl->prepareSelectionTarget(scene.width, scene.height, error) ||
+        !mImpl->beginFrame(scene.width, scene.height, error))
+    {
+        return false;
+    }
+    for (auto& palette : palettes)
+    {
+        mImpl->selection_frame_palettes.push_back(std::move(palette));
+    }
+    if (!mImpl->encoder || !mImpl->encoder->end(error))
+    {
+        return false;
+    }
+    mImpl->encoder.reset();
+    mImpl->pass.reset();
+
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::clear;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    pass_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+    pass_config.depth_load = ALMetalLoadAction::clear;
+    pass_config.depth_store = ALMetalStoreAction::store;
+    pass_config.clear_depth = scene.reverse_z ? 0.0 : 1.0;
+    auto selection_pass = mImpl->selection_target->makeRenderPass(
+        pass_config, error);
+    auto selection_encoder = selection_pass
+        ? ALMetalRenderEncoder::begin(
+              mImpl->frame->commandBuffer(), *selection_pass,
+              "Alchemy selection id encoder", error)
+        : nullptr;
+    bool encoded = selection_encoder != nullptr;
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(scene.width),
+        static_cast<double>(scene.height), 0.0, 1.0};
+    const ALMetalScissorRect scissor{
+        0, 0, scene.width, scene.height};
+
+    struct alignas(16) SelectionConstants
+    {
+        float modelview_projection[16];
+        float texture_matrix[16];
+        float inverse_projection[16];
+        float base_color_transform[8];
+        float screen_material[4];
+        std::uint32_t config[4];
+    } constants;
+    static_assert(sizeof(SelectionConstants) == 256);
+
+    for (std::size_t index = 0;
+         encoded && index < scene.batch_count; ++index)
+    {
+        const ALMetalSelectionIDBatch& batch = scene.batches[index];
+        const bool skinned = palette_by_batch[index] != nullptr;
+        std::memcpy(constants.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(constants.modelview_projection));
+        std::memcpy(constants.texture_matrix, batch.texture_matrix,
+                    sizeof(constants.texture_matrix));
+        std::memcpy(constants.inverse_projection,
+                    scene.inverse_projection,
+                    sizeof(constants.inverse_projection));
+        std::memcpy(constants.base_color_transform,
+                    batch.base_color_transform,
+                    sizeof(constants.base_color_transform));
+        constants.screen_material[0] = static_cast<float>(scene.width);
+        constants.screen_material[1] = static_cast<float>(scene.height);
+        constants.screen_material[2] = batch.alpha_cutoff;
+        constants.screen_material[3] = 0.001f;
+        constants.config[0] = batch.id;
+        constants.config[1] = batch.priority;
+        constants.config[2] =
+            (scene.reverse_z ? 1u : 0u) |
+            (scene.use_scene_depth ? 2u : 0u) |
+            (batch.show_hidden ? 4u : 0u) |
+            (batch.outlined ? 8u : 0u) |
+            (batch.keep_cut ? 16u : 0u);
+        constants.config[3] = batch.skin_joint_count;
+
+        ALMetalSamplerState* diffuse_sampler =
+            mImpl->sampler(batch.sampler, error);
+        encoded = diffuse_sampler != nullptr &&
+            selection_encoder->setPipeline(
+                skinned ? *mImpl->selection_id_skinned_pipeline
+                        : *mImpl->selection_id_pipeline,
+                error) &&
+            selection_encoder->setDepthStencilState(
+                scene.reverse_z ? mImpl->selection_reverse_depth.get()
+                                : mImpl->selection_forward_depth.get(),
+                error) &&
+            selection_encoder->setVertexBuffer(
+                0, *batch.vertices, batch.position_offset, error) &&
+            selection_encoder->setVertexBuffer(
+                1, *batch.vertices, batch.texcoord_offset, error) &&
+            selection_encoder->setVertexBytes(
+                3, &constants, sizeof(constants), error) &&
+            selection_encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            selection_encoder->setFragmentTexture(
+                0, batch.texture ? batch.texture
+                                 : mImpl->frame_background,
+                error) &&
+            selection_encoder->setFragmentTexture(
+                1, mImpl->frame_depth, error) &&
+            selection_encoder->setFragmentSampler(
+                0, diffuse_sampler, error) &&
+            selection_encoder->setFragmentSampler(
+                1, mImpl->selection_depth_sampler.get(), error);
+        if (encoded && skinned)
+        {
+            encoded = selection_encoder->setVertexBuffer(
+                          2, *batch.vertices, batch.weight_offset, error) &&
+                      selection_encoder->setVertexBuffer(
+                          4, *palette_by_batch[index], 0, error);
+        }
+        encoded = encoded &&
+            selection_encoder->setViewport(viewport, error) &&
+            selection_encoder->setScissor(scissor, error) &&
+            selection_encoder->setCullMode(
+                batch.double_sided ? ALMetalCullMode::none
+                                   : ALMetalCullMode::back,
+                error) &&
+            selection_encoder->setFrontFacingWinding(
+                ALMetalWinding::clockwise, error) &&
+            selection_encoder->drawIndexed(
+                ALMetalPrimitiveType::triangle, batch.index_count,
+                batch.index_type, *batch.indices,
+                batch.index_offset, 1, error);
+    }
+    if (selection_encoder)
+    {
+        encoded = selection_encoder->end(error) && encoded;
+    }
+    selection_encoder.reset();
+    selection_pass.reset();
+
+    std::string resume_error;
+    const bool resumed = mImpl->resumeMainPass(&resume_error);
+    if (!resumed)
+    {
+        setError(error, resume_error);
+        return false;
+    }
+    if (!encoded)
+    {
+        return false;
+    }
+    mImpl->frame_batches += scene.batch_count;
+    for (std::size_t index = 0; index < scene.batch_count; ++index)
+    {
+        mImpl->frame_vertices += scene.batches[index].index_count;
+    }
+    return true;
+}
+
 bool ALMetalUIRenderer::endFrame(std::string* error)
 {
     if (!mImpl)
@@ -1310,12 +1721,14 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         {
             mImpl->frame_background = nullptr;
             mImpl->frame_depth = nullptr;
+            mImpl->selection_frame_palettes.clear();
             return false;
         }
     }
     if (!mImpl->frame && mImpl->frame_depth)
     {
         mImpl->frame_depth = nullptr;
+        mImpl->selection_frame_palettes.clear();
         return true;
     }
     else if (!mImpl->frame && mImpl->surface)
@@ -1325,11 +1738,13 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         {
             mImpl->frame_background = nullptr;
             mImpl->frame_depth = nullptr;
+            mImpl->selection_frame_palettes.clear();
             return false;
         }
     }
     if (!mImpl->frame)
     {
+        mImpl->selection_frame_palettes.clear();
         return true;
     }
     if (!mImpl->encoder || !mImpl->encoder->end(error))
@@ -1340,6 +1755,7 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         mImpl->drawable.reset();
         mImpl->frame_background = nullptr;
         mImpl->frame_depth = nullptr;
+        mImpl->selection_frame_palettes.clear();
         return false;
     }
     mImpl->encoder.reset();
@@ -1352,6 +1768,7 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         mImpl->drawable.reset();
         mImpl->frame_background = nullptr;
         mImpl->frame_depth = nullptr;
+        mImpl->selection_frame_palettes.clear();
         return false;
     }
     if (!mImpl->scheduler->submit(*mImpl->frame, error))
@@ -1361,6 +1778,7 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         mImpl->drawable.reset();
         mImpl->frame_background = nullptr;
         mImpl->frame_depth = nullptr;
+        mImpl->selection_frame_palettes.clear();
         return false;
     }
     mImpl->frame.reset();
@@ -1368,6 +1786,7 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
     mImpl->drawable.reset();
     mImpl->frame_background = nullptr;
     mImpl->frame_depth = nullptr;
+    mImpl->selection_frame_palettes.clear();
     ++mImpl->totals.frames;
     mImpl->totals.batches += mImpl->frame_batches;
     mImpl->totals.vertices += mImpl->frame_vertices;
@@ -1388,6 +1807,18 @@ const ALMetalTexture* ALMetalUIRenderer::outputDepthTexture() const noexcept
 {
     return mImpl && mImpl->target
         ? mImpl->target->depthStencilTexture() : nullptr;
+}
+
+const ALMetalTexture* ALMetalUIRenderer::selectionIDTexture() const noexcept
+{
+    return mImpl && mImpl->selection_target
+        ? mImpl->selection_target->colorTexture(0) : nullptr;
+}
+
+const ALMetalTexture* ALMetalUIRenderer::selectionDepthTexture() const noexcept
+{
+    return mImpl && mImpl->selection_target
+        ? mImpl->selection_target->depthStencilTexture() : nullptr;
 }
 
 std::unique_ptr<ALMetalTexture> ALMetalUIRenderer::takeOutputTexture() noexcept

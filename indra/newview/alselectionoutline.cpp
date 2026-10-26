@@ -43,8 +43,13 @@
 #include "llviewershadermgr.h"
 #include "llviewertexture.h"
 #include "llvovolume.h"
+#include "llvoavatar.h"
 #include "pipeline.h"
 #include "rlvactions.h"
+
+#if LL_DARWIN
+#include "../almetal/almetaluirenderer.h"
+#endif
 
 #include <iterator>
 
@@ -315,14 +320,6 @@ void ALSelectionOutline::render(const View& view)
         return;
     }
 
-#if LL_DARWIN
-    // The selection owner below uses dedicated GL id/depth, screen-space and
-    // optional wireframe passes rather than LLRender's captured batches. Keep
-    // the complete native composition fail closed until those passes have an
-    // exact Metal owner; the authoritative GL outline still renders.
-    gGL.invalidateMetalUITextureCapture("the multi-pass selection outline");
-#endif
-
     // The targets the passes that run read are made at the window's size; the others are given up once they are
     // stale.
     bool allocated = true;
@@ -393,6 +390,20 @@ void ALSelectionOutline::render(const View& view)
 
     LLGLSLShader* previous = LLGLSLShader::sCurBoundShaderPtr;
     gGL.flush();
+
+#if LL_DARWIN
+    if (ids && gGL.hasMetalUITextureCapture() &&
+        !drawMetalIds(view, width, height))
+    {
+        gGL.invalidateMetalUITextureCapture(
+            "an incomplete native selection id pass");
+    }
+    // The private face-id/depth target above is now native. The subsequent
+    // jump/tile/glow/contrast/outline transaction and optional wireframe are
+    // still GL-owned, so no partial selection result can publish.
+    gGL.invalidateMetalUITextureCapture(
+        "the selection contour/glow and optional wireframe passes");
+#endif
 
     if (ids)
     {
@@ -792,6 +803,181 @@ void ALSelectionOutline::drawIds(const View& view, S32 width, S32 height)
     }
     mIdMap.flush();
 }
+
+#if LL_DARWIN
+bool ALSelectionOutline::drawMetalIds(
+    const View& view, S32 width, S32 height)
+{
+    LLMatrix4a inverse_projection;
+    if (!inverse_projection.setInverse(view.mProjection))
+    {
+        return false;
+    }
+
+    std::vector<ALMetalSelectionIDBatch> batches;
+    batches.reserve(mFaces.size());
+    for (const FaceDraw& draw : mFaces)
+    {
+        const Entry& entry = mEntries[mOrder[draw.mIndex]];
+        if (!inIdPass(entry.mParts, entry.mPriority, view.mHUD))
+        {
+            continue;
+        }
+
+        LLFace* face = draw.mFace;
+        LLVertexBuffer* buffer = face ? face->getVertexBuffer() : nullptr;
+        if (!buffer || !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+            !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+            !buffer->getMetalVertexBuffer() ||
+            !buffer->getMetalIndexBuffer())
+        {
+            return false;
+        }
+
+        ALMetalSelectionIDBatch batch;
+        batch.vertices = buffer->getMetalVertexBuffer();
+        batch.position_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_VERTEX);
+        batch.texcoord_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_TEXCOORD0);
+        batch.vertex_count = buffer->getNumVerts();
+        batch.indices = buffer->getMetalIndexBuffer();
+        batch.index_offset =
+            static_cast<std::size_t>(face->getIndicesStart()) *
+            buffer->getIndexStride();
+        batch.index_type = buffer->getIndexStride() == 4
+            ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+        batch.index_count = face->getIndicesCount();
+        batch.id = draw.mIndex + 1;
+        batch.priority = entry.mPriority;
+        batch.show_hidden = entry.mShowHidden;
+        batch.outlined = outlined(entry.mParts, entry.mPriority);
+
+        LLMatrix4a modelview = view.mModelview;
+        if (draw.mModel)
+        {
+            modelview.setMul(*draw.mModel, modelview);
+        }
+        LLMatrix4a modelview_projection;
+        modelview_projection.setMul(modelview, view.mProjection);
+        std::memcpy(batch.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.modelview_projection));
+
+        const LLTextureEntry* te = face->getTextureEntry();
+        LLViewerTexture* texture = face->getTexture();
+        F32 cutoff = NO_ALPHA_TEST;
+        LLUUID texture_id;
+        U8 max_alpha = 255;
+        LLGLTFMaterial::TextureTransform::Pack transform;
+        std::copy(std::begin(IDENTITY_TRANSFORM),
+                  std::end(IDENTITY_TRANSFORM), std::begin(transform));
+        auto* gltf = te
+            ? static_cast<LLFetchedGLTFMaterial*>(
+                  te->getGLTFRenderMaterial())
+            : nullptr;
+        if (gltf)
+        {
+            batch.double_sided = gltf->mDoubleSided;
+            if (!face->hasMedia() || !texture ||
+                texture->getType() != LLViewerTexture::MEDIA_TEXTURE)
+            {
+                texture = gltf->mBaseColorTexture.get();
+            }
+            if (texture && texture_has_alpha(texture))
+            {
+                cutoff = gltfAlphaCutoff(
+                    gltf->mAlphaMode, gltf->mAlphaCutoff);
+                texture_id = texture->getID();
+                max_alpha = texture_max_alpha(texture);
+            }
+            gltf->mTextureTransform[
+                LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR]
+                .getPacked(transform);
+        }
+        else if (te && texture)
+        {
+            const LLMaterial* material =
+                te->getMaterialParams().get();
+            cutoff = legacyAlphaCutoff(
+                material != nullptr,
+                material ? material->getDiffuseAlphaMode() : 0,
+                material ? material->getAlphaMaskCutoff() : 0,
+                texture_has_alpha(texture));
+            texture_id = te->getID();
+            max_alpha = texture_max_alpha(texture);
+        }
+
+        const AlphaTest test = faceAlphaTest(
+            texture_id, max_alpha, cutoff,
+            wholeFaces(view, draw.mPriority),
+            LLVOVolume::isInvisibleFace(te));
+        batch.alpha_cutoff = test.mCutoff;
+        batch.keep_cut = test.mKeepCut;
+        std::copy(std::begin(transform), std::end(transform),
+                  std::begin(batch.base_color_transform));
+        if (test.mCutoff > 0.f && test.mCutoff <= 1.f)
+        {
+            LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+            batch.texture = image ? image->getMetalTexture() : nullptr;
+            if (!batch.texture)
+            {
+                return false;
+            }
+        }
+        if (face->mTextureMatrix &&
+            face->isState(LLFace::TEXTURE_ANIM) &&
+            face->getVirtualSize() > MIN_TEX_ANIM_SIZE)
+        {
+            std::memcpy(batch.texture_matrix,
+                        face->mTextureMatrix->mMatrix,
+                        sizeof(batch.texture_matrix));
+        }
+
+        if (draw.mRigged)
+        {
+            if (!face->mAvatar || !face->mSkinInfo ||
+                !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))
+            {
+                return false;
+            }
+            const LLVOAvatar::MatrixPaletteCache& palette =
+                face->mAvatar->updateSkinInfoMatrixPalette(
+                    face->mSkinInfo);
+            const U32 joint_count = static_cast<U32>(
+                palette.mMatrixPalette.size());
+            if (joint_count == 0 ||
+                palette.mGLMp.size() !=
+                    4u + static_cast<std::size_t>(joint_count) * 12u)
+            {
+                return false;
+            }
+            batch.weight_offset = buffer->getOffset(
+                LLVertexBuffer::TYPE_WEIGHT4);
+            batch.skin_palette = palette.mGLMp.data();
+            batch.skin_palette_float_count = palette.mGLMp.size();
+            batch.skin_joint_count = joint_count;
+        }
+        batches.push_back(batch);
+    }
+
+    if (batches.empty())
+    {
+        return false;
+    }
+    ALMetalSelectionIDScene scene;
+    scene.batches = batches.data();
+    scene.batch_count = batches.size();
+    std::memcpy(scene.inverse_projection,
+                inverse_projection.getF32ptr(),
+                sizeof(scene.inverse_projection));
+    scene.width = static_cast<U32>(width);
+    scene.height = static_cast<U32>(height);
+    scene.reverse_z = LLRender::sReverseZ;
+    scene.use_scene_depth = !view.mHUD;
+    return gGL.drawMetalSelectionIDs(scene);
+}
+#endif
 
 void ALSelectionOutline::drawWireframes(const View& view, S32 width, S32 height, LLRenderTarget* backdrop)
 {

@@ -157,6 +157,58 @@ struct ALMetalHUDIndexedBatch
     std::uint32_t target_height = 0;
 };
 
+// One face range for the selection owner's private RGBA8 id/depth target.
+// The color contract is byte exact with selectionIdF.glsl: RG is the low/high
+// id, B is visible/hidden/not-drawn coverage and A is priority. The target is
+// deliberately not composited by this stage; the optimized contour/glow
+// passes consume it later in the same ordered world/UI transaction.
+struct ALMetalSelectionIDBatch
+{
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::size_t texcoord_offset = 0;
+    std::size_t weight_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
+    const ALMetalTexture* texture = nullptr;
+    ALMetalSamplerDescriptor sampler{};
+    const float* skin_palette = nullptr;
+    std::size_t skin_palette_float_count = 0;
+    std::uint32_t skin_joint_count = 0;
+    float modelview_projection[16]{};
+    float texture_matrix[16] = {
+        1.f, 0.f, 0.f, 0.f,
+        0.f, 1.f, 0.f, 0.f,
+        0.f, 0.f, 1.f, 0.f,
+        0.f, 0.f, 0.f, 1.f,
+    };
+    float base_color_transform[8] = {
+        1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    float alpha_cutoff = -1.f;
+    std::uint32_t id = 0;
+    std::uint32_t priority = 0;
+    bool show_hidden = false;
+    bool outlined = true;
+    bool keep_cut = false;
+    bool double_sided = false;
+};
+
+struct ALMetalSelectionIDScene
+{
+    const ALMetalSelectionIDBatch* batches = nullptr;
+    std::size_t batch_count = 0;
+    float inverse_projection[16]{};
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    bool reverse_z = false;
+    // World selection compares against the immutable retained scene depth.
+    // HUD selection has no readable window depth and marks every face visible.
+    bool use_scene_depth = true;
+};
+
 struct ALMetalUIRendererStats
 {
     std::uint64_t frames = 0;
@@ -237,11 +289,20 @@ public:
     bool drawHUDIndexed(
         const ALMetalHUDIndexedBatch& batch,
         std::string* error = nullptr);
+    // Encodes the private selection face-id/depth pass between already ordered
+    // UI/HUD draws, then resumes the main color/depth target with load actions.
+    // This requires the offscreen world color and depth backings selected via
+    // setFrameBackground/setFrameDepth. It never publishes partial selection.
+    bool drawSelectionIDs(
+        const ALMetalSelectionIDScene& scene,
+        std::string* error = nullptr);
     bool endFrame(std::string* error = nullptr);
 
     bool hasOpenFrame() const noexcept;
     const ALMetalTexture* outputTexture() const noexcept;
     const ALMetalTexture* outputDepthTexture() const noexcept;
+    const ALMetalTexture* selectionIDTexture() const noexcept;
+    const ALMetalTexture* selectionDepthTexture() const noexcept;
     // Completes the offscreen renderer-to-viewer ownership handoff. Returns
     // null for a surface-backed renderer or while a frame is still open. The
     // next offscreen draw lazily allocates a fresh target.

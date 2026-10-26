@@ -71,6 +71,7 @@ class ALMetalFrameScheduler;
 class ALMetalSurface;
 class ALMetalTexture;
 class ALMetalUIRenderer;
+struct ALMetalSelectionIDScene;
 struct ALMetalHUDIndexedBatch;
 enum class ALMetalPixelFormat;
 #endif
@@ -299,6 +300,11 @@ public:
     // Append one indexed HUD-attachment volume draw to an active offscreen
     // capture. GL remains authoritative regardless of the return value.
     bool drawMetalHUDIndexedBatch(const ALMetalHUDIndexedBatch& batch);
+    bool hasMetalUITextureCapture() const noexcept;
+    // Encode the selection owner's private face-id/depth pass into the active
+    // ordered world/UI capture. GL remains authoritative until the later
+    // contour/glow passes complete the transaction.
+    bool drawMetalSelectionIDs(const ALMetalSelectionIDScene& scene);
     // Record one GL-owned draw family that an active offscreen transaction
     // did not reproduce. This is a no-op outside a capture; the authoritative
     // GL draw continues and end capture discards the incomplete native frame.
