@@ -139,6 +139,14 @@ public:
     // Encodes into one command buffer per viewer frame. The test path uses a
     // persistent offscreen target; the production path acquires and presents
     // one window drawable. No CPU/GPU synchronization occurs here.
+    //
+    // A frame background is a one-shot, same-size/same-format native backing
+    // copied by the renderer before its first UI batch. It lets the eventual
+    // world transaction and ordinary UI share one drawable command without a
+    // GL bridge. The caller retains the texture until endFrame returns.
+    bool setFrameBackground(
+        const ALMetalTexture* background,
+        std::string* error = nullptr);
     bool draw(const ALMetalUIBatch& batch, std::string* error = nullptr);
     bool endFrame(std::string* error = nullptr);
 

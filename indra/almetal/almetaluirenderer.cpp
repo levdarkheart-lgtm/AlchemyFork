@@ -152,6 +152,8 @@ struct ALMetalUIRenderer::Impl
     ALMetalSurface* surface = nullptr;
     ALMetalPixelFormat output_format = ALMetalPixelFormat::bgra8_unorm;
     std::unique_ptr<ALMetalShaderLibrary> library;
+    std::unique_ptr<ALMetalRenderPipeline> background_pipeline;
+    std::unique_ptr<ALMetalSamplerState> background_sampler;
     std::unique_ptr<ALMetalRenderTarget> target;
     std::unique_ptr<ALMetalDrawable> drawable;
     std::unique_ptr<ALMetalRenderPass> pass;
@@ -164,6 +166,38 @@ struct ALMetalUIRenderer::Impl
     std::uint64_t frame_vertices = 0;
     std::uint32_t frame_width = 0;
     std::uint32_t frame_height = 0;
+    const ALMetalTexture* frame_background = nullptr;
+
+    bool prepareBackground(std::string* error)
+    {
+        if (background_pipeline && background_sampler)
+        {
+            return true;
+        }
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = library.get();
+        descriptor.vertex_function = "almetal_resample_vertex";
+        descriptor.fragment_function = "almetal_resample_fragment";
+        descriptor.colors[0].format = output_format;
+        descriptor.label = "Alchemy native world/UI backing pipeline";
+        background_pipeline = ALMetalRenderPipeline::create(
+            *device, descriptor, error);
+        if (!background_pipeline)
+        {
+            return false;
+        }
+        ALMetalSamplerDescriptor sampler_descriptor;
+        sampler_descriptor.min_filter = ALMetalSamplerFilter::nearest;
+        sampler_descriptor.mag_filter = ALMetalSamplerFilter::nearest;
+        sampler_descriptor.mip_filter = ALMetalSamplerMipFilter::none;
+        sampler_descriptor.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.label = "Alchemy native world/UI backing sampler";
+        background_sampler = ALMetalSamplerState::create(
+            *device, sampler_descriptor, error);
+        return background_sampler != nullptr;
+    }
 
     ALMetalRenderPipeline* pipeline(ALMetalUIShader shader,
                                     const ALMetalUIBlendState& blend,
@@ -250,6 +284,22 @@ struct ALMetalUIRenderer::Impl
             return true;
         }
 
+        if (frame_background)
+        {
+            const ALMetalTextureDescriptor& background =
+                frame_background->descriptor();
+            if (background.width != width || background.height != height)
+            {
+                setError(error,
+                         "Metal UI frame background dimensions do not match the target");
+                return false;
+            }
+            if (!prepareBackground(error))
+            {
+                return false;
+            }
+        }
+
         if (surface)
         {
             drawable = surface->nextDrawable(error);
@@ -324,6 +374,29 @@ struct ALMetalUIRenderer::Impl
         frame_vertices = 0;
         frame_width = width;
         frame_height = height;
+        if (frame_background)
+        {
+            const ALMetalViewport viewport{
+                0.0, 0.0, static_cast<double>(width),
+                static_cast<double>(height), 0.0, 1.0};
+            const ALMetalScissorRect scissor{0, 0, width, height};
+            if (!encoder->setPipeline(*background_pipeline, error) ||
+                !encoder->setFragmentTexture(0, frame_background, error) ||
+                !encoder->setFragmentSampler(
+                    0, background_sampler.get(), error) ||
+                !encoder->setViewport(viewport, error) ||
+                !encoder->setScissor(scissor, error) ||
+                !encoder->setCullMode(ALMetalCullMode::none, error) ||
+                !encoder->draw(
+                    ALMetalPrimitiveType::triangle, 0, 3, 1, error))
+            {
+                encoder.reset();
+                frame.reset();
+                pass.reset();
+                drawable.reset();
+                return false;
+            }
+        }
         return true;
     }
 };
@@ -367,7 +440,9 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
         !library->hasFunction("almetal_alpha_mask_fragment") ||
         !library->hasFunction("almetal_alpha_mask_solid_fragment") ||
         !library->hasFunction("almetal_solid_vertex") ||
-        !library->hasFunction("almetal_solid_fragment"))
+        !library->hasFunction("almetal_solid_fragment") ||
+        !library->hasFunction("almetal_resample_vertex") ||
+        !library->hasFunction("almetal_resample_fragment"))
     {
         setError(error, "Built-in Metal library is missing production UI functions");
         return nullptr;
@@ -398,6 +473,49 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForSurface(
         renderer->mImpl->surface = &surface;
     }
     return renderer;
+}
+
+bool ALMetalUIRenderer::setFrameBackground(
+    const ALMetalTexture* background,
+    std::string* error)
+{
+    if (!mImpl)
+    {
+        setError(error, "Metal UI renderer is unavailable");
+        return false;
+    }
+    if (mImpl->frame)
+    {
+        setError(error,
+                 "Metal UI frame background must be selected before drawing");
+        return false;
+    }
+    if (!background)
+    {
+        mImpl->frame_background = nullptr;
+        return true;
+    }
+    const ALMetalTextureDescriptor& descriptor = background->descriptor();
+    if (descriptor.type != ALMetalTextureType::texture_2d ||
+        descriptor.format != mImpl->output_format ||
+        descriptor.width == 0 || descriptor.height == 0 ||
+        descriptor.array_length != 1 || descriptor.sample_count != 1 ||
+        !alMetalHasUsage(
+            descriptor.usage, ALMetalTextureUsage::shader_read))
+    {
+        setError(error, "Metal UI frame background is incompatible");
+        return false;
+    }
+    if (mImpl->target && mImpl->target->colorTexture(0) &&
+        mImpl->target->colorTexture(0)->nativeHandle() ==
+            background->nativeHandle())
+    {
+        setError(error,
+                 "Metal UI frame background cannot alias its destination");
+        return false;
+    }
+    mImpl->frame_background = background;
+    return true;
 }
 
 bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
@@ -515,11 +633,23 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
     {
         return true;
     }
-    if (!mImpl->frame && mImpl->surface)
+    if (!mImpl->frame && mImpl->frame_background)
+    {
+        const ALMetalTextureDescriptor& background =
+            mImpl->frame_background->descriptor();
+        if (!mImpl->beginFrame(
+                background.width, background.height, error))
+        {
+            mImpl->frame_background = nullptr;
+            return false;
+        }
+    }
+    else if (!mImpl->frame && mImpl->surface)
     {
         const ALMetalSurfaceInfo& info = mImpl->surface->info();
         if (!mImpl->beginFrame(info.width, info.height, error))
         {
+            mImpl->frame_background = nullptr;
             return false;
         }
     }
@@ -533,6 +663,7 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         mImpl->frame.reset();
         mImpl->pass.reset();
         mImpl->drawable.reset();
+        mImpl->frame_background = nullptr;
         return false;
     }
     mImpl->encoder.reset();
@@ -543,6 +674,7 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         mImpl->frame.reset();
         mImpl->pass.reset();
         mImpl->drawable.reset();
+        mImpl->frame_background = nullptr;
         return false;
     }
     if (!mImpl->scheduler->submit(*mImpl->frame, error))
@@ -550,11 +682,13 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         mImpl->frame.reset();
         mImpl->pass.reset();
         mImpl->drawable.reset();
+        mImpl->frame_background = nullptr;
         return false;
     }
     mImpl->frame.reset();
     mImpl->pass.reset();
     mImpl->drawable.reset();
+    mImpl->frame_background = nullptr;
     ++mImpl->totals.frames;
     mImpl->totals.batches += mImpl->frame_batches;
     mImpl->totals.vertices += mImpl->frame_vertices;

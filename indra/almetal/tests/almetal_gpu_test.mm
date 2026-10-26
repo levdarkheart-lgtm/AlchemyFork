@@ -19351,6 +19351,132 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(stats.pipeline_states == 1);
         CHECK(stats.sampler_states == 1);
 
+        // The future world transaction must seed this same encoder with its
+        // completed BGRA backing before ordinary UI draws. Prove the one-shot
+        // background both without UI and under source-over UI composition.
+        ALMetalTextureDescriptor background_descriptor;
+        background_descriptor.format = ALMetalPixelFormat::bgra8_unorm;
+        background_descriptor.width = 32;
+        background_descriptor.height = 32;
+        background_descriptor.storage = ALMetalStorageMode::private_gpu;
+        background_descriptor.usage = ALMetalTextureUsage::shader_read;
+        background_descriptor.label =
+            "Alchemy native world/UI composition background";
+        auto background = ALMetalTexture::create(
+            *device, background_descriptor, &error);
+        INFO(error);
+        REQUIRE(background);
+        std::array<std::uint8_t, 32 * 32 * 4> background_pixels{};
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            background_pixels[pixel * 4 + 0] = 20u;
+            background_pixels[pixel * 4 + 1] = 40u;
+            background_pixels[pixel * 4 + 2] = 80u;
+            background_pixels[pixel * 4 + 3] = 255u;
+        }
+        auto background_upload = device->makeCommandBuffer(
+            "Alchemy native world/UI background upload", &error);
+        INFO(error);
+        REQUIRE(background_upload);
+        REQUIRE(background->upload(
+            *background_upload, 0, 0, {}, background_pixels.data(),
+            32 * 4, &error));
+        REQUIRE(background_upload->commitAndWait(&error));
+        INFO(error);
+
+        auto composition_renderer = ALMetalUIRenderer::create(
+            *device, *scheduler, &error);
+        INFO(error);
+        REQUIRE(composition_renderer);
+        REQUIRE(composition_renderer->setFrameBackground(
+            background.get(), &error));
+        REQUIRE(composition_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        const ALMetalTexture* composed =
+            composition_renderer->outputTexture();
+        REQUIRE(composed);
+        std::array<std::uint8_t, 32 * 32 * 4> composed_pixels{};
+        REQUIRE(composed->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(composed_pixels == background_pixels);
+        const ALMetalUIRendererStats backing_stats =
+            composition_renderer->stats();
+        CHECK(backing_stats.frames == 1);
+        CHECK(backing_stats.batches == 0);
+        CHECK(backing_stats.vertices == 0);
+
+        error.clear();
+        CHECK_FALSE(composition_renderer->setFrameBackground(
+            composition_renderer->outputTexture(), &error));
+        CHECK(error ==
+              "Metal UI frame background cannot alias its destination");
+        error.clear();
+        CHECK_FALSE(composition_renderer->setFrameBackground(
+            texture.get(), &error));
+        CHECK(error == "Metal UI frame background is incompatible");
+
+        const std::uint8_t translucent_colors[3][4] = {
+            {255, 32, 16, 128}, {255, 32, 16, 128},
+            {255, 32, 16, 128},
+        };
+        REQUIRE(buffer->write(
+            color_offset, translucent_colors,
+            sizeof(translucent_colors), &error));
+        batch.blend.enabled = true;
+        batch.blend.source_rgb = ALMetalBlendFactor::source_alpha;
+        batch.blend.destination_rgb =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        batch.blend.source_alpha = ALMetalBlendFactor::one;
+        batch.blend.destination_alpha =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        REQUIRE(composition_renderer->setFrameBackground(
+            background.get(), &error));
+        REQUIRE(composition_renderer->draw(batch, &error));
+        REQUIRE(composition_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        composed = composition_renderer->outputTexture();
+        REQUIRE(composed);
+        REQUIRE(composed->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 0]) - 18) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 1]) - 36) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 2]) - 168) <= 1);
+        CHECK(composed_pixels[center + 3] == 255u);
+        CHECK(composed_pixels[0] == 20u);
+        CHECK(composed_pixels[1] == 40u);
+        CHECK(composed_pixels[2] == 80u);
+        CHECK(composed_pixels[3] == 255u);
+
+        // Background selection is consumed by one submitted frame. A later
+        // UI-only frame clears outside the triangle instead of retaining a
+        // stale world image, and selection cannot change after encoding starts.
+        REQUIRE(buffer->write(
+            color_offset, colors, sizeof(colors), &error));
+        batch.blend.enabled = false;
+        REQUIRE(composition_renderer->draw(batch, &error));
+        error.clear();
+        CHECK_FALSE(composition_renderer->setFrameBackground(nullptr, &error));
+        CHECK(error ==
+              "Metal UI frame background must be selected before drawing");
+        REQUIRE(composition_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        composed = composition_renderer->outputTexture();
+        REQUIRE(composed);
+        REQUIRE(composed->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(composed_pixels[0] == 0u);
+        CHECK(composed_pixels[1] == 0u);
+        CHECK(composed_pixels[2] == 0u);
+        CHECK(composed_pixels[3] == 0u);
+
         auto rgba_renderer = ALMetalUIRenderer::createForTexture(
             *device, *scheduler, ALMetalPixelFormat::rgba8_unorm, &error);
         INFO(error);
