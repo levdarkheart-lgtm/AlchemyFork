@@ -761,6 +761,53 @@ struct ALMetalWorldDisplayPostScene
     std::uint32_t frame_id = 0;
 };
 
+// Final display-space print treatment. The source is the completed RGB10_A2
+// or RGBA8 display target after AA/CAS. The result uses the window surface's
+// linear BGRA8 storage and is deliberately offscreen until native world UI
+// can be composed over it in the same drawable transaction.
+struct ALMetalWorldPresentationScene
+{
+    const ALMetalRenderTarget* source = nullptr;
+    const ALMetalTexture* reference_texture = nullptr;
+    std::uint32_t reference_mode = 0;
+    float reference_position = 0.5f;
+
+    // CPU-baked Brown-Conrady inverse gather, matching renderFinalize.
+    float lens_distortion_amount = 0.f;
+    float lens_distortion_k[2] = {0.f, 0.f};
+    float lens_distortion_scale = 1.f;
+    float lens_distortion_squeeze[2] = {1.f, 1.f};
+    float lens_distortion_center[2] = {0.f, 0.f};
+    float lens_distortion_tangential[2] = {0.f, 0.f};
+
+    float vignette_amount = 0.f;
+    float vignette_radius = 1.f;
+    float vignette_softness = 0.5f;
+    float vignette_shape = 0.f;
+    float vignette_outer_color[3] = {0.f, 0.f, 0.f};
+    float vignette_middle_color[3] = {0.f, 0.f, 0.f};
+    float vignette_middle_point = 0.f;
+    float vignette_center[2] = {0.f, 0.f};
+    // (1,1) disables correction; production supplies source dimensions when
+    // RenderVignetteCorrectAspect is active.
+    float vignette_aspect[2] = {1.f, 1.f};
+    float vignette_feather = 1.f;
+
+    std::uint32_t cvd_mode = 0;
+    float cvd_amount = 0.f;
+    float grain_amount = 0.f;
+    std::uint32_t grain_style = 0;
+    float grain_size = 1.f;
+    float grain_range = 0.5f;
+    float grain_tint[3] = {1.f, 1.f, 1.f};
+    bool grain_animated = true;
+    float dither_amount = 0.f;
+    std::uint32_t dither_bits = 8;
+    bool dither_animated = true;
+    std::uint32_t preview_mode = 0;
+    std::uint32_t frame_id = 0;
+};
+
 // Per-frame flare visibility and temporal state. The source is the sharp
 // linear scene and depth is its completed world depth. Previous is null only
 // for the exact zero-history bootstrap; otherwise it must be the prior 2x1
@@ -1301,6 +1348,13 @@ public:
     // and complete grading may be folded in; this is not final presentation.
     std::unique_ptr<ALMetalRenderTarget> renderDisplayPost(
         const ALMetalWorldDisplayPostScene& scene,
+        std::string* error = nullptr);
+
+    // Apply the final lens/print/reference family as one display-space pass.
+    // Standalone CAS remains the preceding owner, so this method never hides
+    // an extra sharpen transaction or changes the scope measurement boundary.
+    std::unique_ptr<ALMetalRenderTarget> renderPresentationPost(
+        const ALMetalWorldPresentationScene& scene,
         std::string* error = nullptr);
 
     // Measure the HDR sun disc through final world depth and advance the

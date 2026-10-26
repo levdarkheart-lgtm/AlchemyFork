@@ -174,6 +174,22 @@ namespace
     };
     static_assert(sizeof(WorldDisplayPostConstants) == 464);
 
+    struct alignas(16) WorldPresentationConstants
+    {
+        float lens_primary[4];
+        float lens_squeeze_center[4];
+        float lens_tangent_reference[4];
+        float vignette_primary[4];
+        float vignette_outer_middle[4];
+        float vignette_middle_feather[4];
+        float vignette_center_aspect[4];
+        float effects[4];
+        float grain_tint_dither[4];
+        std::uint32_t config[4];
+        std::uint32_t noise[4];
+    };
+    static_assert(sizeof(WorldPresentationConstants) == 176);
+
     struct alignas(16) WorldLensFlareStateConstants
     {
         // source width/height, clamped dt, fade time.
@@ -1070,6 +1086,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::array<
         std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>, 2>
         display_post_pipelines;
+    std::unique_ptr<ALMetalRenderPipeline> presentation_post_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> lens_flare_state_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> lens_dirt_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -1436,6 +1453,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_lens_flare_state_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_lens_dirt_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_presentation_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_display_post_fragment") ||
         !impl->library->hasFunction(
@@ -1945,6 +1964,22 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->lens_dirt_pipeline = ALMetalRenderPipeline::create(
         device, dirt_descriptor, error);
     if (!impl->lens_dirt_pipeline)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderPipelineDescriptor presentation_descriptor;
+    presentation_descriptor.library = impl->library.get();
+    presentation_descriptor.vertex_function = "almetal_resample_vertex";
+    presentation_descriptor.fragment_function =
+        "almetal_world_presentation_fragment";
+    presentation_descriptor.colors[0].format =
+        ALMetalPixelFormat::bgra8_unorm;
+    presentation_descriptor.label =
+        "Alchemy world final presentation pipeline";
+    impl->presentation_post_pipeline = ALMetalRenderPipeline::create(
+        device, presentation_descriptor, error);
+    if (!impl->presentation_post_pipeline)
     {
         return nullptr;
     }
@@ -7128,6 +7163,244 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
             0, &constants, sizeof(constants), error) &&
         encoder->draw(
             ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderPresentationPost(
+    const ALMetalWorldPresentationScene& scene,
+    std::string* error)
+{
+    const auto finite = [](const float* values, std::size_t count)
+    {
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            if (!std::isfinite(values[index]))
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    const auto unit_color = [&finite](const float* values)
+    {
+        return finite(values, 3) &&
+            values[0] >= 0.f && values[0] <= 1.f &&
+            values[1] >= 0.f && values[1] <= 1.f &&
+            values[2] >= 0.f && values[2] <= 1.f;
+    };
+    if (!mImpl || !mImpl->device || !scene.source ||
+        scene.reference_mode > 2 || scene.cvd_mode > 3 ||
+        scene.grain_style > 3 || scene.preview_mode > 7 ||
+        (scene.dither_bits != 8 && scene.dither_bits != 10) ||
+        !std::isfinite(scene.reference_position) ||
+        scene.reference_position < 0.f || scene.reference_position > 1.f ||
+        !std::isfinite(scene.lens_distortion_amount) ||
+        scene.lens_distortion_amount < 0.f ||
+        scene.lens_distortion_amount > 1.f ||
+        !finite(scene.lens_distortion_k, 2) ||
+        scene.lens_distortion_k[0] < -0.5f ||
+        scene.lens_distortion_k[0] > 0.5f ||
+        scene.lens_distortion_k[1] < -0.25f ||
+        scene.lens_distortion_k[1] > 0.25f ||
+        !std::isfinite(scene.lens_distortion_scale) ||
+        scene.lens_distortion_scale < 0.1f ||
+        scene.lens_distortion_scale > 10.f ||
+        !finite(scene.lens_distortion_squeeze, 2) ||
+        scene.lens_distortion_squeeze[0] < 0.4f ||
+        scene.lens_distortion_squeeze[0] > 2.f ||
+        scene.lens_distortion_squeeze[1] < 0.4f ||
+        scene.lens_distortion_squeeze[1] > 2.f ||
+        !finite(scene.lens_distortion_center, 2) ||
+        scene.lens_distortion_center[0] < -0.5f ||
+        scene.lens_distortion_center[0] > 0.5f ||
+        scene.lens_distortion_center[1] < -0.5f ||
+        scene.lens_distortion_center[1] > 0.5f ||
+        !finite(scene.lens_distortion_tangential, 2) ||
+        scene.lens_distortion_tangential[0] < -0.05f ||
+        scene.lens_distortion_tangential[0] > 0.05f ||
+        scene.lens_distortion_tangential[1] < -0.05f ||
+        scene.lens_distortion_tangential[1] > 0.05f ||
+        !std::isfinite(scene.vignette_amount) ||
+        scene.vignette_amount < 0.f || scene.vignette_amount > 1.f ||
+        !std::isfinite(scene.vignette_radius) ||
+        scene.vignette_radius < 0.25f || scene.vignette_radius > 1.5f ||
+        !std::isfinite(scene.vignette_softness) ||
+        scene.vignette_softness < 0.05f ||
+        scene.vignette_softness > 1.f ||
+        !std::isfinite(scene.vignette_shape) ||
+        scene.vignette_shape < 0.f || scene.vignette_shape > 1.f ||
+        !unit_color(scene.vignette_outer_color) ||
+        !unit_color(scene.vignette_middle_color) ||
+        !std::isfinite(scene.vignette_middle_point) ||
+        scene.vignette_middle_point < 0.f ||
+        scene.vignette_middle_point > 1.f ||
+        !finite(scene.vignette_center, 2) ||
+        scene.vignette_center[0] < -0.5f ||
+        scene.vignette_center[0] > 0.5f ||
+        scene.vignette_center[1] < -0.5f ||
+        scene.vignette_center[1] > 0.5f ||
+        !finite(scene.vignette_aspect, 2) ||
+        scene.vignette_aspect[0] <= 0.f ||
+        scene.vignette_aspect[1] <= 0.f ||
+        !std::isfinite(scene.vignette_feather) ||
+        scene.vignette_feather < 0.2f || scene.vignette_feather > 4.f ||
+        !std::isfinite(scene.cvd_amount) ||
+        scene.cvd_amount < 0.f || scene.cvd_amount > 1.f ||
+        !std::isfinite(scene.grain_amount) ||
+        scene.grain_amount < 0.f || scene.grain_amount > 1.f ||
+        !std::isfinite(scene.grain_size) ||
+        scene.grain_size < 1.f || scene.grain_size > 8.f ||
+        !std::isfinite(scene.grain_range) ||
+        scene.grain_range < 0.f || scene.grain_range > 1.f ||
+        !unit_color(scene.grain_tint) ||
+        !std::isfinite(scene.dither_amount) ||
+        scene.dither_amount < 0.f || scene.dither_amount > 1.f)
+    {
+        setError(error, "Metal world presentation scene is invalid");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& source =
+        scene.source->descriptor();
+    const ALMetalPixelFormat source_format = source.colors[0].format;
+    if (source.width == 0 || source.height == 0 ||
+        source.sample_count != 1 || source.color_attachment_count != 1 ||
+        (source_format != ALMetalPixelFormat::rgb10a2_unorm &&
+         source_format != ALMetalPixelFormat::rgba8_unorm) ||
+        !sampleableTexture(scene.source->colorTexture(0)))
+    {
+        setError(error, "Metal world presentation source is incompatible");
+        return nullptr;
+    }
+    if (scene.reference_mode != 0)
+    {
+        if (!scene.reference_texture)
+        {
+            setError(error, "Metal world presentation reference is missing");
+            return nullptr;
+        }
+        const ALMetalTextureDescriptor& reference =
+            scene.reference_texture->descriptor();
+        if (reference.type != ALMetalTextureType::texture_2d ||
+            reference.width != source.width ||
+            reference.height != source.height ||
+            reference.format != source_format ||
+            reference.array_length != 1 ||
+            reference.mipmap_level_count != 1 ||
+            reference.sample_count != 1 ||
+            !sampleableTexture(scene.reference_texture))
+        {
+            setError(error,
+                     "Metal world presentation reference is incompatible");
+            return nullptr;
+        }
+    }
+
+    WorldPresentationConstants constants{};
+    constants.lens_primary[0] = scene.lens_distortion_amount;
+    constants.lens_primary[1] = scene.lens_distortion_k[0];
+    constants.lens_primary[2] = scene.lens_distortion_k[1];
+    constants.lens_primary[3] = scene.lens_distortion_scale;
+    std::memcpy(constants.lens_squeeze_center,
+                scene.lens_distortion_squeeze,
+                sizeof(scene.lens_distortion_squeeze));
+    std::memcpy(constants.lens_squeeze_center + 2,
+                scene.lens_distortion_center,
+                sizeof(scene.lens_distortion_center));
+    std::memcpy(constants.lens_tangent_reference,
+                scene.lens_distortion_tangential,
+                sizeof(scene.lens_distortion_tangential));
+    constants.lens_tangent_reference[2] = scene.reference_position;
+    constants.vignette_primary[0] = scene.vignette_amount;
+    constants.vignette_primary[1] = scene.vignette_radius;
+    constants.vignette_primary[2] = scene.vignette_softness;
+    constants.vignette_primary[3] = scene.vignette_shape;
+    std::memcpy(constants.vignette_outer_middle,
+                scene.vignette_outer_color,
+                sizeof(scene.vignette_outer_color));
+    constants.vignette_outer_middle[3] = scene.vignette_middle_point;
+    std::memcpy(constants.vignette_middle_feather,
+                scene.vignette_middle_color,
+                sizeof(scene.vignette_middle_color));
+    constants.vignette_middle_feather[3] = scene.vignette_feather;
+    std::memcpy(constants.vignette_center_aspect,
+                scene.vignette_center,
+                sizeof(scene.vignette_center));
+    std::memcpy(constants.vignette_center_aspect + 2,
+                scene.vignette_aspect,
+                sizeof(scene.vignette_aspect));
+    constants.effects[0] = scene.cvd_amount;
+    constants.effects[1] = scene.grain_amount;
+    constants.effects[2] = scene.grain_size;
+    constants.effects[3] = scene.grain_range;
+    std::memcpy(constants.grain_tint_dither, scene.grain_tint,
+                sizeof(scene.grain_tint));
+    constants.grain_tint_dither[3] = scene.dither_amount;
+    constants.config[0] = scene.reference_mode;
+    constants.config[1] = scene.cvd_mode;
+    constants.config[2] = scene.grain_style;
+    constants.config[3] = scene.preview_mode;
+    constants.noise[0] = scene.frame_id;
+    constants.noise[1] = scene.grain_animated ? 1u : 0u;
+    constants.noise[2] = scene.dither_bits;
+    constants.noise[3] = scene.dither_animated ? 1u : 0u;
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = source.width;
+    output_descriptor.height = source.height;
+    output_descriptor.colors[0].format = ALMetalPixelFormat::bgra8_unorm;
+    output_descriptor.colors[0].label =
+        "Alchemy final BGRA8 presentation color";
+    output_descriptor.label =
+        "Alchemy native world final-presentation target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world final presentation", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::dont_care;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world final-presentation encoder", error)
+        : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(source.width),
+        static_cast<double>(source.height), 0.0, 1.0};
+    const ALMetalScissorRect scissor{
+        0, 0, source.width, source.height};
+    const ALMetalTexture* reference = scene.reference_mode != 0
+        ? scene.reference_texture : scene.source->colorTexture(0);
+    const bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(*mImpl->presentation_post_pipeline, error) &&
+        encoder->setFragmentTexture(
+            0, scene.source->colorTexture(0), error) &&
+        encoder->setFragmentTexture(1, reference, error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->linear_mirror_sampler.get(), error) &&
+        encoder->setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     if (!encoded || !encoder->end(error) || !command->commit(error))
     {
         return nullptr;

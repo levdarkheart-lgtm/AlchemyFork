@@ -767,6 +767,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_lighting_composition_fragment",
             "almetal_world_lens_flare_state_fragment",
             "almetal_world_lens_dirt_fragment",
+            "almetal_world_presentation_fragment",
             "almetal_world_display_post_fragment",
             "almetal_world_display_post_exposure_fragment",
             "almetal_world_exposure_meter",
@@ -14839,6 +14840,405 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
             *hdr_source, 1, 1, &error));
         CHECK(error ==
               "Metal world display sample source is incompatible");
+    }
+}
+
+TEST_CASE("almetal: world final presentation owns the complete print chain", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 16;
+        constexpr std::uint32_t height = 12;
+        const auto make_source = [&](
+            ALMetalPixelFormat format, const void* pixels,
+            std::size_t bytes_per_row, const char* label)
+        {
+            ALMetalRenderTargetDescriptor descriptor;
+            descriptor.width = width;
+            descriptor.height = height;
+            descriptor.colors[0].format = format;
+            descriptor.label = label;
+            auto target = ALMetalRenderTarget::create(
+                *device, descriptor, &error);
+            INFO(error);
+            REQUIRE(target);
+            auto command = device->makeCommandBuffer(label, &error);
+            INFO(error);
+            REQUIRE(command);
+            id<MTLBuffer> staging = [nativeDevice(*device)
+                newBufferWithBytes:pixels
+                          length:bytes_per_row * height
+                         options:MTLResourceStorageModeShared];
+            REQUIRE(staging);
+            id<MTLBlitCommandEncoder> blit =
+                [nativeCommand(*command) blitCommandEncoder];
+            REQUIRE(blit);
+            [blit copyFromBuffer:staging
+                    sourceOffset:0
+               sourceBytesPerRow:bytes_per_row
+             sourceBytesPerImage:bytes_per_row * height
+                      sourceSize:MTLSizeMake(width, height, 1)
+                       toTexture:(__bridge id<MTLTexture>)
+                           target->colorTexture(0)->nativeHandle()
+                destinationSlice:0
+                destinationLevel:0
+               destinationOrigin:MTLOriginMake(0, 0, 0)];
+            [blit endEncoding];
+            REQUIRE(command->commit(&error));
+            INFO(error);
+            return target;
+        };
+        const auto read_output = [&](const ALMetalRenderTarget& target)
+        {
+            std::array<std::uint8_t, width * height * 4> pixels{};
+            REQUIRE(target.colorTexture(0)->readback(
+                *device, 0, 0, {}, pixels.data(), width * 4, &error));
+            INFO(error);
+            return pixels;
+        };
+        const auto texel = [](std::uint32_t x, std::uint32_t y)
+        {
+            return (static_cast<std::size_t>(y) * width + x) * 4;
+        };
+
+        // Identity proves the RGB10_A2 input boundary, the exact one-to-one
+        // sample, BGRA surface storage, and alpha preservation before any
+        // optional print treatment is enabled.
+        std::array<std::uint32_t, width * height> hdr_pixels{};
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const std::uint32_t red = 41u + x * 47u + y * 3u;
+                const std::uint32_t green = 73u + x * 7u + y * 53u;
+                const std::uint32_t blue = 109u + x * 29u + y * 17u;
+                const std::uint32_t alpha = (x + y) & 3u;
+                hdr_pixels[static_cast<std::size_t>(y) * width + x] =
+                    (red & 0x3ffu) | ((green & 0x3ffu) << 10u) |
+                    ((blue & 0x3ffu) << 20u) | (alpha << 30u);
+            }
+        }
+        auto hdr_source = make_source(
+            ALMetalPixelFormat::rgb10a2_unorm, hdr_pixels.data(),
+            width * sizeof(std::uint32_t),
+            "Alchemy final-presentation RGB10 source");
+        ALMetalWorldPresentationScene identity_scene;
+        identity_scene.source = hdr_source.get();
+        auto identity = renderer->renderPresentationPost(
+            identity_scene, &error);
+        INFO(error);
+        REQUIRE(identity);
+        CHECK(identity->descriptor().width == width);
+        CHECK(identity->descriptor().height == height);
+        CHECK(identity->descriptor().colors[0].format ==
+              ALMetalPixelFormat::bgra8_unorm);
+        const auto identity_pixels = read_output(*identity);
+        for (std::size_t pixel = 0; pixel < hdr_pixels.size(); ++pixel)
+        {
+            const std::uint32_t packed = hdr_pixels[pixel];
+            const std::array<std::uint32_t, 4> expected{{
+                static_cast<std::uint32_t>(std::lround(
+                    ((packed >> 20u) & 0x3ffu) * (255.f / 1023.f))),
+                static_cast<std::uint32_t>(std::lround(
+                    ((packed >> 10u) & 0x3ffu) * (255.f / 1023.f))),
+                static_cast<std::uint32_t>(std::lround(
+                    (packed & 0x3ffu) * (255.f / 1023.f))),
+                ((packed >> 30u) & 3u) * 85u,
+            }};
+            for (std::size_t channel = 0; channel < 4; ++channel)
+            {
+                CAPTURE(pixel, channel, expected[channel]);
+                CHECK(std::abs(
+                    static_cast<int>(identity_pixels[pixel * 4 + channel]) -
+                    static_cast<int>(expected[channel])) <= 1);
+            }
+        }
+
+        // The ordinary display-encoded path is the other authored source
+        // format. A constant image also makes every following operation's
+        // spatial and color behavior independently observable.
+        constexpr std::array<std::uint8_t, 4> flat_rgba{{
+            64u, 128u, 192u, 191u,
+        }};
+        std::array<std::uint8_t, width * height * 4> flat_pixels{};
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            std::copy(flat_rgba.begin(), flat_rgba.end(),
+                      flat_pixels.begin() + pixel * 4);
+        }
+        auto flat_source = make_source(
+            ALMetalPixelFormat::rgba8_unorm, flat_pixels.data(), width * 4,
+            "Alchemy final-presentation RGBA8 source");
+        ALMetalWorldPresentationScene flat_scene;
+        flat_scene.source = flat_source.get();
+        auto flat = renderer->renderPresentationPost(flat_scene, &error);
+        INFO(error);
+        REQUIRE(flat);
+        const auto flat_output = read_output(*flat);
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            CHECK(flat_output[pixel * 4 + 0] == flat_rgba[2]);
+            CHECK(flat_output[pixel * 4 + 1] == flat_rgba[1]);
+            CHECK(flat_output[pixel * 4 + 2] == flat_rgba[0]);
+            CHECK(flat_output[pixel * 4 + 3] == flat_rgba[3]);
+        }
+
+        ALMetalWorldPresentationScene lens_scene = flat_scene;
+        lens_scene.lens_distortion_amount = 1.f;
+        lens_scene.lens_distortion_k[0] = 0.5f;
+        lens_scene.lens_distortion_k[1] = 0.25f;
+        lens_scene.lens_distortion_scale = 2.f;
+        auto distorted = renderer->renderPresentationPost(
+            lens_scene, &error);
+        INFO(error);
+        REQUIRE(distorted);
+        const auto distorted_pixels = read_output(*distorted);
+        const std::size_t corner = texel(0, 0);
+        CHECK(distorted_pixels[corner + 0] == 0u);
+        CHECK(distorted_pixels[corner + 1] == 0u);
+        CHECK(distorted_pixels[corner + 2] == 0u);
+        CHECK(distorted_pixels[corner + 3] == flat_rgba[3]);
+        const std::size_t center = texel(width / 2, height / 2);
+        CHECK(distorted_pixels[center + 0] == flat_rgba[2]);
+        CHECK(distorted_pixels[center + 1] == flat_rgba[1]);
+        CHECK(distorted_pixels[center + 2] == flat_rgba[0]);
+
+        ALMetalWorldPresentationScene vignette_scene = flat_scene;
+        vignette_scene.vignette_amount = 1.f;
+        vignette_scene.vignette_radius = 0.7f;
+        vignette_scene.vignette_softness = 0.3f;
+        vignette_scene.vignette_shape = 0.25f;
+        vignette_scene.vignette_outer_color[0] = 1.f;
+        vignette_scene.vignette_middle_color[1] = 1.f;
+        vignette_scene.vignette_middle_point = 0.5f;
+        vignette_scene.vignette_aspect[0] = width;
+        vignette_scene.vignette_aspect[1] = height;
+        auto vignette = renderer->renderPresentationPost(
+            vignette_scene, &error);
+        INFO(error);
+        REQUIRE(vignette);
+        const auto vignette_pixels = read_output(*vignette);
+        CHECK(vignette_pixels[corner + 0] == 0u);
+        CHECK(vignette_pixels[corner + 1] == 0u);
+        CHECK(vignette_pixels[corner + 2] == 255u);
+        CHECK(vignette_pixels[corner + 3] == flat_rgba[3]);
+        CHECK(vignette_pixels[center + 0] == flat_rgba[2]);
+        CHECK(vignette_pixels[center + 1] == flat_rgba[1]);
+        CHECK(vignette_pixels[center + 2] == flat_rgba[0]);
+        const std::size_t middle = texel(11, height / 2);
+        CHECK(vignette_pixels[middle + 1] > flat_rgba[1]);
+
+        // Reproduce the protan daltonization path on the CPU. This checks the
+        // display/linear round trip and the exact error redistribution, not
+        // merely that enabling the mode changes a pixel.
+        const auto linear = [](float value)
+        {
+            return value <= 0.04045f
+                ? value / 12.92f
+                : std::pow((value + 0.055f) / 1.055f, 2.4f);
+        };
+        const auto srgb = [](float value)
+        {
+            value = std::clamp(value, 0.f, 1.f);
+            return value <= 0.0031308f
+                ? value * 12.92f
+                : 1.055f * std::pow(value, 1.f / 2.4f) - 0.055f;
+        };
+        std::array<float, 3> cvd_linear{{
+            linear(flat_rgba[0] / 255.f),
+            linear(flat_rgba[1] / 255.f),
+            linear(flat_rgba[2] / 255.f),
+        }};
+        const std::array<float, 3> simulated{{
+            cvd_linear[0] * 0.152286f + cvd_linear[1] * 1.052583f -
+                cvd_linear[2] * 0.204868f,
+            cvd_linear[0] * 0.114503f + cvd_linear[1] * 0.786281f +
+                cvd_linear[2] * 0.099216f,
+            cvd_linear[0] * -0.003882f - cvd_linear[1] * 0.048116f +
+                cvd_linear[2] * 1.051998f,
+        }};
+        const float red_error = cvd_linear[0] - simulated[0];
+        const float green_error = cvd_linear[1] - simulated[1];
+        const std::array<float, 3> compensated{{
+            srgb(cvd_linear[0]),
+            srgb(cvd_linear[1] + red_error * 0.7f + green_error),
+            srgb(cvd_linear[2] + red_error * 0.7f),
+        }};
+        ALMetalWorldPresentationScene cvd_scene = flat_scene;
+        cvd_scene.cvd_mode = 1;
+        cvd_scene.cvd_amount = 1.f;
+        auto cvd = renderer->renderPresentationPost(cvd_scene, &error);
+        INFO(error);
+        REQUIRE(cvd);
+        const auto cvd_pixels = read_output(*cvd);
+        const std::array<float, 3> expected_bgr{{
+            compensated[2], compensated[1], compensated[0],
+        }};
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const int expected = static_cast<int>(std::lround(
+                expected_bgr[channel] * 255.f));
+            CAPTURE(channel, expected);
+            CHECK(std::abs(
+                static_cast<int>(cvd_pixels[center + channel]) -
+                expected) <= 1);
+        }
+        CHECK(cvd_pixels[center + 3] == flat_rgba[3]);
+
+        ALMetalWorldPresentationScene grain_scene = flat_scene;
+        grain_scene.grain_amount = 1.f;
+        grain_scene.grain_style = 1;
+        grain_scene.grain_size = 3.f;
+        grain_scene.grain_range = 0.5f;
+        grain_scene.grain_animated = false;
+        auto frozen_grain = renderer->renderPresentationPost(
+            grain_scene, &error);
+        INFO(error);
+        REQUIRE(frozen_grain);
+        const auto frozen_grain_pixels = read_output(*frozen_grain);
+        auto repeated_grain = renderer->renderPresentationPost(
+            grain_scene, &error);
+        INFO(error);
+        REQUIRE(repeated_grain);
+        CHECK(read_output(*repeated_grain) == frozen_grain_pixels);
+        CHECK(frozen_grain_pixels != flat_output);
+        grain_scene.grain_animated = true;
+        grain_scene.frame_id = 73;
+        auto animated_grain = renderer->renderPresentationPost(
+            grain_scene, &error);
+        INFO(error);
+        REQUIRE(animated_grain);
+        const auto animated_grain_pixels = read_output(*animated_grain);
+        CHECK(animated_grain_pixels != frozen_grain_pixels);
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            CHECK(animated_grain_pixels[pixel * 4 + 3] == flat_rgba[3]);
+        }
+
+        ALMetalWorldPresentationScene dither_scene = flat_scene;
+        dither_scene.dither_amount = 1.f;
+        dither_scene.dither_bits = 8;
+        dither_scene.dither_animated = false;
+        auto frozen_dither = renderer->renderPresentationPost(
+            dither_scene, &error);
+        INFO(error);
+        REQUIRE(frozen_dither);
+        const auto frozen_dither_pixels = read_output(*frozen_dither);
+        dither_scene.dither_animated = true;
+        dither_scene.frame_id = 37;
+        auto animated_dither = renderer->renderPresentationPost(
+            dither_scene, &error);
+        INFO(error);
+        REQUIRE(animated_dither);
+        const auto animated_dither_pixels = read_output(*animated_dither);
+        CHECK(frozen_dither_pixels != flat_output);
+        CHECK(animated_dither_pixels != frozen_dither_pixels);
+
+        ALMetalWorldPresentationScene preview_scene = flat_scene;
+        preview_scene.preview_mode = 7;
+        auto preview = renderer->renderPresentationPost(
+            preview_scene, &error);
+        INFO(error);
+        REQUIRE(preview);
+        const auto preview_pixels = read_output(*preview);
+        CHECK(std::abs(static_cast<int>(preview_pixels[center + 0]) - 0) <= 1);
+        CHECK(std::abs(static_cast<int>(preview_pixels[center + 1]) - 179) <= 1);
+        CHECK(std::abs(static_cast<int>(preview_pixels[center + 2]) - 77) <= 1);
+        CHECK(preview_pixels[center + 3] == flat_rgba[3]);
+
+        std::array<std::uint8_t, width * height * 4> reference_pixels{};
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            reference_pixels[pixel * 4 + 0] = 224u;
+            reference_pixels[pixel * 4 + 1] = 32u;
+            reference_pixels[pixel * 4 + 2] = 80u;
+            reference_pixels[pixel * 4 + 3] = 63u;
+        }
+        auto reference = make_source(
+            ALMetalPixelFormat::rgba8_unorm, reference_pixels.data(),
+            width * 4, "Alchemy final-presentation reference still");
+        ALMetalWorldPresentationScene reference_scene = flat_scene;
+        reference_scene.reference_texture = reference->colorTexture(0);
+        reference_scene.reference_mode = 1;
+        reference_scene.reference_position = 0.5f;
+        auto wipe = renderer->renderPresentationPost(
+            reference_scene, &error);
+        INFO(error);
+        REQUIRE(wipe);
+        const auto wipe_pixels = read_output(*wipe);
+        const std::size_t left = texel(1, height / 2);
+        const std::size_t right = texel(width - 2, height / 2);
+        CHECK(wipe_pixels[left + 0] == 80u);
+        CHECK(wipe_pixels[left + 1] == 32u);
+        CHECK(wipe_pixels[left + 2] == 224u);
+        CHECK(wipe_pixels[left + 3] == 63u);
+        CHECK(wipe_pixels[right + 0] == flat_rgba[2]);
+        CHECK(wipe_pixels[right + 1] == flat_rgba[1]);
+        CHECK(wipe_pixels[right + 2] == flat_rgba[0]);
+        CHECK(wipe_pixels[right + 3] == flat_rgba[3]);
+        reference_scene.reference_mode = 2;
+        auto side_by_side = renderer->renderPresentationPost(
+            reference_scene, &error);
+        INFO(error);
+        REQUIRE(side_by_side);
+        const auto side_by_side_pixels = read_output(*side_by_side);
+        CHECK(side_by_side_pixels[left + 2] == 224u);
+        CHECK(side_by_side_pixels[right + 2] == flat_rgba[0]);
+
+        ALMetalWorldPresentationScene invalid;
+        error.clear();
+        CHECK_FALSE(renderer->renderPresentationPost(invalid, &error));
+        CHECK(error == "Metal world presentation scene is invalid");
+        invalid = flat_scene;
+        invalid.reference_mode = 3;
+        error.clear();
+        CHECK_FALSE(renderer->renderPresentationPost(invalid, &error));
+        CHECK(error == "Metal world presentation scene is invalid");
+        invalid = flat_scene;
+        invalid.reference_mode = 1;
+        error.clear();
+        CHECK_FALSE(renderer->renderPresentationPost(invalid, &error));
+        CHECK(error == "Metal world presentation reference is missing");
+        invalid.reference_texture = hdr_source->colorTexture(0);
+        error.clear();
+        CHECK_FALSE(renderer->renderPresentationPost(invalid, &error));
+        CHECK(error ==
+              "Metal world presentation reference is incompatible");
+        invalid = flat_scene;
+        invalid.cvd_mode = 4;
+        error.clear();
+        CHECK_FALSE(renderer->renderPresentationPost(invalid, &error));
+        CHECK(error == "Metal world presentation scene is invalid");
+        invalid = flat_scene;
+        invalid.lens_distortion_k[0] = 0.51f;
+        error.clear();
+        CHECK_FALSE(renderer->renderPresentationPost(invalid, &error));
+        CHECK(error == "Metal world presentation scene is invalid");
+        invalid = flat_scene;
+        invalid.grain_tint[1] = 1.01f;
+        error.clear();
+        CHECK_FALSE(renderer->renderPresentationPost(invalid, &error));
+        CHECK(error == "Metal world presentation scene is invalid");
+
+        std::array<std::uint16_t, width * height * 4> half_pixels{};
+        auto half_source = make_source(
+            ALMetalPixelFormat::rgba16_float, half_pixels.data(),
+            width * 4 * sizeof(std::uint16_t),
+            "Alchemy incompatible final-presentation source");
+        invalid = flat_scene;
+        invalid.source = half_source.get();
+        error.clear();
+        CHECK_FALSE(renderer->renderPresentationPost(invalid, &error));
+        CHECK(error == "Metal world presentation source is incompatible");
     }
 }
 

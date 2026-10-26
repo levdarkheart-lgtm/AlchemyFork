@@ -13132,6 +13132,331 @@ fragment float4 almetal_world_display_post_bloom_exposure_fragment(
         constants, exposure.read(uint2(0)).r);
 }
 
+struct ALMetalWorldPresentationConstants
+{
+    float4 lens_primary;
+    float4 lens_squeeze_center;
+    float4 lens_tangent_reference;
+    float4 vignette_primary;
+    float4 vignette_outer_middle;
+    float4 vignette_middle_feather;
+    float4 vignette_center_aspect;
+    float4 effects;
+    float4 grain_tint_dither;
+    uint4 config;
+    uint4 noise;
+};
+
+static float2 almetal_world_presentation_lens_uv(
+    float2 uv, float2 dimensions,
+    constant ALMetalWorldPresentationConstants& constants)
+{
+    if (constants.lens_primary.x <= 0.0)
+    {
+        return uv;
+    }
+    const float2 center = constants.lens_squeeze_center.zw;
+    const float2 offset = uv - 0.5 - center;
+    const float aspect = dimensions.x / max(dimensions.y, 1.0);
+    const float2 axis = max(
+        float2(aspect, 1.0 / max(aspect, 1.0e-4)), 1.0);
+    const float2 q = offset * axis;
+    const float radius_squared = dot(q, q);
+    const float radial = 1.0 + radius_squared *
+        (constants.lens_primary.y +
+         radius_squared * constants.lens_primary.z);
+    const float p1 = constants.lens_tangent_reference.x;
+    const float p2 = constants.lens_tangent_reference.y;
+    const float2 tangential = float2(
+        2.0 * p1 * q.x * q.y + p2 *
+            (radius_squared + 2.0 * q.x * q.x),
+        p1 * (radius_squared + 2.0 * q.y * q.y) +
+            2.0 * p2 * q.x * q.y);
+    float2 warped = (q * radial + tangential) *
+        constants.lens_primary.w;
+    warped /= axis;
+    warped *= constants.lens_squeeze_center.xy;
+    return warped + 0.5 + center;
+}
+
+static float almetal_world_presentation_lens_mask(
+    float2 uv, float amount)
+{
+    if (amount <= 0.0)
+    {
+        return 1.0;
+    }
+    const float2 inside = step(float2(0.0), uv) *
+        step(uv, float2(1.0));
+    return inside.x * inside.y;
+}
+
+static float3 almetal_world_presentation_vignette(
+    float3 color, float2 uv,
+    constant ALMetalWorldPresentationConstants& constants)
+{
+    const float amount = constants.vignette_primary.x;
+    if (amount <= 0.0)
+    {
+        return color;
+    }
+    float2 delta = uv - 0.5 - constants.vignette_center_aspect.xy;
+    const float aspect = max(constants.vignette_center_aspect.z, 1.0e-4) /
+        max(constants.vignette_center_aspect.w, 1.0e-4);
+    delta *= max(float2(aspect, 1.0 / aspect), 1.0);
+    const float circular = length(delta) * 2.0;
+    const float square_base = max(abs(delta.x), abs(delta.y)) * 2.0;
+    const float square = square_base * sqrt(square_base);
+    const float distance = mix(
+        circular, square, constants.vignette_primary.w);
+    const float start = constants.vignette_primary.y -
+        constants.vignette_primary.z;
+    const float end = constants.vignette_primary.y;
+    const float midpoint = constants.vignette_outer_middle.w;
+    const float feather = constants.vignette_middle_feather.w;
+    if (midpoint > 1.0e-4 && midpoint < 0.9999)
+    {
+        const float middle = mix(start, end, midpoint);
+        const float middle_amount = pow(
+            smoothstep(start, middle, distance), feather) * amount;
+        const float edge_amount = pow(
+            smoothstep(middle, end, distance), feather) * amount;
+        color = mix(
+            color, constants.vignette_middle_feather.rgb,
+            middle_amount);
+        color = mix(
+            color, constants.vignette_outer_middle.rgb,
+            edge_amount);
+        return color;
+    }
+    const float edge_amount = pow(
+        smoothstep(start, end, distance), feather) * amount;
+    return mix(color, constants.vignette_outer_middle.rgb, edge_amount);
+}
+
+static float3 almetal_world_presentation_simulate_cvd(
+    float3 color, uint mode)
+{
+    constexpr float3 luma = float3(0.2126, 0.7152, 0.0722);
+    if (mode == 4u)
+    {
+        return float3(dot(color, luma));
+    }
+    if (mode == 5u)
+    {
+        const float luminance = dot(color, luma);
+        const float blue_yellow = color.b - 0.5 * (color.r + color.g);
+        return float3(
+            luminance - blue_yellow * 0.15,
+            luminance - blue_yellow * 0.05,
+            luminance + blue_yellow * 0.25);
+    }
+    if (mode == 6u)
+    {
+        return mix(color, float3(dot(color, luma)), 0.8);
+    }
+    if (mode == 1u)
+    {
+        return float3(
+            dot(color, float3(0.152286, 1.052583, -0.204868)),
+            dot(color, float3(0.114503, 0.786281, 0.099216)),
+            dot(color, float3(-0.003882, -0.048116, 1.051998)));
+    }
+    if (mode == 2u)
+    {
+        return float3(
+            dot(color, float3(0.367322, 0.860646, -0.227968)),
+            dot(color, float3(0.280085, 0.672501, 0.047413)),
+            dot(color, float3(-0.011820, 0.042940, 0.968881)));
+    }
+    return float3(
+        dot(color, float3(1.255528, -0.076749, -0.178779)),
+        dot(color, float3(-0.078411, 0.930809, 0.147602)),
+        dot(color, float3(0.004733, 0.691367, 0.303900)));
+}
+
+static float3 almetal_world_presentation_cvd(
+    float3 color, uint mode, float amount)
+{
+    if (mode == 0u || amount <= 0.0)
+    {
+        return color;
+    }
+    const float3 linear = almetal_srgb_to_linear(
+        clamp(color, float3(0.0), float3(1.0)));
+    const float3 simulated =
+        almetal_world_presentation_simulate_cvd(linear, mode);
+    const float3 error = linear - simulated;
+    float3 shift;
+    if (mode == 3u)
+    {
+        const float blue_error = error.b;
+        shift = float3(
+            blue_error * 0.7 + error.g * 0.3,
+            -blue_error * 0.7 - error.g * 0.3, 0.0);
+    }
+    else
+    {
+        shift = float3(0.0, error.r * 0.7 + error.g, error.r * 0.7);
+    }
+    return almetal_linear_to_srgb(clamp(
+        linear + shift * amount, float3(0.0), float3(1.0)));
+}
+
+static float3 almetal_world_presentation_grain(
+    float3 color, float2 position,
+    constant ALMetalWorldPresentationConstants& constants,
+    float height)
+{
+    const float amount = constants.effects.y;
+    if (amount <= 0.0)
+    {
+        return color;
+    }
+    const uint style = constants.config.z;
+    float cell = constants.effects.z * height / 1080.0;
+    if (style == 2u)
+    {
+        cell *= 2.5;
+    }
+    cell = max(floor(cell + 0.5), 1.0);
+    const float2 grain_position = floor(
+        (position + almetal_world_display_noise_offset(
+            constants.noise.x, constants.noise.y != 0u)) / cell) * cell;
+    float3 sample;
+    if (style == 1u)
+    {
+        sample = float3(
+            almetal_world_display_hash12(grain_position),
+            almetal_world_display_hash12(grain_position + 17.0),
+            almetal_world_display_hash12(grain_position + 31.0)) - 0.5;
+    }
+    else
+    {
+        sample = float3(
+            almetal_world_display_hash12(grain_position) - 0.5);
+    }
+    constexpr float3 luma = float3(0.2126, 0.7152, 0.0722);
+    const float luminance = dot(color, luma);
+    const float amplitude = amount * amount * 0.1;
+    if (style == 3u)
+    {
+        return color + sample * constants.grain_tint_dither.rgb *
+            sqrt(max(luminance, 0.0)) * amplitude;
+    }
+    const float delta = luminance - constants.effects.w;
+    const float weight = max(1.0 - delta * delta * 4.0, 0.0);
+    return color + sample * constants.grain_tint_dither.rgb *
+        weight * amplitude;
+}
+
+static float3 almetal_world_presentation_dither(
+    float3 color, float2 position,
+    constant ALMetalWorldPresentationConstants& constants)
+{
+    const float amount = constants.grain_tint_dither.w;
+    if (amount <= 0.0)
+    {
+        return color;
+    }
+    const float2 p = position + almetal_world_display_noise_offset(
+        constants.noise.x, constants.noise.w != 0u);
+    const float noise = fract(
+        52.9829189 * fract(dot(p, float2(0.06711056, 0.00583715)))) *
+        2.0 - 1.0;
+    const float triangular = sign(noise) *
+        (1.0 - sqrt(1.0 - abs(noise)));
+    const float levels = constants.noise.z >= 10u ? 1023.0 : 255.0;
+    const float3 room = clamp(
+        min(color, 1.0 - color) * levels,
+        float3(0.0), float3(1.0));
+    return color + triangular * (amount / levels) * room;
+}
+
+static float3 almetal_world_presentation_preview(float3 color, uint mode)
+{
+    if (mode == 0u)
+    {
+        return color;
+    }
+    if (mode == 7u)
+    {
+        const float luminance = dot(
+            color, float3(0.2126, 0.7152, 0.0722));
+        if (luminance < 0.02) return float3(0.0, 0.0, 0.4);
+        if (luminance < 0.10) return float3(0.0, 0.3, 0.8);
+        if (luminance < 0.30) return float3(0.0, 0.7, 0.5);
+        if (luminance < 0.50) return float3(0.3, 0.7, 0.0);
+        if (luminance < 0.70) return float3(0.8, 0.8, 0.0);
+        if (luminance < 0.90) return float3(1.0, 0.5, 0.0);
+        if (luminance < 0.98) return float3(1.0, 0.1, 0.0);
+        return float3(1.0);
+    }
+    const float3 linear = almetal_world_presentation_simulate_cvd(
+        almetal_srgb_to_linear(clamp(
+            color, float3(0.0), float3(1.0))), mode);
+    return almetal_linear_to_srgb(clamp(
+        linear, float3(0.0), float3(1.0)));
+}
+
+fragment float4 almetal_world_presentation_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    texture2d<float> reference [[texture(1)]],
+    sampler mirror_sampler [[sampler(0)]],
+    constant ALMetalWorldPresentationConstants& constants [[buffer(0)]])
+{
+    const float2 dimensions = float2(
+        source.get_width(), source.get_height());
+    float2 pane_uv = input.texcoord;
+    bool from_reference = false;
+    if (constants.config.x == 1u)
+    {
+        from_reference = input.texcoord.x <
+            constants.lens_tangent_reference.z;
+    }
+    else if (constants.config.x == 2u)
+    {
+        from_reference = input.texcoord.x < 0.5;
+        pane_uv.x = from_reference
+            ? input.texcoord.x * 2.0
+            : (input.texcoord.x - 0.5) * 2.0;
+    }
+    const float2 distorted = almetal_world_presentation_lens_uv(
+        pane_uv, dimensions, constants);
+    float4 color = from_reference
+        ? reference.sample(mirror_sampler, distorted, level(0.0))
+        : source.sample(mirror_sampler, distorted, level(0.0));
+    color.rgb *= almetal_world_presentation_lens_mask(
+        distorted, constants.lens_primary.x);
+    color.rgb = almetal_world_presentation_vignette(
+        color.rgb, input.texcoord, constants);
+    color.rgb = almetal_world_presentation_cvd(
+        color.rgb, constants.config.y, constants.effects.x);
+
+    // GL's gl_FragCoord counts from the lower-left; Metal positions count
+    // from the top. Preserve the authored screen-space noise location.
+    const float2 gl_position = float2(
+        input.position.x, dimensions.y - input.position.y);
+    color.rgb = almetal_world_presentation_grain(
+        color.rgb, gl_position, constants, dimensions.y);
+    color.rgb = almetal_world_presentation_dither(
+        color.rgb, gl_position, constants);
+    color.rgb = almetal_world_presentation_preview(
+        color.rgb, constants.config.w);
+
+    if (constants.config.x != 0u)
+    {
+        const float seam = constants.config.x == 1u
+            ? constants.lens_tangent_reference.z : 0.5;
+        const float width = fwidth(input.texcoord.x);
+        const float line = 1.0 - smoothstep(
+            0.0, width, abs(input.texcoord.x - seam));
+        color.rgb = mix(color.rgb, float3(1.0), line * 0.75);
+    }
+    return float4(clamp(color.rgb, float3(0.0), float3(1.0)), color.a);
+}
+
 static float4 almetal_world_fxaa_sample(
     texture2d<float> source, sampler source_sampler, float2 position)
 {
