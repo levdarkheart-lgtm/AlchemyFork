@@ -1045,6 +1045,15 @@ public:
         const ALMetalWorldDisplayPostScene& scene,
         std::string* error = nullptr);
 
+    // Point-decimate a completed display-post target into the exact RGBA8
+    // CPU scope format. RGB10_A2 therefore takes its real 10-to-8-bit
+    // quantization on the GPU before the nonblocking readback ring sees it.
+    std::unique_ptr<ALMetalRenderTarget> renderDisplaySample(
+        const ALMetalRenderTarget& source,
+        std::uint32_t width,
+        std::uint32_t height,
+        std::string* error = nullptr);
+
     // Read one raw-storage row/column from a completed linear final-color
     // target as float RGBA. This is intentionally synchronous for sparse CPU
     // tools such as the click-driven scene probe, never a frame path.

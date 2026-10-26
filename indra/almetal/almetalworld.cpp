@@ -794,6 +794,7 @@ struct ALMetalWorldGBufferRenderer::Impl
         lighting_composition_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         display_post_pipelines;
+    std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         ssr_history_pipelines;
     std::array<OpaqueForwardMaskPipelines, 2>
@@ -1013,6 +1014,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->library ||
         !impl->library->hasFunction("almetal_resample_vertex") ||
+        !impl->library->hasFunction("almetal_resample_fragment") ||
         !impl->library->hasFunction("almetal_world_spot_shadow_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_spot_shadow_skinned_vertex") ||
@@ -1298,6 +1300,21 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->light_map_blur_pipeline = ALMetalRenderPipeline::create(
         device, light_map_descriptor, error);
     if (!impl->light_map_blur_pipeline)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderPipelineDescriptor display_sample_descriptor;
+    display_sample_descriptor.library = impl->library.get();
+    display_sample_descriptor.vertex_function = "almetal_resample_vertex";
+    display_sample_descriptor.fragment_function = "almetal_resample_fragment";
+    display_sample_descriptor.colors[0].format =
+        ALMetalPixelFormat::rgba8_unorm;
+    display_sample_descriptor.label =
+        "Alchemy world display-post point-sample pipeline";
+    impl->display_sample_pipeline = ALMetalRenderPipeline::create(
+        device, display_sample_descriptor, error);
+    if (!impl->display_sample_pipeline)
     {
         return nullptr;
     }
@@ -5308,6 +5325,86 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
             0, mImpl->point_clamp_sampler.get(), error) &&
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
+        encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderDisplaySample(
+    const ALMetalRenderTarget& source,
+    std::uint32_t width,
+    std::uint32_t height,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || width == 0 || height == 0)
+    {
+        setError(error, "Metal world display sample is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& input = source.descriptor();
+    const ALMetalPixelFormat format = input.colors[0].format;
+    if (input.width == 0 || input.height == 0 ||
+        input.sample_count != 1 || input.color_attachment_count != 1 ||
+        (format != ALMetalPixelFormat::rgb10a2_unorm &&
+         format != ALMetalPixelFormat::rgba8_unorm) ||
+        !sampleableTexture(source.colorTexture(0)))
+    {
+        setError(error, "Metal world display sample source is incompatible");
+        return nullptr;
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = width;
+    output_descriptor.height = height;
+    output_descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+    output_descriptor.colors[0].label =
+        "Alchemy world RGBA8 display sample";
+    output_descriptor.label =
+        "Alchemy native world display-sample target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world display sample", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::dont_care;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world display-sample encoder", error)
+        : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(width),
+        static_cast<double>(height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{0, 0, width, height};
+    const bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(*mImpl->display_sample_pipeline, error) &&
+        encoder->setFragmentTexture(0, source.colorTexture(0), error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->point_clamp_sampler.get(), error) &&
         encoder->draw(
             ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     if (!encoded || !encoder->end(error) || !command->commit(error))

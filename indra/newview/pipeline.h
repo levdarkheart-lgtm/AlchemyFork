@@ -78,6 +78,11 @@ class LLViewerJointMesh;
 class LLGLTexture;
 class LLImageGL;
 class LLVertexBuffer;
+#if LL_DARWIN
+class ALMetalDevice;
+class ALMetalRenderTarget;
+class ALMetalTextureReadbackRing;
+#endif
 struct ALMetalWorldAlphaEnvironment;
 struct ALMetalWorldLegacyAlphaLighting;
 struct ALMetalWorldWaterSurface;
@@ -1033,6 +1038,7 @@ private:
     void skipRenderingShadows();
 #if LL_DARWIN
     bool isMetalWorldCapturePass() const;
+    bool canCaptureMetalScopeSample(bool require_due = true) const;
 #endif
 public:
     enum {GPU_CLASS_MAX = 3 };
@@ -1379,6 +1385,15 @@ public:
     // thread.
     LLRenderTarget          mScopeSample;
     ALGPUReadback           mScopeCaptures;
+#if LL_DARWIN
+    // Native equivalent of mScopeSample/mScopeCaptures. The target is point
+    // decimated on the GPU from RGB10_A2/RGBA8; the bounded ring copies it
+    // without waiting and is used only when every intervening post owner has
+    // an exact native result. GL remains the fail-closed authority otherwise.
+    std::unique_ptr<ALMetalRenderTarget> mMetalScopeSample;
+    std::unique_ptr<ALMetalTextureReadbackRing> mMetalScopeCaptures;
+    const ALMetalDevice* mMetalScopeDevice = nullptr;
+#endif
     LLFrameTimer            mScopeSampleTimer;
     ALScopeData             mScopeData;
     std::vector<U8>         mScopeReadback;

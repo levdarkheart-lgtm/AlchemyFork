@@ -361,6 +361,52 @@ bool LLPipeline::isMetalWorldCapturePass() const
         (mMetalReflectionWorldCaptureActive && gCubeSnapshot &&
          mRT == &mAuxillaryRT);
 }
+
+bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
+{
+    static LLCachedControl<bool> dynamic_exposure(
+        gSavedSettings, "RenderDynamicExposureEnabled", true);
+    static LLCachedControl<bool> color_grade(
+        gSavedSettings, "RenderColorGrade", false);
+    static LLCachedControl<bool> build_no_post(
+        gSavedSettings, "RenderDisablePostProcessing", false);
+    static LLCachedControl<bool> auto_adjust(
+        gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
+    static LLCachedControl<F32> bloom_strength(
+        gSavedSettings, "RenderBloomStrength", 0.325f);
+    static LLCachedControl<F32> halation_strength(
+        gSavedSettings, "RenderBloomHalationStrength", 0.f);
+    static LLCachedControl<F32> cross_strength(
+        gSavedSettings, "RenderCrossFilterStrength", 0.f);
+    static LLCachedControl<F32> chromatic_strength(
+        gSavedSettings, "RenderChromaticAberrationStrength", 0.f);
+    static LLCachedControl<F32> flare_strength(
+        gSavedSettings, "RenderLensFlareStrength", 0.f);
+    static LLCachedControl<F32> dirt_strength(
+        gSavedSettings, "RenderLensDirtStrength", 0.f);
+    static LLCachedControl<F32> cas_sharpness(
+        gSavedSettings, "RenderCASSharpness", 0.4f);
+    static LLCachedControl<F32> interval(
+        gSavedSettings, "AlchemyScopeSampleInterval", 0.1f);
+
+    LLSettingsSky::ptr_t sky =
+        LLEnvironment::instance().getCurrentSky();
+    const bool due = !require_due || !mScopeSampleTimer.getStarted() ||
+        mScopeSampleTimer.getElapsedTimeF32() >= llmax(interval(), 0.f);
+    return due && sScopeCapture && hdrEnabled() && isMainWorldPass() &&
+        mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
+        !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
+        !RenderDepthOfField && !dynamic_exposure &&
+        !LLRender::sClassicMode && !color_grade && !build_no_post &&
+        !gSnapshotNoPost && sky &&
+        sky->getReflectionProbeAmbiance(auto_adjust) != 0.f &&
+        bloom_strength <= 0.f && halation_strength <= 0.f &&
+        cross_strength <= 0.f && chromatic_strength <= 0.f &&
+        flare_strength <= 0.f && dirt_strength <= 0.f &&
+        mResourceInputs.mFSAAType == 0 && cas_sharpness <= 0.f &&
+        !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) &&
+        RenderBufferVisualization < 0;
+}
 #endif
 
 // static
@@ -470,6 +516,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> projector_light_target;
     std::unique_ptr<ALMetalRenderTarget> composed_light_target;
     std::unique_ptr<ALMetalRenderTarget> opaque_post_deferred_target;
+    std::unique_ptr<ALMetalRenderTarget> display_post_target;
+    U32 display_post_frame = std::numeric_limits<U32>::max();
     std::unique_ptr<ALMetalRenderTarget> sky_behind_target;
     std::unique_ptr<ALMetalTexture> projector_shadow_texture;
     std::unique_ptr<ALMetalTexture> direct_projector_shadow_texture;
@@ -1111,6 +1159,8 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     capture.projector_light_target.reset();
     capture.composed_light_target.reset();
     capture.opaque_post_deferred_target.reset();
+    capture.display_post_target.reset();
+    capture.display_post_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
     capture.base_light_target.reset();
     capture.sky_behind_target.reset();
@@ -1162,6 +1212,8 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
     }
     capture.hero_probe_face_capture = false;
     capture.opaque_post_deferred_target.reset();
+    capture.display_post_target.reset();
+    capture.display_post_frame = std::numeric_limits<U32>::max();
     capture.target.reset();
     capture.local_light_target.reset();
     capture.projector_light_target.reset();
@@ -1233,6 +1285,8 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     capture.projector_light_target.reset();
     capture.composed_light_target.reset();
     capture.opaque_post_deferred_target.reset();
+    capture.display_post_target.reset();
+    capture.display_post_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
     capture.base_light_target.reset();
     capture.sky_behind_target.reset();
@@ -1288,6 +1342,8 @@ bool LLPipeline::endMetalReflectionProbeFaceCapture()
     capture.reflection_probe_face_capture = false;
     capture.reflection_probe_owner = nullptr;
     capture.opaque_post_deferred_target.reset();
+    capture.display_post_target.reset();
+    capture.display_post_frame = std::numeric_limits<U32>::max();
     capture.target.reset();
     capture.local_light_target.reset();
     capture.projector_light_target.reset();
@@ -1342,6 +1398,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.projector_light_target.reset();
         capture.composed_light_target.reset();
         capture.opaque_post_deferred_target.reset();
+        capture.display_post_target.reset();
+        capture.display_post_frame = std::numeric_limits<U32>::max();
         capture.projector_shadow_texture.reset();
         capture.direct_projector_shadow_texture.reset();
         capture.direct_directional_shadow_texture.reset();
@@ -1570,12 +1628,14 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
 
     if (!capture.frame_active && capture.attempted &&
-        (capture.continuous_world_capture || mScenePixelPending) &&
+        (capture.continuous_world_capture || mScenePixelPending ||
+         canCaptureMetalScopeSample()) &&
         capture.continuous_world_frame != gFrameCount)
     {
         // Continuous SSR history makes every main-world frame a fresh
-        // transaction; a pending one-shot CPU probe requests the same refresh
-        // without making the chain permanently continuous. Retire only
+        // transaction; a pending one-shot CPU probe or an exactly supported
+        // native scope sample requests the same refresh without making the
+        // chain permanently continuous. Retire only
         // per-frame products and attempt gates; persistent probe, shadow and
         // history resources stay live. A failed stage therefore falls back
         // to GL for that frame and retries later instead of wedging a gate.
@@ -1584,6 +1644,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.projector_light_target.reset();
         capture.composed_light_target.reset();
         capture.opaque_post_deferred_target.reset();
+        capture.display_post_target.reset();
+        capture.display_post_frame = std::numeric_limits<U32>::max();
         capture.base_light_map_target.reset();
         capture.base_light_target.reset();
         capture.attempted = false;
@@ -2951,6 +3013,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.projector_light_target.reset();
         capture.composed_light_target.reset();
         capture.opaque_post_deferred_target.reset();
+        capture.display_post_target.reset();
+        capture.display_post_frame = std::numeric_limits<U32>::max();
         capture.projector_shadow_texture.reset();
         capture.direct_projector_shadow_texture.reset();
         capture.direct_directional_shadow_texture.reset();
@@ -3832,6 +3896,139 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         }
         else
         {
+            capture.display_post_target.reset();
+            capture.display_post_frame =
+                std::numeric_limits<U32>::max();
+
+            // Build the real display-space source only when this retained
+            // linear target is already the exact input to colorCorrect's
+            // modern-gamma base permutation. This is intentionally stricter
+            // than the GL renderer: every omitted upstream owner must be
+            // inactive, or scopes keep their established GL/PBO source.
+            static LLCachedControl<bool> auto_adjust(
+                gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
+
+            LLSettingsSky::ptr_t sky =
+                LLEnvironment::instance().getCurrentSky();
+            const bool exact_base =
+                capture.hdr && canCaptureMetalScopeSample() && sky;
+            if (exact_base)
+            {
+                ALMetalWorldDisplayPostScene display;
+                display.source = target.get();
+                display.hdr = true;
+                static LLCachedControl<F32> exposure(
+                    gSavedSettings, "RenderExposure", 1.f);
+                static LLCachedControl<S32> tonemap_type(
+                    gSavedSettings, "AlchemyRenderTonemapType", 0);
+                display.static_exposure =
+                    llclamp(exposure(), 0.5f, 4.f);
+                display.adapted_exposure = 1.f;
+                display.tonemap_mix = sky->getTonemapMix(auto_adjust());
+                display.tonemap_type = tonemap_type() >= 0
+                    ? static_cast<U32>(tonemap_type())
+                    : std::numeric_limits<U32>::max();
+
+                constexpr F32 max_screen_brightness = 1.f;
+                switch (tonemap_type())
+                {
+                    case 2:
+                    {
+                        static LLCachedControl<F32> white_setting(
+                            gSavedSettings, "RenderTonemapACESWhite", 6.f);
+                        F32 white = llmax(1.f, white_setting()) * 1.2f;
+                        constexpr F32 a = 0.0245786f;
+                        constexpr F32 b = 0.000090537f;
+                        constexpr F32 c = 0.983729f;
+                        constexpr F32 d = 0.432951f;
+                        constexpr F32 e = 0.238081f;
+                        display.tonemap_params[0] =
+                            (white * (white + a) - b) /
+                            (white * (c * white + d) + e);
+                        break;
+                    }
+                    case 3:
+                    {
+                        static LLCachedControl<F32> white_setting(
+                            gSavedSettings, "RenderTonemapReinhardWhite", 6.f);
+                        const F32 white = llmax(
+                            max_screen_brightness, white_setting());
+                        display.tonemap_params[0] =
+                            white * white / max_screen_brightness;
+                        break;
+                    }
+                    case 4:
+                    {
+                        static LLCachedControl<F32> white_setting(
+                            gSavedSettings, "RenderTonemapFilmicWhite", 6.f);
+                        const F32 white = llmax(1.f, white_setting());
+                        constexpr F32 exposure_bias = 2.f;
+                        constexpr F32 a =
+                            0.22f * exposure_bias * exposure_bias;
+                        constexpr F32 b = 0.30f * exposure_bias;
+                        constexpr F32 c = 0.10f;
+                        constexpr F32 d = 0.20f;
+                        constexpr F32 e = 0.01f;
+                        constexpr F32 f = 0.30f;
+                        display.tonemap_params[0] =
+                            ((white * (a * white + c * b) + d * e) /
+                             (white * (a * white + b) + d * f)) - e / f;
+                        break;
+                    }
+                    case 6:
+                    {
+                        static LLCachedControl<F32> contrast_setting(
+                            gSavedSettings, "RenderTonemapAgxContrast", 1.25f);
+                        static LLCachedControl<F32> white_setting(
+                            gSavedSettings, "RenderTonemapAgxWhite", 16.29f);
+                        constexpr F32 crossover = 0.18f;
+                        constexpr F32 shoulder =
+                            max_screen_brightness - crossover;
+                        const F32 contrast = contrast_setting();
+                        const F32 toe =
+                            (1.f / crossover - 1.f) *
+                            std::pow(crossover, contrast);
+                        const F32 slope_denominator =
+                            std::pow(crossover, contrast) + toe;
+                        const F32 slope =
+                            contrast * std::pow(crossover, contrast - 1.f) *
+                            toe / (slope_denominator * slope_denominator);
+                        const F32 white = llmax(2.f, white_setting());
+                        F32 range = white - crossover;
+                        const F32 width =
+                            range * range / shoulder * slope;
+                        display.tonemap_params[0] = contrast;
+                        display.tonemap_params[1] = toe;
+                        display.tonemap_params[2] = slope;
+                        display.tonemap_params[3] = width;
+                        break;
+                    }
+                    default:
+                        break;
+                }
+
+                std::string display_error;
+                auto display_target =
+                    capture.renderer->renderDisplayPost(
+                        display, &display_error);
+                if (display_target)
+                {
+                    capture.display_post_target =
+                        std::move(display_target);
+                    capture.display_post_frame = gFrameCount;
+                    LL_INFOS_ONCE("Metal")
+                        << "Native world display-post source is available; "
+                           "visible GL and scope fallback remain authoritative"
+                        << LL_ENDL;
+                }
+                else
+                {
+                    LL_WARNS("Metal")
+                        << "Native world display-post source retained GL: "
+                        << display_error << LL_ENDL;
+                }
+            }
+
             const bool first_continuous_frame =
                 !capture.continuous_world_capture;
             if (ssr_active)
@@ -3914,6 +4111,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     if (!capture.complete)
     {
         capture.opaque_post_deferred_target.reset();
+        capture.display_post_target.reset();
+        capture.display_post_frame = std::numeric_limits<U32>::max();
     }
     capture.batches.clear();
     capture.avatar_palettes.clear();
@@ -17509,6 +17708,15 @@ void LLPipeline::serviceScenePixelProbe(LLRenderTarget* src)
 void LLPipeline::releaseScopeBuffers()
 {
     mScopeCaptures.release();
+#if LL_DARWIN
+    if (mMetalScopeCaptures)
+    {
+        mMetalScopeCaptures->release();
+    }
+    mMetalScopeCaptures.reset();
+    mMetalScopeSample.reset();
+    mMetalScopeDevice = nullptr;
+#endif
     mScopeSample.release();
     mScopeData.clear();
 }
@@ -17656,6 +17864,15 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
         // built them the first time.
         mScopeSample.release();
         mScopeCaptures.release();
+#if LL_DARWIN
+        if (mMetalScopeCaptures)
+        {
+            mMetalScopeCaptures->release();
+        }
+        mMetalScopeCaptures.reset();
+        mMetalScopeSample.reset();
+        mMetalScopeDevice = nullptr;
+#endif
         // The last readback was laid out at the old stride. getScopePixel
         // indexes it against the target's dimensions, which are about to be
         // the new ones, so a shrink would read the wrong pixel until the next
@@ -17670,18 +17887,36 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
         }
     }
 
-    if (!mScopeCaptures.isAllocated() && !mScopeCaptures.allocate(bytes, 2, "Scope readback"))
-    {
-        sScopeCapture = false;
-        LL_WARNS("Pipeline") << "Could not allocate the scope readback; scopes disabled." << LL_ENDL;
-        return;
-    }
-
     // Collect the previous capture first. It was issued a whole sample
     // interval ago -- many frames -- so it has all but always landed, and
     // collecting it waits on nothing. One that has not is left for the next
     // sample, and nothing is captured meanwhile: the plot can wait.
-    if (mScopeCaptures.getPending() > 0)
+    bool collected = false;
+#if LL_DARWIN
+    if (mMetalScopeCaptures && mMetalScopeCaptures->pending() > 0)
+    {
+        const bool new_size = mScopeReadback.size() != bytes;
+        mScopeReadback.resize(bytes);
+        std::string error;
+        if (!mMetalScopeCaptures->collect(
+                mScopeReadback.data(), width * 4, false, &error))
+        {
+            if (!error.empty())
+            {
+                LL_WARNS("Metal")
+                    << "Could not collect the native scope sample: "
+                    << error << LL_ENDL;
+            }
+            if (new_size)
+            {
+                mScopeReadback.clear();
+            }
+            return;
+        }
+        collected = true;
+    }
+#endif
+    if (!collected && mScopeCaptures.getPending() > 0)
     {
         const bool new_size = mScopeReadback.size() != bytes;
         mScopeReadback.resize(bytes);
@@ -17695,7 +17930,10 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
             }
             return;
         }
-
+        collected = true;
+    }
+    if (collected)
+    {
         ALScopeData fresh;
         fresh.accumulate(mScopeReadback.data(), width, height);
 
@@ -17704,6 +17942,85 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
         // the plot shimmers even on a still frame.
         static LLCachedControl<F32> smoothing(gSavedSettings, "AlchemyScopeSmoothing", 0.5f);
         mScopeData.blendToward(fresh, llclamp(smoothing(), 0.f, 1.f));
+    }
+
+#if LL_DARWIN
+    // The native display target is the scope source only when no later GL
+    // owner would have changed it. The upstream color-correct census was
+    // already applied when display_post_target was produced; this second
+    // census covers the passes between colorCorrect and captureScopeSample.
+    MetalWorldSimpleCapture* metal_capture =
+        mMetalWorldSimpleCapture.get();
+    const bool native_exact = metal_capture && metal_capture->renderer &&
+        metal_capture->device && metal_capture->display_post_target &&
+        metal_capture->display_post_frame == gFrameCount &&
+        metal_capture->hdr && canCaptureMetalScopeSample(false) &&
+        metal_capture->display_post_target->descriptor().width ==
+            src->getWidth() &&
+        metal_capture->display_post_target->descriptor().height ==
+            src->getHeight();
+    if (native_exact)
+    {
+        if (!mMetalScopeCaptures ||
+            mMetalScopeDevice != metal_capture->device)
+        {
+            if (mMetalScopeCaptures)
+            {
+                mMetalScopeCaptures->release();
+            }
+            mMetalScopeCaptures =
+                std::make_unique<ALMetalTextureReadbackRing>();
+            std::string error;
+            if (!mMetalScopeCaptures->allocate(
+                    *metal_capture->device, 2,
+                    "Alchemy native scope readback", &error))
+            {
+                LL_WARNS("Metal")
+                    << "Could not allocate the native scope readback; "
+                       "retaining GL/PBO: " << error << LL_ENDL;
+                mMetalScopeCaptures.reset();
+                mMetalScopeDevice = nullptr;
+            }
+            else
+            {
+                mMetalScopeDevice = metal_capture->device;
+            }
+        }
+
+        if (mMetalScopeCaptures)
+        {
+            std::string error;
+            auto sample = metal_capture->renderer->renderDisplaySample(
+                *metal_capture->display_post_target,
+                static_cast<U32>(width), static_cast<U32>(height), &error);
+            if (sample && mMetalScopeCaptures->request(
+                    *sample->colorTexture(0), 0, 0, {}, &error))
+            {
+                mMetalScopeSample = std::move(sample);
+                LL_INFOS_ONCE("Metal")
+                    << "Scopes are consuming the native display-post sample "
+                       "without a CPU wait; GL remains the fail-closed fallback"
+                    << LL_ENDL;
+                return;
+            }
+            if (!error.empty())
+            {
+                LL_WARNS("Metal")
+                    << "Native scope sampling retained GL/PBO: "
+                    << error << LL_ENDL;
+            }
+        }
+    }
+#endif
+
+    if (!mScopeCaptures.isAllocated() &&
+        !mScopeCaptures.allocate(bytes, 2, "Scope readback"))
+    {
+        sScopeCapture = false;
+        LL_WARNS("Pipeline")
+            << "Could not allocate the scope readback; scopes disabled."
+            << LL_ENDL;
+        return;
     }
 
     // GL_NEAREST on a downscaling blit picks one source texel per destination

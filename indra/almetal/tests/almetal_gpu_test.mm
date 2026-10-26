@@ -10276,6 +10276,49 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
                        static_cast<int>(unorm10(srgb(0.125f)))) <= 1);
         CHECK((packed[0] >> 30u) == 2u);
 
+        auto hdr_sample = renderer->renderDisplaySample(
+            *hdr_output, 2, 1, &error);
+        INFO(error);
+        REQUIRE(hdr_sample);
+        CHECK(hdr_sample->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba8_unorm);
+        std::array<std::uint8_t, 8> hdr_sample_pixels{};
+        REQUIRE(hdr_sample->colorTexture(0)->readback(
+            *device, 0, 0, {}, hdr_sample_pixels.data(),
+            sizeof(hdr_sample_pixels), &error));
+        INFO(error);
+        for (std::size_t pixel = 0; pixel < 2; ++pixel)
+        {
+            for (std::size_t channel = 0; channel < 3; ++channel)
+            {
+                const int expected = static_cast<int>(std::lround(
+                    channel10(packed[pixel], channel) *
+                    (255.f / 1023.f)));
+                CAPTURE(pixel, channel);
+                CHECK(std::abs(
+                    static_cast<int>(hdr_sample_pixels[pixel * 4 + channel]) -
+                    expected) <= 1);
+            }
+            const int expected_alpha = static_cast<int>(std::lround(
+                (packed[pixel] >> 30u) * (255.f / 3.f)));
+            CHECK(std::abs(static_cast<int>(
+                               hdr_sample_pixels[pixel * 4 + 3]) -
+                           expected_alpha) <= 1);
+        }
+        auto decimated = renderer->renderDisplaySample(
+            *hdr_output, 1, 1, &error);
+        INFO(error);
+        REQUIRE(decimated);
+        CHECK(decimated->descriptor().width == 1);
+        CHECK(decimated->descriptor().height == 1);
+        std::array<std::uint8_t, 4> decimated_pixel{};
+        REQUIRE(decimated->colorTexture(0)->readback(
+            *device, 0, 0, {}, decimated_pixel.data(),
+            sizeof(decimated_pixel), &error));
+        CHECK(std::equal(
+            decimated_pixel.begin(), decimated_pixel.end(),
+            hdr_sample_pixels.begin() + 4));
+
         scene.cutout_premultiplied = true;
         auto cutout_output = renderer->renderDisplayPost(scene, &error);
         INFO(error);
@@ -10349,6 +10392,15 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
                            expected) <= 1);
         }
         CHECK(vintage_result[3] == 128u);
+        auto vintage_sample = renderer->renderDisplaySample(
+            *vintage_output, 1, 1, &error);
+        INFO(error);
+        REQUIRE(vintage_sample);
+        std::array<std::uint8_t, 4> vintage_sample_result{};
+        REQUIRE(vintage_sample->colorTexture(0)->readback(
+            *device, 0, 0, {}, vintage_sample_result.data(),
+            sizeof(vintage_sample_result), &error));
+        CHECK(vintage_sample_result == vintage_result);
 
         std::array<std::uint8_t, 8 * 8 * 4> dither_source_pixels{};
         for (std::size_t pixel = 0; pixel < 8 * 8; ++pixel)
@@ -10416,6 +10468,16 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
         error.clear();
         CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
         CHECK(error == "Metal world display-post state is invalid");
+
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplaySample(
+            *hdr_output, 0, 1, &error));
+        CHECK(error == "Metal world display sample is incomplete");
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplaySample(
+            *hdr_source, 1, 1, &error));
+        CHECK(error ==
+              "Metal world display sample source is incompatible");
     }
 }
 
