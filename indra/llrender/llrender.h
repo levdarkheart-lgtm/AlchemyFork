@@ -71,6 +71,7 @@ class ALMetalFrameScheduler;
 class ALMetalSurface;
 class ALMetalTexture;
 class ALMetalUIRenderer;
+struct ALMetalHUDIndexedBatch;
 enum class ALMetalPixelFormat;
 #endif
 
@@ -295,6 +296,9 @@ public:
         S32 x, S32 y, S32 width, S32 height, F32 depth);
     bool restoreMetalUITextureCaptureDepth(
         S32 x, S32 y, S32 width, S32 height);
+    // Append one indexed HUD-attachment volume draw to an active offscreen
+    // capture. GL remains authoritative regardless of the return value.
+    bool drawMetalHUDIndexedBatch(const ALMetalHUDIndexedBatch& batch);
     std::unique_ptr<ALMetalTexture> endMetalUITextureCapture(bool source_success);
 
     // A startup frame can replace the GL window presentation only when every

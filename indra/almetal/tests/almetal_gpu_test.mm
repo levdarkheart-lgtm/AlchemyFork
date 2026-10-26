@@ -833,6 +833,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_skinned_edge_u32_vertex",
             "almetal_ui_vertex",
             "almetal_ui_fragment",
+            "almetal_hud_fullbright_vertex",
+            "almetal_hud_fullbright_fragment",
             "almetal_alpha_mask_fragment",
             "almetal_alpha_mask_solid_fragment",
             "almetal_solid_vertex",
@@ -19841,6 +19843,211 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(std::abs(depth_region_values[16 * 32 + 16] - 0.25f) <
               0.0001f);
         batch.vertices = buffer.get();
+
+        // Static HUD volume geometry reaches the same retained transaction as
+        // an indexed draw rather than through the immediate UI bridge. Prove
+        // the viewer's packed position.w texture selector, display-encoded
+        // texel/tint multiply, texture-only mask and localized depth contract.
+        auto hud_bytes = bytes;
+        float indexed_hud_positions[3][4];
+        std::memcpy(
+            indexed_hud_positions, positions, sizeof(indexed_hud_positions));
+        constexpr std::int32_t hud_texture_slot = 1;
+        for (auto& position : indexed_hud_positions)
+        {
+            position[2] = -0.5f;
+            std::memcpy(&position[3], &hud_texture_slot,
+                        sizeof(hud_texture_slot));
+        }
+        const std::uint8_t hud_colors[3][4] = {
+            {128, 64, 255, 10}, {128, 64, 255, 10},
+            {128, 64, 255, 10},
+        };
+        std::memcpy(hud_bytes.data() + position_offset,
+                    indexed_hud_positions, sizeof(indexed_hud_positions));
+        std::memcpy(hud_bytes.data() + color_offset,
+                    hud_colors, sizeof(hud_colors));
+        ALMetalBufferDescriptor hud_vertex_descriptor = buffer_descriptor;
+        hud_vertex_descriptor.length = hud_bytes.size();
+        hud_vertex_descriptor.label = "Alchemy indexed HUD vertex test";
+        auto hud_vertices = ALMetalBuffer::create(
+            *device, hud_vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(hud_vertices);
+        REQUIRE(hud_vertices->write(
+            0, hud_bytes.data(), hud_bytes.size(), &error));
+
+        const std::array<std::uint16_t, 3> hud_index_values{{0, 1, 2}};
+        ALMetalBufferDescriptor hud_index_descriptor;
+        hud_index_descriptor.length = sizeof(hud_index_values);
+        hud_index_descriptor.storage = ALMetalStorageMode::shared;
+        hud_index_descriptor.label = "Alchemy indexed HUD index test";
+        auto hud_indices = ALMetalBuffer::create(
+            *device, hud_index_descriptor, &error);
+        INFO(error);
+        REQUIRE(hud_indices);
+        REQUIRE(hud_indices->write(
+            0, hud_index_values.data(), sizeof(hud_index_values), &error));
+
+        auto make_hud_texture = [&](const char* label,
+                                    std::array<std::uint8_t, 4> texel,
+                                    ALMetalPixelFormat format)
+        {
+            ALMetalTextureDescriptor descriptor = texture_descriptor;
+            descriptor.format = format;
+            descriptor.label = label;
+            auto result = ALMetalTexture::create(*device, descriptor, &error);
+            INFO(error);
+            REQUIRE(result);
+            auto command = device->makeCommandBuffer(label, &error);
+            INFO(error);
+            REQUIRE(command);
+            REQUIRE(result->upload(
+                *command, 0, 0, {}, texel.data(), 4, &error));
+            REQUIRE(command->commitAndWait(&error));
+            INFO(error);
+            return result;
+        };
+        auto hud_slot_zero = make_hud_texture(
+            "Alchemy indexed HUD unselected texture", {255, 0, 0, 255},
+            ALMetalPixelFormat::rgba8_unorm);
+        auto hud_slot_one = make_hud_texture(
+            "Alchemy indexed HUD selected sRGB texture", {64, 128, 192, 200},
+            ALMetalPixelFormat::rgba8_unorm_srgb);
+        auto hud_mask_discard = make_hud_texture(
+            "Alchemy indexed HUD discarded texture", {255, 255, 255, 100},
+            ALMetalPixelFormat::rgba8_unorm);
+
+        // Real viewer mirrors can retain BC-compressed sRGB storage. The raw
+        // sampling contract must provide a compatible view for those assets
+        // too, rather than decoding them merely because compression survived.
+        for (ALMetalPixelFormat format : {
+                 ALMetalPixelFormat::bc1_rgba_srgb,
+                 ALMetalPixelFormat::bc2_rgba_srgb,
+                 ALMetalPixelFormat::bc3_rgba_srgb})
+        {
+            ALMetalTextureDescriptor hud_bc_descriptor = texture_descriptor;
+            hud_bc_descriptor.format = format;
+            hud_bc_descriptor.width = 4;
+            hud_bc_descriptor.height = 4;
+            hud_bc_descriptor.label = "Alchemy indexed HUD BC sRGB view test";
+            auto hud_bc_texture = ALMetalTexture::create(
+                *device, hud_bc_descriptor, &error);
+            INFO(error);
+            REQUIRE(hud_bc_texture);
+            CHECK(hud_bc_texture->nativeLinearHandle() != nullptr);
+        }
+
+        ALMetalHUDIndexedBatch hud_batch;
+        hud_batch.vertices = hud_vertices.get();
+        hud_batch.position_offset = position_offset;
+        hud_batch.texcoord_offset = texcoord_offset;
+        hud_batch.color_offset = color_offset;
+        hud_batch.vertex_count = 3;
+        hud_batch.indices = hud_indices.get();
+        hud_batch.index_type = ALMetalIndexType::uint16;
+        hud_batch.index_count = 3;
+        hud_batch.textures[0] = hud_slot_zero.get();
+        hud_batch.textures[1] = hud_slot_one.get();
+        hud_batch.texture_count = 2;
+        hud_batch.sampler = batch.sampler;
+        hud_batch.blend.enabled = false;
+        hud_batch.depth.enabled = true;
+        hud_batch.depth.write_enabled = true;
+        hud_batch.depth.compare = ALMetalCompareFunction::less_equal;
+        hud_batch.viewport = batch.viewport;
+        hud_batch.scissor = hud_region;
+        hud_batch.target_width = 32;
+        hud_batch.target_height = 32;
+        for (int i = 0; i < 4; ++i)
+        {
+            hud_batch.matrices.modelview_projection[i * 4 + i] = 1.f;
+            hud_batch.matrices.texture0[i * 4 + i] = 1.f;
+        }
+
+        auto hud_renderer = ALMetalUIRenderer::create(
+            *device, *scheduler, &error);
+        INFO(error);
+        REQUIRE(hud_renderer);
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->restoreFrameDepthRects(
+            &hud_region, 1, ALMetalCompareFunction::less, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 0]) - 192) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 1]) - 32) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 2]) - 32) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 3]) - 8) <= 1);
+        REQUIRE(hud_renderer->outputDepthTexture()->readback(
+            *device, 0, 0, {}, depth_region_values.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(depth_region_values[16 * 32 + 16] - 0.25f) <
+              0.0001f);
+
+        // Vertex alpha is legacy shininess in this pool: a low value must not
+        // fail the mask while the selected texture is above the authored cut.
+        hud_batch.shader = ALMetalHUDShader::fullbright_alpha_mask;
+        hud_batch.minimum_alpha = 0.5f;
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 0]) - 192) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 3]) - 8) <= 1);
+
+        // A below-cut texture discards and leaves the retained world backing.
+        hud_batch.textures[1] = hud_mask_discard.get();
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(composed_pixels[center + 0] == 20u);
+        CHECK(composed_pixels[center + 1] == 40u);
+        CHECK(composed_pixels[center + 2] == 80u);
+        CHECK(composed_pixels[center + 3] == 255u);
+
+        hud_batch.textures[1] = hud_slot_one.get();
+        hud_batch.index_count = 4;
+        error.clear();
+        CHECK_FALSE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        CHECK(error == "Metal HUD geometry range exceeds its buffers");
+        hud_batch.index_count = 3;
+        hud_batch.depth.enabled = false;
+        hud_batch.depth.write_enabled = false;
+        hud_batch.minimum_alpha = std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        CHECK(error == "Metal HUD alpha cutoff must be finite and normalized");
+        hud_batch.minimum_alpha = 0.5f;
 
         error.clear();
         CHECK_FALSE(depth_renderer->setFrameDepth(

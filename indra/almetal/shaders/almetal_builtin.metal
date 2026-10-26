@@ -15501,6 +15501,75 @@ vertex ALMetalUIVaryings almetal_ui_vertex(
     return output;
 }
 
+struct ALMetalHUDFullbrightConstants
+{
+    float4x4 modelview_projection;
+    float4x4 texture_matrix;
+    // x = alpha cutoff.
+    float4 material;
+    // x = reverse Z, y = texture count, z = offscreen Y flip,
+    // w = alpha-mask permutation.
+    uint4 config;
+};
+
+struct ALMetalHUDFullbrightVaryings
+{
+    float4 position [[position]];
+    float2 texcoord;
+    float4 color;
+    uint texture_index [[flat]];
+    uint texture_count [[flat]];
+};
+
+vertex ALMetalHUDFullbrightVaryings almetal_hud_fullbright_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(1)]],
+    const device uchar4* colors [[buffer(2)]],
+    constant ALMetalHUDFullbrightConstants& constants [[buffer(3)]],
+    uint vertex_id [[vertex_id]])
+{
+    float4 clip_position = constants.modelview_projection *
+        float4(positions[vertex_id].xyz, 1.0);
+    if (constants.config.z != 0u)
+    {
+        clip_position.y = -clip_position.y;
+    }
+
+    ALMetalHUDFullbrightVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    // IS_HUD deliberately keeps both the sampled texel and streamed prim
+    // tint display-encoded, matching deferred/fullbrightV/F.glsl.
+    output.color = float4(colors[vertex_id]) * (1.0 / 255.0);
+    output.texture_index = constants.config.y > 1u
+        ? uint(max(as_type<int>(positions[vertex_id].w), 0)) : 0u;
+    output.texture_count = constants.config.y;
+    return output;
+}
+
+fragment float4 almetal_hud_fullbright_fragment(
+    ALMetalHUDFullbrightVaryings input [[stage_in]],
+    array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    constant ALMetalHUDFullbrightConstants& constants [[buffer(0)]])
+{
+    float4 texture_color = input.texture_index < input.texture_count
+        ? diffuse_textures[min(input.texture_index, 31u)].sample(
+              diffuse_sampler, input.texcoord)
+        : float4(1.0, 0.0, 1.0, 1.0);
+    // Outside the alpha pool, streamed alpha carries shininess. The opaque
+    // fullbright-mask pool therefore tests texture coverage alone with the
+    // same half-quantum bias as the authoritative GLSL program.
+    if (constants.config.w != 0u &&
+        texture_color.a < constants.material.x - (1.0 / 512.0))
+    {
+        discard_fragment();
+    }
+    return max(texture_color * input.color, float4(0.0));
+}
+
 fragment float4 almetal_ui_fragment(
     ALMetalUIVaryings input [[stage_in]],
     texture2d<float> diffuse_map [[texture(0)]],

@@ -80,6 +80,20 @@ namespace
                shader == ALMetalUIShader::alpha_mask_solid;
     }
 
+    bool rangeFits(std::size_t offset, std::size_t count,
+                   std::size_t stride, std::size_t length)
+    {
+        return stride != 0 && offset <= length &&
+               count <= (length - offset) / stride;
+    }
+
+    bool finiteFloats(const float* values, std::size_t count)
+    {
+        return values && std::all_of(
+            values, values + count,
+            [](float value) { return std::isfinite(value); });
+    }
+
     const char* vertexFunction(ALMetalUIShader shader)
     {
         return shader == ALMetalUIShader::solid_color
@@ -157,6 +171,14 @@ struct ALMetalUIRenderer::Impl
         std::unique_ptr<ALMetalSamplerState> state;
     };
 
+    struct HUDPipelineEntry
+    {
+        ALMetalHUDShader shader = ALMetalHUDShader::fullbright;
+        ALMetalUIBlendState blend{};
+        ALMetalPixelFormat depth_format = ALMetalPixelFormat::invalid;
+        std::unique_ptr<ALMetalRenderPipeline> state;
+    };
+
     struct DepthEntry
     {
         ALMetalUIDepthState descriptor{};
@@ -182,6 +204,7 @@ struct ALMetalUIRenderer::Impl
     std::unique_ptr<ALMetalFrame> frame;
     std::unique_ptr<ALMetalRenderEncoder> encoder;
     std::vector<PipelineEntry> pipelines;
+    std::vector<HUDPipelineEntry> hud_pipelines;
     std::vector<SamplerEntry> samplers;
     std::vector<DepthEntry> depths;
     ALMetalUIRendererStats totals{};
@@ -441,8 +464,63 @@ struct ALMetalUIRenderer::Impl
         }
         pipelines.push_back(
             {shader, target_blend, depth_format, std::move(state)});
-        totals.pipeline_states = pipelines.size();
+        totals.pipeline_states = pipelines.size() + hud_pipelines.size();
         return pipelines.back().state.get();
+    }
+
+    ALMetalRenderPipeline* hudPipeline(
+        ALMetalHUDShader shader,
+        const ALMetalUIBlendState& blend,
+        ALMetalPixelFormat depth_format,
+        std::string* error)
+    {
+        ALMetalUIBlendState target_blend = blend;
+        if (surface && target_blend.enabled &&
+            target_blend.source_rgb == ALMetalBlendFactor::source_alpha &&
+            target_blend.destination_rgb == ALMetalBlendFactor::one_minus_source_alpha &&
+            target_blend.source_alpha == ALMetalBlendFactor::source_alpha &&
+            target_blend.destination_alpha == ALMetalBlendFactor::one_minus_source_alpha)
+        {
+            target_blend.source_alpha = ALMetalBlendFactor::one;
+        }
+        for (HUDPipelineEntry& entry : hud_pipelines)
+        {
+            if (entry.shader == shader &&
+                sameBlend(entry.blend, target_blend) &&
+                entry.depth_format == depth_format)
+            {
+                return entry.state.get();
+            }
+        }
+
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = library.get();
+        descriptor.vertex_function = "almetal_hud_fullbright_vertex";
+        descriptor.fragment_function = "almetal_hud_fullbright_fragment";
+        descriptor.color_attachment_count = 1;
+        descriptor.colors[0].format = output_format;
+        descriptor.colors[0].blending_enabled = target_blend.enabled;
+        descriptor.colors[0].source_rgb = target_blend.source_rgb;
+        descriptor.colors[0].destination_rgb = target_blend.destination_rgb;
+        descriptor.colors[0].rgb_operation = target_blend.rgb_operation;
+        descriptor.colors[0].source_alpha = target_blend.source_alpha;
+        descriptor.colors[0].destination_alpha = target_blend.destination_alpha;
+        descriptor.colors[0].alpha_operation = target_blend.alpha_operation;
+        descriptor.colors[0].write_mask = target_blend.write_mask;
+        descriptor.depth_stencil_format = depth_format;
+        descriptor.label = shader == ALMetalHUDShader::fullbright_alpha_mask
+            ? "Alchemy HUD fullbright alpha-mask pipeline"
+            : "Alchemy HUD fullbright pipeline";
+
+        auto state = ALMetalRenderPipeline::create(*device, descriptor, error);
+        if (!state)
+        {
+            return nullptr;
+        }
+        hud_pipelines.push_back(
+            {shader, target_blend, depth_format, std::move(state)});
+        totals.pipeline_states = pipelines.size() + hud_pipelines.size();
+        return hud_pipelines.back().state.get();
     }
 
     ALMetalSamplerState* sampler(const ALMetalSamplerDescriptor& descriptor,
@@ -705,7 +783,9 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
         !library->hasFunction("almetal_resample_vertex") ||
         !library->hasFunction("almetal_resample_fragment") ||
         !library->hasFunction("almetal_ui_depth_clear_fragment") ||
-        !library->hasFunction("almetal_ui_depth_restore_fragment"))
+        !library->hasFunction("almetal_ui_depth_restore_fragment") ||
+        !library->hasFunction("almetal_hud_fullbright_vertex") ||
+        !library->hasFunction("almetal_hud_fullbright_fragment"))
     {
         setError(error, "Built-in Metal library is missing production UI functions");
         return nullptr;
@@ -1003,6 +1083,153 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
 
     ++mImpl->frame_batches;
     mImpl->frame_vertices += draw.vertex_count;
+    return true;
+}
+
+bool ALMetalUIRenderer::drawHUDIndexed(
+    const ALMetalHUDIndexedBatch& batch,
+    std::string* error)
+{
+    if (!mImpl || !batch.vertices || batch.vertex_count == 0 ||
+        !batch.indices || batch.index_count == 0 ||
+        batch.target_width == 0 || batch.target_height == 0)
+    {
+        setError(error,
+                 "Metal HUD batch is missing geometry or target dimensions");
+        return false;
+    }
+    if (batch.texture_count == 0 ||
+        batch.texture_count > ALMetalHUDIndexedBatch::max_textures)
+    {
+        setError(error, "Metal HUD batch has an invalid texture count");
+        return false;
+    }
+    const std::size_t index_stride =
+        batch.index_type == ALMetalIndexType::uint32 ? 4u : 2u;
+    if (batch.position_offset % (sizeof(float) * 4) != 0 ||
+        batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
+        batch.color_offset % (sizeof(std::uint8_t) * 4) != 0 ||
+        batch.index_offset % index_stride != 0 ||
+        !rangeFits(batch.position_offset, batch.vertex_count,
+                   sizeof(float) * 4, batch.vertices->length()) ||
+        !rangeFits(batch.texcoord_offset, batch.vertex_count,
+                   sizeof(float) * 2, batch.vertices->length()) ||
+        !rangeFits(batch.color_offset, batch.vertex_count,
+                   sizeof(std::uint8_t) * 4, batch.vertices->length()) ||
+        !rangeFits(batch.index_offset, batch.index_count,
+                   index_stride, batch.indices->length()))
+    {
+        setError(error, "Metal HUD geometry range exceeds its buffers");
+        return false;
+    }
+    if (!finiteFloats(batch.matrices.modelview_projection, 16) ||
+        !finiteFloats(batch.matrices.texture0, 16))
+    {
+        setError(error, "Metal HUD matrices must be finite");
+        return false;
+    }
+    for (std::size_t texture = 0; texture < batch.texture_count; ++texture)
+    {
+        if (!batch.textures[texture])
+        {
+            setError(error, "Metal HUD batch is missing a diffuse texture");
+            return false;
+        }
+    }
+    if (batch.depth.write_enabled && !batch.depth.enabled)
+    {
+        setError(error, "Metal HUD depth writes require depth testing");
+        return false;
+    }
+    if (batch.depth.enabled && !mImpl->frame_depth)
+    {
+        setError(error,
+                 "Metal HUD depth test requires a frame depth backing");
+        return false;
+    }
+    if (!std::isfinite(batch.minimum_alpha) ||
+        batch.minimum_alpha < 0.f || batch.minimum_alpha > 1.f)
+    {
+        setError(error, "Metal HUD alpha cutoff must be finite and normalized");
+        return false;
+    }
+    if (!mImpl->beginFrame(batch.target_width, batch.target_height, error))
+    {
+        return false;
+    }
+
+    ALMetalRenderPipeline* pipeline = mImpl->hudPipeline(
+        batch.shader, batch.blend, mImpl->frameDepthFormat(), error);
+    ALMetalSamplerState* sampler = mImpl->sampler(batch.sampler, error);
+    ALMetalDepthStencilState* depth = mImpl->depthState(batch.depth, error);
+    if (!pipeline || !sampler || !depth)
+    {
+        return false;
+    }
+
+    struct alignas(16) HUDFullbrightConstants
+    {
+        float modelview_projection[16];
+        float texture_matrix[16];
+        float material[4]{};
+        std::uint32_t config[4]{};
+    } constants;
+    static_assert(sizeof(HUDFullbrightConstants) == 160);
+    std::memcpy(constants.modelview_projection,
+                batch.matrices.modelview_projection,
+                sizeof(constants.modelview_projection));
+    std::memcpy(constants.texture_matrix, batch.matrices.texture0,
+                sizeof(constants.texture_matrix));
+    constants.material[0] = batch.minimum_alpha;
+    constants.config[0] = batch.depth.reverse_z ? 1u : 0u;
+    constants.config[1] = batch.texture_count;
+    constants.config[2] = mImpl->surface ? 0u : 1u;
+    constants.config[3] =
+        batch.shader == ALMetalHUDShader::fullbright_alpha_mask ? 1u : 0u;
+
+    ALMetalRenderEncoder& encoder = *mImpl->encoder;
+    bool encoded =
+        encoder.setPipeline(*pipeline, error) &&
+        encoder.setDepthStencilState(depth, error) &&
+        encoder.setVertexBuffer(
+            0, *batch.vertices, batch.position_offset, error) &&
+        encoder.setVertexBuffer(
+            1, *batch.vertices, batch.texcoord_offset, error) &&
+        encoder.setVertexBuffer(
+            2, *batch.vertices, batch.color_offset, error) &&
+        encoder.setVertexBytes(
+            3, &constants, sizeof(constants), error) &&
+        encoder.setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        encoder.setFragmentSampler(0, sampler, error);
+    for (std::size_t texture = 0;
+         encoded && texture < batch.texture_count; ++texture)
+    {
+        // The matching HUD GLSL program binds these assets with sRGB decode
+        // disabled. Use the compatible raw-storage view for both uncompressed
+        // and BC-compressed sRGB mirrors so their display-encoded multiply is
+        // not silently linearized by the Metal texture format.
+        encoded = encoder.setFragmentTextureLinear(
+            static_cast<std::uint32_t>(texture),
+            batch.textures[texture], error);
+    }
+    if (!encoded ||
+        !encoder.setViewport(batch.viewport, error) ||
+        !encoder.setScissor(batch.scissor, error) ||
+        !encoder.setCullMode(ALMetalCullMode::back, error) ||
+        !encoder.setFrontFacingWinding(
+            mImpl->surface ? ALMetalWinding::counter_clockwise
+                           : ALMetalWinding::clockwise,
+            error) ||
+        !encoder.drawIndexed(
+            ALMetalPrimitiveType::triangle, batch.index_count,
+            batch.index_type, *batch.indices, batch.index_offset, 1, error))
+    {
+        return false;
+    }
+
+    ++mImpl->frame_batches;
+    mImpl->frame_vertices += batch.index_count;
     return true;
 }
 

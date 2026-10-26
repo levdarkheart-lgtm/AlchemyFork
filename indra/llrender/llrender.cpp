@@ -917,6 +917,120 @@ bool LLRender::restoreMetalUITextureCaptureDepth(
         x, y, width, height, true, 0.f);
 }
 
+bool LLRender::drawMetalHUDIndexedBatch(
+    const ALMetalHUDIndexedBatch& batch)
+{
+    if (!mMetalUICaptureRenderer)
+    {
+        return false;
+    }
+    ALMetalHUDIndexedBatch resolved = batch;
+    ALTextureSlot* texture_slot = getTextureSlot(0);
+    ALSamplerDesc sampler = ALSamplerCache::makeDesc(ALSamplers::AnisoWrap);
+    if (texture_slot)
+    {
+        mSamplerCache.describe(texture_slot->mCurrSampler, sampler);
+    }
+    resolved.sampler = metal_sampler_descriptor(sampler);
+    resolved.blend.enabled = LLGLState::isEnabled(GL_BLEND);
+    resolved.blend.source_rgb = metal_blend_factor(
+        mCurrBlendColorSFactor == BF_UNDEF
+            ? BF_SOURCE_ALPHA : mCurrBlendColorSFactor);
+    resolved.blend.destination_rgb = metal_blend_factor(
+        mCurrBlendColorDFactor == BF_UNDEF
+            ? BF_ONE_MINUS_SOURCE_ALPHA : mCurrBlendColorDFactor);
+    resolved.blend.source_alpha = metal_blend_factor(
+        mCurrBlendAlphaSFactor == BF_UNDEF
+            ? BF_SOURCE_ALPHA : mCurrBlendAlphaSFactor);
+    resolved.blend.destination_alpha = metal_blend_factor(
+        mCurrBlendAlphaDFactor == BF_UNDEF
+            ? BF_ONE_MINUS_SOURCE_ALPHA : mCurrBlendAlphaDFactor);
+    resolved.blend.rgb_operation = metal_blend_operation(mBlendEquationRGB);
+    resolved.blend.alpha_operation = metal_blend_operation(mBlendEquationAlpha);
+    U8 write_mask = 0;
+    write_mask |= mCurrColorMask[0]
+        ? static_cast<U8>(ALMetalColorWriteMask::red) : 0;
+    write_mask |= mCurrColorMask[1]
+        ? static_cast<U8>(ALMetalColorWriteMask::green) : 0;
+    write_mask |= mCurrColorMask[2]
+        ? static_cast<U8>(ALMetalColorWriteMask::blue) : 0;
+    write_mask |= mCurrColorMask[3]
+        ? static_cast<U8>(ALMetalColorWriteMask::alpha) : 0;
+    resolved.blend.write_mask =
+        static_cast<ALMetalColorWriteMask>(write_mask);
+
+    const S32 viewport_width = mViewport[2];
+    const S32 viewport_height = mViewport[3];
+    if (viewport_width <= 0 || viewport_height <= 0)
+    {
+        mMetalUICaptureComplete = false;
+        return false;
+    }
+    resolved.target_width = mMetalUICaptureUsesDepth
+        ? mMetalUICaptureDepthWidth
+        : static_cast<U32>(
+              llmax(viewport_width, mViewport[0] + viewport_width));
+    resolved.target_height = mMetalUICaptureUsesDepth
+        ? mMetalUICaptureDepthHeight
+        : static_cast<U32>(
+              llmax(viewport_height, mViewport[1] + viewport_height));
+    resolved.viewport = {
+        static_cast<double>(mViewport[0]),
+        static_cast<double>(
+            static_cast<S32>(resolved.target_height) -
+            mViewport[1] - viewport_height),
+        static_cast<double>(viewport_width),
+        static_cast<double>(viewport_height),
+        0.0,
+        1.0,
+    };
+    if (LLGLState::isEnabled(GL_SCISSOR_TEST) &&
+        mScissor[2] >= 0 && mScissor[3] >= 0)
+    {
+        const S32 left = llclamp(
+            mScissor[0], 0, static_cast<S32>(resolved.target_width));
+        const S32 right = llclamp(
+            mScissor[0] + mScissor[2], 0,
+            static_cast<S32>(resolved.target_width));
+        const S32 bottom = llclamp(
+            mScissor[1], 0, static_cast<S32>(resolved.target_height));
+        const S32 top = llclamp(
+            mScissor[1] + mScissor[3], 0,
+            static_cast<S32>(resolved.target_height));
+        resolved.scissor = {
+            static_cast<U32>(left),
+            static_cast<U32>(
+                static_cast<S32>(resolved.target_height) - top),
+            static_cast<U32>(llmax(0, right - left)),
+            static_cast<U32>(llmax(0, top - bottom)),
+        };
+    }
+    else
+    {
+        resolved.scissor = {
+            0, 0, resolved.target_width, resolved.target_height};
+    }
+    if (mMetalUICaptureUsesDepth)
+    {
+        resolved.depth.enabled = LLGLDepthTest::depthEnabled();
+        resolved.depth.write_enabled = resolved.depth.enabled &&
+            LLGLDepthTest::depthWriteEnabled();
+        resolved.depth.reverse_z = sReverseZ;
+        resolved.depth.compare = metal_compare_function(
+            LLGLDepthTest::remap(LLGLDepthTest::depthFunction()));
+    }
+    std::string error;
+    if (!mMetalUICaptureRenderer->drawHUDIndexed(resolved, &error))
+    {
+        mMetalUICaptureComplete = false;
+        LL_DEBUGS("Metal") << "Offscreen HUD attachment capture retained GL: "
+                            << error << LL_ENDL;
+        return false;
+    }
+    ++mMetalUICaptureBatches;
+    return true;
+}
+
 std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
     bool source_success)
 {

@@ -56,6 +56,10 @@
 #include "llfetchedgltfmaterial.h"
 #include "llviewertexture.h"
 
+#if LL_DARWIN
+#include "../almetal/almetaluirenderer.h"
+#endif
+
 extern bool gCubeSnapshot;
 
 S32 LLDrawPool::sNumDrawPools = 0;
@@ -769,6 +773,88 @@ void LLRenderPass::bindIndexedTextures(const LLDrawInfo& params, const LLGLSLSha
     }
 }
 
+#if LL_DARWIN
+namespace
+{
+void capture_metal_hud_fullbright_batch(
+    const LLDrawInfo& params,
+    bool batch_textures,
+    bool alpha_mask)
+{
+    LLVertexBuffer* buffer = params.mVertexBuffer.get();
+    ALMetalHUDIndexedBatch batch;
+    batch.shader = alpha_mask
+        ? ALMetalHUDShader::fullbright_alpha_mask
+        : ALMetalHUDShader::fullbright;
+    batch.minimum_alpha = alpha_mask ? params.mAlphaMaskCutoff : 0.f;
+
+    const bool complete_geometry = buffer && params.mCount &&
+        buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) &&
+        buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) &&
+        buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) &&
+        buffer->getMetalVertexBuffer() &&
+        buffer->getMetalIndexBuffer();
+    if (complete_geometry)
+    {
+        batch.vertices = buffer->getMetalVertexBuffer();
+        batch.position_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_VERTEX);
+        batch.texcoord_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_TEXCOORD0);
+        batch.color_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_COLOR);
+        batch.vertex_count = buffer->getNumVerts();
+        batch.indices = buffer->getMetalIndexBuffer();
+        batch.index_offset = static_cast<std::size_t>(params.mOffset) *
+            buffer->getIndexStride();
+        batch.index_type = buffer->getIndexStride() == 4
+            ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+        batch.index_count = params.mCount;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(batch.matrices.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.matrices.modelview_projection));
+    for (U32 diagonal = 0; diagonal < 4; ++diagonal)
+    {
+        batch.matrices.texture0[diagonal * 4 + diagonal] = 1.f;
+    }
+    if (params.mTextureMatrix &&
+        (!gCubeSnapshot || gPipeline.mHeroProbeManager.isMirrorPass()))
+    {
+        std::memcpy(batch.matrices.texture0,
+                    params.mTextureMatrix->mMatrix,
+                    sizeof(batch.matrices.texture0));
+    }
+
+    const bool indexed_textures =
+        batch_textures && params.mTextureList.size() > 1;
+    const std::size_t texture_count = indexed_textures
+        ? params.mTextureList.size() : 1;
+    batch.texture_count = static_cast<U32>(texture_count);
+    const std::size_t copied_textures = std::min<std::size_t>(
+        texture_count, ALMetalHUDIndexedBatch::max_textures);
+    for (std::size_t index = 0; index < copied_textures; ++index)
+    {
+        LLViewerTexture* texture = indexed_textures
+            ? params.mTextureList[index].get() : params.mTexture.get();
+        if (!texture)
+        {
+            texture = LLViewerFetchedTexture::sWhiteImagep.get();
+        }
+        LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        batch.textures[index] = image ? image->getMetalTexture() : nullptr;
+    }
+
+    // The capture never suppresses or changes the authoritative GL draw.
+    gGL.drawMetalHUDIndexedBatch(batch);
+}
+}
+#endif
+
 void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
@@ -819,6 +905,14 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
     }
 
 #if LL_DARWIN
+    if (LLPipeline::sRenderingHUDs &&
+        (bound == &gHUDFullbrightProgram ||
+         bound == &gHUDFullbrightAlphaMaskProgram))
+    {
+        capture_metal_hud_fullbright_batch(
+            params, batch_textures,
+            bound == &gHUDFullbrightAlphaMaskProgram);
+    }
     gPipeline.captureMetalSpotShadowTexturedBatch(
         params, batch_textures);
     gPipeline.captureMetalWorldLegacyGlowBatch(params, false);

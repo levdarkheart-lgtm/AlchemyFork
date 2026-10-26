@@ -146,7 +146,7 @@ enum class ALMetalPixelFormat
     depth32_float_stencil8,
 };
 
-// A view-compatible non-sRGB format for renderable operations that must
+// A view-compatible non-sRGB format for render or shader operations that must
 // preserve and filter encoded storage values. Other formats are unchanged.
 constexpr ALMetalPixelFormat alMetalLinearFormat(ALMetalPixelFormat format)
 {
@@ -156,6 +156,12 @@ constexpr ALMetalPixelFormat alMetalLinearFormat(ALMetalPixelFormat format)
             return ALMetalPixelFormat::rgba8_unorm;
         case ALMetalPixelFormat::bgra8_unorm_srgb:
             return ALMetalPixelFormat::bgra8_unorm;
+        case ALMetalPixelFormat::bc1_rgba_srgb:
+            return ALMetalPixelFormat::bc1_rgba;
+        case ALMetalPixelFormat::bc2_rgba_srgb:
+            return ALMetalPixelFormat::bc2_rgba;
+        case ALMetalPixelFormat::bc3_rgba_srgb:
+            return ALMetalPixelFormat::bc3_rgba;
         default:
             return format;
     }

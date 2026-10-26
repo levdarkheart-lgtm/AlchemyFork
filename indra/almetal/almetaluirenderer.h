@@ -18,6 +18,7 @@
 #include "almetalframe.h"
 #include "almetalpipeline.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -107,6 +108,44 @@ struct ALMetalUIBatch
     std::uint32_t target_height = 0;
 };
 
+enum class ALMetalHUDShader
+{
+    fullbright,
+    fullbright_alpha_mask,
+};
+
+// One indexed static HUD-attachment draw. Unlike immediate-mode UI, volume
+// geometry owns an index buffer and may select one of the viewer's packed
+// diffuse texture ladder slots through position.w. The exact HUD programs
+// operate in display-encoded space, so this intentionally does not reuse the
+// linear-light world fullbright path.
+struct ALMetalHUDIndexedBatch
+{
+    static constexpr std::size_t max_textures = 32;
+
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::size_t texcoord_offset = 0;
+    std::size_t color_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
+    std::array<const ALMetalTexture*, max_textures> textures{};
+    std::uint32_t texture_count = 0;
+    ALMetalSamplerDescriptor sampler{};
+    ALMetalUIMatrices matrices{};
+    ALMetalUIBlendState blend{};
+    ALMetalUIDepthState depth{};
+    ALMetalViewport viewport{};
+    ALMetalScissorRect scissor{};
+    ALMetalHUDShader shader = ALMetalHUDShader::fullbright;
+    float minimum_alpha = 0.004f;
+    std::uint32_t target_width = 0;
+    std::uint32_t target_height = 0;
+};
+
 struct ALMetalUIRendererStats
 {
     std::uint64_t frames = 0;
@@ -184,6 +223,9 @@ public:
         ALMetalCompareFunction compare,
         std::string* error = nullptr);
     bool draw(const ALMetalUIBatch& batch, std::string* error = nullptr);
+    bool drawHUDIndexed(
+        const ALMetalHUDIndexedBatch& batch,
+        std::string* error = nullptr);
     bool endFrame(std::string* error = nullptr);
 
     bool hasOpenFrame() const noexcept;
