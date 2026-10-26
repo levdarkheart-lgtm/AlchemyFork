@@ -674,6 +674,18 @@ struct ALMetalWorldColorGrade
     float saturation = 1.f;
     float vibrance = 0.f;
     float hue_shift = 0.f;
+    // A 3D LUT is represented as a square 2D-array texture with one slice per
+    // blue coordinate; the shader performs the exact trilinear z blend.
+    const ALMetalTexture* color_lut_texture = nullptr;
+    std::uint32_t color_lut_size = 0;
+    bool color_lut_flip_green = false;
+    bool color_lut_swap_blue_green = false;
+    float color_lut_strength = 0.f;
+    // RGBA16_UNORM row containing the three baked composite channel curves.
+    const ALMetalTexture* tone_curve_texture = nullptr;
+    float tone_curve_scale = 1.f;
+    float tone_curve_bias = 0.f;
+    float tone_curve_amount = 0.f;
 };
 
 struct ALMetalWorldDisplayPostScene

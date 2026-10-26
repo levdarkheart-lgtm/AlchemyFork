@@ -11482,6 +11482,10 @@ void LLPipeline::releaseAllGLResources()
     mLensDirtParams = LensDirtParams();
 
     mCGLut = nullptr;
+#if LL_DARWIN
+    mMetalCGLut.reset();
+    mMetalToneCurveLut.reset();
+#endif
 
     releaseScopeBuffers();
     clearReferenceStill();
@@ -11532,6 +11536,7 @@ void LLPipeline::releaseRenderTargets()
     mLensFlareStateValid = false;
     mToneCurveLutDirty   = true;
 #if LL_DARWIN
+    mMetalToneCurveLut.reset();
     mMetalNoiseMapRG16.clear();
 #endif
 
@@ -12168,9 +12173,137 @@ void LLPipeline::generateLensDirt()
     stop_glerror();
 }
 
+#if LL_DARWIN
+namespace
+{
+    std::unique_ptr<ALMetalTexture> makeMetalColorGradeLut(
+        U32 edge, U32 components, bool sixteen_bit, const void* pixels)
+    {
+        ALMetalDevice* device = LLImageGL::getMetalDevice();
+        if (!device || !pixels || edge < 2 ||
+            (components != 3 && components != 4))
+        {
+            return nullptr;
+        }
+
+        const std::size_t voxel_count =
+            static_cast<std::size_t>(edge) * edge * edge;
+        const std::size_t component_bytes = sixteen_bit ? 2u : 1u;
+        const void* upload_pixels = pixels;
+        std::vector<U8> expanded;
+        if (components == 3)
+        {
+            expanded.resize(voxel_count * 4u * component_bytes);
+            if (sixteen_bit)
+            {
+                const U16* source = static_cast<const U16*>(pixels);
+                U16* destination = reinterpret_cast<U16*>(expanded.data());
+                for (std::size_t texel = 0; texel < voxel_count; ++texel)
+                {
+                    std::copy_n(source + texel * 3u, 3u,
+                                destination + texel * 4u);
+                    destination[texel * 4u + 3u] = 0xffffu;
+                }
+            }
+            else
+            {
+                const U8* source = static_cast<const U8*>(pixels);
+                U8* destination = expanded.data();
+                for (std::size_t texel = 0; texel < voxel_count; ++texel)
+                {
+                    std::copy_n(source + texel * 3u, 3u,
+                                destination + texel * 4u);
+                    destination[texel * 4u + 3u] = 0xffu;
+                }
+            }
+            upload_pixels = expanded.data();
+            components = 4;
+        }
+
+        ALMetalTextureDescriptor descriptor;
+        descriptor.type = ALMetalTextureType::texture_2d_array;
+        descriptor.format = sixteen_bit
+            ? ALMetalPixelFormat::rgba16_unorm
+            : ALMetalPixelFormat::rgba8_unorm;
+        descriptor.width = edge;
+        descriptor.height = edge;
+        descriptor.array_length = edge;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.usage = ALMetalTextureUsage::shader_read;
+        descriptor.label = "Alchemy color-grade LUT mirror";
+        std::string error;
+        auto texture = ALMetalTexture::create(*device, descriptor, &error);
+        auto command = texture
+            ? device->makeCommandBuffer(
+                  "Alchemy color-grade LUT mirror upload", &error)
+            : nullptr;
+        bool uploaded = command != nullptr;
+        const std::size_t bytes_per_texel =
+            static_cast<std::size_t>(components) * component_bytes;
+        const std::size_t bytes_per_row = edge * bytes_per_texel;
+        const std::size_t bytes_per_slice = edge * bytes_per_row;
+        const U8* source = static_cast<const U8*>(upload_pixels);
+        for (U32 slice = 0; uploaded && slice < edge; ++slice)
+        {
+            uploaded = texture->upload(
+                *command, 0, slice, {}, source + slice * bytes_per_slice,
+                bytes_per_row, &error);
+        }
+        uploaded = uploaded && command->commit(&error);
+        if (!uploaded)
+        {
+            LL_WARNS("Metal")
+                << "Could not publish the color-grade LUT mirror: "
+                << error << LL_ENDL;
+            return nullptr;
+        }
+        return texture;
+    }
+
+    std::unique_ptr<ALMetalTexture> makeMetalToneCurveLut(
+        const std::vector<U16>& texels)
+    {
+        ALMetalDevice* device = LLImageGL::getMetalDevice();
+        if (!device || texels.size() != ALToneCurveSet::LUT_SIZE * 4u)
+        {
+            return nullptr;
+        }
+
+        ALMetalTextureDescriptor descriptor;
+        descriptor.format = ALMetalPixelFormat::rgba16_unorm;
+        descriptor.width = ALToneCurveSet::LUT_SIZE;
+        descriptor.height = 1;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.usage = ALMetalTextureUsage::shader_read;
+        descriptor.label = "Alchemy baked tone-curve mirror";
+        std::string error;
+        auto texture = ALMetalTexture::create(*device, descriptor, &error);
+        auto command = texture
+            ? device->makeCommandBuffer(
+                  "Alchemy baked tone-curve mirror upload", &error)
+            : nullptr;
+        const bool uploaded = command && texture->upload(
+            *command, 0, 0, {}, texels.data(),
+            ALToneCurveSet::LUT_SIZE * 4u * sizeof(U16), &error) &&
+            command->commit(&error);
+        if (!uploaded)
+        {
+            LL_WARNS("Metal")
+                << "Could not publish the baked tone-curve mirror: "
+                << error << LL_ENDL;
+            return nullptr;
+        }
+        return texture;
+    }
+}
+#endif
+
 void LLPipeline::setupGradingLUT()
 {
     mCGLut = nullptr;
+#if LL_DARWIN
+    mMetalCGLut.reset();
+#endif
 
     std::string lut_name = gSavedSettings.getString("RenderColorGradeLUT");
     if (gSavedSettings.getBOOL("RenderColorGrade") && !lut_name.empty())
@@ -12222,6 +12355,13 @@ void LLPipeline::setupGradingLUT()
                     LL_WARNS() << "Failed to allocate color grading LUT texture." << LL_ENDL;
                     mCGLut = nullptr;
                 }
+#if LL_DARWIN
+                else
+                {
+                    mMetalCGLut = makeMetalColorGradeLut(
+                        lutCube.size, 4, true, lutCube.colorCube.data());
+                }
+#endif
                 return;
             }
             else
@@ -12354,6 +12494,14 @@ void LLPipeline::setupGradingLUT()
                         LL_WARNS() << "Failed to allocate color grading LUT texture." << LL_ENDL;
                         mCGLut = nullptr;
                     }
+#if LL_DARWIN
+                    else
+                    {
+                        mMetalCGLut = makeMetalColorGradeLut(
+                            image_height, raw_image->getComponents(), false,
+                            raw_image->getData());
+                    }
+#endif
                 }
                 else
                 {
@@ -12400,6 +12548,9 @@ void LLPipeline::bakeToneCurveLut()
     mToneCurveIdentity = curves.isIdentity();
     if (mToneCurveIdentity || !mToneCurveLut)
     {
+#if LL_DARWIN
+        mMetalToneCurveLut.reset();
+#endif
         // Identity never reaches the shader (colorCorrect uploads amount 0), so
         // stale texels are harmless; and with no texture there is nowhere to
         // bake. The flag stays clear either way: a recreated texture sets it
@@ -12409,6 +12560,9 @@ void LLPipeline::bakeToneCurveLut()
 
     std::vector<U16> texels;
     curves.bake(texels, ALToneCurveSet::LUT_SIZE);
+#if LL_DARWIN
+    mMetalToneCurveLut = makeMetalToneCurveLut(texels);
+#endif
 
     // setManualSubImage writes whatever is bound on the active unit. Slot 0 is
     // the convention every raw-name upload in this file uses.

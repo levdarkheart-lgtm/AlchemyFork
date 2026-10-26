@@ -12167,6 +12167,8 @@ struct ALMetalWorldDisplayPostConstants
     float4 grade_split1;
     float4 grade_display0;
     float4 grade_display1;
+    float4 grade_lut;
+    float4 grade_curve;
 };
 
 struct ALMetalWorldCASConstants
@@ -12309,7 +12311,10 @@ static float3 almetal_world_grade_split(
 }
 
 static float3 almetal_world_grade_display(
-    float3 color, constant ALMetalWorldDisplayPostConstants& constants)
+    float3 color, constant ALMetalWorldDisplayPostConstants& constants,
+    texture2d_array<float> color_lut,
+    texture2d<float> tone_curve,
+    sampler grade_sampler)
 {
     const float3 luma_weights = float3(0.2126, 0.7152, 0.0722);
     if (constants.grade_split1.z != 1.0 ||
@@ -12359,6 +12364,50 @@ static float3 almetal_world_grade_display(
         hsv.x = fract(hsv.x + constants.grade_display1.z);
         color = almetal_world_grade_hsv_to_rgb(hsv);
     }
+
+    if (constants.grade_lut.w > 0.0)
+    {
+        const float3 original = color;
+        if (constants.grade_lut.y > 0.5)
+        {
+            color.g = 1.0 - color.g;
+        }
+        if (constants.grade_lut.z > 0.5)
+        {
+            color = color.rbg;
+        }
+        const float edge = constants.grade_lut.x;
+        const float inverse_edge = 1.0 / edge;
+        const float2 uv = color.rg * (1.0 - inverse_edge) +
+            0.5 * inverse_edge;
+        // GL's clamp-to-edge sampler also clamps its third coordinate. Metal
+        // array slices are selected manually, so make that implicit 3D-texture
+        // behavior explicit before converting to an unsigned layer index.
+        const float blue = clamp(color.b, 0.0, 1.0) * (edge - 1.0);
+        const uint low_slice = uint(floor(blue));
+        const uint high_slice = min(low_slice + 1u, uint(edge) - 1u);
+        const float3 low = color_lut.sample(
+            grade_sampler, uv, low_slice, level(0.0)).rgb;
+        const float3 high = color_lut.sample(
+            grade_sampler, uv, high_slice, level(0.0)).rgb;
+        color = mix(
+            original, mix(low, high, fract(blue)),
+            constants.grade_lut.w);
+    }
+
+    if (constants.grade_curve.z > 0.0)
+    {
+        const float3 u = color * constants.grade_curve.x +
+            constants.grade_curve.y;
+        const float3 curved = float3(
+            tone_curve.sample(
+                grade_sampler, float2(u.r, 0.5), level(0.0)).r,
+            tone_curve.sample(
+                grade_sampler, float2(u.g, 0.5), level(0.0)).g,
+            tone_curve.sample(
+                grade_sampler, float2(u.b, 0.5), level(0.0)).b);
+        color = mix(color, curved, constants.grade_curve.z);
+    }
     return color;
 }
 
@@ -12367,6 +12416,9 @@ static float4 almetal_world_display_post(
     float4 color,
     float4 bloom_sample,
     float3 cross_filter_sample,
+    texture2d_array<float> color_lut,
+    texture2d<float> tone_curve,
+    sampler grade_sampler,
     constant ALMetalWorldDisplayPostConstants& constants,
     float adapted_exposure)
 {
@@ -12422,7 +12474,8 @@ static float4 almetal_world_display_post(
     color.rgb = almetal_linear_to_srgb(color.rgb);
     if (color_grade)
     {
-        color.rgb = almetal_world_grade_display(color.rgb, constants);
+        color.rgb = almetal_world_grade_display(
+            color.rgb, constants, color_lut, tone_curve, grade_sampler);
     }
     color.rgb = clamp(color.rgb, float3(0.0), float3(1.0));
     if (constants.config.x != 0)
@@ -12442,11 +12495,14 @@ fragment float4 almetal_world_display_post_fragment(
     ALMetalResampleVaryings input [[stage_in]],
     texture2d<float> source [[texture(0)]],
     sampler source_sampler [[sampler(0)]],
+    texture2d_array<float> color_lut [[texture(4)]],
+    texture2d<float> tone_curve [[texture(5)]],
+    sampler grade_sampler [[sampler(3)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
         input, source.sample(source_sampler, input.texcoord), float4(0.0),
-        float3(0.0),
+        float3(0.0), color_lut, tone_curve, grade_sampler,
         constants, constants.post.y);
 }
 
@@ -12455,11 +12511,14 @@ fragment float4 almetal_world_display_post_exposure_fragment(
     texture2d<float> source [[texture(0)]],
     texture2d<float> exposure [[texture(1)]],
     sampler source_sampler [[sampler(0)]],
+    texture2d_array<float> color_lut [[texture(4)]],
+    texture2d<float> tone_curve [[texture(5)]],
+    sampler grade_sampler [[sampler(3)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
         input, source.sample(source_sampler, input.texcoord), float4(0.0),
-        float3(0.0),
+        float3(0.0), color_lut, tone_curve, grade_sampler,
         constants,
         exposure.read(uint2(0)).r);
 }
@@ -12472,12 +12531,16 @@ fragment float4 almetal_world_display_post_bloom_fragment(
     sampler source_sampler [[sampler(0)]],
     sampler bloom_sampler [[sampler(1)]],
     sampler cross_filter_sampler [[sampler(2)]],
+    texture2d_array<float> color_lut [[texture(4)]],
+    texture2d<float> tone_curve [[texture(5)]],
+    sampler grade_sampler [[sampler(3)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
         input, source.sample(source_sampler, input.texcoord),
         bloom.sample(bloom_sampler, input.texcoord),
         cross_filter.sample(cross_filter_sampler, input.texcoord).rgb,
+        color_lut, tone_curve, grade_sampler,
         constants, constants.post.y);
 }
 
@@ -12490,12 +12553,16 @@ fragment float4 almetal_world_display_post_bloom_exposure_fragment(
     sampler source_sampler [[sampler(0)]],
     sampler bloom_sampler [[sampler(1)]],
     sampler cross_filter_sampler [[sampler(2)]],
+    texture2d_array<float> color_lut [[texture(4)]],
+    texture2d<float> tone_curve [[texture(5)]],
+    sampler grade_sampler [[sampler(3)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
         input, source.sample(source_sampler, input.texcoord),
         bloom.sample(bloom_sampler, input.texcoord),
         cross_filter.sample(cross_filter_sampler, input.texcoord).rgb,
+        color_lut, tone_curve, grade_sampler,
         constants, exposure.read(uint2(0)).r);
 }
 

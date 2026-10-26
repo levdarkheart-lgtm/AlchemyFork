@@ -13501,6 +13501,155 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
                            static_cast<int>(unorm10(expected_grade[channel]))) <=
                   3);
         }
+
+        // The artist LUT uses a 2D array with one blue slice per cube layer;
+        // Metal performs the same half-texel XY addressing and explicit
+        // adjacent-slice blend as hardware trilinear 3D sampling. The baked
+        // channel curves then sample their RGBA16 row independently.
+        ALMetalTextureDescriptor lut_descriptor;
+        lut_descriptor.type = ALMetalTextureType::texture_2d_array;
+        lut_descriptor.format = ALMetalPixelFormat::rgba16_unorm;
+        lut_descriptor.width = 2;
+        lut_descriptor.height = 2;
+        lut_descriptor.array_length = 2;
+        lut_descriptor.storage = ALMetalStorageMode::private_gpu;
+        lut_descriptor.usage = ALMetalTextureUsage::shader_read;
+        lut_descriptor.label = "Alchemy color-grade LUT test";
+        auto color_lut = ALMetalTexture::create(
+            *device, lut_descriptor, &error);
+        INFO(error);
+        REQUIRE(color_lut);
+        ALMetalTextureDescriptor curve_descriptor;
+        curve_descriptor.format = ALMetalPixelFormat::rgba16_unorm;
+        curve_descriptor.width = 4;
+        curve_descriptor.height = 1;
+        curve_descriptor.storage = ALMetalStorageMode::private_gpu;
+        curve_descriptor.usage = ALMetalTextureUsage::shader_read;
+        curve_descriptor.label = "Alchemy channel-curve test";
+        auto tone_curve = ALMetalTexture::create(
+            *device, curve_descriptor, &error);
+        INFO(error);
+        REQUIRE(tone_curve);
+        const auto unorm16 = [](float value)
+        {
+            return static_cast<std::uint16_t>(std::lround(
+                std::clamp(value, 0.f, 1.f) * 65535.f));
+        };
+        std::array<std::uint16_t, 2 * 2 * 2 * 4> lut_texels{};
+        for (std::size_t z = 0; z < 2; ++z)
+        {
+            for (std::size_t y = 0; y < 2; ++y)
+            {
+                for (std::size_t x = 0; x < 2; ++x)
+                {
+                    const std::size_t texel = ((z * 2 + y) * 2 + x) * 4;
+                    lut_texels[texel] = unorm16(
+                        0.1f + 0.7f * x + 0.1f * y + 0.05f * z);
+                    lut_texels[texel + 1] = unorm16(
+                        0.05f + 0.2f * x + 0.6f * y + 0.05f * z);
+                    lut_texels[texel + 2] = unorm16(
+                        0.02f + 0.1f * x + 0.15f * y + 0.7f * z);
+                    lut_texels[texel + 3] = 0xffffu;
+                }
+            }
+        }
+        const std::array<std::uint16_t, 4 * 4> curve_texels{{
+            0, 0, 0, 0xffffu,
+            unorm16(0.15f), unorm16(0.35f), unorm16(0.1f), 0xffffu,
+            unorm16(0.65f), unorm16(0.75f), unorm16(0.8f), 0xffffu,
+            0xffffu, 0xffffu, 0xffffu, 0xffffu,
+        }};
+        auto grade_upload = device->makeCommandBuffer(
+            "Alchemy color-grade texture test upload", &error);
+        INFO(error);
+        REQUIRE(grade_upload);
+        REQUIRE(color_lut->upload(
+            *grade_upload, 0, 0, {}, lut_texels.data(),
+            2 * 4 * sizeof(std::uint16_t), &error));
+        REQUIRE(color_lut->upload(
+            *grade_upload, 0, 1, {}, lut_texels.data() + 2 * 2 * 4,
+            2 * 4 * sizeof(std::uint16_t), &error));
+        REQUIRE(tone_curve->upload(
+            *grade_upload, 0, 0, {}, curve_texels.data(),
+            curve_texels.size() * sizeof(std::uint16_t), &error));
+        REQUIRE(grade_upload->commitAndWait(&error));
+        INFO(error);
+
+        grade.color_lut_texture = color_lut.get();
+        grade.color_lut_size = 2;
+        grade.color_lut_flip_green = true;
+        grade.color_lut_swap_blue_green = true;
+        grade.color_lut_strength = 0.65f;
+        grade.tone_curve_texture = tone_curve.get();
+        grade.tone_curve_scale = 0.75f;
+        grade.tone_curve_bias = 0.125f;
+        grade.tone_curve_amount = 0.6f;
+        auto artist_grade_output = renderer->renderDisplayPost(scene, &error);
+        INFO(error);
+        REQUIRE(artist_grade_output);
+        REQUIRE(artist_grade_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, packed.data(), sizeof(packed), &error));
+        INFO(error);
+
+        const auto lut_sample = [&](Color3 coordinate)
+        {
+            const float sx = std::clamp(coordinate[0], 0.f, 1.f);
+            const float sy = std::clamp(coordinate[1], 0.f, 1.f);
+            const float sz = std::clamp(coordinate[2], 0.f, 1.f);
+            Color3 result{};
+            for (std::size_t channel = 0; channel < 3; ++channel)
+            {
+                const auto value = [&](std::size_t x, std::size_t y,
+                                       std::size_t z)
+                {
+                    return lut_texels[((z * 2 + y) * 2 + x) * 4 + channel] /
+                        65535.f;
+                };
+                const float low_y = value(0, 0, 0) +
+                    (value(1, 0, 0) - value(0, 0, 0)) * sx;
+                const float high_y = value(0, 1, 0) +
+                    (value(1, 1, 0) - value(0, 1, 0)) * sx;
+                const float low_z = low_y + (high_y - low_y) * sy;
+                const float next_low_y = value(0, 0, 1) +
+                    (value(1, 0, 1) - value(0, 0, 1)) * sx;
+                const float next_high_y = value(0, 1, 1) +
+                    (value(1, 1, 1) - value(0, 1, 1)) * sx;
+                const float high_z = next_low_y +
+                    (next_high_y - next_low_y) * sy;
+                result[channel] = low_z + (high_z - low_z) * sz;
+            }
+            return result;
+        };
+        Color3 lut_coordinate{{
+            expected_grade[0], expected_grade[2],
+            1.f - expected_grade[1]}};
+        expected_grade = mix_color(
+            expected_grade, lut_sample(lut_coordinate),
+            grade.color_lut_strength);
+        Color3 curved{};
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float position = std::clamp(
+                expected_grade[channel], 0.f, 1.f) * 3.f;
+            const std::size_t low_index = static_cast<std::size_t>(
+                std::floor(position));
+            const std::size_t high_index = std::min(low_index + 1, 3ul);
+            const float low_value =
+                curve_texels[low_index * 4 + channel] / 65535.f;
+            const float high_value =
+                curve_texels[high_index * 4 + channel] / 65535.f;
+            curved[channel] = low_value + (high_value - low_value) *
+                (position - std::floor(position));
+        }
+        expected_grade = mix_color(
+            expected_grade, curved, grade.tone_curve_amount);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CAPTURE(channel, expected_grade[channel]);
+            CHECK(std::abs(static_cast<int>(channel10(packed[0], channel)) -
+                           static_cast<int>(unorm10(expected_grade[channel]))) <=
+                  3);
+        }
         scene.color_grade = ALMetalWorldColorGrade{};
         scene.color_grade.enabled = true;
         auto identity_grade_output = renderer->renderDisplayPost(
@@ -13548,6 +13697,49 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
                            expected) <= 1);
         }
         CHECK(vintage_result[3] == 128u);
+
+        // A legacy 3D clamp sampler saturates an over-range blue coordinate.
+        // The array representation has to do that before converting blue to
+        // a layer index. Drive it above one via the authored green flip and
+        // blue/green swap, while X also falls below zero, and compare against
+        // the independently clamped trilinear oracle.
+        vintage.color_grade.enabled = true;
+        vintage.color_grade.brightness_contrast_scale = 2.f;
+        vintage.color_grade.brightness_contrast_bias = -1.5f;
+        vintage.color_grade.color_lut_texture = color_lut.get();
+        vintage.color_grade.color_lut_size = 2;
+        vintage.color_grade.color_lut_flip_green = true;
+        vintage.color_grade.color_lut_swap_blue_green = true;
+        vintage.color_grade.color_lut_strength = 1.f;
+        auto clamped_lut_output = renderer->renderDisplayPost(
+            vintage, &error);
+        INFO(error);
+        REQUIRE(clamped_lut_output);
+        std::array<std::uint8_t, 4> clamped_lut_result{};
+        REQUIRE(clamped_lut_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, clamped_lut_result.data(),
+            sizeof(clamped_lut_result), &error));
+        INFO(error);
+        Color3 clamped_lut_coordinate{{
+            srgb(vintage_pixel[0] / 255.f) * 2.f - 1.5f,
+            srgb(vintage_pixel[2] / 255.f) * 2.f - 1.5f,
+            1.f - (srgb(vintage_pixel[1] / 255.f) * 2.f - 1.5f),
+        }};
+        const Color3 clamped_lut_expected = lut_sample(
+            clamped_lut_coordinate);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CAPTURE(channel, clamped_lut_expected[channel]);
+            const int expected = static_cast<int>(std::lround(
+                std::clamp(clamped_lut_expected[channel], 0.f, 1.f) *
+                255.f));
+            CHECK(std::abs(
+                static_cast<int>(clamped_lut_result[channel]) - expected) <=
+                1);
+        }
+        CHECK(clamped_lut_result[3] == 128u);
+        vintage.color_grade = ALMetalWorldColorGrade{};
+
         auto vintage_sample = renderer->renderDisplaySample(
             *vintage_output, 1, 1, &error);
         INFO(error);
@@ -13627,6 +13819,21 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
         invalid.dither_amount = 0.f;
         invalid.color_grade.enabled = true;
         invalid.color_grade.saturation = 3.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
+        CHECK(error == "Metal world display-post state is invalid");
+        invalid.color_grade.saturation = 1.f;
+        invalid.color_grade.color_lut_size = 2;
+        invalid.color_grade.color_lut_strength = 0.5f;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
+        CHECK(error == "Metal world display-post state is invalid");
+        invalid.color_grade.color_lut_size = 0;
+        invalid.color_grade.color_lut_strength = 0.f;
+        invalid.color_grade.tone_curve_texture = tone_curve.get();
+        invalid.color_grade.tone_curve_scale = 0.6f;
+        invalid.color_grade.tone_curve_bias = 0.125f;
+        invalid.color_grade.tone_curve_amount = 0.5f;
         error.clear();
         CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
         CHECK(error == "Metal world display-post state is invalid");

@@ -82,6 +82,7 @@ class LLVertexBuffer;
 #if LL_DARWIN
 class ALMetalDevice;
 class ALMetalRenderTarget;
+class ALMetalTexture;
 class ALMetalTextureReadbackRing;
 #endif
 struct ALMetalWorldAlphaEnvironment;
@@ -1659,6 +1660,9 @@ public:
     U32                 mToneCurveLut = 0;
     bool                mToneCurveLutDirty = true;   // settings changed, or the texture was recreated, since the last bake
     bool                mToneCurveIdentity = true;   // the last bake found all four curves on the diagonal
+#if LL_DARWIN
+    std::unique_ptr<ALMetalTexture> mMetalToneCurveLut;
+#endif
 
     LLColor4            mSunDiffuse;
     LLColor4            mMoonDiffuse;
@@ -1827,6 +1831,10 @@ protected:
     // Color grading lookup texture and size
     LLPointer<ALTexture3D> mCGLut;
     LLVector4 mCGLutSize{};
+#if LL_DARWIN
+    // Same volume represented as a square 2D array, one blue slice per layer.
+    std::unique_ptr<ALMetalTexture> mMetalCGLut;
+#endif
 
 public:
     std::vector<LLFace*>        mHighlightFaces;    // highlight faces on physical objects

@@ -145,8 +145,12 @@ namespace
         float grade_display0[4];
         // saturation, vibrance, normalized hue shift, enabled.
         float grade_display1[4];
+        // LUT edge, flip-green, swap-blue/green, strength.
+        float grade_lut[4];
+        // Curve half-texel scale/bias, amount, reserved.
+        float grade_curve[4];
     };
-    static_assert(sizeof(WorldDisplayPostConstants) == 256);
+    static_assert(sizeof(WorldDisplayPostConstants) == 288);
 
     struct alignas(16) WorldDepthOfFieldConstants
     {
@@ -587,7 +591,59 @@ namespace
                std::isfinite(grade.vibrance) &&
                grade.vibrance >= -1.f && grade.vibrance <= 1.f &&
                std::isfinite(grade.hue_shift) &&
-               grade.hue_shift >= -0.5f && grade.hue_shift <= 0.5f;
+               grade.hue_shift >= -0.5f && grade.hue_shift <= 0.5f &&
+               std::isfinite(grade.color_lut_strength) &&
+               grade.color_lut_strength >= 0.f &&
+               grade.color_lut_strength <= 1.f &&
+               std::isfinite(grade.tone_curve_scale) &&
+               std::isfinite(grade.tone_curve_bias) &&
+               std::isfinite(grade.tone_curve_amount) &&
+               grade.tone_curve_amount >= 0.f &&
+               grade.tone_curve_amount <= 1.f &&
+               ((grade.color_lut_strength == 0.f &&
+                 !grade.color_lut_texture && grade.color_lut_size == 0) ||
+                (grade.color_lut_strength > 0.f &&
+                 grade.color_lut_texture && grade.color_lut_size >= 2 &&
+                 grade.color_lut_texture->descriptor().type ==
+                     ALMetalTextureType::texture_2d_array &&
+                 grade.color_lut_texture->descriptor().width ==
+                     grade.color_lut_size &&
+                 grade.color_lut_texture->descriptor().height ==
+                     grade.color_lut_size &&
+                 grade.color_lut_texture->descriptor().array_length ==
+                     grade.color_lut_size &&
+                 grade.color_lut_texture->descriptor().sample_count == 1 &&
+                 (grade.color_lut_texture->descriptor().format ==
+                      ALMetalPixelFormat::rgba8_unorm ||
+                  grade.color_lut_texture->descriptor().format ==
+                      ALMetalPixelFormat::rgba16_unorm) &&
+                 alMetalHasUsage(
+                     grade.color_lut_texture->descriptor().usage,
+                     ALMetalTextureUsage::shader_read))) &&
+               ((grade.tone_curve_amount == 0.f &&
+                 !grade.tone_curve_texture) ||
+                (grade.tone_curve_amount > 0.f &&
+                 grade.tone_curve_texture &&
+                 grade.tone_curve_texture->descriptor().type ==
+                     ALMetalTextureType::texture_2d &&
+                 grade.tone_curve_texture->descriptor().width >= 2 &&
+                 grade.tone_curve_texture->descriptor().height == 1 &&
+                 grade.tone_curve_texture->descriptor().sample_count == 1 &&
+                 grade.tone_curve_texture->descriptor().format ==
+                     ALMetalPixelFormat::rgba16_unorm &&
+                 std::abs(
+                     grade.tone_curve_scale -
+                     (1.f - 1.f / static_cast<float>(
+                         grade.tone_curve_texture->descriptor().width))) <=
+                     4.f * std::numeric_limits<float>::epsilon() &&
+                 std::abs(
+                     grade.tone_curve_bias -
+                     (0.5f / static_cast<float>(
+                         grade.tone_curve_texture->descriptor().width))) <=
+                     4.f * std::numeric_limits<float>::epsilon() &&
+                 alMetalHasUsage(
+                     grade.tone_curve_texture->descriptor().usage,
+                     ALMetalTextureUsage::shader_read)));
     }
 
     bool rangeFits(std::size_t offset, std::size_t count,
@@ -991,6 +1047,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         depth_of_field_combine_pipelines;
     std::unique_ptr<ALMetalTexture> smaa_area_texture;
     std::unique_ptr<ALMetalTexture> smaa_search_texture;
+    std::unique_ptr<ALMetalTexture> identity_color_lut;
+    std::unique_ptr<ALMetalTexture> identity_tone_curve;
     std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
     std::unique_ptr<ALMetalComputePipeline> exposure_meter_pipeline;
     std::array<std::unique_ptr<ALMetalComputePipeline>, 2>
@@ -3752,6 +3810,41 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->inactive_ssr_constants.screen[2] = 1.f;
     impl->inactive_ssr_constants.sampling[0] = 1.f;
 
+    ALMetalTextureDescriptor grade_descriptor;
+    grade_descriptor.type = ALMetalTextureType::texture_2d_array;
+    grade_descriptor.format = ALMetalPixelFormat::rgba16_unorm;
+    grade_descriptor.width = 1;
+    grade_descriptor.height = 1;
+    grade_descriptor.array_length = 1;
+    grade_descriptor.storage = ALMetalStorageMode::private_gpu;
+    grade_descriptor.usage = ALMetalTextureUsage::shader_read;
+    grade_descriptor.label = "Alchemy world inactive color-grade LUT";
+    impl->identity_color_lut = ALMetalTexture::create(
+        device, grade_descriptor, error);
+    grade_descriptor.type = ALMetalTextureType::texture_2d;
+    grade_descriptor.array_length = 1;
+    grade_descriptor.label = "Alchemy world inactive tone curve";
+    impl->identity_tone_curve = ALMetalTexture::create(
+        device, grade_descriptor, error);
+    auto grade_upload = impl->identity_color_lut &&
+            impl->identity_tone_curve
+        ? device.makeCommandBuffer(
+              "Alchemy world inactive color-grade texture upload", error)
+        : nullptr;
+    const std::array<std::uint16_t, 4> zero_grade{{0, 0, 0, 0xffffu}};
+    const bool grade_ready = grade_upload &&
+        impl->identity_color_lut->upload(
+            *grade_upload, 0, 0, {}, zero_grade.data(),
+            sizeof(zero_grade), error) &&
+        impl->identity_tone_curve->upload(
+            *grade_upload, 0, 0, {}, zero_grade.data(),
+            sizeof(zero_grade), error) &&
+        grade_upload->commitAndWait(error);
+    if (!grade_ready)
+    {
+        return nullptr;
+    }
+
     return std::unique_ptr<ALMetalWorldGBufferRenderer>(
         new ALMetalWorldGBufferRenderer(std::move(impl)));
 }
@@ -6441,6 +6534,13 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     constants.grade_display1[1] = grade.vibrance;
     constants.grade_display1[2] = grade.hue_shift;
     constants.grade_display1[3] = grade.enabled ? 1.f : 0.f;
+    constants.grade_lut[0] = static_cast<float>(grade.color_lut_size);
+    constants.grade_lut[1] = grade.color_lut_flip_green ? 1.f : 0.f;
+    constants.grade_lut[2] = grade.color_lut_swap_blue_green ? 1.f : 0.f;
+    constants.grade_lut[3] = grade.color_lut_strength;
+    constants.grade_curve[0] = grade.tone_curve_scale;
+    constants.grade_curve[1] = grade.tone_curve_bias;
+    constants.grade_curve[2] = grade.tone_curve_amount;
 
     auto command = mImpl->device->makeCommandBuffer(
         "Alchemy native world display post", error);
@@ -6500,6 +6600,16 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     encoded = encoded &&
         encoder->setFragmentSampler(
             0, mImpl->point_clamp_sampler.get(), error) &&
+        encoder->setFragmentTexture(
+            4, grade.enabled && grade.color_lut_strength > 0.f
+                ? grade.color_lut_texture
+                : mImpl->identity_color_lut.get(), error) &&
+        encoder->setFragmentTexture(
+            5, grade.enabled && grade.tone_curve_amount > 0.f
+                ? grade.tone_curve_texture
+                : mImpl->identity_tone_curve.get(), error) &&
+        encoder->setFragmentSampler(
+            3, mImpl->linear_clamp_sampler.get(), error) &&
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         encoder->draw(
