@@ -11645,8 +11645,9 @@ struct ALMetalWorldDisplayPostConstants
     // static exposure, adapted exposure, tonemap mix, tonemap type
     float4 post;
     float4 tonemap_params;
-    // non-HDR dither amount, bloom strength, reserved, reserved
+    // non-HDR dither amount, bloom strength, halation strength, reserved
     float4 display;
+    float4 halation_tint;
     // cutout-premultiplied, HDR/tonemap branch, animate dither, frame id
     uint4 config;
 };
@@ -11696,7 +11697,7 @@ static float3 almetal_world_display_dither(
 static float4 almetal_world_display_post(
     ALMetalResampleVaryings input,
     float4 color,
-    float3 bloom_term,
+    float4 bloom_sample,
     constant ALMetalWorldDisplayPostConstants& constants,
     float adapted_exposure)
 {
@@ -11712,7 +11713,9 @@ static float4 almetal_world_display_post(
         // Match colorCorrectF's BLOOM_COMPOSITE permutation: the completed
         // pyramid is added in linear light after cutout unpremultiplication
         // and before exposure/tonemapping.
-        color.rgb += bloom_term;
+        color.rgb += bloom_sample.rgb * constants.display.y +
+            bloom_sample.a * constants.display.z *
+                constants.halation_tint.rgb;
         color.rgb *= constants.post.x * adapted_exposure;
         const float3 clamped = clamp(
             color.rgb, float3(0.0), float3(1.0));
@@ -11753,7 +11756,7 @@ fragment float4 almetal_world_display_post_fragment(
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
-        input, source.sample(source_sampler, input.texcoord), float3(0.0),
+        input, source.sample(source_sampler, input.texcoord), float4(0.0),
         constants, constants.post.y);
 }
 
@@ -11765,7 +11768,7 @@ fragment float4 almetal_world_display_post_exposure_fragment(
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
-        input, source.sample(source_sampler, input.texcoord), float3(0.0),
+        input, source.sample(source_sampler, input.texcoord), float4(0.0),
         constants,
         exposure.read(uint2(0)).r);
 }
@@ -11780,8 +11783,7 @@ fragment float4 almetal_world_display_post_bloom_fragment(
 {
     return almetal_world_display_post(
         input, source.sample(source_sampler, input.texcoord),
-        bloom.sample(bloom_sampler, input.texcoord).rgb *
-            constants.display.y,
+        bloom.sample(bloom_sampler, input.texcoord),
         constants, constants.post.y);
 }
 
@@ -11796,8 +11798,7 @@ fragment float4 almetal_world_display_post_bloom_exposure_fragment(
 {
     return almetal_world_display_post(
         input, source.sample(source_sampler, input.texcoord),
-        bloom.sample(bloom_sampler, input.texcoord).rgb *
-            constants.display.y,
+        bloom.sample(bloom_sampler, input.texcoord),
         constants, exposure.read(uint2(0)).r);
 }
 

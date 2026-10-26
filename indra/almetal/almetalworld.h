@@ -642,13 +642,14 @@ struct ALMetalWorldOpaquePostDeferredScene
     bool publish_screen_space_reflection_history = false;
 };
 
-// The modern-gamma, effect-free base of colorCorrectF.glsl. This owner
+// The modern-gamma base of colorCorrectF.glsl. This owner
 // deliberately stops at the real post-chain storage boundary: HDR writes
 // RGB10_A2 after exposure and tonemapping, while the vintage path writes
-// RGBA8 after the display transfer and output dither. Bloom, color grading,
+// RGBA8 after the display transfer and output dither. Optional ordinary
+// bloom/halation are folded in before exposure; color grading, cross-filter,
 // lens effects, legacy gamma/no-post, CAS/AA and legacy glow remain distinct
-// later owners; callers must not substitute this target when any omitted
-// family or bypass is live.
+// owners. Callers must not substitute this target when any omitted family or
+// bypass is live.
 struct ALMetalWorldDisplayPostScene
 {
     const ALMetalRenderTarget* source = nullptr;
@@ -656,9 +657,9 @@ struct ALMetalWorldDisplayPostScene
     // RGBA16F output of renderExposure; its red scale replaces the scalar
     // adapted_exposure without crossing CPU memory.
     const ALMetalTexture* adapted_exposure_texture = nullptr;
-    // Optional top level of the native HDR bloom pyramid. The ordinary world
-    // path is R11G11B10F; halation and cross-filter streaks remain separate
-    // owners and must not be represented by this texture.
+    // Optional top level of the native HDR bloom pyramid. Ordinary bloom is
+    // R11G11B10F; the halation permutation is RGBA16F with its intensity in
+    // alpha. Cross-filter streaks remain a separate owner.
     const ALMetalTexture* bloom_texture = nullptr;
     bool hdr = false;
     float static_exposure = 1.f;
@@ -667,6 +668,8 @@ struct ALMetalWorldDisplayPostScene
     std::uint32_t tonemap_type = 0;
     float tonemap_params[4]{};
     float bloom_strength = 0.f;
+    float halation_strength = 0.f;
+    float halation_tint[3] = {1.f, 0.35f, 0.15f};
     bool cutout_premultiplied = false;
     // Non-HDR only: colorCorrectF applies output dither at this first 8-bit
     // boundary. HDR defers its 10-bit dither until final presentation.
@@ -675,12 +678,14 @@ struct ALMetalWorldDisplayPostScene
     std::uint32_t frame_id = 0;
 };
 
-// The production non-halation HDR bloom owner. It reproduces the world
+// The production HDR bloom owner. It reproduces the world
 // resource plan's five resolution scales and 3..7-level transient pyramid:
 // soft-knee/legacy-alpha extract, outlier-aware first downsample, ordinary
-// 13-tap lower levels and additive tent upsample. The returned target is mip
-// zero after accumulation and is ready for renderDisplayPost to composite in
-// linear light before exposure and tonemapping.
+// 13-tap lower levels and additive tent upsample. Ordinary bloom uses
+// R11G11B10F; the optional halation permutation carries intensity through
+// RGBA16F alpha. The returned target is mip zero after accumulation and is
+// ready for renderDisplayPost to composite in linear light before exposure
+// and tonemapping.
 struct ALMetalWorldBloomScene
 {
     const ALMetalRenderTarget* source = nullptr;
@@ -691,6 +696,8 @@ struct ALMetalWorldBloomScene
     float firefly_clamp = 24.f;
     float scatter = 0.7f;
     float alpha_glow_boost = 2.f;
+    bool halation = false;
+    float halation_weights[3] = {1.f, 1.f, 1.f};
 };
 
 // The production HDR exposure owner. The first compute pass reproduces the

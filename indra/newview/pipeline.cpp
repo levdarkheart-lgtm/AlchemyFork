@@ -374,8 +374,6 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
     static LLCachedControl<F32> bloom_strength(
         gSavedSettings, "RenderBloomStrength", 0.325f);
-    static LLCachedControl<bool> bloom_halation(
-        gSavedSettings, "RenderBloomHalation", false);
     static LLCachedControl<F32> cross_strength(
         gSavedSettings, "RenderCrossFilterStrength", 0.f);
     static LLCachedControl<F32> chromatic_strength(
@@ -400,7 +398,6 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         !LLRender::sClassicMode && !color_grade && !build_no_post &&
         !gSnapshotNoPost && sky &&
         sky->getReflectionProbeAmbiance(auto_adjust) != 0.f &&
-        !bloom_halation &&
         (bloom_strength <= 0.f || cross_strength <= 0.f) &&
         chromatic_strength <= 0.f &&
         flare_strength <= 0.f && dirt_strength <= 0.f &&
@@ -4045,10 +4042,20 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 gSavedSettings, "RenderBloomScatter", 0.7f);
             static LLCachedControl<F32> alpha_glow_boost(
                 gSavedSettings, "RenderBloomAlphaGlowBoost", 2.f);
+            static LLCachedControl<bool> bloom_halation(
+                gSavedSettings, "RenderBloomHalation", false);
+            static LLCachedControl<F32> halation_strength(
+                gSavedSettings, "RenderBloomHalationStrength", 0.f);
+            static LLCachedControl<LLColor3> halation_tint(
+                gSavedSettings, "RenderBloomHalationTint",
+                LLColor3(1.f, 0.35f, 0.15f));
             const F32 native_bloom_strength =
                 llmax(bloom_strength(), 0.f);
+            const F32 native_halation_strength = bloom_halation
+                ? llmax(halation_strength(), 0.f) : 0.f;
             const bool wants_native_bloom = capture.hdr &&
-                native_bloom_strength > 0.f &&
+                (native_bloom_strength > 0.f ||
+                 native_halation_strength > 0.f) &&
                 isMainWorldPass() && mRT == &mMainRT &&
                 canCaptureMetalScopeSample(false);
             capture.bloom_target.reset();
@@ -4067,6 +4074,13 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 bloom.scatter = llmax(bloom_scatter(), 0.f);
                 bloom.alpha_glow_boost =
                     llmax(alpha_glow_boost(), 0.f);
+                bloom.halation = bloom_halation;
+                bloom.halation_weights[0] =
+                    RenderGlowWarmthWeights.mV[0];
+                bloom.halation_weights[1] =
+                    RenderGlowWarmthWeights.mV[1];
+                bloom.halation_weights[2] =
+                    RenderGlowWarmthWeights.mV[2];
                 std::string bloom_error;
                 auto bloom_target = capture.renderer->renderBloom(
                     bloom, &bloom_error);
@@ -4098,7 +4112,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                  capture.exposure_target &&
                  capture.exposure_epoch == mMetalExposureHistoryEpoch &&
                  capture.exposure_frame == gFrameCount);
-            const bool exact_bloom = native_bloom_strength <= 0.f ||
+            const bool exact_bloom = !wants_native_bloom ||
                 (capture.bloom_target &&
                  capture.bloom_frame == gFrameCount);
             const bool exact_base = capture.hdr &&
@@ -4114,6 +4128,12 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     ? capture.bloom_target->colorTexture(0) : nullptr;
                 display.bloom_strength = capture.bloom_target
                     ? native_bloom_strength : 0.f;
+                display.halation_strength = capture.bloom_target
+                    ? native_halation_strength : 0.f;
+                const LLColor3& native_halation_tint = halation_tint();
+                display.halation_tint[0] = native_halation_tint.mV[0];
+                display.halation_tint[1] = native_halation_tint.mV[1];
+                display.halation_tint[2] = native_halation_tint.mV[2];
                 display.hdr = true;
                 static LLCachedControl<F32> exposure(
                     gSavedSettings, "RenderExposure", 1.f);

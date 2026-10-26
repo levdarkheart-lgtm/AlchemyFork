@@ -10552,6 +10552,51 @@ TEST_CASE("almetal: world bloom matches the production HDR pyramid", "[almetal]"
         const int expected = static_cast<int>(std::lround(encoded * 1023.f));
         CHECK(std::abs(static_cast<int>(packed[0] & 0x3ffu) - expected) <= 2);
 
+        // Halation carries its warm-luminance response through RGBA16F alpha
+        // and composites its tint independently of ordinary bloom strength.
+        ALMetalWorldBloomScene halation_scene = bloom_scene;
+        halation_scene.threshold = 0.1f;
+        halation_scene.alpha_glow_boost = 0.f;
+        halation_scene.halation = true;
+        halation_scene.halation_weights[0] = 1.f;
+        halation_scene.halation_weights[1] = 0.f;
+        halation_scene.halation_weights[2] = 0.f;
+        auto halation = renderer->renderBloom(halation_scene, &error);
+        INFO(error);
+        REQUIRE(halation);
+        CHECK(halation->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba16_float);
+        std::array<std::uint16_t, width * height * 4> halation_pixels{};
+        REQUIRE(halation->colorTexture(0)->readback(
+            *device, 0, 0, {}, halation_pixels.data(),
+            width * 4 * sizeof(std::uint16_t), &error));
+        CHECK(halation_pixels[3] != 0u);
+
+        ALMetalWorldDisplayPostScene halation_display;
+        halation_display.source = source.get();
+        halation_display.bloom_texture = halation->colorTexture(0);
+        halation_display.hdr = true;
+        halation_display.halation_strength = 1.f;
+        halation_display.halation_tint[0] = 0.f;
+        halation_display.halation_tint[1] = 1.f;
+        halation_display.halation_tint[2] = 0.f;
+        halation_display.tonemap_mix = 0.f;
+        auto halation_output = renderer->renderDisplayPost(
+            halation_display, &error);
+        INFO(error);
+        REQUIRE(halation_output);
+        REQUIRE(halation_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, packed.data(), width * sizeof(std::uint32_t),
+            &error));
+        CHECK(((packed[0] >> 10u) & 0x3ffu) > (packed[0] & 0x3ffu));
+        CHECK(((packed[0] >> 20u) & 0x3ffu) == 0u);
+
+        halation_display.bloom_texture = bloom->colorTexture(0);
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(
+            halation_display, &error));
+        CHECK(error == "Metal world display-post bloom is incompatible");
+
         ALMetalWorldBloomScene invalid;
         error.clear();
         CHECK_FALSE(renderer->renderBloom(invalid, &error));
@@ -10566,8 +10611,14 @@ TEST_CASE("almetal: world bloom matches the production HDR pyramid", "[almetal]"
         error.clear();
         CHECK_FALSE(renderer->renderBloom(invalid, &error));
         CHECK(error == "Metal world bloom pyramid is too shallow");
+        invalid.resolution_scale = 0;
+        invalid.halation_weights[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderBloom(invalid, &error));
+        CHECK(error == "Metal world bloom state is invalid");
 
-        display.bloom_texture = source->colorTexture(0);
+        display.bloom_texture = output->colorTexture(0);
         display.bloom_strength = 1.f;
         error.clear();
         CHECK_FALSE(renderer->renderDisplayPost(display, &error));
