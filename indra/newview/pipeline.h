@@ -428,6 +428,30 @@ public:
         F32 starburst_falloff = 13.333333f;
     };
     LensFlareConfig lensFlareConfig(bool world_frame) const;
+    struct LensDirtPlateParams
+    {
+        U32 width = 0;
+        U32 height = 0;
+        F32 seed = -1.f;
+        F32 grime = -1.f;
+        F32 mote_scale = -1.f;
+        F32 smudge = -1.f;
+        S32 scratches = -1;
+        F32 toe = -1.f;
+        F32 gain = -1.f;
+
+        bool operator==(const LensDirtPlateParams&) const = default;
+    };
+    struct LensDirtConfig
+    {
+        bool requested = false;
+        bool enabled = false;
+        F32 strength = 0.f;
+        F32 bloom_response = 1.f;
+        F32 flare_response = 1.f;
+        LensDirtPlateParams plate;
+    };
+    LensDirtConfig lensDirtConfig(bool world_frame) const;
     // One already-clamped grade state for both colorCorrect's GLSL uniforms
     // and the native display-post owner. Resource activation is resolved here
     // too, so either backend sees the same bypass and identity decisions.
@@ -1709,21 +1733,7 @@ public:
     // resizes through one test and needs no commit-signal plumbing. It also
     // records a *failed* attempt, so a plate that could not be allocated is
     // retried when something changes rather than on every frame.
-    struct LensDirtParams
-    {
-        U32 width      = 0;
-        U32 height     = 0;
-        F32 seed       = -1.f;
-        F32 grime      = -1.f;
-        F32 mote_scale = -1.f;
-        F32 smudge     = -1.f;
-        S32 scratches  = -1;
-        F32 toe        = -1.f;
-        F32 gain       = -1.f;
-
-        bool operator==(const LensDirtParams&) const = default;
-    };
-    LensDirtParams      mLensDirtParams;
+    LensDirtPlateParams mLensDirtParams;
 
     // The lens distortion auto-fit scale, and what it was solved for. The
     // solve walks the frame edge and an interior grid, and its inputs move

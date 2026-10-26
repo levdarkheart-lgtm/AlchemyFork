@@ -362,55 +362,6 @@ bool LLPipeline::isMetalWorldCapturePass() const
          mRT == &mAuxillaryRT);
 }
 
-bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
-{
-    static LLCachedControl<bool> dynamic_exposure(
-        gSavedSettings, "RenderDynamicExposureEnabled", true);
-    static LLCachedControl<bool> build_no_post(
-        gSavedSettings, "RenderDisablePostProcessing", false);
-    static LLCachedControl<bool> auto_adjust(
-        gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
-    static LLCachedControl<F32> dirt_strength(
-        gSavedSettings, "RenderLensDirtStrength", 0.f);
-    static LLCachedControl<F32> interval(
-        gSavedSettings, "AlchemyScopeSampleInterval", 0.1f);
-    static LLCachedControl<U32> aa_quality(
-        gSavedSettings, "RenderFSAASamples", 0U);
-    static LLCachedControl<bool> use_smaa_sample(
-        gSavedSettings, "RenderSMAAUseSample", false);
-
-    LLSettingsSky::ptr_t sky =
-        LLEnvironment::instance().getCurrentSky();
-    const bool due = !require_due || !mScopeSampleTimer.getStarted() ||
-        mScopeSampleTimer.getElapsedTimeF32() >= llmax(interval(), 0.f);
-    const bool native_dynamic_exposure = !dynamic_exposure ||
-        mMetalExposureHistoryReady || mMetalExposureLastWasFixed;
-    const LensFlareConfig flare = lensFlareConfig(true);
-    const bool native_lens_flare = !flare.enabled ||
-        mMetalLensFlareHistoryReady || mMetalLensFlareLastWasZero;
-    const ColorGradeConfig grade = colorGradeConfig(true);
-    const U32 quality = std::clamp(aa_quality(), 0U, 3U);
-    const bool exact_antialiasing =
-        mResourceInputs.mFSAAType == 0 ||
-        (mResourceInputs.mFSAAType == 1 &&
-         gFXAAProgram[quality].isComplete()) ||
-        (mResourceInputs.mFSAAType == 2 && !use_smaa_sample &&
-         gSMAAEdgeDetectProgram[quality].isComplete() &&
-         gSMAABlendWeightsProgram[quality].isComplete() &&
-         gSMAANeighborhoodBlendProgram[quality].isComplete());
-    return due && sScopeCapture && hdrEnabled() && isMainWorldPass() &&
-        mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
-        !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
-        native_dynamic_exposure && native_lens_flare &&
-        !LLRender::sClassicMode && grade.native_resources_ready &&
-        !build_no_post &&
-        !gSnapshotNoPost && sky &&
-        sky->getReflectionProbeAmbiance(auto_adjust) != 0.f &&
-        dirt_strength <= 0.f &&
-        exact_antialiasing &&
-        !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) &&
-        RenderBufferVisualization < 0;
-}
 #endif
 
 // static
@@ -533,6 +484,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> lens_flare_state_target;
     U32 lens_flare_state_frame = std::numeric_limits<U32>::max();
     U64 lens_flare_state_epoch = 0;
+    std::unique_ptr<ALMetalRenderTarget> lens_dirt_target;
+    LensDirtPlateParams lens_dirt_params;
     std::unique_ptr<ALMetalRenderTarget> sky_behind_target;
     std::unique_ptr<ALMetalTexture> projector_shadow_texture;
     std::unique_ptr<ALMetalTexture> direct_projector_shadow_texture;
@@ -748,6 +701,60 @@ struct LLPipeline::MetalWorldSimpleCapture
     LLUUID impostor_bake_avatar_id;
     std::unordered_map<LLUUID, ImpostorMirror> impostor_mirrors;
 };
+
+bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
+{
+    static LLCachedControl<bool> dynamic_exposure(
+        gSavedSettings, "RenderDynamicExposureEnabled", true);
+    static LLCachedControl<bool> build_no_post(
+        gSavedSettings, "RenderDisablePostProcessing", false);
+    static LLCachedControl<bool> auto_adjust(
+        gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
+    static LLCachedControl<F32> interval(
+        gSavedSettings, "AlchemyScopeSampleInterval", 0.1f);
+    static LLCachedControl<U32> aa_quality(
+        gSavedSettings, "RenderFSAASamples", 0U);
+    static LLCachedControl<bool> use_smaa_sample(
+        gSavedSettings, "RenderSMAAUseSample", false);
+
+    LLSettingsSky::ptr_t sky =
+        LLEnvironment::instance().getCurrentSky();
+    const bool due = !require_due || !mScopeSampleTimer.getStarted() ||
+        mScopeSampleTimer.getElapsedTimeF32() >= llmax(interval(), 0.f);
+    const bool native_dynamic_exposure = !dynamic_exposure ||
+        mMetalExposureHistoryReady || mMetalExposureLastWasFixed;
+    const LensFlareConfig flare = lensFlareConfig(true);
+    const bool native_lens_flare = !flare.enabled ||
+        mMetalLensFlareHistoryReady || mMetalLensFlareLastWasZero;
+    const LensDirtConfig dirt = lensDirtConfig(true);
+    const bool native_lens_dirt = !dirt.enabled ||
+        (mLensDirtMap.isComplete() && mLensDirtParams == dirt.plate &&
+         mMetalWorldSimpleCapture &&
+         mMetalWorldSimpleCapture->lens_dirt_target &&
+         mMetalWorldSimpleCapture->lens_dirt_params == dirt.plate);
+    const ColorGradeConfig grade = colorGradeConfig(true);
+    const U32 quality = std::clamp(aa_quality(), 0U, 3U);
+    const bool exact_antialiasing =
+        mResourceInputs.mFSAAType == 0 ||
+        (mResourceInputs.mFSAAType == 1 &&
+         gFXAAProgram[quality].isComplete()) ||
+        (mResourceInputs.mFSAAType == 2 && !use_smaa_sample &&
+         gSMAAEdgeDetectProgram[quality].isComplete() &&
+         gSMAABlendWeightsProgram[quality].isComplete() &&
+         gSMAANeighborhoodBlendProgram[quality].isComplete());
+    return due && sScopeCapture && hdrEnabled() && isMainWorldPass() &&
+        mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
+        !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
+        native_dynamic_exposure && native_lens_flare &&
+        native_lens_dirt &&
+        !LLRender::sClassicMode && grade.native_resources_ready &&
+        !build_no_post &&
+        !gSnapshotNoPost && sky &&
+        sky->getReflectionProbeAmbiance(auto_adjust) != 0.f &&
+        exact_antialiasing &&
+        !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) &&
+        RenderBufferVisualization < 0;
+}
 #endif
 
 LLPipeline::LLPipeline() :
@@ -1448,6 +1455,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.lens_flare_state_frame = std::numeric_limits<U32>::max();
         capture.lens_flare_state_epoch = 0;
         mMetalLensFlareHistoryReady = false;
+        capture.lens_dirt_target.reset();
+        capture.lens_dirt_params = LensDirtPlateParams();
         capture.projector_shadow_texture.reset();
         capture.direct_projector_shadow_texture.reset();
         capture.direct_directional_shadow_texture.reset();
@@ -1699,9 +1708,13 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     const bool refresh_lens_flare = lensFlareConfig(true).enabled &&
         (mMetalLensFlareHistoryReady || mMetalLensFlareLastWasZero) &&
         isMainWorldPass() && mRT == &mMainRT;
+    const LensDirtConfig native_dirt = lensDirtConfig(true);
+    const bool refresh_lens_dirt = native_dirt.enabled &&
+        capture.lens_dirt_params != native_dirt.plate &&
+        isMainWorldPass() && mRT == &mMainRT;
     if (!capture.frame_active && capture.attempted &&
         (capture.continuous_world_capture || mScenePixelPending ||
-         refresh_scope || refresh_lens_flare) &&
+         refresh_scope || refresh_lens_flare || refresh_lens_dirt) &&
         capture.continuous_world_frame != gFrameCount)
     {
         // Continuous SSR history makes every main-world frame a fresh
@@ -1754,6 +1767,36 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                 << "Could not initialize the native world G-buffer probe: "
                 << error << LL_ENDL;
             return;
+        }
+    }
+
+    if (isMainWorldPass() && mRT == &mMainRT &&
+        native_dirt.requested &&
+        capture.lens_dirt_params != native_dirt.plate)
+    {
+        // Record the attempted parameters before encoding, matching the GL
+        // owner's retry-on-change behavior rather than warning every frame
+        // while allocation remains unavailable.
+        capture.lens_dirt_params = native_dirt.plate;
+        ALMetalWorldLensDirtScene dirt;
+        dirt.width = native_dirt.plate.width;
+        dirt.height = native_dirt.plate.height;
+        dirt.seed = native_dirt.plate.seed;
+        dirt.grime = native_dirt.plate.grime;
+        dirt.mote_scale = native_dirt.plate.mote_scale;
+        dirt.smudge = native_dirt.plate.smudge;
+        dirt.scratches = static_cast<U32>(
+            native_dirt.plate.scratches);
+        dirt.toe = native_dirt.plate.toe;
+        dirt.gain = native_dirt.plate.gain;
+        std::string dirt_error;
+        capture.lens_dirt_target = capture.renderer->renderLensDirt(
+            dirt, &dirt_error);
+        if (!capture.lens_dirt_target)
+        {
+            LL_WARNS("Metal")
+                << "Native world lens-dirt plate retained GL: "
+                << dirt_error << LL_ENDL;
         }
     }
 
@@ -3105,6 +3148,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.lens_flare_state_frame = std::numeric_limits<U32>::max();
         capture.lens_flare_state_epoch = 0;
         mMetalLensFlareHistoryReady = false;
+        capture.lens_dirt_target.reset();
+        capture.lens_dirt_params = LensDirtPlateParams();
         capture.projector_shadow_texture.reset();
         capture.direct_projector_shadow_texture.reset();
         capture.direct_directional_shadow_texture.reset();
@@ -4368,10 +4413,17 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                  capture.lens_flare_state_epoch ==
                      mMetalLensFlareHistoryEpoch &&
                  capture.lens_flare_state_frame == gFrameCount);
+            const LensDirtConfig dirt = lensDirtConfig(true);
+            const bool exact_lens_dirt = !dirt.enabled ||
+                (mLensDirtMap.isComplete() &&
+                 mLensDirtParams == dirt.plate &&
+                 capture.lens_dirt_target &&
+                 capture.lens_dirt_params == dirt.plate);
             const bool exact_base = capture.hdr &&
                 canCaptureMetalScopeSample() && sky &&
                 exact_dynamic_exposure && exact_dof && exact_bloom &&
                 exact_cross_filter && exact_lens_flare &&
+                exact_lens_dirt &&
                 grade.native_resources_ready;
             if (exact_base)
             {
@@ -4460,6 +4512,16 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         flare.starburst_sharpness;
                     display.lens_flare_starburst_falloff =
                         flare.starburst_falloff;
+                }
+                if (dirt.enabled)
+                {
+                    display.lens_dirt_texture =
+                        capture.lens_dirt_target->colorTexture(0);
+                    display.lens_dirt_strength = dirt.strength;
+                    display.lens_dirt_bloom_response =
+                        dirt.bloom_response;
+                    display.lens_dirt_flare_response =
+                        dirt.flare_response;
                 }
 
                 ALMetalWorldColorGrade& native_grade =
@@ -11704,7 +11766,7 @@ void LLPipeline::releaseAllGLResources()
     // what generateLensDirt compares against, so leaving them set would make it
     // decide nothing had changed and skip rebuilding the plate it no longer has.
     mLensDirtMap.release();
-    mLensDirtParams = LensDirtParams();
+    mLensDirtParams = LensDirtPlateParams();
 
     mCGLut = nullptr;
 #if LL_DARWIN
@@ -11778,6 +11840,9 @@ void LLPipeline::releaseRenderTargets()
         mMetalWorldSimpleCapture->lens_flare_state_frame =
             std::numeric_limits<U32>::max();
         mMetalWorldSimpleCapture->lens_flare_state_epoch = 0;
+        mMetalWorldSimpleCapture->lens_dirt_target.reset();
+        mMetalWorldSimpleCapture->lens_dirt_params =
+            LensDirtPlateParams();
     }
 #endif
 
@@ -12272,6 +12337,55 @@ void LLPipeline::resetExposureHistory()
 #endif
 }
 
+LLPipeline::LensDirtConfig LLPipeline::lensDirtConfig(
+    bool world_frame) const
+{
+    static LLCachedControl<F32> strength_setting(
+        gSavedSettings, "RenderLensDirtStrength", 0.f);
+    static LLCachedControl<F32> bloom_setting(
+        gSavedSettings, "RenderLensDirtBloomResponse", 1.f);
+    static LLCachedControl<F32> flare_setting(
+        gSavedSettings, "RenderLensDirtFlareResponse", 1.f);
+    static LLCachedControl<S32> seed_setting(
+        gSavedSettings, "RenderLensDirtSeed", 7);
+    static LLCachedControl<F32> grime_setting(
+        gSavedSettings, "RenderLensDirtGrime", 1.f);
+    static LLCachedControl<F32> mote_scale_setting(
+        gSavedSettings, "RenderLensDirtMoteScale", 1.f);
+    static LLCachedControl<F32> smudge_setting(
+        gSavedSettings, "RenderLensDirtSmudge", 1.f);
+    static LLCachedControl<S32> scratches_setting(
+        gSavedSettings, "RenderLensDirtScratches", 0);
+    static LLCachedControl<F32> toe_setting(
+        gSavedSettings, "RenderLensDirtToe", 1.6f);
+    static LLCachedControl<F32> gain_setting(
+        gSavedSettings, "RenderLensDirtGain", 1.f);
+
+    LensDirtConfig config;
+    config.strength = llclamp(strength_setting(), 0.f, 2.f);
+    config.bloom_response = llclamp(bloom_setting(), 0.f, 2.f);
+    config.flare_response = llclamp(flare_setting(), 0.f, 2.f);
+    config.requested = config.strength > 0.f &&
+        gLensDirtGenProgram.isComplete();
+    config.enabled = config.requested && world_frame &&
+        !suppressesLensAndPrintEffects();
+    config.plate.width = mRT
+        ? llmax(1u, mRT->screen.getWidth()) : 0;
+    config.plate.height = mRT
+        ? llmax(1u, mRT->screen.getHeight()) : 0;
+    config.plate.seed = static_cast<F32>(
+        llclamp(seed_setting(), 0, 999));
+    config.plate.grime = llclamp(grime_setting(), 0.f, 2.f);
+    config.plate.mote_scale = llclamp(
+        mote_scale_setting(), 0.5f, 2.f);
+    config.plate.smudge = llclamp(smudge_setting(), 0.f, 2.f);
+    config.plate.scratches = llclamp(
+        scratches_setting(), 0, LENS_DIRT_MAX_LINES);
+    config.plate.toe = llclamp(toe_setting(), 0.6f, 4.f);
+    config.plate.gain = llclamp(gain_setting(), 0.5f, 2.5f);
+    return config;
+}
+
 // Lens dirt plate generator.
 //
 // Generated rather than loaded from a bundled image: a plate built at the
@@ -12286,21 +12400,14 @@ void LLPipeline::resetExposureHistory()
 // colorCorrect.
 void LLPipeline::generateLensDirt()
 {
-    static LLCachedControl<F32> dirt_strength(gSavedSettings, "RenderLensDirtStrength", 0.f);
-    static LLCachedControl<S32> dirt_seed(gSavedSettings, "RenderLensDirtSeed", 7);
-    static LLCachedControl<F32> dirt_grime(gSavedSettings, "RenderLensDirtGrime", 1.f);
-    static LLCachedControl<F32> dirt_mote_scale(gSavedSettings, "RenderLensDirtMoteScale", 1.f);
-    static LLCachedControl<F32> dirt_smudge(gSavedSettings, "RenderLensDirtSmudge", 1.f);
-    static LLCachedControl<S32> dirt_scratches(gSavedSettings, "RenderLensDirtScratches", 0);
-    static LLCachedControl<F32> dirt_toe(gSavedSettings, "RenderLensDirtToe", 1.6f);
-    static LLCachedControl<F32> dirt_gain(gSavedSettings, "RenderLensDirtGain", 1.f);
+    const LensDirtConfig config = lensDirtConfig(true);
 
     // Deliberately not gated on gSnapshotNoPost. That flag is true for the one
     // frame a no-post snapshot is taken, so releasing the plate for it would
     // buy a full regeneration on the very next frame -- a hitch every time
     // someone takes one. colorCorrect already forces the strength uniform to 0
     // under a clean plate, which is the gate that actually matters.
-    const bool dirt_on = (dirt_strength() > 0.f) && gLensDirtGenProgram.isComplete();
+    const bool dirt_on = config.requested;
 
     if (!dirt_on)
     {
@@ -12310,11 +12417,20 @@ void LLPipeline::generateLensDirt()
         // keeps one teardown path, inside the render loop where the target is
         // owned, and lets the strength control stay a live slider -- wiring a
         // slider to a reallocation handler would fire on every mouse-move.
-        if (mLensDirtMap.isComplete() || mLensDirtParams != LensDirtParams())
+        if (mLensDirtMap.isComplete() ||
+            mLensDirtParams != LensDirtPlateParams())
         {
             mLensDirtMap.release();
-            mLensDirtParams = LensDirtParams();
+            mLensDirtParams = LensDirtPlateParams();
         }
+#if LL_DARWIN
+        if (mMetalWorldSimpleCapture)
+        {
+            mMetalWorldSimpleCapture->lens_dirt_target.reset();
+            mMetalWorldSimpleCapture->lens_dirt_params =
+                LensDirtPlateParams();
+        }
+#endif
         return;
     }
 
@@ -12325,19 +12441,9 @@ void LLPipeline::generateLensDirt()
     // Generating at full resolution is only affordable because the rebuild is
     // debounced below. Capping the plate instead would bound the cost of one
     // rebuild but not the number of them, which is the part that hurts.
-    const U32 gen_w = llmax(1u, mRT->screen.getWidth());
-    const U32 gen_h = llmax(1u, mRT->screen.getHeight());
-
-    LensDirtParams want;
-    want.width      = gen_w;
-    want.height     = gen_h;
-    want.seed       = (F32)llclamp(dirt_seed(), 0, 999);
-    want.grime      = llclamp(dirt_grime(), 0.f, 2.f);
-    want.mote_scale = llclamp(dirt_mote_scale(), 0.5f, 2.f);
-    want.smudge     = llclamp(dirt_smudge(), 0.f, 2.f);
-    want.scratches  = llclamp(dirt_scratches(), 0, LENS_DIRT_MAX_LINES);
-    want.toe        = llclamp(dirt_toe(), 0.6f, 4.f);
-    want.gain       = llclamp(dirt_gain(), 0.5f, 2.5f);
+    const LensDirtPlateParams& want = config.plate;
+    const U32 gen_w = want.width;
+    const U32 gen_h = want.height;
 
     // Compared before the target is inspected, so a plate that failed to
     // allocate is not retried -- and this warning not repeated -- every frame
@@ -19909,17 +20015,16 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
         // the screen's shape, and the material preview is not that shape.
         S32 dirt_channel = -1;
         {
-            static LLCachedControl<F32> lens_dirt_strength(gSavedSettings, "RenderLensDirtStrength", 0.f);
-            static LLCachedControl<F32> lens_dirt_bloom(gSavedSettings, "RenderLensDirtBloomResponse", 1.f);
-            static LLCachedControl<F32> lens_dirt_flare(gSavedSettings, "RenderLensDirtFlareResponse", 1.f);
-
-            const F32 dirt_strength = (suppress_effects || !world_frame || !mLensDirtMap.isComplete())
-                                    ? 0.f
-                                    : llclamp(lens_dirt_strength(), 0.f, 2.f);
+            const LensDirtConfig dirt = lensDirtConfig(world_frame);
+            const F32 dirt_strength = dirt.enabled &&
+                    mLensDirtMap.isComplete()
+                ? dirt.strength : 0.f;
 
             shader->uniform1f(LLShaderMgr::LENS_DIRT_STRENGTH, dirt_strength);
-            shader->uniform1f(LLShaderMgr::LENS_DIRT_BLOOM_RESPONSE, llclamp(lens_dirt_bloom(), 0.f, 2.f));
-            shader->uniform1f(LLShaderMgr::LENS_DIRT_FLARE_RESPONSE, llclamp(lens_dirt_flare(), 0.f, 2.f));
+            shader->uniform1f(LLShaderMgr::LENS_DIRT_BLOOM_RESPONSE,
+                              dirt.bloom_response);
+            shader->uniform1f(LLShaderMgr::LENS_DIRT_FLARE_RESPONSE,
+                              dirt.flare_response);
 
             if (dirt_strength > 0.f)
             {

@@ -746,6 +746,12 @@ struct ALMetalWorldDisplayPostScene
     std::uint32_t lens_flare_starburst_spikes = 4;
     float lens_flare_starburst_sharpness = 24.f;
     float lens_flare_starburst_falloff = 13.333333f;
+    // Optional same-size R8 plate from renderLensDirt. Dirt is applied to the
+    // already-computed flare and bloom light before exposure/tonemapping.
+    const ALMetalTexture* lens_dirt_texture = nullptr;
+    float lens_dirt_strength = 0.f;
+    float lens_dirt_bloom_response = 1.f;
+    float lens_dirt_flare_response = 1.f;
     ALMetalWorldColorGrade color_grade;
     bool cutout_premultiplied = false;
     // Non-HDR only: colorCorrectF applies output dither at this first 8-bit
@@ -770,6 +776,21 @@ struct ALMetalWorldLensFlareStateScene
     float occlusion_radius = 0.f;
     float fade_time = 0.35f;
     bool reverse_z = false;
+};
+
+// Cached procedural front-element dirt plate. Production rebuilds this only
+// when its dimensions or authored parameters change.
+struct ALMetalWorldLensDirtScene
+{
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    float seed = 7.f;
+    float grime = 1.f;
+    float mote_scale = 1.f;
+    float smudge = 1.f;
+    std::uint32_t scratches = 0;
+    float toe = 1.6f;
+    float gain = 1.f;
 };
 
 // Pre-tonemap HDR depth of field. The gather runs at resolution_scale and
@@ -1286,6 +1307,12 @@ public:
     // flare's bounded 2x1 temporal state entirely on the Metal queue.
     std::unique_ptr<ALMetalRenderTarget> renderLensFlareState(
         const ALMetalWorldLensFlareStateScene& scene,
+        std::string* error = nullptr);
+
+    // Generate the same full-resolution scalar dirt plate as
+    // lensDirtGenF.glsl without GL readback.
+    std::unique_ptr<ALMetalRenderTarget> renderLensDirt(
+        const ALMetalWorldLensDirtScene& scene,
         std::string* error = nullptr);
 
     // Gather and combine pre-tonemap depth of field as one fail-closed

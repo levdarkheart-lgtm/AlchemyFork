@@ -150,6 +150,8 @@ namespace
         float flare_halo_starburst[4];
         // starburst falloff, linear light tint RGB.
         float flare_star_light[4];
+        // strength, bloom response, flare response, reserved.
+        float lens_dirt[4];
         float grade_white_balance[4];
         float grade_lift[4];
         float grade_inverse_gamma[4];
@@ -170,7 +172,7 @@ namespace
         // Curve half-texel scale/bias, amount, reserved.
         float grade_curve[4];
     };
-    static_assert(sizeof(WorldDisplayPostConstants) == 448);
+    static_assert(sizeof(WorldDisplayPostConstants) == 464);
 
     struct alignas(16) WorldLensFlareStateConstants
     {
@@ -182,6 +184,17 @@ namespace
         std::uint32_t config[4]{};
     };
     static_assert(sizeof(WorldLensFlareStateConstants) == 48);
+
+    struct alignas(16) WorldLensDirtConstants
+    {
+        // plate width/height, seed, grime.
+        float screen_seed_grime[4];
+        // mote scale, smudge, scratch count, toe.
+        float detail_toe[4];
+        // gain and reserved values.
+        float gain[4];
+    };
+    static_assert(sizeof(WorldLensDirtConstants) == 48);
 
     struct alignas(16) WorldDepthOfFieldConstants
     {
@@ -1058,6 +1071,7 @@ struct ALMetalWorldGBufferRenderer::Impl
         std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>, 2>
         display_post_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> lens_flare_state_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> lens_dirt_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         bloom_extract_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -1082,6 +1096,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalTexture> identity_color_lut;
     std::unique_ptr<ALMetalTexture> identity_tone_curve;
     std::unique_ptr<ALMetalTexture> identity_lens_flare_state;
+    std::unique_ptr<ALMetalTexture> identity_lens_dirt;
     std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
     std::unique_ptr<ALMetalComputePipeline> exposure_meter_pipeline;
     std::array<std::unique_ptr<ALMetalComputePipeline>, 2>
@@ -1419,6 +1434,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_lighting_composition_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_lens_flare_state_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_lens_dirt_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_display_post_fragment") ||
         !impl->library->hasFunction(
@@ -1914,6 +1931,20 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->lens_flare_state_pipeline = ALMetalRenderPipeline::create(
         device, flare_state_descriptor, error);
     if (!impl->lens_flare_state_pipeline)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderPipelineDescriptor dirt_descriptor;
+    dirt_descriptor.library = impl->library.get();
+    dirt_descriptor.vertex_function = "almetal_resample_vertex";
+    dirt_descriptor.fragment_function =
+        "almetal_world_lens_dirt_fragment";
+    dirt_descriptor.colors[0].format = ALMetalPixelFormat::r8_unorm;
+    dirt_descriptor.label = "Alchemy world lens-dirt pipeline";
+    impl->lens_dirt_pipeline = ALMetalRenderPipeline::create(
+        device, dirt_descriptor, error);
+    if (!impl->lens_dirt_pipeline)
     {
         return nullptr;
     }
@@ -3889,14 +3920,25 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         "Alchemy world inactive lens-flare state";
     impl->identity_lens_flare_state = ALMetalTexture::create(
         device, flare_state_texture_descriptor, error);
+    ALMetalTextureDescriptor dirt_texture_descriptor;
+    dirt_texture_descriptor.format = ALMetalPixelFormat::r8_unorm;
+    dirt_texture_descriptor.width = 1;
+    dirt_texture_descriptor.height = 1;
+    dirt_texture_descriptor.storage = ALMetalStorageMode::private_gpu;
+    dirt_texture_descriptor.usage = ALMetalTextureUsage::shader_read;
+    dirt_texture_descriptor.label = "Alchemy world inactive lens dirt";
+    impl->identity_lens_dirt = ALMetalTexture::create(
+        device, dirt_texture_descriptor, error);
     auto grade_upload = impl->identity_color_lut &&
             impl->identity_tone_curve &&
-            impl->identity_lens_flare_state
+            impl->identity_lens_flare_state &&
+            impl->identity_lens_dirt
         ? device.makeCommandBuffer(
               "Alchemy world inactive color-grade texture upload", error)
         : nullptr;
     const std::array<std::uint16_t, 4> zero_grade{{0, 0, 0, 0xffffu}};
     const std::array<std::uint16_t, 8> zero_flare{};
+    const std::array<std::uint8_t, 1> zero_dirt{};
     const bool grade_ready = grade_upload &&
         impl->identity_color_lut->upload(
             *grade_upload, 0, 0, {}, zero_grade.data(),
@@ -3907,6 +3949,9 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         impl->identity_lens_flare_state->upload(
             *grade_upload, 0, 0, {}, zero_flare.data(),
             sizeof(zero_flare), error) &&
+        impl->identity_lens_dirt->upload(
+            *grade_upload, 0, 0, {}, zero_dirt.data(),
+            sizeof(zero_dirt), error) &&
         grade_upload->commitAndWait(error);
     if (!grade_ready)
     {
@@ -6562,6 +6607,88 @@ ALMetalWorldGBufferRenderer::renderLensFlareState(
 }
 
 std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderLensDirt(
+    const ALMetalWorldLensDirtScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || scene.width == 0 ||
+        scene.height == 0 || !std::isfinite(scene.seed) ||
+        !std::isfinite(scene.grime) ||
+        !std::isfinite(scene.mote_scale) ||
+        !std::isfinite(scene.smudge) || !std::isfinite(scene.toe) ||
+        !std::isfinite(scene.gain) || scene.seed < 0.f ||
+        scene.seed > 999.f || scene.grime < 0.f || scene.grime > 2.f ||
+        scene.mote_scale < 0.5f || scene.mote_scale > 2.f ||
+        scene.smudge < 0.f || scene.smudge > 2.f ||
+        scene.scratches > 32 || scene.toe < 0.6f || scene.toe > 4.f ||
+        scene.gain < 0.5f || scene.gain > 2.5f)
+    {
+        setError(error, "Metal world lens-dirt scene is invalid");
+        return nullptr;
+    }
+
+    ALMetalRenderTargetDescriptor descriptor;
+    descriptor.width = scene.width;
+    descriptor.height = scene.height;
+    descriptor.colors[0].format = ALMetalPixelFormat::r8_unorm;
+    descriptor.colors[0].label = "Alchemy world lens-dirt plate";
+    descriptor.label = "Alchemy native world lens-dirt target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    WorldLensDirtConstants constants{};
+    constants.screen_seed_grime[0] = static_cast<float>(scene.width);
+    constants.screen_seed_grime[1] = static_cast<float>(scene.height);
+    constants.screen_seed_grime[2] = scene.seed;
+    constants.screen_seed_grime[3] = scene.grime;
+    constants.detail_toe[0] = scene.mote_scale;
+    constants.detail_toe[1] = scene.smudge;
+    constants.detail_toe[2] = static_cast<float>(scene.scratches);
+    constants.detail_toe[3] = scene.toe;
+    constants.gain[0] = scene.gain;
+
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world lens-dirt generation", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::dont_care;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world lens-dirt encoder", error)
+        : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(scene.width),
+        static_cast<double>(scene.height), 0.0, 1.0};
+    const ALMetalScissorRect scissor{
+        0, 0, scene.width, scene.height};
+    const bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(*mImpl->lens_dirt_pipeline, error) &&
+        encoder->setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderDisplayPost(
     const ALMetalWorldDisplayPostScene& scene,
     std::string* error)
@@ -6626,6 +6753,9 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         !std::isfinite(scene.lens_flare_starburst) ||
         !std::isfinite(scene.lens_flare_starburst_sharpness) ||
         !std::isfinite(scene.lens_flare_starburst_falloff) ||
+        !std::isfinite(scene.lens_dirt_strength) ||
+        !std::isfinite(scene.lens_dirt_bloom_response) ||
+        !std::isfinite(scene.lens_dirt_flare_response) ||
         scene.dither_amount < 0.f || scene.dither_amount > 1.f ||
         scene.bloom_strength < 0.f ||
         scene.halation_strength < 0.f ||
@@ -6685,6 +6815,14 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         scene.lens_flare_starburst_falloff > 80.00001f ||
         (scene.lens_flare_strength > 0.f &&
          !scene.lens_flare_state_texture) ||
+        scene.lens_dirt_strength < 0.f ||
+        scene.lens_dirt_strength > 2.f ||
+        scene.lens_dirt_bloom_response < 0.f ||
+        scene.lens_dirt_bloom_response > 2.f ||
+        scene.lens_dirt_flare_response < 0.f ||
+        scene.lens_dirt_flare_response > 2.f ||
+        (scene.lens_dirt_strength > 0.f &&
+         !scene.lens_dirt_texture) ||
         !validWorldColorGrade(scene.color_grade) ||
         (scene.bloom_texture == nullptr) !=
             (scene.bloom_strength == 0.f &&
@@ -6770,6 +6908,23 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         }
     }
 
+    if (scene.lens_dirt_texture)
+    {
+        const ALMetalTextureDescriptor& dirt =
+            scene.lens_dirt_texture->descriptor();
+        if (dirt.type != ALMetalTextureType::texture_2d ||
+            dirt.width != source.width || dirt.height != source.height ||
+            dirt.format != ALMetalPixelFormat::r8_unorm ||
+            dirt.array_length != 1 || dirt.mipmap_level_count != 1 ||
+            dirt.sample_count != 1 ||
+            !sampleableTexture(scene.lens_dirt_texture))
+        {
+            setError(error,
+                     "Metal world display-post lens dirt is incompatible");
+            return nullptr;
+        }
+    }
+
     ALMetalRenderTargetDescriptor output_descriptor;
     output_descriptor.width = source.width;
     output_descriptor.height = source.height;
@@ -6851,6 +7006,9 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     std::memcpy(constants.flare_star_light + 1,
                 scene.lens_flare_light_color,
                 sizeof(scene.lens_flare_light_color));
+    constants.lens_dirt[0] = scene.lens_dirt_strength;
+    constants.lens_dirt[1] = scene.lens_dirt_bloom_response;
+    constants.lens_dirt[2] = scene.lens_dirt_flare_response;
     const ALMetalWorldColorGrade& grade = scene.color_grade;
     std::memcpy(constants.grade_white_balance, grade.white_balance_gain,
                 sizeof(grade.white_balance_gain));
@@ -6960,6 +7118,10 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
             6, scene.lens_flare_state_texture
                 ? scene.lens_flare_state_texture
                 : mImpl->identity_lens_flare_state.get(), error) &&
+        encoder->setFragmentTexture(
+            7, scene.lens_dirt_texture
+                ? scene.lens_dirt_texture
+                : mImpl->identity_lens_dirt.get(), error) &&
         encoder->setFragmentSampler(
             3, mImpl->linear_clamp_sampler.get(), error) &&
         encoder->setFragmentBytes(

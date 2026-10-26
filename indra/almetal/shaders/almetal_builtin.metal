@@ -12258,6 +12258,221 @@ fragment float4 almetal_world_lens_flare_state_fragment(
         : float4(target_luminance, reference, anchor, dt);
 }
 
+struct ALMetalWorldLensDirtConstants
+{
+    float4 screen_seed_grime;
+    float4 detail_toe;
+    float4 gain;
+};
+
+static float almetal_lens_dirt_hash21(float2 p, float seed)
+{
+    return fract(sin(p.x * 127.1 + p.y * 311.7 + seed * 74.7) *
+                 43758.5453);
+}
+
+static float2 almetal_lens_dirt_hash22(float2 p, float seed)
+{
+    return fract(float2(
+        sin(p.x * 127.1 + p.y * 311.7 + seed * 74.7),
+        sin(p.x * 269.5 + p.y * 183.3 + seed * 51.3)) *
+        43758.5453);
+}
+
+static float almetal_lens_dirt_screen(float a, float b)
+{
+    return 1.0 - (1.0 - a) * (1.0 - b);
+}
+
+static float almetal_lens_dirt_motes(
+    float2 uv, float cells, float minimum_radius, float maximum_radius,
+    float softness, float seed, float aspect, float density, float bias)
+{
+    float accumulated = 0.0;
+    const float2 cell = floor(uv * cells);
+    for (int offset_x = -1; offset_x <= 1; ++offset_x)
+    {
+        for (int offset_y = -1; offset_y <= 1; ++offset_y)
+        {
+            const float2 grid = cell + float2(
+                float(offset_x), float(offset_y));
+            const float keep = step(
+                almetal_lens_dirt_hash21(grid, seed + 57.0), density);
+            const float2 feature =
+                (grid + almetal_lens_dirt_hash22(grid, seed)) / cells;
+            const float radius = minimum_radius +
+                (maximum_radius - minimum_radius) * pow(
+                    almetal_lens_dirt_hash21(grid, seed + 19.0), bias);
+            const float2 delta = float2(
+                (uv.x - feature.x) * aspect, uv.y - feature.y);
+            const float distance = length(delta);
+            const float value = clamp(
+                (radius - distance) /
+                    (radius * softness + 1.0e-9),
+                0.0, 1.0);
+            accumulated = almetal_lens_dirt_screen(
+                accumulated,
+                value * value * (3.0 - 2.0 * value) * keep);
+        }
+    }
+    return accumulated;
+}
+
+static float almetal_lens_dirt_noise(
+    float2 uv, float frequency, float seed)
+{
+    const float2 p = uv * frequency;
+    const float2 index = floor(p);
+    float2 fraction = p - index;
+    fraction = fraction * fraction * (3.0 - 2.0 * fraction);
+    const float a = almetal_lens_dirt_hash21(index, seed);
+    const float b = almetal_lens_dirt_hash21(
+        index + float2(1.0, 0.0), seed);
+    const float c = almetal_lens_dirt_hash21(
+        index + float2(0.0, 1.0), seed);
+    const float d = almetal_lens_dirt_hash21(
+        index + float2(1.0, 1.0), seed);
+    return mix(mix(a, b, fraction.x), mix(c, d, fraction.x), fraction.y);
+}
+
+static float almetal_lens_dirt_fbm3(
+    float2 uv, float frequency, float seed)
+{
+    float total = 0.0;
+    float amplitude = 1.0;
+    float normalization = 0.0;
+    for (int octave = 0; octave < 3; ++octave)
+    {
+        total += amplitude * almetal_lens_dirt_noise(
+            uv, frequency * exp2(float(octave)),
+            seed + float(octave) * 13.0);
+        normalization += amplitude;
+        amplitude *= 0.5;
+    }
+    return total / normalization;
+}
+
+static float almetal_lens_dirt_segment_distance(
+    float2 uv, float2 start, float2 end, float aspect)
+{
+    const float2 position = float2(
+        (uv.x - start.x) * aspect, uv.y - start.y);
+    const float2 segment = float2(
+        (end.x - start.x) * aspect, end.y - start.y);
+    const float amount = clamp(
+        dot(position, segment) /
+            max(dot(segment, segment), 1.0e-9),
+        0.0, 1.0);
+    return length(position - segment * amount);
+}
+
+static float almetal_lens_dirt_lines(
+    float2 uv, int count, float line_length, float width, float seed,
+    float aspect, float wander)
+{
+    float2 warped = uv;
+    if (wander > 0.0)
+    {
+        warped += (float2(
+            almetal_lens_dirt_fbm3(uv, 3.0, seed + 7.0),
+            almetal_lens_dirt_fbm3(uv, 3.0, seed + 31.0)) - 0.5) *
+            wander;
+    }
+    float accumulated = 0.0;
+    for (int index = 0; index < 32; ++index)
+    {
+        if (index >= count)
+        {
+            break;
+        }
+        const float value = float(index);
+        const float2 start = float2(
+            almetal_lens_dirt_hash21(float2(value, 1.0), seed),
+            almetal_lens_dirt_hash21(float2(value, 2.0), seed));
+        const float angle = almetal_lens_dirt_hash21(
+            float2(value, 3.0), seed) * 6.2831853;
+        const float length_scale = line_length * (0.4 + 0.6 *
+            almetal_lens_dirt_hash21(float2(value, 4.0), seed));
+        const float2 end = start +
+            float2(cos(angle), sin(angle)) * length_scale;
+        const float line_width = width * (0.5 + 0.5 *
+            almetal_lens_dirt_hash21(float2(value, 5.0), seed));
+        const float distance = almetal_lens_dirt_segment_distance(
+            warped, start, end, aspect);
+        const float x = clamp(
+            (line_width - distance) / max(line_width, 1.0e-9),
+            0.0, 1.0);
+        accumulated = max(
+            accumulated,
+            x * x * (3.0 - 2.0 * x) * (0.55 + 0.45 *
+                almetal_lens_dirt_hash21(
+                    float2(value, 6.0), seed)));
+    }
+    return accumulated;
+}
+
+fragment float4 almetal_world_lens_dirt_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    constant ALMetalWorldLensDirtConstants& constants [[buffer(0)]])
+{
+    // GL's procedural UV has its origin at the lower-left, while the Metal
+    // render target's row zero is the screen top. Flip only the generation
+    // coordinate so both plates put the same seeded feature on screen.
+    const float2 uv = float2(input.texcoord.x, 1.0 - input.texcoord.y);
+    const float aspect = constants.screen_seed_grime.x /
+        max(constants.screen_seed_grime.y, 1.0);
+    const float seed = constants.screen_seed_grime.z;
+    const float grime = constants.screen_seed_grime.w;
+    const float mote_scale = max(constants.detail_toe.x, 0.05);
+    float clump = almetal_lens_dirt_fbm3(uv, 5.0, seed + 101.0);
+    clump = 0.62 + 0.76 * clamp((clump - 0.34) / 0.36, 0.0, 1.0);
+
+    float image = 0.0;
+    image = almetal_lens_dirt_screen(image, almetal_lens_dirt_motes(
+        uv, 4.5 / mote_scale, 0.050 * mote_scale, 0.140 * mote_scale,
+        0.45, seed, aspect, 0.80 * grime, 1.7) * 0.46 * clump);
+    image = almetal_lens_dirt_screen(image, almetal_lens_dirt_motes(
+        uv, 9.0 / mote_scale, 0.022 * mote_scale, 0.064 * mote_scale,
+        0.42, seed + 3.0, aspect, 0.75 * grime, 1.9) * 0.50 * clump);
+    image = almetal_lens_dirt_screen(image, almetal_lens_dirt_motes(
+        uv, 20.0 / mote_scale, 0.009 * mote_scale,
+        0.028 * mote_scale, 0.40, seed + 5.0, aspect,
+        0.60 * grime, 2.1) * 0.44 * clump);
+    image = almetal_lens_dirt_screen(image, almetal_lens_dirt_motes(
+        uv, 90.0, 0.0011, 0.0030, 0.55, seed + 9.0, aspect,
+        0.34 * grime, 1.5) * 0.75);
+
+    const float smudge = almetal_lens_dirt_fbm3(
+        uv, 1.6, seed + 21.0);
+    image = almetal_lens_dirt_screen(
+        image, pow(clamp((smudge - 0.50) / 0.34, 0.0, 1.0), 1.4) *
+            0.34 * constants.detail_toe.y);
+    image = almetal_lens_dirt_screen(
+        image, almetal_lens_dirt_lines(
+            uv, 12, 0.20, 0.0014, seed + 41.0,
+            aspect, 0.06) * 0.62);
+    const int scratches = int(round(constants.detail_toe.z));
+    if (scratches > 0)
+    {
+        image = almetal_lens_dirt_screen(
+            image, almetal_lens_dirt_lines(
+                uv, scratches, 0.55, 0.0022, seed + 57.0,
+                aspect, 0.0));
+    }
+
+    const float2 center = float2(
+        (uv.x - 0.5) * aspect, uv.y - 0.5);
+    const float radius = clamp(
+        length(center) / (0.5 * length(float2(aspect, 1.0))),
+        0.0, 1.0);
+    image *= 0.22 + 0.78 * pow(radius, 0.75);
+    const float value = clamp(
+        constants.gain.x * pow(clamp(image, 0.0, 1.0),
+                               constants.detail_toe.w),
+        0.0, 1.0);
+    return float4(value, value, value, 1.0);
+}
+
 struct ALMetalWorldDisplayPostConstants
 {
     // static exposure, adapted exposure, tonemap mix, tonemap type
@@ -12281,6 +12496,7 @@ struct ALMetalWorldDisplayPostConstants
     float4 flare_ghost_halo;
     float4 flare_halo_starburst;
     float4 flare_star_light;
+    float4 lens_dirt;
     float4 grade_white_balance;
     float4 grade_lift;
     float4 grade_inverse_gamma;
@@ -12734,6 +12950,7 @@ static float4 almetal_world_display_post(
     texture2d_array<float> color_lut,
     texture2d<float> tone_curve,
     texture2d<float> lens_flare_state,
+    texture2d<float> lens_dirt,
     sampler grade_sampler,
     constant ALMetalWorldDisplayPostConstants& constants,
     float adapted_exposure)
@@ -12744,9 +12961,11 @@ static float4 almetal_world_display_post(
         constants.chromatic.z, constants.chromatic_angle_offset_r.xy,
         constants.chromatic_angle_offset_r.zw,
         constants.chromatic_offset_b.xy);
-    color.rgb += almetal_world_lens_flare(
+    const float3 flare = almetal_world_lens_flare(
         input.texcoord, lens_flare_state, constants,
         float2(source.get_width(), source.get_height()));
+    color.rgb += flare;
+    float3 lens_light = flare * constants.lens_dirt.z;
     const float coverage = clamp(color.a, 0.0, 1.0);
     if (constants.config.x != 0)
     {
@@ -12759,11 +12978,25 @@ static float4 almetal_world_display_post(
         // Match colorCorrectF's BLOOM_COMPOSITE permutation: the completed
         // pyramid is added in linear light after cutout unpremultiplication
         // and before exposure/tonemapping.
-        color.rgb += bloom_sample.rgb * constants.display.y +
+        const float3 bloom_term =
+            bloom_sample.rgb * constants.display.y +
             bloom_sample.a * constants.display.z *
                 constants.halation_tint.rgb +
             cross_filter_sample * constants.display.w *
                 constants.display.y;
+        color.rgb += bloom_term;
+        lens_light += bloom_term * constants.lens_dirt.y;
+    }
+
+    if (constants.lens_dirt.x > 0.0)
+    {
+        color.rgb += lens_light * lens_dirt.sample(
+            grade_sampler, input.texcoord, level(0.0)).r *
+            constants.lens_dirt.x;
+    }
+
+    if (constants.config.y != 0)
+    {
         color.rgb *= constants.post.x * adapted_exposure;
     }
 
@@ -12823,12 +13056,13 @@ fragment float4 almetal_world_display_post_fragment(
     texture2d_array<float> color_lut [[texture(4)]],
     texture2d<float> tone_curve [[texture(5)]],
     texture2d<float> lens_flare_state [[texture(6)]],
+    texture2d<float> lens_dirt [[texture(7)]],
     sampler grade_sampler [[sampler(3)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
         input, source, source_sampler, float4(0.0), float3(0.0),
-        color_lut, tone_curve, lens_flare_state, grade_sampler,
+        color_lut, tone_curve, lens_flare_state, lens_dirt, grade_sampler,
         constants, constants.post.y);
 }
 
@@ -12840,12 +13074,13 @@ fragment float4 almetal_world_display_post_exposure_fragment(
     texture2d_array<float> color_lut [[texture(4)]],
     texture2d<float> tone_curve [[texture(5)]],
     texture2d<float> lens_flare_state [[texture(6)]],
+    texture2d<float> lens_dirt [[texture(7)]],
     sampler grade_sampler [[sampler(3)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
         input, source, source_sampler, float4(0.0), float3(0.0),
-        color_lut, tone_curve, lens_flare_state, grade_sampler,
+        color_lut, tone_curve, lens_flare_state, lens_dirt, grade_sampler,
         constants,
         exposure.read(uint2(0)).r);
 }
@@ -12861,6 +13096,7 @@ fragment float4 almetal_world_display_post_bloom_fragment(
     texture2d_array<float> color_lut [[texture(4)]],
     texture2d<float> tone_curve [[texture(5)]],
     texture2d<float> lens_flare_state [[texture(6)]],
+    texture2d<float> lens_dirt [[texture(7)]],
     sampler grade_sampler [[sampler(3)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
@@ -12868,7 +13104,7 @@ fragment float4 almetal_world_display_post_bloom_fragment(
         input, source, source_sampler,
         bloom.sample(bloom_sampler, input.texcoord),
         cross_filter.sample(cross_filter_sampler, input.texcoord).rgb,
-        color_lut, tone_curve, lens_flare_state, grade_sampler,
+        color_lut, tone_curve, lens_flare_state, lens_dirt, grade_sampler,
         constants, constants.post.y);
 }
 
@@ -12884,6 +13120,7 @@ fragment float4 almetal_world_display_post_bloom_exposure_fragment(
     texture2d_array<float> color_lut [[texture(4)]],
     texture2d<float> tone_curve [[texture(5)]],
     texture2d<float> lens_flare_state [[texture(6)]],
+    texture2d<float> lens_dirt [[texture(7)]],
     sampler grade_sampler [[sampler(3)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
@@ -12891,7 +13128,7 @@ fragment float4 almetal_world_display_post_bloom_exposure_fragment(
         input, source, source_sampler,
         bloom.sample(bloom_sampler, input.texcoord),
         cross_filter.sample(cross_filter_sampler, input.texcoord).rgb,
-        color_lut, tone_curve, lens_flare_state, grade_sampler,
+        color_lut, tone_curve, lens_flare_state, lens_dirt, grade_sampler,
         constants, exposure.read(uint2(0)).r);
 }
 

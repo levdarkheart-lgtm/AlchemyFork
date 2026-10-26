@@ -766,6 +766,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_projector_light_fragment",
             "almetal_world_lighting_composition_fragment",
             "almetal_world_lens_flare_state_fragment",
+            "almetal_world_lens_dirt_fragment",
             "almetal_world_display_post_fragment",
             "almetal_world_display_post_exposure_fragment",
             "almetal_world_exposure_meter",
@@ -11534,6 +11535,313 @@ TEST_CASE("almetal: world lens flare owns visibility history and display", "[alm
         CHECK(error == "Metal world display-post state is invalid");
         display.lens_flare_state_texture = visible->colorTexture(0);
         display.lens_flare_ghost_count = 9;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(display, &error));
+        CHECK(error == "Metal world display-post state is invalid");
+    }
+}
+
+TEST_CASE("almetal: world lens dirt owns its plate and light response", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 24;
+        constexpr std::uint32_t height = 16;
+        ALMetalWorldLensDirtScene dirt_scene;
+        dirt_scene.width = width;
+        dirt_scene.height = height;
+        dirt_scene.seed = 19.f;
+        dirt_scene.grime = 1.1f;
+        dirt_scene.mote_scale = 1.25f;
+        dirt_scene.smudge = 0.8f;
+        dirt_scene.scratches = 7;
+        dirt_scene.toe = 1.4f;
+        dirt_scene.gain = 1.2f;
+        auto dirt = renderer->renderLensDirt(dirt_scene, &error);
+        INFO(error);
+        REQUIRE(dirt);
+        CHECK(dirt->descriptor().width == width);
+        CHECK(dirt->descriptor().height == height);
+        CHECK(dirt->descriptor().colors[0].format ==
+              ALMetalPixelFormat::r8_unorm);
+        std::array<std::uint8_t, width * height> dirt_pixels{};
+        REQUIRE(dirt->colorTexture(0)->readback(
+            *device, 0, 0, {}, dirt_pixels.data(), width, &error));
+        INFO(error);
+        const auto [minimum, maximum] = std::minmax_element(
+            dirt_pixels.begin(), dirt_pixels.end());
+        CHECK(*maximum > *minimum);
+        CHECK(std::count_if(
+                  dirt_pixels.begin(), dirt_pixels.end(),
+                  [](std::uint8_t value) { return value != 0; }) >
+              static_cast<std::ptrdiff_t>(width));
+
+        auto repeated = renderer->renderLensDirt(dirt_scene, &error);
+        INFO(error);
+        REQUIRE(repeated);
+        std::array<std::uint8_t, width * height> repeated_pixels{};
+        REQUIRE(repeated->colorTexture(0)->readback(
+            *device, 0, 0, {}, repeated_pixels.data(), width, &error));
+        CHECK(repeated_pixels == dirt_pixels);
+
+        ALMetalWorldLensDirtScene reseeded_scene = dirt_scene;
+        reseeded_scene.seed += 1.f;
+        auto reseeded = renderer->renderLensDirt(reseeded_scene, &error);
+        INFO(error);
+        REQUIRE(reseeded);
+        std::array<std::uint8_t, width * height> reseeded_pixels{};
+        REQUIRE(reseeded->colorTexture(0)->readback(
+            *device, 0, 0, {}, reseeded_pixels.data(), width, &error));
+        CHECK(reseeded_pixels != dirt_pixels);
+
+        const auto make_source = [&](std::uint16_t value,
+                                     const char* label)
+        {
+            std::vector<std::uint16_t> pixels(width * height * 4, value);
+            for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+            {
+                pixels[pixel * 4 + 3] = 0x3c00u;
+            }
+            ALMetalRenderTargetDescriptor descriptor;
+            descriptor.width = width;
+            descriptor.height = height;
+            descriptor.colors[0].format =
+                ALMetalPixelFormat::rgba16_float;
+            descriptor.label = label;
+            auto target = ALMetalRenderTarget::create(
+                *device, descriptor, &error);
+            INFO(error);
+            REQUIRE(target);
+            auto command = device->makeCommandBuffer(label, &error);
+            INFO(error);
+            REQUIRE(command);
+            id<MTLBuffer> staging = [nativeDevice(*device)
+                newBufferWithBytes:pixels.data()
+                          length:pixels.size() * sizeof(std::uint16_t)
+                         options:MTLResourceStorageModeShared];
+            REQUIRE(staging);
+            id<MTLBlitCommandEncoder> blit =
+                [nativeCommand(*command) blitCommandEncoder];
+            REQUIRE(blit);
+            const std::size_t row_bytes =
+                width * 4 * sizeof(std::uint16_t);
+            [blit copyFromBuffer:staging
+                    sourceOffset:0
+               sourceBytesPerRow:row_bytes
+             sourceBytesPerImage:row_bytes * height
+                      sourceSize:MTLSizeMake(width, height, 1)
+                       toTexture:(__bridge id<MTLTexture>)
+                           target->colorTexture(0)->nativeHandle()
+                destinationSlice:0
+                destinationLevel:0
+               destinationOrigin:MTLOriginMake(0, 0, 0)];
+            [blit endEncoding];
+            REQUIRE(command->commit(&error));
+            INFO(error);
+            return target;
+        };
+        auto source = make_source(
+            0x2e66u, "Alchemy lens-dirt display source");
+
+        ALMetalTextureDescriptor flare_descriptor;
+        flare_descriptor.format = ALMetalPixelFormat::rgba16_float;
+        flare_descriptor.width = 2;
+        flare_descriptor.height = 1;
+        flare_descriptor.storage = ALMetalStorageMode::private_gpu;
+        flare_descriptor.usage = ALMetalTextureUsage::shader_read;
+        flare_descriptor.label = "Alchemy lens-dirt flare state";
+        auto flare_state = ALMetalTexture::create(
+            *device, flare_descriptor, &error);
+        INFO(error);
+        REQUIRE(flare_state);
+        const std::array<std::uint16_t, 8> flare_pixels{{
+            0x3c00u, 0x3c00u, 0x3c00u, 0u,
+            0u, 0u, 0u, 0u,
+        }};
+        auto flare_upload = device->makeCommandBuffer(
+            "Alchemy lens-dirt flare-state upload", &error);
+        INFO(error);
+        REQUIRE(flare_upload);
+        REQUIRE(flare_state->upload(
+            *flare_upload, 0, 0, {}, flare_pixels.data(),
+            sizeof(flare_pixels), &error));
+        REQUIRE(flare_upload->commit(&error));
+        INFO(error);
+
+        ALMetalWorldDisplayPostScene display;
+        display.source = source.get();
+        display.hdr = true;
+        display.tonemap_mix = 0.f;
+        display.lens_flare_state_texture = flare_state.get();
+        display.lens_flare_strength = 1.f;
+        display.lens_flare_sun_uv[0] = 0.5f;
+        display.lens_flare_sun_uv[1] = 0.5f;
+        display.lens_flare_streak_intensity = 0.f;
+        display.lens_flare_glow = 1.f;
+        display.lens_flare_glow_radius = 0.5f;
+        display.lens_flare_glow_falloff = 1.f;
+        display.lens_flare_ghost = 0.f;
+        display.lens_flare_halo = 0.f;
+        display.lens_flare_starburst = 0.f;
+        display.lens_dirt_texture = dirt->colorTexture(0);
+
+        auto without_dirt = renderer->renderDisplayPost(display, &error);
+        INFO(error);
+        REQUIRE(without_dirt);
+        std::array<std::uint32_t, width * height> baseline{};
+        REQUIRE(without_dirt->colorTexture(0)->readback(
+            *device, 0, 0, {}, baseline.data(), width * 4, &error));
+
+        display.lens_dirt_strength = 1.5f;
+        display.lens_dirt_flare_response = 0.75f;
+        auto with_dirt = renderer->renderDisplayPost(display, &error);
+        INFO(error);
+        REQUIRE(with_dirt);
+        std::array<std::uint32_t, width * height> dirt_output{};
+        REQUIRE(with_dirt->colorTexture(0)->readback(
+            *device, 0, 0, {}, dirt_output.data(), width * 4, &error));
+        CHECK(dirt_output != baseline);
+
+        const auto half_to_float = [](std::uint16_t value)
+        {
+            const std::uint32_t sign =
+                static_cast<std::uint32_t>(value & 0x8000u) << 16;
+            std::uint32_t exponent = (value >> 10) & 0x1fu;
+            std::uint32_t mantissa = value & 0x03ffu;
+            std::uint32_t bits = 0;
+            if (exponent == 0)
+            {
+                if (mantissa == 0)
+                {
+                    bits = sign;
+                }
+                else
+                {
+                    std::int32_t unbiased = -14;
+                    while ((mantissa & 0x0400u) == 0)
+                    {
+                        mantissa <<= 1;
+                        --unbiased;
+                    }
+                    mantissa &= 0x03ffu;
+                    bits = sign |
+                        (static_cast<std::uint32_t>(unbiased + 127) << 23) |
+                        (mantissa << 13);
+                }
+            }
+            else
+            {
+                bits = exponent == 0x1fu
+                    ? sign | 0x7f800000u | (mantissa << 13)
+                    : sign | ((exponent + 112u) << 23) |
+                        (mantissa << 13);
+            }
+            float result = 0.f;
+            std::memcpy(&result, &bits, sizeof(result));
+            return result;
+        };
+        const auto srgb = [](float linear)
+        {
+            linear = std::max(linear, 0.f);
+            return linear > 0.0031308f
+                ? 1.055f * std::pow(linear, 1.f / 2.4f) - 0.055f
+                : linear * 12.92f;
+        };
+        const float source_value = half_to_float(0x2e66u);
+        const float aspect = static_cast<float>(width) / height;
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const float u = (static_cast<float>(x) + 0.5f) / width;
+                const float v = (static_cast<float>(y) + 0.5f) / height;
+                const float dx = (u - 0.5f) * aspect;
+                const float dy = v - 0.5f;
+                const float flare = std::exp(
+                    -(dx * dx + dy * dy) / (0.5f * 0.5f)) * 0.15f;
+                const std::size_t pixel =
+                    static_cast<std::size_t>(y) * width + x;
+                const float dirt_value = dirt_pixels[pixel] / 255.f;
+                const float linear = source_value + flare +
+                    flare * 0.75f * dirt_value * 1.5f;
+                const std::uint32_t expected =
+                    static_cast<std::uint32_t>(std::lround(
+                        std::clamp(srgb(std::clamp(linear, 0.f, 1.f)),
+                                   0.f, 1.f) * 1023.f));
+                for (std::uint32_t channel = 0; channel < 3; ++channel)
+                {
+                    const std::uint32_t actual =
+                        (dirt_output[pixel] >> (channel * 10u)) & 0x3ffu;
+                    CAPTURE(x, y, channel, actual, expected, dirt_value);
+                    CHECK(std::abs(static_cast<int>(actual) -
+                                   static_cast<int>(expected)) <= 2);
+                }
+            }
+        }
+
+        // A uniform completed bloom pyramid also lights the plate, while a
+        // zero bloom response leaves the ordinary bloom composite unchanged.
+        ALMetalWorldBloomScene bloom_scene;
+        bloom_scene.source = source.get();
+        bloom_scene.mip_count = 3;
+        bloom_scene.threshold = 100.f;
+        bloom_scene.knee = 0.f;
+        bloom_scene.scatter = 1.f;
+        bloom_scene.alpha_glow_boost = 0.5f;
+        auto bloom = renderer->renderBloom(bloom_scene, &error);
+        INFO(error);
+        REQUIRE(bloom);
+        ALMetalWorldDisplayPostScene bloom_display;
+        bloom_display.source = source.get();
+        bloom_display.bloom_texture = bloom->colorTexture(0);
+        bloom_display.bloom_strength = 0.25f;
+        bloom_display.hdr = true;
+        bloom_display.tonemap_mix = 0.f;
+        bloom_display.lens_dirt_texture = dirt->colorTexture(0);
+        bloom_display.lens_dirt_strength = 1.f;
+        bloom_display.lens_dirt_bloom_response = 0.f;
+        auto bloom_clean = renderer->renderDisplayPost(
+            bloom_display, &error);
+        INFO(error);
+        REQUIRE(bloom_clean);
+        bloom_display.lens_dirt_bloom_response = 1.f;
+        auto bloom_dirty = renderer->renderDisplayPost(
+            bloom_display, &error);
+        INFO(error);
+        REQUIRE(bloom_dirty);
+        std::array<std::uint32_t, width * height> bloom_clean_pixels{};
+        std::array<std::uint32_t, width * height> bloom_dirty_pixels{};
+        REQUIRE(bloom_clean->colorTexture(0)->readback(
+            *device, 0, 0, {}, bloom_clean_pixels.data(), width * 4,
+            &error));
+        REQUIRE(bloom_dirty->colorTexture(0)->readback(
+            *device, 0, 0, {}, bloom_dirty_pixels.data(), width * 4,
+            &error));
+        CHECK(bloom_dirty_pixels != bloom_clean_pixels);
+
+        ALMetalWorldLensDirtScene invalid;
+        error.clear();
+        CHECK_FALSE(renderer->renderLensDirt(invalid, &error));
+        CHECK(error == "Metal world lens-dirt scene is invalid");
+        invalid = dirt_scene;
+        invalid.scratches = 33;
+        error.clear();
+        CHECK_FALSE(renderer->renderLensDirt(invalid, &error));
+        CHECK(error == "Metal world lens-dirt scene is invalid");
+        display.lens_dirt_texture = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(display, &error));
+        CHECK(error == "Metal world display-post state is invalid");
+        display.lens_dirt_texture = dirt->colorTexture(0);
+        display.lens_dirt_strength = 2.1f;
         error.clear();
         CHECK_FALSE(renderer->renderDisplayPost(display, &error));
         CHECK(error == "Metal world display-post state is invalid");
