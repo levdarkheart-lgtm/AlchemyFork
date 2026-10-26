@@ -396,7 +396,9 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         sky->getReflectionProbeAmbiance(auto_adjust) != 0.f &&
         chromatic_strength <= 0.f &&
         flare_strength <= 0.f && dirt_strength <= 0.f &&
-        mResourceInputs.mFSAAType == 0 &&
+        (mResourceInputs.mFSAAType == 0 ||
+         (mResourceInputs.mFSAAType == 1 &&
+          gFXAAProgram[0].isComplete())) &&
         !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) &&
         RenderBufferVisualization < 0;
 }
@@ -4264,6 +4266,36 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         display, &display_error);
                 if (display_target)
                 {
+                    // FXAA is the first post-colorCorrect owner. Keep SMAA
+                    // blocked by canCaptureMetalScopeSample, and fail closed
+                    // to GL/PBO if a demanded native FXAA pass cannot be
+                    // reproduced before CAS.
+                    static LLCachedControl<U32> aa_quality(
+                        gSavedSettings, "RenderFSAASamples", 0U);
+                    const bool wants_native_fxaa =
+                        mResourceInputs.mFSAAType == 1 &&
+                        gFXAAProgram[0].isComplete();
+                    bool exact_fxaa = true;
+                    if (wants_native_fxaa)
+                    {
+                        std::string fxaa_error;
+                        auto fxaa_target = capture.renderer->renderFXAA(
+                            *display_target,
+                            std::clamp(aa_quality(), 0U, 3U),
+                            &fxaa_error);
+                        if (fxaa_target)
+                        {
+                            display_target = std::move(fxaa_target);
+                        }
+                        else
+                        {
+                            exact_fxaa = false;
+                            LL_WARNS("Metal")
+                                << "Native world FXAA retained GL: "
+                                << fxaa_error << LL_ENDL;
+                        }
+                    }
+
                     // Scope capture forces the GL CAS implementation into
                     // its standalone one-to-one pass. Reproduce that exact
                     // boundary here before publishing the native display
@@ -4272,8 +4304,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         gSavedSettings, "RenderCASSharpness", 0.4f);
                     const bool wants_native_cas =
                         cas_sharpness() > 0.f && gCASProgram.isComplete();
-                    bool exact_cas = true;
-                    if (wants_native_cas)
+                    bool exact_cas = exact_fxaa;
+                    if (exact_fxaa && wants_native_cas)
                     {
                         std::string cas_error;
                         auto cas_target = capture.renderer->renderCAS(

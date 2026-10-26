@@ -11657,6 +11657,22 @@ struct ALMetalWorldCASConstants
     float4 params;
 };
 
+struct ALMetalWorldFXAAConstants
+{
+    uint4 config;
+};
+
+// The four viewer permutations are FXAA 3.11 presets 12, 23, 28 and 39.
+// Keeping their authored search sequences in one uniform table produces the
+// same taps without maintaining four otherwise-identical Metal functions.
+constant uint almetal_world_fxaa_step_counts[4] = {5u, 6u, 11u, 12u};
+constant float almetal_world_fxaa_steps[4][12] = {
+    {1.0, 1.5, 2.0, 4.0, 12.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+    {1.0, 1.5, 2.0, 2.0, 2.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+    {1.0, 1.5, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 4.0, 8.0, 0.0},
+    {1.0, 1.0, 1.0, 1.0, 1.0, 1.5, 2.0, 2.0, 2.0, 2.0, 4.0, 8.0},
+};
+
 static float almetal_world_display_hash12(float2 p)
 {
     float3 p3 = fract(float3(p.x, p.y, p.x) * 0.1031);
@@ -11811,6 +11827,240 @@ fragment float4 almetal_world_display_post_bloom_exposure_fragment(
         bloom.sample(bloom_sampler, input.texcoord),
         cross_filter.sample(cross_filter_sampler, input.texcoord).rgb,
         constants, exposure.read(uint2(0)).r);
+}
+
+static float4 almetal_world_fxaa_sample(
+    texture2d<float> source, sampler source_sampler, float2 position)
+{
+    return source.sample(source_sampler, position, level(0.0));
+}
+
+static float almetal_world_fxaa_luma(float4 color)
+{
+    return dot(color.rgb, float3(0.299, 0.587, 0.114));
+}
+
+fragment float4 almetal_world_fxaa_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]],
+    constant ALMetalWorldFXAAConstants& constants [[buffer(0)]])
+{
+    const uint quality = min(constants.config.x, 3u);
+    const float2 reciprocal_frame = 1.0 / float2(
+        source.get_width(), source.get_height());
+    float2 position = input.texcoord;
+    const float4 center = almetal_world_fxaa_sample(
+        source, source_sampler, position);
+    const float luma_center = almetal_world_fxaa_luma(center);
+    float luma_south = almetal_world_fxaa_luma(
+        almetal_world_fxaa_sample(
+            source, source_sampler,
+            position + float2(0.0, reciprocal_frame.y)));
+    float luma_east = almetal_world_fxaa_luma(
+        almetal_world_fxaa_sample(
+            source, source_sampler,
+            position + float2(reciprocal_frame.x, 0.0)));
+    float luma_north = almetal_world_fxaa_luma(
+        almetal_world_fxaa_sample(
+            source, source_sampler,
+            position - float2(0.0, reciprocal_frame.y)));
+    float luma_west = almetal_world_fxaa_luma(
+        almetal_world_fxaa_sample(
+            source, source_sampler,
+            position - float2(reciprocal_frame.x, 0.0)));
+
+    const float max_sm = max(luma_south, luma_center);
+    const float min_sm = min(luma_south, luma_center);
+    const float max_esm = max(luma_east, max_sm);
+    const float min_esm = min(luma_east, min_sm);
+    const float max_wn = max(luma_north, luma_west);
+    const float min_wn = min(luma_north, luma_west);
+    const float range_max = max(max_wn, max_esm);
+    const float range_min = min(min_wn, min_esm);
+    const float range = range_max - range_min;
+    if (range < max(0.03, range_max * 0.07))
+    {
+        return float4(center.rgb, luma_center);
+    }
+
+    const float luma_north_west = almetal_world_fxaa_luma(
+        almetal_world_fxaa_sample(
+            source, source_sampler,
+            position + reciprocal_frame * float2(-1.0, -1.0)));
+    const float luma_south_east = almetal_world_fxaa_luma(
+        almetal_world_fxaa_sample(
+            source, source_sampler,
+            position + reciprocal_frame * float2(1.0, 1.0)));
+    const float luma_north_east = almetal_world_fxaa_luma(
+        almetal_world_fxaa_sample(
+            source, source_sampler,
+            position + reciprocal_frame * float2(1.0, -1.0)));
+    const float luma_south_west = almetal_world_fxaa_luma(
+        almetal_world_fxaa_sample(
+            source, source_sampler,
+            position + reciprocal_frame * float2(-1.0, 1.0)));
+
+    const float luma_ns = luma_north + luma_south;
+    const float luma_we = luma_west + luma_east;
+    const float subpixel_reciprocal_range = 1.0 / range;
+    const float subpixel_nswe = luma_ns + luma_we;
+    const float edge_horizontal_1 = -2.0 * luma_center + luma_ns;
+    const float edge_vertical_1 = -2.0 * luma_center + luma_we;
+    const float luma_nese = luma_north_east + luma_south_east;
+    const float luma_nwne = luma_north_west + luma_north_east;
+    const float edge_horizontal_2 = -2.0 * luma_east + luma_nese;
+    const float edge_vertical_2 = -2.0 * luma_north + luma_nwne;
+    const float luma_nwsw = luma_north_west + luma_south_west;
+    const float luma_swse = luma_south_west + luma_south_east;
+    const float edge_horizontal_4 =
+        abs(edge_horizontal_1) * 2.0 + abs(edge_horizontal_2);
+    const float edge_vertical_4 =
+        abs(edge_vertical_1) * 2.0 + abs(edge_vertical_2);
+    const float edge_horizontal_3 = -2.0 * luma_west + luma_nwsw;
+    const float edge_vertical_3 = -2.0 * luma_south + luma_swse;
+    const float edge_horizontal = abs(edge_horizontal_3) +
+        edge_horizontal_4;
+    const float edge_vertical = abs(edge_vertical_3) + edge_vertical_4;
+    const float subpixel_nwswnese = luma_nwsw + luma_nese;
+
+    float length_sign = reciprocal_frame.x;
+    const bool horizontal_span = edge_horizontal >= edge_vertical;
+    const float subpixel_a =
+        subpixel_nswe * 2.0 + subpixel_nwswnese;
+    if (!horizontal_span)
+    {
+        luma_north = luma_west;
+        luma_south = luma_east;
+    }
+    if (horizontal_span)
+    {
+        length_sign = reciprocal_frame.y;
+    }
+    const float subpixel_b = subpixel_a * (1.0 / 12.0) - luma_center;
+    const float gradient_north = luma_north - luma_center;
+    const float gradient_south = luma_south - luma_center;
+    float luma_nn = luma_north + luma_center;
+    const float luma_ss = luma_south + luma_center;
+    const bool pair_north =
+        abs(gradient_north) >= abs(gradient_south);
+    const float gradient =
+        max(abs(gradient_north), abs(gradient_south));
+    if (pair_north)
+    {
+        length_sign = -length_sign;
+    }
+    const float subpixel_c = saturate(
+        abs(subpixel_b) * subpixel_reciprocal_range);
+
+    float2 position_base = position;
+    const float2 offset_np = float2(
+        horizontal_span ? reciprocal_frame.x : 0.0,
+        horizontal_span ? 0.0 : reciprocal_frame.y);
+    if (!horizontal_span)
+    {
+        position_base.x += length_sign * 0.5;
+    }
+    if (horizontal_span)
+    {
+        position_base.y += length_sign * 0.5;
+    }
+
+    float2 position_north = position_base - offset_np *
+        almetal_world_fxaa_steps[quality][0];
+    float2 position_south = position_base + offset_np *
+        almetal_world_fxaa_steps[quality][0];
+    const float subpixel_d = -2.0 * subpixel_c + 3.0;
+    float luma_end_north = almetal_world_fxaa_luma(
+        almetal_world_fxaa_sample(
+            source, source_sampler, position_north));
+    const float subpixel_e = subpixel_c * subpixel_c;
+    float luma_end_south = almetal_world_fxaa_luma(
+        almetal_world_fxaa_sample(
+            source, source_sampler, position_south));
+    if (!pair_north)
+    {
+        luma_nn = luma_ss;
+    }
+    const float gradient_scaled = gradient * 0.25;
+    const float luma_mm = luma_center - luma_nn * 0.5;
+    const float subpixel_f = subpixel_d * subpixel_e;
+    const bool luma_m_less_than_zero = luma_mm < 0.0;
+    luma_end_north -= luma_nn * 0.5;
+    luma_end_south -= luma_nn * 0.5;
+    bool done_north = abs(luma_end_north) >= gradient_scaled;
+    bool done_south = abs(luma_end_south) >= gradient_scaled;
+
+    const uint step_count = almetal_world_fxaa_step_counts[quality];
+    for (uint step = 1u; step < step_count; ++step)
+    {
+        const float distance =
+            almetal_world_fxaa_steps[quality][step];
+        if (!done_north)
+        {
+            position_north -= offset_np * distance;
+        }
+        if (!done_south)
+        {
+            position_south += offset_np * distance;
+        }
+        // FXAA advances the endpoints by the final preset distance but does
+        // not issue another texture tap there.
+        if (step + 1u == step_count || (done_north && done_south))
+        {
+            break;
+        }
+        if (!done_north)
+        {
+            luma_end_north = almetal_world_fxaa_luma(
+                almetal_world_fxaa_sample(
+                    source, source_sampler, position_north)) -
+                luma_nn * 0.5;
+        }
+        if (!done_south)
+        {
+            luma_end_south = almetal_world_fxaa_luma(
+                almetal_world_fxaa_sample(
+                    source, source_sampler, position_south)) -
+                luma_nn * 0.5;
+        }
+        done_north = abs(luma_end_north) >= gradient_scaled;
+        done_south = abs(luma_end_south) >= gradient_scaled;
+    }
+
+    float distance_north = position.x - position_north.x;
+    float distance_south = position_south.x - position.x;
+    if (!horizontal_span)
+    {
+        distance_north = position.y - position_north.y;
+        distance_south = position_south.y - position.y;
+    }
+    const bool good_span_north =
+        (luma_end_north < 0.0) != luma_m_less_than_zero;
+    const bool good_span_south =
+        (luma_end_south < 0.0) != luma_m_less_than_zero;
+    const bool direction_north = distance_north < distance_south;
+    const float distance = min(distance_north, distance_south);
+    const bool good_span = direction_north
+        ? good_span_north : good_span_south;
+    const float subpixel_g = subpixel_f * subpixel_f;
+    const float pixel_offset =
+        distance * (-1.0 / (distance_south + distance_north)) + 0.5;
+    const float subpixel_h = subpixel_g * 0.75;
+    const float final_offset = max(
+        good_span ? pixel_offset : 0.0, subpixel_h);
+    if (!horizontal_span)
+    {
+        position.x += final_offset * length_sign;
+    }
+    if (horizontal_span)
+    {
+        position.y += final_offset * length_sign;
+    }
+    return float4(
+        almetal_world_fxaa_sample(
+            source, source_sampler, position).rgb,
+        luma_center);
 }
 
 static float3 almetal_world_cas_load(

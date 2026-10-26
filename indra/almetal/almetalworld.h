@@ -1127,6 +1127,15 @@ public:
         float sharpness,
         std::string* error = nullptr);
 
+    // Apply the post-tonemap one-pass FXAA 3.11 quality path used by the
+    // viewer. Quality 0..3 maps to the legacy presets 12/23/28/39; the
+    // RGB10_A2 result carries the center-pixel luminance in alpha exactly as
+    // fxaaF.glsl does when FXAA_LUMA_FROM_RGB is enabled.
+    std::unique_ptr<ALMetalRenderTarget> renderFXAA(
+        const ALMetalRenderTarget& source,
+        std::uint32_t quality,
+        std::string* error = nullptr);
+
     // Meter and adapt one HDR world frame entirely on the Metal queue. The
     // previous result is optional and EV 0 is used when no history exists.
     std::unique_ptr<ALMetalRenderTarget> renderExposure(

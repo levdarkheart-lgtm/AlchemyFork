@@ -273,6 +273,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_bloom_upsample_fragment",
             "almetal_world_cross_filter_fragment",
             "almetal_world_cas_fragment",
+            "almetal_world_fxaa_fragment",
         };
         for (const char* function : functions)
         {
@@ -10867,6 +10868,378 @@ TEST_CASE("almetal: world CAS matches the standalone production kernel", "[almet
         CHECK_FALSE(renderer->renderCAS(
             *wrong_source, sharpness, &error));
         CHECK(error == "Metal world CAS source is incompatible");
+    }
+}
+
+TEST_CASE("almetal: world FXAA matches every production quality preset", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 19;
+        constexpr std::uint32_t height = 17;
+        std::array<std::uint32_t, width * height> input{};
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const bool bright = x * 3u + y * 2u >= 31u;
+                const std::uint32_t red = bright
+                    ? 900u : 80u;
+                const std::uint32_t green = bright
+                    ? 750u : 60u;
+                const std::uint32_t blue = bright
+                    ? 600u : 100u;
+                input[y * width + x] = red | (green << 10u) |
+                    (blue << 20u) | (3u << 30u);
+            }
+        }
+
+        ALMetalRenderTargetDescriptor descriptor;
+        descriptor.width = width;
+        descriptor.height = height;
+        descriptor.colors[0].format =
+            ALMetalPixelFormat::rgb10a2_unorm;
+        descriptor.label = "Alchemy world FXAA test source";
+        auto source = ALMetalRenderTarget::create(
+            *device, descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        auto upload = device->makeCommandBuffer(
+            "Alchemy world FXAA test upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        id<MTLBuffer> staging = [nativeDevice(*device)
+            newBufferWithBytes:input.data()
+                      length:sizeof(input)
+                     options:MTLResourceStorageModeShared];
+        REQUIRE(staging);
+        id<MTLBlitCommandEncoder> blit =
+            [nativeCommand(*upload) blitCommandEncoder];
+        REQUIRE(blit);
+        [blit copyFromBuffer:staging
+                sourceOffset:0
+           sourceBytesPerRow:width * sizeof(std::uint32_t)
+         sourceBytesPerImage:sizeof(input)
+                  sourceSize:MTLSizeMake(width, height, 1)
+                   toTexture:(__bridge id<MTLTexture>)
+                       source->colorTexture(0)->nativeHandle()
+            destinationSlice:0
+            destinationLevel:0
+           destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [blit endEncoding];
+        REQUIRE(upload->commit(&error));
+        INFO(error);
+
+        using Color = std::array<float, 4>;
+        const auto mirror = [](int coordinate, int size)
+        {
+            const int period = size * 2;
+            coordinate %= period;
+            if (coordinate < 0)
+            {
+                coordinate += period;
+            }
+            return coordinate < size
+                ? coordinate : period - 1 - coordinate;
+        };
+        const auto texel = [&](int x, int y)
+        {
+            const std::uint32_t packed = input[
+                static_cast<std::size_t>(mirror(y, height)) * width +
+                static_cast<std::size_t>(mirror(x, width))];
+            return Color{{
+                static_cast<float>(packed & 0x3ffu) / 1023.f,
+                static_cast<float>((packed >> 10u) & 0x3ffu) / 1023.f,
+                static_cast<float>((packed >> 20u) & 0x3ffu) / 1023.f,
+                static_cast<float>(packed >> 30u) / 3.f,
+            }};
+        };
+        const auto sample = [&](float u, float v)
+        {
+            const float px = u * static_cast<float>(width) - 0.5f;
+            const float py = v * static_cast<float>(height) - 0.5f;
+            const int x0 = static_cast<int>(std::floor(px));
+            const int y0 = static_cast<int>(std::floor(py));
+            const float tx = px - static_cast<float>(x0);
+            const float ty = py - static_cast<float>(y0);
+            const Color c00 = texel(x0, y0);
+            const Color c10 = texel(x0 + 1, y0);
+            const Color c01 = texel(x0, y0 + 1);
+            const Color c11 = texel(x0 + 1, y0 + 1);
+            Color value{};
+            for (std::size_t channel = 0; channel < value.size(); ++channel)
+            {
+                const float top = c00[channel] +
+                    (c10[channel] - c00[channel]) * tx;
+                const float bottom = c01[channel] +
+                    (c11[channel] - c01[channel]) * tx;
+                value[channel] = top + (bottom - top) * ty;
+            }
+            return value;
+        };
+        const auto luma = [](const Color& color)
+        {
+            return color[0] * 0.299f + color[1] * 0.587f +
+                color[2] * 0.114f;
+        };
+        constexpr std::array<std::uint32_t, 4> step_counts{{
+            5u, 6u, 11u, 12u,
+        }};
+        constexpr float steps[4][12] = {
+            {1.f, 1.5f, 2.f, 4.f, 12.f},
+            {1.f, 1.5f, 2.f, 2.f, 2.f, 8.f},
+            {1.f, 1.5f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 4.f, 8.f},
+            {1.f, 1.f, 1.f, 1.f, 1.f, 1.5f, 2.f, 2.f, 2.f, 2.f, 4.f, 8.f},
+        };
+        const auto oracle = [&](std::uint32_t x, std::uint32_t y,
+                                std::uint32_t quality)
+        {
+            const float reciprocal_x = 1.f / static_cast<float>(width);
+            const float reciprocal_y = 1.f / static_cast<float>(height);
+            float position_x = (static_cast<float>(x) + 0.5f) *
+                reciprocal_x;
+            float position_y = (static_cast<float>(y) + 0.5f) *
+                reciprocal_y;
+            const Color center = sample(position_x, position_y);
+            const float luma_center = luma(center);
+            float luma_south = luma(sample(
+                position_x, position_y + reciprocal_y));
+            const float luma_east = luma(sample(
+                position_x + reciprocal_x, position_y));
+            float luma_north = luma(sample(
+                position_x, position_y - reciprocal_y));
+            const float luma_west = luma(sample(
+                position_x - reciprocal_x, position_y));
+            const float range_max = std::max({
+                luma_south, luma_east, luma_north, luma_west,
+                luma_center});
+            const float range_min = std::min({
+                luma_south, luma_east, luma_north, luma_west,
+                luma_center});
+            const float range = range_max - range_min;
+            if (range < std::max(0.03f, range_max * 0.07f))
+            {
+                return Color{{center[0], center[1], center[2],
+                              luma_center}};
+            }
+
+            const float luma_nw = luma(sample(
+                position_x - reciprocal_x, position_y - reciprocal_y));
+            const float luma_se = luma(sample(
+                position_x + reciprocal_x, position_y + reciprocal_y));
+            const float luma_ne = luma(sample(
+                position_x + reciprocal_x, position_y - reciprocal_y));
+            const float luma_sw = luma(sample(
+                position_x - reciprocal_x, position_y + reciprocal_y));
+            const float luma_ns = luma_north + luma_south;
+            const float luma_we = luma_west + luma_east;
+            const float edge_horizontal =
+                std::abs(-2.f * luma_west + luma_nw + luma_sw) +
+                std::abs(-2.f * luma_center + luma_ns) * 2.f +
+                std::abs(-2.f * luma_east + luma_ne + luma_se);
+            const float edge_vertical =
+                std::abs(-2.f * luma_south + luma_sw + luma_se) +
+                std::abs(-2.f * luma_center + luma_we) * 2.f +
+                std::abs(-2.f * luma_north + luma_nw + luma_ne);
+            float length_sign = reciprocal_x;
+            const bool horizontal_span =
+                edge_horizontal >= edge_vertical;
+            const float subpixel_a =
+                (luma_ns + luma_we) * 2.f +
+                luma_nw + luma_sw + luma_ne + luma_se;
+            if (!horizontal_span)
+            {
+                luma_north = luma_west;
+                luma_south = luma_east;
+            }
+            if (horizontal_span)
+            {
+                length_sign = reciprocal_y;
+            }
+            const float subpixel_b =
+                subpixel_a * (1.f / 12.f) - luma_center;
+            const float gradient_north = luma_north - luma_center;
+            const float gradient_south = luma_south - luma_center;
+            float luma_nn = luma_north + luma_center;
+            const float luma_ss = luma_south + luma_center;
+            const bool pair_north =
+                std::abs(gradient_north) >= std::abs(gradient_south);
+            const float gradient = std::max(
+                std::abs(gradient_north), std::abs(gradient_south));
+            if (pair_north)
+            {
+                length_sign = -length_sign;
+            }
+            const float subpixel_c = std::clamp(
+                std::abs(subpixel_b) / range, 0.f, 1.f);
+            float base_x = position_x;
+            float base_y = position_y;
+            const float offset_x = horizontal_span ? reciprocal_x : 0.f;
+            const float offset_y = horizontal_span ? 0.f : reciprocal_y;
+            if (!horizontal_span)
+            {
+                base_x += length_sign * 0.5f;
+            }
+            if (horizontal_span)
+            {
+                base_y += length_sign * 0.5f;
+            }
+            float north_x = base_x - offset_x * steps[quality][0];
+            float north_y = base_y - offset_y * steps[quality][0];
+            float south_x = base_x + offset_x * steps[quality][0];
+            float south_y = base_y + offset_y * steps[quality][0];
+            float luma_end_north = luma(sample(north_x, north_y));
+            float luma_end_south = luma(sample(south_x, south_y));
+            if (!pair_north)
+            {
+                luma_nn = luma_ss;
+            }
+            const float gradient_scaled = gradient * 0.25f;
+            const bool luma_m_less_than_zero =
+                luma_center - luma_nn * 0.5f < 0.f;
+            luma_end_north -= luma_nn * 0.5f;
+            luma_end_south -= luma_nn * 0.5f;
+            bool done_north =
+                std::abs(luma_end_north) >= gradient_scaled;
+            bool done_south =
+                std::abs(luma_end_south) >= gradient_scaled;
+            for (std::uint32_t step = 1;
+                 step < step_counts[quality]; ++step)
+            {
+                if (!done_north)
+                {
+                    north_x -= offset_x * steps[quality][step];
+                    north_y -= offset_y * steps[quality][step];
+                }
+                if (!done_south)
+                {
+                    south_x += offset_x * steps[quality][step];
+                    south_y += offset_y * steps[quality][step];
+                }
+                if (step + 1 == step_counts[quality] ||
+                    (done_north && done_south))
+                {
+                    break;
+                }
+                if (!done_north)
+                {
+                    luma_end_north = luma(sample(north_x, north_y)) -
+                        luma_nn * 0.5f;
+                }
+                if (!done_south)
+                {
+                    luma_end_south = luma(sample(south_x, south_y)) -
+                        luma_nn * 0.5f;
+                }
+                done_north =
+                    std::abs(luma_end_north) >= gradient_scaled;
+                done_south =
+                    std::abs(luma_end_south) >= gradient_scaled;
+            }
+            float distance_north = position_x - north_x;
+            float distance_south = south_x - position_x;
+            if (!horizontal_span)
+            {
+                distance_north = position_y - north_y;
+                distance_south = south_y - position_y;
+            }
+            const bool good_span_north =
+                (luma_end_north < 0.f) != luma_m_less_than_zero;
+            const bool good_span_south =
+                (luma_end_south < 0.f) != luma_m_less_than_zero;
+            const bool good_span = distance_north < distance_south
+                ? good_span_north : good_span_south;
+            const float pixel_offset =
+                std::min(distance_north, distance_south) *
+                    (-1.f / (distance_south + distance_north)) + 0.5f;
+            const float subpixel_c2 = subpixel_c * subpixel_c;
+            const float subpixel_f =
+                (-2.f * subpixel_c + 3.f) * subpixel_c2;
+            const float subpixel_h =
+                subpixel_f * subpixel_f * 0.75f;
+            const float final_offset = std::max(
+                good_span ? pixel_offset : 0.f, subpixel_h);
+            if (!horizontal_span)
+            {
+                position_x += final_offset * length_sign;
+            }
+            if (horizontal_span)
+            {
+                position_y += final_offset * length_sign;
+            }
+            Color result = sample(position_x, position_y);
+            result[3] = luma_center;
+            return result;
+        };
+
+        std::array<std::array<std::uint32_t, width * height>, 4> actual{};
+        for (std::uint32_t quality = 0; quality < 4; ++quality)
+        {
+            auto output = renderer->renderFXAA(
+                *source, quality, &error);
+            INFO(error);
+            REQUIRE(output);
+            CHECK(output->descriptor().width == width);
+            CHECK(output->descriptor().height == height);
+            CHECK(output->descriptor().colors[0].format ==
+                  ALMetalPixelFormat::rgb10a2_unorm);
+            REQUIRE(output->colorTexture(0)->readback(
+                *device, 0, 0, {}, actual[quality].data(),
+                width * sizeof(std::uint32_t), &error));
+            INFO(error);
+            for (std::uint32_t y = 0; y < height; ++y)
+            {
+                for (std::uint32_t x = 0; x < width; ++x)
+                {
+                    const Color expected = oracle(x, y, quality);
+                    const std::uint32_t packed =
+                        actual[quality][y * width + x];
+                    CAPTURE(quality, x, y, packed);
+                    for (std::uint32_t channel = 0; channel < 3; ++channel)
+                    {
+                        const int expected_unorm = static_cast<int>(
+                            std::lround(expected[channel] * 1023.f));
+                        const int observed = static_cast<int>(
+                            (packed >> (channel * 10u)) & 0x3ffu);
+                        CAPTURE(channel, expected_unorm, observed);
+                        CHECK(std::abs(observed - expected_unorm) <= 2);
+                    }
+                    const int expected_alpha = static_cast<int>(
+                        std::lround(expected[3] * 3.f));
+                    CHECK(static_cast<int>(packed >> 30u) ==
+                          expected_alpha);
+                }
+            }
+        }
+
+        CHECK(std::mismatch(
+                  actual.front().begin(), actual.front().end(),
+                  actual.back().begin()).first != actual.front().end());
+
+        error.clear();
+        CHECK_FALSE(renderer->renderFXAA(*source, 4, &error));
+        CHECK(error == "Metal world FXAA state is invalid");
+
+        ALMetalRenderTargetDescriptor wrong_descriptor = descriptor;
+        wrong_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        auto wrong_source = ALMetalRenderTarget::create(
+            *device, wrong_descriptor, &error);
+        INFO(error);
+        REQUIRE(wrong_source);
+        error.clear();
+        CHECK_FALSE(renderer->renderFXAA(*wrong_source, 0, &error));
+        CHECK(error == "Metal world FXAA source is incompatible");
     }
 }
 

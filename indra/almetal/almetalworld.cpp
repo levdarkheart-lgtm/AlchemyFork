@@ -163,6 +163,13 @@ namespace
     };
     static_assert(sizeof(WorldCASConstants) == 16);
 
+    struct alignas(16) WorldFXAAConstants
+    {
+        // x = quality index: 0/1/2/3 -> preset 12/23/28/39.
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldFXAAConstants) == 16);
+
     struct alignas(16) WorldExposureMeterConstants
     {
         float patch[4]{};
@@ -852,6 +859,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalRenderPipeline> cross_filter_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> cross_filter_add_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> cas_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> fxaa_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
     std::unique_ptr<ALMetalComputePipeline> exposure_meter_pipeline;
     std::array<std::unique_ptr<ALMetalComputePipeline>, 2>
@@ -1203,6 +1211,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction(
             "almetal_world_cross_filter_fragment") ||
         !impl->library->hasFunction("almetal_world_cas_fragment") ||
+        !impl->library->hasFunction("almetal_world_fxaa_fragment") ||
         !impl->library->hasFunction("almetal_world_exposure_meter") ||
         !impl->library->hasFunction("almetal_world_exposure_initial") ||
         !impl->library->hasFunction("almetal_world_exposure_history") ||
@@ -1490,6 +1499,20 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->cas_pipeline = ALMetalRenderPipeline::create(
         device, cas_descriptor, error);
     if (!impl->cas_pipeline)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderPipelineDescriptor fxaa_descriptor;
+    fxaa_descriptor.library = impl->library.get();
+    fxaa_descriptor.vertex_function = "almetal_resample_vertex";
+    fxaa_descriptor.fragment_function = "almetal_world_fxaa_fragment";
+    fxaa_descriptor.colors[0].format =
+        ALMetalPixelFormat::rgb10a2_unorm;
+    fxaa_descriptor.label = "Alchemy world one-pass FXAA pipeline";
+    impl->fxaa_pipeline = ALMetalRenderPipeline::create(
+        device, fxaa_descriptor, error);
+    if (!impl->fxaa_pipeline)
     {
         return nullptr;
     }
@@ -6210,6 +6233,90 @@ ALMetalWorldGBufferRenderer::renderCAS(
         encoder->setCullMode(ALMetalCullMode::none, error) &&
         encoder->setPipeline(*mImpl->cas_pipeline, error) &&
         encoder->setFragmentTexture(0, source.colorTexture(0), error) &&
+        encoder->setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderFXAA(
+    const ALMetalRenderTarget& source,
+    std::uint32_t quality,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device)
+    {
+        setError(error, "Metal world FXAA is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& input = source.descriptor();
+    if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
+        input.color_attachment_count != 1 ||
+        input.colors[0].format != ALMetalPixelFormat::rgb10a2_unorm ||
+        !sampleableTexture(source.colorTexture(0)))
+    {
+        setError(error, "Metal world FXAA source is incompatible");
+        return nullptr;
+    }
+    if (quality > 3)
+    {
+        setError(error, "Metal world FXAA state is invalid");
+        return nullptr;
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = input.width;
+    output_descriptor.height = input.height;
+    output_descriptor.colors[0].format =
+        ALMetalPixelFormat::rgb10a2_unorm;
+    output_descriptor.colors[0].label =
+        "Alchemy world FXAA RGB10_A2 color";
+    output_descriptor.label = "Alchemy native world FXAA target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    WorldFXAAConstants constants{};
+    constants.config[0] = quality;
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world FXAA", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::dont_care;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world FXAA encoder", error) : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(input.width),
+        static_cast<double>(input.height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{0, 0, input.width, input.height};
+    const bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(*mImpl->fxaa_pipeline, error) &&
+        encoder->setFragmentTexture(0, source.colorTexture(0), error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->linear_mirror_sampler.get(), error) &&
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
