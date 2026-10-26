@@ -344,6 +344,14 @@ public:
 
     void bindScreenToTexture();
     void renderFinalize();
+#if LL_DARWIN
+    // One bounded offscreen probe connects the completed current-frame native
+    // world presentation and retained depth to the real ordered UI/HUD draw
+    // stream. It never changes the live surface; publication remains locked
+    // until every ordered family has an exact native owner.
+    bool beginMetalWorldUICompositionCapture();
+    void endMetalWorldUICompositionCapture();
+#endif
     void copyScreenSpaceReflections(LLRenderTarget* src, LLRenderTarget* dst);
     // The current pack's scene depth (mRT->deferredScreen's, which mRT->screen shares) over the whole of `dst`'s,
     // stretched as a nearest blit would, through gCopyDepthProgram: the water's depth copy and mSceneMap keep depth
@@ -1214,6 +1222,7 @@ private:
     void skipRenderingShadows();
 #if LL_DARWIN
     bool isMetalWorldCapturePass() const;
+    bool canCaptureMetalWorldPresentation() const;
     bool canCaptureMetalScopeSample(bool require_due = true) const;
 #endif
 public:

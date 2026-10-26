@@ -428,6 +428,7 @@ static constexpr U32 SHADOW_MASKED_PASSES[] = {
 struct LLPipeline::MetalWorldSimpleCapture
 {
     static constexpr U32 max_failed_frames = 120;
+    static constexpr U32 max_world_ui_probe_retries = 3;
 
     struct ImpostorPlane
     {
@@ -473,6 +474,11 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> opaque_post_deferred_target;
     std::unique_ptr<ALMetalRenderTarget> display_post_target;
     U32 display_post_frame = std::numeric_limits<U32>::max();
+    std::unique_ptr<ALMetalRenderTarget> presentation_target;
+    U32 presentation_frame = std::numeric_limits<U32>::max();
+    bool world_ui_capture_active = false;
+    bool world_ui_probe_attempted = false;
+    U32 world_ui_probe_retries = 0;
     std::unique_ptr<ALMetalRenderTarget> depth_of_field_target;
     U32 depth_of_field_frame = std::numeric_limits<U32>::max();
     bool depth_of_field_applied = false;
@@ -702,7 +708,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unordered_map<LLUUID, ImpostorMirror> impostor_mirrors;
 };
 
-bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
+bool LLPipeline::canCaptureMetalWorldPresentation() const
 {
     static LLCachedControl<bool> dynamic_exposure(
         gSavedSettings, "RenderDynamicExposureEnabled", true);
@@ -710,8 +716,6 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         gSavedSettings, "RenderDisablePostProcessing", false);
     static LLCachedControl<bool> auto_adjust(
         gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
-    static LLCachedControl<F32> interval(
-        gSavedSettings, "AlchemyScopeSampleInterval", 0.1f);
     static LLCachedControl<U32> aa_quality(
         gSavedSettings, "RenderFSAASamples", 0U);
     static LLCachedControl<bool> use_smaa_sample(
@@ -719,8 +723,6 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
 
     LLSettingsSky::ptr_t sky =
         LLEnvironment::instance().getCurrentSky();
-    const bool due = !require_due || !mScopeSampleTimer.getStarted() ||
-        mScopeSampleTimer.getElapsedTimeF32() >= llmax(interval(), 0.f);
     const bool native_dynamic_exposure = !dynamic_exposure ||
         mMetalExposureHistoryReady || mMetalExposureLastWasFixed;
     const LensFlareConfig flare = lensFlareConfig(true);
@@ -742,7 +744,7 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
          gSMAAEdgeDetectProgram[quality].isComplete() &&
          gSMAABlendWeightsProgram[quality].isComplete() &&
          gSMAANeighborhoodBlendProgram[quality].isComplete());
-    return due && sScopeCapture && hdrEnabled() && isMainWorldPass() &&
+    return hdrEnabled() && isMainWorldPass() &&
         mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
         !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
         native_dynamic_exposure && native_lens_flare &&
@@ -754,6 +756,15 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         exact_antialiasing &&
         !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) &&
         RenderBufferVisualization < 0;
+}
+
+bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
+{
+    static LLCachedControl<F32> interval(
+        gSavedSettings, "AlchemyScopeSampleInterval", 0.1f);
+    const bool due = !require_due || !mScopeSampleTimer.getStarted() ||
+        mScopeSampleTimer.getElapsedTimeF32() >= llmax(interval(), 0.f);
+    return due && sScopeCapture && canCaptureMetalWorldPresentation();
 }
 #endif
 
@@ -1183,6 +1194,8 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
     capture.display_post_frame = std::numeric_limits<U32>::max();
+    capture.presentation_target.reset();
+    capture.presentation_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_target.reset();
     capture.depth_of_field_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_applied = false;
@@ -1241,6 +1254,8 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
     capture.display_post_frame = std::numeric_limits<U32>::max();
+    capture.presentation_target.reset();
+    capture.presentation_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_target.reset();
     capture.depth_of_field_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_applied = false;
@@ -1319,6 +1334,8 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
     capture.display_post_frame = std::numeric_limits<U32>::max();
+    capture.presentation_target.reset();
+    capture.presentation_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_target.reset();
     capture.depth_of_field_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_applied = false;
@@ -1381,6 +1398,8 @@ bool LLPipeline::endMetalReflectionProbeFaceCapture()
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
     capture.display_post_frame = std::numeric_limits<U32>::max();
+    capture.presentation_target.reset();
+    capture.presentation_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_target.reset();
     capture.depth_of_field_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_applied = false;
@@ -1442,6 +1461,11 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
         capture.display_post_frame = std::numeric_limits<U32>::max();
+        capture.presentation_target.reset();
+        capture.presentation_frame = std::numeric_limits<U32>::max();
+        capture.world_ui_capture_active = false;
+        capture.world_ui_probe_attempted = false;
+        capture.world_ui_probe_retries = 0;
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_applied = false;
@@ -1712,9 +1736,18 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     const bool refresh_lens_dirt = native_dirt.enabled &&
         capture.lens_dirt_params != native_dirt.plate &&
         isMainWorldPass() && mRT == &mMainRT;
+    // The final presentation can intentionally fail closed for one frame
+    // while renderFinalize refreshes the bounded lens-fit cache. Give that
+    // handoff a few independent world transactions, but never turn an
+    // incomplete UI census into permanent duplicate rendering.
+    const bool retry_world_ui_probe = !capture.world_ui_probe_attempted &&
+        capture.world_ui_probe_retries <
+            MetalWorldSimpleCapture::max_world_ui_probe_retries &&
+        canCaptureMetalWorldPresentation();
     if (!capture.frame_active && capture.attempted &&
         (capture.continuous_world_capture || mScenePixelPending ||
-         refresh_scope || refresh_lens_flare || refresh_lens_dirt) &&
+         refresh_scope || refresh_lens_flare || refresh_lens_dirt ||
+         retry_world_ui_probe) &&
         capture.continuous_world_frame != gFrameCount)
     {
         // Continuous SSR history makes every main-world frame a fresh
@@ -1731,6 +1764,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
         capture.display_post_frame = std::numeric_limits<U32>::max();
+        capture.presentation_target.reset();
+        capture.presentation_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_applied = false;
@@ -1749,6 +1784,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.base_lighting_attempted = false;
         capture.base_lighting_failed_frames = 0;
         capture.failed_frames = 0;
+        if (retry_world_ui_probe)
+        {
+            ++capture.world_ui_probe_retries;
+        }
     }
 
     if (capture.frame_active || capture.attempted)
@@ -3135,6 +3174,11 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
         capture.display_post_frame = std::numeric_limits<U32>::max();
+        capture.presentation_target.reset();
+        capture.presentation_frame = std::numeric_limits<U32>::max();
+        capture.world_ui_capture_active = false;
+        capture.world_ui_probe_attempted = false;
+        capture.world_ui_probe_retries = 0;
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_applied = false;
@@ -4034,6 +4078,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.display_post_target.reset();
             capture.display_post_frame =
                 std::numeric_limits<U32>::max();
+            capture.presentation_target.reset();
+            capture.presentation_frame =
+                std::numeric_limits<U32>::max();
             capture.depth_of_field_target.reset();
             capture.depth_of_field_frame =
                 std::numeric_limits<U32>::max();
@@ -4420,7 +4467,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                  capture.lens_dirt_target &&
                  capture.lens_dirt_params == dirt.plate);
             const bool exact_base = capture.hdr &&
-                canCaptureMetalScopeSample() && sky &&
+                canCaptureMetalWorldPresentation() && sky &&
                 exact_dynamic_exposure && exact_dof && exact_bloom &&
                 exact_cross_filter && exact_lens_flare &&
                 exact_lens_dirt &&
@@ -4778,6 +4825,253 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         capture.display_post_target =
                             std::move(display_target);
                         capture.display_post_frame = gFrameCount;
+
+                        // The display-post target is the same RGB10_A2 source
+                        // measured by the scopes. The window/UI transaction,
+                        // however, needs the final linear-storage BGRA8 image
+                        // after the lens, print, dither, preview and reference
+                        // boundary. The renderer for that boundary already
+                        // exists; retain its result separately so scope
+                        // semantics do not silently move past print effects.
+                        ALMetalWorldPresentationScene presentation;
+                        presentation.source =
+                            capture.display_post_target.get();
+                        const bool suppress_effects =
+                            suppressesLensAndPrintEffects();
+                        bool exact_presentation = true;
+
+                        static LLCachedControl<F32> distort_amount(
+                            gSavedSettings, "RenderLensDistortionAmount",
+                            0.f);
+                        static LLCachedControl<F32> distort_k1(
+                            gSavedSettings, "RenderLensDistortionK1", -0.2f);
+                        static LLCachedControl<F32> distort_k2(
+                            gSavedSettings, "RenderLensDistortionK2", 0.f);
+                        static LLCachedControl<F32> distort_squeeze(
+                            gSavedSettings, "RenderLensDistortionSqueeze",
+                            1.f);
+                        static LLCachedControl<S32> distort_fit(
+                            gSavedSettings, "RenderLensDistortionFit", 1);
+                        static LLCachedControl<LLVector3> distort_center(
+                            gSavedSettings, "RenderLensDistortionCenter",
+                            LLVector3::zero);
+                        static LLCachedControl<LLVector3> distort_tangential(
+                            gSavedSettings,
+                            "RenderLensDistortionTangential",
+                            LLVector3::zero);
+                        const F32 distortion = suppress_effects
+                            ? 0.f : llclamp(distort_amount(), 0.f, 1.f);
+                        presentation.lens_distortion_amount = distortion;
+                        if (distortion > 0.f)
+                        {
+                            const F32 k1 = llclamp(
+                                distort_k1(), -0.5f, 0.5f) * distortion;
+                            const F32 k2 = llclamp(
+                                distort_k2(), -0.25f, 0.25f) * distortion;
+                            const F32 p1 = llclamp(
+                                distort_tangential().mV[0], -0.05f, 0.05f) *
+                                distortion;
+                            const F32 p2 = llclamp(
+                                distort_tangential().mV[1], -0.05f, 0.05f) *
+                                distortion;
+                            const F32 cx = llclamp(
+                                distort_center().mV[0], -0.5f, 0.5f) *
+                                distortion;
+                            const F32 cy = llclamp(
+                                distort_center().mV[1], -0.5f, 0.5f) *
+                                distortion;
+                            const F32 squeeze = 1.f +
+                                (llclamp(distort_squeeze(), 0.5f, 2.5f) -
+                                 1.f) * distortion;
+                            const F32 width = static_cast<F32>(
+                                capture.display_post_target->descriptor().width);
+                            const F32 height = static_cast<F32>(
+                                capture.display_post_target->descriptor().height);
+                            const F32 aspect = width / llmax(height, 1.f);
+                            const F32 axis_x = llmax(aspect, 1.f);
+                            const F32 axis_y = llmax(
+                                1.f / llmax(aspect, 1e-4f), 1.f);
+                            const F32 sq_x = 1.f / squeeze;
+                            const S32 fit_mode = llclamp(
+                                distort_fit(), 0, 2);
+                            const LensDistortFit::Inputs inputs = {
+                                k1, k2, p1, p2, cx, cy,
+                                axis_x, axis_y, sq_x, fit_mode};
+
+                            // renderFinalize owns the bounded fit solve. A
+                            // setting change is allowed to make this first
+                            // native frame fail closed; the GL owner updates
+                            // the cache later in the same frame and the next
+                            // native frame consumes exactly that result.
+                            exact_presentation =
+                                inputs == mLensDistortFit.inputs;
+                            if (exact_presentation)
+                            {
+                                presentation.lens_distortion_k[0] = k1;
+                                presentation.lens_distortion_k[1] = k2;
+                                presentation.lens_distortion_scale =
+                                    mLensDistortFit.scale;
+                                presentation.lens_distortion_squeeze[0] =
+                                    sq_x;
+                                presentation.lens_distortion_squeeze[1] = 1.f;
+                                presentation.lens_distortion_center[0] = cx;
+                                presentation.lens_distortion_center[1] = cy;
+                                presentation.lens_distortion_tangential[0] =
+                                    p1;
+                                presentation.lens_distortion_tangential[1] =
+                                    p2;
+                            }
+                        }
+
+                        static LLCachedControl<F32> vignette_amount(
+                            gSavedSettings, "RenderVignetteAmount", 0.f);
+                        static LLCachedControl<F32> vignette_radius(
+                            gSavedSettings, "RenderVignetteRadius", 1.f);
+                        static LLCachedControl<F32> vignette_soft(
+                            gSavedSettings, "RenderVignetteSoft", 0.5f);
+                        static LLCachedControl<F32> vignette_shape(
+                            gSavedSettings, "RenderVignetteShape", 0.f);
+                        static LLCachedControl<LLColor3> vignette_color(
+                            gSavedSettings, "RenderVignetteColor",
+                            LLColor3::black);
+                        static LLCachedControl<LLColor3> vignette_mid_color(
+                            gSavedSettings, "RenderVignetteMidColor",
+                            LLColor3::black);
+                        static LLCachedControl<F32> vignette_mid_point(
+                            gSavedSettings, "RenderVignetteMidPoint", 0.f);
+                        static LLCachedControl<LLVector3> vignette_center(
+                            gSavedSettings, "RenderVignetteCenter",
+                            LLVector3::zero);
+                        static LLCachedControl<bool> vignette_aspect(
+                            gSavedSettings, "RenderVignetteCorrectAspect",
+                            false);
+                        static LLCachedControl<F32> vignette_feather(
+                            gSavedSettings, "RenderVignetteFeather", 1.f);
+                        presentation.vignette_amount = suppress_effects
+                            ? 0.f : llclamp(vignette_amount(), 0.f, 1.f);
+                        presentation.vignette_radius = llclamp(
+                            vignette_radius(), 0.25f, 1.5f);
+                        presentation.vignette_softness = llclamp(
+                            vignette_soft(), 0.05f, 1.f);
+                        presentation.vignette_shape = llclamp(
+                            vignette_shape(), 0.f, 1.f);
+                        std::copy_n(vignette_color().mV, 3,
+                                    presentation.vignette_outer_color);
+                        std::copy_n(vignette_mid_color().mV, 3,
+                                    presentation.vignette_middle_color);
+                        presentation.vignette_middle_point = llclamp(
+                            vignette_mid_point(), 0.f, 1.f);
+                        presentation.vignette_center[0] =
+                            vignette_center().mV[0];
+                        presentation.vignette_center[1] =
+                            vignette_center().mV[1];
+                        if (vignette_aspect)
+                        {
+                            presentation.vignette_aspect[0] =
+                                static_cast<F32>(capture.width);
+                            presentation.vignette_aspect[1] =
+                                static_cast<F32>(capture.height);
+                        }
+                        presentation.vignette_feather = llclamp(
+                            vignette_feather(), 0.2f, 4.f);
+
+                        static LLCachedControl<S32> cvd_mode(
+                            gSavedSettings, "RenderCVDMode", 0);
+                        static LLCachedControl<F32> cvd_amount(
+                            gSavedSettings, "RenderCVDAmount", 0.f);
+                        presentation.cvd_mode = suppress_effects
+                            ? 0u : static_cast<U32>(
+                                llclamp(cvd_mode(), 0, 3));
+                        presentation.cvd_amount = suppress_effects
+                            ? 0.f : llclamp(cvd_amount(), 0.f, 1.f);
+
+                        static LLCachedControl<bool> grain_animated(
+                            gSavedSettings, "RenderFilmGrainAnimated", true);
+                        static LLCachedControl<F32> grain_amount(
+                            gSavedSettings, "RenderFilmGrainAmount", 0.f);
+                        static LLCachedControl<S32> grain_style(
+                            gSavedSettings, "RenderFilmGrainStyle", 0);
+                        static LLCachedControl<F32> grain_size(
+                            gSavedSettings, "RenderFilmGrainSize", 1.f);
+                        static LLCachedControl<F32> grain_range(
+                            gSavedSettings, "RenderFilmGrainRange", 0.5f);
+                        static LLCachedControl<LLColor3> grain_tint(
+                            gSavedSettings, "RenderFilmGrainTint",
+                            LLColor3::white);
+                        presentation.grain_amount = suppress_effects
+                            ? 0.f : llclamp(grain_amount(), 0.f, 1.f);
+                        presentation.grain_style = static_cast<U32>(
+                            llclamp(grain_style(), 0, 3));
+                        presentation.grain_size = llclamp(
+                            grain_size(), 1.f, 8.f);
+                        presentation.grain_range = llclamp(
+                            grain_range(), 0.f, 1.f);
+                        std::copy_n(grain_tint().mV, 3,
+                                    presentation.grain_tint);
+                        presentation.grain_animated = grain_animated;
+
+                        static LLCachedControl<bool> dither_enabled(
+                            gSavedSettings, "RenderDitherEnabled", true);
+                        static LLCachedControl<bool> dither_animated(
+                            gSavedSettings, "RenderDitherAnimated", true);
+                        presentation.dither_amount =
+                            dither_enabled ? 1.f : 0.f;
+                        presentation.dither_bits =
+                            LLRender::s10bitBackBuffer ? 10u : 8u;
+                        presentation.dither_animated = dither_animated;
+
+                        static LLCachedControl<S32> preview_mode(
+                            gSavedSettings, "RenderEffectPreviewMode", 0);
+                        presentation.preview_mode = suppress_effects
+                            ? 0u : static_cast<U32>(
+                                llclamp(preview_mode(), 0, 7));
+                        presentation.frame_id =
+                            LLFrameTimer::getFrameCount();
+
+                        static LLCachedControl<S32> reference_mode(
+                            gSavedSettings, "RenderReferenceWipeMode", 0);
+                        static LLCachedControl<F32> reference_position(
+                            gSavedSettings,
+                            "RenderReferenceWipePosition", 0.5f);
+                        const S32 wipe_mode =
+                            hasReferenceStill() && !suppress_effects
+                                ? llclamp(reference_mode(), 0, 2) : 0;
+                        presentation.reference_mode =
+                            static_cast<U32>(wipe_mode);
+                        presentation.reference_position = llclamp(
+                            reference_position(), 0.f, 1.f);
+                        // The established reference still is GL-owned. Until
+                        // that optional service has a coherent native mirror,
+                        // an active wipe keeps final native presentation
+                        // fail closed instead of showing the wrong picture.
+                        exact_presentation = exact_presentation &&
+                            wipe_mode == 0;
+
+                        if (exact_presentation &&
+                            !capture.world_ui_probe_attempted)
+                        {
+                            std::string presentation_error;
+                            auto final_target =
+                                capture.renderer->renderPresentationPost(
+                                    presentation, &presentation_error);
+                            if (final_target)
+                            {
+                                capture.presentation_target =
+                                    std::move(final_target);
+                                capture.presentation_frame = gFrameCount;
+                                LL_INFOS_ONCE("Metal")
+                                    << "Native world final BGRA8 presentation "
+                                       "is available for ordered UI composition; "
+                                       "visible GL remains authoritative"
+                                    << LL_ENDL;
+                            }
+                            else
+                            {
+                                LL_WARNS("Metal")
+                                    << "Native world final presentation retained "
+                                       "GL: " << presentation_error << LL_ENDL;
+                            }
+                        }
                         LL_INFOS_ONCE("Metal")
                             << "Native world display-post source is "
                                "available; visible GL and scope fallback "
@@ -4877,6 +5171,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
         capture.display_post_frame = std::numeric_limits<U32>::max();
+        capture.presentation_target.reset();
+        capture.presentation_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_applied = false;
@@ -4945,6 +5241,76 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
     capture.world_alpha_lighting = {};
     capture.world_alpha_lighting_valid = false;
     capture.world_alpha_uses_shadows = false;
+}
+
+bool LLPipeline::beginMetalWorldUICompositionCapture()
+{
+    if (!mMetalWorldSimpleCapture || gSnapshot || sCutoutRender ||
+        mMetalHeroWorldCaptureActive || mMetalReflectionWorldCaptureActive ||
+        mRT != &mMainRT)
+    {
+        return false;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.world_ui_capture_active ||
+        capture.world_ui_probe_attempted ||
+        !capture.presentation_target ||
+        capture.presentation_frame != gFrameCount || !capture.target)
+    {
+        return false;
+    }
+
+    const ALMetalRenderTargetDescriptor& color =
+        capture.presentation_target->descriptor();
+    const ALMetalTexture* background =
+        capture.presentation_target->colorTexture(0);
+    const ALMetalTexture* depth = capture.target->depthStencilTexture();
+    if (!background || !depth || color.width == 0 || color.height == 0 ||
+        color.color_attachment_count != 1 ||
+        color.colors[0].format != ALMetalPixelFormat::bgra8_unorm ||
+        color.width != depth->descriptor().width ||
+        color.height != depth->descriptor().height ||
+        color.width != capture.width || color.height != capture.height ||
+        !gAlphaMaskProgram.isComplete())
+    {
+        return false;
+    }
+
+    if (!gGL.beginMetalUITextureCapture(
+            ALMetalPixelFormat::bgra8_unorm, &gAlphaMaskProgram,
+            background, depth))
+    {
+        return false;
+    }
+    capture.world_ui_capture_active = true;
+    capture.world_ui_probe_attempted = true;
+    return true;
+}
+
+void LLPipeline::endMetalWorldUICompositionCapture()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->world_ui_capture_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+
+    // The backing/color/depth lifecycle is now the production one, but the
+    // ordered family census is deliberately incomplete: selection/property/
+    // parcel overlays, rigged and alpha/PBR HUDs, particles, beacons and
+    // final debug services do not all have exact native owners yet. Force
+    // this bounded probe closed even if every immediate/static-fullbright
+    // batch happened to encode. No partial texture can reach the surface.
+    std::unique_ptr<ALMetalTexture> discarded =
+        gGL.endMetalUITextureCapture(false);
+    capture.world_ui_capture_active = false;
+    discarded.reset();
+    LL_INFOS_ONCE("Metal")
+        << "The current-frame native world BGRA8 color and retained depth "
+           "reached the ordered UI/HUD capture boundary; publication remains "
+           "locked until the complete ordered-family census is native"
+        << LL_ENDL;
 }
 
 void LLPipeline::beginMetalImpostorFullbrightPass(bool rigged,
@@ -21871,8 +22237,17 @@ void LLPipeline::renderFinalize()
     const bool    rlv_sphere    = chain && RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE);
     const bool    visualize     = RenderBufferVisualization > -1 && !cutout;
     const bool    side_by_side  = hasReferenceStill() && ref_wipe_mode == 2 && !suppress_effects;
+#if LL_DARWIN
+    const bool    native_ui_probe_pending = mMetalWorldSimpleCapture &&
+        mMetalWorldSimpleCapture->presentation_target &&
+        mMetalWorldSimpleCapture->presentation_frame == gFrameCount &&
+        !mMetalWorldSimpleCapture->world_ui_probe_attempted;
+#else
+    const bool    native_ui_probe_pending = false;
+#endif
     const bool    blit_sharpens = cas_sharpness > 0.f && !cutout && chain && gBlitWithEffectsSharpenProgram.isComplete() &&
                                   !glow && !rlv_sphere && !visualize && !sScopeCapture && !mReferenceStillWanted &&
+                                  !native_ui_probe_pending &&
                                   distort <= 0.f && !side_by_side && (S32)sourceBuffer->getWidth() == world_view.getWidth() &&
                                   (S32)sourceBuffer->getHeight() == world_view.getHeight();
     if (!blit_sharpens && cas_sharpness > 0.f && gCASProgram.isComplete() && !cutout && other_target() &&
