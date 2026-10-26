@@ -196,8 +196,8 @@ public:
     void setupGradingLUT();
     void generateLensDirt();
     /// Re-bake the tone curve lookup row from the four RenderColorGradeCurve*
-    /// settings. Runs from colorCorrect when mToneCurveLutDirty is set: once
-    /// per change, never per frame.
+    /// settings. Runs before native world capture when possible, with
+    /// colorCorrect as the fallback: once per change, never per frame.
     void bakeToneCurveLut();
 
     /// The size the main view renders a view of @a resX by @a resY at: RenderResolutionDivisor applied, or else
@@ -363,6 +363,44 @@ public:
         // The cross-screen filter's arms summed, where they were drawn this frame.
         LLRenderTarget* mStreaks = nullptr;
     };
+    // One already-clamped grade state for both colorCorrect's GLSL uniforms
+    // and the native display-post owner. Resource activation is resolved here
+    // too, so either backend sees the same bypass and identity decisions.
+    struct ColorGradeConfig
+    {
+        bool enabled = false;
+        bool color_lut_active = false;
+        bool tone_curve_active = false;
+        bool native_resources_ready = true;
+        std::array<F32, 3> white_balance_gain{{1.f, 1.f, 1.f}};
+        std::array<F32, 3> lift{{0.f, 0.f, 0.f}};
+        std::array<F32, 3> inverse_gamma{{1.f, 1.f, 1.f}};
+        std::array<F32, 3> gain{{1.f, 1.f, 1.f}};
+        std::array<F32, 3> shadow_ratio{{1.f, 1.f, 1.f}};
+        std::array<F32, 3> midtone_ratio{{1.f, 1.f, 1.f}};
+        std::array<F32, 3> highlight_ratio{{1.f, 1.f, 1.f}};
+        std::array<F32, 2> shadow_ramp{{1.f, 0.f}};
+        std::array<F32, 2> highlight_ramp{{1.f, 0.f}};
+        F32 midtone_amount = 0.f;
+        F32 split_amount = 0.f;
+        F32 black_white_scale = 1.f;
+        F32 black_white_bias = 0.f;
+        F32 brightness_contrast_scale = 1.f;
+        F32 brightness_contrast_bias = 0.f;
+        F32 highlights_scaled = 0.f;
+        F32 shadows_scaled = 0.f;
+        F32 saturation = 1.f;
+        F32 vibrance = 0.f;
+        F32 hue_shift = 0.f;
+        U32 color_lut_size = 0;
+        bool color_lut_flip_green = false;
+        bool color_lut_swap_blue_green = false;
+        F32 color_lut_strength = 0.f;
+        F32 tone_curve_scale = 1.f;
+        F32 tone_curve_bias = 0.f;
+        F32 tone_curve_amount = 0.f;
+    };
+    ColorGradeConfig colorGradeConfig(bool apply_color_grade) const;
     void colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool tonemap, bool colorgrade,
                       const Bloom* bloom = nullptr);
     // The legacy glow extracted from @a src and blurred, held by @a scope until combineGlow has added it; null where

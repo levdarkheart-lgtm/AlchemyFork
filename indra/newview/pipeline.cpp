@@ -366,8 +366,6 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
 {
     static LLCachedControl<bool> dynamic_exposure(
         gSavedSettings, "RenderDynamicExposureEnabled", true);
-    static LLCachedControl<bool> color_grade(
-        gSavedSettings, "RenderColorGrade", false);
     static LLCachedControl<bool> build_no_post(
         gSavedSettings, "RenderDisablePostProcessing", false);
     static LLCachedControl<bool> auto_adjust(
@@ -391,6 +389,7 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         mScopeSampleTimer.getElapsedTimeF32() >= llmax(interval(), 0.f);
     const bool native_dynamic_exposure = !dynamic_exposure ||
         mMetalExposureHistoryReady || mMetalExposureLastWasFixed;
+    const ColorGradeConfig grade = colorGradeConfig(true);
     const U32 quality = std::clamp(aa_quality(), 0U, 3U);
     const bool exact_antialiasing =
         mResourceInputs.mFSAAType == 0 ||
@@ -404,7 +403,8 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
         !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
         native_dynamic_exposure &&
-        !LLRender::sClassicMode && !color_grade && !build_no_post &&
+        !LLRender::sClassicMode && grade.native_resources_ready &&
+        !build_no_post &&
         !gSnapshotNoPost && sky &&
         sky->getReflectionProbeAmbiance(auto_adjust) != 0.f &&
         chromatic_strength <= 0.f &&
@@ -1668,6 +1668,15 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         mirror.bytes.shrink_to_fit();
         mirror.device = device;
         mirror.ready = true;
+    }
+
+    // Native scope eligibility consumes the same baked curve state as the GL
+    // display pass. Resolve a dirty curve before its exactness census; this
+    // still leaves colorCorrect as the fallback on frames with no capture.
+    // The upload borrows texture slot 0 before either owner binds its inputs.
+    if (mToneCurveLutDirty)
+    {
+        bakeToneCurveLut();
     }
 
     static LLCachedControl<bool> dynamic_exposure(
@@ -4260,10 +4269,11 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             const bool exact_cross_filter =
                 native_cross_filter_strength <= 0.f ||
                 cross_filter_target;
+            const ColorGradeConfig grade = colorGradeConfig(true);
             const bool exact_base = capture.hdr &&
                 canCaptureMetalScopeSample() && sky &&
                 exact_dynamic_exposure && exact_dof && exact_bloom &&
-                exact_cross_filter;
+                exact_cross_filter && grade.native_resources_ready;
             if (exact_base)
             {
                 ALMetalWorldDisplayPostScene display;
@@ -4296,6 +4306,66 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 display.tonemap_type = tonemap_type() >= 0
                     ? static_cast<U32>(tonemap_type())
                     : std::numeric_limits<U32>::max();
+
+                ALMetalWorldColorGrade& native_grade =
+                    display.color_grade;
+                native_grade.enabled = grade.enabled;
+                std::copy(grade.white_balance_gain.begin(),
+                          grade.white_balance_gain.end(),
+                          native_grade.white_balance_gain);
+                std::copy(grade.lift.begin(), grade.lift.end(),
+                          native_grade.lift);
+                std::copy(grade.inverse_gamma.begin(),
+                          grade.inverse_gamma.end(),
+                          native_grade.inverse_gamma);
+                std::copy(grade.gain.begin(), grade.gain.end(),
+                          native_grade.gain);
+                std::copy(grade.shadow_ratio.begin(),
+                          grade.shadow_ratio.end(),
+                          native_grade.shadow_ratio);
+                std::copy(grade.midtone_ratio.begin(),
+                          grade.midtone_ratio.end(),
+                          native_grade.midtone_ratio);
+                std::copy(grade.highlight_ratio.begin(),
+                          grade.highlight_ratio.end(),
+                          native_grade.highlight_ratio);
+                native_grade.midtone_amount = grade.midtone_amount;
+                native_grade.split_amount = grade.split_amount;
+                std::copy(grade.shadow_ramp.begin(), grade.shadow_ramp.end(),
+                          native_grade.shadow_ramp);
+                std::copy(grade.highlight_ramp.begin(),
+                          grade.highlight_ramp.end(),
+                          native_grade.highlight_ramp);
+                native_grade.black_white_scale = grade.black_white_scale;
+                native_grade.black_white_bias = grade.black_white_bias;
+                native_grade.brightness_contrast_scale =
+                    grade.brightness_contrast_scale;
+                native_grade.brightness_contrast_bias =
+                    grade.brightness_contrast_bias;
+                native_grade.highlights_scaled = grade.highlights_scaled;
+                native_grade.shadows_scaled = grade.shadows_scaled;
+                native_grade.saturation = grade.saturation;
+                native_grade.vibrance = grade.vibrance;
+                native_grade.hue_shift = grade.hue_shift;
+                if (grade.color_lut_active)
+                {
+                    native_grade.color_lut_texture = mMetalCGLut.get();
+                    native_grade.color_lut_size = grade.color_lut_size;
+                    native_grade.color_lut_flip_green =
+                        grade.color_lut_flip_green;
+                    native_grade.color_lut_swap_blue_green =
+                        grade.color_lut_swap_blue_green;
+                    native_grade.color_lut_strength =
+                        grade.color_lut_strength;
+                }
+                if (grade.tone_curve_active)
+                {
+                    native_grade.tone_curve_texture =
+                        mMetalToneCurveLut.get();
+                    native_grade.tone_curve_scale = grade.tone_curve_scale;
+                    native_grade.tone_curve_bias = grade.tone_curve_bias;
+                    native_grade.tone_curve_amount = grade.tone_curve_amount;
+                }
 
                 constexpr F32 max_screen_brightness = 1.f;
                 switch (tonemap_type())
@@ -12518,14 +12588,13 @@ void LLPipeline::setupGradingLUT()
 }
 
 
-// Runs lazily from colorCorrect rather than from the settings signal for
-// three reasons. A new context's reconcile recreates the texture behind the
-// settings' back, and only a bake that runs on the way to drawing can refill
-// it. A Look apply or an undo writes four curve settings in a row and a drag
-// on the graph commits per mouse move, so one bake per rendered frame is the
-// natural rate and the dirty flag coalesces the rest. And colorCorrect is the
-// one place guaranteed a current context with nothing of its own bound yet --
-// the upload borrows texture slot 0.
+// Runs lazily on the way to native world capture, with colorCorrect as the
+// fallback, rather than from the settings signal. A new context's reconcile
+// recreates the texture behind the settings' back, and only a bake on a draw
+// path can refill it. A Look apply or an undo writes four curve settings in a
+// row and a graph drag commits per mouse move, so one bake per rendered frame
+// is the natural rate and the dirty flag coalesces the rest. Both call sites
+// have a current context and run before their owner binds texture slot 0.
 void LLPipeline::bakeToneCurveLut()
 {
     LL_PROFILE_ZONE_SCOPED;
@@ -19008,6 +19077,191 @@ void LLPipeline::generateLensFlareState(LLRenderTarget* src)
     mLensFlareStateValid = true;
 }
 
+LLPipeline::ColorGradeConfig LLPipeline::colorGradeConfig(
+    bool apply_color_grade) const
+{
+    static LLCachedControl<bool> color_grade_enabled(
+        gSavedSettings, "RenderColorGrade", false);
+
+    ColorGradeConfig config;
+    config.enabled = apply_color_grade && color_grade_enabled &&
+        !sGradeBypass && !gSnapshotNoPost;
+    if (!config.enabled)
+    {
+        return config;
+    }
+
+    const U32 bypass = sGradeBypassMask;
+    const bool skip_basic = (bypass & GRADE_BYPASS_BASIC) != 0;
+    const bool skip_primaries = (bypass & GRADE_BYPASS_PRIMARIES) != 0;
+    const bool skip_split = (bypass & GRADE_BYPASS_SPLIT) != 0;
+    const bool skip_lut = (bypass & GRADE_BYPASS_LUT) != 0;
+    const bool skip_curve = (bypass & GRADE_BYPASS_CURVE) != 0;
+
+    static LLCachedControl<F32> cglut_strength(
+        gSavedSettings, "RenderColorGradeLUTStrength", 1.f);
+    config.color_lut_strength = skip_lut || mCGLut.isNull()
+        ? 0.f : llclamp(cglut_strength(), 0.f, 1.f);
+    config.color_lut_active = config.color_lut_strength > 0.f;
+    if (config.color_lut_active)
+    {
+        config.color_lut_size = static_cast<U32>(llmax(mCGLutSize.mV[0], 0.f));
+        config.color_lut_flip_green = mCGLutSize.mV[1] != 0.f;
+        config.color_lut_swap_blue_green = mCGLutSize.mV[2] != 0.f;
+    }
+
+    if (!skip_basic)
+    {
+        static LLCachedControl<F32> wb_cct(
+            gSavedSettings, "RenderColorGradeWhiteBalanceCCT", 0.f);
+        static LLCachedControl<F32> wb_duv(
+            gSavedSettings, "RenderColorGradeWhiteBalanceDuv", 0.f);
+        const LLVector3 wb_gain = ALWhiteBalanceSolver::gain(
+            static_cast<F32>(wb_cct()), static_cast<F32>(wb_duv()));
+        std::copy_n(wb_gain.mV, 3, config.white_balance_gain.begin());
+
+        static LLCachedControl<F32> black_point_setting(
+            gSavedSettings, "RenderColorGradeBlackPoint", 0.f);
+        static LLCachedControl<F32> white_point_setting(
+            gSavedSettings, "RenderColorGradeWhitePoint", 1.f);
+        static LLCachedControl<F32> brightness_setting(
+            gSavedSettings, "RenderColorGradeBrightness", 0.f);
+        static LLCachedControl<F32> contrast_setting(
+            gSavedSettings, "RenderColorGradeContrast", 1.f);
+        static LLCachedControl<F32> highlights_setting(
+            gSavedSettings, "RenderColorGradeHighlights", 0.f);
+        static LLCachedControl<F32> shadows_setting(
+            gSavedSettings, "RenderColorGradeShadows", 0.f);
+        static LLCachedControl<F32> saturation_setting(
+            gSavedSettings, "RenderColorGradeSaturation", 1.f);
+        static LLCachedControl<F32> vibrance_setting(
+            gSavedSettings, "RenderColorGradeVibrance", 0.f);
+        static LLCachedControl<F32> hue_shift_setting(
+            gSavedSettings, "RenderColorGradeHueShift", 0.f);
+        const F32 black_point = llclamp(
+            black_point_setting(), 0.f, 0.5f);
+        const F32 white_point = llclamp(
+            white_point_setting(), 0.5f, 1.f);
+        config.black_white_scale =
+            1.f / llmax(white_point - black_point, 1e-4f);
+        config.black_white_bias =
+            -black_point * config.black_white_scale;
+        const F32 brightness = llclamp(
+            brightness_setting(), -0.5f, 0.5f);
+        config.brightness_contrast_scale = llclamp(
+            contrast_setting(), 0.f, 2.f);
+        config.brightness_contrast_bias =
+            (brightness - 0.5f) * config.brightness_contrast_scale + 0.5f;
+        config.highlights_scaled = llclamp(
+            highlights_setting(), -1.f, 1.f) * 0.3f;
+        config.shadows_scaled = llclamp(
+            shadows_setting(), -1.f, 1.f) * 0.3f;
+        config.saturation = llclamp(saturation_setting(), 0.f, 2.f);
+        config.vibrance = llclamp(vibrance_setting(), -1.f, 1.f);
+        config.hue_shift = llclamp(
+            hue_shift_setting(), -180.f, 180.f) / 360.f;
+    }
+
+    if (!skip_primaries)
+    {
+        static LLCachedControl<LLVector3> lift_setting(
+            gSavedSettings, "RenderColorGradeLift", LLVector3(0.f, 0.f, 0.f));
+        static LLCachedControl<LLVector3> gamma_setting(
+            gSavedSettings, "RenderColorGradeGamma", LLVector3(1.f, 1.f, 1.f));
+        static LLCachedControl<LLVector3> gain_setting(
+            gSavedSettings, "RenderColorGradeGain", LLVector3(1.f, 1.f, 1.f));
+        const LLVector3 lift = lift_setting();
+        const LLVector3 gamma = gamma_setting();
+        const LLVector3 gain = gain_setting();
+        for (U32 channel = 0; channel < 3; ++channel)
+        {
+            config.lift[channel] = llclamp(lift.mV[channel], -0.5f, 0.5f);
+            config.inverse_gamma[channel] =
+                1.f / llclamp(gamma.mV[channel], 0.5f, 1.5f);
+            config.gain[channel] = llclamp(gain.mV[channel], 0.5f, 1.5f);
+        }
+    }
+
+    if (!skip_split)
+    {
+        static LLCachedControl<LLColor3> shadow_tint(
+            gSavedSettings, "RenderSplitToneShadowTint",
+            LLColor3(0.5f, 0.5f, 0.5f));
+        static LLCachedControl<LLColor3> highlight_tint(
+            gSavedSettings, "RenderSplitToneHighlightTint",
+            LLColor3(0.5f, 0.5f, 0.5f));
+        static LLCachedControl<LLColor3> midtone_tint(
+            gSavedSettings, "RenderSplitToneMidtoneTint",
+            LLColor3(0.5f, 0.5f, 0.5f));
+        auto tint_to_ratio = [](const LLColor3& tint,
+                                std::array<F32, 3>& ratio)
+        {
+            constexpr F32 luma_r = 0.2126f;
+            constexpr F32 luma_g = 0.7152f;
+            constexpr F32 luma_b = 0.0722f;
+            const F32 inverse_luma = 1.f / llmax(
+                tint.mV[0] * luma_r + tint.mV[1] * luma_g +
+                    tint.mV[2] * luma_b,
+                1e-4f);
+            for (U32 channel = 0; channel < 3; ++channel)
+            {
+                ratio[channel] = tint.mV[channel] * inverse_luma;
+            }
+        };
+        tint_to_ratio(shadow_tint(), config.shadow_ratio);
+        tint_to_ratio(midtone_tint(), config.midtone_ratio);
+        tint_to_ratio(highlight_tint(), config.highlight_ratio);
+
+        static LLCachedControl<F32> midtone_amount_setting(
+            gSavedSettings, "RenderSplitToneMidtoneAmount", 0.f);
+        static LLCachedControl<F32> split_balance_setting(
+            gSavedSettings, "RenderSplitToneBalance", 0.f);
+        static LLCachedControl<F32> split_amount_setting(
+            gSavedSettings, "RenderSplitToneAmount", 0.f);
+        static LLCachedControl<F32> shadow_width_setting(
+            gSavedSettings, "RenderSplitToneShadowWidth", 0.35f);
+        static LLCachedControl<F32> highlight_width_setting(
+            gSavedSettings, "RenderSplitToneHighlightWidth", 0.35f);
+        const F32 tone_mid =
+            ALCurveModel::splitToneMid(split_balance_setting());
+        const ALCurveModel::SplitToneRamp shadow_ramp =
+            ALCurveModel::splitToneShadowRamp(
+                tone_mid, shadow_width_setting());
+        const ALCurveModel::SplitToneRamp highlight_ramp =
+            ALCurveModel::splitToneHighlightRamp(
+                tone_mid, highlight_width_setting());
+        config.shadow_ramp = {shadow_ramp.mScale, shadow_ramp.mBias};
+        config.highlight_ramp = {
+            highlight_ramp.mScale, highlight_ramp.mBias};
+        config.midtone_amount = llclamp(
+            midtone_amount_setting(), 0.f, 1.f);
+        config.split_amount = llclamp(split_amount_setting(), 0.f, 1.f);
+    }
+
+    static LLCachedControl<F32> curve_amount_setting(
+        gSavedSettings, "RenderColorGradeCurveAmount", 1.f);
+    const F32 requested_curve_amount = skip_curve
+        ? 0.f : llclamp(curve_amount_setting(), 0.f, 1.f);
+    const bool curve_requested = requested_curve_amount > 0.f;
+    const bool curve_state_ready = !curve_requested || !mToneCurveLutDirty;
+    config.tone_curve_active = curve_state_ready && curve_requested &&
+        !mToneCurveIdentity && mToneCurveLut != 0;
+    if (config.tone_curve_active)
+    {
+        ALToneCurveSet::lutScaleBias(
+            ALToneCurveSet::LUT_SIZE, config.tone_curve_scale,
+            config.tone_curve_bias);
+        config.tone_curve_amount = requested_curve_amount;
+    }
+
+#if LL_DARWIN
+    config.native_resources_ready = curve_state_ready &&
+        (!config.color_lut_active || mMetalCGLut != nullptr) &&
+        (!config.tone_curve_active || mMetalToneCurveLut != nullptr);
+#endif
+    return config;
+}
+
 void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool apply_tonemap, bool apply_color_grade,
                               const Bloom* bloom)
 {
@@ -19018,13 +19272,13 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
         // Borrows slot 0, so it has to run before anything below is bound.
         bakeToneCurveLut();
     }
+    const ColorGradeConfig grade = colorGradeConfig(apply_color_grade);
 
     dst->bindTarget();
     {
         LLGLDepthTest depth(GL_FALSE, GL_FALSE);
 
         // Apply gamma correction to the frame here.
-        static LLCachedControl<bool> color_grade_cc(gSavedSettings, "RenderColorGrade", false);
         static LLCachedControl<bool> should_auto_adjust(gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
         static LLCachedControl<bool> buildNoPost(gSavedSettings, "RenderDisablePostProcessing", false);
 
@@ -19042,7 +19296,7 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
         // legacy_gamma deliberately does not do this. A legacy sky drops
         // tonemapping because it predates it, not because anybody asked for a
         // clean plate, and the user's grade still applies there.
-        bool color_grade = apply_color_grade && color_grade_cc && !sGradeBypass && !gSnapshotNoPost;
+        const bool color_grade = grade.enabled;
         bool legacy_gamma = psky->getReflectionProbeAmbiance(should_auto_adjust) == 0.f;
         bool no_post = gSnapshotNoPost || legacy_gamma || (buildNoPost && gFloaterTools && gFloaterTools->isAvailable());
         LLGLSLShader* shader = nullptr;
@@ -19395,153 +19649,88 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
         S32 tone_curve_channel = -1;
         if (color_grade)
         {
-            // Per-section bypass. Uploading a group's identity rather than its
-            // settings lands in the early-out the shader already has for that
-            // step, so a bypassed group is cheaper than an active one and no
-            // variant or recompile is involved. The settings themselves are
-            // untouched, which is the whole point -- see sGradeBypassMask.
-            const U32  bypass         = sGradeBypassMask;
-            const bool skip_basic     = (bypass & GRADE_BYPASS_BASIC)     != 0;
-            const bool skip_primaries = (bypass & GRADE_BYPASS_PRIMARIES) != 0;
-            const bool skip_split     = (bypass & GRADE_BYPASS_SPLIT)     != 0;
-            const bool skip_lut       = (bypass & GRADE_BYPASS_LUT)       != 0;
-            const bool skip_curve     = (bypass & GRADE_BYPASS_CURVE)     != 0;
-
-            static const F32 IDENTITY_ZEROS[3] = { 0.f, 0.f, 0.f };
-            static const F32 IDENTITY_ONES[3]  = { 1.f, 1.f, 1.f };
-
-            if (mCGLut.notNull() && !skip_lut)
+            if (grade.color_lut_active)
             {
                 cglut_channel = shader->getTextureChannel(LLShaderMgr::COLOR_GRADE_LUT);
                 if (cglut_channel > -1)
                 {
                     mCGLut->bind(cglut_channel);
                 }
-
-                shader->uniform4fv(LLShaderMgr::COLOR_GRADE_LUT_SIZE, 1, mCGLutSize.mV);
-
-                static LLCachedControl<F32> cglut_strength(gSavedSettings, "RenderColorGradeLUTStrength", 1.f);
-                shader->uniform1f(LLShaderMgr::COLOR_GRADE_LUT_STRENGTH, cglut_strength);
+                shader->uniform4f(
+                    LLShaderMgr::COLOR_GRADE_LUT_SIZE,
+                    static_cast<F32>(grade.color_lut_size),
+                    grade.color_lut_flip_green ? 1.f : 0.f,
+                    grade.color_lut_swap_blue_green ? 1.f : 0.f, 0.f);
+                shader->uniform1f(
+                    LLShaderMgr::COLOR_GRADE_LUT_STRENGTH,
+                    grade.color_lut_strength);
             }
             else
             {
                 shader->uniform1f(LLShaderMgr::COLOR_GRADE_LUT_STRENGTH, 0.f); // Disable lut path
             }
 
-            // --- Linear-space grading (pre-tonemap) ---
-            // White balance: resolve (CCT offset, Duv) into a linear-sRGB gain
-            // on the CPU. The map lives in ALWhiteBalanceSolver so the
-            // eyedropper can invert the same function this uploads -- range
-            // clamping and the Duv-to-uv scale included, since a solver that
-            // disagreed about either would return a pair this then altered.
-            static LLCachedControl<F32>       cg_wb_cct(gSavedSettings, "RenderColorGradeWhiteBalanceCCT", 0.f);
-            static LLCachedControl<F32>       cg_wb_duv(gSavedSettings, "RenderColorGradeWhiteBalanceDuv", 0.f);
-            const LLVector3 wb_gain = ALWhiteBalanceSolver::gain((F32)cg_wb_cct(), (F32)cg_wb_duv());
-            shader->uniform3fv(LLShaderMgr::COLOR_GRADE_WHITE_BALANCE_GAIN, 1, skip_basic ? IDENTITY_ONES : wb_gain.mV);
+            // The builder above owns every clamp, bypass and identity choice
+            // shared with the native display-post owner.
+            shader->uniform3fv(
+                LLShaderMgr::COLOR_GRADE_WHITE_BALANCE_GAIN, 1,
+                grade.white_balance_gain.data());
+            shader->uniform3fv(
+                LLShaderMgr::COLOR_GRADE_LIFT, 1, grade.lift.data());
+            shader->uniform3fv(
+                LLShaderMgr::COLOR_GRADE_INV_GAMMA_CC, 1,
+                grade.inverse_gamma.data());
+            shader->uniform3fv(
+                LLShaderMgr::COLOR_GRADE_GAIN, 1, grade.gain.data());
 
-            // Lift / Gamma / Gain — gamma is inverted on the CPU.
-            static LLCachedControl<LLVector3> cg_lift(gSavedSettings, "RenderColorGradeLift", LLVector3(0.f, 0.f, 0.f));
-            static LLCachedControl<LLVector3> cg_gamma_cc(gSavedSettings, "RenderColorGradeGamma", LLVector3(1.f, 1.f, 1.f));
-            static LLCachedControl<LLVector3> cg_gain(gSavedSettings, "RenderColorGradeGain", LLVector3(1.f, 1.f, 1.f));
-            const LLVector3 lift_v  = cg_lift();
-            const LLVector3 gamma_v = cg_gamma_cc();
-            const LLVector3 gain_v  = cg_gain();
-            const F32 lift_arr[3] = {
-                llclamp(lift_v.mV[0], -0.5f, 0.5f),
-                llclamp(lift_v.mV[1], -0.5f, 0.5f),
-                llclamp(lift_v.mV[2], -0.5f, 0.5f) };
-            const F32 gain_arr[3] = {
-                llclamp(gain_v.mV[0], 0.5f, 1.5f),
-                llclamp(gain_v.mV[1], 0.5f, 1.5f),
-                llclamp(gain_v.mV[2], 0.5f, 1.5f) };
-            const F32 inv_gamma_arr[3] = {
-                1.0f / llclamp(gamma_v.mV[0], 0.5f, 1.5f),
-                1.0f / llclamp(gamma_v.mV[1], 0.5f, 1.5f),
-                1.0f / llclamp(gamma_v.mV[2], 0.5f, 1.5f) };
-            shader->uniform3fv(LLShaderMgr::COLOR_GRADE_LIFT,         1, skip_primaries ? IDENTITY_ZEROS : lift_arr);
-            shader->uniform3fv(LLShaderMgr::COLOR_GRADE_INV_GAMMA_CC, 1, skip_primaries ? IDENTITY_ONES  : inv_gamma_arr);
-            shader->uniform3fv(LLShaderMgr::COLOR_GRADE_GAIN,         1, skip_primaries ? IDENTITY_ONES  : gain_arr);
+            shader->uniform3fv(
+                LLShaderMgr::SPLIT_TONE_SHADOW_RATIO, 1,
+                grade.shadow_ratio.data());
+            shader->uniform3fv(
+                LLShaderMgr::SPLIT_TONE_HIGHLIGHT_RATIO, 1,
+                grade.highlight_ratio.data());
+            shader->uniform3fv(
+                LLShaderMgr::SPLIT_TONE_MIDTONE_RATIO, 1,
+                grade.midtone_ratio.data());
+            shader->uniform1f(
+                LLShaderMgr::SPLIT_TONE_MIDTONE_AMOUNT,
+                grade.midtone_amount);
+            shader->uniform2f(
+                LLShaderMgr::SPLIT_TONE_SHADOW_RAMP,
+                grade.shadow_ramp[0], grade.shadow_ramp[1]);
+            shader->uniform2f(
+                LLShaderMgr::SPLIT_TONE_HIGHLIGHT_RAMP,
+                grade.highlight_ramp[0], grade.highlight_ramp[1]);
+            shader->uniform1f(
+                LLShaderMgr::SPLIT_TONE_AMOUNT, grade.split_amount);
 
-            // --- Split toning ---
-            // Tints → ratios: `tint / max(dot(tint, LUMA), 1e-4)` precomputed.
-            // Identity (tint == vec3(0.5)) maps to ratio == vec3(1).
-            static LLCachedControl<LLColor3> split_shadow_tint(gSavedSettings, "RenderSplitToneShadowTint", LLColor3(0.5f, 0.5f, 0.5f));
-            static LLCachedControl<LLColor3> split_highlight_tint(gSavedSettings, "RenderSplitToneHighlightTint", LLColor3(0.5f, 0.5f, 0.5f));
-            static LLCachedControl<LLColor3> split_midtone_tint(gSavedSettings, "RenderSplitToneMidtoneTint", LLColor3(0.5f, 0.5f, 0.5f));
-            static LLCachedControl<F32>      split_midtone_amount(gSavedSettings, "RenderSplitToneMidtoneAmount", 0.f);
-            static LLCachedControl<F32>      split_balance(gSavedSettings, "RenderSplitToneBalance", 0.f);
-            static LLCachedControl<F32>      split_amount(gSavedSettings, "RenderSplitToneAmount", 0.f);
-            static LLCachedControl<F32>      split_shadow_width(gSavedSettings, "RenderSplitToneShadowWidth", 0.35f);
-            static LLCachedControl<F32>      split_highlight_width(gSavedSettings, "RenderSplitToneHighlightWidth", 0.35f);
+            shader->uniform1f(
+                LLShaderMgr::COLOR_GRADE_BWP_SCALE,
+                grade.black_white_scale);
+            shader->uniform1f(
+                LLShaderMgr::COLOR_GRADE_BWP_BIAS,
+                grade.black_white_bias);
+            shader->uniform1f(
+                LLShaderMgr::COLOR_GRADE_BC_SCALE,
+                grade.brightness_contrast_scale);
+            shader->uniform1f(
+                LLShaderMgr::COLOR_GRADE_BC_BIAS,
+                grade.brightness_contrast_bias);
+            shader->uniform1f(
+                LLShaderMgr::COLOR_GRADE_HIGHLIGHTS_SCALED,
+                grade.highlights_scaled);
+            shader->uniform1f(
+                LLShaderMgr::COLOR_GRADE_SHADOWS_SCALED,
+                grade.shadows_scaled);
+            shader->uniform1f(
+                LLShaderMgr::COLOR_GRADE_SATURATION, grade.saturation);
+            shader->uniform1f(
+                LLShaderMgr::COLOR_GRADE_VIBRANCE, grade.vibrance);
+            shader->uniform1f(
+                LLShaderMgr::COLOR_GRADE_HUE_SHIFT_NORM,
+                grade.hue_shift);
 
-            constexpr F32 CG_LUMA_R = 0.2126f, CG_LUMA_G = 0.7152f, CG_LUMA_B = 0.0722f;
-            auto tint_to_ratio = [](const LLColor3& tint, F32 out[3]) {
-                F32 l = llmax(tint.mV[0] * CG_LUMA_R + tint.mV[1] * CG_LUMA_G + tint.mV[2] * CG_LUMA_B, 1e-4f);
-                F32 inv = 1.0f / l;
-                out[0] = tint.mV[0] * inv;
-                out[1] = tint.mV[1] * inv;
-                out[2] = tint.mV[2] * inv;
-            };
-            F32 shadow_ratio[3], highlight_ratio[3], midtone_ratio[3];
-            tint_to_ratio(split_shadow_tint(),    shadow_ratio);
-            tint_to_ratio(split_highlight_tint(), highlight_ratio);
-            tint_to_ratio(split_midtone_tint(),   midtone_ratio);
-            // Ramps as {scale, bias}. The balance -> mid map and the width floor
-            // live in ALCurveModel, so the Lightbox graph draws what this uploads.
-            const F32 tone_mid = ALCurveModel::splitToneMid(split_balance());
-            const ALCurveModel::SplitToneRamp shadow_ramp    = ALCurveModel::splitToneShadowRamp(tone_mid, split_shadow_width());
-            const ALCurveModel::SplitToneRamp highlight_ramp = ALCurveModel::splitToneHighlightRamp(tone_mid, split_highlight_width());
-            shader->uniform3fv(LLShaderMgr::SPLIT_TONE_SHADOW_RATIO,    1, shadow_ratio);
-            shader->uniform3fv(LLShaderMgr::SPLIT_TONE_HIGHLIGHT_RATIO, 1, highlight_ratio);
-            shader->uniform3fv(LLShaderMgr::SPLIT_TONE_MIDTONE_RATIO,   1, midtone_ratio);
-            shader->uniform1f(LLShaderMgr::SPLIT_TONE_MIDTONE_AMOUNT, skip_split ? 0.f : llclamp(split_midtone_amount(), 0.0f, 1.0f));
-            shader->uniform2f(LLShaderMgr::SPLIT_TONE_SHADOW_RAMP,    shadow_ramp.mScale,    shadow_ramp.mBias);
-            shader->uniform2f(LLShaderMgr::SPLIT_TONE_HIGHLIGHT_RAMP, highlight_ramp.mScale, highlight_ramp.mBias);
-            shader->uniform1f(LLShaderMgr::SPLIT_TONE_AMOUNT,         skip_split ? 0.f : llclamp(split_amount(), 0.0f, 1.0f));
-
-            // --- Display-space grading ---
-            // Every slider is folded into a {scale, bias} pair on the CPU
-            // so the shader is one FMA per helper. Identity defaults land
-            // exactly on the scale=1/bias=0 fast-path.
-            static LLCachedControl<F32> cg_black_point(gSavedSettings, "RenderColorGradeBlackPoint", 0.f);
-            static LLCachedControl<F32> cg_white_point(gSavedSettings, "RenderColorGradeWhitePoint", 1.f);
-            static LLCachedControl<F32> cg_brightness(gSavedSettings, "RenderColorGradeBrightness", 0.f);
-            static LLCachedControl<F32> cg_contrast(gSavedSettings, "RenderColorGradeContrast", 1.f);
-            static LLCachedControl<F32> cg_highlights(gSavedSettings, "RenderColorGradeHighlights", 0.f);
-            static LLCachedControl<F32> cg_shadows(gSavedSettings, "RenderColorGradeShadows", 0.f);
-            static LLCachedControl<F32> cg_saturation(gSavedSettings, "RenderColorGradeSaturation", 1.f);
-            static LLCachedControl<F32> cg_vibrance(gSavedSettings, "RenderColorGradeVibrance", 0.f);
-            static LLCachedControl<F32> cg_hue_shift(gSavedSettings, "RenderColorGradeHueShift", 0.f);
-
-            const F32 black_point = llclamp(cg_black_point(), 0.0f, 0.5f);
-            const F32 white_point = llclamp(cg_white_point(), 0.5f, 1.0f);
-            const F32 bwp_scale   = 1.0f / llmax(white_point - black_point, 1e-4f);
-            const F32 bwp_bias    = -black_point * bwp_scale;
-            const F32 brightness  = llclamp(cg_brightness(), -0.5f, 0.5f);
-            const F32 contrast    = llclamp(cg_contrast(),    0.0f, 2.0f);
-            const F32 bc_scale    = contrast;
-            const F32 bc_bias     = (brightness - 0.5f) * contrast + 0.5f;
-            shader->uniform1f(LLShaderMgr::COLOR_GRADE_BWP_SCALE,         skip_basic ? 1.f : bwp_scale);
-            shader->uniform1f(LLShaderMgr::COLOR_GRADE_BWP_BIAS,          skip_basic ? 0.f : bwp_bias);
-            shader->uniform1f(LLShaderMgr::COLOR_GRADE_BC_SCALE,          skip_basic ? 1.f : bc_scale);
-            shader->uniform1f(LLShaderMgr::COLOR_GRADE_BC_BIAS,           skip_basic ? 0.f : bc_bias);
-            shader->uniform1f(LLShaderMgr::COLOR_GRADE_HIGHLIGHTS_SCALED, skip_basic ? 0.f : llclamp(cg_highlights(), -1.0f, 1.0f) * 0.3f);
-            shader->uniform1f(LLShaderMgr::COLOR_GRADE_SHADOWS_SCALED,    skip_basic ? 0.f : llclamp(cg_shadows(),    -1.0f, 1.0f) * 0.3f);
-            shader->uniform1f(LLShaderMgr::COLOR_GRADE_SATURATION,        skip_basic ? 1.f : llclamp(cg_saturation(),  0.0f, 2.0f));
-            shader->uniform1f(LLShaderMgr::COLOR_GRADE_VIBRANCE,          skip_basic ? 0.f : llclamp(cg_vibrance(),   -1.0f, 1.0f));
-            shader->uniform1f(LLShaderMgr::COLOR_GRADE_HUE_SHIFT_NORM,    skip_basic ? 0.f : llclamp(cg_hue_shift(), -180.0f, 180.0f) / 360.0f);
-
-            // --- Tone curve (step 12) ---
-            // Baked into mToneCurveLut by bakeToneCurveLut when a curve setting
-            // commits; per frame this is a bind and three uniforms. Amount 0 is
-            // the shader's fast path and doubles as the bypass identity, so a
-            // bypassed section, an all-identity stack, a zero Amount and a
-            // missing texture all land there with nothing bound -- the same
-            // shape as the 3D LUT above.
-            static LLCachedControl<F32> cg_curve_amount(gSavedSettings, "RenderColorGradeCurveAmount", 1.f);
-            const F32  curve_amount = llclamp(cg_curve_amount(), 0.f, 1.f);
-            const bool curve_active = !skip_curve && !mToneCurveIdentity && mToneCurveLut != 0 && curve_amount > 0.f;
-            if (curve_active)
+            if (grade.tone_curve_active)
             {
                 tone_curve_channel = shader->enableTexture(LLShaderMgr::COLOR_GRADE_CURVE_LUT);
                 if (tone_curve_channel > -1)
@@ -19550,10 +19739,12 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
                     gGL.getTextureSlot(tone_curve_channel)->bindManual(ALTextureSlot::TT_TEXTURE, mToneCurveLut,
                                                                         gGL.getSampler(ALSamplers::BilinearClamp));
                 }
-                F32 lut_scale, lut_bias;
-                ALToneCurveSet::lutScaleBias(ALToneCurveSet::LUT_SIZE, lut_scale, lut_bias);
-                shader->uniform2f(LLShaderMgr::COLOR_GRADE_CURVE_LUT_SCALE, lut_scale, lut_bias);
-                shader->uniform1f(LLShaderMgr::COLOR_GRADE_CURVE_AMOUNT, curve_amount);
+                shader->uniform2f(
+                    LLShaderMgr::COLOR_GRADE_CURVE_LUT_SCALE,
+                    grade.tone_curve_scale, grade.tone_curve_bias);
+                shader->uniform1f(
+                    LLShaderMgr::COLOR_GRADE_CURVE_AMOUNT,
+                    grade.tone_curve_amount);
             }
             else
             {

@@ -647,10 +647,10 @@ struct ALMetalWorldOpaquePostDeferredScene
 // RGB10_A2 after exposure and tonemapping, while the vintage path writes
 // RGBA8 after the display transfer and output dither. Optional ordinary
 // bloom/halation/cross-filter are folded in before exposure. Analytical color
-// grading can run in its exact pre/post-tonemap positions; the artist 3D LUT,
-// baked channel curves, lens effects, legacy gamma/no-post, CAS/AA and legacy
-// glow remain distinct owners. Callers must not substitute this target when
-// any omitted family or bypass is live.
+// grading, the artist 3D LUT and baked channel curves can run in their exact
+// pre/post-tonemap positions; lens effects, legacy gamma/no-post, CAS/AA and
+// legacy glow remain distinct owners. Callers must not substitute this target
+// when any omitted family or bypass is live.
 struct ALMetalWorldColorGrade
 {
     bool enabled = false;
