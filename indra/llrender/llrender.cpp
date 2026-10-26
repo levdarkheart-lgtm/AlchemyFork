@@ -48,6 +48,7 @@
 #endif
 
 #include <algorithm>
+#include <cstdint>
 
 #if GL_ARB_debug_output
 #ifndef APIENTRY
@@ -770,6 +771,8 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     mMetalUIFrameAttemptedBatches = 0;
     mMetalUIFrameFallbackBatches = 0;
     mMetalUICaptureUsesDepth = false;
+    mMetalUICaptureDepthWidth = 0;
+    mMetalUICaptureDepthHeight = 0;
     mMetalUIReplacementEnabled = true;
     if (!device || !scheduler || !surface)
     {
@@ -807,6 +810,8 @@ bool LLRender::beginMetalUITextureCapture(
         return false;
     }
     mMetalUICaptureUsesDepth = false;
+    mMetalUICaptureDepthWidth = 0;
+    mMetalUICaptureDepthHeight = 0;
     std::string error;
     mMetalUICaptureRenderer = ALMetalUIRenderer::createForTexture(
         *mMetalDevice, *mMetalFrames, format, &error);
@@ -830,7 +835,86 @@ bool LLRender::beginMetalUITextureCapture(
     mMetalUICaptureAlphaShader = alpha_mask_shader;
     mMetalUICaptureComplete = true;
     mMetalUICaptureUsesDepth = depth != nullptr;
+    if (depth)
+    {
+        mMetalUICaptureDepthWidth = depth->descriptor().width;
+        mMetalUICaptureDepthHeight = depth->descriptor().height;
+    }
     return true;
+}
+
+bool LLRender::updateMetalUITextureCaptureDepth(
+    S32 x, S32 y, S32 width, S32 height, bool restore, F32 depth)
+{
+    if (!mMetalUICaptureRenderer)
+    {
+        return false;
+    }
+    const auto reject = [this](const std::string& reason)
+    {
+        mMetalUICaptureComplete = false;
+        LL_DEBUGS("Metal") << "Offscreen immediate-mode depth bracket retained GL: "
+                            << reason << LL_ENDL;
+        return false;
+    };
+    if (!mMetalUICaptureUsesDepth || mMetalUICaptureDepthWidth == 0 ||
+        mMetalUICaptureDepthHeight == 0)
+    {
+        return reject("capture has no retained depth backing");
+    }
+    if (width <= 0 || height <= 0)
+    {
+        return reject("depth rectangle has non-positive area");
+    }
+
+    const std::int64_t target_width = mMetalUICaptureDepthWidth;
+    const std::int64_t target_height = mMetalUICaptureDepthHeight;
+    const std::int64_t source_left = x;
+    const std::int64_t source_bottom = y;
+    const std::int64_t source_right = source_left + width;
+    const std::int64_t source_top = source_bottom + height;
+    const std::int64_t left = std::clamp<std::int64_t>(
+        source_left, 0, target_width);
+    const std::int64_t right = std::clamp<std::int64_t>(
+        source_right, 0, target_width);
+    const std::int64_t bottom = std::clamp<std::int64_t>(
+        source_bottom, 0, target_height);
+    const std::int64_t top = std::clamp<std::int64_t>(
+        source_top, 0, target_height);
+    if (left >= right || bottom >= top)
+    {
+        // GL accepts an out-of-target scissor and affects no pixels.
+        return true;
+    }
+
+    const ALMetalScissorRect rect{
+        static_cast<U32>(left),
+        static_cast<U32>(target_height - top),
+        static_cast<U32>(right - left),
+        static_cast<U32>(top - bottom),
+    };
+    std::string error;
+    const bool encoded = restore
+        ? mMetalUICaptureRenderer->restoreFrameDepthRects(
+              &rect, 1,
+              metal_compare_function(LLGLDepthTest::remap(GL_LESS)),
+              &error)
+        : mMetalUICaptureRenderer->clearFrameDepthRects(&rect, 1, depth, &error);
+    return encoded ? true : reject(error);
+}
+
+bool LLRender::clearMetalUITextureCaptureDepth(
+    S32 x, S32 y, S32 width, S32 height, F32 depth)
+{
+    return updateMetalUITextureCaptureDepth(
+        x, y, width, height, false, depth);
+}
+
+bool LLRender::restoreMetalUITextureCaptureDepth(
+    S32 x, S32 y, S32 width, S32 height)
+{
+    return updateMetalUITextureCaptureDepth(
+        x, y, width, height, true, 0.f);
 }
 
 std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
@@ -861,6 +945,8 @@ std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
     mMetalUICaptureAlphaShader = nullptr;
     mMetalUICaptureComplete = false;
     mMetalUICaptureUsesDepth = false;
+    mMetalUICaptureDepthWidth = 0;
+    mMetalUICaptureDepthHeight = 0;
     return output;
 }
 

@@ -118,6 +118,12 @@ inline void clear(const LLGLSLShader& program, const std::vector<LLRect>& rects,
     {
         LLGLSScissor scissor(x + rect.mLeft, y + rect.mBottom, rect.getWidth(), rect.getHeight());
         gGL.clear(GL_DEPTH_BUFFER_BIT);
+#if LL_DARWIN
+        gGL.clearMetalUITextureCaptureDepth(
+            x + rect.mLeft, y + rect.mBottom,
+            rect.getWidth(), rect.getHeight(),
+            LLRender::sReverseZ ? 0.f : 1.f);
+#endif
     }
 }
 
@@ -147,6 +153,11 @@ inline void restore(LLGLSLShader& program, LLRenderTarget& scene, LLVertexBuffer
         {
             LLGLSScissor scissor(x + rect.mLeft, y + rect.mBottom, rect.getWidth(), rect.getHeight());
             triangle.drawArrays(LLRender::TRIANGLES, 0, 3);
+#if LL_DARWIN
+            gGL.restoreMetalUITextureCaptureDepth(
+                x + rect.mLeft, y + rect.mBottom,
+                rect.getWidth(), rect.getHeight());
+#endif
         }
         program.unbindTexture(LLShaderMgr::DEFERRED_DEPTH);
     }

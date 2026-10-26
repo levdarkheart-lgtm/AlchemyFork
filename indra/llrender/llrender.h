@@ -288,6 +288,13 @@ public:
         LLGLSLShader* alpha_mask_shader,
         const ALMetalTexture* background = nullptr,
         const ALMetalTexture* depth = nullptr);
+    // Mirror GL's localized HUD depth bracket into an active retained-depth
+    // capture. Coordinates are GL lower-left target pixels and are clipped to
+    // the retained target before conversion to Metal's upper-left scissor.
+    bool clearMetalUITextureCaptureDepth(
+        S32 x, S32 y, S32 width, S32 height, F32 depth);
+    bool restoreMetalUITextureCaptureDepth(
+        S32 x, S32 y, S32 width, S32 height);
     std::unique_ptr<ALMetalTexture> endMetalUITextureCapture(bool source_success);
 
     // A startup frame can replace the GL window presentation only when every
@@ -730,6 +737,11 @@ private:
     // The tests' state guard reads how deep each matrix stack is.
     friend struct ll_test::RenderProbe;
 
+#if LL_DARWIN
+    bool updateMetalUITextureCaptureDepth(
+        S32 x, S32 y, S32 width, S32 height, bool restore, F32 depth);
+#endif
+
     LLVertexBuffer* bufferfromCache(U32 attribute_mask, U32 count);
     LLVertexBuffer* genBuffer(U32 attribute_mask, S32 count);
     void drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count);
@@ -858,6 +870,8 @@ private:
     U64 mMetalUIFrameAttemptedBatches = 0;
     U64 mMetalUIFrameFallbackBatches = 0;
     U64 mMetalUICaptureBatches = 0;
+    U32 mMetalUICaptureDepthWidth = 0;
+    U32 mMetalUICaptureDepthHeight = 0;
     LLGLSLShader* mMetalUICaptureAlphaShader = nullptr;
     bool mMetalUICaptureComplete = false;
     bool mMetalUICaptureUsesDepth = false;

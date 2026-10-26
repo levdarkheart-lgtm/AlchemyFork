@@ -19632,7 +19632,7 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
               "Metal UI depth regions require a frame depth backing");
         error.clear();
         CHECK_FALSE(depth_region_renderer->restoreFrameDepthRects(
-            &hud_region, 1, &error));
+            &hud_region, 1, ALMetalCompareFunction::less, &error));
         CHECK(error ==
               "Metal UI depth regions require a frame depth backing");
 
@@ -19653,7 +19653,7 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
             unreadable_depth->depthStencilTexture(), &error));
         error.clear();
         CHECK_FALSE(unreadable_depth_renderer->restoreFrameDepthRects(
-            &hud_region, 1, &error));
+            &hud_region, 1, ALMetalCompareFunction::less, &error));
         CHECK(error ==
               "Metal UI depth restore requires a shader-readable backing");
         REQUIRE(unreadable_depth_renderer->endFrame(&error));
@@ -19698,7 +19698,7 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         batch.depth.compare = ALMetalCompareFunction::less_equal;
         REQUIRE(depth_region_renderer->draw(batch, &error));
         REQUIRE(depth_region_renderer->restoreFrameDepthRects(
-            &hud_region, 1, &error));
+            &hud_region, 1, ALMetalCompareFunction::less, &error));
 
         const std::uint8_t green_colors[3][4] = {
             {32, 255, 16, 255}, {32, 255, 16, 255},
@@ -19760,6 +19760,86 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(depth_region_stats.frames == 1);
         CHECK(depth_region_stats.batches == 2);
         CHECK(depth_region_stats.vertices == 6);
+        batch.vertices = buffer.get();
+
+        // The legacy restore is conditional: a nearer HUD fragment remains
+        // in depth so later world-space UI is hidden by the HUD as well as by
+        // the scene. A blind retained-depth overwrite would turn this blue
+        // result green and replace 0.25 with the farther scene value 0.5.
+        auto preserved_hud_renderer = ALMetalUIRenderer::create(
+            *device, *scheduler, &error);
+        INFO(error);
+        REQUIRE(preserved_hud_renderer);
+        REQUIRE(preserved_hud_renderer->setFrameBackground(
+            background.get(), &error));
+        REQUIRE(preserved_hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(preserved_hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+
+        float near_hud_positions[3][4];
+        std::memcpy(
+            near_hud_positions, positions, sizeof(near_hud_positions));
+        for (auto& position : near_hud_positions)
+        {
+            position[2] = -0.5f;
+        }
+        REQUIRE(buffer->write(
+            position_offset, near_hud_positions,
+            sizeof(near_hud_positions), &error));
+        REQUIRE(buffer->write(
+            color_offset, colors, sizeof(colors), &error));
+        batch.depth.write_enabled = true;
+        batch.vertices = buffer.get();
+        REQUIRE(preserved_hud_renderer->draw(batch, &error));
+        REQUIRE(preserved_hud_renderer->restoreFrameDepthRects(
+            &hud_region, 1, ALMetalCompareFunction::less, &error));
+
+        float behind_hud_positions[3][4];
+        std::memcpy(
+            behind_hud_positions, positions, sizeof(behind_hud_positions));
+        for (auto& position : behind_hud_positions)
+        {
+            position[2] = -0.2f;
+        }
+        auto behind_hud_bytes = bytes;
+        std::memcpy(
+            behind_hud_bytes.data() + position_offset,
+            behind_hud_positions, sizeof(behind_hud_positions));
+        std::memcpy(
+            behind_hud_bytes.data() + color_offset,
+            green_colors, sizeof(green_colors));
+        ALMetalBufferDescriptor behind_hud_buffer_descriptor =
+            buffer_descriptor;
+        behind_hud_buffer_descriptor.label =
+            "Alchemy UI behind preserved HUD depth SoA";
+        auto behind_hud_buffer = ALMetalBuffer::create(
+            *device, behind_hud_buffer_descriptor, &error);
+        INFO(error);
+        REQUIRE(behind_hud_buffer);
+        REQUIRE(behind_hud_buffer->write(
+            0, behind_hud_bytes.data(), behind_hud_bytes.size(), &error));
+        batch.vertices = behind_hud_buffer.get();
+        batch.depth.write_enabled = false;
+        REQUIRE(preserved_hud_renderer->draw(batch, &error));
+        REQUIRE(preserved_hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+
+        REQUIRE(preserved_hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(composed_pixels[center + 0] == 16u);
+        CHECK(composed_pixels[center + 1] == 32u);
+        CHECK(composed_pixels[center + 2] == 255u);
+        CHECK(composed_pixels[center + 3] == 255u);
+        REQUIRE(preserved_hud_renderer->outputDepthTexture()->readback(
+            *device, 0, 0, {}, depth_region_values.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(depth_region_values[16 * 32 + 16] - 0.25f) <
+              0.0001f);
         batch.vertices = buffer.get();
 
         error.clear();

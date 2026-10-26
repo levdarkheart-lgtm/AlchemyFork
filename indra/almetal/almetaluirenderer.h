@@ -169,6 +169,8 @@ public:
         std::string* error = nullptr);
     // Localized HUD depth brackets operate on the copied destination depth,
     // while restore samples the immutable retained backing selected above.
+    // Restore uses the caller's physical depth comparison so semantic LESS
+    // remains conditional for either conventional or reverse-Z depth.
     // Rectangles use Metal's upper-left target coordinates and must be
     // non-empty and fully contained by the retained depth dimensions.
     bool clearFrameDepthRects(
@@ -179,6 +181,7 @@ public:
     bool restoreFrameDepthRects(
         const ALMetalScissorRect* rects,
         std::size_t count,
+        ALMetalCompareFunction compare,
         std::string* error = nullptr);
     bool draw(const ALMetalUIBatch& batch, std::string* error = nullptr);
     bool endFrame(std::string* error = nullptr);

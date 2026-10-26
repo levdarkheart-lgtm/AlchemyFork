@@ -324,6 +324,7 @@ struct ALMetalUIRenderer::Impl
                         std::size_t count,
                         bool restore,
                         float clear_depth,
+                        ALMetalCompareFunction compare,
                         std::string* error)
     {
         if (count == 0)
@@ -341,7 +342,7 @@ struct ALMetalUIRenderer::Impl
         ALMetalUIDepthState write_depth;
         write_depth.enabled = true;
         write_depth.write_enabled = true;
-        write_depth.compare = ALMetalCompareFunction::always;
+        write_depth.compare = compare;
         ALMetalDepthStencilState* depth = depthState(write_depth, error);
         if (!depth)
         {
@@ -849,12 +850,14 @@ bool ALMetalUIRenderer::clearFrameDepthRects(
     {
         return false;
     }
-    return mImpl->drawDepthRects(rects, count, false, depth, error);
+    return mImpl->drawDepthRects(
+        rects, count, false, depth, ALMetalCompareFunction::always, error);
 }
 
 bool ALMetalUIRenderer::restoreFrameDepthRects(
     const ALMetalScissorRect* rects,
     std::size_t count,
+    ALMetalCompareFunction compare,
     std::string* error)
 {
     if (!mImpl)
@@ -874,7 +877,7 @@ bool ALMetalUIRenderer::restoreFrameDepthRects(
                  "Metal UI depth restore requires a shader-readable backing");
         return false;
     }
-    return mImpl->drawDepthRects(rects, count, true, 0.f, error);
+    return mImpl->drawDepthRects(rects, count, true, 0.f, compare, error);
 }
 
 bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
