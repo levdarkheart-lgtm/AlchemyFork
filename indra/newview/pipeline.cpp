@@ -370,8 +370,6 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         gSavedSettings, "RenderDisablePostProcessing", false);
     static LLCachedControl<bool> auto_adjust(
         gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
-    static LLCachedControl<F32> flare_strength(
-        gSavedSettings, "RenderLensFlareStrength", 0.f);
     static LLCachedControl<F32> dirt_strength(
         gSavedSettings, "RenderLensDirtStrength", 0.f);
     static LLCachedControl<F32> interval(
@@ -387,6 +385,9 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         mScopeSampleTimer.getElapsedTimeF32() >= llmax(interval(), 0.f);
     const bool native_dynamic_exposure = !dynamic_exposure ||
         mMetalExposureHistoryReady || mMetalExposureLastWasFixed;
+    const LensFlareConfig flare = lensFlareConfig(true);
+    const bool native_lens_flare = !flare.enabled ||
+        mMetalLensFlareHistoryReady || mMetalLensFlareLastWasZero;
     const ColorGradeConfig grade = colorGradeConfig(true);
     const U32 quality = std::clamp(aa_quality(), 0U, 3U);
     const bool exact_antialiasing =
@@ -400,12 +401,12 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
     return due && sScopeCapture && hdrEnabled() && isMainWorldPass() &&
         mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
         !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
-        native_dynamic_exposure &&
+        native_dynamic_exposure && native_lens_flare &&
         !LLRender::sClassicMode && grade.native_resources_ready &&
         !build_no_post &&
         !gSnapshotNoPost && sky &&
         sky->getReflectionProbeAmbiance(auto_adjust) != 0.f &&
-        flare_strength <= 0.f && dirt_strength <= 0.f &&
+        dirt_strength <= 0.f &&
         exact_antialiasing &&
         !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) &&
         RenderBufferVisualization < 0;
@@ -529,6 +530,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> exposure_target;
     U32 exposure_frame = std::numeric_limits<U32>::max();
     U64 exposure_epoch = 0;
+    std::unique_ptr<ALMetalRenderTarget> lens_flare_state_target;
+    U32 lens_flare_state_frame = std::numeric_limits<U32>::max();
+    U64 lens_flare_state_epoch = 0;
     std::unique_ptr<ALMetalRenderTarget> sky_behind_target;
     std::unique_ptr<ALMetalTexture> projector_shadow_texture;
     std::unique_ptr<ALMetalTexture> direct_projector_shadow_texture;
@@ -1440,6 +1444,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.exposure_frame = std::numeric_limits<U32>::max();
         capture.exposure_epoch = 0;
         mMetalExposureHistoryReady = false;
+        capture.lens_flare_state_target.reset();
+        capture.lens_flare_state_frame = std::numeric_limits<U32>::max();
+        capture.lens_flare_state_epoch = 0;
+        mMetalLensFlareHistoryReady = false;
         capture.projector_shadow_texture.reset();
         capture.direct_projector_shadow_texture.reset();
         capture.direct_directional_shadow_texture.reset();
@@ -1684,9 +1692,16 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     const bool refresh_scope = dynamic_exposure
         ? canCaptureMetalScopeSample(false)
         : canCaptureMetalScopeSample();
+    // A temporal flare enabled before its scopes floater opens must still
+    // have the same previous-frame state as GL. Advance the offscreen native
+    // chain from the exact-black enable boundary rather than trying to seed a
+    // later history through a CPU readback.
+    const bool refresh_lens_flare = lensFlareConfig(true).enabled &&
+        (mMetalLensFlareHistoryReady || mMetalLensFlareLastWasZero) &&
+        isMainWorldPass() && mRT == &mMainRT;
     if (!capture.frame_active && capture.attempted &&
         (capture.continuous_world_capture || mScenePixelPending ||
-         refresh_scope) &&
+         refresh_scope || refresh_lens_flare) &&
         capture.continuous_world_frame != gFrameCount)
     {
         // Continuous SSR history makes every main-world frame a fresh
@@ -3086,6 +3101,10 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.exposure_frame = std::numeric_limits<U32>::max();
         capture.exposure_epoch = 0;
         mMetalExposureHistoryReady = false;
+        capture.lens_flare_state_target.reset();
+        capture.lens_flare_state_frame = std::numeric_limits<U32>::max();
+        capture.lens_flare_state_epoch = 0;
+        mMetalLensFlareHistoryReady = false;
         capture.projector_shadow_texture.reset();
         capture.direct_projector_shadow_texture.reset();
         capture.direct_directional_shadow_texture.reset();
@@ -4072,6 +4091,80 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 }
             }
 
+            // The flare state samples the same sharp linear scene and the
+            // completed post-alpha depth as GLSL. Its history may advance
+            // only when the prior native texel belongs to the last GL flare
+            // frame in this epoch, with exact black as the sole bootstrap.
+            const LensFlareStateConfig native_flare_state =
+                lensFlareStateConfig();
+            const bool main_lens_flare = capture.hdr &&
+                native_flare_state.enabled && isMainWorldPass() &&
+                mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
+                !mMetalReflectionWorldCaptureActive && !sCutoutRender;
+            if (main_lens_flare)
+            {
+                const bool use_history =
+                    capture.lens_flare_state_target &&
+                    capture.lens_flare_state_epoch ==
+                        mMetalLensFlareHistoryEpoch &&
+                    capture.lens_flare_state_frame ==
+                        mMetalLensFlareGLFrame;
+                const bool can_advance = use_history ||
+                    mMetalLensFlareLastWasZero;
+                if (can_advance)
+                {
+                    ALMetalWorldLensFlareStateScene state;
+                    state.source = target.get();
+                    state.depth_texture = capture.target
+                        ? capture.target->depthStencilTexture() : nullptr;
+                    state.previous = use_history
+                        ? capture.lens_flare_state_target->colorTexture(0)
+                        : nullptr;
+                    state.delta_seconds = gFrameIntervalSeconds;
+                    std::copy(native_flare_state.sun_uv.begin(),
+                              native_flare_state.sun_uv.end(),
+                              state.sun_uv);
+                    state.edge_visibility =
+                        native_flare_state.edge_visibility;
+                    state.occlusion_radius =
+                        native_flare_state.occlusion_radius;
+                    state.fade_time = native_flare_state.fade_time;
+                    state.reverse_z = capture.reverse_z;
+                    std::string flare_error;
+                    auto flare_target =
+                        capture.renderer->renderLensFlareState(
+                            state, &flare_error);
+                    if (flare_target)
+                    {
+                        capture.lens_flare_state_target =
+                            std::move(flare_target);
+                        capture.lens_flare_state_frame = gFrameCount;
+                        capture.lens_flare_state_epoch =
+                            mMetalLensFlareHistoryEpoch;
+                        mMetalLensFlareHistoryReady = true;
+                    }
+                    else
+                    {
+                        capture.lens_flare_state_target.reset();
+                        capture.lens_flare_state_frame =
+                            std::numeric_limits<U32>::max();
+                        capture.lens_flare_state_epoch = 0;
+                        mMetalLensFlareHistoryReady = false;
+                        LL_WARNS("Metal")
+                            << "Native world lens-flare state retained GL: "
+                            << flare_error << LL_ENDL;
+                    }
+                }
+                else
+                {
+                    capture.lens_flare_state_target.reset();
+                    capture.lens_flare_state_frame =
+                        std::numeric_limits<U32>::max();
+                    capture.lens_flare_state_epoch = 0;
+                    mMetalLensFlareHistoryReady = false;
+                }
+            }
+
             // Exposure above deliberately meters the sharp linear scene.
             // From this point onward the native post chain follows GL's
             // optical order: depth of field, bloom, then display mapping.
@@ -4269,10 +4362,17 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             const ColorGradeConfig grade = colorGradeConfig(true);
             const ChromaticAberrationConfig chromatic =
                 chromaticAberrationConfig();
+            const LensFlareConfig flare = lensFlareConfig(true);
+            const bool exact_lens_flare = !flare.enabled ||
+                (capture.lens_flare_state_target &&
+                 capture.lens_flare_state_epoch ==
+                     mMetalLensFlareHistoryEpoch &&
+                 capture.lens_flare_state_frame == gFrameCount);
             const bool exact_base = capture.hdr &&
                 canCaptureMetalScopeSample() && sky &&
                 exact_dynamic_exposure && exact_dof && exact_bloom &&
-                exact_cross_filter && grade.native_resources_ready;
+                exact_cross_filter && exact_lens_flare &&
+                grade.native_resources_ready;
             if (exact_base)
             {
                 ALMetalWorldDisplayPostScene display;
@@ -4319,6 +4419,48 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 std::copy(chromatic.offset_b.begin(),
                           chromatic.offset_b.end(),
                           display.chromatic_aberration_offset_b);
+                if (flare.enabled)
+                {
+                    display.lens_flare_state_texture =
+                        capture.lens_flare_state_target->colorTexture(0);
+                    display.lens_flare_strength = flare.strength;
+                    std::copy(flare.sun_uv.begin(), flare.sun_uv.end(),
+                              display.lens_flare_sun_uv);
+                    std::copy(flare.light_color.begin(),
+                              flare.light_color.end(),
+                              display.lens_flare_light_color);
+                    display.lens_flare_sky_hdr_scale =
+                        flare.sky_hdr_scale;
+                    display.lens_flare_streak_length =
+                        flare.streak_length;
+                    display.lens_flare_streak_falloff =
+                        flare.streak_falloff;
+                    display.lens_flare_streak_width = flare.streak_width;
+                    display.lens_flare_streak_intensity =
+                        flare.streak_intensity;
+                    std::copy(flare.streak_tint.begin(),
+                              flare.streak_tint.end(),
+                              display.lens_flare_streak_tint);
+                    display.lens_flare_chromatic_spread =
+                        flare.chromatic_spread;
+                    display.lens_flare_glow = flare.glow;
+                    display.lens_flare_glow_radius = flare.glow_radius;
+                    display.lens_flare_glow_falloff = flare.glow_falloff;
+                    display.lens_flare_ghost = flare.ghost;
+                    display.lens_flare_ghost_count = flare.ghost_count;
+                    display.lens_flare_ghost_spacing =
+                        flare.ghost_spacing;
+                    display.lens_flare_halo = flare.halo;
+                    display.lens_flare_halo_radius = flare.halo_radius;
+                    display.lens_flare_halo_width = flare.halo_width;
+                    display.lens_flare_starburst = flare.starburst;
+                    display.lens_flare_starburst_spikes =
+                        flare.starburst_spikes;
+                    display.lens_flare_starburst_sharpness =
+                        flare.starburst_sharpness;
+                    display.lens_flare_starburst_falloff =
+                        flare.starburst_falloff;
+                }
 
                 ALMetalWorldColorGrade& native_grade =
                     display.color_grade;
@@ -11617,10 +11759,26 @@ void LLPipeline::releaseRenderTargets()
     mSkyBehindQuery      = {};
     mSkyBehindQueryFrame = 0;
     mLensFlareStateValid = false;
+    mLensFlareStateClearPending = false;
     mToneCurveLutDirty   = true;
 #if LL_DARWIN
     mMetalToneCurveLut.reset();
     mMetalNoiseMapRG16.clear();
+    ++mMetalLensFlareHistoryEpoch;
+    if (mMetalLensFlareHistoryEpoch == 0)
+    {
+        ++mMetalLensFlareHistoryEpoch;
+    }
+    mMetalLensFlareGLFrame = std::numeric_limits<U32>::max();
+    mMetalLensFlareLastWasZero = true;
+    mMetalLensFlareHistoryReady = false;
+    if (mMetalWorldSimpleCapture)
+    {
+        mMetalWorldSimpleCapture->lens_flare_state_target.reset();
+        mMetalWorldSimpleCapture->lens_flare_state_frame =
+            std::numeric_limits<U32>::max();
+        mMetalWorldSimpleCapture->lens_flare_state_epoch = 0;
+    }
 #endif
 
     mResourcePlan = {};
@@ -18948,10 +19106,136 @@ void LLPipeline::clearLensFlareState()
     // Only [0] is ever read as history: the swap in generateLensFlareState
     // makes it last frame's target before anything samples it, and [1] is
     // fully overwritten by the draw before it is read.
-    mLensFlareState[0].bindTarget();
-    mLensFlareState[0].clear();
-    mLensFlareState[0].flush();
+    if (mLensFlareState[0].isComplete())
+    {
+        mLensFlareState[0].bindTarget();
+        mLensFlareState[0].clear();
+        mLensFlareState[0].flush();
+    }
     mLensFlareStateValid = false;
+    mLensFlareStateClearPending = false;
+#if LL_DARWIN
+    ++mMetalLensFlareHistoryEpoch;
+    if (mMetalLensFlareHistoryEpoch == 0)
+    {
+        ++mMetalLensFlareHistoryEpoch;
+    }
+    mMetalLensFlareGLFrame = std::numeric_limits<U32>::max();
+    mMetalLensFlareLastWasZero = true;
+    mMetalLensFlareHistoryReady = false;
+    if (mMetalWorldSimpleCapture)
+    {
+        mMetalWorldSimpleCapture->lens_flare_state_target.reset();
+        mMetalWorldSimpleCapture->lens_flare_state_frame =
+            std::numeric_limits<U32>::max();
+        mMetalWorldSimpleCapture->lens_flare_state_epoch = 0;
+    }
+#endif
+}
+
+LLPipeline::LensFlareStateConfig LLPipeline::lensFlareStateConfig()
+{
+    static LLCachedControl<F32> strength_setting(
+        gSavedSettings, "RenderLensFlareStrength", 0.f);
+    static LLCachedControl<F32> occlusion_scale_setting(
+        gSavedSettings, "RenderLensFlareOcclusionScale", 1.f);
+    static LLCachedControl<F32> fade_time_setting(
+        gSavedSettings, "RenderLensFlareFadeTime", 0.35f);
+
+    LensFlareStateConfig config;
+    config.hold = suppressesLensAndPrintEffects();
+    config.enabled = !config.hold && strength_setting() > 0.f &&
+        gLensFlareStateProgram.isComplete();
+    config.sun_up = LLEnvironment::instance().getIsSunUp();
+    if (!config.enabled)
+    {
+        return config;
+    }
+
+    LLEnvironment& environment = LLEnvironment::instance();
+    LLSettingsSky::ptr_t sky = environment.getCurrentSky();
+    if (!sky)
+    {
+        config.enabled = false;
+        return config;
+    }
+
+    if (config.sun_up != mLensFlareSunUp)
+    {
+        // The native chain is built while another GL target may still be
+        // bound, so invalidate its history now but defer the GL clear to
+        // generateLensFlareState's established safe pass boundary.
+        mLensFlareSunUp = config.sun_up;
+        mLensFlareStateClearPending = true;
+#if LL_DARWIN
+        ++mMetalLensFlareHistoryEpoch;
+        if (mMetalLensFlareHistoryEpoch == 0)
+        {
+            ++mMetalLensFlareHistoryEpoch;
+        }
+        mMetalLensFlareGLFrame = std::numeric_limits<U32>::max();
+        mMetalLensFlareLastWasZero = true;
+        mMetalLensFlareHistoryReady = false;
+        if (mMetalWorldSimpleCapture)
+        {
+            mMetalWorldSimpleCapture->lens_flare_state_target.reset();
+            mMetalWorldSimpleCapture->lens_flare_state_frame =
+                std::numeric_limits<U32>::max();
+            mMetalWorldSimpleCapture->lens_flare_state_epoch = 0;
+        }
+#endif
+    }
+
+    const LLVector4 light_dir = config.sun_up ? mSunDir : mMoonDir;
+    LLVector4a sun_eye;
+    LLVector4a sun_clip;
+    LLViewerCamera::getCurrent().getModelview().rotate(
+        LLVector4a(light_dir.mV[0], light_dir.mV[1],
+                   light_dir.mV[2], 0.f), sun_eye);
+    LLViewerCamera::getCurrent().getProjection().transform4(
+        sun_eye, sun_clip);
+    if (sun_clip[3] > 0.f)
+    {
+        const LLVector2 sun_ndc(
+            sun_clip[0] / sun_clip[3], sun_clip[1] / sun_clip[3]);
+        const LLVector2 sun_uv =
+            sun_ndc * 0.5f + LLVector2(0.5f, 0.5f);
+        constexpr F32 margin = 0.2f;
+        config.edge_visibility =
+            llclamp((sun_uv.mV[VX] + margin) / margin, 0.f, 1.f) *
+            llclamp(((1.f + margin) - sun_uv.mV[VX]) / margin,
+                    0.f, 1.f) *
+            llclamp((sun_uv.mV[VY] + margin) / margin, 0.f, 1.f) *
+            llclamp(((1.f + margin) - sun_uv.mV[VY]) / margin,
+                    0.f, 1.f);
+        mLensFlareSunUV = sun_uv;
+    }
+    config.sun_uv = {
+        mLensFlareSunUV.mV[VX], mLensFlareSunUV.mV[VY]};
+
+    F32 disk_radius = 0.5f;
+    if (gSky.mVOSkyp.notNull())
+    {
+        disk_radius = (config.sun_up ? gSky.mVOSkyp->getSun()
+                                     : gSky.mVOSkyp->getMoon())
+                          .getDiskRadius();
+    }
+    const F32 body_scale = llmax(
+        config.sun_up ? sky->getSunScale() : sky->getMoonScale(), 0.01f);
+    const F32 enlargement =
+        1.f + (1.f - light_dir.mV[VZ]) * 0.25f;
+    const F32 half_tan = HEAVENLY_BODY_FACTOR * disk_radius *
+        body_scale * enlargement;
+    const LLViewerCamera* camera = LLViewerCamera::getInstance();
+    const F32 fov_y = llclamp(camera->getView(),
+                              0.01f, F_PI - 0.01f);
+    config.occlusion_radius = llmin(
+        0.5f * half_tan / tanf(fov_y * 0.5f) *
+            llmax(camera->getZoomFactor(), 1.f) *
+            llclamp(occlusion_scale_setting(), 0.25f, 2.f),
+        0.3f);
+    config.fade_time = llclamp(fade_time_setting(), 0.1f, 1.f);
+    return config;
 }
 
 // Sun coverage, colour and the temporally filtered flare drive, into a 2x1
@@ -18962,11 +19246,19 @@ void LLPipeline::clearLensFlareState()
 // non-HDR paths.
 void LLPipeline::generateLensFlareState(LLRenderTarget* src)
 {
-    static LLCachedControl<F32> lens_flare_strength(gSavedSettings, "RenderLensFlareStrength", 0.f);
-    static LLCachedControl<F32> lens_flare_occlusion_scale(gSavedSettings, "RenderLensFlareOcclusionScale", 1.f);
-    static LLCachedControl<F32> lens_flare_fade_time(gSavedSettings, "RenderLensFlareFadeTime", 0.35f);
-
-    if (suppressesLensAndPrintEffects())
+    const LensFlareStateConfig config = lensFlareStateConfig();
+    if (mLensFlareStateClearPending)
+    {
+        if (mLensFlareState[0].isComplete())
+        {
+            mLensFlareState[0].bindTarget();
+            mLensFlareState[0].clear();
+            mLensFlareState[0].flush();
+        }
+        mLensFlareStateValid = false;
+        mLensFlareStateClearPending = false;
+    }
+    if (config.hold)
     {
         // A clean-plate render: colorCorrect zeroes the strength for this
         // frame, so hold the history rather than clear it, or the flare would
@@ -18974,7 +19266,7 @@ void LLPipeline::generateLensFlareState(LLRenderTarget* src)
         return;
     }
 
-    if (lens_flare_strength() <= 0.f || !gLensFlareStateProgram.isComplete())
+    if (!config.enabled)
     {
         // Switched off, or nothing to run it with: leave no history behind,
         // or a stale drive would flash back on the frame the flare returns.
@@ -18986,69 +19278,6 @@ void LLPipeline::generateLensFlareState(LLRenderTarget* src)
     }
 
     LL_PROFILE_GPU_ZONE("lens flare state");
-
-    // Sun (or moon) direction to screen UV, with a soft fade over a margin
-    // beyond the frame so the streak survives a sun just out of view.
-    // Gate/divide on clip w, not z: w is convention-independent (reverse-Z
-    // rewrites only the projection's z row), so w > 0 == "sun in front" and
-    // xy/w == ndc under both conventions; z would flip sign under reverse-Z.
-    LLEnvironment& environment = LLEnvironment::instance();
-    const bool sun_up = environment.getIsSunUp();
-    if (sun_up != mLensFlareSunUp)
-    {
-        // The history holds the old body's colour while the anchor moves to
-        // the new one this frame; a sun flare fading out on the moon is wrong,
-        // so start over.
-        mLensFlareSunUp = sun_up;
-        if (mLensFlareStateValid)
-        {
-            clearLensFlareState();
-        }
-    }
-    const LLVector4 light_dir = sun_up ? mSunDir : mMoonDir;
-    LLVector4a sun_eye, sun_clip;
-    LLViewerCamera::getCurrent().getModelview().rotate(LLVector4a(light_dir.mV[0], light_dir.mV[1], light_dir.mV[2], 0.f), sun_eye);
-    LLViewerCamera::getCurrent().getProjection().transform4(sun_eye, sun_clip);
-    F32 edge_fade = 0.f;
-    if (sun_clip[3] > 0.f)
-    {
-        const LLVector2 sun_ndc(sun_clip[0] / sun_clip[3], sun_clip[1] / sun_clip[3]);
-        const LLVector2 sun_uv = sun_ndc * 0.5f + LLVector2(0.5f, 0.5f);
-        constexpr F32 margin = 0.2f;
-        edge_fade = llclamp((sun_uv.mV[VX] + margin) / margin, 0.f, 1.f)
-                  * llclamp(((1.f + margin) - sun_uv.mV[VX]) / margin, 0.f, 1.f)
-                  * llclamp((sun_uv.mV[VY] + margin) / margin, 0.f, 1.f)
-                  * llclamp(((1.f + margin) - sun_uv.mV[VY]) / margin, 0.f, 1.f);
-        mLensFlareSunUV = sun_uv;
-    }
-
-    // Probe radius as a fraction of screen height: the body's own angular
-    // radius (updateHeavenlyBodyGeometry: HEAVENLY_BODY_FACTOR x disk radius
-    // x sky scale, at unit distance) through the current vertical FOV, times
-    // the setting. It follows zoom and the sky's sun scale, so an occluder
-    // narrower than the disc dims the flare instead of cutting it.
-    LLSettingsSky::ptr_t psky = environment.getCurrentSky();
-    F32 disk_radius = 0.5f;
-    if (gSky.mVOSkyp.notNull())
-    {
-        disk_radius = (sun_up ? gSky.mVOSkyp->getSun() : gSky.mVOSkyp->getMoon()).getDiskRadius();
-    }
-    const F32 body_scale = llmax(sun_up ? psky->getSunScale() : psky->getMoonScale(), 0.01f);
-    // The drawn quad grows towards the horizon (1.3x wide and 1.2x tall at
-    // dir.z = 0, llvosky.cpp); a circular probe takes the mean of the two.
-    const F32 enlargement = 1.f + (1.f - light_dir.mV[VZ]) * 0.25f;
-    const F32 half_tan    = HEAVENLY_BODY_FACTOR * disk_radius * body_scale * enlargement;
-    const LLViewerCamera* camera = LLViewerCamera::getInstance();
-    const F32 fov_y       = llclamp(camera->getView(), 0.01f, F_PI - 0.01f);
-    // A tiled snapshot zooms the projection without touching the FOV, and the
-    // radius has to follow the projection the centre was put through. Capped
-    // so a wide sky sun scale at a narrow FOV cannot probe half the frame.
-    const F32 radius_uv   = llmin(0.5f * half_tan / tanf(fov_y * 0.5f) * llmax(camera->getZoomFactor(), 1.f)
-                                  * llclamp(lens_flare_occlusion_scale(), 0.25f, 2.f), 0.3f);
-
-    // The shader derives its time constants and slew from FadeTime itself, so
-    // the filter is defined in one file and its mirror can check it.
-    const F32 fade = llclamp(lens_flare_fade_time(), 0.1f, 1.f);
 
     // Ping-pong by swapping handles: [1] becomes last frame's state, the
     // history this frame reads, and [0] is fully overwritten below.
@@ -19065,10 +19294,14 @@ void LLPipeline::generateLensFlareState(LLRenderTarget* src)
 
     shader.uniform1f(LLShaderMgr::DT, gFrameIntervalSeconds);
     shader.uniform2f(LLShaderMgr::SCREEN_RESOLUTION, (GLfloat)src->getWidth(), (GLfloat)src->getHeight());
-    shader.uniform2f(LLShaderMgr::LENS_FLARE_SUN_POS, mLensFlareSunUV.mV[VX], mLensFlareSunUV.mV[VY]);
-    shader.uniform1f(LLShaderMgr::LENS_FLARE_SUN_VISIBILITY, edge_fade);
-    shader.uniform1f(LLShaderMgr::LENS_FLARE_OCCLUSION_RADIUS, radius_uv);
-    shader.uniform1f(LLShaderMgr::LENS_FLARE_FADE_TIME, fade);
+    shader.uniform2f(LLShaderMgr::LENS_FLARE_SUN_POS,
+                     config.sun_uv[0], config.sun_uv[1]);
+    shader.uniform1f(LLShaderMgr::LENS_FLARE_SUN_VISIBILITY,
+                     config.edge_visibility);
+    shader.uniform1f(LLShaderMgr::LENS_FLARE_OCCLUSION_RADIUS,
+                     config.occlusion_radius);
+    shader.uniform1f(LLShaderMgr::LENS_FLARE_FADE_TIME,
+                     config.fade_time);
 
     mScreenTriangleVB->setBuffer();
     mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
@@ -19088,6 +19321,126 @@ void LLPipeline::generateLensFlareState(LLRenderTarget* src)
     shader.unbind();
     mLensFlareState[0].flush();
     mLensFlareStateValid = true;
+#if LL_DARWIN
+    mMetalLensFlareGLFrame = gFrameCount;
+    mMetalLensFlareLastWasZero = false;
+    MetalWorldSimpleCapture* capture = mMetalWorldSimpleCapture.get();
+    const bool native_current = capture &&
+        capture->lens_flare_state_target &&
+        capture->lens_flare_state_epoch == mMetalLensFlareHistoryEpoch &&
+        capture->lens_flare_state_frame == gFrameCount;
+    mMetalLensFlareHistoryReady = native_current;
+    if (capture && !native_current)
+    {
+        capture->lens_flare_state_target.reset();
+        capture->lens_flare_state_frame =
+            std::numeric_limits<U32>::max();
+        capture->lens_flare_state_epoch = 0;
+    }
+#endif
+}
+
+LLPipeline::LensFlareConfig
+LLPipeline::lensFlareConfig(bool world_frame) const
+{
+    static LLCachedControl<F32> strength_setting(
+        gSavedSettings, "RenderLensFlareStrength", 0.f);
+    static LLCachedControl<F32> streak_length_setting(
+        gSavedSettings, "RenderLensFlareStreakLength", 0.5f);
+    static LLCachedControl<F32> streak_falloff_setting(
+        gSavedSettings, "RenderLensFlareStreakFalloff", 1.5f);
+    static LLCachedControl<F32> streak_thickness_setting(
+        gSavedSettings, "RenderLensFlareStreakThickness", 0.08f);
+    static LLCachedControl<F32> streak_intensity_setting(
+        gSavedSettings, "RenderLensFlareStreakIntensity", 1.f);
+    static LLCachedControl<LLColor3> streak_tint_setting(
+        gSavedSettings, "RenderLensFlareStreakTint",
+        LLColor3(0.6f, 0.7f, 1.f));
+    static LLCachedControl<F32> chromatic_spread_setting(
+        gSavedSettings, "RenderLensFlareChromaticSpread", 0.08f);
+    static LLCachedControl<F32> glow_radius_setting(
+        gSavedSettings, "RenderLensFlareGlowRadius", 0.12f);
+    static LLCachedControl<F32> glow_falloff_setting(
+        gSavedSettings, "RenderLensFlareGlowFalloff", 8.f);
+    static LLCachedControl<F32> glow_setting(
+        gSavedSettings, "RenderLensFlareGlow", 1.f);
+    static LLCachedControl<F32> ghost_setting(
+        gSavedSettings, "RenderLensFlareGhost", 0.f);
+    static LLCachedControl<S32> ghost_count_setting(
+        gSavedSettings, "RenderLensFlareGhostCount", 4);
+    static LLCachedControl<F32> ghost_spacing_setting(
+        gSavedSettings, "RenderLensFlareGhostSpacing", 0.3f);
+    static LLCachedControl<F32> halo_setting(
+        gSavedSettings, "RenderLensFlareHalo", 0.f);
+    static LLCachedControl<F32> halo_radius_setting(
+        gSavedSettings, "RenderLensFlareHaloRadius", 0.5f);
+    static LLCachedControl<F32> halo_width_setting(
+        gSavedSettings, "RenderLensFlareHaloWidth", 0.15f);
+    static LLCachedControl<F32> starburst_setting(
+        gSavedSettings, "RenderLensFlareStarburst", 0.f);
+    static LLCachedControl<S32> starburst_spikes_setting(
+        gSavedSettings, "RenderLensFlareStarburstSpikes", 4);
+    static LLCachedControl<F32> starburst_sharpness_setting(
+        gSavedSettings, "RenderLensFlareStarburstSharpness", 24.f);
+    static LLCachedControl<F32> starburst_length_setting(
+        gSavedSettings, "RenderLensFlareStarburstLength", 0.25f);
+
+    LensFlareConfig config;
+    config.strength = suppressesLensAndPrintEffects() || !world_frame ||
+            !gLensFlareStateProgram.isComplete()
+        ? 0.f : llclamp(strength_setting(), 0.f, 1.f);
+    config.enabled = config.strength > 0.f;
+    config.sun_uv = {
+        mLensFlareSunUV.mV[VX], mLensFlareSunUV.mV[VY]};
+    config.streak_length = llclamp(
+        streak_length_setting(), 0.01f, 2.f);
+    config.streak_falloff = llclamp(
+        streak_falloff_setting(), 0.1f, 10.f);
+    config.streak_width = llmax(
+        llclamp(streak_thickness_setting(), 0.f, 1.f) * 0.05f,
+        0.001f);
+    config.streak_intensity = llclamp(
+        streak_intensity_setting(), 0.f, 5.f);
+    const LLColor3 streak_tint = linearColor3(streak_tint_setting());
+    std::copy_n(streak_tint.mV, 3, config.streak_tint.begin());
+    config.chromatic_spread = llclamp(
+        chromatic_spread_setting(), 0.f, 1.f) * 0.1f;
+    config.glow_radius = llclamp(glow_radius_setting(), 0.01f, 0.5f);
+    config.glow_falloff = llclamp(glow_falloff_setting(), 1.f, 30.f);
+    config.glow = llclamp(glow_setting(), 0.f, 5.f);
+    config.ghost = llclamp(ghost_setting(), 0.f, 5.f);
+    config.ghost_count = static_cast<U32>(
+        llclamp(ghost_count_setting(), 0, 8));
+    config.ghost_spacing = llclamp(
+        ghost_spacing_setting(), 0.1f, 1.f);
+    config.halo = llclamp(halo_setting(), 0.f, 5.f);
+    config.halo_radius = llclamp(halo_radius_setting(), 0.01f, 1.f);
+    config.halo_width = llclamp(halo_width_setting(), 0.01f, 0.5f);
+    config.starburst = llclamp(starburst_setting(), 0.f, 5.f);
+    config.starburst_spikes = static_cast<U32>(
+        llclamp(starburst_spikes_setting(), 1, 32));
+    config.starburst_sharpness = llclamp(
+        starburst_sharpness_setting(), 1.f, 256.f);
+    config.starburst_falloff = 4.f /
+        (llclamp(starburst_length_setting(), 0.f, 1.f) + 0.05f);
+
+    const bool sun_up = LLEnvironment::instance().getIsSunUp();
+    const LLColor4 light_color = linearColor3(
+        sun_up ? mSunDiffuse : mMoonDiffuse);
+    std::copy_n(light_color.mV, 3, config.light_color.begin());
+    if (LLSettingsSky::ptr_t sky =
+            LLEnvironment::instance().getCurrentSky())
+    {
+        static LLCachedControl<bool> should_auto_adjust(
+            gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
+        static LLCachedControl<F32> auto_adjust_hdr_scale(
+            gSavedSettings, "RenderSkyAutoAdjustHDRScale", 2.f);
+        config.sky_hdr_scale = sky->getReflectionProbeAmbiance() != 0.f
+            ? sqrtf(sky->getGamma()) * 2.f
+            : sky->canAutoAdjust() && should_auto_adjust
+                ? static_cast<F32>(auto_adjust_hdr_scale) : 1.f;
+    }
+    return config;
 }
 
 LLPipeline::ChromaticAberrationConfig
@@ -19487,75 +19840,61 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
 
         // Lens flare parameters
         {
-            static LLCachedControl<F32> lens_flare_strength(gSavedSettings, "RenderLensFlareStrength", 0.f);
-            static LLCachedControl<F32> lens_flare_streak_length(gSavedSettings, "RenderLensFlareStreakLength", 0.5f);
-            static LLCachedControl<F32> lens_flare_streak_falloff(gSavedSettings, "RenderLensFlareStreakFalloff", 1.5f);
-            static LLCachedControl<F32> lens_flare_streak_thickness(gSavedSettings, "RenderLensFlareStreakThickness", 0.08f);
-            static LLCachedControl<F32> lens_flare_streak_intensity(gSavedSettings, "RenderLensFlareStreakIntensity", 1.f);
-            static LLCachedControl<LLColor3> lens_flare_streak_tint(gSavedSettings, "RenderLensFlareStreakTint", LLColor3(0.6f, 0.7f, 1.0f));
-            static LLCachedControl<F32> lens_flare_chromatic_spread(gSavedSettings, "RenderLensFlareChromaticSpread", 0.08f);
-            static LLCachedControl<F32> lens_flare_glow_radius(gSavedSettings, "RenderLensFlareGlowRadius", 0.12f);
-            static LLCachedControl<F32> lens_flare_glow_falloff(gSavedSettings, "RenderLensFlareGlowFalloff", 8.f);
-            static LLCachedControl<F32> lens_flare_glow(gSavedSettings, "RenderLensFlareGlow", 1.f);
-            static LLCachedControl<F32> lens_flare_ghost(gSavedSettings, "RenderLensFlareGhost", 0.f);
-            static LLCachedControl<S32> lens_flare_ghost_count(gSavedSettings, "RenderLensFlareGhostCount", 4);
-            static LLCachedControl<F32> lens_flare_ghost_spacing(gSavedSettings, "RenderLensFlareGhostSpacing", 0.3f);
-            static LLCachedControl<F32> lens_flare_halo(gSavedSettings, "RenderLensFlareHalo", 0.f);
-            static LLCachedControl<F32> lens_flare_halo_radius(gSavedSettings, "RenderLensFlareHaloRadius", 0.5f);
-            static LLCachedControl<F32> lens_flare_halo_width(gSavedSettings, "RenderLensFlareHaloWidth", 0.15f);
-            static LLCachedControl<F32> lens_flare_starburst(gSavedSettings, "RenderLensFlareStarburst", 0.f);
-            static LLCachedControl<S32> lens_flare_starburst_spikes(gSavedSettings, "RenderLensFlareStarburstSpikes", 4);
-            static LLCachedControl<F32> lens_flare_starburst_sharpness(gSavedSettings, "RenderLensFlareStarburstSharpness", 24.f);
-            static LLCachedControl<F32> lens_flare_starburst_length(gSavedSettings, "RenderLensFlareStarburstLength", 0.25f);
-
-            // Zeroing the master strength both hits the shader's early-out and
-            // skips the whole detail block below.
-            F32 strength = (suppress_effects || !world_frame) ? 0.f : llclamp(lens_flare_strength(), 0.f, 1.f);
-            shader->uniform1f(LLShaderMgr::LENS_FLARE_STRENGTH, strength);
-
-            if (strength > 0.f)
+            const LensFlareConfig flare = lensFlareConfig(world_frame);
+            shader->uniform1f(LLShaderMgr::LENS_FLARE_STRENGTH,
+                              flare.strength);
+            if (flare.enabled)
             {
-                // Sun UV and the filtered drive both come from generateLensFlareState.
-                shader->uniform2f(LLShaderMgr::LENS_FLARE_SUN_POS, mLensFlareSunUV.mV[VX], mLensFlareSunUV.mV[VY]);
-                state_channel = shader->bindTexture(LLShaderMgr::LENS_FLARE_STATE_MAP, &mLensFlareState[0], ALSamplers::PointClamp);
-
-                // Anamorphic streak
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_STREAK_LENGTH, llclamp(lens_flare_streak_length(), 0.01f, 2.f));
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_STREAK_FALLOFF, llclamp(lens_flare_streak_falloff(), 0.1f, 10.f));
-                // User-facing "thickness" (0-1) maps to the shader's vertical half-thickness in UV space.
-                F32 streak_thickness = llclamp(lens_flare_streak_thickness(), 0.f, 1.f) * 0.05f;
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_STREAK_WIDTH, llmax(streak_thickness, 0.001f));
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_STREAK_INTENSITY, llclamp(lens_flare_streak_intensity(), 0.f, 5.f));
-                LLColor3 tint = linearColor3(lens_flare_streak_tint());
-                shader->uniform3f(LLShaderMgr::LENS_FLARE_STREAK_TINT, tint.mV[0], tint.mV[1], tint.mV[2]);
-                // User-facing 0-1 spread maps to shader's internal UV offset (0-0.1).
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_CHROMATIC_SPREAD, llclamp(lens_flare_chromatic_spread(), 0.f, 1.f) * 0.1f);
-
-                // Central glow
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_GLOW_RADIUS, llclamp(lens_flare_glow_radius(), 0.01f, 0.5f));
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_GLOW_FALLOFF, llclamp(lens_flare_glow_falloff(), 1.f, 30.f));
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_GLOW, llclamp(lens_flare_glow(), 0.f, 5.f));
-
-                // Optional ghosts & halo — intensity doubles as the on/off switch.
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_GHOST, llclamp(lens_flare_ghost(), 0.f, 5.f));
-                shader->uniform1i(LLShaderMgr::LENS_FLARE_GHOST_COUNT, llclamp(lens_flare_ghost_count(), 0, 8));
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_GHOST_SPACING, llclamp(lens_flare_ghost_spacing(), 0.1f, 1.f));
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_HALO, llclamp(lens_flare_halo(), 0.f, 5.f));
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_HALO_RADIUS, llclamp(lens_flare_halo_radius(), 0.01f, 1.f));
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_HALO_WIDTH, llclamp(lens_flare_halo_width(), 0.01f, 0.5f));
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_STARBURST, llclamp(lens_flare_starburst(), 0.f, 5.f));
-                shader->uniform1i(LLShaderMgr::LENS_FLARE_STARBURST_SPIKES, llclamp(lens_flare_starburst_spikes(), 1, 32));
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_STARBURST_SHARPNESS, llclamp(lens_flare_starburst_sharpness(), 1.f, 256.f));
-                // User-facing "length" (0 = short, 1 = long spikes) maps inversely to the shader's
-                // exponential radial falloff rate. Use a reciprocal so the perceived spike extent
-                // is roughly linear in the control; the +0.05 keeps falloff finite at length=0.
-                F32 starburst_length = llclamp(lens_flare_starburst_length(), 0.f, 1.f);
-                F32 starburst_falloff = 4.f / (starburst_length + 0.05f);
-                shader->uniform1f(LLShaderMgr::LENS_FLARE_STARBURST_FALLOFF, starburst_falloff);
-
-                const bool sun_up = LLEnvironment::instance().getIsSunUp();
-                LLColor4 light_color = linearColor3(sun_up ? mSunDiffuse : mMoonDiffuse);
-                shader->uniform3f(LLShaderMgr::LENS_FLARE_LIGHT_COLOR, light_color.mV[0], light_color.mV[1], light_color.mV[2]);
+                shader->uniform2f(LLShaderMgr::LENS_FLARE_SUN_POS,
+                                  flare.sun_uv[0], flare.sun_uv[1]);
+                state_channel = shader->bindTexture(
+                    LLShaderMgr::LENS_FLARE_STATE_MAP,
+                    &mLensFlareState[0], ALSamplers::PointClamp);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_STREAK_LENGTH,
+                                  flare.streak_length);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_STREAK_FALLOFF,
+                                  flare.streak_falloff);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_STREAK_WIDTH,
+                                  flare.streak_width);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_STREAK_INTENSITY,
+                                  flare.streak_intensity);
+                shader->uniform3f(LLShaderMgr::LENS_FLARE_STREAK_TINT,
+                                  flare.streak_tint[0],
+                                  flare.streak_tint[1],
+                                  flare.streak_tint[2]);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_CHROMATIC_SPREAD,
+                                  flare.chromatic_spread);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_GLOW_RADIUS,
+                                  flare.glow_radius);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_GLOW_FALLOFF,
+                                  flare.glow_falloff);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_GLOW,
+                                  flare.glow);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_GHOST,
+                                  flare.ghost);
+                shader->uniform1i(LLShaderMgr::LENS_FLARE_GHOST_COUNT,
+                                  static_cast<S32>(flare.ghost_count));
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_GHOST_SPACING,
+                                  flare.ghost_spacing);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_HALO,
+                                  flare.halo);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_HALO_RADIUS,
+                                  flare.halo_radius);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_HALO_WIDTH,
+                                  flare.halo_width);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_STARBURST,
+                                  flare.starburst);
+                shader->uniform1i(LLShaderMgr::LENS_FLARE_STARBURST_SPIKES,
+                                  static_cast<S32>(flare.starburst_spikes));
+                shader->uniform1f(
+                    LLShaderMgr::LENS_FLARE_STARBURST_SHARPNESS,
+                    flare.starburst_sharpness);
+                shader->uniform1f(LLShaderMgr::LENS_FLARE_STARBURST_FALLOFF,
+                                  flare.starburst_falloff);
+                shader->uniform3f(LLShaderMgr::LENS_FLARE_LIGHT_COLOR,
+                                  flare.light_color[0],
+                                  flare.light_color[1],
+                                  flare.light_color[2]);
             }
         }
 

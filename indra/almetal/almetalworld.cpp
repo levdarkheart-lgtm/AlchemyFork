@@ -136,6 +136,20 @@ namespace
         float chromatic_angle_offset_r[4];
         // blue radial/tangential offset
         float chromatic_offset_b[4];
+        // sun UV, master strength, atmosphere-relative HDR scale.
+        float flare_sun_strength[4];
+        // length, falloff, width, intensity.
+        float flare_streak[4];
+        // linear tint RGB, vertical chromatic spread.
+        float flare_streak_tint[4];
+        // glow intensity/radius/falloff, ghost intensity.
+        float flare_glow_ghost[4];
+        // ghost count/spacing, halo intensity/radius.
+        float flare_ghost_halo[4];
+        // halo width, starburst intensity/spikes/sharpness.
+        float flare_halo_starburst[4];
+        // starburst falloff, linear light tint RGB.
+        float flare_star_light[4];
         float grade_white_balance[4];
         float grade_lift[4];
         float grade_inverse_gamma[4];
@@ -156,7 +170,18 @@ namespace
         // Curve half-texel scale/bias, amount, reserved.
         float grade_curve[4];
     };
-    static_assert(sizeof(WorldDisplayPostConstants) == 336);
+    static_assert(sizeof(WorldDisplayPostConstants) == 448);
+
+    struct alignas(16) WorldLensFlareStateConstants
+    {
+        // source width/height, clamped dt, fade time.
+        float screen_time[4];
+        // sun UV, edge visibility, probe radius in screen heights.
+        float sun_visibility_radius[4];
+        // x = reverse-Z.
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldLensFlareStateConstants) == 48);
 
     struct alignas(16) WorldDepthOfFieldConstants
     {
@@ -1032,6 +1057,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::array<
         std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>, 2>
         display_post_pipelines;
+    std::unique_ptr<ALMetalRenderPipeline> lens_flare_state_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         bloom_extract_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -1055,6 +1081,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalTexture> smaa_search_texture;
     std::unique_ptr<ALMetalTexture> identity_color_lut;
     std::unique_ptr<ALMetalTexture> identity_tone_curve;
+    std::unique_ptr<ALMetalTexture> identity_lens_flare_state;
     std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
     std::unique_ptr<ALMetalComputePipeline> exposure_meter_pipeline;
     std::array<std::unique_ptr<ALMetalComputePipeline>, 2>
@@ -1390,6 +1417,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_projector_light_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_lighting_composition_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_lens_flare_state_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_display_post_fragment") ||
         !impl->library->hasFunction(
@@ -1871,6 +1900,22 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         {
             return nullptr;
         }
+    }
+
+    ALMetalRenderPipelineDescriptor flare_state_descriptor;
+    flare_state_descriptor.library = impl->library.get();
+    flare_state_descriptor.vertex_function = "almetal_resample_vertex";
+    flare_state_descriptor.fragment_function =
+        "almetal_world_lens_flare_state_fragment";
+    flare_state_descriptor.colors[0].format =
+        ALMetalPixelFormat::rgba16_float;
+    flare_state_descriptor.label =
+        "Alchemy world lens-flare state pipeline";
+    impl->lens_flare_state_pipeline = ALMetalRenderPipeline::create(
+        device, flare_state_descriptor, error);
+    if (!impl->lens_flare_state_pipeline)
+    {
+        return nullptr;
     }
 
     constexpr std::array<ALMetalPixelFormat, 2> emissive_formats{{
@@ -3832,12 +3877,26 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     grade_descriptor.label = "Alchemy world inactive tone curve";
     impl->identity_tone_curve = ALMetalTexture::create(
         device, grade_descriptor, error);
+    ALMetalTextureDescriptor flare_state_texture_descriptor;
+    flare_state_texture_descriptor.format =
+        ALMetalPixelFormat::rgba16_float;
+    flare_state_texture_descriptor.width = 2;
+    flare_state_texture_descriptor.height = 1;
+    flare_state_texture_descriptor.storage = ALMetalStorageMode::private_gpu;
+    flare_state_texture_descriptor.usage =
+        ALMetalTextureUsage::shader_read;
+    flare_state_texture_descriptor.label =
+        "Alchemy world inactive lens-flare state";
+    impl->identity_lens_flare_state = ALMetalTexture::create(
+        device, flare_state_texture_descriptor, error);
     auto grade_upload = impl->identity_color_lut &&
-            impl->identity_tone_curve
+            impl->identity_tone_curve &&
+            impl->identity_lens_flare_state
         ? device.makeCommandBuffer(
               "Alchemy world inactive color-grade texture upload", error)
         : nullptr;
     const std::array<std::uint16_t, 4> zero_grade{{0, 0, 0, 0xffffu}};
+    const std::array<std::uint16_t, 8> zero_flare{};
     const bool grade_ready = grade_upload &&
         impl->identity_color_lut->upload(
             *grade_upload, 0, 0, {}, zero_grade.data(),
@@ -3845,6 +3904,9 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         impl->identity_tone_curve->upload(
             *grade_upload, 0, 0, {}, zero_grade.data(),
             sizeof(zero_grade), error) &&
+        impl->identity_lens_flare_state->upload(
+            *grade_upload, 0, 0, {}, zero_flare.data(),
+            sizeof(zero_flare), error) &&
         grade_upload->commitAndWait(error);
     if (!grade_ready)
     {
@@ -6367,6 +6429,139 @@ ALMetalWorldGBufferRenderer::renderExposure(
 }
 
 std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderLensFlareState(
+    const ALMetalWorldLensFlareStateScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.source ||
+        !scene.depth_texture)
+    {
+        setError(error, "Metal world lens-flare state scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& source =
+        scene.source->descriptor();
+    const ALMetalTextureDescriptor& depth =
+        scene.depth_texture->descriptor();
+    const bool color_format = source.color_attachment_count == 1 &&
+        (source.colors[0].format == ALMetalPixelFormat::rgba16_float ||
+         source.colors[0].format == ALMetalPixelFormat::rgba8_unorm);
+    const bool depth_format =
+        depth.format == ALMetalPixelFormat::depth32_float ||
+        depth.format == ALMetalPixelFormat::depth32_float_stencil8;
+    if (source.width == 0 || source.height == 0 ||
+        source.sample_count != 1 || !color_format ||
+        !sampleableTexture(scene.source->colorTexture(0)) ||
+        !sampleableTexture(scene.depth_texture) || !depth_format ||
+        depth.width != source.width || depth.height != source.height ||
+        depth.array_length != 1 || depth.mipmap_level_count != 1 ||
+        depth.sample_count != 1)
+    {
+        setError(error,
+                 "Metal world lens-flare state inputs are incompatible");
+        return nullptr;
+    }
+
+    if (!std::isfinite(scene.delta_seconds) ||
+        !finiteValues(scene.sun_uv, 2) ||
+        !std::isfinite(scene.edge_visibility) ||
+        !std::isfinite(scene.occlusion_radius) ||
+        !std::isfinite(scene.fade_time) ||
+        scene.delta_seconds < 0.f ||
+        scene.edge_visibility < 0.f || scene.edge_visibility > 1.f ||
+        scene.occlusion_radius < 0.f || scene.occlusion_radius > 0.3f ||
+        scene.fade_time < 0.1f || scene.fade_time > 1.f)
+    {
+        setError(error, "Metal world lens-flare state is invalid");
+        return nullptr;
+    }
+
+    if (scene.previous)
+    {
+        const ALMetalTextureDescriptor& previous =
+            scene.previous->descriptor();
+        if (previous.type != ALMetalTextureType::texture_2d ||
+            previous.format != ALMetalPixelFormat::rgba16_float ||
+            previous.width != 2 || previous.height != 1 ||
+            previous.array_length != 1 ||
+            previous.mipmap_level_count != 1 ||
+            previous.sample_count != 1 ||
+            !sampleableTexture(scene.previous))
+        {
+            setError(error,
+                     "Metal world lens-flare history is incompatible");
+            return nullptr;
+        }
+    }
+
+    ALMetalRenderTargetDescriptor descriptor;
+    descriptor.width = 2;
+    descriptor.height = 1;
+    descriptor.colors[0].format = ALMetalPixelFormat::rgba16_float;
+    descriptor.colors[0].label = "Alchemy world lens-flare state";
+    descriptor.label = "Alchemy native world lens-flare state target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    WorldLensFlareStateConstants constants{};
+    constants.screen_time[0] = static_cast<float>(source.width);
+    constants.screen_time[1] = static_cast<float>(source.height);
+    constants.screen_time[2] = std::min(scene.delta_seconds, 0.25f);
+    constants.screen_time[3] = scene.fade_time;
+    constants.sun_visibility_radius[0] = scene.sun_uv[0];
+    constants.sun_visibility_radius[1] = scene.sun_uv[1];
+    constants.sun_visibility_radius[2] = scene.edge_visibility;
+    constants.sun_visibility_radius[3] = scene.occlusion_radius;
+    constants.config[0] = scene.reverse_z ? 1u : 0u;
+
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world lens-flare state", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::dont_care;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world lens-flare state encoder", error)
+        : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+    const ALMetalViewport viewport{0.0, 0.0, 2.0, 1.0, 0.0, 1.0};
+    const ALMetalScissorRect scissor{0, 0, 2, 1};
+    const ALMetalTexture* previous = scene.previous
+        ? scene.previous : mImpl->identity_lens_flare_state.get();
+    const bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(*mImpl->lens_flare_state_pipeline, error) &&
+        encoder->setFragmentTexture(
+            0, scene.source->colorTexture(0), error) &&
+        encoder->setFragmentTexture(1, scene.depth_texture, error) &&
+        encoder->setFragmentTexture(2, previous, error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->point_clamp_sampler.get(), error) &&
+        encoder->setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderDisplayPost(
     const ALMetalWorldDisplayPostScene& scene,
     std::string* error)
@@ -6410,6 +6605,27 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         !finiteValues(scene.chromatic_aberration_angle_sin_cos, 2) ||
         !finiteValues(scene.chromatic_aberration_offset_r, 2) ||
         !finiteValues(scene.chromatic_aberration_offset_b, 2) ||
+        !std::isfinite(scene.lens_flare_strength) ||
+        !finiteValues(scene.lens_flare_sun_uv, 2) ||
+        !finiteValues(scene.lens_flare_light_color, 3) ||
+        !std::isfinite(scene.lens_flare_sky_hdr_scale) ||
+        !std::isfinite(scene.lens_flare_streak_length) ||
+        !std::isfinite(scene.lens_flare_streak_falloff) ||
+        !std::isfinite(scene.lens_flare_streak_width) ||
+        !std::isfinite(scene.lens_flare_streak_intensity) ||
+        !finiteValues(scene.lens_flare_streak_tint, 3) ||
+        !std::isfinite(scene.lens_flare_chromatic_spread) ||
+        !std::isfinite(scene.lens_flare_glow) ||
+        !std::isfinite(scene.lens_flare_glow_radius) ||
+        !std::isfinite(scene.lens_flare_glow_falloff) ||
+        !std::isfinite(scene.lens_flare_ghost) ||
+        !std::isfinite(scene.lens_flare_ghost_spacing) ||
+        !std::isfinite(scene.lens_flare_halo) ||
+        !std::isfinite(scene.lens_flare_halo_radius) ||
+        !std::isfinite(scene.lens_flare_halo_width) ||
+        !std::isfinite(scene.lens_flare_starburst) ||
+        !std::isfinite(scene.lens_flare_starburst_sharpness) ||
+        !std::isfinite(scene.lens_flare_starburst_falloff) ||
         scene.dither_amount < 0.f || scene.dither_amount > 1.f ||
         scene.bloom_strength < 0.f ||
         scene.halation_strength < 0.f ||
@@ -6432,6 +6648,43 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         std::abs(scene.chromatic_aberration_offset_r[1]) > 1.f ||
         std::abs(scene.chromatic_aberration_offset_b[0]) > 1.f ||
         std::abs(scene.chromatic_aberration_offset_b[1]) > 1.f ||
+        scene.lens_flare_strength < 0.f ||
+        scene.lens_flare_strength > 1.f ||
+        scene.lens_flare_sky_hdr_scale < 0.f ||
+        scene.lens_flare_streak_length < 0.01f ||
+        scene.lens_flare_streak_length > 2.f ||
+        scene.lens_flare_streak_falloff < 0.1f ||
+        scene.lens_flare_streak_falloff > 10.f ||
+        scene.lens_flare_streak_width < 0.001f ||
+        scene.lens_flare_streak_width > 0.05f ||
+        scene.lens_flare_streak_intensity < 0.f ||
+        scene.lens_flare_streak_intensity > 5.f ||
+        scene.lens_flare_chromatic_spread < 0.f ||
+        scene.lens_flare_chromatic_spread > 0.1f ||
+        scene.lens_flare_glow < 0.f || scene.lens_flare_glow > 5.f ||
+        scene.lens_flare_glow_radius < 0.01f ||
+        scene.lens_flare_glow_radius > 0.5f ||
+        scene.lens_flare_glow_falloff < 1.f ||
+        scene.lens_flare_glow_falloff > 30.f ||
+        scene.lens_flare_ghost < 0.f || scene.lens_flare_ghost > 5.f ||
+        scene.lens_flare_ghost_count > 8 ||
+        scene.lens_flare_ghost_spacing < 0.1f ||
+        scene.lens_flare_ghost_spacing > 1.f ||
+        scene.lens_flare_halo < 0.f || scene.lens_flare_halo > 5.f ||
+        scene.lens_flare_halo_radius < 0.01f ||
+        scene.lens_flare_halo_radius > 1.f ||
+        scene.lens_flare_halo_width < 0.01f ||
+        scene.lens_flare_halo_width > 0.5f ||
+        scene.lens_flare_starburst < 0.f ||
+        scene.lens_flare_starburst > 5.f ||
+        scene.lens_flare_starburst_spikes < 1 ||
+        scene.lens_flare_starburst_spikes > 32 ||
+        scene.lens_flare_starburst_sharpness < 1.f ||
+        scene.lens_flare_starburst_sharpness > 256.f ||
+        scene.lens_flare_starburst_falloff < 3.809523f ||
+        scene.lens_flare_starburst_falloff > 80.00001f ||
+        (scene.lens_flare_strength > 0.f &&
+         !scene.lens_flare_state_texture) ||
         !validWorldColorGrade(scene.color_grade) ||
         (scene.bloom_texture == nullptr) !=
             (scene.bloom_strength == 0.f &&
@@ -6500,6 +6753,23 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         }
     }
 
+    if (scene.lens_flare_state_texture)
+    {
+        const ALMetalTextureDescriptor& flare =
+            scene.lens_flare_state_texture->descriptor();
+        if (!scene.hdr || flare.type != ALMetalTextureType::texture_2d ||
+            flare.width != 2 || flare.height != 1 ||
+            flare.format != ALMetalPixelFormat::rgba16_float ||
+            flare.array_length != 1 || flare.mipmap_level_count != 1 ||
+            flare.sample_count != 1 ||
+            !sampleableTexture(scene.lens_flare_state_texture))
+        {
+            setError(error,
+                     "Metal world display-post lens flare is incompatible");
+            return nullptr;
+        }
+    }
+
     ALMetalRenderTargetDescriptor output_descriptor;
     output_descriptor.width = source.width;
     output_descriptor.height = source.height;
@@ -6549,6 +6819,38 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     std::memcpy(constants.chromatic_offset_b,
                 scene.chromatic_aberration_offset_b,
                 sizeof(scene.chromatic_aberration_offset_b));
+    constants.flare_sun_strength[0] = scene.lens_flare_sun_uv[0];
+    constants.flare_sun_strength[1] = scene.lens_flare_sun_uv[1];
+    constants.flare_sun_strength[2] = scene.lens_flare_strength;
+    constants.flare_sun_strength[3] = scene.lens_flare_sky_hdr_scale;
+    constants.flare_streak[0] = scene.lens_flare_streak_length;
+    constants.flare_streak[1] = scene.lens_flare_streak_falloff;
+    constants.flare_streak[2] = scene.lens_flare_streak_width;
+    constants.flare_streak[3] = scene.lens_flare_streak_intensity;
+    std::memcpy(constants.flare_streak_tint,
+                scene.lens_flare_streak_tint,
+                sizeof(scene.lens_flare_streak_tint));
+    constants.flare_streak_tint[3] =
+        scene.lens_flare_chromatic_spread;
+    constants.flare_glow_ghost[0] = scene.lens_flare_glow;
+    constants.flare_glow_ghost[1] = scene.lens_flare_glow_radius;
+    constants.flare_glow_ghost[2] = scene.lens_flare_glow_falloff;
+    constants.flare_glow_ghost[3] = scene.lens_flare_ghost;
+    constants.flare_ghost_halo[0] =
+        static_cast<float>(scene.lens_flare_ghost_count);
+    constants.flare_ghost_halo[1] = scene.lens_flare_ghost_spacing;
+    constants.flare_ghost_halo[2] = scene.lens_flare_halo;
+    constants.flare_ghost_halo[3] = scene.lens_flare_halo_radius;
+    constants.flare_halo_starburst[0] = scene.lens_flare_halo_width;
+    constants.flare_halo_starburst[1] = scene.lens_flare_starburst;
+    constants.flare_halo_starburst[2] =
+        static_cast<float>(scene.lens_flare_starburst_spikes);
+    constants.flare_halo_starburst[3] =
+        scene.lens_flare_starburst_sharpness;
+    constants.flare_star_light[0] = scene.lens_flare_starburst_falloff;
+    std::memcpy(constants.flare_star_light + 1,
+                scene.lens_flare_light_color,
+                sizeof(scene.lens_flare_light_color));
     const ALMetalWorldColorGrade& grade = scene.color_grade;
     std::memcpy(constants.grade_white_balance, grade.white_balance_gain,
                 sizeof(grade.white_balance_gain));
@@ -6654,6 +6956,10 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
             5, grade.enabled && grade.tone_curve_amount > 0.f
                 ? grade.tone_curve_texture
                 : mImpl->identity_tone_curve.get(), error) &&
+        encoder->setFragmentTexture(
+            6, scene.lens_flare_state_texture
+                ? scene.lens_flare_state_texture
+                : mImpl->identity_lens_flare_state.get(), error) &&
         encoder->setFragmentSampler(
             3, mImpl->linear_clamp_sampler.get(), error) &&
         encoder->setFragmentBytes(

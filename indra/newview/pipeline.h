@@ -283,6 +283,12 @@ private:
     U32 mMetalExposureGLFrame = std::numeric_limits<U32>::max();
     bool mMetalExposureLastWasFixed = true;
     bool mMetalExposureHistoryReady = false;
+    // The native 2x1 flare state is accepted only while it has advanced beside
+    // every GL update since the same exact-black reset boundary.
+    U64 mMetalLensFlareHistoryEpoch = 1;
+    U32 mMetalLensFlareGLFrame = std::numeric_limits<U32>::max();
+    bool mMetalLensFlareLastWasZero = true;
+    bool mMetalLensFlareHistoryReady = false;
     U32 mMetalDepthOfFieldGLFrame = std::numeric_limits<U32>::max();
     bool mMetalDepthOfFieldGLApplied = false;
     bool mMetalHeroWorldCaptureActive = false;
@@ -378,6 +384,50 @@ public:
         F32 anisotropy = 0.f;
     };
     ChromaticAberrationConfig chromaticAberrationConfig() const;
+    // The spatial/state inputs computed once for both the authoritative GL
+    // history pass and its synchronized native mirror. hold preserves history
+    // for clean-plate frames; enabled means both backends advance it.
+    struct LensFlareStateConfig
+    {
+        bool enabled = false;
+        bool hold = false;
+        bool sun_up = true;
+        std::array<F32, 2> sun_uv{{0.5f, 0.5f}};
+        F32 edge_visibility = 0.f;
+        F32 occlusion_radius = 0.f;
+        F32 fade_time = 0.35f;
+    };
+    LensFlareStateConfig lensFlareStateConfig();
+    // Shader-ready flare appearance shared by colorCorrect and the native
+    // display boundary. All user-facing mappings and clamps live here.
+    struct LensFlareConfig
+    {
+        bool enabled = false;
+        F32 strength = 0.f;
+        std::array<F32, 2> sun_uv{{0.5f, 0.5f}};
+        std::array<F32, 3> light_color{{1.f, 1.f, 1.f}};
+        F32 sky_hdr_scale = 1.f;
+        F32 streak_length = 0.5f;
+        F32 streak_falloff = 1.5f;
+        F32 streak_width = 0.004f;
+        F32 streak_intensity = 1.f;
+        std::array<F32, 3> streak_tint{{0.6f, 0.7f, 1.f}};
+        F32 chromatic_spread = 0.008f;
+        F32 glow = 1.f;
+        F32 glow_radius = 0.12f;
+        F32 glow_falloff = 8.f;
+        F32 ghost = 0.f;
+        U32 ghost_count = 4;
+        F32 ghost_spacing = 0.3f;
+        F32 halo = 0.f;
+        F32 halo_radius = 0.5f;
+        F32 halo_width = 0.15f;
+        F32 starburst = 0.f;
+        U32 starburst_spikes = 4;
+        F32 starburst_sharpness = 24.f;
+        F32 starburst_falloff = 13.333333f;
+    };
+    LensFlareConfig lensFlareConfig(bool world_frame) const;
     // One already-clamped grade state for both colorCorrect's GLSL uniforms
     // and the native display-post owner. Resource activation is resolved here
     // too, so either backend sees the same bypass and identity decisions.
@@ -1476,6 +1526,7 @@ public:
     LLRenderTarget          mLensFlareState[2];
     bool                    mLensFlareStateValid = false;
     bool                    mLensFlareSunUp = true;    // which body the history describes
+    bool                    mLensFlareStateClearPending = false;
 
     // downres scratch space for GPU downscaling of textures
     LLRenderTarget          mDownResMap;

@@ -765,6 +765,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_local_light_fragment",
             "almetal_world_projector_light_fragment",
             "almetal_world_lighting_composition_fragment",
+            "almetal_world_lens_flare_state_fragment",
             "almetal_world_display_post_fragment",
             "almetal_world_display_post_exposure_fragment",
             "almetal_world_exposure_meter",
@@ -11026,6 +11027,516 @@ TEST_CASE("almetal: world exposure matches the production meter and history", "[
         CHECK_FALSE(renderer->renderDisplayPost(display, &error));
         CHECK(error ==
               "Metal world display-post exposure is incompatible");
+    }
+}
+
+TEST_CASE("almetal: world lens flare owns visibility history and display", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(*device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 16;
+        constexpr std::uint32_t height = 12;
+        const auto make_source = [&](std::uint16_t value,
+                                     const char* label)
+        {
+            std::vector<std::uint16_t> pixels(width * height * 4, value);
+            for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+            {
+                pixels[pixel * 4 + 3] = 0x3c00u;
+            }
+            ALMetalRenderTargetDescriptor descriptor;
+            descriptor.width = width;
+            descriptor.height = height;
+            descriptor.colors[0].format =
+                ALMetalPixelFormat::rgba16_float;
+            descriptor.label = label;
+            auto target = ALMetalRenderTarget::create(
+                *device, descriptor, &error);
+            INFO(error);
+            REQUIRE(target);
+            auto upload = device->makeCommandBuffer(label, &error);
+            INFO(error);
+            REQUIRE(upload);
+            const std::size_t row_bytes =
+                width * 4 * sizeof(std::uint16_t);
+            id<MTLBuffer> staging = [nativeDevice(*device)
+                newBufferWithBytes:pixels.data()
+                          length:pixels.size() * sizeof(std::uint16_t)
+                         options:MTLResourceStorageModeShared];
+            REQUIRE(staging);
+            id<MTLBlitCommandEncoder> blit =
+                [nativeCommand(*upload) blitCommandEncoder];
+            REQUIRE(blit);
+            [blit copyFromBuffer:staging
+                    sourceOffset:0
+               sourceBytesPerRow:row_bytes
+             sourceBytesPerImage:row_bytes * height
+                      sourceSize:MTLSizeMake(width, height, 1)
+                       toTexture:(__bridge id<MTLTexture>)
+                           target->colorTexture(0)->nativeHandle()
+                destinationSlice:0
+                destinationLevel:0
+               destinationOrigin:MTLOriginMake(0, 0, 0)];
+            [blit endEncoding];
+            REQUIRE(upload->commit(&error));
+            INFO(error);
+            return target;
+        };
+        const auto make_depth = [&](double value, const char* label)
+        {
+            ALMetalRenderTargetDescriptor descriptor;
+            descriptor.width = width;
+            descriptor.height = height;
+            descriptor.color_attachment_count = 0;
+            descriptor.depth_stencil_format =
+                ALMetalPixelFormat::depth32_float_stencil8;
+            descriptor.depth_stencil_shader_read = true;
+            descriptor.label = label;
+            auto target = ALMetalRenderTarget::create(
+                *device, descriptor, &error);
+            INFO(error);
+            REQUIRE(target);
+            ALMetalRenderPassConfig clear;
+            clear.depth_load = ALMetalLoadAction::clear;
+            clear.depth_store = ALMetalStoreAction::store;
+            clear.clear_depth = value;
+            clear.stencil_load = ALMetalLoadAction::clear;
+            clear.stencil_store = ALMetalStoreAction::store;
+            auto pass = target->makeRenderPass(clear, &error);
+            auto command = pass ? device->makeCommandBuffer(label, &error)
+                                : nullptr;
+            auto encoder = command && pass ? ALMetalRenderEncoder::begin(
+                *command, *pass, label, &error) : nullptr;
+            INFO(error);
+            REQUIRE(encoder);
+            REQUIRE(encoder->end(&error));
+            REQUIRE(command->commitAndWait(&error));
+            return target;
+        };
+        const auto half_to_float = [](std::uint16_t value)
+        {
+            const std::uint32_t sign =
+                static_cast<std::uint32_t>(value & 0x8000u) << 16;
+            std::uint32_t exponent = (value >> 10) & 0x1fu;
+            std::uint32_t mantissa = value & 0x03ffu;
+            std::uint32_t bits = 0;
+            if (exponent == 0)
+            {
+                if (mantissa == 0)
+                {
+                    bits = sign;
+                }
+                else
+                {
+                    std::int32_t unbiased = -14;
+                    while ((mantissa & 0x0400u) == 0)
+                    {
+                        mantissa <<= 1;
+                        --unbiased;
+                    }
+                    mantissa &= 0x03ffu;
+                    bits = sign |
+                        (static_cast<std::uint32_t>(unbiased + 127) << 23) |
+                        (mantissa << 13);
+                }
+            }
+            else if (exponent == 0x1fu)
+            {
+                bits = sign | 0x7f800000u | (mantissa << 13);
+            }
+            else
+            {
+                bits = sign | ((exponent + 112u) << 23) |
+                    (mantissa << 13);
+            }
+            float result = 0.f;
+            std::memcpy(&result, &bits, sizeof(result));
+            return result;
+        };
+
+        auto bright = make_source(0x4400u, "Alchemy flare bright source");
+        auto dark = make_source(0x2e66u, "Alchemy flare display source");
+        auto sky_depth = make_depth(0.0, "Alchemy flare sky depth");
+        auto geometry_depth = make_depth(1.0, "Alchemy flare geometry depth");
+
+        ALMetalWorldLensFlareStateScene state_scene;
+        state_scene.source = bright.get();
+        state_scene.depth_texture = sky_depth->depthStencilTexture();
+        state_scene.delta_seconds = 0.25f;
+        state_scene.sun_uv[0] = 0.5f;
+        state_scene.sun_uv[1] = 0.5f;
+        state_scene.edge_visibility = 1.f;
+        state_scene.occlusion_radius = 0.1f;
+        state_scene.fade_time = 0.1f;
+        state_scene.reverse_z = true;
+        auto visible = renderer->renderLensFlareState(state_scene, &error);
+        INFO(error);
+        REQUIRE(visible);
+        CHECK(visible->descriptor().width == 2);
+        CHECK(visible->descriptor().height == 1);
+        CHECK(visible->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba16_float);
+        std::array<std::uint16_t, 8> visible_pixels{};
+        REQUIRE(visible->colorTexture(0)->readback(
+            *device, 0, 0, {}, visible_pixels.data(),
+            sizeof(visible_pixels), &error));
+        INFO(error);
+        // Uniform RGB 4 has overbright drive RGB 2. The initial state uses a
+        // zero history and the authored dt clamp/slew, so it lands at 2 to
+        // half precision while the raw/reference/anchor texel records 2.
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(std::abs(half_to_float(visible_pixels[channel]) - 2.f) <
+                  0.003f);
+        }
+        CHECK(std::abs(half_to_float(visible_pixels[4]) - 2.f) < 0.003f);
+        CHECK(std::abs(half_to_float(visible_pixels[5]) - 2.f) < 0.003f);
+        CHECK(std::abs(half_to_float(visible_pixels[6]) - 2.f) < 0.003f);
+        CHECK(std::abs(half_to_float(visible_pixels[7]) - 0.25f) <
+              0.0005f);
+
+        state_scene.previous = visible->colorTexture(0);
+        state_scene.depth_texture = geometry_depth->depthStencilTexture();
+        state_scene.delta_seconds = 0.1f;
+        auto occluded = renderer->renderLensFlareState(state_scene, &error);
+        INFO(error);
+        REQUIRE(occluded);
+        std::array<std::uint16_t, 8> occluded_pixels{};
+        REQUIRE(occluded->colorTexture(0)->readback(
+            *device, 0, 0, {}, occluded_pixels.data(),
+            sizeof(occluded_pixels), &error));
+        const float faded = half_to_float(occluded_pixels[0]);
+        CHECK(faded > 0.f);
+        CHECK(faded < half_to_float(visible_pixels[0]));
+        CHECK(half_to_float(occluded_pixels[4]) == 0.f);
+        CHECK(half_to_float(occluded_pixels[5]) > faded);
+
+        ALMetalWorldDisplayPostScene display;
+        display.source = dark.get();
+        display.hdr = true;
+        display.static_exposure = 0.5f;
+        display.tonemap_mix = 0.f;
+        auto baseline = renderer->renderDisplayPost(display, &error);
+        INFO(error);
+        REQUIRE(baseline);
+        display.lens_flare_state_texture = visible->colorTexture(0);
+        display.lens_flare_strength = 1.f;
+        display.lens_flare_sun_uv[0] = 0.5f;
+        display.lens_flare_sun_uv[1] = 0.5f;
+        display.lens_flare_streak_intensity = 0.f;
+        auto flared = renderer->renderDisplayPost(display, &error);
+        INFO(error);
+        REQUIRE(flared);
+        std::array<std::uint32_t, width * height> baseline_pixels{};
+        std::array<std::uint32_t, width * height> flared_pixels{};
+        REQUIRE(baseline->colorTexture(0)->readback(
+            *device, 0, 0, {}, baseline_pixels.data(), width * 4, &error));
+        REQUIRE(flared->colorTexture(0)->readback(
+            *device, 0, 0, {}, flared_pixels.data(), width * 4, &error));
+        const std::size_t center = (height / 2) * width + width / 2;
+        CHECK((flared_pixels[center] & 0x3ffu) >
+              (baseline_pixels[center] & 0x3ffu));
+        CHECK(flared_pixels != baseline_pixels);
+
+        const auto render_flare_pixels = [&](const auto& flare_scene)
+        {
+            auto output = renderer->renderDisplayPost(flare_scene, &error);
+            INFO(error);
+            REQUIRE(output);
+            std::array<std::uint32_t, width * height> pixels{};
+            REQUIRE(output->colorTexture(0)->readback(
+                *device, 0, 0, {}, pixels.data(), width * 4, &error));
+            INFO(error);
+            return pixels;
+        };
+        // Exercise every independently gated display family. Comparisons use
+        // the same immutable state texel and source, so each nonzero delta is
+        // attributable to the selected analytical branch.
+        ALMetalWorldDisplayPostScene streak_scene = display;
+        streak_scene.lens_flare_glow = 0.f;
+        streak_scene.lens_flare_streak_width = 0.05f;
+        streak_scene.lens_flare_streak_intensity = 1.f;
+        streak_scene.lens_flare_chromatic_spread = 0.f;
+        const auto streak_pixels = render_flare_pixels(streak_scene);
+        CHECK(streak_pixels != baseline_pixels);
+        CHECK(streak_pixels != flared_pixels);
+
+        ALMetalWorldDisplayPostScene fringe_scene = streak_scene;
+        fringe_scene.lens_flare_chromatic_spread = 0.05f;
+        const auto fringe_pixels = render_flare_pixels(fringe_scene);
+        CHECK(fringe_pixels != streak_pixels);
+
+        ALMetalWorldDisplayPostScene ghost_scene = display;
+        ghost_scene.lens_flare_sun_uv[0] = 0.25f;
+        ghost_scene.lens_flare_glow = 0.f;
+        ghost_scene.lens_flare_streak_intensity = 0.f;
+        ghost_scene.lens_flare_ghost = 1.f;
+        ghost_scene.lens_flare_ghost_count = 3;
+        const auto ghost_pixels = render_flare_pixels(ghost_scene);
+        CHECK(ghost_pixels != baseline_pixels);
+
+        ALMetalWorldDisplayPostScene halo_scene = display;
+        halo_scene.lens_flare_sun_uv[0] = 0.25f;
+        halo_scene.lens_flare_glow = 0.f;
+        halo_scene.lens_flare_streak_intensity = 0.f;
+        halo_scene.lens_flare_halo = 1.f;
+        halo_scene.lens_flare_halo_radius = 0.2f;
+        halo_scene.lens_flare_halo_width = 0.1f;
+        const auto halo_pixels = render_flare_pixels(halo_scene);
+        CHECK(halo_pixels != baseline_pixels);
+        CHECK(halo_pixels != ghost_pixels);
+
+        ALMetalWorldDisplayPostScene star_scene = display;
+        star_scene.lens_flare_glow = 0.f;
+        star_scene.lens_flare_streak_intensity = 0.f;
+        star_scene.lens_flare_starburst = 1.f;
+        star_scene.lens_flare_starburst_spikes = 6;
+        star_scene.lens_flare_starburst_sharpness = 12.f;
+        star_scene.lens_flare_starburst_falloff = 8.f;
+        const auto star_pixels = render_flare_pixels(star_scene);
+        CHECK(star_pixels != baseline_pixels);
+        CHECK(star_pixels != halo_pixels);
+
+        // One dense independent scalar oracle covers all families together,
+        // including RGB-separated streak fringes and integer loop counts.
+        ALMetalWorldDisplayPostScene combined = display;
+        combined.lens_flare_sun_uv[0] = 0.25f;
+        combined.lens_flare_sun_uv[1] = 0.45f;
+        combined.lens_flare_strength = 0.7f;
+        combined.lens_flare_sky_hdr_scale = 1.4f;
+        combined.lens_flare_light_color[0] = 0.8f;
+        combined.lens_flare_light_color[1] = 0.6f;
+        combined.lens_flare_light_color[2] = 0.4f;
+        combined.lens_flare_streak_length = 0.7f;
+        combined.lens_flare_streak_falloff = 2.f;
+        combined.lens_flare_streak_width = 0.04f;
+        combined.lens_flare_streak_intensity = 0.8f;
+        combined.lens_flare_streak_tint[0] = 0.5f;
+        combined.lens_flare_streak_tint[1] = 0.7f;
+        combined.lens_flare_streak_tint[2] = 0.9f;
+        combined.lens_flare_chromatic_spread = 0.03f;
+        combined.lens_flare_glow = 0.6f;
+        combined.lens_flare_glow_radius = 0.2f;
+        combined.lens_flare_glow_falloff = 5.f;
+        combined.lens_flare_ghost = 0.5f;
+        combined.lens_flare_ghost_count = 3;
+        combined.lens_flare_ghost_spacing = 0.4f;
+        combined.lens_flare_halo = 0.7f;
+        combined.lens_flare_halo_radius = 0.3f;
+        combined.lens_flare_halo_width = 0.12f;
+        combined.lens_flare_starburst = 0.8f;
+        combined.lens_flare_starburst_spikes = 5;
+        combined.lens_flare_starburst_sharpness = 10.f;
+        combined.lens_flare_starburst_falloff = 7.f;
+        const auto combined_pixels = render_flare_pixels(combined);
+        const auto smoothstep_cpu = [](float low, float high, float value)
+        {
+            const float t = std::clamp(
+                (value - low) / (high - low), 0.f, 1.f);
+            return t * t * (3.f - 2.f * t);
+        };
+        const auto srgb_cpu = [](float linear)
+        {
+            linear = std::max(linear, 0.f);
+            return linear > 0.0031308f
+                ? 1.055f * std::pow(linear, 1.f / 2.4f) - 0.055f
+                : linear * 12.92f;
+        };
+        const auto unorm10_cpu = [](float value)
+        {
+            return static_cast<std::uint32_t>(std::lround(
+                std::clamp(value, 0.f, 1.f) * 1023.f));
+        };
+        const float source_value = half_to_float(0x2e66u);
+        const std::array<float, 3> state_drive{{
+            half_to_float(visible_pixels[0]),
+            half_to_float(visible_pixels[1]),
+            half_to_float(visible_pixels[2]),
+        }};
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const float u = (static_cast<float>(x) + 0.5f) / width;
+                const float v = (static_cast<float>(y) + 0.5f) / height;
+                const float dx = u - combined.lens_flare_sun_uv[0];
+                const float dy = v - combined.lens_flare_sun_uv[1];
+                const float aspect = static_cast<float>(width) / height;
+                std::array<float, 3> flare{};
+
+                const float gx = dx * aspect;
+                const float glow = std::exp(
+                    -(gx * gx + dy * dy) *
+                    combined.lens_flare_glow_falloff /
+                    (combined.lens_flare_glow_radius *
+                     combined.lens_flare_glow_radius));
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    flare[channel] += state_drive[channel] * glow *
+                        combined.lens_flare_glow *
+                        combined.lens_flare_sky_hdr_scale;
+                }
+
+                const float fringe_width =
+                    combined.lens_flare_streak_width +
+                    combined.lens_flare_chromatic_spread * 0.5f;
+                if (std::abs(dy) < fringe_width * 8.f)
+                {
+                    const float horizontal = std::abs(dx) * aspect;
+                    const float horizontal_falloff = std::exp(
+                        -horizontal * combined.lens_flare_streak_falloff /
+                        combined.lens_flare_streak_length);
+                    const float streak = std::exp(
+                        -dy * dy /
+                        (combined.lens_flare_streak_width *
+                         combined.lens_flare_streak_width)) *
+                        horizontal_falloff;
+                    const float red_y = std::abs(
+                        dy + combined.lens_flare_chromatic_spread);
+                    const float blue_y = std::abs(
+                        dy - combined.lens_flare_chromatic_spread);
+                    const float red = std::exp(
+                        -red_y * red_y / (fringe_width * fringe_width)) *
+                        horizontal_falloff;
+                    const float blue = std::exp(
+                        -blue_y * blue_y / (fringe_width * fringe_width)) *
+                        horizontal_falloff;
+                    flare[0] += state_drive[0] * red *
+                        combined.lens_flare_streak_tint[0] *
+                        combined.lens_flare_streak_intensity;
+                    flare[1] += state_drive[1] * streak *
+                        combined.lens_flare_streak_tint[1] *
+                        combined.lens_flare_streak_intensity;
+                    flare[2] += state_drive[2] * blue *
+                        combined.lens_flare_streak_tint[2] *
+                        combined.lens_flare_streak_intensity;
+                }
+
+                for (std::uint32_t ghost = 0;
+                     ghost < combined.lens_flare_ghost_count; ++ghost)
+                {
+                    const float scale = 1.f / (ghost + 1.f);
+                    const float t = combined.lens_flare_ghost_spacing *
+                        (ghost + 1.f);
+                    const float ghost_u =
+                        combined.lens_flare_sun_uv[0] +
+                        (0.5f - combined.lens_flare_sun_uv[0]) * t;
+                    const float ghost_v =
+                        combined.lens_flare_sun_uv[1] +
+                        (0.5f - combined.lens_flare_sun_uv[1]) * t;
+                    const float ghost_dx = (u - ghost_u) * aspect;
+                    const float ghost_dy = v - ghost_v;
+                    const float radius = 0.04f * scale + 0.02f;
+                    const float disk = 1.f - smoothstep_cpu(
+                        radius * 0.5f, radius,
+                        std::sqrt(ghost_dx * ghost_dx +
+                                  ghost_dy * ghost_dy));
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                    {
+                        flare[channel] += state_drive[channel] * disk *
+                            scale * combined.lens_flare_ghost;
+                    }
+                }
+
+                const float halo_u = 1.f -
+                    combined.lens_flare_sun_uv[0];
+                const float halo_v = 1.f -
+                    combined.lens_flare_sun_uv[1];
+                const float halo_dx = (u - halo_u) * aspect;
+                const float halo_dy = v - halo_v;
+                float halo = 1.f - std::abs(
+                    std::sqrt(halo_dx * halo_dx + halo_dy * halo_dy) -
+                    combined.lens_flare_halo_radius) /
+                    combined.lens_flare_halo_width;
+                halo = std::clamp(halo, 0.f, 1.f);
+                halo *= halo;
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    flare[channel] += state_drive[channel] * halo * 0.3f *
+                        combined.lens_flare_halo;
+                }
+
+                const float star_x = dx * aspect;
+                const float star_distance = std::sqrt(
+                    star_x * star_x + dy * dy);
+                const float envelope = std::exp(
+                    -star_distance *
+                    combined.lens_flare_starburst_falloff) *
+                    smoothstep_cpu(0.f, combined.lens_flare_glow_radius,
+                                   star_distance);
+                if (envelope > 1.e-5f)
+                {
+                    const float angle = std::atan2(dy, star_x);
+                    const float primary = static_cast<float>(
+                        combined.lens_flare_starburst_spikes);
+                    const float sharp =
+                        combined.lens_flare_starburst_sharpness;
+                    const float pattern =
+                        std::pow(std::abs(std::cos(angle * primary)),
+                                 sharp) * 0.5f +
+                        std::pow(std::abs(std::cos(
+                                     angle * primary * 2.f + 0.5f)),
+                                 sharp * 1.33f) * 0.3f +
+                        std::pow(std::abs(std::cos(
+                                     angle * primary * 4.f + 1.f)),
+                                 sharp * 1.66f) * 0.2f;
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                    {
+                        flare[channel] += state_drive[channel] * pattern *
+                            envelope * combined.lens_flare_starburst *
+                            combined.lens_flare_sky_hdr_scale;
+                    }
+                }
+
+                const std::size_t pixel =
+                    static_cast<std::size_t>(y) * width + x;
+                for (std::uint32_t channel = 0; channel < 3; ++channel)
+                {
+                    flare[channel] = std::max(
+                        flare[channel] * combined.lens_flare_strength *
+                        combined.lens_flare_light_color[channel] * 0.15f,
+                        0.f);
+                    const float display_value = srgb_cpu(std::clamp(
+                        (source_value + flare[channel]) *
+                            combined.static_exposure,
+                        0.f, 1.f));
+                    const std::uint32_t actual =
+                        (combined_pixels[pixel] >> (channel * 10u)) & 0x3ffu;
+                    const std::uint32_t expected =
+                        unorm10_cpu(display_value);
+                    CAPTURE(x, y, channel, actual, expected);
+                    CHECK(std::abs(static_cast<int>(actual) -
+                                   static_cast<int>(expected)) <= 2);
+                }
+            }
+        }
+
+        ALMetalWorldLensFlareStateScene invalid;
+        error.clear();
+        CHECK_FALSE(renderer->renderLensFlareState(invalid, &error));
+        CHECK(error == "Metal world lens-flare state scene is incomplete");
+        invalid = state_scene;
+        invalid.previous = dark->colorTexture(0);
+        error.clear();
+        CHECK_FALSE(renderer->renderLensFlareState(invalid, &error));
+        CHECK(error == "Metal world lens-flare history is incompatible");
+        display.lens_flare_state_texture = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(display, &error));
+        CHECK(error == "Metal world display-post state is invalid");
+        display.lens_flare_state_texture = visible->colorTexture(0);
+        display.lens_flare_ghost_count = 9;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(display, &error));
+        CHECK(error == "Metal world display-post state is invalid");
     }
 }
 

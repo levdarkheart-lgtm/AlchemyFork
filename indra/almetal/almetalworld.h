@@ -719,6 +719,33 @@ struct ALMetalWorldDisplayPostScene
     float chromatic_aberration_angle_sin_cos[2] = {0.f, 1.f};
     float chromatic_aberration_offset_r[2] = {-1.f, 0.f};
     float chromatic_aberration_offset_b[2] = {1.f, 0.f};
+    // Optional 2x1 RGBA16F output of renderLensFlareState. A positive
+    // strength requires this exact current-frame state; inactive flare uses
+    // the renderer's immutable black state texture.
+    const ALMetalTexture* lens_flare_state_texture = nullptr;
+    float lens_flare_strength = 0.f;
+    float lens_flare_sun_uv[2] = {0.5f, 0.5f};
+    float lens_flare_light_color[3] = {1.f, 1.f, 1.f};
+    float lens_flare_sky_hdr_scale = 1.f;
+    float lens_flare_streak_length = 0.5f;
+    float lens_flare_streak_falloff = 1.5f;
+    float lens_flare_streak_width = 0.004f;
+    float lens_flare_streak_intensity = 1.f;
+    float lens_flare_streak_tint[3] = {0.6f, 0.7f, 1.f};
+    float lens_flare_chromatic_spread = 0.008f;
+    float lens_flare_glow = 1.f;
+    float lens_flare_glow_radius = 0.12f;
+    float lens_flare_glow_falloff = 8.f;
+    float lens_flare_ghost = 0.f;
+    std::uint32_t lens_flare_ghost_count = 4;
+    float lens_flare_ghost_spacing = 0.3f;
+    float lens_flare_halo = 0.f;
+    float lens_flare_halo_radius = 0.5f;
+    float lens_flare_halo_width = 0.15f;
+    float lens_flare_starburst = 0.f;
+    std::uint32_t lens_flare_starburst_spikes = 4;
+    float lens_flare_starburst_sharpness = 24.f;
+    float lens_flare_starburst_falloff = 13.333333f;
     ALMetalWorldColorGrade color_grade;
     bool cutout_premultiplied = false;
     // Non-HDR only: colorCorrectF applies output dither at this first 8-bit
@@ -726,6 +753,23 @@ struct ALMetalWorldDisplayPostScene
     float dither_amount = 0.f;
     bool dither_animated = false;
     std::uint32_t frame_id = 0;
+};
+
+// Per-frame flare visibility and temporal state. The source is the sharp
+// linear scene and depth is its completed world depth. Previous is null only
+// for the exact zero-history bootstrap; otherwise it must be the prior 2x1
+// output from this method.
+struct ALMetalWorldLensFlareStateScene
+{
+    const ALMetalRenderTarget* source = nullptr;
+    const ALMetalTexture* depth_texture = nullptr;
+    const ALMetalTexture* previous = nullptr;
+    float delta_seconds = 0.f;
+    float sun_uv[2] = {0.5f, 0.5f};
+    float edge_visibility = 0.f;
+    float occlusion_radius = 0.f;
+    float fade_time = 0.35f;
+    bool reverse_z = false;
 };
 
 // Pre-tonemap HDR depth of field. The gather runs at resolution_scale and
@@ -1232,10 +1276,16 @@ public:
 
     // Convert one completed linear native world target into the GL post
     // chain's first display-space target without crossing CPU memory. Bloom,
-    // halation and cross-filter may be folded in; grading/lens remain later
-    // owners, and this is not final presentation.
+    // halation, cross-filter, chromatic aberration, synchronized lens flare
+    // and complete grading may be folded in; this is not final presentation.
     std::unique_ptr<ALMetalRenderTarget> renderDisplayPost(
         const ALMetalWorldDisplayPostScene& scene,
+        std::string* error = nullptr);
+
+    // Measure the HDR sun disc through final world depth and advance the
+    // flare's bounded 2x1 temporal state entirely on the Metal queue.
+    std::unique_ptr<ALMetalRenderTarget> renderLensFlareState(
+        const ALMetalWorldLensFlareStateScene& scene,
         std::string* error = nullptr);
 
     // Gather and combine pre-tonemap depth of field as one fail-closed

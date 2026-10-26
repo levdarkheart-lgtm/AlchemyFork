@@ -12146,6 +12146,118 @@ fragment float4 almetal_world_dof_combine_near_fragment(
         point_mirror_sampler, constants, true);
 }
 
+struct ALMetalWorldLensFlareStateConstants
+{
+    // source width/height, clamped dt, fade time.
+    float4 screen_time;
+    // sun UV, edge visibility, probe radius in screen heights.
+    float4 sun_visibility_radius;
+    // x = reverse-Z.
+    uint4 config;
+};
+
+fragment float4 almetal_world_lens_flare_state_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    texture2d<float> depth_texture [[texture(1)]],
+    texture2d<float> previous [[texture(2)]],
+    sampler point_clamp_sampler [[sampler(0)]],
+    constant ALMetalWorldLensFlareStateConstants& constants [[buffer(0)]])
+{
+    constexpr float3 luma_weights = float3(0.2126, 0.7152, 0.0722);
+    constexpr float golden_angle = 2.39996322972865332;
+    constexpr uint tap_count = 256u;
+    constexpr float tap_falloff = 8.0;
+    constexpr float luminance_gate = 2.0;
+
+    const float2 source_size = max(constants.screen_time.xy, float2(1.0));
+    const float2 sun_uv = constants.sun_visibility_radius.xy;
+    const float2 radius_uv = constants.sun_visibility_radius.w *
+        float2(source_size.y / source_size.x, 1.0);
+    float weight_sum = 0.0;
+    float3 energy = float3(0.0);
+    float peak = 0.0;
+    for (uint index = 0u; index < tap_count; ++index)
+    {
+        const float radius = sqrt((float(index) + 0.5) /
+                                  float(tap_count));
+        const float angle = float(index) * golden_angle;
+        const float2 tap = float2(cos(angle), sin(angle)) * radius;
+        const float weight = exp(-tap_falloff * dot(tap, tap));
+        weight_sum += weight;
+        const float2 uv = clamp(sun_uv + tap * radius_uv,
+                                float2(0.0), float2(1.0));
+        const float depth = depth_texture.sample(
+            point_clamp_sampler, uv, level(0.0)).r;
+        const bool sky = constants.config.x != 0u
+            ? depth <= 0.0 : depth >= 1.0;
+        if (sky)
+        {
+            const float3 color = source.sample(
+                point_clamp_sampler, uv, level(0.0)).rgb;
+            const float luminance = dot(color, luma_weights);
+            const float3 overbright = color *
+                (max(luminance - luminance_gate, 0.0) /
+                 max(luminance, 1.0e-4));
+            energy += weight * overbright;
+            peak = max(peak, dot(overbright, luma_weights));
+        }
+    }
+    const float3 target = energy / weight_sum *
+        constants.sun_visibility_radius.z;
+
+    const float4 previous0 = previous.read(uint2(0, 0));
+    const float4 previous1 = previous.read(uint2(1, 0));
+    const float dt = clamp(constants.screen_time.z, 0.0, 0.25);
+    const float fade = max(constants.screen_time.w, 0.05);
+    const float previous_luminance = dot(previous0.rgb, luma_weights);
+    const float target_luminance = dot(target, luma_weights);
+    const float reference = max(
+        max(previous1.g * exp(-dt / 2.0), target_luminance),
+        previous_luminance);
+
+    float packed_instability = previous0.a;
+    float instability = abs(packed_instability);
+    const float previous_sign = sign(packed_instability);
+    float anchor = previous1.b;
+    const float delta = (target_luminance - anchor) /
+        max(max(peak, reference), 1.0e-6);
+    const float current_sign = abs(delta) > 0.1 ? sign(delta) : 0.0;
+    if (current_sign != 0.0)
+    {
+        anchor = target_luminance;
+    }
+    const bool reversal = current_sign != 0.0 && previous_sign != 0.0 &&
+        current_sign != previous_sign;
+    instability = min(instability * exp(-dt) +
+                      (reversal ? 0.35 : 0.0), 1.0);
+    const float stored_sign = current_sign != 0.0
+        ? current_sign : previous_sign;
+    packed_instability = stored_sign != 0.0
+        ? stored_sign * max(instability, 1.0e-3) : 0.0;
+
+    const bool rising = target_luminance > previous_luminance;
+    float tau = fade * (rising ? (1.0 / 3.0) : 0.2);
+    tau *= 1.0 + 20.0 * max(instability - 0.30, 0.0);
+    float alpha = 1.0 - exp(-dt / tau);
+    const float slew = (rising ? 1.0 : (1.0 / 0.6)) / fade;
+    const float cap = slew * dt * reference;
+    const float difference = abs(target_luminance - previous_luminance);
+    if (difference > 1.0e-9)
+    {
+        alpha = min(alpha, cap / difference);
+    }
+    float3 drive = max(mix(previous0.rgb, target, alpha), float3(0.0));
+    if (target_luminance <= 0.0 && dot(drive, luma_weights) < 1.0e-4)
+    {
+        drive = float3(0.0);
+    }
+
+    return input.position.x < 1.0
+        ? float4(drive, packed_instability)
+        : float4(target_luminance, reference, anchor, dt);
+}
+
 struct ALMetalWorldDisplayPostConstants
 {
     // static exposure, adapted exposure, tonemap mix, tonemap type
@@ -12162,6 +12274,13 @@ struct ALMetalWorldDisplayPostConstants
     float4 chromatic_angle_offset_r;
     // blue radial/tangential offset
     float4 chromatic_offset_b;
+    float4 flare_sun_strength;
+    float4 flare_streak;
+    float4 flare_streak_tint;
+    float4 flare_glow_ghost;
+    float4 flare_ghost_halo;
+    float4 flare_halo_starburst;
+    float4 flare_star_light;
     float4 grade_white_balance;
     float4 grade_lift;
     float4 grade_inverse_gamma;
@@ -12468,6 +12587,144 @@ static float3 almetal_world_grade_display(
     return color;
 }
 
+static float3 almetal_world_lens_flare(
+    float2 uv, texture2d<float> state,
+    constant ALMetalWorldDisplayPostConstants& constants,
+    float2 resolution)
+{
+    const float strength = constants.flare_sun_strength.z;
+    if (strength <= 0.0)
+    {
+        return float3(0.0);
+    }
+    const float3 sun_color = state.read(uint2(0, 0)).rgb;
+    if (max(sun_color.r, max(sun_color.g, sun_color.b)) <= 0.0)
+    {
+        return float3(0.0);
+    }
+
+    const float2 sun_uv = constants.flare_sun_strength.xy;
+    const float aspect = resolution.x / max(resolution.y, 1.0);
+    const float2 delta = uv - sun_uv;
+    float3 flare = float3(0.0);
+
+    const float glow_intensity = constants.flare_glow_ghost.x;
+    if (glow_intensity > 0.0)
+    {
+        const float2 glow_delta = float2(delta.x * aspect, delta.y);
+        const float radius = constants.flare_glow_ghost.y;
+        const float radius_squared = max(radius * radius, 1.0e-8);
+        const float glow = exp(-dot(glow_delta, glow_delta) *
+            constants.flare_glow_ghost.z / radius_squared);
+        flare += sun_color * glow * glow_intensity *
+            constants.flare_sun_strength.w;
+    }
+
+    const float streak_width = max(constants.flare_streak.z, 1.0e-5);
+    const float streak_length = max(constants.flare_streak.x, 1.0e-5);
+    const float spread = max(constants.flare_streak_tint.w, 0.0);
+    const float fringe_width = streak_width + spread * 0.5;
+    if (constants.flare_streak.w > 0.0 &&
+        abs(delta.y) < fringe_width * 8.0)
+    {
+        const float horizontal = abs(delta.x) * aspect;
+        const float vertical = abs(delta.y);
+        const float vertical_falloff = exp(
+            -vertical * vertical / (streak_width * streak_width));
+        const float horizontal_falloff = exp(
+            -horizontal * constants.flare_streak.y / streak_length);
+        const float streak = vertical_falloff * horizontal_falloff;
+        if (spread > 0.0)
+        {
+            const float vertical_red = abs(delta.y + spread);
+            const float vertical_blue = abs(delta.y - spread);
+            const float red = exp(-vertical_red * vertical_red /
+                (fringe_width * fringe_width)) * horizontal_falloff;
+            const float blue = exp(-vertical_blue * vertical_blue /
+                (fringe_width * fringe_width)) * horizontal_falloff;
+            flare.r += sun_color.r * red * constants.flare_streak_tint.r *
+                constants.flare_streak.w;
+            flare.g += sun_color.g * streak * constants.flare_streak_tint.g *
+                constants.flare_streak.w;
+            flare.b += sun_color.b * blue * constants.flare_streak_tint.b *
+                constants.flare_streak.w;
+        }
+        else
+        {
+            flare += sun_color * streak * constants.flare_streak_tint.rgb *
+                constants.flare_streak.w;
+        }
+    }
+
+    const float ghost_intensity = constants.flare_glow_ghost.w;
+    const uint ghost_count = uint(round(constants.flare_ghost_halo.x));
+    if (ghost_intensity > 0.0 && ghost_count > 0u)
+    {
+        const float2 ghost_vector = float2(0.5) - sun_uv;
+        for (uint index = 0u; index < ghost_count; ++index)
+        {
+            const float scale = 1.0 / float(index + 1u);
+            const float2 ghost_uv = sun_uv + ghost_vector *
+                constants.flare_ghost_halo.y * float(index + 1u);
+            const float radius = 0.04 * scale + 0.02;
+            float2 ghost_delta = uv - ghost_uv;
+            ghost_delta.x *= aspect;
+            const float disk = 1.0 - smoothstep(
+                radius * 0.5, radius, length(ghost_delta));
+            flare += sun_color * disk * scale * ghost_intensity;
+        }
+    }
+
+    const float halo_intensity = constants.flare_ghost_halo.z;
+    const float halo_radius = constants.flare_ghost_halo.w;
+    if (halo_intensity > 0.0 && halo_radius > 0.0)
+    {
+        const float2 halo_center = float2(0.5) +
+            (float2(0.5) - sun_uv);
+        float2 halo_delta = uv - halo_center;
+        halo_delta.x *= aspect;
+        const float halo_width = max(
+            constants.flare_halo_starburst.x, 0.01);
+        float halo = 1.0 - abs(length(halo_delta) - halo_radius) /
+            halo_width;
+        halo = clamp(halo, 0.0, 1.0);
+        halo *= halo;
+        flare += sun_color * halo * 0.3 * halo_intensity;
+    }
+
+    const float starburst_intensity = constants.flare_halo_starburst.y;
+    if (starburst_intensity > 0.0)
+    {
+        float2 star_delta = delta;
+        star_delta.x *= aspect;
+        const float distance = length(star_delta);
+        const float radial = exp(-distance * max(
+            constants.flare_star_light.x, 0.01));
+        const float core_fade = smoothstep(
+            0.0, max(constants.flare_glow_ghost.y, 1.0e-4), distance);
+        const float envelope = radial * core_fade;
+        if (envelope > 1.0e-5)
+        {
+            const float angle = atan2(star_delta.y, star_delta.x);
+            const float primary = max(
+                constants.flare_halo_starburst.z, 1.0);
+            const float sharpness = max(
+                constants.flare_halo_starburst.w, 1.0);
+            const float pattern =
+                pow(abs(cos(angle * primary)), sharpness) * 0.5 +
+                pow(abs(cos(angle * primary * 2.0 + 0.5)),
+                    sharpness * 1.33) * 0.3 +
+                pow(abs(cos(angle * primary * 4.0 + 1.0)),
+                    sharpness * 1.66) * 0.2;
+            flare += sun_color * pattern * envelope *
+                starburst_intensity * constants.flare_sun_strength.w;
+        }
+    }
+
+    return max(flare * strength * constants.flare_star_light.yzw * 0.15,
+               float3(0.0));
+}
+
 static float4 almetal_world_display_post(
     ALMetalResampleVaryings input,
     texture2d<float> source,
@@ -12476,6 +12733,7 @@ static float4 almetal_world_display_post(
     float3 cross_filter_sample,
     texture2d_array<float> color_lut,
     texture2d<float> tone_curve,
+    texture2d<float> lens_flare_state,
     sampler grade_sampler,
     constant ALMetalWorldDisplayPostConstants& constants,
     float adapted_exposure)
@@ -12486,6 +12744,9 @@ static float4 almetal_world_display_post(
         constants.chromatic.z, constants.chromatic_angle_offset_r.xy,
         constants.chromatic_angle_offset_r.zw,
         constants.chromatic_offset_b.xy);
+    color.rgb += almetal_world_lens_flare(
+        input.texcoord, lens_flare_state, constants,
+        float2(source.get_width(), source.get_height()));
     const float coverage = clamp(color.a, 0.0, 1.0);
     if (constants.config.x != 0)
     {
@@ -12561,12 +12822,13 @@ fragment float4 almetal_world_display_post_fragment(
     sampler source_sampler [[sampler(0)]],
     texture2d_array<float> color_lut [[texture(4)]],
     texture2d<float> tone_curve [[texture(5)]],
+    texture2d<float> lens_flare_state [[texture(6)]],
     sampler grade_sampler [[sampler(3)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
         input, source, source_sampler, float4(0.0), float3(0.0),
-        color_lut, tone_curve, grade_sampler,
+        color_lut, tone_curve, lens_flare_state, grade_sampler,
         constants, constants.post.y);
 }
 
@@ -12577,12 +12839,13 @@ fragment float4 almetal_world_display_post_exposure_fragment(
     sampler source_sampler [[sampler(0)]],
     texture2d_array<float> color_lut [[texture(4)]],
     texture2d<float> tone_curve [[texture(5)]],
+    texture2d<float> lens_flare_state [[texture(6)]],
     sampler grade_sampler [[sampler(3)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
         input, source, source_sampler, float4(0.0), float3(0.0),
-        color_lut, tone_curve, grade_sampler,
+        color_lut, tone_curve, lens_flare_state, grade_sampler,
         constants,
         exposure.read(uint2(0)).r);
 }
@@ -12597,6 +12860,7 @@ fragment float4 almetal_world_display_post_bloom_fragment(
     sampler cross_filter_sampler [[sampler(2)]],
     texture2d_array<float> color_lut [[texture(4)]],
     texture2d<float> tone_curve [[texture(5)]],
+    texture2d<float> lens_flare_state [[texture(6)]],
     sampler grade_sampler [[sampler(3)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
@@ -12604,7 +12868,7 @@ fragment float4 almetal_world_display_post_bloom_fragment(
         input, source, source_sampler,
         bloom.sample(bloom_sampler, input.texcoord),
         cross_filter.sample(cross_filter_sampler, input.texcoord).rgb,
-        color_lut, tone_curve, grade_sampler,
+        color_lut, tone_curve, lens_flare_state, grade_sampler,
         constants, constants.post.y);
 }
 
@@ -12619,6 +12883,7 @@ fragment float4 almetal_world_display_post_bloom_exposure_fragment(
     sampler cross_filter_sampler [[sampler(2)]],
     texture2d_array<float> color_lut [[texture(4)]],
     texture2d<float> tone_curve [[texture(5)]],
+    texture2d<float> lens_flare_state [[texture(6)]],
     sampler grade_sampler [[sampler(3)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
@@ -12626,7 +12891,7 @@ fragment float4 almetal_world_display_post_bloom_exposure_fragment(
         input, source, source_sampler,
         bloom.sample(bloom_sampler, input.texcoord),
         cross_filter.sample(cross_filter_sampler, input.texcoord).rgb,
-        color_lut, tone_curve, grade_sampler,
+        color_lut, tone_curve, lens_flare_state, grade_sampler,
         constants, exposure.read(uint2(0)).r);
 }
 
