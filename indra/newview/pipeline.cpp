@@ -403,7 +403,7 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
     return due && sScopeCapture && hdrEnabled() && isMainWorldPass() &&
         mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
         !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
-        !RenderDepthOfField && native_dynamic_exposure &&
+        native_dynamic_exposure &&
         !LLRender::sClassicMode && !color_grade && !build_no_post &&
         !gSnapshotNoPost && sky &&
         sky->getReflectionProbeAmbiance(auto_adjust) != 0.f &&
@@ -524,6 +524,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> opaque_post_deferred_target;
     std::unique_ptr<ALMetalRenderTarget> display_post_target;
     U32 display_post_frame = std::numeric_limits<U32>::max();
+    std::unique_ptr<ALMetalRenderTarget> depth_of_field_target;
+    U32 depth_of_field_frame = std::numeric_limits<U32>::max();
+    bool depth_of_field_applied = false;
     std::unique_ptr<ALMetalRenderTarget> bloom_target;
     U32 bloom_frame = std::numeric_limits<U32>::max();
     std::unique_ptr<ALMetalRenderTarget> exposure_target;
@@ -1172,6 +1175,9 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
     capture.display_post_frame = std::numeric_limits<U32>::max();
+    capture.depth_of_field_target.reset();
+    capture.depth_of_field_frame = std::numeric_limits<U32>::max();
+    capture.depth_of_field_applied = false;
     capture.bloom_target.reset();
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
@@ -1227,6 +1233,9 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
     capture.display_post_frame = std::numeric_limits<U32>::max();
+    capture.depth_of_field_target.reset();
+    capture.depth_of_field_frame = std::numeric_limits<U32>::max();
+    capture.depth_of_field_applied = false;
     capture.bloom_target.reset();
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.target.reset();
@@ -1302,6 +1311,9 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
     capture.display_post_frame = std::numeric_limits<U32>::max();
+    capture.depth_of_field_target.reset();
+    capture.depth_of_field_frame = std::numeric_limits<U32>::max();
+    capture.depth_of_field_applied = false;
     capture.bloom_target.reset();
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
@@ -1361,6 +1373,9 @@ bool LLPipeline::endMetalReflectionProbeFaceCapture()
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
     capture.display_post_frame = std::numeric_limits<U32>::max();
+    capture.depth_of_field_target.reset();
+    capture.depth_of_field_frame = std::numeric_limits<U32>::max();
+    capture.depth_of_field_applied = false;
     capture.bloom_target.reset();
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.target.reset();
@@ -1419,6 +1434,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
         capture.display_post_frame = std::numeric_limits<U32>::max();
+        capture.depth_of_field_target.reset();
+        capture.depth_of_field_frame = std::numeric_limits<U32>::max();
+        capture.depth_of_field_applied = false;
         capture.bloom_target.reset();
         capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.exposure_target.reset();
@@ -1679,6 +1697,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
         capture.display_post_frame = std::numeric_limits<U32>::max();
+        capture.depth_of_field_target.reset();
+        capture.depth_of_field_frame = std::numeric_limits<U32>::max();
+        capture.depth_of_field_applied = false;
         capture.bloom_target.reset();
         capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.base_light_map_target.reset();
@@ -3050,6 +3071,9 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
         capture.display_post_frame = std::numeric_limits<U32>::max();
+        capture.depth_of_field_target.reset();
+        capture.depth_of_field_frame = std::numeric_limits<U32>::max();
+        capture.depth_of_field_applied = false;
         capture.bloom_target.reset();
         capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.exposure_target.reset();
@@ -3940,6 +3964,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.display_post_target.reset();
             capture.display_post_frame =
                 std::numeric_limits<U32>::max();
+            capture.depth_of_field_target.reset();
+            capture.depth_of_field_frame =
+                std::numeric_limits<U32>::max();
+            capture.depth_of_field_applied = false;
             capture.bloom_target.reset();
             capture.bloom_frame =
                 std::numeric_limits<U32>::max();
@@ -4038,6 +4066,81 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 }
             }
 
+            // Exposure above deliberately meters the sharp linear scene.
+            // From this point onward the native post chain follows GL's
+            // optical order: depth of field, bloom, then display mapping.
+            // The same cached focus state feeds both encoders and advances
+            // only once for this viewer frame.
+            const DepthOfFieldConfig dof = depthOfFieldConfig();
+            const bool wants_native_dof = capture.hdr && dof.enabled &&
+                depthOfFieldProgramsReady(dof) && isMainWorldPass() &&
+                mRT == &mMainRT;
+            bool exact_dof = !wants_native_dof;
+            const ALMetalRenderTarget* post_source = target.get();
+            capture.depth_of_field_frame = gFrameCount;
+            if (wants_native_dof)
+            {
+                updateDepthOfFieldFocus();
+                ALMetalWorldDepthOfFieldScene native_dof;
+                native_dof.source = target.get();
+                native_dof.depth_texture = capture.target
+                    ? capture.target->depthStencilTexture() : nullptr;
+                LLMatrix4a inverse_projection;
+                inverse_projection.setInverse(
+                    LLViewerCamera::getInstance()->getProjection());
+                std::memcpy(native_dof.inverse_projection,
+                            inverse_projection.getF32ptr(),
+                            sizeof(native_dof.inverse_projection));
+                native_dof.focal_distance =
+                    mDepthOfFieldFocus.focal_distance;
+                native_dof.blur_constant =
+                    mDepthOfFieldFocus.blur_constant;
+                native_dof.tan_pixel_angle =
+                    mDepthOfFieldFocus.tan_pixel_angle;
+                native_dof.magnification =
+                    mDepthOfFieldFocus.magnification;
+                native_dof.max_cof = CameraMaxCoF;
+                native_dof.resolution_scale =
+                    llmin(static_cast<F32>(CameraDoFResScale), 1.f);
+                native_dof.highlight_threshold = dof.highlight_threshold;
+                native_dof.highlight_gain = dof.highlight_gain;
+                native_dof.highlight_clamp = dof.highlight_clamp;
+                native_dof.aperture_blades = dof.blades;
+                native_dof.aperture_rotation = dof.rotation;
+                native_dof.aperture_curvature = dof.curvature;
+                native_dof.anamorphic_squeeze = dof.anamorphic;
+                native_dof.cat_eye = dof.cat_eye;
+                native_dof.fringe_amount = dof.fringe;
+                std::copy_n(dof.fringe_near, 3,
+                            native_dof.fringe_near_tint);
+                std::copy_n(dof.fringe_far, 3,
+                            native_dof.fringe_far_tint);
+                native_dof.spherical_aberration = dof.spherical;
+                native_dof.field_stretch = dof.field_stretch;
+                native_dof.field_falloff = dof.field_falloff;
+                native_dof.coma_asymmetry = dof.coma;
+                native_dof.reverse_z = capture.reverse_z;
+                native_dof.near_blur = dof.near_blur;
+                native_dof.rgba16_blur = mResourceInputs.mBloomHalation;
+                std::string dof_error;
+                auto dof_target = capture.renderer->renderDepthOfField(
+                    native_dof, &dof_error);
+                if (dof_target)
+                {
+                    capture.depth_of_field_target =
+                        std::move(dof_target);
+                    capture.depth_of_field_applied = true;
+                    post_source = capture.depth_of_field_target.get();
+                    exact_dof = true;
+                }
+                else
+                {
+                    LL_WARNS("Metal")
+                        << "Native world depth of field retained GL: "
+                        << dof_error << LL_ENDL;
+                }
+            }
+
             static LLCachedControl<F32> bloom_strength(
                 gSavedSettings, "RenderBloomStrength", 0.325f);
             static LLCachedControl<F32> bloom_threshold(
@@ -4080,6 +4183,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                               CROSS_FILTER_MAX_STRENGTH)
                     : 0.f;
             const bool wants_native_bloom = capture.hdr &&
+                exact_dof &&
                 (native_bloom_strength > 0.f ||
                  native_halation_strength > 0.f) &&
                 isMainWorldPass() && mRT == &mMainRT &&
@@ -4090,7 +4194,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             if (wants_native_bloom && bloomHDRReady())
             {
                 ALMetalWorldBloomScene bloom;
-                bloom.source = target.get();
+                bloom.source = post_source;
                 bloom.mip_count = mRT->bloomMipCount;
                 bloom.resolution_scale = static_cast<U32>(llclamp(
                     mResourceInputs.mBloomScale, 0, 4));
@@ -4158,12 +4262,12 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 cross_filter_target;
             const bool exact_base = capture.hdr &&
                 canCaptureMetalScopeSample() && sky &&
-                exact_dynamic_exposure && exact_bloom &&
+                exact_dynamic_exposure && exact_dof && exact_bloom &&
                 exact_cross_filter;
             if (exact_base)
             {
                 ALMetalWorldDisplayPostScene display;
-                display.source = target.get();
+                display.source = post_source;
                 display.adapted_exposure_texture = dynamic_exposure
                     ? capture.exposure_target->colorTexture(0) : nullptr;
                 display.bloom_texture = capture.bloom_target
@@ -4486,6 +4590,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
         capture.display_post_frame = std::numeric_limits<U32>::max();
+        capture.depth_of_field_target.reset();
+        capture.depth_of_field_frame = std::numeric_limits<U32>::max();
+        capture.depth_of_field_applied = false;
         capture.bloom_target.reset();
         capture.bloom_frame = std::numeric_limits<U32>::max();
     }
@@ -18354,6 +18461,10 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
     const bool native_exact = metal_capture && metal_capture->renderer &&
         metal_capture->device && metal_capture->display_post_target &&
         metal_capture->display_post_frame == gFrameCount &&
+        metal_capture->depth_of_field_frame == gFrameCount &&
+        mMetalDepthOfFieldGLFrame == gFrameCount &&
+        metal_capture->depth_of_field_applied ==
+            mMetalDepthOfFieldGLApplied &&
         metal_capture->hdr && canCaptureMetalScopeSample(false) &&
         metal_capture->display_post_target->descriptor().width ==
             src->getWidth() &&
@@ -20332,21 +20443,209 @@ void LLPipeline::combineGlow(LLRenderTarget* src, LLRenderTarget* dst, LLRenderT
 // through -- glowExtractF reads as its *only* live key in the non-HDR path, so
 // the defocused scene has to carry it exactly for every alpha contract in the
 // chain to hold.
+LLPipeline::DepthOfFieldConfig LLPipeline::depthOfFieldConfig() const
+{
+    static LLCachedControl<bool> render_in_edit_mode(
+        gSavedSettings, "RenderDepthOfFieldInEditMode", false);
+    static LLCachedControl<bool> near_blur(
+        gSavedSettings, "RenderDepthOfFieldNearBlur", false);
+    static LLCachedControl<S32> blades(
+        gSavedSettings, "RenderBokehApertureBlades", 0);
+    static LLCachedControl<F32> rotation(
+        gSavedSettings, "RenderBokehApertureRotation", 0.f);
+    static LLCachedControl<F32> curvature(
+        gSavedSettings, "RenderBokehApertureCurvature", 0.f);
+    static LLCachedControl<F32> anamorphic(
+        gSavedSettings, "RenderBokehAnamorphicSqueeze", 1.f);
+    static LLCachedControl<F32> cat_eye(
+        gSavedSettings, "RenderBokehCatEyeAmount", 0.f);
+    static LLCachedControl<F32> fringe(
+        gSavedSettings, "RenderBokehFringeAmount", 0.f);
+    static LLCachedControl<LLColor3> fringe_near(
+        gSavedSettings, "RenderBokehFringeNearTint",
+        LLColor3(1.f, 0.85f, 1.f));
+    static LLCachedControl<LLColor3> fringe_far(
+        gSavedSettings, "RenderBokehFringeFarTint",
+        LLColor3(0.85f, 1.f, 0.9f));
+    static LLCachedControl<F32> spherical(
+        gSavedSettings, "RenderBokehSphericalAberration", 0.f);
+    static LLCachedControl<F32> field_stretch(
+        gSavedSettings, "RenderBokehFieldStretch", 0.f);
+    static LLCachedControl<F32> field_falloff(
+        gSavedSettings, "RenderBokehFieldFalloff", 2.f);
+    static LLCachedControl<F32> coma(
+        gSavedSettings, "RenderBokehComaAsymmetry", 0.f);
+    static LLCachedControl<F32> highlight_threshold(
+        gSavedSettings, "RenderBokehHighlightThreshold", 0.f);
+    static LLCachedControl<F32> highlight_gain(
+        gSavedSettings, "RenderBokehHighlightGain", 0.f);
+    static LLCachedControl<F32> highlight_clamp(
+        gSavedSettings, "RenderBokehHighlightClamp", 64.f);
+
+    DepthOfFieldConfig config;
+    config.enabled =
+        (render_in_edit_mode || !LLToolMgr::getInstance()->inBuildMode()) &&
+        RenderDepthOfField && !gCubeSnapshot && !sCutoutRender;
+    config.near_blur = near_blur;
+    config.blades = llclamp(blades(), 0, 11);
+    config.rotation = llclamp(rotation(), 0.f, 360.f) * DEG_TO_RAD;
+    config.curvature = llclamp(curvature(), 0.f, 1.f);
+    config.anamorphic = llclamp(anamorphic(), 0.25f, 4.f);
+    config.cat_eye = llclamp(cat_eye(), 0.f, 1.5f);
+    config.fringe = llclamp(fringe(), 0.f, 1.f);
+    const LLColor3& near_tint = fringe_near();
+    const LLColor3& far_tint = fringe_far();
+    std::copy_n(near_tint.mV, 3, config.fringe_near);
+    std::copy_n(far_tint.mV, 3, config.fringe_far);
+    config.spherical = llclamp(spherical(), -1.f, 1.f);
+    config.field_stretch = llclamp(field_stretch(), -1.f, 1.f);
+    config.field_falloff = llclamp(field_falloff(), 1.f, 4.f);
+    config.coma = llclamp(coma(), 0.f, 1.f);
+    config.highlight_threshold = llmax(highlight_threshold(), 0.f);
+    config.highlight_gain = llmax(highlight_gain(), 0.f);
+    config.highlight_clamp = llmax(highlight_clamp(), 0.f);
+    const bool shaped_anamorphic = config.anamorphic < 0.999f ||
+        config.anamorphic > 1.001f;
+    config.shaped = config.blades >= 3 || config.cat_eye > 0.f ||
+        config.fringe > 0.f || shaped_anamorphic ||
+        config.spherical != 0.f || config.field_stretch != 0.f ||
+        config.coma > 0.f;
+    return config;
+}
+
+bool LLPipeline::depthOfFieldProgramsReady(
+    const DepthOfFieldConfig& config) const
+{
+    const LLGLSLShader& gather = config.near_blur
+        ? (config.shaped ? gDeferredPostProgramShaped
+                         : gDeferredPostProgram)
+        : (config.shaped ? gDeferredPostProgramNoNearShaped
+                         : gDeferredPostProgramNoNear);
+    const LLGLSLShader& combine = config.near_blur
+        ? gDeferredDoFCombineProgram : gDeferredDoFCombineProgramNoNear;
+    return gather.isComplete() && combine.isComplete();
+}
+
+void LLPipeline::updateDepthOfFieldFocus()
+{
+    DepthOfFieldFocus& focus = mDepthOfFieldFocus;
+    if (focus.computed && focus.frame == gFrameCount)
+    {
+        return;
+    }
+    focus.computed = true;
+    focus.frame = gFrameCount;
+
+    static LLCachedControl<bool> locked(
+        gSavedSettings, "RenderFocusPointLocked", false);
+    static LLCachedControl<bool> follows_pointer(
+        gSavedSettings, "RenderFocusPointFollowsPointer", false);
+    LLVector3 focus_point;
+    if (locked && !focus.last_focus_point.isExactlyZero())
+    {
+        focus_point = focus.last_focus_point;
+    }
+    else
+    {
+        LLViewerObject* object =
+            LLViewerMediaFocus::getInstance()->getFocusedObject();
+        if (object && object->mDrawable && object->isSelected())
+        {
+            const S32 face_index =
+                LLViewerMediaFocus::getInstance()->getFocusedFace();
+            LLFace* face = object->mDrawable->getFace(face_index);
+            if (face)
+            {
+                focus_point = face->getPositionAgent();
+            }
+        }
+
+        if (focus_point.isExactlyZero())
+        {
+            if (LLViewerJoystick::getInstance()->getOverrideCamera() ||
+                follows_pointer)
+            {
+                focus_point.set(gDebugRaycastIntersection.getF32ptr());
+            }
+            else if (gAgentCamera.cameraMouselook())
+            {
+                LLVector4a result;
+                result.clear();
+                gViewerWindow->cursorIntersect(
+                    -1, -1, 512.f, nullptr, -1, false, false, true, true,
+                    nullptr, &result);
+                focus_point.set(result.getF32ptr());
+            }
+            else
+            {
+                LLViewerRegion* region = gAgent.getRegion();
+                if (region)
+                {
+                    focus_point = LLVector3(
+                        gAgentCamera.getFocusGlobal() -
+                        region->getOriginGlobal());
+                }
+            }
+        }
+    }
+    focus.last_focus_point = focus_point;
+
+    LLViewerCamera& camera = *LLViewerCamera::getInstance();
+    const LLVector3 eye = camera.getOrigin();
+    F32 target_distance = 16.f;
+    if (!focus_point.isExactlyZero())
+    {
+        target_distance = camera.getAtAxis() * (focus_point - eye);
+    }
+
+    if (focus.transition_time >= 1.f &&
+        fabsf(focus.current_distance - target_distance) /
+            focus.current_distance > 0.01f)
+    {
+        focus.transition_time = 0.f;
+        focus.start_distance = focus.current_distance;
+    }
+    else if (focus.transition_time < 1.f)
+    {
+        focus.transition_time += 1.f / CameraFocusTransitionTime *
+            gFrameIntervalSeconds.value();
+        focus.transition_time = llmin(focus.transition_time, 1.f);
+        const F32 t = cosf(focus.transition_time * F_PI + F_PI) *
+            0.5f + 0.5f;
+        focus.current_distance = focus.start_distance +
+            (target_distance - focus.start_distance) * t;
+    }
+    else
+    {
+        focus.current_distance = target_distance;
+    }
+
+    const F32 subject_distance = focus.current_distance * 1000.f;
+    const F32 fnumber = CameraFNumber;
+    const F32 default_focal_length = CameraFocalLength;
+    const F32 fov = camera.getView();
+    const F32 default_fov = CameraFieldOfView * F_PI / 180.f;
+    const F32 diagonal = 2.f * default_focal_length *
+        tanf(default_fov / 2.f);
+    const F32 focal_length = diagonal / (2.f * tanf(fov / 2.f));
+    focus.focal_distance = -subject_distance / 1000.f;
+    focus.blur_constant = focal_length * focal_length /
+        (fnumber * (subject_distance - focal_length));
+    focus.blur_constant /= 1000.f;
+    focus.magnification =
+        focal_length / (subject_distance - focal_length);
+    focus.tan_pixel_angle = tanf(1.f / LLDrawable::sCurPixelAngle);
+}
+
 LLRenderTarget* LLPipeline::renderDoF(ALTransientTargets& scope)
 {
     LL_PROFILE_GPU_ZONE("dof");
     {
-        static LLCachedControl<bool> RenderDepthOfFieldInEditMode(gSavedSettings, "RenderDepthOfFieldInEditMode", false);
-        static LLCachedControl<bool> RenderFocusPointLocked(gSavedSettings, "RenderFocusPointLocked", false);
-        static LLCachedControl<bool> RenderFocusPointFollowsPointer(gSavedSettings, "RenderFocusPointFollowsPointer", false);
-        bool dof_enabled =
-            (RenderDepthOfFieldInEditMode || !LLToolMgr::getInstance()->inBuildMode()) &&
-            RenderDepthOfField &&
-            !gCubeSnapshot;
+        const DepthOfFieldConfig dof = depthOfFieldConfig();
 
         gViewerWindow->setup3DViewport();
 
-        if (dof_enabled)
+        if (dof.enabled)
         {
             LLGLDisable blend(GL_BLEND);
 
@@ -20381,131 +20680,26 @@ LLRenderTarget* LLPipeline::renderDoF(ALTransientTargets& scope)
                 mTransientTargets.trim(*mDoFBlurDesc);
             }
             mDoFBlurDesc = blur_desc;
-            ALTransientTargets dof(mTransientTargets);
-            LLRenderTarget*    blur = blur_desc ? dof.acquire(*blur_desc, "dof.blur") : nullptr;
+            ALTransientTargets dof_targets(mTransientTargets);
+            LLRenderTarget* blur = blur_desc
+                ? dof_targets.acquire(*blur_desc, "dof.blur") : nullptr;
             if (!out || !blur)
             {
                 return nullptr;
             }
 
-            // depth of field focal plane calculations
-            static F32 current_distance = 16.f;
-            static F32 start_distance = 16.f;
-            static F32 transition_time = 1.f;
-
-            LLVector3 focus_point;
-            static LLVector3 last_focus_point{};
-            if (RenderFocusPointLocked && !last_focus_point.isExactlyZero())
-            {
-                focus_point = last_focus_point;
-            }
-            else
-            {
-                LLViewerObject* obj = LLViewerMediaFocus::getInstance()->getFocusedObject();
-                if (obj && obj->mDrawable && obj->isSelected())
-                { // focus on selected media object
-                    S32 face_idx = LLViewerMediaFocus::getInstance()->getFocusedFace();
-                    if (obj && obj->mDrawable)
-                    {
-                        LLFace* face = obj->mDrawable->getFace(face_idx);
-                        if (face)
-                        {
-                            focus_point = face->getPositionAgent();
-                        }
-                    }
-                }
-
-                if (focus_point.isExactlyZero())
-                {
-                    if (LLViewerJoystick::getInstance()->getOverrideCamera() || RenderFocusPointFollowsPointer)
-                    { // focus on point under cursor
-                        focus_point.set(gDebugRaycastIntersection.getF32ptr());
-                    }
-                    else if (gAgentCamera.cameraMouselook())
-                    { // focus on point under mouselook crosshairs
-                        LLVector4a result;
-                        result.clear();
-
-                        gViewerWindow->cursorIntersect(-1, -1, 512.f, nullptr, -1, false, false, true, true, nullptr, &result);
-
-                        focus_point.set(result.getF32ptr());
-                    }
-                    else
-                    {
-                        // focus on alt-zoom target
-                        LLViewerRegion* region = gAgent.getRegion();
-                        if (region)
-                        {
-                            focus_point = LLVector3(gAgentCamera.getFocusGlobal() - region->getOriginGlobal());
-                        }
-                    }
-                }
-            }
-            last_focus_point = focus_point;
-
-            LLVector3 eye = LLViewerCamera::getInstance()->getOrigin();
-            F32 target_distance = 16.f;
-            if (!focus_point.isExactlyZero())
-            {
-                target_distance = LLViewerCamera::getInstance()->getAtAxis() * (focus_point - eye);
-            }
-
-            if (transition_time >= 1.f && fabsf(current_distance - target_distance) / current_distance > 0.01f)
-            { // large shift happened, interpolate smoothly to new target distance
-                transition_time = 0.f;
-                start_distance = current_distance;
-            }
-            else if (transition_time < 1.f)
-            { // currently in a transition, continue interpolating
-                transition_time += 1.f / CameraFocusTransitionTime * gFrameIntervalSeconds.value();
-                transition_time = llmin(transition_time, 1.f);
-
-                F32 t = cosf(transition_time * F_PI + F_PI) * 0.5f + 0.5f;
-                current_distance = start_distance + (target_distance - start_distance) * t;
-            }
-            else
-            { // small or no change, just snap to target distance
-                current_distance = target_distance;
-            }
-
-            // convert to mm
-            F32 subject_distance = current_distance * 1000.f;
-            F32 fnumber = CameraFNumber;
-            F32 default_focal_length = CameraFocalLength;
-
-            F32 fov = LLViewerCamera::getInstance()->getView();
-
-            const F32 default_fov = CameraFieldOfView * F_PI / 180.f;
-
-            // F32 aspect_ratio = (F32) mRT->screen.getWidth()/(F32)mRT->screen.getHeight();
-
-            F32 dv = 2.f * default_focal_length * tanf(default_fov / 2.f);
-
-            F32 focal_length = dv / (2 * tanf(fov / 2.f));
-
-            // F32 tan_pixel_angle = tanf(LLDrawable::sCurPixelAngle);
-
-            // from wikipedia -- c = |s2-s1|/s2 * f^2/(N(S1-f))
-            // where     N = fnumber
-            //           s2 = dot distance
-            //           s1 = subject distance
-            //           f = focal length
-            //
-
-            F32 blur_constant = focal_length * focal_length / (fnumber * (subject_distance - focal_length));
-            blur_constant /= 1000.f; // convert to meters for shader
-            F32 magnification = focal_length / (subject_distance - focal_length);
-
-            // The circle of confusion's, which both passes work it out from.
-            const F32  tan_pixel_angle = tanf(1.f / LLDrawable::sCurPixelAngle);
+            // The native retained owner and this GL authority share this
+            // calculation. It advances the temporal focus transition once
+            // per frame even when both paths encode.
+            updateDepthOfFieldFocus();
             const auto set_cof_uniforms = [&](LLGLSLShader& program)
             {
                 program.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, &mRT->deferredScreen, ALSamplers::PointMirror);
                 program.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)mRT->screen.getWidth(), (GLfloat)mRT->screen.getHeight());
-                program.uniform1f(LLShaderMgr::DOF_FOCAL_DISTANCE, -subject_distance / 1000.f);
-                program.uniform1f(LLShaderMgr::DOF_BLUR_CONSTANT, blur_constant);
-                program.uniform1f(LLShaderMgr::DOF_TAN_PIXEL_ANGLE, tan_pixel_angle);
-                program.uniform1f(LLShaderMgr::DOF_MAGNIFICATION, magnification);
+                program.uniform1f(LLShaderMgr::DOF_FOCAL_DISTANCE, mDepthOfFieldFocus.focal_distance);
+                program.uniform1f(LLShaderMgr::DOF_BLUR_CONSTANT, mDepthOfFieldFocus.blur_constant);
+                program.uniform1f(LLShaderMgr::DOF_TAN_PIXEL_ANGLE, mDepthOfFieldFocus.tan_pixel_angle);
+                program.uniform1f(LLShaderMgr::DOF_MAGNIFICATION, mDepthOfFieldFocus.magnification);
                 program.uniform1f(LLShaderMgr::DOF_MAX_COF, CameraMaxCoF);
             };
 
@@ -20515,8 +20709,6 @@ LLRenderTarget* LLPipeline::renderDoF(ALTransientTargets& scope)
 
             { // gather blur at CameraDoFResScale into its own target, every texel of it
                 blur->bindTarget();
-
-                static LLCachedControl<bool> RenderDepthOfFieldNearBlur(gSavedSettings, "RenderDepthOfFieldNearBlur", false);
 
                 // Shaped aperture, anamorphic deformation, optical vignetting,
                 // defocus fringing and the two aberrations all live in the
@@ -20529,45 +20721,19 @@ LLRenderTarget* LLPipeline::renderDoF(ALTransientTargets& scope)
                 // the effects inside the shader's DOF_SHAPED block -- an
                 // effect missing from it is a dead control whenever it is the
                 // only one active.
-                static LLCachedControl<S32> bokeh_blades(gSavedSettings, "RenderBokehApertureBlades", 0);
-                static LLCachedControl<F32> bokeh_rotation(gSavedSettings, "RenderBokehApertureRotation", 0.f);
-                static LLCachedControl<F32> bokeh_curvature(gSavedSettings, "RenderBokehApertureCurvature", 0.f);
-                static LLCachedControl<F32> bokeh_anamorphic(gSavedSettings, "RenderBokehAnamorphicSqueeze", 1.f);
-                static LLCachedControl<F32> bokeh_cat_eye(gSavedSettings, "RenderBokehCatEyeAmount", 0.f);
-                static LLCachedControl<F32> bokeh_fringe(gSavedSettings, "RenderBokehFringeAmount", 0.f);
-                static LLCachedControl<LLColor3> bokeh_fringe_near(gSavedSettings, "RenderBokehFringeNearTint", LLColor3(1.f, 0.85f, 1.f));
-                static LLCachedControl<LLColor3> bokeh_fringe_far(gSavedSettings, "RenderBokehFringeFarTint", LLColor3(0.85f, 1.f, 0.9f));
-                static LLCachedControl<F32> bokeh_spherical(gSavedSettings, "RenderBokehSphericalAberration", 0.f);
-                static LLCachedControl<F32> bokeh_field(gSavedSettings, "RenderBokehFieldStretch", 0.f);
-                static LLCachedControl<F32> bokeh_field_falloff(gSavedSettings, "RenderBokehFieldFalloff", 2.f);
-                static LLCachedControl<F32> bokeh_coma(gSavedSettings, "RenderBokehComaAsymmetry", 0.f);
-
-                const S32 blades  = llclamp(bokeh_blades(), 0, 11);
-                const F32 cat_eye = llclamp(bokeh_cat_eye(), 0.f, 1.5f);
-                const F32 fringe  = llclamp(bokeh_fringe(), 0.f, 1.f);
-                const F32 squeeze = llclamp(bokeh_anamorphic(), 0.25f, 4.f);
-                const F32 spherical = llclamp(bokeh_spherical(), -1.f, 1.f);
-                const F32 field     = llclamp(bokeh_field(), -1.f, 1.f);
-                const F32 coma      = llclamp(bokeh_coma(), 0.f, 1.f);
-                const bool anamorphic = (squeeze < 0.999f) || (squeeze > 1.001f);
                 // Comatic asymmetry earns its place here even though it reads
                 // like a modifier: it biases the disc along the field
                 // direction, which exists whether or not anything stretched
                 // it, so it is a standalone effect rather than a shape control
                 // for the stretch. RenderBokehFieldFalloff genuinely is one and
                 // is deliberately absent.
-                const bool shaped = (blades >= 3) || (cat_eye > 0.f) || (fringe > 0.f) || anamorphic
-                                 || (spherical != 0.f) || (field != 0.f) || (coma > 0.f);
-
-                LLGLSLShader& post_program = RenderDepthOfFieldNearBlur
-                    ? (shaped ? gDeferredPostProgramShaped : gDeferredPostProgram)
-                    : (shaped ? gDeferredPostProgramNoNearShaped : gDeferredPostProgramNoNear);
+                LLGLSLShader& post_program = dof.near_blur
+                    ? (dof.shaped ? gDeferredPostProgramShaped : gDeferredPostProgram)
+                    : (dof.shaped ? gDeferredPostProgramNoNearShaped : gDeferredPostProgramNoNear);
 
                 // A gather or a combine that did not build would leave the blur, or the defocused scene the chain reads
                 // in the screen's place, as the pool holds it: the frame goes on in focus instead.
-                const LLGLSLShader& combine_program =
-                    RenderDepthOfFieldNearBlur ? gDeferredDoFCombineProgram : gDeferredDoFCombineProgramNoNear;
-                if (!post_program.isComplete() || !combine_program.isComplete())
+                if (!depthOfFieldProgramsReady(dof))
                 {
                     blur->flush();
                     return nullptr;
@@ -20581,28 +20747,25 @@ LLRenderTarget* LLPipeline::renderDoF(ALTransientTargets& scope)
                 // average plus a firefly ceiling; the highlight boost is
                 // opt-in. See the note above dofSample for why the old
                 // `0.25 + r+g+b` weight could not survive the move to linear.
-                static LLCachedControl<F32> bokeh_threshold(gSavedSettings, "RenderBokehHighlightThreshold", 0.f);
-                static LLCachedControl<F32> bokeh_gain(gSavedSettings, "RenderBokehHighlightGain", 0.f);
-                static LLCachedControl<F32> bokeh_clamp(gSavedSettings, "RenderBokehHighlightClamp", 64.f);
-                post_program.uniform1f(LLShaderMgr::BOKEH_HIGHLIGHT_THRESHOLD, llmax(bokeh_threshold(), 0.f));
-                post_program.uniform1f(LLShaderMgr::BOKEH_HIGHLIGHT_GAIN, llmax(bokeh_gain(), 0.f));
-                post_program.uniform1f(LLShaderMgr::BOKEH_HIGHLIGHT_CLAMP, llmax(bokeh_clamp(), 0.f));
+                post_program.uniform1f(LLShaderMgr::BOKEH_HIGHLIGHT_THRESHOLD, dof.highlight_threshold);
+                post_program.uniform1f(LLShaderMgr::BOKEH_HIGHLIGHT_GAIN, dof.highlight_gain);
+                post_program.uniform1f(LLShaderMgr::BOKEH_HIGHLIGHT_CLAMP, dof.highlight_clamp);
 
                 // Shaped-aperture uniforms. Skipped entirely for the unshaped
                 // programs, where they are not in the linked binary anyway --
                 // the setters would no-op, but the sector bake would still run.
-                if (shaped)
+                if (dof.shaped)
                 {
                     // A regular N-gon's inscribed radius at angle theta is
                     //   cos(pi/N) / cos(mod(theta + rot, 2pi/N) - pi/N)
                     // so the sector geometry is baked once here and the loop is
                     // left with the single cosine it genuinely needs per sample.
-                    const F32 sides       = (F32)llmax(blades, 3);
+                    const F32 sides       = (F32)llmax(dof.blades, 3);
                     const F32 half_sector = F_PI / sides;
-                    post_program.uniform1i(LLShaderMgr::BOKEH_BLADES, blades);
+                    post_program.uniform1i(LLShaderMgr::BOKEH_BLADES, dof.blades);
                     post_program.uniform1f(LLShaderMgr::BOKEH_APERTURE_ROTATION,
-                                           llclamp(bokeh_rotation(), 0.f, 360.f) * DEG_TO_RAD);
-                    post_program.uniform1f(LLShaderMgr::BOKEH_APERTURE_CURVATURE, llclamp(bokeh_curvature(), 0.f, 1.f));
+                                           dof.rotation);
+                    post_program.uniform1f(LLShaderMgr::BOKEH_APERTURE_CURVATURE, dof.curvature);
                     post_program.uniform3f(LLShaderMgr::BOKEH_APERTURE_CONST,
                                            half_sector, 2.f * half_sector, cosf(half_sector));
                     // Anamorphic stretch, sent area-preserving: the two axes
@@ -20610,22 +20773,21 @@ LLRenderTarget* LLPipeline::renderDoF(ALTransientTargets& scope)
                     // blur without also changing how much of it there is.
                     // Above 1 is taller than wide, the classic anamorphic oval;
                     // below 1 is wider than tall.
-                    const F32 anam_root = sqrtf(squeeze);
+                    const F32 anam_root = sqrtf(dof.anamorphic);
                     post_program.uniform2f(LLShaderMgr::BOKEH_ANAMORPHIC, 1.f / anam_root, anam_root);
-                    post_program.uniform1f(LLShaderMgr::BOKEH_CAT_EYE, cat_eye);
-                    post_program.uniform1f(LLShaderMgr::BOKEH_FRINGE_AMOUNT, fringe);
-                    post_program.uniform3fv(LLShaderMgr::BOKEH_FRINGE_NEAR_TINT, 1, bokeh_fringe_near().mV);
-                    post_program.uniform3fv(LLShaderMgr::BOKEH_FRINGE_FAR_TINT, 1, bokeh_fringe_far().mV);
+                    post_program.uniform1f(LLShaderMgr::BOKEH_CAT_EYE, dof.cat_eye);
+                    post_program.uniform1f(LLShaderMgr::BOKEH_FRINGE_AMOUNT, dof.fringe);
+                    post_program.uniform3fv(LLShaderMgr::BOKEH_FRINGE_NEAR_TINT, 1, dof.fringe_near);
+                    post_program.uniform3fv(LLShaderMgr::BOKEH_FRINGE_FAR_TINT, 1, dof.fringe_far);
 
                     // Aberrations. Spherical goes up raw: the shader folds in
                     // both the sign of the circle of confusion and the
                     // blur-size fade, because both depend on the fragment
                     // rather than on the frame.
-                    post_program.uniform1f(LLShaderMgr::BOKEH_SPHERICAL, spherical);
-                    post_program.uniform1f(LLShaderMgr::BOKEH_FIELD_STRETCH, field);
-                    post_program.uniform1f(LLShaderMgr::BOKEH_FIELD_FALLOFF,
-                                           llclamp(bokeh_field_falloff(), 1.f, 4.f));
-                    post_program.uniform1f(LLShaderMgr::BOKEH_COMA_ASYMMETRY, coma);
+                    post_program.uniform1f(LLShaderMgr::BOKEH_SPHERICAL, dof.spherical);
+                    post_program.uniform1f(LLShaderMgr::BOKEH_FIELD_STRETCH, dof.field_stretch);
+                    post_program.uniform1f(LLShaderMgr::BOKEH_FIELD_FALLOFF, dof.field_falloff);
+                    post_program.uniform1f(LLShaderMgr::BOKEH_COMA_ASYMMETRY, dof.coma);
                 }
 
                 mScreenTriangleVB->setBuffer();
@@ -20637,8 +20799,9 @@ LLRenderTarget* LLPipeline::renderDoF(ALTransientTargets& scope)
             }
 
             { // combine result based on CoF, into the defocused scene, every texel of it
-                static LLCachedControl<bool> RenderDepthOfFieldNearBlur(gSavedSettings, "RenderDepthOfFieldNearBlur", false);
-                LLGLSLShader& combine_program = RenderDepthOfFieldNearBlur ? gDeferredDoFCombineProgram : gDeferredDoFCombineProgramNoNear;
+                LLGLSLShader& combine_program = dof.near_blur
+                    ? gDeferredDoFCombineProgram
+                    : gDeferredDoFCombineProgramNoNear;
 
                 out->bindTarget();
 
@@ -20751,12 +20914,19 @@ void LLPipeline::renderFinalize()
     // chain's targets are all held until the frame is presented.
     ALTransientTargets post(mTransientTargets);
     LLRenderTarget*    scene = &mRT->screen;
-    static LLCachedControl<bool> RenderDepthOfFieldInEditMode(gSavedSettings, "RenderDepthOfFieldInEditMode", false);
-    if (RenderDepthOfField && (RenderDepthOfFieldInEditMode || !LLToolMgr::getInstance()->inBuildMode()) && !gCubeSnapshot && !cutout)
+    const DepthOfFieldConfig dof = depthOfFieldConfig();
+#if LL_DARWIN
+    mMetalDepthOfFieldGLFrame = gFrameCount;
+    mMetalDepthOfFieldGLApplied = false;
+#endif
+    if (dof.enabled && !cutout)
     {
         if (LLRenderTarget* defocused = renderDoF(post))
         {
             scene = defocused;
+#if LL_DARWIN
+            mMetalDepthOfFieldGLApplied = true;
+#endif
         }
 
         // renderDoF calls setup3DViewport and runs a reduced viewport

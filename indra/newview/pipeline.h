@@ -282,6 +282,8 @@ private:
     U32 mMetalExposureGLFrame = std::numeric_limits<U32>::max();
     bool mMetalExposureLastWasFixed = true;
     bool mMetalExposureHistoryReady = false;
+    U32 mMetalDepthOfFieldGLFrame = std::numeric_limits<U32>::max();
+    bool mMetalDepthOfFieldGLApplied = false;
     bool mMetalHeroWorldCaptureActive = false;
     bool mMetalReflectionWorldCaptureActive = false;
 #endif
@@ -386,9 +388,48 @@ public:
     // Depth of field from mRT->screen into a target of the screen's description
     // from @a scope, which the post chain reads in the screen's place; null where
     // it does not run. The screen keeps the sharp scene.
+    struct DepthOfFieldConfig
+    {
+        bool enabled = false;
+        bool near_blur = false;
+        bool shaped = false;
+        S32 blades = 0;
+        F32 rotation = 0.f;
+        F32 curvature = 0.f;
+        F32 anamorphic = 1.f;
+        F32 cat_eye = 0.f;
+        F32 fringe = 0.f;
+        F32 fringe_near[3] = {1.f, 0.85f, 1.f};
+        F32 fringe_far[3] = {0.85f, 1.f, 0.9f};
+        F32 spherical = 0.f;
+        F32 field_stretch = 0.f;
+        F32 field_falloff = 2.f;
+        F32 coma = 0.f;
+        F32 highlight_threshold = 0.f;
+        F32 highlight_gain = 0.f;
+        F32 highlight_clamp = 64.f;
+    };
+    struct DepthOfFieldFocus
+    {
+        F32 current_distance = 16.f;
+        F32 start_distance = 16.f;
+        F32 transition_time = 1.f;
+        LLVector3 last_focus_point;
+        F32 focal_distance = -16.f;
+        F32 blur_constant = 0.f;
+        F32 tan_pixel_angle = 0.f;
+        F32 magnification = 0.f;
+        U32 frame = std::numeric_limits<U32>::max();
+        bool computed = false;
+    };
+    DepthOfFieldConfig depthOfFieldConfig() const;
+    bool depthOfFieldProgramsReady(
+        const DepthOfFieldConfig& config) const;
+    void updateDepthOfFieldFocus();
     LLRenderTarget* renderDoF(ALTransientTargets& scope);
     // The description depth of field's blur was last taken at, freed from the pool when its scale moves on.
     std::optional<ALRenderTargetDesc> mDoFBlurDesc;
+    DepthOfFieldFocus mDepthOfFieldFocus;
     void combineGlow(LLRenderTarget* src, LLRenderTarget* dst, LLRenderTarget* glow);
     void visualizeBuffers(LLRenderTarget* src, LLRenderTarget* dst, U32 bufferIndex);
 
