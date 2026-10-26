@@ -392,17 +392,16 @@ void ALSelectionOutline::render(const View& view)
     gGL.flush();
 
 #if LL_DARWIN
+    const bool native_contour = contour && !glow && !wireframe &&
+        view.mContrast != CONTRAST_SHIFT;
     if (ids && gGL.hasMetalUITextureCapture() &&
-        !drawMetalIds(view, width, height))
+        !drawMetalIds(view, width, height, native_contour))
     {
         gGL.invalidateMetalUITextureCapture(
-            "an incomplete native selection id pass");
+            native_contour
+                ? "an incomplete native selection contour transaction"
+                : "selection glow, wireframe, contrast-shift or no contour");
     }
-    // The private face-id/depth target above is now native. The subsequent
-    // jump/tile/glow/contrast/outline transaction and optional wireframe are
-    // still GL-owned, so no partial selection result can publish.
-    gGL.invalidateMetalUITextureCapture(
-        "the selection contour/glow and optional wireframe passes");
 #endif
 
     if (ids)
@@ -806,7 +805,8 @@ void ALSelectionOutline::drawIds(const View& view, S32 width, S32 height)
 
 #if LL_DARWIN
 bool ALSelectionOutline::drawMetalIds(
-    const View& view, S32 width, S32 height)
+    const View& view, S32 width, S32 height,
+    bool contour_supported)
 {
     LLMatrix4a inverse_projection;
     if (!inverse_projection.setInverse(view.mProjection))
@@ -975,7 +975,28 @@ bool ALSelectionOutline::drawMetalIds(
     scene.height = static_cast<U32>(height);
     scene.reverse_z = LLRender::sReverseZ;
     scene.use_scene_depth = !view.mHUD;
-    return gGL.drawMetalSelectionIDs(scene);
+    if (!gGL.drawMetalSelectionIDs(scene) || !contour_supported)
+    {
+        return false;
+    }
+
+    ALMetalSelectionContourScene contour;
+    contour.palette_rgba8 = mPaletteTexels.data();
+    contour.palette_bytes = mPaletteTexels.size();
+    contour.palette_width = PALETTE_WIDTH;
+    contour.palette_height = paletteRows(
+        static_cast<U32>(mEntries.size()));
+    std::memcpy(contour.inverse_projection,
+                inverse_projection.getF32ptr(),
+                sizeof(contour.inverse_projection));
+    contour.width = static_cast<U32>(width);
+    contour.height = static_cast<U32>(height);
+    contour.outline_width = static_cast<U32>(view.mWidth);
+    contour.inner_width = static_cast<U32>(view.mInnerWidth);
+    contour.rim_width = view.mContrast == CONTRAST_RIM
+        ? static_cast<U32>(view.mRimWidth) : 0u;
+    contour.reverse_z = LLRender::sReverseZ;
+    return gGL.drawMetalSelectionContour(contour);
 }
 #endif
 

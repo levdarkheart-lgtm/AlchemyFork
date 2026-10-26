@@ -15638,6 +15638,496 @@ fragment ALMetalSelectionIDOutput almetal_selection_id_fragment(
     return output;
 }
 
+// The optimized selection contour mirrors selectionJumpF.glsl,
+// selectionTileF.glsl and the non-glow subset of selectionOutlineF.glsl.
+// Its private id/depth target and intermediates never leave the GPU.
+struct ALMetalSelectionContourConstants
+{
+    float4x4 inverse_projection;
+    // xy = id target, zw = tile target dimensions.
+    uint4 target;
+    // x = contour width, y = inner width, z = rim width, w = reverse-Z.
+    uint4 widths;
+};
+
+static uint almetal_selection_decode_id(float4 texel)
+{
+    return uint(texel.r * 255.0 + 0.5) |
+           (uint(texel.g * 255.0 + 0.5) << 8u);
+}
+
+static uint almetal_selection_decode_priority(float4 texel)
+{
+    return uint(texel.a * 255.0 + 0.5);
+}
+
+static bool almetal_selection_is_glow(float4 texel)
+{
+    return almetal_selection_decode_priority(texel) == 6u;
+}
+
+static bool almetal_selection_is_drawn(float4 texel)
+{
+    return texel.b > 0.25;
+}
+
+static bool almetal_selection_is_visible(float4 texel)
+{
+    return texel.b > 0.75;
+}
+
+static float almetal_selection_contour_eye_distance(
+    float depth,
+    constant ALMetalSelectionContourConstants& constants)
+{
+    const float ndc_depth = constants.widths.w != 0u
+        ? depth : depth * 2.0 - 1.0;
+    const float4 eye = constants.inverse_projection *
+        float4(0.0, 0.0, ndc_depth, 1.0);
+    return -eye.z / max(eye.w, 0.000001);
+}
+
+static bool almetal_selection_has_id(
+    int2 position, int2 size, uint id,
+    texture2d<float, access::read> id_map)
+{
+    return all(position >= int2(0)) && all(position < size) &&
+           almetal_selection_decode_id(id_map.read(uint2(position))) == id;
+}
+
+static bool almetal_selection_jump_test(
+    float depth, float behind, float other, float beyond,
+    constant ALMetalSelectionContourConstants& constants)
+{
+    const float own_slope = depth - behind;
+    const float other_slope = beyond - other;
+    const float across = other - depth;
+    if ((across - own_slope) * (across - other_slope) <= 0.0)
+    {
+        return false;
+    }
+    const float own = almetal_selection_contour_eye_distance(depth, constants);
+    const float there = almetal_selection_contour_eye_distance(other, constants);
+    return own < there &&
+        abs(almetal_selection_contour_eye_distance(
+                depth + own_slope, constants) - there) > there * 0.01 &&
+        abs(almetal_selection_contour_eye_distance(
+                other - other_slope, constants) - own) > own * 0.01;
+}
+
+static bool almetal_selection_jumps_along(
+    int2 position, int2 size, int2 step, uint id, float depth,
+    texture2d<float, access::read> id_map,
+    texture2d<float, access::read> depth_map,
+    constant ALMetalSelectionContourConstants& constants)
+{
+    const int2 behind = position - step;
+    const int2 other = position + step;
+    const int2 beyond = position + step * 2;
+    if (all(behind >= int2(0)) && all(other >= int2(0)) &&
+        all(beyond >= int2(0)) && all(behind < size) &&
+        all(other < size) && all(beyond < size) &&
+        almetal_selection_jump_test(
+            depth, depth_map.read(uint2(behind)).r,
+            depth_map.read(uint2(other)).r,
+            depth_map.read(uint2(beyond)).r, constants) &&
+        almetal_selection_has_id(behind, size, id, id_map) &&
+        almetal_selection_has_id(other, size, id, id_map) &&
+        almetal_selection_has_id(beyond, size, id, id_map))
+    {
+        return true;
+    }
+
+    const int2 reverse_behind = position + step;
+    const int2 reverse_other = position - step;
+    const int2 reverse_beyond = position - step * 2;
+    return all(reverse_behind >= int2(0)) &&
+        all(reverse_other >= int2(0)) &&
+        all(reverse_beyond >= int2(0)) &&
+        all(reverse_behind < size) && all(reverse_other < size) &&
+        all(reverse_beyond < size) &&
+        almetal_selection_jump_test(
+            depth, depth_map.read(uint2(reverse_behind)).r,
+            depth_map.read(uint2(reverse_other)).r,
+            depth_map.read(uint2(reverse_beyond)).r, constants) &&
+        almetal_selection_has_id(reverse_behind, size, id, id_map) &&
+        almetal_selection_has_id(reverse_other, size, id, id_map) &&
+        almetal_selection_has_id(reverse_beyond, size, id, id_map);
+}
+
+fragment float almetal_selection_jump_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float, access::read> id_map [[texture(0)]],
+    texture2d<float, access::read> depth_map [[texture(1)]],
+    constant ALMetalSelectionContourConstants& constants [[buffer(0)]])
+{
+    const int2 size = int2(constants.target.xy);
+    const int2 position = clamp(
+        int2(input.position.xy), int2(0), size - int2(1));
+    const float4 texel = id_map.read(uint2(position));
+    const uint id = almetal_selection_decode_id(texel);
+    bool front = false;
+    if (id != 0u && !almetal_selection_is_glow(texel))
+    {
+        const float depth = depth_map.read(uint2(position)).r;
+        front = almetal_selection_jumps_along(
+                    position, size, int2(1, 0), id, depth,
+                    id_map, depth_map, constants) ||
+                almetal_selection_jumps_along(
+                    position, size, int2(0, 1), id, depth,
+                    id_map, depth_map, constants);
+    }
+    return front ? 1.0 : 0.0;
+}
+
+struct ALMetalSelectionTileOutput
+{
+    float4 ids [[color(0)]];
+    float nearest [[color(1)]];
+};
+
+fragment ALMetalSelectionTileOutput almetal_selection_tile_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float, access::read> id_map [[texture(0)]],
+    texture2d<float, access::read> depth_map [[texture(1)]],
+    texture2d<float, access::read> jump_map [[texture(2)]],
+    constant ALMetalSelectionContourConstants& constants [[buffer(0)]])
+{
+    const int2 size = int2(constants.target.xy);
+    const int2 origin = int2(input.position.xy) * 8;
+    const int2 end = min(origin + int2(8), size);
+    uint lowest = 65536u;
+    uint highest = 0u;
+    bool jump = false;
+    bool glow = false;
+    float nearest = 1.0e30;
+    for (int y = origin.y; y < end.y; ++y)
+    {
+        for (int x = origin.x; x < end.x; ++x)
+        {
+            const uint2 position = uint2(x, y);
+            const float4 texel = id_map.read(position);
+            const uint id = almetal_selection_decode_id(texel);
+            if (id == 0u)
+            {
+                continue;
+            }
+            lowest = min(lowest, id);
+            highest = max(highest, id);
+            const bool texel_glows = almetal_selection_is_glow(texel);
+            jump = jump || (!texel_glows && jump_map.read(position).r > 0.5);
+            glow = glow || (texel_glows && almetal_selection_is_drawn(texel));
+            if (!texel_glows)
+            {
+                nearest = min(nearest,
+                    almetal_selection_contour_eye_distance(
+                        depth_map.read(position).r, constants));
+            }
+        }
+    }
+    ALMetalSelectionTileOutput output;
+    output.ids = float4(
+        highest != 0u ? float(lowest) / 65535.0 : 0.0,
+        float(highest) / 65535.0, jump ? 1.0 : 0.0,
+        glow ? 1.0 : 0.0);
+    output.nearest = nearest;
+    return output;
+}
+
+static float almetal_selection_depth_slope(
+    int2 position, int2 size, int2 step, uint id, float depth,
+    texture2d<float, access::read> id_map,
+    texture2d<float, access::read> depth_map)
+{
+    const bool back = almetal_selection_has_id(
+        position - step, size, id, id_map);
+    const bool ahead = almetal_selection_has_id(
+        position + step, size, id, id_map);
+    const float to_back = back
+        ? depth - depth_map.read(uint2(position - step)).r : 0.0;
+    const float to_ahead = ahead
+        ? depth_map.read(uint2(position + step)).r - depth : 0.0;
+    if (back && ahead)
+    {
+        return abs(to_back) <= abs(to_ahead) ? to_back : to_ahead;
+    }
+    return back ? to_back : to_ahead;
+}
+
+static bool almetal_selection_candidate_within(
+    int2 position, int reach, uint own_id,
+    thread bool& jump, thread float& nearest,
+    texture2d<float, access::read> tile_map,
+    texture2d<float, access::read> tile_depth_map,
+    constant ALMetalSelectionContourConstants& constants)
+{
+    const int2 last = int2(constants.target.zw) - int2(1);
+    const int2 low = max(position - int2(reach), int2(0)) / 8;
+    const int2 high = min((position + int2(reach)) / 8, last);
+    bool found = false;
+    jump = false;
+    nearest = 1.0e30;
+    for (int y = low.y; y <= high.y; ++y)
+    {
+        for (int x = low.x; x <= high.x; ++x)
+        {
+            const uint2 tile_position = uint2(x, y);
+            nearest = min(nearest, tile_depth_map.read(tile_position).r);
+            const float4 tile = tile_map.read(tile_position);
+            const uint lowest = uint(tile.r * 65535.0 + 0.5);
+            const uint highest = uint(tile.g * 65535.0 + 0.5);
+            const bool tile_jump = tile.b > 0.5;
+            found = found || (own_id == 0u
+                ? highest != 0u
+                : ((lowest != 0u && lowest != own_id) ||
+                   (highest != 0u && highest != own_id) || tile_jump));
+            jump = jump || tile_jump;
+        }
+    }
+    return found;
+}
+
+static float almetal_selection_coverage(float distance, float width)
+{
+    return 1.0 - smoothstep(width, width + 1.0, distance);
+}
+
+static float3 almetal_selection_rim_color(float3 line)
+{
+    const float luminance = dot(
+        almetal_srgb_to_linear(line), float3(0.2126, 0.7152, 0.0722));
+    return luminance > 0.18 ? float3(0.0) : float3(1.0);
+}
+
+static float4 almetal_selection_palette_color(
+    uint id, bool visible,
+    texture2d<float, access::read> palette)
+{
+    const uint row = (id / 256u) * 2u + (visible ? 0u : 1u);
+    return palette.read(uint2(id % 256u, row));
+}
+
+static float4 almetal_selection_contour_layer(
+    float4 color, float distance,
+    constant ALMetalSelectionContourConstants& constants)
+{
+    const float line = almetal_selection_coverage(
+        distance, float(constants.widths.x));
+    float4 layer = float4(color.rgb, 1.0) * (color.a * line);
+    if (constants.widths.z != 0u)
+    {
+        const float rim = color.a *
+            (almetal_selection_coverage(
+                 distance, float(constants.widths.x + constants.widths.z)) -
+             line);
+        layer += float4(almetal_selection_rim_color(color.rgb), 1.0) * rim;
+    }
+    return layer;
+}
+
+fragment float4 almetal_selection_contour_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float, access::read> id_map [[texture(0)]],
+    texture2d<float, access::read> depth_map [[texture(1)]],
+    texture2d<float, access::read> jump_map [[texture(2)]],
+    texture2d<float, access::read> tile_map [[texture(3)]],
+    texture2d<float, access::read> tile_depth_map [[texture(4)]],
+    texture2d<float, access::read> palette [[texture(5)]],
+    constant ALMetalSelectionContourConstants& constants [[buffer(0)]])
+{
+    const int2 size = int2(constants.target.xy);
+    const int2 position = clamp(
+        int2(input.position.xy), int2(0), size - int2(1));
+    const float4 own = id_map.read(uint2(position));
+    const uint own_id = almetal_selection_decode_id(own);
+    const bool own_drawn = own_id != 0u &&
+        almetal_selection_is_drawn(own);
+
+    const int line_reach = int(max(
+        constants.widths.x + constants.widths.z,
+        constants.widths.y)) + 1;
+    const int inner_reach = int(constants.widths.y) + 1;
+    bool jump_near = false;
+    float tile_nearest = 0.0;
+    const bool line_near = almetal_selection_candidate_within(
+        position, line_reach, own_id, jump_near, tile_nearest,
+        tile_map, tile_depth_map, constants);
+    if (!line_near)
+    {
+        discard_fragment();
+    }
+
+    bool planed = false;
+    float own_depth = 0.0;
+    float2 slope = float2(0.0);
+    int line_search = line_reach;
+    if (own_id != 0u && !jump_near)
+    {
+        own_depth = depth_map.read(uint2(position)).r;
+        slope = float2(
+            almetal_selection_depth_slope(
+                position, size, int2(1, 0), own_id, own_depth,
+                id_map, depth_map),
+            almetal_selection_depth_slope(
+                position, size, int2(0, 1), own_id, own_depth,
+                id_map, depth_map));
+        planed = true;
+        float plane_far = 0.0;
+        for (int corner = 0; corner < 4; ++corner)
+        {
+            const float2 to = float2(
+                (corner & 1) == 0 ? -line_reach : line_reach,
+                (corner & 2) == 0 ? -line_reach : line_reach);
+            plane_far = max(plane_far,
+                almetal_selection_contour_eye_distance(
+                    clamp(own_depth + dot(slope, to), 0.0, 1.0),
+                    constants));
+        }
+        if (tile_nearest >= plane_far)
+        {
+            line_search = inner_reach;
+        }
+    }
+
+    uint top_id = 0u;
+    uint top_priority = 256u;
+    float top_distance = 0.0;
+    bool top_visible = true;
+    uint near_id = 0u;
+    uint near_priority = 256u;
+    float near_distance = float(line_reach) + 1.0;
+    bool near_visible = true;
+    float inner_distance = float(inner_reach) + 1.0;
+
+    for (int dy = -line_search; dy <= line_search; ++dy)
+    {
+        const int span = int(sqrt(
+            float(line_search * line_search - dy * dy) + 0.5));
+        for (int dx = -span; dx <= span; ++dx)
+        {
+            const int2 tap_position = position + int2(dx, dy);
+            if (any(tap_position < int2(0)) || any(tap_position >= size))
+            {
+                continue;
+            }
+            const float4 tap = id_map.read(uint2(tap_position));
+            const uint tap_id = almetal_selection_decode_id(tap);
+            const bool own_object = tap_id == own_id;
+            if (tap_id == 0u ||
+                (own_object && !(jump_near &&
+                    jump_map.read(uint2(tap_position)).r > 0.5)))
+            {
+                continue;
+            }
+            const int distance_squared = dx * dx + dy * dy;
+            if (distance_squared > line_reach * line_reach)
+            {
+                continue;
+            }
+            const float distance = length(float2(dx, dy));
+
+            uint relation = 0u;
+            if (own_id != 0u)
+            {
+                if (!planed)
+                {
+                    own_depth = depth_map.read(uint2(position)).r;
+                    slope = float2(
+                        almetal_selection_depth_slope(
+                            position, size, int2(1, 0), own_id,
+                            own_depth, id_map, depth_map),
+                        almetal_selection_depth_slope(
+                            position, size, int2(0, 1), own_id,
+                            own_depth, id_map, depth_map));
+                    planed = true;
+                }
+                const float plane = almetal_selection_contour_eye_distance(
+                    clamp(own_depth + dot(
+                        slope, float2(dx, dy)), 0.0, 1.0), constants);
+                const float there = almetal_selection_contour_eye_distance(
+                    depth_map.read(uint2(tap_position)).r, constants);
+                const float margin = plane * 0.002 + 0.0001;
+                relation = there < plane - margin
+                    ? 0u : (there <= plane + margin ? 1u : 2u);
+            }
+
+            const bool tap_drawn = almetal_selection_is_drawn(tap);
+            if (relation == 0u && tap_drawn)
+            {
+                const uint tap_priority =
+                    almetal_selection_decode_priority(tap);
+                if (tap_priority < top_priority ||
+                    (tap_priority == top_priority &&
+                     distance < top_distance))
+                {
+                    top_id = tap_id;
+                    top_priority = tap_priority;
+                    top_distance = distance;
+                    top_visible = almetal_selection_is_visible(tap);
+                }
+                if (distance < near_distance ||
+                    (distance == near_distance &&
+                     tap_priority < near_priority))
+                {
+                    near_id = tap_id;
+                    near_priority = tap_priority;
+                    near_distance = distance;
+                    near_visible = almetal_selection_is_visible(tap);
+                }
+            }
+            else if (relation == 1u && !own_object && own_drawn &&
+                     distance <= float(inner_reach) &&
+                     (!tap_drawn || own_id < tap_id))
+            {
+                inner_distance = min(inner_distance, distance);
+            }
+        }
+    }
+
+    float3 rgb = float3(0.0);
+    float alpha = 0.0;
+    if (own_drawn)
+    {
+        const float4 color = almetal_selection_palette_color(
+            own_id, almetal_selection_is_visible(own), palette);
+        const float inner_alpha = color.a * 0.8 *
+            almetal_selection_coverage(
+                inner_distance, float(constants.widths.y));
+        if (inner_alpha > 0.0)
+        {
+            rgb = color.rgb * inner_alpha;
+            alpha = inner_alpha;
+        }
+    }
+    if (top_id != 0u)
+    {
+        const float4 top_layer = almetal_selection_contour_layer(
+            almetal_selection_palette_color(
+                top_id, top_visible, palette),
+            top_distance, constants);
+        float4 near_layer = float4(0.0);
+        if (near_id != top_id)
+        {
+            near_layer = almetal_selection_contour_layer(
+                almetal_selection_palette_color(
+                    near_id, near_visible, palette),
+                near_distance, constants);
+        }
+        const float3 contour_rgb = top_layer.rgb +
+            near_layer.rgb * (1.0 - top_layer.a);
+        const float contour_alpha = top_layer.a +
+            near_layer.a * (1.0 - top_layer.a);
+        rgb = contour_rgb + rgb * (1.0 - contour_alpha);
+        alpha = contour_alpha + alpha * (1.0 - contour_alpha);
+    }
+
+    if (alpha <= 0.0)
+    {
+        discard_fragment();
+    }
+    return float4(rgb / max(alpha, 0.000001), alpha);
+}
+
 vertex ALMetalUIVaryings almetal_ui_vertex(
     const device float4* positions [[buffer(0)]],
     const device float2* texcoords [[buffer(1)]],

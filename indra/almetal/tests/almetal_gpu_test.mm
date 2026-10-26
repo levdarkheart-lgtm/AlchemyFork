@@ -841,6 +841,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_selection_id_vertex",
             "almetal_selection_id_skinned_vertex",
             "almetal_selection_id_fragment",
+            "almetal_selection_jump_fragment",
+            "almetal_selection_tile_fragment",
+            "almetal_selection_contour_fragment",
             "almetal_alpha_mask_fragment",
             "almetal_alpha_mask_solid_fragment",
             "almetal_solid_vertex",
@@ -20461,7 +20464,7 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
     }
 }
 
-TEST_CASE("almetal: selection ids interrupt and resume the ordered UI target", "[almetal]")
+TEST_CASE("almetal: selection contour consumes ids and resumes the ordered UI target", "[almetal]")
 {
     @autoreleasepool
     {
@@ -20478,11 +20481,12 @@ TEST_CASE("almetal: selection ids interrupt and resume the ordered UI target", "
 
         constexpr std::uint32_t width = 48;
         constexpr std::uint32_t height = 24;
-        // Standard GL perspective with near 1 and far 10. The retained depth
-        // is the z=-3 plane; the left and rigged triangles are at z=-2 and
-        // visible, while the right triangle at z=-5 is hidden.
-        constexpr float projection_a = -11.f / 9.f;
-        constexpr float projection_b = -20.f / 9.f;
+        // Infinite reverse-Z perspective with near 1. The retained depth is
+        // the z=-3 plane; the left and rigged triangles are at z=-2 and
+        // visible, while the right triangle at z=-5 is hidden. This is the
+        // production convention rather than the transitional forward path.
+        constexpr float projection_a = 0.f;
+        constexpr float projection_b = 1.f;
         const float projection[16] = {
             1.f, 0.f, 0.f, 0.f,
             0.f, 1.f, 0.f, 0.f,
@@ -20626,7 +20630,7 @@ TEST_CASE("almetal: selection ids interrupt and resume the ordered UI target", "
         ALMetalRenderPassConfig depth_clear;
         depth_clear.depth_load = ALMetalLoadAction::clear;
         depth_clear.depth_store = ALMetalStoreAction::store;
-        depth_clear.clear_depth = 20.f / 27.f;
+        depth_clear.clear_depth = 1.f / 3.f;
         depth_clear.stencil_load = ALMetalLoadAction::clear;
         depth_clear.stencil_store = ALMetalStoreAction::store;
         auto depth_pass = depth->makeRenderPass(depth_clear, &error);
@@ -20695,6 +20699,7 @@ TEST_CASE("almetal: selection ids interrupt and resume the ordered UI target", "
                     sizeof(inverse_projection));
         scene.width = width;
         scene.height = height;
+        scene.reverse_z = true;
         scene.use_scene_depth = true;
 
         REQUIRE(renderer->setFrameBackground(background.get(), &error));
@@ -20706,6 +20711,45 @@ TEST_CASE("almetal: selection ids interrupt and resume the ordered UI target", "
         REQUIRE(selection_encoded);
         REQUIRE(renderer->selectionIDTexture());
         REQUIRE(renderer->selectionDepthTexture());
+
+        constexpr std::uint32_t palette_width = 256;
+        constexpr std::uint32_t palette_height = 38;
+        std::array<std::uint8_t,
+                   palette_width * palette_height * 4> palette{};
+        const auto set_palette = [&](std::uint32_t id, bool visible,
+                                     std::array<std::uint8_t, 4> color)
+        {
+            const std::uint32_t row =
+                (id / palette_width) * 2u + (visible ? 0u : 1u);
+            const std::size_t offset =
+                (static_cast<std::size_t>(row) * palette_width +
+                 id % palette_width) * 4u;
+            std::copy(color.begin(), color.end(), palette.begin() + offset);
+        };
+        set_palette(0x1234, true, {255, 0, 0, 255});
+        set_palette(0x00aa, true, {0, 255, 0, 255});
+        set_palette(0x0201, true, {0, 0, 255, 255});
+        set_palette(0x0201, false, {0, 0, 255, 128});
+
+        ALMetalSelectionContourScene contour;
+        contour.palette_rgba8 = palette.data();
+        contour.palette_bytes = palette.size();
+        contour.palette_width = palette_width;
+        contour.palette_height = palette_height;
+        std::memcpy(contour.inverse_projection, inverse_projection,
+                    sizeof(inverse_projection));
+        contour.width = width;
+        contour.height = height;
+        contour.outline_width = 2;
+        contour.inner_width = 1;
+        contour.rim_width = 1;
+        contour.reverse_z = true;
+        ALMetalSelectionContourScene invalid_contour = contour;
+        --invalid_contour.palette_bytes;
+        CHECK_FALSE(renderer->drawSelectionContour(
+            invalid_contour, &error));
+        CHECK(error == "Metal selection contour inputs are invalid");
+        REQUIRE(renderer->drawSelectionContour(contour, &error));
 
         // A normal UI draw after the private pass proves the main target was
         // resumed with load rather than cleared or submitted separately.
@@ -20775,11 +20819,37 @@ TEST_CASE("almetal: selection ids interrupt and resume the ordered UI target", "
         CHECK(composed[2] == 13);
         CHECK(composed[3] == 255);
 
+        std::size_t green_contour_pixels = 0;
+        std::size_t hidden_blue_pixels = 0;
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 16; x < width; ++x)
+            {
+                const std::size_t pixel =
+                    (static_cast<std::size_t>(y) * width + x) * 4u;
+                CHECK(composed[pixel + 3] == 255);
+                if (x < 32 && composed[pixel + 1] > 200 &&
+                    composed[pixel + 1] > composed[pixel + 0] + 80 &&
+                    composed[pixel + 1] > composed[pixel + 2] + 80)
+                {
+                    ++green_contour_pixels;
+                }
+                if (x >= 32 && composed[pixel + 0] > 80 &&
+                    composed[pixel + 0] > composed[pixel + 1] + 40 &&
+                    composed[pixel + 0] > composed[pixel + 2] + 40)
+                {
+                    ++hidden_blue_pixels;
+                }
+            }
+        }
+        CHECK(green_contour_pixels > 0);
+        CHECK(hidden_blue_pixels > 0);
+
         const ALMetalUIRendererStats stats = renderer->stats();
         CHECK(stats.frames == 1);
-        CHECK(stats.batches == 5);
-        CHECK(stats.vertices == 15);
-        CHECK(stats.pipeline_states == 3);
+        CHECK(stats.batches == 8);
+        CHECK(stats.vertices == 24);
+        CHECK(stats.pipeline_states == 6);
         CHECK(stats.sampler_states == 1);
     }
 }

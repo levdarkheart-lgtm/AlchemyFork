@@ -1071,6 +1071,28 @@ bool LLRender::drawMetalSelectionIDs(
     return true;
 }
 
+bool LLRender::drawMetalSelectionContour(
+    const ALMetalSelectionContourScene& scene)
+{
+    if (!mMetalUICaptureRenderer || !scene.palette_rgba8 ||
+        scene.palette_bytes == 0)
+    {
+        return false;
+    }
+
+    std::string error;
+    if (!mMetalUICaptureRenderer->drawSelectionContour(scene, &error))
+    {
+        mMetalUICaptureComplete = false;
+        LL_DEBUGS("Metal")
+            << "Offscreen selection-contour capture retained GL: "
+            << error << LL_ENDL;
+        return false;
+    }
+    mMetalUICaptureBatches += 3u;
+    return true;
+}
+
 void LLRender::invalidateMetalUITextureCapture(const char* reason)
 {
     if (!mMetalUICaptureRenderer || !mMetalUICaptureComplete)

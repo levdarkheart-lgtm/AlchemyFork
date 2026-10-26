@@ -206,6 +206,14 @@ struct ALMetalUIRenderer::Impl
     std::unique_ptr<ALMetalDepthStencilState> selection_forward_depth;
     std::unique_ptr<ALMetalDepthStencilState> selection_reverse_depth;
     std::unique_ptr<ALMetalRenderTarget> selection_target;
+    std::unique_ptr<ALMetalRenderPipeline> selection_jump_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> selection_tile_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> selection_contour_pipeline;
+    ALMetalPixelFormat selection_contour_depth_format =
+        ALMetalPixelFormat::invalid;
+    std::unique_ptr<ALMetalRenderTarget> selection_jump_target;
+    std::unique_ptr<ALMetalRenderTarget> selection_tile_target;
+    std::unique_ptr<ALMetalTexture> selection_palette;
     std::vector<std::unique_ptr<ALMetalBuffer>> selection_frame_palettes;
     std::unique_ptr<ALMetalRenderTarget> target;
     std::unique_ptr<ALMetalDrawable> drawable;
@@ -228,6 +236,16 @@ struct ALMetalUIRenderer::Impl
     {
         return frame_depth ? frame_depth->descriptor().format
                            : ALMetalPixelFormat::invalid;
+    }
+
+    void refreshPipelineCount() noexcept
+    {
+        totals.pipeline_states = pipelines.size() + hud_pipelines.size() +
+            (selection_id_pipeline ? 1u : 0u) +
+            (selection_id_skinned_pipeline ? 1u : 0u) +
+            (selection_jump_pipeline ? 1u : 0u) +
+            (selection_tile_pipeline ? 1u : 0u) +
+            (selection_contour_pipeline ? 1u : 0u);
     }
 
     bool prepareBackground(std::string* error)
@@ -473,9 +491,7 @@ struct ALMetalUIRenderer::Impl
         }
         pipelines.push_back(
             {shader, target_blend, depth_format, std::move(state)});
-        totals.pipeline_states = pipelines.size() + hud_pipelines.size() +
-            (selection_id_pipeline ? 1u : 0u) +
-            (selection_id_skinned_pipeline ? 1u : 0u);
+        refreshPipelineCount();
         return pipelines.back().state.get();
     }
 
@@ -549,9 +565,7 @@ struct ALMetalUIRenderer::Impl
         }
         hud_pipelines.push_back(
             {shader, target_blend, depth_format, std::move(state)});
-        totals.pipeline_states = pipelines.size() + hud_pipelines.size() +
-            (selection_id_pipeline ? 1u : 0u) +
-            (selection_id_skinned_pipeline ? 1u : 0u);
+        refreshPipelineCount();
         return hud_pipelines.back().state.get();
     }
 
@@ -671,7 +685,7 @@ struct ALMetalUIRenderer::Impl
         {
             return false;
         }
-        totals.pipeline_states = pipelines.size() + hud_pipelines.size() + 2;
+        refreshPipelineCount();
         return true;
     }
 
@@ -697,6 +711,144 @@ struct ALMetalUIRenderer::Impl
         selection_target = ALMetalRenderTarget::create(
             *device, descriptor, error);
         return selection_target != nullptr;
+    }
+
+    bool prepareSelectionContour(std::string* error)
+    {
+        const ALMetalPixelFormat depth_format = frameDepthFormat();
+        if (selection_jump_pipeline && selection_tile_pipeline &&
+            selection_contour_pipeline &&
+            selection_contour_depth_format == depth_format)
+        {
+            return true;
+        }
+
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = library.get();
+        descriptor.vertex_function = "almetal_resample_vertex";
+        descriptor.fragment_function = "almetal_selection_jump_fragment";
+        descriptor.colors[0].format = ALMetalPixelFormat::r8_unorm;
+        descriptor.label = "Alchemy selection jump pipeline";
+        selection_jump_pipeline = ALMetalRenderPipeline::create(
+            *device, descriptor, error);
+        if (!selection_jump_pipeline)
+        {
+            return false;
+        }
+
+        descriptor.fragment_function = "almetal_selection_tile_fragment";
+        descriptor.color_attachment_count = 2;
+        descriptor.colors[0].format = ALMetalPixelFormat::rgba16_unorm;
+        descriptor.colors[1].format = ALMetalPixelFormat::r32_float;
+        descriptor.label = "Alchemy selection tile pipeline";
+        selection_tile_pipeline = ALMetalRenderPipeline::create(
+            *device, descriptor, error);
+        if (!selection_tile_pipeline)
+        {
+            selection_jump_pipeline.reset();
+            return false;
+        }
+
+        descriptor.fragment_function = "almetal_selection_contour_fragment";
+        descriptor.color_attachment_count = 1;
+        descriptor.colors[0] = {};
+        descriptor.colors[0].format = output_format;
+        descriptor.colors[0].blending_enabled = true;
+        descriptor.colors[0].source_rgb =
+            ALMetalBlendFactor::source_alpha;
+        descriptor.colors[0].destination_rgb =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        descriptor.colors[0].source_alpha = ALMetalBlendFactor::one;
+        descriptor.colors[0].destination_alpha =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        descriptor.colors[0].write_mask = static_cast<ALMetalColorWriteMask>(
+            static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+            static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+            static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+        descriptor.depth_stencil_format = depth_format;
+        descriptor.label = "Alchemy selection contour pipeline";
+        selection_contour_pipeline = ALMetalRenderPipeline::create(
+            *device, descriptor, error);
+        if (!selection_contour_pipeline)
+        {
+            selection_jump_pipeline.reset();
+            selection_tile_pipeline.reset();
+            return false;
+        }
+        selection_contour_depth_format = depth_format;
+        refreshPipelineCount();
+        return true;
+    }
+
+    bool prepareSelectionContourTargets(
+        std::uint32_t width, std::uint32_t height,
+        std::uint32_t palette_width, std::uint32_t palette_height,
+        std::string* error)
+    {
+        if (!selection_jump_target ||
+            selection_jump_target->descriptor().width != width ||
+            selection_jump_target->descriptor().height != height)
+        {
+            ALMetalRenderTargetDescriptor descriptor;
+            descriptor.width = width;
+            descriptor.height = height;
+            descriptor.color_attachment_count = 1;
+            descriptor.colors[0].format = ALMetalPixelFormat::r8_unorm;
+            descriptor.colors[0].shader_read = true;
+            descriptor.colors[0].label = "Alchemy selection jump marks";
+            descriptor.label = "Alchemy selection jump target";
+            selection_jump_target = ALMetalRenderTarget::create(
+                *device, descriptor, error);
+            if (!selection_jump_target)
+            {
+                return false;
+            }
+        }
+
+        const std::uint32_t tile_width = (width + 7u) / 8u;
+        const std::uint32_t tile_height = (height + 7u) / 8u;
+        if (!selection_tile_target ||
+            selection_tile_target->descriptor().width != tile_width ||
+            selection_tile_target->descriptor().height != tile_height)
+        {
+            ALMetalRenderTargetDescriptor descriptor;
+            descriptor.width = tile_width;
+            descriptor.height = tile_height;
+            descriptor.color_attachment_count = 2;
+            descriptor.colors[0].format = ALMetalPixelFormat::rgba16_unorm;
+            descriptor.colors[0].shader_read = true;
+            descriptor.colors[0].label = "Alchemy selection tile ids";
+            descriptor.colors[1].format = ALMetalPixelFormat::r32_float;
+            descriptor.colors[1].shader_read = true;
+            descriptor.colors[1].label = "Alchemy selection tile depth";
+            descriptor.label = "Alchemy selection tile target";
+            selection_tile_target = ALMetalRenderTarget::create(
+                *device, descriptor, error);
+            if (!selection_tile_target)
+            {
+                return false;
+            }
+        }
+
+        if (!selection_palette ||
+            selection_palette->descriptor().width != palette_width ||
+            selection_palette->descriptor().height != palette_height)
+        {
+            ALMetalTextureDescriptor descriptor;
+            descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+            descriptor.width = palette_width;
+            descriptor.height = palette_height;
+            descriptor.storage = ALMetalStorageMode::private_gpu;
+            descriptor.usage = ALMetalTextureUsage::shader_read;
+            descriptor.label = "Alchemy selection palette";
+            selection_palette = ALMetalTexture::create(
+                *device, descriptor, error);
+            if (!selection_palette)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     bool resumeMainPass(std::string* error)
@@ -951,7 +1103,10 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
         !library->hasFunction("almetal_hud_pbr_alpha_fragment") ||
         !library->hasFunction("almetal_selection_id_vertex") ||
         !library->hasFunction("almetal_selection_id_skinned_vertex") ||
-        !library->hasFunction("almetal_selection_id_fragment"))
+        !library->hasFunction("almetal_selection_id_fragment") ||
+        !library->hasFunction("almetal_selection_jump_fragment") ||
+        !library->hasFunction("almetal_selection_tile_fragment") ||
+        !library->hasFunction("almetal_selection_contour_fragment"))
     {
         setError(error, "Built-in Metal library is missing production UI functions");
         return nullptr;
@@ -1703,6 +1858,213 @@ bool ALMetalUIRenderer::drawSelectionIDs(
     {
         mImpl->frame_vertices += scene.batches[index].index_count;
     }
+    return true;
+}
+
+bool ALMetalUIRenderer::drawSelectionContour(
+    const ALMetalSelectionContourScene& scene,
+    std::string* error)
+{
+    const bool palette_size_valid =
+        scene.palette_width == 256u && scene.palette_height >= 2u &&
+        scene.palette_height % 2u == 0u &&
+        scene.palette_height <= 512u &&
+        scene.palette_bytes ==
+            static_cast<std::size_t>(scene.palette_width) *
+            static_cast<std::size_t>(scene.palette_height) * 4u;
+    if (!mImpl || mImpl->surface || !scene.palette_rgba8 ||
+        !palette_size_valid || scene.width == 0 || scene.height == 0 ||
+        scene.outline_width == 0 || scene.outline_width > 253u ||
+        scene.inner_width == 0 || scene.inner_width > 253u ||
+        scene.rim_width > 253u)
+    {
+        setError(error, "Metal selection contour inputs are invalid");
+        return false;
+    }
+    if (!finiteFloats(scene.inverse_projection, 16))
+    {
+        setError(error,
+                 "Metal selection contour inverse projection must be finite");
+        return false;
+    }
+    if (!mImpl->frame || !mImpl->encoder || !mImpl->selection_target ||
+        mImpl->frame_width != scene.width ||
+        mImpl->frame_height != scene.height ||
+        mImpl->selection_target->descriptor().width != scene.width ||
+        mImpl->selection_target->descriptor().height != scene.height)
+    {
+        setError(error,
+                 "Metal selection contour requires current same-size ids");
+        return false;
+    }
+    if (!mImpl->prepareSelectionContour(error) ||
+        !mImpl->prepareSelectionContourTargets(
+            scene.width, scene.height,
+            scene.palette_width, scene.palette_height, error))
+    {
+        return false;
+    }
+
+    if (!mImpl->encoder->end(error))
+    {
+        return false;
+    }
+    mImpl->encoder.reset();
+    mImpl->pass.reset();
+
+    struct alignas(16) SelectionContourConstants
+    {
+        float inverse_projection[16];
+        std::uint32_t target[4];
+        std::uint32_t widths[4];
+    } constants;
+    static_assert(sizeof(SelectionContourConstants) == 96);
+    std::memcpy(constants.inverse_projection,
+                scene.inverse_projection,
+                sizeof(constants.inverse_projection));
+    constants.target[0] = scene.width;
+    constants.target[1] = scene.height;
+    constants.target[2] = (scene.width + 7u) / 8u;
+    constants.target[3] = (scene.height + 7u) / 8u;
+    constants.widths[0] = scene.outline_width;
+    constants.widths[1] = scene.inner_width;
+    constants.widths[2] = scene.rim_width;
+    constants.widths[3] = scene.reverse_z ? 1u : 0u;
+
+    bool encoded = mImpl->selection_palette->upload(
+        mImpl->frame->commandBuffer(), 0, 0,
+        {0, 0, scene.palette_width, scene.palette_height},
+        scene.palette_rgba8,
+        static_cast<std::size_t>(scene.palette_width) * 4u,
+        error);
+
+    const ALMetalTexture* id_map =
+        mImpl->selection_target->colorTexture(0);
+    const ALMetalTexture* depth_map =
+        mImpl->selection_target->depthStencilTexture();
+    const ALMetalViewport full_viewport{
+        0.0, 0.0, static_cast<double>(scene.width),
+        static_cast<double>(scene.height), 0.0, 1.0};
+    const ALMetalScissorRect full_scissor{
+        0, 0, scene.width, scene.height};
+
+    ALMetalRenderPassConfig jump_config;
+    jump_config.colors[0].load = ALMetalLoadAction::clear;
+    jump_config.colors[0].store = ALMetalStoreAction::store;
+    jump_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+    auto jump_pass = encoded
+        ? mImpl->selection_jump_target->makeRenderPass(jump_config, error)
+        : nullptr;
+    auto jump_encoder = jump_pass
+        ? ALMetalRenderEncoder::begin(
+              mImpl->frame->commandBuffer(), *jump_pass,
+              "Alchemy selection jump encoder", error)
+        : nullptr;
+    encoded = encoded && jump_encoder &&
+        jump_encoder->setPipeline(*mImpl->selection_jump_pipeline, error) &&
+        jump_encoder->setFragmentTexture(0, id_map, error) &&
+        jump_encoder->setFragmentTexture(1, depth_map, error) &&
+        jump_encoder->setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        jump_encoder->setViewport(full_viewport, error) &&
+        jump_encoder->setScissor(full_scissor, error) &&
+        jump_encoder->setCullMode(ALMetalCullMode::none, error) &&
+        jump_encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (jump_encoder)
+    {
+        encoded = jump_encoder->end(error) && encoded;
+    }
+    jump_encoder.reset();
+    jump_pass.reset();
+
+    ALMetalRenderPassConfig tile_config;
+    tile_config.colors[0].load = ALMetalLoadAction::clear;
+    tile_config.colors[0].store = ALMetalStoreAction::store;
+    tile_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+    tile_config.colors[1].load = ALMetalLoadAction::clear;
+    tile_config.colors[1].store = ALMetalStoreAction::store;
+    tile_config.colors[1].clear = {1.0e30, 0.0, 0.0, 0.0};
+    auto tile_pass = encoded
+        ? mImpl->selection_tile_target->makeRenderPass(tile_config, error)
+        : nullptr;
+    auto tile_encoder = tile_pass
+        ? ALMetalRenderEncoder::begin(
+              mImpl->frame->commandBuffer(), *tile_pass,
+              "Alchemy selection tile encoder", error)
+        : nullptr;
+    const ALMetalViewport tile_viewport{
+        0.0, 0.0, static_cast<double>(constants.target[2]),
+        static_cast<double>(constants.target[3]), 0.0, 1.0};
+    const ALMetalScissorRect tile_scissor{
+        0, 0, constants.target[2], constants.target[3]};
+    encoded = encoded && tile_encoder &&
+        tile_encoder->setPipeline(*mImpl->selection_tile_pipeline, error) &&
+        tile_encoder->setFragmentTexture(0, id_map, error) &&
+        tile_encoder->setFragmentTexture(1, depth_map, error) &&
+        tile_encoder->setFragmentTexture(
+            2, mImpl->selection_jump_target->colorTexture(0), error) &&
+        tile_encoder->setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        tile_encoder->setViewport(tile_viewport, error) &&
+        tile_encoder->setScissor(tile_scissor, error) &&
+        tile_encoder->setCullMode(ALMetalCullMode::none, error) &&
+        tile_encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (tile_encoder)
+    {
+        encoded = tile_encoder->end(error) && encoded;
+    }
+    tile_encoder.reset();
+    tile_pass.reset();
+
+    std::string resume_error;
+    const bool resumed = mImpl->resumeMainPass(&resume_error);
+    if (!resumed)
+    {
+        setError(error, resume_error);
+        return false;
+    }
+    if (!encoded)
+    {
+        return false;
+    }
+
+    ALMetalUIDepthState disabled_depth;
+    ALMetalDepthStencilState* contour_depth =
+        mImpl->depthState(disabled_depth, error);
+    if (!contour_depth)
+    {
+        return false;
+    }
+    ALMetalRenderEncoder& contour_encoder = *mImpl->encoder;
+    encoded =
+        contour_encoder.setPipeline(
+            *mImpl->selection_contour_pipeline, error) &&
+        contour_encoder.setDepthStencilState(contour_depth, error) &&
+        contour_encoder.setFragmentTexture(0, id_map, error) &&
+        contour_encoder.setFragmentTexture(1, depth_map, error) &&
+        contour_encoder.setFragmentTexture(
+            2, mImpl->selection_jump_target->colorTexture(0), error) &&
+        contour_encoder.setFragmentTexture(
+            3, mImpl->selection_tile_target->colorTexture(0), error) &&
+        contour_encoder.setFragmentTexture(
+            4, mImpl->selection_tile_target->colorTexture(1), error) &&
+        contour_encoder.setFragmentTexture(
+            5, mImpl->selection_palette.get(), error) &&
+        contour_encoder.setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        contour_encoder.setViewport(full_viewport, error) &&
+        contour_encoder.setScissor(full_scissor, error) &&
+        contour_encoder.setCullMode(ALMetalCullMode::none, error) &&
+        contour_encoder.draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded)
+    {
+        return false;
+    }
+    mImpl->frame_batches += 3u;
+    mImpl->frame_vertices += 9u;
     return true;
 }
 

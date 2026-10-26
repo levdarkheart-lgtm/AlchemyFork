@@ -5298,9 +5298,10 @@ void LLPipeline::endMetalWorldUICompositionCapture()
 
     // The backing/color/depth lifecycle is now the production one, but the
     // ordered family census is deliberately incomplete: selection now has a
-    // native private id/depth producer, but its contour/glow/wireframe consumers
-    // and the remaining direct/non-immediate debug services do not all have
-    // exact native owners yet. Force this bounded probe closed even
+    // native private id/depth producer and its default contour/rim consumer,
+    // while hover glow, wireframe, backdrop contrast and the remaining
+    // direct/non-immediate debug services do not all have exact native owners
+    // yet. Force this bounded probe closed even
     // if every immediate/static-fullbright batch happened to encode. No
     // partial texture can reach the surface.
     std::unique_ptr<ALMetalTexture> discarded =

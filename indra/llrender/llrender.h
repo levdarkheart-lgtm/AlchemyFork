@@ -72,6 +72,7 @@ class ALMetalSurface;
 class ALMetalTexture;
 class ALMetalUIRenderer;
 struct ALMetalSelectionIDScene;
+struct ALMetalSelectionContourScene;
 struct ALMetalHUDIndexedBatch;
 enum class ALMetalPixelFormat;
 #endif
@@ -305,6 +306,10 @@ public:
     // ordered world/UI capture. GL remains authoritative until the later
     // contour/glow passes complete the transaction.
     bool drawMetalSelectionIDs(const ALMetalSelectionIDScene& scene);
+    // Consume the current native selection ids into the default optimized
+    // contour/rim and append it to the ordered offscreen transaction.
+    bool drawMetalSelectionContour(
+        const ALMetalSelectionContourScene& scene);
     // Record one GL-owned draw family that an active offscreen transaction
     // did not reproduce. This is a no-op outside a capture; the authoritative
     // GL draw continues and end capture discards the incomplete native frame.

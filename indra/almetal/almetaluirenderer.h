@@ -209,6 +209,26 @@ struct ALMetalSelectionIDScene
     bool use_scene_depth = true;
 };
 
+// Inputs for the optimized screen-space contour consumer of the private
+// selection id/depth target. The palette is byte-identical to the legacy
+// RGBA8 texture: visible and hidden rows alternate for each 256 ids. This
+// stage intentionally owns only ordinary contours and their optional rim;
+// hover glow, wireframe and backdrop-dependent contrast remain fail-closed.
+struct ALMetalSelectionContourScene
+{
+    const std::uint8_t* palette_rgba8 = nullptr;
+    std::size_t palette_bytes = 0;
+    std::uint32_t palette_width = 0;
+    std::uint32_t palette_height = 0;
+    float inverse_projection[16]{};
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t outline_width = 0;
+    std::uint32_t inner_width = 0;
+    std::uint32_t rim_width = 0;
+    bool reverse_z = false;
+};
+
 struct ALMetalUIRendererStats
 {
     std::uint64_t frames = 0;
@@ -295,6 +315,12 @@ public:
     // setFrameBackground/setFrameDepth. It never publishes partial selection.
     bool drawSelectionIDs(
         const ALMetalSelectionIDScene& scene,
+        std::string* error = nullptr);
+    // Consumes the most recent same-size selection id/depth target, builds
+    // jump and tile metadata, then source-alpha composites the contour into
+    // the resumed ordered UI target without modifying its alpha or depth.
+    bool drawSelectionContour(
+        const ALMetalSelectionContourScene& scene,
         std::string* error = nullptr);
     bool endFrame(std::string* error = nullptr);
 
