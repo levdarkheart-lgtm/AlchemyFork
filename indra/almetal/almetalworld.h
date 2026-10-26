@@ -1014,6 +1014,16 @@ public:
         const ALMetalWorldOpaquePostDeferredScene& scene,
         std::string* error = nullptr);
 
+    // Read one raw-storage row/column from a completed linear final-color
+    // target as float RGBA. This is intentionally synchronous for sparse CPU
+    // tools such as the click-driven scene probe, never a frame path.
+    bool readSceneColorPixel(
+        const ALMetalRenderTarget& source,
+        std::uint32_t x,
+        std::uint32_t y,
+        float color[4],
+        std::string* error = nullptr) const;
+
     // Convert the completed native final-color target into the exact paired
     // SSR history formats without a CPU readback. HDR RGBA16F is quantized at
     // this boundary to R11G11B10F, combined depth is extracted to R32F, and

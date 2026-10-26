@@ -2850,6 +2850,14 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(
                   opaque_forward_depth[24 * 32 + 8] - 0.625f) < 0.0001f);
         CHECK(std::abs(opaque_forward_depth[0] - 1.f) < 0.0001f);
+        float opaque_scene_pixel[4]{};
+        REQUIRE(renderer->readSceneColorPixel(
+            *opaque_forward, 0, 0, opaque_scene_pixel, &error));
+        INFO(error);
+        CHECK(opaque_scene_pixel[0] == 0.25f);
+        CHECK(opaque_scene_pixel[1] == 0.125f);
+        CHECK(opaque_scene_pixel[2] == 0.0625f);
+        CHECK(opaque_scene_pixel[3] == 0.5f);
 
         // Final-color publication is opt-in because only the continuously
         // advancing main-world path needs to sample combined depth. Prove
@@ -10051,6 +10059,128 @@ TEST_CASE("almetal: native final color publishes coherent SSR history", "[almeta
             *source, history, &error));
         INFO(error);
         CHECK(history.get() == retained_history);
+    }
+}
+
+TEST_CASE("almetal: native final color serves one-shot scene pixels", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        ALMetalRenderTargetDescriptor descriptor;
+        descriptor.width = 2;
+        descriptor.height = 2;
+        descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        descriptor.label = "Alchemy scene-pixel RGBA8 test target";
+        auto source = ALMetalRenderTarget::create(
+            *device, descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+        const std::array<std::uint8_t, 16> pixels{{
+            255,   0,  64, 255,   0, 255,   0, 128,
+              0,   0, 255, 255, 255, 255, 255,   0,
+        }};
+        auto upload = device->makeCommandBuffer(
+            "Alchemy scene-pixel RGBA8 upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        id<MTLBuffer> staging = [nativeDevice(*device)
+            newBufferWithBytes:pixels.data()
+                      length:pixels.size()
+                     options:MTLResourceStorageModeShared];
+        REQUIRE(staging);
+        id<MTLBlitCommandEncoder> blit =
+            [nativeCommand(*upload) blitCommandEncoder];
+        REQUIRE(blit);
+        [blit copyFromBuffer:staging
+                sourceOffset:0
+           sourceBytesPerRow:2 * 4
+         sourceBytesPerImage:pixels.size()
+                  sourceSize:MTLSizeMake(2, 2, 1)
+                   toTexture:(__bridge id<MTLTexture>)
+                       source->colorTexture(0)->nativeHandle()
+            destinationSlice:0
+            destinationLevel:0
+           destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [blit endEncoding];
+        REQUIRE(upload->commit(&error));
+        INFO(error);
+
+        float color[4]{};
+        REQUIRE(renderer->readSceneColorPixel(
+            *source, 0, 0, color, &error));
+        INFO(error);
+        CHECK(color[0] == 1.f);
+        CHECK(color[1] == 0.f);
+        CHECK(std::abs(color[2] - 64.f / 255.f) < 0.000001f);
+        CHECK(color[3] == 1.f);
+        REQUIRE(renderer->readSceneColorPixel(
+            *source, 1, 1, color, &error));
+        INFO(error);
+        CHECK(color[0] == 1.f);
+        CHECK(color[1] == 1.f);
+        CHECK(color[2] == 1.f);
+        CHECK(color[3] == 0.f);
+
+        const std::array<float, 4> untouched{{-1.f, -2.f, -3.f, -4.f}};
+        std::copy(untouched.begin(), untouched.end(), color);
+        error.clear();
+        CHECK_FALSE(renderer->readSceneColorPixel(
+            *source, 2, 0, color, &error));
+        CHECK(error == "Metal world scene-pixel source is incompatible");
+        CHECK(std::equal(untouched.begin(), untouched.end(), color));
+
+        descriptor.width = 1;
+        descriptor.height = 1;
+        descriptor.colors[0].format = ALMetalPixelFormat::rgba16_float;
+        descriptor.label = "Alchemy scene-pixel RGBA16F test target";
+        error.clear();
+        auto hdr_source = ALMetalRenderTarget::create(
+            *device, descriptor, &error);
+        INFO(error);
+        REQUIRE(hdr_source);
+        const std::array<std::uint16_t, 4> half_pixel{{
+            0x3800u, 0xb400u, 0x3c00u, 0x0001u,
+        }};
+        upload = device->makeCommandBuffer(
+            "Alchemy scene-pixel RGBA16F upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        staging = [nativeDevice(*device)
+            newBufferWithBytes:half_pixel.data()
+                      length:half_pixel.size() * sizeof(half_pixel[0])
+                     options:MTLResourceStorageModeShared];
+        REQUIRE(staging);
+        blit = [nativeCommand(*upload) blitCommandEncoder];
+        REQUIRE(blit);
+        [blit copyFromBuffer:staging
+                sourceOffset:0
+           sourceBytesPerRow:half_pixel.size() * sizeof(half_pixel[0])
+         sourceBytesPerImage:half_pixel.size() * sizeof(half_pixel[0])
+                  sourceSize:MTLSizeMake(1, 1, 1)
+                   toTexture:(__bridge id<MTLTexture>)
+                       hdr_source->colorTexture(0)->nativeHandle()
+            destinationSlice:0
+            destinationLevel:0
+           destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [blit endEncoding];
+        REQUIRE(upload->commit(&error));
+        INFO(error);
+        REQUIRE(renderer->readSceneColorPixel(
+            *hdr_source, 0, 0, color, &error));
+        INFO(error);
+        CHECK(color[0] == 0.5f);
+        CHECK(color[1] == -0.25f);
+        CHECK(color[2] == 1.f);
+        CHECK(color[3] == std::ldexp(1.f, -24));
     }
 }
 

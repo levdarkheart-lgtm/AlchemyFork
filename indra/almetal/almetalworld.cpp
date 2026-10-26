@@ -28,6 +28,46 @@ namespace
         }
     }
 
+    float floatFromHalf(std::uint16_t value)
+    {
+        const std::uint32_t sign =
+            static_cast<std::uint32_t>(value & 0x8000u) << 16;
+        std::uint32_t exponent = (value >> 10) & 0x1fu;
+        std::uint32_t mantissa = value & 0x03ffu;
+        std::uint32_t bits = 0;
+        if (exponent == 0)
+        {
+            if (mantissa == 0)
+            {
+                bits = sign;
+            }
+            else
+            {
+                std::int32_t unbiased = -14;
+                while ((mantissa & 0x0400u) == 0)
+                {
+                    mantissa <<= 1;
+                    --unbiased;
+                }
+                mantissa &= 0x03ffu;
+                bits = sign |
+                    (static_cast<std::uint32_t>(unbiased + 127) << 23) |
+                    (mantissa << 13);
+            }
+        }
+        else if (exponent == 0x1fu)
+        {
+            bits = sign | 0x7f800000u | (mantissa << 13);
+        }
+        else
+        {
+            bits = sign | ((exponent + 112u) << 23) | (mantissa << 13);
+        }
+        float result = 0.f;
+        std::memcpy(&result, &bits, sizeof(result));
+        return result;
+    }
+
     bool validBlendFactor(ALMetalBlendFactor factor)
     {
         switch (factor)
@@ -5115,6 +5155,69 @@ ALMetalWorldGBufferRenderer::composeLighting(
         return nullptr;
     }
     return output;
+}
+
+bool ALMetalWorldGBufferRenderer::readSceneColorPixel(
+    const ALMetalRenderTarget& source,
+    std::uint32_t x,
+    std::uint32_t y,
+    float color[4],
+    std::string* error) const
+{
+    if (!mImpl || !mImpl->device || !color)
+    {
+        setError(error, "Metal world scene-pixel reader is incomplete");
+        return false;
+    }
+
+    const ALMetalRenderTargetDescriptor& descriptor = source.descriptor();
+    const ALMetalPixelFormat format = descriptor.colors[0].format;
+    const ALMetalTexture* texture = source.colorTexture(0);
+    if (descriptor.width == 0 || descriptor.height == 0 ||
+        descriptor.sample_count != 1 ||
+        descriptor.color_attachment_count != 1 ||
+        (format != ALMetalPixelFormat::rgba8_unorm &&
+         format != ALMetalPixelFormat::rgba16_float) ||
+        !texture || x >= descriptor.width || y >= descriptor.height)
+    {
+        setError(error, "Metal world scene-pixel source is incompatible");
+        return false;
+    }
+
+    const ALMetalRegion2D region{x, y, 1, 1};
+    float decoded[4]{};
+    if (format == ALMetalPixelFormat::rgba8_unorm)
+    {
+        std::array<std::uint8_t, 4> pixel{};
+        if (!texture->readback(
+                *mImpl->device, 0, 0, region, pixel.data(), pixel.size(),
+                error))
+        {
+            return false;
+        }
+        constexpr float byte_scale = 1.f / 255.f;
+        for (std::size_t channel = 0; channel < pixel.size(); ++channel)
+        {
+            decoded[channel] = static_cast<float>(pixel[channel]) *
+                byte_scale;
+        }
+    }
+    else
+    {
+        std::array<std::uint16_t, 4> pixel{};
+        if (!texture->readback(
+                *mImpl->device, 0, 0, region, pixel.data(),
+                pixel.size() * sizeof(pixel[0]), error))
+        {
+            return false;
+        }
+        for (std::size_t channel = 0; channel < pixel.size(); ++channel)
+        {
+            decoded[channel] = floatFromHalf(pixel[channel]);
+        }
+    }
+    std::copy(decoded, decoded + 4, color);
+    return true;
 }
 
 bool ALMetalWorldGBufferRenderer::updateScreenSpaceReflectionHistory(

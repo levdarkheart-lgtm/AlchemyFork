@@ -1570,14 +1570,15 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
 
     if (!capture.frame_active && capture.attempted &&
-        capture.continuous_world_capture &&
+        (capture.continuous_world_capture || mScenePixelPending) &&
         capture.continuous_world_frame != gFrameCount)
     {
-        // Once native final color can supply SSR history, each main-world
-        // frame is a fresh transaction. Retire only per-frame products and
-        // attempt gates; persistent probe, shadow and history resources stay
-        // live. A failed stage therefore falls back to GL for that frame and
-        // retries natively on the next instead of permanently wedging a gate.
+        // Continuous SSR history makes every main-world frame a fresh
+        // transaction; a pending one-shot CPU probe requests the same refresh
+        // without making the chain permanently continuous. Retire only
+        // per-frame products and attempt gates; persistent probe, shadow and
+        // history resources stay live. A failed stage therefore falls back
+        // to GL for that frame and retries later instead of wedging a gate.
         capture.target.reset();
         capture.local_light_target.reset();
         capture.projector_light_target.reset();
@@ -17461,6 +17462,39 @@ void LLPipeline::serviceScenePixelProbe(LLRenderTarget* src)
     const S32 py = llclamp((S32)(v * (F32)src->getHeight()), 0, (S32)src->getHeight() - 1);
 
     F32 texel[4] = { 0.f, 0.f, 0.f, 0.f };
+#if LL_DARWIN
+    if (mMetalWorldSimpleCapture &&
+        !mMetalHeroWorldCaptureActive &&
+        !mMetalReflectionWorldCaptureActive)
+    {
+        MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+        const ALMetalRenderTargetDescriptor* descriptor =
+            capture.opaque_post_deferred_target
+                ? &capture.opaque_post_deferred_target->descriptor()
+                : nullptr;
+        if (capture.renderer && descriptor &&
+            capture.continuous_world_frame == gFrameCount &&
+            descriptor->width == src->getWidth() &&
+            descriptor->height == src->getHeight())
+        {
+            // Native world vertices already flip clip-space Y so raw Metal
+            // storage row zero matches this GL target's lower-left row zero.
+            // The click's GL pixel coordinate therefore crosses unchanged.
+            std::string error;
+            if (capture.renderer->readSceneColorPixel(
+                    *capture.opaque_post_deferred_target,
+                    static_cast<U32>(px), static_cast<U32>(py), texel,
+                    &error))
+            {
+                callback(LLColor3(texel[0], texel[1], texel[2]));
+                return;
+            }
+            LL_WARNS("Metal")
+                << "Native scene-pixel readback retained the GL fallback: "
+                << error << LL_ENDL;
+        }
+    }
+#endif
     src->bindTarget();
     gGL.readPixels(px, py, 1, 1, GL_RGBA, GL_FLOAT, texel);
     src->flush();
