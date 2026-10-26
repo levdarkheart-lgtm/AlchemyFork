@@ -11438,6 +11438,103 @@ static float3 almetal_pbr_tonemap(
     return color;
 }
 
+struct ALMetalWorldDisplayPostConstants
+{
+    // static exposure, adapted exposure, tonemap mix, tonemap type
+    float4 post;
+    float4 tonemap_params;
+    // non-HDR dither amount, reserved, reserved, reserved
+    float4 display;
+    // cutout-premultiplied, HDR/tonemap branch, animate dither, frame id
+    uint4 config;
+};
+
+static float almetal_world_display_hash12(float2 p)
+{
+    float3 p3 = fract(float3(p.x, p.y, p.x) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+static float2 almetal_world_display_noise_offset(
+    uint frame_id, bool animate)
+{
+    const float frame = float(animate ? frame_id : 0u);
+    return float2(
+        almetal_world_display_hash12(float2(frame, 13.7)),
+        almetal_world_display_hash12(float2(frame, 91.3))) * 1024.0;
+}
+
+static float3 almetal_world_display_dither(
+    float3 color, float2 position, float amount,
+    uint frame_id, bool animate)
+{
+    if (amount <= 0.0)
+    {
+        return color;
+    }
+    const float2 p = position + almetal_world_display_noise_offset(
+        frame_id, animate);
+    const float noise = fract(
+        52.9829189 * fract(dot(p, float2(0.06711056, 0.00583715)))) *
+        2.0 - 1.0;
+    const float triangular = sign(noise) *
+        (1.0 - sqrt(1.0 - abs(noise)));
+    const float3 room = clamp(
+        min(color, 1.0 - color) * 255.0,
+        float3(0.0), float3(1.0));
+    return color + triangular * (amount / 255.0) * room;
+}
+
+fragment float4 almetal_world_display_post_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]],
+    constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
+{
+    float4 color = source.sample(source_sampler, input.texcoord);
+    const float coverage = clamp(color.a, 0.0, 1.0);
+    if (constants.config.x != 0)
+    {
+        color.rgb = coverage > 0.0
+            ? color.rgb / coverage : float3(0.0);
+    }
+
+    if (constants.config.y != 0)
+    {
+        color.rgb *= constants.post.x * constants.post.y;
+        const float3 clamped = clamp(
+            color.rgb, float3(0.0), float3(1.0));
+        const uint tonemap_type = uint(round(constants.post.w));
+        color.rgb = mix(
+            clamped,
+            clamp(almetal_pbr_tonemap(
+                      color.rgb, tonemap_type,
+                      constants.tonemap_params),
+                  float3(0.0), float3(1.0)),
+            constants.post.z);
+    }
+    else
+    {
+        color.rgb = clamp(color.rgb, float3(0.0), float3(1.0));
+    }
+
+    color.rgb = clamp(
+        almetal_linear_to_srgb(color.rgb),
+        float3(0.0), float3(1.0));
+    if (constants.config.x != 0)
+    {
+        color.rgb *= coverage;
+    }
+    if (constants.config.y == 0)
+    {
+        color.rgb = almetal_world_display_dither(
+            color.rgb, input.position.xy, constants.display.x,
+            constants.config.w, constants.config.z != 0);
+    }
+    return float4(color.rgb, color.a);
+}
+
 fragment float4 almetal_pbr_preview_fragment(
     ALMetalPBRPreviewVaryings input [[stage_in]],
     bool front_facing [[front_facing]],

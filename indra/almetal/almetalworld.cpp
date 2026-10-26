@@ -117,6 +117,18 @@ namespace
     };
     static_assert(sizeof(WorldSpotShadowConstants) == 608);
 
+    struct alignas(16) WorldDisplayPostConstants
+    {
+        // static exposure, adapted exposure, tonemap mix, tonemap type
+        float post[4];
+        float tonemap_params[4];
+        // non-HDR dither amount, reserved, reserved, reserved
+        float display[4];
+        // cutout-premultiplied, HDR/tonemap branch, animate dither, frame id
+        std::uint32_t config[4];
+    };
+    static_assert(sizeof(WorldDisplayPostConstants) == 64);
+
     struct alignas(16) WorldTerrainSpotShadowConstants
     {
         float modelview_projection[16]{};
@@ -781,6 +793,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         lighting_composition_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        display_post_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         ssr_history_pipelines;
     std::array<OpaqueForwardMaskPipelines, 2>
         opaque_forward_fullbright_pipelines;
@@ -998,6 +1012,7 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->device = &device;
     impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
     if (!impl->library ||
+        !impl->library->hasFunction("almetal_resample_vertex") ||
         !impl->library->hasFunction("almetal_world_spot_shadow_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_spot_shadow_skinned_vertex") ||
@@ -1107,6 +1122,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_projector_light_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_lighting_composition_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_display_post_fragment") ||
         !impl->library->hasFunction("almetal_world_light_map_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_light_map_blur_fragment") ||
@@ -1344,6 +1361,24 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         {
             return nullptr;
         }
+
+        descriptor.vertex_function = "almetal_resample_vertex";
+        descriptor.fragment_function =
+            "almetal_world_display_post_fragment";
+        descriptor.colors[0].format = hdr
+            ? ALMetalPixelFormat::rgb10a2_unorm
+            : ALMetalPixelFormat::rgba8_unorm;
+        descriptor.label = hdr
+            ? "Alchemy HDR world display-post pipeline"
+            : "Alchemy world display-post pipeline";
+        impl->display_post_pipelines[hdr] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->display_post_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        descriptor.vertex_function = "almetal_world_local_light_vertex";
 
         descriptor.fragment_function =
             "almetal_world_ssr_history_fragment";
@@ -5148,6 +5183,131 @@ ALMetalWorldGBufferRenderer::composeLighting(
             2, scene.projector_lighting->colorTexture(0), error) &&
         encoder->setFragmentSampler(
             0, mImpl->point_clamp_sampler.get(), error) &&
+        encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderDisplayPost(
+    const ALMetalWorldDisplayPostScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.source)
+    {
+        setError(error, "Metal world display-post scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalPixelFormat source_format = scene.hdr
+        ? ALMetalPixelFormat::rgba16_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    const ALMetalRenderTargetDescriptor& source =
+        scene.source->descriptor();
+    if (source.width == 0 || source.height == 0 ||
+        source.sample_count != 1 || source.color_attachment_count != 1 ||
+        source.colors[0].format != source_format ||
+        !sampleableTexture(scene.source->colorTexture(0)))
+    {
+        setError(error, "Metal world display-post source is incompatible");
+        return nullptr;
+    }
+
+    if (!std::isfinite(scene.static_exposure) ||
+        !std::isfinite(scene.adapted_exposure) ||
+        !std::isfinite(scene.tonemap_mix) ||
+        scene.static_exposure < 0.f || scene.adapted_exposure < 0.f ||
+        scene.tonemap_mix < 0.f || scene.tonemap_mix > 1.f ||
+        scene.tonemap_type > 6 ||
+        !finiteValues(scene.tonemap_params, 4) ||
+        !std::isfinite(scene.dither_amount) ||
+        scene.dither_amount < 0.f || scene.dither_amount > 1.f ||
+        ((scene.tonemap_type == 2 || scene.tonemap_type == 3 ||
+          scene.tonemap_type == 4) && scene.tonemap_params[0] <= 0.f) ||
+        (scene.tonemap_type == 6 &&
+         (scene.tonemap_params[0] <= 0.f ||
+          scene.tonemap_params[1] <= 0.f ||
+          scene.tonemap_params[2] <= 0.f ||
+          scene.tonemap_params[3] <= 0.f)))
+    {
+        setError(error, "Metal world display-post state is invalid");
+        return nullptr;
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = source.width;
+    output_descriptor.height = source.height;
+    output_descriptor.colors[0].format = scene.hdr
+        ? ALMetalPixelFormat::rgb10a2_unorm
+        : ALMetalPixelFormat::rgba8_unorm;
+    output_descriptor.colors[0].label = scene.hdr
+        ? "Alchemy HDR world RGB10_A2 post color"
+        : "Alchemy world RGBA8 post color";
+    output_descriptor.label = scene.hdr
+        ? "Alchemy native HDR world display-post target"
+        : "Alchemy native world display-post target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    WorldDisplayPostConstants constants{};
+    constants.post[0] = scene.static_exposure;
+    constants.post[1] = scene.adapted_exposure;
+    constants.post[2] = scene.tonemap_mix;
+    constants.post[3] = static_cast<float>(scene.tonemap_type);
+    std::memcpy(constants.tonemap_params, scene.tonemap_params,
+                sizeof(constants.tonemap_params));
+    constants.display[0] = scene.dither_amount;
+    constants.config[0] = scene.cutout_premultiplied ? 1u : 0u;
+    constants.config[1] = scene.hdr ? 1u : 0u;
+    constants.config[2] = scene.dither_animated ? 1u : 0u;
+    constants.config[3] = scene.frame_id;
+
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world display post", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::dont_care;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world display-post encoder", error)
+        : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(source.width),
+        static_cast<double>(source.height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{
+        0, 0, source.width, source.height,
+    };
+    const bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(
+            *mImpl->display_post_pipelines[scene.hdr ? 1 : 0], error) &&
+        encoder->setFragmentTexture(
+            0, scene.source->colorTexture(0), error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->point_clamp_sampler.get(), error) &&
+        encoder->setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
         encoder->draw(
             ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     if (!encoded || !encoder->end(error) || !command->commit(error))

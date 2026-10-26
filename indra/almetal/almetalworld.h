@@ -642,6 +642,30 @@ struct ALMetalWorldOpaquePostDeferredScene
     bool publish_screen_space_reflection_history = false;
 };
 
+// The modern-gamma, effect-free base of colorCorrectF.glsl. This owner
+// deliberately stops at the real post-chain storage boundary: HDR writes
+// RGB10_A2 after exposure and tonemapping, while the vintage path writes
+// RGBA8 after the display transfer and output dither. Bloom, color grading,
+// lens effects, legacy gamma/no-post, CAS/AA and legacy glow remain distinct
+// later owners; callers must not substitute this target when any omitted
+// family or bypass is live.
+struct ALMetalWorldDisplayPostScene
+{
+    const ALMetalRenderTarget* source = nullptr;
+    bool hdr = false;
+    float static_exposure = 1.f;
+    float adapted_exposure = 1.f;
+    float tonemap_mix = 1.f;
+    std::uint32_t tonemap_type = 0;
+    float tonemap_params[4]{};
+    bool cutout_premultiplied = false;
+    // Non-HDR only: colorCorrectF applies output dither at this first 8-bit
+    // boundary. HDR defers its 10-bit dither until final presentation.
+    float dither_amount = 0.f;
+    bool dither_animated = false;
+    std::uint32_t frame_id = 0;
+};
+
 struct alignas(16) ALMetalWorldLightMapConstants
 {
     float inverse_projection[16]{};
@@ -1012,6 +1036,13 @@ public:
     // ordered post-deferred families into a one-color output target.
     std::unique_ptr<ALMetalRenderTarget> renderOpaquePostDeferred(
         const ALMetalWorldOpaquePostDeferredScene& scene,
+        std::string* error = nullptr);
+
+    // Convert one completed linear native world target into the GL post
+    // chain's first display-space target without crossing CPU memory. This is
+    // the exact no-bloom/no-grade/no-lens base branch, not final presentation.
+    std::unique_ptr<ALMetalRenderTarget> renderDisplayPost(
+        const ALMetalWorldDisplayPostScene& scene,
         std::string* error = nullptr);
 
     // Read one raw-storage row/column from a completed linear final-color

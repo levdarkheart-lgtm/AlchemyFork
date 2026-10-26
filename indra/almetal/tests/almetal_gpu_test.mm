@@ -190,6 +190,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_local_light_fragment",
             "almetal_world_projector_light_fragment",
             "almetal_world_lighting_composition_fragment",
+            "almetal_world_display_post_fragment",
             "almetal_world_ssr_history_fragment",
             "almetal_world_hero_probe_filter",
             "almetal_world_probe_gaussian",
@@ -10169,6 +10170,252 @@ TEST_CASE("almetal: native final color publishes coherent SSR history", "[almeta
             *source, history, &error));
         INFO(error);
         CHECK(history.get() == retained_history);
+    }
+}
+
+TEST_CASE("almetal: world display post owns the real post target formats", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        const auto make_source = [&](
+            ALMetalPixelFormat format, std::uint32_t width,
+            std::uint32_t height, const void* pixels,
+            std::size_t bytes_per_row, const char* label)
+        {
+            ALMetalRenderTargetDescriptor descriptor;
+            descriptor.width = width;
+            descriptor.height = height;
+            descriptor.colors[0].format = format;
+            descriptor.label = label;
+            auto target = ALMetalRenderTarget::create(
+                *device, descriptor, &error);
+            INFO(error);
+            REQUIRE(target);
+            auto upload = device->makeCommandBuffer(label, &error);
+            INFO(error);
+            REQUIRE(upload);
+            id<MTLBuffer> staging = [nativeDevice(*device)
+                newBufferWithBytes:pixels
+                          length:bytes_per_row * height
+                         options:MTLResourceStorageModeShared];
+            REQUIRE(staging);
+            id<MTLBlitCommandEncoder> blit =
+                [nativeCommand(*upload) blitCommandEncoder];
+            REQUIRE(blit);
+            [blit copyFromBuffer:staging
+                    sourceOffset:0
+               sourceBytesPerRow:bytes_per_row
+             sourceBytesPerImage:bytes_per_row * height
+                      sourceSize:MTLSizeMake(width, height, 1)
+                       toTexture:(__bridge id<MTLTexture>)
+                           target->colorTexture(0)->nativeHandle()
+                destinationSlice:0
+                destinationLevel:0
+               destinationOrigin:MTLOriginMake(0, 0, 0)];
+            [blit endEncoding];
+            REQUIRE(upload->commit(&error));
+            INFO(error);
+            return target;
+        };
+        const auto srgb = [](float linear)
+        {
+            linear = std::max(linear, 0.f);
+            return linear > 0.0031308f
+                ? 1.055f * std::pow(linear, 1.f / 2.4f) - 0.055f
+                : linear * 12.92f;
+        };
+        const auto unorm10 = [](float value)
+        {
+            return static_cast<std::uint32_t>(std::lround(
+                std::clamp(value, 0.f, 1.f) * 1023.f));
+        };
+        const auto channel10 = [](std::uint32_t packed,
+                                  std::uint32_t channel)
+        {
+            return (packed >> (channel * 10u)) & 0x3ffu;
+        };
+
+        const std::array<std::uint16_t, 8> hdr_pixels{{
+            0x3800u, 0x3400u, 0x3000u, 0x3800u,
+            0x3400u, 0x0000u, 0x0000u, 0x3800u,
+        }}; // (.5,.25,.125,.5), then premultiplied (.25,0,0,.5)
+        auto hdr_source = make_source(
+            ALMetalPixelFormat::rgba16_float, 2, 1,
+            hdr_pixels.data(), 2 * 4 * sizeof(std::uint16_t),
+            "Alchemy HDR display-post test source");
+
+        ALMetalWorldDisplayPostScene scene;
+        scene.source = hdr_source.get();
+        scene.hdr = true;
+        scene.tonemap_mix = 0.f;
+        auto hdr_output = renderer->renderDisplayPost(scene, &error);
+        INFO(error);
+        REQUIRE(hdr_output);
+        CHECK(hdr_output->descriptor().width == 2);
+        CHECK(hdr_output->descriptor().height == 1);
+        CHECK(hdr_output->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgb10a2_unorm);
+        std::array<std::uint32_t, 2> packed{};
+        REQUIRE(hdr_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, packed.data(), sizeof(packed), &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(channel10(packed[0], 0)) -
+                       static_cast<int>(unorm10(srgb(0.5f)))) <= 1);
+        CHECK(std::abs(static_cast<int>(channel10(packed[0], 1)) -
+                       static_cast<int>(unorm10(srgb(0.25f)))) <= 1);
+        CHECK(std::abs(static_cast<int>(channel10(packed[0], 2)) -
+                       static_cast<int>(unorm10(srgb(0.125f)))) <= 1);
+        CHECK((packed[0] >> 30u) == 2u);
+
+        scene.cutout_premultiplied = true;
+        auto cutout_output = renderer->renderDisplayPost(scene, &error);
+        INFO(error);
+        REQUIRE(cutout_output);
+        REQUIRE(cutout_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, packed.data(), sizeof(packed), &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(channel10(packed[1], 0)) -
+                       static_cast<int>(unorm10(srgb(0.5f) * 0.5f))) <= 1);
+        CHECK(channel10(packed[1], 1) == 0u);
+        CHECK(channel10(packed[1], 2) == 0u);
+        CHECK((packed[1] >> 30u) == 2u);
+
+        // Static and adapted exposure multiply before the same Reinhard
+        // branch as tonemapUtilF.glsl, then the RGB10_A2 target quantizes the
+        // display-space result while preserving two-bit coverage.
+        scene.cutout_premultiplied = false;
+        scene.static_exposure = 4.f;
+        scene.adapted_exposure = 0.5f;
+        scene.tonemap_mix = 1.f;
+        scene.tonemap_type = 3;
+        scene.tonemap_params[0] = 4.f;
+        auto reinhard_output = renderer->renderDisplayPost(scene, &error);
+        INFO(error);
+        REQUIRE(reinhard_output);
+        REQUIRE(reinhard_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, packed.data(), sizeof(packed), &error));
+        INFO(error);
+        const auto reinhard = [](float value)
+        {
+            return value * (1.f + value / 4.f) / (1.f + value);
+        };
+        CHECK(std::abs(static_cast<int>(channel10(packed[0], 0)) -
+                       static_cast<int>(unorm10(srgb(reinhard(1.f))))) <= 1);
+        CHECK(std::abs(static_cast<int>(channel10(packed[0], 1)) -
+                       static_cast<int>(unorm10(srgb(reinhard(0.5f))))) <= 1);
+        CHECK(std::abs(static_cast<int>(channel10(packed[0], 2)) -
+                       static_cast<int>(unorm10(srgb(reinhard(0.25f))))) <= 1);
+
+        // The non-HDR GLSL variant has no exposure/tonemap permutation; it
+        // clamps the linear RGBA8 source and performs only the display
+        // transfer before its first eight-bit storage boundary.
+        const std::array<std::uint8_t, 4> vintage_pixel{{
+            64u, 128u, 255u, 128u,
+        }};
+        auto vintage_source = make_source(
+            ALMetalPixelFormat::rgba8_unorm, 1, 1,
+            vintage_pixel.data(), sizeof(vintage_pixel),
+            "Alchemy vintage display-post test source");
+        ALMetalWorldDisplayPostScene vintage;
+        vintage.source = vintage_source.get();
+        vintage.static_exposure = 0.f;
+        vintage.adapted_exposure = 0.f;
+        auto vintage_output = renderer->renderDisplayPost(vintage, &error);
+        INFO(error);
+        REQUIRE(vintage_output);
+        CHECK(vintage_output->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba8_unorm);
+        std::array<std::uint8_t, 4> vintage_result{};
+        REQUIRE(vintage_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, vintage_result.data(),
+            sizeof(vintage_result), &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const int expected = static_cast<int>(std::lround(
+                std::clamp(srgb(vintage_pixel[channel] / 255.f),
+                           0.f, 1.f) * 255.f));
+            CAPTURE(channel);
+            CHECK(std::abs(static_cast<int>(vintage_result[channel]) -
+                           expected) <= 1);
+        }
+        CHECK(vintage_result[3] == 128u);
+
+        std::array<std::uint8_t, 8 * 8 * 4> dither_source_pixels{};
+        for (std::size_t pixel = 0; pixel < 8 * 8; ++pixel)
+        {
+            std::copy(vintage_pixel.begin(), vintage_pixel.end(),
+                      dither_source_pixels.begin() + pixel * 4);
+        }
+        auto dither_source = make_source(
+            ALMetalPixelFormat::rgba8_unorm, 8, 8,
+            dither_source_pixels.data(), 8 * 4,
+            "Alchemy display-post dither test source");
+        ALMetalWorldDisplayPostScene dither_scene;
+        dither_scene.source = dither_source.get();
+        dither_scene.dither_amount = 1.f;
+        auto static_dither = renderer->renderDisplayPost(
+            dither_scene, &error);
+        INFO(error);
+        REQUIRE(static_dither);
+        dither_scene.dither_animated = true;
+        dither_scene.frame_id = 73;
+        auto animated_dither = renderer->renderDisplayPost(
+            dither_scene, &error);
+        INFO(error);
+        REQUIRE(animated_dither);
+        std::array<std::uint8_t, 8 * 8 * 4> static_dither_pixels{};
+        std::array<std::uint8_t, 8 * 8 * 4> animated_dither_pixels{};
+        REQUIRE(static_dither->colorTexture(0)->readback(
+            *device, 0, 0, {}, static_dither_pixels.data(), 8 * 4,
+            &error));
+        REQUIRE(animated_dither->colorTexture(0)->readback(
+            *device, 0, 0, {}, animated_dither_pixels.data(), 8 * 4,
+            &error));
+        CHECK(static_dither_pixels != animated_dither_pixels);
+        for (std::size_t pixel = 0; pixel < 8 * 8; ++pixel)
+        {
+            CHECK(static_dither_pixels[pixel * 4 + 3] == 128u);
+            CHECK(animated_dither_pixels[pixel * 4 + 3] == 128u);
+        }
+
+        ALMetalWorldDisplayPostScene invalid;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
+        CHECK(error == "Metal world display-post scene is incomplete");
+        invalid.source = vintage_source.get();
+        invalid.hdr = true;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
+        CHECK(error == "Metal world display-post source is incompatible");
+        invalid.source = hdr_source.get();
+        invalid.static_exposure = -1.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
+        CHECK(error == "Metal world display-post state is invalid");
+        invalid.static_exposure = 1.f;
+        invalid.tonemap_type = 7;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
+        CHECK(error == "Metal world display-post state is invalid");
+        invalid.tonemap_type = 6;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
+        CHECK(error == "Metal world display-post state is invalid");
+        invalid.tonemap_type = 0;
+        invalid.dither_amount = 2.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
+        CHECK(error == "Metal world display-post state is invalid");
     }
 }
 
