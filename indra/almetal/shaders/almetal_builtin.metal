@@ -11640,6 +11640,512 @@ kernel void almetal_world_exposure_history(
     }
 }
 
+struct ALMetalWorldDepthOfFieldConstants
+{
+    float4x4 inverse_projection;
+    float4 focus;
+    float4 limits;
+    float4 shape0;
+    float4 shape1;
+    float4 shape2;
+    float4 anamorphic;
+    float4 fringe_near;
+    float4 fringe_far;
+    uint4 config;
+};
+
+static float almetal_world_dof_cof(
+    texture2d<float> depth_texture,
+    sampler point_mirror_sampler,
+    float2 texcoord,
+    constant ALMetalWorldDepthOfFieldConstants& constants)
+{
+    const float depth = depth_texture.sample(
+        point_mirror_sampler, texcoord, level(0.0)).r;
+    const float ndc_z = constants.config.x != 0u
+        ? depth : depth * 2.0 - 1.0;
+    const float4 position = constants.inverse_projection *
+        float4(0.0, 0.0, ndc_z, 1.0);
+    const float defocus = constants.focus.x *
+        max(position.w, 0.000001) / position.z - 1.0;
+    const float pixel_length = constants.focus.z * -constants.focus.x;
+    const float circle = defocus *
+        (constants.focus.y * 1.414 /
+         (constants.focus.w * pixel_length));
+    return clamp(circle, -constants.limits.x, constants.limits.x);
+}
+
+static float3 almetal_world_dof_sample_clamp(
+    float3 color,
+    constant ALMetalWorldDepthOfFieldConstants& constants)
+{
+    if (constants.shape0.x <= 0.0)
+    {
+        return color;
+    }
+    const float peak = max(color.r, max(color.g, color.b));
+    return peak > constants.shape0.x
+        ? color * (constants.shape0.x / peak) : color;
+}
+
+static float almetal_world_dof_sample_weight(
+    float3 color,
+    constant ALMetalWorldDepthOfFieldConstants& constants)
+{
+    if (constants.limits.w <= 0.0)
+    {
+        return 1.0;
+    }
+    const float peak = max(color.r, max(color.g, color.b));
+    return 1.0 + constants.limits.w *
+        max(peak - constants.limits.z, 0.0);
+}
+
+static float almetal_world_dof_shape_weight(
+    float radius, float2 direction, float apodization, float2 coma)
+{
+    constexpr float floor_weight = 0.15;
+    const float weight = 1.0 +
+        apodization * (2.0 * radius * radius - 1.0) +
+        dot(direction, coma) * radius;
+    return max(weight, floor_weight);
+}
+
+static float almetal_world_dof_aperture_mask(
+    float angle, float sine, float cosine, float radius,
+    float2 cat_offset,
+    constant ALMetalWorldDepthOfFieldConstants& constants)
+{
+    float edge = 1.0;
+    if (constants.config.w >= 3u)
+    {
+        const float sector_position =
+            fmod(angle + constants.shape0.y, constants.shape2.z) -
+            constants.shape2.y;
+        const float polygon = constants.shape2.w /
+            max(cos(sector_position), 0.001);
+        edge = mix(polygon, 1.0,
+                   clamp(constants.shape0.z, 0.0, 1.0));
+    }
+    if (radius > edge)
+    {
+        return 0.0;
+    }
+    if (constants.shape0.w > 0.0)
+    {
+        const float2 point = float2(sine, cosine) * radius;
+        const float2 difference = point - cat_offset;
+        if (dot(difference, difference) > 1.0)
+        {
+            return 0.0;
+        }
+    }
+    return 1.0;
+}
+
+static float3 almetal_world_dof_fringe(
+    float3 color, float radius, float circle_sign,
+    constant ALMetalWorldDepthOfFieldConstants& constants)
+{
+    if (constants.shape1.x <= 0.0)
+    {
+        return color;
+    }
+    const float3 tint = circle_sign < 0.0
+        ? constants.fringe_far.xyz : constants.fringe_near.xyz;
+    return color * mix(float3(1.0), tint,
+        clamp(radius, 0.0, 1.0) * constants.shape1.x);
+}
+
+static void almetal_world_dof_accumulate(
+    thread float4& sum, thread float& sum_weight,
+    float4 sample_value, float radius, float circle_sign,
+    float shape_weight, bool shaped,
+    constant ALMetalWorldDepthOfFieldConstants& constants)
+{
+    float3 color = almetal_world_dof_sample_clamp(
+        sample_value.rgb, constants);
+    if (shaped)
+    {
+        color = almetal_world_dof_fringe(
+            color, radius, circle_sign, constants);
+    }
+    const float4 weighted_color = float4(color, sample_value.a);
+    const float weight = almetal_world_dof_sample_weight(
+        weighted_color.rgb, constants) * shape_weight;
+    sum += weight * weighted_color;
+    sum_weight += weight;
+}
+
+static void almetal_world_dof_sample_far(
+    thread float4& sum, thread float& sum_weight,
+    texture2d<float> source, texture2d<float> depth_texture,
+    sampler point_mirror_sampler,
+    float minimum_circle, float2 texcoord, float radius,
+    float circle_sign, float shape_weight, bool front_blur, bool shaped,
+    constant ALMetalWorldDepthOfFieldConstants& constants)
+{
+    const float circle = almetal_world_dof_cof(
+        depth_texture, point_mirror_sampler, texcoord, constants);
+    const float sampled_circle = front_blur ? abs(circle) : -circle;
+    if (sampled_circle > minimum_circle + 0.001)
+    {
+        almetal_world_dof_accumulate(
+            sum, sum_weight,
+            source.sample(point_mirror_sampler, texcoord, level(0.0)),
+            radius, circle_sign, shape_weight, shaped, constants);
+    }
+}
+
+static float4 almetal_world_dof_gather(
+    ALMetalResampleVaryings input,
+    texture2d<float> source,
+    texture2d<float> depth_texture,
+    sampler point_mirror_sampler,
+    constant ALMetalWorldDepthOfFieldConstants& constants,
+    bool front_blur, bool shaped)
+{
+    const float2 texcoord = input.texcoord;
+    float4 sum = source.sample(
+        point_mirror_sampler, texcoord, level(0.0));
+    float circle = almetal_world_dof_cof(
+        depth_texture, point_mirror_sampler, texcoord, constants);
+    const float maximum_radius = max(abs(circle), 0.0001);
+    const float circle_sign = circle < 0.0 ? -1.0 : 1.0;
+
+    float2 cat_offset = 0.0;
+    float2 axis_x = float2(1.0, 0.0);
+    float2 axis_y = float2(0.0, 1.0);
+    float2 coma = 0.0;
+    float apodization = 0.0;
+    float ring_density = 1.0;
+    if (shaped && abs(circle) > 0.5)
+    {
+        const float2 screen_size = float2(
+            source.get_width(), source.get_height());
+        const float aspect = screen_size.x / max(screen_size.y, 1.0);
+        const float2 aspect_scale = max(
+            float2(aspect, 1.0 / max(aspect, 0.0001)), float2(1.0));
+        const float2 field = (texcoord - 0.5) * aspect_scale;
+        const float field_length = length(field);
+        const float2 field_direction = field_length > 0.00001
+            ? field / field_length : float2(0.0);
+        const float field_radius = clamp(
+            field_length / (0.5 * length(aspect_scale)), 0.0, 1.0);
+        const float shape_fade = smoothstep(1.5, 4.0, maximum_radius);
+        cat_offset = field_direction *
+            (field_radius * constants.shape0.w);
+
+        if (constants.shape1.z != 0.0 && field_length > 0.00001)
+        {
+            const float2 direction = constants.shape1.z > 0.0
+                ? float2(-field_direction.y, field_direction.x)
+                : field_direction;
+            const float stretch = sqrt(1.0 + abs(constants.shape1.z) *
+                pow(field_radius, max(constants.shape1.w, 1.0)));
+            const float factor = stretch - 1.0 / stretch;
+            axis_x = float2(
+                1.0 / stretch + factor * direction.x * direction.x,
+                factor * direction.x * direction.y);
+            axis_y = float2(
+                factor * direction.x * direction.y,
+                1.0 / stretch + factor * direction.y * direction.y);
+        }
+        axis_x *= constants.anamorphic.xy;
+        axis_y *= constants.anamorphic.xy;
+
+        const float basis_f = dot(axis_x, axis_x) + dot(axis_y, axis_y);
+        const float determinant =
+            axis_x.x * axis_y.y - axis_x.y * axis_y.x;
+        ring_density = min(sqrt(max(0.5 *
+            (basis_f + sqrt(max(basis_f * basis_f -
+             4.0 * determinant * determinant, 0.0))), 0.0001)), 3.0);
+        apodization = constants.shape1.y * shape_fade * -circle_sign;
+
+        if (constants.shape2.x != 0.0 && field_length > 0.00001)
+        {
+            const float2 gradient = float2(
+                axis_y.y * field_direction.x -
+                    axis_y.x * field_direction.y,
+                axis_x.x * field_direction.y -
+                    axis_x.y * field_direction.x);
+            const float gradient_length = length(gradient);
+            if (gradient_length > 0.00001)
+            {
+                coma = -(gradient / gradient_length) *
+                    (constants.shape2.x * field_radius * shape_fade);
+            }
+        }
+    }
+
+    float sum_weight = shaped
+        ? almetal_world_dof_shape_weight(
+            0.0, float2(0.0), apodization, coma)
+        : 1.0;
+    sum *= sum_weight;
+    const float2 screen_size = float2(
+        source.get_width(), source.get_height());
+
+    if (front_blur && circle > 0.5)
+    {
+        while (circle > 0.5)
+        {
+            const int iterations = int(max(
+                1.0, circle * 3.7 * ring_density));
+            const float step_angle = 2.0 * M_PI_F / float(iterations);
+            const float2 turn = float2(
+                sin(step_angle), cos(step_angle));
+            float2 direction = float2(sin(circle), cos(circle));
+            for (int tap = 0; tap < iterations; ++tap)
+            {
+                const float sine = direction.x;
+                const float cosine = direction.y;
+                direction = float2(
+                    sine * turn.y + cosine * turn.x,
+                    cosine * turn.y - sine * turn.x);
+                const float radius = circle / maximum_radius;
+                if (shaped && almetal_world_dof_aperture_mask(
+                        circle + float(tap) * step_angle,
+                        sine, cosine, radius, cat_offset, constants) < 0.5)
+                {
+                    continue;
+                }
+                const float2 sample_offset = shaped
+                    ? circle * (sine * axis_x + cosine * axis_y)
+                    : circle * float2(sine, cosine);
+                const float shape_weight = shaped
+                    ? almetal_world_dof_shape_weight(
+                        radius, float2(sine, cosine), apodization, coma)
+                    : 1.0;
+                almetal_world_dof_accumulate(
+                    sum, sum_weight,
+                    source.sample(point_mirror_sampler,
+                        texcoord + sample_offset / screen_size,
+                        level(0.0)),
+                    radius, circle_sign, shape_weight, shaped, constants);
+            }
+            circle -= 1.0;
+        }
+    }
+    else if (circle < -0.5)
+    {
+        circle = abs(circle);
+        while (circle > 0.5)
+        {
+            const int iterations = int(max(
+                1.0, circle * 3.7 * ring_density));
+            const float step_angle = 2.0 * M_PI_F / float(iterations);
+            const float2 turn = float2(
+                sin(step_angle), cos(step_angle));
+            float2 direction = float2(sin(circle), cos(circle));
+            for (int tap = 0; tap < iterations; ++tap)
+            {
+                const float sine = direction.x;
+                const float cosine = direction.y;
+                direction = float2(
+                    sine * turn.y + cosine * turn.x,
+                    cosine * turn.y - sine * turn.x);
+                const float radius = circle / maximum_radius;
+                if (shaped && almetal_world_dof_aperture_mask(
+                        circle + float(tap) * step_angle,
+                        sine, cosine, radius, cat_offset, constants) < 0.5)
+                {
+                    continue;
+                }
+                const float2 sample_offset = shaped
+                    ? circle * (sine * axis_x + cosine * axis_y)
+                    : circle * float2(sine, cosine);
+                const float shape_weight = shaped
+                    ? almetal_world_dof_shape_weight(
+                        radius, float2(sine, cosine), apodization, coma)
+                    : 1.0;
+                almetal_world_dof_sample_far(
+                    sum, sum_weight, source, depth_texture,
+                    point_mirror_sampler, circle,
+                    texcoord + sample_offset / screen_size,
+                    radius, circle_sign, shape_weight,
+                    front_blur, shaped, constants);
+            }
+            circle -= 1.0;
+        }
+    }
+
+    float4 result = sum / max(sum_weight, 0.0001);
+    result.rgb = select(
+        result.rgb, float3(65504.0), isinf(result.rgb));
+    result.rgb = select(result.rgb, float3(0.0), isnan(result.rgb));
+    return result;
+}
+
+fragment float4 almetal_world_dof_gather_far_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    texture2d<float> depth_texture [[texture(1)]],
+    sampler point_mirror_sampler [[sampler(0)]],
+    constant ALMetalWorldDepthOfFieldConstants& constants [[buffer(0)]])
+{
+    return almetal_world_dof_gather(
+        input, source, depth_texture, point_mirror_sampler,
+        constants, false, false);
+}
+
+fragment float4 almetal_world_dof_gather_near_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    texture2d<float> depth_texture [[texture(1)]],
+    sampler point_mirror_sampler [[sampler(0)]],
+    constant ALMetalWorldDepthOfFieldConstants& constants [[buffer(0)]])
+{
+    return almetal_world_dof_gather(
+        input, source, depth_texture, point_mirror_sampler,
+        constants, true, false);
+}
+
+fragment float4 almetal_world_dof_gather_far_shaped_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    texture2d<float> depth_texture [[texture(1)]],
+    sampler point_mirror_sampler [[sampler(0)]],
+    constant ALMetalWorldDepthOfFieldConstants& constants [[buffer(0)]])
+{
+    return almetal_world_dof_gather(
+        input, source, depth_texture, point_mirror_sampler,
+        constants, false, true);
+}
+
+fragment float4 almetal_world_dof_gather_near_shaped_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    texture2d<float> depth_texture [[texture(1)]],
+    sampler point_mirror_sampler [[sampler(0)]],
+    constant ALMetalWorldDepthOfFieldConstants& constants [[buffer(0)]])
+{
+    return almetal_world_dof_gather(
+        input, source, depth_texture, point_mirror_sampler,
+        constants, true, true);
+}
+
+static float3 almetal_world_dof_blur(
+    texture2d<float> blur,
+    texture2d<float> depth_texture,
+    sampler point_mirror_sampler,
+    float2 texcoord,
+    constant ALMetalWorldDepthOfFieldConstants& constants,
+    bool front_blur)
+{
+    const float2 size = float2(blur.get_width(), blur.get_height());
+    const float2 position = texcoord * size - 0.5;
+    const float2 fraction = fract(position);
+    const int2 low = int2(floor(position));
+    const int2 high = int2(size) - 1;
+    const int2 taps[4] = {
+        low, low + int2(1, 0), low + int2(0, 1), low + int2(1, 1),
+    };
+    const float weights[4] = {
+        (1.0 - fraction.x) * (1.0 - fraction.y),
+        fraction.x * (1.0 - fraction.y),
+        (1.0 - fraction.x) * fraction.y,
+        fraction.x * fraction.y,
+    };
+    float3 sum = 0.0;
+    float sum_weight = 0.0;
+    float3 filtered = 0.0;
+    for (uint tap = 0; tap < 4; ++tap)
+    {
+        const int2 coordinate = clamp(taps[tap], int2(0), high);
+        const float3 value = blur.read(uint2(coordinate)).rgb;
+        filtered += value * weights[tap];
+        float weight = weights[tap];
+        if (!front_blur)
+        {
+            const float circle = almetal_world_dof_cof(
+                depth_texture, point_mirror_sampler,
+                (float2(coordinate) + 0.5) / size, constants);
+            weight = circle > 0.0 ? 0.0 : weight;
+        }
+        sum += value * weight;
+        sum_weight += weight;
+    }
+    return sum_weight > 0.0 ? sum / sum_weight : filtered;
+}
+
+static float4 almetal_world_dof_combine(
+    ALMetalResampleVaryings input,
+    texture2d<float> blur,
+    texture2d<float> sharp_source,
+    texture2d<float> depth_texture,
+    sampler point_mirror_sampler,
+    constant ALMetalWorldDepthOfFieldConstants& constants,
+    bool front_blur)
+{
+    const float2 texcoord = input.texcoord;
+    const float4 sharp = sharp_source.sample(
+        point_mirror_sampler, texcoord, level(0.0));
+    float3 result = sharp.rgb;
+    const float circle = almetal_world_dof_cof(
+        depth_texture, point_mirror_sampler, texcoord, constants);
+    const float amount = front_blur
+        ? min(abs(circle) * constants.limits.y * constants.limits.y, 1.0)
+        : (circle > 0.0 ? 0.0 :
+           min(abs(circle) * constants.limits.y * constants.limits.y, 1.0));
+    if (amount > 0.25 && amount < 0.75)
+    {
+        const float transition_circle = amount / constants.limits.y;
+        const float2 screen_size = float2(
+            sharp_source.get_width(), sharp_source.get_height());
+        float3 transition = sharp_source.sample(
+            point_mirror_sampler,
+            texcoord + float2(transition_circle) / screen_size,
+            level(0.0)).rgb;
+        transition += sharp_source.sample(
+            point_mirror_sampler,
+            texcoord + float2(-transition_circle, transition_circle) /
+                screen_size, level(0.0)).rgb;
+        transition += sharp_source.sample(
+            point_mirror_sampler,
+            texcoord + float2(transition_circle, -transition_circle) /
+                screen_size, level(0.0)).rgb;
+        transition += sharp_source.sample(
+            point_mirror_sampler,
+            texcoord - float2(transition_circle) / screen_size,
+            level(0.0)).rgb;
+        result = mix(result, transition * 0.25, amount);
+    }
+    if (amount > 0.0)
+    {
+        result = mix(result, almetal_world_dof_blur(
+            blur, depth_texture, point_mirror_sampler,
+            texcoord, constants, front_blur), amount);
+    }
+    return float4(result, sharp.a);
+}
+
+fragment float4 almetal_world_dof_combine_far_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> blur [[texture(0)]],
+    texture2d<float> sharp_source [[texture(1)]],
+    texture2d<float> depth_texture [[texture(2)]],
+    sampler point_mirror_sampler [[sampler(0)]],
+    constant ALMetalWorldDepthOfFieldConstants& constants [[buffer(0)]])
+{
+    return almetal_world_dof_combine(
+        input, blur, sharp_source, depth_texture,
+        point_mirror_sampler, constants, false);
+}
+
+fragment float4 almetal_world_dof_combine_near_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> blur [[texture(0)]],
+    texture2d<float> sharp_source [[texture(1)]],
+    texture2d<float> depth_texture [[texture(2)]],
+    sampler point_mirror_sampler [[sampler(0)]],
+    constant ALMetalWorldDepthOfFieldConstants& constants [[buffer(0)]])
+{
+    return almetal_world_dof_combine(
+        input, blur, sharp_source, depth_texture,
+        point_mirror_sampler, constants, true);
+}
+
 struct ALMetalWorldDisplayPostConstants
 {
     // static exposure, adapted exposure, tonemap mix, tonemap type

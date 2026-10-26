@@ -681,6 +681,42 @@ struct ALMetalWorldDisplayPostScene
     std::uint32_t frame_id = 0;
 };
 
+// Pre-tonemap HDR depth of field. The gather runs at resolution_scale and
+// the combine restores the same-size RGBA16F scene while preserving alpha.
+// inverse_projection uses the viewer's existing column-major convention.
+struct ALMetalWorldDepthOfFieldScene
+{
+    const ALMetalRenderTarget* source = nullptr;
+    const ALMetalTexture* depth_texture = nullptr;
+    float inverse_projection[16]{};
+    float focal_distance = -16.f;
+    float blur_constant = 0.f;
+    float tan_pixel_angle = 0.f;
+    float magnification = 0.f;
+    float max_cof = 0.f;
+    float resolution_scale = 1.f;
+    float highlight_threshold = 0.f;
+    float highlight_gain = 0.f;
+    float highlight_clamp = 64.f;
+    std::int32_t aperture_blades = 0;
+    float aperture_rotation = 0.f;
+    float aperture_curvature = 0.f;
+    float anamorphic_squeeze = 1.f;
+    float cat_eye = 0.f;
+    float fringe_amount = 0.f;
+    float fringe_near_tint[3] = {1.f, 0.85f, 1.f};
+    float fringe_far_tint[3] = {0.85f, 1.f, 0.9f};
+    float spherical_aberration = 0.f;
+    float field_stretch = 0.f;
+    float field_falloff = 2.f;
+    float coma_asymmetry = 0.f;
+    bool reverse_z = false;
+    bool near_blur = false;
+    // GL uses RGBA16F for the gather when halation needs its alpha-capable
+    // bloom family; otherwise it uses R11G11B10F.
+    bool rgba16_blur = false;
+};
+
 // First pass of the production SMAA 1x chain. It writes the west/north color
 // edge mask into RGBA8; an optional same-size depth texture applies the live
 // predicated threshold. The result is not displayable until the weight and
@@ -1153,6 +1189,12 @@ public:
     // owners, and this is not final presentation.
     std::unique_ptr<ALMetalRenderTarget> renderDisplayPost(
         const ALMetalWorldDisplayPostScene& scene,
+        std::string* error = nullptr);
+
+    // Gather and combine pre-tonemap depth of field as one fail-closed
+    // transaction. The sharp source is unchanged when this returns null.
+    std::unique_ptr<ALMetalRenderTarget> renderDepthOfField(
+        const ALMetalWorldDepthOfFieldScene& scene,
         std::string* error = nullptr);
 
     // Generate the exact HDR bloom/halation pyramid used by the main world

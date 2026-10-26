@@ -853,6 +853,12 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_smaa_edge_predicated_fragment",
             "almetal_world_smaa_weight_fragment",
             "almetal_world_smaa_neighborhood_fragment",
+            "almetal_world_dof_gather_far_fragment",
+            "almetal_world_dof_gather_near_fragment",
+            "almetal_world_dof_gather_far_shaped_fragment",
+            "almetal_world_dof_gather_near_shaped_fragment",
+            "almetal_world_dof_combine_far_fragment",
+            "almetal_world_dof_combine_near_fragment",
         };
         for (const char* function : functions)
         {
@@ -12609,6 +12615,510 @@ TEST_CASE("almetal: world SMAA neighborhood blend matches linear-light reference
         error.clear();
         CHECK_FALSE(renderer->renderSMAANeighborhood(invalid, &error));
         CHECK(error == "Metal world SMAA neighborhood source is incompatible");
+    }
+}
+
+TEST_CASE("almetal: world depth of field matches the HDR gather and combine reference", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 9;
+        constexpr std::uint32_t height = 7;
+        constexpr std::array<std::uint16_t, 7> levels{{
+            0x3000u, 0x3400u, 0x3800u, 0x3c00u,
+            0x4000u, 0x4400u, 0x4800u,
+        }}; // 0.125, 0.25, 0.5, 1, 2, 4, 8.
+        std::array<std::uint16_t, width * height * 4> source_pixels{};
+        std::array<float, width * height> depth_pixels{};
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const std::size_t pixel =
+                    static_cast<std::size_t>(y) * width + x;
+                source_pixels[pixel * 4 + 0] =
+                    levels[(x * 3u + y) % levels.size()];
+                source_pixels[pixel * 4 + 1] =
+                    levels[(x + y * 2u + 1u) % levels.size()];
+                source_pixels[pixel * 4 + 2] =
+                    levels[(x * 2u + y * 3u + 2u) % levels.size()];
+                source_pixels[pixel * 4 + 3] =
+                    levels[1u + (x + y) % 3u];
+                depth_pixels[pixel] = x < 3u ? 1.f : (x == 3u ? 0.5f : 0.f);
+            }
+        }
+
+        ALMetalRenderTargetDescriptor source_descriptor;
+        source_descriptor.width = width;
+        source_descriptor.height = height;
+        source_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba16_float;
+        source_descriptor.label = "Alchemy world depth-of-field test source";
+        auto source = ALMetalRenderTarget::create(
+            *device, source_descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        ALMetalTextureDescriptor depth_descriptor;
+        depth_descriptor.format = ALMetalPixelFormat::depth32_float;
+        depth_descriptor.width = width;
+        depth_descriptor.height = height;
+        depth_descriptor.storage = ALMetalStorageMode::private_gpu;
+        depth_descriptor.usage = ALMetalTextureUsage::shader_read;
+        depth_descriptor.label = "Alchemy world depth-of-field test depth";
+        auto depth = ALMetalTexture::create(
+            *device, depth_descriptor, &error);
+        INFO(error);
+        REQUIRE(depth);
+
+        auto upload = device->makeCommandBuffer(
+            "Alchemy world depth-of-field test upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        id<MTLBuffer> source_staging = [nativeDevice(*device)
+            newBufferWithBytes:source_pixels.data()
+                      length:sizeof(source_pixels)
+                     options:MTLResourceStorageModeShared];
+        REQUIRE(source_staging);
+        id<MTLBlitCommandEncoder> source_blit =
+            [nativeCommand(*upload) blitCommandEncoder];
+        REQUIRE(source_blit);
+        [source_blit copyFromBuffer:source_staging
+                       sourceOffset:0
+                  sourceBytesPerRow:width * 4 * sizeof(std::uint16_t)
+                sourceBytesPerImage:sizeof(source_pixels)
+                         sourceSize:MTLSizeMake(width, height, 1)
+                          toTexture:(__bridge id<MTLTexture>)
+                              source->colorTexture(0)->nativeHandle()
+                   destinationSlice:0
+                   destinationLevel:0
+                  destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [source_blit endEncoding];
+        REQUIRE(depth->upload(
+            *upload, 0, 0, {}, depth_pixels.data(),
+            width * sizeof(float), &error));
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldDepthOfFieldScene base;
+        base.source = source.get();
+        base.depth_texture = depth.get();
+        base.inverse_projection[0] = 1.f;
+        base.inverse_projection[5] = 1.f;
+        base.inverse_projection[10] = 1.f;
+        base.inverse_projection[14] = -2.f;
+        base.inverse_projection[15] = 1.f;
+        base.focal_distance = -2.f;
+        base.blur_constant = 24.f / 1.414f;
+        base.tan_pixel_angle = 1.f;
+        base.magnification = 1.f;
+        base.max_cof = 4.f;
+        base.resolution_scale = 0.75f;
+        base.highlight_threshold = 1.f;
+        base.highlight_gain = 0.5f;
+        base.highlight_clamp = 2.f;
+
+        const auto half_to_float = [](std::uint16_t value)
+        {
+            const std::uint32_t exponent = (value >> 10u) & 0x1fu;
+            const std::uint32_t mantissa = value & 0x3ffu;
+            float result = exponent == 0u
+                ? std::ldexp(static_cast<float>(mantissa), -24)
+                : std::ldexp(static_cast<float>(mantissa + 0x400u),
+                             static_cast<int>(exponent) - 25);
+            return (value & 0x8000u) != 0u ? -result : result;
+        };
+        using Pixel = std::array<float, 4>;
+        std::vector<Pixel> source_reference(width * height);
+        for (std::size_t pixel = 0; pixel < source_reference.size(); ++pixel)
+        {
+            for (std::size_t channel = 0; channel < 4; ++channel)
+            {
+                source_reference[pixel][channel] = half_to_float(
+                    source_pixels[pixel * 4 + channel]);
+            }
+        }
+        const auto mirror = [](float value)
+        {
+            value = std::fmod(value, 2.f);
+            if (value < 0.f)
+            {
+                value += 2.f;
+            }
+            return value > 1.f ? 2.f - value : value;
+        };
+        const auto point_coordinate = [&](float value, std::uint32_t size)
+        {
+            return static_cast<std::uint32_t>(std::clamp(
+                static_cast<int>(std::floor(mirror(value) * size)),
+                0, static_cast<int>(size) - 1));
+        };
+        const auto sample_source = [&](float u, float v)
+        {
+            const std::uint32_t x = point_coordinate(u, width);
+            const std::uint32_t y = point_coordinate(v, height);
+            return source_reference[static_cast<std::size_t>(y) * width + x];
+        };
+        const auto sample_depth = [&](float u, float v)
+        {
+            const std::uint32_t x = point_coordinate(u, width);
+            const std::uint32_t y = point_coordinate(v, height);
+            return depth_pixels[static_cast<std::size_t>(y) * width + x];
+        };
+        const auto circle_of_confusion = [&](float u, float v)
+        {
+            const float ndc_z = sample_depth(u, v) * 2.f - 1.f;
+            const float position_z = ndc_z - 2.f;
+            const float defocus = base.focal_distance / position_z - 1.f;
+            const float pixel_length =
+                base.tan_pixel_angle * -base.focal_distance;
+            return std::clamp(
+                defocus * (base.blur_constant * 1.414f /
+                           (base.magnification * pixel_length)),
+                -base.max_cof, base.max_cof);
+        };
+        const auto add_sample = [&](Pixel& sum, float& sum_weight,
+                                    Pixel sample)
+        {
+            const float peak = std::max(
+                sample[0], std::max(sample[1], sample[2]));
+            if (peak > base.highlight_clamp)
+            {
+                const float scale = base.highlight_clamp / peak;
+                sample[0] *= scale;
+                sample[1] *= scale;
+                sample[2] *= scale;
+            }
+            const float clamped_peak = std::max(
+                sample[0], std::max(sample[1], sample[2]));
+            const float weight = 1.f + base.highlight_gain *
+                std::max(clamped_peak - base.highlight_threshold, 0.f);
+            for (std::size_t channel = 0; channel < 4; ++channel)
+            {
+                sum[channel] += sample[channel] * weight;
+            }
+            sum_weight += weight;
+        };
+
+        const std::uint32_t blur_width = static_cast<std::uint32_t>(
+            width * base.resolution_scale);
+        const std::uint32_t blur_height = static_cast<std::uint32_t>(
+            height * base.resolution_scale);
+        REQUIRE(blur_width == 6u);
+        REQUIRE(blur_height == 5u);
+        const float resolution_scale = std::min(
+            blur_width / static_cast<float>(width),
+            blur_height / static_cast<float>(height));
+        std::vector<Pixel> blur_reference(blur_width * blur_height);
+        constexpr float pi = 3.14159265358979323846f;
+        for (std::uint32_t y = 0; y < blur_height; ++y)
+        {
+            for (std::uint32_t x = 0; x < blur_width; ++x)
+            {
+                const float u = (x + 0.5f) / blur_width;
+                const float v = (y + 0.5f) / blur_height;
+                Pixel sum = sample_source(u, v);
+                float sum_weight = 1.f;
+                float circle = circle_of_confusion(u, v);
+                const float maximum_radius =
+                    std::max(std::abs(circle), 0.0001f);
+                if (circle < -0.5f)
+                {
+                    circle = std::abs(circle);
+                    while (circle > 0.5f)
+                    {
+                        const int iterations = static_cast<int>(std::max(
+                            1.f, circle * 3.7f));
+                        const float step_angle = 2.f * pi / iterations;
+                        const float turn_sine = std::sin(step_angle);
+                        const float turn_cosine = std::cos(step_angle);
+                        float sine = std::sin(circle);
+                        float cosine = std::cos(circle);
+                        for (int tap = 0; tap < iterations; ++tap)
+                        {
+                            const float current_sine = sine;
+                            const float current_cosine = cosine;
+                            sine = current_sine * turn_cosine +
+                                current_cosine * turn_sine;
+                            cosine = current_cosine * turn_cosine -
+                                current_sine * turn_sine;
+                            const float sample_u = u +
+                                circle * current_sine / width;
+                            const float sample_v = v +
+                                circle * current_cosine / height;
+                            const float sampled_circle =
+                                -circle_of_confusion(sample_u, sample_v);
+                            if (sampled_circle > circle + 0.001f)
+                            {
+                                add_sample(
+                                    sum, sum_weight,
+                                    sample_source(sample_u, sample_v));
+                            }
+                        }
+                        circle -= 1.f;
+                    }
+                }
+                for (float& channel : sum)
+                {
+                    channel /= std::max(sum_weight, 0.0001f);
+                }
+                blur_reference[
+                    static_cast<std::size_t>(y) * blur_width + x] = sum;
+                CHECK(maximum_radius >= 0.0001f);
+            }
+        }
+
+        const auto sample_blur = [&](float u, float v)
+        {
+            const float px = u * blur_width - 0.5f;
+            const float py = v * blur_height - 0.5f;
+            const int low_x = static_cast<int>(std::floor(px));
+            const int low_y = static_cast<int>(std::floor(py));
+            const float fraction_x = px - std::floor(px);
+            const float fraction_y = py - std::floor(py);
+            const int tap_x[4] = {low_x, low_x + 1, low_x, low_x + 1};
+            const int tap_y[4] = {low_y, low_y, low_y + 1, low_y + 1};
+            const float weights[4] = {
+                (1.f - fraction_x) * (1.f - fraction_y),
+                fraction_x * (1.f - fraction_y),
+                (1.f - fraction_x) * fraction_y,
+                fraction_x * fraction_y,
+            };
+            Pixel filtered{};
+            Pixel accepted{};
+            float accepted_weight = 0.f;
+            for (std::size_t tap = 0; tap < 4; ++tap)
+            {
+                const int x = std::clamp(
+                    tap_x[tap], 0, static_cast<int>(blur_width) - 1);
+                const int y = std::clamp(
+                    tap_y[tap], 0, static_cast<int>(blur_height) - 1);
+                const Pixel& value = blur_reference[
+                    static_cast<std::size_t>(y) * blur_width + x];
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    filtered[channel] += value[channel] * weights[tap];
+                }
+                if (circle_of_confusion(
+                        (x + 0.5f) / blur_width,
+                        (y + 0.5f) / blur_height) <= 0.f)
+                {
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                    {
+                        accepted[channel] +=
+                            value[channel] * weights[tap];
+                    }
+                    accepted_weight += weights[tap];
+                }
+            }
+            if (accepted_weight > 0.f)
+            {
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    accepted[channel] /= accepted_weight;
+                }
+                return accepted;
+            }
+            return filtered;
+        };
+
+        std::vector<Pixel> expected(width * height);
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const float u = (x + 0.5f) / width;
+                const float v = (y + 0.5f) / height;
+                const Pixel sharp = sample_source(u, v);
+                Pixel result = sharp;
+                const float circle = circle_of_confusion(u, v);
+                const float amount = circle > 0.f ? 0.f : std::min(
+                    std::abs(circle) * resolution_scale *
+                    resolution_scale, 1.f);
+                if (amount > 0.f)
+                {
+                    const Pixel blurred = sample_blur(u, v);
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                    {
+                        result[channel] = std::lerp(
+                            result[channel], blurred[channel], amount);
+                    }
+                }
+                expected[static_cast<std::size_t>(y) * width + x] = result;
+            }
+        }
+
+        std::array<std::vector<std::uint16_t>, 8> variants;
+        for (std::size_t rgba16 = 0; rgba16 < 2; ++rgba16)
+        {
+            for (std::size_t shaped = 0; shaped < 2; ++shaped)
+            {
+                for (std::size_t near_blur = 0; near_blur < 2; ++near_blur)
+                {
+                    ALMetalWorldDepthOfFieldScene scene = base;
+                    scene.rgba16_blur = rgba16 != 0;
+                    scene.near_blur = near_blur != 0;
+                    if (shaped != 0)
+                    {
+                        scene.aperture_blades = 6;
+                        scene.aperture_rotation = 0.2f;
+                        scene.aperture_curvature = 0.3f;
+                        scene.anamorphic_squeeze = 1.4f;
+                        scene.cat_eye = 0.2f;
+                        scene.fringe_amount = 0.3f;
+                        scene.spherical_aberration = 0.4f;
+                        scene.field_stretch = 0.2f;
+                        scene.field_falloff = 2.5f;
+                        scene.coma_asymmetry = 0.3f;
+                    }
+                    const std::size_t variant = rgba16 * 4u +
+                        shaped * 2u + near_blur;
+                    auto output = renderer->renderDepthOfField(scene, &error);
+                    INFO(error);
+                    CAPTURE(rgba16, shaped, near_blur);
+                    REQUIRE(output);
+                    CHECK(output->descriptor().width == width);
+                    CHECK(output->descriptor().height == height);
+                    CHECK(output->descriptor().colors[0].format ==
+                          ALMetalPixelFormat::rgba16_float);
+                    variants[variant].resize(width * height * 4);
+                    REQUIRE(output->colorTexture(0)->readback(
+                        *device, 0, 0, {}, variants[variant].data(),
+                        width * 4 * sizeof(std::uint16_t), &error));
+                    INFO(error);
+                    for (std::size_t pixel = 0;
+                         pixel < width * height; ++pixel)
+                    {
+                        CHECK(variants[variant][pixel * 4 + 3] ==
+                              source_pixels[pixel * 4 + 3]);
+                        for (std::size_t channel = 0; channel < 3; ++channel)
+                        {
+                            CHECK(std::isfinite(half_to_float(
+                                variants[variant][pixel * 4 + channel])));
+                        }
+                    }
+                }
+            }
+        }
+
+        std::size_t changed_far_pixels = 0;
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            for (std::size_t channel = 0; channel < 3; ++channel)
+            {
+                const float actual = half_to_float(
+                    variants[4][pixel * 4 + channel]);
+                const float wanted = expected[pixel][channel];
+                CAPTURE(pixel, channel, actual, wanted);
+                CHECK(std::abs(actual - wanted) < 0.075f);
+            }
+            if (depth_pixels[pixel] == 0.f &&
+                variants[4][pixel * 4] != source_pixels[pixel * 4])
+            {
+                ++changed_far_pixels;
+            }
+        }
+        CHECK(changed_far_pixels > 0);
+        CHECK(variants[4] != variants[5]);
+        CHECK(variants[4] != variants[6]);
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            for (std::size_t channel = 0; channel < 3; ++channel)
+            {
+                const float compact = half_to_float(
+                    variants[0][pixel * 4 + channel]);
+                const float precise = half_to_float(
+                    variants[4][pixel * 4 + channel]);
+                CAPTURE(pixel, channel, compact, precise);
+                CHECK(std::abs(compact - precise) < 0.09f);
+            }
+        }
+
+        ALMetalWorldDepthOfFieldScene reverse = base;
+        reverse.rgba16_blur = true;
+        reverse.reverse_z = true;
+        reverse.inverse_projection[10] = 2.f;
+        reverse.inverse_projection[14] = -3.f;
+        auto reverse_output = renderer->renderDepthOfField(reverse, &error);
+        INFO(error);
+        REQUIRE(reverse_output);
+        std::vector<std::uint16_t> reverse_pixels(width * height * 4);
+        REQUIRE(reverse_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_pixels.data(),
+            width * 4 * sizeof(std::uint16_t), &error));
+        INFO(error);
+        CHECK(reverse_pixels == variants[4]);
+
+        // The production world target carries a combined D32F/S8 attachment.
+        // Prove that its depth plane is a valid sampled input, independently
+        // of the standalone D32F oracle texture above.
+        ALMetalRenderTargetDescriptor combined_descriptor;
+        combined_descriptor.width = width;
+        combined_descriptor.height = height;
+        combined_descriptor.color_attachment_count = 0;
+        combined_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        combined_descriptor.depth_stencil_shader_read = true;
+        combined_descriptor.label =
+            "Alchemy world depth-of-field combined-depth test";
+        auto combined_depth = ALMetalRenderTarget::create(
+            *device, combined_descriptor, &error);
+        INFO(error);
+        REQUIRE(combined_depth);
+        ALMetalRenderPassConfig clear_config;
+        clear_config.depth_load = ALMetalLoadAction::clear;
+        clear_config.depth_store = ALMetalStoreAction::store;
+        clear_config.clear_depth = 0.0;
+        clear_config.stencil_load = ALMetalLoadAction::clear;
+        clear_config.stencil_store = ALMetalStoreAction::store;
+        auto clear_pass = combined_depth->makeRenderPass(
+            clear_config, &error);
+        auto clear_command = clear_pass ? device->makeCommandBuffer(
+            "Alchemy depth-of-field combined-depth clear", &error)
+            : nullptr;
+        auto clear_encoder = clear_command && clear_pass
+            ? ALMetalRenderEncoder::begin(
+                  *clear_command, *clear_pass,
+                  "Alchemy depth-of-field combined-depth encoder", &error)
+            : nullptr;
+        INFO(error);
+        REQUIRE(clear_encoder);
+        REQUIRE(clear_encoder->end(&error));
+        REQUIRE(clear_command->commitAndWait(&error));
+        base.depth_texture = combined_depth->depthStencilTexture();
+        auto combined_result = renderer->renderDepthOfField(base, &error);
+        INFO(error);
+        REQUIRE(combined_result);
+
+        ALMetalWorldDepthOfFieldScene invalid;
+        error.clear();
+        CHECK_FALSE(renderer->renderDepthOfField(invalid, &error));
+        CHECK(error == "Metal world depth-of-field scene is incomplete");
+        invalid = base;
+        invalid.max_cof = 0.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderDepthOfField(invalid, &error));
+        CHECK(error == "Metal world depth-of-field state is invalid");
+        ALMetalTextureDescriptor wrong_depth_descriptor = depth_descriptor;
+        wrong_depth_descriptor.format = ALMetalPixelFormat::r32_float;
+        auto wrong_depth = ALMetalTexture::create(
+            *device, wrong_depth_descriptor, &error);
+        INFO(error);
+        REQUIRE(wrong_depth);
+        invalid = base;
+        invalid.depth_texture = wrong_depth.get();
+        error.clear();
+        CHECK_FALSE(renderer->renderDepthOfField(invalid, &error));
+        CHECK(error == "Metal world depth-of-field inputs are incompatible");
     }
 }
 

@@ -133,6 +133,28 @@ namespace
     };
     static_assert(sizeof(WorldDisplayPostConstants) == 80);
 
+    struct alignas(16) WorldDepthOfFieldConstants
+    {
+        float inverse_projection[16]{};
+        // focal distance, blur constant, tan pixel angle, magnification.
+        float focus[4]{};
+        // max CoF, blur resolution scale, highlight threshold/gain.
+        float limits[4]{};
+        // highlight clamp, aperture rotation/curvature, cat-eye amount.
+        float shape0[4]{};
+        // fringe amount, spherical aberration, field stretch/falloff.
+        float shape1[4]{};
+        // coma, half sector, full sector, polygon apothem.
+        float shape2[4]{};
+        // x/y are the area-preserving anamorphic axes.
+        float anamorphic[4] = {1.f, 1.f, 0.f, 0.f};
+        float fringe_near[4] = {1.f, 0.85f, 1.f, 0.f};
+        float fringe_far[4] = {0.85f, 1.f, 0.9f, 0.f};
+        // reverse Z, near blur, shaped gather, aperture blades.
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldDepthOfFieldConstants) == 208);
+
     struct alignas(16) WorldBloomExtractConstants
     {
         // threshold, knee, firefly clamp, alpha glow boost
@@ -883,6 +905,11 @@ struct ALMetalWorldGBufferRenderer::Impl
         smaa_edge_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> smaa_weight_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> smaa_neighborhood_pipeline;
+    // format (R11G11B10F/RGBA16F) x shaped x near-blur.
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 8>
+        depth_of_field_gather_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        depth_of_field_combine_pipelines;
     std::unique_ptr<ALMetalTexture> smaa_area_texture;
     std::unique_ptr<ALMetalTexture> smaa_search_texture;
     std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
@@ -996,6 +1023,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalSamplerState> probe_sampler;
     std::unique_ptr<ALMetalSamplerState> point_clamp_sampler;
     std::unique_ptr<ALMetalSamplerState> point_repeat_sampler;
+    std::unique_ptr<ALMetalSamplerState> point_mirror_sampler;
     std::unique_ptr<ALMetalSamplerState> linear_clamp_sampler;
     std::unique_ptr<ALMetalSamplerState> linear_mirror_sampler;
     std::unique_ptr<ALMetalSamplerState> ramp_sampler;
@@ -1244,6 +1272,18 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_smaa_weight_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_smaa_neighborhood_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_dof_gather_far_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_dof_gather_near_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_dof_gather_far_shaped_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_dof_gather_near_shaped_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_dof_combine_far_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_dof_combine_near_fragment") ||
         !impl->library->hasFunction("almetal_world_exposure_meter") ||
         !impl->library->hasFunction("almetal_world_exposure_initial") ||
         !impl->library->hasFunction("almetal_world_exposure_history") ||
@@ -1606,6 +1646,59 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     if (!impl->smaa_neighborhood_pipeline)
     {
         return nullptr;
+    }
+
+    constexpr std::array<const char*, 4> dof_gather_functions{{
+        "almetal_world_dof_gather_far_fragment",
+        "almetal_world_dof_gather_near_fragment",
+        "almetal_world_dof_gather_far_shaped_fragment",
+        "almetal_world_dof_gather_near_shaped_fragment",
+    }};
+    constexpr std::array<ALMetalPixelFormat, 2> dof_blur_formats{{
+        ALMetalPixelFormat::rg11b10_float,
+        ALMetalPixelFormat::rgba16_float,
+    }};
+    for (std::size_t format = 0; format < dof_blur_formats.size(); ++format)
+    {
+        for (std::size_t variant = 0;
+             variant < dof_gather_functions.size(); ++variant)
+        {
+            ALMetalRenderPipelineDescriptor descriptor;
+            descriptor.library = impl->library.get();
+            descriptor.vertex_function = "almetal_resample_vertex";
+            descriptor.fragment_function = dof_gather_functions[variant];
+            descriptor.colors[0].format = dof_blur_formats[format];
+            descriptor.label = "Alchemy world depth-of-field gather pipeline";
+            const std::size_t index = format * dof_gather_functions.size() +
+                variant;
+            impl->depth_of_field_gather_pipelines[index] =
+                ALMetalRenderPipeline::create(device, descriptor, error);
+            if (!impl->depth_of_field_gather_pipelines[index])
+            {
+                return nullptr;
+            }
+        }
+    }
+
+    constexpr std::array<const char*, 2> dof_combine_functions{{
+        "almetal_world_dof_combine_far_fragment",
+        "almetal_world_dof_combine_near_fragment",
+    }};
+    for (std::size_t variant = 0;
+         variant < dof_combine_functions.size(); ++variant)
+    {
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = impl->library.get();
+        descriptor.vertex_function = "almetal_resample_vertex";
+        descriptor.fragment_function = dof_combine_functions[variant];
+        descriptor.colors[0].format = ALMetalPixelFormat::rgba16_float;
+        descriptor.label = "Alchemy world depth-of-field combine pipeline";
+        impl->depth_of_field_combine_pipelines[variant] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->depth_of_field_combine_pipelines[variant])
+        {
+            return nullptr;
+        }
     }
 
     ALMetalComputePipelineDescriptor exposure_descriptor;
@@ -3365,6 +3458,17 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->point_repeat_sampler = ALMetalSamplerState::create(
         device, sampler, error);
     if (!impl->point_repeat_sampler)
+    {
+        return nullptr;
+    }
+
+    sampler.address_s = ALMetalSamplerAddressMode::mirror_repeat;
+    sampler.address_t = ALMetalSamplerAddressMode::mirror_repeat;
+    sampler.address_r = ALMetalSamplerAddressMode::mirror_repeat;
+    sampler.label = "Alchemy world point mirror sampler";
+    impl->point_mirror_sampler = ALMetalSamplerState::create(
+        device, sampler, error);
+    if (!impl->point_mirror_sampler)
     {
         return nullptr;
     }
@@ -6292,6 +6396,254 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         encoder->draw(
             ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderDepthOfField(
+    const ALMetalWorldDepthOfFieldScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.source ||
+        !scene.depth_texture)
+    {
+        setError(error, "Metal world depth-of-field scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& source =
+        scene.source->descriptor();
+    const ALMetalTextureDescriptor& depth =
+        scene.depth_texture->descriptor();
+    const bool depth_format =
+        depth.format == ALMetalPixelFormat::depth32_float ||
+        depth.format == ALMetalPixelFormat::depth32_float_stencil8;
+    if (source.width == 0 || source.height == 0 ||
+        source.sample_count != 1 || source.color_attachment_count != 1 ||
+        source.colors[0].format != ALMetalPixelFormat::rgba16_float ||
+        !sampleableTexture(scene.source->colorTexture(0)) ||
+        !sampleableTexture(scene.depth_texture) || !depth_format ||
+        depth.width != source.width || depth.height != source.height ||
+        depth.array_length != 1 || depth.mipmap_level_count != 1 ||
+        depth.sample_count != 1)
+    {
+        setError(error, "Metal world depth-of-field inputs are incompatible");
+        return nullptr;
+    }
+
+    constexpr float pi = 3.14159265358979323846f;
+    if (!finiteValues(scene.inverse_projection, 16) ||
+        !std::isfinite(scene.focal_distance) ||
+        !std::isfinite(scene.blur_constant) ||
+        !std::isfinite(scene.tan_pixel_angle) ||
+        !std::isfinite(scene.magnification) ||
+        !std::isfinite(scene.max_cof) ||
+        !std::isfinite(scene.resolution_scale) ||
+        !std::isfinite(scene.highlight_threshold) ||
+        !std::isfinite(scene.highlight_gain) ||
+        !std::isfinite(scene.highlight_clamp) ||
+        !std::isfinite(scene.aperture_rotation) ||
+        !std::isfinite(scene.aperture_curvature) ||
+        !std::isfinite(scene.anamorphic_squeeze) ||
+        !std::isfinite(scene.cat_eye) ||
+        !std::isfinite(scene.fringe_amount) ||
+        !finiteValues(scene.fringe_near_tint, 3) ||
+        !finiteValues(scene.fringe_far_tint, 3) ||
+        !std::isfinite(scene.spherical_aberration) ||
+        !std::isfinite(scene.field_stretch) ||
+        !std::isfinite(scene.field_falloff) ||
+        !std::isfinite(scene.coma_asymmetry) ||
+        scene.focal_distance >= 0.f || scene.blur_constant <= 0.f ||
+        scene.tan_pixel_angle <= 0.f || scene.magnification <= 0.f ||
+        scene.max_cof <= 0.f || scene.resolution_scale <= 0.f ||
+        scene.resolution_scale > 1.f || scene.highlight_threshold < 0.f ||
+        scene.highlight_gain < 0.f || scene.highlight_clamp < 0.f ||
+        scene.aperture_blades < 0 || scene.aperture_blades > 11 ||
+        scene.aperture_rotation < 0.f ||
+        scene.aperture_rotation > 2.f * pi ||
+        scene.aperture_curvature < 0.f ||
+        scene.aperture_curvature > 1.f ||
+        scene.anamorphic_squeeze < 0.25f ||
+        scene.anamorphic_squeeze > 4.f ||
+        scene.cat_eye < 0.f || scene.cat_eye > 1.5f ||
+        scene.fringe_amount < 0.f || scene.fringe_amount > 1.f ||
+        scene.spherical_aberration < -1.f ||
+        scene.spherical_aberration > 1.f ||
+        scene.field_stretch < -1.f || scene.field_stretch > 1.f ||
+        scene.field_falloff < 1.f || scene.field_falloff > 4.f ||
+        scene.coma_asymmetry < 0.f || scene.coma_asymmetry > 1.f)
+    {
+        setError(error, "Metal world depth-of-field state is invalid");
+        return nullptr;
+    }
+
+    const bool anamorphic = scene.anamorphic_squeeze < 0.999f ||
+        scene.anamorphic_squeeze > 1.001f;
+    const bool shaped = scene.aperture_blades >= 3 ||
+        scene.cat_eye > 0.f || scene.fringe_amount > 0.f || anamorphic ||
+        scene.spherical_aberration != 0.f ||
+        scene.field_stretch != 0.f || scene.coma_asymmetry > 0.f;
+    const std::uint32_t blur_width = std::max(
+        1u, static_cast<std::uint32_t>(
+                static_cast<float>(source.width) * scene.resolution_scale));
+    const std::uint32_t blur_height = std::max(
+        1u, static_cast<std::uint32_t>(
+                static_cast<float>(source.height) * scene.resolution_scale));
+    const float resolution_scale = std::min(
+        static_cast<float>(blur_width) / static_cast<float>(source.width),
+        static_cast<float>(blur_height) / static_cast<float>(source.height));
+
+    ALMetalRenderTargetDescriptor blur_descriptor;
+    blur_descriptor.width = blur_width;
+    blur_descriptor.height = blur_height;
+    blur_descriptor.colors[0].format = scene.rgba16_blur
+        ? ALMetalPixelFormat::rgba16_float
+        : ALMetalPixelFormat::rg11b10_float;
+    blur_descriptor.colors[0].shader_read = true;
+    blur_descriptor.colors[0].label =
+        "Alchemy native world depth-of-field blur color";
+    blur_descriptor.label =
+        "Alchemy native world depth-of-field blur target";
+    auto blur = ALMetalRenderTarget::create(
+        *mImpl->device, blur_descriptor, error);
+    if (!blur)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = source.width;
+    output_descriptor.height = source.height;
+    output_descriptor.colors[0].format = ALMetalPixelFormat::rgba16_float;
+    output_descriptor.colors[0].shader_read = true;
+    output_descriptor.colors[0].label =
+        "Alchemy native world defocused HDR color";
+    output_descriptor.label =
+        "Alchemy native world depth-of-field target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    WorldDepthOfFieldConstants constants{};
+    std::memcpy(constants.inverse_projection, scene.inverse_projection,
+                sizeof(constants.inverse_projection));
+    constants.focus[0] = scene.focal_distance;
+    constants.focus[1] = scene.blur_constant;
+    constants.focus[2] = scene.tan_pixel_angle;
+    constants.focus[3] = scene.magnification;
+    constants.limits[0] = scene.max_cof;
+    constants.limits[1] = resolution_scale;
+    constants.limits[2] = scene.highlight_threshold;
+    constants.limits[3] = scene.highlight_gain;
+    constants.shape0[0] = scene.highlight_clamp;
+    constants.shape0[1] = scene.aperture_rotation;
+    constants.shape0[2] = scene.aperture_curvature;
+    constants.shape0[3] = scene.cat_eye;
+    constants.shape1[0] = scene.fringe_amount;
+    constants.shape1[1] = scene.spherical_aberration;
+    constants.shape1[2] = scene.field_stretch;
+    constants.shape1[3] = scene.field_falloff;
+    constants.shape2[0] = scene.coma_asymmetry;
+    const float sides = static_cast<float>(
+        std::max(scene.aperture_blades, 3));
+    constants.shape2[1] = pi / sides;
+    constants.shape2[2] = 2.f * constants.shape2[1];
+    constants.shape2[3] = std::cos(constants.shape2[1]);
+    const float anamorphic_root = std::sqrt(scene.anamorphic_squeeze);
+    constants.anamorphic[0] = 1.f / anamorphic_root;
+    constants.anamorphic[1] = anamorphic_root;
+    std::memcpy(constants.fringe_near, scene.fringe_near_tint,
+                sizeof(scene.fringe_near_tint));
+    std::memcpy(constants.fringe_far, scene.fringe_far_tint,
+                sizeof(scene.fringe_far_tint));
+    constants.config[0] = scene.reverse_z ? 1u : 0u;
+    constants.config[1] = scene.near_blur ? 1u : 0u;
+    constants.config[2] = shaped ? 1u : 0u;
+    constants.config[3] = static_cast<std::uint32_t>(
+        scene.aperture_blades);
+
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world depth of field", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::dont_care;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    auto gather_pass = blur->makeRenderPass(pass_config, error);
+    auto gather = gather_pass ? ALMetalRenderEncoder::begin(
+        *command, *gather_pass,
+        "Alchemy world depth-of-field gather encoder", error) : nullptr;
+    if (!gather)
+    {
+        return nullptr;
+    }
+    const std::size_t gather_pipeline =
+        (scene.rgba16_blur ? 4u : 0u) +
+        (shaped ? 2u : 0u) + (scene.near_blur ? 1u : 0u);
+    const bool gathered =
+        gather->setViewport(
+            {0.0, 0.0, static_cast<double>(blur_width),
+             static_cast<double>(blur_height), 0.0, 1.0}, error) &&
+        gather->setScissor(
+            {0, 0, blur_width, blur_height}, error) &&
+        gather->setCullMode(ALMetalCullMode::none, error) &&
+        gather->setPipeline(
+            *mImpl->depth_of_field_gather_pipelines[gather_pipeline],
+            error) &&
+        gather->setFragmentTexture(
+            0, scene.source->colorTexture(0), error) &&
+        gather->setFragmentTexture(1, scene.depth_texture, error) &&
+        gather->setFragmentSampler(
+            0, mImpl->point_mirror_sampler.get(), error) &&
+        gather->setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        gather->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+        gather->end(error);
+    if (!gathered)
+    {
+        return nullptr;
+    }
+
+    auto combine_pass = output->makeRenderPass(pass_config, error);
+    auto combine = combine_pass ? ALMetalRenderEncoder::begin(
+        *command, *combine_pass,
+        "Alchemy world depth-of-field combine encoder", error) : nullptr;
+    if (!combine)
+    {
+        return nullptr;
+    }
+    const bool combined =
+        combine->setViewport(
+            {0.0, 0.0, static_cast<double>(source.width),
+             static_cast<double>(source.height), 0.0, 1.0}, error) &&
+        combine->setScissor(
+            {0, 0, source.width, source.height}, error) &&
+        combine->setCullMode(ALMetalCullMode::none, error) &&
+        combine->setPipeline(
+            *mImpl->depth_of_field_combine_pipelines
+                [scene.near_blur ? 1u : 0u], error) &&
+        combine->setFragmentTexture(0, blur->colorTexture(0), error) &&
+        combine->setFragmentTexture(
+            1, scene.source->colorTexture(0), error) &&
+        combine->setFragmentTexture(2, scene.depth_texture, error) &&
+        combine->setFragmentSampler(
+            0, mImpl->point_mirror_sampler.get(), error) &&
+        combine->setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        combine->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+        combine->end(error);
+    if (!combined || !command->commit(error))
     {
         return nullptr;
     }
