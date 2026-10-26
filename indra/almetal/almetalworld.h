@@ -681,6 +681,20 @@ struct ALMetalWorldDisplayPostScene
     std::uint32_t frame_id = 0;
 };
 
+// First pass of the production SMAA 1x chain. It writes the west/north color
+// edge mask into RGBA8; an optional same-size depth texture applies the live
+// predicated threshold. The result is not displayable until the weight and
+// neighborhood stages have completed.
+struct ALMetalWorldSMAAEdgeScene
+{
+    const ALMetalRenderTarget* source = nullptr;
+    const ALMetalTexture* predication_texture = nullptr;
+    std::uint32_t quality = 0;
+    float predication_threshold = 0.002f;
+    float predication_scale = 2.f;
+    float predication_strength = 0.4f;
+};
+
 // The production HDR bloom owner. It reproduces the world
 // resource plan's five resolution scales and 3..7-level transient pyramid:
 // soft-knee/legacy-alpha extract, outlier-aware first downsample, ordinary
@@ -1134,6 +1148,13 @@ public:
     std::unique_ptr<ALMetalRenderTarget> renderFXAA(
         const ALMetalRenderTarget& source,
         std::uint32_t quality,
+        std::string* error = nullptr);
+
+    // Generate only SMAA's exact color-edge target. This deliberately does
+    // not imply complete SMAA ownership; callers must retain their existing
+    // output until the later weight and neighborhood passes also succeed.
+    std::unique_ptr<ALMetalRenderTarget> renderSMAAEdges(
+        const ALMetalWorldSMAAEdgeScene& scene,
         std::string* error = nullptr);
 
     // Meter and adapt one HDR world frame entirely on the Metal queue. The

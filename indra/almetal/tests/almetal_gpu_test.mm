@@ -274,6 +274,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_cross_filter_fragment",
             "almetal_world_cas_fragment",
             "almetal_world_fxaa_fragment",
+            "almetal_world_smaa_edge_fragment",
+            "almetal_world_smaa_edge_predicated_fragment",
         };
         for (const char* function : functions)
         {
@@ -11240,6 +11242,265 @@ TEST_CASE("almetal: world FXAA matches every production quality preset", "[almet
         error.clear();
         CHECK_FALSE(renderer->renderFXAA(*wrong_source, 0, &error));
         CHECK(error == "Metal world FXAA source is incompatible");
+    }
+}
+
+TEST_CASE("almetal: world SMAA edge stage matches color and predication rules", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 13;
+        constexpr std::uint32_t height = 11;
+        std::array<std::uint32_t, width * height> input{};
+        std::array<float, width * height> depth{};
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                std::uint32_t value = 100u;
+                if (x >= 6)
+                {
+                    value += 80u;
+                }
+                if (y >= 5)
+                {
+                    value += 170u;
+                }
+                input[y * width + x] = value | (value << 10u) |
+                    (value << 20u) | (3u << 30u);
+                depth[y * width + x] = x >= 6 ? 0.8f : 0.2f;
+            }
+        }
+
+        ALMetalRenderTargetDescriptor descriptor;
+        descriptor.width = width;
+        descriptor.height = height;
+        descriptor.colors[0].format =
+            ALMetalPixelFormat::rgb10a2_unorm;
+        descriptor.label = "Alchemy world SMAA edge test source";
+        auto source = ALMetalRenderTarget::create(
+            *device, descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        ALMetalTextureDescriptor depth_descriptor;
+        depth_descriptor.width = width;
+        depth_descriptor.height = height;
+        depth_descriptor.format = ALMetalPixelFormat::depth32_float;
+        depth_descriptor.storage = ALMetalStorageMode::private_gpu;
+        depth_descriptor.usage = ALMetalTextureUsage::shader_read;
+        depth_descriptor.label = "Alchemy world SMAA predication test depth";
+        auto predication = ALMetalTexture::create(
+            *device, depth_descriptor, &error);
+        INFO(error);
+        REQUIRE(predication);
+
+        auto upload = device->makeCommandBuffer(
+            "Alchemy world SMAA edge test upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        REQUIRE(predication->upload(
+            *upload, 0, 0, {}, depth.data(), width * sizeof(float),
+            &error));
+        id<MTLBuffer> staging = [nativeDevice(*device)
+            newBufferWithBytes:input.data()
+                      length:sizeof(input)
+                     options:MTLResourceStorageModeShared];
+        REQUIRE(staging);
+        id<MTLBlitCommandEncoder> blit =
+            [nativeCommand(*upload) blitCommandEncoder];
+        REQUIRE(blit);
+        [blit copyFromBuffer:staging
+                sourceOffset:0
+           sourceBytesPerRow:width * sizeof(std::uint32_t)
+         sourceBytesPerImage:sizeof(input)
+                  sourceSize:MTLSizeMake(width, height, 1)
+                   toTexture:(__bridge id<MTLTexture>)
+                       source->colorTexture(0)->nativeHandle()
+            destinationSlice:0
+            destinationLevel:0
+           destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [blit endEncoding];
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        const auto clamp_x = [](int value)
+        {
+            return std::clamp(value, 0, static_cast<int>(width) - 1);
+        };
+        const auto clamp_y = [](int value)
+        {
+            return std::clamp(value, 0, static_cast<int>(height) - 1);
+        };
+        const auto color = [&](int x, int y, std::uint32_t channel)
+        {
+            const std::uint32_t packed = input[
+                static_cast<std::size_t>(clamp_y(y)) * width +
+                static_cast<std::size_t>(clamp_x(x))];
+            return static_cast<float>(
+                (packed >> (channel * 10u)) & 0x3ffu) / 1023.f;
+        };
+        const auto depth_value = [&](int x, int y)
+        {
+            return depth[static_cast<std::size_t>(clamp_y(y)) * width +
+                         static_cast<std::size_t>(clamp_x(x))];
+        };
+        const auto color_delta = [&](int x0, int y0, int x1, int y1)
+        {
+            float maximum = 0.f;
+            for (std::uint32_t channel = 0; channel < 3; ++channel)
+            {
+                maximum = std::max(maximum, std::abs(
+                    color(x0, y0, channel) -
+                    color(x1, y1, channel)));
+            }
+            return maximum;
+        };
+        constexpr std::array<float, 4> thresholds{{
+            0.15f, 0.10f, 0.10f, 0.05f,
+        }};
+        const auto oracle = [&](int x, int y, std::uint32_t quality,
+                                bool predicated)
+        {
+            float threshold_x = thresholds[quality];
+            float threshold_y = thresholds[quality];
+            if (predicated)
+            {
+                const float center = depth_value(x, y);
+                const float pred_x = std::abs(
+                    center - depth_value(x - 1, y)) >= 0.002f
+                    ? 1.f : 0.f;
+                const float pred_y = std::abs(
+                    center - depth_value(x, y + 1)) >= 0.002f
+                    ? 1.f : 0.f;
+                threshold_x = 2.f * thresholds[quality] *
+                    (1.f - 0.8f * pred_x);
+                threshold_y = 2.f * thresholds[quality] *
+                    (1.f - 0.8f * pred_y);
+            }
+
+            const float delta_x = color_delta(x, y, x - 1, y);
+            const float delta_y = color_delta(x, y, x, y + 1);
+            float edge_x = delta_x >= threshold_x ? 1.f : 0.f;
+            float edge_y = delta_y >= threshold_y ? 1.f : 0.f;
+            if (edge_x + edge_y == 0.f)
+            {
+                return std::array<std::uint8_t, 4>{{0, 0, 0, 0}};
+            }
+
+            const float delta_right = color_delta(x, y, x + 1, y);
+            const float delta_bottom = color_delta(x, y, x, y - 1);
+            float max_x = std::max(delta_x, delta_right);
+            float max_y = std::max(delta_y, delta_bottom);
+            const float delta_left_left =
+                color_delta(x, y, x - 2, y);
+            const float delta_top_top =
+                color_delta(x, y, x, y + 2);
+            max_x = std::max(max_x, delta_left_left);
+            max_y = std::max(max_y, delta_top_top);
+            const float final_delta = std::max(max_x, max_y);
+            edge_x *= 2.f * delta_x >= final_delta ? 1.f : 0.f;
+            edge_y *= 2.f * delta_y >= final_delta ? 1.f : 0.f;
+            return std::array<std::uint8_t, 4>{{
+                static_cast<std::uint8_t>(edge_x * 255.f),
+                static_cast<std::uint8_t>(edge_y * 255.f), 0, 0,
+            }};
+        };
+
+        const auto check_output = [&](const ALMetalRenderTarget& output,
+                                      std::uint32_t quality,
+                                      bool predicated)
+        {
+            CHECK(output.descriptor().width == width);
+            CHECK(output.descriptor().height == height);
+            CHECK(output.descriptor().colors[0].format ==
+                  ALMetalPixelFormat::rgba8_unorm);
+            std::array<std::uint8_t, width * height * 4> actual{};
+            REQUIRE(output.colorTexture(0)->readback(
+                *device, 0, 0, {}, actual.data(), width * 4, &error));
+            INFO(error);
+            for (std::uint32_t y = 0; y < height; ++y)
+            {
+                for (std::uint32_t x = 0; x < width; ++x)
+                {
+                    const auto expected = oracle(
+                        static_cast<int>(x), static_cast<int>(y),
+                        quality, predicated);
+                    CAPTURE(quality, predicated, x, y);
+                    for (std::size_t channel = 0;
+                         channel < expected.size(); ++channel)
+                    {
+                        CAPTURE(channel, expected[channel],
+                                actual[(y * width + x) * 4 + channel]);
+                        CHECK(actual[(y * width + x) * 4 + channel] ==
+                              expected[channel]);
+                    }
+                }
+            }
+        };
+
+        for (std::uint32_t quality = 0; quality < 4; ++quality)
+        {
+            ALMetalWorldSMAAEdgeScene scene;
+            scene.source = source.get();
+            scene.quality = quality;
+            auto output = renderer->renderSMAAEdges(scene, &error);
+            INFO(error);
+            REQUIRE(output);
+            check_output(*output, quality, false);
+        }
+
+        ALMetalWorldSMAAEdgeScene predicated_scene;
+        predicated_scene.source = source.get();
+        predicated_scene.predication_texture = predication.get();
+        predicated_scene.quality = 1;
+        predicated_scene.predication_threshold = 0.002f;
+        predicated_scene.predication_scale = 2.f;
+        predicated_scene.predication_strength = 0.8f;
+        auto predicated_output = renderer->renderSMAAEdges(
+            predicated_scene, &error);
+        INFO(error);
+        REQUIRE(predicated_output);
+        check_output(*predicated_output, 1, true);
+
+        ALMetalWorldSMAAEdgeScene invalid;
+        error.clear();
+        CHECK_FALSE(renderer->renderSMAAEdges(invalid, &error));
+        CHECK(error == "Metal world SMAA edge scene is incomplete");
+        invalid.source = source.get();
+        invalid.quality = 4;
+        error.clear();
+        CHECK_FALSE(renderer->renderSMAAEdges(invalid, &error));
+        CHECK(error == "Metal world SMAA edge state is invalid");
+        invalid.quality = 0;
+        invalid.predication_scale = 0.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderSMAAEdges(invalid, &error));
+        CHECK(error == "Metal world SMAA edge state is invalid");
+
+        ALMetalTextureDescriptor wrong_predication_descriptor =
+            depth_descriptor;
+        wrong_predication_descriptor.format =
+            ALMetalPixelFormat::r32_float;
+        auto wrong_predication = ALMetalTexture::create(
+            *device, wrong_predication_descriptor, &error);
+        INFO(error);
+        REQUIRE(wrong_predication);
+        invalid.predication_scale = 2.f;
+        invalid.predication_texture = wrong_predication.get();
+        error.clear();
+        CHECK_FALSE(renderer->renderSMAAEdges(invalid, &error));
+        CHECK(error ==
+              "Metal world SMAA predication texture is incompatible");
     }
 }
 

@@ -11662,6 +11662,12 @@ struct ALMetalWorldFXAAConstants
     uint4 config;
 };
 
+struct ALMetalWorldSMAAEdgeConstants
+{
+    float4 predication;
+    uint4 config;
+};
+
 // The four viewer permutations are FXAA 3.11 presets 12, 23, 28 and 39.
 // Keeping their authored search sequences in one uniform table produces the
 // same taps without maintaining four otherwise-identical Metal functions.
@@ -12061,6 +12067,108 @@ fragment float4 almetal_world_fxaa_fragment(
         almetal_world_fxaa_sample(
             source, source_sampler, position).rgb,
         luma_center);
+}
+
+constant float almetal_world_smaa_thresholds[4] = {
+    0.15, 0.10, 0.10, 0.05,
+};
+
+static float3 almetal_world_smaa_color(
+    texture2d<float> source, sampler source_sampler, float2 position)
+{
+    return source.sample(source_sampler, position, level(0.0)).rgb;
+}
+
+static float4 almetal_world_smaa_edges(
+    texture2d<float> source,
+    sampler source_sampler,
+    float2 position,
+    float2 threshold)
+{
+    const float2 metric = 1.0 / float2(
+        source.get_width(), source.get_height());
+    const float3 center = almetal_world_smaa_color(
+        source, source_sampler, position);
+    const float3 left = almetal_world_smaa_color(
+        source, source_sampler, position + float2(-metric.x, 0.0));
+    const float3 top = almetal_world_smaa_color(
+        source, source_sampler, position + float2(0.0, metric.y));
+
+    float4 delta;
+    const float3 left_delta = abs(center - left);
+    const float3 top_delta = abs(center - top);
+    delta.x = max(max(left_delta.r, left_delta.g), left_delta.b);
+    delta.y = max(max(top_delta.r, top_delta.g), top_delta.b);
+    float2 edges = step(threshold, delta.xy);
+    if (dot(edges, float2(1.0)) == 0.0)
+    {
+        return float4(0.0);
+    }
+
+    const float3 right = almetal_world_smaa_color(
+        source, source_sampler, position + float2(metric.x, 0.0));
+    const float3 bottom = almetal_world_smaa_color(
+        source, source_sampler, position - float2(0.0, metric.y));
+    const float3 right_delta = abs(center - right);
+    const float3 bottom_delta = abs(center - bottom);
+    delta.z = max(max(right_delta.r, right_delta.g), right_delta.b);
+    delta.w = max(max(bottom_delta.r, bottom_delta.g), bottom_delta.b);
+    float2 maximum_delta = max(delta.xy, delta.zw);
+
+    const float3 left_left = almetal_world_smaa_color(
+        source, source_sampler, position + float2(-2.0 * metric.x, 0.0));
+    const float3 top_top = almetal_world_smaa_color(
+        source, source_sampler, position + float2(0.0, 2.0 * metric.y));
+    const float3 left_left_delta = abs(center - left_left);
+    const float3 top_top_delta = abs(center - top_top);
+    delta.z = max(
+        max(left_left_delta.r, left_left_delta.g), left_left_delta.b);
+    delta.w = max(max(top_top_delta.r, top_top_delta.g), top_top_delta.b);
+    maximum_delta = max(maximum_delta, delta.zw);
+    const float final_delta = max(maximum_delta.x, maximum_delta.y);
+    edges *= step(float2(final_delta), 2.0 * delta.xy);
+    return float4(edges, 0.0, 0.0);
+}
+
+fragment float4 almetal_world_smaa_edge_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]],
+    constant ALMetalWorldSMAAEdgeConstants& constants [[buffer(0)]])
+{
+    const uint quality = min(constants.config.x, 3u);
+    return almetal_world_smaa_edges(
+        source, source_sampler, input.texcoord,
+        float2(almetal_world_smaa_thresholds[quality]));
+}
+
+fragment float4 almetal_world_smaa_edge_predicated_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    depth2d<float> predication [[texture(1)]],
+    sampler source_sampler [[sampler(0)]],
+    sampler predication_sampler [[sampler(1)]],
+    constant ALMetalWorldSMAAEdgeConstants& constants [[buffer(0)]])
+{
+    const uint quality = min(constants.config.x, 3u);
+    const float2 metric = 1.0 / float2(
+        source.get_width(), source.get_height());
+    const float center = predication.sample(
+        predication_sampler, input.texcoord, level(0.0));
+    const float left = predication.sample(
+        predication_sampler,
+        input.texcoord + float2(-metric.x, 0.0), level(0.0));
+    const float top = predication.sample(
+        predication_sampler,
+        input.texcoord + float2(0.0, metric.y), level(0.0));
+    const float2 predicated_edges = step(
+        float2(constants.predication.x),
+        abs(float2(center - left, center - top)));
+    const float2 threshold = constants.predication.y *
+        almetal_world_smaa_thresholds[quality] *
+        (1.0 - constants.predication.z * predicated_edges);
+    return almetal_world_smaa_edges(
+        source, source_sampler, input.texcoord, threshold);
 }
 
 static float3 almetal_world_cas_load(

@@ -170,6 +170,15 @@ namespace
     };
     static_assert(sizeof(WorldFXAAConstants) == 16);
 
+    struct alignas(16) WorldSMAAEdgeConstants
+    {
+        // x = predication threshold, y = scale, z = strength.
+        float predication[4]{};
+        // x = quality index, y = predication enabled.
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldSMAAEdgeConstants) == 32);
+
     struct alignas(16) WorldExposureMeterConstants
     {
         float patch[4]{};
@@ -860,6 +869,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalRenderPipeline> cross_filter_add_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> cas_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> fxaa_pipeline;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        smaa_edge_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
     std::unique_ptr<ALMetalComputePipeline> exposure_meter_pipeline;
     std::array<std::unique_ptr<ALMetalComputePipeline>, 2>
@@ -1212,6 +1223,9 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_cross_filter_fragment") ||
         !impl->library->hasFunction("almetal_world_cas_fragment") ||
         !impl->library->hasFunction("almetal_world_fxaa_fragment") ||
+        !impl->library->hasFunction("almetal_world_smaa_edge_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_smaa_edge_predicated_fragment") ||
         !impl->library->hasFunction("almetal_world_exposure_meter") ||
         !impl->library->hasFunction("almetal_world_exposure_initial") ||
         !impl->library->hasFunction("almetal_world_exposure_history") ||
@@ -1515,6 +1529,32 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     if (!impl->fxaa_pipeline)
     {
         return nullptr;
+    }
+
+    constexpr std::array<const char*, 2> smaa_edge_functions{{
+        "almetal_world_smaa_edge_fragment",
+        "almetal_world_smaa_edge_predicated_fragment",
+    }};
+    for (std::size_t predication = 0;
+         predication < smaa_edge_functions.size(); ++predication)
+    {
+        ALMetalRenderPipelineDescriptor smaa_edge_descriptor;
+        smaa_edge_descriptor.library = impl->library.get();
+        smaa_edge_descriptor.vertex_function = "almetal_resample_vertex";
+        smaa_edge_descriptor.fragment_function =
+            smaa_edge_functions[predication];
+        smaa_edge_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        smaa_edge_descriptor.label = predication
+            ? "Alchemy world predicated SMAA edge pipeline"
+            : "Alchemy world SMAA edge pipeline";
+        impl->smaa_edge_pipelines[predication] =
+            ALMetalRenderPipeline::create(
+                device, smaa_edge_descriptor, error);
+        if (!impl->smaa_edge_pipelines[predication])
+        {
+            return nullptr;
+        }
     }
 
     ALMetalComputePipelineDescriptor exposure_descriptor;
@@ -6317,6 +6357,132 @@ ALMetalWorldGBufferRenderer::renderFXAA(
         encoder->setFragmentTexture(0, source.colorTexture(0), error) &&
         encoder->setFragmentSampler(
             0, mImpl->linear_mirror_sampler.get(), error) &&
+        encoder->setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderSMAAEdges(
+    const ALMetalWorldSMAAEdgeScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.source)
+    {
+        setError(error, "Metal world SMAA edge scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& input =
+        scene.source->descriptor();
+    if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
+        input.color_attachment_count != 1 ||
+        input.colors[0].format != ALMetalPixelFormat::rgb10a2_unorm ||
+        !sampleableTexture(scene.source->colorTexture(0)))
+    {
+        setError(error, "Metal world SMAA edge source is incompatible");
+        return nullptr;
+    }
+    if (scene.quality > 3 ||
+        !std::isfinite(scene.predication_threshold) ||
+        !std::isfinite(scene.predication_scale) ||
+        !std::isfinite(scene.predication_strength) ||
+        scene.predication_scale < 1.f || scene.predication_scale > 5.f ||
+        scene.predication_strength < 0.f ||
+        scene.predication_strength > 1.f)
+    {
+        setError(error, "Metal world SMAA edge state is invalid");
+        return nullptr;
+    }
+
+    if (scene.predication_texture)
+    {
+        const ALMetalTextureDescriptor& predication =
+            scene.predication_texture->descriptor();
+        const bool format =
+            predication.format == ALMetalPixelFormat::depth32_float ||
+            predication.format ==
+                ALMetalPixelFormat::depth32_float_stencil8;
+        if (predication.width != input.width ||
+            predication.height != input.height ||
+            predication.sample_count != 1 || !format ||
+            !sampleableTexture(scene.predication_texture))
+        {
+            setError(error,
+                     "Metal world SMAA predication texture is incompatible");
+            return nullptr;
+        }
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = input.width;
+    output_descriptor.height = input.height;
+    output_descriptor.colors[0].format =
+        ALMetalPixelFormat::rgba8_unorm;
+    output_descriptor.colors[0].label =
+        "Alchemy world SMAA RGBA8 edges";
+    output_descriptor.label = "Alchemy native world SMAA edge target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    WorldSMAAEdgeConstants constants{};
+    constants.predication[0] = scene.predication_threshold;
+    constants.predication[1] = scene.predication_scale;
+    constants.predication[2] = scene.predication_strength;
+    constants.config[0] = scene.quality;
+    constants.config[1] = scene.predication_texture ? 1u : 0u;
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world SMAA edges", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::clear;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    pass_config.colors[0].clear = {0.f, 0.f, 0.f, 0.f};
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world SMAA edge encoder", error)
+        : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(input.width),
+        static_cast<double>(input.height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{0, 0, input.width, input.height};
+    const std::size_t predication = scene.predication_texture ? 1u : 0u;
+    bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(
+            *mImpl->smaa_edge_pipelines[predication], error) &&
+        encoder->setFragmentTexture(
+            0, scene.source->colorTexture(0), error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->linear_clamp_sampler.get(), error);
+    if (encoded && scene.predication_texture)
+    {
+        encoded = encoder->setFragmentTexture(
+            1, scene.predication_texture, error) &&
+            encoder->setFragmentSampler(
+                1, mImpl->point_clamp_sampler.get(), error);
+    }
+    encoded = encoded &&
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
