@@ -927,11 +927,12 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                     }
 
 #if LL_DARWIN
-                    if (LLPipeline::sRenderingHUDs &&
-                        params.mGLTFMaterial.isNull())
+                    if (LLPipeline::sRenderingHUDs)
                     {
-                        captureMetalHUDFullbrightBatch(
-                            params, true, false, true,
+                        const bool pbr_hud_alpha = target_shader == pbr_shader;
+                        captureMetalHUDBatch(
+                            params, true, false,
+                            !pbr_hud_alpha, pbr_hud_alpha,
                             reset_minimum_alpha ? 0.f : MINIMUM_ALPHA);
                     }
 #endif

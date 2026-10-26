@@ -15579,6 +15579,100 @@ fragment float4 almetal_hud_fullbright_fragment(
                float4(0.0));
 }
 
+struct ALMetalHUDPBRConstants
+{
+    float4x4 modelview_projection;
+    float4x4 texture_matrix;
+    // x = alpha cutoff.
+    float4 material;
+    // x = reverse Z, y = texture count, z = offscreen Y flip.
+    uint4 config;
+    float4 base_color_transform[2];
+    float4 emissive_transform[2];
+    float4 emissive_color;
+};
+
+struct ALMetalHUDPBRVaryings
+{
+    float4 position [[position]];
+    float2 base_color_texcoord;
+    float2 emissive_texcoord;
+    float4 color;
+};
+
+static float2 almetal_hud_pbr_texcoord(
+    float2 vertex_texcoord,
+    constant float4* material_transform,
+    constant ALMetalHUDPBRConstants& constants)
+{
+    // Match deferred/textureUtilV.glsl::texture_transform: apply the live SL
+    // texture animation in right-handed UV space, then evaluate the KHR
+    // transform in its left-handed convention and convert back.
+    float2 texcoord = (constants.texture_matrix *
+                       float4(vertex_texcoord, 0.0, 1.0)).xy;
+    texcoord.y = 1.0 - texcoord.y;
+    const float2 scaled = texcoord * material_transform[0].xy;
+    const float cosine = cos(material_transform[0].z);
+    const float sine = sin(material_transform[0].z);
+    texcoord = float2(cosine * scaled.x + sine * scaled.y,
+                      -sine * scaled.x + cosine * scaled.y) +
+               material_transform[1].xy;
+    texcoord.y = 1.0 - texcoord.y;
+    return texcoord;
+}
+
+vertex ALMetalHUDPBRVaryings almetal_hud_pbr_alpha_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(1)]],
+    const device uchar4* colors [[buffer(2)]],
+    constant ALMetalHUDPBRConstants& constants [[buffer(3)]],
+    uint vertex_id [[vertex_id]])
+{
+    float4 clip_position = constants.modelview_projection *
+        float4(positions[vertex_id].xyz, 1.0);
+    if (constants.config.z != 0u)
+    {
+        clip_position.y = -clip_position.y;
+    }
+
+    ALMetalHUDPBRVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.base_color_texcoord = almetal_hud_pbr_texcoord(
+        texcoords[vertex_id], constants.base_color_transform, constants);
+    output.emissive_texcoord = almetal_hud_pbr_texcoord(
+        texcoords[vertex_id], constants.emissive_transform, constants);
+    const float4 encoded_color = float4(colors[vertex_id]) * (1.0 / 255.0);
+    output.color = float4(
+        almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
+    return output;
+}
+
+fragment float4 almetal_hud_pbr_alpha_fragment(
+    ALMetalHUDPBRVaryings input [[stage_in]],
+    texture2d<float> base_color_texture [[texture(0)]],
+    texture2d<float> emissive_texture [[texture(1)]],
+    sampler color_sampler [[sampler(0)]],
+    constant ALMetalHUDPBRConstants& constants [[buffer(0)]])
+{
+    const float4 base_color = base_color_texture.sample(
+        color_sampler, input.base_color_texcoord);
+    // Read emissive before the coverage discard, matching pbralphaF's
+    // derivative-safe ordering even though this HUD permutation has no LOD
+    // derivatives after the discard.
+    const float3 emissive = emissive_texture.sample(
+        color_sampler, input.emissive_texcoord).rgb *
+        constants.emissive_color.rgb;
+    const float coverage = base_color.a * input.color.a;
+    if (coverage < constants.material.x)
+    {
+        discard_fragment();
+    }
+    const float3 linear = input.color.rgb * base_color.rgb + emissive;
+    return max(float4(almetal_linear_to_srgb(linear), coverage),
+               float4(0.0));
+}
+
 fragment float4 almetal_ui_fragment(
     ALMetalUIVaryings input [[stage_in]],
     texture2d<float> diffuse_map [[texture(0)]],

@@ -113,14 +113,15 @@ enum class ALMetalHUDShader
     fullbright,
     fullbright_alpha_mask,
     fullbright_alpha,
+    pbr_alpha,
 };
 
 // One indexed static HUD-attachment draw. Unlike immediate-mode UI, volume
 // geometry owns an index buffer and may select one of the viewer's packed
-// diffuse texture ladder slots through position.w. The exact HUD programs,
-// including the blended alpha-pool permutation, operate in display-encoded
-// space, so this intentionally does not reuse the linear-light world
-// fullbright path.
+// diffuse texture ladder slots through position.w. Legacy fullbright HUD
+// programs operate in display-encoded space. The PBR alpha permutation
+// instead decodes its glTF color maps, shades in linear light and encodes the
+// result for this display target, matching the two authoritative GLSL paths.
 struct ALMetalHUDIndexedBatch
 {
     static constexpr std::size_t max_textures = 32;
@@ -136,6 +137,12 @@ struct ALMetalHUDIndexedBatch
     std::uint32_t index_count = 0;
     std::array<const ALMetalTexture*, max_textures> textures{};
     std::uint32_t texture_count = 0;
+    const ALMetalTexture* emissive_texture = nullptr;
+    float pbr_base_color_transform[8] = {
+        1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    float pbr_emissive_transform[8] = {
+        1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    float pbr_emissive_color[4]{};
     ALMetalSamplerDescriptor sampler{};
     ALMetalUIMatrices matrices{};
     ALMetalUIBlendState blend{};
@@ -144,6 +151,7 @@ struct ALMetalHUDIndexedBatch
     ALMetalScissorRect scissor{};
     ALMetalHUDShader shader = ALMetalHUDShader::fullbright;
     float minimum_alpha = 0.004f;
+    bool double_sided = false;
     std::uint32_t target_width = 0;
     std::uint32_t target_height = 0;
 };

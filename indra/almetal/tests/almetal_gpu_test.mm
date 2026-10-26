@@ -835,6 +835,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_ui_fragment",
             "almetal_hud_fullbright_vertex",
             "almetal_hud_fullbright_fragment",
+            "almetal_hud_pbr_alpha_vertex",
+            "almetal_hud_pbr_alpha_fragment",
             "almetal_alpha_mask_fragment",
             "almetal_alpha_mask_solid_fragment",
             "almetal_solid_vertex",
@@ -19917,6 +19919,35 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         auto hud_mask_discard = make_hud_texture(
             "Alchemy indexed HUD discarded texture", {255, 255, 255, 100},
             ALMetalPixelFormat::rgba8_unorm);
+        auto make_hud_strip_texture = [&]
+            (const char* label, const std::array<std::uint8_t, 8>& texels)
+        {
+            ALMetalTextureDescriptor descriptor = texture_descriptor;
+            descriptor.format = ALMetalPixelFormat::rgba8_unorm_srgb;
+            descriptor.width = 2;
+            descriptor.label = label;
+            auto result = ALMetalTexture::create(*device, descriptor, &error);
+            INFO(error);
+            REQUIRE(result);
+            auto command = device->makeCommandBuffer(label, &error);
+            INFO(error);
+            REQUIRE(command);
+            REQUIRE(result->upload(
+                *command, 0, 0, {}, texels.data(), 8, &error));
+            REQUIRE(command->commitAndWait(&error));
+            INFO(error);
+            return result;
+        };
+        const std::array<std::uint8_t, 8> hud_pbr_base_texels = {
+            64, 128, 192, 200, 255, 0, 255, 32};
+        const std::array<std::uint8_t, 8> hud_pbr_emissive_texels = {
+            0, 0, 0, 255, 255, 128, 64, 255};
+        auto hud_pbr_base = make_hud_strip_texture(
+            "Alchemy indexed HUD PBR base-color texture",
+            hud_pbr_base_texels);
+        auto hud_pbr_emissive = make_hud_strip_texture(
+            "Alchemy indexed HUD PBR emissive texture",
+            hud_pbr_emissive_texels);
 
         // Real viewer mirrors can retain BC-compressed sRGB storage. The raw
         // sampling contract must provide a compatible view for those assets
@@ -20068,6 +20099,106 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(std::abs(static_cast<int>(composed_pixels[center + 3]) - 247) <= 1);
 
         // Raising the unbiased cutoff above 200/255 * 10/255 discards.
+        hud_batch.minimum_alpha = 0.04f;
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(composed_pixels[center + 0] == 20u);
+        CHECK(composed_pixels[center + 1] == 40u);
+        CHECK(composed_pixels[center + 2] == 80u);
+        CHECK(composed_pixels[center + 3] == 255u);
+
+        // PBR HUD alpha keeps the same coverage/blend contract, but its glTF
+        // colour maps and streamed tint are decoded before base + emissive
+        // shading and the result is encoded for the BGRA8 target. Offset only
+        // the emissive transform to prove the two KHR transforms are
+        // independent. Invalid material packs must fail before a frame opens.
+        hud_batch.shader = ALMetalHUDShader::pbr_alpha;
+        hud_batch.texture_count = 1;
+        hud_batch.textures[0] = hud_pbr_base.get();
+        hud_batch.emissive_texture = nullptr;
+        hud_batch.minimum_alpha = 0.02f;
+        hud_batch.double_sided = true;
+        error.clear();
+        CHECK_FALSE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        CHECK(error == "Metal HUD PBR material state is invalid");
+        CHECK_FALSE(hud_renderer->hasOpenFrame());
+        hud_batch.emissive_texture = hud_pbr_emissive.get();
+        hud_batch.pbr_base_color_transform[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        CHECK(error == "Metal HUD PBR material state is invalid");
+        CHECK_FALSE(hud_renderer->hasOpenFrame());
+        hud_batch.pbr_base_color_transform[0] = 1.f;
+        hud_batch.pbr_emissive_transform[4] = 0.75f;
+        hud_batch.pbr_emissive_color[0] = 0.5f;
+        hud_batch.pbr_emissive_color[1] = 1.f;
+        hud_batch.pbr_emissive_color[2] = 1.f;
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        const auto hud_srgb_to_linear = [](float encoded)
+        {
+            return encoded <= 0.04045f
+                ? encoded / 12.92f
+                : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
+        };
+        const auto hud_linear_to_srgb = [](float linear)
+        {
+            const float value = std::max(linear, 0.f);
+            return value <= 0.0031308f
+                ? value * 12.92f
+                : 1.055f * std::pow(value, 1.f / 2.4f) - 0.055f;
+        };
+        const float hud_coverage =
+            (hud_pbr_base_texels[3] / 255.f) * (hud_colors[0][3] / 255.f);
+        const float hud_emissive_factor[3] = {0.5f, 1.f, 1.f};
+        const std::uint8_t hud_background_rgb[3] = {80, 40, 20};
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float linear =
+                hud_srgb_to_linear(hud_pbr_base_texels[channel] / 255.f) *
+                    hud_srgb_to_linear(hud_colors[0][channel] / 255.f) +
+                hud_srgb_to_linear(
+                    hud_pbr_emissive_texels[4 + channel] / 255.f) *
+                    hud_emissive_factor[channel];
+            const float encoded = std::clamp(
+                hud_linear_to_srgb(linear), 0.f, 1.f);
+            const int expected = static_cast<int>(std::lround(
+                encoded * hud_coverage * 255.f +
+                hud_background_rgb[channel] * (1.f - hud_coverage)));
+            const std::size_t bgra_channel = 2 - channel;
+            CHECK(std::abs(static_cast<int>(
+                      composed_pixels[center + bgra_channel]) - expected) <= 1);
+        }
+        const int expected_hud_alpha = static_cast<int>(std::lround(
+            255.f * (1.f - hud_coverage)));
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 3]) -
+                       expected_hud_alpha) <= 1);
+
+        // The PBR permutation uses the same unbiased base-alpha * vertex-alpha
+        // cutoff as its authoritative GLSL program.
         hud_batch.minimum_alpha = 0.04f;
         REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
         REQUIRE(hud_renderer->setFrameDepth(

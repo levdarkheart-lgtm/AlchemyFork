@@ -774,20 +774,23 @@ void LLRenderPass::bindIndexedTextures(const LLDrawInfo& params, const LLGLSLSha
 }
 
 #if LL_DARWIN
-void LLRenderPass::captureMetalHUDFullbrightBatch(
+void LLRenderPass::captureMetalHUDBatch(
     const LLDrawInfo& params,
     bool batch_textures,
     bool alpha_mask,
     bool alpha_pool,
+    bool pbr_alpha,
     F32 minimum_alpha)
 {
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
     ALMetalHUDIndexedBatch batch;
-    batch.shader = alpha_pool
+    batch.shader = pbr_alpha
+        ? ALMetalHUDShader::pbr_alpha
+        : alpha_pool
         ? ALMetalHUDShader::fullbright_alpha
         : alpha_mask ? ALMetalHUDShader::fullbright_alpha_mask
                      : ALMetalHUDShader::fullbright;
-    batch.minimum_alpha = alpha_pool
+    batch.minimum_alpha = (alpha_pool || pbr_alpha)
         ? minimum_alpha : alpha_mask ? params.mAlphaMaskCutoff : 0.f;
 
     const bool complete_geometry = buffer && params.mCount &&
@@ -832,23 +835,63 @@ void LLRenderPass::captureMetalHUDFullbrightBatch(
                     sizeof(batch.matrices.texture0));
     }
 
-    const bool indexed_textures =
-        batch_textures && params.mTextureList.size() > 1;
-    const std::size_t texture_count = indexed_textures
-        ? params.mTextureList.size() : 1;
-    batch.texture_count = static_cast<U32>(texture_count);
-    const std::size_t copied_textures = std::min<std::size_t>(
-        texture_count, ALMetalHUDIndexedBatch::max_textures);
-    for (std::size_t index = 0; index < copied_textures; ++index)
+    const auto metal_texture = [](LLViewerTexture* texture)
+        -> ALMetalTexture*
     {
-        LLViewerTexture* texture = indexed_textures
-            ? params.mTextureList[index].get() : params.mTexture.get();
-        if (!texture)
-        {
-            texture = LLViewerFetchedTexture::sWhiteImagep.get();
-        }
         LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-        batch.textures[index] = image ? image->getMetalTexture() : nullptr;
+        return image ? image->getMetalTexture() : nullptr;
+    };
+    if (pbr_alpha && params.mGLTFMaterial.notNull())
+    {
+        LLFetchedGLTFMaterial* material = params.mGLTFMaterial.get();
+        LLViewerTexture* base_color = params.mTexture.notNull()
+            ? params.mTexture.get() : material->mBaseColorTexture.get();
+        LLViewerTexture* emissive = params.mTexture.notNull()
+            ? params.mTexture.get() : material->mEmissiveTexture.get();
+        if (!base_color)
+        {
+            base_color = LLViewerFetchedTexture::sWhiteImagep.get();
+        }
+        if (!emissive)
+        {
+            emissive = LLViewerFetchedTexture::sWhiteImagep.get();
+        }
+        batch.texture_count = 1;
+        batch.textures[0] = metal_texture(base_color);
+        batch.emissive_texture = metal_texture(emissive);
+        LLGLTFMaterial::TextureTransform::Pack packed;
+        material->mTextureTransform[
+            LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR].getPacked(packed);
+        std::memcpy(batch.pbr_base_color_transform, packed,
+                    sizeof(batch.pbr_base_color_transform));
+        material->mTextureTransform[
+            LLGLTFMaterial::GLTF_TEXTURE_INFO_EMISSIVE].getPacked(packed);
+        std::memcpy(batch.pbr_emissive_transform, packed,
+                    sizeof(batch.pbr_emissive_transform));
+        std::memcpy(batch.pbr_emissive_color,
+                    material->mEmissiveColor.mV,
+                    sizeof(material->mEmissiveColor.mV));
+        batch.double_sided = material->mDoubleSided;
+    }
+    else
+    {
+        const bool indexed_textures =
+            batch_textures && params.mTextureList.size() > 1;
+        const std::size_t texture_count = indexed_textures
+            ? params.mTextureList.size() : 1;
+        batch.texture_count = static_cast<U32>(texture_count);
+        const std::size_t copied_textures = std::min<std::size_t>(
+            texture_count, ALMetalHUDIndexedBatch::max_textures);
+        for (std::size_t index = 0; index < copied_textures; ++index)
+        {
+            LLViewerTexture* texture = indexed_textures
+                ? params.mTextureList[index].get() : params.mTexture.get();
+            if (!texture)
+            {
+                texture = LLViewerFetchedTexture::sWhiteImagep.get();
+            }
+            batch.textures[index] = metal_texture(texture);
+        }
     }
 
     // The capture never suppresses or changes the authoritative GL draw.
@@ -910,10 +953,10 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
         (bound == &gHUDFullbrightProgram ||
          bound == &gHUDFullbrightAlphaMaskProgram))
     {
-        captureMetalHUDFullbrightBatch(
+        captureMetalHUDBatch(
             params, batch_textures,
             bound == &gHUDFullbrightAlphaMaskProgram,
-            false, 0.f);
+            false, false, 0.f);
     }
     gPipeline.captureMetalSpotShadowTexturedBatch(
         params, batch_textures);

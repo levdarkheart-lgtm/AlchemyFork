@@ -495,8 +495,13 @@ struct ALMetalUIRenderer::Impl
 
         ALMetalRenderPipelineDescriptor descriptor;
         descriptor.library = library.get();
-        descriptor.vertex_function = "almetal_hud_fullbright_vertex";
-        descriptor.fragment_function = "almetal_hud_fullbright_fragment";
+        const bool pbr = shader == ALMetalHUDShader::pbr_alpha;
+        descriptor.vertex_function = pbr
+            ? "almetal_hud_pbr_alpha_vertex"
+            : "almetal_hud_fullbright_vertex";
+        descriptor.fragment_function = pbr
+            ? "almetal_hud_pbr_alpha_fragment"
+            : "almetal_hud_fullbright_fragment";
         descriptor.color_attachment_count = 1;
         descriptor.colors[0].format = output_format;
         descriptor.colors[0].blending_enabled = target_blend.enabled;
@@ -520,6 +525,9 @@ struct ALMetalUIRenderer::Impl
                 break;
             case ALMetalHUDShader::fullbright:
                 descriptor.label = "Alchemy HUD fullbright pipeline";
+                break;
+            case ALMetalHUDShader::pbr_alpha:
+                descriptor.label = "Alchemy HUD PBR alpha pipeline";
                 break;
         }
 
@@ -796,7 +804,9 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
         !library->hasFunction("almetal_ui_depth_clear_fragment") ||
         !library->hasFunction("almetal_ui_depth_restore_fragment") ||
         !library->hasFunction("almetal_hud_fullbright_vertex") ||
-        !library->hasFunction("almetal_hud_fullbright_fragment"))
+        !library->hasFunction("almetal_hud_fullbright_fragment") ||
+        !library->hasFunction("almetal_hud_pbr_alpha_vertex") ||
+        !library->hasFunction("almetal_hud_pbr_alpha_fragment"))
     {
         setError(error, "Built-in Metal library is missing production UI functions");
         return nullptr;
@@ -1147,6 +1157,16 @@ bool ALMetalUIRenderer::drawHUDIndexed(
             return false;
         }
     }
+    const bool pbr = batch.shader == ALMetalHUDShader::pbr_alpha;
+    if (pbr &&
+        (batch.texture_count != 1 || !batch.emissive_texture ||
+         !finiteFloats(batch.pbr_base_color_transform, 8) ||
+         !finiteFloats(batch.pbr_emissive_transform, 8) ||
+         !finiteFloats(batch.pbr_emissive_color, 4)))
+    {
+        setError(error, "Metal HUD PBR material state is invalid");
+        return false;
+    }
     if (batch.depth.write_enabled && !batch.depth.enabled)
     {
         setError(error, "Metal HUD depth writes require depth testing");
@@ -1178,14 +1198,17 @@ bool ALMetalUIRenderer::drawHUDIndexed(
         return false;
     }
 
-    struct alignas(16) HUDFullbrightConstants
+    struct alignas(16) HUDConstants
     {
         float modelview_projection[16];
         float texture_matrix[16];
         float material[4]{};
         std::uint32_t config[4]{};
+        float pbr_base_color_transform[8]{};
+        float pbr_emissive_transform[8]{};
+        float pbr_emissive_color[4]{};
     } constants;
-    static_assert(sizeof(HUDFullbrightConstants) == 160);
+    static_assert(sizeof(HUDConstants) == 240);
     std::memcpy(constants.modelview_projection,
                 batch.matrices.modelview_projection,
                 sizeof(constants.modelview_projection));
@@ -1198,6 +1221,15 @@ bool ALMetalUIRenderer::drawHUDIndexed(
     constants.config[3] =
         batch.shader == ALMetalHUDShader::fullbright_alpha_mask ? 1u :
         batch.shader == ALMetalHUDShader::fullbright_alpha ? 2u : 0u;
+    std::memcpy(constants.pbr_base_color_transform,
+                batch.pbr_base_color_transform,
+                sizeof(constants.pbr_base_color_transform));
+    std::memcpy(constants.pbr_emissive_transform,
+                batch.pbr_emissive_transform,
+                sizeof(constants.pbr_emissive_transform));
+    std::memcpy(constants.pbr_emissive_color,
+                batch.pbr_emissive_color,
+                sizeof(constants.pbr_emissive_color));
 
     ALMetalRenderEncoder& encoder = *mImpl->encoder;
     bool encoded =
@@ -1214,8 +1246,16 @@ bool ALMetalUIRenderer::drawHUDIndexed(
         encoder.setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         encoder.setFragmentSampler(0, sampler, error);
+    if (encoded && pbr)
+    {
+        // glTF base/emissive colour uses the texture's sRGB view so fixed
+        // function filtering occurs in linear light, matching GLTF_COLOR_SAMPLER.
+        encoded = encoder.setFragmentTexture(0, batch.textures[0], error) &&
+                  encoder.setFragmentTexture(
+                      1, batch.emissive_texture, error);
+    }
     for (std::size_t texture = 0;
-         encoded && texture < batch.texture_count; ++texture)
+         encoded && !pbr && texture < batch.texture_count; ++texture)
     {
         // The matching HUD GLSL program binds these assets with sRGB decode
         // disabled. Use the compatible raw-storage view for both uncompressed
@@ -1228,7 +1268,10 @@ bool ALMetalUIRenderer::drawHUDIndexed(
     if (!encoded ||
         !encoder.setViewport(batch.viewport, error) ||
         !encoder.setScissor(batch.scissor, error) ||
-        !encoder.setCullMode(ALMetalCullMode::back, error) ||
+        !encoder.setCullMode(
+            batch.double_sided ? ALMetalCullMode::none
+                               : ALMetalCullMode::back,
+            error) ||
         !encoder.setFrontFacingWinding(
             mImpl->surface ? ALMetalWinding::counter_clockwise
                            : ALMetalWinding::clockwise,
