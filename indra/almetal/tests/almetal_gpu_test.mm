@@ -833,6 +833,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_skinned_edge_u32_vertex",
             "almetal_ui_vertex",
             "almetal_ui_fragment",
+            "almetal_ui_vertex_color_fragment",
             "almetal_hud_fullbright_vertex",
             "almetal_hud_fullbright_fragment",
             "almetal_hud_pbr_alpha_vertex",
@@ -19349,6 +19350,32 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(pixels[1] == 0);
         CHECK(pixels[2] == 0);
         CHECK(pixels[3] == 0);
+
+        // An explicitly unbound GL UI texture samples the engine's opaque
+        // white placeholder. The native equivalent needs no sampled resource:
+        // it emits the streamed vertex colour exactly, which is the common
+        // property/parcel-line and untextured 3D-UI contract.
+        auto vertex_color_renderer = ALMetalUIRenderer::create(
+            *device, *scheduler, &error);
+        INFO(error);
+        REQUIRE(vertex_color_renderer);
+        batch.shader = ALMetalUIShader::vertex_color;
+        batch.texture = nullptr;
+        REQUIRE(vertex_color_renderer->draw(batch, &error));
+        REQUIRE(vertex_color_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        pixels.fill(0);
+        REQUIRE(vertex_color_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(pixels[center + 0] == 16);  // BGRA target
+        CHECK(pixels[center + 1] == 32);
+        CHECK(pixels[center + 2] == 255);
+        CHECK(pixels[center + 3] == 255);
+        batch.shader = ALMetalUIShader::textured;
+        batch.texture = texture.get();
 
         const ALMetalUIRendererStats stats = renderer->stats();
         CHECK(stats.frames == 1);

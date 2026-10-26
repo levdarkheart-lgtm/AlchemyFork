@@ -76,6 +76,7 @@ namespace
     bool shaderUsesVertexColor(ALMetalUIShader shader)
     {
         return shader == ALMetalUIShader::textured ||
+               shader == ALMetalUIShader::vertex_color ||
                shader == ALMetalUIShader::alpha_mask_textured ||
                shader == ALMetalUIShader::alpha_mask_solid;
     }
@@ -105,6 +106,7 @@ namespace
         switch (shader)
         {
             case ALMetalUIShader::textured:            return "almetal_ui_fragment";
+            case ALMetalUIShader::vertex_color:        return "almetal_ui_vertex_color_fragment";
             case ALMetalUIShader::solid_color:         return "almetal_solid_fragment";
             case ALMetalUIShader::alpha_mask_textured: return "almetal_alpha_mask_fragment";
             case ALMetalUIShader::alpha_mask_solid:    return "almetal_alpha_mask_solid_fragment";
@@ -795,6 +797,7 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
     }
     if (!library->hasFunction("almetal_ui_vertex") ||
         !library->hasFunction("almetal_ui_fragment") ||
+        !library->hasFunction("almetal_ui_vertex_color_fragment") ||
         !library->hasFunction("almetal_alpha_mask_fragment") ||
         !library->hasFunction("almetal_alpha_mask_solid_fragment") ||
         !library->hasFunction("almetal_solid_vertex") ||
@@ -1078,6 +1081,10 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
         {
             return false;
         }
+    }
+    else if (batch.shader == ALMetalUIShader::vertex_color)
+    {
+        // The fragment consumes only the interpolated vertex colour.
     }
     else if (batch.shader == ALMetalUIShader::solid_color)
     {

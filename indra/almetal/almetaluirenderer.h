@@ -29,6 +29,7 @@ class ALMetalSurface;
 enum class ALMetalUIShader
 {
     textured,
+    vertex_color,
     solid_color,
     alpha_mask_textured,
     alpha_mask_solid,

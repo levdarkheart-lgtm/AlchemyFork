@@ -15715,6 +15715,14 @@ fragment float4 almetal_ui_fragment(
     return float4(input.color.rgb, 1.0 - product);
 }
 
+fragment float4 almetal_ui_vertex_color_fragment(
+    ALMetalUIVaryings input [[stage_in]])
+{
+    // ALTextureSlot::unbind leaves GL's opaque-white placeholder bound. The
+    // exact uiF.glsl result is consequently the streamed vertex colour.
+    return input.color;
+}
+
 fragment float4 almetal_alpha_mask_fragment(
     ALMetalUIVaryings input [[stage_in]],
     texture2d<float> diffuse_map [[texture(0)]],

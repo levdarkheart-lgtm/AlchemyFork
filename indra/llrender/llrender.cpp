@@ -2247,7 +2247,12 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     ALMetalUIShader metal_shader;
     if (shader == &gUIProgram)
     {
-        metal_shader = ALMetalUIShader::textured;
+        if (!texture_bound && mUITextShadowMode != 0)
+        {
+            return fallback(MetalUIFallbackReason::shader);
+        }
+        metal_shader = texture_bound ? ALMetalUIShader::textured
+                                     : ALMetalUIShader::vertex_color;
     }
     else if (shader == &gSolidColorProgram)
     {
@@ -2270,8 +2275,11 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     }
     ALMetalBuffer* metal_buffer = buffer->getMetalVertexBuffer();
     ALMetalTexture* metal_texture = image ? image->getMetalTexture() : nullptr;
-    const bool needs_texture = metal_shader != ALMetalUIShader::alpha_mask_solid;
+    const bool needs_texture = metal_shader == ALMetalUIShader::textured ||
+                               metal_shader == ALMetalUIShader::solid_color ||
+                               metal_shader == ALMetalUIShader::alpha_mask_textured;
     const bool needs_color = metal_shader == ALMetalUIShader::textured ||
+                             metal_shader == ALMetalUIShader::vertex_color ||
                              metal_shader == ALMetalUIShader::alpha_mask_textured ||
                              metal_shader == ALMetalUIShader::alpha_mask_solid;
     const U32 required = LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_TEXCOORD0 |
