@@ -330,6 +330,12 @@ public:
     // owns presentation (startup/login). World frames still swap the GL
     // backing and keep their UI draws there until world presentation moves.
     void setMetalUIReplacementEnabled(bool enabled) noexcept;
+    // Submit one already-complete BGRA8 world/UI texture to the native surface.
+    // Success means the drawable command was committed, so the caller may
+    // suppress exactly this frame's GL swap. The ordinary endFrame call still
+    // performs renderer housekeeping but does not submit a second clear
+    // drawable over this frame.
+    bool presentMetalTexture(const ALMetalTexture* texture);
     bool setMetalPresentationOpaque(bool opaque);
 #endif
 
@@ -902,6 +908,7 @@ private:
     bool mMetalUICaptureComplete = false;
     bool mMetalUICaptureUsesDepth = false;
     bool mMetalUIReplacementEnabled = true;
+    bool mMetalUISurfaceFrameSubmitted = false;
 #endif
 
     std::vector<LLVector4a> mUIOffset;

@@ -5358,6 +5358,42 @@ void LLPipeline::endMetalWorldUICompositionCapture()
                "texture was retained offscreen; drawable publication remains "
                "locked and visible GL is unchanged"
             << LL_ENDL;
+
+        // This development-only switch publishes one bounded, exact probe
+        // frame. It is deliberately off by default until an authenticated
+        // user-attended capture establishes visual parity. Surface opacity is
+        // armed before submission and rolled back if drawable acquisition or
+        // command submission fails; only a committed Metal frame suppresses
+        // the matching GL swap.
+        static LLCachedControl<bool> publish_world(
+            gSavedSettings, "ALMetalWorldPresentation", false);
+        if (publish_world)
+        {
+            const bool surface_ready =
+                gGL.setMetalPresentationOpaque(true);
+            const bool submitted = surface_ready &&
+                gGL.presentMetalTexture(capture.world_ui_target.get());
+            if (submitted)
+            {
+                gDisplaySwapBuffers = false;
+                LL_INFOS_ONCE("Metal")
+                    << "One exact native world + ordered UI/HUD probe frame "
+                       "was submitted without a GL swap"
+                    << LL_ENDL;
+            }
+            else
+            {
+                gGL.setMetalPresentationOpaque(false);
+                capture.world_ui_target.reset();
+                capture.world_ui_frame = std::numeric_limits<U32>::max();
+                capture.world_ui_probe_attempted = false;
+                LL_INFOS_ONCE("Metal")
+                    << "Native world/UI publication failed closed; the GL "
+                       "swap remains authoritative while the bounded probe "
+                       "retries"
+                    << LL_ENDL;
+            }
+        }
     }
     else
     {

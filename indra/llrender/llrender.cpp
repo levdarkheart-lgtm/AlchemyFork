@@ -774,6 +774,7 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     mMetalUICaptureDepthWidth = 0;
     mMetalUICaptureDepthHeight = 0;
     mMetalUIReplacementEnabled = true;
+    mMetalUISurfaceFrameSubmitted = false;
     if (!device || !scheduler || !surface)
     {
         return;
@@ -1179,6 +1180,27 @@ void LLRender::setMetalUIReplacementEnabled(bool enabled) noexcept
     mMetalUIReplacementEnabled = enabled;
 }
 
+bool LLRender::presentMetalTexture(const ALMetalTexture* texture)
+{
+    if (!mMetalUIRenderer || !mMetalUISurface || !texture ||
+        mMetalUISurfaceFrameSubmitted || mMetalUIRenderer->hasOpenFrame())
+    {
+        return false;
+    }
+
+    std::string error;
+    if (!mMetalUIRenderer->setFrameBackground(texture, &error) ||
+        !mMetalUIRenderer->endFrame(&error))
+    {
+        LL_DEBUGS("Metal")
+            << "Native retained world/UI drawable submission failed closed: "
+            << error << LL_ENDL;
+        return false;
+    }
+    mMetalUISurfaceFrameSubmitted = true;
+    return true;
+}
+
 bool LLRender::setMetalPresentationOpaque(bool opaque)
 {
     if (!mMetalUISurface)
@@ -1203,7 +1225,14 @@ void LLRender::endFrame(U32 frames_ahead)
     if (mMetalUIRenderer)
     {
         std::string error;
-        if (!mMetalUIRenderer->endFrame(&error))
+        if (mMetalUISurfaceFrameSubmitted)
+        {
+            // presentMetalTexture already submitted this surface frame. A
+            // second endFrame would acquire and present a transparent clear
+            // over the completed world/UI drawable.
+            mMetalUISurfaceFrameSubmitted = false;
+        }
+        else if (!mMetalUIRenderer->endFrame(&error))
         {
             LL_WARNS("Metal") << "Native production UI frame submission failed: "
                                << error << LL_ENDL;

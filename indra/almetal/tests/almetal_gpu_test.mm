@@ -21377,6 +21377,52 @@ TEST_CASE("almetal: a CAMetalLayer overlay coexists with an SDL OpenGL window", 
         CHECK(empty_stats.batches == 0);
         CHECK(empty_stats.vertices == 0);
         CHECK(renderer->outputTexture() == nullptr);
+
+        // The integrated world route hands its completed BGRA8 texture to
+        // this same surface-backed renderer. Exercise the exact no-additional-
+        // UI path and prove that it submits one more drawable frame without
+        // requiring an offscreen output texture.
+        ALMetalTextureDescriptor world_descriptor;
+        world_descriptor.format = ALMetalPixelFormat::bgra8_unorm;
+        world_descriptor.width = surface->info().width;
+        world_descriptor.height = surface->info().height;
+        world_descriptor.storage = ALMetalStorageMode::private_gpu;
+        world_descriptor.usage = ALMetalTextureUsage::shader_read;
+        world_descriptor.label =
+            "Alchemy retained world/UI surface publication source";
+        auto world = ALMetalTexture::create(
+            *device, world_descriptor, &error);
+        INFO(error);
+        REQUIRE(world);
+        std::vector<std::uint8_t> world_pixels(
+            static_cast<std::size_t>(world_descriptor.width) *
+            world_descriptor.height * 4u, 0u);
+        for (std::size_t pixel = 0; pixel < world_pixels.size() / 4u; ++pixel)
+        {
+            world_pixels[pixel * 4u + 0u] = 24u;
+            world_pixels[pixel * 4u + 1u] = 48u;
+            world_pixels[pixel * 4u + 2u] = 96u;
+            world_pixels[pixel * 4u + 3u] = 255u;
+        }
+        auto world_upload = device->makeCommandBuffer(
+            "Alchemy retained world/UI surface publication upload", &error);
+        INFO(error);
+        REQUIRE(world_upload);
+        REQUIRE(world->upload(
+            *world_upload, 0, 0, {}, world_pixels.data(),
+            static_cast<std::size_t>(world_descriptor.width) * 4u, &error));
+        REQUIRE(world_upload->commitAndWait(&error));
+        INFO(error);
+        REQUIRE(renderer->setFrameBackground(world.get(), &error));
+        REQUIRE(renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        const ALMetalUIRendererStats world_stats = renderer->stats();
+        CHECK(world_stats.frames == 2);
+        CHECK(world_stats.batches == 0);
+        CHECK(world_stats.vertices == 0);
+        CHECK(renderer->outputTexture() == nullptr);
         renderer.reset();
 
         // The Metal view must go away before its SDL window.
