@@ -19477,6 +19477,161 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(composed_pixels[2] == 0u);
         CHECK(composed_pixels[3] == 0u);
 
+        // Retained world depth joins the same offscreen transaction before
+        // depth-tested HUD/world UI. Seed a combined depth/stencil target at
+        // 0.5, then prove forward and reverse comparisons against its GPU
+        // copy while the completed BGRA world backing remains underneath.
+        ALMetalRenderTargetDescriptor depth_source_descriptor;
+        depth_source_descriptor.width = 32;
+        depth_source_descriptor.height = 32;
+        depth_source_descriptor.color_attachment_count = 0;
+        depth_source_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        depth_source_descriptor.label =
+            "Alchemy native world/UI retained depth source";
+        auto depth_source = ALMetalRenderTarget::create(
+            *device, depth_source_descriptor, &error);
+        INFO(error);
+        REQUIRE(depth_source);
+        ALMetalRenderPassConfig depth_seed_config;
+        depth_seed_config.depth_load = ALMetalLoadAction::clear;
+        depth_seed_config.depth_store = ALMetalStoreAction::store;
+        depth_seed_config.clear_depth = 0.5;
+        depth_seed_config.stencil_load = ALMetalLoadAction::clear;
+        depth_seed_config.stencil_store = ALMetalStoreAction::store;
+        auto depth_seed_pass = depth_source->makeRenderPass(
+            depth_seed_config, &error);
+        INFO(error);
+        REQUIRE(depth_seed_pass);
+        auto depth_seed_command = device->makeCommandBuffer(
+            "Alchemy native world/UI retained depth seed", &error);
+        INFO(error);
+        REQUIRE(depth_seed_command);
+        auto depth_seed_encoder = ALMetalRenderEncoder::begin(
+            *depth_seed_command, *depth_seed_pass,
+            "Alchemy native world/UI retained depth seed", &error);
+        INFO(error);
+        REQUIRE(depth_seed_encoder);
+        REQUIRE(depth_seed_encoder->end(&error));
+        REQUIRE(depth_seed_command->commitAndWait(&error));
+        INFO(error);
+
+        auto depth_renderer = ALMetalUIRenderer::create(
+            *device, *scheduler, &error);
+        INFO(error);
+        REQUIRE(depth_renderer);
+        error.clear();
+        CHECK_FALSE(depth_renderer->setFrameDepth(texture.get(), &error));
+        CHECK(error == "Metal UI frame depth is incompatible");
+        error.clear();
+
+        ALMetalRenderTargetDescriptor short_depth_descriptor =
+            depth_source_descriptor;
+        short_depth_descriptor.width = 16;
+        short_depth_descriptor.height = 16;
+        short_depth_descriptor.label =
+            "Alchemy mismatched native world/UI depth";
+        auto short_depth = ALMetalRenderTarget::create(
+            *device, short_depth_descriptor, &error);
+        INFO(error);
+        REQUIRE(short_depth);
+        REQUIRE(depth_renderer->setFrameDepth(
+            short_depth->depthStencilTexture(), &error));
+        error.clear();
+        CHECK_FALSE(depth_renderer->draw(batch, &error));
+        CHECK(error ==
+              "Metal UI frame depth dimensions do not match the target");
+        error.clear();
+        REQUIRE(depth_renderer->setFrameDepth(nullptr, &error));
+        REQUIRE(depth_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(depth_renderer->endFrame(&error));
+        CHECK(depth_renderer->stats().frames == 0);
+        CHECK(depth_renderer->outputTexture() == nullptr);
+
+        auto draw_with_depth = [&](float z,
+                                   ALMetalCompareFunction compare,
+                                   bool reverse_z,
+                                   bool expect_ui)
+        {
+            float depth_positions[3][4];
+            std::memcpy(depth_positions, positions, sizeof(depth_positions));
+            for (auto& position : depth_positions)
+            {
+                position[2] = z;
+            }
+            REQUIRE(buffer->write(
+                position_offset, depth_positions,
+                sizeof(depth_positions), &error));
+            batch.depth.enabled = true;
+            batch.depth.write_enabled = false;
+            batch.depth.reverse_z = reverse_z;
+            batch.depth.compare = compare;
+            REQUIRE(depth_renderer->setFrameBackground(
+                background.get(), &error));
+            REQUIRE(depth_renderer->setFrameDepth(
+                depth_source->depthStencilTexture(), &error));
+            REQUIRE(depth_renderer->draw(batch, &error));
+            error.clear();
+            CHECK_FALSE(depth_renderer->setFrameDepth(nullptr, &error));
+            CHECK(error ==
+                  "Metal UI frame depth must be selected before drawing");
+            REQUIRE(depth_renderer->endFrame(&error));
+            INFO(error);
+            REQUIRE(scheduler->waitUntilIdle(1000, &error));
+            INFO(error);
+            const ALMetalTexture* depth_composed =
+                depth_renderer->outputTexture();
+            REQUIRE(depth_composed);
+            REQUIRE(depth_renderer->outputDepthTexture());
+            REQUIRE(depth_composed->readback(
+                *device, 0, 0, {}, composed_pixels.data(),
+                32 * 4, &error));
+            INFO(error);
+            if (expect_ui)
+            {
+                CHECK(composed_pixels[center + 0] == 16u);
+                CHECK(composed_pixels[center + 1] == 32u);
+                CHECK(composed_pixels[center + 2] == 255u);
+                CHECK(composed_pixels[center + 3] == 255u);
+            }
+            else
+            {
+                CHECK(composed_pixels[center + 0] == 20u);
+                CHECK(composed_pixels[center + 1] == 40u);
+                CHECK(composed_pixels[center + 2] == 80u);
+                CHECK(composed_pixels[center + 3] == 255u);
+            }
+            CHECK(composed_pixels[0] == 20u);
+            CHECK(composed_pixels[1] == 40u);
+            CHECK(composed_pixels[2] == 80u);
+            CHECK(composed_pixels[3] == 255u);
+        };
+        draw_with_depth(
+            -0.5f, ALMetalCompareFunction::less_equal, false, true);
+        draw_with_depth(
+            0.5f, ALMetalCompareFunction::less_equal, false, false);
+        draw_with_depth(
+            0.75f, ALMetalCompareFunction::greater_equal, true, true);
+
+        error.clear();
+        CHECK_FALSE(depth_renderer->setFrameDepth(
+            depth_renderer->outputDepthTexture(), &error));
+        CHECK(error == "Metal UI frame depth cannot alias its destination");
+        error.clear();
+        CHECK_FALSE(depth_renderer->draw(batch, &error));
+        CHECK(error ==
+              "Metal UI depth test requires a frame depth backing");
+        batch.depth.enabled = false;
+        batch.depth.write_enabled = true;
+        batch.depth.reverse_z = false;
+        error.clear();
+        CHECK_FALSE(depth_renderer->draw(batch, &error));
+        CHECK(error == "Metal UI depth writes require depth testing");
+        batch.depth.write_enabled = false;
+        REQUIRE(buffer->write(
+            position_offset, positions, sizeof(positions), &error));
+
         auto rgba_renderer = ALMetalUIRenderer::createForTexture(
             *device, *scheduler, ALMetalPixelFormat::rgba8_unorm, &error);
         INFO(error);

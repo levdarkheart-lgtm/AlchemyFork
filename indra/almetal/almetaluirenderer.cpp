@@ -57,6 +57,14 @@ namespace
                lhs.normalized_coordinates == rhs.normalized_coordinates;
     }
 
+    bool sameDepth(const ALMetalUIDepthState& lhs,
+                   const ALMetalUIDepthState& rhs)
+    {
+        return lhs.enabled == rhs.enabled &&
+               lhs.write_enabled == rhs.write_enabled &&
+               lhs.compare == rhs.compare;
+    }
+
     bool shaderUsesTexture(ALMetalUIShader shader)
     {
         return shader == ALMetalUIShader::textured ||
@@ -138,6 +146,7 @@ struct ALMetalUIRenderer::Impl
     {
         ALMetalUIShader shader = ALMetalUIShader::textured;
         ALMetalUIBlendState blend{};
+        ALMetalPixelFormat depth_format = ALMetalPixelFormat::invalid;
         std::unique_ptr<ALMetalRenderPipeline> state;
     };
 
@@ -147,12 +156,20 @@ struct ALMetalUIRenderer::Impl
         std::unique_ptr<ALMetalSamplerState> state;
     };
 
+    struct DepthEntry
+    {
+        ALMetalUIDepthState descriptor{};
+        std::unique_ptr<ALMetalDepthStencilState> state;
+    };
+
     const ALMetalDevice* device = nullptr;
     ALMetalFrameScheduler* scheduler = nullptr;
     ALMetalSurface* surface = nullptr;
     ALMetalPixelFormat output_format = ALMetalPixelFormat::bgra8_unorm;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::unique_ptr<ALMetalRenderPipeline> background_pipeline;
+    ALMetalPixelFormat background_depth_format =
+        ALMetalPixelFormat::invalid;
     std::unique_ptr<ALMetalSamplerState> background_sampler;
     std::unique_ptr<ALMetalRenderTarget> target;
     std::unique_ptr<ALMetalDrawable> drawable;
@@ -161,16 +178,26 @@ struct ALMetalUIRenderer::Impl
     std::unique_ptr<ALMetalRenderEncoder> encoder;
     std::vector<PipelineEntry> pipelines;
     std::vector<SamplerEntry> samplers;
+    std::vector<DepthEntry> depths;
     ALMetalUIRendererStats totals{};
     std::uint64_t frame_batches = 0;
     std::uint64_t frame_vertices = 0;
     std::uint32_t frame_width = 0;
     std::uint32_t frame_height = 0;
     const ALMetalTexture* frame_background = nullptr;
+    const ALMetalTexture* frame_depth = nullptr;
+
+    ALMetalPixelFormat frameDepthFormat() const noexcept
+    {
+        return frame_depth ? frame_depth->descriptor().format
+                           : ALMetalPixelFormat::invalid;
+    }
 
     bool prepareBackground(std::string* error)
     {
-        if (background_pipeline && background_sampler)
+        const ALMetalPixelFormat depth_format = frameDepthFormat();
+        if (background_pipeline && background_sampler &&
+            background_depth_format == depth_format)
         {
             return true;
         }
@@ -179,6 +206,7 @@ struct ALMetalUIRenderer::Impl
         descriptor.vertex_function = "almetal_resample_vertex";
         descriptor.fragment_function = "almetal_resample_fragment";
         descriptor.colors[0].format = output_format;
+        descriptor.depth_stencil_format = depth_format;
         descriptor.label = "Alchemy native world/UI backing pipeline";
         background_pipeline = ALMetalRenderPipeline::create(
             *device, descriptor, error);
@@ -186,6 +214,7 @@ struct ALMetalUIRenderer::Impl
         {
             return false;
         }
+        background_depth_format = depth_format;
         ALMetalSamplerDescriptor sampler_descriptor;
         sampler_descriptor.min_filter = ALMetalSamplerFilter::nearest;
         sampler_descriptor.mag_filter = ALMetalSamplerFilter::nearest;
@@ -201,6 +230,7 @@ struct ALMetalUIRenderer::Impl
 
     ALMetalRenderPipeline* pipeline(ALMetalUIShader shader,
                                     const ALMetalUIBlendState& blend,
+                                    ALMetalPixelFormat depth_format,
                                     std::string* error)
     {
         ALMetalUIBlendState target_blend = blend;
@@ -219,7 +249,8 @@ struct ALMetalUIRenderer::Impl
         }
         for (PipelineEntry& entry : pipelines)
         {
-            if (entry.shader == shader && sameBlend(entry.blend, target_blend))
+            if (entry.shader == shader && sameBlend(entry.blend, target_blend) &&
+                entry.depth_format == depth_format)
             {
                 return entry.state.get();
             }
@@ -239,6 +270,7 @@ struct ALMetalUIRenderer::Impl
         descriptor.colors[0].destination_alpha = target_blend.destination_alpha;
         descriptor.colors[0].alpha_operation = target_blend.alpha_operation;
         descriptor.colors[0].write_mask = target_blend.write_mask;
+        descriptor.depth_stencil_format = depth_format;
         descriptor.label = "Alchemy production UI pipeline";
 
         auto state = ALMetalRenderPipeline::create(*device, descriptor, error);
@@ -246,7 +278,8 @@ struct ALMetalUIRenderer::Impl
         {
             return nullptr;
         }
-        pipelines.push_back({shader, target_blend, std::move(state)});
+        pipelines.push_back(
+            {shader, target_blend, depth_format, std::move(state)});
         totals.pipeline_states = pipelines.size();
         return pipelines.back().state.get();
     }
@@ -270,6 +303,34 @@ struct ALMetalUIRenderer::Impl
         samplers.push_back({descriptor, std::move(state)});
         totals.sampler_states = samplers.size();
         return samplers.back().state.get();
+    }
+
+    ALMetalDepthStencilState* depthState(
+        const ALMetalUIDepthState& descriptor,
+        std::string* error)
+    {
+        for (DepthEntry& entry : depths)
+        {
+            if (sameDepth(entry.descriptor, descriptor))
+            {
+                return entry.state.get();
+            }
+        }
+
+        ALMetalDepthStencilDescriptor native;
+        native.depth_compare = descriptor.enabled
+            ? descriptor.compare : ALMetalCompareFunction::always;
+        native.depth_write_enabled = descriptor.enabled &&
+            descriptor.write_enabled;
+        native.label = "Alchemy production UI depth";
+        auto state = ALMetalDepthStencilState::create(
+            *device, native, error);
+        if (!state)
+        {
+            return nullptr;
+        }
+        depths.push_back({descriptor, std::move(state)});
+        return depths.back().state.get();
     }
 
     bool beginFrame(std::uint32_t width, std::uint32_t height, std::string* error)
@@ -299,6 +360,23 @@ struct ALMetalUIRenderer::Impl
                 return false;
             }
         }
+        if (frame_depth)
+        {
+            const ALMetalTextureDescriptor& depth =
+                frame_depth->descriptor();
+            if (depth.width != width || depth.height != height)
+            {
+                setError(error,
+                         "Metal UI frame depth dimensions do not match the target");
+                return false;
+            }
+            if (surface)
+            {
+                setError(error,
+                         "Metal UI frame depth requires an offscreen renderer");
+                return false;
+            }
+        }
 
         if (surface)
         {
@@ -315,7 +393,9 @@ struct ALMetalUIRenderer::Impl
             }
         }
         else if (!target || target->descriptor().width != width ||
-                 target->descriptor().height != height)
+                 target->descriptor().height != height ||
+                 target->descriptor().depth_stencil_format !=
+                     frameDepthFormat())
         {
             ALMetalRenderTargetDescriptor descriptor;
             descriptor.width = width;
@@ -324,12 +404,28 @@ struct ALMetalUIRenderer::Impl
             descriptor.colors[0].format = output_format;
             descriptor.colors[0].shader_read = true;
             descriptor.colors[0].label = "Alchemy production UI color";
+            descriptor.depth_stencil_format = frameDepthFormat();
+            descriptor.depth_stencil_shader_read = frame_depth != nullptr;
             descriptor.label = "Alchemy production UI target";
             target = ALMetalRenderTarget::create(*device, descriptor, error);
             if (!target)
             {
                 return false;
             }
+        }
+
+        frame = scheduler->beginFrame("Alchemy production UI frame", UINT32_MAX, error);
+        if (!frame)
+        {
+            drawable.reset();
+            return false;
+        }
+        if (frame_depth && !target->copyDepthStencilFrom(
+                frame->commandBuffer(), *frame_depth, {}, error))
+        {
+            frame.reset();
+            drawable.reset();
+            return false;
         }
 
         ALMetalRenderPassColorConfig color_config;
@@ -346,18 +442,22 @@ struct ALMetalUIRenderer::Impl
         {
             ALMetalRenderPassConfig config;
             config.colors[0] = color_config;
+            if (frame_depth)
+            {
+                config.depth_load = ALMetalLoadAction::load;
+                config.depth_store = ALMetalStoreAction::store;
+                if (frameDepthFormat() ==
+                    ALMetalPixelFormat::depth32_float_stencil8)
+                {
+                    config.stencil_load = ALMetalLoadAction::load;
+                    config.stencil_store = ALMetalStoreAction::store;
+                }
+            }
             pass = target->makeRenderPass(config, error);
         }
         if (!pass)
         {
-            drawable.reset();
-            return false;
-        }
-
-        frame = scheduler->beginFrame("Alchemy production UI frame", UINT32_MAX, error);
-        if (!frame)
-        {
-            pass.reset();
+            frame.reset();
             drawable.reset();
             return false;
         }
@@ -518,12 +618,72 @@ bool ALMetalUIRenderer::setFrameBackground(
     return true;
 }
 
+bool ALMetalUIRenderer::setFrameDepth(
+    const ALMetalTexture* depth,
+    std::string* error)
+{
+    if (!mImpl)
+    {
+        setError(error, "Metal UI renderer is unavailable");
+        return false;
+    }
+    if (mImpl->frame)
+    {
+        setError(error,
+                 "Metal UI frame depth must be selected before drawing");
+        return false;
+    }
+    if (!depth)
+    {
+        mImpl->frame_depth = nullptr;
+        return true;
+    }
+    if (mImpl->surface)
+    {
+        setError(error,
+                 "Metal UI frame depth requires an offscreen renderer");
+        return false;
+    }
+    const ALMetalTextureDescriptor& descriptor = depth->descriptor();
+    if (descriptor.type != ALMetalTextureType::texture_2d ||
+        (descriptor.format != ALMetalPixelFormat::depth32_float &&
+         descriptor.format !=
+             ALMetalPixelFormat::depth32_float_stencil8) ||
+        descriptor.width == 0 || descriptor.height == 0 ||
+        descriptor.array_length != 1 || descriptor.sample_count != 1)
+    {
+        setError(error, "Metal UI frame depth is incompatible");
+        return false;
+    }
+    if (mImpl->target && mImpl->target->depthStencilTexture() &&
+        mImpl->target->depthStencilTexture()->nativeHandle() ==
+            depth->nativeHandle())
+    {
+        setError(error,
+                 "Metal UI frame depth cannot alias its destination");
+        return false;
+    }
+    mImpl->frame_depth = depth;
+    return true;
+}
+
 bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
 {
     if (!mImpl || !batch.vertices || batch.vertex_count == 0 ||
         batch.target_width == 0 || batch.target_height == 0)
     {
         setError(error, "Metal UI batch is missing geometry or target dimensions");
+        return false;
+    }
+    if (batch.depth.write_enabled && !batch.depth.enabled)
+    {
+        setError(error, "Metal UI depth writes require depth testing");
+        return false;
+    }
+    if (batch.depth.enabled && !mImpl->frame_depth)
+    {
+        setError(error,
+                 "Metal UI depth test requires a frame depth backing");
         return false;
     }
     const bool uses_texture = shaderUsesTexture(batch.shader);
@@ -549,16 +709,20 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
         return false;
     }
 
-    ALMetalRenderPipeline* pipeline = mImpl->pipeline(batch.shader, batch.blend, error);
+    ALMetalRenderPipeline* pipeline = mImpl->pipeline(
+        batch.shader, batch.blend, mImpl->frameDepthFormat(), error);
     ALMetalSamplerState* sampler = uses_texture
         ? mImpl->sampler(batch.sampler, error) : nullptr;
-    if (!pipeline || (uses_texture && !sampler))
+    ALMetalDepthStencilState* depth = mImpl->depthState(
+        batch.depth, error);
+    if (!pipeline || (uses_texture && !sampler) || !depth)
     {
         return false;
     }
 
     ALMetalRenderEncoder& encoder = *mImpl->encoder;
     if (!encoder.setPipeline(*pipeline, error) ||
+        !encoder.setDepthStencilState(depth, error) ||
         !encoder.setVertexBuffer(0, *batch.vertices, batch.position_offset, error) ||
         !encoder.setVertexBuffer(1, *batch.vertices, batch.texcoord_offset, error))
     {
@@ -579,7 +743,9 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
         std::uint32_t mode;
         std::uint32_t source_count;
         std::uint32_t flip_y;
-    } remap{draw.remap_mode, batch.vertex_count, mImpl->surface ? 0u : 1u};
+        std::uint32_t reverse_z;
+    } remap{draw.remap_mode, batch.vertex_count, mImpl->surface ? 0u : 1u,
+            batch.depth.reverse_z ? 1u : 0u};
     if (!encoder.setVertexBytes(4, &remap, sizeof(remap), error))
     {
         return false;
@@ -635,14 +801,20 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
     }
     if (!mImpl->frame && mImpl->frame_background)
     {
-        const ALMetalTextureDescriptor& background =
+        const ALMetalTextureDescriptor& source =
             mImpl->frame_background->descriptor();
         if (!mImpl->beginFrame(
-                background.width, background.height, error))
+                source.width, source.height, error))
         {
             mImpl->frame_background = nullptr;
+            mImpl->frame_depth = nullptr;
             return false;
         }
+    }
+    if (!mImpl->frame && mImpl->frame_depth)
+    {
+        mImpl->frame_depth = nullptr;
+        return true;
     }
     else if (!mImpl->frame && mImpl->surface)
     {
@@ -650,6 +822,7 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         if (!mImpl->beginFrame(info.width, info.height, error))
         {
             mImpl->frame_background = nullptr;
+            mImpl->frame_depth = nullptr;
             return false;
         }
     }
@@ -664,6 +837,7 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         mImpl->pass.reset();
         mImpl->drawable.reset();
         mImpl->frame_background = nullptr;
+        mImpl->frame_depth = nullptr;
         return false;
     }
     mImpl->encoder.reset();
@@ -675,6 +849,7 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         mImpl->pass.reset();
         mImpl->drawable.reset();
         mImpl->frame_background = nullptr;
+        mImpl->frame_depth = nullptr;
         return false;
     }
     if (!mImpl->scheduler->submit(*mImpl->frame, error))
@@ -683,12 +858,14 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         mImpl->pass.reset();
         mImpl->drawable.reset();
         mImpl->frame_background = nullptr;
+        mImpl->frame_depth = nullptr;
         return false;
     }
     mImpl->frame.reset();
     mImpl->pass.reset();
     mImpl->drawable.reset();
     mImpl->frame_background = nullptr;
+    mImpl->frame_depth = nullptr;
     ++mImpl->totals.frames;
     mImpl->totals.batches += mImpl->frame_batches;
     mImpl->totals.vertices += mImpl->frame_vertices;
@@ -703,6 +880,12 @@ bool ALMetalUIRenderer::hasOpenFrame() const noexcept
 const ALMetalTexture* ALMetalUIRenderer::outputTexture() const noexcept
 {
     return mImpl && mImpl->target ? mImpl->target->colorTexture(0) : nullptr;
+}
+
+const ALMetalTexture* ALMetalUIRenderer::outputDepthTexture() const noexcept
+{
+    return mImpl && mImpl->target
+        ? mImpl->target->depthStencilTexture() : nullptr;
 }
 
 std::unique_ptr<ALMetalTexture> ALMetalUIRenderer::takeOutputTexture() noexcept

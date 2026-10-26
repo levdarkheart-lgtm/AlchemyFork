@@ -73,6 +73,17 @@ struct ALMetalUIBlendState
     ALMetalColorWriteMask write_mask = ALMetalColorWriteMask::all;
 };
 
+// Physical depth state for 3D UI/HUD batches. The caller supplies the
+// compare function already translated for the active forward/reverse-Z
+// convention, just as the retained depth backing stores it.
+struct ALMetalUIDepthState
+{
+    bool enabled = false;
+    bool write_enabled = false;
+    bool reverse_z = false;
+    ALMetalCompareFunction compare = ALMetalCompareFunction::always;
+};
+
 struct ALMetalUIBatch
 {
     const ALMetalBuffer* vertices = nullptr;
@@ -83,6 +94,7 @@ struct ALMetalUIBatch
     ALMetalSamplerDescriptor sampler{};
     ALMetalUIMatrices matrices{};
     ALMetalUIBlendState blend{};
+    ALMetalUIDepthState depth{};
     ALMetalViewport viewport{};
     ALMetalScissorRect scissor{};
     ALMetalUIShader shader = ALMetalUIShader::textured;
@@ -147,11 +159,20 @@ public:
     bool setFrameBackground(
         const ALMetalTexture* background,
         std::string* error = nullptr);
+    // A frame depth backing is a one-shot, same-size, single-sample D32F or
+    // D32F/S8 texture copied on-GPU before encoding. It is currently an
+    // offscreen composition primitive: the drawable path remains color-only
+    // until the complete world/HUD transaction is ready for presentation.
+    // The caller retains the texture until endFrame returns.
+    bool setFrameDepth(
+        const ALMetalTexture* depth,
+        std::string* error = nullptr);
     bool draw(const ALMetalUIBatch& batch, std::string* error = nullptr);
     bool endFrame(std::string* error = nullptr);
 
     bool hasOpenFrame() const noexcept;
     const ALMetalTexture* outputTexture() const noexcept;
+    const ALMetalTexture* outputDepthTexture() const noexcept;
     // Completes the offscreen renderer-to-viewer ownership handoff. Returns
     // null for a surface-backed renderer or while a frame is still open. The
     // next offscreen draw lazily allocates a fresh target.

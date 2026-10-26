@@ -120,6 +120,7 @@ struct ALMetalVertexRemapConstants
     uint mode;
     uint source_count;
     uint flip_y;
+    uint reverse_z;
 };
 
 static uint almetal_source_vertex(uint vertex_id,
@@ -15467,7 +15468,10 @@ vertex ALMetalUIVaryings almetal_ui_vertex(
         // lower-left row-zero byte convention used by glCopyTexSubImage.
         clip_position.y = -clip_position.y;
     }
-    output.position = almetal_clip_from_gl(clip_position);
+    // Forward GL clip depth is [-w,+w]. The viewer's reverse-Z projection
+    // already emits Metal's [0,+w] range, matching every native world owner.
+    output.position = remap.reverse_z != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
     output.texcoord = (matrices.texture0 * float4(texcoords[source_id], 0.0, 1.0)).xy;
     output.color = float4(colors[source_id]) * (1.0 / 255.0);
     return output;
@@ -15556,7 +15560,8 @@ vertex ALMetalUIVaryings almetal_solid_vertex(
     {
         clip_position.y = -clip_position.y;
     }
-    output.position = almetal_clip_from_gl(clip_position);
+    output.position = remap.reverse_z != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
     output.texcoord = texcoords[source_id];
     output.color = 1.0;
     return output;
