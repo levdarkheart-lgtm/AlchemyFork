@@ -374,8 +374,8 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
     static LLCachedControl<F32> bloom_strength(
         gSavedSettings, "RenderBloomStrength", 0.325f);
-    static LLCachedControl<F32> halation_strength(
-        gSavedSettings, "RenderBloomHalationStrength", 0.f);
+    static LLCachedControl<bool> bloom_halation(
+        gSavedSettings, "RenderBloomHalation", false);
     static LLCachedControl<F32> cross_strength(
         gSavedSettings, "RenderCrossFilterStrength", 0.f);
     static LLCachedControl<F32> chromatic_strength(
@@ -402,8 +402,9 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         !LLRender::sClassicMode && !color_grade && !build_no_post &&
         !gSnapshotNoPost && sky &&
         sky->getReflectionProbeAmbiance(auto_adjust) != 0.f &&
-        bloom_strength <= 0.f && halation_strength <= 0.f &&
-        cross_strength <= 0.f && chromatic_strength <= 0.f &&
+        !bloom_halation &&
+        (bloom_strength <= 0.f || cross_strength <= 0.f) &&
+        chromatic_strength <= 0.f &&
         flare_strength <= 0.f && dirt_strength <= 0.f &&
         mResourceInputs.mFSAAType == 0 && cas_sharpness <= 0.f &&
         !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) &&
@@ -520,6 +521,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> opaque_post_deferred_target;
     std::unique_ptr<ALMetalRenderTarget> display_post_target;
     U32 display_post_frame = std::numeric_limits<U32>::max();
+    std::unique_ptr<ALMetalRenderTarget> bloom_target;
+    U32 bloom_frame = std::numeric_limits<U32>::max();
     std::unique_ptr<ALMetalRenderTarget> exposure_target;
     U32 exposure_frame = std::numeric_limits<U32>::max();
     U64 exposure_epoch = 0;
@@ -1166,6 +1169,8 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
     capture.display_post_frame = std::numeric_limits<U32>::max();
+    capture.bloom_target.reset();
+    capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
     capture.base_light_target.reset();
     capture.sky_behind_target.reset();
@@ -1219,6 +1224,8 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
     capture.display_post_frame = std::numeric_limits<U32>::max();
+    capture.bloom_target.reset();
+    capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.target.reset();
     capture.local_light_target.reset();
     capture.projector_light_target.reset();
@@ -1292,6 +1299,8 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
     capture.display_post_frame = std::numeric_limits<U32>::max();
+    capture.bloom_target.reset();
+    capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
     capture.base_light_target.reset();
     capture.sky_behind_target.reset();
@@ -1349,6 +1358,8 @@ bool LLPipeline::endMetalReflectionProbeFaceCapture()
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
     capture.display_post_frame = std::numeric_limits<U32>::max();
+    capture.bloom_target.reset();
+    capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.target.reset();
     capture.local_light_target.reset();
     capture.projector_light_target.reset();
@@ -1405,6 +1416,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
         capture.display_post_frame = std::numeric_limits<U32>::max();
+        capture.bloom_target.reset();
+        capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.exposure_target.reset();
         capture.exposure_frame = std::numeric_limits<U32>::max();
         capture.exposure_epoch = 0;
@@ -1663,6 +1676,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
         capture.display_post_frame = std::numeric_limits<U32>::max();
+        capture.bloom_target.reset();
+        capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.base_light_map_target.reset();
         capture.base_light_target.reset();
         capture.attempted = false;
@@ -3032,6 +3047,8 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
         capture.display_post_frame = std::numeric_limits<U32>::max();
+        capture.bloom_target.reset();
+        capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.exposure_target.reset();
         capture.exposure_frame = std::numeric_limits<U32>::max();
         capture.exposure_epoch = 0;
@@ -3920,6 +3937,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.display_post_target.reset();
             capture.display_post_frame =
                 std::numeric_limits<U32>::max();
+            capture.bloom_target.reset();
+            capture.bloom_frame =
+                std::numeric_limits<U32>::max();
 
             static LLCachedControl<bool> dynamic_exposure(
                 gSavedSettings, "RenderDynamicExposureEnabled", true);
@@ -4015,6 +4035,56 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 }
             }
 
+            static LLCachedControl<F32> bloom_strength(
+                gSavedSettings, "RenderBloomStrength", 0.325f);
+            static LLCachedControl<F32> bloom_threshold(
+                gSavedSettings, "RenderBloomThreshold", 1.f);
+            static LLCachedControl<F32> bloom_knee(
+                gSavedSettings, "RenderBloomKnee", 0.5f);
+            static LLCachedControl<F32> bloom_firefly_clamp(
+                gSavedSettings, "RenderBloomFireflyClamp", 24.f);
+            static LLCachedControl<F32> bloom_scatter(
+                gSavedSettings, "RenderBloomScatter", 0.7f);
+            static LLCachedControl<F32> alpha_glow_boost(
+                gSavedSettings, "RenderBloomAlphaGlowBoost", 2.f);
+            const F32 native_bloom_strength =
+                llmax(bloom_strength(), 0.f);
+            const bool wants_native_bloom = capture.hdr &&
+                native_bloom_strength > 0.f &&
+                isMainWorldPass() && mRT == &mMainRT &&
+                canCaptureMetalScopeSample(false);
+            capture.bloom_target.reset();
+            capture.bloom_frame = std::numeric_limits<U32>::max();
+            if (wants_native_bloom && bloomHDRReady())
+            {
+                ALMetalWorldBloomScene bloom;
+                bloom.source = target.get();
+                bloom.mip_count = mRT->bloomMipCount;
+                bloom.resolution_scale = static_cast<U32>(llclamp(
+                    mResourceInputs.mBloomScale, 0, 4));
+                bloom.threshold = bloom_threshold();
+                bloom.knee = llmax(bloom_knee(), 0.f);
+                bloom.firefly_clamp =
+                    llmax(bloom_firefly_clamp(), 0.f);
+                bloom.scatter = llmax(bloom_scatter(), 0.f);
+                bloom.alpha_glow_boost =
+                    llmax(alpha_glow_boost(), 0.f);
+                std::string bloom_error;
+                auto bloom_target = capture.renderer->renderBloom(
+                    bloom, &bloom_error);
+                if (bloom_target)
+                {
+                    capture.bloom_target = std::move(bloom_target);
+                    capture.bloom_frame = gFrameCount;
+                }
+                else
+                {
+                    LL_WARNS("Metal")
+                        << "Native world bloom retained GL: "
+                        << bloom_error << LL_ENDL;
+                }
+            }
+
             // Build the real display-space source only when this retained
             // linear target is already the exact input to colorCorrect's
             // modern-gamma base permutation. This is intentionally stricter
@@ -4030,15 +4100,22 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                  capture.exposure_target &&
                  capture.exposure_epoch == mMetalExposureHistoryEpoch &&
                  capture.exposure_frame == gFrameCount);
+            const bool exact_bloom = native_bloom_strength <= 0.f ||
+                (capture.bloom_target &&
+                 capture.bloom_frame == gFrameCount);
             const bool exact_base = capture.hdr &&
                 canCaptureMetalScopeSample() && sky &&
-                exact_dynamic_exposure;
+                exact_dynamic_exposure && exact_bloom;
             if (exact_base)
             {
                 ALMetalWorldDisplayPostScene display;
                 display.source = target.get();
                 display.adapted_exposure_texture = dynamic_exposure
                     ? capture.exposure_target->colorTexture(0) : nullptr;
+                display.bloom_texture = capture.bloom_target
+                    ? capture.bloom_target->colorTexture(0) : nullptr;
+                display.bloom_strength = capture.bloom_target
+                    ? native_bloom_strength : 0.f;
                 display.hdr = true;
                 static LLCachedControl<F32> exposure(
                     gSavedSettings, "RenderExposure", 1.f);
@@ -4236,6 +4313,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
         capture.display_post_frame = std::numeric_limits<U32>::max();
+        capture.bloom_target.reset();
+        capture.bloom_frame = std::numeric_limits<U32>::max();
     }
     capture.batches.clear();
     capture.avatar_palettes.clear();

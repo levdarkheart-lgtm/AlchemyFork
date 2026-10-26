@@ -266,6 +266,11 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_pbr_preview_bloom_downsample_fragment",
             "almetal_pbr_preview_bloom_upsample_fragment",
             "almetal_pbr_preview_cross_filter_fragment",
+            "almetal_world_display_post_bloom_fragment",
+            "almetal_world_display_post_bloom_exposure_fragment",
+            "almetal_world_bloom_extract_fragment",
+            "almetal_world_bloom_downsample_fragment",
+            "almetal_world_bloom_upsample_fragment",
         };
         for (const char* function : functions)
         {
@@ -10433,6 +10438,140 @@ TEST_CASE("almetal: world exposure matches the production meter and history", "[
         CHECK_FALSE(renderer->renderDisplayPost(display, &error));
         CHECK(error ==
               "Metal world display-post exposure is incompatible");
+    }
+}
+
+TEST_CASE("almetal: world bloom matches the production HDR pyramid", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 8;
+        constexpr std::uint32_t height = 8;
+        std::array<std::uint16_t, width * height * 4> pixels{};
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            pixels[pixel * 4 + 0] = 0x3400u; // linear 0.25 red
+            pixels[pixel * 4 + 3] = 0x3c00u; // alpha/glow tag 1.0
+        }
+        ALMetalRenderTargetDescriptor source_descriptor;
+        source_descriptor.width = width;
+        source_descriptor.height = height;
+        source_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba16_float;
+        source_descriptor.label = "Alchemy world bloom test source";
+        auto source = ALMetalRenderTarget::create(
+            *device, source_descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        auto upload = device->makeCommandBuffer(
+            "Alchemy world bloom test upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        id<MTLBuffer> staging = [nativeDevice(*device)
+            newBufferWithBytes:pixels.data()
+                      length:sizeof(pixels)
+                     options:MTLResourceStorageModeShared];
+        REQUIRE(staging);
+        id<MTLBlitCommandEncoder> blit =
+            [nativeCommand(*upload) blitCommandEncoder];
+        REQUIRE(blit);
+        [blit copyFromBuffer:staging
+                sourceOffset:0
+           sourceBytesPerRow:width * 4 * sizeof(std::uint16_t)
+         sourceBytesPerImage:sizeof(pixels)
+                  sourceSize:MTLSizeMake(width, height, 1)
+                   toTexture:(__bridge id<MTLTexture>)
+                       source->colorTexture(0)->nativeHandle()
+            destinationSlice:0
+            destinationLevel:0
+           destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [blit endEncoding];
+        REQUIRE(upload->commit(&error));
+        INFO(error);
+
+        // Threshold suppresses ordinary HDR extraction, leaving only the
+        // legacy alpha/glow term: 0.25 * 1 * 0.5 * 2 = 0.25. A uniform field
+        // stays 0.25 through normalized downsampling. Three levels then add
+        // 0.25 + (0.25 + 0.25) = 0.75 into the top mip.
+        ALMetalWorldBloomScene bloom_scene;
+        bloom_scene.source = source.get();
+        bloom_scene.mip_count = 3;
+        bloom_scene.threshold = 100.f;
+        bloom_scene.knee = 0.f;
+        bloom_scene.scatter = 1.f;
+        bloom_scene.alpha_glow_boost = 0.5f;
+        auto bloom = renderer->renderBloom(bloom_scene, &error);
+        INFO(error);
+        REQUIRE(bloom);
+        CHECK(bloom->descriptor().width == width);
+        CHECK(bloom->descriptor().height == height);
+        CHECK(bloom->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rg11b10_float);
+
+        ALMetalWorldDisplayPostScene display;
+        display.source = source.get();
+        display.bloom_texture = bloom->colorTexture(0);
+        display.hdr = true;
+        display.bloom_strength = 1.f;
+        display.tonemap_mix = 0.f;
+        auto output = renderer->renderDisplayPost(display, &error);
+        INFO(error);
+        REQUIRE(output);
+        std::array<std::uint32_t, width * height> packed{};
+        REQUIRE(output->colorTexture(0)->readback(
+            *device, 0, 0, {}, packed.data(), width * sizeof(std::uint32_t),
+            &error));
+        INFO(error);
+        CHECK((packed[0] & 0x3ffu) == 0x3ffu);
+        CHECK(((packed[0] >> 10u) & 0x3ffu) == 0u);
+        CHECK(((packed[0] >> 20u) & 0x3ffu) == 0u);
+        CHECK((packed[0] >> 30u) == 3u);
+
+        // colorCorrect scales only the completed pyramid, not the scene.
+        // 0.25 + 0.75 * 0.25 = 0.4375 linear before the display transfer.
+        display.bloom_strength = 0.25f;
+        auto quarter = renderer->renderDisplayPost(display, &error);
+        INFO(error);
+        REQUIRE(quarter);
+        REQUIRE(quarter->colorTexture(0)->readback(
+            *device, 0, 0, {}, packed.data(), width * sizeof(std::uint32_t),
+            &error));
+        const float encoded =
+            1.055f * std::pow(0.4375f, 1.f / 2.4f) - 0.055f;
+        const int expected = static_cast<int>(std::lround(encoded * 1023.f));
+        CHECK(std::abs(static_cast<int>(packed[0] & 0x3ffu) - expected) <= 2);
+
+        ALMetalWorldBloomScene invalid;
+        error.clear();
+        CHECK_FALSE(renderer->renderBloom(invalid, &error));
+        CHECK(error == "Metal world bloom scene is incomplete");
+        invalid.source = source.get();
+        invalid.mip_count = 2;
+        error.clear();
+        CHECK_FALSE(renderer->renderBloom(invalid, &error));
+        CHECK(error == "Metal world bloom state is invalid");
+        invalid.mip_count = 3;
+        invalid.resolution_scale = 4;
+        error.clear();
+        CHECK_FALSE(renderer->renderBloom(invalid, &error));
+        CHECK(error == "Metal world bloom pyramid is too shallow");
+
+        display.bloom_texture = source->colorTexture(0);
+        display.bloom_strength = 1.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(display, &error));
+        CHECK(error ==
+              "Metal world display-post bloom is incompatible");
     }
 }
 

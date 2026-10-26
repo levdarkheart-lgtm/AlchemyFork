@@ -122,12 +122,29 @@ namespace
         // static exposure, adapted exposure, tonemap mix, tonemap type
         float post[4];
         float tonemap_params[4];
-        // non-HDR dither amount, reserved, reserved, reserved
+        // non-HDR dither amount, bloom strength, reserved, reserved
         float display[4];
         // cutout-premultiplied, HDR/tonemap branch, animate dither, frame id
         std::uint32_t config[4];
     };
     static_assert(sizeof(WorldDisplayPostConstants) == 64);
+
+    struct alignas(16) WorldBloomExtractConstants
+    {
+        // threshold, knee, firefly clamp, alpha glow boost
+        float params[4]{};
+        // Kept ABI-identical to the shared preview/world shader entry. The
+        // non-halation world target discards the computed alpha channel.
+        float halation_weights[4]{};
+    };
+    static_assert(sizeof(WorldBloomExtractConstants) == 32);
+
+    struct alignas(16) WorldBloomFilterConstants
+    {
+        // inverse source width/height, scatter or first-downsample flag
+        float params[4]{};
+    };
+    static_assert(sizeof(WorldBloomFilterConstants) == 16);
 
     struct alignas(16) WorldExposureMeterConstants
     {
@@ -806,8 +823,12 @@ struct ALMetalWorldGBufferRenderer::Impl
         projector_light_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         lighting_composition_pipelines;
-    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>
+    std::array<std::array<
+        std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>, 2>
         display_post_pipelines;
+    std::unique_ptr<ALMetalRenderPipeline> bloom_extract_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> bloom_downsample_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> bloom_upsample_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
     std::unique_ptr<ALMetalComputePipeline> exposure_meter_pipeline;
     std::array<std::unique_ptr<ALMetalComputePipeline>, 2>
@@ -920,6 +941,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalSamplerState> point_clamp_sampler;
     std::unique_ptr<ALMetalSamplerState> point_repeat_sampler;
     std::unique_ptr<ALMetalSamplerState> linear_clamp_sampler;
+    std::unique_ptr<ALMetalSamplerState> linear_mirror_sampler;
     std::unique_ptr<ALMetalSamplerState> ramp_sampler;
     std::unique_ptr<ALMetalSamplerState> hdri_sampler;
     std::unique_ptr<ALMetalTexture> brdf_lut;
@@ -1145,6 +1167,16 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_display_post_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_display_post_exposure_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_display_post_bloom_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_display_post_bloom_exposure_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_bloom_extract_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_bloom_downsample_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_bloom_upsample_fragment") ||
         !impl->library->hasFunction("almetal_world_exposure_meter") ||
         !impl->library->hasFunction("almetal_world_exposure_initial") ||
         !impl->library->hasFunction("almetal_world_exposure_history") ||
@@ -1341,6 +1373,44 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         return nullptr;
     }
 
+    const auto make_bloom_pipeline = [&](const char* fragment,
+                                         const char* label,
+                                         bool additive)
+    {
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = impl->library.get();
+        descriptor.vertex_function = "almetal_resample_vertex";
+        descriptor.fragment_function = fragment;
+        descriptor.colors[0].format =
+            ALMetalPixelFormat::rg11b10_float;
+        descriptor.colors[0].blending_enabled = additive;
+        if (additive)
+        {
+            descriptor.colors[0].source_rgb = ALMetalBlendFactor::one;
+            descriptor.colors[0].destination_rgb = ALMetalBlendFactor::one;
+            descriptor.colors[0].source_alpha = ALMetalBlendFactor::one;
+            descriptor.colors[0].destination_alpha =
+                ALMetalBlendFactor::one;
+        }
+        descriptor.label = label;
+        return ALMetalRenderPipeline::create(device, descriptor, error);
+    };
+    impl->bloom_extract_pipeline = make_bloom_pipeline(
+        "almetal_world_bloom_extract_fragment",
+        "Alchemy world bloom extract pipeline", false);
+    impl->bloom_downsample_pipeline = make_bloom_pipeline(
+        "almetal_world_bloom_downsample_fragment",
+        "Alchemy world bloom downsample pipeline", false);
+    impl->bloom_upsample_pipeline = make_bloom_pipeline(
+        "almetal_world_bloom_upsample_fragment",
+        "Alchemy world bloom upsample pipeline", true);
+    if (!impl->bloom_extract_pipeline ||
+        !impl->bloom_downsample_pipeline ||
+        !impl->bloom_upsample_pipeline)
+    {
+        return nullptr;
+    }
+
     ALMetalComputePipelineDescriptor exposure_descriptor;
     exposure_descriptor.library = impl->library.get();
     exposure_descriptor.function = "almetal_world_exposure_meter";
@@ -1434,26 +1504,39 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         descriptor.colors[0].format = hdr
             ? ALMetalPixelFormat::rgb10a2_unorm
             : ALMetalPixelFormat::rgba8_unorm;
-        constexpr std::array<const char*, 2> display_functions{{
-            "almetal_world_display_post_fragment",
-            "almetal_world_display_post_exposure_fragment",
-        }};
-        for (std::size_t dynamic = 0;
-             dynamic < display_functions.size(); ++dynamic)
+        constexpr std::array<std::array<const char*, 2>, 2>
+            display_functions{{
+                {{"almetal_world_display_post_fragment",
+                  "almetal_world_display_post_exposure_fragment"}},
+                {{"almetal_world_display_post_bloom_fragment",
+                  "almetal_world_display_post_bloom_exposure_fragment"}},
+            }};
+        for (std::size_t bloom = 0;
+             bloom < display_functions.size(); ++bloom)
         {
-            descriptor.fragment_function = display_functions[dynamic];
-            descriptor.label = dynamic
-                ? (hdr
-                    ? "Alchemy HDR world dynamic-exposure display-post pipeline"
-                    : "Alchemy world dynamic-exposure display-post pipeline")
-                : (hdr
-                    ? "Alchemy HDR world display-post pipeline"
-                    : "Alchemy world display-post pipeline");
-            impl->display_post_pipelines[hdr][dynamic] =
-                ALMetalRenderPipeline::create(device, descriptor, error);
-            if (!impl->display_post_pipelines[hdr][dynamic])
+            for (std::size_t dynamic = 0;
+                 dynamic < display_functions[bloom].size(); ++dynamic)
             {
-                return nullptr;
+                descriptor.fragment_function =
+                    display_functions[bloom][dynamic];
+                descriptor.label = bloom
+                    ? (dynamic
+                        ? "Alchemy HDR world bloom dynamic-exposure display-post pipeline"
+                        : "Alchemy HDR world bloom display-post pipeline")
+                    : (dynamic
+                        ? (hdr
+                            ? "Alchemy HDR world dynamic-exposure display-post pipeline"
+                            : "Alchemy world dynamic-exposure display-post pipeline")
+                        : (hdr
+                            ? "Alchemy HDR world display-post pipeline"
+                            : "Alchemy world display-post pipeline"));
+                impl->display_post_pipelines[hdr][bloom][dynamic] =
+                    ALMetalRenderPipeline::create(
+                        device, descriptor, error);
+                if (!impl->display_post_pipelines[hdr][bloom][dynamic])
+                {
+                    return nullptr;
+                }
             }
         }
 
@@ -3100,6 +3183,21 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     {
         return nullptr;
     }
+
+    sampler.address_s = ALMetalSamplerAddressMode::mirror_repeat;
+    sampler.address_t = ALMetalSamplerAddressMode::mirror_repeat;
+    sampler.address_r = ALMetalSamplerAddressMode::mirror_repeat;
+    sampler.label = "Alchemy world bloom linear mirror sampler";
+    impl->linear_mirror_sampler = ALMetalSamplerState::create(
+        device, sampler, error);
+    if (!impl->linear_mirror_sampler)
+    {
+        return nullptr;
+    }
+
+    sampler.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+    sampler.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
 
     sampler.mip_filter = ALMetalSamplerMipFilter::linear;
     sampler.max_anisotropy = 16;
@@ -5272,6 +5370,190 @@ ALMetalWorldGBufferRenderer::composeLighting(
 }
 
 std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderBloom(
+    const ALMetalWorldBloomScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.source)
+    {
+        setError(error, "Metal world bloom scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& source =
+        scene.source->descriptor();
+    if (source.width == 0 || source.height == 0 ||
+        source.sample_count != 1 || source.color_attachment_count != 1 ||
+        source.colors[0].format != ALMetalPixelFormat::rgba16_float ||
+        !sampleableTexture(scene.source->colorTexture(0)))
+    {
+        setError(error, "Metal world bloom source is incompatible");
+        return nullptr;
+    }
+    if (scene.mip_count < 3 || scene.mip_count > 7 ||
+        scene.resolution_scale > 4 ||
+        !std::isfinite(scene.threshold) ||
+        !std::isfinite(scene.knee) ||
+        !std::isfinite(scene.firefly_clamp) ||
+        !std::isfinite(scene.scatter) ||
+        !std::isfinite(scene.alpha_glow_boost) ||
+        scene.knee < 0.f || scene.firefly_clamp < 0.f ||
+        scene.scatter < 0.f || scene.alpha_glow_boost < 0.f)
+    {
+        setError(error, "Metal world bloom state is invalid");
+        return nullptr;
+    }
+
+    constexpr std::array<std::uint32_t, 5> scale_numerator{{
+        1, 3, 1, 1, 1,
+    }};
+    constexpr std::array<std::uint32_t, 5> scale_denominator{{
+        1, 4, 2, 4, 8,
+    }};
+    const std::size_t scale = scene.resolution_scale;
+    const std::uint32_t base_width = std::max(
+        1u, static_cast<std::uint32_t>(
+                static_cast<std::uint64_t>(source.width) *
+                scale_numerator[scale] / scale_denominator[scale]));
+    const std::uint32_t base_height = std::max(
+        1u, static_cast<std::uint32_t>(
+                static_cast<std::uint64_t>(source.height) *
+                scale_numerator[scale] / scale_denominator[scale]));
+
+    std::vector<std::unique_ptr<ALMetalRenderTarget>> targets;
+    targets.reserve(scene.mip_count);
+    for (std::uint32_t mip = 0; mip < scene.mip_count; ++mip)
+    {
+        ALMetalRenderTargetDescriptor descriptor;
+        descriptor.width = std::max(1u, base_width >> mip);
+        descriptor.height = std::max(1u, base_height >> mip);
+        descriptor.colors[0].format =
+            ALMetalPixelFormat::rg11b10_float;
+        descriptor.colors[0].shader_read = true;
+        descriptor.colors[0].label =
+            "Alchemy native world bloom color";
+        descriptor.label = "Alchemy native world bloom target";
+        auto target = ALMetalRenderTarget::create(
+            *mImpl->device, descriptor, error);
+        if (!target)
+        {
+            return nullptr;
+        }
+        targets.push_back(std::move(target));
+        if (descriptor.width == 1 && descriptor.height == 1)
+        {
+            break;
+        }
+    }
+    if (targets.size() < 3)
+    {
+        setError(error, "Metal world bloom pyramid is too shallow");
+        return nullptr;
+    }
+
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world bloom", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+
+    const auto encode_pass = [&command, error](
+        ALMetalRenderTarget& target,
+        const ALMetalRenderPipeline& pipeline,
+        const ALMetalTexture& input,
+        const ALMetalSamplerState& sampler,
+        const void* constants,
+        std::size_t constants_size,
+        ALMetalLoadAction load,
+        const char* label)
+    {
+        ALMetalRenderPassConfig config;
+        config.colors[0].load = load;
+        config.colors[0].store = ALMetalStoreAction::store;
+        config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+        auto pass = target.makeRenderPass(config, error);
+        auto encoder = pass ? ALMetalRenderEncoder::begin(
+            *command, *pass, label, error) : nullptr;
+        const ALMetalRenderTargetDescriptor& descriptor =
+            target.descriptor();
+        return encoder &&
+            encoder->setViewport(
+                {0.0, 0.0, static_cast<double>(descriptor.width),
+                 static_cast<double>(descriptor.height), 0.0, 1.0},
+                error) &&
+            encoder->setScissor(
+                {0, 0, descriptor.width, descriptor.height}, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setPipeline(pipeline, error) &&
+            encoder->setFragmentTexture(0, &input, error) &&
+            encoder->setFragmentSampler(0, &sampler, error) &&
+            encoder->setFragmentBytes(
+                0, constants, constants_size, error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+            encoder->end(error);
+    };
+
+    WorldBloomExtractConstants extract;
+    extract.params[0] = scene.threshold;
+    extract.params[1] = scene.knee;
+    extract.params[2] = scene.firefly_clamp;
+    extract.params[3] = scene.alpha_glow_boost;
+    bool encoded = encode_pass(
+        *targets[0], *mImpl->bloom_extract_pipeline,
+        *scene.source->colorTexture(0), *mImpl->linear_mirror_sampler,
+        &extract, sizeof(extract), ALMetalLoadAction::clear,
+        "Alchemy world bloom extract encoder");
+
+    for (std::size_t mip = 1; encoded && mip < targets.size(); ++mip)
+    {
+        const ALMetalTexture* input =
+            targets[mip - 1]->colorTexture(0);
+        if (!input)
+        {
+            encoded = false;
+            break;
+        }
+        WorldBloomFilterConstants filter;
+        filter.params[0] = 1.f / static_cast<float>(input->width());
+        filter.params[1] = 1.f / static_cast<float>(input->height());
+        filter.params[2] = mip == 1 ? 1.f : 0.f;
+        encoded = encode_pass(
+            *targets[mip], *mImpl->bloom_downsample_pipeline,
+            *input, *mImpl->linear_mirror_sampler,
+            &filter, sizeof(filter), ALMetalLoadAction::clear,
+            "Alchemy world bloom downsample encoder");
+    }
+
+    for (std::size_t mip = targets.size() - 1;
+         encoded && mip > 0; --mip)
+    {
+        const ALMetalTexture* input = targets[mip]->colorTexture(0);
+        if (!input)
+        {
+            encoded = false;
+            break;
+        }
+        WorldBloomFilterConstants filter;
+        filter.params[0] = 1.f / static_cast<float>(input->width());
+        filter.params[1] = 1.f / static_cast<float>(input->height());
+        filter.params[2] = scene.scatter;
+        encoded = encode_pass(
+            *targets[mip - 1], *mImpl->bloom_upsample_pipeline,
+            *input, *mImpl->linear_mirror_sampler,
+            &filter, sizeof(filter), ALMetalLoadAction::load,
+            "Alchemy world bloom upsample encoder");
+    }
+
+    if (!encoded || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return std::move(targets[0]);
+}
+
+std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderExposure(
     const ALMetalWorldExposureScene& scene,
     std::string* error)
@@ -5485,7 +5767,11 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         scene.tonemap_type > 6 ||
         !finiteValues(scene.tonemap_params, 4) ||
         !std::isfinite(scene.dither_amount) ||
+        !std::isfinite(scene.bloom_strength) ||
         scene.dither_amount < 0.f || scene.dither_amount > 1.f ||
+        scene.bloom_strength < 0.f ||
+        (scene.bloom_texture == nullptr) !=
+            (scene.bloom_strength == 0.f) ||
         ((scene.tonemap_type == 2 || scene.tonemap_type == 3 ||
           scene.tonemap_type == 4) && scene.tonemap_params[0] <= 0.f) ||
         (scene.tonemap_type == 6 &&
@@ -5508,6 +5794,20 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         {
             setError(error,
                      "Metal world display-post exposure is incompatible");
+            return nullptr;
+        }
+    }
+
+    if (scene.bloom_texture)
+    {
+        const ALMetalTextureDescriptor& bloom =
+            scene.bloom_texture->descriptor();
+        if (!scene.hdr || bloom.width == 0 || bloom.height == 0 ||
+            bloom.format != ALMetalPixelFormat::rg11b10_float ||
+            !sampleableTexture(scene.bloom_texture))
+        {
+            setError(error,
+                     "Metal world display-post bloom is incompatible");
             return nullptr;
         }
     }
@@ -5539,6 +5839,7 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     std::memcpy(constants.tonemap_params, scene.tonemap_params,
                 sizeof(constants.tonemap_params));
     constants.display[0] = scene.dither_amount;
+    constants.display[1] = scene.bloom_strength;
     constants.config[0] = scene.cutout_premultiplied ? 1u : 0u;
     constants.config[1] = scene.hdr ? 1u : 0u;
     constants.config[2] = scene.dither_animated ? 1u : 0u;
@@ -5572,19 +5873,27 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     };
     const std::size_t dynamic_exposure =
         scene.adapted_exposure_texture ? 1u : 0u;
+    const std::size_t bloom = scene.bloom_texture ? 1u : 0u;
     bool encoded =
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
         encoder->setPipeline(
             *mImpl->display_post_pipelines
-                [scene.hdr ? 1 : 0][dynamic_exposure], error) &&
+                [scene.hdr ? 1 : 0][bloom][dynamic_exposure], error) &&
         encoder->setFragmentTexture(
             0, scene.source->colorTexture(0), error);
     if (encoded && scene.adapted_exposure_texture)
     {
         encoded = encoder->setFragmentTexture(
             1, scene.adapted_exposure_texture, error);
+    }
+    if (encoded && scene.bloom_texture)
+    {
+        encoded = encoder->setFragmentTexture(
+            2, scene.bloom_texture, error) &&
+            encoder->setFragmentSampler(
+                1, mImpl->linear_mirror_sampler.get(), error);
     }
     encoded = encoded &&
         encoder->setFragmentSampler(

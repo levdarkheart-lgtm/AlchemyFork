@@ -656,18 +656,41 @@ struct ALMetalWorldDisplayPostScene
     // RGBA16F output of renderExposure; its red scale replaces the scalar
     // adapted_exposure without crossing CPU memory.
     const ALMetalTexture* adapted_exposure_texture = nullptr;
+    // Optional top level of the native HDR bloom pyramid. The ordinary world
+    // path is R11G11B10F; halation and cross-filter streaks remain separate
+    // owners and must not be represented by this texture.
+    const ALMetalTexture* bloom_texture = nullptr;
     bool hdr = false;
     float static_exposure = 1.f;
     float adapted_exposure = 1.f;
     float tonemap_mix = 1.f;
     std::uint32_t tonemap_type = 0;
     float tonemap_params[4]{};
+    float bloom_strength = 0.f;
     bool cutout_premultiplied = false;
     // Non-HDR only: colorCorrectF applies output dither at this first 8-bit
     // boundary. HDR defers its 10-bit dither until final presentation.
     float dither_amount = 0.f;
     bool dither_animated = false;
     std::uint32_t frame_id = 0;
+};
+
+// The production non-halation HDR bloom owner. It reproduces the world
+// resource plan's five resolution scales and 3..7-level transient pyramid:
+// soft-knee/legacy-alpha extract, outlier-aware first downsample, ordinary
+// 13-tap lower levels and additive tent upsample. The returned target is mip
+// zero after accumulation and is ready for renderDisplayPost to composite in
+// linear light before exposure and tonemapping.
+struct ALMetalWorldBloomScene
+{
+    const ALMetalRenderTarget* source = nullptr;
+    std::uint32_t mip_count = 5;
+    std::uint32_t resolution_scale = 0;
+    float threshold = 1.f;
+    float knee = 0.5f;
+    float firefly_clamp = 24.f;
+    float scatter = 0.7f;
+    float alpha_glow_boost = 2.f;
 };
 
 // The production HDR exposure owner. The first compute pass reproduces the
@@ -1069,6 +1092,13 @@ public:
     // the exact no-bloom/no-grade/no-lens base branch, not final presentation.
     std::unique_ptr<ALMetalRenderTarget> renderDisplayPost(
         const ALMetalWorldDisplayPostScene& scene,
+        std::string* error = nullptr);
+
+    // Generate the exact ordinary HDR bloom pyramid used by the main world.
+    // Optional halation and cross-filter permutations deliberately fail
+    // closed at the caller until their own native owners are present.
+    std::unique_ptr<ALMetalRenderTarget> renderBloom(
+        const ALMetalWorldBloomScene& scene,
         std::string* error = nullptr);
 
     // Meter and adapt one HDR world frame entirely on the Metal queue. The
