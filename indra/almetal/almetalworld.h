@@ -652,6 +652,10 @@ struct ALMetalWorldOpaquePostDeferredScene
 struct ALMetalWorldDisplayPostScene
 {
     const ALMetalRenderTarget* source = nullptr;
+    // Optional dynamic-exposure result. When present it must be the 1x1
+    // RGBA16F output of renderExposure; its red scale replaces the scalar
+    // adapted_exposure without crossing CPU memory.
+    const ALMetalTexture* adapted_exposure_texture = nullptr;
     bool hdr = false;
     float static_exposure = 1.f;
     float adapted_exposure = 1.f;
@@ -664,6 +668,28 @@ struct ALMetalWorldDisplayPostScene
     float dither_amount = 0.f;
     bool dither_animated = false;
     std::uint32_t frame_id = 0;
+};
+
+// The production HDR exposure owner. The first compute pass reproduces the
+// fixed 128x72 luminance grid, including the G-buffer sky split; the second
+// constructs and trims the 64-bin log-luminance histogram and adapts from the
+// optional previous 1x1 result. The returned RGBA16F texel has the same
+// (scale, adapted EV, target EV, 1) layout as exposureF.glsl.
+struct ALMetalWorldExposureScene
+{
+    const ALMetalRenderTarget* source = nullptr;
+    const ALMetalTexture* normal = nullptr;
+    const ALMetalTexture* previous = nullptr;
+    float delta_seconds = 0.f;
+    float compensation = 0.f;
+    float min_ev = -3.f;
+    float max_ev = 4.f;
+    float low_fraction = 0.1f;
+    float high_fraction = 0.95f;
+    float speed_up = 3.f;
+    float speed_down = 1.f;
+    float sky_weight = 1.f;
+    std::uint32_t metering_mode = 1;
 };
 
 struct alignas(16) ALMetalWorldLightMapConstants
@@ -1043,6 +1069,12 @@ public:
     // the exact no-bloom/no-grade/no-lens base branch, not final presentation.
     std::unique_ptr<ALMetalRenderTarget> renderDisplayPost(
         const ALMetalWorldDisplayPostScene& scene,
+        std::string* error = nullptr);
+
+    // Meter and adapt one HDR world frame entirely on the Metal queue. The
+    // previous result is optional and EV 0 is used when no history exists.
+    std::unique_ptr<ALMetalRenderTarget> renderExposure(
+        const ALMetalWorldExposureScene& scene,
         std::string* error = nullptr);
 
     // Point-decimate a completed display-post target into the exact RGBA8

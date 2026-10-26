@@ -191,6 +191,10 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_projector_light_fragment",
             "almetal_world_lighting_composition_fragment",
             "almetal_world_display_post_fragment",
+            "almetal_world_display_post_exposure_fragment",
+            "almetal_world_exposure_meter",
+            "almetal_world_exposure_initial",
+            "almetal_world_exposure_history",
             "almetal_world_ssr_history_fragment",
             "almetal_world_hero_probe_filter",
             "almetal_world_probe_gaussian",
@@ -10170,6 +10174,265 @@ TEST_CASE("almetal: native final color publishes coherent SSR history", "[almeta
             *source, history, &error));
         INFO(error);
         CHECK(history.get() == retained_history);
+    }
+}
+
+TEST_CASE("almetal: world exposure matches the production meter and history", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 128;
+        constexpr std::uint32_t height = 72;
+        const auto make_target = [&](
+            ALMetalPixelFormat format, const void* pixels,
+            std::size_t bytes_per_row, const char* label)
+        {
+            ALMetalRenderTargetDescriptor descriptor;
+            descriptor.width = width;
+            descriptor.height = height;
+            descriptor.colors[0].format = format;
+            descriptor.label = label;
+            auto target = ALMetalRenderTarget::create(
+                *device, descriptor, &error);
+            INFO(error);
+            REQUIRE(target);
+            auto upload = device->makeCommandBuffer(label, &error);
+            INFO(error);
+            REQUIRE(upload);
+            id<MTLBuffer> staging = [nativeDevice(*device)
+                newBufferWithBytes:pixels
+                          length:bytes_per_row * height
+                         options:MTLResourceStorageModeShared];
+            REQUIRE(staging);
+            id<MTLBlitCommandEncoder> blit =
+                [nativeCommand(*upload) blitCommandEncoder];
+            REQUIRE(blit);
+            [blit copyFromBuffer:staging
+                    sourceOffset:0
+               sourceBytesPerRow:bytes_per_row
+             sourceBytesPerImage:bytes_per_row * height
+                      sourceSize:MTLSizeMake(width, height, 1)
+                       toTexture:(__bridge id<MTLTexture>)
+                           target->colorTexture(0)->nativeHandle()
+                destinationSlice:0
+                destinationLevel:0
+               destinationOrigin:MTLOriginMake(0, 0, 0)];
+            [blit endEncoding];
+            REQUIRE(upload->commit(&error));
+            INFO(error);
+            return target;
+        };
+        const auto half_to_float = [](std::uint16_t value)
+        {
+            const std::uint32_t sign =
+                static_cast<std::uint32_t>(value & 0x8000u) << 16;
+            std::uint32_t exponent = (value >> 10) & 0x1fu;
+            std::uint32_t mantissa = value & 0x03ffu;
+            std::uint32_t bits = 0;
+            if (exponent == 0)
+            {
+                if (mantissa == 0)
+                {
+                    bits = sign;
+                }
+                else
+                {
+                    std::int32_t unbiased = -14;
+                    while ((mantissa & 0x0400u) == 0)
+                    {
+                        mantissa <<= 1;
+                        --unbiased;
+                    }
+                    mantissa &= 0x03ffu;
+                    bits = sign |
+                        (static_cast<std::uint32_t>(unbiased + 127) << 23) |
+                        (mantissa << 13);
+                }
+            }
+            else if (exponent == 0x1fu)
+            {
+                bits = sign | 0x7f800000u | (mantissa << 13);
+            }
+            else
+            {
+                bits = sign | ((exponent + 112u) << 23) |
+                    (mantissa << 13);
+            }
+            float result = 0.f;
+            std::memcpy(&result, &bits, sizeof(result));
+            return result;
+        };
+
+        std::vector<std::uint16_t> scene_pixels(
+            width * height * 4, 0x3400u); // uniform linear 0.25
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            scene_pixels[pixel * 4 + 3] = 0x3c00u;
+        }
+        std::vector<std::uint32_t> normal_pixels(
+            width * height, 1u << 30u); // HAS_ATMOS quantizes to alpha 1/3
+        auto source = make_target(
+            ALMetalPixelFormat::rgba16_float, scene_pixels.data(),
+            width * 4 * sizeof(std::uint16_t),
+            "Alchemy world exposure uniform source");
+        auto normal = make_target(
+            ALMetalPixelFormat::rgb10a2_unorm, normal_pixels.data(),
+            width * sizeof(std::uint32_t),
+            "Alchemy world exposure ground normal");
+
+        ALMetalWorldExposureScene exposure_scene;
+        exposure_scene.source = source.get();
+        exposure_scene.normal = normal->colorTexture(0);
+        exposure_scene.delta_seconds = 1.f;
+        exposure_scene.metering_mode = 0;
+        auto exposure = renderer->renderExposure(
+            exposure_scene, &error);
+        INFO(error);
+        REQUIRE(exposure);
+        CHECK(exposure->descriptor().width == 1);
+        CHECK(exposure->descriptor().height == 1);
+        CHECK(exposure->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba16_float);
+        std::array<std::uint16_t, 4> exposure_pixel{};
+        REQUIRE(exposure->colorTexture(0)->readback(
+            *device, 0, 0, {}, exposure_pixel.data(),
+            sizeof(exposure_pixel), &error));
+        INFO(error);
+        const float target_ev = std::log2(0.25f) - std::log2(0.18f);
+        const float expected_ev = target_ev * (1.f - std::exp(-3.f));
+        CHECK(std::abs(half_to_float(exposure_pixel[0]) -
+                       std::exp2(-expected_ev)) < 0.002f);
+        CHECK(std::abs(half_to_float(exposure_pixel[1]) -
+                       expected_ev) < 0.002f);
+        CHECK(std::abs(half_to_float(exposure_pixel[2]) -
+                       target_ev) < 0.002f);
+        const float first_ev = half_to_float(exposure_pixel[1]);
+
+        // The second frame adapts from the first frame's half-float EV, just
+        // as exposureF.glsl samples mLastExposure after its target swap.
+        std::fill(scene_pixels.begin(), scene_pixels.end(), 0x3c00u);
+        auto bright_source = make_target(
+            ALMetalPixelFormat::rgba16_float, scene_pixels.data(),
+            width * 4 * sizeof(std::uint16_t),
+            "Alchemy world exposure bright source");
+        exposure_scene.source = bright_source.get();
+        exposure_scene.previous = exposure->colorTexture(0);
+        auto adapted = renderer->renderExposure(
+            exposure_scene, &error);
+        INFO(error);
+        REQUIRE(adapted);
+        REQUIRE(adapted->colorTexture(0)->readback(
+            *device, 0, 0, {}, exposure_pixel.data(),
+            sizeof(exposure_pixel), &error));
+        const float bright_target = -std::log2(0.18f);
+        const float expected_adapted = first_ev +
+            (bright_target - first_ev) * (1.f - std::exp(-3.f));
+        CHECK(std::abs(half_to_float(exposure_pixel[2]) -
+                       bright_target) < 0.003f);
+        CHECK(std::abs(half_to_float(exposure_pixel[1]) -
+                       expected_adapted) < 0.003f);
+
+        // Sky weight zero removes the HDRI/skip-atmos half from the meter,
+        // while weight one retains its brighter log-luminance contribution.
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const std::size_t pixel = y * width + x;
+                const std::uint16_t value = x < width / 2
+                    ? 0x3400u : 0x3c00u;
+                scene_pixels[pixel * 4 + 0] = value;
+                scene_pixels[pixel * 4 + 1] = value;
+                scene_pixels[pixel * 4 + 2] = value;
+                scene_pixels[pixel * 4 + 3] = 0x3c00u;
+                normal_pixels[pixel] = x < width / 2
+                    ? 1u << 30u : 0u;
+            }
+        }
+        auto split_source = make_target(
+            ALMetalPixelFormat::rgba16_float, scene_pixels.data(),
+            width * 4 * sizeof(std::uint16_t),
+            "Alchemy world exposure split source");
+        auto split_normal = make_target(
+            ALMetalPixelFormat::rgb10a2_unorm, normal_pixels.data(),
+            width * sizeof(std::uint32_t),
+            "Alchemy world exposure split normal");
+        exposure_scene.source = split_source.get();
+        exposure_scene.normal = split_normal->colorTexture(0);
+        exposure_scene.previous = nullptr;
+        exposure_scene.delta_seconds = 100.f;
+        exposure_scene.sky_weight = 0.f;
+        auto ground_only = renderer->renderExposure(
+            exposure_scene, &error);
+        INFO(error);
+        REQUIRE(ground_only);
+        REQUIRE(ground_only->colorTexture(0)->readback(
+            *device, 0, 0, {}, exposure_pixel.data(),
+            sizeof(exposure_pixel), &error));
+        CHECK(std::abs(half_to_float(exposure_pixel[2]) -
+                       target_ev) < 0.002f);
+        exposure_scene.sky_weight = 1.f;
+        auto sky_weighted = renderer->renderExposure(
+            exposure_scene, &error);
+        INFO(error);
+        REQUIRE(sky_weighted);
+        REQUIRE(sky_weighted->colorTexture(0)->readback(
+            *device, 0, 0, {}, exposure_pixel.data(),
+            sizeof(exposure_pixel), &error));
+        // The default 10%/95% trim keeps 40% of the ground half and 45% of
+        // the sky half, so this deliberately is not the untrimmed midpoint.
+        const float trimmed_log_luminance = (-2.f * 0.40f) / 0.85f;
+        CHECK(std::abs(half_to_float(exposure_pixel[2]) -
+                       (trimmed_log_luminance - std::log2(0.18f))) <
+              0.003f);
+
+        // Display post consumes the exposure texel on-GPU. The scalar is set
+        // to a deliberately wrong value so this assertion proves the dynamic
+        // pipeline, rather than the legacy constant path, was selected.
+        ALMetalWorldDisplayPostScene display;
+        display.source = split_source.get();
+        display.adapted_exposure_texture = ground_only->colorTexture(0);
+        display.hdr = true;
+        display.adapted_exposure = 0.f;
+        display.tonemap_mix = 0.f;
+        auto display_output = renderer->renderDisplayPost(display, &error);
+        INFO(error);
+        REQUIRE(display_output);
+        std::vector<std::uint32_t> display_pixels(width * height);
+        REQUIRE(display_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, display_pixels.data(),
+            width * sizeof(std::uint32_t), &error));
+        CHECK((display_pixels[0] & 0x3fffffffu) != 0u);
+
+        ALMetalWorldExposureScene invalid;
+        error.clear();
+        CHECK_FALSE(renderer->renderExposure(invalid, &error));
+        CHECK(error == "Metal world exposure scene is incomplete");
+        invalid.source = source.get();
+        invalid.normal = source->colorTexture(0);
+        error.clear();
+        CHECK_FALSE(renderer->renderExposure(invalid, &error));
+        CHECK(error == "Metal world exposure source is incompatible");
+        invalid.normal = normal->colorTexture(0);
+        invalid.high_fraction = 0.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderExposure(invalid, &error));
+        CHECK(error == "Metal world exposure state is invalid");
+
+        display.adapted_exposure_texture = source->colorTexture(0);
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(display, &error));
+        CHECK(error ==
+              "Metal world display-post exposure is incompatible");
     }
 }
 

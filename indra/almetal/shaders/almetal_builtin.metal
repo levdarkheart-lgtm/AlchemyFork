@@ -11438,6 +11438,208 @@ static float3 almetal_pbr_tonemap(
     return color;
 }
 
+struct ALMetalWorldExposureMeterConstants
+{
+    // xy = source texels per meter patch, zw = taps per patch axis.
+    float4 patch;
+};
+
+struct ALMetalWorldExposureConstants
+{
+    // log2(key) + compensation, min EV, max EV, delta seconds.
+    float4 exposure;
+    // low/high kept fractions, speed toward brighter/darker scenes.
+    float4 adaptation;
+    // sky weight, metering mode, reserved, reserved.
+    float4 meter;
+};
+
+static float almetal_world_meter_weight(float2 uv, float mode)
+{
+    const float2 q = uv * 2.0 - 1.0;
+    const float distance_squared = dot(q, q);
+    if (mode < 0.5)
+    {
+        return 1.0;
+    }
+    if (mode < 1.5)
+    {
+        return exp(-2.0 * distance_squared);
+    }
+    return 1.0 - smoothstep(0.15, 0.3, sqrt(distance_squared));
+}
+
+kernel void almetal_world_exposure_meter(
+    texture2d<float> scene [[texture(0)]],
+    texture2d<float> normal_map [[texture(1)]],
+    texture2d<float, access::write> meter [[texture(2)]],
+    sampler scene_sampler [[sampler(0)]],
+    constant ALMetalWorldExposureMeterConstants& constants [[buffer(0)]],
+    uint2 position [[thread_position_in_grid]])
+{
+    if (position.x >= meter.get_width() || position.y >= meter.get_height())
+    {
+        return;
+    }
+
+    const float2 scene_size = float2(scene.get_width(), scene.get_height());
+    const float2 patch_origin = float2(position) * constants.patch.xy;
+    const float2 tap_step = constants.patch.xy / constants.patch.zw;
+    const uint2 taps = uint2(constants.patch.zw);
+    float ground = 0.0;
+    float sky = 0.0;
+    float sky_taps = 0.0;
+    for (uint y = 0; y < taps.y; ++y)
+    {
+        for (uint x = 0; x < taps.x; ++x)
+        {
+            const float2 pixel = patch_origin +
+                (float2(x, y) + 0.5) * tap_step;
+            const float3 color = scene.sample(
+                scene_sampler, pixel / scene_size, level(0.0)).rgb;
+            const float luminance = min(
+                dot(float3(0.2126, 0.7152, 0.0722), color), 60000.0);
+            const uint2 normal_position = min(
+                uint2(pixel),
+                uint2(normal_map.get_width() - 1,
+                      normal_map.get_height() - 1));
+            const float flag = normal_map.read(normal_position).a;
+            const bool is_sky = abs(flag) < 0.1 || abs(flag - 1.0) < 0.1;
+            if (is_sky)
+            {
+                sky += luminance;
+                sky_taps += 1.0;
+            }
+            else
+            {
+                ground += luminance;
+            }
+        }
+    }
+
+    const float count = float(taps.x * taps.y);
+    const float ground_taps = count - sky_taps;
+    meter.write(float4(
+        ground_taps > 0.0 ? ground / ground_taps : 0.0,
+        sky_taps > 0.0 ? sky / sky_taps : 0.0,
+        sky_taps / count, 1.0), position);
+}
+
+static float4 almetal_world_resolve_exposure(
+    texture2d<float> meter,
+    constant ALMetalWorldExposureConstants& constants,
+    float previous_ev)
+{
+    constexpr uint bins = 64;
+    constexpr float minimum_histogram_ev = -16.0;
+    constexpr float maximum_histogram_ev = 12.0;
+    constexpr float bins_per_ev =
+        float(bins) / (maximum_histogram_ev - minimum_histogram_ev);
+    thread float histogram_weight[bins];
+    thread float histogram_log[bins];
+    for (uint bin = 0; bin < bins; ++bin)
+    {
+        histogram_weight[bin] = 0.0;
+        histogram_log[bin] = 0.0;
+    }
+
+    const float2 meter_size = float2(meter.get_width(), meter.get_height());
+    for (uint y = 0; y < meter.get_height(); ++y)
+    {
+        for (uint x = 0; x < meter.get_width(); ++x)
+        {
+            const float4 cell = meter.read(uint2(x, y));
+            for (uint sky_part = 0; sky_part < 2; ++sky_part)
+            {
+                const bool is_sky = sky_part != 0;
+                const float luminance = is_sky ? cell.g : cell.r;
+                const float share = is_sky ? cell.b : 1.0 - cell.b;
+                const float2 uv = (float2(x, y) + 0.5) / meter_size;
+                const float weight = share *
+                    almetal_world_meter_weight(uv, constants.meter.y) *
+                    (is_sky ? constants.meter.x : 1.0);
+                if (weight > 0.0 && luminance > 0.0)
+                {
+                    const float ev = clamp(
+                        log2(max(luminance, 1.0e-10)),
+                        minimum_histogram_ev, maximum_histogram_ev);
+                    const uint bin = min(
+                        uint(floor((ev - minimum_histogram_ev) *
+                                   bins_per_ev)),
+                        bins - 1);
+                    histogram_weight[bin] += weight;
+                    histogram_log[bin] += weight * ev;
+                }
+            }
+        }
+    }
+
+    float total = 0.0;
+    for (uint bin = 0; bin < bins; ++bin)
+    {
+        total += histogram_weight[bin];
+    }
+    const float low = total * constants.adaptation.x;
+    const float high = total * constants.adaptation.y;
+    float below = 0.0;
+    float kept = 0.0;
+    float kept_log = 0.0;
+    for (uint bin = 0; bin < bins; ++bin)
+    {
+        const float weight = histogram_weight[bin];
+        const float from = max(low, below);
+        const float to = min(high, below + weight);
+        if (to > from)
+        {
+            const float fraction = (to - from) / weight;
+            kept += weight * fraction;
+            kept_log += histogram_log[bin] * fraction;
+        }
+        below += weight;
+    }
+
+    float target = kept > 0.0
+        ? kept_log / kept - constants.exposure.x
+        : constants.exposure.y;
+    target = clamp(target, constants.exposure.y, constants.exposure.z);
+    const float rate = target > previous_ev
+        ? constants.adaptation.z : constants.adaptation.w;
+    const float ev = mix(
+        previous_ev, target,
+        1.0 - exp(-rate * constants.exposure.w));
+    return float4(exp2(-ev), ev, target, 1.0);
+}
+
+kernel void almetal_world_exposure_initial(
+    texture2d<float> meter [[texture(0)]],
+    texture2d<float, access::write> exposure [[texture(1)]],
+    constant ALMetalWorldExposureConstants& constants [[buffer(0)]],
+    uint thread_index [[thread_position_in_grid]])
+{
+    if (thread_index == 0)
+    {
+        exposure.write(
+            almetal_world_resolve_exposure(meter, constants, 0.0),
+            uint2(0));
+    }
+}
+
+kernel void almetal_world_exposure_history(
+    texture2d<float> meter [[texture(0)]],
+    texture2d<float> previous [[texture(1)]],
+    texture2d<float, access::write> exposure [[texture(2)]],
+    constant ALMetalWorldExposureConstants& constants [[buffer(0)]],
+    uint thread_index [[thread_position_in_grid]])
+{
+    if (thread_index == 0)
+    {
+        exposure.write(
+            almetal_world_resolve_exposure(
+                meter, constants, previous.read(uint2(0)).g),
+            uint2(0));
+    }
+}
+
 struct ALMetalWorldDisplayPostConstants
 {
     // static exposure, adapted exposure, tonemap mix, tonemap type
@@ -11486,11 +11688,12 @@ static float3 almetal_world_display_dither(
     return color + triangular * (amount / 255.0) * room;
 }
 
-fragment float4 almetal_world_display_post_fragment(
-    ALMetalResampleVaryings input [[stage_in]],
-    texture2d<float> source [[texture(0)]],
-    sampler source_sampler [[sampler(0)]],
-    constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
+static float4 almetal_world_display_post(
+    ALMetalResampleVaryings input,
+    texture2d<float> source,
+    sampler source_sampler,
+    constant ALMetalWorldDisplayPostConstants& constants,
+    float adapted_exposure)
 {
     float4 color = source.sample(source_sampler, input.texcoord);
     const float coverage = clamp(color.a, 0.0, 1.0);
@@ -11502,7 +11705,7 @@ fragment float4 almetal_world_display_post_fragment(
 
     if (constants.config.y != 0)
     {
-        color.rgb *= constants.post.x * constants.post.y;
+        color.rgb *= constants.post.x * adapted_exposure;
         const float3 clamped = clamp(
             color.rgb, float3(0.0), float3(1.0));
         const uint tonemap_type = uint(round(constants.post.w));
@@ -11533,6 +11736,28 @@ fragment float4 almetal_world_display_post_fragment(
             constants.config.w, constants.config.z != 0);
     }
     return float4(color.rgb, color.a);
+}
+
+fragment float4 almetal_world_display_post_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]],
+    constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
+{
+    return almetal_world_display_post(
+        input, source, source_sampler, constants, constants.post.y);
+}
+
+fragment float4 almetal_world_display_post_exposure_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    texture2d<float> exposure [[texture(1)]],
+    sampler source_sampler [[sampler(0)]],
+    constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
+{
+    return almetal_world_display_post(
+        input, source, source_sampler, constants,
+        exposure.read(uint2(0)).r);
 }
 
 fragment float4 almetal_pbr_preview_fragment(
