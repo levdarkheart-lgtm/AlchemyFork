@@ -10,6 +10,9 @@
 
 #include "almetalworld.h"
 
+#include "../newview/SMAAAreaTex.h"
+#include "../newview/SMAASearchTex.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -178,6 +181,13 @@ namespace
         std::uint32_t config[4]{};
     };
     static_assert(sizeof(WorldSMAAEdgeConstants) == 32);
+
+    struct alignas(16) WorldSMAAWeightConstants
+    {
+        // x = quality index.
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldSMAAWeightConstants) == 16);
 
     struct alignas(16) WorldExposureMeterConstants
     {
@@ -871,6 +881,9 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalRenderPipeline> fxaa_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         smaa_edge_pipelines;
+    std::unique_ptr<ALMetalRenderPipeline> smaa_weight_pipeline;
+    std::unique_ptr<ALMetalTexture> smaa_area_texture;
+    std::unique_ptr<ALMetalTexture> smaa_search_texture;
     std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
     std::unique_ptr<ALMetalComputePipeline> exposure_meter_pipeline;
     std::array<std::unique_ptr<ALMetalComputePipeline>, 2>
@@ -1226,6 +1239,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction("almetal_world_smaa_edge_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_smaa_edge_predicated_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_smaa_weight_fragment") ||
         !impl->library->hasFunction("almetal_world_exposure_meter") ||
         !impl->library->hasFunction("almetal_world_exposure_initial") ||
         !impl->library->hasFunction("almetal_world_exposure_history") ||
@@ -1555,6 +1570,22 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         {
             return nullptr;
         }
+    }
+
+    ALMetalRenderPipelineDescriptor smaa_weight_descriptor;
+    smaa_weight_descriptor.library = impl->library.get();
+    smaa_weight_descriptor.vertex_function = "almetal_resample_vertex";
+    smaa_weight_descriptor.fragment_function =
+        "almetal_world_smaa_weight_fragment";
+    smaa_weight_descriptor.colors[0].format =
+        ALMetalPixelFormat::rgba8_unorm;
+    smaa_weight_descriptor.label =
+        "Alchemy world SMAA blending-weight pipeline";
+    impl->smaa_weight_pipeline = ALMetalRenderPipeline::create(
+        device, smaa_weight_descriptor, error);
+    if (!impl->smaa_weight_pipeline)
+    {
+        return nullptr;
     }
 
     ALMetalComputePipelineDescriptor exposure_descriptor;
@@ -3365,6 +3396,55 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->hdri_sampler = ALMetalSamplerState::create(
         device, sampler, error);
     if (!impl->hdri_sampler)
+    {
+        return nullptr;
+    }
+
+    ALMetalTextureDescriptor smaa_lookup_descriptor;
+    smaa_lookup_descriptor.format = ALMetalPixelFormat::rg8_unorm;
+    smaa_lookup_descriptor.width = AREATEX_WIDTH;
+    smaa_lookup_descriptor.height = AREATEX_HEIGHT;
+    smaa_lookup_descriptor.storage = ALMetalStorageMode::private_gpu;
+    smaa_lookup_descriptor.usage = ALMetalTextureUsage::shader_read;
+    smaa_lookup_descriptor.label = "Alchemy SMAA area lookup";
+    impl->smaa_area_texture = ALMetalTexture::create(
+        device, smaa_lookup_descriptor, error);
+    smaa_lookup_descriptor.format = ALMetalPixelFormat::r8_unorm;
+    smaa_lookup_descriptor.width = SEARCHTEX_WIDTH;
+    smaa_lookup_descriptor.height = SEARCHTEX_HEIGHT;
+    smaa_lookup_descriptor.label = "Alchemy SMAA search lookup";
+    impl->smaa_search_texture = ALMetalTexture::create(
+        device, smaa_lookup_descriptor, error);
+    auto smaa_lookup_upload =
+        impl->smaa_area_texture && impl->smaa_search_texture
+        ? device.makeCommandBuffer(
+              "Alchemy native SMAA lookup upload", error)
+        : nullptr;
+    std::vector<std::uint8_t> area_lookup(AREATEX_SIZE);
+    for (std::uint32_t row = 0; row < AREATEX_HEIGHT; ++row)
+    {
+        const std::uint32_t source_row = AREATEX_HEIGHT - 1u - row;
+        std::memcpy(area_lookup.data() + row * AREATEX_PITCH,
+                    areaTexBytes + source_row * AREATEX_PITCH,
+                    AREATEX_PITCH);
+    }
+    std::vector<std::uint8_t> search_lookup(SEARCHTEX_SIZE);
+    for (std::uint32_t row = 0; row < SEARCHTEX_HEIGHT; ++row)
+    {
+        const std::uint32_t source_row = SEARCHTEX_HEIGHT - 1u - row;
+        std::memcpy(search_lookup.data() + row * SEARCHTEX_PITCH,
+                    searchTexBytes + source_row * SEARCHTEX_PITCH,
+                    SEARCHTEX_PITCH);
+    }
+    const bool smaa_lookup_ready = smaa_lookup_upload &&
+        impl->smaa_area_texture->upload(
+            *smaa_lookup_upload, 0, 0, {}, area_lookup.data(),
+            AREATEX_PITCH, error) &&
+        impl->smaa_search_texture->upload(
+            *smaa_lookup_upload, 0, 0, {}, search_lookup.data(),
+            SEARCHTEX_PITCH, error) &&
+        smaa_lookup_upload->commitAndWait(error);
+    if (!smaa_lookup_ready)
     {
         return nullptr;
     }
@@ -6483,6 +6563,98 @@ ALMetalWorldGBufferRenderer::renderSMAAEdges(
                 1, mImpl->point_clamp_sampler.get(), error);
     }
     encoded = encoded &&
+        encoder->setFragmentBytes(
+            0, &constants, sizeof(constants), error) &&
+        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderSMAABlendWeights(
+    const ALMetalWorldSMAAWeightScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.edges ||
+        !mImpl->smaa_area_texture || !mImpl->smaa_search_texture)
+    {
+        setError(error, "Metal world SMAA weight scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& input =
+        scene.edges->descriptor();
+    if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
+        input.color_attachment_count != 1 ||
+        input.colors[0].format != ALMetalPixelFormat::rgba8_unorm ||
+        !sampleableTexture(scene.edges->colorTexture(0)))
+    {
+        setError(error, "Metal world SMAA edge target is incompatible");
+        return nullptr;
+    }
+    if (scene.quality > 3)
+    {
+        setError(error, "Metal world SMAA weight state is invalid");
+        return nullptr;
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = input.width;
+    output_descriptor.height = input.height;
+    output_descriptor.colors[0].format =
+        ALMetalPixelFormat::rgba8_unorm;
+    output_descriptor.colors[0].label =
+        "Alchemy world SMAA RGBA8 blending weights";
+    output_descriptor.label = "Alchemy native world SMAA weight target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    WorldSMAAWeightConstants constants{};
+    constants.config[0] = scene.quality;
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world SMAA blending weights", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::clear;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    pass_config.colors[0].clear = {0.f, 0.f, 0.f, 0.f};
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world SMAA weight encoder", error)
+        : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(input.width),
+        static_cast<double>(input.height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{0, 0, input.width, input.height};
+    const bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(*mImpl->smaa_weight_pipeline, error) &&
+        encoder->setFragmentTexture(
+            0, scene.edges->colorTexture(0), error) &&
+        encoder->setFragmentTexture(
+            1, mImpl->smaa_area_texture.get(), error) &&
+        encoder->setFragmentTexture(
+            2, mImpl->smaa_search_texture.get(), error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->linear_clamp_sampler.get(), error) &&
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);

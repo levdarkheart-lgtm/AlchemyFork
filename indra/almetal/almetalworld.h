@@ -695,6 +695,15 @@ struct ALMetalWorldSMAAEdgeScene
     float predication_strength = 0.4f;
 };
 
+// Second pass of the production SMAA 1x chain. It consumes the exact RGBA8
+// edge mask above and combines it with the shipped area/search lookup tables.
+// The resulting weights are not displayable until neighborhood blending.
+struct ALMetalWorldSMAAWeightScene
+{
+    const ALMetalRenderTarget* edges = nullptr;
+    std::uint32_t quality = 0;
+};
+
 // The production HDR bloom owner. It reproduces the world
 // resource plan's five resolution scales and 3..7-level transient pyramid:
 // soft-knee/legacy-alpha extract, outlier-aware first downsample, ordinary
@@ -1155,6 +1164,12 @@ public:
     // output until the later weight and neighborhood passes also succeed.
     std::unique_ptr<ALMetalRenderTarget> renderSMAAEdges(
         const ALMetalWorldSMAAEdgeScene& scene,
+        std::string* error = nullptr);
+
+    // Generate only SMAA's exact blending-weight target. This remains an
+    // offscreen intermediate and does not imply complete SMAA ownership.
+    std::unique_ptr<ALMetalRenderTarget> renderSMAABlendWeights(
+        const ALMetalWorldSMAAWeightScene& scene,
         std::string* error = nullptr);
 
     // Meter and adapt one HDR world frame entirely on the Metal queue. The

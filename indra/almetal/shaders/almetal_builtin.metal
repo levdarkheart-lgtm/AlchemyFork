@@ -11668,6 +11668,11 @@ struct ALMetalWorldSMAAEdgeConstants
     uint4 config;
 };
 
+struct ALMetalWorldSMAAWeightConstants
+{
+    uint4 config;
+};
+
 // The four viewer permutations are FXAA 3.11 presets 12, 23, 28 and 39.
 // Keeping their authored search sequences in one uniform table produces the
 // same taps without maintaining four otherwise-identical Metal functions.
@@ -12169,6 +12174,519 @@ fragment float4 almetal_world_smaa_edge_predicated_fragment(
         (1.0 - constants.predication.z * predicated_edges);
     return almetal_world_smaa_edges(
         source, source_sampler, input.texcoord, threshold);
+}
+
+constant uint almetal_world_smaa_search_steps[4] = {4u, 8u, 16u, 32u};
+
+static float almetal_world_smaa_v_dir(float value)
+{
+    return -value;
+}
+
+static float almetal_world_smaa_v_coord(float value)
+{
+    return 1.0 - value;
+}
+
+static float4 almetal_world_smaa_sample(
+    texture2d<float> source, sampler source_sampler, float2 position)
+{
+    return source.sample(source_sampler, position, level(0.0));
+}
+
+static float4 almetal_world_smaa_sample_offset(
+    texture2d<float> source,
+    sampler source_sampler,
+    float2 position,
+    int2 offset,
+    float2 metric)
+{
+    return almetal_world_smaa_sample(
+        source, source_sampler, position + float2(offset) * metric);
+}
+
+static float2 almetal_world_smaa_decode_diag(float2 edges)
+{
+    edges.x *= abs(5.0 * edges.x - 5.0 * 0.75);
+    return round(edges);
+}
+
+static float4 almetal_world_smaa_decode_diag(float4 edges)
+{
+    edges.x *= abs(5.0 * edges.x - 5.0 * 0.75);
+    edges.z *= abs(5.0 * edges.z - 5.0 * 0.75);
+    return round(edges);
+}
+
+static float2 almetal_world_smaa_search_diag_1(
+    texture2d<float> edges,
+    sampler source_sampler,
+    float2 texcoord,
+    float2 direction,
+    uint max_steps,
+    thread float2& end_edges)
+{
+    direction.y = almetal_world_smaa_v_dir(direction.y);
+    float4 coordinate = float4(texcoord, -1.0, 1.0);
+    const float3 stride = float3(
+        1.0 / float(edges.get_width()),
+        1.0 / float(edges.get_height()), 1.0);
+    while (coordinate.z < float(max_steps - 1u) && coordinate.w > 0.9)
+    {
+        coordinate.xyz = fma(stride, float3(direction, 1.0),
+                             coordinate.xyz);
+        end_edges = almetal_world_smaa_sample(
+            edges, source_sampler, coordinate.xy).rg;
+        coordinate.w = dot(end_edges, float2(0.5));
+    }
+    return coordinate.zw;
+}
+
+static float2 almetal_world_smaa_search_diag_2(
+    texture2d<float> edges,
+    sampler source_sampler,
+    float2 texcoord,
+    float2 direction,
+    uint max_steps,
+    thread float2& end_edges)
+{
+    direction.y = almetal_world_smaa_v_dir(direction.y);
+    float4 coordinate = float4(texcoord, -1.0, 1.0);
+    const float2 metric = 1.0 / float2(
+        edges.get_width(), edges.get_height());
+    coordinate.x += 0.25 * metric.x;
+    const float3 stride = float3(metric, 1.0);
+    while (coordinate.z < float(max_steps - 1u) && coordinate.w > 0.9)
+    {
+        coordinate.xyz = fma(stride, float3(direction, 1.0),
+                             coordinate.xyz);
+        end_edges = almetal_world_smaa_sample(
+            edges, source_sampler, coordinate.xy).rg;
+        end_edges = almetal_world_smaa_decode_diag(end_edges);
+        coordinate.w = dot(end_edges, float2(0.5));
+    }
+    return coordinate.zw;
+}
+
+static float2 almetal_world_smaa_area_diag(
+    texture2d<float> area,
+    sampler source_sampler,
+    float2 distance,
+    float2 edges,
+    float offset)
+{
+    float2 texcoord = fma(float2(20.0), edges, distance);
+    constexpr float2 pixel_size = 1.0 / float2(160.0, 560.0);
+    texcoord = fma(pixel_size, texcoord, 0.5 * pixel_size);
+    texcoord.x += 0.5;
+    texcoord.y += (1.0 / 7.0) * offset;
+    texcoord.y = almetal_world_smaa_v_coord(texcoord.y);
+    return almetal_world_smaa_sample(
+        area, source_sampler, texcoord).rg;
+}
+
+static float2 almetal_world_smaa_diag_weights(
+    texture2d<float> edges,
+    texture2d<float> area,
+    sampler source_sampler,
+    float2 texcoord,
+    float2 edge,
+    uint max_steps)
+{
+    float2 weights = float2(0.0);
+    const float2 metric = 1.0 / float2(
+        edges.get_width(), edges.get_height());
+    float4 distance;
+    float2 end_edges;
+    if (edge.x > 0.0)
+    {
+        distance.xz = almetal_world_smaa_search_diag_1(
+            edges, source_sampler, texcoord, float2(-1.0, 1.0),
+            max_steps, end_edges);
+        distance.x += end_edges.y > 0.9 ? 1.0 : 0.0;
+    }
+    else
+    {
+        distance.xz = float2(0.0);
+    }
+    distance.yw = almetal_world_smaa_search_diag_1(
+        edges, source_sampler, texcoord, float2(1.0, -1.0),
+        max_steps, end_edges);
+
+    if (distance.x + distance.y > 2.0)
+    {
+        const float4 coordinates = fma(
+            float4(-distance.x + 0.25,
+                   almetal_world_smaa_v_dir(distance.x),
+                   distance.y,
+                   almetal_world_smaa_v_dir(-distance.y - 0.25)),
+            float4(metric, metric), float4(texcoord, texcoord));
+        float4 crossing;
+        crossing.xy = almetal_world_smaa_sample_offset(
+            edges, source_sampler, coordinates.xy,
+            int2(-1, 0), metric).rg;
+        crossing.zw = almetal_world_smaa_sample_offset(
+            edges, source_sampler, coordinates.zw,
+            int2(1, 0), metric).rg;
+        const float4 decoded =
+            almetal_world_smaa_decode_diag(crossing);
+        crossing = float4(decoded.y, decoded.x, decoded.w, decoded.z);
+        float2 merged = fma(float2(2.0), crossing.xz, crossing.yw);
+        if (distance.z >= 0.9)
+        {
+            merged.x = 0.0;
+        }
+        if (distance.w >= 0.9)
+        {
+            merged.y = 0.0;
+        }
+        weights += almetal_world_smaa_area_diag(
+            area, source_sampler, distance.xy, merged, 0.0);
+    }
+
+    distance.xz = almetal_world_smaa_search_diag_2(
+        edges, source_sampler, texcoord, float2(-1.0, -1.0),
+        max_steps, end_edges);
+    if (almetal_world_smaa_sample_offset(
+            edges, source_sampler, texcoord, int2(1, 0), metric).r > 0.0)
+    {
+        distance.yw = almetal_world_smaa_search_diag_2(
+            edges, source_sampler, texcoord, float2(1.0, 1.0),
+            max_steps, end_edges);
+        distance.y += end_edges.y > 0.9 ? 1.0 : 0.0;
+    }
+    else
+    {
+        distance.yw = float2(0.0);
+    }
+
+    if (distance.x + distance.y > 2.0)
+    {
+        const float4 coordinates = fma(
+            float4(-distance.x,
+                   almetal_world_smaa_v_dir(-distance.x),
+                   distance.y,
+                   almetal_world_smaa_v_dir(distance.y)),
+            float4(metric, metric), float4(texcoord, texcoord));
+        float4 crossing;
+        crossing.x = almetal_world_smaa_sample_offset(
+            edges, source_sampler, coordinates.xy,
+            int2(-1, 0), metric).g;
+        crossing.y = almetal_world_smaa_sample_offset(
+            edges, source_sampler, coordinates.xy,
+            int2(0, 1), metric).r;
+        const float2 right = almetal_world_smaa_sample_offset(
+            edges, source_sampler, coordinates.zw,
+            int2(1, 0), metric).gr;
+        crossing.zw = right;
+        float2 merged = fma(float2(2.0), crossing.xz, crossing.yw);
+        if (distance.z >= 0.9)
+        {
+            merged.x = 0.0;
+        }
+        if (distance.w >= 0.9)
+        {
+            merged.y = 0.0;
+        }
+        weights += almetal_world_smaa_area_diag(
+            area, source_sampler, distance.xy, merged, 0.0).gr;
+    }
+    return weights;
+}
+
+static float almetal_world_smaa_search_length(
+    texture2d<float> search,
+    sampler source_sampler,
+    float2 edge,
+    float offset)
+{
+    float2 scale = float2(66.0, 33.0) * float2(0.5, -1.0);
+    float2 bias = float2(66.0, 33.0) * float2(offset, 1.0);
+    scale += float2(-1.0, 1.0);
+    bias += float2(0.5, -0.5);
+    scale /= float2(64.0, 16.0);
+    bias /= float2(64.0, 16.0);
+    float2 coordinate = fma(scale, edge, bias);
+    coordinate.y = almetal_world_smaa_v_coord(coordinate.y);
+    return almetal_world_smaa_sample(
+        search, source_sampler, coordinate).r;
+}
+
+static float almetal_world_smaa_search_x_left(
+    texture2d<float> edges,
+    texture2d<float> search,
+    sampler source_sampler,
+    float2 texcoord,
+    float end)
+{
+    const float2 metric = 1.0 / float2(
+        edges.get_width(), edges.get_height());
+    float2 edge = float2(0.0, 1.0);
+    while (texcoord.x > end && edge.y > 0.8281 && edge.x == 0.0)
+    {
+        edge = almetal_world_smaa_sample(
+            edges, source_sampler, texcoord).rg;
+        texcoord = fma(-float2(2.0, 0.0), metric, texcoord);
+    }
+    const float offset = fma(
+        -(255.0 / 127.0),
+        almetal_world_smaa_search_length(
+            search, source_sampler, edge, 0.0), 3.25);
+    return fma(metric.x, offset, texcoord.x);
+}
+
+static float almetal_world_smaa_search_x_right(
+    texture2d<float> edges,
+    texture2d<float> search,
+    sampler source_sampler,
+    float2 texcoord,
+    float end)
+{
+    const float2 metric = 1.0 / float2(
+        edges.get_width(), edges.get_height());
+    float2 edge = float2(0.0, 1.0);
+    while (texcoord.x < end && edge.y > 0.8281 && edge.x == 0.0)
+    {
+        edge = almetal_world_smaa_sample(
+            edges, source_sampler, texcoord).rg;
+        texcoord = fma(float2(2.0, 0.0), metric, texcoord);
+    }
+    const float offset = fma(
+        -(255.0 / 127.0),
+        almetal_world_smaa_search_length(
+            search, source_sampler, edge, 0.5), 3.25);
+    return fma(-metric.x, offset, texcoord.x);
+}
+
+static float almetal_world_smaa_search_y_up(
+    texture2d<float> edges,
+    texture2d<float> search,
+    sampler source_sampler,
+    float2 texcoord,
+    float end)
+{
+    const float2 metric = 1.0 / float2(
+        edges.get_width(), edges.get_height());
+    float2 edge = float2(1.0, 0.0);
+    while (texcoord.y < end && edge.x > 0.8281 && edge.y == 0.0)
+    {
+        edge = almetal_world_smaa_sample(
+            edges, source_sampler, texcoord).rg;
+        texcoord = fma(float2(0.0, 2.0), metric, texcoord);
+    }
+    const float offset = fma(
+        -(255.0 / 127.0),
+        almetal_world_smaa_search_length(
+            search, source_sampler, edge.gr, 0.0), 3.25);
+    return fma(metric.y, almetal_world_smaa_v_dir(offset), texcoord.y);
+}
+
+static float almetal_world_smaa_search_y_down(
+    texture2d<float> edges,
+    texture2d<float> search,
+    sampler source_sampler,
+    float2 texcoord,
+    float end)
+{
+    const float2 metric = 1.0 / float2(
+        edges.get_width(), edges.get_height());
+    float2 edge = float2(1.0, 0.0);
+    while (texcoord.y > end && edge.x > 0.8281 && edge.y == 0.0)
+    {
+        edge = almetal_world_smaa_sample(
+            edges, source_sampler, texcoord).rg;
+        texcoord = fma(float2(0.0, -2.0), metric, texcoord);
+    }
+    const float offset = fma(
+        -(255.0 / 127.0),
+        almetal_world_smaa_search_length(
+            search, source_sampler, edge.gr, 0.5), 3.25);
+    return fma(-metric.y, almetal_world_smaa_v_dir(offset), texcoord.y);
+}
+
+static float2 almetal_world_smaa_area(
+    texture2d<float> area,
+    sampler source_sampler,
+    float2 distance,
+    float edge1,
+    float edge2)
+{
+    float2 texcoord = fma(
+        float2(16.0), round(4.0 * float2(edge1, edge2)), distance);
+    constexpr float2 pixel_size = 1.0 / float2(160.0, 560.0);
+    texcoord = fma(pixel_size, texcoord, 0.5 * pixel_size);
+    texcoord.y = almetal_world_smaa_v_coord(texcoord.y);
+    return almetal_world_smaa_sample(
+        area, source_sampler, texcoord).rg;
+}
+
+static float2 almetal_world_smaa_horizontal_corners(
+    texture2d<float> edges,
+    sampler source_sampler,
+    float2 weights,
+    float4 texcoord,
+    float2 distance)
+{
+    const float2 metric = 1.0 / float2(
+        edges.get_width(), edges.get_height());
+    const float2 left_right = step(distance.xy, distance.yx);
+    float2 rounding = 0.75 * left_right;
+    rounding /= left_right.x + left_right.y;
+    float2 factor = float2(1.0);
+    factor.x -= rounding.x * almetal_world_smaa_sample_offset(
+        edges, source_sampler, texcoord.xy, int2(0, -1), metric).r;
+    factor.x -= rounding.y * almetal_world_smaa_sample_offset(
+        edges, source_sampler, texcoord.zw, int2(1, -1), metric).r;
+    factor.y -= rounding.x * almetal_world_smaa_sample_offset(
+        edges, source_sampler, texcoord.xy, int2(0, 2), metric).r;
+    factor.y -= rounding.y * almetal_world_smaa_sample_offset(
+        edges, source_sampler, texcoord.zw, int2(1, 2), metric).r;
+    return weights * saturate(factor);
+}
+
+static float2 almetal_world_smaa_vertical_corners(
+    texture2d<float> edges,
+    sampler source_sampler,
+    float2 weights,
+    float4 texcoord,
+    float2 distance)
+{
+    const float2 metric = 1.0 / float2(
+        edges.get_width(), edges.get_height());
+    const float2 left_right = step(distance.xy, distance.yx);
+    float2 rounding = 0.75 * left_right;
+    rounding /= left_right.x + left_right.y;
+    float2 factor = float2(1.0);
+    factor.x -= rounding.x * almetal_world_smaa_sample_offset(
+        edges, source_sampler, texcoord.xy, int2(1, 0), metric).g;
+    factor.x -= rounding.y * almetal_world_smaa_sample_offset(
+        edges, source_sampler, texcoord.zw, int2(1, -1), metric).g;
+    factor.y -= rounding.x * almetal_world_smaa_sample_offset(
+        edges, source_sampler, texcoord.xy, int2(-2, 0), metric).g;
+    factor.y -= rounding.y * almetal_world_smaa_sample_offset(
+        edges, source_sampler, texcoord.zw, int2(-2, -1), metric).g;
+    return weights * saturate(factor);
+}
+
+fragment float4 almetal_world_smaa_weight_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> edges [[texture(0)]],
+    texture2d<float> area [[texture(1)]],
+    texture2d<float> search [[texture(2)]],
+    sampler source_sampler [[sampler(0)]],
+    constant ALMetalWorldSMAAWeightConstants& constants [[buffer(0)]])
+{
+    const uint quality = min(constants.config.x, 3u);
+    const uint search_steps = almetal_world_smaa_search_steps[quality];
+    const float2 metric = 1.0 / float2(
+        edges.get_width(), edges.get_height());
+    const float4 metrics = float4(
+        metric, edges.get_width(), edges.get_height());
+    const float2 pixcoord = input.texcoord * metrics.zw;
+    float4 offset[3];
+    offset[0] = fma(
+        float4(metric, metric),
+        float4(-0.25, almetal_world_smaa_v_dir(-0.125),
+               1.25, almetal_world_smaa_v_dir(-0.125)),
+        float4(input.texcoord, input.texcoord));
+    offset[1] = fma(
+        float4(metric, metric),
+        float4(-0.125, almetal_world_smaa_v_dir(-0.25),
+               -0.125, almetal_world_smaa_v_dir(1.25)),
+        float4(input.texcoord, input.texcoord));
+    offset[2] = fma(
+        float4(metric.x, metric.x, metric.y, metric.y),
+        float4(-2.0, 2.0,
+               almetal_world_smaa_v_dir(-2.0),
+               almetal_world_smaa_v_dir(2.0)) * float(search_steps),
+        float4(offset[0].x, offset[0].z,
+               offset[1].y, offset[1].w));
+
+    float4 weights = float4(0.0);
+    float2 edge = almetal_world_smaa_sample(
+        edges, source_sampler, input.texcoord).rg;
+    if (edge.y > 0.0)
+    {
+        bool horizontal_vertical = true;
+        if (quality >= 2u)
+        {
+            const uint diagonal_steps = quality == 2u ? 8u : 16u;
+            weights.rg = almetal_world_smaa_diag_weights(
+                edges, area, source_sampler, input.texcoord,
+                edge, diagonal_steps);
+            horizontal_vertical = weights.r == -weights.g;
+            if (!horizontal_vertical)
+            {
+                edge.r = 0.0;
+            }
+        }
+        if (horizontal_vertical)
+        {
+            float3 coordinates;
+            coordinates.x = almetal_world_smaa_search_x_left(
+                edges, search, source_sampler,
+                offset[0].xy, offset[2].x);
+            coordinates.y = offset[1].y;
+            float2 distance;
+            distance.x = coordinates.x;
+            const float edge1 = almetal_world_smaa_sample(
+                edges, source_sampler, coordinates.xy).r;
+            coordinates.z = almetal_world_smaa_search_x_right(
+                edges, search, source_sampler,
+                offset[0].zw, offset[2].y);
+            distance.y = coordinates.z;
+            distance = abs(round(
+                metrics.zz * distance - pixcoord.xx));
+            const float edge2 = almetal_world_smaa_sample_offset(
+                edges, source_sampler, coordinates.zy,
+                int2(1, 0), metric).r;
+            weights.rg = almetal_world_smaa_area(
+                area, source_sampler, sqrt(distance), edge1, edge2);
+            if (quality >= 2u)
+            {
+                coordinates.y = input.texcoord.y;
+                weights.rg = almetal_world_smaa_horizontal_corners(
+                    edges, source_sampler, weights.rg,
+                    float4(coordinates.x, coordinates.y,
+                           coordinates.z, coordinates.y),
+                    distance);
+            }
+        }
+    }
+
+    if (edge.x > 0.0)
+    {
+        float3 coordinates;
+        coordinates.y = almetal_world_smaa_search_y_up(
+            edges, search, source_sampler,
+            offset[1].xy, offset[2].z);
+        coordinates.x = offset[0].x;
+        float2 distance;
+        distance.x = coordinates.y;
+        const float edge1 = almetal_world_smaa_sample(
+            edges, source_sampler, coordinates.xy).g;
+        coordinates.z = almetal_world_smaa_search_y_down(
+            edges, search, source_sampler,
+            offset[1].zw, offset[2].w);
+        distance.y = coordinates.z;
+        distance = abs(round(
+            metrics.ww * distance - pixcoord.yy));
+        const float edge2 = almetal_world_smaa_sample_offset(
+            edges, source_sampler, coordinates.xz,
+            int2(0, -1), metric).g;
+        weights.ba = almetal_world_smaa_area(
+            area, source_sampler, sqrt(distance), edge1, edge2);
+        if (quality >= 2u)
+        {
+            coordinates.x = input.texcoord.x;
+            weights.ba = almetal_world_smaa_vertical_corners(
+                edges, source_sampler, weights.ba,
+                float4(coordinates.x, coordinates.y,
+                       coordinates.x, coordinates.z),
+                distance);
+        }
+    }
+    return weights;
 }
 
 static float3 almetal_world_cas_load(

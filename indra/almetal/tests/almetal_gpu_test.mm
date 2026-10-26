@@ -19,6 +19,8 @@
 #include "../almetaltextureops.h"
 #include "../almetaluirenderer.h"
 #include "../almetalworld.h"
+#include "../../newview/SMAAAreaTex.h"
+#include "../../newview/SMAASearchTex.h"
 
 #import <Metal/Metal.h>
 
@@ -67,6 +69,579 @@ namespace
             {
                 SDL_DestroyWindow(window);
             }
+        }
+    };
+
+    struct SMAAVec2
+    {
+        float x = 0.f;
+        float y = 0.f;
+    };
+
+    struct SMAAVec4
+    {
+        float x = 0.f;
+        float y = 0.f;
+        float z = 0.f;
+        float w = 0.f;
+    };
+
+    SMAAVec2 operator+(SMAAVec2 left, SMAAVec2 right)
+    {
+        return {left.x + right.x, left.y + right.y};
+    }
+
+    SMAAVec2 operator*(SMAAVec2 left, SMAAVec2 right)
+    {
+        return {left.x * right.x, left.y * right.y};
+    }
+
+    SMAAVec2 operator*(SMAAVec2 value, float scale)
+    {
+        return {value.x * scale, value.y * scale};
+    }
+
+    SMAAVec2 operator/(SMAAVec2 value, SMAAVec2 divisor)
+    {
+        return {value.x / divisor.x, value.y / divisor.y};
+    }
+
+    SMAAVec2 smaaAbs(SMAAVec2 value)
+    {
+        return {std::abs(value.x), std::abs(value.y)};
+    }
+
+    SMAAVec2 smaaRound(SMAAVec2 value)
+    {
+        return {std::round(value.x), std::round(value.y)};
+    }
+
+    SMAAVec2 smaaSqrt(SMAAVec2 value)
+    {
+        return {std::sqrt(value.x), std::sqrt(value.y)};
+    }
+
+    SMAAVec2 smaaStep(SMAAVec2 edge, SMAAVec2 value)
+    {
+        return {value.x >= edge.x ? 1.f : 0.f,
+                value.y >= edge.y ? 1.f : 0.f};
+    }
+
+    struct SMAAWeightOracle
+    {
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+        const std::vector<std::uint8_t>& edges;
+        const std::vector<std::uint8_t>& area;
+        const std::vector<std::uint8_t>& search;
+
+        static float vDir(float value)
+        {
+            return -value;
+        }
+
+        static float vCoord(float value)
+        {
+            return 1.f - value;
+        }
+
+        static SMAAVec4 sampleBytes(
+            const std::vector<std::uint8_t>& bytes,
+            std::uint32_t sample_width,
+            std::uint32_t sample_height,
+            std::uint32_t channels,
+            SMAAVec2 uv)
+        {
+            const auto snap_center = [](float value)
+            {
+                const float integral = std::round(value);
+                return std::abs(value - integral) < 1e-5f
+                    ? integral : value;
+            };
+            const float pixel_x = snap_center(
+                uv.x * sample_width - 0.5f);
+            const float pixel_y = snap_center(
+                uv.y * sample_height - 0.5f);
+            const int base_x = static_cast<int>(std::floor(pixel_x));
+            const int base_y = static_cast<int>(std::floor(pixel_y));
+            const float fraction_x = pixel_x - std::floor(pixel_x);
+            const float fraction_y = pixel_y - std::floor(pixel_y);
+            const auto read = [&](int x, int y, std::uint32_t channel)
+            {
+                if (channel >= channels)
+                {
+                    return 0.f;
+                }
+                x = std::clamp(x, 0,
+                    static_cast<int>(sample_width) - 1);
+                y = std::clamp(y, 0,
+                    static_cast<int>(sample_height) - 1);
+                return bytes[(static_cast<std::size_t>(y) * sample_width +
+                              static_cast<std::size_t>(x)) * channels +
+                             channel] / 255.f;
+            };
+            SMAAVec4 result;
+            float* output[4] = {&result.x, &result.y, &result.z, &result.w};
+            for (std::uint32_t channel = 0; channel < 4; ++channel)
+            {
+                const float top = std::lerp(
+                    read(base_x, base_y, channel),
+                    read(base_x + 1, base_y, channel), fraction_x);
+                const float bottom = std::lerp(
+                    read(base_x, base_y + 1, channel),
+                    read(base_x + 1, base_y + 1, channel), fraction_x);
+                *output[channel] = std::lerp(top, bottom, fraction_y);
+            }
+            return result;
+        }
+
+        SMAAVec4 sampleEdges(SMAAVec2 uv) const
+        {
+            return sampleBytes(edges, width, height, 4, uv);
+        }
+
+        SMAAVec4 sampleEdgesOffset(
+            SMAAVec2 uv, int offset_x, int offset_y) const
+        {
+            return sampleEdges({
+                uv.x + offset_x / static_cast<float>(width),
+                uv.y + offset_y / static_cast<float>(height),
+            });
+        }
+
+        SMAAVec4 sampleArea(SMAAVec2 uv) const
+        {
+            return sampleBytes(
+                area, AREATEX_WIDTH, AREATEX_HEIGHT, 2, uv);
+        }
+
+        SMAAVec4 sampleSearch(SMAAVec2 uv) const
+        {
+            return sampleBytes(
+                search, SEARCHTEX_WIDTH, SEARCHTEX_HEIGHT, 1, uv);
+        }
+
+        static SMAAVec2 decodeDiag(SMAAVec2 edge)
+        {
+            edge.x *= std::abs(5.f * edge.x - 5.f * 0.75f);
+            return {std::round(edge.x), std::round(edge.y)};
+        }
+
+        static SMAAVec4 decodeDiag(SMAAVec4 edge)
+        {
+            edge.x *= std::abs(5.f * edge.x - 5.f * 0.75f);
+            edge.z *= std::abs(5.f * edge.z - 5.f * 0.75f);
+            return {std::round(edge.x), std::round(edge.y),
+                    std::round(edge.z), std::round(edge.w)};
+        }
+
+        SMAAVec2 searchDiag1(
+            SMAAVec2 texcoord, SMAAVec2 direction,
+            std::uint32_t max_steps, SMAAVec2& end_edge) const
+        {
+            direction.y = vDir(direction.y);
+            float distance = -1.f;
+            float active = 1.f;
+            const SMAAVec2 metric{
+                1.f / width, 1.f / height,
+            };
+            while (distance < static_cast<float>(max_steps - 1) &&
+                   active > 0.9f)
+            {
+                texcoord = texcoord + metric * direction;
+                distance += 1.f;
+                const SMAAVec4 sampled = sampleEdges(texcoord);
+                end_edge = {sampled.x, sampled.y};
+                active = 0.5f * (end_edge.x + end_edge.y);
+            }
+            return {distance, active};
+        }
+
+        SMAAVec2 searchDiag2(
+            SMAAVec2 texcoord, SMAAVec2 direction,
+            std::uint32_t max_steps, SMAAVec2& end_edge) const
+        {
+            direction.y = vDir(direction.y);
+            texcoord.x += 0.25f / width;
+            float distance = -1.f;
+            float active = 1.f;
+            const SMAAVec2 metric{
+                1.f / width, 1.f / height,
+            };
+            while (distance < static_cast<float>(max_steps - 1) &&
+                   active > 0.9f)
+            {
+                texcoord = texcoord + metric * direction;
+                distance += 1.f;
+                const SMAAVec4 sampled = sampleEdges(texcoord);
+                end_edge = decodeDiag(SMAAVec2{sampled.x, sampled.y});
+                active = 0.5f * (end_edge.x + end_edge.y);
+            }
+            return {distance, active};
+        }
+
+        SMAAVec2 areaDiag(
+            SMAAVec2 distance, SMAAVec2 edge, float offset) const
+        {
+            SMAAVec2 texcoord = SMAAVec2{20.f, 20.f} * edge + distance;
+            const SMAAVec2 pixel_size{1.f / 160.f, 1.f / 560.f};
+            texcoord = pixel_size * texcoord + pixel_size * 0.5f;
+            texcoord.x += 0.5f;
+            texcoord.y += offset / 7.f;
+            texcoord.y = vCoord(texcoord.y);
+            const SMAAVec4 sampled = sampleArea(texcoord);
+            return {sampled.x, sampled.y};
+        }
+
+        SMAAVec2 diagonalWeights(
+            SMAAVec2 texcoord, SMAAVec2 edge,
+            std::uint32_t max_steps) const
+        {
+            SMAAVec2 weights{};
+            SMAAVec4 distance{};
+            SMAAVec2 end_edge{};
+            if (edge.x > 0.f)
+            {
+                const SMAAVec2 result = searchDiag1(
+                    texcoord, {-1.f, 1.f}, max_steps, end_edge);
+                distance.x = result.x + (end_edge.y > 0.9f ? 1.f : 0.f);
+                distance.z = result.y;
+            }
+            const SMAAVec2 second = searchDiag1(
+                texcoord, {1.f, -1.f}, max_steps, end_edge);
+            distance.y = second.x;
+            distance.w = second.y;
+            if (distance.x + distance.y > 2.f)
+            {
+                const SMAAVec2 left{
+                    texcoord.x + (-distance.x + 0.25f) / width,
+                    texcoord.y + vDir(distance.x) / height,
+                };
+                const SMAAVec2 right{
+                    texcoord.x + distance.y / width,
+                    texcoord.y + vDir(-distance.y - 0.25f) / height,
+                };
+                const SMAAVec4 left_sample = sampleEdgesOffset(left, -1, 0);
+                const SMAAVec4 right_sample = sampleEdgesOffset(right, 1, 0);
+                const SMAAVec4 decoded = decodeDiag({
+                    left_sample.x, left_sample.y,
+                    right_sample.x, right_sample.y,
+                });
+                SMAAVec2 merged{
+                    2.f * decoded.y + decoded.x,
+                    2.f * decoded.w + decoded.z,
+                };
+                if (distance.z >= 0.9f)
+                {
+                    merged.x = 0.f;
+                }
+                if (distance.w >= 0.9f)
+                {
+                    merged.y = 0.f;
+                }
+                weights = weights + areaDiag(
+                    {distance.x, distance.y}, merged, 0.f);
+            }
+
+            const SMAAVec2 third = searchDiag2(
+                texcoord, {-1.f, -1.f}, max_steps, end_edge);
+            distance.x = third.x;
+            distance.z = third.y;
+            if (sampleEdgesOffset(texcoord, 1, 0).x > 0.f)
+            {
+                const SMAAVec2 fourth = searchDiag2(
+                    texcoord, {1.f, 1.f}, max_steps, end_edge);
+                distance.y = fourth.x + (end_edge.y > 0.9f ? 1.f : 0.f);
+                distance.w = fourth.y;
+            }
+            else
+            {
+                distance.y = 0.f;
+                distance.w = 0.f;
+            }
+            if (distance.x + distance.y > 2.f)
+            {
+                const SMAAVec2 left{
+                    texcoord.x - distance.x / width,
+                    texcoord.y + vDir(-distance.x) / height,
+                };
+                const SMAAVec2 right{
+                    texcoord.x + distance.y / width,
+                    texcoord.y + vDir(distance.y) / height,
+                };
+                const SMAAVec4 left_green = sampleEdgesOffset(left, -1, 0);
+                const SMAAVec4 left_red = sampleEdgesOffset(left, 0, 1);
+                const SMAAVec4 right_sample = sampleEdgesOffset(right, 1, 0);
+                SMAAVec2 merged{
+                    2.f * left_green.y + left_red.x,
+                    2.f * right_sample.y + right_sample.x,
+                };
+                if (distance.z >= 0.9f)
+                {
+                    merged.x = 0.f;
+                }
+                if (distance.w >= 0.9f)
+                {
+                    merged.y = 0.f;
+                }
+                const SMAAVec2 value = areaDiag(
+                    {distance.x, distance.y}, merged, 0.f);
+                weights = weights + SMAAVec2{value.y, value.x};
+            }
+            return weights;
+        }
+
+        float searchLength(SMAAVec2 edge, float offset) const
+        {
+            SMAAVec2 scale = SMAAVec2{66.f, 33.f} *
+                SMAAVec2{0.5f, -1.f};
+            SMAAVec2 bias = SMAAVec2{66.f, 33.f} *
+                SMAAVec2{offset, 1.f};
+            scale = scale + SMAAVec2{-1.f, 1.f};
+            bias = bias + SMAAVec2{0.5f, -0.5f};
+            scale = scale / SMAAVec2{64.f, 16.f};
+            bias = bias / SMAAVec2{64.f, 16.f};
+            SMAAVec2 coordinate = scale * edge + bias;
+            coordinate.y = vCoord(coordinate.y);
+            return sampleSearch(coordinate).x;
+        }
+
+        float searchXLeft(
+            SMAAVec2 texcoord, float end) const
+        {
+            SMAAVec2 edge{0.f, 1.f};
+            while (texcoord.x > end && edge.y > 0.8281f && edge.x == 0.f)
+            {
+                const SMAAVec4 sampled = sampleEdges(texcoord);
+                edge = {sampled.x, sampled.y};
+                texcoord.x -= 2.f / width;
+            }
+            const float offset = -(255.f / 127.f) *
+                searchLength(edge, 0.f) + 3.25f;
+            return texcoord.x + offset / width;
+        }
+
+        float searchXRight(
+            SMAAVec2 texcoord, float end) const
+        {
+            SMAAVec2 edge{0.f, 1.f};
+            while (texcoord.x < end && edge.y > 0.8281f && edge.x == 0.f)
+            {
+                const SMAAVec4 sampled = sampleEdges(texcoord);
+                edge = {sampled.x, sampled.y};
+                texcoord.x += 2.f / width;
+            }
+            const float offset = -(255.f / 127.f) *
+                searchLength(edge, 0.5f) + 3.25f;
+            return texcoord.x - offset / width;
+        }
+
+        float searchYUp(
+            SMAAVec2 texcoord, float end) const
+        {
+            SMAAVec2 edge{1.f, 0.f};
+            while (texcoord.y < end && edge.x > 0.8281f && edge.y == 0.f)
+            {
+                const SMAAVec4 sampled = sampleEdges(texcoord);
+                edge = {sampled.x, sampled.y};
+                texcoord.y += 2.f / height;
+            }
+            const float offset = -(255.f / 127.f) *
+                searchLength({edge.y, edge.x}, 0.f) + 3.25f;
+            return texcoord.y + vDir(offset) / height;
+        }
+
+        float searchYDown(
+            SMAAVec2 texcoord, float end) const
+        {
+            SMAAVec2 edge{1.f, 0.f};
+            while (texcoord.y > end && edge.x > 0.8281f && edge.y == 0.f)
+            {
+                const SMAAVec4 sampled = sampleEdges(texcoord);
+                edge = {sampled.x, sampled.y};
+                texcoord.y -= 2.f / height;
+            }
+            const float offset = -(255.f / 127.f) *
+                searchLength({edge.y, edge.x}, 0.5f) + 3.25f;
+            return texcoord.y - vDir(offset) / height;
+        }
+
+        SMAAVec2 areaValue(
+            SMAAVec2 distance, float edge1, float edge2) const
+        {
+            const SMAAVec2 rounded{
+                std::round(4.f * edge1),
+                std::round(4.f * edge2),
+            };
+            SMAAVec2 coordinate = SMAAVec2{16.f, 16.f} * rounded +
+                distance;
+            const SMAAVec2 pixel_size{1.f / 160.f, 1.f / 560.f};
+            coordinate = pixel_size * coordinate + pixel_size * 0.5f;
+            coordinate.y = vCoord(coordinate.y);
+            const SMAAVec4 sampled = sampleArea(coordinate);
+            return {sampled.x, sampled.y};
+        }
+
+        SMAAVec2 horizontalCorners(
+            SMAAVec2 weights, SMAAVec4 texcoord,
+            SMAAVec2 distance) const
+        {
+            const SMAAVec2 left_right = smaaStep(
+                distance, {distance.y, distance.x});
+            SMAAVec2 rounding = left_right * 0.75f;
+            const float divisor = left_right.x + left_right.y;
+            rounding = rounding * (1.f / divisor);
+            SMAAVec2 factor{1.f, 1.f};
+            factor.x -= rounding.x * sampleEdgesOffset(
+                {texcoord.x, texcoord.y}, 0, -1).x;
+            factor.x -= rounding.y * sampleEdgesOffset(
+                {texcoord.z, texcoord.w}, 1, -1).x;
+            factor.y -= rounding.x * sampleEdgesOffset(
+                {texcoord.x, texcoord.y}, 0, 2).x;
+            factor.y -= rounding.y * sampleEdgesOffset(
+                {texcoord.z, texcoord.w}, 1, 2).x;
+            factor.x = std::clamp(factor.x, 0.f, 1.f);
+            factor.y = std::clamp(factor.y, 0.f, 1.f);
+            return weights * factor;
+        }
+
+        SMAAVec2 verticalCorners(
+            SMAAVec2 weights, SMAAVec4 texcoord,
+            SMAAVec2 distance) const
+        {
+            const SMAAVec2 left_right = smaaStep(
+                distance, {distance.y, distance.x});
+            SMAAVec2 rounding = left_right * 0.75f;
+            const float divisor = left_right.x + left_right.y;
+            rounding = rounding * (1.f / divisor);
+            SMAAVec2 factor{1.f, 1.f};
+            factor.x -= rounding.x * sampleEdgesOffset(
+                {texcoord.x, texcoord.y}, 1, 0).y;
+            factor.x -= rounding.y * sampleEdgesOffset(
+                {texcoord.z, texcoord.w}, 1, -1).y;
+            factor.y -= rounding.x * sampleEdgesOffset(
+                {texcoord.x, texcoord.y}, -2, 0).y;
+            factor.y -= rounding.y * sampleEdgesOffset(
+                {texcoord.z, texcoord.w}, -2, -1).y;
+            factor.x = std::clamp(factor.x, 0.f, 1.f);
+            factor.y = std::clamp(factor.y, 0.f, 1.f);
+            return weights * factor;
+        }
+
+        SMAAVec4 pixel(
+            std::uint32_t pixel_x, std::uint32_t pixel_y,
+            std::uint32_t quality) const
+        {
+            constexpr std::array<std::uint32_t, 4> search_steps{{
+                4, 8, 16, 32,
+            }};
+            const SMAAVec2 metric{1.f / width, 1.f / height};
+            const SMAAVec2 texcoord{
+                (pixel_x + 0.5f) / width,
+                (pixel_y + 0.5f) / height,
+            };
+            const SMAAVec2 pixcoord{
+                texcoord.x * width, texcoord.y * height,
+            };
+            const SMAAVec4 offset0{
+                texcoord.x - 0.25f * metric.x,
+                texcoord.y + 0.125f * metric.y,
+                texcoord.x + 1.25f * metric.x,
+                texcoord.y + 0.125f * metric.y,
+            };
+            const SMAAVec4 offset1{
+                texcoord.x - 0.125f * metric.x,
+                texcoord.y + 0.25f * metric.y,
+                texcoord.x - 0.125f * metric.x,
+                texcoord.y - 1.25f * metric.y,
+            };
+            const float steps = static_cast<float>(search_steps[quality]);
+            const SMAAVec4 offset2{
+                offset0.x - 2.f * steps * metric.x,
+                offset0.z + 2.f * steps * metric.x,
+                offset1.y + 2.f * steps * metric.y,
+                offset1.w - 2.f * steps * metric.y,
+            };
+            SMAAVec4 weights{};
+            const SMAAVec4 sampled_edge = sampleEdges(texcoord);
+            SMAAVec2 edge{sampled_edge.x, sampled_edge.y};
+            if (edge.y > 0.f)
+            {
+                bool horizontal_vertical = true;
+                if (quality >= 2)
+                {
+                    weights.x = 0.f;
+                    weights.y = 0.f;
+                    const SMAAVec2 diagonal = diagonalWeights(
+                        texcoord, edge, quality == 2 ? 8 : 16);
+                    weights.x = diagonal.x;
+                    weights.y = diagonal.y;
+                    horizontal_vertical = weights.x == -weights.y;
+                    if (!horizontal_vertical)
+                    {
+                        edge.x = 0.f;
+                    }
+                }
+                if (horizontal_vertical)
+                {
+                    float coordinate_x = searchXLeft(
+                        {offset0.x, offset0.y}, offset2.x);
+                    float coordinate_y = offset1.y;
+                    const float edge1 = sampleEdges(
+                        {coordinate_x, coordinate_y}).x;
+                    const float coordinate_z = searchXRight(
+                        {offset0.z, offset0.w}, offset2.y);
+                    SMAAVec2 distance = smaaAbs(smaaRound({
+                        width * coordinate_x - pixcoord.x,
+                        width * coordinate_z - pixcoord.x,
+                    }));
+                    const float edge2 = sampleEdgesOffset(
+                        {coordinate_z, coordinate_y}, 1, 0).x;
+                    SMAAVec2 result = areaValue(
+                        smaaSqrt(distance), edge1, edge2);
+                    if (quality >= 2)
+                    {
+                        coordinate_y = texcoord.y;
+                        result = horizontalCorners(
+                            result,
+                            {coordinate_x, coordinate_y,
+                             coordinate_z, coordinate_y},
+                            distance);
+                    }
+                    weights.x = result.x;
+                    weights.y = result.y;
+                }
+            }
+            if (edge.x > 0.f)
+            {
+                const float coordinate_y = searchYUp(
+                    {offset1.x, offset1.y}, offset2.z);
+                float coordinate_x = offset0.x;
+                const float edge1 = sampleEdges(
+                    {coordinate_x, coordinate_y}).y;
+                const float coordinate_z = searchYDown(
+                    {offset1.z, offset1.w}, offset2.w);
+                const SMAAVec2 distance = smaaAbs(smaaRound({
+                    height * coordinate_y - pixcoord.y,
+                    height * coordinate_z - pixcoord.y,
+                }));
+                const float edge2 = sampleEdgesOffset(
+                    {coordinate_x, coordinate_z}, 0, -1).y;
+                SMAAVec2 result = areaValue(
+                    smaaSqrt(distance), edge1, edge2);
+                if (quality >= 2)
+                {
+                    coordinate_x = texcoord.x;
+                    result = verticalCorners(
+                        result,
+                        {coordinate_x, coordinate_y,
+                         coordinate_x, coordinate_z},
+                        distance);
+                }
+                weights.z = result.x;
+                weights.w = result.y;
+            }
+            return weights;
         }
     };
 }
@@ -276,6 +851,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_fxaa_fragment",
             "almetal_world_smaa_edge_fragment",
             "almetal_world_smaa_edge_predicated_fragment",
+            "almetal_world_smaa_weight_fragment",
         };
         for (const char* function : functions)
         {
@@ -11501,6 +12077,189 @@ TEST_CASE("almetal: world SMAA edge stage matches color and predication rules", 
         CHECK_FALSE(renderer->renderSMAAEdges(invalid, &error));
         CHECK(error ==
               "Metal world SMAA predication texture is incompatible");
+    }
+}
+
+TEST_CASE("almetal: world SMAA blending weights match lookup reference", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 33;
+        constexpr std::uint32_t height = 31;
+        std::vector<std::uint8_t> edge_bytes(width * height * 4, 0);
+        const auto mark = [&](std::uint32_t x, std::uint32_t y,
+                              bool west, bool north)
+        {
+            std::uint8_t* pixel = edge_bytes.data() +
+                (static_cast<std::size_t>(y) * width + x) * 4;
+            pixel[0] = west ? 255 : pixel[0];
+            pixel[1] = north ? 255 : pixel[1];
+        };
+        for (std::uint32_t x = 3; x < 30; ++x)
+        {
+            mark(x, 15, false, true);
+        }
+        for (std::uint32_t y = 2; y < 29; ++y)
+        {
+            mark(16, y, true, false);
+        }
+        for (std::uint32_t step = 5; step < 26; ++step)
+        {
+            mark(step, step - 2, true, true);
+            mark(32 - step, step, true, true);
+        }
+        for (std::uint32_t x = 7; x < 14; ++x)
+        {
+            mark(x, 8, false, true);
+        }
+        for (std::uint32_t y = 8; y < 14; ++y)
+        {
+            mark(7, y, true, false);
+        }
+
+        ALMetalRenderTargetDescriptor edge_descriptor;
+        edge_descriptor.width = width;
+        edge_descriptor.height = height;
+        edge_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        edge_descriptor.label = "Alchemy world SMAA weight test edges";
+        auto edges = ALMetalRenderTarget::create(
+            *device, edge_descriptor, &error);
+        INFO(error);
+        REQUIRE(edges);
+        auto upload = device->makeCommandBuffer(
+            "Alchemy world SMAA weight test upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        id<MTLBuffer> staging = [nativeDevice(*device)
+            newBufferWithBytes:edge_bytes.data()
+                      length:edge_bytes.size()
+                     options:MTLResourceStorageModeShared];
+        REQUIRE(staging);
+        id<MTLBlitCommandEncoder> blit =
+            [nativeCommand(*upload) blitCommandEncoder];
+        REQUIRE(blit);
+        [blit copyFromBuffer:staging
+                sourceOffset:0
+           sourceBytesPerRow:width * 4
+         sourceBytesPerImage:edge_bytes.size()
+                  sourceSize:MTLSizeMake(width, height, 1)
+                   toTexture:(__bridge id<MTLTexture>)
+                       edges->colorTexture(0)->nativeHandle()
+            destinationSlice:0
+            destinationLevel:0
+           destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [blit endEncoding];
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        std::vector<std::uint8_t> area_lookup(AREATEX_SIZE);
+        for (std::uint32_t row = 0; row < AREATEX_HEIGHT; ++row)
+        {
+            const std::uint32_t source_row = AREATEX_HEIGHT - 1u - row;
+            std::memcpy(area_lookup.data() + row * AREATEX_PITCH,
+                        areaTexBytes + source_row * AREATEX_PITCH,
+                        AREATEX_PITCH);
+        }
+        std::vector<std::uint8_t> search_lookup(SEARCHTEX_SIZE);
+        for (std::uint32_t row = 0; row < SEARCHTEX_HEIGHT; ++row)
+        {
+            const std::uint32_t source_row = SEARCHTEX_HEIGHT - 1u - row;
+            std::memcpy(search_lookup.data() + row * SEARCHTEX_PITCH,
+                        searchTexBytes + source_row * SEARCHTEX_PITCH,
+                        SEARCHTEX_PITCH);
+        }
+        const SMAAWeightOracle oracle{
+            width, height, edge_bytes, area_lookup, search_lookup,
+        };
+
+        std::array<std::vector<std::uint8_t>, 4> results;
+        for (std::uint32_t quality = 0; quality < 4; ++quality)
+        {
+            ALMetalWorldSMAAWeightScene scene;
+            scene.edges = edges.get();
+            scene.quality = quality;
+            auto output = renderer->renderSMAABlendWeights(scene, &error);
+            INFO(error);
+            REQUIRE(output);
+            CHECK(output->descriptor().width == width);
+            CHECK(output->descriptor().height == height);
+            CHECK(output->descriptor().colors[0].format ==
+                  ALMetalPixelFormat::rgba8_unorm);
+            results[quality].resize(width * height * 4);
+            REQUIRE(output->colorTexture(0)->readback(
+                *device, 0, 0, {}, results[quality].data(), width * 4,
+                &error));
+            INFO(error);
+
+            std::array<std::size_t, 4> nonzero{};
+            for (std::uint32_t y = 0; y < height; ++y)
+            {
+                for (std::uint32_t x = 0; x < width; ++x)
+                {
+                    const SMAAVec4 expected = oracle.pixel(x, y, quality);
+                    const std::array<float, 4> channels{{
+                        expected.x, expected.y, expected.z, expected.w,
+                    }};
+                    for (std::size_t channel = 0;
+                         channel < channels.size(); ++channel)
+                    {
+                        const int expected_byte = static_cast<int>(
+                            std::lround(std::clamp(
+                                channels[channel], 0.f, 1.f) * 255.f));
+                        const int actual = results[quality][
+                            (static_cast<std::size_t>(y) * width + x) * 4 +
+                            channel];
+                        CAPTURE(quality, x, y, channel,
+                                expected_byte, actual);
+                        CHECK(std::abs(actual - expected_byte) <= 1);
+                        nonzero[channel] += actual != 0 ? 1 : 0;
+                    }
+                }
+            }
+            CAPTURE(quality, nonzero[0], nonzero[1],
+                    nonzero[2], nonzero[3]);
+            for (std::size_t channel = 0; channel < nonzero.size(); ++channel)
+            {
+                CAPTURE(channel);
+                CHECK(nonzero[channel] > 0);
+            }
+        }
+        CHECK(results[0] != results[1]);
+        CHECK(results[1] != results[2]);
+        CHECK(results[2] != results[3]);
+
+        ALMetalWorldSMAAWeightScene invalid;
+        error.clear();
+        CHECK_FALSE(renderer->renderSMAABlendWeights(invalid, &error));
+        CHECK(error == "Metal world SMAA weight scene is incomplete");
+        invalid.edges = edges.get();
+        invalid.quality = 4;
+        error.clear();
+        CHECK_FALSE(renderer->renderSMAABlendWeights(invalid, &error));
+        CHECK(error == "Metal world SMAA weight state is invalid");
+
+        ALMetalRenderTargetDescriptor wrong_descriptor = edge_descriptor;
+        wrong_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgb10a2_unorm;
+        auto wrong_edges = ALMetalRenderTarget::create(
+            *device, wrong_descriptor, &error);
+        INFO(error);
+        REQUIRE(wrong_edges);
+        invalid.quality = 0;
+        invalid.edges = wrong_edges.get();
+        error.clear();
+        CHECK_FALSE(renderer->renderSMAABlendWeights(invalid, &error));
+        CHECK(error == "Metal world SMAA edge target is incompatible");
     }
 }
 
