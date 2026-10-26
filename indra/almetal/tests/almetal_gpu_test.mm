@@ -192,6 +192,10 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_lighting_composition_fragment",
             "almetal_world_ssr_history_fragment",
             "almetal_world_hero_probe_filter",
+            "almetal_world_probe_gaussian",
+            "almetal_world_probe_downsample",
+            "almetal_world_probe_sh_rows",
+            "almetal_world_probe_sh_reduce",
             "almetal_world_light_map_fragment",
             "almetal_world_light_map_blur_fragment",
             "almetal_world_hdri_sky_vertex",
@@ -10255,6 +10259,233 @@ TEST_CASE("almetal: native hero faces publish filtered cube radiance", "[almetal
         CHECK(hdr_face_zero[4 + 1] != 0);
         CHECK(hdr_face_five[4 + 1] != 0);
         CHECK(hdr_face_zero[4 + 1] != hdr_face_five[4 + 1]);
+    }
+}
+
+TEST_CASE("almetal: native ordinary probes filter radiance and project SH", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        ALMetalRenderTargetDescriptor source_descriptor;
+        source_descriptor.width = 8;
+        source_descriptor.height = 8;
+        source_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        source_descriptor.label =
+            "Alchemy native ordinary-probe supersample test";
+        auto source = ALMetalRenderTarget::create(
+            *device, source_descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        std::unique_ptr<ALMetalTexture> source_cube;
+        std::unique_ptr<ALMetalTexture> radiance_cube;
+        std::uint32_t valid_faces = 0;
+        CHECK_FALSE(renderer->updateReflectionProbeFace(
+            *source, 0, 3, 1,
+            source_cube, valid_faces, &error));
+        CHECK(error ==
+              "Metal reflection-probe face source is incompatible");
+        error.clear();
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            const std::array<std::uint8_t, 4> color{{
+                static_cast<std::uint8_t>(32 + face * 24),
+                static_cast<std::uint8_t>(16 + face * 17),
+                static_cast<std::uint8_t>(8 + face * 11), 255,
+            }};
+            std::array<std::uint8_t, 8 * 8 * 4> pixels{};
+            for (std::size_t texel = 0; texel < 8 * 8; ++texel)
+            {
+                std::copy(color.begin(), color.end(),
+                          pixels.begin() + texel * 4);
+            }
+            auto upload = device->makeCommandBuffer(
+                "Alchemy ordinary-probe face upload", &error);
+            INFO(error);
+            REQUIRE(upload);
+            id<MTLBuffer> staging = [nativeDevice(*device)
+                newBufferWithBytes:pixels.data()
+                          length:pixels.size()
+                         options:MTLResourceStorageModeShared];
+            REQUIRE(staging);
+            id<MTLBlitCommandEncoder> blit =
+                [nativeCommand(*upload) blitCommandEncoder];
+            REQUIRE(blit);
+            [blit copyFromBuffer:staging
+                    sourceOffset:0
+               sourceBytesPerRow:8 * 4
+             sourceBytesPerImage:pixels.size()
+                      sourceSize:MTLSizeMake(8, 8, 1)
+                       toTexture:(__bridge id<MTLTexture>)
+                           source->colorTexture(0)->nativeHandle()
+                destinationSlice:0
+                destinationLevel:0
+               destinationOrigin:MTLOriginMake(0, 0, 0)];
+            [blit endEncoding];
+            REQUIRE(upload->commit(&error));
+            REQUIRE(renderer->updateReflectionProbeFace(
+                *source, face, 4, 1,
+                source_cube, valid_faces, &error));
+            INFO(error);
+            CHECK(valid_faces == ((1u << (face + 1)) - 1u));
+            if (face == 0)
+            {
+                CHECK_FALSE(renderer->filterReflectionProbeRadiance(
+                    *source_cube, valid_faces, 1,
+                    radiance_cube, &error));
+                CHECK(error ==
+                      "Metal reflection-probe radiance source is incomplete");
+                error.clear();
+            }
+        }
+        REQUIRE(source_cube);
+        CHECK(source_cube->descriptor().width == 4);
+        CHECK(source_cube->descriptor().mipmap_level_count == 2);
+        REQUIRE(renderer->filterReflectionProbeRadiance(
+            *source_cube, valid_faces, 1, radiance_cube, &error));
+        INFO(error);
+        REQUIRE(radiance_cube);
+        CHECK(radiance_cube->descriptor().format ==
+              ALMetalPixelFormat::rgba8_unorm);
+        CHECK(radiance_cube->descriptor().mipmap_level_count == 2);
+        std::array<std::uint8_t, 4 * 4 * 4> face_zero{};
+        std::array<std::uint8_t, 4 * 4 * 4> face_five{};
+        REQUIRE(radiance_cube->readback(
+            *device, 0, 0, {}, face_zero.data(), 4 * 4, &error));
+        REQUIRE(radiance_cube->readback(
+            *device, 0, 5, {}, face_five.data(), 4 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(face_zero[0]) - 32) <= 1);
+        CHECK(std::abs(static_cast<int>(face_zero[1]) - 16) <= 1);
+        CHECK(std::abs(static_cast<int>(face_zero[2]) - 8) <= 1);
+        CHECK(std::abs(static_cast<int>(face_five[0]) - 152) <= 1);
+        CHECK(std::abs(static_cast<int>(face_five[1]) - 101) <= 1);
+        CHECK(std::abs(static_cast<int>(face_five[2]) - 63) <= 1);
+
+        // Replace every source face with one uniform environment. Its SH has
+        // only the DC coefficient, which gives an exact projection oracle
+        // while still exercising the half-packed texture row and shared
+        // completion buffer used by the default preview.
+        const std::array<std::uint8_t, 4> uniform_color{{64, 128, 192, 255}};
+        std::array<std::uint8_t, 8 * 8 * 4> uniform_pixels{};
+        for (std::size_t texel = 0; texel < 8 * 8; ++texel)
+        {
+            std::copy(uniform_color.begin(), uniform_color.end(),
+                      uniform_pixels.begin() + texel * 4);
+        }
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            auto upload = device->makeCommandBuffer(
+                "Alchemy uniform ordinary-probe face upload", &error);
+            INFO(error);
+            REQUIRE(upload);
+            id<MTLBuffer> staging = [nativeDevice(*device)
+                newBufferWithBytes:uniform_pixels.data()
+                          length:uniform_pixels.size()
+                         options:MTLResourceStorageModeShared];
+            REQUIRE(staging);
+            id<MTLBlitCommandEncoder> blit =
+                [nativeCommand(*upload) blitCommandEncoder];
+            REQUIRE(blit);
+            [blit copyFromBuffer:staging
+                    sourceOffset:0
+               sourceBytesPerRow:8 * 4
+             sourceBytesPerImage:uniform_pixels.size()
+                      sourceSize:MTLSizeMake(8, 8, 1)
+                       toTexture:(__bridge id<MTLTexture>)
+                           source->colorTexture(0)->nativeHandle()
+                destinationSlice:0
+                destinationLevel:0
+               destinationOrigin:MTLOriginMake(0, 0, 0)];
+            [blit endEncoding];
+            REQUIRE(upload->commit(&error));
+            REQUIRE(renderer->updateReflectionProbeFace(
+                *source, face, 4, 1,
+                source_cube, valid_faces, &error));
+            INFO(error);
+        }
+
+        ALMetalTextureDescriptor sh_descriptor;
+        sh_descriptor.format = ALMetalPixelFormat::rgba32_uint;
+        sh_descriptor.width = 4;
+        sh_descriptor.height = 8;
+        sh_descriptor.storage = ALMetalStorageMode::private_gpu;
+        sh_descriptor.usage = ALMetalTextureUsage::shader_read |
+                              ALMetalTextureUsage::shader_write;
+        sh_descriptor.label = "Alchemy native ordinary-probe SH test";
+        auto sh_texture = ALMetalTexture::create(
+            *device, sh_descriptor, &error);
+        INFO(error);
+        REQUIRE(sh_texture);
+        std::unique_ptr<ALMetalBuffer> packed_words;
+        std::unique_ptr<ALMetalCommandBuffer> pending;
+        REQUIRE(renderer->projectReflectionProbeSH(
+            *source_cube, valid_faces, 0, 4,
+            *sh_texture, 3, packed_words, pending, &error));
+        INFO(error);
+        REQUIRE(packed_words);
+        REQUIRE(pending);
+        REQUIRE(pending->waitUntilCompleted(&error));
+        INFO(error);
+
+        std::array<std::uint32_t, 16> buffer_words{};
+        std::array<std::uint32_t, 16> texture_words{};
+        REQUIRE(packed_words->read(
+            0, buffer_words.data(), sizeof(buffer_words), &error));
+        const ALMetalRegion2D sh_row{0, 3, 4, 1};
+        REQUIRE(sh_texture->readback(
+            *device, 0, 0, sh_row, texture_words.data(),
+            4 * 4 * sizeof(std::uint32_t), &error));
+        INFO(error);
+        CHECK(buffer_words == texture_words);
+
+        const auto half_to_float = [](std::uint16_t value)
+        {
+            const float magnitude = ((value >> 10) & 0x1fu) == 0
+                ? std::ldexp(static_cast<float>(value & 0x3ffu), -24)
+                : std::ldexp(
+                      static_cast<float>((value & 0x3ffu) + 0x400u),
+                      static_cast<int>((value >> 10) & 0x1fu) - 25);
+            return (value & 0x8000u) != 0 ? -magnitude : magnitude;
+        };
+        std::array<float, 32> coefficients{};
+        for (std::size_t index = 0; index < buffer_words.size(); ++index)
+        {
+            coefficients[index * 2] = half_to_float(
+                static_cast<std::uint16_t>(buffer_words[index]));
+            coefficients[index * 2 + 1] = half_to_float(
+                static_cast<std::uint16_t>(buffer_words[index] >> 16));
+        }
+        constexpr float dc_scale = 0.282095f * 4.f * 3.1415926536f;
+        CHECK(std::abs(coefficients[0] -
+                       (64.f / 255.f) * dc_scale) < 0.01f);
+        CHECK(std::abs(coefficients[1] -
+                       (128.f / 255.f) * dc_scale) < 0.01f);
+        CHECK(std::abs(coefficients[2] -
+                       (192.f / 255.f) * dc_scale) < 0.01f);
+        for (std::size_t coefficient = 3; coefficient < 27; ++coefficient)
+        {
+            CHECK(std::abs(coefficients[coefficient]) < 0.01f);
+        }
+        for (std::size_t padding = 27; padding < 32; ++padding)
+        {
+            CHECK(coefficients[padding] == 0.f);
+        }
+        CHECK_FALSE(renderer->projectReflectionProbeSH(
+            *source_cube, valid_faces, 0, 4,
+            *sh_texture, 8, packed_words, pending, &error));
+        CHECK(error ==
+              "Metal reflection-probe SH inputs are incompatible");
     }
 }
 

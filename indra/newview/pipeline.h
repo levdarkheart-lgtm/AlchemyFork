@@ -264,8 +264,9 @@ private:
     struct MetalWorldSimpleCapture;
     std::unique_ptr<MetalWorldSimpleCapture> mMetalWorldSimpleCapture;
     std::unique_ptr<MetalWorldSimpleCapture>
-        mMetalHeroWorldSimpleCapture;
+        mMetalProbeWorldSimpleCapture;
     bool mMetalHeroWorldCaptureActive = false;
+    bool mMetalReflectionWorldCaptureActive = false;
 #endif
 
     // The changes marked since the last application, and how many the one running applies, for the log line.
@@ -636,6 +637,9 @@ public:
     bool endMetalHeroProbeFaceCapture();
     bool publishMetalHeroProbeRadiance(
         const LLUUID& hero_id, U64 generation, F32 strength);
+    bool beginMetalReflectionProbeFaceCapture(
+        LLReflectionMap* probe, U32 face, bool radiance_pass);
+    bool endMetalReflectionProbeFaceCapture();
     void requestMetalScreenSpaceReflections(const LLRenderTarget& source);
     void collectMetalScreenSpaceReflections();
     bool fillMetalImpostorScreenSpaceReflections();

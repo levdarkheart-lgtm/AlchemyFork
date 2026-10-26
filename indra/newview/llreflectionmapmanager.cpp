@@ -198,6 +198,8 @@ struct LLReflectionMapManager::MetalDefaultProbeMirror
     std::array<U32, LL_SH_PACKED_TEXELS * 4> mPendingSH{};
     std::array<U32, LL_SH_PACKED_TEXELS * 4> mPublishedSH{};
     bool mStagedSHValid = false;
+    U64 mNativeStagedSHGeneration = 0;
+    U64 mNativeStagedSHSequence = 0;
 
     ALGPUBuffer mRadianceReadback;
     std::vector<Subresource> mSubresources;
@@ -227,6 +229,8 @@ struct LLReflectionMapManager::MetalDefaultProbeMirror
         mPendingSH = {};
         mPublishedSH = {};
         mStagedSHValid = false;
+        mNativeStagedSHGeneration = 0;
+        mNativeStagedSHSequence = 0;
         mRadianceFrame = 0;
         mResolution = 0;
         mMipCount = 0;
@@ -269,6 +273,11 @@ struct LLReflectionMapManager::MetalProbeArrayMirror
     const ALMetalDevice* mDevice = nullptr;
     std::unique_ptr<ALMetalTexture> mPublishedRadiance;
     std::unique_ptr<ALMetalTexture> mPublishedSH;
+    std::unique_ptr<ALMetalTexture> mNativeSourceCube;
+    std::unique_ptr<ALMetalTexture> mNativeFilteredCube;
+    std::unique_ptr<ALMetalTexture> mNativeStagedSH;
+    std::unique_ptr<ALMetalBuffer> mNativePackedSH;
+    std::unique_ptr<ALMetalCommandBuffer> mNativeSHPending;
     U32 mRadianceFrame = 0;
     U32 mResolution = 0;
     U32 mMipCount = 0;
@@ -276,16 +285,36 @@ struct LLReflectionMapManager::MetalProbeArrayMirror
     U64 mNextSHSequence = 0;
     U32 mCaptureCube = 0;
     U64 mCaptureGeneration = 0;
+    U64 mNativeNextSequence = 0;
+    U32 mNativeCaptureCube = 0;
+    U64 mNativeCaptureGeneration = 0;
+    U64 mNativeCaptureSequence = 0;
+    U32 mNativeValidFaces = 0;
+    U32 mNativePendingSHCube = 0;
+    U64 mNativePendingSHGeneration = 0;
+    U64 mNativePendingSHSequence = 0;
+    U32 mNativeReadySHCube = 0;
+    U64 mNativeReadySHGeneration = 0;
+    U64 mNativeReadySHSequence = 0;
     bool mHDR = false;
     bool mCaptureActive = false;
     bool mRadiancePending = false;
+    bool mNativeCaptureRadiance = false;
+    bool mNativeSHPublishedThisPass = false;
+    bool mNativeRadiancePublishedThisPass = false;
+    bool mNativeDefaultPublishedThisPass = false;
 
     bool hasResources() const
     {
         return mRadianceReadback.isAllocated() ||
                mSHReadback.isAllocated() ||
                mPublishedRadiance != nullptr ||
-               mPublishedSH != nullptr;
+               mPublishedSH != nullptr ||
+               mNativeSourceCube != nullptr ||
+               mNativeFilteredCube != nullptr ||
+               mNativeStagedSH != nullptr ||
+               mNativePackedSH != nullptr ||
+               mNativeSHPending != nullptr;
     }
 
     void release()
@@ -306,6 +335,11 @@ struct LLReflectionMapManager::MetalProbeArrayMirror
         mDevice = nullptr;
         mPublishedRadiance.reset();
         mPublishedSH.reset();
+        mNativeSourceCube.reset();
+        mNativeFilteredCube.reset();
+        mNativeStagedSH.reset();
+        mNativePackedSH.reset();
+        mNativeSHPending.reset();
         mRadianceFrame = 0;
         mResolution = 0;
         mMipCount = 0;
@@ -313,9 +347,24 @@ struct LLReflectionMapManager::MetalProbeArrayMirror
         mNextSHSequence = 0;
         mCaptureCube = 0;
         mCaptureGeneration = 0;
+        mNativeNextSequence = 0;
+        mNativeCaptureCube = 0;
+        mNativeCaptureGeneration = 0;
+        mNativeCaptureSequence = 0;
+        mNativeValidFaces = 0;
+        mNativePendingSHCube = 0;
+        mNativePendingSHGeneration = 0;
+        mNativePendingSHSequence = 0;
+        mNativeReadySHCube = 0;
+        mNativeReadySHGeneration = 0;
+        mNativeReadySHSequence = 0;
         mHDR = false;
         mCaptureActive = false;
         mRadiancePending = false;
+        mNativeCaptureRadiance = false;
+        mNativeSHPublishedThisPass = false;
+        mNativeRadiancePublishedThisPass = false;
+        mNativeDefaultPublishedThisPass = false;
     }
 };
 #endif
@@ -399,8 +448,396 @@ bool LLReflectionMapManager::reconcileMetalProbeArray()
     return true;
 }
 
+void LLReflectionMapManager::collectNativeMetalProbe()
+{
+    MetalProbeArrayMirror& mirror = *mMetalProbeArray;
+    if (!mirror.mNativeSHPending)
+    {
+        return;
+    }
+    const ALMetalCommandStatus status =
+        mirror.mNativeSHPending->status();
+    if (status != ALMetalCommandStatus::completed &&
+        status != ALMetalCommandStatus::error)
+    {
+        return;
+    }
+
+    const bool generation_valid =
+        mirror.mNativePendingSHCube < mirror.mSlotGenerations.size() &&
+        mirror.mSlotGenerations[mirror.mNativePendingSHCube] ==
+            mirror.mNativePendingSHGeneration;
+    if (status == ALMetalCommandStatus::completed && generation_valid)
+    {
+        mirror.mNativeReadySHCube = mirror.mNativePendingSHCube;
+        mirror.mNativeReadySHGeneration =
+            mirror.mNativePendingSHGeneration;
+        mirror.mNativeReadySHSequence = mirror.mNativePendingSHSequence;
+        if (mirror.mNativePendingSHCube == 0 && mirror.mNativePackedSH)
+        {
+            MetalDefaultProbeMirror& default_mirror = *mMetalDefaultProbe;
+            if (mirror.mNativePackedSH->read(
+                    0, default_mirror.mStagedSH.data(),
+                    sizeof(default_mirror.mStagedSH)))
+            {
+                default_mirror.mStagedSHValid = true;
+                default_mirror.mNativeStagedSHGeneration =
+                    mirror.mNativePendingSHGeneration;
+                default_mirror.mNativeStagedSHSequence =
+                    mirror.mNativePendingSHSequence;
+            }
+        }
+    }
+    else if (status == ALMetalCommandStatus::error)
+    {
+        LL_WARNS("Metal")
+            << "Could not complete native reflection-probe SH: "
+            << mirror.mNativeSHPending->errorDescription() << LL_ENDL;
+    }
+    mirror.mNativeSHPending.reset();
+    mirror.mNativePendingSHCube = 0;
+    mirror.mNativePendingSHGeneration = 0;
+    mirror.mNativePendingSHSequence = 0;
+}
+
+bool LLReflectionMapManager::captureNativeMetalProbeFace(
+    ALMetalWorldGBufferRenderer& renderer,
+    const ALMetalRenderTarget& source,
+    LLReflectionMap* probe, U32 face, bool radiance_pass,
+    std::string* error)
+{
+    if (!probe || probe->mCubeIndex < 0 || face >= 6 ||
+        !reconcileMetalProbeArray())
+    {
+        return false;
+    }
+    MetalProbeArrayMirror& mirror = *mMetalProbeArray;
+    const U32 cube = static_cast<U32>(probe->mCubeIndex);
+    if (cube >= mirror.mSlotGenerations.size())
+    {
+        return false;
+    }
+    const U64 generation = mirror.mSlotGenerations[cube];
+    if (face == 0)
+    {
+        if (!radiance_pass)
+        {
+            ++mirror.mNativeNextSequence;
+            if (mirror.mNativeNextSequence == 0)
+            {
+                ++mirror.mNativeNextSequence;
+            }
+            mirror.mNativeCaptureSequence =
+                mirror.mNativeNextSequence;
+        }
+        else if (mirror.mNativeCaptureCube != cube ||
+                 mirror.mNativeCaptureGeneration != generation ||
+                 mirror.mNativeCaptureRadiance ||
+                 mirror.mNativeCaptureSequence == 0)
+        {
+            return false;
+        }
+        mirror.mNativeCaptureCube = cube;
+        mirror.mNativeCaptureGeneration = generation;
+        mirror.mNativeCaptureRadiance = radiance_pass;
+        mirror.mNativeValidFaces = 0;
+        if (radiance_pass)
+        {
+            mirror.mNativeRadiancePublishedThisPass = false;
+            mirror.mNativeDefaultPublishedThisPass = false;
+        }
+        else
+        {
+            mirror.mNativeSHPublishedThisPass = false;
+        }
+    }
+    else if (mirror.mNativeCaptureCube != cube ||
+             mirror.mNativeCaptureGeneration != generation ||
+             mirror.mNativeCaptureRadiance != radiance_pass)
+    {
+        return false;
+    }
+
+    const U32 max_probe_lod =
+        static_cast<U32>(std::lround(mMaxProbeLOD));
+    if (!renderer.updateReflectionProbeFace(
+            source, face, mProbeResolution, max_probe_lod,
+            mirror.mNativeSourceCube, mirror.mNativeValidFaces,
+            error))
+    {
+        return false;
+    }
+    if (face != 5)
+    {
+        return true;
+    }
+    if (mirror.mNativeValidFaces != 0x3fu)
+    {
+        return false;
+    }
+
+    ALMetalDevice* device = LLImageGL::getMetalDevice();
+    if (!device || device != mirror.mDevice)
+    {
+        return false;
+    }
+    if (!radiance_pass)
+    {
+        const ALMetalTextureDescriptor* current = mirror.mNativeStagedSH
+            ? &mirror.mNativeStagedSH->descriptor() : nullptr;
+        const bool recreate = !current ||
+            current->type != ALMetalTextureType::texture_2d ||
+            current->format != ALMetalPixelFormat::rgba32_uint ||
+            current->width != LL_SH_PACKED_TEXELS ||
+            current->height != 1 ||
+            !alMetalHasUsage(current->usage,
+                             ALMetalTextureUsage::shader_read) ||
+            !alMetalHasUsage(current->usage,
+                             ALMetalTextureUsage::shader_write);
+        std::unique_ptr<ALMetalTexture> replacement;
+        ALMetalTexture* destination = mirror.mNativeStagedSH.get();
+        if (recreate)
+        {
+            ALMetalTextureDescriptor descriptor;
+            descriptor.format = ALMetalPixelFormat::rgba32_uint;
+            descriptor.width = LL_SH_PACKED_TEXELS;
+            descriptor.height = 1;
+            descriptor.storage = ALMetalStorageMode::private_gpu;
+            descriptor.usage = ALMetalTextureUsage::shader_read |
+                               ALMetalTextureUsage::shader_write;
+            descriptor.label =
+                "Alchemy staged native reflection-probe SH";
+            replacement = ALMetalTexture::create(
+                *device, descriptor, error);
+            destination = replacement.get();
+        }
+        if (!destination)
+        {
+            return false;
+        }
+        S32 sh_mip = 0;
+        const U32 sh_resolution = shProjectionRes(sh_mip);
+        if (!renderer.projectReflectionProbeSH(
+                *mirror.mNativeSourceCube, mirror.mNativeValidFaces,
+                static_cast<U32>(sh_mip), sh_resolution,
+                *destination, 0, mirror.mNativePackedSH,
+                mirror.mNativeSHPending, error))
+        {
+            return false;
+        }
+        if (replacement)
+        {
+            mirror.mNativeStagedSH = std::move(replacement);
+        }
+        mirror.mNativePendingSHCube = cube;
+        mirror.mNativePendingSHGeneration = generation;
+        mirror.mNativePendingSHSequence = mirror.mNativeCaptureSequence;
+        mirror.mNativeSHPublishedThisPass = true;
+        return true;
+    }
+
+    const bool sh_ready = mirror.mNativeReadySHCube == cube &&
+        mirror.mNativeReadySHGeneration == generation &&
+        mirror.mNativeReadySHSequence == mirror.mNativeCaptureSequence &&
+        mirror.mNativeStagedSH;
+    if (!sh_ready)
+    {
+        if (error)
+        {
+            *error = "Metal reflection-probe SH is not ready for this radiance generation";
+        }
+        return false;
+    }
+
+    if (!renderer.filterReflectionProbeRadiance(
+            *mirror.mNativeSourceCube, mirror.mNativeValidFaces,
+            max_probe_lod, mirror.mNativeFilteredCube, error))
+    {
+        return false;
+    }
+    const ALMetalPixelFormat format = mHDR
+        ? ALMetalPixelFormat::rgba16_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    const U32 mip_count = static_cast<U32>(mMipChain.size());
+    const ALMetalTextureDescriptor* current = mirror.mPublishedRadiance
+        ? &mirror.mPublishedRadiance->descriptor() : nullptr;
+    const bool recreate = !current ||
+        current->type != ALMetalTextureType::texture_cube_array ||
+        current->format != format || current->width != mProbeResolution ||
+        current->height != mProbeResolution ||
+        current->mipmap_level_count != mip_count ||
+        current->array_length != mirror.mCubeCount;
+    std::unique_ptr<ALMetalTexture> replacement;
+    ALMetalTexture* destination = mirror.mPublishedRadiance.get();
+    if (recreate)
+    {
+        ALMetalTextureDescriptor descriptor;
+        descriptor.type = ALMetalTextureType::texture_cube_array;
+        descriptor.format = format;
+        descriptor.width = mProbeResolution;
+        descriptor.height = mProbeResolution;
+        descriptor.mipmap_level_count = mip_count;
+        descriptor.array_length = mirror.mCubeCount;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.usage = ALMetalTextureUsage::shader_read;
+        descriptor.label =
+            "Alchemy live native reflection-probe radiance";
+        replacement = ALMetalTexture::create(*device, descriptor, error);
+        destination = replacement.get();
+    }
+    if (!destination)
+    {
+        return false;
+    }
+
+    const ALMetalTextureDescriptor* current_sh = mirror.mPublishedSH
+        ? &mirror.mPublishedSH->descriptor() : nullptr;
+    const bool recreate_sh = !current_sh ||
+        current_sh->type != ALMetalTextureType::texture_2d ||
+        current_sh->format != ALMetalPixelFormat::rgba32_uint ||
+        current_sh->width != LL_SH_PACKED_TEXELS ||
+        current_sh->height != mirror.mCubeCount ||
+        !alMetalHasUsage(current_sh->usage,
+                         ALMetalTextureUsage::shader_read);
+    std::unique_ptr<ALMetalTexture> sh_replacement;
+    ALMetalTexture* sh_destination = mirror.mPublishedSH.get();
+    if (recreate_sh)
+    {
+        ALMetalTextureDescriptor descriptor;
+        descriptor.format = ALMetalPixelFormat::rgba32_uint;
+        descriptor.width = LL_SH_PACKED_TEXELS;
+        descriptor.height = mirror.mCubeCount;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.usage = ALMetalTextureUsage::shader_read;
+        descriptor.label =
+            "Alchemy live native reflection-probe SH";
+        sh_replacement = ALMetalTexture::create(
+            *device, descriptor, error);
+        sh_destination = sh_replacement.get();
+    }
+    if (!sh_destination)
+    {
+        return false;
+    }
+
+    MetalDefaultProbeMirror& default_mirror = *mMetalDefaultProbe;
+    const bool publish_default = cube == 0 &&
+        default_mirror.mStagedSHValid &&
+        default_mirror.mNativeStagedSHGeneration == generation &&
+        default_mirror.mNativeStagedSHSequence ==
+            mirror.mNativeCaptureSequence;
+    std::unique_ptr<ALMetalTexture> default_replacement;
+    ALMetalTexture* default_destination =
+        default_mirror.mPublishedRadiance.get();
+    if (publish_default)
+    {
+        const ALMetalTextureDescriptor* default_current = default_destination
+            ? &default_destination->descriptor() : nullptr;
+        if (!default_current ||
+            default_current->type != ALMetalTextureType::texture_cube ||
+            default_current->format != format ||
+            default_current->width != mProbeResolution ||
+            default_current->height != mProbeResolution ||
+            default_current->mipmap_level_count != mip_count)
+        {
+            ALMetalTextureDescriptor descriptor;
+            descriptor.type = ALMetalTextureType::texture_cube;
+            descriptor.format = format;
+            descriptor.width = mProbeResolution;
+            descriptor.height = mProbeResolution;
+            descriptor.mipmap_level_count = mip_count;
+            descriptor.storage = ALMetalStorageMode::private_gpu;
+            descriptor.usage = ALMetalTextureUsage::shader_read;
+            descriptor.label =
+                "Alchemy native default reflection-probe radiance";
+            default_replacement = ALMetalTexture::create(
+                *device, descriptor, error);
+            default_destination = default_replacement.get();
+        }
+        if (!default_destination)
+        {
+            return false;
+        }
+    }
+
+    auto command = device->makeCommandBuffer(
+        "Alchemy native reflection-probe array publication", error);
+    bool copied = command != nullptr;
+    for (U32 mip = 0; copied && mip < mip_count; ++mip)
+    {
+        for (U32 face_index = 0; copied && face_index < 6; ++face_index)
+        {
+            ALMetalTextureCopy copy;
+            copy.source_mip_level = mip;
+            copy.source_slice = face_index;
+            copy.destination_mip_level = mip;
+            copy.destination_slice = cube * 6 + face_index;
+            copied = destination->copyFrom(
+                *command, *mirror.mNativeFilteredCube, copy, error);
+            if (copied && publish_default)
+            {
+                copy.destination_slice = face_index;
+                copied = default_destination->copyFrom(
+                    *command, *mirror.mNativeFilteredCube, copy, error);
+            }
+        }
+    }
+    if (copied)
+    {
+        ALMetalTextureCopy sh_copy;
+        sh_copy.source_region = {0, 0, LL_SH_PACKED_TEXELS, 1};
+        sh_copy.destination_y = cube;
+        copied = sh_destination->copyFrom(
+            *command, *mirror.mNativeStagedSH, sh_copy, error);
+    }
+    copied = copied && command->commit(error);
+    if (!copied)
+    {
+        return false;
+    }
+    if (replacement)
+    {
+        mirror.mPublishedRadiance = std::move(replacement);
+        std::fill(mirror.mPublishedGenerations.begin(),
+                  mirror.mPublishedGenerations.end(), 0);
+    }
+    if (sh_replacement)
+    {
+        mirror.mPublishedSH = std::move(sh_replacement);
+        std::fill(mirror.mPublishedSHGenerations.begin(),
+                  mirror.mPublishedSHGenerations.end(), 0);
+    }
+    mirror.mPublishedGenerations[cube] = generation;
+    mirror.mPublishedSHGenerations[cube] = generation;
+    mirror.mNativeRadiancePublishedThisPass = true;
+    if (publish_default)
+    {
+        if (default_replacement)
+        {
+            default_mirror.mPublishedRadiance =
+                std::move(default_replacement);
+        }
+        default_mirror.mPublishedSH = default_mirror.mStagedSH;
+        default_mirror.mStagedSHValid = false;
+        default_mirror.mNativeStagedSHGeneration = 0;
+        default_mirror.mNativeStagedSHSequence = 0;
+        mirror.mNativeDefaultPublishedThisPass = true;
+    }
+    mirror.mNativeReadySHCube = 0;
+    mirror.mNativeReadySHGeneration = 0;
+    mirror.mNativeReadySHSequence = 0;
+    return true;
+}
+
 void LLReflectionMapManager::requestMetalDefaultProbeSH()
 {
+    const MetalProbeArrayMirror& array = *mMetalProbeArray;
+    if (array.mNativeSHPublishedThisPass &&
+        array.mNativeCaptureCube == 0 &&
+        !array.mNativeCaptureRadiance)
+    {
+        return;
+    }
     MetalDefaultProbeMirror& mirror = *mMetalDefaultProbe;
     constexpr size_t bytes = sizeof(mirror.mStagedSH);
     if (!mirror.mSHReadback.isAllocated() &&
@@ -429,6 +866,14 @@ void LLReflectionMapManager::requestMetalProbeSH(LLReflectionMap* probe)
     const U32 cube = static_cast<U32>(probe->mCubeIndex);
     if (cube >= mirror.mSlotGenerations.size() ||
         cube >= mirror.mRequestedSHSequences.size())
+    {
+        return;
+    }
+    if (mirror.mNativeSHPublishedThisPass &&
+        mirror.mNativeCaptureCube == cube &&
+        mirror.mNativeCaptureGeneration ==
+            mirror.mSlotGenerations[cube] &&
+        !mirror.mNativeCaptureRadiance)
     {
         return;
     }
@@ -466,6 +911,13 @@ void LLReflectionMapManager::requestMetalProbeSH(LLReflectionMap* probe)
 bool LLReflectionMapManager::beginMetalDefaultProbeRadianceCapture()
 {
     MetalDefaultProbeMirror& mirror = *mMetalDefaultProbe;
+    const MetalProbeArrayMirror& array = *mMetalProbeArray;
+    if (array.mNativeDefaultPublishedThisPass &&
+        array.mNativeCaptureCube == 0 &&
+        array.mNativeCaptureRadiance)
+    {
+        return false;
+    }
     if (!mirror.mStagedSHValid || mirror.mRadiancePending ||
         mirror.mCaptureActive || !mHDR ||
         !LLImageGL::getMetalDevice() || mMipChain.empty())
@@ -561,6 +1013,14 @@ bool LLReflectionMapManager::beginMetalProbeRadianceCapture(
     const U32 cube_count = mirror.mCubeCount;
     const U32 cube_index = static_cast<U32>(probe->mCubeIndex);
     if (cube_index >= cube_count)
+    {
+        return false;
+    }
+    if (mirror.mNativeRadiancePublishedThisPass &&
+        mirror.mNativeCaptureCube == cube_index &&
+        mirror.mNativeCaptureGeneration ==
+            mirror.mSlotGenerations[cube_index] &&
+        mirror.mNativeCaptureRadiance)
     {
         return false;
     }
@@ -855,6 +1315,8 @@ void LLReflectionMapManager::collectMetalDefaultProbe()
     {
         mirror.mStagedSH = coefficients;
         mirror.mStagedSHValid = true;
+        mirror.mNativeStagedSHGeneration = 0;
+        mirror.mNativeStagedSHSequence = 0;
     }
 
     if (!mirror.mRadiancePending ||
@@ -1094,6 +1556,7 @@ void LLReflectionMapManager::update()
     // Collection only consumes frame-fenced readbacks and enqueues a Metal
     // upload. Do it before any eligibility return so a completed coherent
     // generation cannot be stranded when probe updates pause temporarily.
+    collectNativeMetalProbe();
     collectMetalDefaultProbe();
     collectMetalProbeArray();
 #endif
@@ -1834,6 +2297,12 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
     // hacky hot-swap of camera specific render targets
     gPipeline.mRT = &gPipeline.mAuxillaryRT;
 
+#if LL_DARWIN
+    const bool native_face_capture =
+        gPipeline.beginMetalReflectionProbeFaceCapture(
+            probe, face, isRadiancePass());
+#endif
+
     mLightScale = 1.f;
     static LLCachedControl<F32> max_local_light_ambiance(gSavedSettings, "RenderReflectionProbeMaxLocalLightAmbiance", 8.f);
     if (!isRadiancePass() && probe->getAmbiance() > max_local_light_ambiance)
@@ -1860,6 +2329,13 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
         llassert(mRenderReflectionProbeLevel > 0); // should never update a probe that's not the default probe if reflection coverage is none
         probe->update(mRenderTarget.getWidth(), face);
     }
+
+#if LL_DARWIN
+    if (native_face_capture)
+    {
+        gPipeline.endMetalReflectionProbeFaceCapture();
+    }
+#endif
 
     gPipeline.mRT = &gPipeline.mMainRT;
 

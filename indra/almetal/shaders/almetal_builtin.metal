@@ -9314,6 +9314,59 @@ struct ALMetalWorldHeroProbeFilterConstants
     packed_float3 padding;
 };
 
+struct ALMetalWorldProbeGaussianConstants
+{
+    float2 direction;
+    float2 padding;
+};
+
+kernel void almetal_world_probe_gaussian(
+    texture2d<float> source [[texture(0)]],
+    texture2d<float, access::write> destination [[texture(1)]],
+    constant ALMetalWorldProbeGaussianConstants& constants [[buffer(0)]],
+    uint2 position [[thread_position_in_grid]])
+{
+    if (position.x >= destination.get_width() ||
+        position.y >= destination.get_height())
+    {
+        return;
+    }
+    constexpr sampler linear_sampler(
+        coord::normalized, filter::linear, address::clamp_to_edge);
+    constexpr float weights[9] = {
+        0.0002, 0.0060, 0.0606, 0.2417, 0.3829,
+        0.2417, 0.0606, 0.0060, 0.0002,
+    };
+    const float2 uv = (float2(position) + 0.5) /
+        float2(destination.get_width(), destination.get_height());
+    float3 color = 0.0;
+    for (int tap = 0; tap < 9; ++tap)
+    {
+        color += source.sample(
+            linear_sampler,
+            uv + float(tap - 4) * constants.direction).rgb *
+            weights[tap];
+    }
+    destination.write(max(float4(color, 0.0), float4(0.0)), position);
+}
+
+kernel void almetal_world_probe_downsample(
+    texture2d<float> source [[texture(0)]],
+    texture2d<float, access::write> destination [[texture(1)]],
+    uint2 position [[thread_position_in_grid]])
+{
+    if (position.x >= destination.get_width() ||
+        position.y >= destination.get_height())
+    {
+        return;
+    }
+    constexpr sampler linear_sampler(
+        coord::normalized, filter::linear, address::clamp_to_edge);
+    const float2 uv = (float2(position) + 0.5) /
+        float2(destination.get_width(), destination.get_height());
+    destination.write(source.sample(linear_sampler, uv), position);
+}
+
 static float almetal_world_hero_random(float2 value)
 {
     const float dot_value = dot(value, float2(12.9898, 78.233));
@@ -9332,6 +9385,139 @@ static float3 almetal_world_cube_direction(uint face, float2 uv)
         case 4: return normalize(float3( st.x, -st.y,  1.0));
         default:return normalize(float3(-st.x, -st.y, -1.0));
     }
+}
+
+struct ALMetalWorldProbeSHConstants
+{
+    uint source_mip;
+    uint source_resolution;
+    uint destination_row;
+    uint padding;
+};
+
+static float almetal_world_probe_area_element(float x, float y)
+{
+    return atan2(x * y, sqrt(x * x + y * y + 1.0));
+}
+
+static float almetal_world_probe_solid_angle(
+    float u, float v, float inverse_resolution)
+{
+    const float x0 = u - inverse_resolution;
+    const float y0 = v - inverse_resolution;
+    const float x1 = u + inverse_resolution;
+    const float y1 = v + inverse_resolution;
+    return almetal_world_probe_area_element(x1, y1) -
+           almetal_world_probe_area_element(x0, y1) -
+           almetal_world_probe_area_element(x1, y0) +
+           almetal_world_probe_area_element(x0, y0);
+}
+
+static float almetal_world_probe_sh_basis(uint coefficient, float3 direction)
+{
+    switch (coefficient)
+    {
+        case 0: return 0.282095;
+        case 1: return 0.488603 * direction.y;
+        case 2: return 0.488603 * direction.z;
+        case 3: return 0.488603 * direction.x;
+        case 4: return 1.092548 * direction.x * direction.y;
+        case 5: return 1.092548 * direction.y * direction.z;
+        case 6: return 0.315392 *
+                       (3.0 * direction.z * direction.z - 1.0);
+        case 7: return 1.092548 * direction.x * direction.z;
+        default:return 0.546274 *
+                       (direction.x * direction.x -
+                        direction.y * direction.y);
+    }
+}
+
+kernel void almetal_world_probe_sh_rows(
+    texturecube<float> source [[texture(0)]],
+    texture2d<float, access::write> partial [[texture(1)]],
+    constant ALMetalWorldProbeSHConstants& constants [[buffer(0)]],
+    uint2 position [[thread_position_in_grid]])
+{
+    const uint row_count = 6u * constants.source_resolution;
+    if (position.x >= 9u || position.y >= row_count)
+    {
+        return;
+    }
+    constexpr sampler cube_sampler(
+        coord::normalized, filter::linear, mip_filter::linear,
+        address::clamp_to_edge);
+    const uint face = position.y / constants.source_resolution;
+    const uint y = position.y - face * constants.source_resolution;
+    const float inverse_resolution =
+        1.0 / float(constants.source_resolution);
+    float3 sum = 0.0;
+    for (uint x = 0u; x < constants.source_resolution; ++x)
+    {
+        const float u =
+            2.0 * (float(x) + 0.5) * inverse_resolution - 1.0;
+        const float v =
+            2.0 * (float(y) + 0.5) * inverse_resolution - 1.0;
+        const float2 uv = float2(u, v) * 0.5 + 0.5;
+        const float3 direction = almetal_world_cube_direction(face, uv);
+        const float solid_angle = almetal_world_probe_solid_angle(
+            u, v, inverse_resolution);
+        const float3 radiance = source.sample(
+            cube_sampler, direction, level(float(constants.source_mip))).rgb;
+        sum += radiance *
+            almetal_world_probe_sh_basis(position.x, direction) *
+            solid_angle;
+    }
+    partial.write(float4(sum, 1.0), position);
+}
+
+static uint almetal_world_probe_pack_halves(float2 values)
+{
+    const ushort2 bits = as_type<ushort2>(half2(values));
+    return uint(bits.x) | (uint(bits.y) << 16u);
+}
+
+kernel void almetal_world_probe_sh_reduce(
+    texture2d<float, access::read> partial [[texture(0)]],
+    texture2d<uint, access::write> destination [[texture(1)]],
+    constant ALMetalWorldProbeSHConstants& constants [[buffer(0)]],
+    device uint4* packed_words [[buffer(1)]],
+    uint position [[thread_position_in_grid]])
+{
+    if (position >= 4u)
+    {
+        return;
+    }
+    const uint first = (8u * position) / 3u;
+    const uint last = min((8u * position + 7u) / 3u, 8u);
+    float3 sums[4] = {
+        float3(0.0), float3(0.0), float3(0.0), float3(0.0),
+    };
+    const uint rows = 6u * constants.source_resolution;
+    for (uint coefficient = first; coefficient <= last; ++coefficient)
+    {
+        for (uint row = 0u; row < rows; ++row)
+        {
+            sums[coefficient - first] +=
+                partial.read(uint2(coefficient, row)).rgb;
+        }
+    }
+
+    float values[8];
+    for (uint index = 0u; index < 8u; ++index)
+    {
+        const uint packed_index = 8u * position + index;
+        const uint coefficient = packed_index / 3u;
+        values[index] = coefficient < 9u
+            ? sums[coefficient - first][packed_index - 3u * coefficient]
+            : 0.0;
+    }
+    const uint4 packed = uint4(
+        almetal_world_probe_pack_halves(float2(values[0], values[1])),
+        almetal_world_probe_pack_halves(float2(values[2], values[3])),
+        almetal_world_probe_pack_halves(float2(values[4], values[5])),
+        almetal_world_probe_pack_halves(float2(values[6], values[7])));
+    destination.write(packed, uint2(position, constants.destination_row));
+    packed_words[position] = packed;
 }
 
 kernel void almetal_world_hero_probe_filter(

@@ -1046,6 +1046,43 @@ public:
         std::unique_ptr<ALMetalTexture>& radiance_cube,
         std::string* error = nullptr);
 
+    // Retain one ordinary-probe face after reproducing the live separable
+    // Gaussian supersample resolve. The resulting cube carries exactly the
+    // authored probe mip range and never crosses CPU memory.
+    bool updateReflectionProbeFace(
+        const ALMetalRenderTarget& source,
+        std::uint32_t face,
+        std::uint32_t probe_resolution,
+        std::uint32_t max_probe_lod,
+        std::unique_ptr<ALMetalTexture>& source_cube,
+        std::uint32_t& valid_faces,
+        std::string* error = nullptr);
+
+    // Reproduce radianceGenF.glsl's full 32-sample ordinary-probe filter.
+    // All six source faces must be coherent; the retained output is a cube
+    // ready for a GPU-only copy into the live cube-array slot.
+    bool filterReflectionProbeRadiance(
+        ALMetalTexture& source_cube,
+        std::uint32_t valid_faces,
+        std::uint32_t max_probe_lod,
+        std::unique_ptr<ALMetalTexture>& radiance_cube,
+        std::string* error = nullptr);
+
+    // Project one coherent ordinary source cube into the exact four-texel
+    // packed SH row consumed by reflectionProbeF.glsl. The command remains
+    // owned by the caller for non-blocking completion polling; packed_words
+    // is shared storage for the small default-preview CPU consumer.
+    bool projectReflectionProbeSH(
+        ALMetalTexture& source_cube,
+        std::uint32_t valid_faces,
+        std::uint32_t source_mip,
+        std::uint32_t source_resolution,
+        ALMetalTexture& destination,
+        std::uint32_t destination_row,
+        std::unique_ptr<ALMetalBuffer>& packed_words,
+        std::unique_ptr<ALMetalCommandBuffer>& pending_command,
+        std::string* error = nullptr);
+
     // Produce the deferred RG light map from native G-buffer depth/normals:
     // directional visibility in R and bilateral two-axis SSAO in G.
     std::unique_ptr<ALMetalRenderTarget> renderLightMap(
@@ -1130,5 +1167,17 @@ public:
 private:
     struct Impl;
     explicit ALMetalWorldGBufferRenderer(std::unique_ptr<Impl> impl);
+
+    bool filterProbeRadiance(
+        ALMetalTexture& source_cube,
+        std::uint32_t valid_faces,
+        std::uint32_t max_probe_lod,
+        std::uint32_t output_mip_count,
+        std::uint32_t sample_scale,
+        ALMetalPixelFormat output_format,
+        bool hero_probe,
+        float probe_strength,
+        std::unique_ptr<ALMetalTexture>& radiance_cube,
+        std::string* error);
     std::unique_ptr<Impl> mImpl;
 };

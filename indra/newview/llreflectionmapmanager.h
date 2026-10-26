@@ -39,6 +39,8 @@ class LLViewerObject;
 #if LL_DARWIN
 struct ALMetalPBRPreviewEnvironment;
 struct ALMetalWorldReflectionProbes;
+class ALMetalRenderTarget;
+class ALMetalWorldGBufferRenderer;
 #endif
 
 // number of reflection probes to keep in vram
@@ -286,6 +288,12 @@ private:
     void endMetalProbeRadianceCapture();
     void invalidateMetalProbeSlot(U32 cube_index);
     void releaseMetalProbeArray();
+    void collectNativeMetalProbe();
+    bool captureNativeMetalProbeFace(
+        ALMetalWorldGBufferRenderer& renderer,
+        const ALMetalRenderTarget& source,
+        LLReflectionMap* probe, U32 face, bool radiance_pass,
+        std::string* error = nullptr);
     std::unique_ptr<MetalDefaultProbeMirror> mMetalDefaultProbe;
     std::unique_ptr<MetalProbeArrayMirror> mMetalProbeArray;
 #endif

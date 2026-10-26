@@ -797,6 +797,14 @@ struct ALMetalWorldGBufferRenderer::Impl
         base_light_pipelines;
     std::unique_ptr<ALMetalComputePipeline> brdf_lut_pipeline;
     std::unique_ptr<ALMetalComputePipeline> hero_probe_filter_pipeline;
+    std::unique_ptr<ALMetalComputePipeline> probe_gaussian_pipeline;
+    std::unique_ptr<ALMetalComputePipeline> probe_downsample_pipeline;
+    std::unique_ptr<ALMetalComputePipeline> probe_sh_rows_pipeline;
+    std::unique_ptr<ALMetalComputePipeline> probe_sh_reduce_pipeline;
+    std::unique_ptr<ALMetalTexture> probe_gaussian_horizontal;
+    std::unique_ptr<ALMetalTexture> probe_gaussian_vertical;
+    std::unique_ptr<ALMetalTexture> probe_downsample;
+    std::unique_ptr<ALMetalTexture> probe_sh_partial;
     std::unique_ptr<ALMetalComputePipeline>
         water_depth_pyramid_first_pipeline;
     std::unique_ptr<ALMetalComputePipeline>
@@ -1087,6 +1095,14 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_ssr_history_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_hero_probe_filter") ||
+        !impl->library->hasFunction(
+            "almetal_world_probe_gaussian") ||
+        !impl->library->hasFunction(
+            "almetal_world_probe_downsample") ||
+        !impl->library->hasFunction(
+            "almetal_world_probe_sh_rows") ||
+        !impl->library->hasFunction(
+            "almetal_world_probe_sh_reduce") ||
         !impl->library->hasFunction(
             "almetal_world_depth_pyramid_first") ||
         !impl->library->hasFunction(
@@ -1549,6 +1565,48 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->hero_probe_filter_pipeline = ALMetalComputePipeline::create(
         device, hero_filter_descriptor, error);
     if (!impl->hero_probe_filter_pipeline)
+    {
+        return nullptr;
+    }
+
+    ALMetalComputePipelineDescriptor probe_compute_descriptor;
+    probe_compute_descriptor.library = impl->library.get();
+    probe_compute_descriptor.function = "almetal_world_probe_gaussian";
+    probe_compute_descriptor.label =
+        "Alchemy world probe Gaussian pipeline";
+    impl->probe_gaussian_pipeline = ALMetalComputePipeline::create(
+        device, probe_compute_descriptor, error);
+    if (!impl->probe_gaussian_pipeline)
+    {
+        return nullptr;
+    }
+    probe_compute_descriptor.function =
+        "almetal_world_probe_downsample";
+    probe_compute_descriptor.label =
+        "Alchemy world probe downsample pipeline";
+    impl->probe_downsample_pipeline = ALMetalComputePipeline::create(
+        device, probe_compute_descriptor, error);
+    if (!impl->probe_downsample_pipeline)
+    {
+        return nullptr;
+    }
+    probe_compute_descriptor.function =
+        "almetal_world_probe_sh_rows";
+    probe_compute_descriptor.label =
+        "Alchemy world probe SH row pipeline";
+    impl->probe_sh_rows_pipeline = ALMetalComputePipeline::create(
+        device, probe_compute_descriptor, error);
+    if (!impl->probe_sh_rows_pipeline)
+    {
+        return nullptr;
+    }
+    probe_compute_descriptor.function =
+        "almetal_world_probe_sh_reduce";
+    probe_compute_descriptor.label =
+        "Alchemy world probe SH reduce pipeline";
+    impl->probe_sh_reduce_pipeline = ALMetalComputePipeline::create(
+        device, probe_compute_descriptor, error);
+    if (!impl->probe_sh_reduce_pipeline)
     {
         return nullptr;
     }
@@ -5254,6 +5312,218 @@ bool ALMetalWorldGBufferRenderer::updateHeroProbeFace(
     return true;
 }
 
+bool ALMetalWorldGBufferRenderer::updateReflectionProbeFace(
+    const ALMetalRenderTarget& source,
+    std::uint32_t face,
+    std::uint32_t probe_resolution,
+    std::uint32_t max_probe_lod,
+    std::unique_ptr<ALMetalTexture>& source_cube,
+    std::uint32_t& valid_faces,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !mImpl->probe_gaussian_pipeline ||
+        !mImpl->probe_downsample_pipeline)
+    {
+        setError(error, "Metal reflection-probe face publisher is unavailable");
+        return false;
+    }
+
+    const ALMetalRenderTargetDescriptor& input = source.descriptor();
+    const ALMetalTexture* input_texture = source.colorTexture(0);
+    const bool color_format = input.color_attachment_count == 1 &&
+        (input.colors[0].format == ALMetalPixelFormat::rgba16_float ||
+         input.colors[0].format == ALMetalPixelFormat::rgba8_unorm);
+    const std::uint32_t supersample = probe_resolution == 0
+        ? 0 : input.width / probe_resolution;
+    if (!color_format || !input_texture || probe_resolution < 2 ||
+        input.width != input.height || input.sample_count != 1 ||
+        face >= 6 || input.width % probe_resolution != 0 ||
+        (supersample != 1 && supersample != 2 && supersample != 4) ||
+        (probe_resolution & (probe_resolution - 1)) != 0 ||
+        !alMetalHasUsage(input_texture->descriptor().usage,
+                         ALMetalTextureUsage::shader_read))
+    {
+        setError(error, "Metal reflection-probe face source is incompatible");
+        return false;
+    }
+
+    std::uint32_t mip_count = 0;
+    for (std::uint32_t dimension = probe_resolution; dimension > 1;
+         dimension >>= 1)
+    {
+        ++mip_count;
+    }
+    if (mip_count == 0 || max_probe_lod + 1 != mip_count)
+    {
+        setError(error, "Metal reflection-probe mip range is incompatible");
+        return false;
+    }
+
+    const auto ensure_scratch = [this, &input, error](
+        std::unique_ptr<ALMetalTexture>& texture,
+        std::uint32_t width, std::uint32_t height,
+        const char* label)
+    {
+        const ALMetalTextureDescriptor* current = texture
+            ? &texture->descriptor() : nullptr;
+        if (current && current->type == ALMetalTextureType::texture_2d &&
+            current->format == input.colors[0].format &&
+            current->width == width && current->height == height &&
+            current->mipmap_level_count == 1 &&
+            alMetalHasUsage(current->usage,
+                            ALMetalTextureUsage::shader_read) &&
+            alMetalHasUsage(current->usage,
+                            ALMetalTextureUsage::shader_write))
+        {
+            return true;
+        }
+        ALMetalTextureDescriptor descriptor;
+        descriptor.format = input.colors[0].format;
+        descriptor.width = width;
+        descriptor.height = height;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.usage = ALMetalTextureUsage::shader_read |
+                           ALMetalTextureUsage::shader_write;
+        descriptor.label = label;
+        texture = ALMetalTexture::create(
+            *mImpl->device, descriptor, error);
+        return texture != nullptr;
+    };
+
+    const ALMetalTexture* prepared = input_texture;
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native reflection-probe face publication", error);
+    if (!command)
+    {
+        return false;
+    }
+    if (supersample > 1)
+    {
+        if (!ensure_scratch(
+                mImpl->probe_gaussian_horizontal,
+                input.width, input.height,
+                "Alchemy reflection-probe horizontal Gaussian") ||
+            !ensure_scratch(
+                mImpl->probe_gaussian_vertical,
+                input.width, input.height,
+                "Alchemy reflection-probe vertical Gaussian") ||
+            !ensure_scratch(
+                mImpl->probe_downsample,
+                probe_resolution, probe_resolution,
+                "Alchemy reflection-probe downsample"))
+        {
+            return false;
+        }
+
+        struct alignas(16) GaussianConstants
+        {
+            float direction[2]{};
+            float padding[2]{};
+        };
+        GaussianConstants horizontal;
+        horizontal.direction[0] =
+            1.f / static_cast<float>(probe_resolution * 2u);
+        auto horizontal_encoder = ALMetalComputeEncoder::begin(
+            *command, "Alchemy reflection-probe horizontal Gaussian",
+            error);
+        if (!horizontal_encoder ||
+            !horizontal_encoder->setPipeline(
+                *mImpl->probe_gaussian_pipeline, error) ||
+            !horizontal_encoder->setTexture(0, input_texture, error) ||
+            !horizontal_encoder->setTexture(
+                1, mImpl->probe_gaussian_horizontal.get(), error) ||
+            !horizontal_encoder->setBytes(
+                0, &horizontal, sizeof(horizontal), error) ||
+            !horizontal_encoder->dispatch(
+                input.width, input.height, 1, 8, 8, 1, error) ||
+            !horizontal_encoder->end(error))
+        {
+            return false;
+        }
+
+        GaussianConstants vertical;
+        vertical.direction[1] =
+            1.f / static_cast<float>(probe_resolution * 2u);
+        auto vertical_encoder = ALMetalComputeEncoder::begin(
+            *command, "Alchemy reflection-probe vertical Gaussian",
+            error);
+        if (!vertical_encoder ||
+            !vertical_encoder->setPipeline(
+                *mImpl->probe_gaussian_pipeline, error) ||
+            !vertical_encoder->setTexture(
+                0, mImpl->probe_gaussian_horizontal.get(), error) ||
+            !vertical_encoder->setTexture(
+                1, mImpl->probe_gaussian_vertical.get(), error) ||
+            !vertical_encoder->setBytes(
+                0, &vertical, sizeof(vertical), error) ||
+            !vertical_encoder->dispatch(
+                input.width, input.height, 1, 8, 8, 1, error) ||
+            !vertical_encoder->end(error))
+        {
+            return false;
+        }
+
+        auto downsample_encoder = ALMetalComputeEncoder::begin(
+            *command, "Alchemy reflection-probe downsample", error);
+        if (!downsample_encoder ||
+            !downsample_encoder->setPipeline(
+                *mImpl->probe_downsample_pipeline, error) ||
+            !downsample_encoder->setTexture(
+                0, mImpl->probe_gaussian_vertical.get(), error) ||
+            !downsample_encoder->setTexture(
+                1, mImpl->probe_downsample.get(), error) ||
+            !downsample_encoder->dispatch(
+                probe_resolution, probe_resolution, 1,
+                8, 8, 1, error) ||
+            !downsample_encoder->end(error))
+        {
+            return false;
+        }
+        prepared = mImpl->probe_downsample.get();
+    }
+
+    const ALMetalTextureDescriptor* retained = source_cube
+        ? &source_cube->descriptor() : nullptr;
+    const bool recreate = !retained ||
+        retained->type != ALMetalTextureType::texture_cube ||
+        retained->format != input.colors[0].format ||
+        retained->width != probe_resolution ||
+        retained->height != probe_resolution ||
+        retained->mipmap_level_count != mip_count;
+    std::unique_ptr<ALMetalTexture> replacement;
+    ALMetalTexture* destination = source_cube.get();
+    if (recreate)
+    {
+        ALMetalTextureDescriptor descriptor;
+        descriptor.type = ALMetalTextureType::texture_cube;
+        descriptor.format = input.colors[0].format;
+        descriptor.width = probe_resolution;
+        descriptor.height = probe_resolution;
+        descriptor.mipmap_level_count = mip_count;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.usage = ALMetalTextureUsage::shader_read;
+        descriptor.label = "Alchemy native reflection-probe source cube";
+        replacement = ALMetalTexture::create(
+            *mImpl->device, descriptor, error);
+        destination = replacement.get();
+    }
+    ALMetalTextureCopy copy;
+    copy.destination_slice = face;
+    if (!destination ||
+        !destination->copyFrom(*command, *prepared, copy, error) ||
+        !command->commit(error))
+    {
+        return false;
+    }
+    if (replacement)
+    {
+        source_cube = std::move(replacement);
+        valid_faces = 0;
+    }
+    valid_faces |= 1u << face;
+    return true;
+}
+
 bool ALMetalWorldGBufferRenderer::filterHeroProbeRadiance(
     ALMetalTexture& source_cube,
     std::uint32_t valid_faces,
@@ -5262,9 +5532,53 @@ bool ALMetalWorldGBufferRenderer::filterHeroProbeRadiance(
     std::unique_ptr<ALMetalTexture>& radiance_cube,
     std::string* error)
 {
+    const ALMetalTextureDescriptor& source = source_cube.descriptor();
+    const bool hdr = source.format == ALMetalPixelFormat::rgba16_float;
+    const std::uint32_t radiance_mips =
+        (max_probe_lod + 3u) / 4u + 1u;
+    return filterProbeRadiance(
+        source_cube, valid_faces, max_probe_lod,
+        radiance_mips, 4u,
+        hdr ? ALMetalPixelFormat::rg11b10_float
+            : ALMetalPixelFormat::rgba8_unorm,
+        true,
+        probe_strength,
+        radiance_cube, error);
+}
+
+bool ALMetalWorldGBufferRenderer::filterReflectionProbeRadiance(
+    ALMetalTexture& source_cube,
+    std::uint32_t valid_faces,
+    std::uint32_t max_probe_lod,
+    std::unique_ptr<ALMetalTexture>& radiance_cube,
+    std::string* error)
+{
+    return filterProbeRadiance(
+        source_cube, valid_faces, max_probe_lod,
+        max_probe_lod + 1u, 32u,
+        source_cube.descriptor().format,
+        false,
+        1.f,
+        radiance_cube, error);
+}
+
+bool ALMetalWorldGBufferRenderer::filterProbeRadiance(
+    ALMetalTexture& source_cube,
+    std::uint32_t valid_faces,
+    std::uint32_t max_probe_lod,
+    std::uint32_t output_mip_count,
+    std::uint32_t sample_scale,
+    ALMetalPixelFormat output_format,
+    bool hero_probe,
+    float probe_strength,
+    std::unique_ptr<ALMetalTexture>& radiance_cube,
+    std::string* error)
+{
     if (!mImpl || !mImpl->device || !mImpl->hero_probe_filter_pipeline)
     {
-        setError(error, "Metal hero-probe radiance filter is unavailable");
+        setError(error, hero_probe
+            ? "Metal hero-probe radiance filter is unavailable"
+            : "Metal reflection-probe radiance filter is unavailable");
         return false;
     }
     const ALMetalTextureDescriptor& source = source_cube.descriptor();
@@ -5276,16 +5590,20 @@ bool ALMetalWorldGBufferRenderer::filterHeroProbeRadiance(
         !color_format || source.width < 2 || source.height != source.width ||
         source.mipmap_level_count != max_probe_lod + 1 ||
         !alMetalHasUsage(source.usage, ALMetalTextureUsage::shader_read) ||
+        output_mip_count == 0 ||
+        output_mip_count > source.mipmap_level_count ||
+        sample_scale == 0 ||
+        (output_format != ALMetalPixelFormat::rgba16_float &&
+         output_format != ALMetalPixelFormat::rgba8_unorm &&
+         output_format != ALMetalPixelFormat::rg11b10_float) ||
         !std::isfinite(probe_strength) || probe_strength < 0.f)
     {
-        setError(error, "Metal hero-probe radiance source is incomplete");
+        setError(error, hero_probe
+            ? "Metal hero-probe radiance source is incomplete"
+            : "Metal reflection-probe radiance source is incomplete");
         return false;
     }
 
-    const std::uint32_t radiance_mips = (max_probe_lod + 3u) / 4u + 1u;
-    const ALMetalPixelFormat output_format = hdr
-        ? ALMetalPixelFormat::rg11b10_float
-        : ALMetalPixelFormat::rgba8_unorm;
     const ALMetalTextureDescriptor* retained = radiance_cube
         ? &radiance_cube->descriptor() : nullptr;
     const bool recreate = !retained ||
@@ -5293,7 +5611,7 @@ bool ALMetalWorldGBufferRenderer::filterHeroProbeRadiance(
         retained->format != output_format ||
         retained->width != source.width ||
         retained->height != source.height ||
-        retained->mipmap_level_count != radiance_mips;
+        retained->mipmap_level_count != output_mip_count;
     std::unique_ptr<ALMetalTexture> replacement;
     ALMetalTexture* destination = radiance_cube.get();
     if (recreate)
@@ -5303,11 +5621,13 @@ bool ALMetalWorldGBufferRenderer::filterHeroProbeRadiance(
         descriptor.format = output_format;
         descriptor.width = source.width;
         descriptor.height = source.height;
-        descriptor.mipmap_level_count = radiance_mips;
+        descriptor.mipmap_level_count = output_mip_count;
         descriptor.storage = ALMetalStorageMode::private_gpu;
         descriptor.usage = ALMetalTextureUsage::shader_read |
                            ALMetalTextureUsage::shader_write;
-        descriptor.label = "Alchemy native hero-probe radiance cube";
+        descriptor.label = hero_probe
+            ? "Alchemy native hero-probe radiance cube"
+            : "Alchemy native reflection-probe radiance cube";
         replacement = ALMetalTexture::create(
             *mImpl->device, descriptor, error);
         destination = replacement.get();
@@ -5322,27 +5642,35 @@ bool ALMetalWorldGBufferRenderer::filterHeroProbeRadiance(
         std::uint32_t mip_level = 0;
         std::uint32_t max_probe_lod = 0;
         std::uint32_t resolution = 0;
-        std::uint32_t sample_scale = 4;
+        std::uint32_t sample_scale = 0;
         float probe_strength = 1.f;
         float padding[3]{};
     };
     static_assert(sizeof(HeroFilterConstants) == 32);
 
     auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native hero-probe radiance publication", error);
+        hero_probe
+            ? "Alchemy native hero-probe radiance publication"
+            : "Alchemy native reflection-probe radiance publication",
+        error);
     if (!command || !source_cube.generateMipmaps(*command, error))
     {
         return false;
     }
-    for (std::uint32_t mip = 0; mip < radiance_mips; ++mip)
+    for (std::uint32_t mip = 0; mip < output_mip_count; ++mip)
     {
         HeroFilterConstants constants;
         constants.mip_level = mip;
         constants.max_probe_lod = max_probe_lod;
         constants.resolution = std::max(source.width >> mip, 1u);
+        constants.sample_scale = sample_scale;
         constants.probe_strength = probe_strength;
         auto encoder = ALMetalComputeEncoder::begin(
-            *command, "Alchemy native hero-probe radiance encoder", error);
+            *command,
+            hero_probe
+                ? "Alchemy native hero-probe radiance encoder"
+                : "Alchemy native reflection-probe radiance encoder",
+            error);
         if (!encoder ||
             !encoder->setPipeline(
                 *mImpl->hero_probe_filter_pipeline, error) ||
@@ -5366,6 +5694,141 @@ bool ALMetalWorldGBufferRenderer::filterHeroProbeRadiance(
     {
         radiance_cube = std::move(replacement);
     }
+    return true;
+}
+
+bool ALMetalWorldGBufferRenderer::projectReflectionProbeSH(
+    ALMetalTexture& source_cube,
+    std::uint32_t valid_faces,
+    std::uint32_t source_mip,
+    std::uint32_t source_resolution,
+    ALMetalTexture& destination,
+    std::uint32_t destination_row,
+    std::unique_ptr<ALMetalBuffer>& packed_words,
+    std::unique_ptr<ALMetalCommandBuffer>& pending_command,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !mImpl->probe_sh_rows_pipeline ||
+        !mImpl->probe_sh_reduce_pipeline)
+    {
+        setError(error, "Metal reflection-probe SH projector is unavailable");
+        return false;
+    }
+    const ALMetalTextureDescriptor& source = source_cube.descriptor();
+    const ALMetalTextureDescriptor& output = destination.descriptor();
+    const bool color_format =
+        source.format == ALMetalPixelFormat::rgba16_float ||
+        source.format == ALMetalPixelFormat::rgba8_unorm;
+    if (valid_faces != 0x3fu ||
+        source.type != ALMetalTextureType::texture_cube || !color_format ||
+        source_mip >= source.mipmap_level_count ||
+        source_cube.width(source_mip) != source_resolution ||
+        source_cube.height(source_mip) != source_resolution ||
+        source_resolution < 4 ||
+        output.type != ALMetalTextureType::texture_2d ||
+        output.format != ALMetalPixelFormat::rgba32_uint ||
+        output.width < 4 || destination_row >= output.height ||
+        !alMetalHasUsage(source.usage, ALMetalTextureUsage::shader_read) ||
+        !alMetalHasUsage(output.usage, ALMetalTextureUsage::shader_write))
+    {
+        setError(error, "Metal reflection-probe SH inputs are incompatible");
+        return false;
+    }
+    if (pending_command &&
+        pending_command->status() != ALMetalCommandStatus::completed &&
+        pending_command->status() != ALMetalCommandStatus::error)
+    {
+        setError(error, "Metal reflection-probe SH publication is still pending");
+        return false;
+    }
+    pending_command.reset();
+
+    const std::uint32_t partial_height = 6u * source_resolution;
+    const ALMetalTextureDescriptor* partial = mImpl->probe_sh_partial
+        ? &mImpl->probe_sh_partial->descriptor() : nullptr;
+    if (!partial || partial->type != ALMetalTextureType::texture_2d ||
+        partial->format != ALMetalPixelFormat::rgba16_float ||
+        partial->width != 9 || partial->height != partial_height ||
+        !alMetalHasUsage(partial->usage,
+                         ALMetalTextureUsage::shader_read) ||
+        !alMetalHasUsage(partial->usage,
+                         ALMetalTextureUsage::shader_write))
+    {
+        ALMetalTextureDescriptor descriptor;
+        descriptor.format = ALMetalPixelFormat::rgba16_float;
+        descriptor.width = 9;
+        descriptor.height = partial_height;
+        descriptor.storage = ALMetalStorageMode::private_gpu;
+        descriptor.usage = ALMetalTextureUsage::shader_read |
+                           ALMetalTextureUsage::shader_write;
+        descriptor.label = "Alchemy reflection-probe SH partial rows";
+        mImpl->probe_sh_partial = ALMetalTexture::create(
+            *mImpl->device, descriptor, error);
+        if (!mImpl->probe_sh_partial)
+        {
+            return false;
+        }
+    }
+
+    constexpr std::size_t packed_bytes = 4 * 4 * sizeof(std::uint32_t);
+    if (!packed_words || packed_words->length() != packed_bytes ||
+        packed_words->storageMode() != ALMetalStorageMode::shared)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = packed_bytes;
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.label = "Alchemy reflection-probe packed SH words";
+        packed_words = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!packed_words)
+        {
+            return false;
+        }
+    }
+
+    struct alignas(16) SHConstants
+    {
+        std::uint32_t source_mip = 0;
+        std::uint32_t source_resolution = 0;
+        std::uint32_t destination_row = 0;
+        std::uint32_t padding = 0;
+    } constants;
+    constants.source_mip = source_mip;
+    constants.source_resolution = source_resolution;
+    constants.destination_row = destination_row;
+
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native reflection-probe SH publication", error);
+    if (!command || !source_cube.generateMipmaps(*command, error))
+    {
+        return false;
+    }
+    auto rows = ALMetalComputeEncoder::begin(
+        *command, "Alchemy reflection-probe SH rows", error);
+    if (!rows ||
+        !rows->setPipeline(*mImpl->probe_sh_rows_pipeline, error) ||
+        !rows->setTexture(0, &source_cube, error) ||
+        !rows->setTexture(1, mImpl->probe_sh_partial.get(), error) ||
+        !rows->setBytes(0, &constants, sizeof(constants), error) ||
+        !rows->dispatch(9, partial_height, 1, 9, 1, 1, error) ||
+        !rows->end(error))
+    {
+        return false;
+    }
+    auto reduce = ALMetalComputeEncoder::begin(
+        *command, "Alchemy reflection-probe SH reduce", error);
+    if (!reduce ||
+        !reduce->setPipeline(*mImpl->probe_sh_reduce_pipeline, error) ||
+        !reduce->setTexture(0, mImpl->probe_sh_partial.get(), error) ||
+        !reduce->setTexture(1, &destination, error) ||
+        !reduce->setBytes(0, &constants, sizeof(constants), error) ||
+        !reduce->setBuffer(1, *packed_words, 0, error) ||
+        !reduce->dispatch(4, 1, 1, 4, 1, 1, error) ||
+        !reduce->end(error) || !command->commit(error))
+    {
+        return false;
+    }
+    pending_command = std::move(command);
     return true;
 }
 
