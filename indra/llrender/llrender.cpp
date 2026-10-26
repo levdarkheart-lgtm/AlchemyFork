@@ -1080,18 +1080,42 @@ bool LLRender::drawMetalSelectionContour(
         return false;
     }
 
+    std::vector<ALMetalSelectionIDBatch> wire_batches;
+    ALMetalSelectionContourScene         resolved = scene;
+    if (scene.wire_batch_count != 0)
+    {
+        if (!scene.wire_batches)
+        {
+            return false;
+        }
+        wire_batches.assign(scene.wire_batches, scene.wire_batches + scene.wire_batch_count);
+        const ALSamplerDesc            source_sampler = ALSamplerCache::makeDesc(ALSamplers::AnisoWrap);
+        const ALMetalSamplerDescriptor sampler        = metal_sampler_descriptor(source_sampler);
+        for (ALMetalSelectionIDBatch& batch : wire_batches)
+        {
+            batch.sampler = sampler;
+        }
+        resolved.wire_batches = wire_batches.data();
+    }
+
     std::string error;
-    if (!mMetalUICaptureRenderer->drawSelectionContour(scene, &error))
+    if (!mMetalUICaptureRenderer->drawSelectionContour(resolved, &error))
     {
         mMetalUICaptureComplete = false;
-        LL_DEBUGS("Metal")
-            << "Offscreen selection-contour capture retained GL: "
-            << error << LL_ENDL;
+        LL_DEBUGS("Metal") << "Offscreen selection-contour capture retained GL: " << error << LL_ENDL;
         return false;
     }
-    mMetalUICaptureBatches += 3u +
-        (scene.glow_radius != 0u ? 2u : 0u) +
-        (scene.contrast_shift && scene.contour_enabled ? 1u : 0u);
+    mMetalUICaptureBatches += (scene.contour_enabled || scene.glow_radius != 0u ? 3u : 0u) + (scene.glow_radius != 0u ? 2u : 0u) +
+                              (scene.contrast_shift && (scene.contour_enabled || scene.wire_batch_count != 0u) ? 1u : 0u) +
+                              scene.wire_batch_count;
+    if (!scene.wire_hud)
+    {
+        for (std::size_t index = 0; index < scene.wire_batch_count; ++index)
+        {
+            mMetalUICaptureBatches +=
+                scene.wire_batches[index].show_hidden ? 1u : 0u;
+        }
+    }
     return true;
 }
 

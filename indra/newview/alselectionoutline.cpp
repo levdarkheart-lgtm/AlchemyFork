@@ -392,17 +392,22 @@ void ALSelectionOutline::render(const View& view)
     gGL.flush();
 
 #if LL_DARWIN
-    const bool native_edges = edges && !wireframe;
-    if (ids && gGL.hasMetalUITextureCapture() &&
-        !drawMetalIds(view, width, height,
-                      native_edges && contour, native_edges && glow,
-                      native_edges && contour &&
-                          view.mContrast == CONTRAST_SHIFT))
+    const bool native_edges      = edges;
+    F32        native_wire_slope = 0.f;
+    if (wireframe)
     {
-        gGL.invalidateMetalUITextureCapture(
-            native_edges
-                ? "an incomplete native selection edge transaction"
-                : "selection wireframe or no edge pass");
+        F32 resample = 1.f;
+        if (!view.mHUD && gPipeline.mRT->deferredScreen.getWidth() > 0)
+        {
+            resample = (F32)width / (F32)gPipeline.mRT->deferredScreen.getWidth();
+        }
+        native_wire_slope = wireOffsetFactor(resample);
+    }
+    if ((ids || wireframe) && gGL.hasMetalUITextureCapture() &&
+        !drawMetalIds(view, width, height, native_edges && contour, native_edges && glow, wireframe,
+                      view.mContrast == CONTRAST_SHIFT && ((native_edges && contour) || wireframe), native_wire_slope))
+    {
+        gGL.invalidateMetalUITextureCapture("an incomplete native selection edge transaction");
     }
 #endif
 
@@ -806,9 +811,8 @@ void ALSelectionOutline::drawIds(const View& view, S32 width, S32 height)
 }
 
 #if LL_DARWIN
-bool ALSelectionOutline::drawMetalIds(
-    const View& view, S32 width, S32 height,
-    bool contour_enabled, bool glow_enabled, bool contrast_shift)
+bool ALSelectionOutline::drawMetalIds(const View& view, S32 width, S32 height, bool contour_enabled, bool glow_enabled,
+                                      bool wireframe_enabled, bool contrast_shift, F32 wire_depth_slope)
 {
     LLMatrix4a inverse_projection;
     if (!inverse_projection.setInverse(view.mProjection))
@@ -817,43 +821,40 @@ bool ALSelectionOutline::drawMetalIds(
     }
 
     std::vector<ALMetalSelectionIDBatch> batches;
+    std::vector<ALMetalSelectionIDBatch> wire_batches;
     batches.reserve(mFaces.size());
+    wire_batches.reserve(mFaces.size());
     for (const FaceDraw& draw : mFaces)
     {
-        const Entry& entry = mEntries[mOrder[draw.mIndex]];
-        if (!inIdPass(entry.mParts, entry.mPriority, view.mHUD))
+        const Entry& entry   = mEntries[mOrder[draw.mIndex]];
+        const bool   in_ids  = inIdPass(entry.mParts, entry.mPriority, view.mHUD);
+        const bool   in_wire = wireframe_enabled && inWirePass(entry.mParts, entry.mShowHidden, WIRE_VISIBLE);
+        if (!in_ids && !in_wire)
         {
             continue;
         }
 
-        LLFace* face = draw.mFace;
+        LLFace*         face   = draw.mFace;
         LLVertexBuffer* buffer = face ? face->getVertexBuffer() : nullptr;
-        if (!buffer || !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-            !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
-            !buffer->getMetalVertexBuffer() ||
-            !buffer->getMetalIndexBuffer())
+        if (!buffer || !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) || !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+            !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer())
         {
             return false;
         }
 
         ALMetalSelectionIDBatch batch;
-        batch.vertices = buffer->getMetalVertexBuffer();
-        batch.position_offset = buffer->getOffset(
-            LLVertexBuffer::TYPE_VERTEX);
-        batch.texcoord_offset = buffer->getOffset(
-            LLVertexBuffer::TYPE_TEXCOORD0);
-        batch.vertex_count = buffer->getNumVerts();
-        batch.indices = buffer->getMetalIndexBuffer();
-        batch.index_offset =
-            static_cast<std::size_t>(face->getIndicesStart()) *
-            buffer->getIndexStride();
-        batch.index_type = buffer->getIndexStride() == 4
-            ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
-        batch.index_count = face->getIndicesCount();
-        batch.id = draw.mIndex + 1;
-        batch.priority = entry.mPriority;
-        batch.show_hidden = entry.mShowHidden;
-        batch.outlined = outlined(entry.mParts, entry.mPriority);
+        batch.vertices        = buffer->getMetalVertexBuffer();
+        batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+        batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
+        batch.vertex_count    = buffer->getNumVerts();
+        batch.indices         = buffer->getMetalIndexBuffer();
+        batch.index_offset    = static_cast<std::size_t>(face->getIndicesStart()) * buffer->getIndexStride();
+        batch.index_type      = buffer->getIndexStride() == 4 ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+        batch.index_count     = face->getIndicesCount();
+        batch.id              = draw.mIndex + 1;
+        batch.priority        = entry.mPriority;
+        batch.show_hidden     = entry.mShowHidden;
+        batch.outlined        = outlined(entry.mParts, entry.mPriority);
 
         LLMatrix4a modelview = view.mModelview;
         if (draw.mModel)
@@ -862,149 +863,139 @@ bool ALSelectionOutline::drawMetalIds(
         }
         LLMatrix4a modelview_projection;
         modelview_projection.setMul(modelview, view.mProjection);
-        std::memcpy(batch.modelview_projection,
-                    modelview_projection.getF32ptr(),
-                    sizeof(batch.modelview_projection));
+        std::memcpy(batch.modelview_projection, modelview_projection.getF32ptr(), sizeof(batch.modelview_projection));
 
-        const LLTextureEntry* te = face->getTextureEntry();
-        LLViewerTexture* texture = face->getTexture();
-        F32 cutoff = NO_ALPHA_TEST;
-        LLUUID texture_id;
-        U8 max_alpha = 255;
+        const LLTextureEntry*                  te      = face->getTextureEntry();
+        LLViewerTexture*                       texture = face->getTexture();
+        F32                                    cutoff  = NO_ALPHA_TEST;
+        LLUUID                                 texture_id;
+        U8                                     max_alpha = 255;
         LLGLTFMaterial::TextureTransform::Pack transform;
-        std::copy(std::begin(IDENTITY_TRANSFORM),
-                  std::end(IDENTITY_TRANSFORM), std::begin(transform));
-        auto* gltf = te
-            ? static_cast<LLFetchedGLTFMaterial*>(
-                  te->getGLTFRenderMaterial())
-            : nullptr;
+        std::copy(std::begin(IDENTITY_TRANSFORM), std::end(IDENTITY_TRANSFORM), std::begin(transform));
+        auto* gltf = te ? static_cast<LLFetchedGLTFMaterial*>(te->getGLTFRenderMaterial()) : nullptr;
         if (gltf)
         {
             batch.double_sided = gltf->mDoubleSided;
-            if (!face->hasMedia() || !texture ||
-                texture->getType() != LLViewerTexture::MEDIA_TEXTURE)
+            if (!face->hasMedia() || !texture || texture->getType() != LLViewerTexture::MEDIA_TEXTURE)
             {
                 texture = gltf->mBaseColorTexture.get();
             }
             if (texture && texture_has_alpha(texture))
             {
-                cutoff = gltfAlphaCutoff(
-                    gltf->mAlphaMode, gltf->mAlphaCutoff);
+                cutoff     = gltfAlphaCutoff(gltf->mAlphaMode, gltf->mAlphaCutoff);
                 texture_id = texture->getID();
-                max_alpha = texture_max_alpha(texture);
+                max_alpha  = texture_max_alpha(texture);
             }
-            gltf->mTextureTransform[
-                LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR]
-                .getPacked(transform);
+            gltf->mTextureTransform[LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR].getPacked(transform);
         }
         else if (te && texture)
         {
-            const LLMaterial* material =
-                te->getMaterialParams().get();
-            cutoff = legacyAlphaCutoff(
-                material != nullptr,
-                material ? material->getDiffuseAlphaMode() : 0,
-                material ? material->getAlphaMaskCutoff() : 0,
-                texture_has_alpha(texture));
-            texture_id = te->getID();
-            max_alpha = texture_max_alpha(texture);
+            const LLMaterial* material = te->getMaterialParams().get();
+            cutoff                     = legacyAlphaCutoff(material != nullptr,
+                                       material ? material->getDiffuseAlphaMode() : 0,
+                                       material ? material->getAlphaMaskCutoff() : 0,
+                                                           texture_has_alpha(texture));
+            texture_id                 = te->getID();
+            max_alpha                  = texture_max_alpha(texture);
         }
 
-        const AlphaTest test = faceAlphaTest(
-            texture_id, max_alpha, cutoff,
-            wholeFaces(view, draw.mPriority),
-            LLVOVolume::isInvisibleFace(te));
+        const AlphaTest test =
+            faceAlphaTest(texture_id, max_alpha, cutoff, wholeFaces(view, draw.mPriority), LLVOVolume::isInvisibleFace(te));
         batch.alpha_cutoff = test.mCutoff;
-        batch.keep_cut = test.mKeepCut;
-        std::copy(std::begin(transform), std::end(transform),
-                  std::begin(batch.base_color_transform));
+        batch.keep_cut     = test.mKeepCut;
+        std::copy(std::begin(transform), std::end(transform), std::begin(batch.base_color_transform));
         if (test.mCutoff > 0.f && test.mCutoff <= 1.f)
         {
             LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-            batch.texture = image ? image->getMetalTexture() : nullptr;
+            batch.texture    = image ? image->getMetalTexture() : nullptr;
             if (!batch.texture)
             {
                 return false;
             }
         }
-        if (face->mTextureMatrix &&
-            face->isState(LLFace::TEXTURE_ANIM) &&
-            face->getVirtualSize() > MIN_TEX_ANIM_SIZE)
+        if (face->mTextureMatrix && face->isState(LLFace::TEXTURE_ANIM) && face->getVirtualSize() > MIN_TEX_ANIM_SIZE)
         {
-            std::memcpy(batch.texture_matrix,
-                        face->mTextureMatrix->mMatrix,
-                        sizeof(batch.texture_matrix));
+            std::memcpy(batch.texture_matrix, face->mTextureMatrix->mMatrix, sizeof(batch.texture_matrix));
         }
 
         if (draw.mRigged)
         {
-            if (!face->mAvatar || !face->mSkinInfo ||
-                !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))
+            if (!face->mAvatar || !face->mSkinInfo || !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))
             {
                 return false;
             }
-            const LLVOAvatar::MatrixPaletteCache& palette =
-                face->mAvatar->updateSkinInfoMatrixPalette(
-                    face->mSkinInfo);
-            const U32 joint_count = static_cast<U32>(
-                palette.mMatrixPalette.size());
-            if (joint_count == 0 ||
-                palette.mGLMp.size() !=
-                    4u + static_cast<std::size_t>(joint_count) * 12u)
+            const LLVOAvatar::MatrixPaletteCache& palette     = face->mAvatar->updateSkinInfoMatrixPalette(face->mSkinInfo);
+            const U32                             joint_count = static_cast<U32>(palette.mMatrixPalette.size());
+            if (joint_count == 0 || palette.mGLMp.size() != 4u + static_cast<std::size_t>(joint_count) * 12u)
             {
                 return false;
             }
-            batch.weight_offset = buffer->getOffset(
-                LLVertexBuffer::TYPE_WEIGHT4);
-            batch.skin_palette = palette.mGLMp.data();
+            batch.weight_offset            = buffer->getOffset(LLVertexBuffer::TYPE_WEIGHT4);
+            batch.skin_palette             = palette.mGLMp.data();
             batch.skin_palette_float_count = palette.mGLMp.size();
-            batch.skin_joint_count = joint_count;
+            batch.skin_joint_count         = joint_count;
         }
-        batches.push_back(batch);
+        if (in_ids)
+        {
+            batches.push_back(batch);
+        }
+        if (in_wire)
+        {
+            wire_batches.push_back(batch);
+        }
     }
 
+    // A world selection made solely of wireframes has no legacy id pass, but
+    // the native transaction still needs a private depth target for a uniform
+    // ordered lifetime. Its color is never consumed and these faces are not
+    // allowed to occlude a simultaneous contour id pass.
+    if (batches.empty() && !wire_batches.empty())
+    {
+        batches = wire_batches;
+        for (ALMetalSelectionIDBatch& batch : batches)
+        {
+            batch.outlined = false;
+        }
+    }
     if (batches.empty())
     {
         return false;
     }
     ALMetalSelectionIDScene scene;
-    scene.batches = batches.data();
+    scene.batches     = batches.data();
     scene.batch_count = batches.size();
-    std::memcpy(scene.inverse_projection,
-                inverse_projection.getF32ptr(),
-                sizeof(scene.inverse_projection));
-    scene.width = static_cast<U32>(width);
-    scene.height = static_cast<U32>(height);
-    scene.reverse_z = LLRender::sReverseZ;
+    std::memcpy(scene.inverse_projection, inverse_projection.getF32ptr(), sizeof(scene.inverse_projection));
+    scene.width           = static_cast<U32>(width);
+    scene.height          = static_cast<U32>(height);
+    scene.reverse_z       = LLRender::sReverseZ;
     scene.use_scene_depth = !view.mHUD;
-    if (!gGL.drawMetalSelectionIDs(scene) ||
-        (!contour_enabled && !glow_enabled))
+    if (!gGL.drawMetalSelectionIDs(scene) || (!contour_enabled && !glow_enabled && wire_batches.empty()))
     {
         return false;
     }
 
     ALMetalSelectionContourScene contour;
-    contour.palette_rgba8 = mPaletteTexels.data();
-    contour.palette_bytes = mPaletteTexels.size();
-    contour.palette_width = PALETTE_WIDTH;
-    contour.palette_height = paletteRows(
-        static_cast<U32>(mEntries.size()));
-    std::memcpy(contour.inverse_projection,
-                inverse_projection.getF32ptr(),
-                sizeof(contour.inverse_projection));
-    contour.width = static_cast<U32>(width);
-    contour.height = static_cast<U32>(height);
-    contour.outline_width = static_cast<U32>(view.mWidth);
-    contour.inner_width = static_cast<U32>(view.mInnerWidth);
-    contour.rim_width = view.mContrast == CONTRAST_RIM
-        ? static_cast<U32>(view.mRimWidth) : 0u;
-    contour.glow_radius = glow_enabled
-        ? static_cast<U32>(view.mGlowRadius) : 0u;
-    contour.glow_brightness = glow_enabled
-        ? view.mGlowBrightness : 0.f;
-    contour.contour_enabled = contour_enabled;
-    contour.contrast_shift = contrast_shift;
-    contour.reverse_z = LLRender::sReverseZ;
+    contour.palette_rgba8  = mPaletteTexels.data();
+    contour.palette_bytes  = mPaletteTexels.size();
+    contour.palette_width  = PALETTE_WIDTH;
+    contour.palette_height = paletteRows(static_cast<U32>(mEntries.size()));
+    std::memcpy(contour.inverse_projection, inverse_projection.getF32ptr(), sizeof(contour.inverse_projection));
+    contour.width            = static_cast<U32>(width);
+    contour.height           = static_cast<U32>(height);
+    contour.outline_width    = static_cast<U32>(view.mWidth);
+    contour.inner_width      = static_cast<U32>(view.mInnerWidth);
+    contour.rim_width        = view.mContrast == CONTRAST_RIM ? static_cast<U32>(view.mRimWidth) : 0u;
+    contour.glow_radius      = glow_enabled ? static_cast<U32>(view.mGlowRadius) : 0u;
+    contour.glow_brightness  = glow_enabled ? view.mGlowBrightness : 0.f;
+    contour.wire_batches     = wire_batches.data();
+    contour.wire_batch_count = wire_batches.size();
+    contour.wire_width       = wireframe_enabled ? static_cast<U32>(view.mWireWidth) : 0u;
+    contour.wire_depth_slope = wire_depth_slope;
+    contour.wire_depth_units = WIRE_OFFSET_UNITS;
+    contour.wire_hud         = view.mHUD;
+    contour.contour_enabled  = contour_enabled;
+    contour.contrast_shift   = contrast_shift;
+    contour.reverse_z        = LLRender::sReverseZ;
     return gGL.drawMetalSelectionContour(contour);
 }
 #endif

@@ -212,8 +212,8 @@ struct ALMetalSelectionIDScene
 // Inputs for the optimized screen-space contour consumer of the private
 // selection id/depth target. The palette is byte-identical to the legacy
 // RGBA8 texture: visible and hidden rows alternate for each 256 ids. The
-// optional hover glow and contrast-shift backdrop use the same private
-// id/depth data. Wireframe remains fail-closed.
+// optional wireframe, hover glow and contrast-shift backdrop use the same
+// private id/depth data.
 struct ALMetalSelectionContourScene
 {
     const std::uint8_t* palette_rgba8 = nullptr;
@@ -230,6 +230,16 @@ struct ALMetalSelectionContourScene
     // a hover-only frame while retaining the shared edge transaction.
     std::uint32_t glow_radius = 0;
     float glow_brightness = 0.f;
+    // Wire batches reuse the exact selection face contract above, but only
+    // id/show_hidden and the geometry, alpha, skinning and culling fields are
+    // consumed. The renderer expands every indexed triangle to a clipped
+    // near-plane-safe barycentric triangle pair on the GPU.
+    const ALMetalSelectionIDBatch* wire_batches = nullptr;
+    std::size_t wire_batch_count = 0;
+    std::uint32_t wire_width = 0;
+    float wire_depth_slope = 0.f;
+    float wire_depth_units = 0.f;
+    bool wire_hud = false;
     bool contour_enabled = true;
     bool contrast_shift = false;
     bool reverse_z = false;

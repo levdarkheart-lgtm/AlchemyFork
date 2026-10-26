@@ -15638,6 +15638,306 @@ fragment ALMetalSelectionIDOutput almetal_selection_id_fragment(
     return output;
 }
 
+// The wireframe expands each indexed source triangle to two native triangles.
+// That gives the vertex stage enough lanes to clip the source against the near
+// plane itself and retain only the three original edge lines, matching the GL
+// geometry shader without drawing a line along the clipped plane.
+struct ALMetalSelectionWireConstants
+{
+    float4x4 modelview_projection;
+    float4x4 texture_matrix;
+    float4x4 inverse_projection;
+    float4 base_color_transform[2];
+    // xy = target dimensions, z = alpha cutoff, w = HUD surface slack.
+    float4 screen_material;
+    // x = id, y = width, z bits: reverse-Z, keep-cut. w = joint count.
+    uint4 config;
+    // x = wire pass (visible, hidden, HUD id-depth), y = contrast shift.
+    uint4 draw;
+};
+
+struct ALMetalSelectionWireVaryings
+{
+    float4 position [[position]];
+    float2 texcoord;
+    float3 edge_distance [[center_no_perspective]];
+    float2 window_position [[center_no_perspective]];
+};
+
+static float almetal_selection_wire_inside_near(
+    float4 clip, bool reverse_z)
+{
+    return reverse_z ? clip.w - clip.z : clip.w + clip.z;
+}
+
+static float2 almetal_selection_wire_window(
+    float4 clip, float2 screen)
+{
+    // The native target's row orientation is the GL-compatible offscreen
+    // orientation established by the y reflection at every production draw.
+    return (float2(clip.x, -clip.y) / max(clip.w, 0.000001) * 0.5 + 0.5) *
+        screen;
+}
+
+static float4 almetal_selection_wire_metal_clip(
+    float4 clip, bool reverse_z)
+{
+    clip.y = -clip.y;
+    return reverse_z ? clip : almetal_clip_from_gl(clip);
+}
+
+static float2 almetal_selection_wire_texcoord(
+    float2 source,
+    constant ALMetalSelectionWireConstants& constants)
+{
+    float2 texcoord = (constants.texture_matrix *
+                       float4(source, 0.0, 1.0)).xy;
+    texcoord.y = 1.0 - texcoord.y;
+    const float2 scaled = texcoord * constants.base_color_transform[0].xy;
+    const float cosine = cos(constants.base_color_transform[0].z);
+    const float sine = sin(constants.base_color_transform[0].z);
+    texcoord = float2(cosine * scaled.x + sine * scaled.y,
+                      -sine * scaled.x + cosine * scaled.y) +
+               constants.base_color_transform[1].xy;
+    texcoord.y = 1.0 - texcoord.y;
+    return texcoord;
+}
+
+static ALMetalSelectionWireVaryings almetal_selection_wire_vertex_common(
+    thread const float4* object_positions,
+    thread const float2* source_texcoords,
+    constant ALMetalSelectionWireConstants& constants,
+    uint lane)
+{
+    const bool reverse_z = (constants.config.z & 1u) != 0u;
+    float4 source_clip[3];
+    float2 source_texcoord[3];
+    float inside[3];
+    bool cut = false;
+    bool kept = false;
+    for (uint index = 0u; index < 3u; ++index)
+    {
+        source_clip[index] = constants.modelview_projection *
+            object_positions[index];
+        source_texcoord[index] = almetal_selection_wire_texcoord(
+            source_texcoords[index], constants);
+        inside[index] = almetal_selection_wire_inside_near(
+            source_clip[index], reverse_z);
+        cut = cut || inside[index] < 0.0;
+        kept = kept || inside[index] >= 0.0;
+    }
+
+    float4 clip[4];
+    float2 texcoord[4];
+    uint count = 0u;
+    if (kept && !cut)
+    {
+        for (uint index = 0u; index < 3u; ++index)
+        {
+            clip[index] = source_clip[index];
+            texcoord[index] = source_texcoord[index];
+        }
+        count = 3u;
+    }
+    else if (kept)
+    {
+        for (uint index = 0u; index < 3u; ++index)
+        {
+            const uint next = (index + 1u) % 3u;
+            if (inside[index] >= 0.0)
+            {
+                clip[count] = source_clip[index];
+                texcoord[count] = source_texcoord[index];
+                ++count;
+            }
+            if ((inside[index] >= 0.0) != (inside[next] >= 0.0))
+            {
+                const float amount = inside[index] /
+                    (inside[index] - inside[next]);
+                clip[count] = mix(
+                    source_clip[index], source_clip[next], amount);
+                texcoord[count] = mix(
+                    source_texcoord[index], source_texcoord[next], amount);
+                ++count;
+            }
+        }
+    }
+
+    ALMetalSelectionWireVaryings output;
+    if (count < 3u)
+    {
+        output.position = float4(0.0, 0.0, 0.0, 1.0);
+        output.texcoord = float2(0.0);
+        output.edge_distance = float3(1000000.0);
+        output.window_position = float2(0.0);
+        return output;
+    }
+
+    const float2 screen = constants.screen_material.xy;
+    float2 line_start[3];
+    float2 line_direction[3];
+    bool has_line[3];
+    for (uint edge = 0u; edge < 3u; ++edge)
+    {
+        const uint from_index = (edge + 1u) % 3u;
+        const uint to_index = (edge + 2u) % 3u;
+        has_line[edge] = inside[from_index] >= 0.0 ||
+                         inside[to_index] >= 0.0;
+        float4 from = source_clip[from_index];
+        float4 to = source_clip[to_index];
+        if (inside[from_index] < 0.0)
+        {
+            from = mix(from, to, inside[from_index] /
+                (inside[from_index] - inside[to_index]));
+        }
+        else if (inside[to_index] < 0.0)
+        {
+            to = mix(to, from, inside[to_index] /
+                (inside[to_index] - inside[from_index]));
+        }
+        line_start[edge] = almetal_selection_wire_window(from, screen);
+        line_direction[edge] =
+            almetal_selection_wire_window(to, screen) - line_start[edge];
+        has_line[edge] = has_line[edge] &&
+            length(line_direction[edge]) > 0.000001;
+    }
+
+    constexpr uint triangle_vertices[6] = {0u, 1u, 3u, 3u, 1u, 2u};
+    uint corner = count == 4u ? triangle_vertices[lane] :
+        (lane < 3u ? lane : 0u);
+    const float2 window = almetal_selection_wire_window(
+        clip[corner], screen);
+    float3 distance;
+    for (uint edge = 0u; edge < 3u; ++edge)
+    {
+        const float2 from_start = window - line_start[edge];
+        distance[edge] = has_line[edge]
+            ? abs(line_direction[edge].x * from_start.y -
+                  line_direction[edge].y * from_start.x) /
+                  length(line_direction[edge])
+            : 1000000.0;
+    }
+    output.position = almetal_selection_wire_metal_clip(
+        clip[corner], reverse_z);
+    // The unused second triangle is exactly degenerate for an unclipped
+    // source triangle, so it produces no fragments under either cull mode.
+    if (count == 3u && lane >= 3u)
+    {
+        output.position = almetal_selection_wire_metal_clip(
+            clip[0], reverse_z);
+    }
+    output.texcoord = texcoord[corner];
+    output.edge_distance = distance;
+    output.window_position = window;
+    return output;
+}
+
+static ALMetalSelectionWireVaryings almetal_selection_wire_static_vertex(
+    const device float4* positions,
+    const device float2* texcoords,
+    constant ALMetalSelectionWireConstants& constants,
+    uint3 source_ids, uint lane)
+{
+    float4 triangle_positions[3];
+    float2 triangle_texcoords[3];
+    for (uint index = 0u; index < 3u; ++index)
+    {
+        triangle_positions[index] =
+            float4(positions[source_ids[index]].xyz, 1.0);
+        triangle_texcoords[index] = texcoords[source_ids[index]];
+    }
+    return almetal_selection_wire_vertex_common(
+        triangle_positions, triangle_texcoords, constants, lane);
+}
+
+static ALMetalSelectionWireVaryings almetal_selection_wire_skinned_vertex(
+    const device float4* positions,
+    const device float2* texcoords,
+    const device float4* encoded_weights,
+    const device float4* skin_palette,
+    constant ALMetalSelectionWireConstants& constants,
+    uint3 source_ids, uint lane)
+{
+    float4 triangle_positions[3];
+    float2 triangle_texcoords[3];
+    for (uint index = 0u; index < 3u; ++index)
+    {
+        const uint source_id = source_ids[index];
+        const ALMetalObjectSkinnedVertex skinned =
+            almetal_object_skin_vertex(
+                positions[source_id], float4(0.0, 0.0, 1.0, 0.0),
+                encoded_weights[source_id], skin_palette,
+                constants.config.w);
+        triangle_positions[index] =
+            skinned.position + float4(skin_palette[0].xyz, 1.0);
+        triangle_texcoords[index] = texcoords[source_id];
+    }
+    return almetal_selection_wire_vertex_common(
+        triangle_positions, triangle_texcoords, constants, lane);
+}
+
+vertex ALMetalSelectionWireVaryings almetal_selection_wire_u16_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(1)]],
+    constant ALMetalSelectionWireConstants& constants [[buffer(3)]],
+    const device ushort* indices [[buffer(5)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint start = (vertex_id / 6u) * 3u;
+    return almetal_selection_wire_static_vertex(
+        positions, texcoords, constants,
+        uint3(indices[start], indices[start + 1u], indices[start + 2u]),
+        vertex_id % 6u);
+}
+
+vertex ALMetalSelectionWireVaryings almetal_selection_wire_u32_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(1)]],
+    constant ALMetalSelectionWireConstants& constants [[buffer(3)]],
+    const device uint* indices [[buffer(5)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint start = (vertex_id / 6u) * 3u;
+    return almetal_selection_wire_static_vertex(
+        positions, texcoords, constants,
+        uint3(indices[start], indices[start + 1u], indices[start + 2u]),
+        vertex_id % 6u);
+}
+
+vertex ALMetalSelectionWireVaryings
+almetal_selection_wire_skinned_u16_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(1)]],
+    const device float4* encoded_weights [[buffer(2)]],
+    constant ALMetalSelectionWireConstants& constants [[buffer(3)]],
+    const device float4* skin_palette [[buffer(4)]],
+    const device ushort* indices [[buffer(5)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint start = (vertex_id / 6u) * 3u;
+    return almetal_selection_wire_skinned_vertex(
+        positions, texcoords, encoded_weights, skin_palette, constants,
+        uint3(indices[start], indices[start + 1u], indices[start + 2u]),
+        vertex_id % 6u);
+}
+
+vertex ALMetalSelectionWireVaryings
+almetal_selection_wire_skinned_u32_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(1)]],
+    const device float4* encoded_weights [[buffer(2)]],
+    constant ALMetalSelectionWireConstants& constants [[buffer(3)]],
+    const device float4* skin_palette [[buffer(4)]],
+    const device uint* indices [[buffer(5)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint start = (vertex_id / 6u) * 3u;
+    return almetal_selection_wire_skinned_vertex(
+        positions, texcoords, encoded_weights, skin_palette, constants,
+        uint3(indices[start], indices[start + 1u], indices[start + 2u]),
+        vertex_id % 6u);
+}
+
 // The optimized selection edge transaction mirrors selectionJumpF.glsl,
 // selectionTileF.glsl, selectionGlowReachF.glsl, selectionGlowRowF.glsl,
 // selectionBackdropMaskF.glsl and selectionOutlineF.glsl. Its private
@@ -16167,9 +16467,10 @@ static float3 almetal_selection_with_lightness(
 static float4 almetal_selection_backdrop_color(
     int2 position,
     texture2d<float, access::read> backdrop,
-    constant ALMetalSelectionContourConstants& constants)
+    bool enabled,
+    bool masked)
 {
-    if (constants.glow.z == 0u)
+    if (!enabled)
     {
         return float4(0.0);
     }
@@ -16184,8 +16485,9 @@ static float4 almetal_selection_backdrop_color(
         {
             const float4 texel = backdrop.read(uint2(clamp(
                 center + int2(dx, dy), int2(0), last)));
-            sum += almetal_srgb_to_linear(texel.rgb) * texel.a;
-            weight += texel.a;
+            const float texel_weight = masked ? texel.a : 1.0;
+            sum += almetal_srgb_to_linear(texel.rgb) * texel_weight;
+            weight += texel_weight;
         }
     }
     return weight > 0.0
@@ -16218,6 +16520,93 @@ static float4 almetal_selection_palette_color(
 {
     const uint row = (id / 256u) * 2u + (visible ? 0u : 1u);
     return palette.read(uint2(id % 256u, row));
+}
+
+static float almetal_selection_wire_eye_distance(
+    float depth,
+    constant ALMetalSelectionWireConstants& constants)
+{
+    const float ndc_depth = (constants.config.z & 1u) != 0u
+        ? depth : depth * 2.0 - 1.0;
+    const float4 eye = constants.inverse_projection *
+        float4(0.0, 0.0, ndc_depth, 1.0);
+    return -eye.z / max(eye.w, 0.000001);
+}
+
+fragment float4 almetal_selection_wire_fragment(
+    ALMetalSelectionWireVaryings input [[stage_in]],
+    texture2d<float> diffuse_map [[texture(0)]],
+    texture2d<float, access::read> selection_depth [[texture(1)]],
+    texture2d<float, access::read> palette [[texture(2)]],
+    texture2d<float, access::read> backdrop [[texture(3)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    constant ALMetalSelectionWireConstants& constants [[buffer(0)]])
+{
+    const uint pass = constants.draw.x;
+    float own_distance = 0.0;
+    float slope = 0.0;
+    if (pass == 2u)
+    {
+        own_distance = almetal_selection_wire_eye_distance(
+            input.position.z, constants);
+        slope = fwidth(own_distance);
+    }
+
+    const float cutoff = constants.screen_material.z;
+    float alpha = 1.0;
+    if (cutoff > 1.0)
+    {
+        alpha = 0.0;
+    }
+    else if (cutoff > 0.0)
+    {
+        alpha = diffuse_map.sample(
+            diffuse_sampler, input.texcoord).a;
+    }
+    const bool cut = alpha < cutoff - (1.0 / 512.0);
+    if (cut && (constants.config.z & 2u) == 0u)
+    {
+        discard_fragment();
+    }
+
+    const float distance = min(
+        min(input.edge_distance.x, input.edge_distance.y),
+        input.edge_distance.z);
+    const float half_width = 0.5 * float(constants.config.y);
+    const float coverage = 1.0 - smoothstep(
+        half_width - 0.5, half_width + 0.5, distance);
+    if (coverage <= 0.0)
+    {
+        discard_fragment();
+    }
+
+    bool visible = pass == 0u;
+    if (pass == 2u)
+    {
+        const int2 size = int2(constants.screen_material.xy);
+        const int2 position = clamp(
+            int2(input.window_position), int2(0), size - int2(1));
+        const float surface_distance =
+            almetal_selection_wire_eye_distance(
+                selection_depth.read(uint2(position)).r, constants);
+        visible = own_distance <= surface_distance + slope +
+            own_distance * constants.screen_material.w;
+    }
+
+    float4 color = almetal_selection_palette_color(
+        constants.config.x, visible, palette);
+    if (color.a <= 0.0)
+    {
+        discard_fragment();
+    }
+    const int2 position = clamp(
+        int2(input.window_position), int2(0),
+        int2(constants.screen_material.xy) - int2(1));
+    color.rgb = almetal_selection_contrast_color(
+        color.rgb,
+        almetal_selection_backdrop_color(
+            position, backdrop, constants.draw.y != 0u, false));
+    return float4(color.rgb, color.a * coverage);
 }
 
 static float4 almetal_selection_contour_layer(
@@ -16443,7 +16832,7 @@ fragment float4 almetal_selection_contour_fragment(
     const float4 back = contour_enabled &&
         (inner_distance <= float(inner_reach) || top_id != 0u)
         ? almetal_selection_backdrop_color(
-              position, backdrop_map, constants)
+              position, backdrop_map, constants.glow.z != 0u, true)
         : float4(0.0);
 
     float3 rgb = float3(0.0);

@@ -841,6 +841,11 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_selection_id_vertex",
             "almetal_selection_id_skinned_vertex",
             "almetal_selection_id_fragment",
+            "almetal_selection_wire_u16_vertex",
+            "almetal_selection_wire_u32_vertex",
+            "almetal_selection_wire_skinned_u16_vertex",
+            "almetal_selection_wire_skinned_u32_vertex",
+            "almetal_selection_wire_fragment",
             "almetal_selection_jump_fragment",
             "almetal_selection_tile_fragment",
             "almetal_selection_glow_reach_fragment",
@@ -21000,6 +21005,207 @@ TEST_CASE("almetal: selection contour consumes ids and resumes the ordered UI ta
         CHECK(contrast_stats.vertices == 60);
         CHECK(contrast_stats.pipeline_states == 10);
         CHECK(contrast_stats.sampler_states == 1);
+
+        // A fourth transaction exercises the native indexed wire expansion:
+        // static and skinned visible lines, a hidden line through the reverse
+        // depth pass, and an alpha-tested batch that must leave the prior
+        // green line untouched. No jump/tile/contour work is encoded for this
+        // wire-only frame.
+        set_palette(0x1234, true, {255, 0, 0, 255});
+        set_palette(0x00aa, true, {0, 255, 0, 255});
+        set_palette(0x00dd, true, {255, 0, 255, 255});
+        scene.batch_count = batches.size();
+        REQUIRE(renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(renderer->setFrameDepth(
+            depth->depthStencilTexture(), &error));
+        REQUIRE(renderer->drawSelectionIDs(scene, &error));
+        contour.contour_enabled = false;
+        contour.contrast_shift = false;
+        contour.wire_batches = batches.data();
+        contour.wire_batch_count = batches.size();
+        contour.wire_width = 2;
+        contour.wire_depth_slope = 2.f;
+        contour.wire_depth_units = 4.f;
+        contour.wire_hud = false;
+        ALMetalSelectionContourScene invalid_wire = contour;
+        invalid_wire.wire_width = 0;
+        CHECK_FALSE(renderer->drawSelectionContour(invalid_wire, &error));
+        CHECK(error == "Metal selection contour inputs are invalid");
+        error.clear();
+        REQUIRE(renderer->drawSelectionContour(contour, &error));
+        REQUIRE(renderer->endFrame(&error));
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+
+        std::array<std::uint8_t, width * height * 4> wire_output{};
+        REQUIRE(renderer->outputTexture()->readback(
+            *device, 0, 0, {}, wire_output.data(), width * 4, &error));
+        INFO(error);
+        std::size_t red_wire_pixels = 0;
+        std::size_t green_wire_pixels = 0;
+        std::size_t hidden_blue_wire_pixels = 0;
+        std::size_t magenta_wire_pixels = 0;
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const std::size_t pixel =
+                    (static_cast<std::size_t>(y) * width + x) * 4u;
+                CHECK(wire_output[pixel + 3] == 255);
+                if (x < 16 && wire_output[pixel + 2] > 200 &&
+                    wire_output[pixel + 2] > wire_output[pixel + 1] + 80 &&
+                    wire_output[pixel + 2] > wire_output[pixel + 0] + 80)
+                {
+                    ++red_wire_pixels;
+                }
+                if (x >= 16 && x < 32 && wire_output[pixel + 1] > 200 &&
+                    wire_output[pixel + 1] > wire_output[pixel + 2] + 80 &&
+                    wire_output[pixel + 1] > wire_output[pixel + 0] + 80)
+                {
+                    ++green_wire_pixels;
+                }
+                if (x >= 32 && wire_output[pixel + 0] > 150 &&
+                    wire_output[pixel + 0] > wire_output[pixel + 1] + 40 &&
+                    wire_output[pixel + 0] > wire_output[pixel + 2] + 40)
+                {
+                    ++hidden_blue_wire_pixels;
+                }
+                if (wire_output[pixel + 0] > 180 &&
+                    wire_output[pixel + 2] > 180 &&
+                    wire_output[pixel + 1] < 100)
+                {
+                    ++magenta_wire_pixels;
+                }
+            }
+        }
+        CHECK(red_wire_pixels > 0);
+        CHECK(green_wire_pixels > 0);
+        CHECK(hidden_blue_wire_pixels > 0);
+        CHECK(magenta_wire_pixels == 0);
+        CHECK(wire_output[0] == 128);
+        CHECK(wire_output[1] == 128);
+        CHECK(wire_output[2] == 128);
+
+        const ALMetalUIRendererStats wire_stats = renderer->stats();
+        CHECK(wire_stats.frames == 4);
+        CHECK(wire_stats.batches == 29);
+        CHECK(wire_stats.vertices == 102);
+        CHECK(wire_stats.pipeline_states == 14);
+        CHECK(wire_stats.sampler_states == 1);
+
+        // Finally force the skinned U32 path through a triangle whose top
+        // corner is behind the near plane. Its clipped polygon is a quad, but
+        // the centre of the new near-plane edge must stay background: only
+        // the source triangle's three edges are lines.
+        const float clipped_z = -0.5f;
+        REQUIRE(vertices->write(
+            position_offset + 5u * sizeof(positions[0]) +
+                2u * sizeof(float),
+            &clipped_z, sizeof(clipped_z), &error));
+        const std::array<std::uint32_t, 3> u32_indices = {3u, 4u, 5u};
+        ALMetalBufferDescriptor u32_index_descriptor;
+        u32_index_descriptor.length = sizeof(u32_indices);
+        u32_index_descriptor.storage = ALMetalStorageMode::shared;
+        u32_index_descriptor.label =
+            "Alchemy clipped selection wire U32 indices";
+        auto u32_index_buffer = ALMetalBuffer::create(
+            *device, u32_index_descriptor, &error);
+        REQUIRE(u32_index_buffer);
+        REQUIRE(u32_index_buffer->write(
+            0, u32_indices.data(), sizeof(u32_indices), &error));
+        ALMetalSelectionIDBatch clipped_batch = batches[1];
+        clipped_batch.indices = u32_index_buffer.get();
+        clipped_batch.index_offset = 0;
+        clipped_batch.index_type = ALMetalIndexType::uint32;
+        scene.batches = &clipped_batch;
+        scene.batch_count = 1;
+        REQUIRE(renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(renderer->setFrameDepth(
+            depth->depthStencilTexture(), &error));
+        REQUIRE(renderer->drawSelectionIDs(scene, &error));
+        contour.wire_batches = &clipped_batch;
+        contour.wire_batch_count = 1;
+        REQUIRE(renderer->drawSelectionContour(contour, &error));
+        REQUIRE(renderer->endFrame(&error));
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+
+        std::array<std::uint8_t, width * height * 4> clipped_output{};
+        REQUIRE(renderer->outputTexture()->readback(
+            *device, 0, 0, {}, clipped_output.data(), width * 4, &error));
+        INFO(error);
+        std::size_t clipped_green_pixels = 0;
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            const std::size_t offset = pixel * 4u;
+            if (clipped_output[offset + 1] > 200 &&
+                clipped_output[offset + 1] > clipped_output[offset + 0] + 80 &&
+                clipped_output[offset + 1] > clipped_output[offset + 2] + 80)
+            {
+                ++clipped_green_pixels;
+            }
+        }
+        CHECK(clipped_green_pixels > 0);
+        const std::size_t false_cap_pixel = (6u * width + 24u) * 4u;
+        CHECK(clipped_output[false_cap_pixel + 0] == 128);
+        CHECK(clipped_output[false_cap_pixel + 1] == 128);
+        CHECK(clipped_output[false_cap_pixel + 2] == 128);
+        CHECK(clipped_output[false_cap_pixel + 3] == 255);
+
+        const ALMetalUIRendererStats clipped_stats = renderer->stats();
+        CHECK(clipped_stats.frames == 5);
+        CHECK(clipped_stats.batches == 31);
+        CHECK(clipped_stats.vertices == 111);
+        CHECK(clipped_stats.pipeline_states == 14);
+        CHECK(clipped_stats.sampler_states == 1);
+
+        // HUD wireframes cannot read the window depth. Prove that a farther
+        // copy of the same projected triangle selects its hidden palette row
+        // against the private nearest-selected depth instead.
+        set_palette(0x1234, false, {255, 255, 0, 255});
+        ALMetalSelectionIDBatch hud_near = batches[0];
+        ALMetalSelectionIDBatch hud_far = batches[0];
+        hud_far.modelview_projection[0] *= 2.5f;
+        hud_far.modelview_projection[5] *= 2.5f;
+        hud_far.modelview_projection[11] *= 2.5f;
+        scene.batches = &hud_near;
+        scene.batch_count = 1;
+        scene.use_scene_depth = false;
+        REQUIRE(renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(renderer->setFrameDepth(
+            depth->depthStencilTexture(), &error));
+        REQUIRE(renderer->drawSelectionIDs(scene, &error));
+        contour.wire_batches = &hud_far;
+        contour.wire_batch_count = 1;
+        contour.wire_hud = true;
+        REQUIRE(renderer->drawSelectionContour(contour, &error));
+        REQUIRE(renderer->endFrame(&error));
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+
+        std::array<std::uint8_t, width * height * 4> hud_wire_output{};
+        REQUIRE(renderer->outputTexture()->readback(
+            *device, 0, 0, {}, hud_wire_output.data(), width * 4, &error));
+        INFO(error);
+        std::size_t hidden_yellow_pixels = 0;
+        for (std::size_t pixel = 0; pixel < width * height; ++pixel)
+        {
+            const std::size_t offset = pixel * 4u;
+            if (hud_wire_output[offset + 0] < 40 &&
+                hud_wire_output[offset + 1] > 200 &&
+                hud_wire_output[offset + 2] > 200)
+            {
+                ++hidden_yellow_pixels;
+            }
+        }
+        CHECK(hidden_yellow_pixels > 0);
+
+        const ALMetalUIRendererStats hud_wire_stats = renderer->stats();
+        CHECK(hud_wire_stats.frames == 6);
+        CHECK(hud_wire_stats.batches == 33);
+        CHECK(hud_wire_stats.vertices == 120);
+        CHECK(hud_wire_stats.pipeline_states == 14);
+        CHECK(hud_wire_stats.sampler_states == 1);
     }
 }
 
