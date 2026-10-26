@@ -882,6 +882,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         smaa_edge_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> smaa_weight_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> smaa_neighborhood_pipeline;
     std::unique_ptr<ALMetalTexture> smaa_area_texture;
     std::unique_ptr<ALMetalTexture> smaa_search_texture;
     std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
@@ -1241,6 +1242,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_smaa_edge_predicated_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_smaa_weight_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_smaa_neighborhood_fragment") ||
         !impl->library->hasFunction("almetal_world_exposure_meter") ||
         !impl->library->hasFunction("almetal_world_exposure_initial") ||
         !impl->library->hasFunction("almetal_world_exposure_history") ||
@@ -1584,6 +1587,23 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->smaa_weight_pipeline = ALMetalRenderPipeline::create(
         device, smaa_weight_descriptor, error);
     if (!impl->smaa_weight_pipeline)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderPipelineDescriptor smaa_neighborhood_descriptor;
+    smaa_neighborhood_descriptor.library = impl->library.get();
+    smaa_neighborhood_descriptor.vertex_function =
+        "almetal_resample_vertex";
+    smaa_neighborhood_descriptor.fragment_function =
+        "almetal_world_smaa_neighborhood_fragment";
+    smaa_neighborhood_descriptor.colors[0].format =
+        ALMetalPixelFormat::rgb10a2_unorm;
+    smaa_neighborhood_descriptor.label =
+        "Alchemy world SMAA neighborhood pipeline";
+    impl->smaa_neighborhood_pipeline = ALMetalRenderPipeline::create(
+        device, smaa_neighborhood_descriptor, error);
+    if (!impl->smaa_neighborhood_pipeline)
     {
         return nullptr;
     }
@@ -6657,6 +6677,100 @@ ALMetalWorldGBufferRenderer::renderSMAABlendWeights(
             0, mImpl->linear_clamp_sampler.get(), error) &&
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
+        encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    if (!encoded || !encoder->end(error) || !command->commit(error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderSMAANeighborhood(
+    const ALMetalWorldSMAANeighborhoodScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.source || !scene.weights)
+    {
+        setError(error, "Metal world SMAA neighborhood scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& source =
+        scene.source->descriptor();
+    const ALMetalRenderTargetDescriptor& weights =
+        scene.weights->descriptor();
+    if (source.width == 0 || source.height == 0 ||
+        source.sample_count != 1 || source.color_attachment_count != 1 ||
+        source.colors[0].format != ALMetalPixelFormat::rgb10a2_unorm ||
+        !sampleableTexture(scene.source->colorTexture(0)))
+    {
+        setError(error, "Metal world SMAA neighborhood source is incompatible");
+        return nullptr;
+    }
+    if (weights.width != source.width || weights.height != source.height ||
+        weights.sample_count != 1 || weights.color_attachment_count != 1 ||
+        weights.colors[0].format != ALMetalPixelFormat::rgba8_unorm ||
+        !sampleableTexture(scene.weights->colorTexture(0)))
+    {
+        setError(error, "Metal world SMAA weight target is incompatible");
+        return nullptr;
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = source.width;
+    output_descriptor.height = source.height;
+    output_descriptor.colors[0].format =
+        ALMetalPixelFormat::rgb10a2_unorm;
+    output_descriptor.colors[0].label =
+        "Alchemy world SMAA RGB10_A2 neighborhood output";
+    output_descriptor.label =
+        "Alchemy native world SMAA neighborhood target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    auto command = mImpl->device->makeCommandBuffer(
+        "Alchemy native world SMAA neighborhood", error);
+    if (!command)
+    {
+        return nullptr;
+    }
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::dont_care;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world SMAA neighborhood encoder", error)
+        : nullptr;
+    if (!encoder)
+    {
+        return nullptr;
+    }
+
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(source.width),
+        static_cast<double>(source.height), 0.0, 1.0,
+    };
+    const ALMetalScissorRect scissor{
+        0, 0, source.width, source.height,
+    };
+    const bool encoded =
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(*mImpl->smaa_neighborhood_pipeline, error) &&
+        encoder->setFragmentTexture(
+            0, scene.source->colorTexture(0), error) &&
+        encoder->setFragmentTexture(
+            1, scene.weights->colorTexture(0), error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->linear_clamp_sampler.get(), error) &&
+        encoder->setFragmentSampler(
+            1, mImpl->linear_mirror_sampler.get(), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     if (!encoded || !encoder->end(error) || !command->commit(error))
     {

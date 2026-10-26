@@ -12689,6 +12689,82 @@ fragment float4 almetal_world_smaa_weight_fragment(
     return weights;
 }
 
+static float3 almetal_world_smaa_srgb_to_linear(float3 encoded)
+{
+    const float3 low = encoded / 12.92;
+    const float3 high = pow(
+        (encoded + 0.055) / 1.055, float3(2.4));
+    return select(high, low, encoded <= 0.04045);
+}
+
+static float3 almetal_world_smaa_linear_to_srgb(float3 linear)
+{
+    const float3 low = linear * 12.92;
+    const float3 high =
+        1.055 * pow(linear, float3(0.41666)) - 0.055;
+    return select(high, low, linear < 0.0031308);
+}
+
+fragment float4 almetal_world_smaa_neighborhood_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    texture2d<float> weights [[texture(1)]],
+    sampler source_sampler [[sampler(0)]],
+    sampler weight_sampler [[sampler(1)]])
+{
+    const float2 metric = 1.0 / float2(
+        source.get_width(), source.get_height());
+    const float4 offset = fma(
+        float4(metric, metric),
+        float4(1.0, 0.0, 0.0, almetal_world_smaa_v_dir(1.0)),
+        float4(input.texcoord, input.texcoord));
+    float4 blend;
+    blend.x = almetal_world_smaa_sample(
+        weights, weight_sampler, offset.xy).a;
+    blend.y = almetal_world_smaa_sample(
+        weights, weight_sampler, offset.zw).g;
+    const float4 center = almetal_world_smaa_sample(
+        weights, weight_sampler, input.texcoord);
+    blend.w = center.x;
+    blend.z = center.z;
+
+    if (dot(blend, float4(1.0)) < 1e-5)
+    {
+        float4 color = almetal_world_smaa_sample(
+            source, source_sampler, input.texcoord);
+        color.rgb = almetal_world_smaa_linear_to_srgb(
+            almetal_world_smaa_srgb_to_linear(color.rgb));
+        return color;
+    }
+
+    const bool horizontal =
+        max(blend.x, blend.z) > max(blend.y, blend.w);
+    float4 blending_offset = float4(
+        0.0, almetal_world_smaa_v_dir(blend.y),
+        0.0, almetal_world_smaa_v_dir(blend.w));
+    float2 blending_weight = blend.yw;
+    if (horizontal)
+    {
+        blending_offset = float4(blend.x, 0.0, blend.z, 0.0);
+        blending_weight = blend.xz;
+    }
+    blending_weight /= dot(blending_weight, float2(1.0));
+    const float4 blending_coordinate = fma(
+        blending_offset, float4(metric, -metric),
+        float4(input.texcoord, input.texcoord));
+
+    float4 color = almetal_world_smaa_sample(
+        source, source_sampler, blending_coordinate.xy);
+    color.rgb = almetal_world_smaa_srgb_to_linear(color.rgb);
+    color *= blending_weight.x;
+    float4 color2 = almetal_world_smaa_sample(
+        source, source_sampler, blending_coordinate.zw);
+    color2.rgb = almetal_world_smaa_srgb_to_linear(color2.rgb);
+    color += blending_weight.y * color2;
+    color.rgb = almetal_world_smaa_linear_to_srgb(color.rgb);
+    return color;
+}
+
 static float3 almetal_world_cas_load(
     texture2d<float> source, int2 point)
 {

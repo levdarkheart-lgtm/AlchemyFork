@@ -704,6 +704,14 @@ struct ALMetalWorldSMAAWeightScene
     std::uint32_t quality = 0;
 };
 
+// Third pass of the production SMAA 1x chain. It combines the display-encoded
+// source with the exact directional weight target in linear light.
+struct ALMetalWorldSMAANeighborhoodScene
+{
+    const ALMetalRenderTarget* source = nullptr;
+    const ALMetalRenderTarget* weights = nullptr;
+};
+
 // The production HDR bloom owner. It reproduces the world
 // resource plan's five resolution scales and 3..7-level transient pyramid:
 // soft-knee/legacy-alpha extract, outlier-aware first downsample, ordinary
@@ -1170,6 +1178,12 @@ public:
     // offscreen intermediate and does not imply complete SMAA ownership.
     std::unique_ptr<ALMetalRenderTarget> renderSMAABlendWeights(
         const ALMetalWorldSMAAWeightScene& scene,
+        std::string* error = nullptr);
+
+    // Complete SMAA's third pass over already validated edge/weight results.
+    // Production callers still own the transaction-level fallback decision.
+    std::unique_ptr<ALMetalRenderTarget> renderSMAANeighborhood(
+        const ALMetalWorldSMAANeighborhoodScene& scene,
         std::string* error = nullptr);
 
     // Meter and adapt one HDR world frame entirely on the Metal queue. The

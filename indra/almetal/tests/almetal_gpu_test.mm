@@ -852,6 +852,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_smaa_edge_fragment",
             "almetal_world_smaa_edge_predicated_fragment",
             "almetal_world_smaa_weight_fragment",
+            "almetal_world_smaa_neighborhood_fragment",
         };
         for (const char* function : functions)
         {
@@ -12260,6 +12261,297 @@ TEST_CASE("almetal: world SMAA blending weights match lookup reference", "[almet
         error.clear();
         CHECK_FALSE(renderer->renderSMAABlendWeights(invalid, &error));
         CHECK(error == "Metal world SMAA edge target is incompatible");
+    }
+}
+
+TEST_CASE("almetal: world SMAA neighborhood blend matches linear-light reference", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 11;
+        constexpr std::uint32_t height = 9;
+        std::array<std::uint32_t, width * height> source_bytes{};
+        std::array<std::uint8_t, width * height * 4> weight_bytes{};
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const std::uint32_t red = (37u + x * 71u + y * 19u) & 1023u;
+                const std::uint32_t green = (91u + x * 23u + y * 83u) & 1023u;
+                const std::uint32_t blue = (13u + x * 47u + y * 41u) & 1023u;
+                const std::uint32_t alpha = (x + 2u * y) & 3u;
+                source_bytes[y * width + x] =
+                    red | (green << 10u) | (blue << 20u) | (alpha << 30u);
+                std::uint8_t* weight = weight_bytes.data() +
+                    (static_cast<std::size_t>(y) * width + x) * 4;
+                weight[0] = static_cast<std::uint8_t>(
+                    (17u + x * 31u + y * 11u) & 255u);
+                weight[1] = static_cast<std::uint8_t>(
+                    (29u + x * 7u + y * 37u) & 255u);
+                weight[2] = static_cast<std::uint8_t>(
+                    (43u + x * 19u + y * 13u) & 255u);
+                weight[3] = static_cast<std::uint8_t>(
+                    (61u + x * 5u + y * 23u) & 255u);
+            }
+        }
+        for (std::uint32_t y = 3; y <= 5; ++y)
+        {
+            for (std::uint32_t x = 4; x <= 6; ++x)
+            {
+                std::fill_n(weight_bytes.data() +
+                    (static_cast<std::size_t>(y) * width + x) * 4,
+                    4, static_cast<std::uint8_t>(0));
+            }
+        }
+
+        ALMetalRenderTargetDescriptor source_descriptor;
+        source_descriptor.width = width;
+        source_descriptor.height = height;
+        source_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgb10a2_unorm;
+        source_descriptor.label = "Alchemy SMAA neighborhood test source";
+        auto source = ALMetalRenderTarget::create(
+            *device, source_descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+        ALMetalRenderTargetDescriptor weight_descriptor;
+        weight_descriptor.width = width;
+        weight_descriptor.height = height;
+        weight_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        weight_descriptor.label = "Alchemy SMAA neighborhood test weights";
+        auto weights = ALMetalRenderTarget::create(
+            *device, weight_descriptor, &error);
+        INFO(error);
+        REQUIRE(weights);
+
+        auto upload = device->makeCommandBuffer(
+            "Alchemy SMAA neighborhood test upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        id<MTLBuffer> source_staging = [nativeDevice(*device)
+            newBufferWithBytes:source_bytes.data()
+                      length:sizeof(source_bytes)
+                     options:MTLResourceStorageModeShared];
+        id<MTLBuffer> weight_staging = [nativeDevice(*device)
+            newBufferWithBytes:weight_bytes.data()
+                      length:sizeof(weight_bytes)
+                     options:MTLResourceStorageModeShared];
+        REQUIRE(source_staging);
+        REQUIRE(weight_staging);
+        id<MTLBlitCommandEncoder> blit =
+            [nativeCommand(*upload) blitCommandEncoder];
+        REQUIRE(blit);
+        [blit copyFromBuffer:source_staging
+                sourceOffset:0
+           sourceBytesPerRow:width * sizeof(std::uint32_t)
+         sourceBytesPerImage:sizeof(source_bytes)
+                  sourceSize:MTLSizeMake(width, height, 1)
+                   toTexture:(__bridge id<MTLTexture>)
+                       source->colorTexture(0)->nativeHandle()
+            destinationSlice:0
+            destinationLevel:0
+           destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [blit copyFromBuffer:weight_staging
+                sourceOffset:0
+           sourceBytesPerRow:width * 4
+         sourceBytesPerImage:sizeof(weight_bytes)
+                  sourceSize:MTLSizeMake(width, height, 1)
+                   toTexture:(__bridge id<MTLTexture>)
+                       weights->colorTexture(0)->nativeHandle()
+            destinationSlice:0
+            destinationLevel:0
+           destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [blit endEncoding];
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldSMAANeighborhoodScene scene;
+        scene.source = source.get();
+        scene.weights = weights.get();
+        auto output = renderer->renderSMAANeighborhood(scene, &error);
+        INFO(error);
+        REQUIRE(output);
+        CHECK(output->descriptor().width == width);
+        CHECK(output->descriptor().height == height);
+        CHECK(output->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgb10a2_unorm);
+        std::array<std::uint32_t, width * height> actual{};
+        REQUIRE(output->colorTexture(0)->readback(
+            *device, 0, 0, {}, actual.data(),
+            width * sizeof(std::uint32_t), &error));
+        INFO(error);
+
+        const auto mirror_index = [](int index, int size)
+        {
+            if (index < 0)
+            {
+                return -index - 1;
+            }
+            if (index >= size)
+            {
+                return 2 * size - index - 1;
+            }
+            return index;
+        };
+        const auto weight = [&](int x, int y, std::uint32_t channel)
+        {
+            x = mirror_index(x, static_cast<int>(width));
+            y = mirror_index(y, static_cast<int>(height));
+            return weight_bytes[
+                (static_cast<std::size_t>(y) * width + x) * 4 + channel] /
+                255.f;
+        };
+        const auto unpack = [](std::uint32_t packed)
+        {
+            return std::array<float, 4>{{
+                static_cast<float>(packed & 1023u) / 1023.f,
+                static_cast<float>((packed >> 10u) & 1023u) / 1023.f,
+                static_cast<float>((packed >> 20u) & 1023u) / 1023.f,
+                static_cast<float>((packed >> 30u) & 3u) / 3.f,
+            }};
+        };
+        const auto sample_source = [&](float x, float y)
+        {
+            x = std::clamp(x, 0.f, static_cast<float>(width - 1));
+            y = std::clamp(y, 0.f, static_cast<float>(height - 1));
+            const int x0 = static_cast<int>(std::floor(x));
+            const int y0 = static_cast<int>(std::floor(y));
+            const int x1 = std::min(x0 + 1, static_cast<int>(width) - 1);
+            const int y1 = std::min(y0 + 1, static_cast<int>(height) - 1);
+            const float fraction_x = x - x0;
+            const float fraction_y = y - y0;
+            const auto top_left = unpack(source_bytes[y0 * width + x0]);
+            const auto top_right = unpack(source_bytes[y0 * width + x1]);
+            const auto bottom_left = unpack(source_bytes[y1 * width + x0]);
+            const auto bottom_right = unpack(source_bytes[y1 * width + x1]);
+            std::array<float, 4> result{};
+            for (std::size_t channel = 0; channel < result.size(); ++channel)
+            {
+                result[channel] = std::lerp(
+                    std::lerp(top_left[channel], top_right[channel], fraction_x),
+                    std::lerp(bottom_left[channel], bottom_right[channel], fraction_x),
+                    fraction_y);
+            }
+            return result;
+        };
+        const auto to_linear = [](float encoded)
+        {
+            return encoded <= 0.04045f
+                ? encoded / 12.92f
+                : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
+        };
+        const auto to_srgb = [](float linear)
+        {
+            return linear < 0.0031308f
+                ? linear * 12.92f
+                : 1.055f * std::pow(linear, 0.41666f) - 0.055f;
+        };
+
+        std::size_t horizontal_count = 0;
+        std::size_t vertical_count = 0;
+        std::size_t copy_count = 0;
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const float right = weight(x + 1, y, 3);
+                const float top = weight(x, static_cast<int>(y) - 1, 1);
+                const float bottom = weight(x, y, 0);
+                const float left = weight(x, y, 2);
+                const float total = right + top + left + bottom;
+                std::array<float, 4> expected{};
+                if (total < 1e-5f)
+                {
+                    expected = sample_source(x, y);
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                    {
+                        expected[channel] = to_srgb(
+                            to_linear(expected[channel]));
+                    }
+                    ++copy_count;
+                }
+                else
+                {
+                    const bool horizontal = std::max(right, left) >
+                        std::max(top, bottom);
+                    const float first_weight = horizontal ? right : top;
+                    const float second_weight = horizontal ? left : bottom;
+                    const float normalization = first_weight + second_weight;
+                    const float first = first_weight / normalization;
+                    const float second = second_weight / normalization;
+                    const auto first_color = horizontal
+                        ? sample_source(x + right, y)
+                        : sample_source(x, y - top);
+                    const auto second_color = horizontal
+                        ? sample_source(x - left, y)
+                        : sample_source(x, y + bottom);
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                    {
+                        expected[channel] = to_srgb(
+                            first * to_linear(first_color[channel]) +
+                            second * to_linear(second_color[channel]));
+                    }
+                    expected[3] = first * first_color[3] +
+                        second * second_color[3];
+                    horizontal_count += horizontal ? 1 : 0;
+                    vertical_count += horizontal ? 0 : 1;
+                }
+
+                const std::uint32_t packed = actual[y * width + x];
+                const std::array<int, 4> actual_channels{{
+                    static_cast<int>(packed & 1023u),
+                    static_cast<int>((packed >> 10u) & 1023u),
+                    static_cast<int>((packed >> 20u) & 1023u),
+                    static_cast<int>((packed >> 30u) & 3u),
+                }};
+                const std::array<int, 4> expected_channels{{
+                    static_cast<int>(std::lround(std::clamp(
+                        expected[0], 0.f, 1.f) * 1023.f)),
+                    static_cast<int>(std::lround(std::clamp(
+                        expected[1], 0.f, 1.f) * 1023.f)),
+                    static_cast<int>(std::lround(std::clamp(
+                        expected[2], 0.f, 1.f) * 1023.f)),
+                    static_cast<int>(std::lround(std::clamp(
+                        expected[3], 0.f, 1.f) * 3.f)),
+                }};
+                CAPTURE(x, y);
+                for (std::size_t channel = 0; channel < 4; ++channel)
+                {
+                    CAPTURE(channel, expected_channels[channel],
+                            actual_channels[channel]);
+                    CHECK(std::abs(actual_channels[channel] -
+                                   expected_channels[channel]) <= 1);
+                }
+            }
+        }
+        CHECK(horizontal_count > 0);
+        CHECK(vertical_count > 0);
+        CHECK(copy_count > 0);
+
+        ALMetalWorldSMAANeighborhoodScene invalid;
+        error.clear();
+        CHECK_FALSE(renderer->renderSMAANeighborhood(invalid, &error));
+        CHECK(error == "Metal world SMAA neighborhood scene is incomplete");
+        invalid.source = source.get();
+        invalid.weights = source.get();
+        error.clear();
+        CHECK_FALSE(renderer->renderSMAANeighborhood(invalid, &error));
+        CHECK(error == "Metal world SMAA weight target is incompatible");
+        invalid.source = weights.get();
+        invalid.weights = weights.get();
+        error.clear();
+        CHECK_FALSE(renderer->renderSMAANeighborhood(invalid, &error));
+        CHECK(error == "Metal world SMAA neighborhood source is incompatible");
     }
 }
 
