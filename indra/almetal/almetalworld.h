@@ -647,10 +647,10 @@ struct ALMetalWorldOpaquePostDeferredScene
 // RGB10_A2 after exposure and tonemapping, while the vintage path writes
 // RGBA8 after the display transfer and output dither. Optional ordinary
 // bloom/halation/cross-filter are folded in before exposure. Analytical color
-// grading, the artist 3D LUT and baked channel curves can run in their exact
-// pre/post-tonemap positions; lens effects, legacy gamma/no-post, CAS/AA and
-// legacy glow remain distinct owners. Callers must not substitute this target
-// when any omitted family or bypass is live.
+// grading, the artist 3D LUT, baked channel curves and chromatic aberration can
+// run in their exact pre/post-tonemap positions; flare/dirt, legacy
+// gamma/no-post, CAS/AA and legacy glow remain distinct owners. Callers must
+// not substitute this target when any omitted family or bypass is live.
 struct ALMetalWorldColorGrade
 {
     bool enabled = false;
@@ -711,6 +711,14 @@ struct ALMetalWorldDisplayPostScene
     float halation_strength = 0.f;
     float halation_tint[3] = {1.f, 0.35f, 0.15f};
     float cross_filter_strength = 0.f;
+    // Shader-ready values shared with the GLSL owner: the authored strength
+    // has already been squared/scaled, falloff inverted and angle reduced.
+    float chromatic_aberration_amount = 0.f;
+    float chromatic_aberration_reciprocal_falloff = 1.f;
+    float chromatic_aberration_anisotropy = 0.f;
+    float chromatic_aberration_angle_sin_cos[2] = {0.f, 1.f};
+    float chromatic_aberration_offset_r[2] = {-1.f, 0.f};
+    float chromatic_aberration_offset_b[2] = {1.f, 0.f};
     ALMetalWorldColorGrade color_grade;
     bool cutout_premultiplied = false;
     // Non-HDR only: colorCorrectF applies output dither at this first 8-bit

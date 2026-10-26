@@ -363,6 +363,21 @@ public:
         // The cross-screen filter's arms summed, where they were drawn this frame.
         LLRenderTarget* mStreaks = nullptr;
     };
+    // One shader-ready chromatic-aberration state for both colorCorrect's
+    // GLSL uniforms and the native display-post owner. Keeping the nonlinear
+    // strength, reciprocal falloff and angle reduction here prevents the two
+    // backends from drifting on setting clamps or clean-plate suppression.
+    struct ChromaticAberrationConfig
+    {
+        bool enabled = false;
+        F32 amount = 0.f;
+        F32 reciprocal_falloff = 1.f;
+        std::array<F32, 2> angle_sin_cos{{0.f, 1.f}};
+        std::array<F32, 2> offset_r{{-1.f, 0.f}};
+        std::array<F32, 2> offset_b{{1.f, 0.f}};
+        F32 anisotropy = 0.f;
+    };
+    ChromaticAberrationConfig chromaticAberrationConfig() const;
     // One already-clamped grade state for both colorCorrect's GLSL uniforms
     // and the native display-post owner. Resource activation is resolved here
     // too, so either backend sees the same bypass and identity decisions.

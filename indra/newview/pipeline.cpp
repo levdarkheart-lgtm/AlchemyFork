@@ -370,8 +370,6 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         gSavedSettings, "RenderDisablePostProcessing", false);
     static LLCachedControl<bool> auto_adjust(
         gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
-    static LLCachedControl<F32> chromatic_strength(
-        gSavedSettings, "RenderChromaticAberrationStrength", 0.f);
     static LLCachedControl<F32> flare_strength(
         gSavedSettings, "RenderLensFlareStrength", 0.f);
     static LLCachedControl<F32> dirt_strength(
@@ -407,7 +405,6 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         !build_no_post &&
         !gSnapshotNoPost && sky &&
         sky->getReflectionProbeAmbiance(auto_adjust) != 0.f &&
-        chromatic_strength <= 0.f &&
         flare_strength <= 0.f && dirt_strength <= 0.f &&
         exact_antialiasing &&
         !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) &&
@@ -4270,6 +4267,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 native_cross_filter_strength <= 0.f ||
                 cross_filter_target;
             const ColorGradeConfig grade = colorGradeConfig(true);
+            const ChromaticAberrationConfig chromatic =
+                chromaticAberrationConfig();
             const bool exact_base = capture.hdr &&
                 canCaptureMetalScopeSample() && sky &&
                 exact_dynamic_exposure && exact_dof && exact_bloom &&
@@ -4306,6 +4305,20 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 display.tonemap_type = tonemap_type() >= 0
                     ? static_cast<U32>(tonemap_type())
                     : std::numeric_limits<U32>::max();
+                display.chromatic_aberration_amount = chromatic.amount;
+                display.chromatic_aberration_reciprocal_falloff =
+                    chromatic.reciprocal_falloff;
+                display.chromatic_aberration_anisotropy =
+                    chromatic.anisotropy;
+                std::copy(chromatic.angle_sin_cos.begin(),
+                          chromatic.angle_sin_cos.end(),
+                          display.chromatic_aberration_angle_sin_cos);
+                std::copy(chromatic.offset_r.begin(),
+                          chromatic.offset_r.end(),
+                          display.chromatic_aberration_offset_r);
+                std::copy(chromatic.offset_b.begin(),
+                          chromatic.offset_b.end(),
+                          display.chromatic_aberration_offset_b);
 
                 ALMetalWorldColorGrade& native_grade =
                     display.color_grade;
@@ -19077,6 +19090,46 @@ void LLPipeline::generateLensFlareState(LLRenderTarget* src)
     mLensFlareStateValid = true;
 }
 
+LLPipeline::ChromaticAberrationConfig
+LLPipeline::chromaticAberrationConfig() const
+{
+    static LLCachedControl<F32> strength_setting(
+        gSavedSettings, "RenderChromaticAberrationStrength", 0.f);
+    static LLCachedControl<F32> falloff_setting(
+        gSavedSettings, "RenderChromaticAberrationFalloff", 1.f);
+    static LLCachedControl<F32> angle_setting(
+        gSavedSettings, "RenderChromaticAberrationAngle", 0.f);
+    static LLCachedControl<F32> offset_r_x_setting(
+        gSavedSettings, "RenderChromaticAberrationOffsetRX", -1.f);
+    static LLCachedControl<F32> offset_r_y_setting(
+        gSavedSettings, "RenderChromaticAberrationOffsetRY", 0.f);
+    static LLCachedControl<F32> offset_b_x_setting(
+        gSavedSettings, "RenderChromaticAberrationOffsetBX", 1.f);
+    static LLCachedControl<F32> offset_b_y_setting(
+        gSavedSettings, "RenderChromaticAberrationOffsetBY", 0.f);
+    static LLCachedControl<F32> anisotropy_setting(
+        gSavedSettings, "RenderChromaticAberrationAnisotropy", 0.f);
+
+    ChromaticAberrationConfig config;
+    const F32 strength = suppressesLensAndPrintEffects()
+        ? 0.f : llclamp(strength_setting(), 0.f, 1.f);
+    config.amount = strength * strength * 0.02f;
+    config.enabled = config.amount > 0.f;
+    config.reciprocal_falloff =
+        1.f / llclamp(falloff_setting(), 0.5f, 4.f);
+    const F32 angle = llclamp(angle_setting(), 0.f, 360.f) *
+        0.01745329252f;
+    config.angle_sin_cos = {sinf(angle), cosf(angle)};
+    config.offset_r = {
+        llclamp(offset_r_x_setting(), -1.f, 1.f),
+        llclamp(offset_r_y_setting(), -1.f, 1.f)};
+    config.offset_b = {
+        llclamp(offset_b_x_setting(), -1.f, 1.f),
+        llclamp(offset_b_y_setting(), -1.f, 1.f)};
+    config.anisotropy = llclamp(anisotropy_setting(), -1.f, 1.f);
+    return config;
+}
+
 LLPipeline::ColorGradeConfig LLPipeline::colorGradeConfig(
     bool apply_color_grade) const
 {
@@ -19273,6 +19326,8 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
         bakeToneCurveLut();
     }
     const ColorGradeConfig grade = colorGradeConfig(apply_color_grade);
+    const ChromaticAberrationConfig chromatic =
+        chromaticAberrationConfig();
 
     dst->bindTarget();
     {
@@ -19327,11 +19382,8 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
         // taps fall between texels, where point sampling would step the fringe
         // a whole pixel at a time. Its centre tap, and the only tap without it,
         // land on texel centres either way, src being the size of dst.
-        static LLCachedControl<F32> chromatic_aberration_strength(gSavedSettings, "RenderChromaticAberrationStrength", 0.f);
-        const bool suppress_effects = suppressesLensAndPrintEffects();
-        const F32  ca_strength      = suppress_effects ? 0.f : llclamp(chromatic_aberration_strength(), 0.f, 1.f);
         S32 diffuse_channel = shader->bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src,
-                                                  ca_strength > 0.f ? ALSamplers::BilinearMirror : ALSamplers::PointMirror);
+                                                  chromatic.enabled ? ALSamplers::BilinearMirror : ALSamplers::PointMirror);
         S32 exposure_channel = shader->bindTexture(LLShaderMgr::EXPOSURE_MAP, &mExposureMap);
 
         // HDR bloom pyramid is folded into the tonemap variants of this shader
@@ -19411,28 +19463,27 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
         // The material preview renders through here too, inside the auxiliary
         // target pack. The flare state was measured for the world frame, so
         // only the main pack gets the flare; aberration is left as it was.
+        const bool suppress_effects = suppressesLensAndPrintEffects();
         const bool world_frame = (mRT == &mMainRT);
 
         // Chromatic aberration parameters
-        static LLCachedControl<F32> chromatic_aberration_falloff(gSavedSettings, "RenderChromaticAberrationFalloff", 1.f);
-        static LLCachedControl<F32> chromatic_aberration_angle(gSavedSettings, "RenderChromaticAberrationAngle", 0.f);
-        static LLCachedControl<F32> chromatic_aberration_offset_r_x(gSavedSettings, "RenderChromaticAberrationOffsetRX", -1.f);
-        static LLCachedControl<F32> chromatic_aberration_offset_r_y(gSavedSettings, "RenderChromaticAberrationOffsetRY", 0.f);
-        static LLCachedControl<F32> chromatic_aberration_offset_b_x(gSavedSettings, "RenderChromaticAberrationOffsetBX", 1.f);
-        static LLCachedControl<F32> chromatic_aberration_offset_b_y(gSavedSettings, "RenderChromaticAberrationOffsetBY", 0.f);
-        static LLCachedControl<F32> chromatic_aberration_anisotropy(gSavedSettings, "RenderChromaticAberrationAnisotropy", 0.f);
         // Precompute shader-friendly forms once on the CPU: square the
         // strength (and pre-apply the 0.02 peak-offset scale), take the
         // reciprocal of falloff, and turn the angle into a (sin, cos) pair.
-        // Saves one mul, one div, and one sincos per fragment.
-        F32 ca_falloff  = llclamp(chromatic_aberration_falloff(),  0.5f, 4.f);
-        F32 ca_angle_rad = llclamp(chromatic_aberration_angle(), 0.f, 360.f) * 0.01745329252f;
-        shader->uniform1f(LLShaderMgr::CA_AMOUNT, ca_strength * ca_strength * 0.02f);
-        shader->uniform1f(LLShaderMgr::CA_FALLOFF, 1.f / ca_falloff);
-        shader->uniform2f(LLShaderMgr::CA_ANGLE_SIN_COS, sinf(ca_angle_rad), cosf(ca_angle_rad));
-        shader->uniform2f(LLShaderMgr::CA_OFFSET_R, llclamp(chromatic_aberration_offset_r_x(), -1.f, 1.f), llclamp(chromatic_aberration_offset_r_y(), -1.f, 1.f));
-        shader->uniform2f(LLShaderMgr::CA_OFFSET_B, llclamp(chromatic_aberration_offset_b_x(), -1.f, 1.f), llclamp(chromatic_aberration_offset_b_y(), -1.f, 1.f));
-        shader->uniform1f(LLShaderMgr::CA_ANISOTROPY, llclamp(chromatic_aberration_anisotropy(), -1.f, 1.f));
+        // chromaticAberrationConfig performs that reduction once for this
+        // backend and the native display-post owner.
+        shader->uniform1f(LLShaderMgr::CA_AMOUNT, chromatic.amount);
+        shader->uniform1f(LLShaderMgr::CA_FALLOFF,
+                          chromatic.reciprocal_falloff);
+        shader->uniform2f(LLShaderMgr::CA_ANGLE_SIN_COS,
+                          chromatic.angle_sin_cos[0],
+                          chromatic.angle_sin_cos[1]);
+        shader->uniform2f(LLShaderMgr::CA_OFFSET_R,
+                          chromatic.offset_r[0], chromatic.offset_r[1]);
+        shader->uniform2f(LLShaderMgr::CA_OFFSET_B,
+                          chromatic.offset_b[0], chromatic.offset_b[1]);
+        shader->uniform1f(LLShaderMgr::CA_ANISOTROPY,
+                          chromatic.anisotropy);
 
         // Lens flare parameters
         {

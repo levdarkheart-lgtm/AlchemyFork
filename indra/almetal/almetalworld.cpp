@@ -130,6 +130,12 @@ namespace
         float halation_tint[4];
         // cutout-premultiplied, HDR/tonemap branch, animate dither, frame id
         std::uint32_t config[4];
+        // squared/scaled amount, reciprocal falloff, anisotropy, reserved
+        float chromatic[4];
+        // angle sine/cosine, red radial/tangential offset
+        float chromatic_angle_offset_r[4];
+        // blue radial/tangential offset
+        float chromatic_offset_b[4];
         float grade_white_balance[4];
         float grade_lift[4];
         float grade_inverse_gamma[4];
@@ -150,7 +156,7 @@ namespace
         // Curve half-texel scale/bias, amount, reserved.
         float grade_curve[4];
     };
-    static_assert(sizeof(WorldDisplayPostConstants) == 288);
+    static_assert(sizeof(WorldDisplayPostConstants) == 336);
 
     struct alignas(16) WorldDepthOfFieldConstants
     {
@@ -6397,10 +6403,35 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         !std::isfinite(scene.halation_strength) ||
         !std::isfinite(scene.cross_filter_strength) ||
         !finiteValues(scene.halation_tint, 3) ||
+        !std::isfinite(scene.chromatic_aberration_amount) ||
+        !std::isfinite(
+            scene.chromatic_aberration_reciprocal_falloff) ||
+        !std::isfinite(scene.chromatic_aberration_anisotropy) ||
+        !finiteValues(scene.chromatic_aberration_angle_sin_cos, 2) ||
+        !finiteValues(scene.chromatic_aberration_offset_r, 2) ||
+        !finiteValues(scene.chromatic_aberration_offset_b, 2) ||
         scene.dither_amount < 0.f || scene.dither_amount > 1.f ||
         scene.bloom_strength < 0.f ||
         scene.halation_strength < 0.f ||
         scene.cross_filter_strength < 0.f ||
+        scene.chromatic_aberration_amount < 0.f ||
+        scene.chromatic_aberration_amount > 0.02f ||
+        scene.chromatic_aberration_reciprocal_falloff < 0.25f ||
+        scene.chromatic_aberration_reciprocal_falloff > 2.f ||
+        scene.chromatic_aberration_anisotropy < -1.f ||
+        scene.chromatic_aberration_anisotropy > 1.f ||
+        std::abs(scene.chromatic_aberration_angle_sin_cos[0]) > 1.f ||
+        std::abs(scene.chromatic_aberration_angle_sin_cos[1]) > 1.f ||
+        std::abs(
+            scene.chromatic_aberration_angle_sin_cos[0] *
+                    scene.chromatic_aberration_angle_sin_cos[0] +
+                scene.chromatic_aberration_angle_sin_cos[1] *
+                    scene.chromatic_aberration_angle_sin_cos[1] -
+                1.f) > 0.001f ||
+        std::abs(scene.chromatic_aberration_offset_r[0]) > 1.f ||
+        std::abs(scene.chromatic_aberration_offset_r[1]) > 1.f ||
+        std::abs(scene.chromatic_aberration_offset_b[0]) > 1.f ||
+        std::abs(scene.chromatic_aberration_offset_b[1]) > 1.f ||
         !validWorldColorGrade(scene.color_grade) ||
         (scene.bloom_texture == nullptr) !=
             (scene.bloom_strength == 0.f &&
@@ -6505,6 +6536,19 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     constants.config[1] = scene.hdr ? 1u : 0u;
     constants.config[2] = scene.dither_animated ? 1u : 0u;
     constants.config[3] = scene.frame_id;
+    constants.chromatic[0] = scene.chromatic_aberration_amount;
+    constants.chromatic[1] =
+        scene.chromatic_aberration_reciprocal_falloff;
+    constants.chromatic[2] = scene.chromatic_aberration_anisotropy;
+    std::memcpy(constants.chromatic_angle_offset_r,
+                scene.chromatic_aberration_angle_sin_cos,
+                sizeof(scene.chromatic_aberration_angle_sin_cos));
+    std::memcpy(constants.chromatic_angle_offset_r + 2,
+                scene.chromatic_aberration_offset_r,
+                sizeof(scene.chromatic_aberration_offset_r));
+    std::memcpy(constants.chromatic_offset_b,
+                scene.chromatic_aberration_offset_b,
+                sizeof(scene.chromatic_aberration_offset_b));
     const ALMetalWorldColorGrade& grade = scene.color_grade;
     std::memcpy(constants.grade_white_balance, grade.white_balance_gain,
                 sizeof(grade.white_balance_gain));
@@ -6599,7 +6643,9 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     }
     encoded = encoded &&
         encoder->setFragmentSampler(
-            0, mImpl->point_clamp_sampler.get(), error) &&
+            0, scene.chromatic_aberration_amount > 0.f
+                ? mImpl->linear_mirror_sampler.get()
+                : mImpl->point_clamp_sampler.get(), error) &&
         encoder->setFragmentTexture(
             4, grade.enabled && grade.color_lut_strength > 0.f
                 ? grade.color_lut_texture

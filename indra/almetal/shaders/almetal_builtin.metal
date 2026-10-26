@@ -12156,6 +12156,12 @@ struct ALMetalWorldDisplayPostConstants
     float4 halation_tint;
     // cutout-premultiplied, HDR/tonemap branch, animate dither, frame id
     uint4 config;
+    // squared/scaled amount, reciprocal falloff, anisotropy, reserved
+    float4 chromatic;
+    // angle sine/cosine, red radial/tangential offset
+    float4 chromatic_angle_offset_r;
+    // blue radial/tangential offset
+    float4 chromatic_offset_b;
     float4 grade_white_balance;
     float4 grade_lift;
     float4 grade_inverse_gamma;
@@ -12170,6 +12176,57 @@ struct ALMetalWorldDisplayPostConstants
     float4 grade_lut;
     float4 grade_curve;
 };
+
+static float4 almetal_chromatic_aberration(
+    texture2d<float> scene,
+    sampler scene_sampler,
+    float2 uv,
+    float amount,
+    float reciprocal_falloff,
+    float anisotropy,
+    float2 angle_sin_cos,
+    float2 red_offset_control,
+    float2 blue_offset_control)
+{
+    if (amount <= 0.0)
+    {
+        return scene.sample(scene_sampler, uv);
+    }
+
+    float2 direction = uv - 0.5;
+    direction *= float2(1.0 - max(anisotropy, 0.0),
+                        1.0 - max(-anisotropy, 0.0));
+
+    const float aspect = float(scene.get_width()) /
+                         max(float(scene.get_height()), 1.0);
+    const float2 scale = max(
+        float2(aspect, 1.0 / max(aspect, 1.0e-4)), float2(1.0));
+    const float normalized_distance = clamp(
+        length(direction * scale) / (0.5 * length(scale)), 0.0, 1.0);
+    const float strength = amount * pow(
+        normalized_distance, reciprocal_falloff);
+
+    const float sine = angle_sin_cos.x;
+    const float cosine = angle_sin_cos.y;
+    const float2 radial = float2(
+        cosine * direction.x - sine * direction.y,
+        sine * direction.x + cosine * direction.y);
+    const float2 tangential = float2(-radial.y, radial.x);
+    const float2 red_offset = radial * red_offset_control.x +
+        tangential * red_offset_control.y;
+    const float2 blue_offset = radial * blue_offset_control.x +
+        tangential * blue_offset_control.y;
+
+    float4 color;
+    color.r = scene.sample(
+        scene_sampler, uv + red_offset * strength).r;
+    const float4 center = scene.sample(scene_sampler, uv);
+    color.g = center.g;
+    color.a = center.a;
+    color.b = scene.sample(
+        scene_sampler, uv + blue_offset * strength).b;
+    return color;
+}
 
 struct ALMetalWorldCASConstants
 {
@@ -12413,7 +12470,8 @@ static float3 almetal_world_grade_display(
 
 static float4 almetal_world_display_post(
     ALMetalResampleVaryings input,
-    float4 color,
+    texture2d<float> source,
+    sampler source_sampler,
     float4 bloom_sample,
     float3 cross_filter_sample,
     texture2d_array<float> color_lut,
@@ -12422,6 +12480,12 @@ static float4 almetal_world_display_post(
     constant ALMetalWorldDisplayPostConstants& constants,
     float adapted_exposure)
 {
+    float4 color = almetal_chromatic_aberration(
+        source, source_sampler, input.texcoord,
+        constants.chromatic.x, constants.chromatic.y,
+        constants.chromatic.z, constants.chromatic_angle_offset_r.xy,
+        constants.chromatic_angle_offset_r.zw,
+        constants.chromatic_offset_b.xy);
     const float coverage = clamp(color.a, 0.0, 1.0);
     if (constants.config.x != 0)
     {
@@ -12501,8 +12565,8 @@ fragment float4 almetal_world_display_post_fragment(
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
-        input, source.sample(source_sampler, input.texcoord), float4(0.0),
-        float3(0.0), color_lut, tone_curve, grade_sampler,
+        input, source, source_sampler, float4(0.0), float3(0.0),
+        color_lut, tone_curve, grade_sampler,
         constants, constants.post.y);
 }
 
@@ -12517,8 +12581,8 @@ fragment float4 almetal_world_display_post_exposure_fragment(
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
-        input, source.sample(source_sampler, input.texcoord), float4(0.0),
-        float3(0.0), color_lut, tone_curve, grade_sampler,
+        input, source, source_sampler, float4(0.0), float3(0.0),
+        color_lut, tone_curve, grade_sampler,
         constants,
         exposure.read(uint2(0)).r);
 }
@@ -12537,7 +12601,7 @@ fragment float4 almetal_world_display_post_bloom_fragment(
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
-        input, source.sample(source_sampler, input.texcoord),
+        input, source, source_sampler,
         bloom.sample(bloom_sampler, input.texcoord),
         cross_filter.sample(cross_filter_sampler, input.texcoord).rgb,
         color_lut, tone_curve, grade_sampler,
@@ -12559,7 +12623,7 @@ fragment float4 almetal_world_display_post_bloom_exposure_fragment(
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
-        input, source.sample(source_sampler, input.texcoord),
+        input, source, source_sampler,
         bloom.sample(bloom_sampler, input.texcoord),
         cross_filter.sample(cross_filter_sampler, input.texcoord).rgb,
         color_lut, tone_curve, grade_sampler,
@@ -13808,48 +13872,12 @@ static float4 almetal_pbr_preview_chromatic_aberration(
     float2 uv,
     constant ALMetalPBRPreviewPostConstants& constants)
 {
-    const float amount = constants.chromatic.x;
-    if (amount <= 0.0)
-    {
-        return scene.sample(scene_sampler, uv);
-    }
-
-    float2 direction = uv - 0.5;
-    const float anisotropy = constants.chromatic.z;
-    direction *= float2(1.0 - max(anisotropy, 0.0),
-                        1.0 - max(-anisotropy, 0.0));
-
-    const float aspect = float(scene.get_width()) /
-                         max(float(scene.get_height()), 1.0);
-    const float2 scale = max(
-        float2(aspect, 1.0 / max(aspect, 1.0e-4)), float2(1.0));
-    const float normalized_distance = clamp(
-        length(direction * scale) / (0.5 * length(scale)), 0.0, 1.0);
-    const float strength = amount * pow(
-        normalized_distance, constants.chromatic.y);
-
-    const float sine = constants.chromatic_angle_offset_r.x;
-    const float cosine = constants.chromatic_angle_offset_r.y;
-    const float2 radial = float2(
-        cosine * direction.x - sine * direction.y,
-        sine * direction.x + cosine * direction.y);
-    const float2 tangential = float2(-radial.y, radial.x);
-    const float2 red_offset =
-        radial * constants.chromatic_angle_offset_r.z +
-        tangential * constants.chromatic_angle_offset_r.w;
-    const float2 blue_offset =
-        radial * constants.chromatic_offset_b.x +
-        tangential * constants.chromatic_offset_b.y;
-
-    float4 color;
-    color.r = scene.sample(
-        scene_sampler, uv + red_offset * strength).r;
-    const float4 center = scene.sample(scene_sampler, uv);
-    color.g = center.g;
-    color.a = center.a;
-    color.b = scene.sample(
-        scene_sampler, uv + blue_offset * strength).b;
-    return color;
+    return almetal_chromatic_aberration(
+        scene, scene_sampler, uv,
+        constants.chromatic.x, constants.chromatic.y,
+        constants.chromatic.z, constants.chromatic_angle_offset_r.xy,
+        constants.chromatic_angle_offset_r.zw,
+        constants.chromatic_offset_b.xy);
 }
 
 struct ALMetalPBRPreviewBloomExtractConstants

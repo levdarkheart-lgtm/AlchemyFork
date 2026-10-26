@@ -13663,6 +13663,159 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
         CHECK(identity_grade_packed == identity_grade_expected);
         scene.color_grade.enabled = false;
 
+        // Chromatic aberration is the first display-post operation: R/B use
+        // independently rotated radial/tangential bilinear taps while G/A
+        // remain at the exact center. Exercise nontrivial angle, anisotropy,
+        // falloff and both offset axes against an independent scalar oracle.
+        constexpr std::uint32_t chromatic_width = 32;
+        constexpr std::uint32_t chromatic_height = 24;
+        std::array<std::uint8_t,
+                   chromatic_width * chromatic_height * 4>
+            chromatic_source_pixels{};
+        for (std::uint32_t y = 0; y < chromatic_height; ++y)
+        {
+            for (std::uint32_t x = 0; x < chromatic_width; ++x)
+            {
+                const std::size_t texel =
+                    (y * chromatic_width + x) * 4;
+                chromatic_source_pixels[texel] =
+                    static_cast<std::uint8_t>(x * 6u + y * 2u);
+                chromatic_source_pixels[texel + 1] =
+                    static_cast<std::uint8_t>(40u + x * 2u + y * 3u);
+                chromatic_source_pixels[texel + 2] =
+                    static_cast<std::uint8_t>(20u + x * 3u + y * 5u);
+                chromatic_source_pixels[texel + 3] =
+                    static_cast<std::uint8_t>(80u + x + y * 2u);
+            }
+        }
+        auto chromatic_source = make_source(
+            ALMetalPixelFormat::rgba8_unorm,
+            chromatic_width, chromatic_height,
+            chromatic_source_pixels.data(), chromatic_width * 4,
+            "Alchemy chromatic-aberration test source");
+        ALMetalWorldDisplayPostScene chromatic_scene;
+        chromatic_scene.source = chromatic_source.get();
+        auto chromatic_disabled = renderer->renderDisplayPost(
+            chromatic_scene, &error);
+        INFO(error);
+        REQUIRE(chromatic_disabled);
+        chromatic_scene.chromatic_aberration_amount = 0.02f;
+        chromatic_scene.chromatic_aberration_reciprocal_falloff = 0.75f;
+        chromatic_scene.chromatic_aberration_anisotropy = 0.25f;
+        chromatic_scene.chromatic_aberration_angle_sin_cos[0] = 0.6f;
+        chromatic_scene.chromatic_aberration_angle_sin_cos[1] = 0.8f;
+        chromatic_scene.chromatic_aberration_offset_r[0] = -0.75f;
+        chromatic_scene.chromatic_aberration_offset_r[1] = 0.4f;
+        chromatic_scene.chromatic_aberration_offset_b[0] = 0.9f;
+        chromatic_scene.chromatic_aberration_offset_b[1] = -0.35f;
+        auto chromatic_output = renderer->renderDisplayPost(
+            chromatic_scene, &error);
+        INFO(error);
+        REQUIRE(chromatic_output);
+        std::array<std::uint8_t,
+                   chromatic_width * chromatic_height * 4>
+            chromatic_disabled_pixels{};
+        std::array<std::uint8_t,
+                   chromatic_width * chromatic_height * 4>
+            chromatic_output_pixels{};
+        REQUIRE(chromatic_disabled->colorTexture(0)->readback(
+            *device, 0, 0, {}, chromatic_disabled_pixels.data(),
+            chromatic_width * 4, &error));
+        REQUIRE(chromatic_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, chromatic_output_pixels.data(),
+            chromatic_width * 4, &error));
+        INFO(error);
+        CHECK(chromatic_output_pixels != chromatic_disabled_pixels);
+        for (std::size_t texel = 0;
+             texel < chromatic_width * chromatic_height; ++texel)
+        {
+            CHECK(chromatic_output_pixels[texel * 4 + 1] ==
+                  chromatic_disabled_pixels[texel * 4 + 1]);
+            CHECK(chromatic_output_pixels[texel * 4 + 3] ==
+                  chromatic_disabled_pixels[texel * 4 + 3]);
+        }
+
+        const auto bilinear_channel = [&](float u, float v,
+                                          std::size_t channel)
+        {
+            const float pixel_x = u * chromatic_width - 0.5f;
+            const float pixel_y = v * chromatic_height - 0.5f;
+            const int low_x = static_cast<int>(std::floor(pixel_x));
+            const int low_y = static_cast<int>(std::floor(pixel_y));
+            const int high_x = low_x + 1;
+            const int high_y = low_y + 1;
+            const float fraction_x = pixel_x - std::floor(pixel_x);
+            const float fraction_y = pixel_y - std::floor(pixel_y);
+            const auto value = [&](int x, int y)
+            {
+                x = std::clamp(
+                    x, 0, static_cast<int>(chromatic_width) - 1);
+                y = std::clamp(
+                    y, 0, static_cast<int>(chromatic_height) - 1);
+                return chromatic_source_pixels[
+                    (static_cast<std::size_t>(y) * chromatic_width +
+                     static_cast<std::size_t>(x)) * 4 + channel] / 255.f;
+            };
+            const float low = value(low_x, low_y) +
+                (value(high_x, low_y) - value(low_x, low_y)) * fraction_x;
+            const float high = value(low_x, high_y) +
+                (value(high_x, high_y) - value(low_x, high_y)) * fraction_x;
+            return low + (high - low) * fraction_y;
+        };
+        const std::array<std::array<std::uint32_t, 2>, 4>
+            oracle_pixels{{{{4, 5}}, {{27, 5}}, {{4, 18}}, {{27, 18}}}};
+        for (const auto& coordinate : oracle_pixels)
+        {
+            const std::uint32_t x = coordinate[0];
+            const std::uint32_t y = coordinate[1];
+            const float u = (static_cast<float>(x) + 0.5f) /
+                static_cast<float>(chromatic_width);
+            const float v = (static_cast<float>(y) + 0.5f) /
+                static_cast<float>(chromatic_height);
+            float direction_x = (u - 0.5f) * 0.75f;
+            float direction_y = v - 0.5f;
+            const float aspect = static_cast<float>(chromatic_width) /
+                static_cast<float>(chromatic_height);
+            const float scale_x = std::max(aspect, 1.f);
+            const float scale_y = std::max(1.f / aspect, 1.f);
+            const float normalized_distance = std::clamp(
+                std::hypot(direction_x * scale_x,
+                           direction_y * scale_y) /
+                    (0.5f * std::hypot(scale_x, scale_y)),
+                0.f, 1.f);
+            const float strength = 0.02f * std::pow(
+                normalized_distance, 0.75f);
+            const float radial_x =
+                0.8f * direction_x - 0.6f * direction_y;
+            const float radial_y =
+                0.6f * direction_x + 0.8f * direction_y;
+            const float tangential_x = -radial_y;
+            const float tangential_y = radial_x;
+            const float red_u = u +
+                (radial_x * -0.75f + tangential_x * 0.4f) * strength;
+            const float red_v = v +
+                (radial_y * -0.75f + tangential_y * 0.4f) * strength;
+            const float blue_u = u +
+                (radial_x * 0.9f + tangential_x * -0.35f) * strength;
+            const float blue_v = v +
+                (radial_y * 0.9f + tangential_y * -0.35f) * strength;
+            const std::size_t texel =
+                (static_cast<std::size_t>(y) * chromatic_width + x) * 4;
+            const int expected_red = static_cast<int>(std::lround(
+                std::clamp(srgb(bilinear_channel(red_u, red_v, 0)),
+                           0.f, 1.f) * 255.f));
+            const int expected_blue = static_cast<int>(std::lround(
+                std::clamp(srgb(bilinear_channel(blue_u, blue_v, 2)),
+                           0.f, 1.f) * 255.f));
+            CAPTURE(x, y, red_u, red_v, blue_u, blue_v);
+            CHECK(std::abs(static_cast<int>(
+                               chromatic_output_pixels[texel]) -
+                           expected_red) <= 1);
+            CHECK(std::abs(static_cast<int>(
+                               chromatic_output_pixels[texel + 2]) -
+                           expected_blue) <= 1);
+        }
+
         // The non-HDR GLSL variant has no exposure/tonemap permutation; it
         // clamps the linear RGBA8 source and performs only the display
         // transfer before its first eight-bit storage boundary.
@@ -13817,6 +13970,26 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
         CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
         CHECK(error == "Metal world display-post state is invalid");
         invalid.dither_amount = 0.f;
+        invalid.chromatic_aberration_amount = 0.021f;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
+        CHECK(error == "Metal world display-post state is invalid");
+        invalid.chromatic_aberration_amount = 0.f;
+        invalid.chromatic_aberration_reciprocal_falloff = 0.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
+        CHECK(error == "Metal world display-post state is invalid");
+        invalid.chromatic_aberration_reciprocal_falloff = 1.f;
+        invalid.chromatic_aberration_angle_sin_cos[0] = 2.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
+        CHECK(error == "Metal world display-post state is invalid");
+        invalid.chromatic_aberration_angle_sin_cos[0] = 0.f;
+        invalid.chromatic_aberration_angle_sin_cos[1] = 0.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(invalid, &error));
+        CHECK(error == "Metal world display-post state is invalid");
+        invalid.chromatic_aberration_angle_sin_cos[1] = 1.f;
         invalid.color_grade.enabled = true;
         invalid.color_grade.saturation = 3.f;
         error.clear();
