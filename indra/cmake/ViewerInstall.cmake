@@ -51,11 +51,11 @@ endif()
 string(REPLACE "." "_" al_package_version "${VIEWER_SHORT_VERSION}.${VIEWER_VERSION_REVISION}")
 set(AL_PACKAGE_NAME "Alchemy${al_package_suffix}_${al_package_version}_${ARCH}")
 
-# The Linux desktop's names, one set to a channel so channels install side by
-# side. The application ID names the desktop entry, its icon and its AppStream
-# data, and is the Wayland app ID and X11 class the viewer's window carries,
-# which is how the shell matches the window to the entry. The package name is
-# what the viewer installs as and under. The release channel's are
+# Application and Linux desktop names, one set to a channel so channels
+# install side by side. On macOS the application ID is also the bundle ID; on
+# Linux it names the desktop entry, icon and AppStream data and is the Wayland
+# app ID and X11 class the viewer's window carries. The package name is what
+# the viewer installs as and under. The release channel's are
 # org.alchemyviewer.viewer and alchemy-viewer, another channel's
 # org.alchemyviewer.viewer.<words> and alchemy-<words>, its variant's words.
 string(TOLOWER "${al_package_suffix}" al_linux_words)

@@ -2173,6 +2173,11 @@ if(AL_BUILD_VIEWER)
     set_property(SOURCE llappviewer.cpp APPEND PROPERTY COMPILE_DEFINITIONS LL_LIBVLC=1)
   endif()
 
+  # Resolve the channel's application/package identity before configuring
+  # platform bundle metadata. ViewerInstall also owns the install rules, but
+  # its channel-derived AL_APP_ID is needed by the macOS Info.plist here.
+  include(ViewerInstall)
+
   if(WINDOWS)
     target_link_libraries(${AL_VIEWER_BINARY_NAME} PRIVATE d3d11 dxgi)
 
@@ -2197,7 +2202,23 @@ if(AL_BUILD_VIEWER)
     set(MACOSX_EXECUTABLE_NAME "${AL_CHANNEL}")
     set(MACOSX_BUNDLE_INFO_STRING "${AL_CHANNEL}")
     set(MACOSX_BUNDLE_ICON_FILE "alchemy.icns")
-    set(MACOSX_BUNDLE_GUI_IDENTIFIER "org.alchemyviewer.viewer")
+    set(MACOSX_BUNDLE_GUI_IDENTIFIER "${AL_APP_ID}")
+    string(REPLACE "_" "-" MACOSX_BUNDLE_GUI_IDENTIFIER "${MACOSX_BUNDLE_GUI_IDENTIFIER}")
+    set(MACOSX_BUNDLE_SLURL_SCHEME "secondlife")
+    set(MACOSX_BUNDLE_GRID_URL_SCHEME "x-grid-location-info")
+    set(MACOSX_BUNDLE_DOCUMENT_TYPES_KEY "CFBundleDocumentTypes")
+    if(NOT AL_CHANNEL_TYPE STREQUAL "release")
+      # Registering an isolated development build must not take ownership of
+      # the release viewer's URL handler merely because LaunchServices saw
+      # the bundle. It does not register a document handler at all: besides
+      # avoiding a release-file association, that prevents AppKit's document
+      # controller from intercepting positional arguments to direct test
+      # launches. al_linux_words is the normalized channel suffix produced
+      # alongside AL_APP_ID (for example, metal-development).
+      set(MACOSX_BUNDLE_SLURL_SCHEME "secondlife-${al_linux_words}")
+      set(MACOSX_BUNDLE_GRID_URL_SCHEME "x-grid-location-info-${al_linux_words}")
+      set(MACOSX_BUNDLE_DOCUMENT_TYPES_KEY "AlchemyDisabledDocumentTypes")
+    endif()
     set(
       MACOSX_BUNDLE_LONG_VERSION_STRING
       "${AL_CHANNEL} ${VIEWER_SHORT_VERSION}.${VIEWER_VERSION_REVISION}"
@@ -2220,6 +2241,16 @@ if(AL_BUILD_VIEWER)
         INSTALL_RPATH "@executable_path/../Frameworks"
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info-AlchemySDL.plist"
         XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${MACOSX_BUNDLE_GUI_IDENTIFIER}"
+    )
+    # CMake configures Info.plist directly in the staged bundle. Ninja does
+    # not otherwise consider that configured file part of the executable's
+    # link edge, so a metadata-only reconfigure can invalidate the existing
+    # signature without re-running the post-build staging/signing step.
+    set_property(
+      TARGET ${AL_VIEWER_BINARY_NAME}
+      APPEND PROPERTY LINK_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/Info-AlchemySDL.plist"
+        "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
     )
 
     target_link_libraries(${AL_VIEWER_BINARY_NAME} PRIVATE llphysicsextensionsos)
@@ -2244,9 +2275,6 @@ if(AL_BUILD_VIEWER)
       PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${VIEWER_STAGING_DIR}/bin/
     )
   endif()
-
-  # What ships, and where; the names the package goes by.
-  include(ViewerInstall)
 
   # The files generated for the package: the contributor and supporter lists
   # the About floater shows, the settings an installation is built with, and

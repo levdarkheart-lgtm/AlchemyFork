@@ -30,7 +30,7 @@
 	<string>For voice chat, you must grant permission for Alchemy to use the microphone.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Alchemy uses WebRTC for voice chat, which may require local network access while establishing the voice connection.</string>
-	<key>CFBundleDocumentTypes</key>
+	<key>${MACOSX_BUNDLE_DOCUMENT_TYPES_KEY}</key>
 	<array>
 		<dict>
 			<key>CFBundleTypeExtensions</key>
@@ -64,8 +64,8 @@
 			<string>Second Life URL</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>secondlife</string>
-				<string>x-grid-location-info</string>
+				<string>${MACOSX_BUNDLE_SLURL_SCHEME}</string>
+				<string>${MACOSX_BUNDLE_GRID_URL_SCHEME}</string>
 			</array>
 			<key>LSIsAppleDefaultForScheme</key>
 			<true/>
