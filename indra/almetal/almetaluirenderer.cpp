@@ -508,9 +508,20 @@ struct ALMetalUIRenderer::Impl
         descriptor.colors[0].alpha_operation = target_blend.alpha_operation;
         descriptor.colors[0].write_mask = target_blend.write_mask;
         descriptor.depth_stencil_format = depth_format;
-        descriptor.label = shader == ALMetalHUDShader::fullbright_alpha_mask
-            ? "Alchemy HUD fullbright alpha-mask pipeline"
-            : "Alchemy HUD fullbright pipeline";
+        switch (shader)
+        {
+            case ALMetalHUDShader::fullbright_alpha_mask:
+                descriptor.label =
+                    "Alchemy HUD fullbright alpha-mask pipeline";
+                break;
+            case ALMetalHUDShader::fullbright_alpha:
+                descriptor.label =
+                    "Alchemy HUD fullbright alpha pipeline";
+                break;
+            case ALMetalHUDShader::fullbright:
+                descriptor.label = "Alchemy HUD fullbright pipeline";
+                break;
+        }
 
         auto state = ALMetalRenderPipeline::create(*device, descriptor, error);
         if (!state)
@@ -1185,7 +1196,8 @@ bool ALMetalUIRenderer::drawHUDIndexed(
     constants.config[1] = batch.texture_count;
     constants.config[2] = mImpl->surface ? 0u : 1u;
     constants.config[3] =
-        batch.shader == ALMetalHUDShader::fullbright_alpha_mask ? 1u : 0u;
+        batch.shader == ALMetalHUDShader::fullbright_alpha_mask ? 1u :
+        batch.shader == ALMetalHUDShader::fullbright_alpha ? 2u : 0u;
 
     ALMetalRenderEncoder& encoder = *mImpl->encoder;
     bool encoded =

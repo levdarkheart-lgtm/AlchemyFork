@@ -15508,7 +15508,8 @@ struct ALMetalHUDFullbrightConstants
     // x = alpha cutoff.
     float4 material;
     // x = reverse Z, y = texture count, z = offscreen Y flip,
-    // w = alpha-mask permutation.
+    // w = coverage permutation: 0 opaque, 1 texture-only mask,
+    // 2 blended alpha-pool final-alpha mask.
     uint4 config;
 };
 
@@ -15559,15 +15560,23 @@ fragment float4 almetal_hud_fullbright_fragment(
         ? diffuse_textures[min(input.texture_index, 31u)].sample(
               diffuse_sampler, input.texcoord)
         : float4(1.0, 0.0, 1.0, 1.0);
+    const float final_alpha = texture_color.a * input.color.a;
     // Outside the alpha pool, streamed alpha carries shininess. The opaque
     // fullbright-mask pool therefore tests texture coverage alone with the
-    // same half-quantum bias as the authoritative GLSL program.
-    if (constants.config.w != 0u &&
+    // same half-quantum bias as the authoritative GLSL program. In the alpha
+    // pool it is coverage, so match fullbrightF's unbiased product test.
+    if (constants.config.w == 1u &&
         texture_color.a < constants.material.x - (1.0 / 512.0))
     {
         discard_fragment();
     }
-    return max(texture_color * input.color, float4(0.0));
+    if (constants.config.w == 2u &&
+        final_alpha < constants.material.x)
+    {
+        discard_fragment();
+    }
+    return max(float4(texture_color.rgb * input.color.rgb, final_alpha),
+               float4(0.0));
 }
 
 fragment float4 almetal_ui_fragment(

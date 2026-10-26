@@ -20035,6 +20035,58 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(composed_pixels[center + 2] == 80u);
         CHECK(composed_pixels[center + 3] == 255u);
 
+        // The HUD alpha pool tests texture alpha times vertex coverage with
+        // no mask-pool bias, then applies the live separate RGB/alpha blend.
+        // This low streamed alpha is shininess in the opaque pool above but
+        // becomes coverage here.
+        hud_batch.shader = ALMetalHUDShader::fullbright_alpha;
+        hud_batch.textures[1] = hud_slot_one.get();
+        hud_batch.minimum_alpha = 0.02f;
+        hud_batch.blend.enabled = true;
+        hud_batch.blend.source_rgb = ALMetalBlendFactor::source_alpha;
+        hud_batch.blend.destination_rgb =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        hud_batch.blend.source_alpha = ALMetalBlendFactor::zero;
+        hud_batch.blend.destination_alpha =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 0]) - 25) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 1]) - 40) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 2]) - 79) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 3]) - 247) <= 1);
+
+        // Raising the unbiased cutoff above 200/255 * 10/255 discards.
+        hud_batch.minimum_alpha = 0.04f;
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(composed_pixels[center + 0] == 20u);
+        CHECK(composed_pixels[center + 1] == 40u);
+        CHECK(composed_pixels[center + 2] == 80u);
+        CHECK(composed_pixels[center + 3] == 255u);
+
         hud_batch.textures[1] = hud_slot_one.get();
         hud_batch.index_count = 4;
         error.clear();

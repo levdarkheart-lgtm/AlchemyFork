@@ -407,6 +407,15 @@ public:
     // impostor/rigid passes -- opt out of that encode locally and keep undecoded samples,
     // letting the lighting pass's decoded read close the loop instead.
     static void bindIndexedTextures(const LLDrawInfo& params, const LLGLSLShader* shader);
+#if LL_DARWIN
+    // Mirror one exact static HUD attachment draw into the native world/UI
+    // transaction. alpha_pool selects the blended program whose coverage is
+    // texture alpha times streamed vertex alpha; alpha_mask selects the
+    // opaque texture-only mask program.
+    static void captureMetalHUDFullbrightBatch(
+        const LLDrawInfo& params, bool batch_textures,
+        bool alpha_mask, bool alpha_pool, F32 minimum_alpha);
+#endif
     void pushBatches(U32 type, bool texture = true, bool batch_textures = false);
     void pushUntexturedBatches(U32 type);
 

@@ -774,19 +774,21 @@ void LLRenderPass::bindIndexedTextures(const LLDrawInfo& params, const LLGLSLSha
 }
 
 #if LL_DARWIN
-namespace
-{
-void capture_metal_hud_fullbright_batch(
+void LLRenderPass::captureMetalHUDFullbrightBatch(
     const LLDrawInfo& params,
     bool batch_textures,
-    bool alpha_mask)
+    bool alpha_mask,
+    bool alpha_pool,
+    F32 minimum_alpha)
 {
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
     ALMetalHUDIndexedBatch batch;
-    batch.shader = alpha_mask
-        ? ALMetalHUDShader::fullbright_alpha_mask
-        : ALMetalHUDShader::fullbright;
-    batch.minimum_alpha = alpha_mask ? params.mAlphaMaskCutoff : 0.f;
+    batch.shader = alpha_pool
+        ? ALMetalHUDShader::fullbright_alpha
+        : alpha_mask ? ALMetalHUDShader::fullbright_alpha_mask
+                     : ALMetalHUDShader::fullbright;
+    batch.minimum_alpha = alpha_pool
+        ? minimum_alpha : alpha_mask ? params.mAlphaMaskCutoff : 0.f;
 
     const bool complete_geometry = buffer && params.mCount &&
         buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) &&
@@ -852,7 +854,6 @@ void capture_metal_hud_fullbright_batch(
     // The capture never suppresses or changes the authoritative GL draw.
     gGL.drawMetalHUDIndexedBatch(batch);
 }
-}
 #endif
 
 void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textures)
@@ -909,9 +910,10 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
         (bound == &gHUDFullbrightProgram ||
          bound == &gHUDFullbrightAlphaMaskProgram))
     {
-        capture_metal_hud_fullbright_batch(
+        captureMetalHUDFullbrightBatch(
             params, batch_textures,
-            bound == &gHUDFullbrightAlphaMaskProgram);
+            bound == &gHUDFullbrightAlphaMaskProgram,
+            false, 0.f);
     }
     gPipeline.captureMetalSpotShadowTexturedBatch(
         params, batch_textures);

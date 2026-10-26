@@ -112,13 +112,15 @@ enum class ALMetalHUDShader
 {
     fullbright,
     fullbright_alpha_mask,
+    fullbright_alpha,
 };
 
 // One indexed static HUD-attachment draw. Unlike immediate-mode UI, volume
 // geometry owns an index buffer and may select one of the viewer's packed
-// diffuse texture ladder slots through position.w. The exact HUD programs
-// operate in display-encoded space, so this intentionally does not reuse the
-// linear-light world fullbright path.
+// diffuse texture ladder slots through position.w. The exact HUD programs,
+// including the blended alpha-pool permutation, operate in display-encoded
+// space, so this intentionally does not reuse the linear-light world
+// fullbright path.
 struct ALMetalHUDIndexedBatch
 {
     static constexpr std::size_t max_textures = 32;

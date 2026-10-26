@@ -926,6 +926,16 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                         reset_minimum_alpha = true;
                     }
 
+#if LL_DARWIN
+                    if (LLPipeline::sRenderingHUDs &&
+                        params.mGLTFMaterial.isNull())
+                    {
+                        captureMetalHUDFullbrightBatch(
+                            params, true, false, true,
+                            reset_minimum_alpha ? 0.f : MINIMUM_ALPHA);
+                    }
+#endif
+
                     params.mVertexBuffer->setBuffer();
                     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
                     stop_glerror();
