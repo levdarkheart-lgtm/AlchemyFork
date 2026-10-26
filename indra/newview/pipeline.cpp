@@ -372,10 +372,6 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         gSavedSettings, "RenderDisablePostProcessing", false);
     static LLCachedControl<bool> auto_adjust(
         gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
-    static LLCachedControl<F32> bloom_strength(
-        gSavedSettings, "RenderBloomStrength", 0.325f);
-    static LLCachedControl<F32> cross_strength(
-        gSavedSettings, "RenderCrossFilterStrength", 0.f);
     static LLCachedControl<F32> chromatic_strength(
         gSavedSettings, "RenderChromaticAberrationStrength", 0.f);
     static LLCachedControl<F32> flare_strength(
@@ -398,7 +394,6 @@ bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
         !LLRender::sClassicMode && !color_grade && !build_no_post &&
         !gSnapshotNoPost && sky &&
         sky->getReflectionProbeAmbiance(auto_adjust) != 0.f &&
-        (bloom_strength <= 0.f || cross_strength <= 0.f) &&
         chromatic_strength <= 0.f &&
         flare_strength <= 0.f && dirt_strength <= 0.f &&
         mResourceInputs.mFSAAType == 0 &&
@@ -4049,10 +4044,28 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             static LLCachedControl<LLColor3> halation_tint(
                 gSavedSettings, "RenderBloomHalationTint",
                 LLColor3(1.f, 0.35f, 0.15f));
+            static LLCachedControl<F32> cross_filter_strength(
+                gSavedSettings, "RenderCrossFilterStrength", 0.f);
+            static LLCachedControl<S32> cross_filter_points(
+                gSavedSettings, "RenderCrossFilterPoints", 4);
+            static LLCachedControl<F32> cross_filter_angle(
+                gSavedSettings, "RenderCrossFilterAngle", 0.f);
+            static LLCachedControl<F32> cross_filter_length(
+                gSavedSettings, "RenderCrossFilterLength", 1.f);
+            static LLCachedControl<F32> cross_filter_falloff(
+                gSavedSettings, "RenderCrossFilterFalloff", 1.5f);
+            static LLCachedControl<F32> cross_filter_chromatic(
+                gSavedSettings, "RenderCrossFilterChromatic", 0.f);
             const F32 native_bloom_strength =
                 llmax(bloom_strength(), 0.f);
             const F32 native_halation_strength = bloom_halation
                 ? llmax(halation_strength(), 0.f) : 0.f;
+            const F32 native_cross_filter_strength =
+                native_bloom_strength > 0.f &&
+                gCrossFilterProgram.isComplete()
+                    ? llclamp(cross_filter_strength(), 0.f,
+                              CROSS_FILTER_MAX_STRENGTH)
+                    : 0.f;
             const bool wants_native_bloom = capture.hdr &&
                 (native_bloom_strength > 0.f ||
                  native_halation_strength > 0.f) &&
@@ -4060,6 +4073,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 canCaptureMetalScopeSample(false);
             capture.bloom_target.reset();
             capture.bloom_frame = std::numeric_limits<U32>::max();
+            std::unique_ptr<ALMetalRenderTarget> cross_filter_target;
             if (wants_native_bloom && bloomHDRReady())
             {
                 ALMetalWorldBloomScene bloom;
@@ -4081,9 +4095,20 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     RenderGlowWarmthWeights.mV[1];
                 bloom.halation_weights[2] =
                     RenderGlowWarmthWeights.mV[2];
+                bloom.cross_filter = native_cross_filter_strength > 0.f;
+                bloom.cross_filter_points = static_cast<U32>(llclamp(
+                    cross_filter_points(), 2, 12));
+                bloom.cross_filter_angle = llclamp(
+                    cross_filter_angle(), 0.f, 360.f);
+                bloom.cross_filter_length = llclamp(
+                    cross_filter_length(), 0.25f, 2.f);
+                bloom.cross_filter_falloff = llclamp(
+                    cross_filter_falloff(), 0.1f, 3.f);
+                bloom.cross_filter_chromatic = llclamp(
+                    cross_filter_chromatic(), 0.f, 1.f);
                 std::string bloom_error;
                 auto bloom_target = capture.renderer->renderBloom(
-                    bloom, &bloom_error);
+                    bloom, &bloom_error, &cross_filter_target);
                 if (bloom_target)
                 {
                     capture.bloom_target = std::move(bloom_target);
@@ -4115,9 +4140,13 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             const bool exact_bloom = !wants_native_bloom ||
                 (capture.bloom_target &&
                  capture.bloom_frame == gFrameCount);
+            const bool exact_cross_filter =
+                native_cross_filter_strength <= 0.f ||
+                cross_filter_target;
             const bool exact_base = capture.hdr &&
                 canCaptureMetalScopeSample() && sky &&
-                exact_dynamic_exposure && exact_bloom;
+                exact_dynamic_exposure && exact_bloom &&
+                exact_cross_filter;
             if (exact_base)
             {
                 ALMetalWorldDisplayPostScene display;
@@ -4134,6 +4163,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 display.halation_tint[0] = native_halation_tint.mV[0];
                 display.halation_tint[1] = native_halation_tint.mV[1];
                 display.halation_tint[2] = native_halation_tint.mV[2];
+                display.cross_filter_texture = cross_filter_target
+                    ? cross_filter_target->colorTexture(0) : nullptr;
+                display.cross_filter_strength = cross_filter_target
+                    ? native_cross_filter_strength : 0.f;
                 display.hdr = true;
                 static LLCachedControl<F32> exposure(
                     gSavedSettings, "RenderExposure", 1.f);

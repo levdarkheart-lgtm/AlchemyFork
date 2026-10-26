@@ -271,6 +271,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_bloom_extract_fragment",
             "almetal_world_bloom_downsample_fragment",
             "almetal_world_bloom_upsample_fragment",
+            "almetal_world_cross_filter_fragment",
             "almetal_world_cas_fragment",
         };
         for (const char* function : functions)
@@ -10590,6 +10591,62 @@ TEST_CASE("almetal: world bloom matches the production HDR pyramid", "[almetal]"
             &error));
         CHECK(((packed[0] >> 10u) & 0x3ffu) > (packed[0] & 0x3ffu));
         CHECK(((packed[0] >> 20u) & 0x3ffu) == 0u);
+
+        // A uniform 0.25 extract stays 0.25 through each normalized arm.
+        // Four additive arms therefore produce an exact 1.0 half-float sum.
+        ALMetalWorldBloomScene cross_scene = bloom_scene;
+        cross_scene.cross_filter = true;
+        std::unique_ptr<ALMetalRenderTarget> cross_filter;
+        auto cross_bloom = renderer->renderBloom(
+            cross_scene, &error, &cross_filter);
+        INFO(error);
+        REQUIRE(cross_bloom);
+        REQUIRE(cross_filter);
+        CHECK(cross_filter->descriptor().width == width / 2u);
+        CHECK(cross_filter->descriptor().height == height / 2u);
+        CHECK(cross_filter->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba16_float);
+        std::array<std::uint16_t, (width / 2) * (height / 2) * 4>
+            cross_pixels{};
+        REQUIRE(cross_filter->colorTexture(0)->readback(
+            *device, 0, 0, {}, cross_pixels.data(),
+            (width / 2) * 4 * sizeof(std::uint16_t), &error));
+        CHECK(cross_pixels[0] == 0x3c00u);
+        CHECK(cross_pixels[1] == 0u);
+        CHECK(cross_pixels[2] == 0u);
+        CHECK(cross_pixels[3] == 0u);
+
+        ALMetalWorldDisplayPostScene cross_display;
+        cross_display.source = source.get();
+        cross_display.bloom_texture = cross_bloom->colorTexture(0);
+        cross_display.cross_filter_texture =
+            cross_filter->colorTexture(0);
+        cross_display.hdr = true;
+        cross_display.bloom_strength = 0.25f;
+        cross_display.cross_filter_strength = 0.5f;
+        cross_display.tonemap_mix = 0.f;
+        auto cross_output = renderer->renderDisplayPost(
+            cross_display, &error);
+        INFO(error);
+        REQUIRE(cross_output);
+        REQUIRE(cross_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, packed.data(), width * sizeof(std::uint32_t),
+            &error));
+        const float cross_encoded =
+            1.055f * std::pow(0.5625f, 1.f / 2.4f) - 0.055f;
+        const int cross_expected = static_cast<int>(std::lround(
+            cross_encoded * 1023.f));
+        CHECK(std::abs(static_cast<int>(packed[0] & 0x3ffu) -
+                       cross_expected) <= 2);
+
+        error.clear();
+        CHECK_FALSE(renderer->renderBloom(cross_scene, &error));
+        CHECK(error == "Metal world bloom state is invalid");
+        cross_display.cross_filter_texture = bloom->colorTexture(0);
+        error.clear();
+        CHECK_FALSE(renderer->renderDisplayPost(cross_display, &error));
+        CHECK(error ==
+              "Metal world display-post cross-filter is incompatible");
 
         halation_display.bloom_texture = bloom->colorTexture(0);
         error.clear();

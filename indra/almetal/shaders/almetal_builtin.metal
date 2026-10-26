@@ -11645,7 +11645,7 @@ struct ALMetalWorldDisplayPostConstants
     // static exposure, adapted exposure, tonemap mix, tonemap type
     float4 post;
     float4 tonemap_params;
-    // non-HDR dither amount, bloom strength, halation strength, reserved
+    // non-HDR dither, bloom strength, halation strength, cross strength
     float4 display;
     float4 halation_tint;
     // cutout-premultiplied, HDR/tonemap branch, animate dither, frame id
@@ -11698,6 +11698,7 @@ static float4 almetal_world_display_post(
     ALMetalResampleVaryings input,
     float4 color,
     float4 bloom_sample,
+    float3 cross_filter_sample,
     constant ALMetalWorldDisplayPostConstants& constants,
     float adapted_exposure)
 {
@@ -11715,7 +11716,9 @@ static float4 almetal_world_display_post(
         // and before exposure/tonemapping.
         color.rgb += bloom_sample.rgb * constants.display.y +
             bloom_sample.a * constants.display.z *
-                constants.halation_tint.rgb;
+                constants.halation_tint.rgb +
+            cross_filter_sample * constants.display.w *
+                constants.display.y;
         color.rgb *= constants.post.x * adapted_exposure;
         const float3 clamped = clamp(
             color.rgb, float3(0.0), float3(1.0));
@@ -11757,6 +11760,7 @@ fragment float4 almetal_world_display_post_fragment(
 {
     return almetal_world_display_post(
         input, source.sample(source_sampler, input.texcoord), float4(0.0),
+        float3(0.0),
         constants, constants.post.y);
 }
 
@@ -11769,6 +11773,7 @@ fragment float4 almetal_world_display_post_exposure_fragment(
 {
     return almetal_world_display_post(
         input, source.sample(source_sampler, input.texcoord), float4(0.0),
+        float3(0.0),
         constants,
         exposure.read(uint2(0)).r);
 }
@@ -11777,13 +11782,16 @@ fragment float4 almetal_world_display_post_bloom_fragment(
     ALMetalResampleVaryings input [[stage_in]],
     texture2d<float> source [[texture(0)]],
     texture2d<float> bloom [[texture(2)]],
+    texture2d<float> cross_filter [[texture(3)]],
     sampler source_sampler [[sampler(0)]],
     sampler bloom_sampler [[sampler(1)]],
+    sampler cross_filter_sampler [[sampler(2)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
         input, source.sample(source_sampler, input.texcoord),
         bloom.sample(bloom_sampler, input.texcoord),
+        cross_filter.sample(cross_filter_sampler, input.texcoord).rgb,
         constants, constants.post.y);
 }
 
@@ -11792,13 +11800,16 @@ fragment float4 almetal_world_display_post_bloom_exposure_fragment(
     texture2d<float> source [[texture(0)]],
     texture2d<float> exposure [[texture(1)]],
     texture2d<float> bloom [[texture(2)]],
+    texture2d<float> cross_filter [[texture(3)]],
     sampler source_sampler [[sampler(0)]],
     sampler bloom_sampler [[sampler(1)]],
+    sampler cross_filter_sampler [[sampler(2)]],
     constant ALMetalWorldDisplayPostConstants& constants [[buffer(0)]])
 {
     return almetal_world_display_post(
         input, source.sample(source_sampler, input.texcoord),
         bloom.sample(bloom_sampler, input.texcoord),
+        cross_filter.sample(cross_filter_sampler, input.texcoord).rgb,
         constants, exposure.read(uint2(0)).r);
 }
 
@@ -12388,11 +12399,11 @@ fragment float4 almetal_world_bloom_upsample_fragment(
         input, source, source_sampler, constants);
 }
 
-fragment float4 almetal_pbr_preview_cross_filter_fragment(
-    ALMetalResampleVaryings input [[stage_in]],
-    texture2d<float> source [[texture(0)]],
-    sampler source_sampler [[sampler(0)]],
-    constant ALMetalPBRPreviewCrossFilterConstants& constants [[buffer(0)]])
+static float4 almetal_cross_filter(
+    ALMetalResampleVaryings input,
+    texture2d<float> source,
+    sampler source_sampler,
+    constant ALMetalPBRPreviewCrossFilterConstants& constants)
 {
     constexpr int taps = 4;
     constexpr float3 dispersion = float3(0.3, 0.0, -0.3);
@@ -12430,6 +12441,24 @@ fragment float4 almetal_pbr_preview_cross_filter_fragment(
         total_weight += weight;
     }
     return float4(accumulated / max(total_weight, 1.0e-4), 0.0);
+}
+
+fragment float4 almetal_pbr_preview_cross_filter_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]],
+    constant ALMetalPBRPreviewCrossFilterConstants& constants [[buffer(0)]])
+{
+    return almetal_cross_filter(input, source, source_sampler, constants);
+}
+
+fragment float4 almetal_world_cross_filter_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]],
+    constant ALMetalPBRPreviewCrossFilterConstants& constants [[buffer(0)]])
+{
+    return almetal_cross_filter(input, source, source_sampler, constants);
 }
 
 fragment float4 almetal_pbr_preview_post_fragment(

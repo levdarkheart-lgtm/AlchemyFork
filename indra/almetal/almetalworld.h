@@ -659,8 +659,10 @@ struct ALMetalWorldDisplayPostScene
     const ALMetalTexture* adapted_exposure_texture = nullptr;
     // Optional top level of the native HDR bloom pyramid. Ordinary bloom is
     // R11G11B10F; the halation permutation is RGBA16F with its intensity in
-    // alpha. Cross-filter streaks remain a separate owner.
+    // alpha.
     const ALMetalTexture* bloom_texture = nullptr;
+    // Optional half-resolution RGBA16F sum of the cross-filter arms.
+    const ALMetalTexture* cross_filter_texture = nullptr;
     bool hdr = false;
     float static_exposure = 1.f;
     float adapted_exposure = 1.f;
@@ -670,6 +672,7 @@ struct ALMetalWorldDisplayPostScene
     float bloom_strength = 0.f;
     float halation_strength = 0.f;
     float halation_tint[3] = {1.f, 0.35f, 0.15f};
+    float cross_filter_strength = 0.f;
     bool cutout_premultiplied = false;
     // Non-HDR only: colorCorrectF applies output dither at this first 8-bit
     // boundary. HDR defers its 10-bit dither until final presentation.
@@ -698,6 +701,12 @@ struct ALMetalWorldBloomScene
     float alpha_glow_boost = 2.f;
     bool halation = false;
     float halation_weights[3] = {1.f, 1.f, 1.f};
+    bool cross_filter = false;
+    std::uint32_t cross_filter_points = 4;
+    float cross_filter_angle = 0.f;
+    float cross_filter_length = 1.f;
+    float cross_filter_falloff = 1.5f;
+    float cross_filter_chromatic = 0.f;
 };
 
 // The production HDR exposure owner. The first compute pass reproduces the
@@ -1095,18 +1104,19 @@ public:
         std::string* error = nullptr);
 
     // Convert one completed linear native world target into the GL post
-    // chain's first display-space target without crossing CPU memory. This is
-    // the exact no-bloom/no-grade/no-lens base branch, not final presentation.
+    // chain's first display-space target without crossing CPU memory. Bloom,
+    // halation and cross-filter may be folded in; grading/lens remain later
+    // owners, and this is not final presentation.
     std::unique_ptr<ALMetalRenderTarget> renderDisplayPost(
         const ALMetalWorldDisplayPostScene& scene,
         std::string* error = nullptr);
 
-    // Generate the exact ordinary HDR bloom pyramid used by the main world.
-    // Optional halation and cross-filter permutations deliberately fail
-    // closed at the caller until their own native owners are present.
+    // Generate the exact HDR bloom/halation pyramid used by the main world
+    // and optionally return its half-resolution cross-filter arm sum.
     std::unique_ptr<ALMetalRenderTarget> renderBloom(
         const ALMetalWorldBloomScene& scene,
-        std::string* error = nullptr);
+        std::string* error = nullptr,
+        std::unique_ptr<ALMetalRenderTarget>* cross_filter = nullptr);
 
     // Apply the standalone, one-to-one FidelityFX CAS pass used whenever a
     // scope or another post owner prevents sharpening from being folded into

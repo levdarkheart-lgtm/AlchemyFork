@@ -147,6 +147,15 @@ namespace
     };
     static_assert(sizeof(WorldBloomFilterConstants) == 16);
 
+    struct alignas(16) WorldCrossFilterConstants
+    {
+        // target texel x/y, authored length, chromatic dispersion
+        float sampling[4]{};
+        // arm direction x/y, pass scale, exponential falloff base
+        float filtering[4]{};
+    };
+    static_assert(sizeof(WorldCrossFilterConstants) == 32);
+
     struct alignas(16) WorldCASConstants
     {
         // x = the negative CAS peak produced by CasSetup.
@@ -840,6 +849,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         bloom_downsample_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         bloom_upsample_pipelines;
+    std::unique_ptr<ALMetalRenderPipeline> cross_filter_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> cross_filter_add_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> cas_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> display_sample_pipeline;
     std::unique_ptr<ALMetalComputePipeline> exposure_meter_pipeline;
@@ -1189,6 +1200,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_bloom_downsample_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_bloom_upsample_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_cross_filter_fragment") ||
         !impl->library->hasFunction("almetal_world_cas_fragment") ||
         !impl->library->hasFunction("almetal_world_exposure_meter") ||
         !impl->library->hasFunction("almetal_world_exposure_initial") ||
@@ -1436,6 +1449,36 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         {
             return nullptr;
         }
+    }
+
+    const auto make_cross_filter_pipeline = [&](bool additive)
+    {
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = impl->library.get();
+        descriptor.vertex_function = "almetal_resample_vertex";
+        descriptor.fragment_function =
+            "almetal_world_cross_filter_fragment";
+        descriptor.colors[0].format = ALMetalPixelFormat::rgba16_float;
+        descriptor.colors[0].blending_enabled = additive;
+        if (additive)
+        {
+            descriptor.colors[0].source_rgb = ALMetalBlendFactor::one;
+            descriptor.colors[0].destination_rgb = ALMetalBlendFactor::one;
+            descriptor.colors[0].source_alpha = ALMetalBlendFactor::one;
+            descriptor.colors[0].destination_alpha =
+                ALMetalBlendFactor::one;
+        }
+        descriptor.label = additive
+            ? "Alchemy world additive cross-filter pipeline"
+            : "Alchemy world cross-filter pipeline";
+        return ALMetalRenderPipeline::create(device, descriptor, error);
+    };
+    impl->cross_filter_pipeline = make_cross_filter_pipeline(false);
+    impl->cross_filter_add_pipeline = make_cross_filter_pipeline(true);
+    if (!impl->cross_filter_pipeline ||
+        !impl->cross_filter_add_pipeline)
+    {
+        return nullptr;
     }
 
     ALMetalRenderPipelineDescriptor cas_descriptor;
@@ -5412,8 +5455,13 @@ ALMetalWorldGBufferRenderer::composeLighting(
 std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderBloom(
     const ALMetalWorldBloomScene& scene,
-    std::string* error)
+    std::string* error,
+    std::unique_ptr<ALMetalRenderTarget>* cross_filter)
 {
+    if (cross_filter)
+    {
+        cross_filter->reset();
+    }
     if (!mImpl || !mImpl->device || !scene.source)
     {
         setError(error, "Metal world bloom scene is incomplete");
@@ -5438,8 +5486,22 @@ ALMetalWorldGBufferRenderer::renderBloom(
         !std::isfinite(scene.scatter) ||
         !std::isfinite(scene.alpha_glow_boost) ||
         !finiteValues(scene.halation_weights, 3) ||
+        !std::isfinite(scene.cross_filter_angle) ||
+        !std::isfinite(scene.cross_filter_length) ||
+        !std::isfinite(scene.cross_filter_falloff) ||
+        !std::isfinite(scene.cross_filter_chromatic) ||
         scene.knee < 0.f || scene.firefly_clamp < 0.f ||
-        scene.scatter < 0.f || scene.alpha_glow_boost < 0.f)
+        scene.scatter < 0.f || scene.alpha_glow_boost < 0.f ||
+        (scene.cross_filter && !cross_filter) ||
+        scene.cross_filter_points < 2 || scene.cross_filter_points > 12 ||
+        scene.cross_filter_angle < 0.f ||
+        scene.cross_filter_angle > 360.f ||
+        scene.cross_filter_length < 0.25f ||
+        scene.cross_filter_length > 2.f ||
+        scene.cross_filter_falloff < 0.1f ||
+        scene.cross_filter_falloff > 3.f ||
+        scene.cross_filter_chromatic < 0.f ||
+        scene.cross_filter_chromatic > 1.f)
     {
         setError(error, "Metal world bloom state is invalid");
         return nullptr;
@@ -5571,6 +5633,82 @@ ALMetalWorldGBufferRenderer::renderBloom(
             "Alchemy world bloom downsample encoder");
     }
 
+    std::array<std::unique_ptr<ALMetalRenderTarget>, 3>
+        cross_targets;
+    if (encoded && scene.cross_filter)
+    {
+        ALMetalRenderTargetDescriptor descriptor;
+        descriptor.width = std::max(
+            1u, targets[0]->descriptor().width / 2u);
+        descriptor.height = std::max(
+            1u, targets[0]->descriptor().height / 2u);
+        descriptor.colors[0].format = ALMetalPixelFormat::rgba16_float;
+        descriptor.colors[0].shader_read = true;
+        descriptor.colors[0].label =
+            "Alchemy native world cross-filter color";
+        descriptor.label = "Alchemy native world cross-filter target";
+        for (auto& target : cross_targets)
+        {
+            target = ALMetalRenderTarget::create(
+                *mImpl->device, descriptor, error);
+            if (!target)
+            {
+                return nullptr;
+            }
+        }
+
+        const float texel_x = 1.f /
+            static_cast<float>(descriptor.width);
+        const float texel_y = 1.f /
+            static_cast<float>(descriptor.height);
+        constexpr float pi = 3.14159265358979323846f;
+        constexpr std::array<float, 3> pass_scales{{1.f, 4.f, 16.f}};
+        constexpr float maximum_step = 63.f;
+        const float angle = scene.cross_filter_angle * (pi / 180.f);
+        const float falloff = std::exp(
+            scene.cross_filter_falloff * 6.f / maximum_step);
+        for (std::uint32_t arm = 0;
+             encoded && arm < scene.cross_filter_points; ++arm)
+        {
+            const float theta = angle + 2.f * pi *
+                static_cast<float>(arm) /
+                static_cast<float>(scene.cross_filter_points);
+            const ALMetalTexture* sources[3] = {
+                targets[0]->colorTexture(0),
+                cross_targets[0]->colorTexture(0),
+                cross_targets[1]->colorTexture(0),
+            };
+            for (std::size_t pass_index = 0;
+                 encoded && pass_index < pass_scales.size(); ++pass_index)
+            {
+                if (!sources[pass_index])
+                {
+                    encoded = false;
+                    break;
+                }
+                WorldCrossFilterConstants constants;
+                constants.sampling[0] = texel_x;
+                constants.sampling[1] = texel_y;
+                constants.sampling[2] = scene.cross_filter_length;
+                constants.sampling[3] = scene.cross_filter_chromatic;
+                constants.filtering[0] = std::cos(theta);
+                constants.filtering[1] = std::sin(theta);
+                constants.filtering[2] = pass_scales[pass_index];
+                constants.filtering[3] = falloff;
+                const bool additive = pass_index == 2 && arm > 0;
+                encoded = encode_pass(
+                    *cross_targets[pass_index],
+                    additive ? *mImpl->cross_filter_add_pipeline
+                             : *mImpl->cross_filter_pipeline,
+                    *sources[pass_index], *mImpl->linear_clamp_sampler,
+                    &constants, sizeof(constants),
+                    additive ? ALMetalLoadAction::load
+                             : ALMetalLoadAction::clear,
+                    "Alchemy world cross-filter encoder");
+            }
+        }
+    }
+
     for (std::size_t mip = targets.size() - 1;
          encoded && mip > 0; --mip)
     {
@@ -5594,6 +5732,10 @@ ALMetalWorldGBufferRenderer::renderBloom(
     if (!encoded || !command->commit(error))
     {
         return nullptr;
+    }
+    if (scene.cross_filter)
+    {
+        *cross_filter = std::move(cross_targets[2]);
     }
     return std::move(targets[0]);
 }
@@ -5814,13 +5956,19 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         !std::isfinite(scene.dither_amount) ||
         !std::isfinite(scene.bloom_strength) ||
         !std::isfinite(scene.halation_strength) ||
+        !std::isfinite(scene.cross_filter_strength) ||
         !finiteValues(scene.halation_tint, 3) ||
         scene.dither_amount < 0.f || scene.dither_amount > 1.f ||
         scene.bloom_strength < 0.f ||
         scene.halation_strength < 0.f ||
+        scene.cross_filter_strength < 0.f ||
         (scene.bloom_texture == nullptr) !=
             (scene.bloom_strength == 0.f &&
              scene.halation_strength == 0.f) ||
+        (scene.cross_filter_texture == nullptr) !=
+            (scene.cross_filter_strength == 0.f) ||
+        (scene.cross_filter_strength > 0.f &&
+         (!scene.bloom_texture || scene.bloom_strength <= 0.f)) ||
         ((scene.tonemap_type == 2 || scene.tonemap_type == 3 ||
           scene.tonemap_type == 4) && scene.tonemap_params[0] <= 0.f) ||
         (scene.tonemap_type == 6 &&
@@ -5866,6 +6014,21 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         }
     }
 
+    if (scene.cross_filter_texture)
+    {
+        const ALMetalTextureDescriptor& cross_filter =
+            scene.cross_filter_texture->descriptor();
+        if (!scene.hdr || cross_filter.width == 0 ||
+            cross_filter.height == 0 ||
+            cross_filter.format != ALMetalPixelFormat::rgba16_float ||
+            !sampleableTexture(scene.cross_filter_texture))
+        {
+            setError(error,
+                     "Metal world display-post cross-filter is incompatible");
+            return nullptr;
+        }
+    }
+
     ALMetalRenderTargetDescriptor output_descriptor;
     output_descriptor.width = source.width;
     output_descriptor.height = source.height;
@@ -5895,6 +6058,7 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     constants.display[0] = scene.dither_amount;
     constants.display[1] = scene.bloom_strength;
     constants.display[2] = scene.halation_strength;
+    constants.display[3] = scene.cross_filter_strength;
     std::memcpy(constants.halation_tint, scene.halation_tint,
                 sizeof(scene.halation_tint));
     constants.config[0] = scene.cutout_premultiplied ? 1u : 0u;
@@ -5947,10 +6111,15 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     }
     if (encoded && scene.bloom_texture)
     {
+        const ALMetalTexture* cross_filter = scene.cross_filter_texture
+            ? scene.cross_filter_texture : scene.bloom_texture;
         encoded = encoder->setFragmentTexture(
             2, scene.bloom_texture, error) &&
+            encoder->setFragmentTexture(3, cross_filter, error) &&
             encoder->setFragmentSampler(
-                1, mImpl->linear_mirror_sampler.get(), error);
+                1, mImpl->linear_mirror_sampler.get(), error) &&
+            encoder->setFragmentSampler(
+                2, mImpl->linear_clamp_sampler.get(), error);
     }
     encoded = encoded &&
         encoder->setFragmentSampler(
