@@ -658,7 +658,6 @@ public:
         mStorageAllocated = true;
         mStorage = StorageDesc();
     }
-
     // Publish texname in place of mTexName, deleting the old one, along with what the
     // upload that built it staged (the pick mask), then end the upload. Main thread.
     void syncTexName(LLGLuint texname);

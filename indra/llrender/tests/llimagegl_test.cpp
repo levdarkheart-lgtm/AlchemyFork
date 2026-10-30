@@ -495,6 +495,64 @@ namespace
     }
 
 #if LL_DARWIN
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: readBackRaw uses its Metal mirror and collapses RGB storage", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        constexpr U16 W = 8;
+        constexpr U16 H = 8;
+        LLPointer<LLImageGL> img = new LLImageGL(/*usemipmaps=*/false);
+        LLPointer<LLImageRaw> gl_pixels = makeRaw(W, H, 3, 0x20);
+        REQUIRE(img->createGLTexture(0, gl_pixels.get()));
+        REQUIRE(img->getMetalTexture());
+
+        ALMetalTextureDescriptor descriptor = img->getMetalTexture()->descriptor();
+        descriptor.usage = descriptor.usage | ALMetalTextureUsage::render_target;
+        descriptor.label = "Alchemy LLImageGL Metal readback test";
+        auto metal_pixels = ALMetalTexture::create(*device, descriptor, &error);
+        INFO(error);
+        REQUIRE(metal_pixels);
+
+        std::array<U8, W * H * 4> rgba{};
+        for (std::size_t pixel = 0; pixel < W * H; ++pixel)
+        {
+            rgba[pixel * 4 + 0] = static_cast<U8>(pixel);
+            rgba[pixel * 4 + 1] = static_cast<U8>(pixel + 1);
+            rgba[pixel * 4 + 2] = static_cast<U8>(pixel + 2);
+            rgba[pixel * 4 + 3] = 0xff;
+        }
+        auto command = device->makeCommandBuffer("Alchemy LLImageGL Metal readback upload", &error);
+        INFO(error);
+        REQUIRE(command);
+        REQUIRE(metal_pixels->upload(*command, 0, 0, {}, rgba.data(), W * 4, &error));
+        INFO(error);
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+        REQUIRE(img->adoptMetalRenderTexture(std::move(metal_pixels)));
+
+        LLPointer<LLImageRaw> result = new LLImageRaw();
+        REQUIRE(img->readBackRaw(0, result.get(), /*compressed_ok=*/false));
+        REQUIRE(result->getWidth() == W);
+        REQUIRE(result->getHeight() == H);
+        REQUIRE(result->getComponents() == 3);
+        const U8* bytes = result->getData();
+        for (std::size_t pixel = 0; pixel < W * H; ++pixel)
+        {
+            CHECK(bytes[pixel * 3 + 0] == rgba[pixel * 4 + 0]);
+            CHECK(bytes[pixel * 3 + 1] == rgba[pixel * 4 + 1]);
+            CHECK(bytes[pixel * 3 + 2] == rgba[pixel * 4 + 2]);
+        }
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: adopts a render-produced Metal mirror and reuses its superset usage", "[LLImageGL][almetal]")
     {
         std::string error;

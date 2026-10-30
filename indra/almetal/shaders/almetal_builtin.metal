@@ -81,6 +81,65 @@ fragment float4 almetal_resample_fragment(
     return source.sample(source_sampler, input.texcoord);
 }
 
+struct ALMetalNormalMapGenerateConstants
+{
+    float2 texel_step;
+    float normal_scale;
+    uint darkness;
+};
+
+inline float almetal_normal_map_height(
+    texture2d<float> source,
+    sampler source_sampler,
+    float2 texcoord,
+    uint darkness)
+{
+    constexpr float3 luminance_weights = float3(0.2995, 0.5875, 0.1145);
+    const float value = dot(
+        source.sample(source_sampler, texcoord).rgb,
+        luminance_weights);
+    return darkness != 0u ? 1.0 - value : value;
+}
+
+fragment float4 almetal_normal_map_generate_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]],
+    constant ALMetalNormalMapGenerateConstants& constants [[buffer(0)]])
+{
+    const float center = almetal_normal_map_height(
+        source, source_sampler, input.texcoord, constants.darkness);
+    constexpr float slope_scale = 512.0;
+    const float3 right = float3(
+        constants.normal_scale, 0.0,
+        (almetal_normal_map_height(
+             source, source_sampler,
+             input.texcoord + float2(constants.texel_step.x, 0.0),
+             constants.darkness) - center) * slope_scale);
+    const float3 left = float3(
+        -constants.normal_scale, 0.0,
+        (almetal_normal_map_height(
+             source, source_sampler,
+             input.texcoord - float2(constants.texel_step.x, 0.0),
+             constants.darkness) - center) * slope_scale);
+    const float3 up = float3(
+        0.0, -constants.normal_scale,
+        (almetal_normal_map_height(
+             source, source_sampler,
+             input.texcoord - float2(0.0, constants.texel_step.y),
+             constants.darkness) - center) * slope_scale);
+    const float3 down = float3(
+        0.0, constants.normal_scale,
+        (almetal_normal_map_height(
+             source, source_sampler,
+             input.texcoord + float2(0.0, constants.texel_step.y),
+             constants.darkness) - center) * slope_scale);
+    const float3 normal = normalize(
+        cross(right, down) + cross(down, left) +
+        cross(left, up) + cross(up, right));
+    return float4(normal * 0.5 + 0.5, center);
+}
+
 struct ALMetalUIDepthOutput
 {
     float depth [[depth(any)]];
@@ -291,6 +350,20 @@ struct ALMetalWorldSimpleVaryings
     uint3 material_flags [[flat]];
 };
 
+struct ALMetalWorldHighlightConstants
+{
+    float4x4 modelview_projection;
+    float4x4 texture_matrix;
+    float4 color;
+    uint4 config;
+};
+
+struct ALMetalWorldHighlightVaryings
+{
+    float4 position [[position]];
+    float2 texcoord;
+};
+
 struct ALMetalWorldSpotShadowConstants
 {
     float4x4 modelview_projection;
@@ -425,6 +498,10 @@ struct ALMetalWorldShinyConstants
     float4 rigged_normal_matrix[3];
     float4x4 texture_matrix;
     uint4 config;
+    float4 avatar_wind;
+    float4 avatar_sin_wave;
+    float4 avatar_gravity;
+    float4 avatar_cloth_depth;
 };
 
 struct ALMetalWorldShinyVaryings
@@ -1755,6 +1832,35 @@ vertex ALMetalWorldSimpleVaryings almetal_world_simple_vertex(
         constants.material.z != 0.0,
         constants.material.w != 0.0);
     return output;
+}
+
+vertex ALMetalWorldHighlightVaryings almetal_world_highlight_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(2)]],
+    constant ALMetalWorldHighlightConstants& constants [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    float4 clip_position = constants.modelview_projection *
+                           float4(positions[vertex_id].xyz, 1.0);
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldHighlightVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    return output;
+}
+
+fragment float4 almetal_world_highlight_fragment(
+    ALMetalWorldHighlightVaryings input [[stage_in]],
+    texture2d<float> diffuse_texture [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]],
+    constant ALMetalWorldHighlightConstants& constants [[buffer(0)]])
+{
+    return max(constants.color *
+               diffuse_texture.sample(diffuse_sampler, input.texcoord),
+               float4(0.0));
 }
 
 static ALMetalWorldSpotShadowVaryings almetal_world_spot_shadow_output(
@@ -3599,6 +3705,78 @@ vertex ALMetalWorldSimpleVaryings almetal_world_simple_skinned_vertex(
         constants.material.z != 0.0,
         constants.material.w != 0.0);
     return output;
+}
+
+static ALMetalWorldSimpleVaryings almetal_world_fullbright_varyings(
+    float4 clip_position,
+    float4 packed_position,
+    float2 texcoord,
+    uchar4 color,
+    constant ALMetalWorldSimpleConstants& constants)
+{
+    clip_position.y = -clip_position.y;
+    const float4 encoded_color = float4(color) / 255.0;
+    const float2 transformed_texcoord =
+        (constants.texture_matrix * float4(texcoord, 0.0, 1.0)).xy;
+
+    ALMetalWorldSimpleVaryings output;
+    output.position = constants.depth_convention.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    // Fullbright never consumes a surface normal. Keeping this family on a
+    // dedicated vertex contract mirrors the legal GL volume layout instead
+    // of requiring a dummy normal stream solely because lit G-buffer draws
+    // share the wider varying structure.
+    output.normal = 0.0;
+    output.color = float4(
+        almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
+    output.texcoord = transformed_texcoord;
+    output.texcoord1 = transformed_texcoord;
+    output.texcoord2 = transformed_texcoord;
+    output.tangent = 0.0;
+    output.bitangent = 0.0;
+    output.texture_index = constants.depth_convention.y > 1u
+        ? uint(max(as_type<int>(packed_position.w), 0)) : 0u;
+    output.texture_count = constants.depth_convention.y;
+    output.alpha_cutoff = constants.material.x;
+    output.material_flags = uint3(
+        constants.material.y != 0.0,
+        constants.material.z != 0.0,
+        constants.material.w != 0.0);
+    return output;
+}
+
+vertex ALMetalWorldSimpleVaryings almetal_world_fullbright_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldSimpleConstants& constants [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 position = positions[vertex_id];
+    return almetal_world_fullbright_varyings(
+        constants.modelview_projection * float4(position.xyz, 1.0),
+        position, texcoords[vertex_id], colors[vertex_id], constants);
+}
+
+vertex ALMetalWorldSimpleVaryings almetal_world_fullbright_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(2)]],
+    const device uchar4* colors [[buffer(3)]],
+    constant ALMetalWorldSimpleConstants& constants [[buffer(4)]],
+    const device float4* skin_palette [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    constant uint& joint_count [[buffer(7)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 position = positions[vertex_id];
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        position, float4(0.0), encoded_weights[vertex_id],
+        skin_palette, joint_count);
+    return almetal_world_fullbright_varyings(
+        constants.modelview_projection * skinned.position +
+            constants.modelview_projection *
+                float4(skin_palette[0].xyz, 1.0),
+        position, texcoords[vertex_id], colors[vertex_id], constants);
 }
 
 vertex ALMetalWorldSimpleVaryings almetal_world_bump_vertex(
@@ -8721,6 +8899,87 @@ almetal_world_avatar_cloth_skinned_vertex(
         skinned.normal.xyz, texcoords[vertex_id], constants);
 }
 
+static ALMetalWorldShinyVaryings almetal_world_avatar_alpha_varyings(
+    float4 clip_position,
+    float3 eye_position,
+    float3 eye_normal,
+    float2 texcoord,
+    constant ALMetalWorldShinyConstants& constants)
+{
+    clip_position.y = -clip_position.y;
+    ALMetalWorldShinyVaryings output;
+    output.position = constants.config.x != 0
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.eye_position = eye_position;
+    output.normal = normalize(eye_normal);
+    output.color = 1.0;
+    output.texcoord = texcoord;
+    output.texture_index = 0;
+    output.texture_count = constants.config.y;
+    return output;
+}
+
+vertex ALMetalWorldShinyVaryings almetal_world_avatar_alpha_rigid_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    constant ALMetalWorldShinyConstants& constants [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    const float4 position = float4(positions[vertex_id].xyz, 1.0);
+    const float3x3 normal_matrix = float3x3(
+        constants.normal_matrix[0].xyz,
+        constants.normal_matrix[1].xyz,
+        constants.normal_matrix[2].xyz);
+    return almetal_world_avatar_alpha_varyings(
+        constants.modelview_projection * position,
+        (constants.modelview * position).xyz,
+        normal_matrix * normals[vertex_id].xyz,
+        texcoords[vertex_id], constants);
+}
+
+vertex ALMetalWorldShinyVaryings almetal_world_avatar_alpha_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    constant ALMetalWorldShinyConstants& constants [[buffer(4)]],
+    const device float4* skin_palette [[buffer(5)]],
+    const device float* encoded_weights [[buffer(6)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalLitPreviewSkinnedVertex skinned =
+        almetal_lit_preview_avatar_skin_vertex(
+            positions[vertex_id], normals[vertex_id],
+            encoded_weights[vertex_id], skin_palette);
+    return almetal_world_avatar_alpha_varyings(
+        constants.modelview_projection * skinned.position,
+        skinned.position.xyz, skinned.normal.xyz,
+        texcoords[vertex_id], constants);
+}
+
+vertex ALMetalWorldShinyVaryings
+almetal_world_avatar_alpha_cloth_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float2* texcoords [[buffer(2)]],
+    constant ALMetalWorldShinyConstants& constants [[buffer(4)]],
+    const device float4* skin_palette [[buffer(5)]],
+    const device float* encoded_weights [[buffer(6)]],
+    const device float4* clothing [[buffer(9)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalLitPreviewSkinnedVertex skinned =
+        almetal_avatar_cloth_vertex(
+            positions[vertex_id], normals[vertex_id], clothing[vertex_id],
+            encoded_weights[vertex_id], skin_palette,
+            constants.avatar_wind, constants.avatar_sin_wave,
+            constants.avatar_gravity, constants.avatar_cloth_depth);
+    return almetal_world_avatar_alpha_varyings(
+        constants.modelview_projection * skinned.position,
+        skinned.position.xyz, skinned.normal.xyz,
+        texcoords[vertex_id], constants);
+}
+
 static ALMetalLitPreviewVaryings almetal_lit_preview_avatar_vertex_common(
     float4 eye_position,
     float4 eye_normal,
@@ -12506,9 +12765,9 @@ struct ALMetalWorldDisplayPostConstants
     // non-HDR dither, bloom strength, halation strength, cross strength
     float4 display;
     float4 halation_tint;
-    // cutout-premultiplied, HDR/tonemap branch, animate dither, frame id
+    // cutout-premultiplied, HDR/legacy flags, animate dither, frame id
     uint4 config;
-    // squared/scaled amount, reciprocal falloff, anisotropy, reserved
+    // squared/scaled amount, reciprocal falloff, anisotropy, legacy gamma
     float4 chromatic;
     // angle sine/cosine, red radial/tangential offset
     float4 chromatic_angle_offset_r;
@@ -12980,6 +13239,8 @@ static float4 almetal_world_display_post(
     constant ALMetalWorldDisplayPostConstants& constants,
     float adapted_exposure)
 {
+    const bool hdr = (constants.config.y & 1u) != 0u;
+    const bool legacy_gamma = (constants.config.y & 2u) != 0u;
     float4 color = almetal_chromatic_aberration(
         source, source_sampler, input.texcoord,
         constants.chromatic.x, constants.chromatic.y,
@@ -12998,7 +13259,7 @@ static float4 almetal_world_display_post(
             ? color.rgb / coverage : float3(0.0);
     }
 
-    if (constants.config.y != 0)
+    if (hdr)
     {
         // Match colorCorrectF's BLOOM_COMPOSITE permutation: the completed
         // pyramid is added in linear light after cutout unpremultiplication
@@ -13020,7 +13281,7 @@ static float4 almetal_world_display_post(
             constants.lens_dirt.x;
     }
 
-    if (constants.config.y != 0)
+    if (hdr && !legacy_gamma)
     {
         color.rgb *= constants.post.x * adapted_exposure;
     }
@@ -13031,7 +13292,7 @@ static float4 almetal_world_display_post(
         color.rgb = almetal_world_grade_linear_pre(color.rgb, constants);
     }
 
-    if (constants.config.y != 0)
+    if (hdr && !legacy_gamma)
     {
         const float3 clamped = clamp(
             color.rgb, float3(0.0), float3(1.0));
@@ -13055,6 +13316,13 @@ static float4 almetal_world_display_post(
     }
 
     color.rgb = almetal_linear_to_srgb(color.rgb);
+    if (legacy_gamma)
+    {
+        const float3 inverse = float3(1.0) - clamp(
+            color.rgb, float3(0.0), float3(1.0));
+        color.rgb = float3(1.0) - pow(
+            inverse, float3(constants.chromatic.w));
+    }
     if (color_grade)
     {
         color.rgb = almetal_world_grade_display(
@@ -13065,7 +13333,7 @@ static float4 almetal_world_display_post(
     {
         color.rgb *= coverage;
     }
-    if (constants.config.y == 0)
+    if (!hdr)
     {
         color.rgb = almetal_world_display_dither(
             color.rgb, input.position.xy, constants.display.x,

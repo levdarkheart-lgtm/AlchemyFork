@@ -508,7 +508,8 @@ void LLFace::updateCenterAgent()
     }
 }
 
-void LLFace::renderSelected(LLViewerTexture *imagep, const LLColor4& color)
+void LLFace::renderSelected(LLViewerTexture *imagep, const LLColor4& color,
+                            U32 texcoord_type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_FACE;
 
@@ -586,6 +587,19 @@ void LLFace::renderSelected(LLViewerTexture *imagep, const LLColor4& color)
             // Draw the selection marker using the correctly chosen vertex buffer
             if (vertex_buffer)
             {
+#if LL_DARWIN
+                // The GL draw remains authoritative. While the exact native
+                // world transaction is open, retain the same static face,
+                // texture, transform and tint for its pre-post highlight
+                // pass. GLTF selection buffers have already baked the chosen
+                // material channel into TEXCOORD0.
+                const U32 metal_texcoord_type =
+                    vertex_buffer == mVertexBufferGLTF.get()
+                        ? LLVertexBuffer::TYPE_TEXCOORD0 : texcoord_type;
+                gPipeline.captureMetalWorldHighlightBatch(
+                    vertex_buffer, mIndicesCount, mIndicesIndex, imagep,
+                    color, metal_texcoord_type);
+#endif
                 vertex_buffer->setBuffer();
                 vertex_buffer->draw(LLRender::TRIANGLES, mIndicesCount, mIndicesIndex);
             }

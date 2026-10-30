@@ -295,6 +295,7 @@ struct ALMetalWorldSimpleBatch
     bool avatar_rigid = false;
     bool avatar_skinning = false;
     bool avatar_cloth = false;
+    bool avatar_alpha = false;
     bool impostor = false;
     bool impostor_fullbright = false;
     bool impostor_shiny = false;
@@ -369,6 +370,31 @@ struct ALMetalWorldSimpleBatch
     bool terrain_pbr = false;
     bool terrain_flat_normals = false;
     bool terrain_tessellation_pinned = false;
+};
+
+// Legacy edit-face and touch highlights are rendered after the ordered world
+// geometry and before display post-processing. They sample one authored UV
+// channel through the live texture matrix, multiply by the uniform highlight
+// colour and alpha-blend against retained world colour with read-only depth.
+struct ALMetalWorldHighlightBatch
+{
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::size_t texcoord_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
+    const ALMetalTexture* texture = nullptr;
+    float modelview_projection[16]{};
+    float texture_matrix[16] = {
+        1.f, 0.f, 0.f, 0.f,
+        0.f, 1.f, 0.f, 0.f,
+        0.f, 0.f, 1.f, 0.f,
+        0.f, 0.f, 0.f, 1.f,
+    };
+    float color[4]{};
 };
 
 struct ALMetalWorldGBufferScene
@@ -619,6 +645,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     const ALMetalRenderTarget* composed_lighting = nullptr;
     const ALMetalWorldSimpleBatch* batches = nullptr;
     std::size_t batch_count = 0;
+    const ALMetalWorldHighlightBatch* highlight_batches = nullptr;
+    std::size_t highlight_batch_count = 0;
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
     const ALMetalWorldHeroProbe* hero_probe = nullptr;
     const ALMetalWorldScreenSpaceReflections* screen_space_reflections =
@@ -642,15 +670,16 @@ struct ALMetalWorldOpaquePostDeferredScene
     bool publish_screen_space_reflection_history = false;
 };
 
-// The modern-gamma base of colorCorrectF.glsl. This owner
+// The display-transfer base of colorCorrectF.glsl. This owner
 // deliberately stops at the real post-chain storage boundary: HDR writes
 // RGB10_A2 after exposure and tonemapping, while the vintage path writes
 // RGBA8 after the display transfer and output dither. Optional ordinary
 // bloom/halation/cross-filter are folded in before exposure. Analytical color
 // grading, the artist 3D LUT, baked channel curves and chromatic aberration can
-// run in their exact pre/post-tonemap positions; flare/dirt, legacy
-// gamma/no-post, CAS/AA and legacy glow remain distinct owners. Callers must
-// not substitute this target when any omitted family or bypass is live.
+// run in their exact pre/post-tonemap positions; flare/dirt and the legacy-sky
+// gamma/no-tonemap permutation are native here, while CAS/AA and legacy glow
+// remain distinct owners. Callers must not substitute this target when any
+// omitted family or bypass is live.
 struct ALMetalWorldColorGrade
 {
     bool enabled = false;
@@ -702,6 +731,11 @@ struct ALMetalWorldDisplayPostScene
     // Optional half-resolution RGBA16F sum of the cross-filter arms.
     const ALMetalTexture* cross_filter_texture = nullptr;
     bool hdr = false;
+    // Legacy skies keep the HDR/bloom storage path but deliberately skip
+    // exposure and tonemapping, then apply colorCorrectF's historical gamma
+    // curve after the linear-to-sRGB transfer.
+    bool legacy_gamma = false;
+    float legacy_gamma_exponent = 1.f;
     float static_exposure = 1.f;
     float adapted_exposure = 1.f;
     float tonemap_mix = 1.f;

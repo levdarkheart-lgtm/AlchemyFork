@@ -289,6 +289,9 @@ private:
     void invalidateMetalProbeSlot(U32 cube_index);
     void releaseMetalProbeArray();
     void collectNativeMetalProbe();
+    bool beginNativeMetalProbeFaceCapture(
+        LLReflectionMap* probe, U32 face, bool radiance_pass,
+        std::string* error = nullptr);
     bool captureNativeMetalProbeFace(
         ALMetalWorldGBufferRenderer& renderer,
         const ALMetalRenderTarget& source,

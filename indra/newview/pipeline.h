@@ -892,6 +892,10 @@ public:
         const LLDrawInfo& params);
     void captureMetalWorldBumpBatch(const LLDrawInfo& params,
                                    LLViewerTexture* normal_texture);
+    void captureMetalWorldHighlightBatch(
+        LLVertexBuffer* buffer, U32 index_count, U32 index_start,
+        LLViewerTexture* texture, const LLColor4& color,
+        U32 texcoord_type);
     void captureMetalWorldTreeBatch(LLVertexBuffer* buffer,
                                     LLViewerTexture* texture);
     void captureMetalWorldTerrainBatch(
@@ -1073,7 +1077,7 @@ public:
     void drawShadow(const LLMatrix4a& view, const LLMatrix4a& proj, LLCamera& camera, bool depth_clamp, S32 occlusion);
     // What the casters the last sortShadow sorted are drawn from, as drawShadow draws them, folded into `casters`.
     void addShadowCasters(ALSpotShadowCache::Casters& casters);
-    void renderSelectedFaces(const LLColor4& color);
+    void renderSelectedFaces(const LLColor4& color, U32 texcoord_type);
     void renderHighlights();
     void renderDebug();
     void renderPhysicsDisplay();

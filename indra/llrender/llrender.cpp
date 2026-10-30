@@ -1799,6 +1799,11 @@ const LLMatrix4a& LLRender::getProjectionMatrix()
     return mMatrix[MM_PROJECTION][mMatIdx[MM_PROJECTION]];
 }
 
+const LLMatrix4a& LLRender::getTextureMatrix()
+{
+    return mMatrix[MM_TEXTURE0][mMatIdx[MM_TEXTURE0]];
+}
+
 void LLRender::translateUI(F32 x, F32 y, F32 z)
 {
     if (mUIOffset.empty())

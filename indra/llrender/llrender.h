@@ -360,6 +360,7 @@ public:
 
     const LLMatrix4a& getModelviewMatrix();
     const LLMatrix4a& getProjectionMatrix();
+    const LLMatrix4a& getTextureMatrix();
 
     void syncMatrices();
     void syncLightState();

@@ -186,7 +186,8 @@ public:
     void        updateCenterAgent(); // Update center when xform has changed.
     void        renderSelectedUV();
 
-    void        renderSelected(LLViewerTexture *image, const LLColor4 &color);
+    void        renderSelected(LLViewerTexture *image, const LLColor4 &color,
+                               U32 texcoord_type = LLVertexBuffer::TYPE_TEXCOORD0);
 
     F32         getKey()                    const   { return mDistance; }
 

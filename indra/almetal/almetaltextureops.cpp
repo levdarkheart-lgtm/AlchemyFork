@@ -12,6 +12,7 @@
 
 #include "almetalpipeline.h"
 
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -196,6 +197,162 @@ bool ALMetalTextureResampler::encode(ALMetalCommandBuffer& command_buffer,
     return encoder->setPipeline(*pipeline, error) &&
            encoder->setFragmentTextureLinear(0, &source, error) &&
            encoder->setFragmentSampler(0, mImpl->sampler.get(), error) &&
+           encoder->setViewport(viewport, error) &&
+           encoder->setScissor(scissor, error) &&
+           encoder->setCullMode(ALMetalCullMode::none, error) &&
+           encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+           encoder->end(error);
+}
+
+struct ALMetalNormalMapGenerator::Impl
+{
+    const ALMetalDevice* device = nullptr;
+    std::unique_ptr<ALMetalShaderLibrary> library;
+    std::unique_ptr<ALMetalSamplerState> sampler;
+    std::unique_ptr<ALMetalRenderPipeline> pipeline;
+};
+
+ALMetalNormalMapGenerator::ALMetalNormalMapGenerator(
+    std::unique_ptr<Impl> impl)
+: mImpl(std::move(impl))
+{
+}
+
+ALMetalNormalMapGenerator::~ALMetalNormalMapGenerator() = default;
+
+std::unique_ptr<ALMetalNormalMapGenerator>
+ALMetalNormalMapGenerator::create(const ALMetalDevice& device,
+                                  std::string* error)
+{
+    auto impl = std::make_unique<Impl>();
+    impl->device = &device;
+    impl->library = ALMetalShaderLibrary::loadBuiltin(device, error);
+    if (!impl->library)
+    {
+        return nullptr;
+    }
+
+    ALMetalSamplerDescriptor sampler_descriptor;
+    sampler_descriptor.min_filter = ALMetalSamplerFilter::linear;
+    sampler_descriptor.mag_filter = ALMetalSamplerFilter::linear;
+    sampler_descriptor.mip_filter = ALMetalSamplerMipFilter::none;
+    sampler_descriptor.address_s = ALMetalSamplerAddressMode::repeat;
+    sampler_descriptor.address_t = ALMetalSamplerAddressMode::repeat;
+    sampler_descriptor.address_r = ALMetalSamplerAddressMode::repeat;
+    sampler_descriptor.label = "Alchemy legacy bump-map generator sampler";
+    impl->sampler = ALMetalSamplerState::create(
+        device, sampler_descriptor, error);
+    if (!impl->sampler)
+    {
+        return nullptr;
+    }
+
+    ALMetalRenderPipelineDescriptor pipeline_descriptor;
+    pipeline_descriptor.library = impl->library.get();
+    pipeline_descriptor.vertex_function = "almetal_resample_vertex";
+    pipeline_descriptor.fragment_function =
+        "almetal_normal_map_generate_fragment";
+    pipeline_descriptor.colors[0].format =
+        ALMetalPixelFormat::rgba8_unorm;
+    pipeline_descriptor.label = "Alchemy legacy bump-map generator pipeline";
+    impl->pipeline = ALMetalRenderPipeline::create(
+        device, pipeline_descriptor, error);
+    if (!impl->pipeline)
+    {
+        return nullptr;
+    }
+    return std::unique_ptr<ALMetalNormalMapGenerator>(
+        new ALMetalNormalMapGenerator(std::move(impl)));
+}
+
+bool ALMetalNormalMapGenerator::encode(
+    ALMetalCommandBuffer& command_buffer,
+    const ALMetalTexture& source,
+    const ALMetalTexture& destination,
+    float normal_scale,
+    bool darkness,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !mImpl->pipeline || !mImpl->sampler)
+    {
+        setError(error, "Metal normal-map generator is unavailable");
+        return false;
+    }
+    const ALMetalTextureDescriptor& source_descriptor = source.descriptor();
+    const ALMetalTextureDescriptor& destination_descriptor =
+        destination.descriptor();
+    if (source_descriptor.type != ALMetalTextureType::texture_2d ||
+        destination_descriptor.type != ALMetalTextureType::texture_2d ||
+        destination_descriptor.format != ALMetalPixelFormat::rgba8_unorm ||
+        source_descriptor.width == 0 || source_descriptor.height == 0 ||
+        destination_descriptor.width == 0 ||
+        destination_descriptor.height == 0 || normal_scale <= 0.f)
+    {
+        setError(error,
+                 "Metal normal-map generation requires non-empty 2D "
+                 "textures, RGBA8 output, and a positive scale");
+        return false;
+    }
+    if (!alMetalHasUsage(source_descriptor.usage,
+                         ALMetalTextureUsage::shader_read) ||
+        !alMetalHasUsage(destination_descriptor.usage,
+                         ALMetalTextureUsage::render_target))
+    {
+        setError(error,
+                 "Metal normal-map usage must permit source sampling and "
+                 "destination rendering");
+        return false;
+    }
+
+    struct alignas(16) Constants
+    {
+        float step_x;
+        float step_y;
+        float scale;
+        std::uint32_t darkness;
+    };
+    const Constants constants{
+        1.f / static_cast<float>(destination_descriptor.width),
+        1.f / static_cast<float>(destination_descriptor.height),
+        normal_scale,
+        darkness ? 1u : 0u,
+    };
+
+    ALMetalRenderPassColorConfig color;
+    color.load = ALMetalLoadAction::dont_care;
+    color.store = ALMetalStoreAction::store;
+    auto pass = ALMetalRenderPass::createForColorAttachment(
+        *mImpl->device, destination.nativeHandle(),
+        ALMetalPixelFormat::rgba8_unorm, color, error);
+    if (!pass)
+    {
+        return false;
+    }
+    auto encoder = ALMetalRenderEncoder::begin(
+        command_buffer, *pass, "Alchemy legacy bump-map generation", error);
+    if (!encoder)
+    {
+        return false;
+    }
+    const ALMetalViewport viewport{
+        0.0,
+        0.0,
+        static_cast<double>(destination_descriptor.width),
+        static_cast<double>(destination_descriptor.height),
+        0.0,
+        1.0,
+    };
+    const ALMetalScissorRect scissor{
+        0,
+        0,
+        destination_descriptor.width,
+        destination_descriptor.height,
+    };
+    return encoder->setPipeline(*mImpl->pipeline, error) &&
+           encoder->setFragmentTexture(0, &source, error) &&
+           encoder->setFragmentSampler(0, mImpl->sampler.get(), error) &&
+           encoder->setFragmentBytes(
+               0, &constants, sizeof(constants), error) &&
            encoder->setViewport(viewport, error) &&
            encoder->setScissor(scissor, error) &&
            encoder->setCullMode(ALMetalCullMode::none, error) &&

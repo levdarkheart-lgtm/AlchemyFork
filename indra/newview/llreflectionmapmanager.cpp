@@ -500,21 +500,27 @@ void LLReflectionMapManager::collectNativeMetalProbe()
     mirror.mNativePendingSHSequence = 0;
 }
 
-bool LLReflectionMapManager::captureNativeMetalProbeFace(
-    ALMetalWorldGBufferRenderer& renderer,
-    const ALMetalRenderTarget& source,
+bool LLReflectionMapManager::beginNativeMetalProbeFaceCapture(
     LLReflectionMap* probe, U32 face, bool radiance_pass,
     std::string* error)
 {
     if (!probe || probe->mCubeIndex < 0 || face >= 6 ||
         !reconcileMetalProbeArray())
     {
+        if (error)
+        {
+            *error = "Metal reflection-probe capture request is invalid";
+        }
         return false;
     }
     MetalProbeArrayMirror& mirror = *mMetalProbeArray;
     const U32 cube = static_cast<U32>(probe->mCubeIndex);
     if (cube >= mirror.mSlotGenerations.size())
     {
+        if (error)
+        {
+            *error = "Metal reflection-probe cube slot is out of range";
+        }
         return false;
     }
     const U64 generation = mirror.mSlotGenerations[cube];
@@ -535,6 +541,11 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
                  mirror.mNativeCaptureRadiance ||
                  mirror.mNativeCaptureSequence == 0)
         {
+            if (error)
+            {
+                *error =
+                    "Metal reflection-probe radiance pass has no matching SH capture sequence";
+            }
             return false;
         }
         mirror.mNativeCaptureCube = cube;
@@ -553,8 +564,68 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
     }
     else if (mirror.mNativeCaptureCube != cube ||
              mirror.mNativeCaptureGeneration != generation ||
-             mirror.mNativeCaptureRadiance != radiance_pass)
+             mirror.mNativeCaptureRadiance != radiance_pass ||
+             mirror.mNativeCaptureSequence == 0)
     {
+        if (error)
+        {
+            *error =
+                "Metal reflection-probe face does not match the active capture sequence";
+        }
+        return false;
+    }
+
+    const U32 preceding_faces = face == 0 ? 0u : ((1u << face) - 1u);
+    if (mirror.mNativeValidFaces != preceding_faces)
+    {
+        if (error)
+        {
+            *error =
+                "Metal reflection-probe capture is missing an earlier face";
+        }
+        return false;
+    }
+    return true;
+}
+
+bool LLReflectionMapManager::captureNativeMetalProbeFace(
+    ALMetalWorldGBufferRenderer& renderer,
+    const ALMetalRenderTarget& source,
+    LLReflectionMap* probe, U32 face, bool radiance_pass,
+    std::string* error)
+{
+    if (!probe || probe->mCubeIndex < 0 || face >= 6 ||
+        !reconcileMetalProbeArray())
+    {
+        if (error)
+        {
+            *error = "Metal reflection-probe capture request is invalid";
+        }
+        return false;
+    }
+    MetalProbeArrayMirror& mirror = *mMetalProbeArray;
+    const U32 cube = static_cast<U32>(probe->mCubeIndex);
+    if (cube >= mirror.mSlotGenerations.size())
+    {
+        if (error)
+        {
+            *error = "Metal reflection-probe cube slot is out of range";
+        }
+        return false;
+    }
+    const U64 generation = mirror.mSlotGenerations[cube];
+    const U32 preceding_faces = face == 0 ? 0u : ((1u << face) - 1u);
+    if (mirror.mNativeCaptureCube != cube ||
+        mirror.mNativeCaptureGeneration != generation ||
+        mirror.mNativeCaptureRadiance != radiance_pass ||
+        mirror.mNativeCaptureSequence == 0 ||
+        mirror.mNativeValidFaces != preceding_faces)
+    {
+        if (error)
+        {
+            *error =
+                "Metal reflection-probe face was not admitted to the active capture sequence";
+        }
         return false;
     }
 
@@ -573,12 +644,20 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
     }
     if (mirror.mNativeValidFaces != 0x3fu)
     {
+        if (error)
+        {
+            *error = "Metal reflection-probe capture did not retain all six faces";
+        }
         return false;
     }
 
     ALMetalDevice* device = LLImageGL::getMetalDevice();
     if (!device || device != mirror.mDevice)
     {
+        if (error)
+        {
+            *error = "Metal reflection-probe device changed during capture";
+        }
         return false;
     }
     if (!radiance_pass)
@@ -613,6 +692,10 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
         }
         if (!destination)
         {
+            if (error && error->empty())
+            {
+                *error = "Metal reflection-probe SH destination is unavailable";
+            }
             return false;
         }
         S32 sh_mip = 0;

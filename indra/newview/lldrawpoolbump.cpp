@@ -50,6 +50,10 @@
 #include "llviewershadermgr.h"
 #include "llmodel.h"
 
+#if LL_DARWIN
+#include "../almetal/almetaltextureops.h"
+#endif
+
 extern bool gCubeSnapshot;
 
 //#include "llimagebmp.h"
@@ -78,6 +82,14 @@ static S32 cube_channel = -1;
 static S32 diffuse_channel = -1;
 static S32 bump_channel = -1;
 static bool shiny = false;
+
+#if LL_DARWIN
+namespace
+{
+    const ALMetalDevice* sMetalNormalMapDevice = nullptr;
+    std::unique_ptr<ALMetalNormalMapGenerator> sMetalNormalMapGenerator;
+}
+#endif
 
 // static
 void LLStandardBumpmap::shutdown()
@@ -1008,8 +1020,13 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
         // Full mip chain: storage is immutable, so the glGenerateMipmap below can only
         // fill levels allocated here -- with a single level it is a spec-defined no-op
         // and the normal map aliases under the trilinear/aniso samplers that read it.
-        const S32 levels = LLImageGL::calcMipLevelCount(dst_img->getWidth(), dst_img->getHeight());
-        LLImageGL::allocateTexture2D(GL_TEXTURE_2D, dst_img->getStorageInternalFormat(), dst_img->getWidth(), dst_img->getHeight(), GL_RGBA, GL_UNSIGNED_BYTE, nullptr, levels);
+        const S32 levels = LLImageGL::calcMipLevelCount(
+            dst_img->getWidth(), dst_img->getHeight());
+        const S32 storage_format = dst_img->getStorageInternalFormat();
+        LLImageGL::allocateTexture2D(
+            GL_TEXTURE_2D, storage_format,
+            dst_img->getWidth(), dst_img->getHeight(),
+            GL_RGBA, GL_UNSIGNED_BYTE, nullptr, levels);
         dst_img->markStorageAllocated();
 
         LLGLuint tex_name = dst_img->getTexName();
@@ -1067,6 +1084,68 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
         gGL.getTextureSlot(0)->bindSampled(bump, ALSamplers::AnisoWrap);
         LLImageGL::generateMipmaps(GL_TEXTURE_2D);
         gGL.getTextureSlot(0)->unbind();
+
+#if LL_DARWIN
+        ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+        LLImageGL* source_image = src->getGLTexture();
+        ALMetalTexture* metal_source = source_image
+            ? source_image->getMetalTexture() : nullptr;
+        if (metal_device && metal_source)
+        {
+            std::string error;
+            if (sMetalNormalMapDevice != metal_device)
+            {
+                sMetalNormalMapGenerator =
+                    ALMetalNormalMapGenerator::create(*metal_device, &error);
+                sMetalNormalMapDevice = metal_device;
+            }
+
+            ALMetalTextureDescriptor descriptor;
+            descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+            descriptor.width = static_cast<U32>(bump->getWidth());
+            descriptor.height = static_cast<U32>(bump->getHeight());
+            descriptor.mipmap_level_count = static_cast<U32>(
+                LLImageGL::calcMipLevelCount(
+                    bump->getWidth(), bump->getHeight()));
+            descriptor.storage = ALMetalStorageMode::private_gpu;
+            descriptor.usage = ALMetalTextureUsage::shader_read |
+                               ALMetalTextureUsage::render_target;
+            descriptor.label = "Alchemy generated legacy bump map";
+            auto metal_bump = ALMetalTexture::create(
+                *metal_device, descriptor, &error);
+            auto command = metal_bump
+                ? metal_device->makeCommandBuffer(
+                      "Alchemy legacy bump-map generation", &error)
+                : nullptr;
+            bool encoded = command && sMetalNormalMapGenerator &&
+                sMetalNormalMapGenerator->encode(
+                    *command, *metal_source, *metal_bump,
+                    gSavedSettings.getF32("RenderNormalMapScale"),
+                    bump_code == BE_DARKNESS, &error) &&
+                metal_bump->generateMipmaps(*command, &error) &&
+                command->commit(&error);
+            if (encoded &&
+                !dst_img->adoptMetalRenderTexture(std::move(metal_bump)))
+            {
+                error = "render-produced texture descriptor did not match "
+                        "the generated GL bump-map storage";
+                encoded = false;
+            }
+            if (!encoded)
+            {
+                LL_WARNS("Metal")
+                    << "Could not generate native legacy bump-map mirror: "
+                    << error << LL_ENDL;
+            }
+            else
+            {
+                LL_INFOS_ONCE("Metal")
+                    << "Native brightness/darkness bump-map generation is "
+                       "active"
+                    << LL_ENDL;
+            }
+        }
+#endif
     }
 
     iter->second = bump; // derefs (and deletes) old image

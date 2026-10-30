@@ -485,6 +485,12 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool world_ui_capture_active = false;
     bool world_ui_probe_attempted = false;
     U32 world_ui_probe_attempts = 0;
+    bool world_ui_chain_active = false;
+    bool world_ui_chain_counted = false;
+    U32 world_ui_chain_attempts = 0;
+    U32 world_ui_chain_last_attempt_frame =
+        std::numeric_limits<U32>::max();
+    bool world_ui_chain_exhausted_reported = false;
     bool world_ui_overlay_exact = false;
     std::unique_ptr<ALMetalRenderTarget> depth_of_field_target;
     U32 depth_of_field_frame = std::numeric_limits<U32>::max();
@@ -533,6 +539,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> base_light_target;
     std::unique_ptr<ALMetalRenderTarget> impostor_bake_target;
     std::vector<ALMetalWorldSimpleBatch> batches;
+    std::vector<ALMetalWorldHighlightBatch> highlight_batches;
     std::vector<ALMetalWorldHDRISkyBatch> hdri_sky_batches;
     const ALMetalTexture* hdri_sky_environment = nullptr;
     F32 hdri_sky_camera_local[4]{};
@@ -669,6 +676,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     ALMetalWorldLegacyAlphaLighting world_alpha_lighting;
     bool world_alpha_lighting_valid = false;
     bool world_alpha_uses_shadows = false;
+
     ALMetalWorldReflectionProbes impostor_reflection_probes;
     std::unique_ptr<ALMetalTexture> impostor_hero_probe_texture;
     ALMetalWorldHeroProbe impostor_hero_probe;
@@ -721,8 +729,6 @@ bool LLPipeline::canCaptureMetalWorldPresentation() const
         gSavedSettings, "RenderDynamicExposureEnabled", true);
     static LLCachedControl<bool> build_no_post(
         gSavedSettings, "RenderDisablePostProcessing", false);
-    static LLCachedControl<bool> auto_adjust(
-        gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
     static LLCachedControl<U32> aa_quality(
         gSavedSettings, "RenderFSAASamples", 0U);
     static LLCachedControl<bool> use_smaa_sample(
@@ -730,7 +736,8 @@ bool LLPipeline::canCaptureMetalWorldPresentation() const
 
     LLSettingsSky::ptr_t sky =
         LLEnvironment::instance().getCurrentSky();
-    const bool native_dynamic_exposure = !dynamic_exposure ||
+    const bool classic = LLRender::sClassicMode;
+    const bool native_dynamic_exposure = classic || !dynamic_exposure ||
         mMetalExposureHistoryReady || mMetalExposureLastWasFixed;
     const LensFlareConfig flare = lensFlareConfig(true);
     const bool native_lens_flare = !flare.enabled ||
@@ -751,18 +758,24 @@ bool LLPipeline::canCaptureMetalWorldPresentation() const
          gSMAAEdgeDetectProgram[quality].isComplete() &&
          gSMAABlendWeightsProgram[quality].isComplete() &&
          gSMAANeighborhoodBlendProgram[quality].isComplete());
-    return hdrEnabled() && isMainWorldPass() &&
-        mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
-        !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
-        native_dynamic_exposure && native_lens_flare &&
-        native_lens_dirt &&
-        !LLRender::sClassicMode && grade.native_resources_ready &&
-        !build_no_post &&
-        !gSnapshotNoPost && sky &&
-        sky->getReflectionProbeAmbiance(auto_adjust) != 0.f &&
-        exact_antialiasing &&
-        !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) &&
-        RenderBufferVisualization < 0;
+    // Startup renders a partially ordered world while region state, water,
+    // and alpha environment ownership are still settling. Do not consume the
+    // bounded presentation probe on those transitional frames: its exact
+    // post-deferred ordering contract only applies to the started world.
+    const bool started = LLStartUp::getStartupState() >= STATE_STARTED;
+    const bool hdr = hdrEnabled();
+    const bool main_world = isMainWorldPass() && mRT == &mMainRT;
+    const bool ordinary_world = !mMetalHeroWorldCaptureActive &&
+        !mMetalReflectionWorldCaptureActive && !sCutoutRender;
+    const bool post_enabled = !build_no_post && !gSnapshotNoPost;
+    const bool sphere_unrestricted =
+        !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE);
+    const bool final_buffer = RenderBufferVisualization < 0;
+    const bool eligible = started && hdr && main_world && ordinary_world &&
+        native_dynamic_exposure && native_lens_flare && native_lens_dirt &&
+        grade.native_resources_ready && post_enabled && sky &&
+        exact_antialiasing && sphere_unrestricted && final_buffer;
+    return eligible;
 }
 
 bool LLPipeline::canCaptureMetalScopeSample(bool require_due) const
@@ -1329,6 +1342,20 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
         return false;
     }
 
+    // A scheduled probe and the realtime dynamic probe can interleave while
+    // sharing the one native six-face scratch cube. Admit the logical face
+    // before doing any duplicate Metal world work, and require every earlier
+    // face to have published. GL remains authoritative for a rejected face.
+    std::string sequence_error;
+    if (!mReflectionMapManager.beginNativeMetalProbeFaceCapture(
+            probe, face, radiance_pass, &sequence_error))
+    {
+        LL_DEBUGS("Metal")
+            << "Skipped native reflection-probe face " << face << ": "
+            << sequence_error << LL_ENDL;
+        return false;
+    }
+
     std::swap(mMetalWorldSimpleCapture, mMetalProbeWorldSimpleCapture);
     if (!mMetalWorldSimpleCapture)
     {
@@ -1449,6 +1476,16 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     ALMetalDevice* device = LLImageGL::getMetalDevice();
     const bool probe_face = mMetalHeroWorldCaptureActive ||
         mMetalReflectionWorldCaptureActive;
+    const bool main_world_capture = !probe_face && isMainWorldPass() &&
+        mRT == &mMainRT;
+    if (main_world_capture &&
+        LLStartUp::getStartupState() < STATE_STARTED)
+    {
+        // Login/precache draws a partially ordered world while water and
+        // alpha-environment ownership are still settling. Keep the bounded
+        // presentation probe armed until the first fully started frame.
+        return;
+    }
     const std::optional<ALRenderTargetDesc>& descriptor =
         mResourcePlan.desc(ALRenderResourcePlan::Id::MainGBuffer);
     const U32 capture_width = probe_face && mRT
@@ -1483,6 +1520,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.world_ui_capture_active = false;
         capture.world_ui_probe_attempted = false;
         capture.world_ui_probe_attempts = 0;
+        capture.world_ui_chain_active = false;
+        capture.world_ui_chain_counted = false;
+        capture.world_ui_chain_attempts = 0;
+        capture.world_ui_chain_last_attempt_frame =
+            std::numeric_limits<U32>::max();
+        capture.world_ui_chain_exhausted_reported = false;
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_applied = false;
@@ -1757,14 +1800,38 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     // while renderFinalize refreshes the bounded lens-fit cache. Give that
     // handoff a few independent world transactions, but never turn an
     // incomplete UI census into permanent duplicate rendering.
-    const bool retry_world_ui_probe = !capture.world_ui_probe_attempted &&
-        capture.world_ui_probe_attempts <
+    if (main_world_capture && !capture.frame_active && capture.attempted &&
+        !capture.world_ui_probe_attempted &&
+        !capture.world_ui_chain_exhausted_reported &&
+        capture.world_ui_chain_attempts >=
             MetalWorldSimpleCapture::max_world_ui_probe_attempts &&
+        capture.continuous_world_frame != gFrameCount &&
+        canCaptureMetalWorldPresentation())
+    {
+        capture.world_ui_chain_exhausted_reported = true;
+        LL_INFOS("Metal")
+            << "Native world/UI presentation retained GL after exhausting "
+            << capture.world_ui_chain_attempts
+            << " bounded end-to-end transactions; independent native "
+               "refresh owners remain eligible"
+            << LL_ENDL;
+    }
+    const bool world_ui_retry_due =
+        capture.world_ui_chain_attempts == 0 ||
+        capture.world_ui_chain_last_attempt_frame ==
+            std::numeric_limits<U32>::max() ||
+        gFrameCount - capture.world_ui_chain_last_attempt_frame >=
+            MetalWorldSimpleCapture::max_failed_frames;
+    const bool request_world_ui_chain = main_world_capture &&
+        !capture.world_ui_probe_attempted &&
+        capture.world_ui_chain_attempts <
+            MetalWorldSimpleCapture::max_world_ui_probe_attempts &&
+        world_ui_retry_due &&
         canCaptureMetalWorldPresentation();
     if (!capture.frame_active && capture.attempted &&
         (capture.continuous_world_capture || mScenePixelPending ||
          refresh_scope || refresh_lens_flare || refresh_lens_dirt ||
-         retry_world_ui_probe) &&
+         request_world_ui_chain) &&
         capture.continuous_world_frame != gFrameCount)
     {
         // Continuous SSR history makes every main-world frame a fresh
@@ -1785,6 +1852,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.presentation_frame = std::numeric_limits<U32>::max();
         capture.world_ui_target.reset();
         capture.world_ui_frame = std::numeric_limits<U32>::max();
+        capture.world_ui_chain_active = false;
+        capture.world_ui_chain_counted = false;
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_applied = false;
@@ -1809,6 +1878,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     {
         return;
     }
+    // Arm the presentation transaction here, but charge its bounded budget
+    // only after the G-buffer actually encodes (or its established deferred
+    // completeness window gives up). Startup texture/geometry mirrors may
+    // legitimately take many frames to become coherent.
+    capture.world_ui_chain_active = request_world_ui_chain;
+    capture.world_ui_chain_counted = false;
     if (!capture.renderer)
     {
         std::string error;
@@ -1816,6 +1891,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             *device, &error);
         if (!capture.renderer)
         {
+            if (capture.world_ui_chain_active)
+            {
+                ++capture.world_ui_chain_attempts;
+                capture.world_ui_chain_last_attempt_frame = gFrameCount;
+                capture.world_ui_chain_counted = true;
+            }
             capture.attempted = true;
             LL_WARNS("Metal")
                 << "Could not initialize the native world G-buffer probe: "
@@ -2653,7 +2734,8 @@ void LLPipeline::captureMetalWorldWindLightMeteorBatch(
     capture.windlight_meteors_expected = true;
     if (!capture.windlight_meteors_complete || !buffer ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
+        (!capture.impostor_fullbright &&
+         !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL)) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
         !buffer->getMetalVertexBuffer() || buffer->getNumVerts() < 3 ||
@@ -3063,6 +3145,38 @@ void LLPipeline::beginMetalWorldAvatarPass(
         capture.avatar_palettes.clear();
         return;
     }
+    const bool avatar_alpha = capture.world_post_deferred_active &&
+        !capture.world_post_deferred_phase;
+    if (avatar_alpha)
+    {
+        if ((!capture.alpha_environment_valid &&
+             !fillMetalWorldAlphaEnvironment(capture.alpha_environment)) ||
+            (!capture.world_alpha_lighting_valid &&
+             !fillMetalWorldAlphaLighting(capture.world_alpha_lighting)))
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            capture.avatar_palettes.clear();
+            return;
+        }
+        capture.alpha_environment_valid = true;
+        capture.world_alpha_lighting_valid = true;
+        LLGLSLShader* avatar_shader =
+            gDeferredAvatarAlphaProgram.selectVariant();
+        const bool uses_shadows = avatar_shader &&
+            avatar_shader->mFeatures.hasShadows;
+        if (uses_shadows && !fillMetalImpostorDirectionalShadows())
+        {
+            capture.complete = false;
+            capture.batches.clear();
+            capture.avatar_palettes.clear();
+            return;
+        }
+        capture.world_alpha_uses_shadows =
+            capture.world_alpha_uses_shadows ||
+            (uses_shadows &&
+             capture.impostor_directional_shadows.depth_texture != nullptr);
+    }
     capture.rigged = false;
     capture.alpha_mask = true;
     capture.material_alpha_mode = 0;
@@ -3196,6 +3310,12 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.world_ui_capture_active = false;
         capture.world_ui_probe_attempted = false;
         capture.world_ui_probe_attempts = 0;
+        capture.world_ui_chain_active = false;
+        capture.world_ui_chain_counted = false;
+        capture.world_ui_chain_attempts = 0;
+        capture.world_ui_chain_last_attempt_frame =
+            std::numeric_limits<U32>::max();
+        capture.world_ui_chain_exhausted_reported = false;
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_applied = false;
@@ -3435,15 +3555,12 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
         gSavedSettings, "RenderReflectionProbeVolumes", false);
     static LLCachedControl<bool> far_plane_overlay(
         gSavedSettings, "AlchemyRenderFarPlaneOverlay", false);
-    const bool legacy_highlight_overlay =
-        hasRenderDebugFeatureMask(RENDER_DEBUG_FEATURE_SELECTED) &&
-        (!mSelectedFaces.empty() || !mHighlightFaces.empty());
     capture.world_ui_overlay_exact =
         mRenderDebugMask == 0 && !gUseWireframe &&
-        !reflection_probe_volumes && !far_plane_overlay &&
-        !legacy_highlight_overlay;
+        !reflection_probe_volumes && !far_plane_overlay;
 
     capture.batches.clear();
+    capture.highlight_batches.clear();
     capture.avatar_palettes.clear();
     capture.complete = true;
     capture.frame_active = true;
@@ -3818,8 +3935,9 @@ void LLPipeline::captureMetalWorldWaterSurface(
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (capture.pass_active || capture.world_pre_water_alpha_active ||
         capture.world_post_water_alpha_active ||
-        capture.water_surface_valid || !capture.water_haze_valid ||
-        (!surface.underwater && !capture.alpha_environment_valid))
+        capture.water_surface_valid ||
+        ((surface.underwater || surface.refracts) &&
+         !capture.water_haze_valid))
     {
         capture.complete = false;
         capture.batches.clear();
@@ -3830,6 +3948,21 @@ void LLPipeline::captureMetalWorldWaterSurface(
 
     if (!surface.underwater)
     {
+        // Opaque water clipping can skip the pre-water alpha pool entirely.
+        // That pool normally publishes the shared atmospheric inputs, but
+        // the water owner consumes the same data and must remain complete
+        // when there are no pre-water alpha draws to establish it first.
+        if (!capture.alpha_environment_valid)
+        {
+            if (!fillMetalWorldAlphaEnvironment(
+                    capture.alpha_environment))
+            {
+                capture.complete = false;
+                capture.batches.clear();
+                return;
+            }
+            capture.alpha_environment_valid = true;
+        }
         if (!capture.world_alpha_lighting_valid)
         {
             ALMetalWorldLegacyAlphaLighting lighting;
@@ -4052,8 +4185,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             << LL_ENDL;
     }
 
-    if (capture.complete && !capture.batches.empty() &&
-        capture.renderer && capture.target &&
+    if (capture.complete && capture.renderer && capture.target &&
         capture.composed_light_target)
     {
         ALMetalWorldOpaquePostDeferredScene scene;
@@ -4061,6 +4193,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.composed_lighting = capture.composed_light_target.get();
         scene.batches = capture.batches.data();
         scene.batch_count = capture.batches.size();
+        scene.highlight_batches = capture.highlight_batches.data();
+        scene.highlight_batch_count = capture.highlight_batches.size();
         scene.reflection_probes = needs_reflection_probes
             ? &capture.impostor_reflection_probes : nullptr;
         scene.hero_probe =
@@ -4468,7 +4602,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
 
             // Build the real display-space source only when this retained
             // linear target is already the exact input to colorCorrect's
-            // modern-gamma base permutation. This is intentionally stricter
+            // modern or legacy-gamma base permutation. This is intentionally stricter
             // than the GL renderer: every omitted upstream owner must be
             // inactive, or scopes keep their established GL/PBO source.
             static LLCachedControl<bool> auto_adjust(
@@ -4476,7 +4610,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
 
             LLSettingsSky::ptr_t sky =
                 LLEnvironment::instance().getCurrentSky();
-            const bool exact_dynamic_exposure = !dynamic_exposure ||
+            const bool legacy_gamma = LLRender::sClassicMode;
+            const bool exact_dynamic_exposure = legacy_gamma ||
+                !dynamic_exposure ||
                 (mMetalExposureHistoryReady &&
                  capture.exposure_target &&
                  capture.exposure_epoch == mMetalExposureHistoryEpoch &&
@@ -4512,7 +4648,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             {
                 ALMetalWorldDisplayPostScene display;
                 display.source = post_source;
-                display.adapted_exposure_texture = dynamic_exposure
+                display.adapted_exposure_texture =
+                    dynamic_exposure && !legacy_gamma
                     ? capture.exposure_target->colorTexture(0) : nullptr;
                 display.bloom_texture = capture.bloom_target
                     ? capture.bloom_target->colorTexture(0) : nullptr;
@@ -4529,6 +4666,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 display.cross_filter_strength = cross_filter_target
                     ? native_cross_filter_strength : 0.f;
                 display.hdr = true;
+                display.legacy_gamma = legacy_gamma;
+                display.legacy_gamma_exponent = sky->getGamma();
                 static LLCachedControl<F32> exposure(
                     gSavedSettings, "RenderExposure", 1.f);
                 static LLCachedControl<S32> tonemap_type(
@@ -5084,6 +5223,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             wipe_mode == 0;
 
                         if (exact_presentation &&
+                            capture.world_ui_chain_active &&
                             !capture.world_ui_probe_attempted &&
                             capture.world_ui_probe_attempts <
                                 MetalWorldSimpleCapture::max_world_ui_probe_attempts)
@@ -5199,7 +5339,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             }
         }
     }
-    else if (capture.complete && !capture.batches.empty())
+    else if (capture.complete)
     {
         capture.complete = false;
     }
@@ -5220,6 +5360,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         capture.bloom_frame = std::numeric_limits<U32>::max();
     }
     capture.batches.clear();
+    capture.highlight_batches.clear();
     capture.avatar_palettes.clear();
     capture.complete = true;
     capture.impostor_fullbright = false;
@@ -5294,6 +5435,7 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (capture.world_ui_capture_active ||
+        !capture.world_ui_chain_active ||
         capture.world_ui_probe_attempted ||
         capture.world_ui_probe_attempts >=
             MetalWorldSimpleCapture::max_world_ui_probe_attempts ||
@@ -5806,7 +5948,8 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
     if (!buffer || texture_count >
             ALMetalWorldSimpleBatch::max_diffuse_textures ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
-        !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
+        (!capture.impostor_fullbright &&
+         !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL)) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_COLOR) ||
         (indexed_textures &&
@@ -5832,7 +5975,8 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
     ALMetalWorldSimpleBatch batch;
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
-    batch.normal_offset = buffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
+    batch.normal_offset = buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL)
+        ? buffer->getOffset(LLVertexBuffer::TYPE_NORMAL) : 0;
     batch.texcoord_offset = buffer->getOffset(LLVertexBuffer::TYPE_TEXCOORD0);
     batch.color_offset = buffer->getOffset(LLVertexBuffer::TYPE_COLOR);
     batch.vertex_count = buffer->getNumVerts();
@@ -5858,6 +6002,22 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
             texture = LLViewerFetchedTexture::sWhiteImagep.get();
         }
         LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        if (image && !image->getTexName())
+        {
+            // ALTextureSlot::bindImpl/fastBind substitutes the default image
+            // when a streamed texture has no published GL object yet. Capture
+            // the texture GL actually sampled for this draw, rather than
+            // rejecting an otherwise exact native frame while the requested
+            // asset is still arriving.
+            LLViewerFetchedTexture* fallback =
+                LLViewerFetchedTexture::sDefaultImagep.get();
+            LLImageGL* fallback_image = fallback
+                ? fallback->getGLTexture() : nullptr;
+            if (fallback_image && fallback_image->getTexName())
+            {
+                image = fallback_image;
+            }
+        }
         batch.diffuse_textures[index] = image
             ? image->getMetalTexture() : nullptr;
         if (!batch.diffuse_textures[index])
@@ -5922,6 +6082,71 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
     capture.batches.push_back(batch);
 }
 
+void LLPipeline::captureMetalWorldHighlightBatch(
+    LLVertexBuffer* buffer, U32 index_count, U32 index_start,
+    LLViewerTexture* texture, const LLColor4& color, U32 texcoord_type)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+    if (!capture.complete || !buffer || index_count == 0 ||
+        texcoord_type < LLVertexBuffer::TYPE_TEXCOORD0 ||
+        texcoord_type > LLVertexBuffer::TYPE_TEXCOORD3 || !image ||
+        !image->getMetalTexture() ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer())
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        capture.highlight_batches.clear();
+        return;
+    }
+
+    const auto texcoord_attribute =
+        static_cast<LLVertexBuffer::AttributeType>(texcoord_type);
+    if (!buffer->hasDataType(texcoord_attribute))
+    {
+        capture.complete = false;
+        capture.batches.clear();
+        capture.highlight_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+
+    ALMetalWorldHighlightBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(
+        LLVertexBuffer::TYPE_VERTEX);
+    batch.texcoord_offset = buffer->getOffset(texcoord_attribute);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_offset = static_cast<std::size_t>(index_start) *
+                         buffer->getIndexStride();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = index_count;
+    batch.texture = image->getMetalTexture();
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.texture_matrix,
+                gGL.getTextureMatrix().getF32ptr(),
+                sizeof(batch.texture_matrix));
+    std::memcpy(batch.color, color.mV, sizeof(batch.color));
+    capture.highlight_batches.push_back(batch);
+}
+
 void LLPipeline::captureMetalWorldBumpBatch(
     const LLDrawInfo& params, LLViewerTexture* normal_texture)
 {
@@ -5939,6 +6164,19 @@ void LLPipeline::captureMetalWorldBumpBatch(
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
     LLImageGL* normal_image = normal_texture
         ? normal_texture->getGLTexture() : nullptr;
+    if (normal_image && !normal_image->getTexName())
+    {
+        LLViewerTexture* fallback =
+            LLViewerFetchedTexture::sDefaultImagep.get();
+        LLImageGL* fallback_image = fallback
+            ? fallback->getGLTexture() : nullptr;
+        if (fallback_image && fallback_image->getTexName())
+        {
+            // bindFast() substitutes this same image when a generated or
+            // streamed bump map has no published GL object yet.
+            normal_image = fallback_image;
+        }
+    }
     if (capture.impostor_emboss)
     {
         if (!params.mCount || !buffer || !normal_image ||
@@ -6095,6 +6333,28 @@ void LLPipeline::captureMetalWorldMaterialBatch(
         }
     }
 
+    const auto resolve_material_image = [](LLViewerTexture* texture)
+        -> LLImageGL*
+    {
+        LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        if (!image || !image->getTexName())
+        {
+            // Material samplers reach LLViewerTexture::bindDefaultImage when
+            // a streamed diffuse, normal or specular map has no GL object.
+            // Replay the image the visible draw actually sampled instead of
+            // rejecting the native transaction while that asset is pending.
+            LLViewerFetchedTexture* fallback =
+                LLViewerFetchedTexture::sDefaultImagep.get();
+            LLImageGL* fallback_image = fallback
+                ? fallback->getGLTexture() : nullptr;
+            if (fallback_image && fallback_image->getTexName())
+            {
+                image = fallback_image;
+            }
+        }
+        return image;
+    };
+
     for (std::size_t slot_index = 0;
          slot_index < slot_count; ++slot_index)
     {
@@ -6154,7 +6414,7 @@ void LLPipeline::captureMetalWorldMaterialBatch(
             destination.fullbright = params.mFullbright ? 1.f : 0.f;
         }
 
-        LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        LLImageGL* image = resolve_material_image(texture);
         batch.diffuse_textures[slot_index] = image
             ? image->getMetalTexture() : nullptr;
         if (!batch.diffuse_textures[slot_index])
@@ -6165,8 +6425,8 @@ void LLPipeline::captureMetalWorldMaterialBatch(
         }
         if (capture.material_normal_map)
         {
-            LLImageGL* normal_image = normal_texture
-                ? normal_texture->getGLTexture() : nullptr;
+            LLImageGL* normal_image =
+                resolve_material_image(normal_texture);
             destination.normal_texture = normal_image
                 ? normal_image->getMetalTexture() : nullptr;
             if (!destination.normal_texture)
@@ -6178,8 +6438,8 @@ void LLPipeline::captureMetalWorldMaterialBatch(
         }
         if (capture.material_specular_map)
         {
-            LLImageGL* specular_image = specular_texture
-                ? specular_texture->getGLTexture() : nullptr;
+            LLImageGL* specular_image =
+                resolve_material_image(specular_texture);
             destination.specular_texture = specular_image
                 ? specular_image->getMetalTexture() : nullptr;
             if (!destination.specular_texture)
@@ -6279,6 +6539,17 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
             texture = LLViewerFetchedTexture::sWhiteImagep.get();
         }
         LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        if (image && !image->getTexName())
+        {
+            LLViewerTexture* fallback =
+                LLViewerFetchedTexture::sDefaultImagep.get();
+            LLImageGL* fallback_image = fallback
+                ? fallback->getGLTexture() : nullptr;
+            if (fallback_image && fallback_image->getTexName())
+            {
+                image = fallback_image;
+            }
+        }
         batch.diffuse_textures[slot] = image
             ? image->getMetalTexture() : nullptr;
         if (!batch.diffuse_textures[slot])
@@ -9034,13 +9305,31 @@ void LLPipeline::captureMetalWorldAvatarBatch(
     batch.index_count = count;
     batch.diffuse_textures[0] = image->getMetalTexture();
     batch.texture_count = 1;
-    batch.alpha_mask = true;
+    const bool avatar_alpha = capture.world_post_deferred_active &&
+        !capture.world_post_deferred_phase;
+    batch.alpha_mask = !avatar_alpha;
     batch.use_vertex_color = false;
     batch.alpha_cutoff_bias = false;
-    batch.alpha_cutoff = LLDrawPoolAvatar::sMinimumAlpha;
+    batch.alpha_cutoff = avatar_alpha
+        ? 0.f : LLDrawPoolAvatar::sMinimumAlpha;
     batch.avatar_rigid = !capture.avatar_skinned;
     batch.avatar_skinning = capture.avatar_skinned;
     batch.avatar_cloth = capture.avatar_cloth;
+    batch.avatar_alpha = avatar_alpha;
+    if (avatar_alpha)
+    {
+        batch.pre_water_simple = true;
+        batch.pre_water_shadows =
+            capture.world_alpha_uses_shadows;
+        batch.pre_water_minimum_alpha =
+            LLDrawPoolAvatar::sMinimumAlpha;
+        batch.pre_water_source_rgb =
+            ALMetalBlendFactor::source_alpha;
+        batch.pre_water_destination_rgb =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        batch.pre_water_alpha_writes_coverage =
+            alphaWritesCoverage();
+    }
 
     if (capture.avatar_skinned)
     {
@@ -9091,6 +9380,8 @@ void LLPipeline::captureMetalWorldAvatarBatch(
         std::memcpy(batch.modelview_projection,
                     modelview_projection.getF32ptr(),
                     sizeof(batch.modelview_projection));
+        std::memcpy(batch.modelview, modelview.getF32ptr(),
+                    sizeof(batch.modelview));
         const F32* inverse = inverse_modelview.getF32ptr();
         for (U32 column = 0; column < 3; ++column)
         {
@@ -10041,13 +10332,20 @@ void LLPipeline::endMetalWorldGBufferCapture()
             capture.impostor_bake_native_valid = false;
             return;
         }
-        if (++capture.failed_frames >=
-            MetalWorldSimpleCapture::max_failed_frames)
+        const U32 failed_frames = ++capture.failed_frames;
+        if (failed_frames >= MetalWorldSimpleCapture::max_failed_frames)
         {
+            if (capture.world_ui_chain_active &&
+                !capture.world_ui_chain_counted)
+            {
+                ++capture.world_ui_chain_attempts;
+                capture.world_ui_chain_last_attempt_frame = gFrameCount;
+                capture.world_ui_chain_counted = true;
+            }
             capture.attempted = true;
             LL_WARNS("Metal")
                 << "Native world G-buffer probe retained GL after "
-                << capture.failed_frames
+                << failed_frames
                 << " deferred frames contained incomplete native "
                    "geometry or texture mirrors"
                 << LL_ENDL;
@@ -10085,6 +10383,13 @@ void LLPipeline::endMetalWorldGBufferCapture()
         if (++capture.failed_frames >=
             MetalWorldSimpleCapture::max_failed_frames)
         {
+            if (capture.world_ui_chain_active &&
+                !capture.world_ui_chain_counted)
+            {
+                ++capture.world_ui_chain_attempts;
+                capture.world_ui_chain_last_attempt_frame = gFrameCount;
+                capture.world_ui_chain_counted = true;
+            }
             capture.attempted = true;
             LL_WARNS("Metal")
                 << "Native world G-buffer probe retained GL after "
@@ -10105,6 +10410,13 @@ void LLPipeline::endMetalWorldGBufferCapture()
     }
     else
     {
+        if (capture.world_ui_chain_active &&
+            !capture.world_ui_chain_counted)
+        {
+            ++capture.world_ui_chain_attempts;
+            capture.world_ui_chain_last_attempt_frame = gFrameCount;
+            capture.world_ui_chain_counted = true;
+        }
         capture.hdri_sky_native_available = false;
         capture.split_sky_native_available = false;
         capture.windlight_sky_native_available = false;
@@ -10714,6 +11026,21 @@ void LLPipeline::renderMetalWorldProjectorLights(
             cookie = LLViewerFetchedTexture::sWhiteImagep.get();
         }
         LLImageGL* cookie_image = cookie ? cookie->getGLTexture() : nullptr;
+        if (!cookie_image || !cookie_image->getTexName())
+        {
+            // LLTextureUnit::bindImpl substitutes the viewer default image
+            // when a fetched projector cookie has not published a GL object
+            // yet. Use that same durable image for the native replay so an
+            // unavailable cookie does not stall the whole world transaction.
+            LLViewerFetchedTexture* fallback =
+                LLViewerFetchedTexture::sDefaultImagep.get();
+            LLImageGL* fallback_image = fallback
+                ? fallback->getGLTexture() : nullptr;
+            if (fallback_image && fallback_image->getTexName())
+            {
+                cookie_image = fallback_image;
+            }
+        }
         ALMetalTexture* cookie_texture = cookie_image
             ? cookie_image->getMetalTexture() : nullptr;
         if (!cookie_texture)
@@ -15885,7 +16212,8 @@ static inline void unbindHighlightProgram(LLGLSLShader& program)
     }
 }
 
-void LLPipeline::renderSelectedFaces(const LLColor4& color)
+void LLPipeline::renderSelectedFaces(const LLColor4& color,
+                                     U32 texcoord_type)
 {
     if (!mFaceSelectImagep)
     {
@@ -15910,7 +16238,8 @@ void LLPipeline::renderSelectedFaces(const LLColor4& color)
                 return;
             }
 
-            facep->renderSelected(mFaceSelectImagep, color);
+            facep->renderSelected(mFaceSelectImagep, color,
+                                  texcoord_type);
         }
     }
 }
@@ -15936,14 +16265,18 @@ void LLPipeline::renderHighlights()
             sRenderHighlightTextureChannel == LLRender::NUM_TEXTURE_CHANNELS)
         {
             static const LLColor4 highlight_selected_color(1.f, 1.f, 1.f, 0.5f);
-            renderSelectedFaces(highlight_selected_color);
+            renderSelectedFaces(
+                highlight_selected_color,
+                LLVertexBuffer::TYPE_TEXCOORD0);
         }
 
         // Paint 'em red!
         static const LLColor4 highlight_face_color(1.f, 0.f, 0.f, 0.5f);
         for (auto facep : mHighlightFaces)
         {
-            facep->renderSelected(LLViewerTexture::sNullImagep, highlight_face_color);
+            facep->renderSelected(
+                LLViewerTexture::sNullImagep, highlight_face_color,
+                LLVertexBuffer::TYPE_TEXCOORD0);
         }
 
         unbindHighlightProgram(gHighlightProgram);
@@ -15959,14 +16292,18 @@ void LLPipeline::renderHighlights()
         {
             static const LLColor4 highlight_normal_color(1.0f, 0.5f, 0.5f, 0.5f);
             bindHighlightProgram(gHighlightNormalProgram);
-            renderSelectedFaces(highlight_normal_color);
+            renderSelectedFaces(
+                highlight_normal_color,
+                LLVertexBuffer::TYPE_TEXCOORD1);
             unbindHighlightProgram(gHighlightNormalProgram);
         }
         else if (sRenderHighlightTextureChannel == LLRender::SPECULAR_MAP)
         {
             static const LLColor4 highlight_specular_color(0.0f, 0.3f, 1.0f, 0.8f);
             bindHighlightProgram(gHighlightSpecularProgram);
-            renderSelectedFaces(highlight_specular_color);
+            renderSelectedFaces(
+                highlight_specular_color,
+                LLVertexBuffer::TYPE_TEXCOORD2);
             unbindHighlightProgram(gHighlightSpecularProgram);
         }
     }
@@ -23439,9 +23776,10 @@ void LLPipeline::renderDeferredLighting()
             *camera, mat, light_scale,
             std::max<S32>(local_light_count, 0));
         renderMetalWorldLightingComposition();
-        // Keep the visible GL fallback on its accumulation target before it
-        // draws the same local-light owners.
-        screen_target->bindTarget();
+        // These native-only owners must not disturb the visible GL fallback's
+        // accumulation target. Rebinding that same target would push a cycle
+        // into LLRenderTarget's ownership stack.
+        llassert(LLRenderTarget::getCurrentBoundTarget() == screen_target);
 #endif
         if (local_light_count > 0 && (!gCubeSnapshot || shaderInputs().mGlobal.mProbeLevel > 0))
         {

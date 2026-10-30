@@ -40,3 +40,31 @@ private:
     explicit ALMetalTextureResampler(std::unique_ptr<Impl> impl);
     std::unique_ptr<Impl> mImpl;
 };
+
+class ALMetalNormalMapGenerator final
+{
+public:
+    ALMetalNormalMapGenerator(const ALMetalNormalMapGenerator&) = delete;
+    ALMetalNormalMapGenerator& operator=(
+        const ALMetalNormalMapGenerator&) = delete;
+    ~ALMetalNormalMapGenerator();
+
+    static std::unique_ptr<ALMetalNormalMapGenerator> create(
+        const ALMetalDevice& device,
+        std::string* error = nullptr);
+
+    // Reproduce the viewer's brightness/darkness legacy bump-map generator.
+    // The caller owns both textures and may generate destination mipmaps on
+    // the same command buffer after this render pass.
+    bool encode(ALMetalCommandBuffer& command_buffer,
+                const ALMetalTexture& source,
+                const ALMetalTexture& destination,
+                float normal_scale,
+                bool darkness,
+                std::string* error = nullptr);
+
+private:
+    struct Impl;
+    explicit ALMetalNormalMapGenerator(std::unique_ptr<Impl> impl);
+    std::unique_ptr<Impl> mImpl;
+};

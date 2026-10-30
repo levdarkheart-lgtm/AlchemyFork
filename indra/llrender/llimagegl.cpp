@@ -1741,7 +1741,11 @@ bool LLImageGL::adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture)
     expected.format = upload_format.format;
     expected.width = static_cast<U32>(liveWidth(mCurrentDiscardLevel));
     expected.height = static_cast<U32>(liveHeight(mCurrentDiscardLevel));
-    expected.mipmap_level_count = static_cast<U32>(llmax(mMipLevels, 1));
+    expected.mipmap_level_count = static_cast<U32>(mMipLevels > 0
+        ? mMipLevels
+        : mUseMipMaps
+            ? calcMipLevelCount(expected.width, expected.height)
+            : 1);
     expected.storage = ALMetalStorageMode::private_gpu;
     expected.usage = ALMetalTextureUsage::shader_read;
     switch (mDeprecatedSourceFormat)
@@ -3174,6 +3178,98 @@ bool LLImageGL::readBackRaw(S32 discard_level, LLImageRaw* imageraw, bool compre
 
     S32 gl_discard = discard_level - cur_discard;
 
+    S32 width = getWidth(discard_level);
+    S32 height = getHeight(discard_level);
+    S32 ncomponents = getComponents();
+    if (ncomponents == 0)
+    {
+        return false;
+    }
+
+    if (width <= 0 || width > 2048 || height <= 0 || height > 2048 || ncomponents < 1 || ncomponents > 4)
+    {
+        LL_ERRS() << llformat("LLImageGL::readBackRaw: bogus params: %d x %d x %d",width,height,ncomponents) << LL_ENDL;
+    }
+
+#if LL_DARWIN
+    // Fetched images already have a separately owned Metal mirror. Prefer it for
+    // byte images rather than asking Apple's deprecated GL driver to perform a
+    // synchronous glGetTexImage. Apart from moving the port forward, this avoids
+    // a driver crash observed while a sculpt texture's asynchronous pixel work was
+    // being restored for that call.
+    //
+    // Metal pads three-component textures to RGBA, so collapse that one storage
+    // expansion after readback. One-, two- and four-component byte images have the
+    // same host layout in both mirrors. Block-compressed and wider scalar formats
+    // retain the GL path until they have an equally explicit conversion contract.
+    const LLGLenum primary_format = getPrimaryFormat();
+    const U32 host_pixel_bytes = pixel_bytes(primary_format, mFormatType);
+    if (sImageMetalDevice && mMetalTexture && !mMetalTexture->isCompressed() &&
+        host_pixel_bytes == static_cast<U32>(ncomponents) &&
+        static_cast<U32>(gl_discard) < mMetalTexture->descriptor().mipmap_level_count &&
+        mMetalTexture->width(static_cast<U32>(gl_discard)) == static_cast<U32>(width) &&
+        mMetalTexture->height(static_cast<U32>(gl_discard)) == static_cast<U32>(height))
+    {
+        const std::size_t metal_pixel_bytes = mMetalTexture->bytesPerPixel();
+        const bool direct = metal_pixel_bytes == static_cast<std::size_t>(ncomponents);
+        const bool expanded_rgb = ncomponents == 3 &&
+                                  primary_format == GL_RGB &&
+                                  mFormatType == GL_UNSIGNED_BYTE &&
+                                  metal_pixel_bytes == 4;
+        if (direct || expanded_rgb)
+        {
+            LLImageDataLock lock(imageraw);
+            if (!imageraw->allocateDataSize(width, height, ncomponents))
+            {
+                constexpr F32 MAX_IMAGE_SIZE = 2048 * 2048;
+                const F32 size = static_cast<F32>(width) * static_cast<F32>(height) *
+                                 static_cast<F32>(ncomponents);
+                if (size > 0 && size <= MAX_IMAGE_SIZE)
+                {
+                    LLError::LLUserWarningMsg::showOutOfMemory();
+                    LL_ERRS() << "Memory allocation failed for reading back Metal texture. Data size: "
+                              << size << LL_ENDL;
+                }
+                LL_WARNS() << "Memory allocation failed for reading back Metal texture." << LL_ENDL;
+                return false;
+            }
+
+            std::vector<U8> expanded;
+            void* destination = imageraw->getData();
+            std::size_t destination_row_bytes = static_cast<std::size_t>(width) * ncomponents;
+            if (expanded_rgb)
+            {
+                destination_row_bytes = static_cast<std::size_t>(width) * metal_pixel_bytes;
+                expanded.resize(destination_row_bytes * static_cast<std::size_t>(height));
+                destination = expanded.data();
+            }
+
+            std::string metal_error;
+            if (!mMetalTexture->readback(
+                    *sImageMetalDevice, static_cast<U32>(gl_discard), 0, {},
+                    destination, destination_row_bytes, &metal_error))
+            {
+                LL_WARNS("Metal") << "Could not read back LLImageGL Metal mirror: "
+                                  << metal_error << LL_ENDL;
+                imageraw->deleteData();
+                return false;
+            }
+
+            if (expanded_rgb)
+            {
+                U8* output = imageraw->getData();
+                const U8* input = expanded.data();
+                const std::size_t pixels = static_cast<std::size_t>(width) * height;
+                for (std::size_t pixel = 0; pixel < pixels; ++pixel)
+                {
+                    std::memcpy(output + pixel * 3, input + pixel * 4, 3);
+                }
+            }
+            return true;
+        }
+    }
+#endif
+
     //explicitly unbind texture
     gGL.getTextureSlot(0)->unbind();
     // llverify is debug-only; in release a failed bind would have left
@@ -3196,24 +3292,12 @@ bool LLImageGL::readBackRaw(S32 discard_level, LLImageRaw* imageraw, bool compre
         return false;
     }
 
-    S32 width = getWidth(discard_level);
-    S32 height = getHeight(discard_level);
-    S32 ncomponents = getComponents();
-    if (ncomponents == 0)
-    {
-        return false;
-    }
     if(width < glwidth)
     {
         LL_WARNS() << "texture size is smaller than it should be." << LL_ENDL ;
         LL_WARNS() << "width: " << width << " glwidth: " << glwidth << " mWidth: " << mWidth <<
             " current discard: " << cur_discard << " discard_level: " << (S32)discard_level << LL_ENDL ;
         return false ;
-    }
-
-    if (width <= 0 || width > 2048 || height <= 0 || height > 2048 || ncomponents < 1 || ncomponents > 4)
-    {
-        LL_ERRS() << llformat("LLImageGL::readBackRaw: bogus params: %d x %d x %d",width,height,ncomponents) << LL_ENDL;
     }
 
     LLGLint is_compressed = 0;

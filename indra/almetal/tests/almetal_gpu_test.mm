@@ -704,6 +704,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_avatar_spot_shadow_skinned_vertex",
             "almetal_world_avatar_spot_shadow_cloth_vertex",
             "almetal_world_simple_vertex",
+            "almetal_world_highlight_vertex",
             "almetal_world_simple_skinned_vertex",
             "almetal_world_bump_vertex",
             "almetal_world_bump_skinned_vertex",
@@ -714,9 +715,13 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_avatar_rigid_vertex",
             "almetal_world_avatar_skinned_vertex",
             "almetal_world_avatar_cloth_skinned_vertex",
+            "almetal_world_avatar_alpha_rigid_vertex",
+            "almetal_world_avatar_alpha_skinned_vertex",
+            "almetal_world_avatar_alpha_cloth_skinned_vertex",
             "almetal_world_impostor_vertex",
             "almetal_world_coverage_vertex",
             "almetal_world_simple_fragment",
+            "almetal_world_highlight_fragment",
             "almetal_world_alpha_mask_fragment",
             "almetal_world_bump_fragment",
             "almetal_world_material_fragment",
@@ -1586,6 +1591,90 @@ TEST_CASE("almetal: bilinear texture resampling stays entirely on the GPU", "[al
             CHECK(std::abs(static_cast<int>(srgb_result[pixel * 4 + 1]) - 128) <= 1);
             CHECK(std::abs(static_cast<int>(srgb_result[pixel * 4 + 2]) - 128) <= 1);
             CHECK(srgb_result[pixel * 4 + 3] == 255);
+        }
+    }
+}
+
+TEST_CASE("almetal: legacy brightness and darkness bump maps are generated natively", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto generator = ALMetalNormalMapGenerator::create(*device, &error);
+        INFO(error);
+        REQUIRE(generator);
+
+        ALMetalTextureDescriptor source_descriptor;
+        source_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        source_descriptor.width = 4;
+        source_descriptor.height = 4;
+        source_descriptor.storage = ALMetalStorageMode::private_gpu;
+        source_descriptor.usage = ALMetalTextureUsage::shader_read;
+        source_descriptor.label = "Alchemy legacy bump source";
+        auto source = ALMetalTexture::create(
+            *device, source_descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        ALMetalTextureDescriptor destination_descriptor = source_descriptor;
+        destination_descriptor.mipmap_level_count = 3;
+        destination_descriptor.usage = ALMetalTextureUsage::shader_read |
+                                       ALMetalTextureUsage::render_target;
+        destination_descriptor.label = "Alchemy brightness bump result";
+        auto brightness = ALMetalTexture::create(
+            *device, destination_descriptor, &error);
+        INFO(error);
+        REQUIRE(brightness);
+        destination_descriptor.label = "Alchemy darkness bump result";
+        auto darkness = ALMetalTexture::create(
+            *device, destination_descriptor, &error);
+        INFO(error);
+        REQUIRE(darkness);
+
+        std::array<std::uint8_t, 4 * 4 * 4> source_pixels{};
+        for (std::size_t pixel = 0; pixel < 16; ++pixel)
+        {
+            source_pixels[pixel * 4 + 0] = 64;
+            source_pixels[pixel * 4 + 1] = 64;
+            source_pixels[pixel * 4 + 2] = 64;
+            source_pixels[pixel * 4 + 3] = 255;
+        }
+        auto command = device->makeCommandBuffer(
+            "Alchemy native legacy bump-map test", &error);
+        INFO(error);
+        REQUIRE(command);
+        REQUIRE(source->upload(
+            *command, 0, 0, {}, source_pixels.data(), 4 * 4, &error));
+        REQUIRE(generator->encode(
+            *command, *source, *brightness, 2.f, false, &error));
+        REQUIRE(brightness->generateMipmaps(*command, &error));
+        REQUIRE(generator->encode(
+            *command, *source, *darkness, 2.f, true, &error));
+        REQUIRE(darkness->generateMipmaps(*command, &error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 4 * 4 * 4> bright_pixels{};
+        std::array<std::uint8_t, 4 * 4 * 4> dark_pixels{};
+        REQUIRE(brightness->readback(
+            *device, 0, 0, {}, bright_pixels.data(), 4 * 4, &error));
+        REQUIRE(darkness->readback(
+            *device, 0, 0, {}, dark_pixels.data(), 4 * 4, &error));
+        INFO(error);
+        for (std::size_t pixel = 0; pixel < 16; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            CHECK(std::abs(static_cast<int>(bright_pixels[offset + 0]) - 128) <= 1);
+            CHECK(std::abs(static_cast<int>(bright_pixels[offset + 1]) - 128) <= 1);
+            CHECK(bright_pixels[offset + 2] == 255);
+            CHECK(std::abs(static_cast<int>(bright_pixels[offset + 3]) - 64) <= 1);
+            CHECK(std::abs(static_cast<int>(dark_pixels[offset + 0]) - 128) <= 1);
+            CHECK(std::abs(static_cast<int>(dark_pixels[offset + 1]) - 128) <= 1);
+            CHECK(dark_pixels[offset + 2] == 255);
+            CHECK(std::abs(static_cast<int>(dark_pixels[offset + 3]) - 191) <= 1);
         }
     }
 }
@@ -2555,6 +2644,15 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             0, 255, 0, 255,
         }};
         diffuse_descriptor.label =
+            "Alchemy world highlight white sRGB texture";
+        auto highlight_texture = ALMetalTexture::create(
+            *device, diffuse_descriptor, &error);
+        INFO(error);
+        REQUIRE(highlight_texture);
+        const std::array<std::uint8_t, 4> highlight_pixel{{
+            255, 255, 255, 255,
+        }};
+        diffuse_descriptor.label =
             "Alchemy world tree half-alpha sRGB diffuse";
         auto tree_diffuse = ALMetalTexture::create(
             *device, diffuse_descriptor, &error);
@@ -2641,6 +2739,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *upload, 0, 0, {}, diffuse_pixel.data(), 4, &error));
         REQUIRE(indexed_diffuse->upload(
             *upload, 0, 0, {}, indexed_diffuse_pixel.data(), 4, &error));
+        REQUIRE(highlight_texture->upload(
+            *upload, 0, 0, {}, highlight_pixel.data(), 4, &error));
         REQUIRE(tree_diffuse->upload(
             *upload, 0, 0, {}, tree_diffuse_pixel.data(), 4, &error));
         REQUIRE(zero_alpha_diffuse->upload(
@@ -3504,6 +3604,31 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(alpha_orm[fullbright_top + 3] == 0);
         CHECK(std::abs(alpha_depth[24 * 32 + 8] - 0.625f) < 0.0001f);
 
+        // Fullbright volume batches legally omit normals: neither the GL
+        // fullbright vertex shader nor its fragment consumes them. Keep the
+        // native static and skinned contracts honest by pointing the unused
+        // normal offset beyond the buffer and requiring both variants to
+        // encode under Metal API validation.
+        ALMetalWorldSimpleBatch normal_free_fullbright = fullbright_batch;
+        normal_free_fullbright.normal_offset = vertex_bytes.size() + 16;
+        alpha_scene.batches = &normal_free_fullbright;
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *coverage_result, alpha_scene, &error));
+        INFO(error);
+        normal_free_fullbright.weight_offset = weight_offset;
+        normal_free_fullbright.skin_palette = alpha_skin_palette.data();
+        normal_free_fullbright.skin_palette_float_count =
+            alpha_skin_palette.size();
+        normal_free_fullbright.skin_joint_count = 1;
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *coverage_result, alpha_scene, &error));
+        INFO(error);
+        normal_free_fullbright.weight_offset = 0;
+        normal_free_fullbright.skin_palette = nullptr;
+        normal_free_fullbright.skin_palette_float_count = 0;
+        normal_free_fullbright.skin_joint_count = 0;
+        alpha_scene.batches = &fullbright_batch;
+
         // The main-world owner starts from independently produced lighting
         // color and G-buffer depth. It copies both on-GPU, then replays this
         // opaque-forward batch into a single final-color attachment without
@@ -3541,17 +3666,46 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         ALMetalWorldOpaquePostDeferredScene opaque_forward_scene;
         opaque_forward_scene.gbuffer = coverage_result.get();
         opaque_forward_scene.composed_lighting = final_light.get();
-        opaque_forward_scene.batches = &fullbright_batch;
+        opaque_forward_scene.batches = &normal_free_fullbright;
         opaque_forward_scene.batch_count = 1;
         opaque_forward_scene.width = 32;
         opaque_forward_scene.height = 32;
         opaque_forward_scene.hdr = true;
-        fullbright_batch.diffuse_textures[0] = nullptr;
+
+        // A world with no forward/post-deferred draws is still a complete
+        // transaction: retain composed opaque lighting and G-buffer depth so
+        // the display chain does not stall on an empty optional slice.
+        opaque_forward_scene.batches = nullptr;
+        opaque_forward_scene.batch_count = 0;
+        auto opaque_only = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(opaque_only);
+        std::array<std::uint16_t, 32 * 32 * 4> opaque_only_pixels{};
+        std::array<float, 32 * 32> opaque_only_depth{};
+        REQUIRE(opaque_only->colorTexture(0)->readback(
+            *device, 0, 0, {}, opaque_only_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(opaque_only->depthStencilTexture()->readback(
+            *device, 0, 0, {}, opaque_only_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(opaque_only_pixels[0] == 0x3400);
+        CHECK(opaque_only_pixels[1] == 0x3000);
+        CHECK(opaque_only_pixels[2] == 0x2c00);
+        CHECK(opaque_only_pixels[3] == 0x3800);
+        CHECK(std::abs(opaque_only_depth[24 * 32 + 8] - 0.625f) <
+              0.0001f);
+        CHECK(std::abs(opaque_only_depth[0] - 1.f) < 0.0001f);
+
+        opaque_forward_scene.batches = &normal_free_fullbright;
+        opaque_forward_scene.batch_count = 1;
+        normal_free_fullbright.diffuse_textures[0] = nullptr;
         CHECK_FALSE(renderer->renderOpaquePostDeferred(
             opaque_forward_scene, &error));
         CHECK(error ==
               "Metal world opaque post-deferred texture is invalid");
-        fullbright_batch.diffuse_textures[0] = indexed_diffuse.get();
+        normal_free_fullbright.diffuse_textures[0] = indexed_diffuse.get();
         error.clear();
         auto opaque_forward = renderer->renderOpaquePostDeferred(
             opaque_forward_scene, &error);
@@ -3592,6 +3746,70 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(opaque_scene_pixel[1] == 0.125f);
         CHECK(opaque_scene_pixel[2] == 0.0625f);
         CHECK(opaque_scene_pixel[3] == 0.5f);
+
+        // Legacy edit-face/touch highlights sit after all post-deferred
+        // geometry but before exposure, tonemapping and other display post.
+        // Reuse the retained face buffers, sample an sRGB white marker, and
+        // prove GL's uniform-color multiplication, alpha blend and read-only
+        // forward/reverse depth conventions at that exact boundary.
+        ALMetalWorldHighlightBatch highlight;
+        highlight.vertices = vertices.get();
+        highlight.position_offset = 0;
+        highlight.texcoord_offset = texcoord_offset;
+        highlight.vertex_count = positions.size();
+        highlight.indices = indices.get();
+        highlight.index_count = index_values.size();
+        highlight.texture = highlight_texture.get();
+        highlight.color[0] = 1.f;
+        highlight.color[3] = 0.5f;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            highlight.modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        opaque_forward_scene.highlight_batches = &highlight;
+        opaque_forward_scene.highlight_batch_count = 1;
+        highlight.texture = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world highlight batch is invalid");
+        highlight.texture = highlight_texture.get();
+        error.clear();
+        auto highlighted = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(highlighted);
+        std::array<std::uint16_t, 32 * 32 * 4> highlighted_pixels{};
+        std::array<float, 32 * 32> highlighted_depth{};
+        REQUIRE(highlighted->colorTexture(0)->readback(
+            *device, 0, 0, {}, highlighted_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(highlighted->depthStencilTexture()->readback(
+            *device, 0, 0, {}, highlighted_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(highlighted_pixels[center + 0] == 0x3900);
+        CHECK(highlighted_pixels[center + 1] == 0x2c00);
+        CHECK(highlighted_pixels[center + 2] == 0x2800);
+        CHECK(highlighted_pixels[center + 3] == 0x3800);
+        CHECK(std::abs(highlighted_depth[16 * 32 + 16] - 0.625f) <
+              0.0001f);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        auto reverse_highlighted = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_highlighted);
+        REQUIRE(reverse_highlighted->depthStencilTexture()->readback(
+            *device, 0, 0, {}, highlighted_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(highlighted_depth[16 * 32 + 16] - 0.25f) <
+              0.0001f);
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.highlight_batches = nullptr;
+        opaque_forward_scene.highlight_batch_count = 0;
 
         // Final-color publication is opt-in because only the continuously
         // advancing main-world path needs to sample combined depth. Prove
@@ -4284,8 +4502,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         pbr_glow_batches[0].emissive_offset = vertex_bytes.size();
         CHECK_FALSE(renderer->renderOpaquePostDeferred(
             opaque_forward_scene, &error));
-        CHECK(error ==
-              "Metal world opaque post-deferred batch is invalid");
+        CHECK(error.find(
+                  "Metal world opaque post-deferred batch is invalid") == 0);
         pbr_glow_batches[0].emissive_offset = emissive_offset;
         pbr_glow_batches[0].pbr_slots[0].emissive_texture = nullptr;
         error.clear();
@@ -5786,8 +6004,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         custom_alpha.pre_water_minimum_alpha = 0.002f;
         CHECK_FALSE(renderer->renderOpaquePostDeferred(
             opaque_forward_scene, &error));
-        CHECK(error ==
-              "Metal world opaque post-deferred batch is invalid");
+        CHECK(error.find(
+                  "Metal world opaque post-deferred batch is invalid") == 0);
         custom_alpha.pre_water_minimum_alpha = 0.f;
         error.clear();
 
@@ -6320,9 +6538,32 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         INFO(error);
         REQUIRE(opaque_above_water);
 
+        // Opaque above-water rendering has no refraction source and the GL
+        // owner deliberately skips the pre-surface water-haze pass. The
+        // native transaction must accept that exact shortened ordering while
+        // still requiring haze for refractive or underwater surfaces.
+        opaque_forward_scene.batches = &underwater_surface_marker;
+        opaque_forward_scene.batch_count = 1;
+        opaque_forward_scene.water_exclusion_surface = nullptr;
+        opaque_forward_scene.water_haze = nullptr;
+        auto opaque_above_water_without_haze =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(opaque_above_water_without_haze);
+        above_water_surface.refracts = true;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world water-surface marker is invalid");
+        error.clear();
+        opaque_forward_scene.batches = underwater_surface_batches.data();
+        opaque_forward_scene.batch_count =
+            underwater_surface_batches.size();
+        opaque_forward_scene.water_exclusion_surface = &water_surface;
+        opaque_forward_scene.water_haze = &underwater_marker_haze;
+
         // Exercise the water-specific ordinary -> SSR -> hero finish and
         // the infinite-projection rim replacement with coherent resources.
-        above_water_surface.refracts = true;
         above_water_surface.optics[2] = 0.f;
         above_water_surface.water_far[1] = 8.f;
         above_water_surface.rim[0] = 100.f;
@@ -7291,6 +7532,52 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(
                            avatar_skinned_albedo[avatar_translated + 1]) -
                        64) <= 1);
+
+        // The main-world avatar alpha pool is ordered before glow and the
+        // ordinary pre-water alpha pool. It therefore has its own forward
+        // family, while retaining the system-avatar scalar skin weights,
+        // fixed 45-float4 palette and the same simple-alpha lighting pack.
+        ALMetalWorldSimpleBatch avatar_alpha_batch = batch;
+        avatar_alpha_batch.alpha_mask = false;
+        avatar_alpha_batch.alpha_cutoff = 0.f;
+        avatar_alpha_batch.avatar_alpha = true;
+        avatar_alpha_batch.pre_water_simple = true;
+        avatar_alpha_batch.pre_water_shadows = false;
+        avatar_alpha_batch.pre_water_minimum_alpha = 0.2f;
+        avatar_alpha_batch.pre_water_alpha_writes_coverage = false;
+        opaque_forward_scene = {};
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.composed_lighting = final_light.get();
+        opaque_forward_scene.batches = &avatar_alpha_batch;
+        opaque_forward_scene.batch_count = 1;
+        opaque_forward_scene.reflection_probes = &reflection_probes;
+        opaque_forward_scene.alpha_environment = &alpha_environment;
+        opaque_forward_scene.alpha_lighting = &simple_alpha_lighting;
+        opaque_forward_scene.width = 32;
+        opaque_forward_scene.height = 32;
+        opaque_forward_scene.hdr = true;
+        avatar_alpha_batch.skin_palette_float_count =
+            avatar_palette.size() - 1;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        avatar_alpha_batch.skin_palette_float_count =
+            avatar_palette.size();
+        error.clear();
+        auto avatar_alpha_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(avatar_alpha_result);
+
+        avatar_alpha_batch.avatar_cloth = true;
+        avatar_alpha_batch.cloth_offset = avatar_cloth_offset;
+        avatar_alpha_batch.avatar_wind[0] = 1.f;
+        avatar_alpha_batch.avatar_wind[3] = 1.f;
+        avatar_alpha_batch.avatar_sin_wave[3] = 3.141592f;
+        auto avatar_alpha_cloth_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(avatar_alpha_cloth_result);
 
         // With a unit wind strength and phase PI, the owner's minimax sine
         // produces a unit primary displacement. The clothing X vector moves
@@ -14068,6 +14355,47 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
         CHECK(std::abs(static_cast<int>(channel10(packed[0], 2)) -
                        static_cast<int>(unorm10(srgb(0.125f)))) <= 1);
         CHECK((packed[0] >> 30u) == 2u);
+
+        // A legacy sky uses the same HDR/bloom storage path, but GLSL's
+        // LEGACY_GAMMA permutation skips exposure and tonemapping before
+        // applying 1-pow(1-sRGB,gamma) in display space.
+        scene.legacy_gamma = true;
+        scene.legacy_gamma_exponent = 2.f;
+        scene.static_exposure = 4.f;
+        scene.adapted_exposure = 0.5f;
+        scene.tonemap_mix = 1.f;
+        scene.tonemap_type = 3;
+        scene.tonemap_params[0] = 4.f;
+        auto legacy_output = renderer->renderDisplayPost(scene, &error);
+        INFO(error);
+        REQUIRE(legacy_output);
+        REQUIRE(legacy_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, packed.data(), sizeof(packed), &error));
+        INFO(error);
+        const auto legacy_gamma = [](float display)
+        {
+            return 1.f - std::pow(
+                1.f - std::clamp(display, 0.f, 1.f), 2.f);
+        };
+        CHECK(std::abs(static_cast<int>(channel10(packed[0], 0)) -
+                       static_cast<int>(unorm10(
+                           legacy_gamma(srgb(0.5f))))) <= 1);
+        CHECK(std::abs(static_cast<int>(channel10(packed[0], 1)) -
+                       static_cast<int>(unorm10(
+                           legacy_gamma(srgb(0.25f))))) <= 1);
+        CHECK(std::abs(static_cast<int>(channel10(packed[0], 2)) -
+                       static_cast<int>(unorm10(
+                           legacy_gamma(srgb(0.125f))))) <= 1);
+        scene.legacy_gamma = false;
+        scene.legacy_gamma_exponent = 1.f;
+        scene.static_exposure = 1.f;
+        scene.adapted_exposure = 1.f;
+        scene.tonemap_mix = 0.f;
+        scene.tonemap_type = 0;
+        scene.tonemap_params[0] = 0.f;
+        REQUIRE(hdr_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, packed.data(), sizeof(packed), &error));
+        INFO(error);
 
         auto hdr_sample = renderer->renderDisplaySample(
             *hdr_output, 2, 1, &error);
