@@ -543,12 +543,11 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     }
 
 #if LL_DARWIN
-    // The world still comes from the migration GL backend. A startup frame may
-    // have made the Metal layer opaque; restore transparent composition before
-    // any world frame, including a resize-only frame, can reach the screen.
-    // Keep world UI in that same GL presentation until the world backing pass
-    // migrates; a transparent Cocoa Metal child cannot reliably composite over
-    // the live NSOpenGL surface on all macOS configurations.
+    // A startup or preceding exact world frame may have made the Metal layer
+    // opaque. Restore transparent composition before every world frame,
+    // including resize-only frames, so an incomplete current native
+    // transaction always reveals the authoritative GL fallback. An exact
+    // native frame earns opacity again only when its drawable is committed.
     if (LLStartUp::getStartupState() >= STATE_PRECACHE)
     {
         gGL.setMetalUIReplacementEnabled(false);
@@ -557,8 +556,9 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         if (!logged_world_gl_ui)
         {
             logged_world_gl_ui = true;
-            LL_INFOS("Metal") << "World frames retain visible UI in the GL backing "
-                                 "until native world presentation replaces it"
+            LL_INFOS("Metal") << "World frames begin with transparent native "
+                                 "composition so incomplete frames retain their "
+                                 "visible GL fallback"
                                << LL_ENDL;
         }
     }

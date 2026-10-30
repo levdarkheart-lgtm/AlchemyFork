@@ -5,7 +5,7 @@
         <key>ALMetalWorldPresentation</key>
         <map>
             <key>Comment</key>
-            <string>Development-only: publish one complete native Metal world/UI probe frame. Requires restart and remains off until controlled authenticated visual parity testing.</string>
+            <string>Development-only: after one complete native Metal world/UI probe reaches the drawable, continuously publish exact frames with per-frame GL fallback and a bounded failure cooldown. Requires restart and remains off outside controlled authenticated validation.</string>
             <key>Persist</key>
             <integer>0</integer>
             <key>HideFromEditor</key>
