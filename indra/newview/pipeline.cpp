@@ -493,6 +493,12 @@ struct LLPipeline::MetalWorldSimpleCapture
     // disturbing the authoritative GL surface.
     std::unique_ptr<ALMetalTexture> world_ui_target;
     U32 world_ui_frame = std::numeric_limits<U32>::max();
+    // The most recent exact drawable source remains alive while one
+    // development-only native-authority transaction omits duplicate GL
+    // draws. On failure the already-presented opaque surface is held for the
+    // rest of that frame and ordinary GL resumes after a bounded cooldown.
+    std::unique_ptr<ALMetalTexture> world_ui_fallback_target;
+    U32 world_ui_fallback_frame = std::numeric_limits<U32>::max();
     bool world_ui_capture_active = false;
     bool world_ui_probe_attempted = false;
     U32 world_ui_probe_attempts = 0;
@@ -508,6 +514,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 world_ui_continuous_last_failure_frame =
         std::numeric_limits<U32>::max();
     bool world_ui_continuous_cooldown_reported = false;
+    bool duplicate_gl_candidate_armed = false;
+    bool duplicate_gl_draws_suppressed = false;
+    U32 duplicate_gl_last_failure_frame =
+        std::numeric_limits<U32>::max();
     bool world_ui_chain_active = false;
     bool world_ui_chain_counted = false;
     U32 world_ui_chain_attempts = 0;
@@ -626,6 +636,21 @@ struct LLPipeline::MetalWorldSimpleCapture
     {
         complete = true;
         first_incomplete_source_line = 0;
+    }
+
+    void retainExactWorldUIFallback()
+    {
+        if (world_ui_target &&
+            world_ui_frame == world_ui_last_submitted_frame)
+        {
+            world_ui_fallback_target = std::move(world_ui_target);
+            world_ui_fallback_frame = world_ui_frame;
+        }
+        else
+        {
+            world_ui_target.reset();
+        }
+        world_ui_frame = std::numeric_limits<U32>::max();
     }
 
     bool hdri_sky_active = false;
@@ -768,6 +793,135 @@ static bool metalWorldPresentationRequested()
     static LLCachedControl<bool> publish_world(
         gSavedSettings, "ALMetalWorldPresentation", false);
     return publish_world;
+}
+
+static bool metalWorldDuplicateGLSuppressionRequested()
+{
+    static LLCachedControl<bool> suppress_duplicate_gl(
+        gSavedSettings, "ALMetalWorldSuppressDuplicateGLDraws", false);
+    return suppress_duplicate_gl;
+}
+
+bool LLPipeline::beginMetalWorldPresentationFrame()
+{
+    if (!mMetalWorldSimpleCapture || gSnapshot || gDisconnected ||
+        !metalWorldPresentationRequested() ||
+        !metalWorldDuplicateGLSuppressionRequested())
+    {
+        return false;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.duplicate_gl_candidate_armed ||
+        capture.duplicate_gl_draws_suppressed)
+    {
+        // An interrupted display path may have reached LLRender::endFrame
+        // without the normal pipeline finish hook. The renderer independently
+        // clears its draw gate there; retire the matching pipeline state here
+        // before considering another candidate.
+        if (capture.duplicate_gl_draws_suppressed)
+        {
+            capture.duplicate_gl_last_failure_frame = gFrameCount;
+        }
+        capture.duplicate_gl_candidate_armed = false;
+        capture.duplicate_gl_draws_suppressed = false;
+        capture.world_ui_fallback_target.reset();
+        capture.world_ui_fallback_frame =
+            std::numeric_limits<U32>::max();
+        gGL.setLegacyDrawSuppressed(false);
+    }
+    const bool retry_ready =
+        capture.duplicate_gl_last_failure_frame ==
+            std::numeric_limits<U32>::max() ||
+        gFrameCount - capture.duplicate_gl_last_failure_frame >=
+            MetalWorldSimpleCapture::max_failed_frames;
+    const ALMetalTexture* exact = capture.world_ui_target.get();
+    if (!retry_ready || !capture.world_ui_continuous_unlocked || !exact ||
+        capture.world_ui_frame != capture.world_ui_last_submitted_frame)
+    {
+        return false;
+    }
+
+    const std::optional<ALRenderTargetDesc>& descriptor =
+        mResourcePlan.desc(ALRenderResourcePlan::Id::MainGBuffer);
+    const ALMetalTextureDescriptor& texture = exact->descriptor();
+    if (!descriptor || texture.width != descriptor->width ||
+        texture.height != descriptor->height ||
+        !gGL.setMetalPresentationOpaque(true))
+    {
+        return false;
+    }
+
+    capture.duplicate_gl_candidate_armed = true;
+    return true;
+}
+
+void LLPipeline::finishMetalWorldPresentationFrame()
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        gGL.setLegacyDrawSuppressed(false);
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const bool candidate_armed = capture.duplicate_gl_candidate_armed;
+    const bool draws_suppressed = capture.duplicate_gl_draws_suppressed;
+    capture.duplicate_gl_candidate_armed = false;
+    capture.duplicate_gl_draws_suppressed = false;
+    gGL.setLegacyDrawSuppressed(false);
+
+    if (!candidate_armed)
+    {
+        return;
+    }
+    if (draws_suppressed &&
+        capture.world_ui_last_submitted_frame == gFrameCount)
+    {
+        capture.world_ui_fallback_target.reset();
+        capture.world_ui_fallback_frame =
+            std::numeric_limits<U32>::max();
+        LL_INFOS_ONCE("Metal")
+            << "Native world/UI diagnostic authority omitted centralized "
+               "duplicate GL draws and submitted an exact replacement frame"
+            << LL_ENDL;
+        return;
+    }
+    if (!draws_suppressed)
+    {
+        // Eligibility changed after the previous exact surface was retained;
+        // the complete GL frame about to swap remains authoritative.
+        gGL.setMetalPresentationOpaque(false);
+        capture.world_ui_fallback_target.reset();
+        capture.world_ui_fallback_frame =
+            std::numeric_limits<U32>::max();
+        return;
+    }
+
+    capture.duplicate_gl_last_failure_frame = gFrameCount;
+    const bool held = gGL.holdMetalPresentationFrame();
+    gDisplaySwapBuffers = false;
+    capture.world_ui_fallback_target.reset();
+    capture.world_ui_fallback_frame =
+        std::numeric_limits<U32>::max();
+    if (!held)
+    {
+        LL_WARNS("Metal")
+            << "Could not mark the last exact Metal surface as held after a "
+               "draw-suppressed native transaction failed; GL draw "
+               "suppression is disabled before the next frame"
+            << LL_ENDL;
+    }
+    else
+    {
+        LL_INFOS("Metal")
+            << "An incomplete draw-suppressed native transaction retained "
+               "the last exact opaque Metal surface for this frame; full GL "
+               "rendering "
+               "resumes for at least "
+            << MetalWorldSimpleCapture::max_failed_frames << " frames"
+            << LL_ENDL;
+    }
 }
 
 bool LLPipeline::metalWorldPresentationCurrent() const
@@ -1570,6 +1724,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.presentation_frame = std::numeric_limits<U32>::max();
         capture.world_ui_target.reset();
         capture.world_ui_frame = std::numeric_limits<U32>::max();
+        capture.world_ui_fallback_target.reset();
+        capture.world_ui_fallback_frame =
+            std::numeric_limits<U32>::max();
         capture.world_ui_capture_active = false;
         capture.world_ui_probe_attempted = false;
         capture.world_ui_probe_attempts = 0;
@@ -1580,6 +1737,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.world_ui_continuous_last_failure_frame =
             std::numeric_limits<U32>::max();
         capture.world_ui_continuous_cooldown_reported = false;
+        capture.duplicate_gl_candidate_armed = false;
+        capture.duplicate_gl_draws_suppressed = false;
+        capture.duplicate_gl_last_failure_frame =
+            std::numeric_limits<U32>::max();
+        gGL.setLegacyDrawSuppressed(false);
+        gGL.setMetalPresentationOpaque(false);
         capture.world_ui_chain_active = false;
         capture.world_ui_chain_counted = false;
         capture.world_ui_chain_attempts = 0;
@@ -1966,8 +2129,18 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.display_post_frame = std::numeric_limits<U32>::max();
         capture.presentation_target.reset();
         capture.presentation_frame = std::numeric_limits<U32>::max();
-        capture.world_ui_target.reset();
-        capture.world_ui_frame = std::numeric_limits<U32>::max();
+        if (main_world_capture && capture.duplicate_gl_candidate_armed)
+        {
+            capture.retainExactWorldUIFallback();
+        }
+        else
+        {
+            capture.world_ui_target.reset();
+            capture.world_ui_frame = std::numeric_limits<U32>::max();
+            capture.world_ui_fallback_target.reset();
+            capture.world_ui_fallback_frame =
+                std::numeric_limits<U32>::max();
+        }
         capture.world_ui_chain_active = false;
         capture.world_ui_chain_counted = false;
         capture.depth_of_field_target.reset();
@@ -2215,6 +2388,19 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.continuous_world_frame = gFrameCount;
     capture.frame_active = true;
     capture.pass_active = false;
+    if (main_world_capture && capture.duplicate_gl_candidate_armed &&
+        capture.world_ui_chain_active &&
+        capture.world_ui_fallback_target &&
+        capture.world_ui_fallback_frame ==
+            capture.world_ui_last_submitted_frame)
+    {
+        capture.duplicate_gl_draws_suppressed = true;
+        gGL.setLegacyDrawSuppressed(true);
+        LL_INFOS_ONCE("Metal")
+            << "A proven exact native frame armed bounded suppression of "
+               "centralized duplicate GL draw commands"
+            << LL_ENDL;
+    }
 }
 
 void LLPipeline::beginMetalWorldHDRISky(
@@ -3504,6 +3690,9 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.presentation_frame = std::numeric_limits<U32>::max();
         capture.world_ui_target.reset();
         capture.world_ui_frame = std::numeric_limits<U32>::max();
+        capture.world_ui_fallback_target.reset();
+        capture.world_ui_fallback_frame =
+            std::numeric_limits<U32>::max();
         capture.world_ui_capture_active = false;
         capture.world_ui_probe_attempted = false;
         capture.world_ui_probe_attempts = 0;
@@ -3514,6 +3703,12 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.world_ui_continuous_last_failure_frame =
             std::numeric_limits<U32>::max();
         capture.world_ui_continuous_cooldown_reported = false;
+        capture.duplicate_gl_candidate_armed = false;
+        capture.duplicate_gl_draws_suppressed = false;
+        capture.duplicate_gl_last_failure_frame =
+            std::numeric_limits<U32>::max();
+        gGL.setLegacyDrawSuppressed(false);
+        gGL.setMetalPresentationOpaque(false);
         capture.world_ui_chain_active = false;
         capture.world_ui_chain_counted = false;
         capture.world_ui_chain_attempts = 0;
@@ -5906,8 +6101,15 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
     {
         return false;
     }
-    capture.world_ui_target.reset();
-    capture.world_ui_frame = std::numeric_limits<U32>::max();
+    if (capture.duplicate_gl_candidate_armed)
+    {
+        capture.retainExactWorldUIFallback();
+    }
+    else
+    {
+        capture.world_ui_target.reset();
+        capture.world_ui_frame = std::numeric_limits<U32>::max();
+    }
     capture.world_ui_capture_active = true;
     capture.world_ui_probe_attempted = true;
     if (!capture.world_ui_continuous_unlocked)
@@ -5947,10 +6149,11 @@ void LLPipeline::endMetalWorldUICompositionCapture()
             << LL_ENDL;
 
         // This development-only switch first publishes one bounded exact
-        // probe. That committed transaction unlocks continuous publication,
-        // but every later frame still starts transparent and earns opacity
-        // independently. Only a committed current-frame drawable suppresses
-        // its matching GL swap.
+        // probe. That committed transaction unlocks continuous publication.
+        // Ordinary frames start transparent and earn opacity independently;
+        // the separate native-authority diagnostic may retain the prior exact
+        // opaque surface while one capture-only traversal is in flight. Only
+        // a committed current frame is marked as current native presentation.
         if (presentation_requested)
         {
             if (surface_submitted)
@@ -5978,7 +6181,10 @@ void LLPipeline::endMetalWorldUICompositionCapture()
             }
             else
             {
-                gGL.setMetalPresentationOpaque(false);
+                if (!capture.duplicate_gl_draws_suppressed)
+                {
+                    gGL.setMetalPresentationOpaque(false);
+                }
                 capture.world_ui_target.reset();
                 capture.world_ui_frame = std::numeric_limits<U32>::max();
                 capture.world_ui_probe_attempted = false;
@@ -5994,7 +6200,10 @@ void LLPipeline::endMetalWorldUICompositionCapture()
     {
         if (presentation_requested)
         {
-            gGL.setMetalPresentationOpaque(false);
+            if (!capture.duplicate_gl_draws_suppressed)
+            {
+                gGL.setMetalPresentationOpaque(false);
+            }
         }
         capture.world_ui_frame = std::numeric_limits<U32>::max();
         // An unsupported runtime family is evidence, not a permanent latch:
@@ -13038,6 +13247,8 @@ void LLPipeline::releaseAllGLResources()
         mMetalHeroWorldCaptureActive = false;
         mMetalReflectionWorldCaptureActive = false;
     }
+    gGL.setLegacyDrawSuppressed(false);
+    gGL.setMetalPresentationOpaque(false);
     mMetalWorldSimpleCapture.reset();
     mMetalProbeWorldSimpleCapture.reset();
     mMetalExposureGLFrame = std::numeric_limits<U32>::max();

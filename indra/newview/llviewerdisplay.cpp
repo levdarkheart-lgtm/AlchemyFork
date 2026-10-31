@@ -636,10 +636,11 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
 #if LL_DARWIN
     // A startup or preceding exact world frame may have made the Metal layer
-    // opaque. Restore transparent composition before every world frame,
-    // including resize-only frames, so an incomplete current native
-    // transaction always reveals the authoritative GL fallback. An exact
-    // native frame earns opacity again only when its drawable is committed.
+    // opaque. Restore transparent composition before every ordinary world
+    // frame, including resize-only frames, so an incomplete current native
+    // transaction reveals the authoritative GL fallback. The hidden bounded
+    // native-authority diagnostic may reassert the last exact surface only
+    // after the early-return paths below.
     if (LLStartUp::getStartupState() >= STATE_PRECACHE)
     {
         gGL.setMetalUIReplacementEnabled(false);
@@ -751,6 +752,14 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         }
         return;
     }
+
+#if LL_DARWIN
+    // The ordinary world path is transparent over GL. A hidden, default-off
+    // native-authority diagnostic may re-assert the last proven opaque frame
+    // here, after all early-return paths, and arm one bounded capture-only
+    // traversal. The matching finish call always retires its draw gate.
+    gPipeline.beginMetalWorldPresentationFrame();
+#endif
 
     gViewerWindow->checkSettings();
 
@@ -1273,6 +1282,9 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         if (!for_snapshot)
         {
             render_ui();
+#if LL_DARWIN
+            gPipeline.finishMetalWorldPresentationFrame();
+#endif
             presented = gDisplaySwapBuffers;
             swap();
         }

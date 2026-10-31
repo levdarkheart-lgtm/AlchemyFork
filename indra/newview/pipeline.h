@@ -351,6 +351,11 @@ public:
     // until every ordered family has an exact native owner.
     bool beginMetalWorldUICompositionCapture();
     void endMetalWorldUICompositionCapture();
+    // Arm and retire one development-only native-authority frame. The begin
+    // call retains the previous exact opaque surface; finish either accepts a
+    // new exact submission or holds that surface and restores GL next frame.
+    bool beginMetalWorldPresentationFrame();
+    void finishMetalWorldPresentationFrame();
     // True only after this viewer frame committed its complete native
     // world/UI texture to a drawable. Benchmark collection uses this exact
     // fact instead of inferring native presentation from a setting.

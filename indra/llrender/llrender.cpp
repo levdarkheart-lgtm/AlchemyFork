@@ -864,6 +864,7 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     mMetalUICaptureDepthHeight = 0;
     mMetalUIReplacementEnabled = true;
     mMetalUISurfaceFrameSubmitted = false;
+    mGLDrawSuppressed = false;
     if (!device || !scheduler || !surface)
     {
         return;
@@ -1350,6 +1351,26 @@ bool LLRender::presentMetalTexture(const ALMetalTexture* texture)
     return true;
 }
 
+bool LLRender::holdMetalPresentationFrame() noexcept
+{
+    if (!mMetalUIRenderer || !mMetalUISurface ||
+        mMetalUISurfaceFrameSubmitted || mMetalUIRenderer->hasOpenFrame())
+    {
+        return false;
+    }
+
+    // endFrame consumes this marker without opening a transparent surface
+    // frame. No command was submitted: the last opaque CAMetalLayer content
+    // remains the visible, known-complete frame until GL resumes next frame.
+    mMetalUISurfaceFrameSubmitted = true;
+    return true;
+}
+
+void LLRender::setLegacyDrawSuppressed(bool suppressed) noexcept
+{
+    mGLDrawSuppressed = suppressed;
+}
+
 bool LLRender::setMetalPresentationOpaque(bool opaque)
 {
     if (!mMetalUISurface)
@@ -1371,14 +1392,18 @@ bool LLRender::setMetalPresentationOpaque(bool opaque)
 void LLRender::endFrame(U32 frames_ahead)
 {
 #if LL_DARWIN
+    // Draw suppression is a single display-frame authority gate. Never let an
+    // interrupted or unusual display path leak it into later rendering.
+    mGLDrawSuppressed = false;
     if (mMetalUIRenderer)
     {
         std::string error;
         if (mMetalUISurfaceFrameSubmitted)
         {
-            // presentMetalTexture already submitted this surface frame. A
-            // second endFrame would acquire and present a transparent clear
-            // over the completed world/UI drawable.
+            // A completed capture/present already submitted this surface
+            // frame, or the bounded failure path deliberately held the last
+            // exact opaque surface. A second endFrame would acquire and
+            // present a transparent clear over the completed world/UI image.
             mMetalUISurfaceFrameSubmitted = false;
         }
         else if (!mMetalUIRenderer->endFrame(&error))
@@ -3224,6 +3249,12 @@ void LLRender::drawArraysInstanced(eGeomModes mode, U32 first, U32 count, U32 in
     // An input left in the program would read whatever buffer the last vertex buffer left on its array.
     llassert(LLGLSLShader::sCurBoundShaderPtr && LLGLSLShader::sCurBoundShaderPtr->mAttributeMask == 0);
     flush();
+#if LL_DARWIN
+    if (mGLDrawSuppressed)
+    {
+        return;
+    }
+#endif
     syncMatrices();
     llassert(validate_bound_samplers());
     STOP_GLERROR;
@@ -3245,6 +3276,12 @@ void LLRender::drawArraysIndirect(eGeomModes mode, const ALGPUBuffer& buffer, si
         return;
     }
     flush();
+#if LL_DARWIN
+    if (mGLDrawSuppressed)
+    {
+        return;
+    }
+#endif
     syncMatrices();
     llassert(validate_bound_samplers());
     STOP_GLERROR;
