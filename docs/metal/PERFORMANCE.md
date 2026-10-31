@@ -21,10 +21,10 @@ Use scenario IDs and descriptions from `benchmarks/scenarios.json`. Codex must d
 Raw per-frame CSV input to `tools/metal/perf_compare.py` must have `scenario,frame_ms` columns; may include `cpu_ms,gpu_ms` and frame metadata. Run:
 
 ```sh
-python3 tools/metal/perf_compare.py --baseline artifacts/metal/baseline.csv --candidate artifacts/metal/candidate.csv --enforce --output artifacts/metal/comparison.json
+python3 tools/metal/perf_compare.py --baseline artifacts/metal/baseline.csv --candidate artifacts/metal/candidate.csv --enforce --require-provenance --output artifacts/metal/comparison.json
 ```
 
-Tool output includes sample counts, p50/p95 and improvements. It **does not generate or collect** telemetry. The development viewer's opt-in collector in `INSTRUMENTATION.md` supplies real wall/frame CSV; Instruments/Metal capture supplies separate GPU evidence. Store raw captures in ignored `artifacts/metal/`; commit a redacted summary under `docs/metal/state/` with script version and SHA only when measured. Never invent results.
+Tool output includes sample counts, p50/p95, improvements and per-scenario source/build/display provenance. `--require-provenance` also requires exact-native candidate rows and matching baseline/candidate build type, resolution and quality. It **does not generate or collect** telemetry. The development viewer's opt-in collector in `INSTRUMENTATION.md` supplies real wall/frame CSV; Instruments/Metal capture supplies separate GPU evidence. Store raw captures in ignored `artifacts/metal/`; commit a redacted summary under `docs/metal/state/` with script version and SHA only when measured. Never invent results.
 
 ## GPU-specific hypotheses requiring validation
 Tile pass merging/memoryless attachments; command encoder batching; cached PSOs; Metal compute paths previously disabled by macOS OpenGL 4.1; private/shared storage tradeoffs; reduced texture staging; pipelined readback; improved avatar/alpha draw submission; resource reuse. Profile before and after; reject any optimization that harms end-to-end frame time or quality.
