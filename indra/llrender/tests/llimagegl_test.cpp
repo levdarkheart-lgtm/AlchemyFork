@@ -495,6 +495,120 @@ namespace
     }
 
 #if LL_DARWIN
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: GL float uploads are converted to exact Metal half-float texels", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        constexpr U16 W = 4;
+        constexpr U16 H = 2;
+        constexpr std::size_t COMPONENTS = 2;
+        std::array<F32, W * H * COMPONENTS> source{{
+            0.f, 1.f, -2.f, 0.5f, 4.f, -0.25f, 65504.f, -0.f,
+            1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f,
+        }};
+        const std::array<U16, W * H * COMPONENTS> source_half{{
+            0x0000, 0x3c00, 0xc000, 0x3800,
+            0x4400, 0xb400, 0x7bff, 0x8000,
+            0x3c00, 0x4000, 0x4200, 0x4400,
+            0x4500, 0x4600, 0x4700, 0x4800,
+        }};
+
+        LLPointer<LLImageGL> image =
+            new LLImageGL(W, H, COMPONENTS, /*usemipmaps=*/false);
+        image->setExplicitFormat(GL_RG16F, GL_RG, GL_FLOAT);
+        REQUIRE(image->createGLTexture(
+            0, reinterpret_cast<const U8*>(source.data())));
+        REQUIRE(image->getMetalTexture());
+        CHECK(image->getMetalTexture()->descriptor().format ==
+              ALMetalPixelFormat::rg16_float);
+
+        std::array<U16, W * H * COMPONENTS> metal{};
+        REQUIRE(image->getMetalTexture()->readback(
+            *device, 0, 0, {}, metal.data(),
+            W * COMPONENTS * sizeof(U16), &error));
+        INFO(error);
+        CHECK(metal == source_half);
+
+        std::array<F32, W * H * COMPONENTS> patch;
+        patch.fill(0.25f);
+        REQUIRE(image->setSubImage(
+            reinterpret_cast<const U8*>(patch.data()), W, H,
+            /*x_pos=*/1, /*y_pos=*/0, /*width=*/2, /*height=*/2,
+            /*force_fast_update=*/true));
+        REQUIRE(image->getMetalTexture()->readback(
+            *device, 0, 0, {}, metal.data(),
+            W * COMPONENTS * sizeof(U16), &error));
+        INFO(error);
+        for (U32 y = 0; y < H; ++y)
+        {
+            for (U32 x = 0; x < W; ++x)
+            {
+                for (std::size_t component = 0;
+                     component < COMPONENTS; ++component)
+                {
+                    const std::size_t index =
+                        (static_cast<std::size_t>(y) * W + x) *
+                            COMPONENTS +
+                        component;
+                    CHECK(metal[index] ==
+                          (x >= 1 && x < 3 ? U16{0x3400}
+                                           : source_half[index]));
+                }
+            }
+        }
+
+        constexpr U16 RGB_W = 2;
+        constexpr U16 RGB_H = 1;
+        constexpr std::array<F32, RGB_W * RGB_H * 3> rgb_source{{
+            1.f, 0.5f, -2.f,
+            0.25f, 4.f, -0.f,
+        }};
+        LLPointer<LLImageGL> rgb_image =
+            new LLImageGL(RGB_W, RGB_H, 3, /*usemipmaps=*/false);
+        rgb_image->setExplicitFormat(GL_RGB16F, GL_RGB, GL_FLOAT);
+        REQUIRE(rgb_image->createGLTexture(
+            0, reinterpret_cast<const U8*>(rgb_source.data())));
+        REQUIRE(rgb_image->getMetalTexture());
+        CHECK(rgb_image->getMetalTexture()->descriptor().format ==
+              ALMetalPixelFormat::rgba16_float);
+
+        std::array<U16, RGB_W * RGB_H * 4> rgb_metal{};
+        REQUIRE(rgb_image->getMetalTexture()->readback(
+            *device, 0, 0, {}, rgb_metal.data(),
+            RGB_W * 4 * sizeof(U16), &error));
+        INFO(error);
+        CHECK(rgb_metal == std::array<U16, RGB_W * RGB_H * 4>{{
+            0x3c00, 0x3800, 0xc000, 0x3c00,
+            0x3400, 0x4400, 0x8000, 0x3c00,
+        }});
+
+        constexpr std::array<U8, 2 * sizeof(F32)> swapped_source{{
+            0x3f, 0x80, 0x00, 0x00,
+            0xc0, 0x00, 0x00, 0x00,
+        }};
+        LLPointer<LLImageGL> swapped_image =
+            new LLImageGL(1, 1, 2, /*usemipmaps=*/false);
+        swapped_image->setExplicitFormat(
+            GL_RG16F, GL_RG, GL_FLOAT, /*swap_bytes=*/true);
+        REQUIRE(swapped_image->createGLTexture(0, swapped_source.data()));
+        REQUIRE(swapped_image->getMetalTexture());
+        std::array<U16, 2> swapped_metal{};
+        REQUIRE(swapped_image->getMetalTexture()->readback(
+            *device, 0, 0, {}, swapped_metal.data(),
+            2 * sizeof(U16), &error));
+        INFO(error);
+        CHECK(swapped_metal == std::array<U16, 2>{{0x3c00, 0xc000}});
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: readBackRaw uses its Metal mirror and collapses RGB storage", "[LLImageGL][almetal]")
     {
         std::string error;

@@ -5961,8 +5961,26 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
         scale_factor > 0.f &&
         (!cutout || scale_factor == 1.f))
     {
+        std::string error;
         metal_snapshot_requested =
-            gPipeline.requestMetalWorldSnapshotCapture();
+            gPipeline.requestMetalWorldSnapshotCapture(&error);
+        if (!metal_snapshot_requested)
+        {
+            LL_INFOS("Snapshot")
+                << "Native snapshot retained the GL readback fallback before rendering: "
+                << error << LL_ENDL;
+        }
+    }
+    else
+    {
+        LL_INFOS("Snapshot")
+            << "Native snapshot retained the GL readback fallback before requesting: "
+            << "type=" << static_cast<S32>(type)
+            << ", native_type=" << (native_snapshot_type ? "true" : "false")
+            << ", components=" << raw->getComponents()
+            << ", scale=" << scale_factor
+            << ", cutout=" << (cutout ? "true" : "false")
+            << LL_ENDL;
     }
 #endif
 
@@ -6122,7 +6140,7 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                             }
                             else
                             {
-                                LL_DEBUGS("Snapshot")
+                                LL_INFOS("Snapshot")
                                     << "Native snapshot retained the GL "
                                        "readback fallback: "
                                     << error << LL_ENDL;

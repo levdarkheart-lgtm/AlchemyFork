@@ -1662,10 +1662,18 @@ namespace
         rgb32_float,
     };
 
+    enum class MetalScalarConversion
+    {
+        none,
+        float32_to_float16,
+    };
+
     struct MetalUploadFormat
     {
         ALMetalPixelFormat format = ALMetalPixelFormat::invalid;
         MetalRgbExpansion expansion = MetalRgbExpansion::none;
+        MetalScalarConversion scalar_conversion =
+            MetalScalarConversion::none;
     };
 
     MetalUploadFormat metal_upload_format(S32 internal_format, U32 primary_format, U32 type)
@@ -1704,10 +1712,30 @@ namespace
             case GL_SRGB8:              return {ALMetalPixelFormat::rgba8_unorm_srgb, MetalRgbExpansion::rgb8};
             case GL_RGBA8:              return {ALMetalPixelFormat::rgba8_unorm};
             case GL_SRGB8_ALPHA8:       return {ALMetalPixelFormat::rgba8_unorm_srgb};
-            case GL_R16F:               return {ALMetalPixelFormat::r16_float};
-            case GL_RG16F:              return {ALMetalPixelFormat::rg16_float};
-            case GL_RGB16F:             return {ALMetalPixelFormat::rgba16_float, MetalRgbExpansion::rgb16_float};
-            case GL_RGBA16F:            return {ALMetalPixelFormat::rgba16_float};
+            case GL_R16F:
+                return {ALMetalPixelFormat::r16_float,
+                        MetalRgbExpansion::none,
+                        type == GL_FLOAT
+                            ? MetalScalarConversion::float32_to_float16
+                            : MetalScalarConversion::none};
+            case GL_RG16F:
+                return {ALMetalPixelFormat::rg16_float,
+                        MetalRgbExpansion::none,
+                        type == GL_FLOAT
+                            ? MetalScalarConversion::float32_to_float16
+                            : MetalScalarConversion::none};
+            case GL_RGB16F:
+                return {ALMetalPixelFormat::rgba16_float,
+                        MetalRgbExpansion::rgb16_float,
+                        type == GL_FLOAT
+                            ? MetalScalarConversion::float32_to_float16
+                            : MetalScalarConversion::none};
+            case GL_RGBA16F:
+                return {ALMetalPixelFormat::rgba16_float,
+                        MetalRgbExpansion::none,
+                        type == GL_FLOAT
+                            ? MetalScalarConversion::float32_to_float16
+                            : MetalScalarConversion::none};
             case GL_RGBA16:             return {ALMetalPixelFormat::rgba16_unorm};
             case GL_R32F:               return {ALMetalPixelFormat::r32_float};
             case GL_RG32F:              return {ALMetalPixelFormat::rg32_float};
@@ -1775,6 +1803,51 @@ namespace
             default:
                 return 0;
         }
+    }
+
+    U16 metal_float_to_half(F32 value)
+    {
+        // Round to nearest, ties to even. Metal upload byte streams must
+        // match their destination pixel format; OpenGL performs this
+        // conversion implicitly when a GL_FLOAT source fills a *16F image.
+        const U32 bits = std::bit_cast<U32>(value);
+        const U32 sign = (bits >> 16) & 0x8000u;
+        const U32 magnitude = bits & 0x7fffffffu;
+        if (magnitude >= 0x7f800000u)
+        {
+            return static_cast<U16>(
+                sign | 0x7c00u |
+                (magnitude > 0x7f800000u ? 0x0200u : 0u));
+        }
+        if (magnitude >= 0x477ff000u)
+        {
+            return static_cast<U16>(sign | 0x7c00u);
+        }
+        if (magnitude < 0x38800000u)
+        {
+            if (magnitude < 0x33000000u)
+            {
+                return static_cast<U16>(sign);
+            }
+            const U32 exponent = magnitude >> 23;
+            const U32 mantissa = (magnitude & 0x7fffffu) | 0x800000u;
+            const U32 shift = 126u - exponent;
+            U32 half = mantissa >> shift;
+            const U32 rest = mantissa & ((1u << shift) - 1u);
+            const U32 tie = 1u << (shift - 1u);
+            if (rest > tie || (rest == tie && (half & 1u)))
+            {
+                ++half;
+            }
+            return static_cast<U16>(sign | half);
+        }
+        U32 half = (magnitude - 0x38000000u) >> 13;
+        const U32 rest = magnitude & 0x1fffu;
+        if (rest > 0x1000u || (rest == 0x1000u && (half & 1u)))
+        {
+            ++half;
+        }
+        return static_cast<U16>(sign | half);
     }
 
     bool same_metal_texture(const ALMetalTexture* texture,
@@ -2084,7 +2157,63 @@ bool LLImageGL::uploadMetalTextureRegion(ALMetalCommandBuffer& command_buffer,
     std::size_t upload_bytes_per_row = source_bytes_per_row;
     std::vector<U8> converted;
 
-    if (upload_format.expansion != MetalRgbExpansion::none)
+    if (upload_format.scalar_conversion ==
+        MetalScalarConversion::float32_to_float16)
+    {
+        const std::size_t source_components =
+            dataFormatComponents(mFormatPrimary);
+        const bool expand_rgb =
+            upload_format.expansion == MetalRgbExpansion::rgb16_float;
+        const std::size_t destination_components =
+            expand_rgb ? 4 : source_components;
+        const std::size_t source_pixel_bytes =
+            source_components * sizeof(F32);
+        upload_bytes_per_row = static_cast<std::size_t>(width) *
+                               destination_components * sizeof(U16);
+        converted.resize(upload_bytes_per_row * height);
+        for (U32 row = 0; row < height; ++row)
+        {
+            const U8* source = pixels +
+                static_cast<std::size_t>(row) * source_bytes_per_row;
+            U8* target = converted.data() +
+                static_cast<std::size_t>(row) * upload_bytes_per_row;
+            for (U32 column = 0; column < width; ++column)
+            {
+                for (std::size_t component = 0;
+                     component < source_components; ++component)
+                {
+                    F32 value = 0.f;
+                    const U8* scalar =
+                        source + component * sizeof(F32);
+                    if (mFormatSwapBytes)
+                    {
+                        std::array<U8, sizeof(F32)> swapped{};
+                        std::reverse_copy(
+                            scalar, scalar + sizeof(F32), swapped.begin());
+                        std::memcpy(&value, swapped.data(), sizeof(value));
+                    }
+                    else
+                    {
+                        std::memcpy(&value, scalar, sizeof(value));
+                    }
+                    const U16 half = metal_float_to_half(value);
+                    std::memcpy(
+                        target + component * sizeof(U16),
+                        &half, sizeof(half));
+                }
+                if (expand_rgb)
+                {
+                    const U16 one = 0x3c00u;
+                    std::memcpy(
+                        target + 3 * sizeof(U16), &one, sizeof(one));
+                }
+                source += source_pixel_bytes;
+                target += destination_components * sizeof(U16);
+            }
+        }
+        upload_pixels = converted.data();
+    }
+    else if (upload_format.expansion != MetalRgbExpansion::none)
     {
         if (mFormatSwapBytes)
         {
