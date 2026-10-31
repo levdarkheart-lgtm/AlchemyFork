@@ -4486,19 +4486,61 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 isMainWorldPass() && mRT == &mMainRT &&
                 !mMetalHeroWorldCaptureActive &&
                 !mMetalReflectionWorldCaptureActive && !sCutoutRender;
+            const bool use_exposure_history =
+                capture.exposure_target &&
+                capture.exposure_epoch == mMetalExposureHistoryEpoch &&
+                capture.exposure_frame == mMetalExposureGLFrame;
+            // When GL last wrote fixed EV 0 (a reset or a frame with
+            // metering disabled), absence of a native texture is still an
+            // exact history value. Otherwise one missed GL exposure frame
+            // permanently fails this epoch closed.
+            const bool can_advance_exposure = use_exposure_history ||
+                mMetalExposureLastWasFixed;
+
+            // The flare state samples the same sharp linear scene and the
+            // completed post-alpha depth as GLSL. Its history may advance
+            // only when the prior native texel belongs to the last GL flare
+            // frame in this epoch, with exact black as the sole bootstrap.
+            const LensFlareStateConfig native_flare_state =
+                lensFlareStateConfig();
+            const bool main_lens_flare = capture.hdr &&
+                native_flare_state.enabled && isMainWorldPass() &&
+                mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
+                !mMetalReflectionWorldCaptureActive && !sCutoutRender;
+            const bool use_lens_flare_history =
+                capture.lens_flare_state_target &&
+                capture.lens_flare_state_epoch ==
+                    mMetalLensFlareHistoryEpoch &&
+                capture.lens_flare_state_frame ==
+                    mMetalLensFlareGLFrame;
+            const bool can_advance_lens_flare =
+                use_lens_flare_history || mMetalLensFlareLastWasZero;
+
+            // These two adjacent histories consume the same sharp frame but
+            // do not depend on each other. When both are eligible, encode
+            // them into one command buffer and publish neither result until
+            // the complete transaction commits.
+            bool history_batch_active = false;
+            if (main_dynamic_exposure && can_advance_exposure &&
+                main_lens_flare && can_advance_lens_flare)
+            {
+                std::string history_batch_error;
+                history_batch_active =
+                    capture.renderer->beginCommandBatch(
+                        "Alchemy native world exposure and flare history",
+                        &history_batch_error);
+                if (!history_batch_active)
+                {
+                    LL_WARNS_ONCE("Metal")
+                        << "Could not begin the optional native history "
+                           "command batch; retaining independent "
+                           "command-buffer submission: "
+                        << history_batch_error << LL_ENDL;
+                }
+            }
             if (main_dynamic_exposure)
             {
-                const bool use_history = capture.exposure_target &&
-                    capture.exposure_epoch ==
-                        mMetalExposureHistoryEpoch &&
-                    capture.exposure_frame == mMetalExposureGLFrame;
-                // When GL last wrote fixed EV 0 (a reset or a frame with
-                // metering disabled), absence of a native texture is still
-                // an exact history value. Otherwise one missed GL exposure
-                // frame permanently fails this epoch closed.
-                const bool can_advance = use_history ||
-                    mMetalExposureLastWasFixed;
-                if (can_advance)
+                if (can_advance_exposure)
                 {
                     static LLCachedControl<F32> compensation(
                         gSavedSettings, "AlchemyExposureCompensation", 0.f);
@@ -4524,7 +4566,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     ALMetalWorldExposureScene exposure;
                     exposure.source = target.get();
                     exposure.normal = capture.target->colorTexture(2);
-                    exposure.previous = use_history
+                    exposure.previous = use_exposure_history
                         ? capture.exposure_target->colorTexture(0) : nullptr;
                     exposure.delta_seconds = gFrameIntervalSeconds;
                     exposure.compensation = compensation();
@@ -4573,33 +4615,15 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 }
             }
 
-            // The flare state samples the same sharp linear scene and the
-            // completed post-alpha depth as GLSL. Its history may advance
-            // only when the prior native texel belongs to the last GL flare
-            // frame in this epoch, with exact black as the sole bootstrap.
-            const LensFlareStateConfig native_flare_state =
-                lensFlareStateConfig();
-            const bool main_lens_flare = capture.hdr &&
-                native_flare_state.enabled && isMainWorldPass() &&
-                mRT == &mMainRT && !mMetalHeroWorldCaptureActive &&
-                !mMetalReflectionWorldCaptureActive && !sCutoutRender;
             if (main_lens_flare)
             {
-                const bool use_history =
-                    capture.lens_flare_state_target &&
-                    capture.lens_flare_state_epoch ==
-                        mMetalLensFlareHistoryEpoch &&
-                    capture.lens_flare_state_frame ==
-                        mMetalLensFlareGLFrame;
-                const bool can_advance = use_history ||
-                    mMetalLensFlareLastWasZero;
-                if (can_advance)
+                if (can_advance_lens_flare)
                 {
                     ALMetalWorldLensFlareStateScene state;
                     state.source = target.get();
                     state.depth_texture = capture.target
                         ? capture.target->depthStencilTexture() : nullptr;
-                    state.previous = use_history
+                    state.previous = use_lens_flare_history
                         ? capture.lens_flare_state_target->colorTexture(0)
                         : nullptr;
                     state.delta_seconds = gFrameIntervalSeconds;
@@ -4644,6 +4668,52 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         std::numeric_limits<U32>::max();
                     capture.lens_flare_state_epoch = 0;
                     mMetalLensFlareHistoryReady = false;
+                }
+            }
+
+            if (history_batch_active)
+            {
+                const bool exposure_encoded =
+                    capture.exposure_target &&
+                    capture.exposure_epoch ==
+                        mMetalExposureHistoryEpoch &&
+                    capture.exposure_frame == gFrameCount;
+                const bool flare_encoded =
+                    capture.lens_flare_state_target &&
+                    capture.lens_flare_state_epoch ==
+                        mMetalLensFlareHistoryEpoch &&
+                    capture.lens_flare_state_frame == gFrameCount;
+                std::string history_batch_error;
+                bool history_batch_committed = false;
+                if (exposure_encoded && flare_encoded)
+                {
+                    history_batch_committed =
+                        capture.renderer->commitCommandBatch(
+                            &history_batch_error);
+                }
+                else
+                {
+                    capture.renderer->cancelCommandBatch();
+                }
+                if (!history_batch_committed)
+                {
+                    capture.exposure_target.reset();
+                    capture.exposure_frame =
+                        std::numeric_limits<U32>::max();
+                    capture.exposure_epoch = 0;
+                    mMetalExposureHistoryReady = false;
+                    capture.lens_flare_state_target.reset();
+                    capture.lens_flare_state_frame =
+                        std::numeric_limits<U32>::max();
+                    capture.lens_flare_state_epoch = 0;
+                    mMetalLensFlareHistoryReady = false;
+                    if (!history_batch_error.empty())
+                    {
+                        LL_WARNS("Metal")
+                            << "Native exposure/lens-flare history batch "
+                               "retained GL after commit failure: "
+                            << history_batch_error << LL_ENDL;
+                    }
                 }
             }
 

@@ -11548,20 +11548,28 @@ TEST_CASE("almetal: world exposure matches the production meter and history", "[
         exposure_scene.previous = nullptr;
         exposure_scene.delta_seconds = 100.f;
         exposure_scene.sky_weight = 0.f;
+        const std::uint64_t exposure_batch_count =
+            ALMetalDevice::committedCommandBufferCount();
+        REQUIRE(renderer->beginCommandBatch(
+            "Alchemy exposure-history command-batch regression", &error));
         auto ground_only = renderer->renderExposure(
             exposure_scene, &error);
         INFO(error);
         REQUIRE(ground_only);
-        REQUIRE(ground_only->colorTexture(0)->readback(
-            *device, 0, 0, {}, exposure_pixel.data(),
-            sizeof(exposure_pixel), &error));
-        CHECK(std::abs(half_to_float(exposure_pixel[2]) -
-                       target_ev) < 0.002f);
         exposure_scene.sky_weight = 1.f;
         auto sky_weighted = renderer->renderExposure(
             exposure_scene, &error);
         INFO(error);
         REQUIRE(sky_weighted);
+        REQUIRE(renderer->commitCommandBatch(&error));
+        INFO(error);
+        CHECK(ALMetalDevice::committedCommandBufferCount() ==
+              exposure_batch_count + 1);
+        REQUIRE(ground_only->colorTexture(0)->readback(
+            *device, 0, 0, {}, exposure_pixel.data(),
+            sizeof(exposure_pixel), &error));
+        CHECK(std::abs(half_to_float(exposure_pixel[2]) -
+                       target_ev) < 0.002f);
         REQUIRE(sky_weighted->colorTexture(0)->readback(
             *device, 0, 0, {}, exposure_pixel.data(),
             sizeof(exposure_pixel), &error));
@@ -11760,6 +11768,10 @@ TEST_CASE("almetal: world lens flare owns visibility history and display", "[alm
         state_scene.occlusion_radius = 0.1f;
         state_scene.fade_time = 0.1f;
         state_scene.reverse_z = true;
+        const std::uint64_t flare_batch_count =
+            ALMetalDevice::committedCommandBufferCount();
+        REQUIRE(renderer->beginCommandBatch(
+            "Alchemy flare-history command-batch regression", &error));
         auto visible = renderer->renderLensFlareState(state_scene, &error);
         INFO(error);
         REQUIRE(visible);
@@ -11768,6 +11780,17 @@ TEST_CASE("almetal: world lens flare owns visibility history and display", "[alm
         CHECK(visible->descriptor().colors[0].format ==
               ALMetalPixelFormat::rgba16_float);
         std::array<std::uint16_t, 8> visible_pixels{};
+
+        state_scene.previous = visible->colorTexture(0);
+        state_scene.depth_texture = geometry_depth->depthStencilTexture();
+        state_scene.delta_seconds = 0.1f;
+        auto occluded = renderer->renderLensFlareState(state_scene, &error);
+        INFO(error);
+        REQUIRE(occluded);
+        REQUIRE(renderer->commitCommandBatch(&error));
+        INFO(error);
+        CHECK(ALMetalDevice::committedCommandBufferCount() ==
+              flare_batch_count + 1);
         REQUIRE(visible->colorTexture(0)->readback(
             *device, 0, 0, {}, visible_pixels.data(),
             sizeof(visible_pixels), &error));
@@ -11785,13 +11808,6 @@ TEST_CASE("almetal: world lens flare owns visibility history and display", "[alm
         CHECK(std::abs(half_to_float(visible_pixels[6]) - 2.f) < 0.003f);
         CHECK(std::abs(half_to_float(visible_pixels[7]) - 0.25f) <
               0.0005f);
-
-        state_scene.previous = visible->colorTexture(0);
-        state_scene.depth_texture = geometry_depth->depthStencilTexture();
-        state_scene.delta_seconds = 0.1f;
-        auto occluded = renderer->renderLensFlareState(state_scene, &error);
-        INFO(error);
-        REQUIRE(occluded);
         std::array<std::uint16_t, 8> occluded_pixels{};
         REQUIRE(occluded->colorTexture(0)->readback(
             *device, 0, 0, {}, occluded_pixels.data(),

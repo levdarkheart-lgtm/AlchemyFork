@@ -6713,29 +6713,32 @@ ALMetalWorldGBufferRenderer::renderExposure(
     exposure_constants.meter[1] =
         static_cast<float>(scene.metering_mode);
 
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world exposure", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world exposure", owned_command, error);
     if (!command)
     {
         return nullptr;
     }
     auto meter_encoder = ALMetalComputeEncoder::begin(
         *command, "Alchemy world exposure-meter encoder", error);
-    if (!meter_encoder ||
-        !meter_encoder->setPipeline(
-            *mImpl->exposure_meter_pipeline, error) ||
-        !meter_encoder->setTexture(
-            0, scene.source->colorTexture(0), error) ||
-        !meter_encoder->setTexture(1, scene.normal, error) ||
-        !meter_encoder->setTexture(2, meter->colorTexture(0), error) ||
-        !meter_encoder->setSampler(
-            0, mImpl->linear_clamp_sampler.get(), error) ||
-        !meter_encoder->setBytes(
-            0, &meter_constants, sizeof(meter_constants), error) ||
-        !meter_encoder->dispatch(
-            meter_width, meter_height, 1, 8, 8, 1, error) ||
-        !meter_encoder->end(error))
+    const bool meter_encoded = meter_encoder &&
+        meter_encoder->setPipeline(
+            *mImpl->exposure_meter_pipeline, error) &&
+        meter_encoder->setTexture(
+            0, scene.source->colorTexture(0), error) &&
+        meter_encoder->setTexture(1, scene.normal, error) &&
+        meter_encoder->setTexture(2, meter->colorTexture(0), error) &&
+        meter_encoder->setSampler(
+            0, mImpl->linear_clamp_sampler.get(), error) &&
+        meter_encoder->setBytes(
+            0, &meter_constants, sizeof(meter_constants), error) &&
+        meter_encoder->dispatch(
+            meter_width, meter_height, 1, 8, 8, 1, error) &&
+        meter_encoder->end(error);
+    if (!meter_encoded)
     {
+        mImpl->finishCommandBuffer(owned_command, false, error);
         return nullptr;
     }
 
@@ -6765,8 +6768,8 @@ ALMetalWorldGBufferRenderer::renderExposure(
         exposure_encoder->setBytes(
             0, &exposure_constants, sizeof(exposure_constants), error) &&
         exposure_encoder->dispatch(1, 1, 1, 1, 1, 1, error) &&
-        exposure_encoder->end(error) && command->commit(error);
-    if (!encoded)
+        exposure_encoder->end(error);
+    if (!mImpl->finishCommandBuffer(owned_command, encoded, error))
     {
         return nullptr;
     }
@@ -6864,8 +6867,9 @@ ALMetalWorldGBufferRenderer::renderLensFlareState(
     constants.sun_visibility_radius[3] = scene.occlusion_radius;
     constants.config[0] = scene.reverse_z ? 1u : 0u;
 
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world lens-flare state", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world lens-flare state", owned_command, error);
     if (!command)
     {
         return nullptr;
@@ -6879,6 +6883,7 @@ ALMetalWorldGBufferRenderer::renderLensFlareState(
         : nullptr;
     if (!encoder)
     {
+        mImpl->finishCommandBuffer(owned_command, false, error);
         return nullptr;
     }
     const ALMetalViewport viewport{0.0, 0.0, 2.0, 1.0, 0.0, 1.0};
@@ -6899,7 +6904,9 @@ ALMetalWorldGBufferRenderer::renderLensFlareState(
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }
