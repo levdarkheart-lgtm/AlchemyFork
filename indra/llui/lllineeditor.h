@@ -262,6 +262,7 @@ public:
     void            setPassDelete(bool b)           { mPassDelete = b; }
     void            setAllowEmoji(bool b)           { mAllowEmoji = b; }
     void            setDrawAsterixes(bool b);
+    bool            isPasswordField() const         { return mDrawAsterixes; }
 
     // get the cursor position of the beginning/end of the prev/next word in the text
     S32             prevWordPos(S32 cursorPos) const;

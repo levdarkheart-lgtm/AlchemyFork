@@ -155,6 +155,211 @@
 
 static LLLoginAccessibilityBridge* sLoginAccessibilityBridge = nil;
 
+@class LLUIAccessibilityElement;
+
+@interface LLUIAccessibilityBridge : NSObject
+@property(nonatomic, assign) LLSdlMacOSLLUIAXCallbacks callbacks;
+@property(nonatomic, strong) NSView* contentView;
+@property(nonatomic, copy) NSArray* previousChildren;
+@property(nonatomic, strong) NSMutableDictionary<NSString*, LLUIAccessibilityElement*>* elementCache;
+@property(nonatomic, assign, getter=isActive) BOOL active;
+@end
+
+@implementation LLUIAccessibilityBridge
+@end
+
+@interface LLUIAccessibilityElement : NSAccessibilityElement
+{
+    LLSdlMacOSLLUIAXControl _control;
+}
+@property(nonatomic, strong) LLUIAccessibilityBridge* bridge;
+- (void)updateControl:(const LLSdlMacOSLLUIAXControl&)control;
+@end
+
+@implementation LLUIAccessibilityElement
+
+- (void)updateControl:(const LLSdlMacOSLLUIAXControl&)control
+{
+    _control = control;
+    self.accessibilityLabel = [NSString stringWithUTF8String:_control.label.c_str()];
+    self.accessibilityHelp = [NSString stringWithUTF8String:_control.help.c_str()];
+}
+
+- (NSRect)accessibilityFrame
+{
+    LLUIAccessibilityBridge* bridge = self.bridge;
+    if (!bridge.isActive)
+    {
+        return NSZeroRect;
+    }
+
+    const NSRect bounds = bridge.contentView.bounds;
+    const NSRect view_rect = NSMakeRect(
+        bounds.origin.x + _control.rect.x * bounds.size.width,
+        bounds.origin.y + _control.rect.y * bounds.size.height,
+        _control.rect.width * bounds.size.width,
+        _control.rect.height * bounds.size.height);
+    return NSAccessibilityFrameInView(bridge.contentView, view_rect);
+}
+
+- (id)accessibilityValue
+{
+    if (!self.bridge.isActive)
+    {
+        return @"";
+    }
+    if (_control.role == LLSdlMacOSLLUIAXRole::SECURE_TEXT_FIELD)
+    {
+        return @"";
+    }
+    if (_control.role == LLSdlMacOSLLUIAXRole::CHECK_BOX)
+    {
+        return @(_control.checked);
+    }
+    return [NSString stringWithUTF8String:_control.value.c_str()];
+}
+
+- (void)setAccessibilityValue:(id)value
+{
+    LLUIAccessibilityBridge* bridge = self.bridge;
+    if (!bridge.isActive || !bridge.callbacks.set_value)
+    {
+        return;
+    }
+
+    NSString* string_value = nil;
+    if ([value isKindOfClass:[NSString class]])
+    {
+        string_value = (NSString*)value;
+    }
+    else if ([value respondsToSelector:@selector(stringValue)])
+    {
+        string_value = [value stringValue];
+    }
+    if (!string_value)
+    {
+        return;
+    }
+
+    const LLSdlMacOSLLUIAXCallbacks callbacks = bridge.callbacks;
+    const std::string identifier = _control.identifier;
+    const std::string new_value([string_value UTF8String]);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (bridge.isActive && callbacks.set_value &&
+            callbacks.set_value(callbacks.context, identifier, new_value))
+        {
+            NSAccessibilityPostNotification(self, NSAccessibilityValueChangedNotification);
+        }
+    });
+}
+
+- (BOOL)isAccessibilityEnabled
+{
+    return self.bridge.isActive && _control.enabled;
+}
+
+- (BOOL)isAccessibilityProtectedContent
+{
+    return _control.role == LLSdlMacOSLLUIAXRole::SECURE_TEXT_FIELD;
+}
+
+- (BOOL)accessibilityPerformPress
+{
+    LLUIAccessibilityBridge* bridge = self.bridge;
+    if (!bridge.isActive || !_control.enabled || !bridge.callbacks.perform_press)
+    {
+        return NO;
+    }
+
+    const LLSdlMacOSLLUIAXCallbacks callbacks = bridge.callbacks;
+    const std::string identifier = _control.identifier;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (bridge.isActive && callbacks.perform_press &&
+            callbacks.perform_press(callbacks.context, identifier))
+        {
+            NSAccessibilityPostNotification(self, NSAccessibilityValueChangedNotification);
+        }
+    });
+    return YES;
+}
+
+@end
+
+@interface LLUIAccessibilityGroup : NSAccessibilityElement
+@property(nonatomic, strong) LLUIAccessibilityBridge* bridge;
+@end
+
+@implementation LLUIAccessibilityGroup
+
+- (NSArray*)accessibilityChildren
+{
+    LLUIAccessibilityBridge* bridge = self.bridge;
+    if (!bridge.isActive || !bridge.callbacks.get_controls)
+    {
+        return @[];
+    }
+
+    std::vector<LLSdlMacOSLLUIAXControl> controls;
+    bridge.callbacks.get_controls(bridge.callbacks.context, &controls);
+
+    NSMutableArray* children = [NSMutableArray arrayWithCapacity:controls.size()];
+    NSMutableDictionary<NSString*, LLUIAccessibilityElement*>* next_cache =
+        [NSMutableDictionary dictionaryWithCapacity:controls.size()];
+    for (const LLSdlMacOSLLUIAXControl& control : controls)
+    {
+        NSString* identifier = [NSString stringWithUTF8String:control.identifier.c_str()];
+        LLUIAccessibilityElement* element = bridge.elementCache[identifier];
+        if (!element)
+        {
+            NSString* role = NSAccessibilityButtonRole;
+            switch (control.role)
+            {
+                case LLSdlMacOSLLUIAXRole::CHECK_BOX:
+                    role = NSAccessibilityCheckBoxRole;
+                    break;
+                case LLSdlMacOSLLUIAXRole::COMBO_BOX:
+                    role = NSAccessibilityPopUpButtonRole;
+                    break;
+                case LLSdlMacOSLLUIAXRole::TEXT_FIELD:
+                case LLSdlMacOSLLUIAXRole::SECURE_TEXT_FIELD:
+                    role = NSAccessibilityTextFieldRole;
+                    break;
+                case LLSdlMacOSLLUIAXRole::SLIDER:
+                    role = NSAccessibilitySliderRole;
+                    break;
+                case LLSdlMacOSLLUIAXRole::BUTTON:
+                    break;
+            }
+            element = [LLUIAccessibilityElement accessibilityElementWithRole:role
+                                                                        frame:NSZeroRect
+                                                                        label:@""
+                                                                       parent:self];
+            element.bridge = bridge;
+            element.accessibilityIdentifier =
+                [@"alchemy.llui" stringByAppendingString:identifier];
+            if (control.role == LLSdlMacOSLLUIAXRole::SECURE_TEXT_FIELD)
+            {
+                element.accessibilitySubrole = NSAccessibilitySecureTextFieldSubrole;
+                element.accessibilityProtectedContent = YES;
+            }
+        }
+        [element updateControl:control];
+        next_cache[identifier] = element;
+        [children addObject:element];
+    }
+    bridge.elementCache = next_cache;
+    return children;
+}
+
+- (BOOL)isAccessibilityEnabled
+{
+    return self.bridge.isActive;
+}
+
+@end
+
+static LLUIAccessibilityBridge* sLLUIAccessibilityBridge = nil;
+
 void ll_sdl_macos_strip_default_close_shortcut()
 {
     @autoreleasepool
@@ -300,6 +505,63 @@ void ll_sdl_macos_uninstall_login_accessibility(void* context)
     bridge.contentView.accessibilityChildrenInNavigationOrder = bridge.previousChildren;
     NSAccessibilityPostNotification(bridge.contentView, NSAccessibilityLayoutChangedNotification);
     sLoginAccessibilityBridge = nil;
+}
+
+void ll_sdl_macos_install_llui_accessibility(
+    void* cocoa_window, const LLSdlMacOSLLUIAXCallbacks& callbacks)
+{
+    if (!cocoa_window || !callbacks.context || !callbacks.get_controls ||
+        sLLUIAccessibilityBridge)
+    {
+        return;
+    }
+
+    NSWindow* window = (__bridge NSWindow*)cocoa_window;
+    NSView* content_view = window.contentView;
+    if (!content_view)
+    {
+        return;
+    }
+
+    LLUIAccessibilityBridge* bridge = [LLUIAccessibilityBridge new];
+    bridge.callbacks = callbacks;
+    bridge.contentView = content_view;
+    bridge.previousChildren = content_view.accessibilityChildren;
+    bridge.elementCache = [NSMutableDictionary dictionary];
+    bridge.active = YES;
+
+    LLUIAccessibilityGroup* group =
+        [LLUIAccessibilityGroup accessibilityElementWithRole:NSAccessibilityGroupRole
+                                                        frame:NSZeroRect
+                                                        label:@"Alchemy viewer controls"
+                                                       parent:content_view];
+    group.bridge = bridge;
+    group.accessibilityIdentifier = @"alchemy.llui.controls";
+
+    NSMutableArray* children = bridge.previousChildren
+        ? [bridge.previousChildren mutableCopy]
+        : [NSMutableArray array];
+    [children addObject:group];
+    content_view.accessibilityChildren = children;
+    content_view.accessibilityChildrenInNavigationOrder = children;
+    NSAccessibilityPostNotification(content_view, NSAccessibilityLayoutChangedNotification);
+    sLLUIAccessibilityBridge = bridge;
+}
+
+void ll_sdl_macos_uninstall_llui_accessibility(void* context)
+{
+    LLUIAccessibilityBridge* bridge = sLLUIAccessibilityBridge;
+    if (!bridge || bridge.callbacks.context != context)
+    {
+        return;
+    }
+
+    bridge.active = NO;
+    bridge.contentView.accessibilityChildren = bridge.previousChildren;
+    bridge.contentView.accessibilityChildrenInNavigationOrder = bridge.previousChildren;
+    NSAccessibilityPostNotification(bridge.contentView, NSAccessibilityLayoutChangedNotification);
+    bridge.elementCache = nil;
+    sLLUIAccessibilityBridge = nil;
 }
 
 #endif // LL_DARWIN

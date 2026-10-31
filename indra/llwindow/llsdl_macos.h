@@ -27,6 +27,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 // Remove the Cmd+W key equivalent from the "Close" item in the default macOS
 // menu bar that SDL3's Cocoa backend creates for us. See the implementation in
@@ -76,3 +77,44 @@ struct LLSdlMacOSLoginAXCallbacks
 void ll_sdl_macos_install_login_accessibility(void* cocoa_window,
                                                const LLSdlMacOSLoginAXCallbacks& callbacks);
 void ll_sdl_macos_uninstall_login_accessibility(void* context);
+
+// A development-viewer accessibility projection for currently visible,
+// actionable LLUI controls. The viewer owns discovery and actions; this
+// platform layer only maps the supplied descriptions to native macOS AX
+// elements. Controls are re-enumerated when the accessibility client asks for
+// children, so opening and closing floaters does not leave stale native state.
+enum class LLSdlMacOSLLUIAXRole
+{
+    BUTTON,
+    CHECK_BOX,
+    COMBO_BOX,
+    TEXT_FIELD,
+    SECURE_TEXT_FIELD,
+    SLIDER
+};
+
+struct LLSdlMacOSLLUIAXControl
+{
+    std::string identifier;
+    std::string label;
+    std::string value;
+    std::string help;
+    LLSdlMacOSLLUIAXRole role = LLSdlMacOSLLUIAXRole::BUTTON;
+    LLSdlMacOSNormalizedRect rect{};
+    bool enabled = false;
+    bool checked = false;
+};
+
+struct LLSdlMacOSLLUIAXCallbacks
+{
+    void* context = nullptr;
+    void (*get_controls)(void* context,
+                         std::vector<LLSdlMacOSLLUIAXControl>* controls) = nullptr;
+    bool (*perform_press)(void* context, const std::string& identifier) = nullptr;
+    bool (*set_value)(void* context, const std::string& identifier,
+                      const std::string& value) = nullptr;
+};
+
+void ll_sdl_macos_install_llui_accessibility(
+    void* cocoa_window, const LLSdlMacOSLLUIAXCallbacks& callbacks);
+void ll_sdl_macos_uninstall_llui_accessibility(void* context);

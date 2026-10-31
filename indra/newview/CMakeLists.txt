@@ -629,6 +629,7 @@ if(AL_BUILD_VIEWER)
     llloginhandler.cpp
     lllogininstance.cpp
     llmachineid.cpp
+    llmacosaccessibility.cpp
     llmanip.cpp
     llmaniprotate.cpp
     llmanipscale.cpp
@@ -1515,6 +1516,7 @@ if(AL_BUILD_VIEWER)
     llloginhandler.h
     lllogininstance.h
     llmachineid.h
+    llmacosaccessibility.h
     llmanip.h
     llmaniprotate.h
     llmanipscale.h
