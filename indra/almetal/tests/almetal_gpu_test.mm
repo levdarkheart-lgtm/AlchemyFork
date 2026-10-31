@@ -15489,6 +15489,48 @@ TEST_CASE("almetal: world final presentation owns the complete print chain", "[a
             }
         }
 
+        // The production post chain keeps its display successor, selected
+        // antialiasing/CAS pass and final presentation in one explicit
+        // command buffer. Prove that dependent targets are sampleable before
+        // the shared submission and that the result matches the historical
+        // standalone command-buffer sequence byte for byte.
+        error.clear();
+        REQUIRE(renderer->beginCommandBatch(
+            "Alchemy post-chain command-batch regression", &error));
+        auto batched_fxaa = renderer->renderFXAA(
+            *hdr_source, 2, &error);
+        INFO(error);
+        REQUIRE(batched_fxaa);
+        auto batched_cas = renderer->renderCAS(
+            *batched_fxaa, 0.4f, &error);
+        INFO(error);
+        REQUIRE(batched_cas);
+        ALMetalWorldPresentationScene batched_scene;
+        batched_scene.source = batched_cas.get();
+        auto batched_post = renderer->renderPresentationPost(
+            batched_scene, &error);
+        INFO(error);
+        REQUIRE(batched_post);
+        REQUIRE(renderer->commitCommandBatch(&error));
+        INFO(error);
+        const auto batched_post_pixels = read_output(*batched_post);
+
+        auto standalone_fxaa = renderer->renderFXAA(
+            *hdr_source, 2, &error);
+        INFO(error);
+        REQUIRE(standalone_fxaa);
+        auto standalone_cas = renderer->renderCAS(
+            *standalone_fxaa, 0.4f, &error);
+        INFO(error);
+        REQUIRE(standalone_cas);
+        ALMetalWorldPresentationScene standalone_scene;
+        standalone_scene.source = standalone_cas.get();
+        auto standalone_post = renderer->renderPresentationPost(
+            standalone_scene, &error);
+        INFO(error);
+        REQUIRE(standalone_post);
+        CHECK(batched_post_pixels == read_output(*standalone_post));
+
         // The ordinary display-encoded path is the other authored source
         // format. A constant image also makes every following operation's
         // spatial and color behavior independently observable.

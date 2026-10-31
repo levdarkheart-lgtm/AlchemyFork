@@ -7313,8 +7313,9 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     constants.grade_curve[1] = grade.tone_curve_bias;
     constants.grade_curve[2] = grade.tone_curve_amount;
 
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world display post", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world display post", owned_command, error);
     if (!command)
     {
         return nullptr;
@@ -7395,7 +7396,9 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
             0, &constants, sizeof(constants), error) &&
         encoder->draw(
             ALMetalPrimitiveType::triangle, 0, 3, 1, error);
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }
@@ -7596,8 +7599,9 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
     {
         return nullptr;
     }
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world final presentation", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world final presentation", owned_command, error);
     if (!command)
     {
         return nullptr;
@@ -7633,7 +7637,9 @@ ALMetalWorldGBufferRenderer::renderPresentationPost(
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }
@@ -7935,8 +7941,9 @@ ALMetalWorldGBufferRenderer::renderCAS(
     constants.params[0] = -1.f /
         (8.f + (5.f - 8.f) * clamped_sharpness);
 
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world CAS", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world CAS", owned_command, error);
     if (!command)
     {
         return nullptr;
@@ -7966,7 +7973,9 @@ ALMetalWorldGBufferRenderer::renderCAS(
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }
@@ -8017,8 +8026,9 @@ ALMetalWorldGBufferRenderer::renderFXAA(
 
     WorldFXAAConstants constants{};
     constants.config[0] = quality;
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world FXAA", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world FXAA", owned_command, error);
     if (!command)
     {
         return nullptr;
@@ -8050,7 +8060,9 @@ ALMetalWorldGBufferRenderer::renderFXAA(
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }
@@ -8130,8 +8142,9 @@ ALMetalWorldGBufferRenderer::renderSMAAEdges(
     constants.predication[2] = scene.predication_strength;
     constants.config[0] = scene.quality;
     constants.config[1] = scene.predication_texture ? 1u : 0u;
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world SMAA edges", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world SMAA edges", owned_command, error);
     if (!command)
     {
         return nullptr;
@@ -8176,7 +8189,9 @@ ALMetalWorldGBufferRenderer::renderSMAAEdges(
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }
@@ -8228,8 +8243,10 @@ ALMetalWorldGBufferRenderer::renderSMAABlendWeights(
 
     WorldSMAAWeightConstants constants{};
     constants.config[0] = scene.quality;
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world SMAA blending weights", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world SMAA blending weights", owned_command,
+        error);
     if (!command)
     {
         return nullptr;
@@ -8268,7 +8285,9 @@ ALMetalWorldGBufferRenderer::renderSMAABlendWeights(
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }
@@ -8323,8 +8342,9 @@ ALMetalWorldGBufferRenderer::renderSMAANeighborhood(
         return nullptr;
     }
 
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world SMAA neighborhood", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world SMAA neighborhood", owned_command, error);
     if (!command)
     {
         return nullptr;
@@ -8362,7 +8382,9 @@ ALMetalWorldGBufferRenderer::renderSMAANeighborhood(
         encoder->setFragmentSampler(
             1, mImpl->linear_mirror_sampler.get(), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }

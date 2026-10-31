@@ -5098,6 +5098,28 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 }
 
                 std::string display_error;
+                bool display_post_available = false;
+                bool final_presentation_available = false;
+                const bool batch_main_post = isMainWorldPass() &&
+                    mRT == &mMainRT &&
+                    !mMetalHeroWorldCaptureActive &&
+                    !mMetalReflectionWorldCaptureActive && !sCutoutRender;
+                bool post_batch_active = false;
+                if (batch_main_post)
+                {
+                    post_batch_active = capture.renderer->beginCommandBatch(
+                        "Alchemy native world display and presentation post",
+                        &display_error);
+                    if (!post_batch_active)
+                    {
+                        LL_WARNS_ONCE("Metal")
+                            << "Could not begin the optional native post "
+                               "command batch; retaining independent "
+                               "command-buffer submission: "
+                            << display_error << LL_ENDL;
+                        display_error.clear();
+                    }
+                }
                 auto display_target =
                     capture.renderer->renderDisplayPost(
                         display, &display_error);
@@ -5213,6 +5235,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         capture.display_post_target =
                             std::move(display_target);
                         capture.display_post_frame = gFrameCount;
+                        display_post_available = true;
 
                         // The display-post target is the same RGB10_A2 source
                         // measured by the scopes. The window/UI transaction,
@@ -5453,11 +5476,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                                 capture.presentation_target =
                                     std::move(final_target);
                                 capture.presentation_frame = gFrameCount;
-                                LL_INFOS_ONCE("Metal")
-                                    << "Native world final BGRA8 presentation "
-                                       "is available for ordered UI composition; "
-                                       "visible GL remains authoritative"
-                                    << LL_ENDL;
+                                final_presentation_available = true;
                             }
                             else
                             {
@@ -5466,11 +5485,6 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                                        "GL: " << presentation_error << LL_ENDL;
                             }
                         }
-                        LL_INFOS_ONCE("Metal")
-                            << "Native world display-post source is "
-                               "available; visible GL and scope fallback "
-                               "remain authoritative"
-                            << LL_ENDL;
                     }
                 }
                 else
@@ -5478,6 +5492,41 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     LL_WARNS("Metal")
                         << "Native world display-post source retained GL: "
                         << display_error << LL_ENDL;
+                }
+                if (post_batch_active)
+                {
+                    display_error.clear();
+                    if (!capture.renderer->commitCommandBatch(
+                            &display_error))
+                    {
+                        capture.display_post_target.reset();
+                        capture.display_post_frame =
+                            std::numeric_limits<U32>::max();
+                        capture.presentation_target.reset();
+                        capture.presentation_frame =
+                            std::numeric_limits<U32>::max();
+                        display_post_available = false;
+                        final_presentation_available = false;
+                        LL_WARNS("Metal")
+                            << "Native world display/presentation post batch "
+                               "retained GL after commit failure: "
+                            << display_error << LL_ENDL;
+                    }
+                }
+                if (final_presentation_available)
+                {
+                    LL_INFOS_ONCE("Metal")
+                        << "Native world final BGRA8 presentation is "
+                           "available for ordered UI composition; visible "
+                           "GL remains authoritative"
+                        << LL_ENDL;
+                }
+                if (display_post_available)
+                {
+                    LL_INFOS_ONCE("Metal")
+                        << "Native world display-post source is available; "
+                           "visible GL and scope fallback remain authoritative"
+                        << LL_ENDL;
                 }
             }
 
