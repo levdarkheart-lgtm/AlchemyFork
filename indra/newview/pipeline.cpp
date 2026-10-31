@@ -12122,12 +12122,29 @@ bool LLPipeline::renderMetalWorldLightMap(
     }
 
     ALMetalWorldReflectionProbes ready_probes;
-    if (!mReflectionMapManager.fillMetalReflectionProbes(ready_probes) ||
-        !ready_probes.irradiance_texture)
+    const ALMetalTexture* legacy_environment = nullptr;
+    if (sReflectionProbesEnabled)
     {
-        // Defer all one-shot bridge work until the downstream base owner can
-        // consume the light map in this frame.
-        return false;
+        if (!mReflectionMapManager.fillMetalReflectionProbes(
+                ready_probes) ||
+            !ready_probes.irradiance_texture)
+        {
+            // Defer all one-shot bridge work until the downstream base
+            // owner can consume the light map in this frame.
+            return false;
+        }
+    }
+    else
+    {
+        LLCubeMap* cube_map =
+            gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : nullptr;
+        std::string environment_error;
+        legacy_environment = cube_map
+            ? cube_map->getMetalTexture(&environment_error) : nullptr;
+        if (!legacy_environment)
+        {
+            return false;
+        }
     }
     if (has_sun_shadow && !fillMetalImpostorDirectionalShadows())
     {
@@ -12257,12 +12274,29 @@ bool LLPipeline::mirrorMetalWorldBaseLightMap(LLRenderTarget* source)
         return false;
     }
     ALMetalWorldReflectionProbes ready_probes;
-    if (!mReflectionMapManager.fillMetalReflectionProbes(ready_probes) ||
-        !ready_probes.irradiance_texture)
+    const ALMetalTexture* legacy_environment = nullptr;
+    if (sReflectionProbesEnabled)
     {
-        // Do not pay the synchronous one-shot bridge until every downstream
-        // input is publishable in the same frame.
-        return false;
+        if (!mReflectionMapManager.fillMetalReflectionProbes(
+                ready_probes) ||
+            !ready_probes.irradiance_texture)
+        {
+            // Do not pay the synchronous one-shot bridge until every
+            // downstream input is publishable in the same frame.
+            return false;
+        }
+    }
+    else
+    {
+        LLCubeMap* cube_map =
+            gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : nullptr;
+        std::string environment_error;
+        legacy_environment = cube_map
+            ? cube_map->getMetalTexture(&environment_error) : nullptr;
+        if (!legacy_environment)
+        {
+            return false;
+        }
     }
     const U32 width = source->getWidth();
     const U32 height = source->getHeight();
@@ -12365,19 +12399,35 @@ void LLPipeline::renderMetalWorldBaseLighting(
     }
 
     ALMetalWorldReflectionProbes probes;
-    if (!mReflectionMapManager.fillMetalReflectionProbes(probes) ||
-        !probes.irradiance_texture)
+    const ALMetalTexture* legacy_environment = nullptr;
+    if (sReflectionProbesEnabled)
     {
-        return;
+        if (!mReflectionMapManager.fillMetalReflectionProbes(probes) ||
+            !probes.irradiance_texture)
+        {
+            return;
+        }
+    }
+    else
+    {
+        LLCubeMap* cube_map =
+            gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : nullptr;
+        std::string environment_error;
+        legacy_environment = cube_map
+            ? cube_map->getMetalTexture(&environment_error) : nullptr;
+        if (!legacy_environment)
+        {
+            return;
+        }
     }
 
-    const bool hero_active = !gCubeSnapshot &&
+    const bool hero_active = sReflectionProbesEnabled && !gCubeSnapshot &&
         mHeroProbeManager.mHeroData.heroProbeCount > 0;
     if (hero_active && !fillMetalImpostorHeroProbe())
     {
         return;
     }
-    const bool ssr_active =
+    const bool ssr_active = sReflectionProbesEnabled &&
         mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
         !gCubeSnapshot;
     if (ssr_active)
@@ -12398,7 +12448,9 @@ void LLPipeline::renderMetalWorldBaseLighting(
     scene.light_map = capture.base_light_map_target
         ? capture.base_light_map_target->colorTexture(0)
         : capture.base_light_map_texture.get();
-    scene.reflection_probes = &probes;
+    scene.reflection_probes = sReflectionProbesEnabled
+        ? &probes : nullptr;
+    scene.legacy_environment = legacy_environment;
     scene.hero_probe = hero_active
         ? &capture.impostor_hero_probe : nullptr;
     scene.screen_space_reflections = ssr_active
@@ -12437,6 +12489,21 @@ void LLPipeline::renderMetalWorldBaseLighting(
     constants.lighting[3] = ssao_max;
     constants.surface[0] = mDeferredUBOData.specular_exponent;
     constants.surface[1] = capture.normal_hdr ? 1.f : 0.f;
+    // Match bindDeferredShader's transpose=true env_mat upload. These are
+    // the same padded columns used by the validated ordinary-probe bridge.
+    const F32* modelview =
+        LLViewerCamera::getCurrent().getModelview().getF32ptr();
+    constants.environment_matrix[0][0] = modelview[0];
+    constants.environment_matrix[0][1] = modelview[4];
+    constants.environment_matrix[0][2] = modelview[8];
+    constants.environment_matrix[1][0] = modelview[1];
+    constants.environment_matrix[1][1] = modelview[5];
+    constants.environment_matrix[1][2] = modelview[9];
+    constants.environment_matrix[2][0] = modelview[2];
+    constants.environment_matrix[2][1] = modelview[6];
+    constants.environment_matrix[2][2] = modelview[10];
+    constants.environment[0] =
+        environment.reflection_probe_ambiance;
     const bool native_sky = capture.hdri_sky_native_available ||
         capture.split_sky_native_available ||
         capture.windlight_sky_native_available;
@@ -12452,6 +12519,8 @@ void LLPipeline::renderMetalWorldBaseLighting(
     constants.config[1] = LLRender::sClassicMode ? 1u : 0u;
     constants.config[2] = has_sun_shadow ? 1u : 0u;
     constants.config[3] = has_ssao ? 1u : 0u;
+    constants.environment_config[0] =
+        sReflectionProbesEnabled ? 0u : 1u;
 
     std::string error;
     auto target = capture.renderer->renderBaseLighting(scene, &error);
@@ -12475,7 +12544,10 @@ void LLPipeline::renderMetalWorldBaseLighting(
         !capture.world_ui_continuous_unlocked)
     {
         LL_DEBUGS("Metal")
-            << "Native world probe-finished base-light owner encoded at "
+            << "Native world "
+            << (sReflectionProbesEnabled
+                    ? "probe-finished" : "legacy-sky-cube")
+            << " base-light owner encoded at "
             << capture.base_light_target->descriptor().width << "x"
             << capture.base_light_target->descriptor().height
             << (capture.hdri_sky_native_available

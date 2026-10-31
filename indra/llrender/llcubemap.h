@@ -29,9 +29,15 @@
 
 #include "llgl.h"
 
+#include <memory>
+#include <string>
 #include <vector>
 
 class LLVector3;
+#if LL_DARWIN
+class ALMetalDevice;
+class ALMetalTexture;
+#endif
 
 // Environment map hack!
 class LLCubeMap : public LLRefCount
@@ -64,6 +70,14 @@ public:
 
     GLuint getGLName();
 
+#if LL_DARWIN
+    // Return a coherent Metal cube containing the same six transformed face
+    // images as the legacy GL environment map. The mirror is rebuilt only
+    // after initRawData publishes a new sky generation or the Metal device
+    // changes; a failed rebuild never exposes the previous generation.
+    ALMetalTexture* getMetalTexture(std::string* error = nullptr);
+#endif
+
     void destroyGL();
 
 protected:
@@ -74,6 +88,11 @@ protected:
     LLPointer<LLImageRaw> mRawImages[6];
     S32 mTextureStage;
     S32 mMatrixStage;
+#if LL_DARWIN
+    std::unique_ptr<ALMetalTexture> mMetalTexture;
+    ALMetalDevice* mMetalDevice = nullptr;
+    bool mMetalDirty = true;
+#endif
 };
 
 #endif

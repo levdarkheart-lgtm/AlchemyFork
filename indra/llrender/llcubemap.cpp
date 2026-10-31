@@ -40,6 +40,11 @@
 
 #include "llglheaders.h"
 
+#if LL_DARWIN
+#include "almetaldevice.h"
+#include "almetalresource.h"
+#endif
+
 namespace {
     const U16 RESOLUTION = 64;
 }
@@ -158,6 +163,9 @@ void LLCubeMap::initRawData(const std::vector<LLPointer<LLImageRaw> >& rawimages
             }
         }
     }
+#if LL_DARWIN
+    mMetalDirty = true;
+#endif
 }
 
 void LLCubeMap::initGLData()
@@ -167,6 +175,22 @@ void LLCubeMap::initGLData()
     {
         mImages[i]->setSubImage(mRawImages[i], 0, 0, RESOLUTION, RESOLUTION);
     }
+#if LL_DARWIN
+    // The viewer installs the window's Metal device before the sky is
+    // initialized. Publish the matching cube beside the GL upload so the
+    // render path never has to read the GL texture back. A later consumer
+    // retries if startup ordering or a transient allocation prevented this.
+    if (LLImageGL::getMetalDevice())
+    {
+        std::string error;
+        if (!getMetalTexture(&error))
+        {
+            LL_WARNS("Metal")
+                << "Could not publish the legacy sky cube to Metal: "
+                << error << LL_ENDL;
+        }
+    }
+#endif
 }
 
 void LLCubeMap::init(const std::vector<LLPointer<LLImageRaw> >& rawimages)
@@ -188,6 +212,82 @@ GLuint LLCubeMap::getGLName()
 {
     return mImages[0]->getTexName();
 }
+
+#if LL_DARWIN
+ALMetalTexture* LLCubeMap::getMetalTexture(std::string* error)
+{
+    ALMetalDevice* device = LLImageGL::getMetalDevice();
+    if (!device)
+    {
+        if (error)
+        {
+            *error = "No Metal device is available for the legacy sky cube";
+        }
+        return nullptr;
+    }
+    if (!mMetalDirty && mMetalDevice == device && mMetalTexture)
+    {
+        return mMetalTexture.get();
+    }
+    for (const LLPointer<LLImageRaw>& image : mRawImages)
+    {
+        if (image.isNull() || image->getWidth() != RESOLUTION ||
+            image->getHeight() != RESOLUTION ||
+            image->getComponents() != 4)
+        {
+            if (error)
+            {
+                *error = "The legacy sky cube faces are incomplete";
+            }
+            return nullptr;
+        }
+    }
+
+    ALMetalTextureDescriptor descriptor;
+    descriptor.type = ALMetalTextureType::texture_cube;
+    descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+    descriptor.width = RESOLUTION;
+    descriptor.height = RESOLUTION;
+    descriptor.storage = ALMetalStorageMode::private_gpu;
+    descriptor.usage = ALMetalTextureUsage::shader_read;
+    descriptor.label = "Alchemy legacy sky environment cube";
+    auto replacement = ALMetalTexture::create(*device, descriptor, error);
+    auto upload = replacement
+        ? device->makeCommandBuffer(
+              "Alchemy legacy sky environment cube upload", error)
+        : nullptr;
+    if (!upload)
+    {
+        return nullptr;
+    }
+
+    // LLCubeMap's historical source order is -X,+X,-Y,+Y,-Z,+Z.
+    // OpenGL and Metal cube storage both use +X,-X,+Y,-Y,+Z,-Z, and the
+    // already transformed mRawImages bytes have the GL-compatible in-face
+    // orientation. The live reflection-probe bridge relies on the same
+    // GL-to-Metal face-byte equivalence.
+    constexpr U32 destination_slice[6] = {1, 0, 3, 2, 5, 4};
+    bool uploaded = true;
+    for (U32 source = 0; uploaded && source < 6; ++source)
+    {
+        LLImageDataSharedLock lock(mRawImages[source]);
+        uploaded = replacement->upload(
+            *upload, 0, destination_slice[source], {},
+            mRawImages[source]->getData(),
+            static_cast<std::size_t>(RESOLUTION) * 4, error);
+    }
+    uploaded = uploaded && upload->commit(error);
+    if (!uploaded)
+    {
+        return nullptr;
+    }
+
+    mMetalTexture = std::move(replacement);
+    mMetalDevice = device;
+    mMetalDirty = false;
+    return mMetalTexture.get();
+}
+#endif
 
 void LLCubeMap::bind()
 {
@@ -264,4 +364,9 @@ void LLCubeMap::destroyGL()
     {
         mImages[i] = NULL;
     }
+#if LL_DARWIN
+    mMetalTexture.reset();
+    mMetalDevice = nullptr;
+    mMetalDirty = true;
+#endif
 }

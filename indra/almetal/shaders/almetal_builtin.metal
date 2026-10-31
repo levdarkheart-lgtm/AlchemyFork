@@ -661,9 +661,12 @@ struct ALMetalWorldBaseLightingConstants
     float4 ssao_effect[3];
     float4 lighting;
     float4 surface;
+    float4 environment_matrix[3];
+    float4 environment;
     float4 sky_transfer;
     uint4 sky;
     uint4 config;
+    uint4 environment_config;
 };
 
 struct ALMetalWorldHDRISkyConstants
@@ -11327,6 +11330,7 @@ fragment float4 almetal_world_base_light_fragment(
     texturecube<float> hero_radiance [[texture(9)]],
     texture2d<float> ssr_scene_color [[texture(10)]],
     texture2d<float> ssr_scene_depth [[texture(11)]],
+    texturecube<float> legacy_environment_map [[texture(12)]],
     sampler point_sampler [[sampler(0)]],
     sampler probe_sampler [[sampler(1)]],
     sampler brdf_sampler [[sampler(2)]])
@@ -11414,14 +11418,41 @@ fragment float4 almetal_world_base_light_fragment(
     const float glossiness = pbr
         ? 1.0 - (specular.g + specular.a / 255.0)
         : specular.a;
+    const bool legacy_environment_path =
+        constants.environment_config.x != 0u;
     float3 irradiance = ambient;
     float3 radiance = 0.0;
     float3 legacy_environment = 0.0;
-    almetal_sample_base_probes(
-        pbr, position.xyz, normal, glossiness,
-        environment_intensity, ambient, classic_mode,
-        probe_radiance, probe_irradiance, probe_sampler, probes,
-        irradiance, radiance, legacy_environment);
+    if (legacy_environment_path)
+    {
+        // class2/deferred/reflectionProbeF.glsl: without reflection probes,
+        // diffuse ambiance is a sky-authored grey blend and every glossy
+        // lobe samples the sharp legacy sky cube through env_mat.
+        const float ambiance = constants.environment.x;
+        irradiance = mix(
+            ambient, float3(ambiance * 0.25), ambiance);
+        const float3x3 environment_matrix = float3x3(
+            constants.environment_matrix[0].xyz,
+            constants.environment_matrix[1].xyz,
+            constants.environment_matrix[2].xyz);
+        const float3 reflection = normalize(
+            reflect(position.xyz, normal));
+        const float3 environment_sample = legacy_environment_map.sample(
+            probe_sampler, environment_matrix * reflection).rgb;
+        radiance = pbr
+            ? almetal_srgb_to_linear(environment_sample)
+            : environment_sample;
+        legacy_environment = !pbr && environment_intensity > 0.0
+            ? environment_sample : float3(0.0);
+    }
+    else
+    {
+        almetal_sample_base_probes(
+            pbr, position.xyz, normal, glossiness,
+            environment_intensity, ambient, classic_mode,
+            probe_radiance, probe_irradiance, probe_sampler, probes,
+            irradiance, radiance, legacy_environment);
+    }
 
     const float3 mirror_direction = normalize(
         reflect(position.xyz, normal));
@@ -11431,22 +11462,26 @@ fragment float4 almetal_world_base_light_fragment(
         : mirror_direction;
     const float2 gl_fragment_position = float2(
         input.position.x, ssr.screen.z - input.position.y);
-    const float4 ssr_sample = almetal_sample_ssr(
-        gl_fragment_position / ssr.screen.xy,
-        position.xyz, normal, gloss_direction, glossiness, false,
-        ssr_scene_color, ssr_scene_depth,
-        brdf_sampler, point_sampler, ssr);
-    radiance = mix(radiance, ssr_sample.rgb, ssr_sample.a);
-    radiance = almetal_finish_hero_probe(
-        radiance, position.xyz, normal, glossiness,
-        hero_radiance, probe_sampler, probes, hero);
-    if (!pbr)
+    float4 ssr_sample = float4(0.0);
+    if (!legacy_environment_path)
     {
-        legacy_environment = mix(
-            legacy_environment, ssr_sample.rgb, ssr_sample.a);
-        legacy_environment = almetal_finish_hero_probe(
-            legacy_environment, position.xyz, normal, 1.0,
+        ssr_sample = almetal_sample_ssr(
+            gl_fragment_position / ssr.screen.xy,
+            position.xyz, normal, gloss_direction, glossiness, false,
+            ssr_scene_color, ssr_scene_depth,
+            brdf_sampler, point_sampler, ssr);
+        radiance = mix(radiance, ssr_sample.rgb, ssr_sample.a);
+        radiance = almetal_finish_hero_probe(
+            radiance, position.xyz, normal, glossiness,
             hero_radiance, probe_sampler, probes, hero);
+        if (!pbr)
+        {
+            legacy_environment = mix(
+                legacy_environment, ssr_sample.rgb, ssr_sample.a);
+            legacy_environment = almetal_finish_hero_probe(
+                legacy_environment, position.xyz, normal, 1.0,
+                hero_radiance, probe_sampler, probes, hero);
+        }
     }
 
     float3 color = 0.0;
@@ -11586,26 +11621,39 @@ fragment float4 almetal_world_base_light_fragment(
                 color += lit * lobe * legacy_sunlit * specular.rgb;
             }
 
-            float3 gloss_environment = radiance * 0.5;
-            float fresnel = clamp(
-                1.0 + dot(normalize(position.xyz), normal),
-                0.3, 1.0);
-            fresnel *= fresnel * specular.a;
-            gloss_environment *= specular.rgb * fresnel;
-            gloss_environment *= float3(1.0) - color;
-            color += gloss_environment * 0.5;
+            if (!legacy_environment_path)
+            {
+                float3 gloss_environment = radiance * 0.5;
+                float fresnel = clamp(
+                    1.0 + dot(normalize(position.xyz), normal),
+                    0.3, 1.0);
+                fresnel *= fresnel * specular.a;
+                gloss_environment *= specular.rgb * fresnel;
+                gloss_environment *= float3(1.0) - color;
+                color += gloss_environment * 0.5;
+            }
         }
         color = mix(color, base_color.rgb, base_color.a);
         if (environment_intensity > 0.0)
         {
-            const float3 look_at = normalize(position.xyz);
-            float fresnel = 1.0 + dot(look_at, normal);
-            fresnel *= fresnel;
-            fresnel = min(fresnel + environment_intensity, 1.0);
-            const float3 reflected = legacy_environment *
-                (environment_intensity * fresnel);
-            color = mix(
-                color, reflected * 0.5, environment_intensity);
+            if (legacy_environment_path)
+            {
+                color = almetal_srgb_to_linear(mix(
+                    almetal_linear_to_srgb(color),
+                    legacy_environment * 2.0,
+                    environment_intensity));
+            }
+            else
+            {
+                const float3 look_at = normalize(position.xyz);
+                float fresnel = 1.0 + dot(look_at, normal);
+                fresnel *= fresnel;
+                fresnel = min(fresnel + environment_intensity, 1.0);
+                const float3 reflected = legacy_environment *
+                    (environment_intensity * fresnel);
+                color = mix(
+                    color, reflected * 0.5, environment_intensity);
+            }
         }
     }
 

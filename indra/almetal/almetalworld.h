@@ -1315,6 +1315,15 @@ struct alignas(16) ALMetalWorldBaseLightingConstants
     float lighting[4]{};
     // x = legacy specular exponent.
     float surface[4] = {128.f, 0.f, 0.f, 0.f};
+    // The probe-disabled GL path rotates reflection vectors into the legacy
+    // sky cube with env_mat. Store the same three padded columns here; x of
+    // environment is reflection_probe_ambiance.
+    float environment_matrix[3][4] = {
+        {1.f, 0.f, 0.f, 0.f},
+        {0.f, 1.f, 0.f, 0.f},
+        {0.f, 0.f, 1.f, 0.f},
+    };
+    float environment[4]{};
     // x = WindLight sky_hdr_scale. The HDRI path leaves this at one.
     float sky_transfer[4] = {1.f, 0.f, 0.f, 0.f};
     // x = a native sky transaction populated the clear-depth pixels,
@@ -1323,6 +1332,8 @@ struct alignas(16) ALMetalWorldBaseLightingConstants
     std::uint32_t sky[4]{};
     // x = reverse Z, y = classic mode, z = sun shadow, w = SSAO.
     std::uint32_t config[4]{};
+    // x = legacy sky-cube environment instead of reflection probes.
+    std::uint32_t environment_config[4]{};
 };
 
 struct ALMetalWorldBaseLightingScene
@@ -1333,6 +1344,10 @@ struct ALMetalWorldBaseLightingScene
     // its response curve while the shadow/SSAO producers are migrated.
     const ALMetalTexture* light_map = nullptr;
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
+    // Mutually exclusive with reflection_probes. This is the current
+    // LLCubeMap publication used by class2/deferred/reflectionProbeF.glsl
+    // when RenderReflectionProbes is disabled.
+    const ALMetalTexture* legacy_environment = nullptr;
     const ALMetalWorldHeroProbe* hero_probe = nullptr;
     const ALMetalWorldScreenSpaceReflections* screen_space_reflections =
         nullptr;

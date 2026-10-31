@@ -565,7 +565,7 @@ namespace
     };
     static_assert(sizeof(WorldProjectorLightingConstants) == 240);
     static_assert(sizeof(ALMetalWorldLightMapConstants) == 208);
-    static_assert(sizeof(ALMetalWorldBaseLightingConstants) == 256);
+    static_assert(sizeof(ALMetalWorldBaseLightingConstants) == 336);
 
     struct alignas(16) WorldTerrainConstants
     {
@@ -827,6 +827,23 @@ namespace
                descriptor.width >= 4 &&
                descriptor.height >=
                    probes->radiance_texture->descriptor().array_length &&
+               descriptor.sample_count == 1 &&
+               alMetalHasUsage(descriptor.usage,
+                               ALMetalTextureUsage::shader_read);
+    }
+
+    bool validLegacyEnvironment(const ALMetalTexture* texture)
+    {
+        if (!texture)
+        {
+            return false;
+        }
+        const ALMetalTextureDescriptor& descriptor = texture->descriptor();
+        return descriptor.type == ALMetalTextureType::texture_cube &&
+               descriptor.format == ALMetalPixelFormat::rgba8_unorm &&
+               descriptor.width != 0 &&
+               descriptor.width == descriptor.height &&
+               descriptor.mipmap_level_count != 0 &&
                descriptor.sample_count == 1 &&
                alMetalHasUsage(descriptor.usage,
                                ALMetalTextureUsage::shader_read);
@@ -1306,6 +1323,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     ALMetalWorldDirectionalShadowConstants unshadowed_constants{};
     std::unique_ptr<ALMetalTexture> inactive_hero_probe;
     ALMetalWorldHeroProbeConstants inactive_hero_constants{};
+    std::unique_ptr<ALMetalTexture> inactive_probe_radiance;
+    std::unique_ptr<ALMetalTexture> inactive_probe_irradiance;
     std::unique_ptr<ALMetalTexture> inactive_ssr_color;
     std::unique_ptr<ALMetalTexture> inactive_ssr_depth;
     ALMetalWorldScreenSpaceReflectionConstants inactive_ssr_constants{};
@@ -4166,6 +4185,52 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     }
     hero_ready = hero_ready && hero_upload->commitAndWait(error);
     if (!hero_ready)
+    {
+        return nullptr;
+    }
+
+    ALMetalTextureDescriptor inactive_probe_descriptor;
+    inactive_probe_descriptor.type =
+        ALMetalTextureType::texture_cube_array;
+    inactive_probe_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+    inactive_probe_descriptor.width = 1;
+    inactive_probe_descriptor.height = 1;
+    inactive_probe_descriptor.array_length = 1;
+    inactive_probe_descriptor.storage = ALMetalStorageMode::private_gpu;
+    inactive_probe_descriptor.usage = ALMetalTextureUsage::shader_read;
+    inactive_probe_descriptor.label =
+        "Alchemy world inactive reflection-probe radiance";
+    impl->inactive_probe_radiance = ALMetalTexture::create(
+        device, inactive_probe_descriptor, error);
+    inactive_probe_descriptor.type = ALMetalTextureType::texture_2d;
+    inactive_probe_descriptor.format = ALMetalPixelFormat::rgba32_uint;
+    inactive_probe_descriptor.width = 4;
+    inactive_probe_descriptor.height = 1;
+    inactive_probe_descriptor.array_length = 1;
+    inactive_probe_descriptor.label =
+        "Alchemy world inactive reflection-probe irradiance";
+    impl->inactive_probe_irradiance = ALMetalTexture::create(
+        device, inactive_probe_descriptor, error);
+    auto inactive_probe_upload =
+        impl->inactive_probe_radiance && impl->inactive_probe_irradiance
+        ? device.makeCommandBuffer(
+              "Alchemy world inactive reflection-probe upload", error)
+        : nullptr;
+    std::array<std::uint32_t, 16> zero_irradiance{};
+    bool inactive_probes_ready = inactive_probe_upload != nullptr;
+    for (std::uint32_t face = 0;
+         inactive_probes_ready && face < 6; ++face)
+    {
+        inactive_probes_ready = impl->inactive_probe_radiance->upload(
+            *inactive_probe_upload, 0, face, {}, &black, sizeof(black),
+            error);
+    }
+    inactive_probes_ready = inactive_probes_ready &&
+        impl->inactive_probe_irradiance->upload(
+            *inactive_probe_upload, 0, 0, {}, zero_irradiance.data(),
+            4 * 4 * sizeof(std::uint32_t), error) &&
+        inactive_probe_upload->commitAndWait(error);
+    if (!inactive_probes_ready)
     {
         return nullptr;
     }
@@ -13773,9 +13838,15 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
     const ALMetalWorldBaseLightingScene& scene,
     std::string* error)
 {
+    const bool probe_environment =
+        validPBRReflectionProbes(scene.reflection_probes);
+    const bool legacy_environment =
+        validLegacyEnvironment(scene.legacy_environment);
     if (!mImpl || !mImpl->device || !scene.gbuffer ||
         !sampleableTexture(scene.light_map) ||
-        !validPBRReflectionProbes(scene.reflection_probes) ||
+        probe_environment == legacy_environment ||
+        probe_environment != (scene.reflection_probes != nullptr) ||
+        legacy_environment != (scene.legacy_environment != nullptr) ||
         !finiteValues(scene.constants.inverse_projection, 16) ||
         !finiteValues(scene.constants.light_direction, 4) ||
         !finiteValues(scene.constants.atmos_sunlit, 4) ||
@@ -13784,6 +13855,8 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         !finiteValues(&scene.constants.ssao_effect[0][0], 12) ||
         !finiteValues(scene.constants.lighting, 4) ||
         !finiteValues(scene.constants.surface, 4) ||
+        !finiteValues(&scene.constants.environment_matrix[0][0], 12) ||
+        !finiteValues(scene.constants.environment, 4) ||
         !finiteValues(scene.constants.sky_transfer, 4) ||
         scene.constants.surface[0] <= 0.f ||
         scene.constants.sky_transfer[0] < 0.f ||
@@ -13797,7 +13870,15 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         scene.constants.config[0] > 1 ||
         scene.constants.config[1] > 1 ||
         scene.constants.config[2] > 1 ||
-        scene.constants.config[3] > 1)
+        scene.constants.config[3] > 1 ||
+        scene.constants.environment_config[0] > 1 ||
+        scene.constants.environment_config[1] != 0 ||
+        scene.constants.environment_config[2] != 0 ||
+        scene.constants.environment_config[3] != 0 ||
+        (scene.constants.environment_config[0] != 0) !=
+            legacy_environment ||
+        (legacy_environment &&
+         (scene.hero_probe || scene.screen_space_reflections)))
     {
         setError(error, "Metal world base-light scene is incomplete");
         return nullptr;
@@ -13882,8 +13963,13 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         "Alchemy world base-light reflection-probe constants";
     auto probe_constants_buffer = ALMetalBuffer::create(
         *mImpl->device, probe_buffer_descriptor, error);
+    const ALMetalWorldReflectionProbeConstants inactive_probe_constants{};
+    const ALMetalWorldReflectionProbeConstants& probe_constants =
+        scene.reflection_probes
+            ? scene.reflection_probes->constants
+            : inactive_probe_constants;
     if (!probe_constants_buffer || !probe_constants_buffer->write(
-            0, &scene.reflection_probes->constants,
+            0, &probe_constants,
             probe_buffer_descriptor.length, error))
     {
         return nullptr;
@@ -13937,8 +14023,16 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         static_cast<double>(input.height), 0.0, 1.0,
     };
     const ALMetalScissorRect scissor{0, 0, input.width, input.height};
-    const ALMetalWorldReflectionProbes& probes =
-        *scene.reflection_probes;
+    const ALMetalTexture* probe_radiance = scene.reflection_probes
+        ? scene.reflection_probes->radiance_texture
+        : mImpl->inactive_probe_radiance.get();
+    const ALMetalTexture* probe_irradiance = scene.reflection_probes
+        ? scene.reflection_probes->irradiance_texture
+        : mImpl->inactive_probe_irradiance.get();
+    const ALMetalTexture* legacy_environment_texture =
+        scene.legacy_environment
+            ? scene.legacy_environment
+            : mImpl->inactive_hero_probe.get();
     const ALMetalTexture* hero_texture = scene.hero_probe
         ? scene.hero_probe->radiance_texture
         : mImpl->inactive_hero_probe.get();
@@ -13976,12 +14070,14 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         encoder->setFragmentTexture(3, emissive, error) &&
         encoder->setFragmentTexture(4, depth, error) &&
         encoder->setFragmentTexture(5, scene.light_map, error) &&
-        encoder->setFragmentTexture(6, probes.radiance_texture, error) &&
-        encoder->setFragmentTexture(7, probes.irradiance_texture, error) &&
+        encoder->setFragmentTexture(6, probe_radiance, error) &&
+        encoder->setFragmentTexture(7, probe_irradiance, error) &&
         encoder->setFragmentTexture(8, mImpl->brdf_lut.get(), error) &&
         encoder->setFragmentTexture(9, hero_texture, error) &&
         encoder->setFragmentTexture(10, ssr_color, error) &&
         encoder->setFragmentTexture(11, ssr_depth, error) &&
+        encoder->setFragmentTexture(
+            12, legacy_environment_texture, error) &&
         encoder->setFragmentSampler(
             0, mImpl->point_clamp_sampler.get(), error) &&
         encoder->setFragmentSampler(

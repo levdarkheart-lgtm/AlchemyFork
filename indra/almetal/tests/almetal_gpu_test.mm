@@ -10736,6 +10736,82 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(base_pixels[outside + 1] == 0);
         CHECK(base_pixels[outside + 2] == 0);
 
+        // Reflection probes are an optional viewer setting. Their disabled
+        // GL variant samples the sharp legacy sky cube and uses the authored
+        // ambiance blend instead of requiring a probe-array/SH pair. Prove
+        // the native base owner accepts that mutually exclusive resource
+        // family and actually consumes its radiance.
+        ALMetalTextureDescriptor legacy_environment_descriptor;
+        legacy_environment_descriptor.type =
+            ALMetalTextureType::texture_cube;
+        legacy_environment_descriptor.format =
+            ALMetalPixelFormat::rgba8_unorm;
+        legacy_environment_descriptor.width = 1;
+        legacy_environment_descriptor.height = 1;
+        legacy_environment_descriptor.storage =
+            ALMetalStorageMode::private_gpu;
+        legacy_environment_descriptor.usage =
+            ALMetalTextureUsage::shader_read;
+        legacy_environment_descriptor.label =
+            "Alchemy base-light legacy sky environment";
+        auto legacy_environment = ALMetalTexture::create(
+            *device, legacy_environment_descriptor, &error);
+        INFO(error);
+        REQUIRE(legacy_environment);
+        const std::array<std::uint8_t, 4> blue_environment{{
+            0, 64, 255, 255,
+        }};
+        auto legacy_environment_upload = device->makeCommandBuffer(
+            "Alchemy base-light legacy sky upload", &error);
+        INFO(error);
+        REQUIRE(legacy_environment_upload);
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            REQUIRE(legacy_environment->upload(
+                *legacy_environment_upload, 0, face, {},
+                blue_environment.data(), blue_environment.size(),
+                &error));
+        }
+        REQUIRE(legacy_environment_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldBaseLightingScene legacy_environment_scene =
+            base_scene;
+        legacy_environment_scene.reflection_probes = nullptr;
+        legacy_environment_scene.legacy_environment =
+            legacy_environment.get();
+        legacy_environment_scene.constants.environment[0] = 0.5f;
+        legacy_environment_scene.constants.environment_config[0] = 1;
+        auto legacy_environment_lit = renderer->renderBaseLighting(
+            legacy_environment_scene, &error);
+        INFO(error);
+        REQUIRE(legacy_environment_lit);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            legacy_environment_pixels{};
+        REQUIRE(legacy_environment_lit->colorTexture(0)->readback(
+            *device, 0, 0, {}, legacy_environment_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(legacy_environment_pixels[center + 2] > 0);
+        CHECK((legacy_environment_pixels[center + 0] !=
+                   base_pixels[center + 0] ||
+               legacy_environment_pixels[center + 1] !=
+                   base_pixels[center + 1] ||
+               legacy_environment_pixels[center + 2] !=
+                   base_pixels[center + 2]));
+
+        legacy_environment_scene.constants.environment_config[0] = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderBaseLighting(
+            legacy_environment_scene, &error));
+        CHECK(error == "Metal world base-light scene is incomplete");
+        legacy_environment_scene.constants.environment_config[0] = 1;
+        legacy_environment_scene.reflection_probes = &base_probes;
+        error.clear();
+        CHECK_FALSE(renderer->renderBaseLighting(
+            legacy_environment_scene, &error));
+        CHECK(error == "Metal world base-light scene is incomplete");
+
         // GL writes this base result into screen first, then adds ordinary
         // and projector lights with ONE/ONE blending. The native owner keeps
         // that boundary separate from post-deferred geometry and output
