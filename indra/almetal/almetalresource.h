@@ -324,6 +324,18 @@ public:
                   std::size_t bytes_per_row,
                   std::string* error = nullptr) const;
 
+    // Snapshot-oriented readback for display-encoded eight-bit color. The
+    // selected RGBA/BGRA region is returned as tightly ordered RGB channels;
+    // caller-selected row padding is preserved. This stays synchronous for
+    // the same exceptional CPU consumers as readback().
+    bool readbackRGB8(const ALMetalDevice& device,
+                      std::uint32_t mip_level,
+                      std::uint32_t slice,
+                      ALMetalRegion2D region,
+                      void* bytes,
+                      std::size_t bytes_per_row,
+                      std::string* error = nullptr) const;
+
 private:
     struct Impl;
     ALMetalTexture(std::unique_ptr<Impl> impl, ALMetalTextureDescriptor descriptor);

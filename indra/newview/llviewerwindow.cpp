@@ -5672,8 +5672,15 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     // of it: the UI stayed hidden, the wait cursor stayed up, and past the
     // single-pass branch the screen buffers stayed at the snapshot's size with
     // the scratch target still bound.
+    bool metal_snapshot_requested = false;
     OnScopeExit restore([&]()
     {
+#if LL_DARWIN
+        if (metal_snapshot_requested)
+        {
+            gPipeline.cancelMetalWorldSnapshotCapture();
+        }
+#endif
         gDisplaySwapBuffers = false;
         gSnapshotNoPost = false;
         gDepthDirty = true;
@@ -5888,6 +5895,20 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
         isolation.emplace(cutout->mTarget, cutout->mIncludeSeated);
     }
 
+#if LL_DARWIN
+    // The exact native transaction currently owns ordinary display-encoded
+    // color. Keep tiled, clean-plate, depth, cutout and 360 capture on their
+    // established paths until each has a native owner with its own evidence.
+    // An unavailable or incomplete native frame falls through to GL below.
+    if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR && !cutout &&
+        !no_post && scale_factor > 0.f && scale_factor <= 1.f &&
+        raw->getComponents() == 3)
+    {
+        metal_snapshot_requested =
+            gPipeline.requestMetalWorldSnapshotCapture();
+    }
+#endif
+
     // Subimages are in fact partial rendering of the final view. This happens when the final view is bigger than the screen.
     // In most common cases, scale_factor is 1 and there's no more than 1 iteration on x and y
     for (int subimage_y = 0; subimage_y < scale_factor; ++subimage_y)
@@ -5929,7 +5950,30 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                     swap();
                 }
 
-                for (U32 out_y = 0; out_y < read_height ; out_y++)
+                bool metal_snapshot_read = false;
+#if LL_DARWIN
+                if (metal_snapshot_requested && subimage_x == 0 &&
+                    subimage_y == 0 && read_width == (U32)raw->getWidth() &&
+                    read_height == (U32)raw->getHeight())
+                {
+                    std::string error;
+                    metal_snapshot_read = gPipeline.readMetalWorldSnapshot(
+                        subimage_x_offset, subimage_y_offset,
+                        read_width, read_height, raw->getData(),
+                        static_cast<std::size_t>(raw->getWidth()) *
+                            raw->getComponents(),
+                        &error);
+                    if (!metal_snapshot_read)
+                    {
+                        LL_DEBUGS("Snapshot")
+                            << "Native color snapshot retained the GL "
+                               "readback fallback: " << error << LL_ENDL;
+                    }
+                }
+#endif
+
+                for (U32 out_y = 0;
+                     !metal_snapshot_read && out_y < read_height; ++out_y)
                 {
                     S32 output_buffer_offset = (
                                                 (out_y * (raw->getWidth())) // ...plus iterated y...

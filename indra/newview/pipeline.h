@@ -59,6 +59,7 @@
 #include "alscopedata.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -293,6 +294,10 @@ private:
     bool mMetalDepthOfFieldGLApplied = false;
     bool mMetalHeroWorldCaptureActive = false;
     bool mMetalReflectionWorldCaptureActive = false;
+    // A synchronous snapshot may request one fresh exact world/UI
+    // transaction without consuming the bounded presentation probe or
+    // publishing its differently sized target to the live drawable.
+    bool mMetalWorldSnapshotRequested = false;
 #endif
 
     // The changes marked since the last application, and how many the one running applies, for the log line.
@@ -351,6 +356,15 @@ public:
     // until every ordered family has an exact native owner.
     bool beginMetalWorldUICompositionCapture();
     void endMetalWorldUICompositionCapture();
+    // Arms one ordinary, single-pass color snapshot for native world/UI
+    // capture. Failure to produce an exact result leaves the caller's GL
+    // readback fallback untouched. The request must be cancelled on every
+    // exit after readMetalWorldSnapshot().
+    bool requestMetalWorldSnapshotCapture();
+    bool readMetalWorldSnapshot(U32 x, U32 y, U32 width, U32 height,
+                                U8* pixels, std::size_t bytes_per_row,
+                                std::string* error = nullptr) const;
+    void cancelMetalWorldSnapshotCapture();
     // True only after this viewer frame committed its complete native
     // world/UI texture to a drawable. Benchmark collection uses this exact
     // fact instead of inferring native presentation from a setting.

@@ -1256,6 +1256,51 @@ TEST_CASE("almetal: private texture transfer handles unaligned CPU row pitches",
                               width * 4) == 0);
             CHECK(result[y * result_pitch + width * 4] == 0xee);
         }
+
+        // Final world/UI presentation is BGRA8, while the snapshot encoder's
+        // LLImageRaw contract is RGB. Exercise a cropped, padded readback so
+        // the production path cannot accidentally retain BGRA channel order
+        // or assume a tightly packed destination.
+        descriptor.format = ALMetalPixelFormat::bgra8_unorm;
+        descriptor.label = "Alchemy odd-pitch BGRA snapshot texture";
+        auto bgra_texture = ALMetalTexture::create(
+            *device, descriptor, &error);
+        INFO(error);
+        REQUIRE(bgra_texture);
+        auto bgra_upload = device->makeCommandBuffer(
+            "Alchemy BGRA snapshot upload", &error);
+        INFO(error);
+        REQUIRE(bgra_upload);
+        REQUIRE(bgra_texture->upload(
+            *bgra_upload, 0, 0, {}, source.data(), source_pitch, &error));
+        REQUIRE(bgra_upload->commitAndWait(&error));
+        INFO(error);
+
+        constexpr ALMetalRegion2D crop{3, 2, 7, 4};
+        constexpr std::size_t rgb_pitch = crop.width * 3 + 5;
+        std::vector<std::uint8_t> rgb(rgb_pitch * crop.height, 0xa5);
+        REQUIRE(bgra_texture->readbackRGB8(
+            *device, 0, 0, crop, rgb.data(), rgb_pitch, &error));
+        INFO(error);
+        for (std::uint32_t y = 0; y < crop.height; ++y)
+        {
+            for (std::uint32_t x = 0; x < crop.width; ++x)
+            {
+                const std::uint8_t* expected = source.data() +
+                    (crop.y + y) * source_pitch + (crop.x + x) * 4;
+                const std::uint8_t* actual = rgb.data() +
+                    y * rgb_pitch + x * 3;
+                CHECK(actual[0] == expected[2]);
+                CHECK(actual[1] == expected[1]);
+                CHECK(actual[2] == expected[0]);
+            }
+            CHECK(rgb[y * rgb_pitch + crop.width * 3] == 0xa5);
+        }
+        error.clear();
+        CHECK_FALSE(bgra_texture->readbackRGB8(
+            *device, 0, 0, crop, rgb.data(), crop.width * 3 - 1,
+            &error));
+        CHECK(error == "Metal RGB readback row pitch is too small");
     }
 }
 

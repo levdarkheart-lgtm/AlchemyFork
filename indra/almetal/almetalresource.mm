@@ -1342,6 +1342,80 @@ bool ALMetalTexture::readback(const ALMetalDevice& device,
     }
 }
 
+bool ALMetalTexture::readbackRGB8(const ALMetalDevice& device,
+                                  std::uint32_t mip_level,
+                                  std::uint32_t slice,
+                                  ALMetalRegion2D region,
+                                  void* bytes,
+                                  std::size_t bytes_per_row,
+                                  std::string* error) const
+{
+    if (!bytes)
+    {
+        setError(error, "Cannot read Metal RGB pixels into a null destination");
+        return false;
+    }
+    const bool bgra =
+        mDescriptor.format == ALMetalPixelFormat::bgra8_unorm ||
+        mDescriptor.format == ALMetalPixelFormat::bgra8_unorm_srgb;
+    const bool rgba =
+        mDescriptor.format == ALMetalPixelFormat::rgba8_unorm ||
+        mDescriptor.format == ALMetalPixelFormat::rgba8_unorm_srgb;
+    if (!bgra && !rgba)
+    {
+        setError(error,
+                 "Metal RGB readback requires an RGBA8 or BGRA8 texture");
+        return false;
+    }
+    if (!normalizedRegion(mDescriptor, mip_level, slice, &region, error))
+    {
+        return false;
+    }
+    const std::size_t rgb_row =
+        static_cast<std::size_t>(region.width) * 3u;
+    if (bytes_per_row < rgb_row)
+    {
+        setError(error, "Metal RGB readback row pitch is too small");
+        return false;
+    }
+    const std::size_t rgba_row =
+        static_cast<std::size_t>(region.width) * 4u;
+    if (region.height != 0 &&
+        rgba_row > std::numeric_limits<std::size_t>::max() / region.height)
+    {
+        setError(error, "Metal RGB readback staging size overflowed");
+        return false;
+    }
+
+    std::vector<std::uint8_t> storage(
+        rgba_row * static_cast<std::size_t>(region.height));
+    if (!readback(device, mip_level, slice, region, storage.data(),
+                  rgba_row, error))
+    {
+        return false;
+    }
+
+    auto* destination = static_cast<std::uint8_t*>(bytes);
+    for (std::uint32_t row = 0; row < region.height; ++row)
+    {
+        const std::uint8_t* source = storage.data() + row * rgba_row;
+        std::uint8_t* output = destination + row * bytes_per_row;
+        for (std::uint32_t column = 0; column < region.width; ++column)
+        {
+            const std::size_t source_pixel =
+                static_cast<std::size_t>(column) * 4u;
+            const std::size_t output_pixel =
+                static_cast<std::size_t>(column) * 3u;
+            output[output_pixel + 0] =
+                source[source_pixel + (bgra ? 2u : 0u)];
+            output[output_pixel + 1] = source[source_pixel + 1u];
+            output[output_pixel + 2] =
+                source[source_pixel + (bgra ? 0u : 2u)];
+        }
+    }
+    return true;
+}
+
 struct ALMetalTextureReadbackRing::Impl
 {
     struct Slot
