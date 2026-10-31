@@ -561,6 +561,10 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
     frame.quality_profile =
         gSavedSettings.getU32("RenderQualityPerformance");
     frame.draw_calls = LLRender::sDrawCalls;
+#if LL_DARWIN
+    frame.metal_command_buffers_committed =
+        LLRender::metalCommandBuffersCommitted();
+#endif
     frame.native_exact = native_exact;
     frame.eligible = LLStartUp::getStartupState() >= STATE_STARTED &&
         !for_snapshot && !gSnapshot && !gTeleportDisplay && !gDisconnected &&

@@ -219,6 +219,7 @@ void ALMetalBenchmarkRecorder::resetSequence() noexcept
 {
     mLastTimestamp.reset();
     mLastFrameIndex = 0;
+    mLastMetalCommandBuffers = 0;
     mSequenceWidth = 0;
     mSequenceHeight = 0;
     mSequenceQuality = 0;
@@ -271,7 +272,7 @@ bool ALMetalBenchmarkRecorder::openOutput(std::string* error)
     *mOutput
         << "scenario,variant,frame_ms,frame_index,source_sha,build_type,"
            "drawable_width,drawable_height,quality_profile,draw_calls,"
-           "native_exact\n";
+           "metal_submissions,native_exact\n";
     return static_cast<bool>(*mOutput);
 }
 
@@ -308,6 +309,7 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
     {
         mLastTimestamp = frame.timestamp;
         mLastFrameIndex = frame.frame_index;
+        mLastMetalCommandBuffers = frame.metal_command_buffers_committed;
         mSequenceWidth = frame.drawable_width;
         mSequenceHeight = frame.drawable_height;
         mSequenceQuality = frame.quality_profile;
@@ -319,25 +321,31 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
     const bool stable = frame.drawable_width == mSequenceWidth &&
         frame.drawable_height == mSequenceHeight &&
         frame.quality_profile == mSequenceQuality;
+    const bool monotonic_submissions =
+        frame.metal_command_buffers_committed >= mLastMetalCommandBuffers;
     const double frame_ms =
         std::chrono::duration<double, std::milli>(
             frame.timestamp - *mLastTimestamp).count();
-    if (!consecutive || !stable || !(frame_ms > 0.0) ||
+    if (!consecutive || !stable || !monotonic_submissions ||
+        !(frame_ms > 0.0) ||
         !std::isfinite(frame_ms))
     {
         if (mSamplesWritten != 0)
         {
             return fail(
                 "The consecutive benchmark sequence changed frame, size, "
-                "quality or clock ordering",
+                "quality, submission counter or clock ordering",
                 error);
         }
         resetSequence();
         return record(frame, error);
     }
 
+    const std::uint64_t metal_submissions =
+        frame.metal_command_buffers_committed - mLastMetalCommandBuffers;
     mLastTimestamp = frame.timestamp;
     mLastFrameIndex = frame.frame_index;
+    mLastMetalCommandBuffers = frame.metal_command_buffers_committed;
     if (mWarmupSeen < mConfig.warmup_frames)
     {
         ++mWarmupSeen;
@@ -357,6 +365,7 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
              << csv_field(mConfig.build_type) << ','
              << frame.drawable_width << ',' << frame.drawable_height << ','
              << frame.quality_profile << ',' << frame.draw_calls << ','
+             << metal_submissions << ','
              << (frame.native_exact ? 1 : 0) << '\n';
     if (!*mOutput)
     {

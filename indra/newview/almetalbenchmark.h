@@ -46,6 +46,7 @@ public:
         std::uint32_t drawable_height = 0;
         std::uint32_t quality_profile = 0;
         std::uint32_t draw_calls = 0;
+        std::uint64_t metal_command_buffers_committed = 0;
         bool native_exact = false;
         bool eligible = false;
     };
@@ -87,6 +88,7 @@ private:
     std::unique_ptr<std::ofstream> mOutput;
     std::optional<Clock::time_point> mLastTimestamp;
     std::uint64_t mLastFrameIndex = 0;
+    std::uint64_t mLastMetalCommandBuffers = 0;
     std::uint32_t mSequenceWidth = 0;
     std::uint32_t mSequenceHeight = 0;
     std::uint32_t mSequenceQuality = 0;

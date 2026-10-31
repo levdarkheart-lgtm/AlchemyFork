@@ -79,6 +79,7 @@ ALMetalBenchmarkRecorder::Frame frame(
     result.drawable_height = 1280;
     result.quality_profile = 5;
     result.draw_calls = 321;
+    result.metal_command_buffers_committed = index * 2;
     result.native_exact = exact;
     result.eligible = true;
     return result;
@@ -112,7 +113,7 @@ TEST_CASE("ALMetalBenchmark records only the requested consecutive post-warmup f
     CHECK(contents.find("scenario,variant,frame_ms") == 0);
     CHECK(contents.find("quiet-region,candidate,10.000000,12") !=
           std::string::npos);
-    CHECK(contents.find(",2048,1280,5,321,1\n") != std::string::npos);
+    CHECK(contents.find(",2048,1280,5,321,2,1\n") != std::string::npos);
     CHECK(std::count(contents.begin(), contents.end(), '\n') == 4);
 }
 
@@ -158,6 +159,25 @@ TEST_CASE("ALMetalBenchmark exact candidate gating resets before evidence and ne
           ALMetalBenchmarkRecorder::Result::failed);
     CHECK((error.find("overwrite") != std::string::npos ||
            error.find("appeared") != std::string::npos));
+}
+
+TEST_CASE("ALMetalBenchmark rejects a command-buffer counter regression after sampling",
+          "[ALMetalBenchmark]")
+{
+    benchmark_file output;
+    ALMetalBenchmarkRecorder recorder(output.config(0, 2));
+    std::string error;
+    CHECK(recorder.record(frame(35, 350), &error) ==
+          ALMetalBenchmarkRecorder::Result::warming);
+    CHECK(recorder.record(frame(36, 360), &error) ==
+          ALMetalBenchmarkRecorder::Result::recorded);
+
+    auto regressed = frame(37, 370);
+    regressed.metal_command_buffers_committed = 1;
+    CHECK(recorder.record(regressed, &error) ==
+          ALMetalBenchmarkRecorder::Result::failed);
+    CHECK(error.find("submission counter") != std::string::npos);
+    CHECK(recorder.samplesWritten() == 1);
 }
 
 TEST_CASE("ALMetalBenchmark rejects an invalid direct configuration",

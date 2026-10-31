@@ -738,6 +738,11 @@ public:
     // frame's statistics were last reset (LLPipeline::resetFrameStats).
     static U32 sDrawCalls;
     static U64 sDrawElements;
+#if LL_DARWIN
+    // Process-wide command-buffer commits issued through the native Metal
+    // wrapper. Frame-to-frame deltas are submission counts, not GPU time.
+    static U64 metalCommandBuffersCommitted();
+#endif
     static F32 sAnisotropicFilteringLevel;
     static bool sGLCoreProfile;
     static bool sNsightDebugSupport;

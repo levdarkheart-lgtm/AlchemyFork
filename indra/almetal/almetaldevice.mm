@@ -13,6 +13,7 @@
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 
+#include <atomic>
 #include <utility>
 
 #if !defined(__arm64__)
@@ -21,6 +22,8 @@
 
 namespace
 {
+    std::atomic<std::uint64_t> committed_command_buffers{0};
+
     void setError(std::string* destination, const std::string& message)
     {
         if (destination)
@@ -127,6 +130,7 @@ bool ALMetalCommandBuffer::commit(std::string* error)
 
     [mImpl->command_buffer commit];
     mImpl->committed = true;
+    committed_command_buffers.fetch_add(1, std::memory_order_relaxed);
     return true;
 }
 
@@ -243,6 +247,11 @@ void* ALMetalDevice::nativeHandle() const noexcept
 void* ALMetalDevice::nativeCommandQueue() const noexcept
 {
     return mImpl ? (__bridge void*)mImpl->command_queue : nullptr;
+}
+
+std::uint64_t ALMetalDevice::committedCommandBufferCount() noexcept
+{
+    return committed_command_buffers.load(std::memory_order_relaxed);
 }
 
 std::unique_ptr<ALMetalCommandBuffer> ALMetalDevice::makeCommandBuffer(

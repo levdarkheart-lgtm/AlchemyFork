@@ -1065,8 +1065,12 @@ TEST_CASE("almetal: a blit command copies shared storage and reports completion"
                            size:size];
         [encoder endEncoding];
 
+        const std::uint64_t commits_before =
+            ALMetalDevice::committedCommandBufferCount();
         CHECK(command->commitAndWait(&error));
         INFO(error);
+        CHECK(ALMetalDevice::committedCommandBufferCount() ==
+              commits_before + 1);
         CHECK(command->status() == ALMetalCommandStatus::completed);
         CHECK(std::memcmp(destination.contents, expected.data(), size) == 0);
     }

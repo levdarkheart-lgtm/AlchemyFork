@@ -97,6 +97,11 @@ public:
     void* nativeHandle() const noexcept;
     void* nativeCommandQueue() const noexcept;
 
+    // Process-wide count of command buffers committed through the viewer's
+    // native Metal wrapper. Monotonic deltas provide low-overhead per-frame
+    // submission telemetry; this is not a GPU-time measurement.
+    static std::uint64_t committedCommandBufferCount() noexcept;
+
     std::unique_ptr<ALMetalCommandBuffer> makeCommandBuffer(
         const std::string& label,
         std::string* error = nullptr) const;

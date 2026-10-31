@@ -43,6 +43,7 @@
 #include "llthread.h"
 
 #if LL_DARWIN
+#include "almetaldevice.h"
 #include "almetalsurface.h"
 #include "almetaluirenderer.h"
 #endif
@@ -66,6 +67,13 @@ extern void APIENTRY gl_debug_callback(GLenum source,
 #endif
 
 thread_local LLRender gGL;
+
+#if LL_DARWIN
+U64 LLRender::metalCommandBuffersCommitted()
+{
+    return ALMetalDevice::committedCommandBufferCount();
+}
+#endif
 
 #if LL_DARWIN
 namespace
