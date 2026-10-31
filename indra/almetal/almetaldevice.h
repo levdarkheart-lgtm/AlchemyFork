@@ -27,6 +27,7 @@ struct ALMetalDeviceInfo
     std::uint64_t recommended_working_set_size = 0;
     std::uint64_t max_buffer_length = 0;
     std::uint64_t current_allocated_size = 0;
+    std::uint32_t max_texture_2d_dimension = 0;
     std::uint32_t highest_apple_family = 0;
     std::uint32_t highest_mac_family = 0;
     std::uint32_t max_threads_per_threadgroup_width = 0;

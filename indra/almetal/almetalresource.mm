@@ -693,6 +693,12 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::create(
             setError(error, "Metal texture descriptor has an invalid format or dimension");
             return nullptr;
         }
+        if (descriptor.width > device.info().max_texture_2d_dimension ||
+            descriptor.height > device.info().max_texture_2d_dimension)
+        {
+            setError(error, "Metal texture dimensions exceed the selected device limit");
+            return nullptr;
+        }
         if (descriptor.mipmap_level_count > maxMipLevels(descriptor.width, descriptor.height))
         {
             setError(error, "Metal texture mip count exceeds its dimensions");
@@ -820,6 +826,12 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::createFromIOSurface(
             !hasIdentitySwizzle(descriptor))
         {
             setError(error, "IOSurface import requires one shared BGRA8, identity-swizzled 2D Metal level");
+            return nullptr;
+        }
+        if (descriptor.width > device.info().max_texture_2d_dimension ||
+            descriptor.height > device.info().max_texture_2d_dimension)
+        {
+            setError(error, "IOSurface dimensions exceed the selected Metal device limit");
             return nullptr;
         }
         const std::size_t plane_count = IOSurfaceGetPlaneCount(surface);

@@ -662,7 +662,19 @@ TEST_CASE("almetal: the selected device is built-in unified-memory Apple Silicon
         CHECK_FALSE(device->info().headless);
         CHECK(device->info().recommended_working_set_size > 0);
         CHECK(device->info().max_buffer_length > 0);
+        CHECK(device->info().max_texture_2d_dimension == 16'384);
         CHECK(device->info().highest_apple_family >= 1);
+
+        ALMetalTextureDescriptor oversized;
+        oversized.format = ALMetalPixelFormat::rgba8_unorm;
+        oversized.width = device->info().max_texture_2d_dimension + 1;
+        oversized.height = 1;
+        oversized.storage = ALMetalStorageMode::private_gpu;
+        oversized.usage = ALMetalTextureUsage::shader_read;
+        CHECK_FALSE(ALMetalTexture::create(*device, oversized, &error));
+        CHECK(error ==
+              "Metal texture dimensions exceed the selected device limit");
+
         CHECK(device->nativeCommandQueue() != nullptr);
         CHECK(device->waitUntilIdle(&error));
         INFO(error);
@@ -1296,6 +1308,64 @@ TEST_CASE("almetal: private texture transfer handles unaligned CPU row pitches",
             }
             CHECK(rgb[y * rgb_pitch + crop.width * 3] == 0xa5);
         }
+
+        // A high-resolution snapshot places independently rendered subfields
+        // into one LLImageRaw by passing each tile's destination pointer while
+        // retaining the aggregate row pitch. Reproduce a 2x2 assembly here:
+        // every read must stay inside its tile and preserve the padding at the
+        // end of every aggregate row.
+        constexpr std::uint32_t tile_width = 6;
+        constexpr std::uint32_t tile_height = 4;
+        constexpr std::uint32_t assembled_width = tile_width * 2;
+        constexpr std::uint32_t assembled_height = tile_height * 2;
+        constexpr std::size_t assembled_pitch = assembled_width * 3 + 5;
+        std::vector<std::uint8_t> assembled(
+            assembled_pitch * assembled_height, 0x5a);
+        const std::array<ALMetalRegion2D, 4> tiles{
+            ALMetalRegion2D{0, 0, tile_width, tile_height},
+            ALMetalRegion2D{width - tile_width, 0,
+                            tile_width, tile_height},
+            ALMetalRegion2D{0, height - tile_height,
+                            tile_width, tile_height},
+            ALMetalRegion2D{width - tile_width,
+                            height - tile_height,
+                            tile_width, tile_height},
+        };
+        for (std::size_t tile = 0; tile < tiles.size(); ++tile)
+        {
+            const std::uint32_t destination_x =
+                static_cast<std::uint32_t>(tile % 2) * tile_width;
+            const std::uint32_t destination_y =
+                static_cast<std::uint32_t>(tile / 2) * tile_height;
+            REQUIRE(bgra_texture->readbackRGB8(
+                *device, 0, 0, tiles[tile],
+                assembled.data() + destination_y * assembled_pitch +
+                    destination_x * 3,
+                assembled_pitch, &error));
+            INFO(error);
+        }
+        for (std::uint32_t y = 0; y < assembled_height; ++y)
+        {
+            const std::size_t tile_row = y / tile_height;
+            const std::uint32_t source_y = tile_row == 0
+                ? y : height - tile_height + (y % tile_height);
+            for (std::uint32_t x = 0; x < assembled_width; ++x)
+            {
+                const std::size_t tile_column = x / tile_width;
+                const std::uint32_t source_x = tile_column == 0
+                    ? x : width - tile_width + (x % tile_width);
+                const std::uint8_t* expected = source.data() +
+                    source_y * source_pitch + source_x * 4;
+                const std::uint8_t* actual = assembled.data() +
+                    y * assembled_pitch + x * 3;
+                CHECK(actual[0] == expected[2]);
+                CHECK(actual[1] == expected[1]);
+                CHECK(actual[2] == expected[0]);
+            }
+            CHECK(assembled[y * assembled_pitch + assembled_width * 3] ==
+                  0x5a);
+        }
+
         error.clear();
         CHECK_FALSE(bgra_texture->readbackRGB8(
             *device, 0, 0, crop, rgb.data(), crop.width * 3 - 1,

@@ -265,6 +265,13 @@ std::unique_ptr<ALMetalDevice> ALMetalDevice::create(std::string* error)
         info.recommended_working_set_size = device.recommendedMaxWorkingSetSize;
         info.max_buffer_length = device.maxBufferLength;
         info.current_allocated_size = device.currentAllocatedSize;
+        // Metal exposes this limit through the GPU-family capability table,
+        // not a per-device property. Every supported Apple Silicon device is
+        // Apple family 7 or later, whose 1D/2D texture limit is 16,384. Keep
+        // the value on the selected runtime device so resource validation
+        // remains independent of OpenGL's unrelated limit.
+        info.max_texture_2d_dimension =
+            [device supportsFamily:MTLGPUFamilyApple7] ? 16'384u : 8'192u;
         info.unified_memory = device.hasUnifiedMemory;
         info.low_power = device.lowPower;
         info.removable = device.removable;
