@@ -10426,11 +10426,11 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(composed_pixels[center + 3] == 0);
         CHECK(composed_pixels[outside + 3] == 0);
 
-        // The production path encodes base, local, projector and composition
-        // into one command buffer. A fresh renderer must generate the shared
-        // BRDF LUT only once inside that batch, and canceling an earlier batch
-        // must not leave the renderer claiming that discarded generation is
-        // available to the next command buffer.
+        // The production path encodes the light map, base, local, projector
+        // and composition into one command buffer. A fresh renderer must
+        // generate the shared BRDF LUT only once inside that batch, and
+        // canceling an earlier batch must not leave the renderer claiming
+        // that discarded generation is available to the next command buffer.
         auto batched_renderer = ALMetalWorldGBufferRenderer::create(
             *device, &error);
         INFO(error);
@@ -10446,10 +10446,29 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         ALMetalWorldLocalLightingScene batched_local_scene =
             lighting_scene;
         batched_local_scene.gbuffer = gbuffer.get();
+        ALMetalWorldLightMapScene batched_light_map_scene;
+        batched_light_map_scene.gbuffer = pbr_gbuffer.get();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            batched_light_map_scene.constants
+                .inverse_projection[axis * 4 + axis] = 1.f;
+        }
+        batched_light_map_scene.constants.inverse_projection[14] = -1.f;
+        batched_light_map_scene.constants.light_direction[2] = 1.f;
+        batched_light_map_scene.constants.screen[0] = 32.f;
+        batched_light_map_scene.constants.screen[1] = 32.f;
+        batched_light_map_scene.constants.config[3] = 1;
         REQUIRE(batched_renderer->beginCommandBatch(
             "Alchemy deferred-light test batch", &error));
+        auto batched_light_map = batched_renderer->renderLightMap(
+            batched_light_map_scene, &error);
+        INFO(error);
+        REQUIRE(batched_light_map);
+        ALMetalWorldBaseLightingScene batched_base_scene = base_scene;
+        batched_base_scene.light_map =
+            batched_light_map->colorTexture(0);
         auto batched_base = batched_renderer->renderBaseLighting(
-            base_scene, &error);
+            batched_base_scene, &error);
         INFO(error);
         REQUIRE(batched_base);
         auto batched_local = batched_renderer->renderLocalLights(
@@ -10472,10 +10491,14 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         REQUIRE(batched_renderer->commitCommandBatch(&error));
         INFO(error);
 
+        std::array<std::uint8_t, 32 * 32 * 2> batched_light_map_pixels{};
         std::array<std::uint8_t, 32 * 32 * 4> batched_base_pixels{};
         std::array<std::uint8_t, 32 * 32 * 4> batched_local_pixels{};
         std::array<std::uint8_t, 32 * 32 * 4> batched_projector_pixels{};
         std::array<std::uint8_t, 32 * 32 * 4> batched_composed_pixels{};
+        REQUIRE(batched_light_map->colorTexture(0)->readback(
+            *device, 0, 0, {}, batched_light_map_pixels.data(), 32 * 2,
+            &error));
         REQUIRE(batched_base->colorTexture(0)->readback(
             *device, 0, 0, {}, batched_base_pixels.data(), 32 * 4,
             &error));
@@ -10489,6 +10512,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             *device, 0, 0, {}, batched_composed_pixels.data(), 32 * 4,
             &error));
         INFO(error);
+        CHECK(batched_light_map_pixels == full_light_map);
         CHECK(batched_base_pixels == base_pixels);
         CHECK(batched_local_pixels == legacy_pixels);
         CHECK(batched_projector_pixels == projected_pixels);

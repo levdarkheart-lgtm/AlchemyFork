@@ -24035,6 +24035,29 @@ void LLPipeline::renderDeferredLighting()
         }
 
 #if LL_DARWIN
+        bool lighting_batch_active = false;
+        std::string lighting_batch_error;
+        const bool batch_main_lighting = RenderDeferredAtmospheric &&
+            isMainWorldPass() && mRT == &mMainRT &&
+            !mMetalHeroWorldCaptureActive &&
+            !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
+            mMetalWorldSimpleCapture &&
+            mMetalWorldSimpleCapture->renderer;
+        if (batch_main_lighting)
+        {
+            lighting_batch_active =
+                mMetalWorldSimpleCapture->renderer->beginCommandBatch(
+                    "Alchemy native world light-map and deferred-light chain",
+                    &lighting_batch_error);
+            if (!lighting_batch_active)
+            {
+                LL_WARNS_ONCE("Metal")
+                    << "Could not begin the optional native lighting "
+                       "command batch; retaining independent command-buffer "
+                       "submission: "
+                    << lighting_batch_error << LL_ENDL;
+            }
+        }
         // Prefer the native directional-shadow/SSAO owner. Its inputs remain
         // transitional mirrors, but the per-frame full-screen RG result no
         // longer crosses back through GL. If it cannot encode, retain the
@@ -24101,29 +24124,6 @@ void LLPipeline::renderDeferredLighting()
 
         static LLCachedControl<S32> local_light_count(gSavedSettings, "RenderLocalLightCount", 256);
 #if LL_DARWIN
-        bool lighting_batch_active = false;
-        std::string lighting_batch_error;
-        const bool batch_main_lighting = RenderDeferredAtmospheric &&
-            isMainWorldPass() && mRT == &mMainRT &&
-            !mMetalHeroWorldCaptureActive &&
-            !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
-            mMetalWorldSimpleCapture &&
-            mMetalWorldSimpleCapture->renderer;
-        if (batch_main_lighting)
-        {
-            lighting_batch_active =
-                mMetalWorldSimpleCapture->renderer->beginCommandBatch(
-                    "Alchemy native world deferred-light chain",
-                    &lighting_batch_error);
-            if (!lighting_batch_active)
-            {
-                LL_WARNS_ONCE("Metal")
-                    << "Could not begin the optional native deferred-light "
-                       "command batch; retaining independent command-buffer "
-                       "submission: "
-                    << lighting_batch_error << LL_ENDL;
-            }
-        }
         if (RenderDeferredAtmospheric)
         {
             renderMetalWorldBaseLighting(
@@ -24148,6 +24148,7 @@ void LLPipeline::renderDeferredLighting()
             if (!capture.renderer->commitCommandBatch(
                     &lighting_batch_error))
             {
+                capture.base_light_map_target.reset();
                 capture.base_light_target.reset();
                 capture.local_light_target.reset();
                 capture.projector_light_target.reset();

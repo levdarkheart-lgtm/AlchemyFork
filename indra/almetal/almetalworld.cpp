@@ -12063,8 +12063,9 @@ ALMetalWorldGBufferRenderer::renderLightMap(
         return nullptr;
     }
 
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world light-map production", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world light-map production", owned_command, error);
     if (!command)
     {
         return nullptr;
@@ -12080,6 +12081,7 @@ ALMetalWorldGBufferRenderer::renderLightMap(
         : nullptr;
     if (!encoder)
     {
+        mImpl->finishCommandBuffer(owned_command, false, error);
         return nullptr;
     }
 
@@ -12119,12 +12121,14 @@ ALMetalWorldGBufferRenderer::renderLightMap(
         encoder->end(error);
     if (!encoded)
     {
+        mImpl->finishCommandBuffer(owned_command, false, error);
         return nullptr;
     }
 
     if (!ssao)
     {
-        return command->commit(error) ? std::move(raw) : nullptr;
+        return mImpl->finishCommandBuffer(owned_command, true, error)
+            ? std::move(raw) : nullptr;
     }
 
     auto scratch = ALMetalRenderTarget::create(
@@ -12133,6 +12137,7 @@ ALMetalWorldGBufferRenderer::renderLightMap(
         *mImpl->device, output_descriptor, error);
     if (!scratch || !output)
     {
+        mImpl->finishCommandBuffer(owned_command, false, error);
         return nullptr;
     }
     const float horizontal[4] = {1.f, 0.f, 0.f, 0.f};
@@ -12171,11 +12176,13 @@ ALMetalWorldGBufferRenderer::renderLightMap(
             blur_encoder->end(error);
         if (!encoded)
         {
+            mImpl->finishCommandBuffer(owned_command, false, error);
             return nullptr;
         }
     }
 
-    return command->commit(error) ? std::move(output) : nullptr;
+    return mImpl->finishCommandBuffer(owned_command, true, error)
+        ? std::move(output) : nullptr;
 }
 
 bool ALMetalWorldGBufferRenderer::compositeHDRISky(
