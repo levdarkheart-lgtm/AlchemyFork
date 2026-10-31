@@ -56,6 +56,7 @@
 #include <chrono>
 #include <list>
 #include <memory>
+#include <string>
 #include <vector>
 
 class LLVertexBuffer;
@@ -326,7 +327,8 @@ public:
     std::unique_ptr<ALMetalTexture> endMetalUITextureCapture(
         bool source_success,
         bool present_surface = false,
-        bool* presented = nullptr);
+        bool* presented = nullptr,
+        std::string* failure = nullptr);
 
     // A startup frame can replace the GL window presentation only when every
     // eligible UI batch was encoded. The surface stays transparent for any
@@ -937,6 +939,10 @@ private:
     U32 mMetalUICaptureDepthHeight = 0;
     LLGLSLShader* mMetalUICaptureAlphaShader = nullptr;
     LLGLSLShader* mMetalUICaptureUniformColorShader = nullptr;
+    // First exactness failure in the current offscreen transaction. Keeping
+    // only the first owner makes a discarded snapshot or drawable probe
+    // diagnosable without producing per-batch log noise.
+    std::string mMetalUICaptureFirstFailure;
     bool mMetalUICaptureComplete = false;
     bool mMetalUICaptureUsesDepth = false;
     bool mMetalUIReplacementEnabled = true;

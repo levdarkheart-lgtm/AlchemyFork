@@ -6084,8 +6084,9 @@ void LLPipeline::endMetalWorldUICompositionCapture()
     const bool surface_ready = presentation_requested &&
         gGL.setMetalPresentationOpaque(true);
     bool surface_submitted = false;
+    std::string capture_failure;
     capture.world_ui_target = gGL.endMetalUITextureCapture(
-        true, surface_ready, &surface_submitted);
+        true, surface_ready, &surface_submitted, &capture_failure);
     capture.world_ui_capture_active = false;
     if (capture.world_ui_target)
     {
@@ -6155,7 +6156,8 @@ void LLPipeline::endMetalWorldUICompositionCapture()
         LL_INFOS_ONCE("Metal")
             << "The ordered native world/UI transaction failed closed; "
                "visible GL remains authoritative while the bounded probe "
-               "retries"
+               "retries. First exactness failure: "
+            << capture_failure
             << LL_ENDL;
     }
 }

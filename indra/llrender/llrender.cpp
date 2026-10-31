@@ -193,6 +193,28 @@ namespace
     std::array<U64, static_cast<std::size_t>(MetalUIFallbackReason::count)>
         sMetalUIFallbackReasons{};
 
+    const char* metal_ui_fallback_reason(MetalUIFallbackReason reason)
+    {
+        switch (reason)
+        {
+            case MetalUIFallbackReason::incomplete_batch:
+                return "empty or incomplete immediate-mode batch";
+            case MetalUIFallbackReason::shader:
+                return "unsupported shader";
+            case MetalUIFallbackReason::primitive:
+                return "unsupported primitive or cull mode";
+            case MetalUIFallbackReason::mirror:
+                return "missing Metal buffer or texture mirror";
+            case MetalUIFallbackReason::viewport:
+                return "invalid viewport";
+            case MetalUIFallbackReason::encoder:
+                return "Metal encoder rejected the batch";
+            case MetalUIFallbackReason::count:
+                break;
+        }
+        return "unknown UI capture failure";
+    }
+
     ALMetalBlendFactor metal_blend_factor(LLRender::eBlendFactor factor)
     {
         switch (factor)
@@ -862,6 +884,7 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     mMetalUICaptureUsesDepth = false;
     mMetalUICaptureDepthWidth = 0;
     mMetalUICaptureDepthHeight = 0;
+    mMetalUICaptureFirstFailure.clear();
     mMetalUIReplacementEnabled = true;
     mMetalUISurfaceFrameSubmitted = false;
     if (!device || !scheduler || !surface)
@@ -945,6 +968,7 @@ bool LLRender::beginMetalUITextureCapture(
     mMetalUICaptureBatches = 0;
     mMetalUICaptureAlphaShader = alpha_mask_shader;
     mMetalUICaptureUniformColorShader = uniform_color_shader;
+    mMetalUICaptureFirstFailure.clear();
     mMetalUICaptureComplete = true;
     mMetalUICaptureUsesDepth = depth != nullptr;
     if (depth)
@@ -964,6 +988,11 @@ bool LLRender::updateMetalUITextureCaptureDepth(
     }
     const auto reject = [this](const std::string& reason)
     {
+        if (mMetalUICaptureFirstFailure.empty())
+        {
+            mMetalUICaptureFirstFailure =
+                "retained-depth bracket: " + reason;
+        }
         mMetalUICaptureComplete = false;
         LL_DEBUGS("Metal") << "Offscreen immediate-mode depth bracket retained GL: "
                             << reason << LL_ENDL;
@@ -1075,6 +1104,11 @@ bool LLRender::drawMetalHUDIndexedBatch(
     const S32 viewport_height = mViewport[3];
     if (viewport_width <= 0 || viewport_height <= 0)
     {
+        if (mMetalUICaptureFirstFailure.empty())
+        {
+            mMetalUICaptureFirstFailure =
+                "HUD attachment used an invalid viewport";
+        }
         mMetalUICaptureComplete = false;
         return false;
     }
@@ -1137,6 +1171,11 @@ bool LLRender::drawMetalHUDIndexedBatch(
     std::string error;
     if (!mMetalUICaptureRenderer->drawHUDIndexed(resolved, &error))
     {
+        if (mMetalUICaptureFirstFailure.empty())
+        {
+            mMetalUICaptureFirstFailure =
+                "HUD attachment encoder: " + error;
+        }
         mMetalUICaptureComplete = false;
         LL_DEBUGS("Metal") << "Offscreen HUD attachment capture retained GL: "
                             << error << LL_ENDL;
@@ -1176,6 +1215,10 @@ bool LLRender::drawMetalSelectionIDs(
     std::string error;
     if (!mMetalUICaptureRenderer->drawSelectionIDs(resolved, &error))
     {
+        if (mMetalUICaptureFirstFailure.empty())
+        {
+            mMetalUICaptureFirstFailure = "selection-id encoder: " + error;
+        }
         mMetalUICaptureComplete = false;
         LL_DEBUGS("Metal")
             << "Offscreen selection-id capture retained GL: "
@@ -1216,6 +1259,11 @@ bool LLRender::drawMetalSelectionContour(
     std::string error;
     if (!mMetalUICaptureRenderer->drawSelectionContour(resolved, &error))
     {
+        if (mMetalUICaptureFirstFailure.empty())
+        {
+            mMetalUICaptureFirstFailure =
+                "selection-contour encoder: " + error;
+        }
         mMetalUICaptureComplete = false;
         LL_DEBUGS("Metal") << "Offscreen selection-contour capture retained GL: " << error << LL_ENDL;
         return false;
@@ -1240,6 +1288,11 @@ void LLRender::invalidateMetalUITextureCapture(const char* reason)
     {
         return;
     }
+    if (mMetalUICaptureFirstFailure.empty())
+    {
+        mMetalUICaptureFirstFailure = reason
+            ? reason : "unsupported draw family";
+    }
     mMetalUICaptureComplete = false;
     LL_DEBUGS("Metal")
         << "Offscreen UI capture retained GL for "
@@ -1248,22 +1301,35 @@ void LLRender::invalidateMetalUITextureCapture(const char* reason)
 }
 
 std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
-    bool source_success,
-    bool present_surface,
-    bool* presented)
+    bool source_success, bool present_surface, bool* presented,
+    std::string* failure)
 {
+    if (failure)
+    {
+        failure->clear();
+    }
     if (presented)
     {
         *presented = false;
     }
     if (!mMetalUICaptureRenderer)
     {
+        if (failure)
+        {
+            *failure = "offscreen UI capture was not active";
+        }
         return nullptr;
     }
 
     std::string error;
+    // A retained-depth composition starts from an exact world color/depth
+    // backing. Snapshot deliberately hides Interface and HUDs by default, so
+    // its ordered overlay stream may be empty; that is a complete world-only
+    // result, not a missing source. Color-only texture producers still need
+    // at least one captured batch and therefore keep their old fail-closed
+    // contract.
     const bool exact = source_success && mMetalUICaptureComplete &&
-                       mMetalUICaptureBatches != 0;
+        (mMetalUICaptureBatches != 0 || mMetalUICaptureUsesDepth);
     bool submitted = false;
     bool surface_submitted = false;
     if (exact && present_surface && mMetalUISurface)
@@ -1296,6 +1362,35 @@ std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
         LL_DEBUGS("Metal") << "Discarded an offscreen immediate-mode capture: "
                             << error << LL_ENDL;
     }
+    if (!complete && failure)
+    {
+        if (!source_success)
+        {
+            *failure = "the source transaction was incomplete";
+        }
+        else if (!mMetalUICaptureComplete)
+        {
+            *failure = mMetalUICaptureFirstFailure.empty()
+                ? "an unsupported UI draw invalidated the capture"
+                : mMetalUICaptureFirstFailure;
+        }
+        else if (mMetalUICaptureBatches == 0 && !mMetalUICaptureUsesDepth)
+        {
+            *failure = "the UI stream encoded no batches";
+        }
+        else if (!error.empty())
+        {
+            *failure = "the Metal command submission failed: " + error;
+        }
+        else if (present_surface && !surface_submitted)
+        {
+            *failure = "the fused drawable submission did not complete";
+        }
+        else
+        {
+            *failure = "the offscreen UI transaction did not complete";
+        }
+    }
     const U32 cache_index = mMetalUICaptureCacheIndex;
     mMetalUICaptureCacheIndex = METAL_UI_CAPTURE_CACHE_SIZE;
     if (submitted && cache_index < mMetalUICaptureCache.size() &&
@@ -1311,6 +1406,7 @@ std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
     mMetalUICaptureBatches = 0;
     mMetalUICaptureAlphaShader = nullptr;
     mMetalUICaptureUniformColorShader = nullptr;
+    mMetalUICaptureFirstFailure.clear();
     mMetalUICaptureComplete = false;
     mMetalUICaptureUsesDepth = false;
     mMetalUICaptureDepthWidth = 0;
@@ -2512,10 +2608,20 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         ++mMetalUIAttemptedBatches;
         ++mMetalUIFrameAttemptedBatches;
     }
-    const auto fallback = [this, capture, replace](MetalUIFallbackReason reason)
+    const auto fallback = [this, capture, replace](
+        MetalUIFallbackReason reason,
+        const std::string& detail = std::string())
     {
         if (capture)
         {
+            if (mMetalUICaptureFirstFailure.empty())
+            {
+                mMetalUICaptureFirstFailure = metal_ui_fallback_reason(reason);
+                if (!detail.empty())
+                {
+                    mMetalUICaptureFirstFailure += ": " + detail;
+                }
+            }
             mMetalUICaptureComplete = false;
         }
         if (replace)
@@ -2558,7 +2664,9 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     }
     else
     {
-        return fallback(MetalUIFallbackReason::shader);
+        return fallback(
+            MetalUIFallbackReason::shader,
+            shader ? shader->mName : "no shader is bound");
     }
 
     ALMetalUIPrimitive primitive;
@@ -2733,6 +2841,11 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         std::string error;
         if (!mMetalUICaptureRenderer->draw(capture_batch, &error))
         {
+            if (mMetalUICaptureFirstFailure.empty())
+            {
+                mMetalUICaptureFirstFailure =
+                    "immediate-mode encoder: " + error;
+            }
             mMetalUICaptureComplete = false;
             LL_DEBUGS("Metal") << "Offscreen immediate-mode capture retained GL: "
                                 << error << LL_ENDL;
