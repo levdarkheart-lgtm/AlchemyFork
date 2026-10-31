@@ -4027,6 +4027,48 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
               0.0001f);
         CHECK(std::abs(opaque_only_depth[0] - 1.f) < 0.0001f);
 
+        // A cutout clears final color only where retained depth is still at
+        // the far plane, then stamps opaque depth to full coverage before any
+        // alpha batches accumulate. The composed lighting source starts with
+        // half alpha everywhere, making both halves of the contract visible.
+        opaque_forward_scene.seed_cutout_coverage = true;
+        auto cutout_seed = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(cutout_seed);
+        std::array<std::uint16_t, 32 * 32 * 4> cutout_seed_pixels{};
+        REQUIRE(cutout_seed->colorTexture(0)->readback(
+            *device, 0, 0, {}, cutout_seed_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(cutout_seed_pixels[0] == 0u);
+        CHECK(cutout_seed_pixels[1] == 0u);
+        CHECK(cutout_seed_pixels[2] == 0u);
+        CHECK(cutout_seed_pixels[3] == 0u);
+        const std::size_t covered_cutout_pixel =
+            (24u * 32u + 8u) * 4u;
+        CHECK(cutout_seed_pixels[covered_cutout_pixel + 0] == 0x3400);
+        CHECK(cutout_seed_pixels[covered_cutout_pixel + 1] == 0x3000);
+        CHECK(cutout_seed_pixels[covered_cutout_pixel + 2] == 0x2c00);
+        CHECK(cutout_seed_pixels[covered_cutout_pixel + 3] == 0x3c00);
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        auto reverse_cutout_seed = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_cutout_seed);
+        cutout_seed_pixels.fill(0xffffu);
+        REQUIRE(reverse_cutout_seed->colorTexture(0)->readback(
+            *device, 0, 0, {}, cutout_seed_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(cutout_seed_pixels[0] == 0u);
+        CHECK(cutout_seed_pixels[3] == 0u);
+        CHECK(cutout_seed_pixels[center + 3] == 0x3c00);
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.seed_cutout_coverage = false;
+
         // Production may join this expensive opaque/post-deferred owner to
         // its dependent post chain. Standalone rendering above still
         // commits immediately; an explicit batch must publish the same
@@ -15135,6 +15177,31 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
         CHECK(channel10(packed[1], 1) == 0u);
         CHECK(channel10(packed[1], 2) == 0u);
         CHECK((packed[1] >> 30u) == 2u);
+
+        // Snapshot cutouts take the same HDR color path but cross an RGBA8
+        // boundary so coverage is not reduced to RGB10_A2's two alpha bits.
+        // The premultiplied half-coverage source must therefore remain 128,
+        // not the ordinary target's quantized 170.
+        scene.preserve_alpha = true;
+        auto precise_cutout_output = renderer->renderDisplayPost(
+            scene, &error);
+        INFO(error);
+        REQUIRE(precise_cutout_output);
+        CHECK(precise_cutout_output->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba8_unorm);
+        std::array<std::uint8_t, 8> precise_cutout_pixels{};
+        REQUIRE(precise_cutout_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, precise_cutout_pixels.data(),
+            sizeof(precise_cutout_pixels), &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(precise_cutout_pixels[4]) -
+                       static_cast<int>(std::lround(
+                           srgb(0.5f) * 0.5f * 255.f))) <= 1);
+        CHECK(precise_cutout_pixels[5] == 0u);
+        CHECK(precise_cutout_pixels[6] == 0u);
+        CHECK(std::abs(static_cast<int>(precise_cutout_pixels[7]) - 128) <=
+              1);
+        scene.preserve_alpha = false;
 
         // Static and adapted exposure multiply before the same Reinhard
         // branch as tonemapUtilF.glsl, then the RGB10_A2 target quantizes the

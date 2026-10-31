@@ -364,6 +364,10 @@ public:
     bool readMetalWorldSnapshot(U32 x, U32 y, U32 width, U32 height,
                                 U8* pixels, std::size_t bytes_per_row,
                                 std::string* error = nullptr) const;
+    bool readMetalWorldSnapshotRGBA(U32 x, U32 y, U32 width, U32 height,
+                                    U8* pixels,
+                                    std::size_t bytes_per_row,
+                                    std::string* error = nullptr) const;
     bool readMetalWorldSnapshotDepth(U32 x, U32 y, U32 width, U32 height,
                                      F32* depth,
                                      std::size_t bytes_per_row,

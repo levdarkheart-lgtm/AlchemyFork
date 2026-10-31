@@ -1133,6 +1133,10 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<AvatarVariantPipelines, 2> avatar_pipelines;
     std::array<NormalPipelines, 2> impostor_pipelines;
     std::array<NormalPipelines, 2> coverage_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        cutout_background_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        cutout_coverage_pipelines;
     std::array<TerrainPartitionPipelines, 2> terrain_pipelines;
     std::array<TerrainPartitionPipelines, 2> pbr_terrain_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -1143,8 +1147,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         projector_light_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         lighting_composition_pipelines;
-    std::array<std::array<
-        std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>, 2>
+    std::array<std::array<std::array<
+        std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>, 2>, 2>
         display_post_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> presentation_post_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> lens_flare_state_pipeline;
@@ -2225,9 +2229,6 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         }
 
         descriptor.vertex_function = "almetal_resample_vertex";
-        descriptor.colors[0].format = hdr
-            ? ALMetalPixelFormat::rgb10a2_unorm
-            : ALMetalPixelFormat::rgba8_unorm;
         constexpr std::array<std::array<const char*, 2>, 2>
             display_functions{{
                 {{"almetal_world_display_post_fragment",
@@ -2235,31 +2236,35 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                 {{"almetal_world_display_post_bloom_fragment",
                   "almetal_world_display_post_bloom_exposure_fragment"}},
             }};
-        for (std::size_t bloom = 0;
-             bloom < display_functions.size(); ++bloom)
+        for (std::size_t preserve_alpha = 0;
+             preserve_alpha < 2; ++preserve_alpha)
         {
-            for (std::size_t dynamic = 0;
-                 dynamic < display_functions[bloom].size(); ++dynamic)
+            descriptor.colors[0].format = hdr && !preserve_alpha
+                ? ALMetalPixelFormat::rgb10a2_unorm
+                : ALMetalPixelFormat::rgba8_unorm;
+            for (std::size_t bloom = 0;
+                 bloom < display_functions.size(); ++bloom)
             {
-                descriptor.fragment_function =
-                    display_functions[bloom][dynamic];
-                descriptor.label = bloom
-                    ? (dynamic
-                        ? "Alchemy HDR world bloom dynamic-exposure display-post pipeline"
-                        : "Alchemy HDR world bloom display-post pipeline")
-                    : (dynamic
-                        ? (hdr
-                            ? "Alchemy HDR world dynamic-exposure display-post pipeline"
-                            : "Alchemy world dynamic-exposure display-post pipeline")
-                        : (hdr
-                            ? "Alchemy HDR world display-post pipeline"
-                            : "Alchemy world display-post pipeline"));
-                impl->display_post_pipelines[hdr][bloom][dynamic] =
-                    ALMetalRenderPipeline::create(
-                        device, descriptor, error);
-                if (!impl->display_post_pipelines[hdr][bloom][dynamic])
+                for (std::size_t dynamic = 0;
+                     dynamic < display_functions[bloom].size(); ++dynamic)
                 {
-                    return nullptr;
+                    descriptor.fragment_function =
+                        display_functions[bloom][dynamic];
+                    descriptor.label = std::string("Alchemy ") +
+                        (hdr ? "HDR " : "") +
+                        (preserve_alpha ? "alpha-preserving " : "") +
+                        (bloom ? "bloom " : "") +
+                        (dynamic ? "dynamic-exposure " : "") +
+                        "world display-post pipeline";
+                    impl->display_post_pipelines
+                        [hdr][preserve_alpha][bloom][dynamic] =
+                            ALMetalRenderPipeline::create(
+                                device, descriptor, error);
+                    if (!impl->display_post_pipelines
+                            [hdr][preserve_alpha][bloom][dynamic])
+                    {
+                        return nullptr;
+                    }
                 }
             }
         }
@@ -3396,6 +3401,49 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             {
                 return nullptr;
             }
+        }
+    }
+    for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
+    {
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = impl->library.get();
+        descriptor.vertex_function = "almetal_world_coverage_vertex";
+        descriptor.fragment_function = "almetal_world_coverage_fragment";
+        descriptor.colors[0].format = hdr
+            ? ALMetalPixelFormat::rgba16_float
+            : ALMetalPixelFormat::rgba8_unorm;
+        descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+
+        // The coverage fragment returns (0, 0, 0, 1). Select zero as the
+        // source-alpha blend factor to turn that same draw into a transparent
+        // far-depth background clear without another shader permutation.
+        descriptor.colors[0].blending_enabled = true;
+        descriptor.colors[0].source_rgb = ALMetalBlendFactor::one;
+        descriptor.colors[0].destination_rgb = ALMetalBlendFactor::zero;
+        descriptor.colors[0].source_alpha = ALMetalBlendFactor::zero;
+        descriptor.colors[0].destination_alpha = ALMetalBlendFactor::zero;
+        descriptor.label = hdr
+            ? "Alchemy HDR world cutout background pipeline"
+            : "Alchemy world cutout background pipeline";
+        impl->cutout_background_pipelines[hdr] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->cutout_background_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        descriptor.colors[0].blending_enabled = false;
+        descriptor.colors[0].source_alpha = ALMetalBlendFactor::one;
+        descriptor.colors[0].write_mask = ALMetalColorWriteMask::alpha;
+        descriptor.label = hdr
+            ? "Alchemy HDR world cutout opaque-coverage pipeline"
+            : "Alchemy world cutout opaque-coverage pipeline";
+        impl->cutout_coverage_pipelines[hdr] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->cutout_coverage_pipelines[hdr])
+        {
+            return nullptr;
         }
     }
     for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
@@ -7294,6 +7342,8 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         scene.lens_dirt_flare_response > 2.f ||
         (scene.lens_dirt_strength > 0.f &&
          !scene.lens_dirt_texture) ||
+        (scene.preserve_alpha &&
+         (!scene.hdr || !scene.cutout_premultiplied)) ||
         !validWorldColorGrade(scene.color_grade) ||
         (scene.bloom_texture == nullptr) !=
             (scene.bloom_strength == 0.f &&
@@ -7399,15 +7449,19 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     ALMetalRenderTargetDescriptor output_descriptor;
     output_descriptor.width = source.width;
     output_descriptor.height = source.height;
-    output_descriptor.colors[0].format = scene.hdr
+    output_descriptor.colors[0].format = scene.hdr && !scene.preserve_alpha
         ? ALMetalPixelFormat::rgb10a2_unorm
         : ALMetalPixelFormat::rgba8_unorm;
-    output_descriptor.colors[0].label = scene.hdr
+    output_descriptor.colors[0].label = scene.hdr && !scene.preserve_alpha
         ? "Alchemy HDR world RGB10_A2 post color"
-        : "Alchemy world RGBA8 post color";
-    output_descriptor.label = scene.hdr
-        ? "Alchemy native HDR world display-post target"
-        : "Alchemy native world display-post target";
+        : (scene.preserve_alpha
+            ? "Alchemy HDR world alpha-preserving RGBA8 post color"
+            : "Alchemy world RGBA8 post color");
+    output_descriptor.label = scene.preserve_alpha
+        ? "Alchemy native HDR cutout display-post target"
+        : (scene.hdr
+            ? "Alchemy native HDR world display-post target"
+            : "Alchemy native world display-post target");
     auto output = ALMetalRenderTarget::create(
         *mImpl->device, output_descriptor, error);
     if (!output)
@@ -7556,7 +7610,8 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
         encoder->setCullMode(ALMetalCullMode::none, error) &&
         encoder->setPipeline(
             *mImpl->display_post_pipelines
-                [scene.hdr ? 1 : 0][bloom][dynamic_exposure], error) &&
+                [scene.hdr ? 1 : 0][scene.preserve_alpha ? 1 : 0]
+                [bloom][dynamic_exposure], error) &&
         encoder->setFragmentTexture(
             0, scene.source->colorTexture(0), error);
     if (encoded && scene.adapted_exposure_texture)
@@ -10856,6 +10911,40 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     };
     encoded = encoded && bind_forward_resources(*encoder);
 
+    bool cutout_coverage_seeded = !scene.seed_cutout_coverage;
+    const auto seed_cutout_coverage = [&]()
+    {
+        if (cutout_coverage_seeded)
+        {
+            return true;
+        }
+        const std::uint32_t reverse_z = scene.reverse_z ? 1u : 0u;
+        const std::size_t format = scene.hdr ? 1u : 0u;
+        const ALMetalDepthStencilState* background_depth = scene.reverse_z
+            ? mImpl->reverse_readonly_depth.get()
+            : mImpl->forward_readonly_depth.get();
+        const ALMetalDepthStencilState* coverage_depth = scene.reverse_z
+            ? mImpl->reverse_coverage_depth.get()
+            : mImpl->forward_coverage_depth.get();
+        const bool seeded =
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setVertexBytes(
+                0, &reverse_z, sizeof(reverse_z), error) &&
+            encoder->setDepthStencilState(background_depth, error) &&
+            encoder->setPipeline(
+                *mImpl->cutout_background_pipelines[format], error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+            encoder->setDepthStencilState(coverage_depth, error) &&
+            encoder->setPipeline(
+                *mImpl->cutout_coverage_pipelines[format], error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+        cutout_coverage_seeded = seeded;
+        return seeded;
+    };
+
     for (std::size_t index = 0;
          encoded && index < scene.batch_count; ++index)
     {
@@ -11495,6 +11584,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         if (batch.pre_water_alpha || batch.post_water_alpha ||
             batch.avatar_alpha)
         {
+            encoded = encoded && seed_cutout_coverage();
             // Water, haze and group-local glow reuse fixed texture/sampler and
             // constant slots. Re-establish the complete forward pack at every
             // sorted alpha boundary so a material batch following any of those
@@ -12160,6 +12250,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             ALMetalPrimitiveType::triangle, batch.index_count,
             batch.index_type, *batch.indices, batch.index_offset, 1, error);
     }
+
+    encoded = encoded && seed_cutout_coverage();
 
     const ALMetalDepthStencilState* highlight_depth = scene.reverse_z
         ? mImpl->reverse_readonly_depth.get()

@@ -671,6 +671,11 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::uint32_t height = 0;
     bool reverse_z = false;
     bool hdr = false;
+    // Immediately before the first alpha family, clear final color and
+    // coverage where retained depth is still at the far plane, then stamp
+    // opaque depth into alpha. Subsequent alpha pipelines accumulate their
+    // source coverage over that seed, matching the cutout snapshot contract.
+    bool seed_cutout_coverage = false;
     // Keep the combined depth plane shader-readable so the completed target
     // can become the next frame's coherent SSR color/depth history pair.
     bool publish_screen_space_reflection_history = false;
@@ -799,6 +804,10 @@ struct ALMetalWorldDisplayPostScene
     float lens_dirt_flare_response = 1.f;
     ALMetalWorldColorGrade color_grade;
     bool cutout_premultiplied = false;
+    // HDR cutouts retain eight bits of coverage instead of crossing the
+    // ordinary RGB10_A2 display boundary, whose two alpha bits are not an
+    // adequate snapshot mask. HDR math and tonemapping remain unchanged.
+    bool preserve_alpha = false;
     // Non-HDR only: colorCorrectF applies output dither at this first 8-bit
     // boundary. HDR defers its 10-bit dither until final presentation.
     float dither_amount = 0.f;

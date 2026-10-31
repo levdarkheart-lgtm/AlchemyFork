@@ -34,6 +34,7 @@
 #include <chrono>
 #include <deque>
 #include <limits>
+#include <new>
 #include <sstream>
 #include <unordered_map>
 
@@ -798,17 +799,19 @@ bool LLPipeline::canCaptureMetalWorldPresentation() const
     const bool native_dynamic_exposure = classic || !dynamic_exposure ||
         mMetalExposureHistoryReady || mMetalExposureLastWasFixed;
     const LensFlareConfig flare = lensFlareConfig(true);
-    const bool native_lens_flare = !flare.enabled ||
+    const bool snapshot_cutout =
+        sCutoutRender && mMetalWorldSnapshotRequested;
+    const bool native_lens_flare = snapshot_cutout || !flare.enabled ||
         mMetalLensFlareHistoryReady || mMetalLensFlareLastWasZero;
     const LensDirtConfig dirt = lensDirtConfig(true);
-    const bool native_lens_dirt = !dirt.enabled ||
+    const bool native_lens_dirt = snapshot_cutout || !dirt.enabled ||
         (mLensDirtMap.isComplete() && mLensDirtParams == dirt.plate &&
          mMetalWorldSimpleCapture &&
          mMetalWorldSimpleCapture->lens_dirt_target &&
          mMetalWorldSimpleCapture->lens_dirt_params == dirt.plate);
     const ColorGradeConfig grade = colorGradeConfig(true);
     const U32 quality = std::clamp(aa_quality(), 0U, 3U);
-    const bool exact_antialiasing =
+    const bool exact_antialiasing = snapshot_cutout ||
         mResourceInputs.mFSAAType == 0 ||
         (mResourceInputs.mFSAAType == 1 &&
          gFXAAProgram[quality].isComplete()) ||
@@ -824,7 +827,8 @@ bool LLPipeline::canCaptureMetalWorldPresentation() const
     const bool hdr = hdrEnabled();
     const bool main_world = isMainWorldPass() && mRT == &mMainRT;
     const bool ordinary_world = !mMetalHeroWorldCaptureActive &&
-        !mMetalReflectionWorldCaptureActive && !sCutoutRender;
+        !mMetalReflectionWorldCaptureActive &&
+        (!sCutoutRender || snapshot_cutout);
     // A no-post snapshot is still a display conversion: it bypasses the look
     // owners but must clamp and encode the retained HDR scene before readback.
     // Admit that variant only after the explicit one-shot request is armed;
@@ -4255,8 +4259,12 @@ void LLPipeline::captureMetalWorldAtmospherics()
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    const bool sky_behind = !gCubeSnapshot && mRT == &mMainRT &&
-        mSkyBehind != nullptr;
+    // Cutout culling deliberately omits water and every sky layer. Do not
+    // retain the main view's water-only sky-behind convergence input after
+    // those owners have been removed; the atmospheric pass still applies
+    // object haze while preserving the seeded subject coverage.
+    const bool sky_behind = !sCutoutRender && !gCubeSnapshot &&
+        mRT == &mMainRT && mSkyBehind != nullptr;
     if (capture.pass_active || capture.world_pre_water_alpha_active ||
         capture.world_post_water_alpha_active ||
         capture.atmospheric_haze_valid ||
@@ -4386,7 +4394,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         mHeroProbeManager.mHeroData.heroProbeCount > 0;
     const bool ssr_active =
         mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
-        !gCubeSnapshot;
+        !gCubeSnapshot && !sCutoutRender;
     if (capture.complete && needs_reflection_probes &&
         !mReflectionMapManager.fillMetalReflectionProbes(
             capture.impostor_reflection_probes))
@@ -4482,6 +4490,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.height = capture.height;
         scene.reverse_z = capture.reverse_z;
         scene.hdr = capture.hdr;
+        scene.seed_cutout_coverage =
+            sCutoutRender && mMetalWorldSnapshotRequested;
         scene.publish_screen_space_reflection_history = ssr_active;
         const bool batch_main_post = isMainWorldPass() &&
             mRT == &mMainRT &&
@@ -4803,7 +4813,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             // The same cached focus state feeds both encoders and advances
             // only once for this viewer frame.
             const DepthOfFieldConfig dof = depthOfFieldConfig();
+            const bool cutout_snapshot =
+                sCutoutRender && mMetalWorldSnapshotRequested;
             const bool wants_native_dof = capture.hdr && dof.enabled &&
+                !cutout_snapshot &&
                 depthOfFieldProgramsReady(dof) && isMainWorldPass() &&
                 mRT == &mMainRT;
             bool exact_dof = !wants_native_dof;
@@ -4916,7 +4929,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             const bool clean_plate =
                 gSnapshotNoPost && mMetalWorldSnapshotRequested;
             const bool wants_native_bloom = capture.hdr &&
-                !clean_plate &&
+                !clean_plate && !cutout_snapshot &&
                 exact_dof &&
                 (native_bloom_strength > 0.f ||
                  native_halation_strength > 0.f) &&
@@ -4989,7 +5002,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 (mMetalExposureHistoryReady &&
                  capture.exposure_target &&
                  capture.exposure_epoch == mMetalExposureHistoryEpoch &&
-                 capture.exposure_frame == gFrameCount);
+                 (capture.exposure_frame == gFrameCount ||
+                  (cutout_snapshot &&
+                   capture.exposure_frame == mMetalExposureGLFrame)));
             const bool exact_bloom = !wants_native_bloom ||
                 (capture.bloom_target &&
                  capture.bloom_frame == gFrameCount);
@@ -5000,13 +5015,13 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             const ChromaticAberrationConfig chromatic =
                 chromaticAberrationConfig();
             const LensFlareConfig flare = lensFlareConfig(true);
-            const bool exact_lens_flare = !flare.enabled ||
+            const bool exact_lens_flare = cutout_snapshot || !flare.enabled ||
                 (capture.lens_flare_state_target &&
                  capture.lens_flare_state_epoch ==
                      mMetalLensFlareHistoryEpoch &&
                  capture.lens_flare_state_frame == gFrameCount);
             const LensDirtConfig dirt = lensDirtConfig(true);
-            const bool exact_lens_dirt = !dirt.enabled ||
+            const bool exact_lens_dirt = cutout_snapshot || !dirt.enabled ||
                 (mLensDirtMap.isComplete() &&
                  mLensDirtParams == dirt.plate &&
                  capture.lens_dirt_target &&
@@ -5040,6 +5055,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     ? native_cross_filter_strength : 0.f;
                 display.hdr = true;
                 display.bypass_tonemap = clean_plate;
+                display.cutout_premultiplied = cutout_snapshot;
+                display.preserve_alpha = cutout_snapshot;
                 display.legacy_gamma = legacy_gamma;
                 display.legacy_gamma_exponent = sky->getGamma();
                 static LLCachedControl<F32> exposure(
@@ -5274,9 +5291,11 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     const U32 native_aa_quality =
                         std::clamp(aa_quality(), 0U, 3U);
                     const bool wants_native_fxaa =
+                        !cutout_snapshot &&
                         mResourceInputs.mFSAAType == 1 &&
                         gFXAAProgram[native_aa_quality].isComplete();
                     const bool wants_native_smaa =
+                        !cutout_snapshot &&
                         mResourceInputs.mFSAAType == 2;
                     bool exact_antialiasing = true;
                     if (wants_native_fxaa)
@@ -5352,7 +5371,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     static LLCachedControl<F32> cas_sharpness(
                         gSavedSettings, "RenderCASSharpness", 0.4f);
                     const bool wants_native_cas =
-                        cas_sharpness() > 0.f && gCASProgram.isComplete();
+                        !cutout_snapshot && cas_sharpness() > 0.f &&
+                        gCASProgram.isComplete();
                     bool exact_cas = exact_antialiasing;
                     if (exact_antialiasing && wants_native_cas)
                     {
@@ -5916,7 +5936,7 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
 bool LLPipeline::requestMetalWorldSnapshotCapture()
 {
     if (mMetalWorldSnapshotRequested || !mGLResourcesLive ||
-        !sRenderDeferred || sCutoutRender || !LLImageGL::getMetalDevice())
+        !sRenderDeferred || !LLImageGL::getMetalDevice())
     {
         return false;
     }
@@ -5966,6 +5986,78 @@ bool LLPipeline::readMetalWorldSnapshot(
     return texture->readbackRGB8(
         *device, 0, 0, {x, y, width, height}, pixels,
         bytes_per_row, error);
+}
+
+bool LLPipeline::readMetalWorldSnapshotRGBA(
+    U32 x, U32 y, U32 width, U32 height, U8* pixels,
+    std::size_t bytes_per_row, std::string* error) const
+{
+    const auto fail = [error](const char* message)
+    {
+        if (error)
+        {
+            *error = message;
+        }
+        return false;
+    };
+    if (!mMetalWorldSnapshotRequested || !sCutoutRender || !pixels ||
+        width == 0 || height == 0 || !mMetalWorldSimpleCapture)
+    {
+        return fail("Metal world cutout snapshot capture is unavailable");
+    }
+    const MetalWorldSimpleCapture& capture =
+        *mMetalWorldSimpleCapture;
+    const ALMetalTexture* texture = capture.presentation_target
+        ? capture.presentation_target->colorTexture(0) : nullptr;
+    ALMetalDevice* device = LLImageGL::getMetalDevice();
+    if (!capture.world_ui_chain_snapshot ||
+        capture.world_ui_capture_active || !texture || !device ||
+        capture.device != device || capture.presentation_frame != gFrameCount)
+    {
+        return fail("Metal world cutout snapshot did not complete exactly");
+    }
+    const ALMetalTextureDescriptor& descriptor = texture->descriptor();
+    const std::size_t rgba_row = static_cast<std::size_t>(width) * 4u;
+    if (descriptor.format != ALMetalPixelFormat::bgra8_unorm ||
+        x > descriptor.width || y > descriptor.height ||
+        width > descriptor.width - x || height > descriptor.height - y ||
+        bytes_per_row < rgba_row ||
+        (height != 0 &&
+         rgba_row > std::numeric_limits<std::size_t>::max() / height))
+    {
+        return fail("Metal world cutout snapshot region is incompatible");
+    }
+
+    std::vector<U8> staging;
+    try
+    {
+        staging.resize(rgba_row * static_cast<std::size_t>(height));
+    }
+    catch (const std::bad_alloc&)
+    {
+        return fail("Could not allocate Metal cutout snapshot staging");
+    }
+    if (!texture->readback(
+            *device, 0, 0, {x, y, width, height}, staging.data(),
+            rgba_row, error))
+    {
+        return false;
+    }
+    for (U32 row = 0; row < height; ++row)
+    {
+        const U8* source = staging.data() + row * rgba_row;
+        U8* destination = pixels + row * bytes_per_row;
+        for (U32 column = 0; column < width; ++column)
+        {
+            const std::size_t offset =
+                static_cast<std::size_t>(column) * 4u;
+            destination[offset + 0] = source[offset + 2];
+            destination[offset + 1] = source[offset + 1];
+            destination[offset + 2] = source[offset + 0];
+            destination[offset + 3] = source[offset + 3];
+        }
+    }
+    return true;
 }
 
 bool LLPipeline::readMetalWorldSnapshotDepth(

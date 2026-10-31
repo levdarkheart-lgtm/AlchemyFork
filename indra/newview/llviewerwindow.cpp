@@ -5944,18 +5944,22 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     }
 
 #if LL_DARWIN
-    // The exact native transaction currently owns ordinary and clean-plate
-    // display-encoded color plus scene depth. Keep tiled, cutout and 360
-    // capture on their established paths until each has a native owner with
-    // evidence.
+    // The exact native transaction owns ordinary and clean-plate
+    // display-encoded color, scene depth, and isolated RGBA cutouts. Keep
+    // tiled and 360 capture on their established paths until each has a
+    // native owner with evidence.
     // An unavailable or incomplete native frame falls through to GL below.
     const bool native_snapshot_type =
         type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR ||
         type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH ||
         type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH24;
-    if (native_snapshot_type && !cutout &&
+    const bool native_snapshot_shape = cutout
+        ? type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR &&
+            raw->getComponents() == 4
+        : raw->getComponents() == 3;
+    if (native_snapshot_type && native_snapshot_shape &&
         scale_factor > 0.f && scale_factor <= 1.f &&
-        raw->getComponents() == 3)
+        (!cutout || scale_factor == 1.f))
     {
         metal_snapshot_requested =
             gPipeline.requestMetalWorldSnapshotCapture();
@@ -6012,8 +6016,14 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                     std::string error;
                     if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR)
                     {
-                        metal_snapshot_read =
-                            gPipeline.readMetalWorldSnapshot(
+                        metal_snapshot_read = cutout
+                            ? gPipeline.readMetalWorldSnapshotRGBA(
+                                subimage_x_offset, subimage_y_offset,
+                                read_width, read_height, raw->getData(),
+                                static_cast<std::size_t>(raw->getWidth()) *
+                                    raw->getComponents(),
+                                &error)
+                            : gPipeline.readMetalWorldSnapshot(
                                 subimage_x_offset, subimage_y_offset,
                                 read_width, read_height, raw->getData(),
                                 static_cast<std::size_t>(raw->getWidth()) *
@@ -6074,7 +6084,8 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                         LL_INFOS("Snapshot")
                             << "Native "
                             << (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR
-                                    ? "color" : "depth")
+                                    ? (cutout ? "cutout color" : "color")
+                                    : "depth")
                             << " snapshot readback completed at "
                             << read_width << 'x' << read_height << LL_ENDL;
                     }
