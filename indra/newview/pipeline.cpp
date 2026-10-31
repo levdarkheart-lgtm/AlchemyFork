@@ -5953,6 +5953,48 @@ bool LLPipeline::readMetalWorldSnapshot(
         bytes_per_row, error);
 }
 
+bool LLPipeline::readMetalWorldSnapshotDepth(
+    U32 x, U32 y, U32 width, U32 height, F32* depth,
+    std::size_t bytes_per_row, std::string* error) const
+{
+    const auto fail = [error](const char* message)
+    {
+        if (error)
+        {
+            *error = message;
+        }
+        return false;
+    };
+    if (!mMetalWorldSnapshotRequested || !depth || width == 0 ||
+        height == 0 || !mMetalWorldSimpleCapture)
+    {
+        return fail("Metal world depth snapshot capture is unavailable");
+    }
+    const MetalWorldSimpleCapture& capture =
+        *mMetalWorldSimpleCapture;
+    const ALMetalTexture* texture = capture.target
+        ? capture.target->depthStencilTexture() : nullptr;
+    ALMetalDevice* device = LLImageGL::getMetalDevice();
+    if (!capture.world_ui_chain_snapshot ||
+        capture.world_ui_capture_active || !texture || !device ||
+        capture.device != device || capture.world_ui_frame != gFrameCount)
+    {
+        return fail("Metal world depth snapshot did not complete exactly");
+    }
+    const ALMetalTextureDescriptor& descriptor = texture->descriptor();
+    if ((descriptor.format != ALMetalPixelFormat::depth32_float &&
+         descriptor.format !=
+             ALMetalPixelFormat::depth32_float_stencil8) ||
+        x > descriptor.width || y > descriptor.height ||
+        width > descriptor.width - x || height > descriptor.height - y)
+    {
+        return fail("Metal world depth snapshot region is incompatible");
+    }
+    return texture->readback(
+        *device, 0, 0, {x, y, width, height}, depth,
+        bytes_per_row, error);
+}
+
 void LLPipeline::cancelMetalWorldSnapshotCapture()
 {
     mMetalWorldSnapshotRequested = false;

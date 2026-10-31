@@ -356,14 +356,18 @@ public:
     // until every ordered family has an exact native owner.
     bool beginMetalWorldUICompositionCapture();
     void endMetalWorldUICompositionCapture();
-    // Arms one ordinary, single-pass color snapshot for native world/UI
-    // capture. Failure to produce an exact result leaves the caller's GL
-    // readback fallback untouched. The request must be cancelled on every
-    // exit after readMetalWorldSnapshot().
+    // Arms one ordinary, single-pass color or depth snapshot for native
+    // world/UI capture. Failure to produce an exact result leaves the caller's
+    // GL readback fallback untouched. The request must be cancelled on every
+    // exit after either read method below.
     bool requestMetalWorldSnapshotCapture();
     bool readMetalWorldSnapshot(U32 x, U32 y, U32 width, U32 height,
                                 U8* pixels, std::size_t bytes_per_row,
                                 std::string* error = nullptr) const;
+    bool readMetalWorldSnapshotDepth(U32 x, U32 y, U32 width, U32 height,
+                                     F32* depth,
+                                     std::size_t bytes_per_row,
+                                     std::string* error = nullptr) const;
     void cancelMetalWorldSnapshotCapture();
     // True only after this viewer frame committed its complete native
     // world/UI texture to a drawable. Benchmark collection uses this exact

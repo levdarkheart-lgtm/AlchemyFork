@@ -34,6 +34,8 @@
 #include <fstream>
 #include <algorithm>
 #include <deque>
+#include <new>
+#include <vector>
 
 #include "llagent.h"
 #include "llagentcamera.h"
@@ -5888,6 +5890,47 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
         const F32 window_depth = reverse_z_snapshot ? (1.f - d) : d;
         return (snap_far * snap_near) / (snap_far - window_depth * (snap_far - snap_near));
     };
+    auto write_snapshot_depth = [&](const F32* depth, U8* output,
+                                    U32 pixel_count)
+    {
+        for (U32 i = 0; i < pixel_count; ++i)
+        {
+            const F32 linear_depth = linearize_snapshot_depth(depth[i]);
+            if (type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH24)
+            {
+                const U32 rgb24 = F32_to_U32(
+                    linear_depth, LLViewerCamera::instance().getNear(),
+                    LLViewerCamera::instance().getFar());
+                // A maximum value of 16777215 evaluates to black without
+                // clamping the component divisions below 256.
+                const U8 red = static_cast<U8>(llclamp(
+                    llfloor(rgb24 / 65536.f), 0, 255));
+                const U8 green = static_cast<U8>(llclamp(
+                    llfloor((rgb24 - red * 65536) / 256.f), 0, 255));
+                const U8 blue = static_cast<U8>(llclamp(
+                    rgb24 - red * 65536 - green * 256, 0u, 255u));
+                output[i * raw->getComponents() + 0] = red;
+                output[i * raw->getComponents() + 1] = green;
+                output[i * raw->getComponents() + 2] = blue;
+                for (S32 component = 3;
+                     component < raw->getComponents(); ++component)
+                {
+                    output[i * raw->getComponents() + component] = red;
+                }
+            }
+            else
+            {
+                const U8 value = F32_to_U8(
+                    linear_depth, LLViewerCamera::instance().getNear(),
+                    LLViewerCamera::instance().getFar());
+                for (S32 component = 0;
+                     component < raw->getComponents(); ++component)
+                {
+                    output[i * raw->getComponents() + component] = value;
+                }
+            }
+        }
+    };
 
     std::optional<ALRenderIsolation::Scope> isolation;
     if (cutout)
@@ -5897,10 +5940,14 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
 
 #if LL_DARWIN
     // The exact native transaction currently owns ordinary display-encoded
-    // color. Keep tiled, clean-plate, depth, cutout and 360 capture on their
-    // established paths until each has a native owner with its own evidence.
+    // color and scene depth. Keep tiled, clean-plate, cutout and 360 capture
+    // on their established paths until each has a native owner with evidence.
     // An unavailable or incomplete native frame falls through to GL below.
-    if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR && !cutout &&
+    const bool native_snapshot_type =
+        type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR ||
+        type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH ||
+        type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH24;
+    if (native_snapshot_type && !cutout &&
         !no_post && scale_factor > 0.f && scale_factor <= 1.f &&
         raw->getComponents() == 3)
     {
@@ -5957,17 +6004,73 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                     read_height == (U32)raw->getHeight())
                 {
                     std::string error;
-                    metal_snapshot_read = gPipeline.readMetalWorldSnapshot(
-                        subimage_x_offset, subimage_y_offset,
-                        read_width, read_height, raw->getData(),
-                        static_cast<std::size_t>(raw->getWidth()) *
-                            raw->getComponents(),
-                        &error);
+                    if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR)
+                    {
+                        metal_snapshot_read =
+                            gPipeline.readMetalWorldSnapshot(
+                                subimage_x_offset, subimage_y_offset,
+                                read_width, read_height, raw->getData(),
+                                static_cast<std::size_t>(raw->getWidth()) *
+                                    raw->getComponents(),
+                                &error);
+                    }
+                    else
+                    {
+                        std::vector<F32> depth;
+                        try
+                        {
+                            depth.resize(
+                                static_cast<std::size_t>(read_width) *
+                                read_height);
+                        }
+                        catch (const std::bad_alloc&)
+                        {
+                            error = "could not allocate native snapshot depth staging";
+                        }
+                        if (!depth.empty())
+                        {
+                            metal_snapshot_read =
+                                gPipeline.readMetalWorldSnapshotDepth(
+                                    subimage_x_offset, subimage_y_offset,
+                                    read_width, read_height, depth.data(),
+                                    static_cast<std::size_t>(read_width) *
+                                        sizeof(F32),
+                                    &error);
+                        }
+                        if (metal_snapshot_read)
+                        {
+                            for (U32 row = 0; row < read_height; ++row)
+                            {
+                                if (row % 100 == 0)
+                                {
+                                    LLAppViewer::instance()
+                                        ->pingMainloopTimeout(
+                                            "LLViewerWindow::rawSnapshot");
+                                }
+                                write_snapshot_depth(
+                                    depth.data() + row * read_width,
+                                    raw->getData() +
+                                        static_cast<std::size_t>(row) *
+                                        raw->getWidth() *
+                                        raw->getComponents(),
+                                    read_width);
+                            }
+                        }
+                    }
                     if (!metal_snapshot_read)
                     {
                         LL_DEBUGS("Snapshot")
-                            << "Native color snapshot retained the GL "
+                            << "Native snapshot retained the GL "
                                "readback fallback: " << error << LL_ENDL;
+                    }
+                    else
+                    {
+                        LL_INFOS("Snapshot")
+                            << "Native "
+                            << (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR
+                                    ? "color" : "depth")
+                            << " snapshot readback completed at "
+                            << read_width << 'x' << read_height << LL_ENDL;
                     }
                 }
 #endif
@@ -6000,7 +6103,7 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                                      raw->getData() + output_buffer_offset
                                      );
                         }
-                        else if (type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH24)
+                        else
                         {
                             LLPointer<LLImageRaw> depth_line_buffer = new LLImageRaw(read_width, 1, sizeof(GLfloat)); // need to store floating point values
                             gGL.readPixels(
@@ -6009,49 +6112,11 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                                          GL_DEPTH_COMPONENT, GL_FLOAT,
                                          depth_line_buffer->getData()// current output pixel is beginning of buffer...
                                          );
-
-                            for (S32 i = 0; i < (S32)read_width; i++)
-                            {
-                                F32 depth_float = *(F32*)(depth_line_buffer->getData() + (i * sizeof(F32)));
-
-                                F32 linear_depth_float = linearize_snapshot_depth(depth_float);
-                                U32 RGB24 = F32_to_U32(linear_depth_float, LLViewerCamera::instance().getNear(), LLViewerCamera::instance().getFar());
-                                //A max value of 16777215 for RGB24 evaluates to black when it shold be white.  The clamp assures that the divisions do not somehow become >=256.
-                                U8 depth_byteR = (U8)(llclamp(llfloor(RGB24 / 65536.f), 0, 255));
-                                U8 depth_byteG = (U8)(llclamp(llfloor((RGB24 - depth_byteR * 65536) / 256.f), 0, 255));
-                                U8 depth_byteB = (U8)(llclamp((RGB24 - depth_byteR * 65536 - depth_byteG * 256), 0u, 255u));
-                                // write converted scanline out to result image
-                                *(raw->getData() + output_buffer_offset + (i * raw->getComponents())) = depth_byteR;
-                                *(raw->getData() + output_buffer_offset + (i * raw->getComponents()) + 1) = depth_byteG;
-                                *(raw->getData() + output_buffer_offset + (i * raw->getComponents()) + 2) = depth_byteB;
-                                for (S32 j = 3; j < raw->getComponents(); j++)
-                                {
-                                    *(raw->getData() + output_buffer_offset + (i * raw->getComponents()) + j) = depth_byteR;
-                                }
-                            }
-                        }
-                        else // LLSnapshotModel::SNAPSHOT_TYPE_DEPTH
-                        {
-                            LLPointer<LLImageRaw> depth_line_buffer = new LLImageRaw(read_width, 1, sizeof(GLfloat)); // need to store floating point values
-                            gGL.readPixels(
-                                         subimage_x_offset, out_y + subimage_y_offset,
-                                         read_width, 1,
-                                         GL_DEPTH_COMPONENT, GL_FLOAT,
-                                         depth_line_buffer->getData()// current output pixel is beginning of buffer...
-                                         );
-
-                            for (S32 i = 0; i < (S32)read_width; i++)
-                            {
-                                F32 depth_float = *(F32*)(depth_line_buffer->getData() + (i * sizeof(F32)));
-
-                                F32 linear_depth_float = linearize_snapshot_depth(depth_float);
-                                U8 depth_byte = F32_to_U8(linear_depth_float, LLViewerCamera::getInstance()->getNear(), LLViewerCamera::getInstance()->getFar());
-                                // write converted scanline out to result image
-                                for (S32 j = 0; j < raw->getComponents(); j++)
-                                {
-                                    *(raw->getData() + output_buffer_offset + (i * raw->getComponents()) + j) = depth_byte;
-                                }
-                            }
+                            write_snapshot_depth(
+                                reinterpret_cast<const F32*>(
+                                    depth_line_buffer->getData()),
+                                raw->getData() + output_buffer_offset,
+                                read_width);
                         }
                     }
                 }
