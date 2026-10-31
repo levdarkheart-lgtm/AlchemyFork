@@ -4451,11 +4451,37 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.reverse_z = capture.reverse_z;
         scene.hdr = capture.hdr;
         scene.publish_screen_space_reflection_history = ssr_active;
+        const bool batch_main_post = isMainWorldPass() &&
+            mRT == &mMainRT &&
+            !mMetalHeroWorldCaptureActive &&
+            !mMetalReflectionWorldCaptureActive && !sCutoutRender;
+        bool opaque_post_batch_active = false;
+        if (batch_main_post)
+        {
+            std::string post_batch_error;
+            opaque_post_batch_active =
+                capture.renderer->beginCommandBatch(
+                    "Alchemy native world opaque and optical post",
+                    &post_batch_error);
+            if (!opaque_post_batch_active)
+            {
+                LL_WARNS_ONCE("Metal")
+                    << "Could not begin the optional native opaque/post "
+                       "command batch; retaining independent "
+                       "command-buffer submission: "
+                    << post_batch_error << LL_ENDL;
+            }
+        }
         std::string error;
         auto target = capture.renderer->renderOpaquePostDeferred(
             scene, &error);
         if (!target)
         {
+            if (opaque_post_batch_active)
+            {
+                capture.renderer->cancelCommandBatch();
+                opaque_post_batch_active = false;
+            }
             capture.markIncomplete(__LINE__);
             LL_WARNS("Metal")
                 << "Native world opaque-forward slice retained GL after "
@@ -4521,7 +4547,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             // them into one command buffer and publish neither result until
             // the complete transaction commits.
             bool history_batch_active = false;
-            if (main_dynamic_exposure && can_advance_exposure &&
+            if (!opaque_post_batch_active &&
+                main_dynamic_exposure && can_advance_exposure &&
                 main_lens_flare && can_advance_lens_flare)
             {
                 std::string history_batch_error;
@@ -4721,12 +4748,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             // the complete main-world optical chain in one command buffer;
             // no intermediate target becomes authoritative until the final
             // display/presentation transaction commits.
-            const bool batch_main_post = isMainWorldPass() &&
-                mRT == &mMainRT &&
-                !mMetalHeroWorldCaptureActive &&
-                !mMetalReflectionWorldCaptureActive && !sCutoutRender;
-            bool post_batch_active = false;
-            if (batch_main_post)
+            bool post_batch_active = opaque_post_batch_active;
+            if (batch_main_post && !post_batch_active)
             {
                 std::string post_batch_error;
                 post_batch_active = capture.renderer->beginCommandBatch(
@@ -5577,6 +5600,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 }
                 if (post_batch_active)
                 {
+                    const bool committing_opaque_post =
+                        opaque_post_batch_active;
                     display_error.clear();
                     if (!capture.renderer->commitCommandBatch(
                             &display_error))
@@ -5596,12 +5621,33 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             std::numeric_limits<U32>::max();
                         display_post_available = false;
                         final_presentation_available = false;
+                        if (committing_opaque_post)
+                        {
+                            target.reset();
+                            capture.exposure_target.reset();
+                            capture.exposure_frame =
+                                std::numeric_limits<U32>::max();
+                            capture.exposure_epoch = 0;
+                            mMetalExposureHistoryReady = false;
+                            capture.lens_flare_state_target.reset();
+                            capture.lens_flare_state_frame =
+                                std::numeric_limits<U32>::max();
+                            capture.lens_flare_state_epoch = 0;
+                            mMetalLensFlareHistoryReady = false;
+                            capture.markIncomplete(__LINE__);
+                        }
                         LL_WARNS("Metal")
-                            << "Native world optical/presentation post batch "
-                               "retained GL after commit failure: "
+                            << (committing_opaque_post
+                                    ? "Native world opaque/optical "
+                                      "presentation batch retained GL "
+                                      "after commit failure: "
+                                    : "Native world optical/presentation "
+                                      "post batch retained GL after "
+                                      "commit failure: ")
                             << display_error << LL_ENDL;
                     }
                     post_batch_active = false;
+                    opaque_post_batch_active = false;
                 }
                 if (final_presentation_available)
                 {
@@ -5621,10 +5667,40 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             }
             if (post_batch_active)
             {
-                // No exact display consumer was available. The optional
-                // DoF/bloom intermediates have no independent publication
-                // owner, so discard their uncommitted transaction together.
-                capture.renderer->cancelCommandBatch();
+                // A standalone optional optical batch has no owner without
+                // an exact display consumer and can be canceled. The wider
+                // batch also contains the independently retained opaque
+                // result (and possibly the two histories), so commit that
+                // transaction before discarding only its unused optical
+                // intermediates.
+                if (opaque_post_batch_active)
+                {
+                    std::string post_batch_error;
+                    if (!capture.renderer->commitCommandBatch(
+                            &post_batch_error))
+                    {
+                        target.reset();
+                        capture.exposure_target.reset();
+                        capture.exposure_frame =
+                            std::numeric_limits<U32>::max();
+                        capture.exposure_epoch = 0;
+                        mMetalExposureHistoryReady = false;
+                        capture.lens_flare_state_target.reset();
+                        capture.lens_flare_state_frame =
+                            std::numeric_limits<U32>::max();
+                        capture.lens_flare_state_epoch = 0;
+                        mMetalLensFlareHistoryReady = false;
+                        capture.markIncomplete(__LINE__);
+                        LL_WARNS("Metal")
+                            << "Native world opaque/optical post batch "
+                               "retained GL after commit failure: "
+                            << post_batch_error << LL_ENDL;
+                    }
+                }
+                else
+                {
+                    capture.renderer->cancelCommandBatch();
+                }
                 capture.depth_of_field_target.reset();
                 capture.depth_of_field_frame =
                     std::numeric_limits<U32>::max();
@@ -5632,11 +5708,13 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 capture.bloom_target.reset();
                 capture.bloom_frame =
                     std::numeric_limits<U32>::max();
+                post_batch_active = false;
+                opaque_post_batch_active = false;
             }
 
             const bool first_continuous_frame =
                 !capture.continuous_world_capture;
-            if (ssr_active)
+            if (ssr_active && target && capture.complete)
             {
                 // Once the complete offscreen native chain exists, keep it
                 // advancing so this frame's sharp pre-DoF color/depth can
@@ -5676,8 +5754,11 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         << history_error << LL_ENDL;
                 }
             }
-            capture.opaque_post_deferred_target = std::move(target);
-            if (first_continuous_frame &&
+            if (target && capture.complete)
+            {
+                capture.opaque_post_deferred_target = std::move(target);
+            }
+            if (capture.complete && first_continuous_frame &&
                 !capture.world_ui_continuous_unlocked)
             {
                 LL_DEBUGS("Metal")

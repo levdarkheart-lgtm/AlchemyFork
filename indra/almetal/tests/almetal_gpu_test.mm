@@ -3862,7 +3862,21 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // Production may join this expensive opaque/post-deferred owner to
         // its dependent post chain. Standalone rendering above still
         // commits immediately; an explicit batch must publish the same
-        // color/depth in exactly one submission and only when committed.
+        // color/depth and dependent display result in exactly one submission
+        // and only when committed.
+        ALMetalWorldDisplayPostScene standalone_opaque_display_scene;
+        standalone_opaque_display_scene.source = opaque_only.get();
+        standalone_opaque_display_scene.hdr = true;
+        standalone_opaque_display_scene.tonemap_mix = 0.f;
+        auto standalone_opaque_display = renderer->renderDisplayPost(
+            standalone_opaque_display_scene, &error);
+        INFO(error);
+        REQUIRE(standalone_opaque_display);
+        std::array<std::uint32_t, 32 * 32>
+            standalone_opaque_display_pixels{};
+        REQUIRE(standalone_opaque_display->colorTexture(0)->readback(
+            *device, 0, 0, {}, standalone_opaque_display_pixels.data(),
+            32 * sizeof(std::uint32_t), &error));
         const std::uint64_t opaque_submissions_before_batch =
             ALMetalDevice::committedCommandBufferCount();
         REQUIRE(renderer->beginCommandBatch(
@@ -3871,6 +3885,14 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             opaque_forward_scene, &error);
         INFO(error);
         REQUIRE(batched_opaque_only);
+        ALMetalWorldDisplayPostScene batched_opaque_display_scene;
+        batched_opaque_display_scene.source = batched_opaque_only.get();
+        batched_opaque_display_scene.hdr = true;
+        batched_opaque_display_scene.tonemap_mix = 0.f;
+        auto batched_opaque_display = renderer->renderDisplayPost(
+            batched_opaque_display_scene, &error);
+        INFO(error);
+        REQUIRE(batched_opaque_display);
         CHECK(renderer->commandBatchActive());
         REQUIRE(renderer->commitCommandBatch(&error));
         INFO(error);
@@ -3879,15 +3901,22 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         std::array<std::uint16_t, 32 * 32 * 4>
             batched_opaque_only_pixels{};
         std::array<float, 32 * 32> batched_opaque_only_depth{};
+        std::array<std::uint32_t, 32 * 32>
+            batched_opaque_display_pixels{};
         REQUIRE(batched_opaque_only->colorTexture(0)->readback(
             *device, 0, 0, {}, batched_opaque_only_pixels.data(), 32 * 8,
             &error));
         REQUIRE(batched_opaque_only->depthStencilTexture()->readback(
             *device, 0, 0, {}, batched_opaque_only_depth.data(),
             32 * sizeof(float), &error));
+        REQUIRE(batched_opaque_display->colorTexture(0)->readback(
+            *device, 0, 0, {}, batched_opaque_display_pixels.data(),
+            32 * sizeof(std::uint32_t), &error));
         INFO(error);
         CHECK(batched_opaque_only_pixels == opaque_only_pixels);
         CHECK(batched_opaque_only_depth == opaque_only_depth);
+        CHECK(batched_opaque_display_pixels ==
+              standalone_opaque_display_pixels);
 
         opaque_forward_scene.batches = &normal_free_fullbright;
         opaque_forward_scene.batch_count = 1;
