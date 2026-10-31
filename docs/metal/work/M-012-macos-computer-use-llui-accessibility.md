@@ -1,19 +1,29 @@
 # Work item M-012: Optional macOS Computer Use / LLUI accessibility interoperability
 
-**Status:** `todo` — deferred, opportunistic, **not a product release gate**  
-**Owner / branch / worktree:** Codex integrator chooses ownership only when scheduled; no agent assigned by registration. Use a disjoint worktree only when independent code ownership is proven.  
-**Source SHA / source paths:** Recheck current `codex/apple-silicon-metal` HEAD and working tree before any changes. Candidate inspection paths: `indra/llwindow/llwindowsdl.cpp`, macOS SDL/Cocoa integration, `indra/llui/llview.*`, `indra/llui/lluictrl.*`, `indra/llui/llbutton.*`, `indra/llui/lllineeditor.*`, `indra/newview/llpanellogin.cpp`, diagnostic-bundle build configuration. The paths are investigation leads, **not** advance permission to edit shared code.  
+**Status:** `done` — bounded Gate B proof integrated and verified; **not a product release gate**
+**Owner / branch / worktree:** Codex integrator on `codex/apple-silicon-metal`; serialized in the primary worktree because the existing M-008 edits were preserved and the touched login/Cocoa files were disjoint.
+**Source SHA / source paths:** Baseline `60793752c3406b738689cf3c64f307a877262a0f`; implementation in `indra/llwindow/llsdl_macos.{h,mm}` and `indra/newview/llpanellogin.{h,cpp}`.
 **Dependencies / concurrent edit exclusions:** Existing distinct `Alchemy Metal Development` diagnostic identity and isolated profile; M-003/M-006 native window/UI work for context. **Never block or preempt M-007/M-008 visual parity, M-009 release validation, M-011 proven per-owner GL cutover, or performance work that is on the critical path.** `llwindowsdl.cpp`, `llview*`, `llrender*`, other shared UI/rendering files, packaging and canonical ledger are integrator-coordinated/serialized edits under `docs/metal/OPERATING_MODEL.md`.
 
-## Ledger registration (one row; do not reorder current priorities)
+## Completed result — 2026-10-31
 
-Append the following row to the work board in `docs/metal/work/active/metal-port.md` if `M-012` remains unused. If another concurrent agent has claimed that ID, choose the next free ID and rename this document accordingly:
+- **Gate A: FAIL (app-side semantic control exposure).** Codex Computer Use could bind the exact isolated development bundle, capture its login screen and deliver keyboard input, but the accessibility tree contained only the Cocoa window/title/menu. LLUI controls were absent. Coordinate focus did not reliably provide password or login-button operation, so the missing semantic descendants directly blocked the planned repeated runtime validation.
+- **Gate B: PASS.** The existing SDL Cocoa content view now gains three virtual `NSAccessibilityElement` children only while the development-channel login panel exists: username, protected secure password and Log In. The password has no getter in the C++ callback contract, returns an empty AX value, advertises secure/protected semantics and only accepts replacement text. Mutations and activation dispatch to the viewer main thread; geometry is queried from current LLUI screen rectangles; destruction deactivates callbacks and restores the prior children.
+- **Actual acceptance client: PASS.** Codex Computer Use discovered stable identifiers `alchemy.login.username`, `alchemy.login.password` and `alchemy.login.connect`; set the owner-authorized test values; observed the button enable; activated login; reached `STATE_STARTED`; observed the upright authenticated world; invoked the existing quit flow; and left no viewer process. The protected field never exposed its contents in the accessibility tree.
+- **Isolation/security: PASS.** The run used exact bundle-path binding, disposable `ALCHEMYNEXT_USER_DIR=/tmp/alchemy-metal-m012.UGPJCd`, direct executable arguments `--multiple --noaudio`, and a process census before launch, after binding, after login and after quit. Counts were zero, one, one and zero. The bridge is gated by exact channel name `Alchemy Metal Development`; Release channels receive no elements. No server, network listener, remote command surface or credential store was added. The owner explicitly authorized use of an existing test account; credential values and account/world-bearing raw evidence are not tracked.
+- **Build/package: PASS.** `tools/metal/build.sh` completed source-exact Xcode Release build 67952 with warnings-as-errors and exit 0. `codesign --verify --deep --strict --verbose=2` and `tools/metal/verify_app.sh` both exited 0; 349/349 bundled Mach-O files are ARM64. Executable SHA-256 is `e0a3e70c11da95b3dca72b18d58f8c36c6cf334751ad488cd2b67dabb9953276`.
+- **Post-review Retina correction: PASS.** Review caught scaled LLUI rectangles being divided by raw drawable-pixel dimensions. The implementation now normalizes with `getWindowWidthScaled()` / `getWindowHeightScaled()` before the Cocoa view maps to points. A complete RelWithDebInfo Ninja rebuild linked and signed; deep signing and 349/349 ARM64 verification pass. Actual Computer Use rediscovered all three protected elements in an unauthenticated disposable run and an element-directed username click landed on the visible control at Retina scale. No credentials were entered and `--quitafter 90` exited cleanly.
+- **Runtime boundary:** the in-world screenshot and shutdown telemetry are useful smoke evidence, not proof of Metal-only rendering, parity or performance. The executable still retains OpenGL work. No general AX hierarchy is justified; add another control only if a named parity test is blocked.
+
+## Ledger row
+
+The active work board records the completed bounded result as:
 
 ```markdown
-| M-012 | Optional developer-only Computer Use / LLUI accessibility interoperability | macOS Cocoa/SDL window + existing `LLUI` control hierarchy; scoped diagnostic checks | M-003, M-006; safe diagnostic identity; no conflicting UI/window edits | todo | Deferred and non-blocking. First reproduce the exact Codex Computer Use interaction failure against the isolated diagnostic app; distinguish plugin permissions/availability, screenshots, coordinate delivery, and missing LLUI accessibility elements. If existing visual/keyboard control already works, close without code. Only if necessary, prove one `LLButton` AXPress and one nonsecret text field through an Objective-C++ virtual-accessibility proof, tested by Codex Computer Use itself. Generalize only on demonstrated benefit. Detail: `docs/metal/work/M-012-macos-computer-use-llui-accessibility.md`. | 
+| M-012 | Optional developer-only Computer Use / LLUI accessibility interoperability | macOS Cocoa/SDL window + existing `LLUI` control hierarchy; scoped diagnostic checks | M-003, M-006; safe diagnostic identity; no conflicting UI/window edits | done | Gate A proved missing LLUI semantic descendants; Gate B exposes only development-channel username, protected password setter and Log In controls, verified end to end with actual Codex Computer Use. Release channels receive no bridge. |
 ```
 
-The current critical path and next executable actions remain unchanged. Registering M-012 does **not** authorize immediate implementation, a new parallel full-goal session, extra standing agents or manual owner approval gates.
+Completing M-012 does not change the product critical path, create a product release gate or authorize broad UI automation work.
 
 ## Exact behavioral contract
 
@@ -71,7 +81,7 @@ For actual 3D world/camera interaction, prefer the plugin's screenshots, pointer
 - **Decision:** Treat existing Codex Computer Use as the preferred controller. Fix only the proven app-side deficiency; preserve SDL3 and native Metal UI composition.
 - **Decision:** Do **not** introduce accessibility/UI instrumentation merely to tick a box. The benefit must be demonstrated against the real plugin.
 - **Decision:** This is an *optional engineering-productivity item*, not a product milestone or release gate. It must never delay the strict Metal-only, visual-parity and performance acceptance work.
-- **Open question:** Does the actual Codex plugin fail because the native LLUI accessibility tree is missing, because of its coordinate delivery to SDL, or for a completely different reason? Diagnose; do not assume.
+- **Resolved:** The acceptance plugin's screenshot and keyboard paths worked, while LLUI controls were absent from AX. The three-element bridge made the same plugin complete authorized login and quit end to end, identifying missing semantic descendants as the actionable app-side gap.
 - **Kill conditions:** Existing plugin already works; plugin unavailable due to policy or permissions; button/text POC is not consumable by Codex; integration requires replacing SDL UI, broad changes to `llwindowsdl.cpp` while it is owned by another task, exposing private data, circumventing user consent, or measurable rendering regression. Record exact findings and return to the primary ledger instead of expanding scope.
 
 ## Evidence / deliverables if scheduled
@@ -82,6 +92,4 @@ For actual 3D world/camera interaction, prefer the plugin's screenshots, pointer
 
 ## Next executable action
 
-**At registration time:** Add the M-012 row to the active ledger and save this detailed file at `docs/metal/work/M-012-macos-computer-use-llui-accessibility.md`. Verify the docs/harness with `python3 tools/metal/validate_harness.py` and `git diff --check`; commit this small documentation-only addition if appropriate. **Then return to the already selected highest-priority Metal/feature-parity action. Do not implement the adapter merely because the backlog entry now exists.**
-
-**When M-012 becomes eligible:** Confirm that the isolated diagnostic can be operated without touching the protected Release viewer, then perform **Gate A only**. Record PASS / FAIL / BLOCKED and the observed failure mechanism before electing Gate B. Stop at each gate unless its entry condition has been proven.
+M-012 is complete at Gate B. Keep the bridge limited to the development login controls and return to M-008: compile and validate the existing ordinary depth/depth24 snapshot extension, prove its native-path marker in an isolated run, then continue the required advanced/media parity matrix. Do not generalize accessibility coverage without a specific blocked validation scenario.

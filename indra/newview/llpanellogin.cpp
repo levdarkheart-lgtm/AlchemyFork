@@ -65,6 +65,10 @@
 #include "llmediactrl.h"
 #include "llrootview.h"
 
+#if LL_DARWIN
+#include "llsdl_macos.h"
+#endif
+
 #include "llfloatertos.h"
 #include "lltrans.h"
 #include "llglheaders.h"
@@ -337,6 +341,24 @@ LLPanelLogin::LLPanelLogin(const LLRect &rect,
     getChild<LLCheckBoxCtrl>("remember_password")->setCommitCallback(boost::bind(&LLPanelLogin::onRememberPasswordCheck, this));
 
     mAlertListener = LLNotifications::instance().getChannel("Alerts")->connectChanged([this](const LLSD& notify){ return onUpdateNotification(notify); });
+
+#if LL_DARWIN
+    // This virtual AX surface exists only in the disposable development build.
+    // Release channels retain no automation/accessibility bridge until LLUI has
+    // a general, product-quality native accessibility implementation.
+    if (channel == "Alchemy Metal Development")
+    {
+        LLSdlMacOSLoginAXCallbacks callbacks;
+        callbacks.context = this;
+        callbacks.get_username = getAccessibilityUsername;
+        callbacks.set_username = setAccessibilityUsername;
+        callbacks.set_password = setAccessibilityPassword;
+        callbacks.get_control_rect = getAccessibilityControlRect;
+        callbacks.is_connect_enabled = isAccessibilityConnectEnabled;
+        callbacks.perform_connect = performAccessibilityConnect;
+        ll_sdl_macos_install_login_accessibility(gViewerWindow->getPlatformWindow(), callbacks);
+    }
+#endif
 }
 
 void LLPanelLogin::addFavoritesToStartLocation()
@@ -444,6 +466,9 @@ void LLPanelLogin::addFavoritesToStartLocation()
 
 LLPanelLogin::~LLPanelLogin()
 {
+#if LL_DARWIN
+    ll_sdl_macos_uninstall_login_accessibility(this);
+#endif
     LLPanelLogin::sInstance = NULL;
 
     // Controls having keyboard focus by default
@@ -1156,6 +1181,94 @@ void LLPanelLogin::onPassKey(LLLineEditor* caller, void* user_data)
     self->mPasswordLength = static_cast<unsigned int>(password_edit->getText().length());
     self->updateLoginButtons();
 }
+
+#if LL_DARWIN
+std::string LLPanelLogin::getAccessibilityUsername(void* context)
+{
+    auto* self = static_cast<LLPanelLogin*>(context);
+    return self->getChild<LLComboBox>("username_combo")->getSimple();
+}
+
+void LLPanelLogin::setAccessibilityUsername(void* context, const std::string& value)
+{
+    auto* self = static_cast<LLPanelLogin*>(context);
+    self->getChild<LLComboBox>("username_combo")->setTextEntry(value);
+
+    // Match an actual username edit: a remembered password belongs to the old
+    // identity and must not survive replacement of the username.
+    self->mPasswordModified = true;
+    self->getChild<LLLineEditor>("password_edit")->setText(std::string());
+    self->mPasswordLength = 0;
+    self->addFavoritesToStartLocation();
+}
+
+void LLPanelLogin::setAccessibilityPassword(void* context, const std::string& value)
+{
+    auto* self = static_cast<LLPanelLogin*>(context);
+    LLLineEditor* password = self->getChild<LLLineEditor>("password_edit");
+    password->setText(value);
+    self->mPasswordModified = true;
+    self->mPasswordLength = static_cast<unsigned int>(password->getText().length());
+    self->updateLoginButtons();
+}
+
+bool LLPanelLogin::getAccessibilityControlRect(void* context,
+                                               LLSdlMacOSLoginAXControl control,
+                                               LLSdlMacOSNormalizedRect* rect)
+{
+    auto* self = static_cast<LLPanelLogin*>(context);
+    if (!rect || !gViewerWindow)
+    {
+        return false;
+    }
+
+    LLView* view = nullptr;
+    switch (control)
+    {
+        case LLSdlMacOSLoginAXControl::USERNAME:
+            view = self->getChildView("username_combo");
+            break;
+        case LLSdlMacOSLoginAXControl::PASSWORD:
+            view = self->getChildView("password_edit");
+            break;
+        case LLSdlMacOSLoginAXControl::CONNECT:
+            view = self->mLoginBtn;
+            break;
+    }
+
+    // calcScreenRect() is expressed in scaled LLUI coordinates. Normalize in
+    // that same space before the Cocoa bridge maps the unit rectangle to view
+    // points; raw drawable pixels would shrink the AX frames on Retina.
+    const double window_width = gViewerWindow->getWindowWidthScaled();
+    const double window_height = gViewerWindow->getWindowHeightScaled();
+    if (!view || window_width <= 0.0 || window_height <= 0.0)
+    {
+        return false;
+    }
+
+    const LLRect screen_rect = view->calcScreenRect();
+    rect->x = screen_rect.mLeft / window_width;
+    rect->y = screen_rect.mBottom / window_height;
+    rect->width = screen_rect.getWidth() / window_width;
+    rect->height = screen_rect.getHeight() / window_height;
+    return true;
+}
+
+bool LLPanelLogin::isAccessibilityConnectEnabled(void* context)
+{
+    auto* self = static_cast<LLPanelLogin*>(context);
+    return self->mLoginBtn && self->mLoginBtn->getEnabled();
+}
+
+void LLPanelLogin::performAccessibilityConnect(void* context)
+{
+    auto* self = static_cast<LLPanelLogin*>(context);
+    if (self->mLoginBtn && self->mLoginBtn->getEnabled())
+    {
+        self->mLoginBtn->onCommit();
+    }
+}
+#endif
 
 
 void LLPanelLogin::updateServer()

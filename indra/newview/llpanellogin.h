@@ -37,6 +37,11 @@ class LLPanelLoginListener;
 class LLSLURL;
 class LLCredential;
 
+#if LL_DARWIN
+enum class LLSdlMacOSLoginAXControl;
+struct LLSdlMacOSNormalizedRect;
+#endif
+
 class LLPanelLogin final:
     public LLPanel,
     public LLViewerMediaObserver
@@ -110,6 +115,17 @@ private:
     static void onRememberUserCheck(void*);
     static void onRememberPasswordCheck(void*);
     static void onPassKey(LLLineEditor* caller, void* user_data);
+
+#if LL_DARWIN
+    static std::string getAccessibilityUsername(void* context);
+    static void setAccessibilityUsername(void* context, const std::string& value);
+    static void setAccessibilityPassword(void* context, const std::string& value);
+    static bool getAccessibilityControlRect(void* context,
+                                            LLSdlMacOSLoginAXControl control,
+                                            LLSdlMacOSNormalizedRect* rect);
+    static bool isAccessibilityConnectEnabled(void* context);
+    static void performAccessibilityConnect(void* context);
+#endif
 
     bool onUpdateNotification(const LLSD& notify);
 
