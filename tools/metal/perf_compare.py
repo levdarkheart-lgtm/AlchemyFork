@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Analyze per-frame CSV evidence; never fabricate telemetry.
 
-CSV schema: scenario,frame_ms[,cpu_ms,gpu_ms]. Samples must be warm-up-free and
-measured at comparable settings. --enforce applies docs/metal/benchmarks/scenarios.json.
---require-provenance validates the development viewer's source-exact schema.
+CSV schema: scenario,frame_ms[,cpu_ms,gpu_ms,draw_calls,metal_submissions].
+Samples must be warm-up-free and measured at comparable settings. --enforce
+applies docs/metal/benchmarks/scenarios.json. --require-provenance validates the
+development viewer's source-exact schema.
 """
 import argparse
 import csv
@@ -21,6 +22,7 @@ PROVENANCE_HEADERS = {
     "drawable_width", "drawable_height", "quality_profile", "native_exact",
 }
 SOURCE_SHA = re.compile(r"^[0-9a-f]{40}$")
+SECONDARY_METRICS = ("cpu_ms", "gpu_ms", "draw_calls", "metal_submissions")
 
 
 def _unsigned(row, field, path, line, allow_zero=True):
@@ -35,6 +37,7 @@ def _unsigned(row, field, path, line, allow_zero=True):
 
 def load_capture(path: Path, require_provenance=False, candidate=False):
     result = defaultdict(list)
+    secondary = {}
     metadata = {}
     previous_index = {}
     with path.open(newline="", encoding="utf-8") as f:
@@ -43,6 +46,10 @@ def load_capture(path: Path, require_provenance=False, candidate=False):
         if not {"scenario", "frame_ms"}.issubset(headers):
             raise ValueError(f"{path}: requires scenario,frame_ms CSV headers")
         has_provenance = PROVENANCE_HEADERS.issubset(headers)
+        secondary = {
+            field: defaultdict(list)
+            for field in SECONDARY_METRICS if field in headers
+        }
         if require_provenance and not has_provenance:
             missing = ",".join(sorted(PROVENANCE_HEADERS - headers))
             raise ValueError(f"{path}: missing provenance headers: {missing}")
@@ -57,6 +64,18 @@ def load_capture(path: Path, require_provenance=False, candidate=False):
             if not math.isfinite(ms) or ms <= 0:
                 raise ValueError(f"{path}:{n}: nonpositive/nonfinite frame time")
             result[scene].append(ms)
+
+            for field, scenes in secondary.items():
+                if field in ("draw_calls", "metal_submissions"):
+                    value = _unsigned(row, field, path, n)
+                else:
+                    try:
+                        value = float(row[field])
+                    except (ValueError, TypeError, KeyError) as e:
+                        raise ValueError(f"{path}:{n}: invalid {field}") from e
+                    if not math.isfinite(value) or value < 0:
+                        raise ValueError(f"{path}:{n}: invalid {field}")
+                scenes[scene].append(value)
 
             if not has_provenance:
                 continue
@@ -95,6 +114,7 @@ def load_capture(path: Path, require_provenance=False, candidate=False):
             metadata[scene] = row_metadata
     return {
         "frames": result,
+        "secondary_metrics": secondary,
         "metadata": metadata,
         "provenance_verified": has_provenance,
     }
@@ -137,6 +157,36 @@ def summarize(values):
     return {"count": len(ordered), "p50_ms": round(statistics.median(ordered), 4),
             "p95_ms": round(percentile(ordered, 0.95), 4),
             "mean_ms": round(statistics.fmean(ordered), 4)}
+
+
+def summarize_secondary(values):
+    ordered = sorted(values)
+    return {
+        "count": len(ordered),
+        "p50": round(statistics.median(ordered), 4),
+        "p95": round(percentile(ordered, 0.95), 4),
+        "mean": round(statistics.fmean(ordered), 4),
+    }
+
+
+def compare_secondary_metrics(baseline, candidate, required_scenes):
+    """Report common secondary columns without treating them as pass gates."""
+    report = {}
+    for field in sorted(set(baseline) & set(candidate)):
+        scenes = []
+        for scene in required_scenes:
+            if scene not in baseline[field] or scene not in candidate[field]:
+                continue
+            scenes.append({
+                "scenario": scene,
+                "baseline": summarize_secondary(baseline[field][scene]),
+                "candidate": summarize_secondary(candidate[field][scene]),
+            })
+        report[field] = {
+            "unit": "ms" if field.endswith("_ms") else "count_per_frame",
+            "scenes": scenes,
+        }
+    return report
 
 
 def compare(baseline, candidate, spec):
@@ -197,6 +247,9 @@ def main():
         report = compare(baseline["frames"], candidate["frames"], spec)
         report["provenance"] = compare_provenance(
             baseline, candidate, [s["id"] for s in spec["scenarios"]])
+        report["secondary_metrics"] = compare_secondary_metrics(
+            baseline["secondary_metrics"], candidate["secondary_metrics"],
+            [s["id"] for s in spec["scenarios"]])
     except (ValueError, OSError, json.JSONDecodeError, KeyError) as e:
         ap.error(str(e))
     result = json.dumps(report, indent=2) + "\n"

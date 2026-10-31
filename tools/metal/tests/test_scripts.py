@@ -55,20 +55,26 @@ class PerfTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "nonpositive/nonfinite"):
                 self.perf.load_frames(path)
 
-    def write_capture(self, path, variant, exact=1, width=2048):
+    def write_capture(self, path, variant, exact=1, width=2048,
+                      metal_submissions=None):
         headers = ["scenario", "variant", "frame_ms", "frame_index",
                    "source_sha", "build_type", "drawable_width",
                    "drawable_height", "quality_profile", "native_exact"]
+        if metal_submissions is not None:
+            headers.append("metal_submissions")
         with path.open("w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(headers)
             frame_index = 100
             for scene in (s["id"] for s in self.spec["scenarios"]):
                 for _ in range(300):
-                    writer.writerow([
+                    row = [
                         scene, variant, 16.0, frame_index,
                         "0123456789abcdef0123456789abcdef01234567",
-                        "RelWithDebInfo", width, 1280, 5, exact])
+                        "RelWithDebInfo", width, 1280, 5, exact]
+                    if metal_submissions is not None:
+                        row.append(metal_submissions)
+                    writer.writerow(row)
                     frame_index += 1
 
     def test_source_exact_capture_provenance(self):
@@ -106,6 +112,28 @@ class PerfTests(unittest.TestCase):
                 self.perf.compare_provenance(
                     baseline, candidate,
                     [s["id"] for s in self.spec["scenarios"]])
+
+    def test_secondary_metal_submission_counts_are_reported_not_gated(self):
+        with tempfile.TemporaryDirectory() as d:
+            baseline_path = Path(d) / "baseline.csv"
+            candidate_path = Path(d) / "candidate.csv"
+            self.write_capture(
+                baseline_path, "baseline", exact=0, metal_submissions=12)
+            self.write_capture(
+                candidate_path, "candidate", exact=1, metal_submissions=5)
+            baseline = self.perf.load_capture(baseline_path)
+            candidate = self.perf.load_capture(candidate_path, candidate=True)
+            report = self.perf.compare_secondary_metrics(
+                baseline["secondary_metrics"], candidate["secondary_metrics"],
+                [s["id"] for s in self.spec["scenarios"]])
+            self.assertEqual("count_per_frame",
+                             report["metal_submissions"]["unit"])
+            self.assertEqual(12,
+                             report["metal_submissions"]["scenes"][0]
+                             ["baseline"]["p50"])
+            self.assertEqual(5,
+                             report["metal_submissions"]["scenes"][0]
+                             ["candidate"]["p50"])
 
 
 class AuditTests(unittest.TestCase):
