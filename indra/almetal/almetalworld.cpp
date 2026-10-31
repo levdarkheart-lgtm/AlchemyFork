@@ -1070,6 +1070,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalCommandBuffer> command_batch;
     bool command_batch_valid = true;
     std::string command_batch_failure;
+    bool command_batch_generates_brdf_lut = false;
 
     ALMetalCommandBuffer* acquireCommandBuffer(
         const std::string& label,
@@ -1410,6 +1411,7 @@ bool ALMetalWorldGBufferRenderer::beginCommandBatch(
     mImpl->command_batch = mImpl->device->makeCommandBuffer(label, error);
     mImpl->command_batch_valid = static_cast<bool>(mImpl->command_batch);
     mImpl->command_batch_failure.clear();
+    mImpl->command_batch_generates_brdf_lut = false;
     return static_cast<bool>(mImpl->command_batch);
 }
 
@@ -1423,8 +1425,11 @@ bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
     auto command = std::move(mImpl->command_batch);
     const bool valid = mImpl->command_batch_valid;
     const std::string failure = mImpl->command_batch_failure;
+    const bool generates_brdf_lut =
+        mImpl->command_batch_generates_brdf_lut;
     mImpl->command_batch_valid = true;
     mImpl->command_batch_failure.clear();
+    mImpl->command_batch_generates_brdf_lut = false;
     if (!valid)
     {
         setError(error, failure.empty()
@@ -1432,7 +1437,12 @@ bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
             : failure);
         return false;
     }
-    return command->commit(error);
+    const bool committed = command->commit(error);
+    if (committed && generates_brdf_lut)
+    {
+        mImpl->brdf_lut_ready = true;
+    }
+    return committed;
 }
 
 void ALMetalWorldGBufferRenderer::cancelCommandBatch()
@@ -1442,6 +1452,7 @@ void ALMetalWorldGBufferRenderer::cancelCommandBatch()
         mImpl->command_batch.reset();
         mImpl->command_batch_valid = true;
         mImpl->command_batch_failure.clear();
+        mImpl->command_batch_generates_brdf_lut = false;
     }
 }
 
@@ -5824,8 +5835,10 @@ ALMetalWorldGBufferRenderer::renderLocalLights(
         return nullptr;
     }
 
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world local-point-light accumulation", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world local-point-light accumulation",
+        owned_command, error);
     if (!command)
     {
         return nullptr;
@@ -5833,7 +5846,8 @@ ALMetalWorldGBufferRenderer::renderLocalLights(
 
     constexpr std::uint32_t brdf_lut_size = 512;
     const bool generate_brdf_lut =
-        scene.light_count != 0 && !mImpl->brdf_lut_ready;
+        scene.light_count != 0 && !mImpl->brdf_lut_ready &&
+        !mImpl->command_batch_generates_brdf_lut;
     if (generate_brdf_lut)
     {
         auto compute = ALMetalComputeEncoder::begin(
@@ -5903,16 +5917,24 @@ ALMetalWorldGBufferRenderer::renderLocalLights(
             encoder->draw(
                 ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     }
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }
     if (generate_brdf_lut)
     {
-        // The renderer uses one queue. A later command therefore sees this
-        // generation without a CPU wait, while this command's tracked hazard
-        // orders the fragment read after the compute write.
-        mImpl->brdf_lut_ready = true;
+        if (mImpl->command_batch)
+        {
+            mImpl->command_batch_generates_brdf_lut = true;
+        }
+        else
+        {
+            // The renderer uses one queue. A later command therefore sees
+            // this generation without a CPU wait.
+            mImpl->brdf_lut_ready = true;
+        }
     }
     return output;
 }
@@ -6041,8 +6063,10 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
         return nullptr;
     }
 
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world projector-light accumulation", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world projector-light accumulation",
+        owned_command, error);
     if (!command)
     {
         return nullptr;
@@ -6050,7 +6074,8 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
 
     constexpr std::uint32_t brdf_lut_size = 512;
     const bool generate_brdf_lut =
-        scene.light_count != 0 && !mImpl->brdf_lut_ready;
+        scene.light_count != 0 && !mImpl->brdf_lut_ready &&
+        !mImpl->command_batch_generates_brdf_lut;
     if (generate_brdf_lut)
     {
         auto compute = ALMetalComputeEncoder::begin(
@@ -6151,13 +6176,22 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
                 ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     }
 
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }
     if (generate_brdf_lut)
     {
-        mImpl->brdf_lut_ready = true;
+        if (mImpl->command_batch)
+        {
+            mImpl->command_batch_generates_brdf_lut = true;
+        }
+        else
+        {
+            mImpl->brdf_lut_ready = true;
+        }
     }
     return output;
 }
@@ -6215,8 +6249,10 @@ ALMetalWorldGBufferRenderer::composeLighting(
         return nullptr;
     }
 
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world deferred-light composition", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world deferred-light composition", owned_command,
+        error);
     if (!command)
     {
         return nullptr;
@@ -6259,7 +6295,9 @@ ALMetalWorldGBufferRenderer::composeLighting(
             0, mImpl->point_clamp_sampler.get(), error) &&
         encoder->draw(
             ALMetalPrimitiveType::triangle, 0, 3, 1, error);
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }
@@ -13517,15 +13555,17 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         return nullptr;
     }
 
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world base lighting", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world base lighting", owned_command, error);
     if (!command)
     {
         return nullptr;
     }
 
     constexpr std::uint32_t brdf_lut_size = 512;
-    const bool generate_brdf_lut = !mImpl->brdf_lut_ready;
+    const bool generate_brdf_lut = !mImpl->brdf_lut_ready &&
+        !mImpl->command_batch_generates_brdf_lut;
     if (generate_brdf_lut)
     {
         auto compute = ALMetalComputeEncoder::begin(
@@ -13611,13 +13651,22 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         encoder->setFragmentSampler(
             2, mImpl->linear_clamp_sampler.get(), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }
     if (generate_brdf_lut)
     {
-        mImpl->brdf_lut_ready = true;
+        if (mImpl->command_batch)
+        {
+            mImpl->command_batch_generates_brdf_lut = true;
+        }
+        else
+        {
+            mImpl->brdf_lut_ready = true;
+        }
     }
     return output;
 }

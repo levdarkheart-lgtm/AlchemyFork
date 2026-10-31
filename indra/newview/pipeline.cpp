@@ -24101,6 +24101,29 @@ void LLPipeline::renderDeferredLighting()
 
         static LLCachedControl<S32> local_light_count(gSavedSettings, "RenderLocalLightCount", 256);
 #if LL_DARWIN
+        bool lighting_batch_active = false;
+        std::string lighting_batch_error;
+        const bool batch_main_lighting = RenderDeferredAtmospheric &&
+            isMainWorldPass() && mRT == &mMainRT &&
+            !mMetalHeroWorldCaptureActive &&
+            !mMetalReflectionWorldCaptureActive && !sCutoutRender &&
+            mMetalWorldSimpleCapture &&
+            mMetalWorldSimpleCapture->renderer;
+        if (batch_main_lighting)
+        {
+            lighting_batch_active =
+                mMetalWorldSimpleCapture->renderer->beginCommandBatch(
+                    "Alchemy native world deferred-light chain",
+                    &lighting_batch_error);
+            if (!lighting_batch_active)
+            {
+                LL_WARNS_ONCE("Metal")
+                    << "Could not begin the optional native deferred-light "
+                       "command batch; retaining independent command-buffer "
+                       "submission: "
+                    << lighting_batch_error << LL_ENDL;
+            }
+        }
         if (RenderDeferredAtmospheric)
         {
             renderMetalWorldBaseLighting(
@@ -24117,6 +24140,30 @@ void LLPipeline::renderDeferredLighting()
             *camera, mat, light_scale,
             std::max<S32>(local_light_count, 0));
         renderMetalWorldLightingComposition();
+        if (lighting_batch_active)
+        {
+            MetalWorldSimpleCapture& capture =
+                *mMetalWorldSimpleCapture;
+            lighting_batch_error.clear();
+            if (!capture.renderer->commitCommandBatch(
+                    &lighting_batch_error))
+            {
+                capture.base_light_target.reset();
+                capture.local_light_target.reset();
+                capture.projector_light_target.reset();
+                capture.composed_light_target.reset();
+                const U32 failed_frames =
+                    ++capture.lighting_composition_failed_frames;
+                if (failed_frames ==
+                    MetalWorldSimpleCapture::max_failed_frames)
+                {
+                    LL_WARNS("Metal")
+                        << "Native deferred-light batch retained GL after "
+                        << failed_frames << " commit failures: "
+                        << lighting_batch_error << LL_ENDL;
+                }
+            }
+        }
         // These native-only owners must not disturb the visible GL fallback's
         // accumulation target. Rebinding that same target would push a cycle
         // into LLRenderTarget's ownership stack.

@@ -10426,6 +10426,74 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(composed_pixels[center + 3] == 0);
         CHECK(composed_pixels[outside + 3] == 0);
 
+        // The production path encodes base, local, projector and composition
+        // into one command buffer. A fresh renderer must generate the shared
+        // BRDF LUT only once inside that batch, and canceling an earlier batch
+        // must not leave the renderer claiming that discarded generation is
+        // available to the next command buffer.
+        auto batched_renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(batched_renderer);
+        REQUIRE(batched_renderer->beginCommandBatch(
+            "Alchemy discarded deferred-light test batch", &error));
+        auto discarded_base = batched_renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(discarded_base);
+        batched_renderer->cancelCommandBatch();
+
+        ALMetalWorldLocalLightingScene batched_local_scene =
+            lighting_scene;
+        batched_local_scene.gbuffer = gbuffer.get();
+        REQUIRE(batched_renderer->beginCommandBatch(
+            "Alchemy deferred-light test batch", &error));
+        auto batched_base = batched_renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(batched_base);
+        auto batched_local = batched_renderer->renderLocalLights(
+            batched_local_scene, &error);
+        INFO(error);
+        REQUIRE(batched_local);
+        auto batched_projector = batched_renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(batched_projector);
+        ALMetalWorldLightingCompositionScene batched_composition_scene;
+        batched_composition_scene.base_lighting = batched_base.get();
+        batched_composition_scene.local_lighting = batched_local.get();
+        batched_composition_scene.projector_lighting =
+            batched_projector.get();
+        auto batched_composed = batched_renderer->composeLighting(
+            batched_composition_scene, &error);
+        INFO(error);
+        REQUIRE(batched_composed);
+        REQUIRE(batched_renderer->commitCommandBatch(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 32 * 32 * 4> batched_base_pixels{};
+        std::array<std::uint8_t, 32 * 32 * 4> batched_local_pixels{};
+        std::array<std::uint8_t, 32 * 32 * 4> batched_projector_pixels{};
+        std::array<std::uint8_t, 32 * 32 * 4> batched_composed_pixels{};
+        REQUIRE(batched_base->colorTexture(0)->readback(
+            *device, 0, 0, {}, batched_base_pixels.data(), 32 * 4,
+            &error));
+        REQUIRE(batched_local->colorTexture(0)->readback(
+            *device, 0, 0, {}, batched_local_pixels.data(), 32 * 4,
+            &error));
+        REQUIRE(batched_projector->colorTexture(0)->readback(
+            *device, 0, 0, {}, batched_projector_pixels.data(), 32 * 4,
+            &error));
+        REQUIRE(batched_composed->colorTexture(0)->readback(
+            *device, 0, 0, {}, batched_composed_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(batched_base_pixels == base_pixels);
+        CHECK(batched_local_pixels == legacy_pixels);
+        CHECK(batched_projector_pixels == projected_pixels);
+        CHECK(batched_composed_pixels == composed_pixels);
+
         // Merely seeing clear depth and a normal alpha of one is not enough:
         // the base owner above discarded the sky until this explicit native
         // transaction bit is set. Once set, the sRGB attachment decodes the
