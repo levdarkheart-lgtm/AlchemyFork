@@ -15,19 +15,6 @@
             <key>Value</key>
             <integer>0</integer>
         </map>
-        <key>ALMetalWorldSuppressDuplicateGLDraws</key>
-        <map>
-            <key>Comment</key>
-            <string>Development-only: after an exact native world/UI frame is proven, suppress centralized duplicate GL draw commands for one native transaction. An incomplete transaction holds the last exact Metal surface and restores full GL rendering for a bounded cooldown. Requires ALMetalWorldPresentation, is nonpersistent, and remains off outside controlled validation.</string>
-            <key>Persist</key>
-            <integer>0</integer>
-            <key>HideFromEditor</key>
-            <integer>1</integer>
-            <key>Type</key>
-            <string>Boolean</string>
-            <key>Value</key>
-            <integer>0</integer>
-        </map>
         <key>ALCefAcceleratedPaint</key>
         <map>
             <key>Comment</key>

@@ -1021,12 +1021,6 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
     llassert(validate_bound_samplers());
     llassert(mGLBuffer == sGLRenderBuffer);
     llassert(mGLIndices == sGLRenderIndices);
-#if LL_DARWIN
-    if (gGL.legacyDrawSuppressed())
-    {
-        return;
-    }
-#endif
     gGL.syncMatrices();
     STOP_GLERROR;
     glDrawRangeElements(sGLMode[mode], start, end, count, mIndicesType,
@@ -1038,12 +1032,6 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
 
 void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const
 {
-#if LL_DARWIN
-    if (gGL.legacyDrawSuppressed())
-    {
-        return;
-    }
-#endif
     glDrawRangeElements(sGLMode[mode], start, end, count, mIndicesType,
         (GLvoid*)(indices_offset * (size_t)mIndicesStride));
     ++LLRender::sDrawCalls;
@@ -1064,12 +1052,6 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
     llassert(mGLBuffer == sGLRenderBuffer);
     llassert(mGLIndices == sGLRenderIndices);
 
-#if LL_DARWIN
-    if (gGL.legacyDrawSuppressed())
-    {
-        return;
-    }
-#endif
     gGL.syncMatrices();
     STOP_GLERROR;
     glDrawArrays(sGLMode[mode], first, count);

@@ -342,19 +342,7 @@ public:
     // performs renderer housekeeping but does not submit a second clear
     // drawable over this frame.
     bool presentMetalTexture(const ALMetalTexture* texture);
-    // Keep the most recently presented opaque native surface visible without
-    // acquiring or clearing another drawable this frame. This is a bounded
-    // failure path for a draw-suppressed native diagnostic transaction; the
-    // next frame restores ordinary GL authority before attempting new work.
-    bool holdMetalPresentationFrame() noexcept;
     bool setMetalPresentationOpaque(bool opaque);
-
-    // A proven exact native world transaction may traverse the legacy draw
-    // owners for capture while omitting their duplicate GL draw commands.
-    // State changes and resource production remain active. This gate is
-    // explicitly frame-scoped and disabled by default.
-    void setLegacyDrawSuppressed(bool suppressed) noexcept;
-    bool legacyDrawSuppressed() const noexcept { return mGLDrawSuppressed; }
 #endif
 
     // Refreshes renderer state to the cached values
@@ -953,7 +941,6 @@ private:
     bool mMetalUICaptureUsesDepth = false;
     bool mMetalUIReplacementEnabled = true;
     bool mMetalUISurfaceFrameSubmitted = false;
-    bool mGLDrawSuppressed = false;
 #endif
 
     std::vector<LLVector4a> mUIOffset;

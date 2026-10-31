@@ -90,9 +90,6 @@ namespace
 
         ~llvertexbuffer_gl_data()
         {
-#if LL_DARWIN
-            gGL.setLegacyDrawSuppressed(false);
-#endif
             if (mTarget.isBoundInStack())
             {
                 mTarget.flush();
@@ -399,27 +396,4 @@ namespace
             latest = other->getContentStamp();
         }
     }
-
-#if LL_DARWIN
-    TEST_CASE_METHOD(llvertexbuffer_gl_data, "llvertexbuffer_gl: a bounded native-authority frame suppresses and then restores indexed GL draws", "[llvertexbuffer_gl][metal]")
-    {
-        setUp();
-        const LLColor4U green(0, 255, 0, 255);
-
-        LLPointer<LLVertexBuffer> vb = makeBuffer(4, 6);
-        writeQuad(*vb, 0, -1.f, 1.f, green);
-        writeIndices(*vb, 0, 0);
-        vb->unmapBuffer();
-
-        gGL.setLegacyDrawSuppressed(true);
-        draw(*vb);
-        CHECK(at(LEFT) == rgba(0, 0, 0));
-        CHECK(at(RIGHT) == rgba(0, 0, 0));
-
-        gGL.setLegacyDrawSuppressed(false);
-        draw(*vb);
-        CHECK(at(LEFT) == packed(green));
-        CHECK(at(RIGHT) == packed(green));
-    }
-#endif
 }
