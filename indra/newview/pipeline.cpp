@@ -5944,18 +5944,22 @@ void LLPipeline::endMetalWorldUICompositionCapture()
 
     // Every batch owner fails the capture closed when it cannot reproduce its
     // GL draw, and begin rejected the known world-side overlays that sit
-    // outside this ordered stream. Retain only a fully submitted texture.
-    // The drawable remains untouched: this is integrated offscreen evidence,
-    // not publication authority.
-    capture.world_ui_target = gGL.endMetalUITextureCapture(true);
+    // outside this ordered stream. When presentation is requested, append the
+    // final drawable copy before committing this offscreen command buffer so
+    // the exact texture and its surface publication share one submission.
+    const bool presentation_requested = metalWorldPresentationRequested();
+    const bool surface_ready = presentation_requested &&
+        gGL.setMetalPresentationOpaque(true);
+    bool surface_submitted = false;
+    capture.world_ui_target = gGL.endMetalUITextureCapture(
+        true, surface_ready, &surface_submitted);
     capture.world_ui_capture_active = false;
     if (capture.world_ui_target)
     {
         capture.world_ui_frame = gFrameCount;
         LL_INFOS_ONCE("Metal")
             << "A complete current-frame native world + ordered UI/HUD "
-               "texture was retained offscreen; drawable publication remains "
-               "locked and visible GL is unchanged"
+               "texture was retained after its command submission"
             << LL_ENDL;
 
         // This development-only switch first publishes one bounded exact
@@ -5963,13 +5967,9 @@ void LLPipeline::endMetalWorldUICompositionCapture()
         // but every later frame still starts transparent and earns opacity
         // independently. Only a committed current-frame drawable suppresses
         // its matching GL swap.
-        if (metalWorldPresentationRequested())
+        if (presentation_requested)
         {
-            const bool surface_ready =
-                gGL.setMetalPresentationOpaque(true);
-            const bool submitted = surface_ready &&
-                gGL.presentMetalTexture(capture.world_ui_target.get());
-            if (submitted)
+            if (surface_submitted)
             {
                 gDisplaySwapBuffers = false;
                 capture.world_ui_last_submitted_frame = gFrameCount;
@@ -6008,6 +6008,10 @@ void LLPipeline::endMetalWorldUICompositionCapture()
     }
     else
     {
+        if (presentation_requested)
+        {
+            gGL.setMetalPresentationOpaque(false);
+        }
         capture.world_ui_frame = std::numeric_limits<U32>::max();
         // An unsupported runtime family is evidence, not a permanent latch:
         // let the bounded probe retry on another independent frame.

@@ -204,9 +204,11 @@ struct ALMetalUIRenderer::Impl
     ALMetalPixelFormat output_format = ALMetalPixelFormat::bgra8_unorm;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::unique_ptr<ALMetalRenderPipeline> background_pipeline;
+    std::unique_ptr<ALMetalRenderPipeline> drawable_presentation_pipeline;
     ALMetalPixelFormat background_depth_format =
         ALMetalPixelFormat::invalid;
     std::unique_ptr<ALMetalSamplerState> background_sampler;
+    std::unique_ptr<ALMetalSamplerState> drawable_presentation_sampler;
     std::unique_ptr<ALMetalRenderPipeline> depth_clear_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> depth_restore_pipeline;
     std::unique_ptr<ALMetalSamplerState> depth_restore_sampler;
@@ -313,6 +315,122 @@ struct ALMetalUIRenderer::Impl
         background_sampler = ALMetalSamplerState::create(
             *device, sampler_descriptor, error);
         return background_sampler != nullptr;
+    }
+
+    bool prepareDrawablePresentation(std::string* error)
+    {
+        if (drawable_presentation_pipeline &&
+            drawable_presentation_sampler)
+        {
+            return true;
+        }
+        ALMetalRenderPipelineDescriptor descriptor;
+        descriptor.library = library.get();
+        descriptor.vertex_function = "almetal_resample_vertex";
+        descriptor.fragment_function = "almetal_present_gl_rows_fragment";
+        descriptor.colors[0].format = ALMetalPixelFormat::bgra8_unorm;
+        descriptor.label =
+            "Alchemy fused world/UI drawable presentation pipeline";
+        drawable_presentation_pipeline = ALMetalRenderPipeline::create(
+            *device, descriptor, error);
+        if (!drawable_presentation_pipeline)
+        {
+            return false;
+        }
+
+        ALMetalSamplerDescriptor sampler_descriptor;
+        sampler_descriptor.min_filter = ALMetalSamplerFilter::nearest;
+        sampler_descriptor.mag_filter = ALMetalSamplerFilter::nearest;
+        sampler_descriptor.mip_filter = ALMetalSamplerMipFilter::none;
+        sampler_descriptor.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.label =
+            "Alchemy fused world/UI drawable presentation sampler";
+        drawable_presentation_sampler = ALMetalSamplerState::create(
+            *device, sampler_descriptor, error);
+        return drawable_presentation_sampler != nullptr;
+    }
+
+    bool appendDrawablePresentation(
+        ALMetalSurface& presentation_surface,
+        std::string* error)
+    {
+        if (surface || !frame || !target || encoder)
+        {
+            setError(error,
+                     "Fused drawable presentation requires a finished offscreen UI frame");
+            return false;
+        }
+        const ALMetalSurfaceInfo& surface_info = presentation_surface.info();
+        const ALMetalTexture* source = target->colorTexture(0);
+        if (!source || output_format != ALMetalPixelFormat::bgra8_unorm ||
+            surface_info.format != ALMetalSurfaceFormat::bgra8_unorm ||
+            surface_info.width != frame_width ||
+            surface_info.height != frame_height ||
+            source->descriptor().width != frame_width ||
+            source->descriptor().height != frame_height ||
+            !prepareDrawablePresentation(error))
+        {
+            if (error && error->empty())
+            {
+                *error =
+                    "Fused drawable presentation dimensions or formats do not match";
+            }
+            return false;
+        }
+
+        drawable = presentation_surface.nextDrawable(error);
+        if (!drawable || drawable->width() != frame_width ||
+            drawable->height() != frame_height ||
+            drawable->generation() != surface_info.generation)
+        {
+            if (error && error->empty())
+            {
+                *error = "Fused drawable presentation acquired an incompatible drawable";
+            }
+            drawable.reset();
+            return false;
+        }
+
+        ALMetalRenderPassColorConfig color_config;
+        auto drawable_pass = ALMetalRenderPass::createForColorAttachment(
+            *device, drawable->nativeTexture(),
+            ALMetalPixelFormat::bgra8_unorm, color_config, error);
+        if (!drawable_pass)
+        {
+            return false;
+        }
+        auto drawable_encoder = ALMetalRenderEncoder::begin(
+            frame->commandBuffer(), *drawable_pass,
+            "Alchemy fused world/UI drawable presentation encoder", error);
+        if (!drawable_encoder)
+        {
+            return false;
+        }
+        const ALMetalViewport viewport{
+            0.0, 0.0, static_cast<double>(frame_width),
+            static_cast<double>(frame_height), 0.0, 1.0};
+        const ALMetalScissorRect scissor{0, 0, frame_width, frame_height};
+        const bool encoded =
+            drawable_encoder->setPipeline(
+                *drawable_presentation_pipeline, error) &&
+            drawable_encoder->setFragmentTexture(0, source, error) &&
+            drawable_encoder->setFragmentSampler(
+                0, drawable_presentation_sampler.get(), error) &&
+            drawable_encoder->setViewport(viewport, error) &&
+            drawable_encoder->setScissor(scissor, error) &&
+            drawable_encoder->setCullMode(ALMetalCullMode::none, error) &&
+            drawable_encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+            drawable_encoder->end(error);
+        if (!encoded)
+        {
+            return false;
+        }
+        pass = std::move(drawable_pass);
+        return presentation_surface.present(
+            frame->commandBuffer(), *drawable, error);
     }
 
     bool prepareDepthRegions(std::string* error)
@@ -2711,6 +2829,20 @@ bool ALMetalUIRenderer::drawSelectionContour(
 
 bool ALMetalUIRenderer::endFrame(std::string* error)
 {
+    return finishFrame(nullptr, error);
+}
+
+bool ALMetalUIRenderer::endFrameAndPresent(
+    ALMetalSurface& surface,
+    std::string* error)
+{
+    return finishFrame(&surface, error);
+}
+
+bool ALMetalUIRenderer::finishFrame(
+    ALMetalSurface* presentation_surface,
+    std::string* error)
+{
     if (!mImpl)
     {
         return true;
@@ -2762,6 +2894,17 @@ bool ALMetalUIRenderer::endFrame(std::string* error)
         return false;
     }
     mImpl->encoder.reset();
+    if (presentation_surface &&
+        !mImpl->appendDrawablePresentation(*presentation_surface, error))
+    {
+        mImpl->frame.reset();
+        mImpl->pass.reset();
+        mImpl->drawable.reset();
+        mImpl->frame_background = nullptr;
+        mImpl->frame_depth = nullptr;
+        mImpl->selection_frame_palettes.clear();
+        return false;
+    }
     if (mImpl->surface &&
         (!mImpl->drawable ||
          !mImpl->surface->present(mImpl->frame->commandBuffer(), *mImpl->drawable, error)))

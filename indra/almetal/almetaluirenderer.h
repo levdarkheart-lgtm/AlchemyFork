@@ -345,6 +345,14 @@ public:
         const ALMetalSelectionContourScene& scene,
         std::string* error = nullptr);
     bool endFrame(std::string* error = nullptr);
+    // Offscreen exact-world path: finish the retained texture, append its
+    // lower-left-row to CAMetalLayer presentation pass to the same command
+    // buffer, and submit once. The offscreen output remains available for
+    // ownership handoff after a successful commit. Any drawable or encoding
+    // failure abandons the complete command buffer without publishing.
+    bool endFrameAndPresent(
+        ALMetalSurface& surface,
+        std::string* error = nullptr);
 
     bool hasOpenFrame() const noexcept;
     const ALMetalTexture* outputTexture() const noexcept;
@@ -360,6 +368,9 @@ public:
 private:
     struct Impl;
     explicit ALMetalUIRenderer(std::unique_ptr<Impl> impl);
+    bool finishFrame(
+        ALMetalSurface* presentation_surface,
+        std::string* error);
     std::unique_ptr<Impl> mImpl;
 };
 

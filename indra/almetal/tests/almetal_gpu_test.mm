@@ -22239,6 +22239,36 @@ TEST_CASE("almetal: a CAMetalLayer overlay coexists with an SDL OpenGL window", 
         CHECK(renderer->outputTexture() == nullptr);
         renderer.reset();
 
+        // The exact world/UI path is produced offscreen. Finish that retained
+        // texture and append its drawable presentation to the same command
+        // buffer: both the texture handoff and surface submission must cost
+        // exactly one native commit rather than the former pair.
+        auto fused_renderer = ALMetalUIRenderer::createForTexture(
+            *device, *scheduler, ALMetalPixelFormat::bgra8_unorm, &error);
+        INFO(error);
+        REQUIRE(fused_renderer);
+        REQUIRE(fused_renderer->setFrameBackground(world.get(), &error));
+        const std::uint64_t submissions_before_fused =
+            ALMetalDevice::committedCommandBufferCount();
+        REQUIRE(fused_renderer->endFrameAndPresent(*surface, &error));
+        INFO(error);
+        CHECK(ALMetalDevice::committedCommandBufferCount() ==
+              submissions_before_fused + 1);
+        auto fused_output = fused_renderer->takeOutputTexture();
+        REQUIRE(fused_output);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        std::vector<std::uint8_t> fused_pixels(world_pixels.size(), 0u);
+        REQUIRE(fused_output->readback(
+            *device, 0, 0, {}, fused_pixels.data(),
+            static_cast<std::size_t>(world_descriptor.width) * 4u, &error));
+        INFO(error);
+        CHECK(fused_pixels == world_pixels);
+        const ALMetalUIRendererStats fused_stats = fused_renderer->stats();
+        CHECK(fused_stats.frames == 1);
+        CHECK(fused_stats.batches == 0);
+        CHECK(fused_stats.vertices == 0);
+
         // The Metal view must go away before its SDL window.
         surface.reset();
     }

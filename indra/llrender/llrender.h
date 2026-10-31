@@ -320,7 +320,13 @@ public:
     // did not reproduce. This is a no-op outside a capture; the authoritative
     // GL draw continues and end capture discards the incomplete native frame.
     void invalidateMetalUITextureCapture(const char* reason);
-    std::unique_ptr<ALMetalTexture> endMetalUITextureCapture(bool source_success);
+    // When present_surface is true, a complete BGRA8 capture appends its
+    // drawable copy to the still-open offscreen command buffer and commits
+    // once. presented is true only after that fused command was submitted.
+    std::unique_ptr<ALMetalTexture> endMetalUITextureCapture(
+        bool source_success,
+        bool present_surface = false,
+        bool* presented = nullptr);
 
     // A startup frame can replace the GL window presentation only when every
     // eligible UI batch was encoded. The surface stays transparent for any

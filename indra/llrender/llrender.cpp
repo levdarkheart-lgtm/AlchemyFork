@@ -1232,18 +1232,44 @@ void LLRender::invalidateMetalUITextureCapture(const char* reason)
 }
 
 std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
-    bool source_success)
+    bool source_success,
+    bool present_surface,
+    bool* presented)
 {
+    if (presented)
+    {
+        *presented = false;
+    }
     if (!mMetalUICaptureRenderer)
     {
         return nullptr;
     }
 
     std::string error;
-    const bool submitted = mMetalUICaptureRenderer->endFrame(&error);
-    const bool complete = source_success && submitted &&
-                          mMetalUICaptureComplete &&
-                          mMetalUICaptureBatches != 0;
+    const bool exact = source_success && mMetalUICaptureComplete &&
+                       mMetalUICaptureBatches != 0;
+    bool submitted = false;
+    bool surface_submitted = false;
+    if (exact && present_surface && mMetalUISurface)
+    {
+        submitted = mMetalUICaptureRenderer->endFrameAndPresent(
+            *mMetalUISurface, &error);
+        surface_submitted = submitted;
+        if (surface_submitted)
+        {
+            mMetalUISurfaceFrameSubmitted = true;
+        }
+    }
+    else
+    {
+        submitted = mMetalUICaptureRenderer->endFrame(&error);
+    }
+    if (presented)
+    {
+        *presented = surface_submitted;
+    }
+    const bool complete = exact && submitted &&
+                          (!present_surface || surface_submitted);
     std::unique_ptr<ALMetalTexture> output;
     if (complete)
     {
