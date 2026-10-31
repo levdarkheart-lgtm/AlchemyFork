@@ -150,6 +150,7 @@ if(AL_BUILD_VIEWER)
     alderenderlist.cpp
     aldroptarget.cpp
     alfarplaneoverlay.cpp
+    almetalbenchmark.cpp
     alfloaterblocked.cpp
     alfloaterdirectory.cpp
     alfloaterevent.cpp
@@ -1024,6 +1025,7 @@ if(AL_BUILD_VIEWER)
     alderenderlist.h
     aldroptarget.h
     alfarplaneoverlay.h
+    almetalbenchmark.h
     alfloaterblocked.h
     alfloaterdirectory.h
     alfloaterevent.h
@@ -2569,6 +2571,7 @@ if(AL_BUILD_TESTS)
       tests/alfeedback_test.cpp
       tests/alfeedbackoutbox_test.cpp
       tests/algradehistory_test.cpp
+      tests/almetalbenchmark_test.cpp
       tests/almotionpredictor_test.cpp
       tests/alnotecardembedded_test.cpp
       tests/alrecoverykeeper_test.cpp
@@ -2642,6 +2645,7 @@ if(AL_BUILD_TESTS)
       alfeedback.cpp
       alfeedbackoutbox.cpp
       algradehistory.cpp
+      almetalbenchmark.cpp
       almotionpredictor.cpp
       alnotecardembedded.cpp
       alrecovery.cpp

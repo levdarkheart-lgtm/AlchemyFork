@@ -32,6 +32,7 @@
 #include "alfloaterprogressview.h"
 #include "alframeend.h"
 #include "alhuddepth.h"
+#include "almetalbenchmark.h"
 #include "aluniformbuffer.h"
 #include "fsyspath.h"
 #include "hexdump.h"
@@ -508,6 +509,84 @@ static void fill_pacing_slack()
     LL_PROFILE_PLOT("frame pacing slack budget ms", budget * 1000.0);
     LL_PROFILE_PLOT("frame pacing slack work ms", worked * 1000.0);
 }
+
+#if LL_DARWIN && !defined(LL_RELEASE_FOR_DOWNLOAD)
+static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
+{
+    static bool initialized = false;
+    static bool reported_failure = false;
+    static std::unique_ptr<ALMetalBenchmarkRecorder> recorder;
+    if (!initialized)
+    {
+        initialized = true;
+        std::string error;
+        const LLVersionInfo& version = LLVersionInfo::instance();
+        auto config = ALMetalBenchmarkRecorder::configFromEnvironment(
+            version.getSourceRevision(), version.getBuildConfig(), &error);
+        if (!config)
+        {
+            if (!error.empty())
+            {
+                LL_WARNS("MetalBenchmark")
+                    << "Metal benchmark collection was requested but is "
+                       "disabled: " << error << LL_ENDL;
+            }
+            return;
+        }
+        LL_INFOS("MetalBenchmark")
+            << "Metal benchmark collection armed for pseudonymous scenario "
+            << config->scenario << ", variant " << config->variant << ", "
+            << config->warmup_frames << " warm-up frames and "
+            << config->sample_frames << " consecutive samples"
+            << (config->require_exact_native
+                    ? "; every sample requires exact native presentation"
+                    : "; GL or native presentation is accepted")
+            << LL_ENDL;
+        recorder = std::make_unique<ALMetalBenchmarkRecorder>(
+            std::move(*config));
+    }
+    if (!recorder || recorder->finished())
+    {
+        return;
+    }
+
+    const bool native_exact = gPipeline.metalWorldPresentationCurrent();
+    ALMetalBenchmarkRecorder::Frame frame;
+    frame.timestamp = ALMetalBenchmarkRecorder::Clock::now();
+    frame.frame_index = gFrameCount;
+    frame.drawable_width = static_cast<U32>(
+        llmax(gViewerWindow->getWindowWidthRaw(), 0));
+    frame.drawable_height = static_cast<U32>(
+        llmax(gViewerWindow->getWindowHeightRaw(), 0));
+    frame.quality_profile =
+        gSavedSettings.getU32("RenderQualityPerformance");
+    frame.draw_calls = LLRender::sDrawCalls;
+    frame.native_exact = native_exact;
+    frame.eligible = LLStartUp::getStartupState() >= STATE_STARTED &&
+        !for_snapshot && !gSnapshot && !gTeleportDisplay && !gDisconnected &&
+        !LLAppViewer::instance()->logoutRequestSent() &&
+        !display_window_hidden() && (gl_presented || native_exact);
+
+    std::string error;
+    const ALMetalBenchmarkRecorder::Result result =
+        recorder->record(frame, &error);
+    if (result == ALMetalBenchmarkRecorder::Result::complete)
+    {
+        LL_INFOS("MetalBenchmark")
+            << "Metal benchmark collection completed with "
+            << recorder->samplesWritten()
+            << " consecutive post-warm-up frame samples" << LL_ENDL;
+    }
+    else if (result == ALMetalBenchmarkRecorder::Result::failed &&
+             !reported_failure)
+    {
+        reported_failure = true;
+        LL_WARNS("MetalBenchmark")
+            << "Metal benchmark collection stopped without admissible "
+               "completion: " << error << LL_ENDL;
+    }
+}
+#endif
 
 void display_end_frame()
 {
@@ -1216,6 +1295,10 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     }
 
     display_stats();
+
+#if LL_DARWIN && !defined(LL_RELEASE_FOR_DOWNLOAD)
+    record_metal_benchmark_frame(for_snapshot, presented);
+#endif
 
     LLAppViewer::instance()->pingMainloopTimeout("Display:Done");
 

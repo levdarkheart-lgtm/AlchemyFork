@@ -351,6 +351,10 @@ public:
     // until every ordered family has an exact native owner.
     bool beginMetalWorldUICompositionCapture();
     void endMetalWorldUICompositionCapture();
+    // True only after this viewer frame committed its complete native
+    // world/UI texture to a drawable. Benchmark collection uses this exact
+    // fact instead of inferring native presentation from a setting.
+    bool metalWorldPresentationCurrent() const;
 #endif
     void copyScreenSpaceReflections(LLRenderTarget* src, LLRenderTarget* dst);
     // The current pack's scene depth (mRT->deferredScreen's, which mRT->screen shares) over the whole of `dst`'s,

@@ -38,7 +38,8 @@
  || ! defined(LL_VIEWER_VERSION_MAJOR) \
  || ! defined(LL_VIEWER_VERSION_MINOR) \
  || ! defined(LL_VIEWER_VERSION_PATCH) \
- || ! defined(LL_VIEWER_VERSION_BUILD)
+ || ! defined(LL_VIEWER_VERSION_BUILD) \
+ || ! defined(LL_VIEWER_SOURCE_REVISION)
  #error "Channel or Version information is undefined"
 #endif
 
@@ -180,6 +181,12 @@ std::string LLVersionInfo::getBuildConfig() const
 #else
     return "Unknown";
 #endif
+}
+
+std::string LLVersionInfo::getSourceRevision() const
+{
+    const std::string revision = LL_VIEWER_SOURCE_REVISION;
+    return revision.empty() ? "unknown" : revision;
 }
 
 std::string LLVersionInfo::getReleaseNotes() const

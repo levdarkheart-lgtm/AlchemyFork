@@ -79,6 +79,9 @@ public:
     /// return the CMake build type
     std::string getBuildConfig() const;
 
+    /// return the exact source commit recorded when CMake configured
+    std::string getSourceRevision() const;
+
     /// reset the channel name used by the viewer.
     void resetChannel(const std::string& channel);
 

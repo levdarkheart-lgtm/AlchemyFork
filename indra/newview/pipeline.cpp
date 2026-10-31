@@ -772,6 +772,13 @@ static bool metalWorldPresentationRequested()
     return publish_world;
 }
 
+bool LLPipeline::metalWorldPresentationCurrent() const
+{
+    return mMetalWorldSimpleCapture &&
+        mMetalWorldSimpleCapture->world_ui_last_submitted_frame ==
+            gFrameCount;
+}
+
 bool LLPipeline::canCaptureMetalWorldPresentation() const
 {
     static LLCachedControl<bool> dynamic_exposure(
