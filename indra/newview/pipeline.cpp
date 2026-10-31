@@ -4717,6 +4717,31 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 }
             }
 
+            // Depth of field and bloom feed display mapping directly. Keep
+            // the complete main-world optical chain in one command buffer;
+            // no intermediate target becomes authoritative until the final
+            // display/presentation transaction commits.
+            const bool batch_main_post = isMainWorldPass() &&
+                mRT == &mMainRT &&
+                !mMetalHeroWorldCaptureActive &&
+                !mMetalReflectionWorldCaptureActive && !sCutoutRender;
+            bool post_batch_active = false;
+            if (batch_main_post)
+            {
+                std::string post_batch_error;
+                post_batch_active = capture.renderer->beginCommandBatch(
+                    "Alchemy native world optical and presentation post",
+                    &post_batch_error);
+                if (!post_batch_active)
+                {
+                    LL_WARNS_ONCE("Metal")
+                        << "Could not begin the optional native optical-post "
+                           "command batch; retaining independent "
+                           "command-buffer submission: "
+                        << post_batch_error << LL_ENDL;
+                }
+            }
+
             // Exposure above deliberately meters the sharp linear scene.
             // From this point onward the native post chain follows GL's
             // optical order: depth of field, bloom, then display mapping.
@@ -5177,26 +5202,6 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 std::string display_error;
                 bool display_post_available = false;
                 bool final_presentation_available = false;
-                const bool batch_main_post = isMainWorldPass() &&
-                    mRT == &mMainRT &&
-                    !mMetalHeroWorldCaptureActive &&
-                    !mMetalReflectionWorldCaptureActive && !sCutoutRender;
-                bool post_batch_active = false;
-                if (batch_main_post)
-                {
-                    post_batch_active = capture.renderer->beginCommandBatch(
-                        "Alchemy native world display and presentation post",
-                        &display_error);
-                    if (!post_batch_active)
-                    {
-                        LL_WARNS_ONCE("Metal")
-                            << "Could not begin the optional native post "
-                               "command batch; retaining independent "
-                               "command-buffer submission: "
-                            << display_error << LL_ENDL;
-                        display_error.clear();
-                    }
-                }
                 auto display_target =
                     capture.renderer->renderDisplayPost(
                         display, &display_error);
@@ -5582,13 +5587,21 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         capture.presentation_target.reset();
                         capture.presentation_frame =
                             std::numeric_limits<U32>::max();
+                        capture.depth_of_field_target.reset();
+                        capture.depth_of_field_frame =
+                            std::numeric_limits<U32>::max();
+                        capture.depth_of_field_applied = false;
+                        capture.bloom_target.reset();
+                        capture.bloom_frame =
+                            std::numeric_limits<U32>::max();
                         display_post_available = false;
                         final_presentation_available = false;
                         LL_WARNS("Metal")
-                            << "Native world display/presentation post batch "
+                            << "Native world optical/presentation post batch "
                                "retained GL after commit failure: "
                             << display_error << LL_ENDL;
                     }
+                    post_batch_active = false;
                 }
                 if (final_presentation_available)
                 {
@@ -5605,6 +5618,20 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                            "visible GL and scope fallback remain authoritative"
                         << LL_ENDL;
                 }
+            }
+            if (post_batch_active)
+            {
+                // No exact display consumer was available. The optional
+                // DoF/bloom intermediates have no independent publication
+                // owner, so discard their uncommitted transaction together.
+                capture.renderer->cancelCommandBatch();
+                capture.depth_of_field_target.reset();
+                capture.depth_of_field_frame =
+                    std::numeric_limits<U32>::max();
+                capture.depth_of_field_applied = false;
+                capture.bloom_target.reset();
+                capture.bloom_frame =
+                    std::numeric_limits<U32>::max();
             }
 
             const bool first_continuous_frame =

@@ -6407,8 +6407,9 @@ ALMetalWorldGBufferRenderer::renderBloom(
         return nullptr;
     }
 
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world bloom", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world bloom", owned_command, error);
     if (!command)
     {
         return nullptr;
@@ -6505,6 +6506,8 @@ ALMetalWorldGBufferRenderer::renderBloom(
                 *mImpl->device, descriptor, error);
             if (!target)
             {
+                mImpl->finishCommandBuffer(
+                    owned_command, false, error);
                 return nullptr;
             }
         }
@@ -6581,7 +6584,7 @@ ALMetalWorldGBufferRenderer::renderBloom(
             "Alchemy world bloom upsample encoder");
     }
 
-    if (!encoded || !command->commit(error))
+    if (!mImpl->finishCommandBuffer(owned_command, encoded, error))
     {
         return nullptr;
     }
@@ -7857,8 +7860,9 @@ ALMetalWorldGBufferRenderer::renderDepthOfField(
     constants.config[3] = static_cast<std::uint32_t>(
         scene.aperture_blades);
 
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world depth of field", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world depth of field", owned_command, error);
     if (!command)
     {
         return nullptr;
@@ -7873,6 +7877,7 @@ ALMetalWorldGBufferRenderer::renderDepthOfField(
         "Alchemy world depth-of-field gather encoder", error) : nullptr;
     if (!gather)
     {
+        mImpl->finishCommandBuffer(owned_command, false, error);
         return nullptr;
     }
     const std::size_t gather_pipeline =
@@ -7900,6 +7905,7 @@ ALMetalWorldGBufferRenderer::renderDepthOfField(
         gather->end(error);
     if (!gathered)
     {
+        mImpl->finishCommandBuffer(owned_command, false, error);
         return nullptr;
     }
 
@@ -7909,6 +7915,7 @@ ALMetalWorldGBufferRenderer::renderDepthOfField(
         "Alchemy world depth-of-field combine encoder", error) : nullptr;
     if (!combine)
     {
+        mImpl->finishCommandBuffer(owned_command, false, error);
         return nullptr;
     }
     const bool combined =
@@ -7932,7 +7939,8 @@ ALMetalWorldGBufferRenderer::renderDepthOfField(
         combine->draw(
             ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
         combine->end(error);
-    if (!combined || !command->commit(error))
+    if (!mImpl->finishCommandBuffer(
+            owned_command, combined, error))
     {
         return nullptr;
     }

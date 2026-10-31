@@ -12542,6 +12542,57 @@ TEST_CASE("almetal: world bloom matches the production HDR pyramid", "[almetal]"
         CHECK(((packed[0] >> 20u) & 0x3ffu) == 0u);
         CHECK((packed[0] >> 30u) == 3u);
 
+        // Production encodes bloom, display mapping and final BGRA8
+        // presentation as one dependent optical-post transaction. Prove the
+        // complete chain advances the process-wide submission counter once
+        // and remains byte-identical to standalone submission.
+        ALMetalWorldPresentationScene standalone_presentation_scene;
+        standalone_presentation_scene.source = output.get();
+        auto standalone_presentation = renderer->renderPresentationPost(
+            standalone_presentation_scene, &error);
+        INFO(error);
+        REQUIRE(standalone_presentation);
+        std::array<std::uint8_t, width * height * 4>
+            standalone_presentation_pixels{};
+        REQUIRE(standalone_presentation->colorTexture(0)->readback(
+            *device, 0, 0, {}, standalone_presentation_pixels.data(),
+            width * 4, &error));
+        INFO(error);
+
+        const std::uint64_t submissions_before_batch =
+            ALMetalDevice::committedCommandBufferCount();
+        REQUIRE(renderer->beginCommandBatch(
+            "Alchemy optical-post command-batch regression", &error));
+        auto batched_bloom = renderer->renderBloom(
+            bloom_scene, &error);
+        INFO(error);
+        REQUIRE(batched_bloom);
+        ALMetalWorldDisplayPostScene batched_display_scene = display;
+        batched_display_scene.bloom_texture =
+            batched_bloom->colorTexture(0);
+        auto batched_display = renderer->renderDisplayPost(
+            batched_display_scene, &error);
+        INFO(error);
+        REQUIRE(batched_display);
+        ALMetalWorldPresentationScene batched_presentation_scene;
+        batched_presentation_scene.source = batched_display.get();
+        auto batched_presentation = renderer->renderPresentationPost(
+            batched_presentation_scene, &error);
+        INFO(error);
+        REQUIRE(batched_presentation);
+        REQUIRE(renderer->commitCommandBatch(&error));
+        INFO(error);
+        CHECK(ALMetalDevice::committedCommandBufferCount() ==
+              submissions_before_batch + 1);
+        std::array<std::uint8_t, width * height * 4>
+            batched_presentation_pixels{};
+        REQUIRE(batched_presentation->colorTexture(0)->readback(
+            *device, 0, 0, {}, batched_presentation_pixels.data(),
+            width * 4, &error));
+        INFO(error);
+        CHECK(batched_presentation_pixels ==
+              standalone_presentation_pixels);
+
         // colorCorrect scales only the completed pyramid, not the scene.
         // 0.25 + 0.75 * 0.25 = 0.4375 linear before the display transfer.
         display.bloom_strength = 0.25f;
