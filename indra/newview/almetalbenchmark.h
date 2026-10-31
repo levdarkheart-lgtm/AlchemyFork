@@ -47,6 +47,10 @@ public:
         std::uint32_t quality_profile = 0;
         std::uint32_t draw_calls = 0;
         std::uint64_t metal_command_buffers_committed = 0;
+        std::uint64_t metal_timing_submitted = 0;
+        std::uint64_t metal_timing_completed = 0;
+        std::uint64_t metal_timing_valid = 0;
+        std::uint64_t metal_gpu_time_nanoseconds = 0;
         bool native_exact = false;
         bool eligible = false;
     };
@@ -89,6 +93,10 @@ private:
     std::optional<Clock::time_point> mLastTimestamp;
     std::uint64_t mLastFrameIndex = 0;
     std::uint64_t mLastMetalCommandBuffers = 0;
+    std::uint64_t mLastMetalTimingSubmitted = 0;
+    std::uint64_t mLastMetalTimingCompleted = 0;
+    std::uint64_t mLastMetalTimingValid = 0;
+    std::uint64_t mLastMetalGPUTimeNanoseconds = 0;
     std::uint32_t mSequenceWidth = 0;
     std::uint32_t mSequenceHeight = 0;
     std::uint32_t mSequenceQuality = 0;

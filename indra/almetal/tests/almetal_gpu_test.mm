@@ -1034,6 +1034,12 @@ TEST_CASE("almetal: a blit command copies shared storage and reports completion"
         auto device = ALMetalDevice::create(&error);
         INFO(error);
         REQUIRE(device);
+        ALMetalDevice::setCommandTimingEnabled(false);
+        CHECK_FALSE(ALMetalDevice::commandTimingEnabled());
+        REQUIRE(device->waitUntilIdle(&error));
+        INFO(error);
+        const ALMetalCommandTiming timing_before =
+            ALMetalDevice::commandTiming();
 
         constexpr std::size_t size = 4096;
         std::array<std::uint8_t, size> expected{};
@@ -1067,10 +1073,24 @@ TEST_CASE("almetal: a blit command copies shared storage and reports completion"
 
         const std::uint64_t commits_before =
             ALMetalDevice::committedCommandBufferCount();
-        CHECK(command->commitAndWait(&error));
+        ALMetalDevice::setCommandTimingEnabled(true);
+        CHECK(ALMetalDevice::commandTimingEnabled());
+        const bool committed = command->commitAndWait(&error);
+        ALMetalDevice::setCommandTimingEnabled(false);
+        CHECK_FALSE(ALMetalDevice::commandTimingEnabled());
+        CHECK(committed);
         INFO(error);
         CHECK(ALMetalDevice::committedCommandBufferCount() ==
               commits_before + 1);
+        REQUIRE(device->waitUntilIdle(&error));
+        INFO(error);
+        const ALMetalCommandTiming timing_after =
+            ALMetalDevice::commandTiming();
+        CHECK(timing_after.submitted == timing_before.submitted + 1);
+        CHECK(timing_after.completed == timing_before.completed + 1);
+        CHECK(timing_after.timed == timing_before.timed + 1);
+        CHECK(timing_after.gpu_time_nanoseconds >
+              timing_before.gpu_time_nanoseconds);
         CHECK(command->status() == ALMetalCommandStatus::completed);
         CHECK(std::memcmp(destination.contents, expected.data(), size) == 0);
     }

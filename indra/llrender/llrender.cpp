@@ -73,6 +73,22 @@ U64 LLRender::metalCommandBuffersCommitted()
 {
     return ALMetalDevice::committedCommandBufferCount();
 }
+
+void LLRender::setMetalCommandTimingEnabled(bool enabled)
+{
+    ALMetalDevice::setCommandTimingEnabled(enabled);
+}
+
+LLRender::MetalCommandTiming LLRender::metalCommandTiming()
+{
+    const ALMetalCommandTiming timing = ALMetalDevice::commandTiming();
+    MetalCommandTiming result;
+    result.submitted = timing.submitted;
+    result.completed = timing.completed;
+    result.timed = timing.timed;
+    result.gpu_time_nanoseconds = timing.gpu_time_nanoseconds;
+    return result;
+}
 #endif
 
 #if LL_DARWIN

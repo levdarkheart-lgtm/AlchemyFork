@@ -80,6 +80,10 @@ ALMetalBenchmarkRecorder::Frame frame(
     result.quality_profile = 5;
     result.draw_calls = 321;
     result.metal_command_buffers_committed = index * 2;
+    result.metal_timing_submitted = index * 2;
+    result.metal_timing_completed = index * 2;
+    result.metal_timing_valid = index * 2;
+    result.metal_gpu_time_nanoseconds = index * 3'000'000;
     result.native_exact = exact;
     result.eligible = true;
     return result;
@@ -113,7 +117,8 @@ TEST_CASE("ALMetalBenchmark records only the requested consecutive post-warmup f
     CHECK(contents.find("scenario,variant,frame_ms") == 0);
     CHECK(contents.find("quiet-region,candidate,10.000000,12") !=
           std::string::npos);
-    CHECK(contents.find(",2048,1280,5,321,2,1\n") != std::string::npos);
+    CHECK(contents.find(",2048,1280,5,321,2,2,2,3.000000,1\n") !=
+          std::string::npos);
     CHECK(std::count(contents.begin(), contents.end(), '\n') == 4);
 }
 
@@ -176,8 +181,38 @@ TEST_CASE("ALMetalBenchmark rejects a command-buffer counter regression after sa
     regressed.metal_command_buffers_committed = 1;
     CHECK(recorder.record(regressed, &error) ==
           ALMetalBenchmarkRecorder::Result::failed);
-    CHECK(error.find("submission counter") != std::string::npos);
+    CHECK(error.find("telemetry counter") != std::string::npos);
     CHECK(recorder.samplesWritten() == 1);
+}
+
+TEST_CASE("ALMetalBenchmark rejects invalid asynchronous completion telemetry",
+          "[ALMetalBenchmark]")
+{
+    benchmark_file output;
+    ALMetalBenchmarkRecorder recorder(output.config(0, 2));
+    std::string error;
+    CHECK(recorder.record(frame(40, 400), &error) ==
+          ALMetalBenchmarkRecorder::Result::warming);
+
+    auto impossible = frame(41, 410);
+    impossible.metal_timing_completed =
+        impossible.metal_timing_submitted + 1;
+    CHECK(recorder.record(impossible, &error) ==
+          ALMetalBenchmarkRecorder::Result::inactive);
+    CHECK(error.empty());
+
+    auto valid = frame(42, 420);
+    CHECK(recorder.record(valid, &error) ==
+          ALMetalBenchmarkRecorder::Result::warming);
+    valid = frame(43, 430);
+    CHECK(recorder.record(valid, &error) ==
+          ALMetalBenchmarkRecorder::Result::recorded);
+    auto regressed = frame(44, 440);
+    regressed.metal_gpu_time_nanoseconds =
+        valid.metal_gpu_time_nanoseconds - 1;
+    CHECK(recorder.record(regressed, &error) ==
+          ALMetalBenchmarkRecorder::Result::failed);
+    CHECK(error.find("telemetry counter") != std::string::npos);
 }
 
 TEST_CASE("ALMetalBenchmark rejects an invalid direct configuration",

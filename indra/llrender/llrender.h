@@ -748,6 +748,15 @@ public:
     // Process-wide command-buffer commits issued through the native Metal
     // wrapper. Frame-to-frame deltas are submission counts, not GPU time.
     static U64 metalCommandBuffersCommitted();
+    struct MetalCommandTiming
+    {
+        U64 submitted = 0;
+        U64 completed = 0;
+        U64 timed = 0;
+        U64 gpu_time_nanoseconds = 0;
+    };
+    static void setMetalCommandTimingEnabled(bool enabled);
+    static MetalCommandTiming metalCommandTiming();
 #endif
     static F32 sAnisotropicFilteringLevel;
     static bool sGLCoreProfile;

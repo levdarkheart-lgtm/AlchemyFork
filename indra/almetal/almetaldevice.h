@@ -38,6 +38,14 @@ struct ALMetalDeviceInfo
     bool headless = false;
 };
 
+struct ALMetalCommandTiming
+{
+    std::uint64_t submitted = 0;
+    std::uint64_t completed = 0;
+    std::uint64_t timed = 0;
+    std::uint64_t gpu_time_nanoseconds = 0;
+};
+
 enum class ALMetalCommandStatus
 {
     not_enqueued,
@@ -101,6 +109,15 @@ public:
     // native Metal wrapper. Monotonic deltas provide low-overhead per-frame
     // submission telemetry; this is not a GPU-time measurement.
     static std::uint64_t committedCommandBufferCount() noexcept;
+
+    // Default-off development telemetry for explicit benchmark collection.
+    // submitted/completed/timed and GPU duration are process-wide monotonic
+    // counters for commands committed while enabled. GPU duration is read
+    // only after native completion and is app-owned Metal work, not complete
+    // frame GPU time or legacy-driver work.
+    static void setCommandTimingEnabled(bool enabled) noexcept;
+    static bool commandTimingEnabled() noexcept;
+    static ALMetalCommandTiming commandTiming() noexcept;
 
     std::unique_ptr<ALMetalCommandBuffer> makeCommandBuffer(
         const std::string& label,

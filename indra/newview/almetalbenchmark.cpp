@@ -220,6 +220,10 @@ void ALMetalBenchmarkRecorder::resetSequence() noexcept
     mLastTimestamp.reset();
     mLastFrameIndex = 0;
     mLastMetalCommandBuffers = 0;
+    mLastMetalTimingSubmitted = 0;
+    mLastMetalTimingCompleted = 0;
+    mLastMetalTimingValid = 0;
+    mLastMetalGPUTimeNanoseconds = 0;
     mSequenceWidth = 0;
     mSequenceHeight = 0;
     mSequenceQuality = 0;
@@ -272,7 +276,8 @@ bool ALMetalBenchmarkRecorder::openOutput(std::string* error)
     *mOutput
         << "scenario,variant,frame_ms,frame_index,source_sha,build_type,"
            "drawable_width,drawable_height,quality_profile,draw_calls,"
-           "metal_submissions,native_exact\n";
+           "metal_submissions,metal_completed,metal_timed,metal_gpu_ms,"
+           "native_exact\n";
     return static_cast<bool>(*mOutput);
 }
 
@@ -304,12 +309,31 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
         resetSequence();
         return Result::inactive;
     }
+    const bool valid_timing_snapshot =
+        frame.metal_timing_completed <= frame.metal_timing_submitted &&
+        frame.metal_timing_valid <= frame.metal_timing_completed;
+    if (!valid_timing_snapshot)
+    {
+        if (mSamplesWritten != 0)
+        {
+            return fail(
+                "The Metal completion telemetry snapshot is inconsistent",
+                error);
+        }
+        resetSequence();
+        return Result::inactive;
+    }
 
     if (!mLastTimestamp)
     {
         mLastTimestamp = frame.timestamp;
         mLastFrameIndex = frame.frame_index;
         mLastMetalCommandBuffers = frame.metal_command_buffers_committed;
+        mLastMetalTimingSubmitted = frame.metal_timing_submitted;
+        mLastMetalTimingCompleted = frame.metal_timing_completed;
+        mLastMetalTimingValid = frame.metal_timing_valid;
+        mLastMetalGPUTimeNanoseconds =
+            frame.metal_gpu_time_nanoseconds;
         mSequenceWidth = frame.drawable_width;
         mSequenceHeight = frame.drawable_height;
         mSequenceQuality = frame.quality_profile;
@@ -323,10 +347,17 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
         frame.quality_profile == mSequenceQuality;
     const bool monotonic_submissions =
         frame.metal_command_buffers_committed >= mLastMetalCommandBuffers;
+    const bool monotonic_timing =
+        frame.metal_timing_submitted >= mLastMetalTimingSubmitted &&
+        frame.metal_timing_completed >= mLastMetalTimingCompleted &&
+        frame.metal_timing_valid >= mLastMetalTimingValid &&
+        frame.metal_gpu_time_nanoseconds >=
+            mLastMetalGPUTimeNanoseconds;
     const double frame_ms =
         std::chrono::duration<double, std::milli>(
             frame.timestamp - *mLastTimestamp).count();
     if (!consecutive || !stable || !monotonic_submissions ||
+        !monotonic_timing ||
         !(frame_ms > 0.0) ||
         !std::isfinite(frame_ms))
     {
@@ -334,7 +365,7 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
         {
             return fail(
                 "The consecutive benchmark sequence changed frame, size, "
-                "quality, submission counter or clock ordering",
+                "quality, Metal telemetry counter or clock ordering",
                 error);
         }
         resetSequence();
@@ -343,9 +374,20 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
 
     const std::uint64_t metal_submissions =
         frame.metal_command_buffers_committed - mLastMetalCommandBuffers;
+    const std::uint64_t metal_completed =
+        frame.metal_timing_completed - mLastMetalTimingCompleted;
+    const std::uint64_t metal_timed =
+        frame.metal_timing_valid - mLastMetalTimingValid;
+    const double metal_gpu_ms = static_cast<double>(
+        frame.metal_gpu_time_nanoseconds -
+            mLastMetalGPUTimeNanoseconds) / 1'000'000.0;
     mLastTimestamp = frame.timestamp;
     mLastFrameIndex = frame.frame_index;
     mLastMetalCommandBuffers = frame.metal_command_buffers_committed;
+    mLastMetalTimingSubmitted = frame.metal_timing_submitted;
+    mLastMetalTimingCompleted = frame.metal_timing_completed;
+    mLastMetalTimingValid = frame.metal_timing_valid;
+    mLastMetalGPUTimeNanoseconds = frame.metal_gpu_time_nanoseconds;
     if (mWarmupSeen < mConfig.warmup_frames)
     {
         ++mWarmupSeen;
@@ -365,7 +407,9 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
              << csv_field(mConfig.build_type) << ','
              << frame.drawable_width << ',' << frame.drawable_height << ','
              << frame.quality_profile << ',' << frame.draw_calls << ','
-             << metal_submissions << ','
+             << metal_submissions << ',' << metal_completed << ','
+             << metal_timed << ',' << std::fixed << std::setprecision(6)
+             << metal_gpu_ms << ','
              << (frame.native_exact ? 1 : 0) << '\n';
     if (!*mOutput)
     {

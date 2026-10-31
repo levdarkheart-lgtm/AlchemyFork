@@ -14,6 +14,9 @@
 #import <Metal/Metal.h>
 
 #include <atomic>
+#include <cmath>
+#include <limits>
+#include <mutex>
 #include <utility>
 
 #if !defined(__arm64__)
@@ -23,6 +26,26 @@
 namespace
 {
     std::atomic<std::uint64_t> committed_command_buffers{0};
+    std::atomic<bool> command_timing_enabled{false};
+
+    struct CommandTimingState
+    {
+        std::mutex mutex;
+        std::uint64_t submitted = 0;
+        std::uint64_t completed = 0;
+        std::uint64_t timed = 0;
+        std::uint64_t gpu_time_nanoseconds = 0;
+    };
+
+    CommandTimingState& commandTimingState()
+    {
+        // Completion handlers can outlive their C++ wrapper during orderly
+        // process teardown. Keep this tiny process-lifetime sink valid until
+        // the OS has retired the command queue rather than racing static
+        // destruction.
+        static CommandTimingState* state = new CommandTimingState();
+        return *state;
+    }
 
     void setError(std::string* destination, const std::string& message)
     {
@@ -126,6 +149,44 @@ bool ALMetalCommandBuffer::commit(std::string* error)
     {
         setError(error, "Metal command buffer was already committed");
         return false;
+    }
+
+    if (command_timing_enabled.load(std::memory_order_relaxed))
+    {
+        CommandTimingState& timing = commandTimingState();
+        {
+            std::lock_guard<std::mutex> lock(timing.mutex);
+            ++timing.submitted;
+        }
+        CommandTimingState* timing_state = &timing;
+        [mImpl->command_buffer
+            addCompletedHandler:^(id<MTLCommandBuffer> completed_command)
+            {
+                std::lock_guard<std::mutex> lock(timing_state->mutex);
+                ++timing_state->completed;
+                if (completed_command.status !=
+                    MTLCommandBufferStatusCompleted)
+                {
+                    return;
+                }
+                const double start = completed_command.GPUStartTime;
+                const double end = completed_command.GPUEndTime;
+                const double duration_nanoseconds =
+                    (end - start) * 1'000'000'000.0;
+                if (!(start > 0.0) || end < start ||
+                    !std::isfinite(duration_nanoseconds) ||
+                    duration_nanoseconds < 0.0 ||
+                    duration_nanoseconds >
+                        static_cast<double>(
+                            std::numeric_limits<std::uint64_t>::max()))
+                {
+                    return;
+                }
+                const auto duration = static_cast<std::uint64_t>(
+                    duration_nanoseconds + 0.5);
+                timing_state->gpu_time_nanoseconds += duration;
+                ++timing_state->timed;
+            }];
     }
 
     [mImpl->command_buffer commit];
@@ -252,6 +313,32 @@ void* ALMetalDevice::nativeCommandQueue() const noexcept
 std::uint64_t ALMetalDevice::committedCommandBufferCount() noexcept
 {
     return committed_command_buffers.load(std::memory_order_relaxed);
+}
+
+void ALMetalDevice::setCommandTimingEnabled(bool enabled) noexcept
+{
+    if (enabled)
+    {
+        (void)commandTimingState();
+    }
+    command_timing_enabled.store(enabled, std::memory_order_relaxed);
+}
+
+bool ALMetalDevice::commandTimingEnabled() noexcept
+{
+    return command_timing_enabled.load(std::memory_order_relaxed);
+}
+
+ALMetalCommandTiming ALMetalDevice::commandTiming() noexcept
+{
+    CommandTimingState& timing = commandTimingState();
+    std::lock_guard<std::mutex> lock(timing.mutex);
+    ALMetalCommandTiming result;
+    result.submitted = timing.submitted;
+    result.completed = timing.completed;
+    result.timed = timing.timed;
+    result.gpu_time_nanoseconds = timing.gpu_time_nanoseconds;
+    return result;
 }
 
 std::unique_ptr<ALMetalCommandBuffer> ALMetalDevice::makeCommandBuffer(

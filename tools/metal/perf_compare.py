@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Analyze per-frame CSV evidence; never fabricate telemetry.
 
-CSV schema: scenario,frame_ms[,cpu_ms,gpu_ms,draw_calls,metal_submissions].
+CSV schema: scenario,frame_ms[,cpu_ms,gpu_ms,draw_calls,metal_submissions,
+metal_completed,metal_timed,metal_gpu_ms].
 Samples must be warm-up-free and measured at comparable settings. --enforce
 applies docs/metal/benchmarks/scenarios.json. --require-provenance validates the
 development viewer's source-exact schema.
@@ -22,7 +23,10 @@ PROVENANCE_HEADERS = {
     "drawable_width", "drawable_height", "quality_profile", "native_exact",
 }
 SOURCE_SHA = re.compile(r"^[0-9a-f]{40}$")
-SECONDARY_METRICS = ("cpu_ms", "gpu_ms", "draw_calls", "metal_submissions")
+SECONDARY_METRICS = (
+    "cpu_ms", "gpu_ms", "draw_calls", "metal_submissions",
+    "metal_completed", "metal_timed", "metal_gpu_ms",
+)
 
 
 def _unsigned(row, field, path, line, allow_zero=True):
@@ -66,7 +70,9 @@ def load_capture(path: Path, require_provenance=False, candidate=False):
             result[scene].append(ms)
 
             for field, scenes in secondary.items():
-                if field in ("draw_calls", "metal_submissions"):
+                if field in (
+                        "draw_calls", "metal_submissions",
+                        "metal_completed", "metal_timed"):
                     value = _unsigned(row, field, path, n)
                 else:
                     try:

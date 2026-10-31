@@ -56,12 +56,19 @@ class PerfTests(unittest.TestCase):
                 self.perf.load_frames(path)
 
     def write_capture(self, path, variant, exact=1, width=2048,
-                      metal_submissions=None):
+                      metal_submissions=None, metal_completed=None,
+                      metal_timed=None, metal_gpu_ms=None):
         headers = ["scenario", "variant", "frame_ms", "frame_index",
                    "source_sha", "build_type", "drawable_width",
                    "drawable_height", "quality_profile", "native_exact"]
         if metal_submissions is not None:
             headers.append("metal_submissions")
+        if metal_completed is not None:
+            headers.append("metal_completed")
+        if metal_timed is not None:
+            headers.append("metal_timed")
+        if metal_gpu_ms is not None:
+            headers.append("metal_gpu_ms")
         with path.open("w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(headers)
@@ -74,6 +81,12 @@ class PerfTests(unittest.TestCase):
                         "RelWithDebInfo", width, 1280, 5, exact]
                     if metal_submissions is not None:
                         row.append(metal_submissions)
+                    if metal_completed is not None:
+                        row.append(metal_completed)
+                    if metal_timed is not None:
+                        row.append(metal_timed)
+                    if metal_gpu_ms is not None:
+                        row.append(metal_gpu_ms)
                     writer.writerow(row)
                     frame_index += 1
 
@@ -118,9 +131,13 @@ class PerfTests(unittest.TestCase):
             baseline_path = Path(d) / "baseline.csv"
             candidate_path = Path(d) / "candidate.csv"
             self.write_capture(
-                baseline_path, "baseline", exact=0, metal_submissions=12)
+                baseline_path, "baseline", exact=0,
+                metal_submissions=12, metal_completed=11,
+                metal_timed=10, metal_gpu_ms=5.5)
             self.write_capture(
-                candidate_path, "candidate", exact=1, metal_submissions=5)
+                candidate_path, "candidate", exact=1,
+                metal_submissions=5, metal_completed=4,
+                metal_timed=4, metal_gpu_ms=2.25)
             baseline = self.perf.load_capture(baseline_path)
             candidate = self.perf.load_capture(candidate_path, candidate=True)
             report = self.perf.compare_secondary_metrics(
@@ -133,6 +150,18 @@ class PerfTests(unittest.TestCase):
                              ["baseline"]["p50"])
             self.assertEqual(5,
                              report["metal_submissions"]["scenes"][0]
+                             ["candidate"]["p50"])
+            self.assertEqual("count_per_frame",
+                             report["metal_completed"]["unit"])
+            self.assertEqual(4,
+                             report["metal_completed"]["scenes"][0]
+                             ["candidate"]["p50"])
+            self.assertEqual(10,
+                             report["metal_timed"]["scenes"][0]
+                             ["baseline"]["p50"])
+            self.assertEqual("ms", report["metal_gpu_ms"]["unit"])
+            self.assertEqual(2.25,
+                             report["metal_gpu_ms"]["scenes"][0]
                              ["candidate"]["p50"])
 
 

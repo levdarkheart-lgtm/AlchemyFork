@@ -542,6 +542,7 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
                     ? "; every sample requires exact native presentation"
                     : "; GL or native presentation is accepted")
             << LL_ENDL;
+        LLRender::setMetalCommandTimingEnabled(true);
         recorder = std::make_unique<ALMetalBenchmarkRecorder>(
             std::move(*config));
     }
@@ -564,6 +565,12 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
 #if LL_DARWIN
     frame.metal_command_buffers_committed =
         LLRender::metalCommandBuffersCommitted();
+    const LLRender::MetalCommandTiming timing =
+        LLRender::metalCommandTiming();
+    frame.metal_timing_submitted = timing.submitted;
+    frame.metal_timing_completed = timing.completed;
+    frame.metal_timing_valid = timing.timed;
+    frame.metal_gpu_time_nanoseconds = timing.gpu_time_nanoseconds;
 #endif
     frame.native_exact = native_exact;
     frame.eligible = LLStartUp::getStartupState() >= STATE_STARTED &&
@@ -576,6 +583,7 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
         recorder->record(frame, &error);
     if (result == ALMetalBenchmarkRecorder::Result::complete)
     {
+        LLRender::setMetalCommandTimingEnabled(false);
         LL_INFOS("MetalBenchmark")
             << "Metal benchmark collection completed with "
             << recorder->samplesWritten()
@@ -584,6 +592,7 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
     else if (result == ALMetalBenchmarkRecorder::Result::failed &&
              !reported_failure)
     {
+        LLRender::setMetalCommandTimingEnabled(false);
         reported_failure = true;
         LL_WARNS("MetalBenchmark")
             << "Metal benchmark collection stopped without admissible "
