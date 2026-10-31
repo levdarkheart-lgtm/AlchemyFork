@@ -19,7 +19,8 @@ MANDATORY = [
     "docs/metal/benchmarks/scenarios.json", ".github/workflows/metal-harness.yml",
     ".agents/skills/metal-port/SKILL.md", ".agents/skills/gpu-validation/SKILL.md",
     ".agents/skills/agent-continuity/SKILL.md", "tools/metal/audit_gl.py",
-    "tools/metal/perf_compare.py", "tools/metal/build.sh", "tools/metal/doctor.sh",
+    "tools/metal/perf_compare.py", "tools/metal/trace_submissions.py",
+    "tools/metal/build.sh", "tools/metal/doctor.sh",
 ]
 VALID_STATES = {"unverified", "verified", "failed", "blocked", "not_applicable", "waived_by_owner"}
 

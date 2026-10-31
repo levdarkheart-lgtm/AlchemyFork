@@ -33,6 +33,22 @@ The implemented local CSV schema is:
 
 `scenario,variant,frame_ms,frame_index,source_sha,build_type,drawable_width,drawable_height,quality_profile,draw_calls,metal_submissions,native_exact`
 
+For a Metal System Trace captured separately, produce a deterministic labeled
+submission summary with:
+
+```sh
+python3 tools/metal/trace_submissions.py artifacts/metal/example.trace \
+  --output artifacts/metal/example-submissions.json
+```
+
+The tool exports the Instruments
+`metal-application-command-buffer-submissions` table (or accepts an already
+exported XML table), resolves xctrace's compact ID/reference encoding, and
+reports per-label counts plus application event/encoder durations. These are
+submission-table durations, not GPU frame time or a performance pass gate.
+Keep raw traces and generated summaries ignored until a redacted result is
+intentionally selected for versioned evidence.
+
 Future extensions may include `cpu_scene_ms,cpu_encode_ms,gpu_ms,dispatches,psos_created,texture_bytes,frame_in_flight,thermal_state` when reliably measurable. Do not fill unknown fields with zero; leave them absent and label that in the redacted summary. Do not mix clock domains when interpreting GPU events. Use supported Metal timing APIs/instrumentation for GPU spans when valid on the device.
 
 ## Correct collection

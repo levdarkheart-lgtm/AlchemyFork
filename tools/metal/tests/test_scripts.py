@@ -150,6 +150,33 @@ class AuditTests(unittest.TestCase):
             self.assertEqual(module.audit(root)["finding_count"], 0)
 
 
+class TraceSubmissionTests(unittest.TestCase):
+    def test_resolves_compact_xctrace_references_and_sums_durations(self):
+        module = load("trace_submissions")
+        xml = b'''<?xml version="1.0"?>
+<trace-query-result><node>
+  <row><duration id="1" fmt="1 us">1000</duration>
+    <duration id="2" fmt="0.75 us">750</duration>
+    <narrative id="3" fmt='Committed &quot; Alpha &quot; with 1 encoders'/></row>
+  <row><duration ref="1"/><duration ref="2"/><narrative ref="3"/></row>
+  <row><duration id="4" fmt="2 us">2000</duration>
+    <duration id="5" fmt="1.5 us">1500</duration>
+    <narrative id="6" fmt='Committed &quot; Beta &quot; with 2 encoders'/></row>
+</node></trace-query-result>'''
+        report = module.summarize_xml(xml, "fixture.xml")
+        self.assertEqual(3, report["submission_count"])
+        self.assertEqual(0.004, report["event_ms"])
+        self.assertEqual(0.003, report["encoder_ms"])
+        self.assertEqual("Alpha", report["labels"][0]["label"])
+        self.assertEqual(2, report["labels"][0]["count"])
+        self.assertEqual("Beta", report["labels"][1]["label"])
+
+    def test_rejects_xml_without_submission_rows(self):
+        module = load("trace_submissions")
+        with self.assertRaisesRegex(ValueError, "no committed"):
+            module.summarize_xml(b"<trace-query-result/>")
+
+
 class HarnessTests(unittest.TestCase):
     def test_initial_harness_contract(self):
         module = load("validate_harness")
