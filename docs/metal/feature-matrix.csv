@@ -18,7 +18,7 @@ picking,editing,Picking selection and outlines,yes,unverified,unverified,,Depth 
 edit,editing,Object edit move rotate texture and build,yes,unverified,unverified,,Permissions intact
 mesh_upload,editing,Mesh upload and open-source physics decomposition,yes,unverified,unverified,,Reference V-HACD not Havok
 snapshots,render,Snapshots and render-to-texture capture,yes,unverified,unverified,,Image format and gamma
-media,media,In-world web and video texture display,yes,unverified,unverified,docs/metal/state/CURRENT.md#2026-10-31-rollback-baseline-and-presentation-off-control,Resident screen was white in exact and presentation-off runs; controlled upstream CEF/VLC behavior remains
+media,media,In-world web and video texture display,yes,unverified,unverified,docs/metal/state/CURRENT.md#2026-10-31-accelerated-cef-iosurface-metal-ingress-checkpoint,Accelerated CEF IOSurface now has a physically validated Metal mirror path; the accepted static white panel is not a visible defect; controlled moving CEF/VLC reference parity remains
 audio,audio,Spatial sound and streaming audio,yes,unverified,unverified,,Open-source audio reference
 voice,voice,WebRTC voice connection and spatial voice,yes,unverified,unverified,,Microphone privacy
 scripts,world,LSL/script-controlled interaction and effects,yes,unverified,unverified,,Network effects retained
