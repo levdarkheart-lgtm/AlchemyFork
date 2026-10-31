@@ -691,6 +691,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_test_sample_cube_array",
             "almetal_resample_vertex",
             "almetal_resample_fragment",
+            "almetal_present_gl_rows_fragment",
             "almetal_ui_depth_clear_fragment",
             "almetal_ui_depth_restore_fragment",
             "almetal_world_spot_shadow_vertex",
@@ -899,6 +900,131 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
     }
 }
 #endif
+
+TEST_CASE("almetal: drawable presentation converts GL rows and covers its underlay", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        auto library = ALMetalShaderLibrary::loadBuiltin(*device, &error);
+        INFO(error);
+        REQUIRE(library);
+        REQUIRE(library->hasFunction("almetal_present_gl_rows_fragment"));
+
+        ALMetalRenderPipelineDescriptor pipeline_descriptor;
+        pipeline_descriptor.library = library.get();
+        pipeline_descriptor.vertex_function = "almetal_resample_vertex";
+        pipeline_descriptor.fragment_function =
+            "almetal_present_gl_rows_fragment";
+        pipeline_descriptor.colors[0].format =
+            ALMetalPixelFormat::bgra8_unorm;
+        pipeline_descriptor.label =
+            "Alchemy retained GL-row presentation regression pipeline";
+        auto pipeline = ALMetalRenderPipeline::create(
+            *device, pipeline_descriptor, &error);
+        INFO(error);
+        REQUIRE(pipeline);
+
+        ALMetalSamplerDescriptor sampler_descriptor;
+        sampler_descriptor.min_filter = ALMetalSamplerFilter::nearest;
+        sampler_descriptor.mag_filter = ALMetalSamplerFilter::nearest;
+        sampler_descriptor.mip_filter = ALMetalSamplerMipFilter::none;
+        sampler_descriptor.address_s =
+            ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.address_t =
+            ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.address_r =
+            ALMetalSamplerAddressMode::clamp_to_edge;
+        sampler_descriptor.label =
+            "Alchemy retained GL-row presentation regression sampler";
+        auto sampler = ALMetalSamplerState::create(
+            *device, sampler_descriptor, &error);
+        INFO(error);
+        REQUIRE(sampler);
+
+        ALMetalTextureDescriptor source_descriptor;
+        source_descriptor.format = ALMetalPixelFormat::bgra8_unorm;
+        source_descriptor.width = 2;
+        source_descriptor.height = 2;
+        source_descriptor.storage = ALMetalStorageMode::private_gpu;
+        source_descriptor.usage = ALMetalTextureUsage::shader_read;
+        source_descriptor.label =
+            "Alchemy retained GL-row presentation regression source";
+        auto source = ALMetalTexture::create(
+            *device, source_descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        ALMetalRenderTargetDescriptor target_descriptor;
+        target_descriptor.width = 2;
+        target_descriptor.height = 2;
+        target_descriptor.color_attachment_count = 1;
+        target_descriptor.colors[0].format =
+            ALMetalPixelFormat::bgra8_unorm;
+        target_descriptor.colors[0].shader_read = true;
+        target_descriptor.colors[0].label =
+            "Alchemy retained GL-row presentation regression color";
+        target_descriptor.label =
+            "Alchemy retained GL-row presentation regression target";
+        auto target = ALMetalRenderTarget::create(
+            *device, target_descriptor, &error);
+        INFO(error);
+        REQUIRE(target);
+
+        // Raw row zero is the GL lower row. Distinct pixels in both axes
+        // prove that the drawable conversion reverses Y without mirroring X.
+        // Deliberately non-opaque source alpha proves the published drawable
+        // cannot reveal a frozen GL loading/world frame beneath it.
+        constexpr std::array<std::uint8_t, 16> source_pixels{{
+            11, 12, 13, 0, 21, 22, 23, 64,
+            31, 32, 33, 128, 41, 42, 43, 192,
+        }};
+        constexpr std::array<std::uint8_t, 16> expected_pixels{{
+            31, 32, 33, 255, 41, 42, 43, 255,
+            11, 12, 13, 255, 21, 22, 23, 255,
+        }};
+        auto command = device->makeCommandBuffer(
+            "Alchemy retained GL-row presentation regression", &error);
+        INFO(error);
+        REQUIRE(command);
+        REQUIRE(source->upload(
+            *command, 0, 0, {}, source_pixels.data(), 8, &error));
+
+        ALMetalRenderPassConfig pass_config;
+        auto pass = target->makeRenderPass(pass_config, &error);
+        INFO(error);
+        REQUIRE(pass);
+        auto encoder = ALMetalRenderEncoder::begin(
+            *command, *pass,
+            "Alchemy retained GL-row presentation regression encoder",
+            &error);
+        INFO(error);
+        REQUIRE(encoder);
+        const ALMetalViewport viewport{0.0, 0.0, 2.0, 2.0, 0.0, 1.0};
+        const ALMetalScissorRect scissor{0, 0, 2, 2};
+        REQUIRE(encoder->setPipeline(*pipeline, &error));
+        REQUIRE(encoder->setFragmentTexture(0, source.get(), &error));
+        REQUIRE(encoder->setFragmentSampler(0, sampler.get(), &error));
+        REQUIRE(encoder->setViewport(viewport, &error));
+        REQUIRE(encoder->setScissor(scissor, &error));
+        REQUIRE(encoder->setCullMode(ALMetalCullMode::none, &error));
+        REQUIRE(encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, &error));
+        REQUIRE(encoder->end(&error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, 16> presented{};
+        REQUIRE(target->colorTexture(0)->readback(
+            *device, 0, 0, {}, presented.data(), 8, &error));
+        INFO(error);
+        CHECK(presented == expected_pixels);
+    }
+}
 
 TEST_CASE("almetal: a blit command copies shared storage and reports completion", "[almetal]")
 {
@@ -2846,6 +2972,37 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             &error));
         INFO(error);
         CHECK(std::abs(forward_depth[16 * 32 + 16] - 0.625f) < 0.0001f);
+
+        // The production main-world path may retain several dependent
+        // encoders in one command buffer. Standalone rendering above keeps
+        // its immediate commit behavior; the explicit batch publishes only
+        // when its owner commits and rejects accidental nesting.
+        error.clear();
+        REQUIRE(renderer->beginCommandBatch(
+            "Alchemy world command-batch regression", &error));
+        CHECK(renderer->commandBatchActive());
+        error.clear();
+        CHECK_FALSE(renderer->beginCommandBatch(
+            "Alchemy nested command-batch regression", &error));
+        CHECK(error == "Metal world command batch is already active");
+        error.clear();
+        auto batched_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(batched_result);
+        CHECK(renderer->commandBatchActive());
+        REQUIRE(renderer->commitCommandBatch(&error));
+        INFO(error);
+        CHECK_FALSE(renderer->commandBatchActive());
+        std::array<float, 32 * 32> batched_depth{};
+        REQUIRE(batched_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, batched_depth.data(), 32 * sizeof(float),
+            &error));
+        CHECK(std::abs(batched_depth[16 * 32 + 16] - 0.625f) < 0.0001f);
+        error.clear();
+        REQUIRE(renderer->beginCommandBatch(
+            "Alchemy cancelled command-batch regression", &error));
+        renderer->cancelCommandBatch();
+        CHECK_FALSE(renderer->commandBatchActive());
 
         // Forward GL clip depth is remapped from [-w,+w]. A reverse-Z world
         // projection already emits Metal's [0,+w] convention and must not be
@@ -8214,6 +8371,24 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             CHECK(std::abs(static_cast<int>(
                       projected_pixels[center + channel]) - expected) <= 1);
         }
+
+        // Viewer projector focus is authorable over [-20, 20]. Negative
+        // focus is consumed directly by both GLSL and MSL when selecting the
+        // cookie mip; it is not malformed scene data.
+        projector.projector_origin[3] = -3.5f;
+        auto negative_focus = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(negative_focus);
+        std::array<std::uint8_t, 32 * 32 * 4> negative_focus_pixels{};
+        REQUIRE(negative_focus->colorTexture(0)->readback(
+            *device, 0, 0, {}, negative_focus_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(negative_focus_pixels[center + 0] > 0);
+        CHECK(negative_focus_pixels[center + 1] > 0);
+        CHECK(negative_focus_pixels[center + 2] > 0);
+        projector.projector_origin[3] = 2.f;
 
         projector.shadow_channel = 0;
         auto shadowed = renderer->renderProjectorLights(
@@ -19694,6 +19869,46 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(pixels[1] == 0);
         CHECK(pixels[2] == 0);
         CHECK(pixels[3] == 0);
+
+        // Offscreen UI flips vertex Y so its output retains GL's lower-left
+        // row convention. A GL top-half clip therefore follows that geometry
+        // into the texture's lower half; converting the scissor a second time
+        // would reject the entire top/bottom viewer chrome while a full-height
+        // side toolbar continued to render.
+        const float top_positions[3][4] = {
+            {-0.8f, 0.2f, 0.f, 1.f},
+            { 0.8f, 0.2f, 0.f, 1.f},
+            { 0.0f, 0.8f, 0.f, 1.f},
+        };
+        REQUIRE(buffer->write(
+            position_offset, top_positions, sizeof(top_positions), &error));
+        auto clipped_renderer = ALMetalUIRenderer::create(
+            *device, *scheduler, &error);
+        INFO(error);
+        REQUIRE(clipped_renderer);
+        batch.scissor = {0, 16, 32, 16};
+        REQUIRE(clipped_renderer->draw(batch, &error));
+        REQUIRE(clipped_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        pixels.fill(0);
+        REQUIRE(clipped_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        INFO(error);
+        const std::size_t clipped_center = (24 * 32 + 16) * 4;
+        CHECK(pixels[clipped_center + 0] == 16);
+        CHECK(pixels[clipped_center + 1] == 32);
+        CHECK(pixels[clipped_center + 2] == 255);
+        CHECK(pixels[clipped_center + 3] == 255);
+        const std::size_t rejected_half = (8 * 32 + 16) * 4;
+        CHECK(pixels[rejected_half + 0] == 0);
+        CHECK(pixels[rejected_half + 1] == 0);
+        CHECK(pixels[rejected_half + 2] == 0);
+        CHECK(pixels[rejected_half + 3] == 0);
+        REQUIRE(buffer->write(
+            position_offset, positions, sizeof(positions), &error));
+        batch.scissor = {0, 0, 32, 32};
 
         // An explicitly unbound GL UI texture samples the engine's opaque
         // white placeholder. The native equivalent needs no sampled resource:

@@ -1336,6 +1336,17 @@ public:
         const ALMetalDevice& device,
         std::string* error = nullptr);
 
+    // Group a caller-owned sequence of dependent world encoders into one
+    // command buffer. Standalone calls retain their existing immediate
+    // commit behavior. A batch is deliberately explicit so reflection,
+    // impostor and test callers cannot accidentally share frame lifetime.
+    bool beginCommandBatch(
+        const std::string& label,
+        std::string* error = nullptr);
+    bool commitCommandBatch(std::string* error = nullptr);
+    void cancelCommandBatch();
+    bool commandBatchActive() const;
+
     std::unique_ptr<ALMetalRenderTarget> render(
         const ALMetalWorldGBufferScene& scene,
         std::string* error = nullptr);

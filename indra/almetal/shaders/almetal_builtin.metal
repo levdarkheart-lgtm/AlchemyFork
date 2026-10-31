@@ -81,6 +81,23 @@ fragment float4 almetal_resample_fragment(
     return source.sample(source_sampler, input.texcoord);
 }
 
+fragment float4 almetal_present_gl_rows_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]])
+{
+    // World and ordered UI targets deliberately preserve OpenGL's
+    // lower-left row-zero convention so existing framebuffer consumers see
+    // unchanged storage. CAMetalLayer uses Metal's upper-left convention;
+    // convert exactly once at that display boundary.
+    const float4 color = source.sample(
+        source_sampler, float2(input.texcoord.x, 1.0 - input.texcoord.y));
+    // Exact world publication makes the CAMetalLayer opaque and suppresses
+    // the matching GL swap. Cover that frozen GL underlay completely even
+    // though intermediate scene targets preserve alpha for later consumers.
+    return float4(color.rgb, 1.0);
+}
+
 struct ALMetalNormalMapGenerateConstants
 {
     float2 texel_step;

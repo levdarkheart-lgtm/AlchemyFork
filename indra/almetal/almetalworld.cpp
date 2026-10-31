@@ -1067,6 +1067,51 @@ struct ALMetalWorldGBufferRenderer::Impl
 
     const ALMetalDevice* device = nullptr;
     std::unique_ptr<ALMetalShaderLibrary> library;
+    std::unique_ptr<ALMetalCommandBuffer> command_batch;
+    bool command_batch_valid = true;
+    std::string command_batch_failure;
+
+    ALMetalCommandBuffer* acquireCommandBuffer(
+        const std::string& label,
+        std::unique_ptr<ALMetalCommandBuffer>& owned,
+        std::string* error)
+    {
+        if (command_batch)
+        {
+            if (!command_batch_valid)
+            {
+                setError(error, command_batch_failure.empty()
+                    ? "Metal world command batch was invalidated"
+                    : command_batch_failure);
+                return nullptr;
+            }
+            return command_batch.get();
+        }
+        owned = device ? device->makeCommandBuffer(label, error) : nullptr;
+        return owned.get();
+    }
+
+    bool finishCommandBuffer(
+        std::unique_ptr<ALMetalCommandBuffer>& owned,
+        bool encoded,
+        std::string* error)
+    {
+        if (owned)
+        {
+            return encoded && owned->commit(error);
+        }
+        if (command_batch && !encoded)
+        {
+            command_batch_valid = false;
+            if (command_batch_failure.empty())
+            {
+                command_batch_failure = error && !error->empty()
+                    ? *error
+                    : "Metal world command batch encoding failed";
+            }
+        }
+        return encoded;
+    }
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         spot_shadow_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -1347,6 +1392,63 @@ ALMetalWorldGBufferRenderer::ALMetalWorldGBufferRenderer(
 }
 
 ALMetalWorldGBufferRenderer::~ALMetalWorldGBufferRenderer() = default;
+
+bool ALMetalWorldGBufferRenderer::beginCommandBatch(
+    const std::string& label,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device)
+    {
+        setError(error, "Metal world renderer is unavailable");
+        return false;
+    }
+    if (mImpl->command_batch)
+    {
+        setError(error, "Metal world command batch is already active");
+        return false;
+    }
+    mImpl->command_batch = mImpl->device->makeCommandBuffer(label, error);
+    mImpl->command_batch_valid = static_cast<bool>(mImpl->command_batch);
+    mImpl->command_batch_failure.clear();
+    return static_cast<bool>(mImpl->command_batch);
+}
+
+bool ALMetalWorldGBufferRenderer::commitCommandBatch(std::string* error)
+{
+    if (!mImpl || !mImpl->command_batch)
+    {
+        setError(error, "Metal world command batch is not active");
+        return false;
+    }
+    auto command = std::move(mImpl->command_batch);
+    const bool valid = mImpl->command_batch_valid;
+    const std::string failure = mImpl->command_batch_failure;
+    mImpl->command_batch_valid = true;
+    mImpl->command_batch_failure.clear();
+    if (!valid)
+    {
+        setError(error, failure.empty()
+            ? "Metal world command batch was invalidated"
+            : failure);
+        return false;
+    }
+    return command->commit(error);
+}
+
+void ALMetalWorldGBufferRenderer::cancelCommandBatch()
+{
+    if (mImpl)
+    {
+        mImpl->command_batch.reset();
+        mImpl->command_batch_valid = true;
+        mImpl->command_batch_failure.clear();
+    }
+}
+
+bool ALMetalWorldGBufferRenderer::commandBatchActive() const
+{
+    return mImpl && static_cast<bool>(mImpl->command_batch);
+}
 
 std::unique_ptr<ALMetalWorldGBufferRenderer>
 ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
@@ -5121,8 +5223,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     {
         return nullptr;
     }
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world G-buffer bootstrap", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world G-buffer bootstrap", owned_command, error);
     if (!command)
     {
         return nullptr;
@@ -5621,7 +5724,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             return nullptr;
         }
     }
-    if (!command->commit(error))
+    if (!mImpl->finishCommandBuffer(owned_command, true, error))
     {
         return nullptr;
     }
@@ -5882,7 +5985,6 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
         const bool valid_scalars = light.position_radius[3] > 0.f &&
             light.color_falloff[3] > -1.f &&
             light.projector_normal[3] > 0.f &&
-            light.projector_origin[3] >= 0.f &&
             light.sampling[0] >= 1.f && light.sampling[1] >= 0.f &&
             light.sampling[1] <= 1.f && light.shadow_channel >= -1 &&
             light.shadow_channel <= 1;
@@ -12113,8 +12215,9 @@ bool ALMetalWorldGBufferRenderer::compositeHDRISky(
     pass_config.stencil_load = ALMetalLoadAction::load;
     pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
-    auto command = pass ? mImpl->device->makeCommandBuffer(
-        "Alchemy native world HDRI sky", error) : nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = pass ? mImpl->acquireCommandBuffer(
+        "Alchemy native world HDRI sky", owned_command, error) : nullptr;
     auto encoder = command ? ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world HDRI sky encoder", error) : nullptr;
     if (!encoder)
@@ -12176,7 +12279,9 @@ bool ALMetalWorldGBufferRenderer::compositeHDRISky(
                 *batch.indices, batch.index_offset, 1, error);
     }
 
-    return encoded && encoder->end(error) && command->commit(error);
+    const bool ended = encoder->end(error);
+    return mImpl->finishCommandBuffer(
+        owned_command, encoded && ended, error);
 }
 
 bool ALMetalWorldGBufferRenderer::compositeWindLightSky(
@@ -12280,8 +12385,9 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightSky(
     pass_config.stencil_load = ALMetalLoadAction::load;
     pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
-    auto command = pass ? mImpl->device->makeCommandBuffer(
-        "Alchemy native world WindLight sky", error) : nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = pass ? mImpl->acquireCommandBuffer(
+        "Alchemy native world WindLight sky", owned_command, error) : nullptr;
     auto encoder = command ? ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world WindLight sky encoder", error)
                            : nullptr;
@@ -12339,7 +12445,9 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightSky(
                 *batch.indices, batch.index_offset, 1, error);
     }
 
-    return encoded && encoder->end(error) && command->commit(error);
+    const bool ended = encoder->end(error);
+    return mImpl->finishCommandBuffer(
+        owned_command, encoded && ended, error);
 }
 
 std::unique_ptr<ALMetalRenderTarget>
@@ -12433,8 +12541,9 @@ ALMetalWorldGBufferRenderer::renderWindLightSkyBehind(
     pass_config.colors[0].load = ALMetalLoadAction::clear;
     pass_config.colors[0].store = ALMetalStoreAction::store;
     auto pass = target->makeRenderPass(pass_config, error);
-    auto command = pass ? mImpl->device->makeCommandBuffer(
-        "Alchemy native WindLight sky-behind", error) : nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = pass ? mImpl->acquireCommandBuffer(
+        "Alchemy native WindLight sky-behind", owned_command, error) : nullptr;
     auto encoder = command ? ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy WindLight sky-behind encoder", error)
                            : nullptr;
@@ -12487,7 +12596,9 @@ ALMetalWorldGBufferRenderer::renderWindLightSkyBehind(
                 *batch.indices, batch.index_offset, 1, error);
     }
 
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }
@@ -12586,8 +12697,9 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightStars(
     pass_config.stencil_load = ALMetalLoadAction::load;
     pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
-    auto command = pass ? mImpl->device->makeCommandBuffer(
-        "Alchemy native world WindLight stars", error) : nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = pass ? mImpl->acquireCommandBuffer(
+        "Alchemy native world WindLight stars", owned_command, error) : nullptr;
     auto encoder = command ? ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world WindLight star encoder", error)
                            : nullptr;
@@ -12658,7 +12770,9 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightStars(
                 batch.vertex_count, 1, error);
     }
 
-    return encoded && encoder->end(error) && command->commit(error);
+    const bool ended = encoder->end(error);
+    return mImpl->finishCommandBuffer(
+        owned_command, encoded && ended, error);
 }
 
 bool ALMetalWorldGBufferRenderer::compositeWindLightHeavenlyBodies(
@@ -12742,8 +12856,10 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightHeavenlyBodies(
     pass_config.stencil_load = ALMetalLoadAction::load;
     pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
-    auto command = pass ? mImpl->device->makeCommandBuffer(
-        "Alchemy native world WindLight heavenly bodies", error) : nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = pass ? mImpl->acquireCommandBuffer(
+        "Alchemy native world WindLight heavenly bodies", owned_command,
+        error) : nullptr;
     auto encoder = command ? ALMetalRenderEncoder::begin(
         *command, *pass,
         "Alchemy world WindLight heavenly-body encoder", error) : nullptr;
@@ -12808,7 +12924,9 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightHeavenlyBodies(
                 *batch.indices, batch.index_offset, 1, error);
     }
 
-    return encoded && encoder->end(error) && command->commit(error);
+    const bool ended = encoder->end(error);
+    return mImpl->finishCommandBuffer(
+        owned_command, encoded && ended, error);
 }
 
 bool ALMetalWorldGBufferRenderer::compositeWindLightMeteors(
@@ -12885,8 +13003,9 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightMeteors(
     pass_config.stencil_load = ALMetalLoadAction::load;
     pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
-    auto command = pass ? mImpl->device->makeCommandBuffer(
-        "Alchemy native world WindLight meteors", error) : nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = pass ? mImpl->acquireCommandBuffer(
+        "Alchemy native world WindLight meteors", owned_command, error) : nullptr;
     auto encoder = command ? ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world WindLight meteor encoder", error)
                            : nullptr;
@@ -12945,7 +13064,9 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightMeteors(
                 batch.vertex_count, 1, error);
     }
 
-    return encoded && encoder->end(error) && command->commit(error);
+    const bool ended = encoder->end(error);
+    return mImpl->finishCommandBuffer(
+        owned_command, encoded && ended, error);
 }
 
 bool ALMetalWorldGBufferRenderer::compositeWindLightAurora(
@@ -13019,8 +13140,9 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightAurora(
     pass_config.stencil_load = ALMetalLoadAction::load;
     pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
-    auto command = pass ? mImpl->device->makeCommandBuffer(
-        "Alchemy native world WindLight aurora", error) : nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = pass ? mImpl->acquireCommandBuffer(
+        "Alchemy native world WindLight aurora", owned_command, error) : nullptr;
     auto encoder = command ? ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world WindLight aurora encoder", error)
                            : nullptr;
@@ -13077,7 +13199,9 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightAurora(
                 *batch.indices, batch.index_offset, 1, error);
     }
 
-    return encoded && encoder->end(error) && command->commit(error);
+    const bool ended = encoder->end(error);
+    return mImpl->finishCommandBuffer(
+        owned_command, encoded && ended, error);
 }
 
 bool ALMetalWorldGBufferRenderer::compositeWindLightClouds(
@@ -13190,8 +13314,9 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightClouds(
     pass_config.stencil_load = ALMetalLoadAction::load;
     pass_config.stencil_store = ALMetalStoreAction::store;
     auto pass = target.makeRenderPass(pass_config, error);
-    auto command = pass ? mImpl->device->makeCommandBuffer(
-        "Alchemy native world WindLight clouds", error) : nullptr;
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = pass ? mImpl->acquireCommandBuffer(
+        "Alchemy native world WindLight clouds", owned_command, error) : nullptr;
     auto encoder = command ? ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world WindLight cloud encoder", error)
                            : nullptr;
@@ -13251,7 +13376,9 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightClouds(
                 *batch.indices, batch.index_offset, 1, error);
     }
 
-    return encoded && encoder->end(error) && command->commit(error);
+    const bool ended = encoder->end(error);
+    return mImpl->finishCommandBuffer(
+        owned_command, encoded && ended, error);
 }
 
 std::unique_ptr<ALMetalRenderTarget>

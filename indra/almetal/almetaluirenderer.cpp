@@ -287,10 +287,14 @@ struct ALMetalUIRenderer::Impl
         ALMetalRenderPipelineDescriptor descriptor;
         descriptor.library = library.get();
         descriptor.vertex_function = "almetal_resample_vertex";
-        descriptor.fragment_function = "almetal_resample_fragment";
+        descriptor.fragment_function = surface
+            ? "almetal_present_gl_rows_fragment"
+            : "almetal_resample_fragment";
         descriptor.colors[0].format = output_format;
         descriptor.depth_stencil_format = depth_format;
-        descriptor.label = "Alchemy native world/UI backing pipeline";
+        descriptor.label = surface
+            ? "Alchemy GL-row world/UI drawable presentation pipeline"
+            : "Alchemy native world/UI backing pipeline";
         background_pipeline = ALMetalRenderPipeline::create(
             *device, descriptor, error);
         if (!background_pipeline)
@@ -1325,6 +1329,7 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
         !library->hasFunction("almetal_solid_fragment") ||
         !library->hasFunction("almetal_resample_vertex") ||
         !library->hasFunction("almetal_resample_fragment") ||
+        !library->hasFunction("almetal_present_gl_rows_fragment") ||
         !library->hasFunction("almetal_ui_depth_clear_fragment") ||
         !library->hasFunction("almetal_ui_depth_restore_fragment") ||
         !library->hasFunction("almetal_hud_fullbright_vertex") ||

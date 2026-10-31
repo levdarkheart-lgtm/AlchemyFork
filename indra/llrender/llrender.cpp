@@ -1064,9 +1064,11 @@ bool LLRender::drawMetalHUDIndexedBatch(
               llmax(viewport_height, mViewport[1] + viewport_height));
     resolved.viewport = {
         static_cast<double>(mViewport[0]),
-        static_cast<double>(
-            static_cast<S32>(resolved.target_height) -
-            mViewport[1] - viewport_height),
+        // Offscreen UI vertices are Y-flipped in the Metal shader so the
+        // resulting texture keeps GL's lower-left row convention. Keep the
+        // GL viewport origin in that same target space; applying Metal's
+        // upper-left conversion here would move bounded HUD draws twice.
+        static_cast<double>(mViewport[1]),
         static_cast<double>(viewport_width),
         static_cast<double>(viewport_height),
         0.0,
@@ -1087,8 +1089,9 @@ bool LLRender::drawMetalHUDIndexedBatch(
             static_cast<S32>(resolved.target_height));
         resolved.scissor = {
             static_cast<U32>(left),
-            static_cast<U32>(
-                static_cast<S32>(resolved.target_height) - top),
+            // The offscreen vertex flip already maps a GL top-edge draw to
+            // the texture's lower rows. Its GL scissor must follow it there.
+            static_cast<U32>(bottom),
             static_cast<U32>(llmax(0, right - left)),
             static_cast<U32>(llmax(0, top - bottom)),
         };
@@ -2629,6 +2632,9 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     write_mask |= mCurrColorMask[3] ? static_cast<U8>(ALMetalColorWriteMask::alpha) : 0;
     batch.blend.write_mask = static_cast<ALMetalColorWriteMask>(write_mask);
 
+    // Surface replacement uses Metal's upper-left target coordinates. An
+    // offscreen capture gets a copy below with GL's lower-left Y origin,
+    // matching the vertex shader's capture-only Y flip.
     batch.viewport = {
         static_cast<double>(mViewport[0]),
         static_cast<double>(static_cast<S32>(target_height) - mViewport[1] - viewport_height),
@@ -2658,17 +2664,24 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
 
     if (capture)
     {
+        ALMetalUIBatch capture_batch = batch;
+        capture_batch.viewport.y = static_cast<double>(mViewport[1]);
+        capture_batch.scissor.y = LLGLState::isEnabled(GL_SCISSOR_TEST) &&
+                                  mScissor[2] >= 0 && mScissor[3] >= 0
+            ? static_cast<U32>(llclamp(
+                  mScissor[1], 0, static_cast<S32>(target_height)))
+            : 0u;
         if (mMetalUICaptureUsesDepth)
         {
-            batch.depth.enabled = LLGLDepthTest::depthEnabled();
-            batch.depth.write_enabled = batch.depth.enabled &&
+            capture_batch.depth.enabled = LLGLDepthTest::depthEnabled();
+            capture_batch.depth.write_enabled = capture_batch.depth.enabled &&
                 LLGLDepthTest::depthWriteEnabled();
-            batch.depth.reverse_z = sReverseZ;
-            batch.depth.compare = metal_compare_function(
+            capture_batch.depth.reverse_z = sReverseZ;
+            capture_batch.depth.compare = metal_compare_function(
                 LLGLDepthTest::remap(LLGLDepthTest::depthFunction()));
         }
         std::string error;
-        if (!mMetalUICaptureRenderer->draw(batch, &error))
+        if (!mMetalUICaptureRenderer->draw(capture_batch, &error))
         {
             mMetalUICaptureComplete = false;
             LL_DEBUGS("Metal") << "Offscreen immediate-mode capture retained GL: "
@@ -2678,10 +2691,6 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         {
             ++mMetalUICaptureBatches;
         }
-        // Drawable replacement remains color-only. A later complete world
-        // transaction will provide its own retained depth instead of leaking
-        // this offscreen capture state into the startup/login surface.
-        batch.depth = {};
     }
     if (!replace)
     {
