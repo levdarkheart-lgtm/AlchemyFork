@@ -10554,11 +10554,75 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(continued_composed_pixels == composed_pixels);
         CHECK(continued_depth == source_depth);
 
-        // The production path encodes the light map, base, local, projector
-        // and composition into one command buffer. A fresh renderer must
-        // generate the shared BRDF LUT only once inside that batch, and
-        // canceling an earlier batch must not leave the renderer claiming
-        // that discarded generation is available to the next command buffer.
+        // Production no longer materializes ordinary/projector targets or a
+        // fourth composition target. Base lighting carries exact G-buffer
+        // depth, then both additive families load and continue that same
+        // owner. Compare the physical result with the retained standalone
+        // three-target contract before proving the owner also survives the
+        // opaque-forward handoff.
+        ALMetalWorldProjectorLightingScene accumulated_projector_scene =
+            projector_scene;
+        accumulated_projector_scene.gbuffer = pbr_gbuffer.get();
+        ALMetalWorldLightingCompositionScene accumulation_reference_scene;
+        accumulation_reference_scene.base_lighting = base_lit.get();
+        accumulation_reference_scene.local_lighting = pbr.get();
+        accumulation_reference_scene.projector_lighting =
+            pbr_projector.get();
+        auto accumulation_reference = renderer->composeLighting(
+            accumulation_reference_scene, &error);
+        INFO(error);
+        REQUIRE(accumulation_reference);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            accumulation_reference_pixels{};
+        REQUIRE(accumulation_reference->colorTexture(0)->readback(
+            *device, 0, 0, {}, accumulation_reference_pixels.data(),
+            32 * 4, &error));
+
+        ALMetalWorldBaseLightingScene accumulated_base_scene = base_scene;
+        accumulated_base_scene.carry_depth = true;
+        accumulated_base_scene.depth_stencil_shader_read = true;
+        auto accumulated = renderer->renderBaseLighting(
+            accumulated_base_scene, &error);
+        INFO(error);
+        REQUIRE(accumulated);
+        REQUIRE(accumulated->descriptor().depth_stencil_format ==
+                ALMetalPixelFormat::depth32_float_stencil8);
+        CHECK(accumulated->descriptor().depth_stencil_shader_read);
+        const ALMetalRenderTarget* accumulated_identity = accumulated.get();
+        REQUIRE(renderer->accumulateLocalLights(
+            *accumulated, lighting_scene, &error));
+        INFO(error);
+        REQUIRE(renderer->accumulateProjectorLights(
+            *accumulated, accumulated_projector_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> accumulated_pixels{};
+        std::array<float, 32 * 32> accumulated_depth{};
+        REQUIRE(accumulated->colorTexture(0)->readback(
+            *device, 0, 0, {}, accumulated_pixels.data(), 32 * 4,
+            &error));
+        REQUIRE(accumulated->depthStencilTexture()->readback(
+            *device, 0, 0, {}, accumulated_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(accumulated_pixels == accumulation_reference_pixels);
+        CHECK(accumulated_depth == source_depth);
+
+        ALMetalWorldOpaquePostDeferredScene accumulated_opaque_scene;
+        accumulated_opaque_scene.gbuffer = pbr_gbuffer.get();
+        accumulated_opaque_scene.composed_lighting = accumulated.get();
+        accumulated_opaque_scene.width = 32;
+        accumulated_opaque_scene.height = 32;
+        auto accumulated_opaque = renderer->renderOpaquePostDeferred(
+            accumulated_opaque_scene, std::move(accumulated), &error);
+        INFO(error);
+        REQUIRE(accumulated_opaque);
+        CHECK(accumulated_opaque.get() == accumulated_identity);
+
+        // The production path encodes the light map, carried-depth base and
+        // both in-place additive families into one command buffer. A fresh
+        // renderer must generate the shared BRDF LUT only once inside that
+        // batch, and canceling an earlier batch must not leave the renderer
+        // claiming that discarded generation is available to the next one.
         auto batched_renderer = ALMetalWorldGBufferRenderer::create(
             *device, &error);
         INFO(error);
@@ -10573,7 +10637,7 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
 
         ALMetalWorldLocalLightingScene batched_local_scene =
             lighting_scene;
-        batched_local_scene.gbuffer = gbuffer.get();
+        batched_local_scene.gbuffer = pbr_gbuffer.get();
         ALMetalWorldLightMapScene batched_light_map_scene;
         batched_light_map_scene.gbuffer = pbr_gbuffer.get();
         for (std::size_t axis = 0; axis < 4; ++axis)
@@ -10595,56 +10659,41 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         ALMetalWorldBaseLightingScene batched_base_scene = base_scene;
         batched_base_scene.light_map =
             batched_light_map->colorTexture(0);
+        batched_base_scene.carry_depth = true;
+        batched_base_scene.depth_stencil_shader_read = true;
         auto batched_base = batched_renderer->renderBaseLighting(
             batched_base_scene, &error);
         INFO(error);
         REQUIRE(batched_base);
-        auto batched_local = batched_renderer->renderLocalLights(
-            batched_local_scene, &error);
+        const ALMetalRenderTarget* batched_identity = batched_base.get();
+        REQUIRE(batched_renderer->accumulateLocalLights(
+            *batched_base, batched_local_scene, &error));
         INFO(error);
-        REQUIRE(batched_local);
-        auto batched_projector = batched_renderer->renderProjectorLights(
-            projector_scene, &error);
+        REQUIRE(batched_renderer->accumulateProjectorLights(
+            *batched_base, accumulated_projector_scene, &error));
         INFO(error);
-        REQUIRE(batched_projector);
-        ALMetalWorldLightingCompositionScene batched_composition_scene;
-        batched_composition_scene.base_lighting = batched_base.get();
-        batched_composition_scene.local_lighting = batched_local.get();
-        batched_composition_scene.projector_lighting =
-            batched_projector.get();
-        auto batched_composed = batched_renderer->composeLighting(
-            batched_composition_scene, &error);
-        INFO(error);
-        REQUIRE(batched_composed);
+        CHECK(batched_base.get() == batched_identity);
         REQUIRE(batched_renderer->commitCommandBatch(&error));
         INFO(error);
 
         std::array<std::uint8_t, 32 * 32 * 2> batched_light_map_pixels{};
-        std::array<std::uint8_t, 32 * 32 * 4> batched_base_pixels{};
-        std::array<std::uint8_t, 32 * 32 * 4> batched_local_pixels{};
-        std::array<std::uint8_t, 32 * 32 * 4> batched_projector_pixels{};
-        std::array<std::uint8_t, 32 * 32 * 4> batched_composed_pixels{};
+        std::array<std::uint8_t, 32 * 32 * 4>
+            batched_accumulated_pixels{};
+        std::array<float, 32 * 32> batched_depth{};
         REQUIRE(batched_light_map->colorTexture(0)->readback(
             *device, 0, 0, {}, batched_light_map_pixels.data(), 32 * 2,
             &error));
         REQUIRE(batched_base->colorTexture(0)->readback(
-            *device, 0, 0, {}, batched_base_pixels.data(), 32 * 4,
+            *device, 0, 0, {}, batched_accumulated_pixels.data(), 32 * 4,
             &error));
-        REQUIRE(batched_local->colorTexture(0)->readback(
-            *device, 0, 0, {}, batched_local_pixels.data(), 32 * 4,
-            &error));
-        REQUIRE(batched_projector->colorTexture(0)->readback(
-            *device, 0, 0, {}, batched_projector_pixels.data(), 32 * 4,
-            &error));
-        REQUIRE(batched_composed->colorTexture(0)->readback(
-            *device, 0, 0, {}, batched_composed_pixels.data(), 32 * 4,
-            &error));
+        REQUIRE(batched_base->depthStencilTexture()->readback(
+            *device, 0, 0, {}, batched_depth.data(),
+            32 * sizeof(float), &error));
         INFO(error);
         CHECK(batched_light_map_pixels == full_light_map);
-        CHECK(batched_base_pixels == base_pixels);
-        CHECK(batched_local_pixels == legacy_pixels);
-        CHECK(batched_projector_pixels == projected_pixels);
-        CHECK(batched_composed_pixels == composed_pixels);
+        CHECK(batched_accumulated_pixels ==
+              accumulation_reference_pixels);
+        CHECK(batched_depth == source_depth);
 
         // Merely seeing clear depth and a normal alpha of one is not enough:
         // the base owner above discarded the sky until this explicit native

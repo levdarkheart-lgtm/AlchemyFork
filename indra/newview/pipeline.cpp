@@ -481,8 +481,6 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalWorldGBufferRenderer> renderer;
     std::shared_ptr<RendererBuild> renderer_build;
     std::unique_ptr<ALMetalRenderTarget> target;
-    std::unique_ptr<ALMetalRenderTarget> local_light_target;
-    std::unique_ptr<ALMetalRenderTarget> projector_light_target;
     std::unique_ptr<ALMetalRenderTarget> composed_light_target;
     std::unique_ptr<ALMetalRenderTarget> opaque_post_deferred_target;
     std::unique_ptr<ALMetalRenderTarget> display_post_target;
@@ -1267,8 +1265,6 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     // is its own complete native transaction; only the source/radiance cubes
     // and renderer cache persist across those transactions.
     capture.target.reset();
-    capture.local_light_target.reset();
-    capture.projector_light_target.reset();
     capture.composed_light_target.reset();
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
@@ -1345,8 +1341,6 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
     capture.bloom_target.reset();
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.target.reset();
-    capture.local_light_target.reset();
-    capture.projector_light_target.reset();
     capture.composed_light_target.reset();
     capture.base_light_map_target.reset();
     capture.base_light_target.reset();
@@ -1428,8 +1422,6 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
 
     capture.target.reset();
-    capture.local_light_target.reset();
-    capture.projector_light_target.reset();
     capture.composed_light_target.reset();
     capture.opaque_post_deferred_target.reset();
     capture.display_post_target.reset();
@@ -1510,8 +1502,6 @@ bool LLPipeline::endMetalReflectionProbeFaceCapture()
     capture.bloom_target.reset();
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.target.reset();
-    capture.local_light_target.reset();
-    capture.projector_light_target.reset();
     capture.composed_light_target.reset();
     capture.base_light_map_target.reset();
     capture.base_light_target.reset();
@@ -1572,8 +1562,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.renderer.reset();
         capture.renderer_build.reset();
         capture.target.reset();
-        capture.local_light_target.reset();
-        capture.projector_light_target.reset();
         capture.composed_light_target.reset();
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
@@ -1972,8 +1960,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         // history resources stay live. A failed stage therefore falls back
         // to GL for that frame and retries later instead of wedging a gate.
         capture.target.reset();
-        capture.local_light_target.reset();
-        capture.projector_light_target.reset();
         capture.composed_light_target.reset();
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
@@ -3510,8 +3496,6 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.renderer.reset();
         capture.renderer_build.reset();
         capture.target.reset();
-        capture.local_light_target.reset();
-        capture.projector_light_target.reset();
         capture.composed_light_target.reset();
         capture.opaque_post_deferred_target.reset();
         capture.display_post_target.reset();
@@ -11375,6 +11359,7 @@ void LLPipeline::renderMetalWorldLocalLights(
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.device || !capture.renderer || !capture.target ||
+        !capture.base_light_target ||
         capture.local_lighting_attempted)
     {
         return;
@@ -11451,8 +11436,8 @@ void LLPipeline::renderMetalWorldLocalLights(
     scene.classic_mode = LLRender::sClassicMode;
 
     std::string error;
-    auto target = capture.renderer->renderLocalLights(scene, &error);
-    if (!target)
+    if (!capture.renderer->accumulateLocalLights(
+            *capture.base_light_target, scene, &error))
     {
         if (++capture.local_lighting_failed_frames >=
             MetalWorldSimpleCapture::max_failed_frames)
@@ -11466,7 +11451,6 @@ void LLPipeline::renderMetalWorldLocalLights(
         return;
     }
 
-    capture.local_light_target = std::move(target);
     capture.local_lighting_attempted = true;
     capture.local_lighting_failed_frames = 0;
     if (!capture.continuous_world_capture &&
@@ -11475,10 +11459,9 @@ void LLPipeline::renderMetalWorldLocalLights(
         LL_DEBUGS("Metal")
             << "Native world local-point-light owner encoded "
             << lights.size() << " ordinary lights at "
-            << capture.local_light_target->descriptor().width << "x"
-            << capture.local_light_target->descriptor().height
-            << "; visible deferred lighting remains on GL until all "
-               "lighting and composition owners exist"
+            << capture.base_light_target->descriptor().width << "x"
+            << capture.base_light_target->descriptor().height
+            << "; accumulated in place after native base lighting"
             << LL_ENDL;
     }
 }
@@ -11496,6 +11479,7 @@ void LLPipeline::renderMetalWorldProjectorLights(
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.device || !capture.renderer || !capture.target ||
+        !capture.base_light_target ||
         capture.projector_lighting_attempted)
     {
         return;
@@ -11703,8 +11687,8 @@ void LLPipeline::renderMetalWorldProjectorLights(
     scene.classic_mode = LLRender::sClassicMode;
 
     std::string error;
-    auto target = capture.renderer->renderProjectorLights(scene, &error);
-    if (!target)
+    if (!capture.renderer->accumulateProjectorLights(
+            *capture.base_light_target, scene, &error))
     {
         // The raw maps and selected shadow-owning lights are one frame's
         // transaction. A retry must capture both again rather than combine
@@ -11728,7 +11712,6 @@ void LLPipeline::renderMetalWorldProjectorLights(
         return;
     }
 
-    capture.projector_light_target = std::move(target);
     capture.projector_lighting_attempted = true;
     capture.projector_lighting_failed_frames = 0;
     capture.projector_shadow_depth.clear();
@@ -11738,8 +11721,8 @@ void LLPipeline::renderMetalWorldProjectorLights(
         LL_DEBUGS("Metal")
             << "Native world projector-light owner encoded "
             << lights.size() << " cookies at "
-            << capture.projector_light_target->descriptor().width << "x"
-            << capture.projector_light_target->descriptor().height
+            << capture.base_light_target->descriptor().width << "x"
+            << capture.base_light_target->descriptor().height
             << (needs_projector_shadows
                     ? "; exact native spot-shadow filtering consumes "
                       "transitional raw GL depth maps"
@@ -11759,40 +11742,21 @@ void LLPipeline::renderMetalWorldLightingComposition()
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.device || !capture.renderer ||
-        !capture.base_light_target || !capture.local_light_target ||
-        !capture.projector_light_target ||
+        !capture.base_light_target ||
+        !capture.local_lighting_attempted ||
+        capture.local_lighting_failed_frames != 0 ||
+        !capture.projector_lighting_attempted ||
+        capture.projector_lighting_failed_frames != 0 ||
         capture.lighting_composition_attempted)
     {
         return;
     }
 
-    ALMetalWorldLightingCompositionScene scene;
-    scene.base_lighting = capture.base_light_target.get();
-    scene.local_lighting = capture.local_light_target.get();
-    scene.projector_lighting = capture.projector_light_target.get();
-    scene.depth_source = capture.target.get();
-    // The next owner may build a water depth pyramid or publish coherent SSR
-    // history. Preserve that capability while carrying depth forward once.
-    scene.depth_stencil_shader_read = true;
-    scene.hdr = capture.hdr;
-
-    std::string error;
-    auto target = capture.renderer->composeLighting(scene, &error);
-    if (!target)
-    {
-        if (++capture.lighting_composition_failed_frames >=
-            MetalWorldSimpleCapture::max_failed_frames)
-        {
-            capture.lighting_composition_attempted = true;
-            LL_WARNS("Metal")
-                << "Native deferred-light composition retained GL after "
-                << capture.lighting_composition_failed_frames
-                << " failures: " << error << LL_ENDL;
-        }
-        return;
-    }
-
-    capture.composed_light_target = std::move(target);
+    // Base, ordinary and projector lighting now share one carried-depth
+    // owner. Transfer it into the historical composed slot so every
+    // downstream post-deferred transaction keeps the same fail-closed
+    // readiness contract without allocating or drawing a composition pass.
+    capture.composed_light_target = std::move(capture.base_light_target);
     capture.lighting_composition_attempted = true;
     capture.lighting_composition_failed_frames = 0;
     if (!capture.continuous_world_capture &&
@@ -11800,11 +11764,11 @@ void LLPipeline::renderMetalWorldLightingComposition()
     {
         LL_DEBUGS("Metal")
             << "Native world base, ordinary-light and projector-light "
-               "targets composed at "
+               "owner accumulated in place at "
             << capture.composed_light_target->descriptor().width << "x"
             << capture.composed_light_target->descriptor().height
-            << "; the result remains offscreen and visible GL authority "
-               "is unchanged"
+            << "; no intermediate light targets or composition draw were "
+               "created, and visible GL authority is unchanged"
             << LL_ENDL;
     }
 }
@@ -12112,6 +12076,11 @@ void LLPipeline::renderMetalWorldBaseLighting(
         ? &capture.impostor_hero_probe : nullptr;
     scene.screen_space_reflections = ssr_active
         ? &capture.impostor_screen_space_reflections : nullptr;
+    // The following local/projector owners continue this exact target in
+    // place, then opaque-forward consumes it without a color copy. Keep the
+    // depth shader-readable for water pyramids and coherent SSR history.
+    scene.carry_depth = true;
+    scene.depth_stencil_shader_read = true;
     scene.hdr = capture.hdr;
     ALMetalWorldBaseLightingConstants& constants = scene.constants;
     LLMatrix4a inverse_projection;
@@ -24343,8 +24312,6 @@ void LLPipeline::renderDeferredLighting()
             {
                 capture.base_light_map_target.reset();
                 capture.base_light_target.reset();
-                capture.local_light_target.reset();
-                capture.projector_light_target.reset();
                 capture.composed_light_target.reset();
                 const U32 failed_frames =
                     ++capture.lighting_composition_failed_frames;

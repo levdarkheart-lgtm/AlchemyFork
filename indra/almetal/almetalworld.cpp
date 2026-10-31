@@ -1138,6 +1138,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         local_light_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        local_light_accumulation_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         projector_light_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         lighting_composition_pipelines;
@@ -2177,13 +2179,23 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             return nullptr;
         }
 
-        descriptor.fragment_function =
-            "almetal_world_projector_light_fragment";
         descriptor.colors[0].blending_enabled = true;
         descriptor.colors[0].source_rgb = ALMetalBlendFactor::one;
         descriptor.colors[0].destination_rgb = ALMetalBlendFactor::one;
         descriptor.colors[0].source_alpha = ALMetalBlendFactor::one;
         descriptor.colors[0].destination_alpha = ALMetalBlendFactor::one;
+        descriptor.label = hdr
+            ? "Alchemy HDR world local-point-light accumulation pipeline"
+            : "Alchemy world local-point-light accumulation pipeline";
+        impl->local_light_accumulation_pipelines[hdr] =
+            ALMetalRenderPipeline::create(device, descriptor, error);
+        if (!impl->local_light_accumulation_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        descriptor.fragment_function =
+            "almetal_world_projector_light_fragment";
         descriptor.label = hdr
             ? "Alchemy HDR world projector-light pipeline"
             : "Alchemy world projector-light pipeline";
@@ -5747,6 +5759,31 @@ ALMetalWorldGBufferRenderer::renderLocalLights(
     const ALMetalWorldLocalLightingScene& scene,
     std::string* error)
 {
+    std::unique_ptr<ALMetalRenderTarget> output;
+    if (!renderLocalLightsInternal(scene, nullptr, output, error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+bool ALMetalWorldGBufferRenderer::accumulateLocalLights(
+    ALMetalRenderTarget& target,
+    const ALMetalWorldLocalLightingScene& scene,
+    std::string* error)
+{
+    std::unique_ptr<ALMetalRenderTarget> unused;
+    return renderLocalLightsInternal(scene, &target, unused, error) !=
+        nullptr;
+}
+
+ALMetalRenderTarget*
+ALMetalWorldGBufferRenderer::renderLocalLightsInternal(
+    const ALMetalWorldLocalLightingScene& scene,
+    ALMetalRenderTarget* accumulation_target,
+    std::unique_ptr<ALMetalRenderTarget>& standalone_target,
+    std::string* error)
+{
     constexpr std::size_t max_light_count = 65535;
     if (!mImpl || !mImpl->device || !scene.gbuffer ||
         (scene.light_count != 0 && !scene.lights) ||
@@ -5818,21 +5855,44 @@ ALMetalWorldGBufferRenderer::renderLocalLights(
         }
     }
 
-    ALMetalRenderTargetDescriptor output_descriptor;
-    output_descriptor.width = input.width;
-    output_descriptor.height = input.height;
-    output_descriptor.colors[0].format = scene.hdr
+    const ALMetalPixelFormat output_format = scene.hdr
         ? ALMetalPixelFormat::rgba16_float
         : ALMetalPixelFormat::rgba8_unorm;
-    output_descriptor.colors[0].label =
-        "Alchemy world local-point-light accumulation";
-    output_descriptor.label =
-        "Alchemy native world local-point-light target";
-    auto output = ALMetalRenderTarget::create(
-        *mImpl->device, output_descriptor, error);
-    if (!output)
+    ALMetalRenderTarget* output = accumulation_target;
+    if (output)
     {
-        return nullptr;
+        const ALMetalRenderTargetDescriptor& output_descriptor =
+            output->descriptor();
+        if (output_descriptor.width != input.width ||
+            output_descriptor.height != input.height ||
+            output_descriptor.sample_count != 1 ||
+            output_descriptor.color_attachment_count != 1 ||
+            output_descriptor.colors[0].format != output_format ||
+            !output->colorTexture(0))
+        {
+            setError(
+                error,
+                "Metal world local-light accumulation target is incompatible");
+            return nullptr;
+        }
+    }
+    else
+    {
+        ALMetalRenderTargetDescriptor output_descriptor;
+        output_descriptor.width = input.width;
+        output_descriptor.height = input.height;
+        output_descriptor.colors[0].format = output_format;
+        output_descriptor.colors[0].label =
+            "Alchemy world local-point-light accumulation";
+        output_descriptor.label =
+            "Alchemy native world local-point-light target";
+        standalone_target = ALMetalRenderTarget::create(
+            *mImpl->device, output_descriptor, error);
+        output = standalone_target.get();
+        if (!output)
+        {
+            return nullptr;
+        }
     }
 
     std::unique_ptr<ALMetalCommandBuffer> owned_command;
@@ -5864,12 +5924,18 @@ ALMetalWorldGBufferRenderer::renderLocalLights(
     }
 
     ALMetalRenderPassConfig pass_config;
-    pass_config.colors[0].load = ALMetalLoadAction::clear;
+    pass_config.colors[0].load = accumulation_target
+        ? ALMetalLoadAction::load : ALMetalLoadAction::clear;
     pass_config.colors[0].store = ALMetalStoreAction::store;
     pass_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+    pass_config.bind_depth_stencil = false;
     auto pass = output->makeRenderPass(pass_config, error);
     auto encoder = pass ? ALMetalRenderEncoder::begin(
-        *command, *pass, "Alchemy world local-point-light encoder", error)
+        *command, *pass,
+        accumulation_target
+            ? "Alchemy world in-place local-point-light encoder"
+            : "Alchemy world local-point-light encoder",
+        error)
         : nullptr;
     if (!encoder)
     {
@@ -5901,7 +5967,12 @@ ALMetalWorldGBufferRenderer::renderLocalLights(
             encoder->setScissor(scissor, error) &&
             encoder->setCullMode(ALMetalCullMode::none, error) &&
             encoder->setPipeline(
-                *mImpl->local_light_pipelines[scene.hdr ? 1 : 0], error) &&
+                *(accumulation_target
+                    ? mImpl->local_light_accumulation_pipelines[
+                          scene.hdr ? 1 : 0]
+                    : mImpl->local_light_pipelines[
+                          scene.hdr ? 1 : 0]),
+                error) &&
             encoder->setFragmentBuffer(0, *light_buffer, 0, error) &&
             encoder->setFragmentBytes(
                 1, &constants, sizeof(constants), error) &&
@@ -5942,6 +6013,31 @@ ALMetalWorldGBufferRenderer::renderLocalLights(
 std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderProjectorLights(
     const ALMetalWorldProjectorLightingScene& scene,
+    std::string* error)
+{
+    std::unique_ptr<ALMetalRenderTarget> output;
+    if (!renderProjectorLightsInternal(scene, nullptr, output, error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+bool ALMetalWorldGBufferRenderer::accumulateProjectorLights(
+    ALMetalRenderTarget& target,
+    const ALMetalWorldProjectorLightingScene& scene,
+    std::string* error)
+{
+    std::unique_ptr<ALMetalRenderTarget> unused;
+    return renderProjectorLightsInternal(scene, &target, unused, error) !=
+        nullptr;
+}
+
+ALMetalRenderTarget*
+ALMetalWorldGBufferRenderer::renderProjectorLightsInternal(
+    const ALMetalWorldProjectorLightingScene& scene,
+    ALMetalRenderTarget* accumulation_target,
+    std::unique_ptr<ALMetalRenderTarget>& standalone_target,
     std::string* error)
 {
     constexpr std::size_t max_light_count = 65535;
@@ -6046,21 +6142,44 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
         }
     }
 
-    ALMetalRenderTargetDescriptor output_descriptor;
-    output_descriptor.width = input.width;
-    output_descriptor.height = input.height;
-    output_descriptor.colors[0].format = scene.hdr
+    const ALMetalPixelFormat output_format = scene.hdr
         ? ALMetalPixelFormat::rgba16_float
         : ALMetalPixelFormat::rgba8_unorm;
-    output_descriptor.colors[0].label =
-        "Alchemy world projector-light accumulation";
-    output_descriptor.label =
-        "Alchemy native world projector-light target";
-    auto output = ALMetalRenderTarget::create(
-        *mImpl->device, output_descriptor, error);
-    if (!output)
+    ALMetalRenderTarget* output = accumulation_target;
+    if (output)
     {
-        return nullptr;
+        const ALMetalRenderTargetDescriptor& output_descriptor =
+            output->descriptor();
+        if (output_descriptor.width != input.width ||
+            output_descriptor.height != input.height ||
+            output_descriptor.sample_count != 1 ||
+            output_descriptor.color_attachment_count != 1 ||
+            output_descriptor.colors[0].format != output_format ||
+            !output->colorTexture(0))
+        {
+            setError(
+                error,
+                "Metal world projector-light accumulation target is incompatible");
+            return nullptr;
+        }
+    }
+    else
+    {
+        ALMetalRenderTargetDescriptor output_descriptor;
+        output_descriptor.width = input.width;
+        output_descriptor.height = input.height;
+        output_descriptor.colors[0].format = output_format;
+        output_descriptor.colors[0].label =
+            "Alchemy world projector-light accumulation";
+        output_descriptor.label =
+            "Alchemy native world projector-light target";
+        standalone_target = ALMetalRenderTarget::create(
+            *mImpl->device, output_descriptor, error);
+        output = standalone_target.get();
+        if (!output)
+        {
+            return nullptr;
+        }
     }
 
     std::unique_ptr<ALMetalCommandBuffer> owned_command;
@@ -6092,12 +6211,18 @@ ALMetalWorldGBufferRenderer::renderProjectorLights(
     }
 
     ALMetalRenderPassConfig pass_config;
-    pass_config.colors[0].load = ALMetalLoadAction::clear;
+    pass_config.colors[0].load = accumulation_target
+        ? ALMetalLoadAction::load : ALMetalLoadAction::clear;
     pass_config.colors[0].store = ALMetalStoreAction::store;
     pass_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+    pass_config.bind_depth_stencil = false;
     auto pass = output->makeRenderPass(pass_config, error);
     auto encoder = pass ? ALMetalRenderEncoder::begin(
-        *command, *pass, "Alchemy world projector-light encoder", error)
+        *command, *pass,
+        accumulation_target
+            ? "Alchemy world in-place projector-light encoder"
+            : "Alchemy world projector-light encoder",
+        error)
         : nullptr;
     if (!encoder)
     {
@@ -13639,6 +13764,13 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
         : ALMetalPixelFormat::rgba8_unorm;
     output_descriptor.colors[0].label =
         "Alchemy world base-light accumulation";
+    if (scene.carry_depth)
+    {
+        output_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        output_descriptor.depth_stencil_shader_read =
+            scene.depth_stencil_shader_read;
+    }
     output_descriptor.label = "Alchemy native world base-light target";
     auto output = ALMetalRenderTarget::create(
         *mImpl->device, output_descriptor, error);
@@ -13694,6 +13826,10 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
     pass_config.colors[0].load = ALMetalLoadAction::clear;
     pass_config.colors[0].store = ALMetalStoreAction::store;
     pass_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+    // The base pipeline only shades color. An optional carried depth
+    // attachment is populated by the exact G-buffer blit below and must not
+    // participate in this render pass's pipeline compatibility contract.
+    pass_config.bind_depth_stencil = false;
     auto pass = output->makeRenderPass(pass_config, error);
     auto encoder = pass ? ALMetalRenderEncoder::begin(
         *command, *pass, "Alchemy world base-light encoder", error)
@@ -13761,8 +13897,12 @@ ALMetalWorldGBufferRenderer::renderBaseLighting(
             2, mImpl->linear_clamp_sampler.get(), error) &&
         encoder->draw(ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     const bool ended = encoder->end(error);
+    const bool copied_depth =
+        !scene.carry_depth ||
+        (encoded && ended && output->copyDepthStencilFrom(
+            *command, *depth, {}, error));
     if (!mImpl->finishCommandBuffer(
-            owned_command, encoded && ended, error))
+            owned_command, encoded && ended && copied_depth, error))
     {
         return nullptr;
     }

@@ -1323,6 +1323,14 @@ struct ALMetalWorldBaseLightingScene
     const ALMetalWorldScreenSpaceReflections* screen_space_reflections =
         nullptr;
     ALMetalWorldBaseLightingConstants constants;
+    // The integrated main-world route continues this owner through local and
+    // projector accumulation, then opaque-forward rendering. Carrying the
+    // exact G-buffer depth here removes the lighting-composition target and
+    // draw while preserving zero-copy opaque-forward continuation. Standalone
+    // base-light callers keep the historical color-only target by leaving
+    // this false.
+    bool carry_depth = false;
+    bool depth_stencil_shader_read = false;
     bool hdr = false;
 };
 
@@ -1374,10 +1382,26 @@ public:
         const ALMetalWorldLocalLightingScene& scene,
         std::string* error = nullptr);
 
+    // Add ordinary point lights directly to an existing base-light target.
+    // This is the production continuation path; the standalone method above
+    // remains available for isolated validation and produces the same light
+    // contribution in a cleared target.
+    bool accumulateLocalLights(
+        ALMetalRenderTarget& target,
+        const ALMetalWorldLocalLightingScene& scene,
+        std::string* error = nullptr);
+
     // Accumulate deferred projector cookies, ambiance, legacy reflection
     // and the two live filtered spot-shadow channels. A draw per projector
     // keeps each cookie's independent mip chain and sampler semantics.
     std::unique_ptr<ALMetalRenderTarget> renderProjectorLights(
+        const ALMetalWorldProjectorLightingScene& scene,
+        std::string* error = nullptr);
+
+    // Add projector draws directly after base and ordinary lighting. The
+    // projector pipeline already implements the viewer's ONE/ONE blend.
+    bool accumulateProjectorLights(
+        ALMetalRenderTarget& target,
         const ALMetalWorldProjectorLightingScene& scene,
         std::string* error = nullptr);
 
@@ -1645,7 +1669,7 @@ public:
     // Shade the retained world G-buffer with the deferred base-light owner:
     // ordinary-probe irradiance/radiance, sun/moon, SSAO and legacy/PBR
     // ambient semantics. The result remains offscreen until every downstream
-    // deferred owner and final composition are native.
+    // deferred owner has completed successfully.
     std::unique_ptr<ALMetalRenderTarget> renderBaseLighting(
         const ALMetalWorldBaseLightingScene& scene,
         std::string* error = nullptr);
@@ -1660,6 +1684,17 @@ public:
         std::string* error = nullptr);
 
 private:
+    ALMetalRenderTarget* renderLocalLightsInternal(
+        const ALMetalWorldLocalLightingScene& scene,
+        ALMetalRenderTarget* accumulation_target,
+        std::unique_ptr<ALMetalRenderTarget>& standalone_target,
+        std::string* error);
+    ALMetalRenderTarget* renderProjectorLightsInternal(
+        const ALMetalWorldProjectorLightingScene& scene,
+        ALMetalRenderTarget* accumulation_target,
+        std::unique_ptr<ALMetalRenderTarget>& standalone_target,
+        std::string* error);
+
     struct Impl;
     explicit ALMetalWorldGBufferRenderer(std::unique_ptr<Impl> impl);
 
