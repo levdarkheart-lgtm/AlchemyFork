@@ -4,7 +4,7 @@ This document defines the evidence contract and the implemented development-view
 
 ## Implemented per-frame collector
 
-Commit `3b8997edd7` implements an opt-in collector in `indra/newview/almetalbenchmark.*` and calls it only from non-download macOS viewer builds after a complete display iteration. With no environment request it allocates no recorder and writes nothing.
+Commit `3b8997edd7` implements an opt-in collector in `indra/newview/almetalbenchmark.*`; commit `14adac8c70` adds the per-frame native-wrapper command-buffer submission delta. The viewer calls the collector only from non-download macOS builds after a complete display iteration. With no environment request it allocates no recorder and writes nothing.
 
 Arm collection with all three required values:
 
@@ -23,15 +23,15 @@ env \
 - Scenario and variant are pseudonymous 1-64 character labels restricted to letters, numbers, dot, dash and underscore. Do not encode account, avatar, region or credential data in either label or the filename.
 - Warm-up defaults to 120 eligible frames and may be zero. Samples default to 300 and must be nonzero. The first eligible timestamp establishes the interval baseline and is not a measured row.
 - Set `ALCHEMY_METAL_BENCHMARK_REQUIRE_EXACT=1` for the candidate. Every candidate row then requires the current frame's complete native world/UI texture to have actually committed to the drawable; a setting alone is not accepted as proof. A presentation-off GL reference uses `0`.
-- Pre-sample discontinuity restarts warm-up. After the first row, a missing frame, ineligible frame, resolution/quality change or invalid clock interval fails and closes the run instead of combining unlike samples. The viewer logs arming, completion or one failure summary but no per-frame content.
+- Pre-sample discontinuity restarts warm-up. After the first row, a missing frame, ineligible frame, resolution/quality change, regressed submission counter or invalid clock interval fails and closes the run instead of combining unlike samples. The viewer logs arming, completion or one failure summary but no per-frame content.
 - Eligible frames require `STATE_STARTED`, a visible window, no snapshot, teleport, disconnect or logout transition, and either GL or exact native presentation. Frame intervals use `std::chrono::steady_clock`.
 - Each row is stamped with the CMake-configured Git commit and build type. Reconfigure after the source commit and verify the generated `LL_VIEWER_SOURCE_REVISION` before collecting source-exact evidence.
-- The collector records wall/frame intervals and draw calls; it does not claim GPU duration. Use Instruments/Metal capture separately for GPU timing and submission analysis.
+- The collector records wall/frame intervals, draw calls and `metal_submissions`: the delta of the process-wide count incremented after each successful `ALMetalCommandBuffer::commit()`. That delta includes all native-wrapper commits in the sample interval, including worker activity. It is a low-overhead submission-pressure count, not GPU duration or pass attribution. Use Instruments/Metal capture separately for GPU timing and labeled submission analysis.
 
 ## Frame observability (real viewer process)
 The implemented local CSV schema is:
 
-`scenario,variant,frame_ms,frame_index,source_sha,build_type,drawable_width,drawable_height,quality_profile,draw_calls,native_exact`
+`scenario,variant,frame_ms,frame_index,source_sha,build_type,drawable_width,drawable_height,quality_profile,draw_calls,metal_submissions,native_exact`
 
 Future extensions may include `cpu_scene_ms,cpu_encode_ms,gpu_ms,dispatches,psos_created,texture_bytes,frame_in_flight,thermal_state` when reliably measurable. Do not fill unknown fields with zero; leave them absent and label that in the redacted summary. Do not mix clock domains when interpreting GPU events. Use supported Metal timing APIs/instrumentation for GPU spans when valid on the device.
 
@@ -49,4 +49,4 @@ On supported macOS versions use `MTLCaptureManager` with an explicit request (sc
 Create a reference/candidate image comparison mechanism over deterministic camera/scene captures; report color-space/format/scale, pixel diff distributions and screenshots with sensitive content redacted. Do not use a single global pixel-equality test for temporal rendering; define local tolerances for stochastic/animated effects. Validate asset/UI editing flows separately.
 
 ## Automation acceptance
-A performance comparison is admissible only with real raw CSV. Use `tools/metal/perf_compare.py --enforce --require-provenance`: the provenance gate rejects missing source/build/display fields, nonconsecutive frame indexes, metadata changes within a scenario, baseline/candidate build-type, resolution or quality mismatches, and any candidate row without `native_exact=1`. The analyzer still only proves that the supplied numbers and metadata meet those mechanical checks and performance targets. It does **not** prove images, hardware identity, data authenticity, power state, thermal equivalence or camera/scene equivalence; Codex must supply that evidence explicitly.
+A performance comparison is admissible only with real raw CSV. Use `tools/metal/perf_compare.py --enforce --require-provenance`: the provenance gate rejects missing source/build/display fields, nonconsecutive frame indexes, metadata changes within a scenario, baseline/candidate build-type, resolution or quality mismatches, and any candidate row without `native_exact=1`. Common optional `cpu_ms`, `gpu_ms`, `draw_calls` and `metal_submissions` columns are validated and summarized under `secondary_metrics`; they do not affect the pass gate. The analyzer still only proves that the supplied numbers and metadata meet those mechanical checks and performance targets. It does **not** prove images, hardware identity, data authenticity, power state, thermal equivalence or camera/scene equivalence; Codex must supply that evidence explicitly.
