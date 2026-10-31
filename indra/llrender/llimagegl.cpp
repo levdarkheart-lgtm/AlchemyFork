@@ -72,12 +72,86 @@ static std::vector<U32> sFreeList[DELETE_DELAY+1];
 // profile refuses to bind it -- and the pool is thread-local, so no one
 // thread can empty the others'.
 static std::atomic<U32> sTextureNameGeneration{ 1 };
+constexpr U8 METAL_UPLOAD_PENDING = 0;
+constexpr U8 METAL_UPLOAD_COMMITTED = 1;
+constexpr U8 METAL_UPLOAD_FAILED = 2;
 #if LL_DARWIN
 static ALMetalDevice* sImageMetalDevice = nullptr;
 static std::unique_ptr<ALMetalTextureResampler> sMetalTextureResampler;
 static std::atomic<bool> sMetalTextureReported{false};
 static std::atomic<bool> sMetalScaleDownReported{false};
 static std::atomic<bool> sMetalResampleReported{false};
+
+// The image thread is deliberately one worker. Textures decoded in one queue burst can
+// therefore share a Metal command buffer without locking, while uploads outside this worker
+// retain their immediate-submit behavior. A queued barrier commits the burst after the work
+// that was already pending when it began; the count cap prevents a continuously replenished
+// queue from retaining an unbounded number of staging buffers.
+constexpr U32 METAL_UPLOAD_BATCH_LIMIT = 16;
+
+struct WorkerMetalUploadBatch
+{
+    std::unique_ptr<ALMetalCommandBuffer> mCommand;
+    std::shared_ptr<std::atomic<U8>> mCompletion;
+    U32 mEncodedUploads = 0;
+    bool mFlushQueued = false;
+};
+
+thread_local bool sOnImageGLThread = false;
+thread_local WorkerMetalUploadBatch sWorkerMetalUploadBatch;
+
+void flush_worker_metal_upload_batch()
+{
+    WorkerMetalUploadBatch& batch = sWorkerMetalUploadBatch;
+    if (!batch.mCommand)
+    {
+        return;
+    }
+
+    std::string error;
+    const bool committed = batch.mCommand->commit(&error);
+    if (!committed)
+    {
+        LL_WARNS("Metal") << "Could not commit LLImageGL worker upload batch: "
+                          << error << LL_ENDL;
+    }
+    batch.mCommand.reset();
+    batch.mCompletion->store(committed ? METAL_UPLOAD_COMMITTED : METAL_UPLOAD_FAILED,
+                             std::memory_order_release);
+    batch.mCompletion.reset();
+    batch.mEncodedUploads = 0;
+}
+
+ALMetalCommandBuffer* acquire_worker_metal_upload(ALMetalDevice& device, std::string* error)
+{
+    WorkerMetalUploadBatch& batch = sWorkerMetalUploadBatch;
+    if (!batch.mCommand)
+    {
+        batch.mCommand = device.makeCommandBuffer("Alchemy image upload batch", error);
+        if (!batch.mCommand)
+        {
+            return nullptr;
+        }
+        batch.mCompletion = std::make_shared<std::atomic<U8>>(METAL_UPLOAD_PENDING);
+
+        // This barrier lands behind the queue burst already waiting. Work posted after it
+        // starts a later batch. If shutdown has closed the queue, run() flushes explicitly.
+        if (!batch.mFlushQueued && LLImageGLThread::instanceExists())
+        {
+            batch.mFlushQueued = LLImageGLThread::instance().post([]()
+            {
+                sWorkerMetalUploadBatch.mFlushQueued = false;
+                flush_worker_metal_upload_batch();
+            });
+        }
+    }
+    return batch.mCommand.get();
+}
+
+std::shared_ptr<std::atomic<U8>> current_worker_metal_upload_completion()
+{
+    return sOnImageGLThread ? sWorkerMetalUploadBatch.mCompletion : nullptr;
+}
 #endif
 
 namespace
@@ -89,12 +163,22 @@ namespace
         LLPointer<LLImageGL> mImage;
         GLsync               mFence = nullptr; // null once seen signalled
         LLGLuint             mName  = 0;
+        // A threaded Metal mirror may share a command buffer with neighboring uploads.
+        // Its GL fence can signal first, so publication also waits until that shared command
+        // has at least been committed. The renderer's single Metal queue then preserves
+        // upload-before-use ordering without a CPU/GPU wait.
+        std::shared_ptr<std::atomic<U8>> mMetalCompletion;
     };
     std::vector<PendingPublish> sPendingPublishes;
 
     // Whether the upload's fence has signalled, polled now; once it has, the fence goes.
     bool poll_signalled(PendingPublish& pending)
     {
+        if (pending.mMetalCompletion &&
+            pending.mMetalCompletion->load(std::memory_order_acquire) == METAL_UPLOAD_PENDING)
+        {
+            return false;
+        }
         const GLenum res = glClientWaitSync(pending.mFence, 0, 0);
         if (res == GL_TIMEOUT_EXPIRED)
         {
@@ -1187,8 +1271,9 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
     }
 
 #if LL_DARWIN
-    std::unique_ptr<ALMetalCommandBuffer> metal_command;
-    if (!prepareMetalTexture(metal_command, data_in != nullptr))
+    std::unique_ptr<ALMetalCommandBuffer> metal_command_owner;
+    ALMetalCommandBuffer* metal_command = nullptr;
+    if (!prepareMetalTexture(metal_command_owner, metal_command, data_in != nullptr))
     {
         return false;
     }
@@ -1510,7 +1595,7 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
     }
     stop_glerror();
 #if LL_DARWIN
-    if (!commitMetalUpload(metal_command))
+    if (!commitMetalUpload(metal_command_owner, metal_command))
     {
         return false;
     }
@@ -1809,7 +1894,8 @@ std::size_t LLImageGL::metalSourceBytesPerRow(U32 width) const
     }
 }
 
-bool LLImageGL::prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& command_buffer,
+bool LLImageGL::prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& command_owner,
+                                    ALMetalCommandBuffer*& command_buffer,
                                     bool will_upload_pixels)
 {
     if (!sImageMetalDevice || mExternalTexture || mTarget != GL_TEXTURE_2D)
@@ -1879,7 +1965,15 @@ bool LLImageGL::prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& comma
     if (will_upload_pixels)
     {
         std::string error;
-        command_buffer = sImageMetalDevice->makeCommandBuffer("Alchemy image upload", &error);
+        if (sOnImageGLThread && mUploadInFlight)
+        {
+            command_buffer = acquire_worker_metal_upload(*sImageMetalDevice, &error);
+        }
+        else
+        {
+            command_owner = sImageMetalDevice->makeCommandBuffer("Alchemy image upload", &error);
+            command_buffer = command_owner.get();
+        }
         if (!command_buffer)
         {
             LL_WARNS("Metal") << "Could not create LLImageGL upload command: " << error << LL_ENDL;
@@ -2028,19 +2122,30 @@ bool LLImageGL::generateMetalMipmaps(ALMetalCommandBuffer& command_buffer)
     return true;
 }
 
-bool LLImageGL::commitMetalUpload(std::unique_ptr<ALMetalCommandBuffer>& command_buffer)
+bool LLImageGL::commitMetalUpload(std::unique_ptr<ALMetalCommandBuffer>& command_owner,
+                                  ALMetalCommandBuffer*& command_buffer)
 {
     if (!command_buffer)
     {
         return true;
     }
+    if (!command_owner)
+    {
+        // Borrowed from the single image worker's burst. syncToMainThread() attaches the
+        // batch completion token to this texture's pending publication.
+        ++sWorkerMetalUploadBatch.mEncodedUploads;
+        command_buffer = nullptr;
+        return true;
+    }
+
     std::string error;
-    if (!command_buffer->commit(&error))
+    if (!command_owner->commit(&error))
     {
         LL_WARNS("Metal") << "Could not commit LLImageGL Metal upload: " << error << LL_ENDL;
         return false;
     }
-    command_buffer.reset();
+    command_owner.reset();
+    command_buffer = nullptr;
     return true;
 }
 
@@ -2286,11 +2391,21 @@ bool LLImageGL::setSubImage(const U8* datap, S32 data_width, S32 data_height, S3
 
         const U8* sub_datap = datap + (y_pos * data_width + x_pos) * pixel_bytes(mFormatPrimary, mFormatType);
 #if LL_DARWIN
-        std::unique_ptr<ALMetalCommandBuffer> metal_command;
+        std::unique_ptr<ALMetalCommandBuffer> metal_command_owner;
+        ALMetalCommandBuffer* metal_command = nullptr;
         if (metalTextureForUpload() && sImageMetalDevice)
         {
             std::string error;
-            metal_command = sImageMetalDevice->makeCommandBuffer("Alchemy image subimage upload", &error);
+            if (sOnImageGLThread && mUploadInFlight)
+            {
+                metal_command = acquire_worker_metal_upload(*sImageMetalDevice, &error);
+            }
+            else
+            {
+                metal_command_owner =
+                    sImageMetalDevice->makeCommandBuffer("Alchemy image subimage upload", &error);
+                metal_command = metal_command_owner.get();
+            }
             if (!metal_command)
             {
                 LL_WARNS("Metal") << "Could not create LLImageGL subimage upload command: "
@@ -2344,7 +2459,7 @@ bool LLImageGL::setSubImage(const U8* datap, S32 data_width, S32 data_height, S3
         if (metal_command &&
             (!uploadMetalTextureRegion(*metal_command, 0, x_pos, y_pos, width, height,
                                        sub_datap, metalSourceBytesPerRow(data_width)) ||
-             !commitMetalUpload(metal_command)))
+             !commitMetalUpload(metal_command_owner, metal_command)))
         {
             return false;
         }
@@ -2866,13 +2981,18 @@ void LLImageGL::syncToMainThread(LLGLuint new_tex_name)
     // -- the guarantee NVIDIA needed where a GPU-side glWaitSync did not give it (SL-17284).
     // The main thread's first bind of the new name is then the re-attach section 5.3.3
     // requires. Meanwhile consumers read the snapshot beginUpload took (see getWidth).
+    UploadCompletion metal_completion;
+#if LL_DARWIN
+    metal_completion = current_worker_metal_upload_completion();
+#endif
+
     ref();
     if (!LL::WorkQueue::postMaybe(
             mMainQueue,
-            [=, this]()
+            [=, this, metal_completion = std::move(metal_completion)]() mutable
             {
                 LL_PROFILE_ZONE_NAMED("cglt - queue publish");
-                queuePublish(new_tex_name, sync);
+                queuePublish(new_tex_name, sync, std::move(metal_completion));
                 unref();
             }))
     {
@@ -2882,18 +3002,38 @@ void LLImageGL::syncToMainThread(LLGLuint new_tex_name)
         unref();
     }
 
+#if LL_DARWIN
+    // Bound the number of staging buffers retained by a busy worker queue. The already
+    // queued barrier remains useful: after this early commit it will flush the next batch
+    // formed by work that was ahead of it.
+    if (sWorkerMetalUploadBatch.mCommand &&
+        sWorkerMetalUploadBatch.mEncodedUploads >= METAL_UPLOAD_BATCH_LIMIT)
+    {
+        flush_worker_metal_upload_batch();
+    }
+#endif
+
     LL_PROFILER_GPU_COLLECT;
 }
 
-void LLImageGL::queuePublish(LLGLuint name, GLsync fence)
+void LLImageGL::queuePublish(LLGLuint name, GLsync fence, UploadCompletion metal_completion)
 {
     llassert(on_main_thread());
     ++mPublishesPending;
-    sPendingPublishes.push_back({ LLPointer<LLImageGL>(this), fence, name });
+    sPendingPublishes.push_back(
+        { LLPointer<LLImageGL>(this), fence, name, std::move(metal_completion) });
 }
 
-void LLImageGL::finishPublish(LLGLuint name)
+void LLImageGL::finishPublish(LLGLuint name, bool metal_upload_succeeded)
 {
+#if LL_DARWIN
+    if (!metal_upload_succeeded)
+    {
+        // The GL upload is independently complete and remains the authoritative fallback.
+        // Do not expose the pending native mirror after its shared command failed.
+        mPendingMetalTexture.reset();
+    }
+#endif
     syncTexName(name);
 
     llassert(mPublishesPending > 0);
@@ -2983,7 +3123,10 @@ U32 LLImageGL::publishUploads(bool poll)
 
     for (PendingPublish& pending : ready)
     {
-        pending.mImage->finishPublish(pending.mName);
+        const bool metal_upload_succeeded =
+            !pending.mMetalCompletion ||
+            pending.mMetalCompletion->load(std::memory_order_acquire) != METAL_UPLOAD_FAILED;
+        pending.mImage->finishPublish(pending.mName, metal_upload_succeeded);
     }
 
     return (U32)sPendingPublishes.size();
@@ -4489,10 +4632,23 @@ void LLImageGLThread::run()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     // We must perform setup on this thread before actually servicing our
     // WorkQueue, likewise cleanup afterwards.
+#if LL_DARWIN
+    sOnImageGLThread = true;
+#endif
     mWindow->makeContextCurrent(mContext);
     gGL.init(false);
     LL::ThreadPool::run();
+#if LL_DARWIN
+    // The queue may have been closed while an upload task was executing, preventing its
+    // commit barrier from being posted. Complete that last native batch before the shared
+    // context and its pending publications are torn down.
+    sWorkerMetalUploadBatch.mFlushQueued = false;
+    flush_worker_metal_upload_batch();
+#endif
     gGL.shutdown();
     mWindow->destroySharedContext(mContext);
+#if LL_DARWIN
+    sOnImageGLThread = false;
+#endif
 }
 

@@ -1256,6 +1256,115 @@ namespace
         CHECK(readTexelRGBA(img, 5, 5) == 0x55555555u);
     }
 
+#if LL_DARWIN
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: queued worker textures share one Metal upload submission", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        LL::WorkQueue mainloop("mainloop");
+        LLImageGLThread::createInstance(gl->window());
+        struct ThreadEnd
+        {
+            ~ThreadEnd() { LLImageGLThread::deleteSingleton(); }
+        } thread_end;
+
+        LLPointer<LLImageGL> first = new LLImageGL(/*usemipmaps=*/false);
+        LLPointer<LLImageGL> second = new LLImageGL(/*usemipmaps=*/false);
+        REQUIRE(first->createGLTexture(0, makeRaw(16, 16, 4, 0x11).get()));
+        REQUIRE(second->createGLTexture(0, makeRaw(16, 16, 4, 0x22).get()));
+
+        LLPointer<LLImageRaw> first_raw = makeRaw(32, 32, 4, 0x55);
+        LLPointer<LLImageRaw> second_raw = makeRaw(32, 32, 4, 0xaa);
+        first->beginUpload();
+        second->beginUpload();
+
+        // Hold the sole worker until both uploads are in its FIFO. The first upload then
+        // appends the batch-commit barrier behind the second one, proving a real queue burst
+        // rather than relying on timing between producer and consumer threads.
+        std::atomic<bool> release_worker{ false };
+        struct WorkerRelease
+        {
+            std::atomic<bool>& mRelease;
+            ~WorkerRelease() { mRelease.store(true, std::memory_order_release); }
+        } worker_release{ release_worker };
+        std::atomic<U32> workers_done{ 0 };
+        std::atomic<bool> first_ok{ false };
+        std::atomic<bool> second_ok{ false };
+        REQUIRE(LLImageGLThread::instance().post([&]()
+        {
+            while (!release_worker.load(std::memory_order_acquire))
+            {
+                std::this_thread::yield();
+            }
+        }));
+        REQUIRE(LLImageGLThread::instance().post([&]()
+        {
+            first_ok = first->createGLTexture(0, first_raw.get());
+            workers_done.fetch_add(1, std::memory_order_release);
+        }));
+        REQUIRE(LLImageGLThread::instance().post([&]()
+        {
+            second_ok = second->createGLTexture(0, second_raw.get());
+            workers_done.fetch_add(1, std::memory_order_release);
+        }));
+
+        const std::uint64_t submissions_before =
+            ALMetalDevice::committedCommandBufferCount();
+        release_worker.store(true, std::memory_order_release);
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (workers_done.load(std::memory_order_acquire) != 2 &&
+               std::chrono::steady_clock::now() < deadline)
+        {
+            mainloop.runPending();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        mainloop.runPending();
+        REQUIRE(first_ok.load());
+        REQUIRE(second_ok.load());
+
+        bool first_published = false;
+        bool second_published = false;
+        first->afterPublish([&]() { first_published = true; });
+        second->afterPublish([&]() { second_published = true; });
+        while ((!first_published || !second_published) &&
+               std::chrono::steady_clock::now() < deadline)
+        {
+            mainloop.runPending();
+            LLImageGL::publishUploads();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        REQUIRE(first_published);
+        REQUIRE(second_published);
+        CHECK(ALMetalDevice::committedCommandBufferCount() == submissions_before + 1);
+        REQUIRE(first->getMetalTexture());
+        REQUIRE(second->getMetalTexture());
+
+        std::array<U8, 32 * 32 * 4> first_pixels{};
+        std::array<U8, 32 * 32 * 4> second_pixels{};
+        REQUIRE(first->getMetalTexture()->readback(
+            *device, 0, 0, {}, first_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        REQUIRE(second->getMetalTexture()->readback(
+            *device, 0, 0, {}, second_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::all_of(first_pixels.begin(), first_pixels.end(),
+                          [](U8 byte) { return byte == 0x55; }));
+        CHECK(std::all_of(second_pixels.begin(), second_pixels.end(),
+                          [](U8 byte) { return byte == 0xaa; }));
+    }
+#endif
+
     // The frame's idle publishes only the uploads a frame's end has seen signalled: their
     // fences are polled at the end of the frame (LLRender::endFrame), never in the middle of
     // one, where a threaded driver answers a poll only once its own thread has caught up.

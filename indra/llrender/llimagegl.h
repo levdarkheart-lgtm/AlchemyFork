@@ -477,8 +477,9 @@ private:
 
     // Off-thread uploads of this image handed to the main thread and not yet published, and
     // what is to run once none are. Main thread only; see syncToMainThread / afterPublish.
-    void queuePublish(LLGLuint name, GLsync fence);
-    void finishPublish(LLGLuint name);
+    using UploadCompletion = std::shared_ptr<std::atomic<U8>>;
+    void queuePublish(LLGLuint name, GLsync fence, UploadCompletion metal_completion = {});
+    void finishPublish(LLGLuint name, bool metal_upload_succeeded = true);
     U32 mPublishesPending = 0;
     std::vector<std::function<void()>> mOnPublished;
 
@@ -611,7 +612,8 @@ public:
 
 private:
 #if LL_DARWIN
-    bool prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& command_buffer,
+    bool prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& command_owner,
+                             ALMetalCommandBuffer*& command_buffer,
                              bool will_upload_pixels);
     bool uploadMetalTextureRegion(ALMetalCommandBuffer& command_buffer,
                                   U32 mip_level,
@@ -622,7 +624,8 @@ private:
                                   const U8* pixels,
                                   std::size_t source_bytes_per_row);
     bool generateMetalMipmaps(ALMetalCommandBuffer& command_buffer);
-    bool commitMetalUpload(std::unique_ptr<ALMetalCommandBuffer>& command_buffer);
+    bool commitMetalUpload(std::unique_ptr<ALMetalCommandBuffer>& command_owner,
+                           ALMetalCommandBuffer*& command_buffer);
     bool preserveMetalScaleDown(U32 source_mip_level, U32 width, U32 height);
     ALMetalTexture* metalTextureForUpload() noexcept;
     std::size_t metalSourceBytesPerRow(U32 width) const;
