@@ -3859,6 +3859,36 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
               0.0001f);
         CHECK(std::abs(opaque_only_depth[0] - 1.f) < 0.0001f);
 
+        // Production may join this expensive opaque/post-deferred owner to
+        // its dependent post chain. Standalone rendering above still
+        // commits immediately; an explicit batch must publish the same
+        // color/depth in exactly one submission and only when committed.
+        const std::uint64_t opaque_submissions_before_batch =
+            ALMetalDevice::committedCommandBufferCount();
+        REQUIRE(renderer->beginCommandBatch(
+            "Alchemy opaque/post command-batch regression", &error));
+        auto batched_opaque_only = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(batched_opaque_only);
+        CHECK(renderer->commandBatchActive());
+        REQUIRE(renderer->commitCommandBatch(&error));
+        INFO(error);
+        CHECK(ALMetalDevice::committedCommandBufferCount() ==
+              opaque_submissions_before_batch + 1);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            batched_opaque_only_pixels{};
+        std::array<float, 32 * 32> batched_opaque_only_depth{};
+        REQUIRE(batched_opaque_only->colorTexture(0)->readback(
+            *device, 0, 0, {}, batched_opaque_only_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(batched_opaque_only->depthStencilTexture()->readback(
+            *device, 0, 0, {}, batched_opaque_only_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(batched_opaque_only_pixels == opaque_only_pixels);
+        CHECK(batched_opaque_only_depth == opaque_only_depth);
+
         opaque_forward_scene.batches = &normal_free_fullbright;
         opaque_forward_scene.batch_count = 1;
         normal_free_fullbright.diffuse_textures[0] = nullptr;

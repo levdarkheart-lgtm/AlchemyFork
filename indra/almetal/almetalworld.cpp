@@ -10524,8 +10524,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             }
         }
     }
-    auto command = mImpl->device->makeCommandBuffer(
-        "Alchemy native world opaque post-deferred", error);
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world opaque post-deferred", owned_command, error);
+    const auto fail_command = [&]()
+        -> std::unique_ptr<ALMetalRenderTarget>
+    {
+        mImpl->finishCommandBuffer(owned_command, false, error);
+        return nullptr;
+    };
     if (!command ||
         !output->copyColorFrom(
             *command, 0, *scene.composed_lighting->colorTexture(0), {},
@@ -10533,12 +10540,13 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         !output->copyDepthStencilFrom(
             *command, *scene.gbuffer->depthStencilTexture(), {}, error))
     {
-        return nullptr;
+        return fail_command();
     }
 
     constexpr std::uint32_t pre_water_brdf_lut_size = 512;
     const bool generate_pre_water_brdf_lut =
-        has_pre_water_pbr && !mImpl->brdf_lut_ready;
+        has_pre_water_pbr && !mImpl->brdf_lut_ready &&
+        !mImpl->command_batch_generates_brdf_lut;
     if (generate_pre_water_brdf_lut)
     {
         auto compute = ALMetalComputeEncoder::begin(
@@ -10552,7 +10560,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 8, 8, 1, error) ||
             !compute->end(error))
         {
-            return nullptr;
+            return fail_command();
         }
     }
 
@@ -10570,7 +10578,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         "Alchemy world opaque post-deferred encoder", error) : nullptr;
     if (!encoder)
     {
-        return nullptr;
+        return fail_command();
     }
 
     const ALMetalViewport viewport{
@@ -10664,7 +10672,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 !haze_depth_snapshot->copyDepthStencilFrom(
                     *command, *output->depthStencilTexture(), {}, error))
             {
-                return nullptr;
+                return fail_command();
             }
             ALMetalRenderPassConfig haze_pass_config;
             haze_pass_config.colors[0].load = ALMetalLoadAction::load;
@@ -10680,7 +10688,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 "Alchemy world water-haze encoder", error) : nullptr;
             if (!encoder)
             {
-                return nullptr;
+                return fail_command();
             }
             encoded =
                 encoder->setViewport(viewport, error) &&
@@ -10773,7 +10781,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 !atmospheric_depth_snapshot->copyDepthStencilFrom(
                     *command, *output->depthStencilTexture(), {}, error))
             {
-                return nullptr;
+                return fail_command();
             }
 
             ALMetalRenderPassConfig haze_pass_config;
@@ -10791,7 +10799,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 : nullptr;
             if (!encoder)
             {
-                return nullptr;
+                return fail_command();
             }
 
             WorldAtmosphericHazeConstants constants{};
@@ -10883,7 +10891,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                       *command, *output->depthStencilTexture(), {},
                       error))))
             {
-                return nullptr;
+                return fail_command();
             }
 
             if (water.wave_occlusion)
@@ -10913,7 +10921,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     16, 16, 1, error) && first->end(error);
                 if (!computed)
                 {
-                    return nullptr;
+                    return fail_command();
                 }
 
                 auto last = ALMetalComputeEncoder::begin(
@@ -10942,7 +10950,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     last->end(error);
                 if (!computed)
                 {
-                    return nullptr;
+                    return fail_command();
                 }
 
                 WorldWaterOcclusionConstants constants{};
@@ -10987,7 +10995,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     cull->end(error);
                 if (!computed)
                 {
-                    return nullptr;
+                    return fail_command();
                 }
             }
 
@@ -11009,7 +11017,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 : nullptr;
             if (!encoder)
             {
-                return nullptr;
+                return fail_command();
             }
 
             WorldWaterHazeConstants field_constants{};
@@ -11395,7 +11403,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     batch.pre_water_destination_rgb, error);
                 if (!alpha_pipeline)
                 {
-                    return nullptr;
+                    return fail_command();
                 }
             }
             else
@@ -11997,13 +12005,22 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 batch.index_offset, 1, error);
     }
 
-    if (!encoded || !encoder->end(error) || !command->commit(error))
+    const bool ended = encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
     {
         return nullptr;
     }
     if (generate_pre_water_brdf_lut)
     {
-        mImpl->brdf_lut_ready = true;
+        if (mImpl->command_batch)
+        {
+            mImpl->command_batch_generates_brdf_lut = true;
+        }
+        else
+        {
+            mImpl->brdf_lut_ready = true;
+        }
     }
     return output;
 }
