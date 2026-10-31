@@ -46,6 +46,9 @@ The tool exports the Instruments
 exported XML table), resolves xctrace's compact ID/reference encoding, and
 reports per-label counts plus application event/encoder durations. These are
 submission-table durations, not GPU frame time or a performance pass gate.
+Rows for which Instruments omits a distinct encoder duration are counted and
+reported explicitly; their application event time is not substituted as GPU
+or encoder work.
 Keep raw traces and generated summaries ignored until a redacted result is
 intentionally selected for versioned evidence.
 

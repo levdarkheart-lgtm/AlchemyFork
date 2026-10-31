@@ -102,7 +102,8 @@ def summarize_xml(data: bytes, source="export.xml"):
         raise ValueError(f"invalid xctrace XML: {error}") from error
     references = _references(root)
     labels = defaultdict(lambda: {
-        "count": 0, "event_duration_ns": 0, "encoder_duration_ns": 0,
+        "count": 0, "event_duration_ns": 0, "encoder_count": 0,
+        "encoder_duration_ns": 0,
     })
     submission_count = 0
     for row in root.iter("row"):
@@ -113,12 +114,15 @@ def summarize_xml(data: bytes, source="export.xml"):
         if not durations:
             raise ValueError("submission row has no duration")
         event_duration = _duration_ns(durations[0], references)
-        encoder_duration = _duration_ns(
-            durations[1] if len(durations) > 1 else durations[0], references)
+        encoder_duration = (
+            _duration_ns(durations[1], references)
+            if len(durations) > 1 else None)
         item = labels[label]
         item["count"] += 1
         item["event_duration_ns"] += event_duration
-        item["encoder_duration_ns"] += encoder_duration
+        if encoder_duration is not None:
+            item["encoder_count"] += 1
+            item["encoder_duration_ns"] += encoder_duration
         submission_count += 1
     if not submission_count:
         raise ValueError("no committed Metal command-buffer submissions found")
@@ -126,14 +130,19 @@ def summarize_xml(data: bytes, source="export.xml"):
     entries = []
     for label, values in labels.items():
         count = values["count"]
+        encoder_count = values["encoder_count"]
         entries.append({
             "label": label,
             "count": count,
+            "encoder_count": encoder_count,
+            "encoder_unreported": count - encoder_count,
             "event_ms": round(values["event_duration_ns"] / 1_000_000, 3),
             "encoder_ms": round(
                 values["encoder_duration_ns"] / 1_000_000, 3),
-            "mean_encoder_ms": round(
-                values["encoder_duration_ns"] / count / 1_000_000, 6),
+            "mean_encoder_ms": (
+                round(values["encoder_duration_ns"] / encoder_count /
+                      1_000_000, 6)
+                if encoder_count else None),
         })
     entries.sort(key=lambda item: (-item["encoder_ms"], -item["count"],
                                   item["label"]))

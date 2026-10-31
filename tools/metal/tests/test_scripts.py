@@ -162,14 +162,19 @@ class TraceSubmissionTests(unittest.TestCase):
   <row><duration id="4" fmt="2 us">2000</duration>
     <duration id="5" fmt="1.5 us">1500</duration>
     <narrative id="6" fmt='Committed &quot; Beta &quot; with 2 encoders'/></row>
+  <row><duration id="7" fmt="1 us">1000</duration>
+    <narrative id="8" fmt='Committed &quot; No Encoder &quot; with 0 encoders'/></row>
 </node></trace-query-result>'''
         report = module.summarize_xml(xml, "fixture.xml")
-        self.assertEqual(3, report["submission_count"])
-        self.assertEqual(0.004, report["event_ms"])
+        self.assertEqual(4, report["submission_count"])
+        self.assertEqual(0.005, report["event_ms"])
         self.assertEqual(0.003, report["encoder_ms"])
         self.assertEqual("Alpha", report["labels"][0]["label"])
         self.assertEqual(2, report["labels"][0]["count"])
         self.assertEqual("Beta", report["labels"][1]["label"])
+        self.assertEqual("No Encoder", report["labels"][2]["label"])
+        self.assertEqual(1, report["labels"][2]["encoder_unreported"])
+        self.assertIsNone(report["labels"][2]["mean_encoder_ms"])
 
     def test_rejects_xml_without_submission_rows(self):
         module = load("trace_submissions")
