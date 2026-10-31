@@ -1,13 +1,39 @@
 # Renderer instrumentation requirements for autonomous Codex testing
 
-This is a **specification for Codex to implement inside the viewer**; the initial harness deliberately does not fabricate GPU telemetry or run an authenticated Second Life client.
+This document defines the evidence contract and the implemented development-viewer collection route. The harness and analyzer do not fabricate GPU telemetry or authenticate a Second Life client.
+
+## Implemented per-frame collector
+
+Commit `3b8997edd7` implements an opt-in collector in `indra/newview/almetalbenchmark.*` and calls it only from non-download macOS viewer builds after a complete display iteration. With no environment request it allocates no recorder and writes nothing.
+
+Arm collection with all three required values:
+
+```sh
+env \
+  ALCHEMY_METAL_BENCHMARK_CSV="$PWD/artifacts/metal/candidate-run-01.csv" \
+  ALCHEMY_METAL_BENCHMARK_SCENARIO="quiet-region-fixed-view" \
+  ALCHEMY_METAL_BENCHMARK_VARIANT="candidate" \
+  ALCHEMY_METAL_BENCHMARK_REQUIRE_EXACT=1 \
+  ALCHEMY_METAL_BENCHMARK_WARMUP_FRAMES=120 \
+  ALCHEMY_METAL_BENCHMARK_SAMPLE_FRAMES=300 \
+  "/absolute/path/Alchemy Metal Diagnostic.app/Contents/MacOS/Alchemy Metal Diagnostic"
+```
+
+- `ALCHEMY_METAL_BENCHMARK_CSV` must be an absolute path to a new `.csv` whose parent already exists. The collector refuses to overwrite evidence. Raw files under `artifacts/metal/` are ignored by Git.
+- Scenario and variant are pseudonymous 1-64 character labels restricted to letters, numbers, dot, dash and underscore. Do not encode account, avatar, region or credential data in either label or the filename.
+- Warm-up defaults to 120 eligible frames and may be zero. Samples default to 300 and must be nonzero. The first eligible timestamp establishes the interval baseline and is not a measured row.
+- Set `ALCHEMY_METAL_BENCHMARK_REQUIRE_EXACT=1` for the candidate. Every candidate row then requires the current frame's complete native world/UI texture to have actually committed to the drawable; a setting alone is not accepted as proof. A presentation-off GL reference uses `0`.
+- Pre-sample discontinuity restarts warm-up. After the first row, a missing frame, ineligible frame, resolution/quality change or invalid clock interval fails and closes the run instead of combining unlike samples. The viewer logs arming, completion or one failure summary but no per-frame content.
+- Eligible frames require `STATE_STARTED`, a visible window, no snapshot, teleport, disconnect or logout transition, and either GL or exact native presentation. Frame intervals use `std::chrono::steady_clock`.
+- Each row is stamped with the CMake-configured Git commit and build type. Reconfigure after the source commit and verify the generated `LL_VIEWER_SOURCE_REVISION` before collecting source-exact evidence.
+- The collector records wall/frame intervals and draw calls; it does not claim GPU duration. Use Instruments/Metal capture separately for GPU timing and submission analysis.
 
 ## Frame observability (real viewer process)
-Expose an opt-in, non-secret, low-overhead telemetry path that can output per-frame samples to a local CSV in `artifacts/metal/` using at least:
+The implemented local CSV schema is:
 
-`scene,variant,frame_ms,frame_index,source_sha,build_type,drawable_width,drawable_height,quality_profile`
+`scenario,variant,frame_ms,frame_index,source_sha,build_type,drawable_width,drawable_height,quality_profile,draw_calls,native_exact`
 
-For the existing comparison utility, `scenario` must be supplied in place of `scene` (or instrument both). Optionally include `cpu_scene_ms,cpu_encode_ms,gpu_ms,draw_calls,dispatches,psos_created,texture_bytes,frame_in_flight,thermal_state` when reliably measurable. Do not fill unknown fields with zero; mark absent data as missing and label it in the redacted summary. Use monotonically increasing host time for presentation/frame CPU intervals; do not mix clock domains when interpreting GPU events. Use supported Metal timing APIs/instrumentation for GPU spans when valid on the device.
+Future extensions may include `cpu_scene_ms,cpu_encode_ms,gpu_ms,dispatches,psos_created,texture_bytes,frame_in_flight,thermal_state` when reliably measurable. Do not fill unknown fields with zero; leave them absent and label that in the redacted summary. Do not mix clock domains when interpreting GPU events. Use supported Metal timing APIs/instrumentation for GPU spans when valid on the device.
 
 ## Correct collection
 - Explicitly separate warm-up from measurement. Collect >=300 consecutive steady-state frames per scene per variant; capture repetitions and thermal/power/display state.
