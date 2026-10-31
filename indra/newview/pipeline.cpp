@@ -6006,7 +6006,38 @@ bool LLPipeline::readMetalWorldSnapshot(
         capture.world_ui_capture_active || !texture || !device ||
         capture.device != device || capture.world_ui_frame != gFrameCount)
     {
-        return fail("Metal world snapshot did not complete exactly");
+        if (error)
+        {
+            *error = fmt::format(
+                "Metal world snapshot did not complete exactly: "
+                "chain_snapshot={}, capture_active={}, chain_active={}, "
+                "complete={}, first_incomplete_line={}, overlay_exact={}, "
+                "frame_active={}, renderer={}, target={}, composed_light={}, "
+                "lighting_attempted={}, post_attempted={}, "
+                "presentation_target={}, presentation_frame={}, "
+                "world_ui_target={}, world_ui_frame={}, current_frame={}, "
+                "device={}, device_match={}",
+                capture.world_ui_chain_snapshot,
+                capture.world_ui_capture_active,
+                capture.world_ui_chain_active,
+                capture.complete,
+                capture.first_incomplete_source_line,
+                capture.world_ui_overlay_exact,
+                capture.frame_active,
+                static_cast<bool>(capture.renderer),
+                static_cast<bool>(capture.target),
+                static_cast<bool>(capture.composed_light_target),
+                capture.lighting_composition_attempted,
+                capture.opaque_post_deferred_attempted,
+                static_cast<bool>(capture.presentation_target),
+                capture.presentation_frame,
+                static_cast<bool>(capture.world_ui_target),
+                capture.world_ui_frame,
+                gFrameCount,
+                device != nullptr,
+                capture.device == device);
+        }
+        return false;
     }
     const ALMetalTextureDescriptor& descriptor = texture->descriptor();
     if (descriptor.format != ALMetalPixelFormat::bgra8_unorm ||
