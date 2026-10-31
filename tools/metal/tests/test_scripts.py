@@ -55,6 +55,58 @@ class PerfTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "nonpositive/nonfinite"):
                 self.perf.load_frames(path)
 
+    def write_capture(self, path, variant, exact=1, width=2048):
+        headers = ["scenario", "variant", "frame_ms", "frame_index",
+                   "source_sha", "build_type", "drawable_width",
+                   "drawable_height", "quality_profile", "native_exact"]
+        with path.open("w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+            frame_index = 100
+            for scene in (s["id"] for s in self.spec["scenarios"]):
+                for _ in range(300):
+                    writer.writerow([
+                        scene, variant, 16.0, frame_index,
+                        "0123456789abcdef0123456789abcdef01234567",
+                        "RelWithDebInfo", width, 1280, 5, exact])
+                    frame_index += 1
+
+    def test_source_exact_capture_provenance(self):
+        with tempfile.TemporaryDirectory() as d:
+            baseline_path = Path(d) / "baseline.csv"
+            candidate_path = Path(d) / "candidate.csv"
+            self.write_capture(baseline_path, "baseline", exact=0)
+            self.write_capture(candidate_path, "candidate", exact=1)
+            baseline = self.perf.load_capture(
+                baseline_path, require_provenance=True)
+            candidate = self.perf.load_capture(
+                candidate_path, require_provenance=True, candidate=True)
+            result = self.perf.compare_provenance(
+                baseline, candidate,
+                [s["id"] for s in self.spec["scenarios"]])
+            self.assertTrue(result["verified"])
+            self.assertEqual(4, len(result["scenes"]))
+
+    def test_nonexact_candidate_and_mismatched_display_are_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            baseline_path = Path(d) / "baseline.csv"
+            candidate_path = Path(d) / "candidate.csv"
+            self.write_capture(baseline_path, "baseline", exact=0)
+            self.write_capture(candidate_path, "candidate", exact=0)
+            with self.assertRaisesRegex(ValueError, "not an exact native"):
+                self.perf.load_capture(
+                    candidate_path, require_provenance=True, candidate=True)
+
+            self.write_capture(candidate_path, "candidate", exact=1, width=1920)
+            baseline = self.perf.load_capture(
+                baseline_path, require_provenance=True)
+            candidate = self.perf.load_capture(
+                candidate_path, require_provenance=True, candidate=True)
+            with self.assertRaisesRegex(ValueError, "drawable_width"):
+                self.perf.compare_provenance(
+                    baseline, candidate,
+                    [s["id"] for s in self.spec["scenarios"]])
+
 
 class AuditTests(unittest.TestCase):
     def test_gl_detected_and_absent_after_rewrite(self):
