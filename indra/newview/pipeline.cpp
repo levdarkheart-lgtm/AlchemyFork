@@ -4474,7 +4474,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         }
         std::string error;
         auto target = capture.renderer->renderOpaquePostDeferred(
-            scene, &error);
+            scene, std::move(capture.composed_light_target), &error);
         if (!target)
         {
             if (opaque_post_batch_active)
@@ -11770,6 +11770,10 @@ void LLPipeline::renderMetalWorldLightingComposition()
     scene.base_lighting = capture.base_light_target.get();
     scene.local_lighting = capture.local_light_target.get();
     scene.projector_lighting = capture.projector_light_target.get();
+    scene.depth_source = capture.target.get();
+    // The next owner may build a water depth pyramid or publish coherent SSR
+    // history. Preserve that capability while carrying depth forward once.
+    scene.depth_stencil_shader_read = true;
     scene.hdr = capture.hdr;
 
     std::string error;

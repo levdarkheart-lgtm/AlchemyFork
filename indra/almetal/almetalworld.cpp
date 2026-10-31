@@ -6233,6 +6233,22 @@ ALMetalWorldGBufferRenderer::composeLighting(
                  "Metal world lighting composition targets are incompatible");
         return nullptr;
     }
+    if (scene.depth_source)
+    {
+        const ALMetalRenderTargetDescriptor& depth =
+            scene.depth_source->descriptor();
+        if (depth.width != base.width || depth.height != base.height ||
+            depth.sample_count != 1 ||
+            depth.depth_stencil_format !=
+                ALMetalPixelFormat::depth32_float_stencil8 ||
+            !scene.depth_source->depthStencilTexture())
+        {
+            setError(
+                error,
+                "Metal world lighting composition depth source is incompatible");
+            return nullptr;
+        }
+    }
 
     ALMetalRenderTargetDescriptor output_descriptor;
     output_descriptor.width = base.width;
@@ -6240,6 +6256,13 @@ ALMetalWorldGBufferRenderer::composeLighting(
     output_descriptor.colors[0].format = expected_format;
     output_descriptor.colors[0].label =
         "Alchemy world composed deferred lighting";
+    if (scene.depth_source)
+    {
+        output_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        output_descriptor.depth_stencil_shader_read =
+            scene.depth_stencil_shader_read;
+    }
     output_descriptor.label =
         "Alchemy native world deferred-light composition target";
     auto output = ALMetalRenderTarget::create(
@@ -6261,6 +6284,11 @@ ALMetalWorldGBufferRenderer::composeLighting(
     ALMetalRenderPassConfig pass_config;
     pass_config.colors[0].load = ALMetalLoadAction::dont_care;
     pass_config.colors[0].store = ALMetalStoreAction::store;
+    pass_config.depth_load = ALMetalLoadAction::dont_care;
+    pass_config.depth_store = ALMetalStoreAction::dont_care;
+    pass_config.stencil_load = ALMetalLoadAction::dont_care;
+    pass_config.stencil_store = ALMetalStoreAction::dont_care;
+    pass_config.bind_depth_stencil = false;
     auto pass = output->makeRenderPass(pass_config, error);
     auto encoder = pass ? ALMetalRenderEncoder::begin(
         *command, *pass,
@@ -6296,8 +6324,13 @@ ALMetalWorldGBufferRenderer::composeLighting(
         encoder->draw(
             ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     const bool ended = encoder->end(error);
+    const bool copied_depth =
+        !scene.depth_source ||
+        (encoded && ended && output->copyDepthStencilFrom(
+            *command, *scene.depth_source->depthStencilTexture(), {},
+            error));
     if (!mImpl->finishCommandBuffer(
-            owned_command, encoded && ended, error))
+            owned_command, encoded && ended && copied_depth, error))
     {
         return nullptr;
     }
@@ -9340,6 +9373,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     const ALMetalWorldOpaquePostDeferredScene& scene,
     std::string* error)
 {
+    return renderOpaquePostDeferred(scene, nullptr, error);
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
+    const ALMetalWorldOpaquePostDeferredScene& scene,
+    std::unique_ptr<ALMetalRenderTarget> composed_lighting_owner,
+    std::string* error)
+{
     if (!mImpl || !mImpl->device || !scene.gbuffer ||
         !scene.composed_lighting ||
         (scene.batch_count != 0 && !scene.batches) ||
@@ -9362,6 +9404,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         scene.gbuffer->descriptor();
     const ALMetalRenderTargetDescriptor& lighting =
         scene.composed_lighting->descriptor();
+    const bool continue_composed_target =
+        composed_lighting_owner != nullptr;
     if (gbuffer.width != scene.width || gbuffer.height != scene.height ||
         gbuffer.sample_count != 1 || gbuffer.color_attachment_count != 4 ||
         gbuffer.depth_stencil_format !=
@@ -9373,6 +9417,17 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         !sampleableTexture(scene.composed_lighting->colorTexture(0)))
     {
         setError(error, "Metal world opaque post-deferred inputs are incompatible");
+        return nullptr;
+    }
+    if (continue_composed_target &&
+        (composed_lighting_owner.get() != scene.composed_lighting ||
+         lighting.depth_stencil_format !=
+             ALMetalPixelFormat::depth32_float_stencil8 ||
+         !scene.composed_lighting->depthStencilTexture()))
+    {
+        setError(
+            error,
+            "Metal world opaque post-deferred continuation target is incompatible");
         return nullptr;
     }
 
@@ -10431,20 +10486,34 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
     }
 
-    ALMetalRenderTargetDescriptor output_descriptor;
-    output_descriptor.width = scene.width;
-    output_descriptor.height = scene.height;
-    output_descriptor.colors[0].format = color_format;
-    output_descriptor.colors[0].label =
-        "Alchemy world post-deferred final color";
-    output_descriptor.depth_stencil_format =
-        ALMetalPixelFormat::depth32_float_stencil8;
-    output_descriptor.depth_stencil_shader_read = water_wave_occlusion ||
+    const bool needs_shader_read_depth = water_wave_occlusion ||
         scene.publish_screen_space_reflection_history;
-    output_descriptor.label =
-        "Alchemy native world opaque post-deferred target";
-    auto output = ALMetalRenderTarget::create(
-        *mImpl->device, output_descriptor, error);
+    if (continue_composed_target && needs_shader_read_depth &&
+        !lighting.depth_stencil_shader_read)
+    {
+        setError(
+            error,
+            "Metal world opaque post-deferred continuation depth is not shader-readable");
+        return nullptr;
+    }
+    auto output = std::move(composed_lighting_owner);
+    if (!output)
+    {
+        ALMetalRenderTargetDescriptor output_descriptor;
+        output_descriptor.width = scene.width;
+        output_descriptor.height = scene.height;
+        output_descriptor.colors[0].format = color_format;
+        output_descriptor.colors[0].label =
+            "Alchemy world post-deferred final color";
+        output_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        output_descriptor.depth_stencil_shader_read =
+            needs_shader_read_depth;
+        output_descriptor.label =
+            "Alchemy native world opaque post-deferred target";
+        output = ALMetalRenderTarget::create(
+            *mImpl->device, output_descriptor, error);
+    }
     if (!output)
     {
         return nullptr;
@@ -10534,11 +10603,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         return nullptr;
     };
     if (!command ||
-        !output->copyColorFrom(
-            *command, 0, *scene.composed_lighting->colorTexture(0), {},
-            error) ||
-        !output->copyDepthStencilFrom(
-            *command, *scene.gbuffer->depthStencilTexture(), {}, error))
+        (!continue_composed_target &&
+         (!output->copyColorFrom(
+              *command, 0, *scene.composed_lighting->colorTexture(0), {},
+              error) ||
+          !output->copyDepthStencilFrom(
+              *command, *scene.gbuffer->depthStencilTexture(), {}, error))))
     {
         return fail_command();
     }

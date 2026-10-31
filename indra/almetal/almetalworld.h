@@ -480,6 +480,12 @@ struct ALMetalWorldLightingCompositionScene
     const ALMetalRenderTarget* base_lighting = nullptr;
     const ALMetalRenderTarget* local_lighting = nullptr;
     const ALMetalRenderTarget* projector_lighting = nullptr;
+    // The integrated main-world route can carry exact G-buffer depth into
+    // the composed target so the following opaque-forward owner continues
+    // in place instead of copying a full-frame color attachment. Standalone
+    // lighting composition remains color-only when this is null.
+    const ALMetalRenderTarget* depth_source = nullptr;
+    bool depth_stencil_shader_read = false;
     bool hdr = false;
 };
 
@@ -1385,6 +1391,14 @@ public:
     // ordered post-deferred families into a one-color output target.
     std::unique_ptr<ALMetalRenderTarget> renderOpaquePostDeferred(
         const ALMetalWorldOpaquePostDeferredScene& scene,
+        std::string* error = nullptr);
+
+    // Continue an integrated lighting-composition target in place. The
+    // owner must be the same object borrowed by scene.composed_lighting and
+    // must already contain the exact G-buffer depth attachment.
+    std::unique_ptr<ALMetalRenderTarget> renderOpaquePostDeferred(
+        const ALMetalWorldOpaquePostDeferredScene& scene,
+        std::unique_ptr<ALMetalRenderTarget> composed_lighting_owner,
         std::string* error = nullptr);
 
     // Convert one completed linear native world target into the GL post

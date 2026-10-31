@@ -442,6 +442,10 @@ struct ALMetalRenderPassConfig
     ALMetalLoadAction stencil_load = ALMetalLoadAction::clear;
     ALMetalStoreAction stencil_store = ALMetalStoreAction::dont_care;
     std::uint32_t clear_stencil = 0;
+    // A target may carry depth for a later owner while a color-only pipeline
+    // writes one intermediate pass. Leave the attachment owned but unbound
+    // for that pass so the pipeline does not need a false depth contract.
+    bool bind_depth_stencil = true;
 };
 
 class ALMetalRenderPass final

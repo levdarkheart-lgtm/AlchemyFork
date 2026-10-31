@@ -10509,6 +10509,51 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(composed_pixels[center + 3] == 0);
         CHECK(composed_pixels[outside + 3] == 0);
 
+        // The integrated route carries exact G-buffer depth through lighting
+        // composition and transfers the resulting owner into opaque-forward
+        // rendering. The same target must survive in place: color and depth
+        // stay bit-identical without a redundant full-frame color blit.
+        ALMetalWorldLightingCompositionScene continued_composition_scene =
+            composition_scene;
+        continued_composition_scene.depth_source = pbr_gbuffer.get();
+        continued_composition_scene.depth_stencil_shader_read = true;
+        auto continued_composed = renderer->composeLighting(
+            continued_composition_scene, &error);
+        INFO(error);
+        REQUIRE(continued_composed);
+        REQUIRE(continued_composed->descriptor().depth_stencil_format ==
+                ALMetalPixelFormat::depth32_float_stencil8);
+        CHECK(continued_composed->descriptor().depth_stencil_shader_read);
+        const ALMetalRenderTarget* continued_identity =
+            continued_composed.get();
+        ALMetalWorldOpaquePostDeferredScene continued_opaque_scene;
+        continued_opaque_scene.gbuffer = pbr_gbuffer.get();
+        continued_opaque_scene.composed_lighting =
+            continued_composed.get();
+        continued_opaque_scene.width = 32;
+        continued_opaque_scene.height = 32;
+        auto continued_opaque = renderer->renderOpaquePostDeferred(
+            continued_opaque_scene, std::move(continued_composed), &error);
+        INFO(error);
+        REQUIRE(continued_opaque);
+        CHECK(continued_opaque.get() == continued_identity);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            continued_composed_pixels{};
+        std::array<float, 32 * 32> continued_depth{};
+        std::array<float, 32 * 32> source_depth{};
+        REQUIRE(continued_opaque->colorTexture(0)->readback(
+            *device, 0, 0, {}, continued_composed_pixels.data(), 32 * 4,
+            &error));
+        REQUIRE(continued_opaque->depthStencilTexture()->readback(
+            *device, 0, 0, {}, continued_depth.data(),
+            32 * sizeof(float), &error));
+        REQUIRE(pbr_gbuffer->depthStencilTexture()->readback(
+            *device, 0, 0, {}, source_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(continued_composed_pixels == composed_pixels);
+        CHECK(continued_depth == source_depth);
+
         // The production path encodes the light map, base, local, projector
         // and composition into one command buffer. A fresh renderer must
         // generate the shared BRDF LUT only once inside that batch, and

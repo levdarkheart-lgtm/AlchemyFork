@@ -1849,7 +1849,7 @@ std::unique_ptr<ALMetalRenderPass> ALMetalRenderTarget::makeRenderPass(
                                                        pass_config.clear.alpha);
         }
 
-        if (mImpl->depth_stencil)
+        if (mImpl->depth_stencil && config.bind_depth_stencil)
         {
             const bool memoryless = mDescriptor.memoryless_depth_stencil;
             if ((memoryless && (config.depth_load == ALMetalLoadAction::load ||
