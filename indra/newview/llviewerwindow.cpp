@@ -5944,16 +5944,17 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     }
 
 #if LL_DARWIN
-    // The exact native transaction currently owns ordinary display-encoded
-    // color and scene depth. Keep tiled, clean-plate, cutout and 360 capture
-    // on their established paths until each has a native owner with evidence.
+    // The exact native transaction currently owns ordinary and clean-plate
+    // display-encoded color plus scene depth. Keep tiled, cutout and 360
+    // capture on their established paths until each has a native owner with
+    // evidence.
     // An unavailable or incomplete native frame falls through to GL below.
     const bool native_snapshot_type =
         type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR ||
         type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH ||
         type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH24;
     if (native_snapshot_type && !cutout &&
-        !no_post && scale_factor > 0.f && scale_factor <= 1.f &&
+        scale_factor > 0.f && scale_factor <= 1.f &&
         raw->getComponents() == 3)
     {
         metal_snapshot_requested =

@@ -737,6 +737,11 @@ struct ALMetalWorldDisplayPostScene
     // Optional half-resolution RGBA16F sum of the cross-filter arms.
     const ALMetalTexture* cross_filter_texture = nullptr;
     bool hdr = false;
+    // Snapshot clean plates keep the HDR source/storage contract but select
+    // colorCorrectF's modern gamma-only permutation: no exposure or tonemap,
+    // just linear clamping followed by the display transfer. This is distinct
+    // from legacy_gamma, which additionally applies the authored sky gamma.
+    bool bypass_tonemap = false;
     // Legacy skies keep the HDR/bloom storage path but deliberately skip
     // exposure and tonemapping, then apply colorCorrectF's historical gamma
     // curve after the linear-to-sRGB transfer.

@@ -15015,6 +15015,30 @@ TEST_CASE("almetal: world display post owns the real post target formats", "[alm
                        static_cast<int>(unorm10(srgb(0.125f)))) <= 1);
         CHECK((packed[0] >> 30u) == 2u);
 
+        // A modern clean-plate snapshot uses the HDR source and output
+        // storage but selects colorCorrectF's gamma-only permutation. Prove
+        // that exposure and tonemapping are ignored without applying the
+        // separate legacy-sky gamma curve.
+        scene.bypass_tonemap = true;
+        scene.static_exposure = 4.f;
+        scene.adapted_exposure = 0.5f;
+        scene.tonemap_mix = 1.f;
+        scene.tonemap_type = 3;
+        scene.tonemap_params[0] = 4.f;
+        auto clean_plate_output = renderer->renderDisplayPost(scene, &error);
+        INFO(error);
+        REQUIRE(clean_plate_output);
+        REQUIRE(clean_plate_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, packed.data(), sizeof(packed), &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(channel10(packed[0], 0)) -
+                       static_cast<int>(unorm10(srgb(0.5f)))) <= 1);
+        CHECK(std::abs(static_cast<int>(channel10(packed[0], 1)) -
+                       static_cast<int>(unorm10(srgb(0.25f)))) <= 1);
+        CHECK(std::abs(static_cast<int>(channel10(packed[0], 2)) -
+                       static_cast<int>(unorm10(srgb(0.125f)))) <= 1);
+        scene.bypass_tonemap = false;
+
         // A legacy sky uses the same HDR/bloom storage path, but GLSL's
         // LEGACY_GAMMA permutation skips exposure and tonemapping before
         // applying 1-pow(1-sRGB,gamma) in display space.

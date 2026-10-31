@@ -136,7 +136,7 @@ namespace
         // non-HDR dither, bloom strength, halation, cross-filter strength
         float display[4];
         float halation_tint[4];
-        // cutout-premultiplied, HDR/legacy flags, animate dither, frame id
+        // cutout-premultiplied, HDR/legacy/bypass flags, animate dither, frame id
         std::uint32_t config[4];
         // squared/scaled amount, reciprocal falloff, anisotropy, legacy gamma
         float chromatic[4];
@@ -7430,7 +7430,8 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
                 sizeof(scene.halation_tint));
     constants.config[0] = scene.cutout_premultiplied ? 1u : 0u;
     constants.config[1] = (scene.hdr ? 1u : 0u) |
-        (scene.legacy_gamma ? 2u : 0u);
+        (scene.legacy_gamma ? 2u : 0u) |
+        (scene.bypass_tonemap ? 4u : 0u);
     constants.config[2] = scene.dither_animated ? 1u : 0u;
     constants.config[3] = scene.frame_id;
     constants.chromatic[0] = scene.chromatic_aberration_amount;

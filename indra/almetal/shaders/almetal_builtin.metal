@@ -13270,6 +13270,7 @@ static float4 almetal_world_display_post(
 {
     const bool hdr = (constants.config.y & 1u) != 0u;
     const bool legacy_gamma = (constants.config.y & 2u) != 0u;
+    const bool bypass_tonemap = (constants.config.y & 4u) != 0u;
     float4 color = almetal_chromatic_aberration(
         source, source_sampler, input.texcoord,
         constants.chromatic.x, constants.chromatic.y,
@@ -13310,7 +13311,7 @@ static float4 almetal_world_display_post(
             constants.lens_dirt.x;
     }
 
-    if (hdr && !legacy_gamma)
+    if (hdr && !legacy_gamma && !bypass_tonemap)
     {
         color.rgb *= constants.post.x * adapted_exposure;
     }
@@ -13321,7 +13322,7 @@ static float4 almetal_world_display_post(
         color.rgb = almetal_world_grade_linear_pre(color.rgb, constants);
     }
 
-    if (hdr && !legacy_gamma)
+    if (hdr && !legacy_gamma && !bypass_tonemap)
     {
         const float3 clamped = clamp(
             color.rgb, float3(0.0), float3(1.0));

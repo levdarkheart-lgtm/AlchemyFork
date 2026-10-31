@@ -825,7 +825,14 @@ bool LLPipeline::canCaptureMetalWorldPresentation() const
     const bool main_world = isMainWorldPass() && mRT == &mMainRT;
     const bool ordinary_world = !mMetalHeroWorldCaptureActive &&
         !mMetalReflectionWorldCaptureActive && !sCutoutRender;
-    const bool post_enabled = !build_no_post && !gSnapshotNoPost;
+    // A no-post snapshot is still a display conversion: it bypasses the look
+    // owners but must clamp and encode the retained HDR scene before readback.
+    // Admit that variant only after the explicit one-shot request is armed;
+    // scopes and ordinary window publication remain on the full post chain.
+    const bool snapshot_clean_plate =
+        gSnapshotNoPost && mMetalWorldSnapshotRequested;
+    const bool post_enabled = !build_no_post &&
+        (!gSnapshotNoPost || snapshot_clean_plate);
     const bool sphere_unrestricted =
         !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE);
     const bool final_buffer = RenderBufferVisualization < 0;
@@ -4906,7 +4913,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     ? llclamp(cross_filter_strength(), 0.f,
                               CROSS_FILTER_MAX_STRENGTH)
                     : 0.f;
+            const bool clean_plate =
+                gSnapshotNoPost && mMetalWorldSnapshotRequested;
             const bool wants_native_bloom = capture.hdr &&
+                !clean_plate &&
                 exact_dof &&
                 (native_bloom_strength > 0.f ||
                  native_halation_strength > 0.f) &&
@@ -4974,7 +4984,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             LLSettingsSky::ptr_t sky =
                 LLEnvironment::instance().getCurrentSky();
             const bool legacy_gamma = LLRender::sClassicMode;
-            const bool exact_dynamic_exposure = legacy_gamma ||
+            const bool exact_dynamic_exposure = clean_plate || legacy_gamma ||
                 !dynamic_exposure ||
                 (mMetalExposureHistoryReady &&
                  capture.exposure_target &&
@@ -5012,7 +5022,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 ALMetalWorldDisplayPostScene display;
                 display.source = post_source;
                 display.adapted_exposure_texture =
-                    dynamic_exposure && !legacy_gamma
+                    dynamic_exposure && !legacy_gamma && !clean_plate
                     ? capture.exposure_target->colorTexture(0) : nullptr;
                 display.bloom_texture = capture.bloom_target
                     ? capture.bloom_target->colorTexture(0) : nullptr;
@@ -5029,6 +5039,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 display.cross_filter_strength = cross_filter_target
                     ? native_cross_filter_strength : 0.f;
                 display.hdr = true;
+                display.bypass_tonemap = clean_plate;
                 display.legacy_gamma = legacy_gamma;
                 display.legacy_gamma_exponent = sky->getGamma();
                 static LLCachedControl<F32> exposure(
@@ -5905,12 +5916,16 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
 bool LLPipeline::requestMetalWorldSnapshotCapture()
 {
     if (mMetalWorldSnapshotRequested || !mGLResourcesLive ||
-        !sRenderDeferred || sCutoutRender || !LLImageGL::getMetalDevice() ||
-        !canCaptureMetalWorldPresentation())
+        !sRenderDeferred || sCutoutRender || !LLImageGL::getMetalDevice())
     {
         return false;
     }
     mMetalWorldSnapshotRequested = true;
+    if (!canCaptureMetalWorldPresentation())
+    {
+        mMetalWorldSnapshotRequested = false;
+        return false;
+    }
     return true;
 }
 
