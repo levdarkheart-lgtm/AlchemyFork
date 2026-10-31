@@ -782,7 +782,7 @@ bool LLPipeline::metalWorldPresentationCurrent() const
             gFrameCount;
 }
 
-bool LLPipeline::canCaptureMetalWorldPresentation() const
+bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
 {
     static LLCachedControl<bool> dynamic_exposure(
         gSavedSettings, "RenderDynamicExposureEnabled", true);
@@ -844,6 +844,19 @@ bool LLPipeline::canCaptureMetalWorldPresentation() const
         native_dynamic_exposure && native_lens_flare && native_lens_dirt &&
         grade.native_resources_ready && post_enabled && sky &&
         exact_antialiasing && sphere_unrestricted && final_buffer;
+    if (!eligible && error)
+    {
+        *error = fmt::format(
+            "Metal world presentation is ineligible: started={}, hdr={}, "
+            "main_world={}, ordinary_world={}, dynamic_exposure={}, "
+            "lens_flare={}, lens_dirt={}, color_grade={}, post={}, sky={}, "
+            "antialiasing={}, sphere={}, final_buffer={}",
+            started, hdr, main_world, ordinary_world,
+            native_dynamic_exposure, native_lens_flare, native_lens_dirt,
+            grade.native_resources_ready, post_enabled,
+            static_cast<bool>(sky), exact_antialiasing,
+            sphere_unrestricted, final_buffer);
+    }
     return eligible;
 }
 
@@ -5933,15 +5946,34 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
     capture.world_alpha_uses_shadows = false;
 }
 
-bool LLPipeline::requestMetalWorldSnapshotCapture()
+bool LLPipeline::requestMetalWorldSnapshotCapture(std::string* error)
 {
-    if (mMetalWorldSnapshotRequested || !mGLResourcesLive ||
-        !sRenderDeferred || !LLImageGL::getMetalDevice())
+    const auto fail = [error](const char* message)
     {
+        if (error)
+        {
+            *error = message;
+        }
         return false;
+    };
+    if (mMetalWorldSnapshotRequested)
+    {
+        return fail("Metal world snapshot capture is already requested");
+    }
+    if (!mGLResourcesLive)
+    {
+        return fail("Metal world snapshot GL resources are unavailable");
+    }
+    if (!sRenderDeferred)
+    {
+        return fail("Metal world snapshot requires deferred rendering");
+    }
+    if (!LLImageGL::getMetalDevice())
+    {
+        return fail("Metal world snapshot device is unavailable");
     }
     mMetalWorldSnapshotRequested = true;
-    if (!canCaptureMetalWorldPresentation())
+    if (!canCaptureMetalWorldPresentation(error))
     {
         mMetalWorldSnapshotRequested = false;
         return false;

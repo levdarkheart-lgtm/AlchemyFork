@@ -361,7 +361,7 @@ public:
     // subfield render; it remains responsible for rejecting the aggregate if
     // any tile fails. The request must be cancelled on every exit after any
     // read method below.
-    bool requestMetalWorldSnapshotCapture();
+    bool requestMetalWorldSnapshotCapture(std::string* error = nullptr);
     bool readMetalWorldSnapshot(U32 x, U32 y, U32 width, U32 height,
                                 U8* pixels, std::size_t bytes_per_row,
                                 std::string* error = nullptr) const;
@@ -1253,7 +1253,7 @@ private:
     void skipRenderingShadows();
 #if LL_DARWIN
     bool isMetalWorldCapturePass() const;
-    bool canCaptureMetalWorldPresentation() const;
+    bool canCaptureMetalWorldPresentation(std::string* error = nullptr) const;
     bool canCaptureMetalScopeSample(bool require_due = true) const;
 #endif
 public:

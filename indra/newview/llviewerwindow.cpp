@@ -6265,9 +6265,31 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     return ret;
 }
 
-bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_height, const int num_render_passes)
+bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width,
+                                    S32 image_height,
+                                    int num_render_passes,
+                                    bool allow_metal,
+                                    bool* used_metal)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_APP;
+    if (used_metal)
+    {
+        *used_metal = false;
+    }
+
+    bool metal_snapshot_requested = false;
+    OnScopeExit cancel_metal_snapshot([&]()
+    {
+#if LL_DARWIN
+        if (metal_snapshot_requested)
+        {
+            gPipeline.cancelMetalWorldSnapshotCapture();
+        }
+#else
+        (void)allow_metal;
+#endif
+    });
+
     gDisplaySwapBuffers = false;
 
     gGL.clear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // stencil buffer is deprecated | GL_STENCIL_BUFFER_BIT);
@@ -6321,7 +6343,8 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
     // appears to help a lot.
     // The faces look away from the main view, whose probes' occlusion says nothing of them.
     gSnapshotOffMainView = true;
-    for (int i = 0; i < num_render_passes; ++i)
+    const int render_passes = llmax(num_render_passes, 1);
+    for (int i = 0; i < render_passes; ++i)
     {
         // turning this flag off here prohibits the screen swap
         // to present the new page to the viewer - this stops
@@ -6330,6 +6353,24 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
         // set it here because code in LLViewerDisplay resets
         // it to true each time.
         gDisplaySwapBuffers = false;
+
+        // Only the final settling pass is consumed. Arm the explicit native
+        // request there so earlier passes do not perform redundant complete
+        // world/UI Metal transactions.
+#if LL_DARWIN
+        if (allow_metal && i + 1 == render_passes)
+        {
+            std::string error;
+            metal_snapshot_requested =
+                gPipeline.requestMetalWorldSnapshotCapture(&error);
+            if (!metal_snapshot_requested)
+            {
+                LL_INFOS("360Capture")
+                    << "Native 360 face retained the GL readback fallback: "
+                    << error << LL_ENDL;
+            }
+        }
+#endif
 
         // actually render the scene
         const U32 subfield = 0;
@@ -6342,14 +6383,44 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
 
     LLImageDataSharedLock lock(raw);
 
-    gGL.readPixels(
-        0, 0,
-        image_width,
-        image_height,
-        GL_RGB, GL_UNSIGNED_BYTE,
-        raw->getData()
-    );
+    bool metal_snapshot_read = false;
+#if LL_DARWIN
+    if (metal_snapshot_requested)
+    {
+        std::string error;
+        metal_snapshot_read = gPipeline.readMetalWorldSnapshot(
+            0, 0, image_width, image_height, raw->getData(),
+            static_cast<std::size_t>(image_width) * 3u, &error);
+        if (metal_snapshot_read)
+        {
+            LL_INFOS("360Capture")
+                << "Native 360 face snapshot readback completed at "
+                << image_width << 'x' << image_height << LL_ENDL;
+        }
+        else
+        {
+            LL_INFOS("360Capture")
+                << "Native 360 face retained the GL readback fallback: "
+                << error << LL_ENDL;
+        }
+    }
+#endif
+
+    if (!metal_snapshot_read)
+    {
+        gGL.readPixels(
+            0, 0,
+            image_width,
+            image_height,
+            GL_RGB, GL_UNSIGNED_BYTE,
+            raw->getData());
+    }
     stop_glerror();
+
+    if (used_metal)
+    {
+        *used_metal = metal_snapshot_read;
+    }
 
     gDisplaySwapBuffers = false;
     gDepthDirty = true;
