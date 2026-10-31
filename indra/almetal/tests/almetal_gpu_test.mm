@@ -23,6 +23,7 @@
 #include "../../newview/SMAASearchTex.h"
 
 #import <Metal/Metal.h>
+#import <IOSurface/IOSurface.h>
 
 #include <SDL3/SDL.h>
 
@@ -691,6 +692,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_test_sample_cube_array",
             "almetal_resample_vertex",
             "almetal_resample_fragment",
+            "almetal_resample_flip_y_fragment",
             "almetal_present_gl_rows_fragment",
             "almetal_ui_depth_clear_fragment",
             "almetal_ui_depth_restore_fragment",
@@ -1652,7 +1654,6 @@ TEST_CASE("almetal: bilinear texture resampling stays entirely on the GPU", "[al
         auto destination = ALMetalTexture::create(*device, destination_descriptor, &error);
         INFO(error);
         REQUIRE(destination);
-
         // Each output pixel samples the center of one constant 2x2 quadrant,
         // so the exact expected bytes are independent of UNORM rounding.
         const std::array<std::uint8_t, 16> source_pixels = {
@@ -1673,6 +1674,9 @@ TEST_CASE("almetal: bilinear texture resampling stays entirely on the GPU", "[al
         REQUIRE(source->upload(
             *command, 0, 0, {}, source_pixels.data(), 4, &error));
         REQUIRE(resampler->encode(*command, *source, *destination, &error));
+        CHECK_FALSE(resampler->encode(
+            *command, *source, *destination, true, &error));
+        CHECK(error == "Metal texture row flip requires matching dimensions");
         REQUIRE(command->commitAndWait(&error));
         INFO(error);
 
@@ -1742,6 +1746,105 @@ TEST_CASE("almetal: bilinear texture resampling stays entirely on the GPU", "[al
             CHECK(std::abs(static_cast<int>(srgb_result[pixel * 4 + 2]) - 128) <= 1);
             CHECK(srgb_result[pixel * 4 + 3] == 255);
         }
+    }
+}
+
+TEST_CASE("almetal: IOSurface media ingress is imported without a CPU staging copy", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        constexpr std::uint32_t width = 3;
+        constexpr std::uint32_t height = 2;
+        constexpr std::uint32_t bgra_fourcc = 0x42475241u;
+        const std::size_t aligned_row_bytes = IOSurfaceAlignProperty(
+            kIOSurfaceBytesPerRow, width * 4);
+        NSDictionary* properties = @{
+            (__bridge NSString*)kIOSurfaceWidth: @(width),
+            (__bridge NSString*)kIOSurfaceHeight: @(height),
+            (__bridge NSString*)kIOSurfaceBytesPerElement: @4,
+            (__bridge NSString*)kIOSurfaceBytesPerRow: @(aligned_row_bytes),
+            (__bridge NSString*)kIOSurfacePixelFormat: @(bgra_fourcc),
+        };
+        IOSurfaceRef surface = IOSurfaceCreate(
+            (__bridge CFDictionaryRef)properties);
+        REQUIRE(surface != nullptr);
+        struct SurfaceRelease
+        {
+            IOSurfaceRef value = nullptr;
+            ~SurfaceRelease()
+            {
+                if (value)
+                {
+                    CFRelease(value);
+                }
+            }
+        } release{surface};
+
+        REQUIRE(IOSurfaceLock(surface, 0, nullptr) == kIOReturnSuccess);
+        auto* bytes = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(surface));
+        REQUIRE(bytes != nullptr);
+        const std::size_t row_bytes = IOSurfaceGetBytesPerRow(surface);
+        const std::array<std::uint8_t, width * 4> top = {
+            1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255,
+        };
+        const std::array<std::uint8_t, width * 4> bottom = {
+            11, 12, 13, 255, 14, 15, 16, 255, 17, 18, 19, 255,
+        };
+        std::memcpy(bytes, top.data(), top.size());
+        std::memcpy(bytes + row_bytes, bottom.data(), bottom.size());
+        REQUIRE(IOSurfaceUnlock(surface, 0, nullptr) == kIOReturnSuccess);
+
+        ALMetalTextureDescriptor imported_descriptor;
+        imported_descriptor.format = ALMetalPixelFormat::bgra8_unorm;
+        imported_descriptor.width = width;
+        imported_descriptor.height = height;
+        imported_descriptor.storage = ALMetalStorageMode::shared;
+        imported_descriptor.usage = ALMetalTextureUsage::shader_read;
+        imported_descriptor.label = "Alchemy IOSurface media import test";
+        auto imported = ALMetalTexture::createFromIOSurface(
+            *device, surface, 0, imported_descriptor, &error);
+        INFO(error);
+        REQUIRE(imported);
+
+        ALMetalTextureDescriptor output_descriptor = imported_descriptor;
+        output_descriptor.storage = ALMetalStorageMode::private_gpu;
+        output_descriptor.usage = ALMetalTextureUsage::shader_read |
+                                  ALMetalTextureUsage::render_target;
+        output_descriptor.label = "Alchemy flipped IOSurface media output test";
+        auto output = ALMetalTexture::create(
+            *device, output_descriptor, &error);
+        INFO(error);
+        REQUIRE(output);
+        auto resampler = ALMetalTextureResampler::create(*device, &error);
+        INFO(error);
+        REQUIRE(resampler);
+        auto command = device->makeCommandBuffer(
+            "Alchemy IOSurface media ingress test", &error);
+        INFO(error);
+        REQUIRE(command);
+        REQUIRE(resampler->encode(
+            *command, *imported, *output, true, &error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::array<std::uint8_t, width * height * 4> result{};
+        REQUIRE(output->readback(
+            *device, 0, 0, {}, result.data(), width * 4, &error));
+        INFO(error);
+        CHECK(std::equal(bottom.begin(), bottom.end(), result.begin()));
+        CHECK(std::equal(top.begin(), top.end(), result.begin() + bottom.size()));
+
+        ALMetalTextureDescriptor wrong_size = imported_descriptor;
+        wrong_size.width = width + 1;
+        CHECK_FALSE(ALMetalTexture::createFromIOSurface(
+            *device, surface, 0, wrong_size, &error));
+        CHECK(error ==
+              "IOSurface dimensions do not match the Metal texture descriptor");
     }
 }
 

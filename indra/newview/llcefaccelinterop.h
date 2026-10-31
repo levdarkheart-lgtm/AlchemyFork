@@ -30,6 +30,10 @@
 #ifndef LL_LLCEFACCELINTEROP_H
 #define LL_LLCEFACCELINTEROP_H
 
+#include <string>
+
+class ALMetalTexture;
+
 // Bridges the plugin's shared GPU texture to a viewer media GL texture with no
 // CPU copy. All calls must be made on a thread holding the viewer's GL context.
 class LLCEFAccelInterop
@@ -71,6 +75,14 @@ public:
     // BGRA-ordered, so the caller should sample dst_tex with an R<->B swizzle.
     // Returns true if dst_tex was updated.
     bool blitTo(unsigned int dst_tex, int width, int height);
+
+#if LL_DARWIN
+    // Import the same IOSurface through Metal and flip its top-down rows into
+    // the viewer's bottom-up media-texture convention. The destination must be
+    // a compatible shader-read/render-target texture.
+    bool blitToMetal(ALMetalTexture& destination,
+                     std::string* error = nullptr);
+#endif
 
 private:
     bool mValid = false;

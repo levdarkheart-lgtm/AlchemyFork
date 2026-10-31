@@ -78,6 +78,10 @@
 #include "llvieweraudio.h"
 #include "llcorehttputil.h"
 
+#if LL_DARWIN
+#include "almetalresource.h"
+#endif
+
 #include "llfloaterwebcontent.h"    // for handling window close requests and geometry change requests in media browser windows.
 
 #include <boost/bind.hpp>   // for SkinFolder listener
@@ -3370,7 +3374,8 @@ bool LLViewerMediaImpl::updateAcceleratedTexture()
         return false;
     }
 
-    U32 tex_name = media_tex->getGLTexture()->getTexName();
+    LLImageGL* media_image = media_tex->getGLTexture();
+    U32 tex_name = media_image->getTexName();
     if (!tex_name)
     {
         return false;
@@ -3383,6 +3388,53 @@ bool LLViewerMediaImpl::updateAcceleratedTexture()
     {
         return false;
     }
+
+#if LL_DARWIN
+    // Accelerated paint bypasses LLImageGL::setSubImage, so the GL blit above
+    // cannot update the native mirror implicitly. Import the same IOSurface
+    // into Metal and flip it into a render-target-capable mirror on the same
+    // device. A failed native write discards the old mirror: an exact Metal
+    // world frame must then fail closed instead of presenting stale media.
+    std::string metal_error;
+    ALMetalTexture* metal_destination = media_image->getMetalTexture();
+    std::unique_ptr<ALMetalTexture> replacement;
+    if (!metal_destination ||
+        !alMetalHasUsage(metal_destination->descriptor().usage,
+                         ALMetalTextureUsage::render_target))
+    {
+        replacement = media_image->createMetalRenderTexture(&metal_error);
+        metal_destination = replacement.get();
+    }
+    const bool metal_updated = metal_destination &&
+        mAccelInterop->blitToMetal(*metal_destination, &metal_error);
+    if (metal_updated)
+    {
+        if (replacement)
+        {
+            if (!media_image->adoptMetalRenderTexture(std::move(replacement)))
+            {
+                media_image->discardMetalTexture();
+                LL_WARNS_ONCE("Media")
+                    << "accelerated paint: the completed Metal media frame "
+                       "could not be published; exact native frames will fail closed"
+                    << LL_ENDL;
+            }
+        }
+        else
+        {
+            media_image->markMetalRenderTextureUpdated();
+        }
+    }
+    else
+    {
+        media_image->discardMetalTexture();
+        LL_WARNS_ONCE("Media")
+            << "accelerated paint: Metal media copy failed; exact native "
+               "frames will fail closed"
+            << (metal_error.empty() ? "" : ": ") << metal_error
+            << LL_ENDL;
+    }
+#endif
 
     // Only switch the prim face onto the media texture once it actually holds a
     // blitted frame. The CPU path waits on textureValid() for the same reason;

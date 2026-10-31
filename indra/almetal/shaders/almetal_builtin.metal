@@ -81,6 +81,18 @@ fragment float4 almetal_resample_fragment(
     return source.sample(source_sampler, input.texcoord);
 }
 
+fragment float4 almetal_resample_flip_y_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]])
+{
+    // This permutation is used for same-size top-down IOSurface ingress. Read
+    // the exact opposite source row so it matches glBlitFramebuffer(GL_NEAREST)
+    // without filter-coordinate rounding at either edge.
+    const uint2 destination = uint2(input.position.xy);
+    return source.read(uint2(
+        destination.x, source.get_height() - 1u - destination.y));
+}
+
 fragment float4 almetal_present_gl_rows_fragment(
     ALMetalResampleVaryings input [[stage_in]],
     texture2d<float> source [[texture(0)]],

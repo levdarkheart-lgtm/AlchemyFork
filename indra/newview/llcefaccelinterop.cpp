@@ -236,6 +236,8 @@ bool LLCEFAccelInterop::blitTo(unsigned int dst_tex, int width, int height)
 
 #elif LL_DARWIN  // macOS: bind the shared IOSurface to a GL texture, blit to media
 
+#include "almetalresource.h"
+#include "almetaltextureops.h"
 #include "altextureblit.h"
 #include "llgl.h"
 #include "llimagegl.h"
@@ -257,6 +259,9 @@ namespace
         int         width = 0;
         int         height = 0;
         ALTextureBlit blit;
+        const ALMetalDevice* metal_device = nullptr;
+        std::unique_ptr<ALMetalTexture> metal_source;
+        std::unique_ptr<ALMetalTextureResampler> metal_resampler;
     };
 }
 
@@ -273,6 +278,19 @@ bool LLCEFAccelInterop::init()
     }
     MacAccel* m = new MacAccel();
     LLImageGL::generateTextures(1, &m->tex);
+    m->metal_device = LLImageGL::getMetalDevice();
+    if (m->metal_device)
+    {
+        std::string error;
+        m->metal_resampler = ALMetalTextureResampler::create(
+            *m->metal_device, &error);
+        if (!m->metal_resampler)
+        {
+            LL_WARNS("Media")
+                << "accelerated paint: native Metal media copier is unavailable: "
+                << error << LL_ENDL;
+        }
+    }
     mImpl = m;
     mValid = true;
     return true;
@@ -287,6 +305,8 @@ void LLCEFAccelInterop::shutdown()
     MacAccel* m = (MacAccel*)mImpl;
     if (m->tex) { LLImageGL::deleteTextures(1, &m->tex); }
     m->blit.release();
+    m->metal_source.reset();
+    m->metal_resampler.reset();
     if (m->surface) { CFRelease(m->surface); }
     delete m;
     mImpl = nullptr;
@@ -322,6 +342,29 @@ bool LLCEFAccelInterop::setStableTexture(unsigned long long handle, int width, i
     const int new_width = (int)IOSurfaceGetWidth(surf);
     const int new_height = (int)IOSurfaceGetHeight(surf);
 
+    std::unique_ptr<ALMetalTexture> metal_source;
+    if (m->metal_device && m->metal_resampler &&
+        new_width > 0 && new_height > 0)
+    {
+        ALMetalTextureDescriptor descriptor;
+        descriptor.format = ALMetalPixelFormat::bgra8_unorm;
+        descriptor.width = static_cast<U32>(new_width);
+        descriptor.height = static_cast<U32>(new_height);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.usage = ALMetalTextureUsage::shader_read;
+        descriptor.label = "Alchemy accelerated CEF IOSurface";
+        std::string error;
+        metal_source = ALMetalTexture::createFromIOSurface(
+            *m->metal_device, surf, 0, descriptor, &error);
+        if (!metal_source)
+        {
+            LL_WARNS("Media")
+                << "accelerated paint: IOSurface Metal import failed; "
+                   "exact native frames will fail closed: "
+                << error << LL_ENDL;
+        }
+    }
+
     CGLContextObj cgl = CGLGetCurrentContext();
     // Through the slot, so its record of what is bound stays true (see the Linux import).
     ALTextureSlot* slot = gGL.getTextureSlot(0);
@@ -338,6 +381,7 @@ bool LLCEFAccelInterop::setStableTexture(unsigned long long handle, int width, i
 
     if (m->surface) { CFRelease(m->surface); }
     m->surface = surf;
+    m->metal_source = std::move(metal_source);
     m->width = new_width;
     m->height = new_height;
     return true;
@@ -364,6 +408,48 @@ bool LLCEFAccelInterop::blitTo(unsigned int dst_tex, int width, int height)
     // Y-flipped: the IOSurface is top-down, the media texture bottom-up.
     m->blit.blit(GL_TEXTURE_RECTANGLE_ARB, m->tex, dst_tex, cw, ch, true);
     return true;
+}
+
+bool LLCEFAccelInterop::blitToMetal(ALMetalTexture& destination,
+                                    std::string* error)
+{
+    if (!mValid || !mImpl)
+    {
+        if (error)
+        {
+            *error = "Accelerated media interop is unavailable";
+        }
+        return false;
+    }
+    MacAccel* m = static_cast<MacAccel*>(mImpl);
+    if (!m->metal_device || !m->metal_source || !m->metal_resampler)
+    {
+        if (error)
+        {
+            *error = "Accelerated media IOSurface has no Metal import";
+        }
+        return false;
+    }
+    const ALMetalTextureDescriptor& source = m->metal_source->descriptor();
+    const ALMetalTextureDescriptor& output = destination.descriptor();
+    if (source.width != output.width || source.height != output.height ||
+        source.format != output.format ||
+        !alMetalHasUsage(output.usage, ALMetalTextureUsage::shader_read) ||
+        !alMetalHasUsage(output.usage, ALMetalTextureUsage::render_target))
+    {
+        if (error)
+        {
+            *error = "Accelerated media Metal source and destination are incompatible";
+        }
+        return false;
+    }
+
+    auto command = m->metal_device->makeCommandBuffer(
+        "Alchemy accelerated CEF Metal media copy", error);
+    return command &&
+           m->metal_resampler->encode(
+               *command, *m->metal_source, destination, true, error) &&
+           command->commit(error);
 }
 
 #elif LL_LINUX  // import the plugin's dma-buf via EGL, blit to the media texture

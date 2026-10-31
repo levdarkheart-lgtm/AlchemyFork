@@ -325,11 +325,22 @@ public:
     LLGLuint getTexName() const { return mTexName; }
 #if LL_DARWIN
     ALMetalTexture* getMetalTexture() const noexcept { return mMetalTexture.get(); }
+    // Allocate a descriptor-compatible private render target for a GPU-owned
+    // producer (for example a shared CEF IOSurface). The caller encodes and
+    // commits the write before publishing it with adoptMetalRenderTexture().
+    std::unique_ptr<ALMetalTexture> createMetalRenderTexture(
+        std::string* error = nullptr) const;
     // Render passes that reproduce a GL-owned write create a separate native
     // texture, let GL finish its authoritative fallback, then publish the
     // native result here. The descriptor is checked against this image before
     // ownership changes.
     bool adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture);
+    // A producer that updates an already-adopted render-target mirror in place
+    // advances the same content generation as an ordinary upload.
+    void markMetalRenderTextureUpdated() noexcept;
+    // A successful GL write paired with a failed native write must not leave a
+    // stale mirror eligible for an exact Metal frame.
+    void discardMetalTexture() noexcept;
 #endif
     // What the texture holds, as a value no texture has held before: taken again by every upload into it, in place or
     // not. A pass that keeps what it drew tells by it whether the pixels it sampled are as they were.

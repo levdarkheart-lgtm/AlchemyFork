@@ -1865,7 +1865,87 @@ bool LLImageGL::adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture)
 
     mPendingMetalTexture.reset();
     mMetalTexture = std::move(texture);
+    touchContents();
     return true;
+}
+
+std::unique_ptr<ALMetalTexture> LLImageGL::createMetalRenderTexture(
+    std::string* error) const
+{
+    if (!sImageMetalDevice || mExternalTexture || mTarget != GL_TEXTURE_2D ||
+        mUploadInFlight)
+    {
+        if (error)
+        {
+            *error = "LLImageGL cannot allocate a Metal render mirror in its current state";
+        }
+        return nullptr;
+    }
+
+    const MetalUploadFormat upload_format =
+        metal_upload_format(getStorageInternalFormat(), mFormatPrimary, mFormatType);
+    if (upload_format.format == ALMetalPixelFormat::invalid)
+    {
+        if (error)
+        {
+            *error = "LLImageGL format cannot be represented by a Metal render mirror";
+        }
+        return nullptr;
+    }
+
+    ALMetalTextureDescriptor descriptor;
+    descriptor.type = ALMetalTextureType::texture_2d;
+    descriptor.format = upload_format.format;
+    descriptor.width = static_cast<U32>(liveWidth(mCurrentDiscardLevel));
+    descriptor.height = static_cast<U32>(liveHeight(mCurrentDiscardLevel));
+    descriptor.mipmap_level_count = static_cast<U32>(mMipLevels > 0
+        ? mMipLevels
+        : mUseMipMaps
+            ? calcMipLevelCount(descriptor.width, descriptor.height)
+            : 1);
+    descriptor.storage = ALMetalStorageMode::private_gpu;
+    descriptor.usage = ALMetalTextureUsage::shader_read |
+                       ALMetalTextureUsage::render_target;
+    descriptor.label = "Alchemy render-produced image texture";
+    switch (mDeprecatedSourceFormat)
+    {
+        case GL_ALPHA:
+            descriptor.swizzle = {
+                ALMetalTextureSwizzle::zero, ALMetalTextureSwizzle::zero,
+                ALMetalTextureSwizzle::zero, ALMetalTextureSwizzle::red};
+            break;
+        case GL_LUMINANCE:
+            descriptor.swizzle = {
+                ALMetalTextureSwizzle::red, ALMetalTextureSwizzle::red,
+                ALMetalTextureSwizzle::red, ALMetalTextureSwizzle::one};
+            break;
+        case GL_LUMINANCE_ALPHA:
+            descriptor.swizzle = {
+                ALMetalTextureSwizzle::red, ALMetalTextureSwizzle::red,
+                ALMetalTextureSwizzle::red, ALMetalTextureSwizzle::green};
+            break;
+        default:
+            break;
+    }
+    return ALMetalTexture::create(*sImageMetalDevice, descriptor, error);
+}
+
+void LLImageGL::markMetalRenderTextureUpdated() noexcept
+{
+    if (mMetalTexture)
+    {
+        touchContents();
+    }
+}
+
+void LLImageGL::discardMetalTexture() noexcept
+{
+    if (!mUploadInFlight)
+    {
+        mMetalTexture.reset();
+        mPendingMetalTexture.reset();
+        touchContents();
+    }
 }
 
 ALMetalTexture* LLImageGL::metalTextureForUpload() noexcept

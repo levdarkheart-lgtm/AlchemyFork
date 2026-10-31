@@ -11,6 +11,7 @@
 #include "almetalresource.h"
 
 #import <Foundation/Foundation.h>
+#import <IOSurface/IOSurface.h>
 #import <Metal/Metal.h>
 
 #include <algorithm>
@@ -790,6 +791,106 @@ std::unique_ptr<ALMetalTexture> ALMetalTexture::create(
         impl->texture = texture;
         impl->shader_view = shader_view;
         return std::unique_ptr<ALMetalTexture>(new ALMetalTexture(std::move(impl), descriptor));
+    }
+}
+
+std::unique_ptr<ALMetalTexture> ALMetalTexture::createFromIOSurface(
+    const ALMetalDevice& device,
+    void* iosurface,
+    std::uint32_t plane,
+    const ALMetalTextureDescriptor& descriptor,
+    std::string* error)
+{
+    @autoreleasepool
+    {
+        IOSurfaceRef surface = static_cast<IOSurfaceRef>(iosurface);
+        if (!device.nativeHandle() || !surface)
+        {
+            setError(error, "Cannot import a Metal texture without a device and IOSurface");
+            return nullptr;
+        }
+        if (descriptor.type != ALMetalTextureType::texture_2d ||
+            descriptor.storage != ALMetalStorageMode::shared ||
+            descriptor.format != ALMetalPixelFormat::bgra8_unorm ||
+            descriptor.width == 0 || descriptor.height == 0 ||
+            descriptor.array_length != 1 ||
+            descriptor.mipmap_level_count != 1 ||
+            descriptor.sample_count != 1 ||
+            pixelFormat(descriptor.format) == MTLPixelFormatInvalid ||
+            !hasIdentitySwizzle(descriptor))
+        {
+            setError(error, "IOSurface import requires one shared BGRA8, identity-swizzled 2D Metal level");
+            return nullptr;
+        }
+        const std::size_t plane_count = IOSurfaceGetPlaneCount(surface);
+        if ((plane_count == 0 && plane != 0) ||
+            (plane_count != 0 && plane >= plane_count))
+        {
+            setError(error, "IOSurface import plane is out of range");
+            return nullptr;
+        }
+        const std::size_t surface_width = plane_count == 0
+            ? IOSurfaceGetWidth(surface)
+            : IOSurfaceGetWidthOfPlane(surface, plane);
+        const std::size_t surface_height = plane_count == 0
+            ? IOSurfaceGetHeight(surface)
+            : IOSurfaceGetHeightOfPlane(surface, plane);
+        if (descriptor.width != surface_width ||
+            descriptor.height != surface_height)
+        {
+            setError(error, "IOSurface dimensions do not match the Metal texture descriptor");
+            return nullptr;
+        }
+        const std::size_t surface_element_bytes = plane_count == 0
+            ? IOSurfaceGetBytesPerElement(surface)
+            : IOSurfaceGetBytesPerElementOfPlane(surface, plane);
+        const std::size_t surface_row_bytes = plane_count == 0
+            ? IOSurfaceGetBytesPerRow(surface)
+            : IOSurfaceGetBytesPerRowOfPlane(surface, plane);
+        if (surface_element_bytes != 4 ||
+            surface_row_bytes < surface_width * surface_element_bytes ||
+            surface_row_bytes % 16 != 0)
+        {
+            setError(error, "IOSurface BGRA rows are incompatible with Metal texture alignment");
+            return nullptr;
+        }
+
+        id<MTLDevice> native_device =
+            (__bridge id<MTLDevice>)device.nativeHandle();
+        MTLTextureDescriptor* native_descriptor =
+            [[MTLTextureDescriptor alloc] init];
+        native_descriptor.textureType = MTLTextureType2D;
+        native_descriptor.pixelFormat = pixelFormat(descriptor.format);
+        native_descriptor.width = descriptor.width;
+        native_descriptor.height = descriptor.height;
+        native_descriptor.depth = 1;
+        native_descriptor.arrayLength = 1;
+        native_descriptor.mipmapLevelCount = 1;
+        native_descriptor.sampleCount = 1;
+        native_descriptor.storageMode = MTLStorageModeShared;
+        native_descriptor.hazardTrackingMode =
+            descriptor.hazard_tracking == ALMetalHazardTrackingMode::tracked
+                ? MTLHazardTrackingModeTracked
+                : MTLHazardTrackingModeUntracked;
+        native_descriptor.cpuCacheMode = MTLCPUCacheModeDefaultCache;
+        native_descriptor.usage = textureUsage(descriptor.usage);
+
+        id<MTLTexture> texture = [native_device
+            newTextureWithDescriptor:native_descriptor
+                           iosurface:surface
+                               plane:plane];
+        if (!texture)
+        {
+            setError(error, "Metal device could not import the IOSurface texture");
+            return nullptr;
+        }
+        texture.label = toNSString(descriptor.label);
+
+        auto impl = std::make_unique<Impl>();
+        impl->device = native_device;
+        impl->texture = texture;
+        return std::unique_ptr<ALMetalTexture>(
+            new ALMetalTexture(std::move(impl), descriptor));
     }
 }
 

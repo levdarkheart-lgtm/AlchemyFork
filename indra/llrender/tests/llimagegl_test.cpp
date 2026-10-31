@@ -573,15 +573,22 @@ namespace
         REQUIRE(img->createGLTexture(0, makeRaw(W, H, 3, 0x20).get()));
         REQUIRE(img->getMetalTexture());
 
-        ALMetalTextureDescriptor descriptor = img->getMetalTexture()->descriptor();
-        descriptor.usage = descriptor.usage | ALMetalTextureUsage::render_target;
-        descriptor.label = "Alchemy adopted LLImageGL render mirror test";
-        auto rendered = ALMetalTexture::create(*device, descriptor, &error);
+        const U64 initial_stamp = img->getContentStamp();
+        auto rendered = img->createMetalRenderTexture(&error);
         INFO(error);
         REQUIRE(rendered);
+        CHECK(alMetalHasUsage(rendered->descriptor().usage,
+                              ALMetalTextureUsage::shader_read));
+        CHECK(alMetalHasUsage(rendered->descriptor().usage,
+                              ALMetalTextureUsage::render_target));
         ALMetalTexture* rendered_pointer = rendered.get();
         REQUIRE(img->adoptMetalRenderTexture(std::move(rendered)));
         CHECK(img->getMetalTexture() == rendered_pointer);
+        CHECK(img->getContentStamp() != initial_stamp);
+
+        const U64 adopted_stamp = img->getContentStamp();
+        img->markMetalRenderTextureUpdated();
+        CHECK(img->getContentStamp() != adopted_stamp);
 
         // A later upload asks only for shader-read usage. The adopted
         // shader-read|render-target allocation is a valid superset and must
@@ -601,6 +608,11 @@ namespace
             CHECK(pixels[pixel * 4 + 2] == 0x60);
             CHECK(pixels[pixel * 4 + 3] == 0xff);
         }
+
+        const U64 uploaded_stamp = img->getContentStamp();
+        img->discardMetalTexture();
+        CHECK(img->getMetalTexture() == nullptr);
+        CHECK(img->getContentStamp() != uploaded_stamp);
     }
 
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: scaleDown preserves its Metal mirror with a GPU blit", "[LLImageGL][almetal]")

@@ -6,6 +6,7 @@ endif()
 
 find_library(AL_METAL_FRAMEWORK Metal REQUIRED)
 find_library(AL_QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
+find_library(AL_IOSURFACE_FRAMEWORK IOSurface REQUIRED)
 set(AL_METAL_BUILTIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/almetal_builtin.metal")
 set(AL_METAL_BUILTIN_SOURCE "${AL_METAL_BUILTIN_SOURCE}" CACHE INTERNAL
     "Built-in native Metal shader source")
@@ -110,6 +111,7 @@ target_link_libraries(
     al::flags
     ${AL_METAL_FRAMEWORK}
     ${AL_QUARTZCORE_FRAMEWORK}
+    ${AL_IOSURFACE_FRAMEWORK}
   PUBLIC
     ll::SDL3
 )

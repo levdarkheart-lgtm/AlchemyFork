@@ -27,11 +27,22 @@ public:
         std::string* error = nullptr);
 
     // Encode a bilinear, clamp-to-edge resize from source level zero to the
-    // complete destination. Both textures remain owned by the caller.
+    // complete destination. When flip_y is true, dimensions must match and
+    // the exact opposite source row is copied without filtering. Both textures
+    // remain owned by the caller.
     bool encode(ALMetalCommandBuffer& command_buffer,
                 const ALMetalTexture& source,
                 const ALMetalTexture& destination,
+                bool flip_y,
                 std::string* error = nullptr);
+
+    bool encode(ALMetalCommandBuffer& command_buffer,
+                const ALMetalTexture& source,
+                const ALMetalTexture& destination,
+                std::string* error = nullptr)
+    {
+        return encode(command_buffer, source, destination, false, error);
+    }
 
     static bool supports(ALMetalPixelFormat format) noexcept;
 

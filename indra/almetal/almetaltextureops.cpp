@@ -32,6 +32,7 @@ struct ALMetalTextureResampler::Impl
     struct Pipeline
     {
         ALMetalPixelFormat format = ALMetalPixelFormat::invalid;
+        bool flip_y = false;
         std::unique_ptr<ALMetalRenderPipeline> state;
     };
 
@@ -40,11 +41,12 @@ struct ALMetalTextureResampler::Impl
     std::unique_ptr<ALMetalSamplerState> sampler;
     std::vector<Pipeline> pipelines;
 
-    ALMetalRenderPipeline* pipeline(ALMetalPixelFormat format, std::string* error)
+    ALMetalRenderPipeline* pipeline(ALMetalPixelFormat format, bool flip_y,
+                                    std::string* error)
     {
         for (Pipeline& entry : pipelines)
         {
-            if (entry.format == format)
+            if (entry.format == format && entry.flip_y == flip_y)
             {
                 return entry.state.get();
             }
@@ -53,15 +55,19 @@ struct ALMetalTextureResampler::Impl
         ALMetalRenderPipelineDescriptor descriptor;
         descriptor.library = library.get();
         descriptor.vertex_function = "almetal_resample_vertex";
-        descriptor.fragment_function = "almetal_resample_fragment";
+        descriptor.fragment_function = flip_y
+            ? "almetal_resample_flip_y_fragment"
+            : "almetal_resample_fragment";
         descriptor.colors[0].format = format;
-        descriptor.label = "Alchemy bilinear texture-resample pipeline";
+        descriptor.label = flip_y
+            ? "Alchemy exact texture-row-flip pipeline"
+            : "Alchemy bilinear texture-resample pipeline";
         auto state = ALMetalRenderPipeline::create(*device, descriptor, error);
         if (!state)
         {
             return nullptr;
         }
-        pipelines.push_back({format, std::move(state)});
+        pipelines.push_back({format, flip_y, std::move(state)});
         return pipelines.back().state.get();
     }
 };
@@ -132,6 +138,7 @@ bool ALMetalTextureResampler::supports(ALMetalPixelFormat format) noexcept
 bool ALMetalTextureResampler::encode(ALMetalCommandBuffer& command_buffer,
                                      const ALMetalTexture& source,
                                      const ALMetalTexture& destination,
+                                     bool flip_y,
                                      std::string* error)
 {
     if (!mImpl || !mImpl->device)
@@ -147,6 +154,13 @@ bool ALMetalTextureResampler::encode(ALMetalCommandBuffer& command_buffer,
         !supports(source_descriptor.format))
     {
         setError(error, "Metal texture resample requires matching filterable 2D formats");
+        return false;
+    }
+    if (flip_y &&
+        (source_descriptor.width != destination_descriptor.width ||
+         source_descriptor.height != destination_descriptor.height))
+    {
+        setError(error, "Metal texture row flip requires matching dimensions");
         return false;
     }
     if (!alMetalHasUsage(source_descriptor.usage, ALMetalTextureUsage::shader_read) ||
@@ -168,7 +182,8 @@ bool ALMetalTextureResampler::encode(ALMetalCommandBuffer& command_buffer,
     {
         return false;
     }
-    ALMetalRenderPipeline* pipeline = mImpl->pipeline(render_format, error);
+    ALMetalRenderPipeline* pipeline =
+        mImpl->pipeline(render_format, flip_y, error);
     if (!pipeline)
     {
         return false;
@@ -196,7 +211,8 @@ bool ALMetalTextureResampler::encode(ALMetalCommandBuffer& command_buffer,
     };
     return encoder->setPipeline(*pipeline, error) &&
            encoder->setFragmentTextureLinear(0, &source, error) &&
-           encoder->setFragmentSampler(0, mImpl->sampler.get(), error) &&
+           (flip_y ||
+            encoder->setFragmentSampler(0, mImpl->sampler.get(), error)) &&
            encoder->setViewport(viewport, error) &&
            encoder->setScissor(scissor, error) &&
            encoder->setCullMode(ALMetalCullMode::none, error) &&

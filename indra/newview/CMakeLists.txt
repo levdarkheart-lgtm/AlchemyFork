@@ -2153,7 +2153,7 @@ if(AL_BUILD_VIEWER)
     find_library(COREGRAPHICS_FRAMEWORK CoreGraphics)
     target_link_libraries(
       ${AL_VIEWER_BINARY_NAME}
-      PRIVATE ${IOSURFACE_FRAMEWORK} ${COREGRAPHICS_FRAMEWORK}
+      PRIVATE almetal ${IOSURFACE_FRAMEWORK} ${COREGRAPHICS_FRAMEWORK}
     )
   endif()
 

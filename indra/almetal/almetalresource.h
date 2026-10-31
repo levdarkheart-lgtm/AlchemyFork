@@ -265,6 +265,17 @@ public:
         const ALMetalTextureDescriptor& descriptor,
         std::string* error = nullptr);
 
+    // Import one IOSurface plane without a CPU copy. The caller retains its
+    // IOSurface reference for at least as long as the returned texture. This
+    // is deliberately a narrow macOS ingress boundary for shared media frames;
+    // ordinary viewer textures continue through create() and upload().
+    static std::unique_ptr<ALMetalTexture> createFromIOSurface(
+        const ALMetalDevice& device,
+        void* iosurface,
+        std::uint32_t plane,
+        const ALMetalTextureDescriptor& descriptor,
+        std::string* error = nullptr);
+
     void* nativeHandle() const noexcept;
     // Shader-compatible view that suppresses automatic RGBA/BGRA sRGB
     // decoding while retaining any channel swizzle. Equal to nativeHandle for
