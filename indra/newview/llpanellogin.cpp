@@ -346,7 +346,8 @@ LLPanelLogin::LLPanelLogin(const LLRect &rect,
     // This virtual AX surface exists only in the disposable development build.
     // Release channels retain no automation/accessibility bridge until LLUI has
     // a general, product-quality native accessibility implementation.
-    if (channel == "Alchemy Metal Development")
+    if (channel == "Alchemy Metal Development" ||
+        channel == "Alchemy Metal Diagnostic")
     {
         LLSdlMacOSLoginAXCallbacks callbacks;
         callbacks.context = this;

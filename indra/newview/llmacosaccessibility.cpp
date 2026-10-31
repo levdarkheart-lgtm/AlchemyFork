@@ -313,8 +313,10 @@ std::unique_ptr<LLMacOSLLUIAccessibility> sAccessibility;
 void ll_install_macos_llui_accessibility(LLViewerWindow* viewer_window)
 {
 #if LL_DARWIN
+    const std::string& channel = LLVersionInfo::instance().getChannel();
     if (!viewer_window || sAccessibility ||
-        LLVersionInfo::instance().getChannel() != "Alchemy Metal Development")
+        (channel != "Alchemy Metal Development" &&
+         channel != "Alchemy Metal Diagnostic"))
     {
         return;
     }
