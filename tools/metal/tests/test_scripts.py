@@ -1,6 +1,7 @@
 import csv
 import importlib.util
 import json
+import plistlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -209,6 +210,112 @@ class TraceSubmissionTests(unittest.TestCase):
         module = load("trace_submissions")
         with self.assertRaisesRegex(ValueError, "no committed"):
             module.summarize_xml(b"<trace-query-result/>")
+
+
+class CUAPreflightTests(unittest.TestCase):
+    def make_app(self, root):
+        app = root / "Alchemy Metal Development.app"
+        macos = app / "Contents/MacOS"
+        macos.mkdir(parents=True)
+        executable = macos / "Alchemy Metal Development"
+        executable.write_bytes(b"test viewer\n")
+        executable.chmod(0o755)
+        with (app / "Contents/Info.plist").open("wb") as stream:
+            plistlib.dump(
+                {
+                    "CFBundleExecutable": "Alchemy Metal Development",
+                    "CFBundleShortVersionString": "26.4.0.99999",
+                },
+                stream,
+            )
+        return app, executable
+
+    def valid_snapshot(self, module, root):
+        app, executable = self.make_app(root)
+        identity, identity_errors = module.app_identity(app)
+        self.assertEqual([], identity_errors)
+        profile = root / "isolated-profile"
+        log_path = profile / "logs/Alchemy.log"
+        process = module.Process(
+            42, 1, str(identity["executable"]) + " --multiple --noaudio"
+        )
+        environment = f"{process.command} ALCHEMYNEXT_USER_DIR={profile} TERM=xterm"
+        open_files = [str(log_path)]
+        log_text = (
+            f"Started logging to {log_path}\n"
+            "Version: Alchemy Metal Development 26.4.0.99999\n"
+        )
+        return identity, profile, process, environment, open_files, log_text
+
+    def test_exact_isolated_snapshot_passes(self):
+        module = load("cua_preflight")
+        with tempfile.TemporaryDirectory() as directory:
+            values = self.valid_snapshot(module, Path(directory))
+            identity, profile, process, environment, open_files, log_text = values
+            self.assertEqual(
+                [],
+                module.validate_runtime_snapshot(
+                    identity, profile, [process], environment, open_files, log_text
+                ),
+            )
+
+    def test_stale_sibling_viewer_is_rejected(self):
+        module = load("cua_preflight")
+        with tempfile.TemporaryDirectory() as directory:
+            values = self.valid_snapshot(module, Path(directory))
+            identity, profile, process, environment, open_files, log_text = values
+            sibling = module.Process(
+                43, 1,
+                "/Applications/Alchemy Release.app/Contents/MacOS/Alchemy Release",
+            )
+            errors = module.validate_runtime_snapshot(
+                identity,
+                profile,
+                [process, sibling],
+                environment,
+                open_files,
+                log_text,
+            )
+            self.assertTrue(any("census" in error for error in errors))
+
+    def test_ordinary_profile_or_missing_environment_is_rejected(self):
+        module = load("cua_preflight")
+        with tempfile.TemporaryDirectory() as directory:
+            values = self.valid_snapshot(module, Path(directory))
+            identity, profile, process, _, open_files, log_text = values
+            normal = Path.home() / "Library/Application Support/AlchemyNext/logs/Alchemy.log"
+            errors = module.validate_runtime_snapshot(
+                identity,
+                profile,
+                [process],
+                process.command,
+                open_files + [str(normal)],
+                log_text,
+            )
+            self.assertTrue(any("isolated-profile root" in error for error in errors))
+            self.assertTrue(any("ordinary Alchemy profile" in error for error in errors))
+
+    def test_profile_root_inside_ordinary_tree_is_rejected(self):
+        module = load("cua_preflight")
+        identity = {
+            "executable": Path("/tmp/Alchemy Metal Development.app/Contents/MacOS/Alchemy Metal Development"),
+            "channel": "Alchemy Metal Development",
+            "version": "26.4.0.99999",
+        }
+        profile = Path.home() / "Library/Application Support/AlchemyNext/validation"
+        process = module.Process(42, 1, str(identity["executable"]))
+        errors = module.validate_runtime_snapshot(
+            identity,
+            profile,
+            [process],
+            f"{process.command} ALCHEMYNEXT_USER_DIR={profile}",
+            [str(profile / "logs/Alchemy.log")],
+            (
+                f"Started logging to {profile / 'logs/Alchemy.log'}\n"
+                "Version: Alchemy Metal Development 26.4.0.99999\n"
+            ),
+        )
+        self.assertTrue(any("profile root" in error for error in errors))
 
 
 class HarnessTests(unittest.TestCase):

@@ -16,17 +16,14 @@ in opaque, lit-alpha and impostor-alpha owners. Commit `7b27e5d62e` preserves
 raw standard/generated bump maps in the native G-buffer owner, matching
 `LLDrawPoolBump::bindBumpMap`; colour textures retain colour decoding.
 
-The latest production-boundary negative control holds bump bytes constant and
-changes only the texture storage declaration. Before `7b27e5d62e`, an
-sRGB-backed standard bump asset changed opaque G-buffer half channels from the
-raw result:
-
-- `56820 != 65280` and `15337 != 32895`.
-
-After the fix, the focused RelWithDebInfo case passes 1,322 assertions. Complete
-Debug and RelWithDebInfo physical suites each pass 44,865 assertions across 50
-cases with Metal API, GPU and shader validation enabled. The earlier material
-normal negative control remains in those suites.
+Controlled Computer Use then exercised the guarded authored-mirror Snapshot
+path in source-exact build 68012. A fixed upper reflected band improved from
+SSIM `0.710348` / PSNR `12.456081 dB` to SSIM `0.806706` / PSNR
+`17.472924 dB` against the pinned aligned OpenGL reference. The complete mirror
+interior improved from SSIM `0.859180` / PSNR `17.934595 dB` to SSIM
+`0.874149` / PSNR `22.417276 dB`. The lower reflected floor still loses tile
+detail and its diagonal grout line, so this is progress evidence, not parity.
+Continuous live native authority remains fail-closed.
 
 ## Build and test evidence
 
@@ -50,49 +47,62 @@ normal negative control remains in those suites.
   `3b385c1eb6330ee96cc0e62ec48f1f03ee5658f851852baa9fb3be4331c40b5f`;
   packaged metallib is
   `ed21aecadcdc0feabbcb83245fba5946ec53625099d059930e0e159feda37abf`.
-- This checkpoint did not launch the viewer and does not count an uncontrolled
-  live scene as parity evidence.
+- Exact-path launch used disposable profile `/tmp/alchemy-metal-m012.UGPJCd`,
+  Metal API validation and nonpersistent
+  `--set ALMetalHeroMirrorSnapshotValidation true`. The saved 2048x1476 native
+  PNG has SHA-256
+  `40cb056d15ac6c60364396a7c0603aa1d0599c372f8a63dcd193b56dd356e557`;
+  the isolated log records guarded validation and native colour readback.
+- Semantic login, teleport, Midday, Snapshot refresh/save and logout succeeded.
+  The process exited 0; `LogoutReply`, `Goodbye!` and stopped status were
+  observed, and no viewer/media process remained. Transient incomplete cloud
+  generations occurred during scene arrival but ended before the successful
+  native capture; they are not counted as parity or performance evidence.
 - The compact live state/ledger, indexed archives, seven-invariant coverage map,
   live-link/command-path checks, Python bytecode checks and shell syntax checks
-  pass. `validate_harness.py` now validates 29 required files and all 15 tooling
-  tests pass.
+  pass. The new fail-closed Computer Use preflight makes exact app version,
+  executable hash, singleton process, isolated profile and open-log identity
+  mandatory before binding. `validate_harness.py` validates 30 required files
+  and all 19 tooling tests pass.
 
 ## Milestone snapshot
 
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-008 native renderer | doing | Broad native world/UI owners and physical regressions exist; advanced-family reference parity is incomplete. |
-| M-008 advanced views/effects | doing | Two legacy-normal seams are closed; projector, mirror geometry and remaining advanced-reference fidelity stay open. |
+| M-008 advanced views/effects | doing | Guarded authored-mirror colour improved against the pinned reference, but reflected floor detail remains over-blurred; parity and continuous authority stay open. |
 | M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. |
 | M-010 measured performance | deferred | Structural wins exist, but no qualifying paired M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
-| M-012 Computer Use bridge | complete | Development/Diagnostic LLUI accessibility route is validated end to end; Release remains excluded. |
+| M-012 Computer Use bridge | complete | Development/Diagnostic LLUI route remains complete; exact-path isolated-session preflight now rejects stale or ordinary-profile bindings. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. The checkpoint fixes a second,
-source-proven material-correctness defect in the native owner of fetched and
-generated legacy bump data. Physical negative control, complete validated GPU
-suites, the neutral gate and a source-exact signed ARM64 package establish the
-change; they do not close M-008 or a release gate.
+**Advances the complete product:** yes. The source corrections now have a
+controlled same-location authored-mirror comparison showing materially closer
+upper reflected colour and better fixed-crop metrics. Exact binary/profile
+attestation and native-readback logging make the live evidence attributable.
+The residual reflected-floor blur prevents M-008 or any release gate from
+closing.
 
 **Deferred critical work:** complete advanced-family parity; feature-matrix and
 stability coverage; removal of viewer-owned OpenGL traversal/link/context use;
 independent build/review evidence; and paired, quality-equivalent M1 Max
 performance measurements. These are requirements, not waivers.
 
-**Evidence-based priority:** foliage cutoff/coverage and PBR base-factor,
-normal/ORM, blend and culling contracts matched their reference owners during
-this checkpoint, so do not manufacture changes there. Continue M-008 at a
-different bounded projector, mirror-geometry or advanced-pass contract. M-009,
-M-011 and qualifying M-010 results still depend on stable renderer parity.
+**Evidence-based priority:** the fixed mirror crop localizes the remaining
+failure to reflected floor detail rather than the whole scene. Trace hero-probe
+LOD, roughness/normal inputs, mip generation and sampling against the OpenGL
+owner, then add a causal asymmetric physical control only for a demonstrated
+mismatch. M-009, M-011 and qualifying M-010 still depend on stable parity.
 
 ## Exact next actions
 
-1. Select the next untested M-008 projector, mirror-geometry or advanced-pass
-   source contract, add a causal physical negative control, implement the first
-   demonstrated mismatch, and rerun focused plus complete Metal validation.
-2. Use actual Computer Use only when a controlled visible fixture is causal;
-   otherwise prefer deterministic physical GPU coverage.
+1. Trace authored-mirror hero-probe LOD, roughness/normal data, mip construction
+   and sampling to explain the over-blurred reflected floor; compare source
+   owners before changing code.
+2. Add a physical negative control and implement a correction only after a
+   specific divergence is demonstrated; rerun focused and complete Metal
+   validation, then repeat the attested fixed-view comparison.
 3. Keep strict no-GL, feature parity, stability and performance gates open until
    their documented release evidence exists.

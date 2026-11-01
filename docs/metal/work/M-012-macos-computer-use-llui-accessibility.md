@@ -18,6 +18,42 @@
 - **Runtime boundary:** the in-world screenshots and shutdown telemetry are useful automation smoke evidence, not proof of Metal-only rendering, parity or performance. The executable still retains OpenGL work. Snapshot's `depth` and `depth24` UI paths were operable and displayed correct-looking previews, but this run emitted no native-readback success marker after the ordered native transaction failed closed; it therefore does **not** close M-008 native provenance or same-source image parity.
 - **Diagnostic-channel follow-up: PASS, with one bounded limitation.** The first 67968 Diagnostic launch proved that both bridges were accidentally hard-coded to `Alchemy Metal Development`; commit `9c1d2a38e7` admits the Diagnostic channel while continuing to exclude Release. Actual Computer Use on source-exact 67969 then used semantic login, menus, Debug Settings text entry, checkboxes, Midday, Snapshot save and semantic logout. The dependent `Advanced Graphics Preferences` floater itself currently yields an empty AX container. The matched validation settings remained operable through Debug Settings, so no named validation flow is blocked and Gate C remains complete under its narrow-definition rule; add a traversal/role only if a future named flow cannot use an existing semantic path.
 
+## Post-completion binding hardening — 2026-11-01
+
+Exact-path Computer Use lookup can launch an app when the requested process is
+absent, while display-name or URL-scheme lookup can select a stale sibling. A
+controlled M-008 run also demonstrated that an ordinary-profile viewer can look
+plausible while being invalid evidence. Therefore every authenticated viewer
+validation now uses this fail-closed sequence:
+
+1. Establish a zero-viewer process census, create a disposable profile, and
+   launch the exact executable directly with the intended environment and
+   arguments. Do not use a display name or URL scheme to launch or bind.
+2. Before Computer Use binds, run:
+
+   ```sh
+   tools/metal/cua_preflight.py "$APP" --profile "$PROFILE" \
+     --expected-version "$VERSION" --expected-sha256 "$EXECUTABLE_SHA256"
+   ```
+
+   The preflight must pass exact Development/Diagnostic channel metadata,
+   executable version and SHA-256, exactly one exact main process with no
+   sibling viewer, exact `ALCHEMYNEXT_USER_DIR`, an open isolated-profile log,
+   no ordinary Alchemy profile path and the expected log/channel marker.
+3. Bind Computer Use by the same full `.app` path. If the preflight fails, stop
+   the run; never reinterpret ordinary-profile rendering as evidence.
+4. Hidden development guards are not expected to appear in Debug Settings.
+   When a named guarded validation requires one, set it nonpersistently on the
+   exact direct launch, for example
+   `--set ALMetalHeroMirrorSnapshotValidation true`, and verify the setting in
+   the isolated log. Do not persist it or weaken its fail-closed default.
+
+The build-68012 guarded authored-mirror run followed this sequence, completed
+semantic login, Snapshot operation and logout, exited 0, logged `LogoutReply`,
+`Goodbye!` and stopped status, and left no viewer/media process. This strengthens
+evidence attribution; it does not extend M-012's product scope or establish
+rendering parity on its own.
+
 ## Ledger row
 
 The active work board records the completed bounded result as:

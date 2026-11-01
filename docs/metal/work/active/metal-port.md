@@ -18,63 +18,80 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Main native world chain publishes exact frames; advanced material/reference coverage remains incomplete. |
-| M-008 | Advanced views/effects and compute | doing | Material and bump normal raw-data seams fixed through `7b27e5d62e`; next bounded projector, mirror-geometry or advanced-pass seam is active. |
+| M-008 | Advanced views/effects and compute | doing | Guarded authored-mirror colour is measurably closer to the pinned reference, but reflected floor detail remains over-blurred; trace hero-probe LOD/mips/material sampling. |
 | M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Tooling and structural reductions exist; qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
-| M-012 | Development Computer Use / LLUI accessibility | complete | Actual semantic login/settings/Snapshot/logout validation passed; extend only for a named blocked flow. |
+| M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation passed; fail-closed exact-app/profile/hash/session preflight now prevents stale or ordinary-profile evidence. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item; it never implies product completion.
 
 ## Active checkpoint — 2026-11-01
 
-Commit `7b27e5d62e` closes the standard/generated legacy bump owner: its pre-fix
-physical control failed half channels `56820 != 65280` and `15337 != 32895`.
-The preceding `80924cdae2` checkpoint preserves raw tangent-space material
-normal data in the opaque, lit-alpha and impostor-alpha owners. Corrected
-focused validation passes 1,322 assertions; both complete physical
-configurations pass 44,865 assertions/50 cases. The neutral gate passes 484/484
-tests.
-Warnings-as-errors Development 68012 builds source-exact, repeats with no work,
-passes deep signing and verifies 349/349 ARM64 slices.
+Commit `7b27e5d62e` remains the renderer checkpoint after the legacy material and
+bump normal corrections. Corrected focused validation passes 1,322 assertions;
+both complete physical configurations pass 44,865 assertions/50 cases. The
+neutral gate passes 484/484 tests. Warnings-as-errors Development 68012 builds
+source-exact, repeats with no work, passes deep signing and verifies 349/349
+ARM64 slices.
 
-The build cache now uses Homebrew Bison 3.8.2 and a build-local Python environment
-with the repository's `llsd` and `PyYAML` requirements. This converts the former
-environment omission into executed LL compiler and Python test coverage.
+An attested isolated Computer Use run exercised the guarded authored-mirror
+Snapshot path at the fixed location. Against the pinned aligned OpenGL
+reference, the upper reflected band improved from SSIM `0.710348` / PSNR
+`12.456081 dB` to `0.806706` / `17.472924 dB`; the full mirror-interior crop
+improved from `0.859180` / `17.934595 dB` to `0.874149` / `22.417276 dB`.
+The lower floor remains over-blurred and loses tile/grout detail, so continuous
+native authority remains guarded and M-008 remains open. The 2048x1476 native
+candidate SHA-256 is
+`40cb056d15ac6c60364396a7c0603aa1d0599c372f8a63dcd193b56dd356e557`.
 
-The continuity checkpoint compacts the live state and ledger to 97 and 81 lines,
-retains their full predecessors in indexed archives, fixes the stale verifier
-path, and adds live-link, executable-command, cross-document and declarative
-release-invariant checks. The 29-file harness and all 15 tooling tests pass.
+The build cache uses Homebrew Bison 3.8.2 and a build-local Python environment
+with the repository-declared `llsd 1.2.4` and `PyYAML 6.0.3` requirements.
+`llsd` is Linden Research's Python package from `secondlife/python-llsd`, not a
+Bison component; CMake selects the virtual-environment interpreter explicitly.
+
+The continuity harness retains superseded checkpoints in indexed archives and
+checks compactness, live links, executable commands, cross-document milestone
+state and seven immutable release invariants. The new Computer Use preflight
+requires the exact Development/Diagnostic app version and SHA-256, a singleton
+exact executable, isolated profile environment and live isolated log before UI
+binding. The 30-file harness and all 19 tooling tests pass.
+
+The controlled viewer run completed semantic login, fixed-location setup,
+Snapshot refresh/save and clean logout. Native-readback markers, exit 0,
+`LogoutReply`, `Goodbye!`, stopped status and a zero-process census were
+observed. Startup cloud-generation warnings ended before capture and are not
+accepted as performance or parity evidence.
 
 ## Complete-product checkpoint gate
 
 At every substantial engineering checkpoint, update all three fields:
 
 1. **Product advancement:** name the product/release requirement moved by the
-   change and the causal evidence. The current fix advances retained legacy bump
-   correctness with a physical negative control; it does not close M-008.
+   change and the causal evidence. Current: corrected native data contracts plus
+   an attested fixed-view comparison materially improve authored-mirror colour;
+   the visible reflected-floor defect prevents M-008 closure.
 2. **Deferred critical work:** list still-open critical dependencies. Current:
    advanced-family parity, full matrix/stability, strict no-GL, independent
    review/reproducibility and paired M1 Max performance evidence.
 3. **Priority reassessment:** choose the next action from dependency/risk
-   evidence. Current: foliage and PBR contracts inspected in this checkpoint
-   match their reference owners, so move to a bounded projector, mirror-geometry
-   or other advanced-pass contract before M-009, owner-by-owner M-011 cutover
-   and final M-010 claims.
+   evidence. Current: fixed crops localize the active failure to lost reflected
+   floor detail. Trace hero-probe LOD, roughness/normal inputs, mip construction
+   and sampling before touching unrelated renderer owners. M-009, owner-by-owner
+   M-011 cutover and final M-010 claims remain downstream of stable parity.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Time-box a different M-008 projector, mirror-geometry or advanced-pass source
-comparison. Trace its OpenGL data/pass-state contract to the native owner, add a
-physical negative control that fails for the suspected divergence, implement
-only the demonstrated correction, and run focused plus complete
-Debug/RelWithDebInfo Metal validation. Use Computer Use only for a controlled
-fixture that visibly attributes the family under test.
+Trace the authored-mirror hero-probe LOD, material roughness/normal data, mip
+generation and sampling contracts from the OpenGL owner to the native Metal
+owner. Add an asymmetric physical negative control only after demonstrating the
+specific divergence, implement the bounded correction, run focused plus full
+Debug/RelWithDebInfo validation, and repeat the exact preflight-attested
+fixed-view capture before changing continuous-authority state.
 
 ## Non-negotiable open gates
 
