@@ -1682,11 +1682,17 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.exposure_target.reset();
         capture.exposure_frame = std::numeric_limits<U32>::max();
         capture.exposure_epoch = 0;
-        mMetalExposureHistoryReady = false;
         capture.lens_flare_state_target.reset();
         capture.lens_flare_state_frame = std::numeric_limits<U32>::max();
         capture.lens_flare_state_epoch = 0;
-        mMetalLensFlareHistoryReady = false;
+        // Reflection and hero captures swap in an independent capture owner.
+        // Initializing that owner's device-local resources must not invalidate
+        // temporal history already synchronized by the main-world owner.
+        if (main_world_capture)
+        {
+            mMetalExposureHistoryReady = false;
+            mMetalLensFlareHistoryReady = false;
+        }
         capture.lens_dirt_target.reset();
         capture.lens_dirt_params = LensDirtPlateParams();
         capture.projector_shadow_texture.reset();
@@ -2171,6 +2177,38 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     {
                         owner.renderer = std::move(completed->renderer);
                         owner.attempted = false;
+#if LL_DARWIN
+                        // Main-world pipelines warm asynchronously only after
+                        // STATE_STARTED. GL can advance an already-enabled
+                        // temporal flare during that build, leaving Metal no
+                        // exact prior texel from which to continue. Restart
+                        // both histories together at generateLensFlareState's
+                        // safe clear boundary; the following native and GL
+                        // updates then consume the same known-black history.
+                        if (completed->owner == "main-world" &&
+                            !mMetalLensFlareLastWasZero)
+                        {
+                            mLensFlareStateClearPending = true;
+                            ++mMetalLensFlareHistoryEpoch;
+                            if (mMetalLensFlareHistoryEpoch == 0)
+                            {
+                                ++mMetalLensFlareHistoryEpoch;
+                            }
+                            mMetalLensFlareGLFrame =
+                                std::numeric_limits<U32>::max();
+                            mMetalLensFlareLastWasZero = true;
+                            mMetalLensFlareHistoryReady = false;
+                            owner.lens_flare_state_target.reset();
+                            owner.lens_flare_state_frame =
+                                std::numeric_limits<U32>::max();
+                            owner.lens_flare_state_epoch = 0;
+                            LL_INFOS("Metal")
+                                << "Native main-world renderer warm-up "
+                                   "restarted GL and Metal lens-flare "
+                                   "history from their exact-black boundary"
+                                << LL_ENDL;
+                        }
+#endif
                         LL_INFOS("Metal")
                             << "Asynchronous native " << completed->owner
                             << " renderer pipeline warm-up completed in "
@@ -21368,6 +21406,15 @@ LLPipeline::LensFlareStateConfig LLPipeline::lensFlareStateConfig()
 // non-HDR paths.
 void LLPipeline::generateLensFlareState(LLRenderTarget* src)
 {
+    // Color correction applies the flare only to the main world target.
+    // Auxiliary, reflection and hero-probe passes must therefore hold this
+    // global temporal history: advancing it for an image that never consumes
+    // the flare would silently break the main world's matching Metal history.
+    if (!isMainWorldPass() || mRT != &mMainRT)
+    {
+        return;
+    }
+
     const LensFlareStateConfig config = lensFlareStateConfig();
     if (mLensFlareStateClearPending)
     {
