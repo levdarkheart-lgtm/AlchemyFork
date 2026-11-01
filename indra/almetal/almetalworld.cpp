@@ -12317,6 +12317,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                             (batch.pbr_glow && batch.double_sided)
                         ? ALMetalCullMode::none : ALMetalCullMode::back,
                     error) &&
+                // The GL emissive excursion rebinds legacy TexSetup and
+                // GLTF material textures with anisotropic wrap even when the
+                // owning alpha group is a particle group. Do not inherit the
+                // clamp sampler installed by that group's colour replay.
+                encoder->setFragmentSampler(
+                    0, mImpl->diffuse_sampler.get(), error) &&
                 encoder->setPipeline(*glow_pipeline, error) &&
                 encoder->setVertexBuffer(
                     0, *batch.vertices, batch.position_offset, error) &&

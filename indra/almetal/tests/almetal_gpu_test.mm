@@ -8098,6 +8098,42 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(post_water_glow_pixels[stencil_center + 3] >
               post_water_pixels[stencil_center + 3]);
 
+        // GL's particle colour draw clamps its diffuse sampler, but the
+        // group-local legacy emissive TexSetup deliberately rebinds wrap.
+        // Move glow sampling beyond U=1 and prove that preceding particle
+        // state cannot change the replay's alpha result.
+        post_water_glow_batches[2].indices = indices.get();
+        post_water_glow_batches[2].diffuse_textures[0] =
+            pbr_base_texture.get();
+        post_water_glow_batches[2].texture_matrix[12] = 1.25f;
+        post_water_glow_batches[2].pre_water_particle = true;
+        post_water_glow_batches[1].pre_water_particle = false;
+        auto wrapped_legacy_particle_glow =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(wrapped_legacy_particle_glow);
+        REQUIRE(wrapped_legacy_particle_glow->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_glow_pixels.data(), 32 * 8,
+            &error));
+        const std::uint16_t wrapped_legacy_glow_alpha =
+            post_water_glow_pixels[stencil_center + 3];
+        CHECK(wrapped_legacy_glow_alpha >
+              post_water_pixels[stencil_center + 3]);
+        post_water_glow_batches[1].pre_water_particle = true;
+        auto uncontaminated_legacy_particle_glow =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(uncontaminated_legacy_particle_glow);
+        REQUIRE(uncontaminated_legacy_particle_glow->colorTexture(0)
+                    ->readback(
+                        *device, 0, 0, {},
+                        post_water_glow_pixels.data(), 32 * 8, &error));
+        CHECK(post_water_glow_pixels[stencil_center + 3] ==
+              wrapped_legacy_glow_alpha);
+        post_water_glow_batches[1].pre_water_particle = false;
+
         ALMetalWorldSimpleBatch post_water_pbr_glow = pbr_glow_batch;
         post_water_pbr_glow.post_water_glow = true;
         post_water_pbr_glow.pbr_slots[0].alpha_cutoff = 0.004f;
@@ -8142,6 +8178,44 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             &error));
         CHECK(post_water_glow_pixels[stencil_center + 3] >
               post_water_pixels[stencil_center + 3]);
+
+        // PBR material binds also restore anisotropic wrap for the emissive
+        // excursion. Exercise the same contaminated sampler transition with
+        // transformed base/emissive coordinates and require an exact match.
+        post_water_glow_batches[2].indices = indices.get();
+        post_water_glow_batches[2].diffuse_textures[0] =
+            pbr_base_texture.get();
+        post_water_glow_batches[2].pbr_slots[0].emissive_texture =
+            pbr_base_texture.get();
+        post_water_glow_batches[2].pbr_slots[0].emissive_color[0] = 1.f;
+        post_water_glow_batches[2].pbr_slots[0].emissive_color[1] = 1.f;
+        post_water_glow_batches[2].pbr_slots[0].emissive_color[2] = 1.f;
+        post_water_glow_batches[2].texture_matrix[12] = 1.25f;
+        post_water_glow_batches[2].pre_water_particle = true;
+        post_water_glow_batches[1].pre_water_particle = false;
+        auto wrapped_pbr_particle_glow =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(wrapped_pbr_particle_glow);
+        REQUIRE(wrapped_pbr_particle_glow->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_glow_pixels.data(), 32 * 8,
+            &error));
+        const std::uint16_t wrapped_pbr_glow_alpha =
+            post_water_glow_pixels[stencil_center + 3];
+        CHECK(wrapped_pbr_glow_alpha >
+              post_water_pixels[stencil_center + 3]);
+        post_water_glow_batches[1].pre_water_particle = true;
+        auto uncontaminated_pbr_particle_glow =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(uncontaminated_pbr_particle_glow);
+        REQUIRE(uncontaminated_pbr_particle_glow->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_glow_pixels.data(), 32 * 8,
+            &error));
+        CHECK(post_water_glow_pixels[stencil_center + 3] ==
+              wrapped_pbr_glow_alpha);
 
         post_water_batches[1].modelview[14] = -2.f;
         opaque_forward_scene.batches = post_water_batches.data();
