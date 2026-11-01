@@ -1,6 +1,6 @@
 # Native reflection-probe volume visualization execution — 2026-11-01
 
-**Work items:** M-008/M-009 advanced output and native-only cleanup.  
+**Work items:** M-008/M-009 advanced output and native-only cleanup.
 **Integrated code:** `28c4dca74be2084313f966d6fc8ed2804196fcdb`.
 
 ## Executed work

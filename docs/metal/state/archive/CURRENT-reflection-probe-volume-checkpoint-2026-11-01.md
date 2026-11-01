@@ -1,6 +1,6 @@
 # Native reflection-probe volume checkpoint — 2026-11-01
 
-**Observed:** physical Apple M1 Max acceptance host.  
+**Observed:** physical Apple M1 Max acceptance host.
 **Code:** `28c4dca74be2084313f966d6fc8ed2804196fcdb`.
 
 ## State established
