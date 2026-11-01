@@ -18,6 +18,7 @@ chronological transcript.
 | Matched live Grignano water/default-probe execution, 2026-11-01 | [metal-port-water-live-pair-checkpoint-2026-11-01.md](metal-port-water-live-pair-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 | RLVa minimum Metal/no-GL cutover execution and exact-parity deferral, 2026-11-01 | [metal-port-rlva-minimum-cutover-checkpoint-2026-11-01.md](metal-port-rlva-minimum-cutover-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 | Same-frame projector per-view constant refresh implementation and validation, 2026-11-01 | [metal-port-projector-per-view-checkpoint-2026-11-01.md](metal-port-projector-per-view-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
+| Native static/rigged world and HUD Highlight Transparent implementation and validation, 2026-11-01 | [metal-port-transparent-highlight-checkpoint-2026-11-01.md](metal-port-transparent-highlight-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.

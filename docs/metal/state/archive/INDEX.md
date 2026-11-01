@@ -18,6 +18,7 @@ reload the chronological history.
 | Matched live Grignano water/default-probe pair, 2026-11-01 | [CURRENT-water-live-pair-checkpoint-2026-11-01.md](CURRENT-water-live-pair-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | RLVa minimum Metal/no-GL cutover and exact-parity deferral, 2026-11-01 | [CURRENT-rlva-minimum-cutover-checkpoint-2026-11-01.md](CURRENT-rlva-minimum-cutover-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | Same-frame projector per-view constant refresh, 2026-11-01 | [CURRENT-projector-per-view-checkpoint-2026-11-01.md](CURRENT-projector-per-view-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
+| Native static/rigged world and HUD Highlight Transparent replay, 2026-11-01 | [CURRENT-transparent-highlight-checkpoint-2026-11-01.md](CURRENT-transparent-highlight-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
