@@ -22,6 +22,7 @@ media,media,In-world web and video texture display,yes,unverified,unverified,doc
 audio,audio,Spatial sound and streaming audio,yes,unverified,unverified,,Open-source audio reference
 voice,voice,WebRTC voice connection and spatial voice,yes,unverified,unverified,,Microphone privacy
 scripts,world,LSL/script-controlled interaction and effects,yes,unverified,unverified,,Network effects retained
+rlva,optional,RLVa restrictions camera and visual effects,no,unverified,unverified,docs/metal/work/deferred/rlva-parity.md,Owner decision 2026-11-01: minimum native/no-GL support must not block cutover; exact RLVa parity is a deferred nice-to-have and valid comparison requires Preferences enable/save/restart in both viewers
 stability,session,Long session resize suspend resume and logout,yes,unverified,unverified,docs/metal/state/archive/CURRENT-through-2026-11-01.md#2026-10-31-accepted-rollback-baseline-and-presentation-off-control,Resize fullscreen and clean shutdown observed; long session suspend resume and restart remain
 performance,performance,Primary benchmark comparison and GPU profiling,yes,unverified,unverified,,Do not fabricate data
 native,build,ARM64-only runtime and no app-owned OpenGL,yes,unverified,unverified,docs/metal/state/archive/CURRENT-through-2026-11-01.md#2026-10-31-live-cutover-rejection-and-correctness-first-rollback-checkpoint,ARM64 bundle checks pass but executable still links OpenGL and strict audit remains open
