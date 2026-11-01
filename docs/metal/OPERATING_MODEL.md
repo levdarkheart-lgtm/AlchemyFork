@@ -9,9 +9,9 @@ The owner gives **one product objective**. Codex manages all internal engineerin
 4. Verify at the narrowest practical scope, then integrate. Do not defer validation indefinitely; no fake passing test reports. If GPU execution is unavailable, explicitly record that limit and use Mac when available.
 
 ## Work ledger
-`work/active/metal-port.md` is the single execution plan with a work table and changelog. Add work items as needed; each has an ID, owner/worktree, dependencies, affected source paths, acceptance/evidence and current state (`todo`, `doing`, `blocked`, `verified`). User does not need to approve every row. Long investigations may get a separate file using `work/TEMPLATE.md`; index it from the active ledger. Move fully verified standalone work records into `work/completed/` (create when needed), retaining links.
+`work/active/metal-port.md` is the single current execution plan. Add work items as needed; each has an ID, dependencies, acceptance/evidence and current state (`todo`, `doing`, `blocked`, `deferred`, `complete`). User does not need to approve every row. Long investigations may get a separate file using `work/TEMPLATE.md`; index it from the active ledger. Move chronological checkpoint detail into an indexed file under `work/archive/` and fully verified standalone records into `work/completed/` (create when needed), retaining links.
 
-`state/CURRENT.md` is a brief recovery snapshot: commit/branch, observed local build, Metal implementation status, test/profiling evidence, current integration owner, high-impact next action. `state/BLOCKERS.md` contains reproducible blockers only with symptoms, commands, attempted remedies, owner/decision and unblocking condition.
+`state/CURRENT.md` is a brief recovery snapshot: commit/branch, observed local build, Metal implementation status, test/profiling evidence, complete-product advancement assessment, deferred critical work and high-impact next action. Move superseded observations into the indexed `state/archive/`; do not grow the recovery file into a chronological transcript. `state/BLOCKERS.md` contains reproducible blockers only with symptoms, commands, attempted remedies, owner/decision and unblocking condition.
 
 ## Engineering ownership and parallel agents
 - One **integrator** owns app entrypoint, shared render execution, final build and merged work queue. Independent agents may own resource memory, shaders, UI text, media, performance or tests in separate worktrees **only if edit sets do not overlap**.
@@ -33,3 +33,12 @@ A table row moves to `verified` only if an executable check ran on the claimed p
 
 ## Process improvement
 If a recurring agent failure appears (missing context, flaky build, invisible GPU fault, stale docs), improve the nearest deterministic tool, test or focused instruction. Keep root `AGENTS.md` short, put detail in docs/skills, retire stale instructions. Minimize procedural overhead that isn't protecting correctness.
+
+At every substantial engineering checkpoint, explicitly record: (1) which
+complete-product or release requirement the work advanced and its causal
+evidence, (2) deferred critical requirements, and (3) whether dependency/risk
+evidence changes the next priority. A large diff, elapsed time, test count or
+number of checkpoints is not by itself product advancement. Run
+`python3 tools/metal/validate_harness.py` so live-document links, repository
+command paths, concise-state limits, state/ledger consistency and declarative
+release-invariant coverage cannot drift silently.

@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "source": "docs/metal/PRODUCT.md",
+  "invariants": [
+    {
+      "id": "independent-arm64-macos-build",
+      "source_patterns": [
+        "arm64-apple-darwin only",
+        "Independently build and launch"
+      ],
+      "coverage": {
+        "docs/metal/README.md": [
+          "independently buildable",
+          "ARM64-only",
+          "macOS-only"
+        ],
+        "docs/metal/VALIDATION.md": [
+          "fresh checkout",
+          "ARM64-only"
+        ]
+      }
+    },
+    {
+      "id": "native-metal-no-translation-or-gl",
+      "source_patterns": [
+        "no application-owned OpenGL",
+        "no GL context is created"
+      ],
+      "coverage": {
+        "AGENTS.md": [
+          "native Metal only",
+          "No OpenGL, Vulkan, MoltenVK, Rosetta"
+        ],
+        "docs/metal/VALIDATION.md": [
+          "No viewer-owned OpenGL",
+          "--mode strict.*must pass at release"
+        ]
+      }
+    },
+    {
+      "id": "alchemy-feature-retention",
+      "source_patterns": [
+        "retain Alchemy's Second Life connectivity",
+        "Feature matrix has no unknown/unverified core feature"
+      ],
+      "coverage": {
+        "AGENTS.md": [
+          "Keep existing non-rendering features",
+          "Do not silently delete features"
+        ],
+        "docs/metal/VALIDATION.md": [
+          "feature-matrix.csv.*is the functional contract",
+          "No unapproved feature reductions"
+        ]
+      }
+    },
+    {
+      "id": "measured-quality-equivalent-performance",
+      "source_patterns": [
+        "achieve real measured advantages",
+        "Repeatable performance runs on M1 Max"
+      ],
+      "coverage": {
+        "docs/metal/PERFORMANCE.md": [
+          "minimum 300 measured frames",
+          "speedup due to reduced quality is a regression",
+          ">=20% lower p50 frame time"
+        ],
+        "docs/metal/VALIDATION.md": [
+          "Performance criteria in .*PERFORMANCE.md.* met on primary M1 Max",
+          "no hidden reduction in image fidelity"
+        ]
+      }
+    },
+    {
+      "id": "stability-and-independent-review",
+      "source_patterns": [
+        "Stability checks include teleport",
+        "Independent review of lifecycle/synchronization"
+      ],
+      "coverage": {
+        "docs/metal/VALIDATION.md": [
+          "GPU validation captures and stability sessions pass",
+          "Rendering artifacts fixed or accepted.*by owner"
+        ],
+        "docs/metal/state/CURRENT.md": [
+          "prolonged stability",
+          "independent build/review evidence"
+        ]
+      }
+    },
+    {
+      "id": "reproducible-distinct-open-source-release",
+      "source_patterns": [
+        "separately identified LGPL-compliant fork",
+        "release build reproducible",
+        "Installation/runtime identity distinct"
+      ],
+      "coverage": {
+        "docs/metal/VALIDATION.md": [
+          "without private registries or licensed proprietary SDKs",
+          "viewer identity policy reviewed"
+        ],
+        "docs/metal/state/CURRENT.md": [
+          "independent build/review evidence",
+          "strict no-GL"
+        ]
+      }
+    },
+    {
+      "id": "no-premature-completion",
+      "source_patterns": [
+        "ALL required",
+        "successful compilation or a displayed triangle is not evidence of product completion"
+      ],
+      "coverage": {
+        "AGENTS.md": [
+          "Never report the product complete until",
+          "release gates are met"
+        ],
+        "docs/metal/VALIDATION.md": [
+          "An unverified gate remains open",
+          "do not report release readiness"
+        ],
+        "docs/metal/work/active/metal-port.md": [
+          "never implies product completion",
+          "Do not mark feature parity from build/test success alone"
+        ]
+      }
+    }
+  ]
+}

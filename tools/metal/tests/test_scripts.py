@@ -218,6 +218,74 @@ class HarnessTests(unittest.TestCase):
         # Release must not pass when nothing is validated.
         self.assertTrue(module.validate(ROOT, release=True))
 
+    def test_stale_repository_command_path_is_rejected(self):
+        module = load("validate_harness")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "AGENTS.md").write_text(
+                "Run `tools/metal/verify-app.sh app`.\n", encoding="utf-8"
+            )
+            errors = module.validate_live_references(root, ["AGENTS.md"])
+            self.assertTrue(any("verify-app.sh" in error for error in errors))
+
+    def test_referenced_command_must_be_executable(self):
+        module = load("validate_harness")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            script = root / "tools/metal/check.sh"
+            script.parent.mkdir(parents=True)
+            script.write_text("#!/bin/sh\n", encoding="utf-8")
+            script.chmod(0o644)
+            (root / "AGENTS.md").write_text(
+                "Run `tools/metal/check.sh`.\n", encoding="utf-8"
+            )
+            errors = module.validate_live_references(root, ["AGENTS.md"])
+            self.assertIn(
+                "Referenced command is not executable: tools/metal/check.sh",
+                errors,
+            )
+
+    def test_stale_markdown_link_is_rejected(self):
+        module = load("validate_harness")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            guide = root / "docs/guide.md"
+            guide.parent.mkdir(parents=True)
+            guide.write_text("[missing](absent.md)\n", encoding="utf-8")
+            errors = module.validate_live_references(root, ["docs/guide.md"])
+            self.assertEqual(
+                ["Stale Markdown link in docs/guide.md: absent.md"], errors
+            )
+
+    def test_release_invariant_pattern_loss_is_rejected(self):
+        module = load("validate_harness")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            metal = root / "docs/metal"
+            metal.mkdir(parents=True)
+            (metal / "PRODUCT.md").write_text("immutable alpha\n", encoding="utf-8")
+            (metal / "VALIDATION.md").write_text("coverage beta\n", encoding="utf-8")
+            (metal / "release-invariants.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "source": "docs/metal/PRODUCT.md",
+                        "invariants": [
+                            {
+                                "id": "fixture",
+                                "source_patterns": ["alpha"],
+                                "coverage": {
+                                    "docs/metal/VALIDATION.md": ["gamma"]
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            errors = module.validate_release_invariants(root, required_ids=set())
+            self.assertTrue(any("coverage missing" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()
