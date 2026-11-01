@@ -389,6 +389,9 @@ public:
     // LLDrawInfo avatar metadata is deliberately ignored because the source
     // owner keeps gDebugProgram's non-rigged vertex contract bound.
     void captureMetalTextureAnimBatch(const LLDrawInfo& params);
+    // Retain Develop > Update Type's position-only per-face color replay.
+    void captureMetalUpdateTypeFace(
+        const LLFace& face, const LLColor4& color);
     // Retain the ordered orange/yellow neighbor links emitted by Develop >
     // Reflection Probes. Each source link becomes exactly two line vertices.
     void beginMetalReflectionProbeLinkCapture(std::size_t link_count);
@@ -1477,7 +1480,6 @@ public:
             RENDER_DEBUG_SHADOW_FRUSTA |
             RENDER_DEBUG_AVATAR_VOLUME |
             RENDER_DEBUG_AVATAR_JOINTS |
-            RENDER_DEBUG_UPDATE_TYPE |
             RENDER_DEBUG_PHYSICS_SHAPES |
             RENDER_DEBUG_NORMALS |
             RENDER_DEBUG_TEXEL_DENSITY |

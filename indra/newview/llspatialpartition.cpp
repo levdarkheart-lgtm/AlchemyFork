@@ -1863,37 +1863,54 @@ void renderUpdateType(LLDrawable* drawablep)
         return;
     }
     LLGLEnable blend(GL_BLEND);
+    LLColor4 color;
+    bool valid_color = true;
     switch (vobj->getLastUpdateType())
     {
     case OUT_FULL:
-        gGL.diffuseColor4f(0,1,0,0.5f);
+        color.set(0,1,0,0.5f);
         break;
     case OUT_TERSE_IMPROVED:
-        gGL.diffuseColor4f(0,1,1,0.5f);
+        color.set(0,1,1,0.5f);
         break;
     case OUT_FULL_COMPRESSED:
         if (vobj->getLastUpdateCached())
         {
-            gGL.diffuseColor4f(1,0,0,0.5f);
+            color.set(1,0,0,0.5f);
         }
         else
         {
-            gGL.diffuseColor4f(1,1,0,0.5f);
+            color.set(1,1,0,0.5f);
         }
         break;
     case OUT_FULL_CACHED:
-        gGL.diffuseColor4f(0,0,1,0.5f);
+        color.set(0,0,1,0.5f);
         break;
     default:
+        valid_color = false;
         LL_WARNS() << "Unknown update_type " << vobj->getLastUpdateType() << LL_ENDL;
         break;
     };
+    if (valid_color)
+    {
+        gGL.diffuseColor4fv(color.mV);
+    }
     S32 num_faces = drawablep->getNumFaces();
     if (num_faces)
     {
         for (S32 i = 0; i < num_faces; ++i)
         {
-            pushVerts(drawablep->getFace(i));
+            LLFace* face = drawablep->getFace(i);
+#if LL_DARWIN
+            if (face && valid_color)
+            {
+                gPipeline.captureMetalUpdateTypeFace(*face, color);
+                gGL.captureMetalUIIndexedBuffer(
+                    face->getVertexBuffer(), LLRender::TRIANGLES,
+                    face->getIndicesCount(), face->getIndicesStart());
+            }
+#endif
+            pushVerts(face);
         }
     }
 }

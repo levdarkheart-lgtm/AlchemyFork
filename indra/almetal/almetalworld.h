@@ -487,6 +487,23 @@ struct ALMetalWorldTextureAnimBatch
     float modelview_projection[16]{};
 };
 
+// Develop > Update Type replays every drawable face under the fixed color for
+// its last simulator update class. Like Texture Anim, the source owner keeps
+// gDebugProgram's position-only, non-rigged contract bound.
+struct ALMetalWorldUpdateTypeBatch
+{
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
+    std::uint64_t order = 0;
+    float modelview_projection[16]{};
+    float color[4]{};
+};
+
 // Develop > Composition is a fixed 261-by-261 point grid. X/Y and the
 // interior-blue/border-red classification are derived from vertex_id in MSL;
 // only the live composition height needs to cross the CPU/GPU boundary.
@@ -809,6 +826,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t debug_point_batch_count = 0;
     const ALMetalWorldTextureAnimBatch* texture_anim_batches = nullptr;
     std::size_t texture_anim_batch_count = 0;
+    const ALMetalWorldUpdateTypeBatch* update_type_batches = nullptr;
+    std::size_t update_type_batch_count = 0;
     const ALMetalWorldReflectionProbeLinkVertex* reflection_probe_links =
         nullptr;
     std::size_t reflection_probe_link_vertex_count = 0;

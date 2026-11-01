@@ -5688,6 +5688,222 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(texture_anim_pixels == opaque_forward_pixels);
         CHECK(texture_anim_depth == opaque_forward_depth);
 
+        // Develop > Update Type replays every face with one of five fixed
+        // half-alpha colors while keeping the same position-only debug shader
+        // and inherited no-cull/read-write-depth state as Texture Anim.
+        ALMetalWorldUpdateTypeBatch update_type_batch;
+        update_type_batch.vertices = vertices.get();
+        update_type_batch.vertex_count = positions.size();
+        update_type_batch.indices = indices.get();
+        update_type_batch.index_count = index_values.size();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            update_type_batch.modelview_projection[
+                axis * 4 + axis] = 1.f;
+        }
+        const std::array<std::array<float, 4>, 5> update_type_colors{{
+            {{0.f, 1.f, 0.f, 0.5f}},
+            {{0.f, 1.f, 1.f, 0.5f}},
+            {{1.f, 0.f, 0.f, 0.5f}},
+            {{1.f, 1.f, 0.f, 0.5f}},
+            {{0.f, 0.f, 1.f, 0.5f}},
+        }};
+        std::memcpy(update_type_batch.color,
+                    update_type_colors[0].data(),
+                    sizeof(update_type_batch.color));
+        opaque_forward_scene.update_type_batches = &update_type_batch;
+        opaque_forward_scene.update_type_batch_count = 1;
+
+        opaque_forward_scene.update_type_batches = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world update-type batch storage is invalid");
+        opaque_forward_scene.update_type_batches = &update_type_batch;
+        update_type_batch.vertices = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world update-type batch is invalid");
+        update_type_batch.vertices = vertices.get();
+        update_type_batch.index_count = 2;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world update-type batch is invalid");
+        update_type_batch.index_count = index_values.size();
+        update_type_batch.color[3] = 1.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world update-type batch is invalid");
+        std::memcpy(update_type_batch.color,
+                    update_type_colors[0].data(),
+                    sizeof(update_type_batch.color));
+        update_type_batch.modelview_projection[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world update-type batch is invalid");
+        update_type_batch.modelview_projection[0] = 1.f;
+        error.clear();
+
+        std::array<std::uint16_t, 32 * 32 * 4>
+            update_type_pixels{};
+        std::array<float, 32 * 32> update_type_depth{};
+        for (const auto& color : update_type_colors)
+        {
+            std::memcpy(update_type_batch.color, color.data(),
+                        sizeof(update_type_batch.color));
+            auto update_type_result = renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+            INFO(error);
+            REQUIRE(update_type_result);
+            update_type_pixels.fill(0xffffu);
+            update_type_depth.fill(-1.f);
+            REQUIRE(update_type_result->colorTexture(0)->readback(
+                *device, 0, 0, {}, update_type_pixels.data(),
+                32 * 8, &error));
+            REQUIRE(update_type_result->depthStencilTexture()->readback(
+                *device, 0, 0, {}, update_type_depth.data(),
+                32 * sizeof(float), &error));
+            for (std::size_t channel = 0; channel < 3; ++channel)
+            {
+                const float expected =
+                    color[channel] * 0.5f +
+                    texture_anim_destination[channel] * 0.5f;
+                CHECK(std::abs(agent_half_to_float(
+                    update_type_pixels[center + channel]) -
+                    expected) < 0.001f);
+            }
+            CHECK(update_type_pixels[center + 3] ==
+                  opaque_forward_pixels[center + 3]);
+            CHECK(std::abs(
+                update_type_depth[16 * 32 + 16] - 0.625f) <
+                0.0001f);
+        }
+
+        update_type_batch.indices = reversed_indices.get();
+        auto reverse_winding_update_type =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_winding_update_type);
+        update_type_pixels.fill(0xffffu);
+        REQUIRE(reverse_winding_update_type->colorTexture(0)->readback(
+            *device, 0, 0, {}, update_type_pixels.data(),
+            32 * 8, &error));
+        CHECK(update_type_pixels[center + 2] !=
+              opaque_forward_pixels[center + 2]);
+        update_type_batch.indices = indices.get();
+
+        update_type_batch.modelview_projection[14] = 0.5f;
+        auto hidden_update_type = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(hidden_update_type);
+        update_type_pixels.fill(0xffffu);
+        update_type_depth.fill(-1.f);
+        REQUIRE(hidden_update_type->colorTexture(0)->readback(
+            *device, 0, 0, {}, update_type_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(hidden_update_type->depthStencilTexture()->readback(
+            *device, 0, 0, {}, update_type_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(update_type_pixels == opaque_forward_pixels);
+        CHECK(update_type_depth == opaque_forward_depth);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        update_type_batch.modelview_projection[14] = 0.65f;
+        auto reverse_update_type = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_update_type);
+        update_type_pixels.fill(0xffffu);
+        update_type_depth.fill(-1.f);
+        REQUIRE(reverse_update_type->colorTexture(0)->readback(
+            *device, 0, 0, {}, update_type_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(reverse_update_type->depthStencilTexture()->readback(
+            *device, 0, 0, {}, update_type_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(update_type_pixels[center + 2] !=
+              reverse_agent_target_baseline_pixels[center + 2]);
+        CHECK(update_type_pixels[center + 3] ==
+              reverse_agent_target_baseline_pixels[center + 3]);
+        CHECK(std::abs(
+            update_type_depth[16 * 32 + 16] - 0.9f) < 0.0001f);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        update_type_batch.modelview_projection[14] = 0.f;
+        std::memcpy(update_type_batch.color,
+                    update_type_colors[4].data(),
+                    sizeof(update_type_batch.color));
+        opaque_forward_scene.texture_anim_batches =
+            &texture_anim_batch;
+        opaque_forward_scene.texture_anim_batch_count = 1;
+        update_type_batch.order = 0;
+        texture_anim_batch.order = 1;
+        auto texture_after_update_type =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(texture_after_update_type);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            texture_after_update_pixels{};
+        REQUIRE(texture_after_update_type->colorTexture(0)->readback(
+            *device, 0, 0, {}, texture_after_update_pixels.data(),
+            32 * 8, &error));
+
+        update_type_batch.order = 1;
+        texture_anim_batch.order = 0;
+        auto update_type_after_texture =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(update_type_after_texture);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            update_after_texture_pixels{};
+        REQUIRE(update_type_after_texture->colorTexture(0)->readback(
+            *device, 0, 0, {}, update_after_texture_pixels.data(),
+            32 * 8, &error));
+        CHECK(texture_after_update_pixels[center + 0] !=
+              update_after_texture_pixels[center + 0]);
+        CHECK(texture_after_update_pixels[center + 2] !=
+              update_after_texture_pixels[center + 2]);
+        CHECK(texture_after_update_pixels[center + 3] ==
+              opaque_forward_pixels[center + 3]);
+        CHECK(update_after_texture_pixels[center + 3] ==
+              opaque_forward_pixels[center + 3]);
+
+        update_type_batch.order = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world render-debug ordering is invalid");
+        error.clear();
+        opaque_forward_scene.texture_anim_batches = nullptr;
+        opaque_forward_scene.texture_anim_batch_count = 0;
+        opaque_forward_scene.update_type_batches = nullptr;
+        opaque_forward_scene.update_type_batch_count = 0;
+        auto no_update_type = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_update_type);
+        update_type_pixels.fill(0xffffu);
+        update_type_depth.fill(-1.f);
+        REQUIRE(no_update_type->colorTexture(0)->readback(
+            *device, 0, 0, {}, update_type_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(no_update_type->depthStencilTexture()->readback(
+            *device, 0, 0, {}, update_type_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(update_type_pixels == opaque_forward_pixels);
+        CHECK(update_type_depth == opaque_forward_depth);
+
         // Develop > Reflection Probes draws one-pixel neighbor links for
         // relevant probes: orange unless both endpoints own viewer objects,
         // yellow when both do. The ordered stream inherits read/write depth.

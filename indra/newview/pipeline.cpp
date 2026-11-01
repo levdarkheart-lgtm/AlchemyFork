@@ -593,6 +593,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool debug_point_capture_active = false;
     bool debug_point_batch_active = false;
     std::vector<ALMetalWorldTextureAnimBatch> texture_anim_batches;
+    std::vector<ALMetalWorldUpdateTypeBatch> update_type_batches;
     std::vector<ALMetalWorldReflectionProbeLinkVertex>
         reflection_probe_links;
     F32 reflection_probe_link_modelview_projection[16]{};
@@ -4020,6 +4021,7 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.debug_point_capture_active = false;
     capture.debug_point_batch_active = false;
     capture.texture_anim_batches.clear();
+    capture.update_type_batches.clear();
     capture.reflection_probe_links.clear();
     capture.reflection_probe_link_capture_active = false;
     capture.composition_debug_heights.clear();
@@ -4580,6 +4582,89 @@ void LLPipeline::captureMetalTextureAnimBatch(
     {
         capture.markIncomplete(__LINE__);
         capture.texture_anim_batches.clear();
+    }
+}
+
+void LLPipeline::captureMetalUpdateTypeFace(
+    const LLFace& face, const LLColor4& color)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    LLVertexBuffer* buffer = face.getVertexBuffer();
+    if (!buffer || face.getGeomCount() == 0 ||
+        face.getIndicesCount() == 0)
+    {
+        return;
+    }
+
+    const auto color_is = [&](F32 red, F32 green, F32 blue)
+    {
+        return color.mV[0] == red && color.mV[1] == green &&
+               color.mV[2] == blue && color.mV[3] == 0.5f;
+    };
+    const bool valid_color =
+        color_is(0.f, 1.f, 0.f) || color_is(0.f, 1.f, 1.f) ||
+        color_is(1.f, 0.f, 0.f) || color_is(1.f, 1.f, 0.f) ||
+        color_is(0.f, 0.f, 1.f);
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    if (!capture.complete || face.getIndicesCount() % 3 != 0 ||
+        face.getIndicesStart() < 0 ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer() ||
+        (buffer->getIndexStride() != 2 &&
+         buffer->getIndexStride() != 4) ||
+        capture.render_debug_order ==
+            std::numeric_limits<U64>::max() ||
+        !valid_color || !LLGLState::isEnabled(GL_BLEND) ||
+        LLGLState::isEnabled(GL_CULL_FACE) ||
+        !LLGLDepthTest::depthEnabled() ||
+        !LLGLDepthTest::depthWriteEnabled() ||
+        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
+        !color_mask[0] || !color_mask[1] || !color_mask[2] ||
+        color_mask[3])
+    {
+        capture.markIncomplete(__LINE__);
+        capture.update_type_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldUpdateTypeBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(
+        LLVertexBuffer::TYPE_VERTEX);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_offset =
+        static_cast<std::size_t>(face.getIndicesStart()) *
+        buffer->getIndexStride();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = face.getIndicesCount();
+    batch.order = capture.render_debug_order++;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.color, color.mV, sizeof(batch.color));
+    try
+    {
+        capture.update_type_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.update_type_batches.clear();
     }
 }
 
@@ -5548,6 +5633,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.texture_anim_batches.data();
         scene.texture_anim_batch_count =
             capture.texture_anim_batches.size();
+        scene.update_type_batches =
+            capture.update_type_batches.data();
+        scene.update_type_batch_count =
+            capture.update_type_batches.size();
         scene.reflection_probe_links =
             capture.reflection_probe_links.data();
         scene.reflection_probe_link_vertex_count =
@@ -7195,6 +7284,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.debug_point_capture_active = false;
     capture.debug_point_batch_active = false;
     capture.texture_anim_batches.clear();
+    capture.update_type_batches.clear();
     capture.reflection_probe_links.clear();
     capture.reflection_probe_link_capture_active = false;
     capture.composition_debug_heights.clear();
