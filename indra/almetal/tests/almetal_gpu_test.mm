@@ -10504,6 +10504,12 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         auto cloud_noise_b = make_texture(
             ALMetalPixelFormat::rgba8_unorm,
             "Alchemy WindLight cloud noise B");
+        auto encoded_cloud_noise_a = make_texture(
+            ALMetalPixelFormat::rgba8_unorm_srgb,
+            "Alchemy WindLight encoded cloud noise A");
+        auto encoded_cloud_noise_b = make_texture(
+            ALMetalPixelFormat::rgba8_unorm_srgb,
+            "Alchemy WindLight encoded cloud noise B");
         const std::array<std::uint8_t, 4> cloud_noise_a_pixel{{
             204, 0, 0, 255,
         }};
@@ -10518,6 +10524,12 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             *cloud_upload, 0, 0, {}, cloud_noise_a_pixel.data(),
             4, &error));
         REQUIRE(cloud_noise_b->upload(
+            *cloud_upload, 0, 0, {}, cloud_noise_b_pixel.data(),
+            4, &error));
+        REQUIRE(encoded_cloud_noise_a->upload(
+            *cloud_upload, 0, 0, {}, cloud_noise_a_pixel.data(),
+            4, &error));
+        REQUIRE(encoded_cloud_noise_b->upload(
             *cloud_upload, 0, 0, {}, cloud_noise_b_pixel.data(),
             4, &error));
         REQUIRE(cloud_upload->commitAndWait(&error));
@@ -10623,6 +10635,31 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             CHECK(std::abs(static_cast<int>(
                       cloud_albedo[outside + channel]) - expected) <= 2);
         }
+
+        // Like the rainbow/halo optics above, production cloud noise is a
+        // fetched sRGB-backed asset consumed by GLSL through raw AnisoWrap.
+        // Byte-identical raw and sRGB storage must produce the same full
+        // source-over result; default sRGB sampling changes cloud density.
+        auto encoded_cloud_gbuffer = renderer->render(
+            gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(encoded_cloud_gbuffer);
+        REQUIRE(renderer->compositeWindLightSky(
+            *encoded_cloud_gbuffer, black_windlight_scene, &error));
+        ALMetalWorldCloudScene encoded_cloud_scene = cloud_scene;
+        encoded_cloud_scene.noise_texture = encoded_cloud_noise_a.get();
+        encoded_cloud_scene.next_noise_texture =
+            encoded_cloud_noise_b.get();
+        REQUIRE(renderer->compositeWindLightClouds(
+            *encoded_cloud_gbuffer, encoded_cloud_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            encoded_cloud_albedo{};
+        REQUIRE(encoded_cloud_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, encoded_cloud_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(encoded_cloud_albedo == cloud_source_albedo);
 
         auto cloud_a_gbuffer = renderer->render(gbuffer_scene, &error);
         auto cloud_b_gbuffer = renderer->render(gbuffer_scene, &error);

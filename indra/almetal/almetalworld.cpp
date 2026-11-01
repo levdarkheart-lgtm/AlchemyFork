@@ -13961,8 +13961,14 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightClouds(
         encoder->setCullMode(ALMetalCullMode::none, error) &&
         encoder->setDepthStencilState(depth, error) &&
         encoder->setPipeline(*pipeline, error) &&
-        encoder->setFragmentTexture(0, scene.noise_texture, error) &&
-        encoder->setFragmentTexture(1, scene.next_noise_texture, error) &&
+        // cloudsF.glsl binds both fetched noise maps with raw AnisoWrap.
+        // Their viewer texture mirrors are sRGB-backed, so use compatible
+        // linear views before density/self-shadow arithmetic just as GL's
+        // GL_SKIP_DECODE_EXT sampler does.
+        encoder->setFragmentTextureLinear(
+            0, scene.noise_texture, error) &&
+        encoder->setFragmentTextureLinear(
+            1, scene.next_noise_texture, error) &&
         encoder->setFragmentSampler(
             0, mImpl->diffuse_sampler.get(), error);
 
