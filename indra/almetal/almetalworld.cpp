@@ -544,7 +544,8 @@ namespace
             slots[ALMetalWorldSimpleBatch::max_material_slots]{};
         // x = populated slot count, y = alpha mask, z = HDR normal target.
         std::uint32_t config[4]{};
-        // Used by forward PBR alpha; G-buffer consumers leave it zeroed.
+        // Supplies the eye-space position used by PBR mirror clipping and
+        // forward alpha lighting.
         float modelview[16]{};
     };
 
@@ -5818,6 +5819,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             pbr_constants.config[0] = batch.pbr_slot_count;
             pbr_constants.config[1] = batch.alpha_mask ? 1u : 0u;
             pbr_constants.config[2] = scene.normal_hdr ? 1u : 0u;
+            std::memcpy(pbr_constants.modelview, batch.modelview,
+                        sizeof(pbr_constants.modelview));
             encoded = encoded &&
                 encoder->setVertexBytes(
                     11, &pbr_constants, sizeof(pbr_constants), error) &&

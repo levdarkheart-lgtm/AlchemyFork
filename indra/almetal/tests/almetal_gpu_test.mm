@@ -8195,6 +8195,31 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(pbr_emissive[center + 1]) - 13) <= 1);
         CHECK(pbr_emissive[center + 2] == 0);
 
+        // PBR derives its clip distance from the eye-space position packed
+        // alongside its material constants. Keep this separate from the
+        // simple-path mirror test above: a zeroed PBR model-view matrix makes
+        // every distance zero and incorrectly retains the whole triangle.
+        scene.mirror_clip = true;
+        scene.mirror_clip_plane[0] = 1.f;
+        scene.mirror_clip_plane[1] = 0.f;
+        scene.mirror_clip_plane[2] = 0.f;
+        scene.mirror_clip_plane[3] = 0.f;
+        auto pbr_mirror_clipped = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(pbr_mirror_clipped);
+        std::array<std::uint8_t, 32 * 32 * 4> pbr_clipped_albedo{};
+        REQUIRE(pbr_mirror_clipped->colorTexture(0)->readback(
+            *device, 0, 0, {}, pbr_clipped_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(pbr_clipped_albedo[clipped_side + 0] == 255);
+        CHECK(pbr_clipped_albedo[clipped_side + 1] == 0);
+        CHECK(pbr_clipped_albedo[clipped_side + 2] == 255);
+        CHECK(pbr_clipped_albedo[retained_side + 0] == 0);
+        CHECK(pbr_clipped_albedo[retained_side + 1] == 255);
+        CHECK(pbr_clipped_albedo[retained_side + 2] == 0);
+        scene.mirror_clip = false;
+
         constexpr float half_pi = 1.5707963267948966f;
         batch.pbr_slots[0].texture_transform[1][2] = half_pi;
         batch.pbr_slots[1].texture_transform[1][2] = half_pi;
