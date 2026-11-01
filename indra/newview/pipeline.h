@@ -274,6 +274,8 @@ private:
     std::unique_ptr<MetalWorldSimpleCapture> mMetalWorldSimpleCapture;
     std::unique_ptr<MetalWorldSimpleCapture>
         mMetalProbeWorldSimpleCapture;
+    bool mMetalProjectorShadowReported = false;
+    bool mMetalDirectionalShadowReported = false;
     // The first two channels of mNoiseMap at its RGB16F storage precision.
     // createResourceTexture fills this beside the GL authority so the native
     // light-map owner never has to read the static noise back from GL.

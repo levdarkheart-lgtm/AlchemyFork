@@ -9730,11 +9730,29 @@ void LLPipeline::endMetalSpotShadowCapture()
         capture.direct_directional_shadow_valid[map] = true;
         capture.impostor_directional_shadow_frame =
             std::numeric_limits<U32>::max();
+        if (!mMetalDirectionalShadowReported)
+        {
+            mMetalDirectionalShadowReported = true;
+            LL_INFOS("Metal")
+                << "Direct Metal directional-shadow slices are retained "
+                   "from native caster draws; the GL depth mirror is "
+                   "fail-closed fallback only"
+                << LL_ENDL;
+        }
     }
     else
     {
         capture.direct_projector_shadow_valid[map] = true;
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
+        if (!mMetalProjectorShadowReported)
+        {
+            mMetalProjectorShadowReported = true;
+            LL_INFOS("Metal")
+                << "Direct Metal projector-shadow slices are retained "
+                   "from native caster draws; the GL depth mirror is "
+                   "fail-closed fallback only"
+                << LL_ENDL;
+        }
     }
 }
 
