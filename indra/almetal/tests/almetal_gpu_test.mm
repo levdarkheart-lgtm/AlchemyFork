@@ -3048,6 +3048,16 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         const std::array<std::uint8_t, 4> bump_normal_pixel{{
             255, 128, 128, 128,
         }};
+        ALMetalTextureDescriptor srgb_bump_normal_descriptor =
+            normal_descriptor;
+        srgb_bump_normal_descriptor.format =
+            ALMetalPixelFormat::rgba8_unorm_srgb;
+        srgb_bump_normal_descriptor.label =
+            "Alchemy world sRGB-backed tangent normal";
+        auto srgb_bump_normal = ALMetalTexture::create(
+            *device, srgb_bump_normal_descriptor, &error);
+        INFO(error);
+        REQUIRE(srgb_bump_normal);
         normal_descriptor.label = "Alchemy world flat tangent normal";
         auto flat_normal = ALMetalTexture::create(
             *device, normal_descriptor, &error);
@@ -3115,6 +3125,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *upload, 0, 0, {}, zero_alpha_diffuse_pixel.data(), 4,
             &error));
         REQUIRE(bump_normal->upload(
+            *upload, 0, 0, {}, bump_normal_pixel.data(), 4, &error));
+        REQUIRE(srgb_bump_normal->upload(
             *upload, 0, 0, {}, bump_normal_pixel.data(), 4, &error));
         REQUIRE(flat_normal->upload(
             *upload, 0, 0, {}, flat_normal_pixel.data(), 4, &error));
@@ -7152,6 +7164,45 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             0.5f) < 0.002f);
         CHECK(std::abs(
             pre_water_depth[above_water_pixel / 4] - 0.25f) < 0.0001f);
+
+        // Viewer assets share sRGB storage even when the active bind treats
+        // them as data. GL's AnisoWrap water bind suppresses decoding; Metal
+        // must therefore sample the compatible raw-storage view. The same
+        // encoded tangent normal in linear and sRGB backing must shade the
+        // water identically.
+        above_water_surface.normal_maps[0] = bump_normal.get();
+        above_water_surface.normal_maps[1] = bump_normal.get();
+        auto linear_water_normal = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(linear_water_normal);
+        REQUIRE(linear_water_normal->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        const std::array<float, 4> linear_water_normal_color{{
+            half_to_float(pre_water_pixels[above_water_pixel + 0]),
+            half_to_float(pre_water_pixels[above_water_pixel + 1]),
+            half_to_float(pre_water_pixels[above_water_pixel + 2]),
+            half_to_float(pre_water_pixels[above_water_pixel + 3]),
+        }};
+        above_water_surface.normal_maps[0] = srgb_bump_normal.get();
+        above_water_surface.normal_maps[1] = srgb_bump_normal.get();
+        auto srgb_water_normal = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(srgb_water_normal);
+        REQUIRE(srgb_water_normal->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(std::abs(
+                half_to_float(
+                    pre_water_pixels[above_water_pixel + channel]) -
+                linear_water_normal_color[channel]) < 0.002f);
+        }
+        above_water_surface.normal_maps[0] = flat_normal.get();
+        above_water_surface.normal_maps[1] = flat_normal.get();
 
         // With reflection probes disabled, class2 water samples the current
         // sharp sky cube through env_mat and does not apply SSR or hero-probe

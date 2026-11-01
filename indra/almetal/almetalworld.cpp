@@ -11542,9 +11542,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
                 encoder->setPipeline(*flat_water_pipeline, error) &&
                 encoder->setVertexTexture(0, field.cell_map, error) &&
-                encoder->setFragmentTexture(
+                encoder->setFragmentTextureLinear(
                     1, water.normal_maps[0], error) &&
-                encoder->setFragmentTexture(
+                encoder->setFragmentTextureLinear(
                     2, water.normal_maps[1], error) &&
                 encoder->setFragmentTexture(3, refraction, error) &&
                 encoder->setFragmentTexture(
