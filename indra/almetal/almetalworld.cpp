@@ -4539,19 +4539,63 @@ ALMetalWorldGBufferRenderer::renderSpotShadow(
                       batch.skin_joint_count) * 12;
             const std::size_t weight_stride = batch.avatar
                 ? sizeof(float) : float4_stride;
-            if ((batch.avatar && batch.skin_joint_count != 15) ||
-                (!batch.avatar &&
-                 (batch.skin_joint_count == 0 ||
-                  batch.skin_joint_count > max_skin_joints)) ||
-                batch.skin_palette_float_count != expected_palette_floats ||
-                batch.weight_offset % weight_stride != 0 ||
-                !rangeFits(batch.weight_offset, batch.vertex_count,
-                           weight_stride, batch.vertices->length()) ||
-                !finiteValues(batch.skin_palette,
-                              batch.skin_palette_float_count))
+            const bool joint_count_valid = batch.avatar
+                ? batch.skin_joint_count == 15
+                : batch.skin_joint_count != 0 &&
+                  batch.skin_joint_count <= max_skin_joints;
+            const bool palette_size_valid =
+                batch.skin_palette_float_count == expected_palette_floats;
+            const bool weight_aligned =
+                batch.weight_offset % weight_stride == 0;
+            const bool weight_range_valid = rangeFits(
+                batch.weight_offset, batch.vertex_count, weight_stride,
+                batch.vertices->length());
+            const bool palette_finite = finiteValues(
+                batch.skin_palette, batch.skin_palette_float_count);
+            std::size_t first_nonfinite =
+                batch.skin_palette_float_count;
+            if (!palette_finite)
+            {
+                for (std::size_t value = 0;
+                     value < batch.skin_palette_float_count; ++value)
+                {
+                    if (!std::isfinite(batch.skin_palette[value]))
+                    {
+                        first_nonfinite = value;
+                        break;
+                    }
+                }
+            }
+            if (!joint_count_valid || !palette_size_valid ||
+                !weight_aligned || !weight_range_valid || !palette_finite)
             {
                 setError(error,
-                         "Metal spot-shadow skinning data is invalid");
+                    "Metal spot-shadow skinning data is invalid (batch=" +
+                    std::to_string(index) + ", avatar=" +
+                    std::to_string(batch.avatar) + ", joints=" +
+                    std::to_string(batch.skin_joint_count) + ", palette=" +
+                    std::to_string(batch.skin_palette_float_count) + "/" +
+                    std::to_string(expected_palette_floats) +
+                    ", weight-offset=" +
+                    std::to_string(batch.weight_offset) + ", stride=" +
+                    std::to_string(weight_stride) + ", vertices=" +
+                    std::to_string(batch.vertex_count) + ", vertex-bytes=" +
+                    std::to_string(batch.vertices->length()) +
+                    ", joint-count-valid=" +
+                    std::to_string(joint_count_valid) +
+                    ", palette-size-valid=" +
+                    std::to_string(palette_size_valid) +
+                    ", weight-aligned=" +
+                    std::to_string(weight_aligned) + ", weight-range=" +
+                    std::to_string(weight_range_valid) +
+                    ", palette-finite=" +
+                    std::to_string(palette_finite) +
+                    ", first-nonfinite=" +
+                    (first_nonfinite < batch.skin_palette_float_count
+                         ? std::to_string(first_nonfinite) + ":" +
+                           std::to_string(
+                               batch.skin_palette[first_nonfinite])
+                         : std::string("none")) + ")");
                 return nullptr;
             }
             ALMetalBufferDescriptor descriptor;

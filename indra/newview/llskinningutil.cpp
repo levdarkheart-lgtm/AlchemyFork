@@ -37,6 +37,7 @@
 
 #include <boost/unordered/unordered_flat_map.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <mutex>
 
@@ -139,11 +140,36 @@ void LLSkinningUtil::initSkinningMatrixPalette(
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
+    if (!mat || count <= 0)
+    {
+        return;
+    }
+
+    // A malformed or partially loaded skin must never leave the caller's
+    // palette uninitialized. Both the legacy GL upload and native Metal
+    // consumers use this result, and one NaN otherwise invalidates an entire
+    // direct-shadow cascade. Keep the mesh near its avatar in bind space when
+    // its authoritative inverse-bind data or a live joint product is unusable.
+    LLVector3 fallback_position = avatar && avatar->getRootJoint()
+        ? avatar->getRootJoint()->getWorldPosition()
+        : LLVector3::zero;
+    if (!fallback_position.isFinite())
+    {
+        fallback_position = LLVector3::zero;
+    }
+    const LLMatrix4a fallback = LLMatrix4a::translation(
+        fallback_position.mV[VX], fallback_position.mV[VY],
+        fallback_position.mV[VZ]);
+    std::fill_n(mat, static_cast<std::size_t>(count), fallback);
+
     initJointNums(const_cast<LLMeshSkinInfo*>(skin), avatar);
 
     if (skin->mInvBindMatrix.size() < count )
     {
-        // faulty model? mInvBindMatrix.size() should have matched mJointNames.size()
+        LL_WARNS_ONCE("Avatar")
+            << "Rigged mesh has fewer inverse-bind matrices than joints; "
+               "using avatar-root bind-space fallback"
+            << LL_ENDL;
         return;
     }
 
@@ -174,6 +200,15 @@ void LLSkinningUtil::initSkinningMatrixPalette(
 #endif
             dump_avatar_and_skin_state("initSkinningMatrixPalette joint not found", avatar, skin);
         }
+
+    }
+    if (stabilizeMatrixPalette(
+            mat, static_cast<U32>(count), fallback) != 0)
+    {
+        LL_WARNS_ONCE("Avatar")
+            << "Rigged mesh produced a non-finite joint matrix; "
+               "using avatar-root bind-space fallback"
+            << LL_ENDL;
     }
 }
 

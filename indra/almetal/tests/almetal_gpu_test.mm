@@ -2699,7 +2699,9 @@ TEST_CASE("almetal: direct spot-shadow slices retain strict raw raster depth", "
         avatar_batch.skin_palette_float_count = 45 * 4 - 1;
         error.clear();
         CHECK_FALSE(renderer->renderSpotShadow(scene, &error));
-        CHECK(error == "Metal spot-shadow skinning data is invalid");
+        CHECK(error.find("Metal spot-shadow skinning data is invalid") == 0);
+        CHECK(error.find("palette=179/180") != std::string::npos);
+        CHECK(error.find("palette-size-valid=0") != std::string::npos);
 
         scene.reverse_z = false;
         scene.batches = &batch;

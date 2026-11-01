@@ -2579,6 +2579,7 @@ if(AL_BUILD_TESTS)
       tests/alrecoverykeeper_test.cpp
       tests/alsceneexplorerpredicate_test.cpp
       tests/alscopedata_test.cpp
+      tests/alskinningpalette_test.cpp
       tests/alscriptanalysislane_test.cpp
       tests/alscriptanalyzers_test.cpp
       tests/alscriptcontentsindex_test.cpp

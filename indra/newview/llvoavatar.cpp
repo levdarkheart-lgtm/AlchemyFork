@@ -10770,7 +10770,19 @@ const LLVOAvatar::MatrixPaletteCache& LLVOAvatar::updateSkinInfoMatrixPalette(co
         // reads as altitude-scaled normal noise and vertex wiggle. The shader adds this exact
         // value back as a uniform (rigid) term, so any point near the joints works; the
         // skeleton root always is.
-        const LLVector3 origin = mRoot->getWorldPosition();
+        LLVector3 origin = mRoot->getWorldPosition();
+        if (!origin.isFinite())
+        {
+            origin = getPositionAgent();
+            if (!origin.isFinite())
+            {
+                origin = LLVector3::zero;
+            }
+            LL_WARNS_ONCE("Avatar")
+                << "Avatar root produced a non-finite skin origin; using a "
+                   "finite agent-space fallback"
+                << LL_ENDL;
+        }
         mp[0] = origin.mV[VX];
         mp[1] = origin.mV[VY];
         mp[2] = origin.mV[VZ];

@@ -39,6 +39,25 @@ class LLJointRiggingInfoTab;
 
 namespace LLSkinningUtil
 {
+    inline U32 stabilizeMatrixPalette(
+        LLMatrix4a* matrices, U32 count, const LLMatrix4a& fallback)
+    {
+        U32 replacements = 0;
+        for (U32 joint = 0; matrices && joint < count; ++joint)
+        {
+            LLMatrix4a& matrix = matrices[joint];
+            if (!matrix.mMatrix[0].isFinite4() ||
+                !matrix.mMatrix[1].isFinite4() ||
+                !matrix.mMatrix[2].isFinite4() ||
+                !matrix.mMatrix[3].isFinite4())
+            {
+                matrix = fallback;
+                ++replacements;
+            }
+        }
+        return replacements;
+    }
+
     S32 getMaxJointCount();
     S32 getMaxGLTFJointCount();
     U32 getMeshJointCount(const LLMeshSkinInfo *skin);
