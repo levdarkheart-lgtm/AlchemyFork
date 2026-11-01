@@ -1305,6 +1305,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         agent_target_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        debug_point_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         reflection_probe_volume_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> far_plane_overlay_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -2447,6 +2449,39 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         impl->agent_target_pipelines[hdr] = ALMetalRenderPipeline::create(
             device, agent_target_descriptor, error);
         if (!impl->agent_target_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor debug_point_descriptor;
+        debug_point_descriptor.library = impl->library.get();
+        debug_point_descriptor.vertex_function =
+            "almetal_world_wind_vector_vertex";
+        debug_point_descriptor.fragment_function =
+            "almetal_world_debug_blip_fragment";
+        debug_point_descriptor.colors[0].format = screen_formats[hdr];
+        debug_point_descriptor.colors[0].blending_enabled = true;
+        debug_point_descriptor.colors[0].source_rgb =
+            ALMetalBlendFactor::source_alpha;
+        debug_point_descriptor.colors[0].destination_rgb =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        debug_point_descriptor.colors[0].source_alpha =
+            ALMetalBlendFactor::source_alpha;
+        debug_point_descriptor.colors[0].destination_alpha =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        debug_point_descriptor.colors[0].write_mask =
+            static_cast<ALMetalColorWriteMask>(
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+        debug_point_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        debug_point_descriptor.label = hdr
+            ? "Alchemy HDR world drawable-centre point pipeline"
+            : "Alchemy world drawable-centre point pipeline";
+        impl->debug_point_pipelines[hdr] = ALMetalRenderPipeline::create(
+            device, debug_point_descriptor, error);
+        if (!impl->debug_point_pipelines[hdr])
         {
             return nullptr;
         }
@@ -10411,6 +10446,66 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             return nullptr;
         }
     }
+    if ((scene.debug_point_count != 0 && !scene.debug_points) ||
+        (scene.debug_point_batch_count != 0 &&
+         !scene.debug_point_batches) ||
+        ((scene.debug_point_count == 0) !=
+         (scene.debug_point_batch_count == 0)) ||
+        scene.debug_point_count >
+            std::numeric_limits<std::uint32_t>::max() ||
+        scene.debug_point_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldDebugPointVertex) ||
+        scene.debug_point_batch_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldDebugPointBatch))
+    {
+        setError(error, "Metal world drawable-centre point storage is invalid");
+        return nullptr;
+    }
+    std::size_t expected_debug_point = 0;
+    std::uint64_t previous_debug_point_order = 0;
+    for (std::size_t index = 0;
+         index < scene.debug_point_batch_count; ++index)
+    {
+        const ALMetalWorldDebugPointBatch& batch =
+            scene.debug_point_batches[index];
+        const std::size_t first = batch.first_vertex;
+        const std::size_t count = batch.vertex_count;
+        if (count == 0 || first != expected_debug_point ||
+            count > scene.debug_point_count - first ||
+            !finiteValues(batch.modelview_projection, 16) ||
+            (index != 0 && batch.order <= previous_debug_point_order) ||
+            (scene.agent_target_line_vertex_count != 0 &&
+             batch.order == scene.agent_target_order))
+        {
+            setError(
+                error,
+                "Metal world drawable-centre point batch is invalid");
+            return nullptr;
+        }
+        expected_debug_point += count;
+        previous_debug_point_order = batch.order;
+    }
+    if (expected_debug_point != scene.debug_point_count)
+    {
+        setError(error, "Metal world drawable-centre point storage is invalid");
+        return nullptr;
+    }
+    for (std::size_t index = 0;
+         index < scene.debug_point_count; ++index)
+    {
+        const ALMetalWorldDebugPointVertex& point =
+            scene.debug_points[index];
+        if (!finiteValues(point.position, 4) ||
+            !finiteValues(point.color, 4))
+        {
+            setError(
+                error,
+                "Metal world drawable-centre point data is non-finite");
+            return nullptr;
+        }
+    }
     if ((scene.far_plane_overlay_column_count != 0 &&
          !scene.far_plane_overlay_columns) ||
         scene.far_plane_overlay_column_count >
@@ -11629,6 +11724,24 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             *mImpl->device, descriptor, error);
         if (!agent_target_buffer || !agent_target_buffer->write(
                 0, scene.agent_target_lines, descriptor.length, error))
+        {
+            return nullptr;
+        }
+    }
+
+    std::unique_ptr<ALMetalBuffer> debug_point_buffer;
+    if (scene.debug_point_count != 0)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = scene.debug_point_count *
+                            sizeof(ALMetalWorldDebugPointVertex);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world drawable-centre points";
+        debug_point_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!debug_point_buffer || !debug_point_buffer->write(
+                0, scene.debug_points, descriptor.length, error))
         {
             return nullptr;
         }
@@ -13650,14 +13763,14 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 1, error);
     }
 
-    if (encoded && scene.agent_target_line_vertex_count != 0)
+    const auto encode_agent_target = [&]()
     {
         WorldDebugBlipConstants constants{};
         std::memcpy(constants.modelview_projection,
                     scene.agent_target_modelview_projection,
                     sizeof(constants.modelview_projection));
         constants.config[0] = scene.reverse_z ? 1u : 0u;
-        encoded =
+        return
             encoder->setDepthStencilState(
                 scene.reverse_z ? mImpl->reverse_depth.get()
                                 : mImpl->forward_depth.get(),
@@ -13678,6 +13791,56 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 static_cast<std::uint32_t>(
                     scene.agent_target_line_vertex_count),
                 1, error);
+    };
+    const auto encode_debug_point_batch =
+        [&](const ALMetalWorldDebugPointBatch& batch)
+    {
+        WorldDebugBlipConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(constants.modelview_projection));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        return
+            encoder->setDepthStencilState(
+                mImpl->overlay_composite_depth.get(), error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *mImpl->debug_point_pipelines[scene.hdr ? 1 : 0],
+                error) &&
+            encoder->setVertexBuffer(
+                0, *debug_point_buffer, 0, error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::point, batch.first_vertex,
+                batch.vertex_count, 1, error);
+    };
+
+    bool agent_target_encoded =
+        scene.agent_target_line_vertex_count == 0;
+    for (std::size_t batch_index = 0;
+         encoded && batch_index < scene.debug_point_batch_count;
+         ++batch_index)
+    {
+        const ALMetalWorldDebugPointBatch& batch =
+            scene.debug_point_batches[batch_index];
+        if (!agent_target_encoded &&
+            scene.agent_target_order < batch.order)
+        {
+            encoded = encode_agent_target();
+            agent_target_encoded = true;
+        }
+        if (encoded)
+        {
+            encoded = encode_debug_point_batch(batch);
+        }
+    }
+    if (encoded && !agent_target_encoded)
+    {
+        encoded = encode_agent_target();
     }
 
     if (encoded && scene.reflection_probe_volume_constants)

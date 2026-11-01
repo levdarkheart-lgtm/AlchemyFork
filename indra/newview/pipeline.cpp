@@ -583,7 +583,15 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool wind_vector_capture_active = false;
     std::vector<ALMetalWorldAgentTargetVertex> agent_target_lines;
     F32 agent_target_modelview_projection[16]{};
+    U64 agent_target_order = 0;
     bool agent_target_capture_active = false;
+    std::vector<ALMetalWorldDebugPointVertex> debug_points;
+    std::vector<ALMetalWorldDebugPointBatch> debug_point_batches;
+    ALMetalWorldDebugPointBatch debug_point_batch;
+    std::size_t debug_point_batch_first = 0;
+    U64 render_debug_order = 0;
+    bool debug_point_capture_active = false;
+    bool debug_point_batch_active = false;
     std::vector<ALMetalWorldFarPlaneOverlayColumn> far_plane_overlay_columns;
     std::size_t far_plane_overlay_near_count = 0;
     F32 far_plane_overlay_modelview_projection[16]{};
@@ -3994,7 +4002,15 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.wind_vector_lines.clear();
     capture.wind_vector_capture_active = false;
     capture.agent_target_lines.clear();
+    capture.agent_target_order = 0;
     capture.agent_target_capture_active = false;
+    capture.debug_points.clear();
+    capture.debug_point_batches.clear();
+    capture.debug_point_batch = {};
+    capture.debug_point_batch_first = 0;
+    capture.render_debug_order = 0;
+    capture.debug_point_capture_active = false;
+    capture.debug_point_batch_active = false;
     capture.far_plane_overlay_columns.clear();
     capture.far_plane_overlay_near_count = 0;
     capture.reflection_probe_volume_valid = false;
@@ -4192,6 +4208,8 @@ void LLPipeline::beginMetalAgentTargetCapture(
         !LLGLDepthTest::depthEnabled() ||
         !LLGLDepthTest::depthWriteEnabled() ||
         LLGLDepthTest::depthFunction() != GL_LEQUAL ||
+        capture.render_debug_order ==
+            std::numeric_limits<U64>::max() ||
         !color_mask[0] || !color_mask[1] || !color_mask[2] || color_mask[3])
     {
         capture.markIncomplete(__LINE__);
@@ -4215,6 +4233,7 @@ void LLPipeline::beginMetalAgentTargetCapture(
         capture.agent_target_lines.clear();
         return;
     }
+    capture.agent_target_order = capture.render_debug_order++;
     capture.agent_target_capture_active = true;
 }
 
@@ -4283,6 +4302,204 @@ void LLPipeline::endMetalAgentTargetCapture(
     {
         capture.markIncomplete(__LINE__);
         capture.agent_target_lines.clear();
+    }
+}
+
+void LLPipeline::beginMetalDebugPointCapture()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || capture.debug_point_capture_active ||
+        capture.debug_point_batch_active || !capture.debug_points.empty() ||
+        !capture.debug_point_batches.empty() ||
+        capture.render_debug_order != 0)
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+    capture.debug_point_capture_active = true;
+}
+
+void LLPipeline::beginMetalDebugPointBatch(std::size_t face_capacity)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.debug_point_capture_active)
+    {
+        return;
+    }
+
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    if (!capture.complete || capture.debug_point_batch_active ||
+        face_capacity == 0 ||
+        face_capacity > std::numeric_limits<std::uint32_t>::max() ||
+        face_capacity >
+            std::numeric_limits<std::size_t>::max() -
+                capture.debug_points.size() ||
+        capture.render_debug_order ==
+            std::numeric_limits<U64>::max() ||
+        LLGLDepthTest::depthEnabled() ||
+        LLGLDepthTest::depthWriteEnabled() ||
+        !LLGLState::isEnabled(GL_BLEND) || gGL.getPointSize() != 1.f ||
+        !color_mask[0] || !color_mask[1] || !color_mask[2] || color_mask[3])
+    {
+        capture.markIncomplete(__LINE__);
+        capture.debug_points.clear();
+        capture.debug_point_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    capture.debug_point_batch = {};
+    std::memcpy(capture.debug_point_batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(capture.debug_point_batch.modelview_projection));
+    capture.debug_point_batch_first = capture.debug_points.size();
+    try
+    {
+        capture.debug_points.reserve(
+            capture.debug_points.size() + face_capacity);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.debug_points.clear();
+        capture.debug_point_batches.clear();
+        return;
+    }
+    capture.debug_point_batch_active = true;
+}
+
+void LLPipeline::captureMetalDebugPoint(const LLVector3& position)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || !capture.debug_point_batch_active)
+    {
+        return;
+    }
+    ALMetalWorldDebugPointVertex point;
+    std::memcpy(point.position, position.mV, sizeof(position.mV));
+    try
+    {
+        capture.debug_points.push_back(point);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.debug_points.clear();
+        capture.debug_point_batches.clear();
+        capture.debug_point_batch_active = false;
+    }
+}
+
+void LLPipeline::endMetalDebugPointBatch(std::size_t point_count)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.debug_point_batch_active)
+    {
+        return;
+    }
+    capture.debug_point_batch_active = false;
+    if (!capture.complete ||
+        capture.debug_point_batch_first > capture.debug_points.size() ||
+        point_count != capture.debug_points.size() -
+                           capture.debug_point_batch_first ||
+        point_count > std::numeric_limits<std::uint32_t>::max() ||
+        capture.debug_point_batch_first >
+            std::numeric_limits<std::uint32_t>::max())
+    {
+        capture.markIncomplete(__LINE__);
+        capture.debug_points.clear();
+        capture.debug_point_batches.clear();
+        return;
+    }
+    if (point_count == 0)
+    {
+        capture.debug_point_batch = {};
+        return;
+    }
+
+    ALMetalWorldDebugPointBatch& batch = capture.debug_point_batch;
+    batch.first_vertex = static_cast<std::uint32_t>(
+        capture.debug_point_batch_first);
+    batch.vertex_count = static_cast<std::uint32_t>(point_count);
+    if (!capture.debug_point_batches.empty())
+    {
+        ALMetalWorldDebugPointBatch& previous =
+            capture.debug_point_batches.back();
+        const std::uint64_t previous_end =
+            static_cast<std::uint64_t>(previous.first_vertex) +
+            previous.vertex_count;
+        const std::uint64_t merged_count =
+            static_cast<std::uint64_t>(previous.vertex_count) +
+            batch.vertex_count;
+        if (previous.order + 1 == capture.render_debug_order &&
+            previous_end == batch.first_vertex &&
+            merged_count <= std::numeric_limits<std::uint32_t>::max() &&
+            std::memcmp(previous.modelview_projection,
+                        batch.modelview_projection,
+                        sizeof(batch.modelview_projection)) == 0)
+        {
+            previous.vertex_count =
+                static_cast<std::uint32_t>(merged_count);
+            capture.debug_point_batch = {};
+            return;
+        }
+    }
+
+    batch.order = capture.render_debug_order++;
+    try
+    {
+        capture.debug_point_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.debug_points.clear();
+        capture.debug_point_batches.clear();
+    }
+    capture.debug_point_batch = {};
+}
+
+void LLPipeline::endMetalDebugPointCapture()
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.debug_point_capture_active)
+    {
+        return;
+    }
+    capture.debug_point_capture_active = false;
+    if (!capture.complete || capture.debug_point_batch_active ||
+        capture.debug_points.empty() != capture.debug_point_batches.empty())
+    {
+        capture.markIncomplete(__LINE__);
+        capture.debug_points.clear();
+        capture.debug_point_batches.clear();
+        capture.debug_point_batch_active = false;
     }
 }
 
@@ -5040,6 +5257,12 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         std::memcpy(scene.agent_target_modelview_projection,
                     capture.agent_target_modelview_projection,
                     sizeof(scene.agent_target_modelview_projection));
+        scene.agent_target_order = capture.agent_target_order;
+        scene.debug_points = capture.debug_points.data();
+        scene.debug_point_count = capture.debug_points.size();
+        scene.debug_point_batches = capture.debug_point_batches.data();
+        scene.debug_point_batch_count =
+            capture.debug_point_batches.size();
         scene.far_plane_overlay_columns =
             capture.far_plane_overlay_columns.data();
         scene.far_plane_overlay_column_count =
@@ -6661,7 +6884,15 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.wind_vector_lines.clear();
     capture.wind_vector_capture_active = false;
     capture.agent_target_lines.clear();
+    capture.agent_target_order = 0;
     capture.agent_target_capture_active = false;
+    capture.debug_points.clear();
+    capture.debug_point_batches.clear();
+    capture.debug_point_batch = {};
+    capture.debug_point_batch_first = 0;
+    capture.render_debug_order = 0;
+    capture.debug_point_capture_active = false;
+    capture.debug_point_batch_active = false;
     capture.far_plane_overlay_columns.clear();
     capture.far_plane_overlay_near_count = 0;
     capture.reflection_probe_volume_valid = false;
@@ -19171,6 +19402,15 @@ void LLPipeline::renderDebug()
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("render debug bridges");
 
+#if LL_DARWIN
+        const bool capture_debug_points =
+            !hud_only && hasRenderDebugMask(RENDER_DEBUG_POINTS);
+        if (capture_debug_points)
+        {
+            beginMetalDebugPointCapture();
+        }
+#endif
+
         for (LLViewerRegion* region : LLWorld::getInstance()->getRegionList())
         {
             for (U32 i = 0; i < LLViewerRegion::NUM_PARTITIONS; i++)
@@ -19198,6 +19438,12 @@ void LLPipeline::renderDebug()
                 gGL.popMatrix();
             }
         }
+#if LL_DARWIN
+        if (capture_debug_points)
+        {
+            endMetalDebugPointCapture();
+        }
+#endif
     }
 
     if (gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_OCCLUSION))

@@ -4718,6 +4718,145 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.debug_blips = nullptr;
         opaque_forward_scene.debug_blip_count = 0;
 
+        // Develop > Points emits an opaque white one-pixel point for each
+        // valid face centre. Region and spatial-bridge traversals can carry
+        // distinct transforms; depth is disabled, so even a point behind a
+        // covered surface draws without changing retained scene depth.
+        std::array<ALMetalWorldDebugPointVertex, 2> debug_points{};
+        for (ALMetalWorldDebugPointVertex& point : debug_points)
+        {
+            point.position[0] = -0.71875f;
+            point.position[1] = -0.71875f;
+            point.position[2] = 0.9f;
+        }
+        std::array<ALMetalWorldDebugPointBatch, 2> debug_point_batches{};
+        for (std::size_t batch = 0;
+             batch < debug_point_batches.size(); ++batch)
+        {
+            debug_point_batches[batch].first_vertex =
+                static_cast<std::uint32_t>(batch);
+            debug_point_batches[batch].vertex_count = 1;
+            debug_point_batches[batch].order = batch;
+            for (std::size_t axis = 0; axis < 4; ++axis)
+            {
+                debug_point_batches[batch].modelview_projection[
+                    axis * 4 + axis] = 1.f;
+            }
+        }
+        // Translate the second batch in X. Both retained vertices are equal,
+        // so the two separated pixels prove per-batch transform ownership.
+        debug_point_batches[1].modelview_projection[12] = 1.f;
+        opaque_forward_scene.debug_points = debug_points.data();
+        opaque_forward_scene.debug_point_count = debug_points.size();
+        opaque_forward_scene.debug_point_batches =
+            debug_point_batches.data();
+        opaque_forward_scene.debug_point_batch_count =
+            debug_point_batches.size();
+
+        opaque_forward_scene.debug_points = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world drawable-centre point storage is invalid");
+        opaque_forward_scene.debug_points = debug_points.data();
+        opaque_forward_scene.debug_point_batches = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world drawable-centre point storage is invalid");
+        opaque_forward_scene.debug_point_batches =
+            debug_point_batches.data();
+        debug_point_batches[1].first_vertex = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world drawable-centre point batch is invalid");
+        debug_point_batches[1].first_vertex = 1;
+        debug_point_batches[1].order = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world drawable-centre point batch is invalid");
+        debug_point_batches[1].order = 1;
+        debug_point_batches[1].modelview_projection[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world drawable-centre point batch is invalid");
+        debug_point_batches[1].modelview_projection[0] = 1.f;
+        debug_points[0].position[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world drawable-centre point data is non-finite");
+        debug_points[0].position[0] = -0.71875f;
+        error.clear();
+
+        auto native_debug_points = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(native_debug_points);
+        std::array<std::uint16_t, 32 * 32 * 4> debug_point_pixels{};
+        std::array<float, 32 * 32> debug_point_depth{};
+        REQUIRE(native_debug_points->colorTexture(0)->readback(
+            *device, 0, 0, {}, debug_point_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(native_debug_points->depthStencilTexture()->readback(
+            *device, 0, 0, {}, debug_point_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        std::size_t debug_point_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                debug_point_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                debug_point_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                debug_point_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            debug_point_changed += changed;
+            if (changed)
+            {
+                CHECK(debug_point_pixels[offset + 0] == 0x3c00);
+                CHECK(debug_point_pixels[offset + 1] == 0x3c00);
+                CHECK(debug_point_pixels[offset + 2] == 0x3c00);
+                CHECK(debug_point_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+            }
+        }
+        CHECK(debug_point_changed == 2);
+        CHECK(debug_point_pixels[(4 * 32 + 4) * 4] == 0x3c00);
+        CHECK(debug_point_pixels[(4 * 32 + 20) * 4] == 0x3c00);
+        CHECK(debug_point_depth == opaque_forward_depth);
+
+        opaque_forward_scene.debug_points = nullptr;
+        opaque_forward_scene.debug_point_count = 0;
+        opaque_forward_scene.debug_point_batches = nullptr;
+        opaque_forward_scene.debug_point_batch_count = 0;
+        auto no_debug_points = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_debug_points);
+        debug_point_pixels.fill(0xffffu);
+        debug_point_depth.fill(-1.f);
+        REQUIRE(no_debug_points->colorTexture(0)->readback(
+            *device, 0, 0, {}, debug_point_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(no_debug_points->depthStencilTexture()->readback(
+            *device, 0, 0, {}, debug_point_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(debug_point_pixels == opaque_forward_pixels);
+        CHECK(debug_point_depth == opaque_forward_depth);
+
         // Develop > Agent Target emits four 0.2 m self-avatar crosshairs as
         // translucent RGB-only lines. The enclosing spatial-debug owner has
         // alpha blending enabled and inherits the display's read/write
@@ -4882,6 +5021,67 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         }
         CHECK(agent_target_depth != opaque_forward_depth);
 
+        // The spatial traversal can encounter drawable-centre Points before
+        // and after the self avatar. Preserve that order rather than grouping
+        // the two debug families. A point after the red crosshair overwrites
+        // its centre white; the same point before it is alpha-blended red.
+        debug_points[0].position[0] = -0.71875f;
+        debug_points[0].position[1] = -0.71875f;
+        debug_points[0].position[2] = 0.9f;
+        debug_point_batches[0].first_vertex = 0;
+        debug_point_batches[0].vertex_count = 1;
+        debug_point_batches[0].order = 1;
+        opaque_forward_scene.debug_points = debug_points.data();
+        opaque_forward_scene.debug_point_count = 1;
+        opaque_forward_scene.debug_point_batches =
+            debug_point_batches.data();
+        opaque_forward_scene.debug_point_batch_count = 1;
+        opaque_forward_scene.agent_target_order = 0;
+        auto point_after_agent = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(point_after_agent);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            point_after_agent_pixels{};
+        REQUIRE(point_after_agent->colorTexture(0)->readback(
+            *device, 0, 0, {}, point_after_agent_pixels.data(),
+            32 * 8, &error));
+        const std::size_t ordered_debug_pixel = (4 * 32 + 4) * 4;
+        CHECK(point_after_agent_pixels[ordered_debug_pixel + 0] == 0x3c00);
+        CHECK(point_after_agent_pixels[ordered_debug_pixel + 1] == 0x3c00);
+        CHECK(point_after_agent_pixels[ordered_debug_pixel + 2] == 0x3c00);
+        CHECK(point_after_agent_pixels[ordered_debug_pixel + 3] ==
+              opaque_forward_pixels[ordered_debug_pixel + 3]);
+
+        debug_point_batches[0].order = 0;
+        opaque_forward_scene.agent_target_order = 1;
+        auto point_before_agent = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(point_before_agent);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            point_before_agent_pixels{};
+        REQUIRE(point_before_agent->colorTexture(0)->readback(
+            *device, 0, 0, {}, point_before_agent_pixels.data(),
+            32 * 8, &error));
+        CHECK(point_before_agent_pixels[ordered_debug_pixel + 0] == 0x3c00);
+        CHECK(point_before_agent_pixels[ordered_debug_pixel + 1] < 0x3c00);
+        CHECK(point_before_agent_pixels[ordered_debug_pixel + 2] < 0x3c00);
+        CHECK(point_before_agent_pixels[ordered_debug_pixel + 3] ==
+              opaque_forward_pixels[ordered_debug_pixel + 3]);
+
+        opaque_forward_scene.agent_target_order = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world drawable-centre point batch is invalid");
+        opaque_forward_scene.agent_target_order = 0;
+        opaque_forward_scene.debug_points = nullptr;
+        opaque_forward_scene.debug_point_count = 0;
+        opaque_forward_scene.debug_point_batches = nullptr;
+        opaque_forward_scene.debug_point_batch_count = 0;
+
         // Place all four crosshairs inside the known covered centre. At GL
         // depth 0 (Metal 0.5) they pass and write; at GL depth 0.75 (Metal
         // 0.875) they are behind the retained 0.625 surface and every line is
@@ -4985,6 +5185,58 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                 *device, 0, 0, {},
                 reverse_agent_target_baseline_depth.data(),
                 32 * sizeof(float), &error));
+        debug_points[0].position[0] = 0.03125f;
+        debug_points[0].position[1] = 0.03125f;
+        debug_points[0].position[2] = 0.9f;
+        debug_point_batches[0].first_vertex = 0;
+        debug_point_batches[0].vertex_count = 1;
+        debug_point_batches[0].order = 0;
+        opaque_forward_scene.debug_points = debug_points.data();
+        opaque_forward_scene.debug_point_count = 1;
+        opaque_forward_scene.debug_point_batches =
+            debug_point_batches.data();
+        opaque_forward_scene.debug_point_batch_count = 1;
+        auto reverse_debug_point = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_debug_point);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_debug_point_pixels{};
+        std::array<float, 32 * 32> reverse_debug_point_depth{};
+        REQUIRE(reverse_debug_point->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_debug_point_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(reverse_debug_point->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_debug_point_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t reverse_debug_point_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                reverse_debug_point_pixels[offset + 0] !=
+                    reverse_agent_target_baseline_pixels[offset + 0] ||
+                reverse_debug_point_pixels[offset + 1] !=
+                    reverse_agent_target_baseline_pixels[offset + 1] ||
+                reverse_debug_point_pixels[offset + 2] !=
+                    reverse_agent_target_baseline_pixels[offset + 2];
+            reverse_debug_point_changed += changed;
+            if (changed)
+            {
+                CHECK(reverse_debug_point_pixels[offset + 0] == 0x3c00);
+                CHECK(reverse_debug_point_pixels[offset + 1] == 0x3c00);
+                CHECK(reverse_debug_point_pixels[offset + 2] == 0x3c00);
+                CHECK(reverse_debug_point_pixels[offset + 3] ==
+                      reverse_agent_target_baseline_pixels[offset + 3]);
+            }
+        }
+        CHECK(reverse_debug_point_changed == 1);
+        CHECK(reverse_debug_point_depth ==
+              reverse_agent_target_baseline_depth);
+        opaque_forward_scene.debug_points = nullptr;
+        opaque_forward_scene.debug_point_count = 0;
+        opaque_forward_scene.debug_point_batches = nullptr;
+        opaque_forward_scene.debug_point_batch_count = 0;
         for (ALMetalWorldAgentTargetVertex& vertex : agent_target_lines)
         {
             vertex.position[2] = 0.9f;

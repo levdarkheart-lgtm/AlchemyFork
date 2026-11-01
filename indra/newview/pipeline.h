@@ -377,6 +377,14 @@ public:
                                           F32 size,
                                           const LLColor4& color);
     void endMetalAgentTargetCapture(std::size_t crosshair_count);
+    // Retain Develop > Points across the complete world spatial traversal.
+    // Each drawable batch records its current region/bridge transform; the
+    // traversal order also preserves interleaving with Agent Target.
+    void beginMetalDebugPointCapture();
+    void beginMetalDebugPointBatch(std::size_t face_capacity);
+    void captureMetalDebugPoint(const LLVector3& position);
+    void endMetalDebugPointBatch(std::size_t point_count);
+    void endMetalDebugPointCapture();
     // One bounded offscreen probe connects the completed current-frame native
     // world presentation and retained depth to the real ordered UI/HUD draw
     // stream. It never changes the live surface; publication remains locked
@@ -1448,7 +1456,6 @@ public:
             RENDER_DEBUG_BBOXES |
             RENDER_DEBUG_OCTREE |
             RENDER_DEBUG_OCCLUSION |
-            RENDER_DEBUG_POINTS |
             RENDER_DEBUG_TEXTURE_ANIM |
             RENDER_DEBUG_LIGHTS |
             RENDER_DEBUG_BATCH_SIZE |

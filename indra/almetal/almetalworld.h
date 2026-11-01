@@ -454,6 +454,20 @@ using ALMetalWorldWindVectorVertex = ALMetalWorldDebugBlip;
 // untouched.
 using ALMetalWorldAgentTargetVertex = ALMetalWorldDebugBlip;
 
+// Develop > Points emits one opaque white, one-pixel point at every valid
+// drawable face centre. World traversal can switch transforms at spatial-
+// bridge boundaries and can interleave the self-avatar Agent Target owner, so
+// each contiguous point batch retains both its transform and traversal order.
+using ALMetalWorldDebugPointVertex = ALMetalWorldDebugBlip;
+
+struct ALMetalWorldDebugPointBatch
+{
+    std::uint32_t first_vertex = 0;
+    std::uint32_t vertex_count = 0;
+    std::uint64_t order = 0;
+    float modelview_projection[16]{};
+};
+
 // One axis-aligned column in the developer far-plane projection overlay. The
 // native vertex stage expands these retained center/half-extent records into
 // the same 12 triangles as the immediate GL owner. Columns are ordered with
@@ -761,6 +775,11 @@ struct ALMetalWorldOpaquePostDeferredScene
     const ALMetalWorldAgentTargetVertex* agent_target_lines = nullptr;
     std::size_t agent_target_line_vertex_count = 0;
     float agent_target_modelview_projection[16]{};
+    std::uint64_t agent_target_order = 0;
+    const ALMetalWorldDebugPointVertex* debug_points = nullptr;
+    std::size_t debug_point_count = 0;
+    const ALMetalWorldDebugPointBatch* debug_point_batches = nullptr;
+    std::size_t debug_point_batch_count = 0;
     const ALMetalWorldFarPlaneOverlayColumn* far_plane_overlay_columns =
         nullptr;
     std::size_t far_plane_overlay_column_count = 0;
