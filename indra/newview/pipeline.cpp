@@ -32,6 +32,7 @@
 #include "pipeline.h"
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <deque>
 #include <limits>
 #include <new>
@@ -3917,9 +3918,28 @@ bool LLPipeline::fillMetalWorldAlphaEnvironment(
     alpha.water_fog[1] = data.waterFogDensity;
     alpha.water_fog[2] = sUnderWaterRender ? 1.f : -1.f;
 
-    static_assert(sizeof(ALMetalWorldAlphaEnvironment) == 240);
+    // Match bindDeferredShader's transpose=true env_mat upload. The
+    // transparent and opaque-forward owners consume the same no-probe sky
+    // cube as the already-native base-light and water owners.
+    const F32* modelview =
+        LLViewerCamera::getCurrent().getModelview().getF32ptr();
+    alpha.environment_matrix[0][0] = modelview[0];
+    alpha.environment_matrix[0][1] = modelview[4];
+    alpha.environment_matrix[0][2] = modelview[8];
+    alpha.environment_matrix[1][0] = modelview[1];
+    alpha.environment_matrix[1][1] = modelview[5];
+    alpha.environment_matrix[1][2] = modelview[9];
+    alpha.environment_matrix[2][0] = modelview[2];
+    alpha.environment_matrix[2][1] = modelview[6];
+    alpha.environment_matrix[2][2] = modelview[10];
+    alpha.environment[0] = data.reflection_probe_ambiance;
+
+    static_assert(sizeof(ALMetalWorldAlphaEnvironment) == 320);
     const F32* values = reinterpret_cast<const F32*>(&alpha);
-    return std::all_of(values, values + sizeof(alpha) / sizeof(F32),
+    constexpr std::size_t float_count =
+        offsetof(ALMetalWorldAlphaEnvironment, environment_config) /
+        sizeof(F32);
+    return std::all_of(values, values + float_count,
                        [](F32 value) { return std::isfinite(value); }) &&
         alpha.atmospheric[0] >= 0.f &&
         alpha.atmospheric[1] >= 0.f &&
@@ -4400,12 +4420,13 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     return slot.env_intensity > 0.f;
                 });
         });
-    const bool needs_reflection_probes =
+    const bool has_forward_environment =
         has_shiny || has_simple_alpha || has_material_alpha ||
-        has_pbr_alpha ||
-        (has_above_water_surface && sReflectionProbesEnabled);
+        has_pbr_alpha || has_above_water_surface;
+    const bool needs_reflection_probes =
+        has_forward_environment && sReflectionProbesEnabled;
     const bool needs_legacy_environment =
-        has_above_water_surface && !sReflectionProbesEnabled;
+        has_forward_environment && !sReflectionProbesEnabled;
     const bool hero_active = sReflectionProbesEnabled && !gCubeSnapshot &&
         mHeroProbeManager.mHeroData.heroProbeCount > 0;
     const bool ssr_active = sReflectionProbesEnabled &&
@@ -4433,7 +4454,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.markIncomplete(__LINE__);
             LL_WARNS("Metal")
                 << "Could not acquire the legacy sky cube for the native "
-                   "above-water slice: "
+                   "forward post-deferred slice: "
                 << environment_error << LL_ENDL;
         }
     }

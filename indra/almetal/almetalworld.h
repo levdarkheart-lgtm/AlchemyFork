@@ -630,6 +630,18 @@ struct alignas(16) ALMetalWorldAlphaEnvironment
     // z = waterSign for this alpha pool. The renderer injects the current
     // draw's minimum-alpha threshold into w before binding this block.
     float water_fog[4]{};
+    // The probe-disabled GL forward paths rotate reflected eye-space
+    // vectors into the current legacy sky cube with env_mat. These are the
+    // same vec4-strided columns used by the base-light and water owners.
+    float environment_matrix[3][4] = {
+        {1.f, 0.f, 0.f, 0.f},
+        {0.f, 1.f, 0.f, 0.f},
+        {0.f, 0.f, 1.f, 0.f},
+    };
+    // x = reflection_probe_ambiance.
+    float environment[4]{};
+    // x = legacy sky-cube environment instead of reflection probes.
+    std::uint32_t environment_config[4]{};
 };
 
 // The full-screen deferred atmospheric pass that follows water above the
@@ -662,9 +674,10 @@ struct ALMetalWorldOpaquePostDeferredScene
     const ALMetalWorldHighlightBatch* highlight_batches = nullptr;
     std::size_t highlight_batch_count = 0;
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
-    // Mutually exclusive with reflection_probes for above-water rendering.
+    // Mutually exclusive with reflection_probes for forward rendering.
     // This is the current LLCubeMap publication used by the class-2 GLSL
-    // water path when reflection probes are disabled.
+    // shiny, alpha, PBR-alpha and water paths when reflection probes are
+    // disabled.
     const ALMetalTexture* legacy_environment = nullptr;
     const ALMetalWorldHeroProbe* hero_probe = nullptr;
     const ALMetalWorldScreenSpaceReflections* screen_space_reflections =

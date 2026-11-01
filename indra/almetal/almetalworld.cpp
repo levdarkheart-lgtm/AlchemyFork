@@ -414,7 +414,7 @@ namespace
         float avatar_cloth_depth[4]{};
     };
     static_assert(sizeof(WorldShinyConstants) == 368);
-    static_assert(sizeof(ALMetalWorldAlphaEnvironment) == 240);
+    static_assert(sizeof(ALMetalWorldAlphaEnvironment) == 320);
     static_assert(sizeof(ALMetalWorldLegacyAlphaLight) == 64);
     static_assert(sizeof(ALMetalWorldLegacyAlphaLighting) == 496);
     static_assert(sizeof(ALMetalWorldHeroProbeConstants) == 112);
@@ -10508,7 +10508,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     if (has_pre_water_alpha || has_avatar_alpha ||
         has_post_water_alpha ||
         has_above_water_surface ||
-        has_atmospheric_haze)
+        has_atmospheric_haze ||
+        (has_shiny && scene.legacy_environment))
     {
         const ALMetalWorldAlphaEnvironment* environment =
             scene.alpha_environment;
@@ -10539,6 +10540,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             !finiteValues(environment->atmos_amblit, 4) ||
             !finiteValues(environment->atmospheric, 4) ||
             !finiteValues(environment->water_fog, 4) ||
+            !finiteValues(&environment->environment_matrix[0][0], 12) ||
+            !finiteValues(environment->environment, 4) ||
             water_normal_length <= 0.f || light_length <= 0.f ||
             environment->atmospheric[0] < 0.f ||
             environment->atmospheric[1] < 0.f ||
@@ -10548,6 +10551,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             environment->water_fog[0] <= 0.f ||
             environment->water_fog[1] < 0.f ||
             std::abs(environment->water_fog[2]) != 1.f ||
+            environment->environment_config[0] != 0 ||
+            environment->environment_config[1] != 0 ||
+            environment->environment_config[2] != 0 ||
+            environment->environment_config[3] != 0 ||
             (has_atmospheric_haze &&
              ((scene.atmospheric_haze->above_water &&
                environment->water_fog[2] != -1.f) ||
@@ -10563,22 +10570,30 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         validPBRReflectionProbes(scene.reflection_probes);
     const bool legacy_environment =
         validLegacyEnvironment(scene.legacy_environment);
-    if ((scene.legacy_environment && !legacy_environment) ||
-        (scene.legacy_environment && scene.reflection_probes) ||
-        (has_above_water_surface &&
-         probe_environment == legacy_environment))
-    {
-        setError(error,
-                 "Metal world above-water environment is invalid");
-        return nullptr;
-    }
+    const bool has_forward_environment =
+        has_shiny || has_pre_water_simple || has_pre_water_material ||
+        has_pre_water_pbr || has_above_water_surface;
     if ((has_pre_water_simple || has_pre_water_material ||
          has_pre_water_pbr) &&
-        (!validLegacyAlphaLighting(scene.alpha_lighting) ||
-         !probe_environment))
+        !validLegacyAlphaLighting(scene.alpha_lighting))
     {
         setError(error,
                  "Metal world pre-water alpha lighting is invalid");
+        return nullptr;
+    }
+    if ((scene.legacy_environment && !legacy_environment) ||
+        (scene.reflection_probes && !probe_environment) ||
+        (scene.legacy_environment && scene.reflection_probes) ||
+        (has_forward_environment &&
+         probe_environment == legacy_environment) ||
+        (legacy_environment &&
+         (scene.hero_probe || scene.screen_space_reflections)))
+    {
+        setError(
+            error,
+            has_above_water_surface
+                ? "Metal world above-water environment is invalid"
+                : "Metal world forward environment is invalid");
         return nullptr;
     }
     if (has_above_water_surface &&
@@ -10595,14 +10610,6 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     {
         setError(error,
                  "Metal world pre-water alpha shadows are invalid");
-        return nullptr;
-    }
-    if (has_shiny && !has_pre_water_simple && !has_pre_water_material &&
-        !has_pre_water_pbr &&
-        !validReflectionProbes(scene.reflection_probes))
-    {
-        setError(error,
-                 "Metal world opaque post-deferred reflection probes are invalid");
         return nullptr;
     }
     if (scene.hero_probe && !validHeroProbe(scene.hero_probe))
@@ -10962,6 +10969,16 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     : mImpl->inactive_probe_irradiance.get();
             bound = active.setFragmentTexture(
                 37, probe_irradiance, error);
+        }
+        if (bound && (has_shiny || has_pre_water_simple ||
+                      has_pre_water_material || has_pre_water_pbr))
+        {
+            const ALMetalTexture* legacy_texture =
+                scene.legacy_environment
+                    ? scene.legacy_environment
+                    : mImpl->inactive_hero_probe.get();
+            bound = active.setFragmentTexture(
+                39, legacy_texture, error);
         }
         if (bound && (has_shiny || has_pre_water_material ||
                       has_pre_water_pbr))
@@ -11749,6 +11766,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
 
             ALMetalWorldAlphaEnvironment alpha_environment =
                 *scene.alpha_environment;
+            alpha_environment.environment_config[0] =
+                legacy_environment ? 1u : 0u;
             if (batch.post_water_alpha)
             {
                 // The same shaders implement both alpha pools. The live
@@ -12353,6 +12372,18 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setVertexBytes(
                     7, &batch.skin_joint_count,
                     sizeof(batch.skin_joint_count), error);
+        }
+        if (encoded && batch.impostor_shiny)
+        {
+            ALMetalWorldAlphaEnvironment shiny_environment =
+                scene.alpha_environment
+                    ? *scene.alpha_environment
+                    : ALMetalWorldAlphaEnvironment{};
+            shiny_environment.environment_config[0] =
+                legacy_environment ? 1u : 0u;
+            encoded = encoder->setFragmentBytes(
+                0, &shiny_environment,
+                sizeof(shiny_environment), error);
         }
         for (std::size_t texture = 0;
              encoded && texture < batch.texture_count; ++texture)
@@ -14536,6 +14567,16 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
                 34, hero_texture, error) &&
             encoder->setFragmentBytes(
                 4, &hero_constants, sizeof(hero_constants), error);
+    }
+    if (encoded && has_shiny)
+    {
+        const ALMetalWorldAlphaEnvironment probe_environment{};
+        encoded =
+            encoder->setFragmentTexture(
+                39, mImpl->inactive_hero_probe.get(), error) &&
+            encoder->setFragmentBytes(
+                0, &probe_environment,
+                sizeof(probe_environment), error);
     }
     if (encoded && legacy_alpha_uses_probes)
     {

@@ -5205,7 +5205,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK_FALSE(renderer->renderOpaquePostDeferred(
             opaque_forward_scene, &error));
         CHECK(error ==
-              "Metal world pre-water alpha lighting is invalid");
+              "Metal world forward environment is invalid");
         reflection_probes.irradiance_texture = irradiance_texture.get();
         error.clear();
         auto simple_pre_water_result = renderer->renderOpaquePostDeferred(
@@ -6907,6 +6907,174 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         }
         REQUIRE(water_legacy_environment_upload->commitAndWait(&error));
         INFO(error);
+
+        // Reflection-probe-disabled forward rendering is one coherent
+        // legacy-sky family, not a water-only exception. Exercise every
+        // consumer against physical blue and black cube data before the
+        // water-specific checks below: simple alpha receives the authored
+        // ambiance blend, legacy material and shiny use the sRGB cube mix,
+        // and PBR alpha decodes the same cube to linear radiance.
+        ALMetalWorldOpaquePostDeferredScene no_probe_forward_scene =
+            opaque_forward_scene;
+        no_probe_forward_scene.gbuffer = coverage_result.get();
+        no_probe_forward_scene.batches = &simple_pre_water;
+        no_probe_forward_scene.batch_count = 1;
+        no_probe_forward_scene.highlight_batches = nullptr;
+        no_probe_forward_scene.highlight_batch_count = 0;
+        no_probe_forward_scene.reflection_probes = nullptr;
+        no_probe_forward_scene.legacy_environment =
+            water_legacy_environment.get();
+        no_probe_forward_scene.hero_probe = nullptr;
+        no_probe_forward_scene.screen_space_reflections = nullptr;
+        no_probe_forward_scene.water_exclusion_surface = nullptr;
+        no_probe_forward_scene.water_haze = nullptr;
+        no_probe_forward_scene.water_surface = nullptr;
+        no_probe_forward_scene.atmospheric_haze = nullptr;
+        no_probe_forward_scene.sky_behind = nullptr;
+        no_probe_forward_scene.alpha_environment = &alpha_environment;
+        no_probe_forward_scene.alpha_lighting = &simple_alpha_lighting;
+        no_probe_forward_scene.alpha_directional_shadows = nullptr;
+        no_probe_forward_scene.reverse_z = false;
+        no_probe_forward_scene.publish_screen_space_reflection_history =
+            false;
+
+        alpha_environment.atmos_sunlit_linear[0] = 0.f;
+        alpha_environment.atmos_sunlit_linear[1] = 0.f;
+        alpha_environment.atmos_sunlit_linear[2] = 0.f;
+        alpha_environment.atmos_amblit[0] = 0.f;
+        alpha_environment.atmos_amblit[1] = 0.f;
+        alpha_environment.atmos_amblit[2] = 0.f;
+        alpha_environment.environment[0] = 1.f;
+        simple_alpha_lighting.parameters[3] = 0.f;
+        auto no_probe_simple = renderer->renderOpaquePostDeferred(
+            no_probe_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_probe_simple);
+        REQUIRE(no_probe_simple->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float ambiance_simple_green = half_to_float(
+            pre_water_pixels[pre_water_left + 1]);
+        alpha_environment.environment[0] = 0.f;
+        auto no_probe_simple_zero_ambiance =
+            renderer->renderOpaquePostDeferred(
+                no_probe_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_probe_simple_zero_ambiance);
+        REQUIRE(no_probe_simple_zero_ambiance->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(ambiance_simple_green > half_to_float(
+                  pre_water_pixels[pre_water_left + 1]));
+
+        ALMetalWorldSimpleBatch no_probe_material = pre_water_material;
+        no_probe_material.pre_water_shadows = false;
+        no_probe_material.material_slots[0].env_intensity = 1.f;
+        no_probe_material.material_slots[0].specular_color[3] = 0.f;
+        no_probe_forward_scene.batches = &no_probe_material;
+        auto no_probe_material_blue = renderer->renderOpaquePostDeferred(
+            no_probe_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_probe_material_blue);
+        REQUIRE(no_probe_material_blue->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float legacy_material_blue = half_to_float(
+            pre_water_pixels[material_pixel + 2]);
+        no_probe_forward_scene.legacy_environment = hero_texture.get();
+        auto no_probe_material_black = renderer->renderOpaquePostDeferred(
+            no_probe_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_probe_material_black);
+        REQUIRE(no_probe_material_black->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(legacy_material_blue > half_to_float(
+                  pre_water_pixels[material_pixel + 2]));
+
+        ALMetalWorldSimpleBatch no_probe_pbr = pre_water_pbr;
+        no_probe_pbr.pre_water_shadows = false;
+        no_probe_pbr.pbr_slots[0].emissive_color[0] = 0.f;
+        no_probe_pbr.pbr_slots[0].emissive_color[1] = 0.f;
+        no_probe_pbr.pbr_slots[0].emissive_color[2] = 0.f;
+        no_probe_pbr.pbr_slots[0].roughness_factor = 0.f;
+        no_probe_pbr.pbr_slots[0].metallic_factor = 1.f;
+        no_probe_forward_scene.batches = &no_probe_pbr;
+        no_probe_forward_scene.legacy_environment =
+            water_legacy_environment.get();
+        auto no_probe_pbr_blue = renderer->renderOpaquePostDeferred(
+            no_probe_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_probe_pbr_blue);
+        REQUIRE(no_probe_pbr_blue->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float legacy_pbr_blue = half_to_float(
+            pre_water_pixels[material_pixel + 2]);
+        no_probe_forward_scene.legacy_environment = hero_texture.get();
+        auto no_probe_pbr_black = renderer->renderOpaquePostDeferred(
+            no_probe_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_probe_pbr_black);
+        REQUIRE(no_probe_pbr_black->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(legacy_pbr_blue > half_to_float(
+                  pre_water_pixels[material_pixel + 2]));
+
+        ALMetalWorldSimpleBatch no_probe_shiny = fullbright_batch;
+        no_probe_shiny.impostor_fullbright = false;
+        no_probe_shiny.impostor_shiny = true;
+        no_probe_shiny.alpha_mask = false;
+        for (std::size_t index = 0; index < 4; ++index)
+        {
+            no_probe_shiny.modelview[index * 4 + index] = 1.f;
+        }
+        no_probe_forward_scene.batches = &no_probe_shiny;
+        no_probe_forward_scene.legacy_environment =
+            water_legacy_environment.get();
+        auto no_probe_shiny_blue = renderer->renderOpaquePostDeferred(
+            no_probe_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_probe_shiny_blue);
+        REQUIRE(no_probe_shiny_blue->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float legacy_shiny_blue = half_to_float(
+            pre_water_pixels[fullbright_top + 2]);
+        no_probe_forward_scene.legacy_environment = hero_texture.get();
+        auto no_probe_shiny_black = renderer->renderOpaquePostDeferred(
+            no_probe_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_probe_shiny_black);
+        REQUIRE(no_probe_shiny_black->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(legacy_shiny_blue > half_to_float(
+                  pre_water_pixels[fullbright_top + 2]));
+
+        no_probe_forward_scene.legacy_environment = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            no_probe_forward_scene, &error));
+        CHECK(error == "Metal world forward environment is invalid");
+        no_probe_forward_scene.legacy_environment =
+            water_legacy_environment.get();
+        no_probe_forward_scene.reflection_probes = &reflection_probes;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            no_probe_forward_scene, &error));
+        CHECK(error == "Metal world forward environment is invalid");
+
+        alpha_environment.environment[0] = 0.f;
 
         ALMetalWorldWaterSurface above_water_surface =
             underwater_surface;

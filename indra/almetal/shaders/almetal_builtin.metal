@@ -510,6 +510,9 @@ struct ALMetalWorldAlphaEnvironment
     float4 atmos_amblit;
     float4 atmospheric;
     float4 water_fog;
+    float4 environment_matrix[3];
+    float4 environment;
+    uint4 environment_config;
 };
 
 struct ALMetalWorldAtmosphericHazeConstants
@@ -5611,13 +5614,37 @@ static float3 almetal_finish_legacy_ssr(
     return mix(legacy_environment, sample.rgb, sample.a);
 }
 
+static float3 almetal_sample_legacy_sky(
+    float3 position, float3 normal,
+    texturecube<float> legacy_environment, sampler probe_sampler,
+    constant ALMetalWorldAlphaEnvironment& environment)
+{
+    const float3x3 environment_matrix = float3x3(
+        environment.environment_matrix[0].xyz,
+        environment.environment_matrix[1].xyz,
+        environment.environment_matrix[2].xyz);
+    const float3 reflection = normalize(reflect(position, normal));
+    return legacy_environment.sample(
+        probe_sampler, environment_matrix * reflection).rgb;
+}
+
+static float3 almetal_legacy_sky_ambient(
+    float3 ambient,
+    constant ALMetalWorldAlphaEnvironment& environment)
+{
+    const float ambiance = environment.environment.x;
+    return mix(ambient, float3(ambiance * 0.25), ambiance);
+}
+
 fragment float4 almetal_world_shiny_fragment(
     ALMetalWorldShinyVaryings input [[stage_in]],
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
     texturecube_array<float> reflection_probes [[texture(32)]],
     texturecube<float> hero_probe [[texture(34)]],
+    texturecube<float> legacy_sky [[texture(39)]],
     sampler diffuse_sampler [[sampler(0)]],
     sampler probe_sampler [[sampler(1)]],
+    constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
     constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]],
     constant ALMetalWorldHeroProbeConstants& hero [[buffer(4)]])
 {
@@ -5628,18 +5655,37 @@ fragment float4 almetal_world_shiny_fragment(
     float3 color = diffuse.rgb * input.color.rgb;
     const float3 normal = normalize(input.normal);
     const float environment_intensity = input.color.a;
-    float3 legacy_environment = almetal_sample_legacy_probes(
-        input.eye_position, normal,
-        reflection_probes, probe_sampler, probes);
-    legacy_environment = almetal_finish_hero_probe(
-        legacy_environment, input.eye_position, normal, 1.0,
-        hero_probe, probe_sampler, probes, hero);
-    float fresnel = 1.0 + dot(normalize(input.eye_position), normal);
-    fresnel *= fresnel;
-    fresnel = min(fresnel + environment_intensity, 1.0);
-    const float3 reflected_color = legacy_environment *
-        (environment_intensity * fresnel);
-    color = mix(color, reflected_color * 0.5, environment_intensity);
+    const bool legacy_environment_path =
+        environment.environment_config.x != 0u;
+    float3 legacy_environment = legacy_environment_path
+        ? almetal_sample_legacy_sky(
+              input.eye_position, normal, legacy_sky,
+              probe_sampler, environment)
+        : almetal_sample_legacy_probes(
+              input.eye_position, normal,
+              reflection_probes, probe_sampler, probes);
+    if (legacy_environment_path)
+    {
+        color = almetal_srgb_to_linear(mix(
+            almetal_linear_to_srgb(color),
+            legacy_environment * 2.0,
+            environment_intensity));
+    }
+    else
+    {
+        legacy_environment = almetal_finish_hero_probe(
+            legacy_environment, input.eye_position, normal, 1.0,
+            hero_probe, probe_sampler, probes, hero);
+        float fresnel = 1.0 + dot(
+            normalize(input.eye_position), normal);
+        fresnel *= fresnel;
+        fresnel = min(fresnel + environment_intensity, 1.0);
+        const float3 reflected_color = legacy_environment *
+            (environment_intensity * fresnel);
+        color = mix(
+            color, reflected_color * 0.5,
+            environment_intensity);
+    }
     return max(float4(color, 1.0), float4(0.0));
 }
 
@@ -6928,6 +6974,7 @@ static float4 almetal_world_pre_water_simple_lighting(
     float directional_visibility,
     texturecube_array<float> reflection_radiance,
     texture2d<uint> reflection_irradiance,
+    texturecube<float> legacy_sky,
     sampler probe_sampler,
     constant ALMetalWorldAlphaEnvironment& environment,
     constant ALMetalWorldReflectionProbeConstants& probes,
@@ -6957,12 +7004,20 @@ static float4 almetal_world_pre_water_simple_lighting(
     float3 irradiance = ambient;
     float3 gloss_environment = 0.0;
     float3 legacy_environment = 0.0;
-    almetal_sample_base_probes(
-        false, input.eye_position, normal, 0.0, 0.0,
-        ambient, classic_mode,
-        reflection_radiance, reflection_irradiance,
-        probe_sampler, probes,
-        irradiance, gloss_environment, legacy_environment);
+    if (environment.environment_config.x != 0u)
+    {
+        irradiance = almetal_legacy_sky_ambient(
+            ambient, environment);
+    }
+    else
+    {
+        almetal_sample_base_probes(
+            false, input.eye_position, normal, 0.0, 0.0,
+            ambient, classic_mode,
+            reflection_radiance, reflection_irradiance,
+            probe_sampler, probes,
+            irradiance, gloss_environment, legacy_environment);
+    }
 
     float directional = clamp(dot(
         normal, environment.light_direction.xyz), 0.0, 1.0);
@@ -7003,6 +7058,7 @@ fragment float4 almetal_world_pre_water_simple_fragment(
     array<texture2d<float>, 32> diffuse_textures [[texture(0)]],
     texturecube_array<float> reflection_radiance [[texture(32)]],
     texture2d<uint> reflection_irradiance [[texture(37)]],
+    texturecube<float> legacy_sky [[texture(39)]],
     sampler diffuse_sampler [[sampler(0)]],
     sampler probe_sampler [[sampler(1)]],
     constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
@@ -7017,6 +7073,7 @@ fragment float4 almetal_world_pre_water_simple_fragment(
     return almetal_world_pre_water_simple_lighting(
         input, diffuse, normal, 1.0,
         reflection_radiance, reflection_irradiance,
+        legacy_sky,
         probe_sampler, environment, probes, lighting);
 }
 
@@ -7026,6 +7083,7 @@ fragment float4 almetal_world_pre_water_simple_shadow_fragment(
     texturecube_array<float> reflection_radiance [[texture(32)]],
     texture2d<uint> reflection_irradiance [[texture(37)]],
     texture2d_array<float> shadow_maps [[texture(33)]],
+    texturecube<float> legacy_sky [[texture(39)]],
     sampler diffuse_sampler [[sampler(0)]],
     sampler probe_sampler [[sampler(1)]],
     constant ALMetalWorldAlphaEnvironment& environment [[buffer(0)]],
@@ -7050,6 +7108,7 @@ fragment float4 almetal_world_pre_water_simple_shadow_fragment(
     return almetal_world_pre_water_simple_lighting(
         input, diffuse, normal, directional_visibility,
         reflection_radiance, reflection_irradiance,
+        legacy_sky,
         probe_sampler, environment, probes, lighting);
 }
 
@@ -7064,6 +7123,7 @@ fragment float4 almetal_world_pre_water_material_fragment(
     texture2d<float> ssr_scene_color [[texture(35)]],
     texture2d<float> ssr_scene_depth [[texture(36)]],
     texture2d<uint> reflection_irradiance [[texture(37)]],
+    texturecube<float> legacy_sky [[texture(39)]],
     sampler material_sampler [[sampler(0)]],
     sampler probe_sampler [[sampler(1)]],
     sampler ssr_color_sampler [[sampler(2)]],
@@ -7182,13 +7242,28 @@ fragment float4 almetal_world_pre_water_material_fragment(
     float3 ambient_environment = ambient;
     float3 gloss_environment = 0.0;
     float3 legacy_environment = 0.0;
-    almetal_sample_base_probes(
-        false, input.eye_position, normal, glossiness,
-        environment_intensity, ambient, classic_mode,
-        reflection_radiance, reflection_irradiance,
-        probe_sampler, probes,
-        ambient_environment, gloss_environment, legacy_environment);
-    if (glossiness > 0.0)
+    const bool legacy_environment_path =
+        environment.environment_config.x != 0u;
+    if (legacy_environment_path)
+    {
+        ambient_environment = almetal_legacy_sky_ambient(
+            ambient, environment);
+        legacy_environment = almetal_sample_legacy_sky(
+            input.eye_position, normal, legacy_sky,
+            probe_sampler, environment);
+        gloss_environment = legacy_environment;
+    }
+    else
+    {
+        almetal_sample_base_probes(
+            false, input.eye_position, normal, glossiness,
+            environment_intensity, ambient, classic_mode,
+            reflection_radiance, reflection_irradiance,
+            probe_sampler, probes,
+            ambient_environment, gloss_environment,
+            legacy_environment);
+    }
+    if (!legacy_environment_path && glossiness > 0.0)
     {
         gloss_environment = almetal_finish_legacy_ssr(
             gloss_environment,
@@ -7198,7 +7273,7 @@ fragment float4 almetal_world_pre_water_material_fragment(
             ssr_scene_color, ssr_scene_depth,
             ssr_color_sampler, ssr_depth_sampler, ssr);
     }
-    if (environment_intensity > 0.0)
+    if (!legacy_environment_path && environment_intensity > 0.0)
     {
         legacy_environment = almetal_finish_legacy_ssr(
             legacy_environment,
@@ -7208,12 +7283,15 @@ fragment float4 almetal_world_pre_water_material_fragment(
             ssr_scene_color, ssr_scene_depth,
             ssr_color_sampler, ssr_depth_sampler, ssr);
     }
-    gloss_environment = almetal_finish_hero_probe(
-        gloss_environment, input.eye_position, normal, glossiness,
-        hero_probe, probe_sampler, probes, hero);
-    legacy_environment = almetal_finish_hero_probe(
-        legacy_environment, input.eye_position, normal, 1.0,
-        hero_probe, probe_sampler, probes, hero);
+    if (!legacy_environment_path)
+    {
+        gloss_environment = almetal_finish_hero_probe(
+            gloss_environment, input.eye_position, normal, glossiness,
+            hero_probe, probe_sampler, probes, hero);
+        legacy_environment = almetal_finish_hero_probe(
+            legacy_environment, input.eye_position, normal, 1.0,
+            hero_probe, probe_sampler, probes, hero);
+    }
 
     float directional = clamp(dot(
         normal, environment.light_direction.xyz), 0.0, 1.0);
@@ -7268,27 +7346,42 @@ fragment float4 almetal_world_pre_water_material_fragment(
                         contribution.b);
         }
 
-        gloss_environment *= 0.5;
-        float fresnel = clamp(
-            1.0 + dot(normalize(input.eye_position), normal),
-            0.3, 1.0);
-        fresnel *= fresnel * specular.a;
-        gloss_environment *= specular.rgb * fresnel;
-        gloss_environment *= float3(1.0) - color;
-        color += gloss_environment * 0.5;
+        if (!legacy_environment_path)
+        {
+            gloss_environment *= 0.5;
+            float fresnel = clamp(
+                1.0 + dot(normalize(input.eye_position), normal),
+                0.3, 1.0);
+            fresnel *= fresnel * specular.a;
+            gloss_environment *= specular.rgb * fresnel;
+            gloss_environment *= float3(1.0) - color;
+            color += gloss_environment * 0.5;
+        }
     }
 
     const float emissive = material.properties.z;
     color = mix(color, diffuse.rgb, emissive);
     if (environment_intensity > 0.0)
     {
-        float fresnel = 1.0 +
-            dot(normalize(input.eye_position), normal);
-        fresnel *= fresnel;
-        fresnel = min(fresnel + environment_intensity, 1.0);
-        const float3 reflected = legacy_environment *
-            (environment_intensity * fresnel);
-        color = mix(color, reflected * 0.5, environment_intensity);
+        if (legacy_environment_path)
+        {
+            color = almetal_srgb_to_linear(mix(
+                almetal_linear_to_srgb(color),
+                legacy_environment * 2.0,
+                environment_intensity));
+        }
+        else
+        {
+            float fresnel = 1.0 +
+                dot(normalize(input.eye_position), normal);
+            fresnel *= fresnel;
+            fresnel = min(fresnel + environment_intensity, 1.0);
+            const float3 reflected = legacy_environment *
+                (environment_intensity * fresnel);
+            color = mix(
+                color, reflected * 0.5,
+                environment_intensity);
+        }
         const float environment_glare = max(
             max(legacy_environment.r, legacy_environment.g),
             legacy_environment.b);
@@ -10440,6 +10533,7 @@ fragment float4 almetal_world_pre_water_pbr_fragment(
     texture2d<float> ssr_scene_depth [[texture(36)]],
     texture2d<uint> reflection_irradiance [[texture(37)]],
     texture2d<float> brdf_lut [[texture(38)]],
+    texturecube<float> legacy_sky [[texture(39)]],
     sampler material_sampler [[sampler(0)]],
     sampler probe_sampler [[sampler(1)]],
     sampler linear_sampler [[sampler(2)]],
@@ -10535,28 +10629,45 @@ fragment float4 almetal_world_pre_water_pbr_fragment(
     float3 irradiance = ambient;
     float3 radiance = 0.0;
     float3 unused_legacy = 0.0;
-    almetal_sample_base_probes(
-        true, input.eye_position, normal, glossiness, 0.0,
-        ambient, classic_mode,
-        reflection_radiance, reflection_irradiance,
-        probe_sampler, probes,
-        irradiance, radiance, unused_legacy);
+    const bool legacy_environment_path =
+        environment.environment_config.x != 0u;
+    if (legacy_environment_path)
+    {
+        irradiance = almetal_legacy_sky_ambient(
+            ambient, environment);
+        radiance = almetal_srgb_to_linear(
+            almetal_sample_legacy_sky(
+                input.eye_position, normal, legacy_sky,
+                probe_sampler, environment));
+    }
+    else
+    {
+        almetal_sample_base_probes(
+            true, input.eye_position, normal, glossiness, 0.0,
+            ambient, classic_mode,
+            reflection_radiance, reflection_irradiance,
+            probe_sampler, probes,
+            irradiance, radiance, unused_legacy);
+    }
     const float3 mirror_direction = normalize(
         reflect(input.eye_position, normal));
     const float3 dominant_direction = almetal_base_dominant_direction(
         normal, mirror_direction, perceptual_roughness);
     const float2 gl_fragment_position = float2(
         input.position.x, ssr.screen.z - input.position.y);
-    const float4 ssr_sample = almetal_sample_ssr(
-        gl_fragment_position / ssr.screen.xy,
-        input.eye_position, normal, dominant_direction,
-        glossiness, true,
-        ssr_scene_color, ssr_scene_depth,
-        linear_sampler, depth_sampler, ssr);
-    radiance = mix(radiance, ssr_sample.rgb, ssr_sample.a);
-    radiance = almetal_finish_hero_probe(
-        radiance, input.eye_position, normal, glossiness,
-        hero_probe, probe_sampler, probes, hero);
+    if (!legacy_environment_path)
+    {
+        const float4 ssr_sample = almetal_sample_ssr(
+            gl_fragment_position / ssr.screen.xy,
+            input.eye_position, normal, dominant_direction,
+            glossiness, true,
+            ssr_scene_color, ssr_scene_depth,
+            linear_sampler, depth_sampler, ssr);
+        radiance = mix(radiance, ssr_sample.rgb, ssr_sample.a);
+        radiance = almetal_finish_hero_probe(
+            radiance, input.eye_position, normal, glossiness,
+            hero_probe, probe_sampler, probes, hero);
+    }
     radiance *= almetal_pbr_horizon_occlusion(
         reflect(normalize(input.eye_position), normal),
         geometric_normal);
