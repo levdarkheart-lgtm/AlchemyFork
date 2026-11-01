@@ -69,12 +69,28 @@ protected:
 class RlvSphereEffect : public LLVisualEffect
 {
 public:
+    // The post owner consumes exactly the same shader-ready state on GL and
+    // Metal.  Keeping the view-space origin and tween samples here prevents
+    // the native path from independently reinterpreting RLVa policy.
+    struct ShaderParams
+    {
+        S32       mode = 0;
+        LLVector4 origin;
+        LLVector4 distance_value;
+        LLVector2 distance_extend;
+        LLVector4 effect;
+    };
+
     RlvSphereEffect(const LLUUID& idRlvObj);
     ~RlvSphereEffect();
 
     static const EVisualEffect EffectCode = EVisualEffect::RlvSphere;
 public:
     void run(LLVisualEffectParams* pParams) override;
+    // Returns false for an out-of-range mode.  The GL owner also draws no
+    // pass for that state; native publication must fail closed rather than
+    // silently advancing the effect chain.
+    bool getShaderParams(ShaderParams& params);
     static ERlvCmdRet onModeChanged(const LLUUID& idRlvObj, const boost::optional<RlvBehaviourModifierValue> newValue);
     static ERlvCmdRet onOriginChanged(const LLUUID& idRlvObj, const boost::optional<RlvBehaviourModifierValue> newValue);
     static ERlvCmdRet onColorChanged(const LLUUID& idRlvObj, const boost::optional<RlvBehaviourModifierValue> newValue);
@@ -105,6 +121,13 @@ protected:
     LLTweenableValueLerp<float>     m_nValueMin;
     LLTweenableValueLerp<float>     m_nValueMax;
     float                           m_nTweenDuration;
+    // Native capture and the authoritative GL draw can visit this owner at
+    // different points in one frame. Cache one tween sample so they cannot
+    // diverge merely because a few milliseconds elapsed between visits.
+    ShaderParams                    m_ShaderParams;
+    U32                             m_ShaderParamsFrame = 0;
+    bool                            m_ShaderParamsCached = false;
+    bool                            m_ShaderParamsValid = false;
 };
 
 // ====================================================================================

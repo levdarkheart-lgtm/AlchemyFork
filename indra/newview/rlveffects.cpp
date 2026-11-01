@@ -296,10 +296,17 @@ ERlvCmdRet RlvSphereEffect::onValueMaxChanged(const LLUUID& idRlvObj, const boos
     return RLV_RET_SUCCESS;
 }
 
-void RlvSphereEffect::setShaderUniforms(LLGLSLShader* pShader)
+bool RlvSphereEffect::getShaderParams(ShaderParams& params)
 {
-    pShader->uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)gPipeline.mRT->screen.getWidth(), (GLfloat)gPipeline.mRT->screen.getHeight());
-    pShader->uniform1i(LLShaderMgr::RLV_EFFECT_MODE, llclamp((int)m_eMode, 0, (int)ESphereMode::Count));
+    const U32 frame = LLFrameTimer::getFrameCount();
+    if (m_ShaderParamsCached && m_ShaderParamsFrame == frame)
+    {
+        params = m_ShaderParams;
+        return m_ShaderParamsValid;
+    }
+
+    const S32 raw_mode = static_cast<S32>(m_eMode);
+    params.mode = llclamp(raw_mode, 0, static_cast<S32>(ESphereMode::Count));
 
     // Pass the sphere origin to the shader
     LLVector4 posSphereOrigin;
@@ -316,19 +323,41 @@ void RlvSphereEffect::setShaderUniforms(LLGLSLShader* pShader)
     LLVector4a posSphereOriginIn, posSphereOriginGl;
     posSphereOriginIn.loadua(posSphereOrigin.mV);
     LLViewerCamera::getCurrent().getModelview().transform4(posSphereOriginIn, posSphereOriginGl);
-    pShader->uniform4fv(LLShaderMgr::RLV_EFFECT_PARAM1, 1, posSphereOriginGl.getF32ptr());
+    params.origin.set(posSphereOriginGl.getF32ptr());
 
     // Pack min/max distance and alpha together
     float nDistMin = m_nDistanceMin.get(), nDistMax = m_nDistanceMax.get();
-    const LLVector4 sphereParams(m_nValueMin.get(), nDistMin, m_nValueMax.get(), (nDistMax >= nDistMin) ? nDistMax : nDistMin);
-    pShader->uniform4fv(LLShaderMgr::RLV_EFFECT_PARAM2, 1, sphereParams.mV);
+    params.distance_value.set(
+        m_nValueMin.get(), nDistMin, m_nValueMax.get(),
+        (nDistMax >= nDistMin) ? nDistMax : nDistMin);
 
     // Pass dist extend
     int eDistExtend = (int)m_eDistExtend;
-    pShader->uniform2f(LLShaderMgr::RLV_EFFECT_PARAM3, (GLfloat)(eDistExtend & (int)ESphereDistExtend::Min), (GLfloat)(eDistExtend & (int)ESphereDistExtend::Max));
+    params.distance_extend.set(
+        static_cast<F32>(eDistExtend & static_cast<int>(ESphereDistExtend::Min)),
+        static_cast<F32>(eDistExtend & static_cast<int>(ESphereDistExtend::Max)));
 
     // Pass effect params
-    pShader->uniform4fv(LLShaderMgr::RLV_EFFECT_PARAM4, 1, m_Params.get().mV);
+    params.effect = m_Params.get();
+
+    m_ShaderParams = params;
+    m_ShaderParamsFrame = frame;
+    m_ShaderParamsCached = true;
+    m_ShaderParamsValid = raw_mode >= 0 &&
+        raw_mode < static_cast<S32>(ESphereMode::Count);
+    return m_ShaderParamsValid;
+}
+
+void RlvSphereEffect::setShaderUniforms(LLGLSLShader* pShader)
+{
+    ShaderParams params;
+    getShaderParams(params);
+    pShader->uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)gPipeline.mRT->screen.getWidth(), (GLfloat)gPipeline.mRT->screen.getHeight());
+    pShader->uniform1i(LLShaderMgr::RLV_EFFECT_MODE, params.mode);
+    pShader->uniform4fv(LLShaderMgr::RLV_EFFECT_PARAM1, 1, params.origin.mV);
+    pShader->uniform4fv(LLShaderMgr::RLV_EFFECT_PARAM2, 1, params.distance_value.mV);
+    pShader->uniform2fv(LLShaderMgr::RLV_EFFECT_PARAM3, 1, params.distance_extend.mV);
+    pShader->uniform4fv(LLShaderMgr::RLV_EFFECT_PARAM4, 1, params.effect.mV);
 }
 
 void RlvSphereEffect::renderPass(LLGLSLShader* pShader, const LLShaderEffectParams* pParams) const

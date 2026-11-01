@@ -160,6 +160,7 @@
 // [RLVa:KB] - Checked: RLVa-2.0.0
 #include "llvisualeffect.h"
 #include "rlvactions.h"
+#include "rlveffects.h"
 #include "rlvlocks.h"
 // [/RLVa:KB]
 
@@ -854,8 +855,9 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
         gSnapshotNoPost && mMetalWorldSnapshotRequested;
     const bool post_enabled = !build_no_post &&
         (!gSnapshotNoPost || snapshot_clean_plate);
-    const bool sphere_unrestricted =
-        !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE);
+    const bool sphere_supported =
+        !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) ||
+        gRlvSphereProgram.isComplete();
     const bool final_buffer = RenderBufferVisualization < 0;
     // A coherent native hero cube is necessary but not sufficient evidence
     // that the authored mirror transaction is exact. Runtime comparison at
@@ -874,7 +876,7 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
     const bool eligible = started && hdr && main_world && ordinary_world &&
         native_dynamic_exposure && native_lens_flare && native_lens_dirt &&
         grade.native_resources_ready && post_enabled && sky &&
-        exact_antialiasing && sphere_unrestricted && final_buffer &&
+        exact_antialiasing && sphere_supported && final_buffer &&
         hero_mirror_exact;
     if (!eligible && error)
     {
@@ -888,7 +890,7 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
             native_dynamic_exposure, native_lens_flare, native_lens_dirt,
             grade.native_resources_ready, post_enabled,
             static_cast<bool>(sky), exact_antialiasing,
-            sphere_unrestricted, final_buffer, hero_mirror_exact,
+            sphere_supported, final_buffer, hero_mirror_exact,
             hero_mirror_snapshot_validation);
     }
     return eligible;
@@ -5591,7 +5593,96 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                                 << cas_error << LL_ENDL;
                         }
                     }
-                    if (exact_cas)
+                    // RLVa's vision sphere is the last display-space owner
+                    // before scopes and reference capture. Feed the native
+                    // pass from the exact same tween/policy objects and in
+                    // LLVfxManager priority order; a missing effect, invalid
+                    // state or failed pass keeps the complete GL chain
+                    // authoritative for this frame.
+                    bool exact_rlv_sphere = exact_cas;
+                    const bool wants_rlv_sphere =
+                        RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE);
+                    if (exact_cas && wants_rlv_sphere)
+                    {
+                        exact_rlv_sphere = false;
+                        std::list<RlvSphereEffect*> effects;
+                        LLVfxManager::instance().getEffects<
+                            RlvSphereEffect>(effects);
+                        const ALMetalTexture* sphere_depth = capture.target
+                            ? capture.target->depthStencilTexture() : nullptr;
+                        LLMatrix4a inverse_projection;
+                        inverse_projection.setInverse(
+                            LLViewerCamera::getCurrent().getProjection());
+                        bool enabled_effect = false;
+                        std::string sphere_error;
+                        auto sphere_source = std::move(display_target);
+                        exact_rlv_sphere = sphere_depth && sphere_source &&
+                            gRlvSphereProgram.isComplete();
+                        for (RlvSphereEffect* effect : effects)
+                        {
+                            if (!exact_rlv_sphere || !effect ||
+                                !effect->getEnabled())
+                            {
+                                continue;
+                            }
+                            enabled_effect = true;
+                            RlvSphereEffect::ShaderParams params;
+                            if (!effect->getShaderParams(params))
+                            {
+                                sphere_error =
+                                    "enabled effect mode is out of range";
+                                exact_rlv_sphere = false;
+                                break;
+                            }
+                            ALMetalWorldRlvSphereScene sphere;
+                            sphere.source = sphere_source.get();
+                            sphere.depth_texture = sphere_depth;
+                            std::memcpy(
+                                sphere.inverse_projection,
+                                inverse_projection.getF32ptr(),
+                                sizeof(sphere.inverse_projection));
+                            std::copy_n(
+                                params.origin.mV, 4, sphere.origin);
+                            std::copy_n(
+                                params.distance_value.mV, 4,
+                                sphere.distance_value);
+                            std::copy_n(
+                                params.effect.mV, 4, sphere.effect);
+                            sphere.mode = static_cast<U32>(params.mode);
+                            sphere.extend_min =
+                                params.distance_extend.mV[0] != 0.f;
+                            sphere.extend_max =
+                                params.distance_extend.mV[1] != 0.f;
+                            sphere.reverse_z = capture.reverse_z;
+                            auto sphere_target =
+                                capture.renderer->renderRlvSphere(
+                                    sphere, &sphere_error);
+                            if (!sphere_target)
+                            {
+                                exact_rlv_sphere = false;
+                                break;
+                            }
+                            sphere_source = std::move(sphere_target);
+                        }
+                        exact_rlv_sphere = exact_rlv_sphere && enabled_effect;
+                        if (exact_rlv_sphere)
+                        {
+                            display_target = std::move(sphere_source);
+                        }
+                        else
+                        {
+                            if (sphere_error.empty())
+                            {
+                                sphere_error = !sphere_depth
+                                    ? "matching native world depth is absent"
+                                    : "no enabled sphere effect is available";
+                            }
+                            LL_WARNS("Metal")
+                                << "Native world RLVa sphere retained GL: "
+                                << sphere_error << LL_ENDL;
+                        }
+                    }
+                    if (exact_rlv_sphere)
                     {
                         capture.display_post_target =
                             std::move(display_target);

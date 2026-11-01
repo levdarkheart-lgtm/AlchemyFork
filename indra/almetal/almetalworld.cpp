@@ -189,6 +189,18 @@ namespace
     };
     static_assert(sizeof(WorldDisplayPostConstants) == 464);
 
+    struct alignas(16) WorldRlvSphereConstants
+    {
+        float inverse_projection[16];
+        float origin[4];
+        float distance_value[4];
+        float effect[4];
+        float blur_direction[4];
+        // mode, extend-min, extend-max, reverse-Z.
+        std::uint32_t config[4];
+    };
+    static_assert(sizeof(WorldRlvSphereConstants) == 144);
+
     struct alignas(16) WorldPresentationConstants
     {
         float lens_primary[4];
@@ -1190,6 +1202,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::array<std::array<
         std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>, 2>, 2>
         display_post_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        rlv_sphere_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> presentation_post_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> lens_flare_state_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> lens_dirt_pipeline;
@@ -1643,6 +1657,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_lens_flare_state_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_lens_dirt_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_rlv_sphere_fragment") ||
         !impl->library->hasFunction(
             "almetal_world_presentation_fragment") ||
         !impl->library->hasFunction(
@@ -2156,6 +2172,31 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     if (!impl->lens_dirt_pipeline)
     {
         return nullptr;
+    }
+
+    constexpr std::array<ALMetalPixelFormat, 2> rlv_sphere_formats{{
+        ALMetalPixelFormat::rgb10a2_unorm,
+        ALMetalPixelFormat::rgba8_unorm,
+    }};
+    for (std::size_t format = 0; format < rlv_sphere_formats.size();
+         ++format)
+    {
+        ALMetalRenderPipelineDescriptor sphere_descriptor;
+        sphere_descriptor.library = impl->library.get();
+        sphere_descriptor.vertex_function = "almetal_resample_vertex";
+        sphere_descriptor.fragment_function =
+            "almetal_world_rlv_sphere_fragment";
+        sphere_descriptor.colors[0].format = rlv_sphere_formats[format];
+        sphere_descriptor.label = format == 0
+            ? "Alchemy world RLVa sphere RGB10_A2 pipeline"
+            : "Alchemy world RLVa sphere RGBA8 pipeline";
+        impl->rlv_sphere_pipelines[format] =
+            ALMetalRenderPipeline::create(
+                device, sphere_descriptor, error);
+        if (!impl->rlv_sphere_pipelines[format])
+        {
+            return nullptr;
+        }
     }
 
     ALMetalRenderPipelineDescriptor presentation_descriptor;
@@ -7838,6 +7879,164 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
     const bool ended = encoder->end(error);
     if (!mImpl->finishCommandBuffer(
             owned_command, encoded && ended, error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderRlvSphere(
+    const ALMetalWorldRlvSphereScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.source ||
+        !scene.depth_texture)
+    {
+        setError(error, "Metal world RLVa sphere scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& source =
+        scene.source->descriptor();
+    const ALMetalTextureDescriptor& depth =
+        scene.depth_texture->descriptor();
+    const bool color_format = source.color_attachment_count == 1 &&
+        (source.colors[0].format == ALMetalPixelFormat::rgb10a2_unorm ||
+         source.colors[0].format == ALMetalPixelFormat::rgba8_unorm);
+    const bool depth_format =
+        depth.format == ALMetalPixelFormat::depth32_float ||
+        depth.format == ALMetalPixelFormat::depth32_float_stencil8;
+    if (source.width == 0 || source.height == 0 ||
+        source.sample_count != 1 || !color_format ||
+        !sampleableTexture(scene.source->colorTexture(0)) ||
+        !depth_format || depth.type != ALMetalTextureType::texture_2d ||
+        depth.width != source.width || depth.height != source.height ||
+        depth.array_length != 1 || depth.mipmap_level_count != 1 ||
+        depth.sample_count != 1 ||
+        !sampleableTexture(scene.depth_texture))
+    {
+        setError(error, "Metal world RLVa sphere inputs are incompatible");
+        return nullptr;
+    }
+    if (scene.mode > 4 ||
+        !finiteValues(scene.inverse_projection, 16) ||
+        !finiteValues(scene.origin, 4) ||
+        !finiteValues(scene.distance_value, 4) ||
+        !finiteValues(scene.effect, 4))
+    {
+        setError(error, "Metal world RLVa sphere state is invalid");
+        return nullptr;
+    }
+
+    const auto make_target = [&](const char* label)
+    {
+        ALMetalRenderTargetDescriptor descriptor;
+        descriptor.width = source.width;
+        descriptor.height = source.height;
+        descriptor.colors[0].format = source.colors[0].format;
+        descriptor.colors[0].shader_read = true;
+        descriptor.colors[0].label = label;
+        descriptor.label = label;
+        return ALMetalRenderTarget::create(
+            *mImpl->device, descriptor, error);
+    };
+
+    auto output = make_target("Alchemy native world RLVa sphere target");
+    if (!output)
+    {
+        return nullptr;
+    }
+    const bool blur = scene.mode == 1 || scene.mode == 2;
+    auto intermediate = blur
+        ? make_target("Alchemy native world RLVa sphere blur intermediate")
+        : nullptr;
+    if (blur && !intermediate)
+    {
+        return nullptr;
+    }
+
+    WorldRlvSphereConstants constants{};
+    std::memcpy(constants.inverse_projection, scene.inverse_projection,
+                sizeof(constants.inverse_projection));
+    std::memcpy(constants.origin, scene.origin, sizeof(constants.origin));
+    std::memcpy(constants.distance_value, scene.distance_value,
+                sizeof(constants.distance_value));
+    std::memcpy(constants.effect, scene.effect, sizeof(constants.effect));
+    constants.config[0] = scene.mode;
+    constants.config[1] = scene.extend_min ? 1u : 0u;
+    constants.config[2] = scene.extend_max ? 1u : 0u;
+    constants.config[3] = scene.reverse_z ? 1u : 0u;
+
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native world RLVa sphere", owned_command, error);
+    if (!command)
+    {
+        return nullptr;
+    }
+    const std::size_t format = source.colors[0].format ==
+        ALMetalPixelFormat::rgb10a2_unorm ? 0u : 1u;
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(source.width),
+        static_cast<double>(source.height), 0.0, 1.0};
+    const ALMetalScissorRect scissor{
+        0, 0, source.width, source.height};
+    const auto encode = [&](const ALMetalRenderTarget& input,
+                            ALMetalRenderTarget& target,
+                            float direction_x,
+                            float direction_y,
+                            const char* label)
+    {
+        constants.blur_direction[0] = direction_x;
+        constants.blur_direction[1] = direction_y;
+        ALMetalRenderPassConfig pass_config;
+        pass_config.colors[0].load = ALMetalLoadAction::dont_care;
+        pass_config.colors[0].store = ALMetalStoreAction::store;
+        auto pass = target.makeRenderPass(pass_config, error);
+        auto encoder = pass ? ALMetalRenderEncoder::begin(
+            *command, *pass, label, error) : nullptr;
+        if (!encoder)
+        {
+            return false;
+        }
+        const bool encoded =
+            encoder->setViewport(viewport, error) &&
+            encoder->setScissor(scissor, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setPipeline(*mImpl->rlv_sphere_pipelines[format],
+                                 error) &&
+            encoder->setFragmentTexture(0, input.colorTexture(0), error) &&
+            encoder->setFragmentTexture(1, scene.depth_texture, error) &&
+            encoder->setFragmentSampler(
+                0, mImpl->point_mirror_sampler.get(), error) &&
+            encoder->setFragmentSampler(
+                1, mImpl->point_clamp_sampler.get(), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+        const bool ended = encoder->end(error);
+        return encoded && ended;
+    };
+
+    bool encoded = false;
+    if (blur)
+    {
+        encoded = encode(
+            *scene.source, *intermediate, 1.f, 0.f,
+            "Alchemy world RLVa sphere horizontal encoder") &&
+            encode(
+                *intermediate, *output, 0.f, 1.f,
+                "Alchemy world RLVa sphere vertical encoder");
+    }
+    else
+    {
+        encoded = encode(
+            *scene.source, *output, 0.f, 0.f,
+            "Alchemy world RLVa sphere encoder");
+    }
+    if (!mImpl->finishCommandBuffer(owned_command, encoded, error))
     {
         return nullptr;
     }

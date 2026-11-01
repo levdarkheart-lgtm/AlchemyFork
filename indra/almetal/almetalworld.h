@@ -864,6 +864,25 @@ struct ALMetalWorldDisplayPostScene
     std::uint32_t frame_id = 0;
 };
 
+// One enabled RLVa @setsphere owner, already sampled from the policy/tween
+// object that feeds the established GLSL program.  The native post pass runs
+// after AA/CAS/bloom and before scopes/reference capture, matching
+// renderFinalize's observable ordering.
+struct ALMetalWorldRlvSphereScene
+{
+    const ALMetalRenderTarget* source = nullptr;
+    const ALMetalTexture* depth_texture = nullptr;
+    float inverse_projection[16]{};
+    float origin[4]{};
+    // x/y = value-min/distance-min; z/w = value-max/distance-max.
+    float distance_value[4]{};
+    float effect[4]{};
+    std::uint32_t mode = 0;
+    bool extend_min = false;
+    bool extend_max = false;
+    bool reverse_z = false;
+};
+
 // Final display-space print treatment. The source is the completed RGB10_A2
 // or RGBA8 display target after AA/CAS. The result uses the window surface's
 // linear BGRA8 storage and is deliberately offscreen until native world UI
@@ -1509,6 +1528,14 @@ public:
     // and complete grading may be folded in; this is not final presentation.
     std::unique_ptr<ALMetalRenderTarget> renderDisplayPost(
         const ALMetalWorldDisplayPostScene& scene,
+        std::string* error = nullptr);
+
+    // Apply one enabled RLVa vision-sphere effect to the completed
+    // post-AA/CAS display target. Blur modes execute their dependent
+    // horizontal/vertical passes inside this transaction; callers chain up
+    // to six enabled effects in LLVfxManager priority order.
+    std::unique_ptr<ALMetalRenderTarget> renderRlvSphere(
+        const ALMetalWorldRlvSphereScene& scene,
         std::string* error = nullptr);
 
     // Freeze the exact post-AA/CAS display source consumed by the final

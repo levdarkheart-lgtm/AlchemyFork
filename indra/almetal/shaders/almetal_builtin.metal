@@ -13800,6 +13800,166 @@ fragment float4 almetal_world_display_post_bloom_exposure_fragment(
         constants, exposure.read(uint2(0)).r);
 }
 
+struct ALMetalWorldRlvSphereConstants
+{
+    float4x4 inverse_projection;
+    float4 origin;
+    float4 distance_value;
+    float4 effect;
+    float4 blur_direction;
+    uint4 config;
+};
+
+static float3 almetal_world_rlv_blur_fixed(
+    texture2d<float> source, sampler source_sampler, float2 texcoord,
+    float2 direction, float2 dimensions)
+{
+    const float2 off1 = float2(1.411764705882353) * direction;
+    const float2 off2 = float2(3.2941176470588234) * direction;
+    const float2 off3 = float2(5.176470588235294) * direction;
+    float3 color = source.sample(source_sampler, texcoord).rgb *
+        0.1964825501511404;
+    color += source.sample(
+        source_sampler, texcoord + off1 / dimensions).rgb *
+        0.2969069646728344;
+    color += source.sample(
+        source_sampler, texcoord - off1 / dimensions).rgb *
+        0.2969069646728344;
+    color += source.sample(
+        source_sampler, texcoord + off2 / dimensions).rgb *
+        0.09447039785044732;
+    color += source.sample(
+        source_sampler, texcoord - off2 / dimensions).rgb *
+        0.09447039785044732;
+    color += source.sample(
+        source_sampler, texcoord + off3 / dimensions).rgb *
+        0.010381362401148057;
+    color += source.sample(
+        source_sampler, texcoord - off3 / dimensions).rgb *
+        0.010381362401148057;
+    return color;
+}
+
+static float3 almetal_world_rlv_blur_variable(
+    texture2d<float> source, sampler source_sampler, float2 texcoord,
+    float kernel_size, float2 direction, float strength,
+    float2 dimensions)
+{
+    // RLVa scripts control the kernel parameter. Keep the established GLSL
+    // safety bound so malformed input cannot create an unbounded GPU loop.
+    const uint taps = uint(clamp(
+        floor(kernel_size * 0.5), 0.0, 32.0));
+    constexpr float pi = 3.14159265;
+    float3 gaussian;
+    gaussian.x = 1.0 / (sqrt(2.0 * pi) * strength);
+    gaussian.y = exp(-0.5 / (strength * strength));
+    gaussian.z = gaussian.y * gaussian.y;
+    float3 average = source.sample(source_sampler, texcoord).rgb *
+        gaussian.x;
+    float coefficient_sum = gaussian.x;
+    gaussian.xy *= gaussian.yz;
+    for (uint tap = 1u; tap <= taps; ++tap)
+    {
+        const float2 offset = float(tap) * direction / dimensions;
+        average += source.sample(
+            source_sampler, texcoord - offset).rgb * gaussian.x;
+        average += source.sample(
+            source_sampler, texcoord + offset).rgb * gaussian.x;
+        coefficient_sum += 2.0 * gaussian.x;
+        gaussian.xy *= gaussian.yz;
+    }
+    return average / coefficient_sum;
+}
+
+fragment float4 almetal_world_rlv_sphere_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    texture2d<float> depth_texture [[texture(1)]],
+    sampler source_sampler [[sampler(0)]],
+    sampler depth_sampler [[sampler(1)]],
+    constant ALMetalWorldRlvSphereConstants& constants [[buffer(0)]])
+{
+    const float depth = depth_texture.sample(
+        depth_sampler, input.texcoord, level(0.0)).r;
+    const float ndc_z = constants.config.w != 0u
+        ? depth : depth * 2.0 - 1.0;
+    float4 position = constants.inverse_projection *
+        float4(input.texcoord * 2.0 - 1.0, ndc_z, 1.0);
+    position.xyz /= max(position.w, 0.000001);
+    const float distance_to_origin = length(
+        position.xyz - constants.origin.xyz);
+
+    const float value_min = constants.distance_value.x;
+    const float distance_min = constants.distance_value.y;
+    const float value_max = constants.distance_value.z;
+    const float distance_max = constants.distance_value.w;
+    float strength = value_min + (value_max - value_min) *
+        ((distance_to_origin - distance_min) /
+         (distance_max - distance_min));
+    if (distance_to_origin < distance_min)
+    {
+        strength = constants.config.y != 0u ? value_min : 0.0;
+    }
+    if (distance_to_origin > distance_max)
+    {
+        strength = constants.config.z != 0u ? value_max : 0.0;
+    }
+
+    const float2 dimensions = float2(
+        source.get_width(), source.get_height());
+    float2 texcoord = input.texcoord;
+    float3 color;
+    switch (constants.config.x)
+    {
+        case 0u:
+            color = mix(
+                source.sample(source_sampler, texcoord).rgb,
+                constants.effect.rgb, strength);
+            break;
+        case 1u:
+            color = almetal_world_rlv_blur_fixed(
+                source, source_sampler, texcoord,
+                constants.blur_direction.xy * strength, dimensions);
+            break;
+        case 2u:
+            color = strength > 0.0
+                ? almetal_world_rlv_blur_variable(
+                      source, source_sampler, texcoord,
+                      constants.effect.x, constants.blur_direction.xy,
+                      strength, dimensions)
+                : source.sample(source_sampler, texcoord).rgb;
+            break;
+        case 3u:
+        {
+            const float3 original =
+                source.sample(source_sampler, texcoord).rgb;
+            const float red = source.sample(
+                source_sampler,
+                texcoord + constants.effect.xy / dimensions).r;
+            const float blue = source.sample(
+                source_sampler,
+                texcoord + constants.effect.zw / dimensions).b;
+            color = mix(original, float3(red, original.g, blue), strength);
+            break;
+        }
+        case 4u:
+        {
+            const float signed_strength = sign(strength);
+            const float2 pixel_size = max(
+                float2(1.0),
+                round(constants.effect.xy * signed_strength)) /
+                dimensions;
+            texcoord = pixel_size * floor(texcoord / pixel_size);
+            color = source.sample(source_sampler, texcoord).rgb;
+            break;
+        }
+        default:
+            color = source.sample(source_sampler, texcoord).rgb;
+            break;
+    }
+    return float4(color, 0.0);
+}
+
 struct ALMetalWorldPresentationConstants
 {
     float4 lens_primary;

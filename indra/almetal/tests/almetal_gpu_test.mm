@@ -789,6 +789,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_lighting_composition_fragment",
             "almetal_world_lens_flare_state_fragment",
             "almetal_world_lens_dirt_fragment",
+            "almetal_world_rlv_sphere_fragment",
             "almetal_world_presentation_fragment",
             "almetal_world_display_post_fragment",
             "almetal_world_display_post_exposure_fragment",
@@ -14831,6 +14832,199 @@ TEST_CASE("almetal: world bloom matches the production HDR pyramid", "[almetal]"
         CHECK_FALSE(renderer->renderDisplayPost(display, &error));
         CHECK(error ==
               "Metal world display-post bloom is incompatible");
+    }
+}
+
+TEST_CASE("almetal: RLVa vision sphere owns every post mode", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 9;
+        constexpr std::uint32_t height = 9;
+        std::array<std::uint32_t, width * height> input{};
+        std::array<float, width * height> depth_pixels{};
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const std::uint32_t red = x * 100u + 23u;
+                const std::uint32_t green = y * 100u + 31u;
+                const std::uint32_t blue =
+                    ((x + y) * 53u + 47u) % 900u;
+                input[y * width + x] = red | (green << 10u) |
+                    (blue << 20u) | (3u << 30u);
+                depth_pixels[y * width + x] = 0.5f;
+            }
+        }
+
+        ALMetalRenderTargetDescriptor source_descriptor;
+        source_descriptor.width = width;
+        source_descriptor.height = height;
+        source_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgb10a2_unorm;
+        source_descriptor.label = "Alchemy RLVa sphere test source";
+        auto source = ALMetalRenderTarget::create(
+            *device, source_descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        ALMetalTextureDescriptor depth_descriptor;
+        depth_descriptor.format = ALMetalPixelFormat::depth32_float;
+        depth_descriptor.width = width;
+        depth_descriptor.height = height;
+        depth_descriptor.storage = ALMetalStorageMode::private_gpu;
+        depth_descriptor.usage = ALMetalTextureUsage::shader_read;
+        depth_descriptor.label = "Alchemy RLVa sphere test depth";
+        auto depth = ALMetalTexture::create(
+            *device, depth_descriptor, &error);
+        INFO(error);
+        REQUIRE(depth);
+
+        auto upload = device->makeCommandBuffer(
+            "Alchemy RLVa sphere test upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        id<MTLBuffer> staging = [nativeDevice(*device)
+            newBufferWithBytes:input.data()
+                      length:sizeof(input)
+                     options:MTLResourceStorageModeShared];
+        REQUIRE(staging);
+        id<MTLBlitCommandEncoder> blit =
+            [nativeCommand(*upload) blitCommandEncoder];
+        REQUIRE(blit);
+        [blit copyFromBuffer:staging
+                sourceOffset:0
+           sourceBytesPerRow:width * sizeof(std::uint32_t)
+         sourceBytesPerImage:sizeof(input)
+                  sourceSize:MTLSizeMake(width, height, 1)
+                   toTexture:(__bridge id<MTLTexture>)
+                       source->colorTexture(0)->nativeHandle()
+            destinationSlice:0
+            destinationLevel:0
+           destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [blit endEncoding];
+        REQUIRE(depth->upload(
+            *upload, 0, 0, {}, depth_pixels.data(),
+            width * sizeof(float), &error));
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldRlvSphereScene scene;
+        scene.source = source.get();
+        scene.depth_texture = depth.get();
+        scene.inverse_projection[0] = 1.f;
+        scene.inverse_projection[5] = 1.f;
+        scene.inverse_projection[10] = 1.f;
+        scene.inverse_projection[15] = 1.f;
+        scene.origin[3] = 1.f;
+        scene.distance_value[0] = 0.f;
+        scene.distance_value[1] = 0.f;
+        scene.distance_value[2] = 1.f;
+        scene.distance_value[3] = 2.f;
+        scene.effect[0] = 1.f;
+        scene.mode = 0;
+
+        const auto render = [&](ALMetalWorldRlvSphereScene& request)
+        {
+            auto target = renderer->renderRlvSphere(request, &error);
+            INFO(error);
+            REQUIRE(target);
+            std::array<std::uint32_t, width * height> pixels{};
+            REQUIRE(target->colorTexture(0)->readback(
+                *device, 0, 0, {}, pixels.data(),
+                width * sizeof(std::uint32_t), &error));
+            INFO(error);
+            return pixels;
+        };
+        const auto channel = [](std::uint32_t pixel, std::uint32_t index)
+        {
+            return (pixel >> (index * 10u)) & 0x3ffu;
+        };
+
+        // The centre reconstructs at the sphere origin and remains the
+        // source colour; a corner is farther away and blends strongly red.
+        // This is the asymmetric control that proves the pass consumes the
+        // retained depth and inverse projection rather than a flat overlay.
+        const auto depth_weighted = render(scene);
+        const std::size_t centre = (height / 2u) * width + width / 2u;
+        CHECK(channel(depth_weighted[centre], 0) ==
+              channel(input[centre], 0));
+        CHECK(channel(depth_weighted[0], 0) >
+              channel(depth_weighted[centre], 0));
+        CHECK((depth_weighted[0] >> 30u) == 0u);
+
+        // Move the origin far outside the reconstructed view and extend the
+        // maximum value, yielding a uniform strength of one for the
+        // remaining mode-specific controls.
+        scene.origin[0] = 100.f;
+        scene.distance_value[0] = 1.f;
+        scene.distance_value[1] = 0.f;
+        scene.distance_value[2] = 1.f;
+        scene.distance_value[3] = 1.f;
+        scene.extend_max = true;
+
+        const auto blend = render(scene);
+        CHECK(channel(blend[centre], 0) == 1023u);
+        CHECK(channel(blend[centre], 1) == 0u);
+        CHECK(channel(blend[centre], 2) == 0u);
+
+        scene.mode = 1;
+        const auto fixed_blur = render(scene);
+        CHECK(fixed_blur != input);
+        CHECK((fixed_blur[centre] >> 30u) == 0u);
+
+        scene.mode = 2;
+        scene.effect[0] = 7.f;
+        const auto variable_blur = render(scene);
+        CHECK(variable_blur != input);
+        CHECK(variable_blur != fixed_blur);
+
+        scene.mode = 3;
+        scene.effect[0] = 1.f;
+        scene.effect[1] = 0.f;
+        scene.effect[2] = -1.f;
+        scene.effect[3] = 0.f;
+        const auto chromatic = render(scene);
+        CHECK(channel(chromatic[centre], 0) ==
+              channel(input[centre + 1u], 0));
+        CHECK(channel(chromatic[centre], 1) ==
+              channel(input[centre], 1));
+        CHECK(channel(chromatic[centre], 2) ==
+              channel(input[centre - 1u], 2));
+
+        scene.mode = 4;
+        scene.effect[0] = 3.f;
+        scene.effect[1] = 3.f;
+        const auto pixelated = render(scene);
+        CHECK(pixelated[0] == pixelated[1]);
+        CHECK(pixelated[1] == pixelated[2]);
+        CHECK(pixelated[2] != pixelated[3]);
+        CHECK(pixelated[0] == pixelated[width]);
+
+        ALMetalWorldRlvSphereScene invalid;
+        error.clear();
+        CHECK_FALSE(renderer->renderRlvSphere(invalid, &error));
+        CHECK(error == "Metal world RLVa sphere scene is incomplete");
+        invalid = scene;
+        invalid.mode = 5;
+        error.clear();
+        CHECK_FALSE(renderer->renderRlvSphere(invalid, &error));
+        CHECK(error == "Metal world RLVa sphere state is invalid");
+        invalid = scene;
+        invalid.inverse_projection[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderRlvSphere(invalid, &error));
+        CHECK(error == "Metal world RLVa sphere state is invalid");
     }
 }
 
