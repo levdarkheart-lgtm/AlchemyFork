@@ -22672,6 +22672,15 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         batch.blend.source_alpha = ALMetalBlendFactor::one;
         batch.blend.destination_alpha =
             ALMetalBlendFactor::one_minus_source_alpha;
+        // RLVa @setoverlay reaches this exact gUIProgram batch contract: its
+        // texture uses AnisoWrap while tweened tint and alpha arrive in the
+        // streamed color. Prove that sampler survives the retained-world
+        // composition path rather than requiring the old unconditional GL
+        // transaction rejection.
+        batch.sampler.address_s = ALMetalSamplerAddressMode::repeat;
+        batch.sampler.address_t = ALMetalSamplerAddressMode::repeat;
+        batch.sampler.address_r = ALMetalSamplerAddressMode::repeat;
+        batch.sampler.max_anisotropy = 16;
         REQUIRE(composition_renderer->setFrameBackground(
             background.get(), &error));
         REQUIRE(composition_renderer->draw(batch, &error));
@@ -22692,6 +22701,10 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(composed_pixels[1] == 40u);
         CHECK(composed_pixels[2] == 80u);
         CHECK(composed_pixels[3] == 255u);
+        batch.sampler.address_s = ALMetalSamplerAddressMode::clamp_to_edge;
+        batch.sampler.address_t = ALMetalSamplerAddressMode::clamp_to_edge;
+        batch.sampler.address_r = ALMetalSamplerAddressMode::clamp_to_edge;
+        batch.sampler.max_anisotropy = 1;
 
         // Background selection is consumed by one submitted frame. A later
         // UI-only frame clears outside the triangle instead of retaining a

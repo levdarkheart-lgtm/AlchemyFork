@@ -6520,11 +6520,17 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
     if (!mMetalWorldSimpleCapture ||
         (gSnapshot && !mMetalWorldSnapshotRequested) || sCutoutRender ||
         mMetalHeroWorldCaptureActive || mMetalReflectionWorldCaptureActive ||
-        mRT != &mMainRT || gDisconnected ||
-        RlvActions::hasBehaviour(RLV_BHVR_SETOVERLAY))
+        mRT != &mMainRT || gDisconnected)
     {
         return false;
     }
+    // RLVa @setoverlay is an ordinary gUIProgram textured immediate-mode
+    // batch inside render_ui_over_world. The ordered capture already mirrors
+    // that shader, its streamed tint/alpha, texture and sampler in place. If
+    // the fetched texture has no Metal mirror (or any other batch is not
+    // reproducible), LLRender marks the entire transaction incomplete and GL
+    // remains authoritative for this frame; do not reject every valid overlay
+    // before that fail-closed owner gets a chance to encode it.
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     const bool world_ui_transaction_eligible =
         capture.world_ui_chain_snapshot ||
