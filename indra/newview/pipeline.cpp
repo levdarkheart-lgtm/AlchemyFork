@@ -842,22 +842,32 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
     const bool sphere_unrestricted =
         !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE);
     const bool final_buffer = RenderBufferVisualization < 0;
+    // A coherent native hero cube is necessary but not sufficient evidence
+    // that the authored mirror transaction is exact. Runtime comparison at
+    // an authored vanity mirror proved that the retained native frame can
+    // omit the visible hero reflection (and neighbouring forward content)
+    // while every resource-generation check still passes. Keep both live
+    // publication and saved snapshots on the authoritative GL path whenever
+    // a hero mirror is active until that complete route has parity evidence.
+    const bool hero_mirror_exact = !sReflectionProbesEnabled ||
+        mHeroProbeManager.mHeroData.heroProbeCount == 0;
     const bool eligible = started && hdr && main_world && ordinary_world &&
         native_dynamic_exposure && native_lens_flare && native_lens_dirt &&
         grade.native_resources_ready && post_enabled && sky &&
-        exact_antialiasing && sphere_unrestricted && final_buffer;
+        exact_antialiasing && sphere_unrestricted && final_buffer &&
+        hero_mirror_exact;
     if (!eligible && error)
     {
         *error = fmt::format(
             "Metal world presentation is ineligible: started={}, hdr={}, "
             "main_world={}, ordinary_world={}, dynamic_exposure={}, "
             "lens_flare={}, lens_dirt={}, color_grade={}, post={}, sky={}, "
-            "antialiasing={}, sphere={}, final_buffer={}",
+            "antialiasing={}, sphere={}, final_buffer={}, hero_mirror={}",
             started, hdr, main_world, ordinary_world,
             native_dynamic_exposure, native_lens_flare, native_lens_dirt,
             grade.native_resources_ready, post_enabled,
             static_cast<bool>(sky), exact_antialiasing,
-            sphere_unrestricted, final_buffer);
+            sphere_unrestricted, final_buffer, hero_mirror_exact);
     }
     return eligible;
 }
