@@ -1419,6 +1419,34 @@ public:
         RENDER_DEBUG_IMPOSTORS          = 0x100000000,
         RENDER_DEBUG_REFLECTION_PROBES  = 0x200000000,
         RENDER_DEBUG_PROBE_UPDATES      = 0x400000000,
+
+        // Only these modes still emit viewer-owned world geometry that the
+        // native Metal publication does not retain. The remaining bits are
+        // either unused (VERIFY/GLOW/ALPHA_BINS/NODES) or feed LLHUD/debug
+        // text, which is drawn after the native world has been published.
+        // Keep this list explicit: broad mRenderDebugMask != 0 eligibility
+        // silently turns text-only diagnostics into a GL world fallback.
+        RENDER_DEBUG_GL_WORLD_OUTPUT =
+            RENDER_DEBUG_COMPOSITION |
+            RENDER_DEBUG_BBOXES |
+            RENDER_DEBUG_OCTREE |
+            RENDER_DEBUG_WIND_VECTORS |
+            RENDER_DEBUG_OCCLUSION |
+            RENDER_DEBUG_POINTS |
+            RENDER_DEBUG_TEXTURE_ANIM |
+            RENDER_DEBUG_LIGHTS |
+            RENDER_DEBUG_BATCH_SIZE |
+            RENDER_DEBUG_RAYCAST |
+            RENDER_DEBUG_SHADOW_FRUSTA |
+            RENDER_DEBUG_AVATAR_VOLUME |
+            RENDER_DEBUG_AVATAR_JOINTS |
+            RENDER_DEBUG_AGENT_TARGET |
+            RENDER_DEBUG_UPDATE_TYPE |
+            RENDER_DEBUG_PHYSICS_SHAPES |
+            RENDER_DEBUG_NORMALS |
+            RENDER_DEBUG_TEXEL_DENSITY |
+            RENDER_DEBUG_IMPOSTORS |
+            RENDER_DEBUG_REFLECTION_PROBES,
     };
 
 public:

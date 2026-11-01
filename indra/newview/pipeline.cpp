@@ -3975,7 +3975,8 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     }
 
     ALMetalWorldOverlayEligibility overlay_eligibility;
-    overlay_eligibility.render_debug = mRenderDebugMask != 0;
+    overlay_eligibility.render_debug =
+        (mRenderDebugMask & RENDER_DEBUG_GL_WORLD_OUTPUT) != 0;
     overlay_eligibility.pathfinding = pathfinding_overlay;
     capture.world_ui_overlay_exact = overlay_eligibility.exact();
 
