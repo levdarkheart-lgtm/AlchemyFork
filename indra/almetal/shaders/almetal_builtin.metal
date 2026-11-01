@@ -352,6 +352,7 @@ static float3 almetal_object_skin_direction(
 struct ALMetalWorldSimpleConstants
 {
     float4x4 modelview_projection;
+    float4x4 modelview;
     float4 normal_matrix[3];
     float4 rigged_normal_matrix[3];
     float4x4 texture_matrix;
@@ -361,11 +362,13 @@ struct ALMetalWorldSimpleConstants
     float4 avatar_sin_wave;
     float4 avatar_gravity;
     float4 avatar_cloth_depth;
+    float4 mirror_clip_plane;
 };
 
 struct ALMetalWorldSimpleVaryings
 {
     float4 position [[position]];
+    float mirror_clip_distance [[clip_distance]];
     float3 normal;
     float4 color;
     float2 texcoord;
@@ -1765,16 +1768,19 @@ fragment ALMetalWorldGBufferOutput almetal_world_cloud_fragment(
 struct ALMetalWorldImpostorConstants
 {
     float4x4 modelview_projection;
+    float4x4 modelview;
     float4 center;
     float4 left;
     float4 up;
     float4 normal_rotation[3];
     uint4 depth_convention;
+    float4 mirror_clip_plane;
 };
 
 struct ALMetalWorldImpostorVaryings
 {
     float4 position [[position]];
+    float mirror_clip_distance [[clip_distance]];
     float2 texcoord;
 };
 
@@ -1818,6 +1824,8 @@ vertex ALMetalWorldImpostorVaryings almetal_world_impostor_vertex(
     const float3 world_position = constants.center.xyz +
         corner[vertex_id].x * constants.left.xyz +
         corner[vertex_id].y * constants.up.xyz;
+    const float4 eye_position = constants.modelview *
+                                float4(world_position, 1.0);
     float4 clip_position = constants.modelview_projection *
                            float4(world_position, 1.0);
     clip_position.y = -clip_position.y;
@@ -1825,6 +1833,8 @@ vertex ALMetalWorldImpostorVaryings almetal_world_impostor_vertex(
     ALMetalWorldImpostorVaryings output;
     output.position = constants.depth_convention.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = constants.depth_convention.y != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
     output.texcoord = texcoord[vertex_id];
     return output;
 }
@@ -1838,13 +1848,17 @@ vertex ALMetalWorldSimpleVaryings almetal_world_simple_vertex(
     uint vertex_id [[vertex_id]])
 {
     ALMetalWorldSimpleVaryings output;
-    float4 clip_position = constants.modelview_projection *
-                           float4(positions[vertex_id].xyz, 1.0);
+    const float4 object_position =
+        float4(positions[vertex_id].xyz, 1.0);
+    const float4 eye_position = constants.modelview * object_position;
+    float4 clip_position = constants.modelview_projection * object_position;
     // Match the GL render target's lower-left row-zero storage while the
     // migration path compares the two G-buffers byte-for-byte.
     clip_position.y = -clip_position.y;
     output.position = constants.depth_convention.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = constants.depth_convention.z != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
 
     const float3x3 normal_matrix = float3x3(
         constants.normal_matrix[0].xyz,
@@ -3710,14 +3724,18 @@ vertex ALMetalWorldSimpleVaryings almetal_world_simple_skinned_vertex(
     const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
         positions[vertex_id], normals[vertex_id],
         encoded_weights[vertex_id], skin_palette, joint_count);
+    const float4 rebased_position =
+        skinned.position + float4(skin_palette[0].xyz, 1.0);
+    const float4 eye_position = constants.modelview * rebased_position;
     float4 clip_position =
-        constants.modelview_projection * skinned.position +
-        constants.modelview_projection * float4(skin_palette[0].xyz, 1.0);
+        constants.modelview_projection * rebased_position;
     clip_position.y = -clip_position.y;
 
     ALMetalWorldSimpleVaryings output;
     output.position = constants.depth_convention.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = constants.depth_convention.z != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
     const float3x3 rigged_normal_matrix = float3x3(
         constants.rigged_normal_matrix[0].xyz,
         constants.rigged_normal_matrix[1].xyz,
@@ -3746,6 +3764,7 @@ vertex ALMetalWorldSimpleVaryings almetal_world_simple_skinned_vertex(
 
 static ALMetalWorldSimpleVaryings almetal_world_fullbright_varyings(
     float4 clip_position,
+    float4 eye_position,
     float4 packed_position,
     float2 texcoord,
     uchar4 color,
@@ -3759,6 +3778,8 @@ static ALMetalWorldSimpleVaryings almetal_world_fullbright_varyings(
     ALMetalWorldSimpleVaryings output;
     output.position = constants.depth_convention.x != 0u
         ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = constants.depth_convention.z != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
     // Fullbright never consumes a surface normal. Keeping this family on a
     // dedicated vertex contract mirrors the legal GL volume layout instead
     // of requiring a dummy normal stream solely because lit G-buffer draws
@@ -3790,8 +3811,10 @@ vertex ALMetalWorldSimpleVaryings almetal_world_fullbright_vertex(
     uint vertex_id [[vertex_id]])
 {
     const float4 position = positions[vertex_id];
+    const float4 object_position = float4(position.xyz, 1.0);
     return almetal_world_fullbright_varyings(
-        constants.modelview_projection * float4(position.xyz, 1.0),
+        constants.modelview_projection * object_position,
+        constants.modelview * object_position,
         position, texcoords[vertex_id], colors[vertex_id], constants);
 }
 
@@ -3809,10 +3832,11 @@ vertex ALMetalWorldSimpleVaryings almetal_world_fullbright_skinned_vertex(
     const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
         position, float4(0.0), encoded_weights[vertex_id],
         skin_palette, joint_count);
+    const float4 rebased_position =
+        skinned.position + float4(skin_palette[0].xyz, 1.0);
     return almetal_world_fullbright_varyings(
-        constants.modelview_projection * skinned.position +
-            constants.modelview_projection *
-                float4(skin_palette[0].xyz, 1.0),
+        constants.modelview_projection * rebased_position,
+        constants.modelview * rebased_position,
         position, texcoords[vertex_id], colors[vertex_id], constants);
 }
 
@@ -3826,11 +3850,15 @@ vertex ALMetalWorldSimpleVaryings almetal_world_bump_vertex(
     uint vertex_id [[vertex_id]])
 {
     ALMetalWorldSimpleVaryings output;
-    float4 clip_position = constants.modelview_projection *
-                           float4(positions[vertex_id].xyz, 1.0);
+    const float4 object_position =
+        float4(positions[vertex_id].xyz, 1.0);
+    const float4 eye_position = constants.modelview * object_position;
+    float4 clip_position = constants.modelview_projection * object_position;
     clip_position.y = -clip_position.y;
     output.position = constants.depth_convention.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = constants.depth_convention.z != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
 
     const float3x3 normal_matrix = float3x3(
         constants.normal_matrix[0].xyz,
@@ -3873,14 +3901,18 @@ vertex ALMetalWorldSimpleVaryings almetal_world_bump_skinned_vertex(
     const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
         positions[vertex_id], normals[vertex_id],
         encoded_weights[vertex_id], skin_palette, joint_count);
+    const float4 rebased_position =
+        skinned.position + float4(skin_palette[0].xyz, 1.0);
+    const float4 eye_position = constants.modelview * rebased_position;
     float4 clip_position =
-        constants.modelview_projection * skinned.position +
-        constants.modelview_projection * float4(skin_palette[0].xyz, 1.0);
+        constants.modelview_projection * rebased_position;
     clip_position.y = -clip_position.y;
 
     ALMetalWorldSimpleVaryings output;
     output.position = constants.depth_convention.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = constants.depth_convention.z != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
     const float3x3 rigged_normal_matrix = float3x3(
         constants.rigged_normal_matrix[0].xyz,
         constants.rigged_normal_matrix[1].xyz,
@@ -3924,11 +3956,15 @@ vertex ALMetalWorldSimpleVaryings almetal_world_material_vertex(
     uint vertex_id [[vertex_id]])
 {
     ALMetalWorldSimpleVaryings output;
-    float4 clip_position = constants.modelview_projection *
-                           float4(positions[vertex_id].xyz, 1.0);
+    const float4 object_position =
+        float4(positions[vertex_id].xyz, 1.0);
+    const float4 eye_position = constants.modelview * object_position;
+    float4 clip_position = constants.modelview_projection * object_position;
     clip_position.y = -clip_position.y;
     output.position = constants.depth_convention.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = constants.depth_convention.z != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
 
     const float3x3 normal_matrix = float3x3(
         constants.normal_matrix[0].xyz,
@@ -3975,14 +4011,18 @@ vertex ALMetalWorldSimpleVaryings almetal_world_material_skinned_vertex(
     const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
         positions[vertex_id], normals[vertex_id],
         encoded_weights[vertex_id], skin_palette, joint_count);
+    const float4 rebased_position =
+        skinned.position + float4(skin_palette[0].xyz, 1.0);
+    const float4 eye_position = constants.modelview * rebased_position;
     float4 clip_position =
-        constants.modelview_projection * skinned.position +
-        constants.modelview_projection * float4(skin_palette[0].xyz, 1.0);
+        constants.modelview_projection * rebased_position;
     clip_position.y = -clip_position.y;
 
     ALMetalWorldSimpleVaryings output;
     output.position = constants.depth_convention.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = constants.depth_convention.z != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
     const float3x3 rigged_normal_matrix = float3x3(
         constants.rigged_normal_matrix[0].xyz,
         constants.rigged_normal_matrix[1].xyz,
@@ -4036,6 +4076,7 @@ struct ALMetalWorldPBRConstants
 struct ALMetalWorldPBRVaryings
 {
     float4 position [[position]];
+    float mirror_clip_distance [[clip_distance]];
     float3 eye_position;
     float3 normal;
     float3 tangent;
@@ -4211,6 +4252,8 @@ static ALMetalWorldPBRVaryings almetal_world_pbr_varyings(
     clip_position.y = -clip_position.y;
     output.position = world.depth_convention.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = world.depth_convention.z != 0u
+        ? dot(eye_position, world.mirror_clip_plane) : 1.0;
     output.eye_position = eye_position.xyz;
     output.normal = normalize(normal);
     const uint slot = min(material_index, max(pbr.config.x, 1u) - 1u);
@@ -7708,6 +7751,7 @@ struct ALMetalWorldTerrainConstants
     float4x4 modelview_projection;
     float4x4 modelview;
     float4 normal_matrix[3];
+    float4 mirror_clip_plane;
     // x = metres/grid, y = region width, z = detail scale,
     // w = triplanar sharpness.
     float4 surface;
@@ -7950,6 +7994,7 @@ almetal_world_terrain_spot_shadow_vertex(
 struct ALMetalWorldTerrainVaryings
 {
     float4 position [[position]];
+    float mirror_clip_distance [[clip_distance]];
     float3 view_position;
     float3 normal;
     float3 region_position;
@@ -7996,6 +8041,8 @@ vertex ALMetalWorldTerrainVaryings almetal_world_terrain_vertex(
     output.normal = normalize(normal_matrix * region_normal);
     output.view_position =
         (constants.modelview * float4(region_position, 1.0)).xyz;
+    output.mirror_clip_distance = dot(
+        float4(output.view_position, 1.0), constants.mirror_clip_plane);
     output.region_position = region_position;
     output.detail_texcoord =
         region_position.xy * constants.surface.z + constants.detail.xy;
@@ -9032,6 +9079,7 @@ static ALMetalLitPreviewSkinnedVertex almetal_avatar_cloth_vertex(
 
 static ALMetalWorldSimpleVaryings almetal_world_avatar_varyings(
     float4 clip_position,
+    float4 eye_position,
     float3 eye_normal,
     float2 texcoord,
     constant ALMetalWorldSimpleConstants& constants)
@@ -9040,6 +9088,8 @@ static ALMetalWorldSimpleVaryings almetal_world_avatar_varyings(
     clip_position.y = -clip_position.y;
     output.position = constants.depth_convention.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = constants.depth_convention.z != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
     output.normal = normalize(eye_normal);
     output.color = 1.0;
     output.texcoord = texcoord;
@@ -9064,13 +9114,15 @@ vertex ALMetalWorldSimpleVaryings almetal_world_avatar_rigid_vertex(
     constant ALMetalWorldSimpleConstants& constants [[buffer(4)]],
     uint vertex_id [[vertex_id]])
 {
+    const float4 object_position =
+        float4(positions[vertex_id].xyz, 1.0);
     const float3x3 normal_matrix = float3x3(
         constants.normal_matrix[0].xyz,
         constants.normal_matrix[1].xyz,
         constants.normal_matrix[2].xyz);
     return almetal_world_avatar_varyings(
-        constants.modelview_projection *
-            float4(positions[vertex_id].xyz, 1.0),
+        constants.modelview_projection * object_position,
+        constants.modelview * object_position,
         normal_matrix * normals[vertex_id].xyz,
         texcoords[vertex_id], constants);
 }
@@ -9090,6 +9142,7 @@ vertex ALMetalWorldSimpleVaryings almetal_world_avatar_skinned_vertex(
             encoded_weights[vertex_id], skin_palette);
     return almetal_world_avatar_varyings(
         constants.modelview_projection * skinned.position,
+        skinned.position,
         skinned.normal.xyz, texcoords[vertex_id], constants);
 }
 
@@ -9112,6 +9165,7 @@ almetal_world_avatar_cloth_skinned_vertex(
             constants.avatar_gravity, constants.avatar_cloth_depth);
     return almetal_world_avatar_varyings(
         constants.modelview_projection * skinned.position,
+        skinned.position,
         skinned.normal.xyz, texcoords[vertex_id], constants);
 }
 

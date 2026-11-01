@@ -1422,6 +1422,16 @@ bool LLPipeline::publishMetalHeroProbeRadiance(
         return false;
     }
     capture.hero_probe_native_generation = generation;
+    static bool logged_native_hero_radiance = false;
+    if (!logged_native_hero_radiance)
+    {
+        logged_native_hero_radiance = true;
+        LL_INFOS("Metal")
+            << "Native hero-probe radiance published from six complete "
+               "mirror-clipped Metal faces; generation "
+            << generation << ", max LOD " << capture.hero_probe_max_lod
+            << LL_ENDL;
+    }
     return true;
 }
 
@@ -10300,9 +10310,10 @@ void LLPipeline::captureMetalWorldImpostorBatch(
 
     const MetalWorldSimpleCapture::ImpostorMirror& mirror =
         mirror_it->second;
+    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
     LLMatrix4a modelview_projection;
     modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+        modelview, gGL.getProjectionMatrix());
 
     ALMetalWorldSimpleBatch batch;
     batch.impostor = true;
@@ -10315,6 +10326,8 @@ void LLPipeline::captureMetalWorldImpostorBatch(
     std::memcpy(batch.modelview_projection,
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
+    std::memcpy(batch.modelview, modelview.getF32ptr(),
+                sizeof(batch.modelview));
     std::memcpy(batch.impostor_center, center.mV, sizeof(center.mV));
     std::memcpy(batch.impostor_left, left.mV, sizeof(left.mV));
     std::memcpy(batch.impostor_up, up.mV, sizeof(up.mV));
@@ -11232,6 +11245,37 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.hdr = capture.hdr;
     scene.reverse_z = capture.reverse_z;
     scene.stamp_opaque_coverage = impostor_bake;
+    if (mMetalHeroWorldCaptureActive &&
+        mHeroProbeManager.isMirrorPass())
+    {
+        // Match globalF.glsl's MIRROR_CLIP plane exactly. The Metal producer
+        // clips at the rasterizer with a per-vertex eye-space distance,
+        // before any G-buffer fragment can hide geometry that GLSL rejects.
+        const LLMatrix4a& modelview =
+            LLViewerCamera::getCurrent().getModelview();
+        LLMatrix4a normal_matrix;
+        normal_matrix.setNormalMatrix(modelview);
+        const LLVector3& mirror_normal = mHeroProbeManager.mMirrorNormal;
+        const LLVector3& mirror_position =
+            mHeroProbeManager.mMirrorPosition;
+        LLVector4a normal(
+            mirror_normal.mV[VX], mirror_normal.mV[VY],
+            mirror_normal.mV[VZ], 0.f);
+        LLVector4a position(
+            mirror_position.mV[VX], mirror_position.mV[VY],
+            mirror_position.mV[VZ], 1.f);
+        LLVector4a eye_normal;
+        LLVector4a eye_position;
+        normal_matrix.rotate(normal, eye_normal);
+        eye_normal.normalize3();
+        modelview.affineTransform(position, eye_position);
+        scene.mirror_clip_plane[0] = eye_normal[0];
+        scene.mirror_clip_plane[1] = eye_normal[1];
+        scene.mirror_clip_plane[2] = eye_normal[2];
+        scene.mirror_clip_plane[3] =
+            -eye_position.dot3(eye_normal).getF32();
+        scene.mirror_clip = true;
+    }
     if (impostor_bake)
     {
         std::fill(scene.clear_color, scene.clear_color + 4, 0.f);

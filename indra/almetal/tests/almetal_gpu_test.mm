@@ -3155,6 +3155,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         for (std::size_t index = 0; index < 4; ++index)
         {
             batch.modelview_projection[index * 4 + index] = 1.f;
+            batch.modelview[index * 4 + index] = 1.f;
         }
         for (std::size_t index = 0; index < 3; ++index)
         {
@@ -3219,6 +3220,35 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(normal[center + 1]) - 32768) <= 1);
         CHECK(std::abs(static_cast<int>(normal[center + 2]) - 32896) <= 1);
         CHECK(std::abs(static_cast<int>(normal[center + 3]) - 22282) <= 2);
+
+        // A hero mirror keeps only the eye-space half-space accepted by the
+        // GLSL MIRROR_CLIP variant. Metal clip distances must reject the
+        // negative side before any G-buffer fragment is written, while the
+        // ordinary positive side retains the same material result.
+        scene.mirror_clip = true;
+        scene.mirror_clip_plane[0] = 1.f;
+        scene.mirror_clip_plane[1] = 0.f;
+        scene.mirror_clip_plane[2] = 0.f;
+        scene.mirror_clip_plane[3] = 0.f;
+        auto mirror_clipped = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(mirror_clipped);
+        std::array<std::uint8_t, 32 * 32 * 4> clipped_albedo{};
+        REQUIRE(mirror_clipped->colorTexture(0)->readback(
+            *device, 0, 0, {}, clipped_albedo.data(), 32 * 4, &error));
+        INFO(error);
+        const std::size_t clipped_side = (10 * 32 + 10) * 4;
+        const std::size_t retained_side = (10 * 32 + 22) * 4;
+        CHECK(clipped_albedo[clipped_side + 0] == 255);
+        CHECK(clipped_albedo[clipped_side + 1] == 0);
+        CHECK(clipped_albedo[clipped_side + 2] == 255);
+        CHECK(std::abs(
+            static_cast<int>(clipped_albedo[retained_side + 0]) - 61) <= 1);
+        CHECK(std::abs(
+            static_cast<int>(clipped_albedo[retained_side + 1]) - 64) <= 1);
+        CHECK(std::abs(
+            static_cast<int>(clipped_albedo[retained_side + 2]) - 32) <= 1);
+        scene.mirror_clip = false;
 
         std::array<float, 32 * 32> forward_depth{};
         REQUIRE(result->depthStencilTexture()->readback(

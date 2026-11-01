@@ -413,6 +413,12 @@ struct ALMetalWorldGBufferScene
     bool hdr = false;
     bool reverse_z = false;
     bool stamp_opaque_coverage = false;
+    // Eye-space plane used by the authoritative GLSL MIRROR_CLIP variants.
+    // Native G-buffer vertices emit the matching Metal clip distance only
+    // for hero-mirror cube faces; ordinary world and impostor scenes leave
+    // the positive default plane disabled.
+    float mirror_clip_plane[4] = {0.f, 0.f, 0.f, 1.f};
+    bool mirror_clip = false;
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
     const ALMetalWorldHeroProbe* hero_probe = nullptr;
     const ALMetalWorldScreenSpaceReflections* screen_space_reflections = nullptr;

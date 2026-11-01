@@ -93,6 +93,12 @@ namespace
     struct alignas(16) WorldSimpleConstants
     {
         float modelview_projection[16];
+        float modelview[16] = {
+            1.f, 0.f, 0.f, 0.f,
+            0.f, 1.f, 0.f, 0.f,
+            0.f, 0.f, 1.f, 0.f,
+            0.f, 0.f, 0.f, 1.f,
+        };
         float normal_matrix[3][4];
         float rigged_normal_matrix[3][4];
         float texture_matrix[16];
@@ -102,6 +108,7 @@ namespace
         float avatar_sin_wave[4]{};
         float avatar_gravity[4]{};
         float avatar_cloth_depth[4]{};
+        float mirror_clip_plane[4] = {0.f, 0.f, 0.f, 1.f};
     };
 
     struct alignas(16) WorldHighlightConstants
@@ -506,11 +513,13 @@ namespace
     struct alignas(16) WorldImpostorConstants
     {
         float modelview_projection[16];
+        float modelview[16];
         float center[4];
         float left[4];
         float up[4];
         float normal_rotation[3][4];
         std::uint32_t depth_convention[4]{};
+        float mirror_clip_plane[4] = {0.f, 0.f, 0.f, 1.f};
     };
 
     struct alignas(16) WorldMaterialConstants
@@ -575,6 +584,7 @@ namespace
         float modelview_projection[16];
         float modelview[16];
         float normal_matrix[3][4];
+        float mirror_clip_plane[4] = {0.f, 0.f, 0.f, 1.f};
         float surface[4]{};
         float detail[4]{};
         std::uint32_t config[4]{};
@@ -4851,9 +4861,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         setError(error, "Metal world G-buffer scene is incomplete");
         return nullptr;
     }
-    if (!finiteValues(scene.clear_color, 4))
+    if (!finiteValues(scene.clear_color, 4) ||
+        !finiteValues(scene.mirror_clip_plane, 4))
     {
-        setError(error, "Metal world G-buffer clear color is non-finite");
+        setError(error, "Metal world G-buffer clear/clip data is non-finite");
         return nullptr;
     }
 
@@ -5406,6 +5417,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             std::memcpy(constants.modelview_projection,
                         batch.modelview_projection,
                         sizeof(constants.modelview_projection));
+            std::memcpy(constants.modelview, batch.modelview,
+                        sizeof(constants.modelview));
             std::memcpy(constants.center, batch.impostor_center,
                         sizeof(constants.center));
             std::memcpy(constants.left, batch.impostor_left,
@@ -5416,6 +5429,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                         batch.impostor_normal_rotation,
                         sizeof(constants.normal_rotation));
             constants.depth_convention[0] = scene.reverse_z ? 1u : 0u;
+            constants.depth_convention[1] = scene.mirror_clip ? 1u : 0u;
+            std::memcpy(constants.mirror_clip_plane,
+                        scene.mirror_clip_plane,
+                        sizeof(constants.mirror_clip_plane));
             const ALMetalRenderPipeline* pipeline =
                 mImpl->impostor_pipelines[scene.hdr ? 1 : 0]
                                          [scene.normal_hdr ? 1 : 0].get();
@@ -5455,6 +5472,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             std::memcpy(constants.normal_matrix,
                         batch.normal_matrix,
                         sizeof(constants.normal_matrix));
+            std::memcpy(constants.mirror_clip_plane,
+                        scene.mirror_clip_plane,
+                        sizeof(constants.mirror_clip_plane));
             constants.surface[0] = batch.terrain_grid_scale;
             constants.surface[1] = batch.terrain_region_scale;
             constants.surface[2] = batch.terrain_detail_scale;
@@ -5593,6 +5613,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         std::memcpy(constants.modelview_projection,
                     batch.modelview_projection,
                     sizeof(constants.modelview_projection));
+        std::memcpy(constants.modelview, batch.modelview,
+                    sizeof(constants.modelview));
         std::memcpy(constants.normal_matrix, batch.normal_matrix,
                     sizeof(constants.normal_matrix));
         std::memcpy(constants.rigged_normal_matrix,
@@ -5609,12 +5631,16 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         std::memcpy(constants.avatar_cloth_depth,
                     batch.avatar_cloth_depth,
                     sizeof(constants.avatar_cloth_depth));
+        std::memcpy(constants.mirror_clip_plane,
+                    scene.mirror_clip_plane,
+                    sizeof(constants.mirror_clip_plane));
         constants.material[0] = batch.alpha_cutoff;
         constants.material[1] = batch.use_vertex_color ? 1.f : 0.f;
         constants.material[2] = batch.alpha_cutoff_bias ? 1.f : 0.f;
         constants.material[3] = batch.alpha_mask ? 1.f : 0.f;
         constants.depth_convention[0] = scene.reverse_z ? 1u : 0u;
         constants.depth_convention[1] = batch.texture_count;
+        constants.depth_convention[2] = scene.mirror_clip ? 1u : 0u;
         const bool avatar = batch.avatar_rigid || batch.avatar_skinning;
         const bool rigged = batch.skin_palette != nullptr && !avatar;
         const bool bump = batch.normal_texture != nullptr;
