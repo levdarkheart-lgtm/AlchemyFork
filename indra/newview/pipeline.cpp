@@ -10251,6 +10251,36 @@ void LLPipeline::captureMetalWorldAvatarBatch(
     batch.avatar_alpha = avatar_alpha;
     if (avatar_alpha)
     {
+        if (!LLGLState::isEnabled(GL_CULL_FACE))
+        {
+            batch.avatar_cull_mode = ALMetalCullMode::none;
+        }
+        else if (gGL.getCullFace() == GL_FRONT)
+        {
+            batch.avatar_cull_mode = ALMetalCullMode::front;
+        }
+        else if (gGL.getCullFace() == GL_BACK)
+        {
+            batch.avatar_cull_mode = ALMetalCullMode::back;
+        }
+        else
+        {
+            fail();
+            return;
+        }
+        batch.avatar_depth_write = LLGLDepthTest::depthWriteEnabled();
+        bool color_mask[4]{};
+        gGL.getColorMask(color_mask);
+        if (color_mask[0] != color_mask[1] ||
+            color_mask[0] != color_mask[2])
+        {
+            fail();
+            return;
+        }
+        // The post-deferred owner intentionally masks alpha independently;
+        // this state tracks the RGB on/off distinction used by the middle
+        // depth-only hair/skirt pass.
+        batch.avatar_color_write = color_mask[0];
         batch.pre_water_simple = true;
         batch.pre_water_shadows =
             capture.world_alpha_uses_shadows;
@@ -10261,7 +10291,7 @@ void LLPipeline::captureMetalWorldAvatarBatch(
         batch.pre_water_destination_rgb =
             ALMetalBlendFactor::one_minus_source_alpha;
         batch.pre_water_alpha_writes_coverage =
-            alphaWritesCoverage();
+            color_mask[3];
     }
 
     if (capture.avatar_skinned)

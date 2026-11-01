@@ -8586,13 +8586,30 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         avatar_alpha_batch.pre_water_shadows = false;
         avatar_alpha_batch.pre_water_minimum_alpha = 0.2f;
         avatar_alpha_batch.pre_water_alpha_writes_coverage = false;
+        ALMetalWorldSimpleBatch avatar_alpha_base_batch = batch;
+        avatar_alpha_base_batch.modelview_projection[12] = -4.f;
+        ALMetalWorldGBufferScene avatar_alpha_base_scene = scene;
+        avatar_alpha_base_scene.batches = &avatar_alpha_base_batch;
+        avatar_alpha_base_scene.batch_count = 1;
+        auto avatar_alpha_gbuffer = renderer->render(
+            avatar_alpha_base_scene, &error);
+        INFO(error);
+        REQUIRE(avatar_alpha_gbuffer);
+        ALMetalWorldAlphaEnvironment avatar_alpha_environment =
+            alpha_environment;
+        avatar_alpha_environment.water_plane[0] = 0.f;
+        avatar_alpha_environment.water_plane[1] = 0.f;
+        avatar_alpha_environment.water_plane[2] = 1.f;
+        avatar_alpha_environment.water_plane[3] = -1.f;
+        avatar_alpha_environment.water_fog[2] = -1.f;
         opaque_forward_scene = {};
-        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.gbuffer = avatar_alpha_gbuffer.get();
         opaque_forward_scene.composed_lighting = final_light.get();
         opaque_forward_scene.batches = &avatar_alpha_batch;
         opaque_forward_scene.batch_count = 1;
         opaque_forward_scene.reflection_probes = &reflection_probes;
-        opaque_forward_scene.alpha_environment = &alpha_environment;
+        opaque_forward_scene.alpha_environment =
+            &avatar_alpha_environment;
         opaque_forward_scene.alpha_lighting = &simple_alpha_lighting;
         opaque_forward_scene.width = 32;
         opaque_forward_scene.height = 32;
@@ -8608,6 +8625,154 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             opaque_forward_scene, &error);
         INFO(error);
         REQUIRE(avatar_alpha_result);
+
+        // Transparent hair and skirts submit the same mesh two or three
+        // times. Prove the native sidecar retains the GL owner's per-draw
+        // state rather than turning every replay into a back-culled,
+        // color-and-depth-writing pass.
+        std::array<std::uint16_t, 32 * 32 * 4>
+            avatar_alpha_color{};
+        std::array<std::uint16_t, 32 * 32 * 4>
+            avatar_alpha_base_color{};
+        std::array<float, 32 * 32> avatar_alpha_depth{};
+        std::array<float, 32 * 32> avatar_alpha_base_depth{};
+        REQUIRE(avatar_alpha_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, avatar_alpha_color.data(), 32 * 8,
+            &error));
+        REQUIRE(final_light->colorTexture(0)->readback(
+            *device, 0, 0, {}, avatar_alpha_base_color.data(), 32 * 8,
+            &error));
+        REQUIRE(avatar_alpha_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, avatar_alpha_depth.data(),
+            32 * sizeof(float), &error));
+        REQUIRE(avatar_alpha_gbuffer->depthStencilTexture()->readback(
+            *device, 0, 0, {}, avatar_alpha_base_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        std::size_t avatar_alpha_pixel = avatar_alpha_depth.size();
+        std::size_t avatar_alpha_color_pixels = 0;
+        std::size_t avatar_alpha_depth_pixels = 0;
+        for (std::size_t pixel = 0;
+             pixel < avatar_alpha_depth.size(); ++pixel)
+        {
+            const std::size_t sample = pixel * 4;
+            const bool color_changed =
+                avatar_alpha_color[sample + 0] !=
+                    avatar_alpha_base_color[sample + 0] ||
+                avatar_alpha_color[sample + 1] !=
+                    avatar_alpha_base_color[sample + 1] ||
+                avatar_alpha_color[sample + 2] !=
+                    avatar_alpha_base_color[sample + 2] ||
+                avatar_alpha_color[sample + 3] !=
+                    avatar_alpha_base_color[sample + 3];
+            const bool depth_changed =
+                std::abs(avatar_alpha_depth[pixel] -
+                         avatar_alpha_base_depth[pixel]) > 0.1f;
+            avatar_alpha_color_pixels += color_changed ? 1 : 0;
+            avatar_alpha_depth_pixels += depth_changed ? 1 : 0;
+            if (avatar_alpha_pixel == avatar_alpha_depth.size() &&
+                color_changed && depth_changed)
+            {
+                avatar_alpha_pixel = pixel;
+            }
+        }
+        CAPTURE(avatar_alpha_color_pixels, avatar_alpha_depth_pixels);
+        REQUIRE(avatar_alpha_color_pixels > 0);
+        REQUIRE(avatar_alpha_depth_pixels > 0);
+        REQUIRE(avatar_alpha_pixel < avatar_alpha_depth.size());
+        const std::size_t avatar_alpha_sample = avatar_alpha_pixel * 4;
+        CHECK(std::abs(half_to_float(
+                           avatar_alpha_color[avatar_alpha_sample]) -
+                       half_to_float(
+                           avatar_alpha_base_color[avatar_alpha_sample])) >
+              0.01f);
+        CHECK(std::abs(avatar_alpha_depth[avatar_alpha_pixel] -
+                       avatar_alpha_base_depth[avatar_alpha_pixel]) >
+              0.1f);
+        CHECK(avatar_alpha_color[avatar_alpha_sample + 3] ==
+              avatar_alpha_base_color[avatar_alpha_sample + 3]);
+
+        // First/third high-detail passes and the low-detail inside pass
+        // blend color while retaining the incoming depth.
+        avatar_alpha_batch.avatar_depth_write = false;
+        auto avatar_alpha_readonly_depth =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(avatar_alpha_readonly_depth);
+        REQUIRE(avatar_alpha_readonly_depth->depthStencilTexture()->readback(
+            *device, 0, 0, {}, avatar_alpha_depth.data(),
+            32 * sizeof(float), &error));
+        REQUIRE(avatar_alpha_readonly_depth->colorTexture(0)->readback(
+            *device, 0, 0, {}, avatar_alpha_color.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(std::abs(avatar_alpha_depth[avatar_alpha_pixel] -
+                       avatar_alpha_base_depth[avatar_alpha_pixel]) <
+              0.0001f);
+        CHECK(std::abs(half_to_float(
+                           avatar_alpha_color[avatar_alpha_sample]) -
+                       half_to_float(
+                           avatar_alpha_base_color[avatar_alpha_sample])) >
+              0.01f);
+        CHECK(avatar_alpha_color[avatar_alpha_sample + 3] ==
+              avatar_alpha_base_color[avatar_alpha_sample + 3]);
+
+        // The middle high-detail pass runs the alpha cutout and writes depth
+        // but must leave every color channel untouched.
+        avatar_alpha_batch.avatar_depth_write = true;
+        avatar_alpha_batch.avatar_color_write = false;
+        auto avatar_alpha_depth_only = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(avatar_alpha_depth_only);
+        REQUIRE(avatar_alpha_depth_only->depthStencilTexture()->readback(
+            *device, 0, 0, {}, avatar_alpha_depth.data(),
+            32 * sizeof(float), &error));
+        REQUIRE(avatar_alpha_depth_only->colorTexture(0)->readback(
+            *device, 0, 0, {}, avatar_alpha_color.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(std::abs(avatar_alpha_depth[avatar_alpha_pixel] -
+                       avatar_alpha_base_depth[avatar_alpha_pixel]) >
+              0.1f);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(avatar_alpha_color[avatar_alpha_sample + channel] ==
+                  avatar_alpha_base_color[avatar_alpha_sample + channel]);
+        }
+
+        // This fixture is front-facing. Front-culling therefore suppresses
+        // it completely, while the ordinary back-cull state above retains
+        // it; this is the low-detail inside/outside distinction.
+        avatar_alpha_batch.avatar_color_write = true;
+        avatar_alpha_batch.avatar_cull_mode = ALMetalCullMode::front;
+        auto avatar_alpha_front_culled =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(avatar_alpha_front_culled);
+        REQUIRE(avatar_alpha_front_culled->depthStencilTexture()->readback(
+            *device, 0, 0, {}, avatar_alpha_depth.data(),
+            32 * sizeof(float), &error));
+        REQUIRE(avatar_alpha_front_culled->colorTexture(0)->readback(
+            *device, 0, 0, {}, avatar_alpha_color.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(std::abs(avatar_alpha_depth[avatar_alpha_pixel] -
+                       avatar_alpha_base_depth[avatar_alpha_pixel]) <
+              0.0001f);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(avatar_alpha_color[avatar_alpha_sample + channel] ==
+                  avatar_alpha_base_color[avatar_alpha_sample + channel]);
+        }
+        avatar_alpha_batch.avatar_cull_mode =
+            static_cast<ALMetalCullMode>(99);
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        avatar_alpha_batch.avatar_cull_mode = ALMetalCullMode::back;
+        error.clear();
 
         avatar_alpha_batch.avatar_cloth = true;
         avatar_alpha_batch.cloth_offset = avatar_cloth_offset;

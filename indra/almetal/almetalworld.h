@@ -302,6 +302,12 @@ struct ALMetalWorldSimpleBatch
     bool avatar_skinning = false;
     bool avatar_cloth = false;
     bool avatar_alpha = false;
+    // Hair and skirt meshes deliberately replay the same geometry with
+    // different raster/depth/color state. Preserve that draw-boundary state
+    // so the native sidecar does not collapse the two-/three-pass algorithm.
+    ALMetalCullMode avatar_cull_mode = ALMetalCullMode::back;
+    bool avatar_depth_write = true;
+    bool avatar_color_write = true;
     bool impostor = false;
     bool impostor_fullbright = false;
     bool impostor_shiny = false;

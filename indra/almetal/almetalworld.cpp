@@ -1251,9 +1251,11 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::array<
         std::array<OpaqueForwardRiggedPipelines, 2>, 2>, 2>
         pre_water_simple_pipelines;
-    // HDR x coverage x shadows x rigid/skinned/cloth system-avatar mesh.
-    std::array<std::array<std::array<
-        std::array<std::unique_ptr<ALMetalRenderPipeline>, 3>, 2>, 2>, 2>
+    // HDR x coverage x shadows x rigid/skinned/cloth system-avatar mesh x
+    // color-write state. The latter keeps the middle pass of three-pass
+    // hair/skirt depth-only without changing its alpha-cutout shader.
+    std::array<std::array<std::array<std::array<
+        std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 3>, 2>, 2>, 2>
         avatar_alpha_pipelines;
     std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
         pre_water_material_pipelines;
@@ -2679,6 +2681,10 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         "almetal_world_avatar_alpha_skinned_vertex",
         "almetal_world_avatar_alpha_cloth_skinned_vertex",
     }};
+    const auto avatar_rgb_write_mask = static_cast<ALMetalColorWriteMask>(
+        static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+        static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+        static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
     for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
     {
         for (std::size_t alpha_mask = 0; alpha_mask < 2; ++alpha_mask)
@@ -3041,39 +3047,51 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                      variant < avatar_alpha_vertex_functions.size();
                      ++variant)
                 {
-                    ALMetalRenderPipelineDescriptor avatar_descriptor;
-                    avatar_descriptor.library = impl->library.get();
-                    avatar_descriptor.vertex_function =
-                        avatar_alpha_vertex_functions[variant];
-                    avatar_descriptor.fragment_function = shadows
-                        ? "almetal_world_pre_water_simple_shadow_fragment"
-                        : "almetal_world_pre_water_simple_fragment";
-                    avatar_descriptor.color_attachment_count = 1;
-                    avatar_descriptor.colors[0].format =
-                        screen_formats[hdr];
-                    avatar_descriptor.colors[0].blending_enabled = true;
-                    avatar_descriptor.colors[0].source_rgb =
-                        ALMetalBlendFactor::source_alpha;
-                    avatar_descriptor.colors[0].destination_rgb =
-                        ALMetalBlendFactor::one_minus_source_alpha;
-                    avatar_descriptor.colors[0].source_alpha = coverage
-                        ? ALMetalBlendFactor::one
-                        : ALMetalBlendFactor::zero;
-                    avatar_descriptor.colors[0].destination_alpha =
-                        ALMetalBlendFactor::one_minus_source_alpha;
-                    avatar_descriptor.depth_stencil_format =
-                        ALMetalPixelFormat::depth32_float_stencil8;
-                    avatar_descriptor.label = shadows
-                        ? "Alchemy world avatar-alpha shadow pipeline"
-                        : "Alchemy world avatar-alpha pipeline";
-                    impl->avatar_alpha_pipelines
-                        [hdr][coverage][shadows][variant] =
-                        ALMetalRenderPipeline::create(
-                            device, avatar_descriptor, error);
-                    if (!impl->avatar_alpha_pipelines
-                            [hdr][coverage][shadows][variant])
+                    for (std::size_t color_write = 0;
+                         color_write < 2; ++color_write)
                     {
-                        return nullptr;
+                        ALMetalRenderPipelineDescriptor avatar_descriptor;
+                        avatar_descriptor.library = impl->library.get();
+                        avatar_descriptor.vertex_function =
+                            avatar_alpha_vertex_functions[variant];
+                        avatar_descriptor.fragment_function = shadows
+                            ? "almetal_world_pre_water_simple_shadow_fragment"
+                            : "almetal_world_pre_water_simple_fragment";
+                        avatar_descriptor.color_attachment_count = 1;
+                        avatar_descriptor.colors[0].format =
+                            screen_formats[hdr];
+                        avatar_descriptor.colors[0].blending_enabled = true;
+                        avatar_descriptor.colors[0].source_rgb =
+                            ALMetalBlendFactor::source_alpha;
+                        avatar_descriptor.colors[0].destination_rgb =
+                            ALMetalBlendFactor::one_minus_source_alpha;
+                        avatar_descriptor.colors[0].source_alpha = coverage
+                            ? ALMetalBlendFactor::one
+                            : ALMetalBlendFactor::zero;
+                        avatar_descriptor.colors[0].destination_alpha =
+                            ALMetalBlendFactor::one_minus_source_alpha;
+                        avatar_descriptor.colors[0].write_mask = !color_write
+                            ? ALMetalColorWriteMask::none
+                            : coverage ? ALMetalColorWriteMask::all
+                                       : avatar_rgb_write_mask;
+                        avatar_descriptor.depth_stencil_format =
+                            ALMetalPixelFormat::depth32_float_stencil8;
+                        avatar_descriptor.label = color_write
+                            ? (shadows
+                                   ? "Alchemy world avatar-alpha shadow pipeline"
+                                   : "Alchemy world avatar-alpha pipeline")
+                            : (shadows
+                                   ? "Alchemy world avatar-alpha depth-only shadow pipeline"
+                                   : "Alchemy world avatar-alpha depth-only pipeline");
+                        impl->avatar_alpha_pipelines
+                            [hdr][coverage][shadows][variant][color_write] =
+                            ALMetalRenderPipeline::create(
+                                device, avatar_descriptor, error);
+                        if (!impl->avatar_alpha_pipelines
+                                [hdr][coverage][shadows][variant][color_write])
+                        {
+                            return nullptr;
+                        }
                     }
                 }
             }
@@ -9900,7 +9918,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
              ((!batch.avatar_rigid && !batch.avatar_skinning) ||
               batch.pre_water_fullbright ||
               !batch.pre_water_simple || batch.pre_water_material ||
-              batch.pre_water_pbr || batch.pre_water_particle)) ||
+              batch.pre_water_pbr || batch.pre_water_particle ||
+              (batch.avatar_cull_mode != ALMetalCullMode::none &&
+               batch.avatar_cull_mode != ALMetalCullMode::front &&
+               batch.avatar_cull_mode != ALMetalCullMode::back))) ||
             (batch.post_water_depth_only &&
              (!batch.post_water_alpha || rigged)) ||
             (batch.post_water_glow && (!glow || alpha)))
@@ -11902,7 +11923,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     [scene.hdr ? 1 : 0]
                     [batch.pre_water_alpha_writes_coverage ? 1 : 0]
                     [batch.pre_water_shadows ? 1 : 0]
-                    [avatar_variant].get();
+                    [avatar_variant]
+                    [batch.avatar_color_write ? 1 : 0].get();
             }
             else if (batch.post_water_depth_only)
             {
@@ -11952,9 +11974,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                           [rigged ? 1 : 0].get();
             }
 
-            const bool writes_depth = batch.avatar_alpha ||
-                batch.pre_water_alpha || rigged ||
-                batch.post_water_depth_only;
+            const bool writes_depth = batch.avatar_alpha
+                ? batch.avatar_depth_write
+                : batch.pre_water_alpha || rigged ||
+                      batch.post_water_depth_only;
             const ALMetalDepthStencilState* depth = scene.reverse_z
                 ? (writes_depth ? mImpl->reverse_depth.get()
                                 : mImpl->reverse_readonly_depth.get())
@@ -11964,7 +11987,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setDepthStencilState(depth, error) &&
                 encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
                 encoder->setCullMode(
-                    batch.pre_water_particle ||
+                    batch.avatar_alpha
+                        ? batch.avatar_cull_mode
+                        : batch.pre_water_particle ||
                             (batch.pre_water_pbr && batch.double_sided)
                         ? ALMetalCullMode::none : ALMetalCullMode::back,
                     error) &&
