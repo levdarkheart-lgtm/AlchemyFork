@@ -5777,7 +5777,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             encoded =
                 encoder->setVertexBuffer(8, *batch.vertices,
                                          batch.tangent_offset, error) &&
-                encoder->setFragmentTexture(
+                // bindBumpMap samples both generated and fetched legacy bump
+                // normals with raw AnisoWrap; an sRGB asset declaration must
+                // not color-decode this tangent-space data.
+                encoder->setFragmentTextureLinear(
                     32, batch.normal_texture, error);
         }
         if (encoded && material)

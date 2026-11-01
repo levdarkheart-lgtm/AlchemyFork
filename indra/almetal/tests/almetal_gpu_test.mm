@@ -3435,6 +3435,26 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                            128) <= 1);
         }
 
+        // Every legacy bump variant is data: bindBumpMap uses raw AnisoWrap
+        // for generated brightness/darkness maps and fetched standard bump
+        // assets alike. Hold the normal bytes constant and require a shared
+        // sRGB-backed asset to produce the same G-buffer normal.
+        batch.normal_texture = srgb_bump_normal.get();
+        auto srgb_bump_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(srgb_bump_result);
+        std::array<std::uint16_t, 32 * 32 * 4> srgb_bump_normal_output{};
+        REQUIRE(srgb_bump_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, srgb_bump_normal_output.data(), 32 * 8,
+            &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(srgb_bump_normal_output[center + channel] ==
+                  bump_normal_output[center + channel]);
+        }
+        batch.normal_texture = bump_normal.get();
+
         batch.alpha_mask = true;
         batch.alpha_cutoff = 0.5f;
         auto masked_bump_result = renderer->render(scene, &error);
