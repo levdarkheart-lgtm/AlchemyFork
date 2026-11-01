@@ -7634,6 +7634,87 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             pre_water_depth[above_water_pixel / 4] - 0.25f) < 0.0001f);
         check_mirror_clipped_water_surface();
 
+        // class3/deferred/reflectionProbeF.glsl deliberately samples default
+        // probe zero along the reflected water ray without parallax. A
+        // camera-relative default-probe centre must therefore not steer the
+        // water into a different cubemap face. Use six distinct physical
+        // faces and move only that centre across the 4 km automatic sphere;
+        // generic sphere correction changes the result, while the required
+        // water path remains invariant.
+        ALMetalTextureDescriptor water_probe_descriptor = probe_descriptor;
+        water_probe_descriptor.label =
+            "Alchemy water default-probe no-parallax control";
+        auto water_probe_texture = ALMetalTexture::create(
+            *device, water_probe_descriptor, &error);
+        INFO(error);
+        REQUIRE(water_probe_texture);
+        const std::array<std::array<std::uint8_t, 4>, 6>
+            water_probe_faces{{
+                {{255, 0, 0, 255}},
+                {{0, 255, 0, 255}},
+                {{0, 0, 255, 255}},
+                {{255, 255, 0, 255}},
+                {{255, 0, 255, 255}},
+                {{0, 255, 255, 255}},
+            }};
+        auto water_probe_upload = device->makeCommandBuffer(
+            "Alchemy water default-probe control upload", &error);
+        INFO(error);
+        REQUIRE(water_probe_upload);
+        for (std::uint32_t slice = 0; slice < 12; ++slice)
+        {
+            const auto& face = water_probe_faces[slice % 6];
+            REQUIRE(water_probe_texture->upload(
+                *water_probe_upload, 0, slice, {},
+                face.data(), face.size(), &error));
+        }
+        REQUIRE(water_probe_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldReflectionProbes water_default_probe =
+            reflection_probes;
+        water_default_probe.radiance_texture = water_probe_texture.get();
+        water_default_probe.constants.config[0] = 1.f;
+        water_default_probe.constants.ref_index[0][0] = 0;
+        water_default_probe.constants.ref_sphere[0][0] = 4000.f;
+        opaque_forward_scene.reflection_probes = &water_default_probe;
+        auto positive_probe_center = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(positive_probe_center);
+        REQUIRE(positive_probe_center->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        std::array<float, 3> positive_probe_color{};
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            positive_probe_color[channel] = half_to_float(
+                pre_water_pixels[above_water_pixel + channel]);
+        }
+
+        water_default_probe.constants.ref_sphere[0][0] = -4000.f;
+        auto negative_probe_center = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(negative_probe_center);
+        REQUIRE(negative_probe_center->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        float water_probe_center_delta = 0.f;
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float negative = half_to_float(
+                pre_water_pixels[above_water_pixel + channel]);
+            water_probe_center_delta += std::abs(
+                positive_probe_color[channel] - negative);
+        }
+        INFO(positive_probe_color[0]);
+        INFO(positive_probe_color[1]);
+        INFO(positive_probe_color[2]);
+        INFO(water_probe_center_delta);
+        CHECK(water_probe_center_delta < 0.002f);
+        opaque_forward_scene.reflection_probes = &reflection_probes;
+
         // Viewer assets share sRGB storage even when the active bind treats
         // them as data. GL's AnisoWrap water bind suppresses decoding; Metal
         // must therefore sample the compatible raw-storage view. The same

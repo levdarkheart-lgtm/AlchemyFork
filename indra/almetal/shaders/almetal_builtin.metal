@@ -4812,7 +4812,7 @@ static float almetal_probe_weight(
 
 static float3 almetal_probe_radiance(
     int index, float3 position, float3 box_position, float3 direction,
-    float lod,
+    float lod, bool water,
     texturecube_array<float> radiance, sampler probe_sampler,
     constant ALMetalWorldReflectionProbeConstants& probes)
 {
@@ -4825,11 +4825,21 @@ static float3 almetal_probe_radiance(
     }
     else
     {
-        const float radius = probes.ref_sphere[index].w;
-        const float radius_squared = probes.ref_index[index].w < 1
-            ? 4096.0 * 4096.0 : radius * radius;
-        sample_position = almetal_probe_sphere_intersect(
-            position, direction, center, radius_squared);
+        if (water && index == 0)
+        {
+            // reflectionProbeF.glsl keeps water's default sky probe on the
+            // reflected ray. Its camera-relative centre must not introduce
+            // sphere parallax into the horizon/environment direction.
+            sample_position = center + direction;
+        }
+        else
+        {
+            const float radius = probes.ref_sphere[index].w;
+            const float radius_squared = probes.ref_index[index].w < 1
+                ? 4096.0 * 4096.0 : radius * radius;
+            sample_position = almetal_probe_sphere_intersect(
+                position, direction, center, radius_squared);
+        }
     }
     const float3x3 environment = float3x3(
         probes.env_matrix[0].xyz,
@@ -4864,7 +4874,7 @@ static void almetal_legacy_probe_tap(
         index, position, box_position, distance_weight, probes);
     const float3 color = almetal_probe_radiance(
         index, position, box_position, direction,
-        0.0, radiance, probe_sampler, probes);
+        0.0, false, radiance, probe_sampler, probes);
     if (clamp(abs(probes.ref_index[index].w), 0, 1) == 0)
     {
         sums.automatic_color += color * weight;
@@ -5101,13 +5111,13 @@ static void almetal_base_probe_tap(
     {
         sums.gloss[family] += almetal_probe_radiance(
             index, position, box_position, gloss_direction, gloss_lod,
-            radiance, probe_sampler, probes) * weight;
+            false, radiance, probe_sampler, probes) * weight;
     }
     if (sample_legacy)
     {
         sums.legacy[family] += almetal_probe_radiance(
             index, position, box_position, legacy_direction, 0.0,
-            radiance, probe_sampler, probes) * weight;
+            false, radiance, probe_sampler, probes) * weight;
     }
     sums.weight[family] += weight;
     sums.distance_weight[family] += distance_weight;
@@ -6647,7 +6657,7 @@ static void almetal_water_probe_tap(
         clamp(abs(probes.ref_index[index].w), 0, 1) == 0 ? 0u : 1u;
     sums.gloss[family] += almetal_probe_radiance(
         index, position, box_position, gloss_direction, gloss_lod,
-        radiance, probe_sampler, probes) * weight;
+        true, radiance, probe_sampler, probes) * weight;
     sums.weight[family] += weight;
     sums.distance_weight[family] += distance_weight;
 }
