@@ -10763,6 +10763,52 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
             &error));
         INFO(error);
         CHECK(unbuilt_light_pixels[light_center + 0] == 255);
+
+        // Shadow storage retains GL row order: row zero is the lower row for
+        // both a GL mirror upload and a native caster render. An asymmetric
+        // cascade makes a second Y inversion in the Metal consumer visible.
+        // The lower half shadows a receiver mapped to v=0.25, while the same
+        // receiver moved to the upper half at v=0.75 is fully lit.
+        std::array<float, 8 * 8> lower_rows_shadowed = fully_lit_depth;
+        for (std::size_t y = 0; y < 4; ++y)
+        {
+            std::fill_n(lower_rows_shadowed.begin() + y * 8, 8, 0.25f);
+        }
+        auto asymmetric_shadow_upload = device->makeCommandBuffer(
+            "Alchemy asymmetric directional-shadow upload", &error);
+        INFO(error);
+        REQUIRE(asymmetric_shadow_upload);
+        REQUIRE(world_shadow_texture->upload(
+            *asymmetric_shadow_upload, 0, 0, {},
+            lower_rows_shadowed.data(), 8 * sizeof(float), &error));
+        REQUIRE(asymmetric_shadow_upload->commitAndWait(&error));
+        INFO(error);
+
+        world_shadows.constants.config[1] = 0xeu;
+        world_shadows.constants.shadow_matrix[0][13] = 0.25f;
+        auto lower_shadow_light_map = renderer->renderLightMap(
+            light_map_scene, &error);
+        INFO(error);
+        REQUIRE(lower_shadow_light_map);
+        std::array<std::uint8_t, 32 * 32 * 2> lower_shadow_pixels{};
+        REQUIRE(lower_shadow_light_map->colorTexture(0)->readback(
+            *device, 0, 0, {}, lower_shadow_pixels.data(), 32 * 2,
+            &error));
+        INFO(error);
+        CHECK(lower_shadow_pixels[light_center + 0] == 0);
+
+        world_shadows.constants.shadow_matrix[0][13] = 0.75f;
+        auto upper_lit_light_map = renderer->renderLightMap(
+            light_map_scene, &error);
+        INFO(error);
+        REQUIRE(upper_lit_light_map);
+        std::array<std::uint8_t, 32 * 32 * 2> upper_lit_pixels{};
+        REQUIRE(upper_lit_light_map->colorTexture(0)->readback(
+            *device, 0, 0, {}, upper_lit_pixels.data(), 32 * 2,
+            &error));
+        INFO(error);
+        CHECK(upper_lit_pixels[light_center + 0] == 255);
+
         light_map_scene.directional_shadows = nullptr;
         light_map_scene.constants.config[1] = 0;
 

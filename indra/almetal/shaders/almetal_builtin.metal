@@ -6123,11 +6123,12 @@ static float almetal_shadow_depth(
 {
     const int2 bounded = clamp(
         texel, int2(0), int2(resolution) - int2(1));
-    // glGetTexImage's first row is GL's lower row; Metal's first uploaded row
-    // is its upper row. Address in GL texel space and invert only at read.
-    const uint2 metal_texel = uint2(
-        uint(bounded.x), resolution.y - 1u - uint(bounded.y));
-    return shadow_maps.read(metal_texel, cascade).r;
+    // Both the GL mirror upload and native caster pass retain GL's raw row
+    // order: Metal storage row zero contains the GL lower row. The shadow
+    // matrices also produce GL texel coordinates, so address that retained
+    // row directly. Flipping here would invert every shadow map a second
+    // time after the producer has already established row-order parity.
+    return shadow_maps.read(uint2(bounded), cascade).r;
 }
 
 static float almetal_shadow_compare(
