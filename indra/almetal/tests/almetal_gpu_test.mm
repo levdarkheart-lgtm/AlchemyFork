@@ -17862,9 +17862,22 @@ TEST_CASE("almetal: world final presentation owns the complete print chain", "[a
             reference_pixels[pixel * 4 + 2] = 80u;
             reference_pixels[pixel * 4 + 3] = 63u;
         }
-        auto reference = make_source(
+        auto reference_source = make_source(
             ALMetalPixelFormat::rgba8_unorm, reference_pixels.data(),
             width * 4, "Alchemy final-presentation reference still");
+        auto reference = renderer->capturePresentationReference(
+            *reference_source, &error);
+        INFO(error);
+        REQUIRE(reference);
+        CHECK(reference->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba8_unorm);
+        std::array<std::uint8_t, width * height * 4>
+            captured_reference_pixels{};
+        REQUIRE(reference->colorTexture(0)->readback(
+            *device, 0, 0, {}, captured_reference_pixels.data(),
+            width * 4, &error));
+        INFO(error);
+        CHECK(captured_reference_pixels == reference_pixels);
         ALMetalWorldPresentationScene reference_scene = flat_scene;
         reference_scene.reference_texture = reference->colorTexture(0);
         reference_scene.reference_mode = 1;
@@ -17938,6 +17951,11 @@ TEST_CASE("almetal: world final presentation owns the complete print chain", "[a
         error.clear();
         CHECK_FALSE(renderer->renderPresentationPost(invalid, &error));
         CHECK(error == "Metal world presentation source is incompatible");
+        error.clear();
+        CHECK_FALSE(renderer->capturePresentationReference(
+            *half_source, &error));
+        CHECK(error ==
+              "Metal world presentation-reference source is incompatible");
     }
 }
 

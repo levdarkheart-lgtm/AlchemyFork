@@ -53,7 +53,7 @@ REQUIRED_INVARIANTS = {
 }
 REPO_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_.-])"
-    r"((?:tools/metal|docs/metal|\.agents)"
+    r"((?:tools/metal|docs/metal|\.agents|benchmarks)"
     r"(?:/[A-Za-z0-9_.-]+)+)"
 )
 SCRIPT_PATH_RE = re.compile(
@@ -100,7 +100,10 @@ def validate_live_references(root: Path, documents=LIVE_DOCUMENTS):
                 errors.append(f"Stale Markdown link in {relative}: {target}")
         for match in REPO_PATH_RE.finditer(content):
             target = match.group(1)
-            if not (root / target).exists():
+            candidate = ((document.parent / target).resolve()
+                         if target.startswith("benchmarks/")
+                         else root / target)
+            if not candidate.exists():
                 errors.append(f"Stale repository path in {relative}: {target}")
         for match in SCRIPT_PATH_RE.finditer(content):
             target = match.group(1)

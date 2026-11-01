@@ -424,6 +424,22 @@ class HarnessTests(unittest.TestCase):
             errors = module.validate_live_references(root, ["AGENTS.md"])
             self.assertTrue(any("verify-app.sh" in error for error in errors))
 
+    def test_stale_document_relative_repository_path_is_rejected(self):
+        module = load("validate_harness")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            skill = root / ".agents/skills/example/SKILL.md"
+            skill.parent.mkdir(parents=True)
+            skill.write_text(
+                "Read `benchmarks/scenarios.json`.\n", encoding="utf-8"
+            )
+            errors = module.validate_live_references(
+                root, [".agents/skills/example/SKILL.md"]
+            )
+            self.assertTrue(any(
+                "benchmarks/scenarios.json" in error for error in errors
+            ))
+
     def test_referenced_command_must_be_executable(self):
         module = load("validate_harness")
         with tempfile.TemporaryDirectory() as d:

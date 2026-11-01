@@ -1511,6 +1511,14 @@ public:
         const ALMetalWorldDisplayPostScene& scene,
         std::string* error = nullptr);
 
+    // Freeze the exact post-AA/CAS display source consumed by the final
+    // presentation pass. The copy stays on the GPU and joins an active
+    // command batch, so a reference is never published from a transaction
+    // whose later presentation or UI owner failed.
+    std::unique_ptr<ALMetalRenderTarget> capturePresentationReference(
+        const ALMetalRenderTarget& source,
+        std::string* error = nullptr);
+
     // Apply the final lens/print/reference family as one display-space pass.
     // Standalone CAS remains the preceding owner, so this method never hides
     // an extra sharpen transaction or changes the scope measurement boundary.

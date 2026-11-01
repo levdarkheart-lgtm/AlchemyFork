@@ -7845,6 +7845,56 @@ ALMetalWorldGBufferRenderer::renderDisplayPost(
 }
 
 std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::capturePresentationReference(
+    const ALMetalRenderTarget& source,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device)
+    {
+        setError(error, "Metal world presentation-reference renderer is unavailable");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& input = source.descriptor();
+    const bool color_format = input.color_attachment_count == 1 &&
+        (input.colors[0].format == ALMetalPixelFormat::rgb10a2_unorm ||
+         input.colors[0].format == ALMetalPixelFormat::rgba8_unorm);
+    const ALMetalTexture* input_texture = source.colorTexture(0);
+    if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
+        !color_format || !sampleableTexture(input_texture))
+    {
+        setError(error, "Metal world presentation-reference source is incompatible");
+        return nullptr;
+    }
+
+    ALMetalRenderTargetDescriptor descriptor;
+    descriptor.width = input.width;
+    descriptor.height = input.height;
+    descriptor.colors[0].format = input.colors[0].format;
+    descriptor.colors[0].label =
+        "Alchemy native final-presentation reference color";
+    descriptor.label = "Alchemy native final-presentation reference target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native final-presentation reference capture",
+        owned_command, error);
+    const bool copied = command && output->copyColorFrom(
+        *command, 0, *input_texture, {}, error);
+    if (!mImpl->finishCommandBuffer(owned_command, copied, error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderPresentationPost(
     const ALMetalWorldPresentationScene& scene,
     std::string* error)

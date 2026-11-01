@@ -5,7 +5,7 @@ description: Validate and optimize the Metal-native Alchemy viewer on real Apple
 
 # Native GPU evidence
 
-Read `docs/metal/VALIDATION.md`, `PERFORMANCE.md`, `APPLE_SILICON.md`, and `benchmarks/scenarios.json`.
+Read `docs/metal/VALIDATION.md`, `PERFORMANCE.md`, `APPLE_SILICON.md`, and `docs/metal/benchmarks/scenarios.json`.
 
 1. Inspect real Mac GPU/Metal capability with `tools/metal/doctor.sh`; identify device/system/build configuration. Do not use benchmarks from a different machine as M1 Max evidence.
 2. For every scenario, keep source SHAs, quality, camera, avatar density, region/environment, texture cache state, power and display settings comparable. Run repeated warmup and >=300 measured frames per variant per scene. Collect real telemetry and save raw local data under ignored `artifacts/metal/`.

@@ -487,6 +487,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> opaque_post_deferred_target;
     std::unique_ptr<ALMetalRenderTarget> display_post_target;
     U32 display_post_frame = std::numeric_limits<U32>::max();
+    // Persistent post-AA/CAS display-space still. Unlike the per-frame post
+    // targets above and below, this lives until the Lightbox clears it or the
+    // source dimensions/format change.
+    std::unique_ptr<ALMetalRenderTarget> reference_still_target;
     std::unique_ptr<ALMetalRenderTarget> presentation_target;
     U32 presentation_frame = std::numeric_limits<U32>::max();
     // Complete world + ordered UI output. This remains offscreen until the
@@ -5410,6 +5414,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 std::string display_error;
                 bool display_post_available = false;
                 bool final_presentation_available = false;
+                std::unique_ptr<ALMetalRenderTarget>
+                    pending_reference_still;
                 auto display_target =
                     capture.renderer->renderDisplayPost(
                         display, &display_error);
@@ -5530,6 +5536,50 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         capture.display_post_frame = gFrameCount;
                         display_post_available = true;
 
+                        const ALMetalRenderTargetDescriptor& display_desc =
+                            capture.display_post_target->descriptor();
+                        if (capture.reference_still_target)
+                        {
+                            const ALMetalRenderTargetDescriptor& still_desc =
+                                capture.reference_still_target->descriptor();
+                            if (still_desc.width != display_desc.width ||
+                                still_desc.height != display_desc.height ||
+                                still_desc.colors[0].format !=
+                                    display_desc.colors[0].format)
+                            {
+                                capture.reference_still_target.reset();
+                            }
+                        }
+
+                        // Freeze the same post-AA/CAS source as the GL
+                        // captureReferenceStill boundary. Keep the request
+                        // set for GL while it remains authoritative; the
+                        // native copy publishes only after this command
+                        // transaction commits.
+                        const bool wants_reference_capture =
+                            mReferenceStillWanted && !cutout_snapshot;
+                        if (wants_reference_capture)
+                        {
+                            // GL will replace its still later in this frame.
+                            // From this point the old native still can never
+                            // be an exact peer again, even if the new native
+                            // copy or the enclosing command batch fails.
+                            capture.reference_still_target.reset();
+                            std::string reference_error;
+                            pending_reference_still =
+                                capture.renderer->
+                                    capturePresentationReference(
+                                        *capture.display_post_target,
+                                        &reference_error);
+                            if (!pending_reference_still)
+                            {
+                                LL_WARNS("Metal")
+                                    << "Native presentation-reference "
+                                       "capture retained GL: "
+                                    << reference_error << LL_ENDL;
+                            }
+                        }
+
                         // The display-post target is the same RGB10_A2 source
                         // measured by the scopes. The window/UI transaction,
                         // however, needs the final linear-storage BGRA8 image
@@ -5542,7 +5592,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             capture.display_post_target.get();
                         const bool suppress_effects =
                             suppressesLensAndPrintEffects();
-                        bool exact_presentation = true;
+                        bool exact_presentation =
+                            !wants_reference_capture ||
+                            static_cast<bool>(pending_reference_still);
 
                         static LLCachedControl<F32> distort_amount(
                             gSavedSettings, "RenderLensDistortionAmount",
@@ -5737,19 +5789,25 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         static LLCachedControl<F32> reference_position(
                             gSavedSettings,
                             "RenderReferenceWipePosition", 0.5f);
+                        const ALMetalTexture* reference_texture =
+                            pending_reference_still
+                                ? pending_reference_still->colorTexture(0)
+                                : capture.reference_still_target
+                                    ? capture.reference_still_target->
+                                        colorTexture(0)
+                                    : nullptr;
+                        const bool have_reference =
+                            hasReferenceStill() || reference_texture;
                         const S32 wipe_mode =
-                            hasReferenceStill() && !suppress_effects
+                            have_reference && !suppress_effects
                                 ? llclamp(reference_mode(), 0, 2) : 0;
+                        presentation.reference_texture = reference_texture;
                         presentation.reference_mode =
                             static_cast<U32>(wipe_mode);
                         presentation.reference_position = llclamp(
                             reference_position(), 0.f, 1.f);
-                        // The established reference still is GL-owned. Until
-                        // that optional service has a coherent native mirror,
-                        // an active wipe keeps final native presentation
-                        // fail closed instead of showing the wrong picture.
                         exact_presentation = exact_presentation &&
-                            wipe_mode == 0;
+                            (wipe_mode == 0 || reference_texture);
 
                         const bool world_ui_transaction_eligible =
                             capture.world_ui_chain_snapshot ||
@@ -5809,6 +5867,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         capture.bloom_target.reset();
                         capture.bloom_frame =
                             std::numeric_limits<U32>::max();
+                        pending_reference_still.reset();
                         display_post_available = false;
                         final_presentation_available = false;
                         if (committing_opaque_post)
@@ -5838,6 +5897,11 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     }
                     post_batch_active = false;
                     opaque_post_batch_active = false;
+                }
+                if (pending_reference_still)
+                {
+                    capture.reference_still_target =
+                        std::move(pending_reference_still);
                 }
                 if (final_presentation_available)
                 {
@@ -20711,6 +20775,12 @@ void LLPipeline::clearReferenceStill()
 {
     mReferenceStill.release();
     mReferenceStillWanted = false;
+#if LL_DARWIN
+    if (mMetalWorldSimpleCapture)
+    {
+        mMetalWorldSimpleCapture->reference_still_target.reset();
+    }
+#endif
 }
 
 void LLPipeline::captureReferenceStill(LLRenderTarget* src)
@@ -20725,10 +20795,24 @@ void LLPipeline::captureReferenceStill(LLRenderTarget* src)
     // cannot trust geometrically is worse than no reference at all. Drop it
     // and let the user grab again -- which is what a resize does to every
     // other full-resolution target here anyway.
+    const bool had_reference_still = mReferenceStill.getWidth() != 0;
     if (mReferenceStill.getWidth() != src->getWidth() ||
         mReferenceStill.getHeight() != src->getHeight())
     {
         mReferenceStill.release();
+#if LL_DARWIN
+        if (had_reference_still && mMetalWorldSimpleCapture)
+        {
+            const auto& native_still =
+                mMetalWorldSimpleCapture->reference_still_target;
+            if (native_still &&
+                (native_still->descriptor().width != src->getWidth() ||
+                 native_still->descriptor().height != src->getHeight()))
+            {
+                mMetalWorldSimpleCapture->reference_still_target.reset();
+            }
+        }
+#endif
     }
 
     if (!mReferenceStillWanted)
@@ -20750,6 +20834,12 @@ void LLPipeline::captureReferenceStill(LLRenderTarget* src)
         {
             LL_WARNS("Pipeline") << "Could not allocate the reference still target." << LL_ENDL;
             mReferenceStill.release();
+#if LL_DARWIN
+            if (mMetalWorldSimpleCapture)
+            {
+                mMetalWorldSimpleCapture->reference_still_target.reset();
+            }
+#endif
             return;
         }
     }
