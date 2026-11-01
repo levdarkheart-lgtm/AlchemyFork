@@ -4857,6 +4857,167 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(debug_point_pixels == opaque_forward_pixels);
         CHECK(debug_point_depth == opaque_forward_depth);
 
+        // Develop > Composition is a fixed 261x261 current-region grid.
+        // Only its live heights are uploaded; the Metal vertex stage derives
+        // the original x/y loop order plus the 0..255 blue interior and
+        // 256..260 red border. It inherits read/write world depth.
+        std::vector<float> composition_debug_heights(
+            AL_METAL_COMPOSITION_DEBUG_POINT_COUNT, 0.f);
+        opaque_forward_scene.composition_debug_heights =
+            composition_debug_heights.data();
+        opaque_forward_scene.composition_debug_height_count =
+            composition_debug_heights.size();
+        constexpr float composition_grid_span = 1.4375f;
+        constexpr float composition_grid_origin = -0.71875f;
+        opaque_forward_scene.composition_debug_modelview_projection[0] =
+            composition_grid_span /
+            static_cast<float>(AL_METAL_COMPOSITION_DEBUG_EDGE - 1);
+        opaque_forward_scene.composition_debug_modelview_projection[5] =
+            composition_grid_span /
+            static_cast<float>(AL_METAL_COMPOSITION_DEBUG_EDGE - 1);
+        opaque_forward_scene.composition_debug_modelview_projection[10] =
+            1.f;
+        opaque_forward_scene.composition_debug_modelview_projection[12] =
+            composition_grid_origin;
+        opaque_forward_scene.composition_debug_modelview_projection[13] =
+            composition_grid_origin;
+        opaque_forward_scene.composition_debug_modelview_projection[15] =
+            1.f;
+
+        opaque_forward_scene.composition_debug_heights = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world composition-debug storage is invalid");
+        opaque_forward_scene.composition_debug_heights =
+            composition_debug_heights.data();
+        opaque_forward_scene.composition_debug_height_count = 1;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world composition-debug storage is invalid");
+        opaque_forward_scene.composition_debug_height_count =
+            composition_debug_heights.size();
+        opaque_forward_scene.composition_debug_modelview_projection[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world composition-debug storage is invalid");
+        opaque_forward_scene.composition_debug_modelview_projection[0] =
+            composition_grid_span /
+            static_cast<float>(AL_METAL_COMPOSITION_DEBUG_EDGE - 1);
+        composition_debug_heights[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world composition-debug height is non-finite");
+        composition_debug_heights[0] = 0.f;
+        error.clear();
+
+        auto native_composition_debug =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(native_composition_debug);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            composition_debug_pixels{};
+        std::array<float, 32 * 32> composition_debug_depth{};
+        REQUIRE(native_composition_debug->colorTexture(0)->readback(
+            *device, 0, 0, {}, composition_debug_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(native_composition_debug->depthStencilTexture()->readback(
+            *device, 0, 0, {}, composition_debug_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        const std::size_t composition_blue = (16 * 32 + 16) * 4;
+        const std::size_t composition_red = (27 * 32 + 27) * 4;
+        CHECK(composition_debug_pixels[composition_blue + 0] == 0u);
+        CHECK(composition_debug_pixels[composition_blue + 1] == 0u);
+        CHECK(composition_debug_pixels[composition_blue + 2] == 0x3c00);
+        CHECK(composition_debug_pixels[composition_blue + 3] ==
+              opaque_forward_pixels[composition_blue + 3]);
+        CHECK(composition_debug_pixels[composition_red + 0] == 0x3c00);
+        CHECK(composition_debug_pixels[composition_red + 1] == 0u);
+        CHECK(composition_debug_pixels[composition_red + 2] == 0u);
+        CHECK(composition_debug_pixels[composition_red + 3] ==
+              opaque_forward_pixels[composition_red + 3]);
+        CHECK(std::abs(
+            composition_debug_depth[16 * 32 + 16] - 0.5f) < 0.0001f);
+
+        std::fill(
+            composition_debug_heights.begin(),
+            composition_debug_heights.end(), 0.75f);
+        auto hidden_composition_debug =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(hidden_composition_debug);
+        composition_debug_pixels.fill(0xffffu);
+        composition_debug_depth.fill(-1.f);
+        REQUIRE(hidden_composition_debug->colorTexture(0)->readback(
+            *device, 0, 0, {}, composition_debug_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(hidden_composition_debug->depthStencilTexture()->readback(
+            *device, 0, 0, {}, composition_debug_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(composition_debug_pixels[composition_blue + 0] ==
+              opaque_forward_pixels[composition_blue + 0]);
+        CHECK(composition_debug_pixels[composition_blue + 1] ==
+              opaque_forward_pixels[composition_blue + 1]);
+        CHECK(composition_debug_pixels[composition_blue + 2] ==
+              opaque_forward_pixels[composition_blue + 2]);
+        CHECK(std::abs(
+            composition_debug_depth[16 * 32 + 16] -
+            opaque_forward_depth[16 * 32 + 16]) < 0.0001f);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        std::fill(
+            composition_debug_heights.begin(),
+            composition_debug_heights.end(), 0.9f);
+        auto reverse_composition_debug =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_composition_debug);
+        composition_debug_pixels.fill(0xffffu);
+        composition_debug_depth.fill(-1.f);
+        REQUIRE(reverse_composition_debug->colorTexture(0)->readback(
+            *device, 0, 0, {}, composition_debug_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(reverse_composition_debug->depthStencilTexture()->readback(
+            *device, 0, 0, {}, composition_debug_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(composition_debug_pixels[composition_blue + 0] == 0u);
+        CHECK(composition_debug_pixels[composition_blue + 1] == 0u);
+        CHECK(composition_debug_pixels[composition_blue + 2] == 0x3c00);
+        CHECK(std::abs(
+            composition_debug_depth[16 * 32 + 16] - 0.9f) < 0.0001f);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.composition_debug_heights = nullptr;
+        opaque_forward_scene.composition_debug_height_count = 0;
+        auto no_composition_debug = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_composition_debug);
+        composition_debug_pixels.fill(0xffffu);
+        composition_debug_depth.fill(-1.f);
+        REQUIRE(no_composition_debug->colorTexture(0)->readback(
+            *device, 0, 0, {}, composition_debug_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(no_composition_debug->depthStencilTexture()->readback(
+            *device, 0, 0, {}, composition_debug_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(composition_debug_pixels == opaque_forward_pixels);
+        CHECK(composition_debug_depth == opaque_forward_depth);
+
         // Develop > Agent Target emits four 0.2 m self-avatar crosshairs as
         // translucent RGB-only lines. The enclosing spatial-debug owner has
         // alpha blending enabled and inherits the display's read/write

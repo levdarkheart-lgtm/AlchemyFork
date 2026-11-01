@@ -468,6 +468,14 @@ struct ALMetalWorldDebugPointBatch
     float modelview_projection[16]{};
 };
 
+// Develop > Composition is a fixed 261-by-261 point grid. X/Y and the
+// interior-blue/border-red classification are derived from vertex_id in MSL;
+// only the live composition height needs to cross the CPU/GPU boundary.
+constexpr std::uint32_t AL_METAL_COMPOSITION_DEBUG_EDGE = 261;
+constexpr std::size_t AL_METAL_COMPOSITION_DEBUG_POINT_COUNT =
+    static_cast<std::size_t>(AL_METAL_COMPOSITION_DEBUG_EDGE) *
+    AL_METAL_COMPOSITION_DEBUG_EDGE;
+
 // One axis-aligned column in the developer far-plane projection overlay. The
 // native vertex stage expands these retained center/half-extent records into
 // the same 12 triangles as the immediate GL owner. Columns are ordered with
@@ -780,6 +788,9 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t debug_point_count = 0;
     const ALMetalWorldDebugPointBatch* debug_point_batches = nullptr;
     std::size_t debug_point_batch_count = 0;
+    const float* composition_debug_heights = nullptr;
+    std::size_t composition_debug_height_count = 0;
+    float composition_debug_modelview_projection[16]{};
     const ALMetalWorldFarPlaneOverlayColumn* far_plane_overlay_columns =
         nullptr;
     std::size_t far_plane_overlay_column_count = 0;

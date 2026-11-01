@@ -1307,6 +1307,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         debug_point_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        composition_debug_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         reflection_probe_volume_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> far_plane_overlay_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -2482,6 +2484,21 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         impl->debug_point_pipelines[hdr] = ALMetalRenderPipeline::create(
             device, debug_point_descriptor, error);
         if (!impl->debug_point_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor composition_debug_descriptor =
+            debug_point_descriptor;
+        composition_debug_descriptor.vertex_function =
+            "almetal_world_composition_debug_vertex";
+        composition_debug_descriptor.label = hdr
+            ? "Alchemy HDR world composition-debug point pipeline"
+            : "Alchemy world composition-debug point pipeline";
+        impl->composition_debug_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, composition_debug_descriptor, error);
+        if (!impl->composition_debug_pipelines[hdr])
         {
             return nullptr;
         }
@@ -10506,6 +10523,31 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             return nullptr;
         }
     }
+    if ((scene.composition_debug_height_count != 0 &&
+         !scene.composition_debug_heights) ||
+        (scene.composition_debug_height_count != 0 &&
+         scene.composition_debug_height_count !=
+             AL_METAL_COMPOSITION_DEBUG_POINT_COUNT) ||
+        scene.composition_debug_height_count >
+            std::numeric_limits<std::uint32_t>::max() ||
+        scene.composition_debug_height_count >
+            std::numeric_limits<std::size_t>::max() / sizeof(float) ||
+        (scene.composition_debug_height_count != 0 &&
+         !finiteValues(
+             scene.composition_debug_modelview_projection, 16)))
+    {
+        setError(error,
+                 "Metal world composition-debug storage is invalid");
+        return nullptr;
+    }
+    if (scene.composition_debug_height_count != 0 &&
+        !finiteValues(scene.composition_debug_heights,
+                      scene.composition_debug_height_count))
+    {
+        setError(error,
+                 "Metal world composition-debug height is non-finite");
+        return nullptr;
+    }
     if ((scene.far_plane_overlay_column_count != 0 &&
          !scene.far_plane_overlay_columns) ||
         scene.far_plane_overlay_column_count >
@@ -11742,6 +11784,26 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             *mImpl->device, descriptor, error);
         if (!debug_point_buffer || !debug_point_buffer->write(
                 0, scene.debug_points, descriptor.length, error))
+        {
+            return nullptr;
+        }
+    }
+
+    std::unique_ptr<ALMetalBuffer> composition_debug_buffer;
+    if (scene.composition_debug_height_count != 0)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = scene.composition_debug_height_count *
+                            sizeof(float);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world composition-debug heights";
+        composition_debug_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!composition_debug_buffer ||
+            !composition_debug_buffer->write(
+                0, scene.composition_debug_heights,
+                descriptor.length, error))
         {
             return nullptr;
         }
@@ -13907,6 +13969,38 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 ALMetalPrimitiveType::line, 0,
                 static_cast<std::uint32_t>(
                     scene.wind_vector_line_vertex_count),
+                1, error);
+    }
+
+    if (encoded && scene.composition_debug_height_count != 0)
+    {
+        WorldDebugBlipConstants constants{};
+        std::memcpy(
+            constants.modelview_projection,
+            scene.composition_debug_modelview_projection,
+            sizeof(constants.modelview_projection));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        encoded =
+            encoder->setDepthStencilState(
+                scene.reverse_z ? mImpl->reverse_depth.get()
+                                : mImpl->forward_depth.get(),
+                error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *mImpl->composition_debug_pipelines[
+                    scene.hdr ? 1 : 0],
+                error) &&
+            encoder->setVertexBuffer(
+                0, *composition_debug_buffer, 0, error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::point, 0,
+                static_cast<std::uint32_t>(
+                    scene.composition_debug_height_count),
                 1, error);
     }
 

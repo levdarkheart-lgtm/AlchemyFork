@@ -2003,6 +2003,29 @@ vertex ALMetalWorldDebugBlipVaryings almetal_world_wind_vector_vertex(
     return output;
 }
 
+vertex ALMetalWorldDebugBlipVaryings almetal_world_composition_debug_vertex(
+    const device float* heights [[buffer(0)]],
+    constant ALMetalWorldDebugBlipConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    constexpr uint grid_edge = 261u;
+    constexpr uint interior_edge = 256u;
+    const uint x = vertex_id / grid_edge;
+    const uint y = vertex_id - x * grid_edge;
+    float4 clip_position = constants.modelview_projection *
+        float4(float(x), float(y), heights[vertex_id], 1.0);
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldDebugBlipVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.point_size = 1.0;
+    output.color = (x >= interior_edge || y >= interior_edge)
+        ? float4(1.0, 0.0, 0.0, 1.0)
+        : float4(0.0, 0.0, 1.0, 1.0);
+    return output;
+}
+
 fragment float4 almetal_world_debug_blip_fragment(
     ALMetalWorldDebugBlipVaryings input [[stage_in]])
 {

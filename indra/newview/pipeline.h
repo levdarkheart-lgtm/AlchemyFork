@@ -385,6 +385,11 @@ public:
     void captureMetalDebugPoint(const LLVector3& position);
     void endMetalDebugPointBatch(std::size_t point_count);
     void endMetalDebugPointCapture();
+    // Retain only the live heights for Develop > Composition's fixed grid;
+    // Metal derives coordinates and red/blue classification by vertex ID.
+    void beginMetalCompositionDebugCapture(std::size_t point_count);
+    void captureMetalCompositionDebugHeight(F32 height);
+    void endMetalCompositionDebugCapture(std::size_t point_count);
     // One bounded offscreen probe connects the completed current-frame native
     // world presentation and retained depth to the real ordered UI/HUD draw
     // stream. It never changes the live surface; publication remains locked
@@ -1452,7 +1457,6 @@ public:
         // Keep this list explicit: broad mRenderDebugMask != 0 eligibility
         // silently turns text-only diagnostics into a GL world fallback.
         RENDER_DEBUG_GL_WORLD_OUTPUT =
-            RENDER_DEBUG_COMPOSITION |
             RENDER_DEBUG_BBOXES |
             RENDER_DEBUG_OCTREE |
             RENDER_DEBUG_OCCLUSION |

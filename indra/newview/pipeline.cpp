@@ -592,6 +592,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     U64 render_debug_order = 0;
     bool debug_point_capture_active = false;
     bool debug_point_batch_active = false;
+    std::vector<F32> composition_debug_heights;
+    F32 composition_debug_modelview_projection[16]{};
+    bool composition_debug_capture_active = false;
     std::vector<ALMetalWorldFarPlaneOverlayColumn> far_plane_overlay_columns;
     std::size_t far_plane_overlay_near_count = 0;
     F32 far_plane_overlay_modelview_projection[16]{};
@@ -4011,6 +4014,8 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.render_debug_order = 0;
     capture.debug_point_capture_active = false;
     capture.debug_point_batch_active = false;
+    capture.composition_debug_heights.clear();
+    capture.composition_debug_capture_active = false;
     capture.far_plane_overlay_columns.clear();
     capture.far_plane_overlay_near_count = 0;
     capture.reflection_probe_volume_valid = false;
@@ -4500,6 +4505,100 @@ void LLPipeline::endMetalDebugPointCapture()
         capture.debug_points.clear();
         capture.debug_point_batches.clear();
         capture.debug_point_batch_active = false;
+    }
+}
+
+void LLPipeline::beginMetalCompositionDebugCapture(
+    std::size_t point_count)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    if (!capture.complete || capture.composition_debug_capture_active ||
+        !capture.composition_debug_heights.empty() ||
+        point_count != AL_METAL_COMPOSITION_DEBUG_POINT_COUNT ||
+        point_count > std::numeric_limits<std::uint32_t>::max() ||
+        point_count > std::numeric_limits<std::size_t>::max() / sizeof(F32) ||
+        !LLGLState::isEnabled(GL_BLEND) ||
+        !LLGLDepthTest::depthEnabled() ||
+        !LLGLDepthTest::depthWriteEnabled() ||
+        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
+        gGL.getPointSize() != 1.f ||
+        !color_mask[0] || !color_mask[1] || !color_mask[2] || color_mask[3])
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(
+        capture.composition_debug_modelview_projection,
+        modelview_projection.getF32ptr(),
+        sizeof(capture.composition_debug_modelview_projection));
+    try
+    {
+        capture.composition_debug_heights.reserve(point_count);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.composition_debug_heights.clear();
+        return;
+    }
+    capture.composition_debug_capture_active = true;
+}
+
+void LLPipeline::captureMetalCompositionDebugHeight(F32 height)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || !capture.composition_debug_capture_active)
+    {
+        return;
+    }
+    try
+    {
+        capture.composition_debug_heights.push_back(height);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.composition_debug_heights.clear();
+        capture.composition_debug_capture_active = false;
+    }
+}
+
+void LLPipeline::endMetalCompositionDebugCapture(
+    std::size_t point_count)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.composition_debug_capture_active)
+    {
+        return;
+    }
+    capture.composition_debug_capture_active = false;
+    if (!capture.complete ||
+        point_count != AL_METAL_COMPOSITION_DEBUG_POINT_COUNT ||
+        capture.composition_debug_heights.size() != point_count)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.composition_debug_heights.clear();
     }
 }
 
@@ -5263,6 +5362,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.debug_point_batches = capture.debug_point_batches.data();
         scene.debug_point_batch_count =
             capture.debug_point_batches.size();
+        scene.composition_debug_heights =
+            capture.composition_debug_heights.data();
+        scene.composition_debug_height_count =
+            capture.composition_debug_heights.size();
+        std::memcpy(
+            scene.composition_debug_modelview_projection,
+            capture.composition_debug_modelview_projection,
+            sizeof(scene.composition_debug_modelview_projection));
         scene.far_plane_overlay_columns =
             capture.far_plane_overlay_columns.data();
         scene.far_plane_overlay_column_count =
@@ -6893,6 +7000,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.render_debug_order = 0;
     capture.debug_point_capture_active = false;
     capture.debug_point_batch_active = false;
+    capture.composition_debug_heights.clear();
+    capture.composition_debug_capture_active = false;
     capture.far_plane_overlay_columns.clear();
     capture.far_plane_overlay_near_count = 0;
     capture.reflection_probe_volume_valid = false;
@@ -19675,6 +19784,14 @@ void LLPipeline::renderDebug()
 
         if (gAgent.getRegion())
         {
+#if LL_DARWIN
+            const bool capture_composition_debug = !hud_only;
+            if (capture_composition_debug)
+            {
+                beginMetalCompositionDebugCapture(
+                    AL_METAL_COMPOSITION_DEBUG_POINT_COUNT);
+            }
+#endif
             gGL.begin(LLRender::POINTS);
             // Draw the composition layer for the region that I'm in.
             for (x = 0; x <= 260; x++)
@@ -19692,10 +19809,23 @@ void LLPipeline::renderDebug()
                     F32 z = gAgent.getRegion()->getCompositionXY((S32)x, (S32)y);
                     z *= 5.f;
                     z += 50.f;
+#if LL_DARWIN
+                    if (capture_composition_debug)
+                    {
+                        captureMetalCompositionDebugHeight(z);
+                    }
+#endif
                     gGL.vertex3f(x, y, z);
                 }
             }
             gGL.end();
+#if LL_DARWIN
+            if (capture_composition_debug)
+            {
+                endMetalCompositionDebugCapture(
+                    AL_METAL_COMPOSITION_DEBUG_POINT_COUNT);
+            }
+#endif
         }
     }
 
