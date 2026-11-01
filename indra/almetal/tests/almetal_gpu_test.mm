@@ -9639,6 +9639,117 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         CHECK(windlight_normal[outside + 2] == 0);
         CHECK(windlight_normal[outside + 3] == 0);
 
+        // Fetched viewer optics use sRGB backing even though the GL sky binds
+        // them as raw data with AnisoWrap.  The same encoded rainbow/halo
+        // bytes in linear and sRGB storage must therefore produce identical
+        // asymmetric dome and sky-behind output.  Sampling the default sRGB
+        // view would decode before rainbow's pow and visibly darken the sky.
+        auto encoded_rainbow = make_texture(
+            ALMetalPixelFormat::rgba8_unorm_srgb,
+            "Alchemy WindLight encoded rainbow optic");
+        auto encoded_halo = make_texture(
+            ALMetalPixelFormat::rgba8_unorm_srgb,
+            "Alchemy WindLight encoded halo optic");
+        auto raw_rainbow = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy WindLight raw rainbow optic");
+        auto raw_halo = make_texture(
+            ALMetalPixelFormat::rgba8_unorm,
+            "Alchemy WindLight raw halo optic");
+        const std::array<std::uint8_t, 4> rainbow_optic{{
+            72, 137, 211, 255,
+        }};
+        const std::array<std::uint8_t, 4> halo_optic{{
+            193, 91, 43, 255,
+        }};
+        auto encoded_optic_upload = device->makeCommandBuffer(
+            "Alchemy WindLight encoded optic upload", &error);
+        INFO(error);
+        REQUIRE(encoded_optic_upload);
+        REQUIRE(encoded_rainbow->upload(
+            *encoded_optic_upload, 0, 0, {}, rainbow_optic.data(), 4,
+            &error));
+        REQUIRE(raw_rainbow->upload(
+            *encoded_optic_upload, 0, 0, {}, rainbow_optic.data(), 4,
+            &error));
+        REQUIRE(encoded_halo->upload(
+            *encoded_optic_upload, 0, 0, {}, halo_optic.data(), 4,
+            &error));
+        REQUIRE(raw_halo->upload(
+            *encoded_optic_upload, 0, 0, {}, halo_optic.data(), 4,
+            &error));
+        REQUIRE(encoded_optic_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldWindLightSkyScene optic_scene = windlight_scene;
+        std::fill(std::begin(optic_scene.constants.blue_horizon),
+                  std::end(optic_scene.constants.blue_horizon), 0.f);
+        optic_scene.constants.optics[0] = 0.35f;
+        optic_scene.constants.optics[1] = 17.f;
+        optic_scene.constants.optics[2] = 0.2f;
+        optic_scene.rainbow_texture = raw_rainbow.get();
+        optic_scene.halo_texture = raw_halo.get();
+        auto raw_optic_gbuffer = renderer->render(gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(raw_optic_gbuffer);
+        REQUIRE(renderer->compositeWindLightSky(
+            *raw_optic_gbuffer, optic_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> raw_optic_pixels{};
+        REQUIRE(raw_optic_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, raw_optic_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+
+        optic_scene.rainbow_texture = encoded_rainbow.get();
+        optic_scene.halo_texture = encoded_halo.get();
+        auto encoded_optic_gbuffer = renderer->render(
+            gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(encoded_optic_gbuffer);
+        REQUIRE(renderer->compositeWindLightSky(
+            *encoded_optic_gbuffer, optic_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> encoded_optic_pixels{};
+        REQUIRE(encoded_optic_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, encoded_optic_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(encoded_optic_pixels[outside + channel] ==
+                  raw_optic_pixels[outside + channel]);
+        }
+        CHECK(raw_optic_pixels[outside + 0] > 0);
+        CHECK(raw_optic_pixels[outside + 1] > 0);
+        CHECK(raw_optic_pixels[outside + 2] > 0);
+
+        optic_scene.rainbow_texture = raw_rainbow.get();
+        optic_scene.halo_texture = raw_halo.get();
+        auto raw_optic_sky_behind = renderer->renderWindLightSkyBehind(
+            optic_scene, &error);
+        INFO(error);
+        REQUIRE(raw_optic_sky_behind);
+        optic_scene.rainbow_texture = encoded_rainbow.get();
+        optic_scene.halo_texture = encoded_halo.get();
+        auto encoded_optic_sky_behind =
+            renderer->renderWindLightSkyBehind(optic_scene, &error);
+        INFO(error);
+        REQUIRE(encoded_optic_sky_behind);
+        std::array<std::uint8_t, 16 * 16 * 4>
+            raw_optic_sky_behind_pixels{};
+        std::array<std::uint8_t, 16 * 16 * 4>
+            encoded_optic_sky_behind_pixels{};
+        REQUIRE(raw_optic_sky_behind->colorTexture(0)->readback(
+            *device, 0, 0, {}, raw_optic_sky_behind_pixels.data(),
+            16 * 4, &error));
+        REQUIRE(encoded_optic_sky_behind->colorTexture(0)->readback(
+            *device, 0, 0, {}, encoded_optic_sky_behind_pixels.data(),
+            16 * 4, &error));
+        INFO(error);
+        CHECK(raw_optic_sky_behind_pixels ==
+              encoded_optic_sky_behind_pixels);
+
         auto windlight_sky_behind =
             renderer->renderWindLightSkyBehind(
                 windlight_scene, &error);

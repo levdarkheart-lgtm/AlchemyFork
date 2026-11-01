@@ -13022,8 +13022,14 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightSky(
         encoder->setCullMode(ALMetalCullMode::none, error) &&
         encoder->setDepthStencilState(depth, error) &&
         encoder->setPipeline(*pipeline, error) &&
-        encoder->setFragmentTexture(0, scene.rainbow_texture, error) &&
-        encoder->setFragmentTexture(1, scene.halo_texture, error) &&
+        // GL binds both fetched optics maps with AnisoWrap, not the colour
+        // AnisoWrapSRGB variant.  Fetched RGBA assets still have sRGB Metal
+        // storage, so sample the compatible raw-storage views to preserve the
+        // bytes consumed by skyF.glsl before its explicit pow/additive math.
+        encoder->setFragmentTextureLinear(
+            0, scene.rainbow_texture, error) &&
+        encoder->setFragmentTextureLinear(
+            1, scene.halo_texture, error) &&
         encoder->setFragmentSampler(
             0, mImpl->diffuse_sampler.get(), error);
 
@@ -13173,8 +13179,11 @@ ALMetalWorldGBufferRenderer::renderWindLightSkyBehind(
         encoder->setPipeline(
             *mImpl->windlight_sky_behind_pipelines[scene.hdr ? 1 : 0],
             error) &&
-        encoder->setFragmentTexture(0, scene.rainbow_texture, error) &&
-        encoder->setFragmentTexture(1, scene.halo_texture, error) &&
+        // Match the main WindLight dome and GL's raw AnisoWrap optics reads.
+        encoder->setFragmentTextureLinear(
+            0, scene.rainbow_texture, error) &&
+        encoder->setFragmentTextureLinear(
+            1, scene.halo_texture, error) &&
         encoder->setFragmentSampler(
             0, mImpl->diffuse_sampler.get(), error);
 
