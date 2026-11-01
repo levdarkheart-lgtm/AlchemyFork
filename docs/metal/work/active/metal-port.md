@@ -16,10 +16,10 @@ checkpoint detail belongs in the indexed archive.
 | M-003 | Native drawable, presentation and lifecycle | doing | Authenticated exact publication and clean lifecycle are observed; preserve while advanced families are validated. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Core typed resource paths have physical coverage; remaining advanced/media matrices stay open. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
-| M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent now replays through ordered static/rigged HUD capture. Moving CEF/VLC reference parity remains open. |
-| M-007 | World scene and material correctness | doing | The active transparency/material shader audit found no valid-production divergence; static/rigged Highlight Transparent world output is now native. Broader live alpha/material/reference coverage remains incomplete. |
-| M-008 | Advanced views/effects and compute | doing | Highlight Transparent and object-update blips are native. OSS pathfinding is a nonfunctional stub, not a reachable owner. Continue reachable render-debug/shadows/post/output parity. |
-| M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. Reachable render-debug, wireframe, probe-volume and far-plane owners stay fail-closed pending audit/porting. |
+| M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent replays through ordered static/rigged HUD capture. Moving CEF/VLC reference parity remains open. |
+| M-007 | World scene and material correctness | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence. Broader live parity remains incomplete. |
+| M-008 | Advanced views/effects and compute | doing | Highlight Transparent, object-update blips and far-plane projection overlay are native. OSS pathfinding is a nonfunctional stub. Continue reachable render-debug/shadows/post/output parity. |
+| M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. General render-debug, wireframe and probe-volume owners stay fail-closed pending audit/porting. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Exact-path semantic login/in-world/control/logout is verified and used for current acceptance. |
@@ -30,67 +30,51 @@ item; it never implies product completion.
 
 ## Active checkpoint — 2026-11-01
 
-Commit `b328cba4b6` replaces the reachable developer **Show Updates to
-Objects** fallback with native Metal replay. Capture occurs in
-`LLPipeline::renderDebug()` after the authoritative age and Z-motion update.
-The retained world pass appends eight-pixel colored points after Highlight
-Transparent and before display post, preserving the GL owner's RGB-only color
-mask, always-pass depth test, depth write and white-texture behavior. Dedicated
-HDR/non-HDR pipelines match attachment formats. Bad allocation, missing
-storage, nonfinite data or invalid transforms fail the native transaction
-closed; the migration GL draw is unchanged. The capture also fixes the existing
-expired-blip use-after-erase by continuing immediately after erase.
+Commit `c7e82c20bd` replaces the reachable Develop far-plane projection overlay
+fallback with native Metal replay. Capture occurs inside
+`ALFarPlaneOverlay::render()` only after the authoritative GL overlay target is
+successfully allocated. It preserves the live model-view-projection matrix and
+all 18 `ALFarPlane::overlayColumns()` records, grouped in the same nearer-orange
+then farther-cyan order as the source owner.
 
-The post-`daa19101a9` source/link audit corrected the pathfinding reachability
-claim. The current ARM64 OSS target links only `llphysicsextensionsos`.
-`LLPathingLib::isFunctional()` is hard-false, initialization returns
-`LLPL_NOT_IMPLEMENTED`, and `getInstance()` remains null. The checked-in render
-bodies therefore cannot contribute viewer output; recreating the missing
-proprietary implementation is outside OpenGL-owner removal. Its eligibility
-bit stays as a harmless future-extension guard. Existing general render-debug,
-wireframe, reflection-probe-volume and far-plane guards retain their behavior.
+The native renderer expands each retained center/half-extent record to the same
+12 box triangles, applies the existing viewport-Y and GL-depth conversion, and
+depth-tests into a private RGBA8/depth32-stencil8 target. Forward and reverse Z
+use their matching compare/clear conventions. The result composites after
+Highlight Transparent and object-update blips with point sampling, source-alpha
+RGB blending, RGB-only writes and an always/no-write scene-depth state. Thus
+destination alpha and retained scene depth remain untouched. HDR and non-HDR
+pipelines match output formats. The private target is reused at a stable size
+and released when inactive.
 
-Prior commit `8361addd0f` repairs a reachable publication omission in
-`LLDrawPoolAlpha::renderDebugAlpha()`. Highlight Transparent draws occur after
-the retained native world replay and, for HUD attachments, during ordered UI
-capture. The prior native eligibility accounting did not consume either draw,
-so a Metal-published frame could omit the feature while the migration GL frame
-showed it.
+Invalid counts, missing storage, an inconsistent nearer/farther partition,
+nonfinite transforms/data, invalid homogeneous extents/colors, allocation
+failure or duplicate capture rejects native authority. The migration GL owner
+is unchanged. Only after this native replay was physically verified was the
+far-plane eligibility veto removed.
 
-The capture now occurs after each successful model/skin setup and preserves the
-smoke texture, texture/model-view-projection matrices, classification color and
-avatar skin palette. World replay has static/rigged and alpha-write/RGB-only
-pipeline variants; the diagnostic uses RGB-only output so underlying glow and
-coverage alpha survive. Ordered HUD replay preserves live blend, depth, cull,
-sampler, viewport and color-mask state. Invalid geometry, textures or skinning
-rejects native authority; existing GL draws are unchanged.
+Prior native owners remain integrated: object-update blips and static/rigged
+world/HUD Highlight Transparent. The linked OSS pathfinding implementation is a
+hard-disabled stub and cannot emit retained output. Remaining fail-closed
+advanced owners are general render-debug output, wireframe and reflection-probe-
+volume visualization. The bounded reflection-probe production-call audit is
+closed without a speculative edit because its extra Metal bounds checks do not
+alter valid viewer-produced data.
 
-This core editing/diagnostic output happens to be permission-gated by RLVa, but
-the renderer repair is not an exact-RLVa-parity expansion. M-013 remains the
-owner-designated nice-to-have. Only minimum RLVa behavior required for Metal/
-no-GL cutover stays on the release path.
+Focused physical RelWithDebInfo replay passes 1,424 assertions under Metal API/
+GPU/load-store/shader validation. Complete RelWithDebInfo, Debug and Release
+suites each pass 45,073 assertions/52 cases under the same validators. The
+neutral gate passes 484/484 in 245.18 seconds. Warnings-as-errors builds cover
+all three configurations; the full Debug and source-exact Release viewers link
+and stage.
 
-The preceding bounded production audit compared active legacy-material and PBR
-alpha equations, cutoffs, data/color sampling, specular AA, shadow/probe/SSR/
-hero inputs, glare coverage, fog, local lights, blend state and glow. It found
-no reachable difference for valid viewer-produced data, so no speculative
-shader change was made.
-
-Focused physical RelWithDebInfo world replay passes 1,385 assertions under
-Metal API/GPU/load-store/shader validation, including exact asymmetric blip
-footprints, centers, RGB-only alpha preservation, 0.5 depth writes, untouched
-background and invalid-input rejection. Complete RelWithDebInfo, Debug and
-Release suites each pass 45,035 assertions/52 cases. The neutral gate passes
-484/484 in 244.24 seconds. Warnings-as-errors RelWithDebInfo/Debug/Release Metal
-and pipeline objects plus the full Release viewer compile and link.
-
-Source-exact Development `26.4.0d68040` at `b328cba4b6` stages and signs. Deep
+Source-exact Development `26.4.0d68042` at `c7e82c20bd` stages and signs. Deep
 strict signing and 349/349 ARM64 inspection pass. Executable SHA-256 is
-`fcba555e47abed64eedafa6f60f5b577104ffeb2a8c0f1692f7e813082e82d32`;
-packaged MSL is
-`ab73e9f26014d8ec13d7e02bf78cf5e23a0f24c75337779d8db3ddd6b9d57146`;
+`080570aaed0771fca9b60044ad55f0d555601f09f24cc717f93e6df5e203c673`;
+packaged/source MSL is
+`230cb3ea57d16c378111dc2a26c614e6367363ea3052e76ad5dd03c53230f004`;
 compiled metallib is
-`7ca21604f3fe91e3755df3e034266c1cd2b4ce766b2bd31c86d2d90ba3905b30`.
+`3afd67c7bd57e5e3292b0a6dba30cf530b56f8daebdd83068448dec0e4771c0b`.
 The executable still links OpenGL during migration, so strict no-GL is open.
 
 Shadow comparison prerequisite: enable shadows in Graphics Preferences in
@@ -98,21 +82,20 @@ Shadow comparison prerequisite: enable shadows in Graphics Preferences in
 both-off control may isolate a residual but cannot close shadow parity.
 
 Any exact RLVa comparison must enable RLV in Preferences in both viewers, save,
-and restart both. Do not consume release-gate time on exact RLVa work without a
-demonstrated native-cutover blocker.
+and restart both. Exact RLVa correctness is deferred M-013; implement only the
+minimum behavior needed to unblock Metal/no-GL cutover.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** object-update blips and static/rigged world/HUD
-   Highlight Transparent are natively reproduced. OSS pathfinding is proven
-   nonfunctional rather than left as a false release target.
+1. **Product advancement:** a reachable persisted developer overlay now owns
+   its projection, depth ordering, blending and output side effects in Metal.
 2. **Deferred critical work:** remaining non-RLVa advanced output/post/shadows;
    controlled live material/editing parity; full stability/feature matrices;
    strict no-GL; independent review; and qualifying M1 Max performance
    evidence. Exact RLVa parity remains non-critical M-013.
-3. **Priority reassessment:** audit the still-reachable general render-debug,
-   wireframe, reflection-probe-volume and far-plane output, then implement the
-   smallest confirmed missing owner without broad replay or speculative edits.
+3. **Priority reassessment:** audit general render-debug, wireframe and
+   reflection-probe-volume output, then implement the smallest confirmed
+   missing owner without broad replay or speculative edits.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
@@ -120,7 +103,7 @@ signals only; none substitutes for movement toward a release criterion.
 ## Immediate executable action
 
 Trace production contribution and capture state for general render-debug,
-wireframe, reflection-probe-volume and far-plane output. Select the smallest
+wireframe and reflection-probe-volume visualization. Select the smallest
 confirmed reachable omission, implement its exact native state/order with
 asymmetric physical controls, and leave every other uncovered owner fail-closed.
 

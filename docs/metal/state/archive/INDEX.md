@@ -21,6 +21,7 @@ reload the chronological history.
 | Native static/rigged world and HUD Highlight Transparent replay, 2026-11-01 | [CURRENT-transparent-highlight-checkpoint-2026-11-01.md](CURRENT-transparent-highlight-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | Fail-closed active pathfinding and transient object-update overlay eligibility, 2026-11-01 | [CURRENT-world-overlay-eligibility-checkpoint-2026-11-01.md](CURRENT-world-overlay-eligibility-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | Native object-update blip replay and OSS pathfinding reachability correction, 2026-11-01 | [CURRENT-object-update-blips-checkpoint-2026-11-01.md](CURRENT-object-update-blips-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
+| Native far-plane projection overlay replay and source-exact build 68042, 2026-11-01 | [CURRENT-far-plane-overlay-checkpoint-2026-11-01.md](CURRENT-far-plane-overlay-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
