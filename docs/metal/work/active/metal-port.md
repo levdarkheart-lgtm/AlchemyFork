@@ -18,8 +18,8 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent replays through ordered static/rigged HUD capture. Moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence. Broader live parity remains incomplete. |
-| M-008 | Advanced views/effects and compute | doing | Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. OSS pathfinding is a nonfunctional stub. Continue reachable render-debug/shadows/post/output parity. |
-| M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. General render-debug and wireframe owners stay fail-closed pending audit/porting. |
+| M-008 | Advanced views/effects and compute | doing | Wireframe, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. OSS pathfinding is a nonfunctional stub. Continue reachable render-debug/shadows/post/output parity. |
+| M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. General render-debug output stays fail-closed pending audit/porting. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Exact-path semantic login/in-world/control/logout is verified and used for current acceptance. |
@@ -30,52 +30,46 @@ item; it never implies product completion.
 
 ## Active checkpoint — 2026-11-01
 
-Commit `28c4dca74b` replaces the persisted Develop Render Reflection Probe
-Volumes fallback with native Metal replay. Capture occurs at the authoritative
-GL draw boundary and retains the live probe-selection constants plus the
-current inverse projection. A constants-only producer intentionally avoids
-radiance/irradiance-generation dependencies because this visualization samples
-only manual probe shapes and the retained scene depth.
+Commit `23ce2f7190` replaces the global `gUseWireframe` native-presentation veto
+with exact Metal line raster ownership. The live flag is retained for main and
+reflection-probe capture; impostor bake is explicitly filled. The encoder maps
+the new fill-mode state directly to `MTLTriangleFillModeFill/Lines`.
 
-The full-screen Metal pass reconstructs eye-space position under forward or
-reverse Z, then replays the GLSL sphere and box intersection rules for manual
-probes only. Front intersections accumulate yellow; hidden intersections
-accumulate distance-faded blue. Source-alpha RGB blending and RGB-only writes
-preserve destination alpha and depth. HDR and non-HDR pipelines match the
-destination formats, and the pass is ordered after object-update blips and
-before the native far-plane overlay exactly as the observable GL owners are
-ordered when the remaining general-debug guard is clear.
+Line fill is scoped to GL-owned wireframe geometry: deferred draw-pool G-buffer
+batches; HDRI/WindLight sky, stars, heavenly bodies, meteors, aurora and clouds;
+water surfaces and patches; alpha/forward, glow, opaque and fullbright post-
+deferred batches. Full-screen coverage, haze, water exclusion and diagnostic
+overlays explicitly restore fill. This prevents raster state from leaking into
+Highlight Transparent, update blips, reflection-probe volumes or the far-plane
+overlay.
 
-Invalid probe counts, nonfinite inverse-projection or consumed shape data,
-negative sphere radii, unreadable depth, allocation failure or duplicate
-capture rejects native authority. The migration GL owner remains unchanged.
-Only after asymmetric physical proof was the reflection-probe-volume eligibility
-veto removed.
+Wireframe clears reproduce GL's pre-`GL_FRAMEBUFFER_SRGB` raw 0.5 G-buffer
+clear. The sRGB albedo attachment uses the linear decode of byte 128/255,
+`0.21586050011389926`; linear attachments use 0.5. The initial mathematical-0.5
+decode stored byte 127 and was rejected by the focused physical test before the
+correction. Tests now prove exact byte-128 clear, line-only and reduced coverage,
+untouched clear depth, line-rendered post-deferred geometry, filled highlight
+after line geometry, and line-rendered HDRI sky with untouched interior depth.
 
-Prior native owners remain integrated: the far-plane projection overlay,
-object-update blips and static/rigged world/HUD Highlight Transparent. The
-linked OSS pathfinding implementation is a hard-disabled stub and cannot emit
-retained output. Remaining reachable fail-closed advanced owners are general
-render-debug output and wireframe; the latent pathfinding guard remains. The
-bounded reflection-probe production-call audit is separately closed without a
-speculative edit because its extra Metal bounds checks do not alter valid
-viewer-produced data.
+Focused physical RelWithDebInfo cases pass 1,491 and 1,927 assertions under
+Metal API/GPU/load-store/shader validation. Complete RelWithDebInfo, Debug and
+Release suites each pass 45,147 assertions/52 cases under the same validators.
+The neutral gate passes 484/484 in 35.58 seconds. Warnings-as-errors
+RelWithDebInfo production integration and the full source-exact Release wrapper
+build both link, stage and sign.
 
-Focused physical RelWithDebInfo replay passes 1,470 assertions under Metal API/
-GPU/load-store/shader validation. Complete RelWithDebInfo, Debug and Release
-suites each pass 45,118 assertions/52 cases under the same validators. The
-neutral gate passes 484/484 in 40.46 seconds. Warnings-as-errors RelWithDebInfo
-production viewer integration and the full source-exact Release wrapper build
-both link and stage.
-
-Source-exact Development `26.4.0d68044` at `28c4dca74b` stages and signs. Deep
+Source-exact Development `26.4.0d68047` at `23ce2f7190` stages and signs. Deep
 strict signing and 349/349 ARM64 inspection pass. Executable SHA-256 is
-`4306dea5dedc006eab0017f40404985d323f224d0b40c864b54bc61f2fcc45e0`;
+`779d8233a2d62c05de54fe527ec70143ec20d36b6c09f8d6ab75bfc3baf89b18`;
 packaged/source MSL is
 `dd51886cc8cc33a8b19ac69206fed5045421c8905bb51c7d596fdeaefb467214`;
 compiled metallib is
 `b5ccb104ec22fade3cf1822595924c751128b6ca14e0ab188276890339357e58`.
 The executable still links OpenGL during migration, so strict no-GL is open.
+
+The only remaining reachable advanced-output eligibility guard is general
+render-debug output. The current OSS pathfinding implementation is a hard-
+disabled stub, so its latent guard remains but does not block normal authority.
 
 Shadow comparison prerequisite: enable shadows in Graphics Preferences in
 **both** viewers before capture. A mismatched off/on pair is invalid, and a
@@ -87,26 +81,25 @@ minimum behavior needed to unblock Metal/no-GL cutover.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** a reachable persisted advanced-output owner now
-   owns its manual sphere/box intersections, depth reconstruction, blending and
-   output side effects in Metal.
+1. **Product advancement:** a reachable global render mode now owns line/fill
+   scope, raw-clear semantics and ordered downstream state in Metal.
 2. **Deferred critical work:** remaining non-RLVa advanced output/post/shadows;
-   controlled live material/editing parity; full stability/feature matrices;
-   strict no-GL; independent review; and qualifying M1 Max performance
+   controlled live wireframe/material/editing parity; full stability/feature
+   matrices; strict no-GL; independent review; and qualifying M1 Max performance
    evidence. Exact RLVa parity remains non-critical M-013.
-3. **Priority reassessment:** audit wireframe and general render-debug output,
-   then implement the smallest confirmed missing owner without broad replay or
-   speculative edits.
+3. **Priority reassessment:** audit general render-debug output, then implement
+   the smallest confirmed missing owner without broad replay or speculative
+   edits.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Trace production contribution and capture state for wireframe and general
-render-debug output. Select the smallest confirmed reachable omission,
-implement its exact native state/order with asymmetric physical controls, retain
-the latent pathfinding guard, and leave every other uncovered owner fail-closed.
+Trace production contribution and capture state for general render-debug output.
+Select the smallest confirmed reachable omission, implement its exact native
+state/order with asymmetric physical controls, retain the latent pathfinding
+guard, and leave every other uncovered owner fail-closed.
 
 ## Non-negotiable open gates
 
