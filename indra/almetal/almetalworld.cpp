@@ -12169,11 +12169,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         encoder->setFragmentTexture(
                             static_cast<std::uint32_t>(slot),
                             batch.diffuse_textures[source], error) &&
-                        encoder->setFragmentTexture(
+                        // GLTF_DATA_SAMPLER reads these maps as raw
+                        // measurements even when a shared asset image is
+                        // sRGB-backed. Match the opaque PBR owner instead
+                        // of inheriting the image's colour decode here.
+                        encoder->setFragmentTextureLinear(
                             static_cast<std::uint32_t>(8 + slot),
                             batch.pbr_slots[source].normal_texture,
                             error) &&
-                        encoder->setFragmentTexture(
+                        encoder->setFragmentTextureLinear(
                             static_cast<std::uint32_t>(16 + slot),
                             batch.pbr_slots[source].orm_texture,
                             error) &&

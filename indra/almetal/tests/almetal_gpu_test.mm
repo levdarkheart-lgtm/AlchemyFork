@@ -3071,6 +3071,12 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *device, srgb_bump_normal_descriptor, &error);
         INFO(error);
         REQUIRE(srgb_bump_normal);
+        srgb_bump_normal_descriptor.label =
+            "Alchemy world sRGB-backed flat tangent normal";
+        auto srgb_flat_normal = ALMetalTexture::create(
+            *device, srgb_bump_normal_descriptor, &error);
+        INFO(error);
+        REQUIRE(srgb_flat_normal);
         normal_descriptor.label = "Alchemy world flat tangent normal";
         auto flat_normal = ALMetalTexture::create(
             *device, normal_descriptor, &error);
@@ -3107,6 +3113,16 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *device, pbr_orm_descriptor, &error);
         INFO(error);
         REQUIRE(pbr_orm_texture);
+        ALMetalTextureDescriptor srgb_pbr_orm_descriptor =
+            pbr_orm_descriptor;
+        srgb_pbr_orm_descriptor.format =
+            ALMetalPixelFormat::rgba8_unorm_srgb;
+        srgb_pbr_orm_descriptor.label =
+            "Alchemy world sRGB-backed PBR ORM";
+        auto srgb_pbr_orm_texture = ALMetalTexture::create(
+            *device, srgb_pbr_orm_descriptor, &error);
+        INFO(error);
+        REQUIRE(srgb_pbr_orm_texture);
         const std::array<std::uint8_t, 4> pbr_orm_pixel{{
             128, 128, 64, 255,
         }};
@@ -3141,6 +3157,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             *upload, 0, 0, {}, bump_normal_pixel.data(), 4, &error));
         REQUIRE(srgb_bump_normal->upload(
             *upload, 0, 0, {}, bump_normal_pixel.data(), 4, &error));
+        REQUIRE(srgb_flat_normal->upload(
+            *upload, 0, 0, {}, flat_normal_pixel.data(), 4, &error));
         REQUIRE(flat_normal->upload(
             *upload, 0, 0, {}, flat_normal_pixel.data(), 4, &error));
         REQUIRE(emboss_bump->upload(
@@ -3148,6 +3166,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         REQUIRE(material_specular_texture->upload(
             *upload, 0, 0, {}, material_specular_pixel.data(), 4, &error));
         REQUIRE(pbr_orm_texture->upload(
+            *upload, 0, 0, {}, pbr_orm_pixel.data(), 4, &error));
+        REQUIRE(srgb_pbr_orm_texture->upload(
             *upload, 0, 0, {}, pbr_orm_pixel.data(), 4, &error));
         REQUIRE(pbr_base_texture->upload(
             *upload, 0, 0, {}, pbr_base_pixels.data(), 8, &error));
@@ -6437,6 +6457,31 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         INFO(error);
         CHECK(half_to_float(pre_water_pixels[material_pixel + 1]) >
               retained_color[1] * material_uncovered);
+
+        // GLTF_DATA_SAMPLER suppresses sRGB decoding for normal and ORM
+        // maps even when an asset image shares sRGB storage with a colour
+        // reference. Identical raw bytes must therefore shade identically
+        // in the blended PBR owner, just as they do in the opaque G-buffer.
+        std::array<std::uint16_t, 4> linear_pbr_data_color{};
+        std::copy_n(pre_water_pixels.begin() + material_pixel, 4,
+                    linear_pbr_data_color.begin());
+        pre_water_pbr_slot.normal_texture = srgb_flat_normal.get();
+        pre_water_pbr_slot.orm_texture = srgb_pbr_orm_texture.get();
+        auto srgb_pbr_data_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(srgb_pbr_data_result);
+        REQUIRE(srgb_pbr_data_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(pre_water_pixels[material_pixel + channel] ==
+                  linear_pbr_data_color[channel]);
+        }
+        pre_water_pbr_slot.normal_texture = flat_normal.get();
+        pre_water_pbr_slot.orm_texture = pbr_orm_texture.get();
         simple_alpha_lighting.local_lights[0] = {};
 
         // Finish the glossy radiance lobe through the same ordinary, SSR,
