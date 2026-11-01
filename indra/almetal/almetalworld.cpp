@@ -5877,7 +5877,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                     ? batch.material_slots[source].specular_texture
                     : batch.diffuse_textures[0];
                 encoded =
-                    encoder->setFragmentTexture(
+                    // Legacy GL materials bind tangent-space normal maps with
+                    // ALSamplers::AnisoWrap, so preserve their raw data even
+                    // when the shared asset texture carries an sRGB format.
+                    encoder->setFragmentTextureLinear(
                         static_cast<std::uint32_t>(8 + slot),
                         normal_texture, error) &&
                     encoder->setFragmentTexture(
@@ -12099,7 +12102,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         encoder->setFragmentTexture(
                             static_cast<std::uint32_t>(slot),
                             batch.diffuse_textures[source], error) &&
-                        encoder->setFragmentTexture(
+                        encoder->setFragmentTextureLinear(
                             static_cast<std::uint32_t>(8 + slot),
                             normal_texture, error) &&
                         encoder->setFragmentTexture(
@@ -15002,7 +15005,7 @@ bool ALMetalWorldGBufferRenderer::compositeImpostorPostDeferred(
                     encoder->setFragmentTexture(
                         static_cast<std::uint32_t>(slot),
                         batch.diffuse_textures[source], error) &&
-                    encoder->setFragmentTexture(
+                    encoder->setFragmentTextureLinear(
                         static_cast<std::uint32_t>(8 + slot),
                         normal_texture, error) &&
                     encoder->setFragmentTexture(

@@ -3655,6 +3655,27 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
                            material_normal_map_normal[center + 2]) -
                        24576) <= 2);
 
+        // Legacy normals are data, so GL binds them with raw AnisoWrap even
+        // when the fetched asset's shared backing is sRGB. The opaque
+        // material owner must produce the same G-buffer normal from the same
+        // raw bytes in either storage declaration.
+        batch.material_slots[0].normal_texture = srgb_bump_normal.get();
+        batch.material_slots[1].normal_texture = srgb_bump_normal.get();
+        auto srgb_material_normal_map_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(srgb_material_normal_map_result);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            srgb_material_normal_map_normal{};
+        REQUIRE(srgb_material_normal_map_result->colorTexture(2)->readback(
+            *device, 0, 0, {}, srgb_material_normal_map_normal.data(),
+            32 * 8, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(srgb_material_normal_map_normal[center + channel] ==
+                  material_normal_map_normal[center + channel]);
+        }
+
         batch.material_slots[0].normal_texture = nullptr;
         batch.material_slots[1].normal_texture = nullptr;
         batch.material_slots[0].specular_texture =
@@ -5961,6 +5982,30 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(
                            read_legacy_alpha(*normal_map_target)) - 64) <= 1);
 
+        // The impostor-alpha legacy material uses the same raw normal-map
+        // contract. Hold the bytes constant while changing only the backing
+        // declaration and require its glare-derived coverage to stay exact.
+        legacy_alpha_batch.material_slots[0].normal_texture =
+            flat_normal.get();
+        auto linear_flat_normal_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(linear_flat_normal_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *linear_flat_normal_target, legacy_alpha_scene, &error));
+        INFO(error);
+        const std::uint8_t linear_flat_normal_alpha =
+            read_legacy_alpha(*linear_flat_normal_target);
+        legacy_alpha_batch.material_slots[0].normal_texture =
+            srgb_flat_normal.get();
+        auto srgb_flat_normal_target = make_legacy_target();
+        INFO(error);
+        REQUIRE(srgb_flat_normal_target);
+        REQUIRE(renderer->compositeImpostorPostDeferred(
+            *srgb_flat_normal_target, legacy_alpha_scene, &error));
+        INFO(error);
+        CHECK(read_legacy_alpha(*srgb_flat_normal_target) ==
+              linear_flat_normal_alpha);
+
         legacy_alpha_batch.material_slots[0].normal_texture = nullptr;
         legacy_alpha_batch.material_slots[0].specular_texture =
             indexed_diffuse.get();
@@ -6271,6 +6316,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         simple_alpha_lighting.local_lights[0].diffuse[1] = 0.5f;
         simple_alpha_lighting.local_lights[0].parameters[0] = 100.f;
         simple_alpha_lighting.local_lights[0].parameters[2] = 1.f;
+        pre_water_material.material_slots[0].normal_texture =
+            flat_normal.get();
         auto local_material_result = renderer->renderOpaquePostDeferred(
             opaque_forward_scene, &error);
         INFO(error);
@@ -6281,6 +6328,26 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         INFO(error);
         CHECK(half_to_float(pre_water_pixels[material_pixel + 1]) >
               retained_color[1] * material_uncovered);
+        std::array<std::uint16_t, 4> linear_legacy_alpha_color{};
+        std::copy_n(pre_water_pixels.begin() + material_pixel, 4,
+                    linear_legacy_alpha_color.begin());
+        pre_water_material.material_slots[0].normal_texture =
+            srgb_flat_normal.get();
+        auto srgb_local_material_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(srgb_local_material_result);
+        REQUIRE(srgb_local_material_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(pre_water_pixels[material_pixel + channel] ==
+                  linear_legacy_alpha_color[channel]);
+        }
+        pre_water_material.material_slots[0].normal_texture = nullptr;
         simple_alpha_lighting.local_lights[0] = {};
         alpha_environment.atmos_sunlit_linear[0] = 1.f;
         alpha_environment.atmos_sunlit_linear[1] = 0.5f;
