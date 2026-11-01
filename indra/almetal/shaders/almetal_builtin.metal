@@ -1950,6 +1950,39 @@ fragment float4 almetal_world_highlight_fragment(
                float4(0.0));
 }
 
+struct ALMetalWorldTextureAnimConstants
+{
+    float4x4 modelview_projection;
+    float4 color;
+    uint4 config;
+};
+
+struct ALMetalWorldTextureAnimVaryings
+{
+    float4 position [[position]];
+};
+
+vertex ALMetalWorldTextureAnimVaryings almetal_world_texture_anim_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldTextureAnimConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    float4 clip_position = constants.modelview_projection *
+                           float4(positions[vertex_id].xyz, 1.0);
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldTextureAnimVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    return output;
+}
+
+fragment float4 almetal_world_texture_anim_fragment(
+    constant ALMetalWorldTextureAnimConstants& constants [[buffer(0)]])
+{
+    return max(constants.color, float4(0.0));
+}
+
 struct ALMetalWorldDebugBlip
 {
     float4 position;

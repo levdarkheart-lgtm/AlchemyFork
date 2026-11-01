@@ -124,8 +124,16 @@ namespace
         float modelview_projection[16];
         std::uint32_t config[4]{};
     };
+
+    struct alignas(16) WorldTextureAnimConstants
+    {
+        float modelview_projection[16];
+        float color[4] = {1.f, 1.f, 0.f, 0.5f};
+        std::uint32_t config[4]{};
+    };
     static_assert(sizeof(ALMetalWorldDebugBlip) == 32);
     static_assert(sizeof(WorldDebugBlipConstants) == 80);
+    static_assert(sizeof(WorldTextureAnimConstants) == 96);
     static_assert(sizeof(ALMetalWorldWindVectorVertex) == 32);
 
     struct alignas(16) WorldFarPlaneOverlayConstants
@@ -1307,6 +1315,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         debug_point_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        texture_anim_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         composition_debug_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         reflection_probe_volume_pipelines;
@@ -2484,6 +2494,40 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         impl->debug_point_pipelines[hdr] = ALMetalRenderPipeline::create(
             device, debug_point_descriptor, error);
         if (!impl->debug_point_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor texture_anim_descriptor;
+        texture_anim_descriptor.library = impl->library.get();
+        texture_anim_descriptor.vertex_function =
+            "almetal_world_texture_anim_vertex";
+        texture_anim_descriptor.fragment_function =
+            "almetal_world_texture_anim_fragment";
+        texture_anim_descriptor.colors[0].format = screen_formats[hdr];
+        texture_anim_descriptor.colors[0].blending_enabled = true;
+        texture_anim_descriptor.colors[0].source_rgb =
+            ALMetalBlendFactor::source_alpha;
+        texture_anim_descriptor.colors[0].destination_rgb =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        texture_anim_descriptor.colors[0].source_alpha =
+            ALMetalBlendFactor::source_alpha;
+        texture_anim_descriptor.colors[0].destination_alpha =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        texture_anim_descriptor.colors[0].write_mask =
+            static_cast<ALMetalColorWriteMask>(
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+        texture_anim_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        texture_anim_descriptor.label = hdr
+            ? "Alchemy HDR world texture-animation debug pipeline"
+            : "Alchemy world texture-animation debug pipeline";
+        impl->texture_anim_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, texture_anim_descriptor, error);
+        if (!impl->texture_anim_pipelines[hdr])
         {
             return nullptr;
         }
@@ -10523,6 +10567,69 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             return nullptr;
         }
     }
+    if ((scene.texture_anim_batch_count != 0 &&
+         !scene.texture_anim_batches) ||
+        scene.texture_anim_batch_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldTextureAnimBatch))
+    {
+        setError(error,
+                 "Metal world texture-animation batch storage is invalid");
+        return nullptr;
+    }
+    std::uint64_t previous_texture_anim_order = 0;
+    for (std::size_t index = 0;
+         index < scene.texture_anim_batch_count; ++index)
+    {
+        const ALMetalWorldTextureAnimBatch& batch =
+            scene.texture_anim_batches[index];
+        const std::size_t index_stride =
+            batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
+        if (!batch.vertices || !batch.indices ||
+            batch.vertex_count == 0 || batch.index_count == 0 ||
+            batch.index_count % 3 != 0 ||
+            batch.position_offset % (sizeof(float) * 4) != 0 ||
+            batch.index_offset % index_stride != 0 ||
+            !rangeFits(batch.position_offset, batch.vertex_count,
+                       sizeof(float) * 4, batch.vertices->length()) ||
+            !rangeFits(batch.index_offset, batch.index_count,
+                       index_stride, batch.indices->length()) ||
+            !finiteValues(batch.modelview_projection, 16) ||
+            (index != 0 &&
+             batch.order <= previous_texture_anim_order) ||
+            (scene.agent_target_line_vertex_count != 0 &&
+             batch.order == scene.agent_target_order))
+        {
+            setError(error,
+                     "Metal world texture-animation batch is invalid");
+            return nullptr;
+        }
+        previous_texture_anim_order = batch.order;
+    }
+    std::size_t debug_point_order_index = 0;
+    std::size_t texture_anim_order_index = 0;
+    while (debug_point_order_index < scene.debug_point_batch_count &&
+           texture_anim_order_index < scene.texture_anim_batch_count)
+    {
+        const std::uint64_t debug_point_order =
+            scene.debug_point_batches[debug_point_order_index].order;
+        const std::uint64_t texture_anim_order =
+            scene.texture_anim_batches[texture_anim_order_index].order;
+        if (debug_point_order == texture_anim_order)
+        {
+            setError(error,
+                     "Metal world render-debug ordering is invalid");
+            return nullptr;
+        }
+        if (debug_point_order < texture_anim_order)
+        {
+            ++debug_point_order_index;
+        }
+        else
+        {
+            ++texture_anim_order_index;
+        }
+    }
     if ((scene.reflection_probe_link_vertex_count != 0 &&
          !scene.reflection_probe_links) ||
         (scene.reflection_probe_link_vertex_count & 1u) != 0 ||
@@ -13936,29 +14043,94 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 ALMetalPrimitiveType::point, batch.first_vertex,
                 batch.vertex_count, 1, error);
     };
+    const auto encode_texture_anim_batch =
+        [&](const ALMetalWorldTextureAnimBatch& batch)
+    {
+        WorldTextureAnimConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(constants.modelview_projection));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        return
+            encoder->setDepthStencilState(
+                scene.reverse_z ? mImpl->reverse_depth.get()
+                                : mImpl->forward_depth.get(),
+                error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *mImpl->texture_anim_pipelines[scene.hdr ? 1 : 0],
+                error) &&
+            encoder->setVertexBuffer(
+                0, *batch.vertices, batch.position_offset, error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->drawIndexed(
+                ALMetalPrimitiveType::triangle, batch.index_count,
+                batch.index_type, *batch.indices,
+                batch.index_offset, 1, error);
+    };
 
     bool agent_target_encoded =
         scene.agent_target_line_vertex_count == 0;
-    for (std::size_t batch_index = 0;
-         encoded && batch_index < scene.debug_point_batch_count;
-         ++batch_index)
+    std::size_t debug_point_batch_index = 0;
+    std::size_t texture_anim_batch_index = 0;
+    while (encoded &&
+           (debug_point_batch_index < scene.debug_point_batch_count ||
+            texture_anim_batch_index < scene.texture_anim_batch_count ||
+            !agent_target_encoded))
     {
-        const ALMetalWorldDebugPointBatch& batch =
-            scene.debug_point_batches[batch_index];
-        if (!agent_target_encoded &&
-            scene.agent_target_order < batch.order)
+        enum class RenderDebugOwner
         {
-            encoded = encode_agent_target();
-            agent_target_encoded = true;
-        }
-        if (encoded)
+            agent_target,
+            debug_point,
+            texture_anim,
+        };
+        RenderDebugOwner owner = RenderDebugOwner::agent_target;
+        bool owner_selected = !agent_target_encoded;
+        std::uint64_t owner_order = scene.agent_target_order;
+        if (debug_point_batch_index < scene.debug_point_batch_count)
         {
-            encoded = encode_debug_point_batch(batch);
+            const std::uint64_t order = scene.debug_point_batches[
+                debug_point_batch_index].order;
+            if (!owner_selected || order < owner_order)
+            {
+                owner = RenderDebugOwner::debug_point;
+                owner_selected = true;
+                owner_order = order;
+            }
         }
-    }
-    if (encoded && !agent_target_encoded)
-    {
-        encoded = encode_agent_target();
+        if (texture_anim_batch_index < scene.texture_anim_batch_count)
+        {
+            const std::uint64_t order = scene.texture_anim_batches[
+                texture_anim_batch_index].order;
+            if (!owner_selected || order < owner_order)
+            {
+                owner = RenderDebugOwner::texture_anim;
+                owner_selected = true;
+            }
+        }
+        switch (owner)
+        {
+            case RenderDebugOwner::agent_target:
+                encoded = encode_agent_target();
+                agent_target_encoded = true;
+                break;
+            case RenderDebugOwner::debug_point:
+                encoded = encode_debug_point_batch(
+                    scene.debug_point_batches[
+                        debug_point_batch_index++]);
+                break;
+            case RenderDebugOwner::texture_anim:
+                encoded = encode_texture_anim_batch(
+                    scene.texture_anim_batches[
+                        texture_anim_batch_index++]);
+                break;
+        }
     }
 
     if (encoded && scene.reflection_probe_link_vertex_count != 0)

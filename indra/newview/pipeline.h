@@ -385,6 +385,10 @@ public:
     void captureMetalDebugPoint(const LLVector3& position);
     void endMetalDebugPointBatch(std::size_t point_count);
     void endMetalDebugPointCapture();
+    // Retain Develop > Texture Anim's position-only yellow triangle replay.
+    // LLDrawInfo avatar metadata is deliberately ignored because the source
+    // owner keeps gDebugProgram's non-rigged vertex contract bound.
+    void captureMetalTextureAnimBatch(const LLDrawInfo& params);
     // Retain the ordered orange/yellow neighbor links emitted by Develop >
     // Reflection Probes. Each source link becomes exactly two line vertices.
     void beginMetalReflectionProbeLinkCapture(std::size_t link_count);
@@ -1467,7 +1471,6 @@ public:
             RENDER_DEBUG_BBOXES |
             RENDER_DEBUG_OCTREE |
             RENDER_DEBUG_OCCLUSION |
-            RENDER_DEBUG_TEXTURE_ANIM |
             RENDER_DEBUG_LIGHTS |
             RENDER_DEBUG_BATCH_SIZE |
             RENDER_DEBUG_RAYCAST |

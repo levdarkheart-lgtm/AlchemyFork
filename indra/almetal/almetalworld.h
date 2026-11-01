@@ -469,6 +469,24 @@ struct ALMetalWorldDebugPointBatch
     float modelview_projection[16]{};
 };
 
+// Develop > Texture Anim replays every visible draw-info triangle whose
+// texture matrix is live under gDebugProgram's fixed translucent-yellow
+// uniform. The source shader consumes positions only, including for draw infos
+// that carry avatar metadata, so this record deliberately has no texture,
+// color, normal or skin-palette dependency.
+struct ALMetalWorldTextureAnimBatch
+{
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
+    std::uint64_t order = 0;
+    float modelview_projection[16]{};
+};
+
 // Develop > Composition is a fixed 261-by-261 point grid. X/Y and the
 // interior-blue/border-red classification are derived from vertex_id in MSL;
 // only the live composition height needs to cross the CPU/GPU boundary.
@@ -789,6 +807,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t debug_point_count = 0;
     const ALMetalWorldDebugPointBatch* debug_point_batches = nullptr;
     std::size_t debug_point_batch_count = 0;
+    const ALMetalWorldTextureAnimBatch* texture_anim_batches = nullptr;
+    std::size_t texture_anim_batch_count = 0;
     const ALMetalWorldReflectionProbeLinkVertex* reflection_probe_links =
         nullptr;
     std::size_t reflection_probe_link_vertex_count = 0;

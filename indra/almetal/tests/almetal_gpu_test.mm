@@ -806,6 +806,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_lens_flare_state_fragment",
             "almetal_world_lens_dirt_fragment",
             "almetal_world_rlv_sphere_fragment",
+            "almetal_world_texture_anim_vertex",
+            "almetal_world_texture_anim_fragment",
             "almetal_world_presentation_fragment",
             "almetal_world_display_post_fragment",
             "almetal_world_display_post_exposure_fragment",
@@ -5461,6 +5463,230 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             32 * sizeof(float), &error));
         CHECK(agent_target_pixels == opaque_forward_pixels);
         CHECK(agent_target_depth == opaque_forward_depth);
+
+        // Develop > Texture Anim selects visible draw-info triangles whose
+        // texture matrix is non-null, but gDebugProgram consumes positions
+        // only and emits one fixed translucent-yellow uniform. The enclosing
+        // spatial-debug owner disables culling and inherits RGB-only alpha
+        // blend plus read/write world depth.
+        ALMetalWorldTextureAnimBatch texture_anim_batch;
+        texture_anim_batch.vertices = vertices.get();
+        texture_anim_batch.vertex_count = positions.size();
+        texture_anim_batch.indices = indices.get();
+        texture_anim_batch.index_count = index_values.size();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            texture_anim_batch.modelview_projection[
+                axis * 4 + axis] = 1.f;
+        }
+        opaque_forward_scene.texture_anim_batches =
+            &texture_anim_batch;
+        opaque_forward_scene.texture_anim_batch_count = 1;
+
+        opaque_forward_scene.texture_anim_batches = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world texture-animation batch storage is invalid");
+        opaque_forward_scene.texture_anim_batches =
+            &texture_anim_batch;
+        texture_anim_batch.vertices = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world texture-animation batch is invalid");
+        texture_anim_batch.vertices = vertices.get();
+        texture_anim_batch.index_count = 2;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world texture-animation batch is invalid");
+        texture_anim_batch.index_count = index_values.size();
+        texture_anim_batch.modelview_projection[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world texture-animation batch is invalid");
+        texture_anim_batch.modelview_projection[0] = 1.f;
+        error.clear();
+
+        auto native_texture_anim = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(native_texture_anim);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            texture_anim_pixels{};
+        std::array<float, 32 * 32> texture_anim_depth{};
+        REQUIRE(native_texture_anim->colorTexture(0)->readback(
+            *device, 0, 0, {}, texture_anim_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(native_texture_anim->depthStencilTexture()->readback(
+            *device, 0, 0, {}, texture_anim_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        const float texture_anim_destination[3] = {
+            agent_half_to_float(opaque_forward_pixels[center + 0]),
+            agent_half_to_float(opaque_forward_pixels[center + 1]),
+            agent_half_to_float(opaque_forward_pixels[center + 2]),
+        };
+        const float texture_anim_expected[3] = {
+            0.5f + texture_anim_destination[0] * 0.5f,
+            0.5f + texture_anim_destination[1] * 0.5f,
+            texture_anim_destination[2] * 0.5f,
+        };
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(std::abs(
+                agent_half_to_float(
+                    texture_anim_pixels[center + channel]) -
+                texture_anim_expected[channel]) < 0.001f);
+        }
+        CHECK(texture_anim_pixels[center + 3] ==
+              opaque_forward_pixels[center + 3]);
+        CHECK(std::abs(
+            texture_anim_depth[16 * 32 + 16] - 0.625f) < 0.0001f);
+
+        // Source culling is disabled for this entire debug traversal.
+        texture_anim_batch.indices = reversed_indices.get();
+        auto reverse_winding_texture_anim =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_winding_texture_anim);
+        texture_anim_pixels.fill(0xffffu);
+        REQUIRE(
+            reverse_winding_texture_anim->colorTexture(0)->readback(
+                *device, 0, 0, {}, texture_anim_pixels.data(),
+                32 * 8, &error));
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(std::abs(
+                agent_half_to_float(
+                    texture_anim_pixels[center + channel]) -
+                texture_anim_expected[channel]) < 0.001f);
+        }
+        texture_anim_batch.indices = indices.get();
+
+        texture_anim_batch.modelview_projection[14] = 0.5f;
+        auto hidden_texture_anim = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(hidden_texture_anim);
+        texture_anim_pixels.fill(0xffffu);
+        texture_anim_depth.fill(-1.f);
+        REQUIRE(hidden_texture_anim->colorTexture(0)->readback(
+            *device, 0, 0, {}, texture_anim_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(hidden_texture_anim->depthStencilTexture()->readback(
+            *device, 0, 0, {}, texture_anim_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(texture_anim_pixels[center + 0] ==
+              opaque_forward_pixels[center + 0]);
+        CHECK(texture_anim_pixels[center + 1] ==
+              opaque_forward_pixels[center + 1]);
+        CHECK(texture_anim_pixels[center + 2] ==
+              opaque_forward_pixels[center + 2]);
+        CHECK(texture_anim_depth == opaque_forward_depth);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        texture_anim_batch.modelview_projection[14] = 0.65f;
+        auto reverse_texture_anim = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_texture_anim);
+        texture_anim_pixels.fill(0xffffu);
+        texture_anim_depth.fill(-1.f);
+        REQUIRE(reverse_texture_anim->colorTexture(0)->readback(
+            *device, 0, 0, {}, texture_anim_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(reverse_texture_anim->depthStencilTexture()->readback(
+            *device, 0, 0, {}, texture_anim_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(texture_anim_pixels[center + 0] !=
+              reverse_agent_target_baseline_pixels[center + 0]);
+        CHECK(texture_anim_pixels[center + 3] ==
+              reverse_agent_target_baseline_pixels[center + 3]);
+        CHECK(std::abs(
+            texture_anim_depth[16 * 32 + 16] - 0.9f) < 0.0001f);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        texture_anim_batch.modelview_projection[14] = 0.f;
+        debug_points[0].position[0] = 0.03125f;
+        debug_points[0].position[1] = 0.03125f;
+        debug_points[0].position[2] = 0.9f;
+        debug_point_batches[0].first_vertex = 0;
+        debug_point_batches[0].vertex_count = 1;
+        debug_point_batches[0].order = 1;
+        texture_anim_batch.order = 0;
+        opaque_forward_scene.debug_points = debug_points.data();
+        opaque_forward_scene.debug_point_count = 1;
+        opaque_forward_scene.debug_point_batches =
+            debug_point_batches.data();
+        opaque_forward_scene.debug_point_batch_count = 1;
+        auto point_after_texture_anim =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(point_after_texture_anim);
+        texture_anim_pixels.fill(0xffffu);
+        REQUIRE(point_after_texture_anim->colorTexture(0)->readback(
+            *device, 0, 0, {}, texture_anim_pixels.data(), 32 * 8,
+            &error));
+        CHECK(texture_anim_pixels[center + 0] == 0x3c00);
+        CHECK(texture_anim_pixels[center + 1] == 0x3c00);
+        CHECK(texture_anim_pixels[center + 2] == 0x3c00);
+
+        debug_point_batches[0].order = 0;
+        texture_anim_batch.order = 1;
+        auto texture_anim_after_point =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(texture_anim_after_point);
+        texture_anim_pixels.fill(0xffffu);
+        REQUIRE(texture_anim_after_point->colorTexture(0)->readback(
+            *device, 0, 0, {}, texture_anim_pixels.data(), 32 * 8,
+            &error));
+        CHECK(texture_anim_pixels[center + 0] == 0x3c00);
+        CHECK(texture_anim_pixels[center + 1] == 0x3c00);
+        CHECK(std::abs(
+            agent_half_to_float(texture_anim_pixels[center + 2]) -
+            0.5f) < 0.001f);
+        CHECK(texture_anim_pixels[center + 3] ==
+              opaque_forward_pixels[center + 3]);
+
+        texture_anim_batch.order = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world render-debug ordering is invalid");
+        error.clear();
+        opaque_forward_scene.debug_points = nullptr;
+        opaque_forward_scene.debug_point_count = 0;
+        opaque_forward_scene.debug_point_batches = nullptr;
+        opaque_forward_scene.debug_point_batch_count = 0;
+        opaque_forward_scene.texture_anim_batches = nullptr;
+        opaque_forward_scene.texture_anim_batch_count = 0;
+        auto no_texture_anim = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_texture_anim);
+        texture_anim_pixels.fill(0xffffu);
+        texture_anim_depth.fill(-1.f);
+        REQUIRE(no_texture_anim->colorTexture(0)->readback(
+            *device, 0, 0, {}, texture_anim_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(no_texture_anim->depthStencilTexture()->readback(
+            *device, 0, 0, {}, texture_anim_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(texture_anim_pixels == opaque_forward_pixels);
+        CHECK(texture_anim_depth == opaque_forward_depth);
 
         // Develop > Reflection Probes draws one-pixel neighbor links for
         // relevant probes: orange unless both endpoints own viewer objects,
