@@ -40,7 +40,7 @@
 
 namespace
 {
-    TEST_CASE("almetal: uncaptured world overlays reject exact publication",
+    TEST_CASE("almetal: remaining uncaptured world overlays reject exact publication",
               "[almetal][world][overlay]")
     {
         ALMetalWorldOverlayEligibility eligibility;
@@ -53,7 +53,6 @@ namespace
             return !candidate.exact();
         };
         CHECK(rejects(&ALMetalWorldOverlayEligibility::render_debug));
-        CHECK(rejects(&ALMetalWorldOverlayEligibility::wireframe));
         CHECK(rejects(&ALMetalWorldOverlayEligibility::pathfinding));
     }
 
@@ -3308,6 +3307,46 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         INFO(error);
         CHECK(std::abs(forward_depth[16 * 32 + 16] - 0.625f) < 0.0001f);
 
+        // Wireframe is a rasterizer mode, not a display-space edge effect.
+        // Preserve GL's raw 0.5 clear in the sRGB albedo attachment, retain
+        // only the triangle boundary, and leave its interior at far depth.
+        scene.wireframe = true;
+        scene.clear_color[0] = 0.5f;
+        scene.clear_color[1] = 0.5f;
+        scene.clear_color[2] = 0.5f;
+        scene.clear_color[3] = 1.f;
+        auto wireframe_result = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(wireframe_result);
+        std::array<std::uint8_t, 32 * 32 * 4> wireframe_albedo{};
+        std::array<float, 32 * 32> wireframe_depth{};
+        REQUIRE(wireframe_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, wireframe_albedo.data(), 32 * 4, &error));
+        REQUIRE(wireframe_result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, wireframe_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        CHECK(wireframe_albedo[center + 0] == 128u);
+        CHECK(wireframe_albedo[center + 1] == 128u);
+        CHECK(wireframe_albedo[center + 2] == 128u);
+        CHECK(wireframe_albedo[center + 3] == 255u);
+        CHECK(std::abs(wireframe_depth[16 * 32 + 16] - 1.f) < 0.0001f);
+        const auto covered_depth = [](float depth)
+        {
+            return std::abs(depth - 1.f) >= 0.0001f;
+        };
+        const std::size_t filled_coverage = std::count_if(
+            forward_depth.begin(), forward_depth.end(), covered_depth);
+        const std::size_t wireframe_coverage = std::count_if(
+            wireframe_depth.begin(), wireframe_depth.end(), covered_depth);
+        CHECK(wireframe_coverage > 0);
+        CHECK(wireframe_coverage < filled_coverage);
+        scene.wireframe = false;
+        scene.clear_color[0] = 1.f;
+        scene.clear_color[1] = 0.f;
+        scene.clear_color[2] = 1.f;
+        scene.clear_color[3] = 1.f;
+
         // The production main-world path may retain several dependent
         // encoders in one command buffer. Standalone rendering above keeps
         // its immediate commit behavior; the explicit batch publishes only
@@ -4415,6 +4454,33 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(opaque_scene_pixel[2] == 0.0625f);
         CHECK(opaque_scene_pixel[3] == 0.5f);
 
+        // Post-deferred draw-pool triangles inherit line fill while the
+        // copied lighting plane remains filled. This proves the mode is
+        // applied at the geometry owner and not to the whole composite.
+        opaque_forward_scene.wireframe = true;
+        auto wireframe_forward = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(wireframe_forward);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            wireframe_forward_pixels{};
+        REQUIRE(wireframe_forward->colorTexture(0)->readback(
+            *device, 0, 0, {}, wireframe_forward_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(wireframe_forward_pixels[center + 0] == 0x3400);
+        CHECK(wireframe_forward_pixels[center + 1] == 0x3000);
+        CHECK(wireframe_forward_pixels[center + 2] == 0x2c00);
+        const std::size_t wireframe_green_pixels = std::count_if(
+            wireframe_forward_pixels.begin(),
+            wireframe_forward_pixels.end(),
+            [](std::uint16_t value)
+            {
+                return value == 0x3c00;
+            });
+        CHECK(wireframe_green_pixels > 0);
+        opaque_forward_scene.wireframe = false;
+
         // Legacy edit-face/touch highlights sit after all post-deferred
         // geometry but before exposure, tonemapping and other display post.
         // Reuse the retained face buffers, sample an sRGB white marker, and
@@ -4461,6 +4527,24 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(highlighted_pixels[center + 3] == 0x3800);
         CHECK(std::abs(highlighted_depth[16 * 32 + 16] - 0.625f) <
               0.0001f);
+
+        // GL restores fill before the edit-face highlight owner. A filled
+        // center under wireframe proves that the preceding line state does
+        // not leak into this later diagnostic geometry.
+        opaque_forward_scene.wireframe = true;
+        auto wireframe_highlighted = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(wireframe_highlighted);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            wireframe_highlighted_pixels{};
+        REQUIRE(wireframe_highlighted->colorTexture(0)->readback(
+            *device, 0, 0, {}, wireframe_highlighted_pixels.data(),
+            32 * 8, &error));
+        CHECK(wireframe_highlighted_pixels[center + 0] == 0x3900);
+        CHECK(wireframe_highlighted_pixels[center + 1] == 0x2c00);
+        CHECK(wireframe_highlighted_pixels[center + 2] == 0x2800);
+        opaque_forward_scene.wireframe = false;
 
         // Highlight Transparent uses the same sampled-uniform-color shader,
         // but GL has already restored an RGB-only color mask. Prove that the
@@ -10928,6 +11012,34 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
                   sky_albedo[outside + channel]);
         }
         sky_scene.reverse_z = false;
+
+        // Sky draw pools are inside renderGeomDeferred's polygon-mode
+        // scope. Prove the retained full-screen strip becomes real Metal
+        // line geometry rather than filling an otherwise clear-depth pixel.
+        auto wireframe_sky_gbuffer = renderer->render(
+            gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(wireframe_sky_gbuffer);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            before_wireframe_sky{};
+        REQUIRE(wireframe_sky_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, before_wireframe_sky.data(), 32 * 4,
+            &error));
+        sky_scene.wireframe = true;
+        REQUIRE(renderer->compositeHDRISky(
+            *wireframe_sky_gbuffer, sky_scene, &error));
+        INFO(error);
+        std::array<std::uint8_t, 32 * 32 * 4> wireframe_sky{};
+        REQUIRE(wireframe_sky_gbuffer->colorTexture(0)->readback(
+            *device, 0, 0, {}, wireframe_sky.data(), 32 * 4, &error));
+        const std::size_t clear_sky_interior = (16 * 32 + 3) * 4;
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(wireframe_sky[clear_sky_interior + channel] ==
+                  before_wireframe_sky[clear_sky_interior + channel]);
+        }
+        CHECK(wireframe_sky != before_wireframe_sky);
+        sky_scene.wireframe = false;
 
         ALMetalWorldHDRISkyScene invalid_sky_scene = sky_scene;
         invalid_sky_scene.environment_texture = nullptr;

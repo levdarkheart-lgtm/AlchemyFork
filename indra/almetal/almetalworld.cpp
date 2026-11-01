@@ -5692,9 +5692,25 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
     {
         pass_config.colors[attachment].load = ALMetalLoadAction::clear;
         pass_config.colors[attachment].store = ALMetalStoreAction::store;
+        // OpenGL clears the wireframe G-buffer before enabling
+        // GL_FRAMEBUFFER_SRGB. Metal render-pass clears follow the attachment
+        // transfer function, so decode the albedo clear once to preserve the
+        // same stored 0.5 byte value; the linear attachments use 0.5 as-is.
+        // Decode the normalized byte selected by GL's 0.5 -> UNORM8
+        // round-to-nearest conversion, rather than decoding mathematical
+        // 0.5 (which can quantize back to byte 127 after finite precision).
+        constexpr double wireframe_srgb_half_linear =
+            0.21586050011389926;
+        const bool raw_srgb_wireframe_clear =
+            scene.wireframe && attachment == 0;
         pass_config.colors[attachment].clear = {
-            scene.clear_color[0], scene.clear_color[1],
-            scene.clear_color[2], scene.clear_color[3],
+            raw_srgb_wireframe_clear ? wireframe_srgb_half_linear
+                                     : scene.clear_color[0],
+            raw_srgb_wireframe_clear ? wireframe_srgb_half_linear
+                                     : scene.clear_color[1],
+            raw_srgb_wireframe_clear ? wireframe_srgb_half_linear
+                                     : scene.clear_color[2],
+            scene.clear_color[3],
         };
     }
     pass_config.depth_load = ALMetalLoadAction::clear;
@@ -5734,6 +5750,10 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::back, error) &&
+        encoder->setTriangleFillMode(
+            scene.wireframe ? ALMetalTriangleFillMode::lines
+                            : ALMetalTriangleFillMode::fill,
+            error) &&
         encoder->setFrontFacingWinding(ALMetalWinding::clockwise,
                                        error);
 
@@ -11760,6 +11780,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             overlay_encoder->setFrontFacingWinding(
                 ALMetalWinding::clockwise, error) &&
             overlay_encoder->setCullMode(ALMetalCullMode::none, error) &&
+            overlay_encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
             overlay_encoder->setDepthStencilState(
                 scene.reverse_z ? mImpl->reverse_depth.get()
                                 : mImpl->forward_depth.get(),
@@ -11827,10 +11849,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         static_cast<double>(scene.height), 0.0, 1.0,
     };
     const ALMetalScissorRect scissor{0, 0, scene.width, scene.height};
+    const ALMetalTriangleFillMode pool_fill_mode = scene.wireframe
+        ? ALMetalTriangleFillMode::lines
+        : ALMetalTriangleFillMode::fill;
     bool encoded =
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setFrontFacingWinding(ALMetalWinding::clockwise, error) &&
+        encoder->setTriangleFillMode(
+            ALMetalTriangleFillMode::fill, error) &&
         encoder->setFragmentSampler(0, mImpl->diffuse_sampler.get(), error);
     const auto bind_forward_resources = [&](ALMetalRenderEncoder& active)
     {
@@ -11935,6 +11962,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             : mImpl->forward_coverage_depth.get();
         const bool seeded =
             encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
             encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
             encoder->setVertexBytes(
                 0, &reverse_z, sizeof(reverse_z), error) &&
@@ -11987,6 +12016,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setScissor(scissor, error) &&
                 encoder->setFrontFacingWinding(
                     ALMetalWinding::clockwise, error) &&
+                encoder->setTriangleFillMode(
+                    ALMetalTriangleFillMode::fill, error) &&
                 encoder->setFragmentSampler(
                     0, mImpl->diffuse_sampler.get(), error);
             encoded = encoded && bind_forward_resources(*encoder);
@@ -12023,6 +12054,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
                 encoder->setStencilReferenceValue(0u, error) &&
                 encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setTriangleFillMode(
+                    ALMetalTriangleFillMode::fill, error) &&
                 encoder->setPipeline(
                     *mImpl->water_haze_pipelines
                         [scene.hdr ? 1 : 0][haze.above_water ? 1 : 0],
@@ -12113,6 +12146,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setViewport(viewport, error) &&
                 encoder->setScissor(scissor, error) &&
                 encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setTriangleFillMode(
+                    ALMetalTriangleFillMode::fill, error) &&
                 encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
                 encoder->setDepthStencilState(depth, error) &&
                 encoder->setPipeline(
@@ -12433,6 +12468,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setFrontFacingWinding(
                     ALMetalWinding::clockwise, error) &&
                 encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setTriangleFillMode(pool_fill_mode, error) &&
                 encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
                 encoder->setPipeline(*flat_water_pipeline, error) &&
                 encoder->setVertexTexture(0, field.cell_map, error) &&
@@ -12773,6 +12809,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                             (batch.pre_water_pbr && batch.double_sided)
                         ? ALMetalCullMode::none : ALMetalCullMode::back,
                     error) &&
+                encoder->setTriangleFillMode(pool_fill_mode, error) &&
                 encoder->setPipeline(*alpha_pipeline, error) &&
                 encoder->setFragmentSampler(
                     0, batch.pre_water_particle
@@ -13048,6 +13085,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
                 encoder->setStencilReferenceValue(1u, error) &&
                 encoder->setCullMode(ALMetalCullMode::back, error) &&
+                encoder->setTriangleFillMode(
+                    ALMetalTriangleFillMode::fill, error) &&
                 encoder->setPipeline(
                     *mImpl->water_exclusion_pipelines
                         [scene.hdr ? 1 : 0],
@@ -13101,6 +13140,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                             (batch.pbr_glow && batch.double_sided)
                         ? ALMetalCullMode::none : ALMetalCullMode::back,
                     error) &&
+                encoder->setTriangleFillMode(pool_fill_mode, error) &&
                 // The GL emissive excursion rebinds legacy TexSetup and
                 // GLTF material textures with anisotropic wrap even when the
                 // owning alpha group is a particle group. Do not inherit the
@@ -13259,6 +13299,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->setDepthStencilState(depth, error) &&
             encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
             encoder->setCullMode(ALMetalCullMode::back, error) &&
+            encoder->setTriangleFillMode(pool_fill_mode, error) &&
             encoder->setPipeline(*pipeline, error) &&
             encoder->setVertexBuffer(
                 0, *batch.vertices, batch.position_offset, error) &&
@@ -13349,6 +13390,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->setDepthStencilState(highlight_depth, error) &&
             encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
             encoder->setCullMode(ALMetalCullMode::back, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
             encoder->setPipeline(
                 *mImpl->highlight_pipelines[scene.hdr ? 1 : 0]
                                             [batch.write_alpha ? 1 : 0]
@@ -13395,6 +13438,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 mImpl->debug_blip_depth.get(), error) &&
             encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
             encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
             encoder->setPipeline(
                 *mImpl->debug_blip_pipelines[scene.hdr ? 1 : 0],
                 error) &&
@@ -13421,6 +13466,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 mImpl->overlay_composite_depth.get(), error) &&
             encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
             encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
             encoder->setPipeline(
                 *mImpl->reflection_probe_volume_pipelines[
                     scene.hdr ? 1 : 0],
@@ -13444,6 +13491,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 mImpl->overlay_composite_depth.get(), error) &&
             encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
             encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
             encoder->setPipeline(
                 *mImpl->far_plane_overlay_composite_pipelines[
                     scene.hdr ? 1 : 0],
@@ -13792,6 +13841,10 @@ bool ALMetalWorldGBufferRenderer::compositeHDRISky(
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setTriangleFillMode(
+            scene.wireframe ? ALMetalTriangleFillMode::lines
+                            : ALMetalTriangleFillMode::fill,
+            error) &&
         encoder->setDepthStencilState(depth, error) &&
         encoder->setPipeline(*pipeline, error) &&
         encoder->setFragmentTexture(
@@ -13961,6 +14014,10 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightSky(
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setTriangleFillMode(
+            scene.wireframe ? ALMetalTriangleFillMode::lines
+                            : ALMetalTriangleFillMode::fill,
+            error) &&
         encoder->setDepthStencilState(depth, error) &&
         encoder->setPipeline(*pipeline, error) &&
         // GL binds both fetched optics maps with AnisoWrap, not the colour
@@ -14117,6 +14174,10 @@ ALMetalWorldGBufferRenderer::renderWindLightSkyBehind(
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setTriangleFillMode(
+            scene.wireframe ? ALMetalTriangleFillMode::lines
+                            : ALMetalTriangleFillMode::fill,
+            error) &&
         encoder->setPipeline(
             *mImpl->windlight_sky_behind_pipelines[scene.hdr ? 1 : 0],
             error) &&
@@ -14284,6 +14345,10 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightStars(
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setTriangleFillMode(
+            scene.wireframe ? ALMetalTriangleFillMode::lines
+                            : ALMetalTriangleFillMode::fill,
+            error) &&
         encoder->setDepthStencilState(depth, error) &&
         encoder->setPipeline(*pipeline, error) &&
         encoder->setFragmentTexture(0, moon, error) &&
@@ -14439,6 +14504,10 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightHeavenlyBodies(
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setTriangleFillMode(
+            scene.wireframe ? ALMetalTriangleFillMode::lines
+                            : ALMetalTriangleFillMode::fill,
+            error) &&
         encoder->setDepthStencilState(depth, error) &&
         encoder->setFragmentSampler(
             0, mImpl->ramp_sampler.get(), error);
@@ -14589,6 +14658,10 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightMeteors(
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setTriangleFillMode(
+            scene.wireframe ? ALMetalTriangleFillMode::lines
+                            : ALMetalTriangleFillMode::fill,
+            error) &&
         encoder->setDepthStencilState(depth, error) &&
         encoder->setPipeline(*pipeline, error);
 
@@ -14726,6 +14799,10 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightAurora(
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setTriangleFillMode(
+            scene.wireframe ? ALMetalTriangleFillMode::lines
+                            : ALMetalTriangleFillMode::fill,
+            error) &&
         encoder->setDepthStencilState(depth, error) &&
         encoder->setPipeline(*pipeline, error);
 
@@ -14900,6 +14977,10 @@ bool ALMetalWorldGBufferRenderer::compositeWindLightClouds(
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setTriangleFillMode(
+            scene.wireframe ? ALMetalTriangleFillMode::lines
+                            : ALMetalTriangleFillMode::fill,
+            error) &&
         encoder->setDepthStencilState(depth, error) &&
         encoder->setPipeline(*pipeline, error) &&
         // cloudsF.glsl binds both fetched noise maps with raw AnisoWrap.

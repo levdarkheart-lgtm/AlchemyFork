@@ -710,6 +710,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
+    bool wireframe = false;
     bool impostor_bake = false;
     bool impostor_alpha_active = false;
     bool impostor_alpha_phase = false;
@@ -2396,6 +2397,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.normal_hdr = LLRender::sGBufferNormHDR;
     capture.hdr = hdrEnabled();
     capture.reverse_z = LLRender::sReverseZ;
+    capture.wireframe = gUseWireframe;
     capture.resetCompleteness();
     capture.continuous_world_frame = gFrameCount;
     capture.frame_active = true;
@@ -3880,6 +3882,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     capture.normal_hdr = LLRender::sGBufferNormHDR;
     capture.hdr = hdrEnabled();
     capture.reverse_z = LLRender::sReverseZ;
+    capture.wireframe = false;
     capture.resetCompleteness();
     capture.frame_active = true;
     capture.pass_active = false;
@@ -3973,7 +3976,6 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
 
     ALMetalWorldOverlayEligibility overlay_eligibility;
     overlay_eligibility.render_debug = mRenderDebugMask != 0;
-    overlay_eligibility.wireframe = gUseWireframe;
     overlay_eligibility.pathfinding = pathfinding_overlay;
     capture.world_ui_overlay_exact = overlay_eligibility.exact();
 
@@ -4836,6 +4838,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.height = capture.height;
         scene.reverse_z = capture.reverse_z;
         scene.hdr = capture.hdr;
+        scene.wireframe = capture.wireframe;
         if (mMetalHeroWorldCaptureActive &&
             mHeroProbeManager.isMirrorPass())
         {
@@ -11904,6 +11907,15 @@ void LLPipeline::endMetalWorldGBufferCapture()
     scene.hdr = capture.hdr;
     scene.reverse_z = capture.reverse_z;
     scene.stamp_opaque_coverage = impostor_bake;
+    scene.wireframe = capture.wireframe;
+    if (scene.wireframe)
+    {
+        constexpr F32 gray = 0.5f;
+        scene.clear_color[0] = gray;
+        scene.clear_color[1] = gray;
+        scene.clear_color[2] = gray;
+        scene.clear_color[3] = 1.f;
+    }
     if (mMetalHeroWorldCaptureActive &&
         mHeroProbeManager.isMirrorPass())
     {
@@ -12045,6 +12057,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
             sky_scene.normal_hdr = capture.normal_hdr;
             sky_scene.hdr = capture.hdr;
             sky_scene.reverse_z = capture.reverse_z;
+            sky_scene.wireframe = capture.wireframe;
             error.clear();
             capture.hdri_sky_native_available =
                 capture.renderer->compositeHDRISky(
@@ -12078,6 +12091,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
             windlight_scene.normal_hdr = capture.normal_hdr;
             windlight_scene.hdr = capture.hdr;
             windlight_scene.reverse_z = capture.reverse_z;
+            windlight_scene.wireframe = capture.wireframe;
             error.clear();
             capture.split_sky_native_available =
                 capture.renderer->compositeWindLightSky(
@@ -12105,6 +12119,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
                 hdri_scene.normal_hdr = capture.normal_hdr;
                 hdri_scene.hdr = capture.hdr;
                 hdri_scene.reverse_z = capture.reverse_z;
+                hdri_scene.wireframe = capture.wireframe;
                 error.clear();
                 capture.split_sky_native_available =
                     capture.renderer->compositeHDRISky(
@@ -12139,6 +12154,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
             sky_scene.normal_hdr = capture.normal_hdr;
             sky_scene.hdr = capture.hdr;
             sky_scene.reverse_z = capture.reverse_z;
+            sky_scene.wireframe = capture.wireframe;
             error.clear();
             capture.windlight_sky_native_available =
                 capture.renderer->compositeWindLightSky(
@@ -12199,6 +12215,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
                 star_scene.normal_hdr = capture.normal_hdr;
                 star_scene.hdr = capture.hdr;
                 star_scene.reverse_z = capture.reverse_z;
+                star_scene.wireframe = capture.wireframe;
                 error.clear();
                 capture.windlight_stars_native_available =
                     capture.renderer->compositeWindLightStars(
@@ -12231,6 +12248,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
                 body_scene.normal_hdr = capture.normal_hdr;
                 body_scene.hdr = capture.hdr;
                 body_scene.reverse_z = capture.reverse_z;
+                body_scene.wireframe = capture.wireframe;
                 error.clear();
                 capture.windlight_heavenly_bodies_native_available =
                     capture.renderer->compositeWindLightHeavenlyBodies(
@@ -12263,6 +12281,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
                 meteor_scene.normal_hdr = capture.normal_hdr;
                 meteor_scene.hdr = capture.hdr;
                 meteor_scene.reverse_z = capture.reverse_z;
+                meteor_scene.wireframe = capture.wireframe;
                 error.clear();
                 capture.windlight_meteors_native_available =
                     capture.renderer->compositeWindLightMeteors(
@@ -12301,6 +12320,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
                 aurora_scene.normal_hdr = capture.normal_hdr;
                 aurora_scene.hdr = capture.hdr;
                 aurora_scene.reverse_z = capture.reverse_z;
+                aurora_scene.wireframe = capture.wireframe;
                 error.clear();
                 capture.windlight_aurora_native_available =
                     capture.renderer->compositeWindLightAurora(
@@ -12341,6 +12361,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
                 cloud_scene.normal_hdr = capture.normal_hdr;
                 cloud_scene.hdr = capture.hdr;
                 cloud_scene.reverse_z = capture.reverse_z;
+                cloud_scene.wireframe = capture.wireframe;
                 error.clear();
                 capture.windlight_clouds_native_available =
                     capture.renderer->compositeWindLightClouds(

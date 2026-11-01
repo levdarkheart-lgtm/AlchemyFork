@@ -272,6 +272,12 @@ namespace
         return MTLCullModeNone;
     }
 
+    MTLTriangleFillMode triangleFillMode(ALMetalTriangleFillMode mode)
+    {
+        return mode == ALMetalTriangleFillMode::lines
+            ? MTLTriangleFillModeLines : MTLTriangleFillModeFill;
+    }
+
     MTLWinding winding(ALMetalWinding value)
     {
         return value == ALMetalWinding::clockwise ? MTLWindingClockwise : MTLWindingCounterClockwise;
@@ -1032,6 +1038,18 @@ bool ALMetalRenderEncoder::setCullMode(ALMetalCullMode mode, std::string* error)
         return false;
     }
     [mImpl->encoder setCullMode:cullMode(mode)];
+    return true;
+}
+
+bool ALMetalRenderEncoder::setTriangleFillMode(
+    ALMetalTriangleFillMode mode, std::string* error)
+{
+    if (!mImpl || mImpl->ended)
+    {
+        setError(error, "Metal render encoder has ended");
+        return false;
+    }
+    [mImpl->encoder setTriangleFillMode:triangleFillMode(mode)];
     return true;
 }
 

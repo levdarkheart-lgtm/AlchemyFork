@@ -321,6 +321,7 @@ private:
 enum class ALMetalPrimitiveType { point, line, line_strip, triangle, triangle_strip };
 enum class ALMetalIndexType { uint16, uint32 };
 enum class ALMetalCullMode { none, front, back };
+enum class ALMetalTriangleFillMode { fill, lines };
 enum class ALMetalWinding { clockwise, counter_clockwise };
 enum class ALMetalDepthClipMode { clip, clamp };
 
@@ -381,6 +382,8 @@ public:
     bool setViewport(const ALMetalViewport& viewport, std::string* error = nullptr);
     bool setScissor(const ALMetalScissorRect& scissor, std::string* error = nullptr);
     bool setCullMode(ALMetalCullMode mode, std::string* error = nullptr);
+    bool setTriangleFillMode(ALMetalTriangleFillMode mode,
+                             std::string* error = nullptr);
     bool setFrontFacingWinding(ALMetalWinding winding, std::string* error = nullptr);
     bool setDepthClipMode(ALMetalDepthClipMode mode,
                           std::string* error = nullptr);

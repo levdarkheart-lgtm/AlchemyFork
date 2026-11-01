@@ -26,12 +26,11 @@
 struct ALMetalWorldOverlayEligibility
 {
     bool render_debug = false;
-    bool wireframe = false;
     bool pathfinding = false;
 
     bool exact() const
     {
-        return !render_debug && !wireframe && !pathfinding;
+        return !render_debug && !pathfinding;
     }
 };
 
@@ -464,6 +463,7 @@ struct ALMetalWorldGBufferScene
     bool hdr = false;
     bool reverse_z = false;
     bool stamp_opaque_coverage = false;
+    bool wireframe = false;
     // Eye-space plane used by the authoritative GLSL MIRROR_CLIP variants.
     // Native G-buffer vertices emit the matching Metal clip distance only
     // for hero-mirror cube faces; ordinary world and impostor scenes leave
@@ -787,6 +787,7 @@ struct ALMetalWorldOpaquePostDeferredScene
     // Keep the combined depth plane shader-readable so the completed target
     // can become the next frame's coherent SSR color/depth history pair.
     bool publish_screen_space_reflection_history = false;
+    bool wireframe = false;
 };
 
 // The display-transfer base of colorCorrectF.glsl. This owner
@@ -1218,6 +1219,7 @@ struct ALMetalWorldHDRISkyScene
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
+    bool wireframe = false;
 };
 
 // The CPU-packed subset of EnvironmentUBOData and loose sky uniforms needed
@@ -1259,6 +1261,7 @@ struct ALMetalWorldWindLightSkyScene
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
+    bool wireframe = false;
 };
 
 // The retained non-indexed star field drawn between WindLight atmospheric
@@ -1296,6 +1299,7 @@ struct ALMetalWorldStarScene
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
+    bool wireframe = false;
 };
 
 // One of the indexed far-plane quads drawn after the WindLight stars. Sun
@@ -1328,6 +1332,7 @@ struct ALMetalWorldHeavenlyBodyScene
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
+    bool wireframe = false;
 };
 
 // The retained non-indexed meteor field drawn after the heavenly bodies.
@@ -1354,6 +1359,7 @@ struct ALMetalWorldMeteorScene
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
+    bool wireframe = false;
 };
 
 struct ALMetalWorldAuroraScene
@@ -1368,6 +1374,7 @@ struct ALMetalWorldAuroraScene
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
+    bool wireframe = false;
 };
 
 // The indexed WindLight dome replayed for clouds. The source vertex buffer
@@ -1424,6 +1431,7 @@ struct ALMetalWorldCloudScene
     bool normal_hdr = false;
     bool hdr = false;
     bool reverse_z = false;
+    bool wireframe = false;
 };
 
 struct alignas(16) ALMetalWorldBaseLightingConstants
