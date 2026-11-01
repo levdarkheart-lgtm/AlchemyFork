@@ -36,3 +36,7 @@ non-RLVa M-008/M-007 work at transparency/material replay, edit only a
 demonstrated reachable divergence, and preserve fail-closed GL authority until
 each owner has correctness and side-effect proof. Full feature/stability,
 strict no-GL and qualifying paired performance evidence remain open.
+
+Any future candidate/reference shadow capture must first enable shadows in
+Graphics Preferences in both viewers. Off/on is invalid; both-off is an
+isolation control rather than shadow-parity evidence.

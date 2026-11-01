@@ -56,6 +56,10 @@ complete shadows feature row or close broader probe, material, stability,
 strict no-GL or performance gates. Exact RLVa parity remains the owner-deferred
 M-013 nice-to-have with its enable/save/restart comparison prerequisite.
 
+Owner-supplied comparison prerequisite: shadows must be enabled in Graphics
+Preferences in both viewers before a candidate/reference shadow capture. A
+both-off control can help isolate shadow contribution, but cannot close parity.
+
 Next release work is source-led transparency/material replay: implement only a
 demonstrated reachable divergence, add asymmetric physical coverage, then
 continue owner-by-owner native-authority removal.

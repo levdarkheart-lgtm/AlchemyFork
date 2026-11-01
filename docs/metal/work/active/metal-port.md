@@ -61,6 +61,10 @@ packaged MSL is
 compiled metallib is
 `53ac4db074d648096a2a5bb578a30b8b5406579e8bc2c4369e0c1470948e1013`.
 
+Shadow comparison prerequisite: enable shadows in Graphics Preferences in
+**both** viewers before capture. A mismatched off/on pair is invalid, and a
+both-off control may isolate a residual but cannot close shadow parity.
+
 The owner decision for all RLVa remains unchanged: only minimum Metal/no-GL
 cutover support is release work; exact parity is the persistent M-013
 [RLVa backlog](../deferred/rlva-parity.md). Any admissible comparison must

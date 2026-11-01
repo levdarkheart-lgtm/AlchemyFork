@@ -31,6 +31,10 @@ The bounded production-call reflection-probe audit remains closed without a
 speculative edit: no other reachable viewer-produced divergence was found, and
 Metal's additional bounds checks do not alter valid viewer-produced data.
 
+Any candidate/reference shadow comparison is admissible only when shadows are
+enabled in Graphics Preferences in **both** viewers before capture. A both-off
+control can isolate a shadow residual, but it cannot prove shadow parity.
+
 The owner designated **all exact RLVa parity** as a non-release nice-to-have.
 Only enough native implementation is required so RLVa cannot block Metal
 authority or viewer-owned OpenGL removal. This exception does not relax core
