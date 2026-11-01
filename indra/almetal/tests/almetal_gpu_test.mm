@@ -9944,6 +9944,71 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         }
         projector_shadow_input.constants.shadow_matrix[0][12] = 0.5f;
 
+        // Probe and hero cubemaps retain the same raw spot-shadow texture
+        // while generateSunShadow rebuilds the eye-to-light matrix for each
+        // face. Make the texture asymmetric and render two consecutive
+        // views: a cache may reuse the depth allocation, but it must never
+        // reuse the first view's matrix constants.
+        std::array<float, 32 * 32> split_projector_depth{};
+        for (std::size_t y = 0; y < 32; ++y)
+        {
+            for (std::size_t x = 16; x < 32; ++x)
+            {
+                split_projector_depth[y * 32 + x] = 1.f;
+            }
+        }
+        auto split_shadow_upload = device->makeCommandBuffer(
+            "Alchemy split projector shadow upload", &error);
+        INFO(error);
+        REQUIRE(split_shadow_upload);
+        REQUIRE(projector_shadows->upload(
+            *split_shadow_upload, 0, 0, {},
+            split_projector_depth.data(), 32 * sizeof(float), &error));
+        REQUIRE(split_shadow_upload->commitAndWait(&error));
+        INFO(error);
+
+        projector_shadow_input.constants.shadow_matrix[0][12] = 0.25f;
+        auto first_projector_view = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(first_projector_view);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            first_projector_view_pixels{};
+        REQUIRE(first_projector_view->colorTexture(0)->readback(
+            *device, 0, 0, {}, first_projector_view_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+
+        projector_shadow_input.constants.shadow_matrix[0][12] = 0.75f;
+        auto second_projector_view = renderer->renderProjectorLights(
+            projector_scene, &error);
+        INFO(error);
+        REQUIRE(second_projector_view);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            second_projector_view_pixels{};
+        REQUIRE(second_projector_view->colorTexture(0)->readback(
+            *device, 0, 0, {}, second_projector_view_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            CHECK(first_projector_view_pixels[center + channel] == 0);
+            CHECK(std::abs(static_cast<int>(
+                      second_projector_view_pixels[center + channel]) -
+                  static_cast<int>(projected_pixels[center + channel])) <= 1);
+        }
+
+        auto restore_shadow_upload = device->makeCommandBuffer(
+            "Alchemy projector shadow restore", &error);
+        INFO(error);
+        REQUIRE(restore_shadow_upload);
+        REQUIRE(projector_shadows->upload(
+            *restore_shadow_upload, 0, 0, {},
+            projector_shadowed_depth.data(), 32 * sizeof(float), &error));
+        REQUIRE(restore_shadow_upload->commitAndWait(&error));
+        INFO(error);
+        projector_shadow_input.constants.shadow_matrix[0][12] = 0.5f;
+
         projector_shadow_input.constants.config[1] = 1u;
         auto unbuilt_projector_shadow = renderer->renderProjectorLights(
             projector_scene, &error);

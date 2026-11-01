@@ -10083,12 +10083,6 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
     }
 
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    if (capture.projector_shadow_frame == gFrameCount &&
-        capture.projector_shadows.depth_texture)
-    {
-        return true;
-    }
-
     const U32 unbuilt = (unbuiltShadowMaps() >> 4u) & 0x3u;
     U32 width = 0;
     U32 height = 0;
@@ -10153,6 +10147,18 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
         capture.projector_shadow_frame = gFrameCount;
         return true;
     };
+
+    if (capture.projector_shadow_frame == gFrameCount &&
+        capture.projector_shadows.depth_texture)
+    {
+        // Cubemap updates can render several camera faces in one viewer
+        // frame. Their spot maps are deliberately retained, but
+        // generateSunShadow recomputes mSunShadowMatrix[4..5] from each
+        // face's eye space. Re-publish the current pass constants even when
+        // the raw depth texture is already resident; otherwise face two and
+        // later filter with face one's projector matrices.
+        return publish(capture.projector_shadows.depth_texture);
+    }
 
     const ALMetalTextureDescriptor* direct =
         capture.direct_projector_shadow_texture
