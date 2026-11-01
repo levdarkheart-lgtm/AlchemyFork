@@ -861,7 +861,8 @@ public:
     bool publishMetalHeroProbeRadiance(
         const LLUUID& hero_id, U64 generation, F32 strength);
     bool beginMetalReflectionProbeFaceCapture(
-        LLReflectionMap* probe, U32 face, bool radiance_pass);
+        LLReflectionMap* probe, U32 face, bool radiance_pass,
+        bool realtime_capture);
     bool endMetalReflectionProbeFaceCapture();
     void requestMetalScreenSpaceReflections(const LLRenderTarget& source);
     void collectMetalScreenSpaceReflections();

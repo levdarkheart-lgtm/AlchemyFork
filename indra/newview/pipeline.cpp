@@ -740,6 +740,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     LLReflectionMap* reflection_probe_owner = nullptr;
     U32 reflection_probe_face = 0;
     bool reflection_probe_radiance = false;
+    bool reflection_probe_realtime = false;
     bool reflection_probe_face_capture = false;
     ALGPUReadback impostor_ssr_color_readback;
     ALGPUReadback impostor_ssr_depth_readback;
@@ -1415,7 +1416,8 @@ bool LLPipeline::publishMetalHeroProbeRadiance(
 }
 
 bool LLPipeline::beginMetalReflectionProbeFaceCapture(
-    LLReflectionMap* probe, U32 face, bool radiance_pass)
+    LLReflectionMap* probe, U32 face, bool radiance_pass,
+    bool realtime_capture)
 {
     if (mMetalHeroWorldCaptureActive ||
         mMetalReflectionWorldCaptureActive || !probe || face >= 6 ||
@@ -1433,7 +1435,8 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     // face to have published. GL remains authoritative for a rejected face.
     std::string sequence_error;
     if (!mReflectionMapManager.beginNativeMetalProbeFaceCapture(
-            probe, face, radiance_pass, &sequence_error))
+            probe, face, radiance_pass, realtime_capture,
+            &sequence_error))
     {
         LL_DEBUGS("Metal")
             << "Skipped native reflection-probe face " << face << ": "
@@ -1485,6 +1488,7 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     capture.reflection_probe_owner = probe;
     capture.reflection_probe_face = face;
     capture.reflection_probe_radiance = radiance_pass;
+    capture.reflection_probe_realtime = realtime_capture;
     capture.reflection_probe_face_capture = true;
     return true;
 }
@@ -1507,7 +1511,8 @@ bool LLPipeline::endMetalReflectionProbeFaceCapture()
             *capture.renderer, *capture.opaque_post_deferred_target,
             capture.reflection_probe_owner,
             capture.reflection_probe_face,
-            capture.reflection_probe_radiance, &error);
+            capture.reflection_probe_radiance,
+            capture.reflection_probe_realtime, &error);
         if (!published)
         {
             LL_WARNS("Metal")
@@ -8484,7 +8489,10 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
         constants.config[1] = unbuilt;
         constants.config[2] = capture.reverse_z ? 1u : 0u;
         constants.config[3] = static_cast<U32>(std::clamp(
-            shaderInputs().mGlobal.mShadowFilterQuality, 0, 3));
+            shaderInputs().mGlobal.mShadowFilterQuality, 0, 3)) |
+            (gCubeSnapshot
+                 ? ALMetalWorldDirectionalShadowConstants::probe_single_tap
+                 : 0u);
         return true;
     }
 
@@ -8544,7 +8552,10 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
         constants.config[1] = unbuilt;
         constants.config[2] = capture.reverse_z ? 1u : 0u;
         constants.config[3] = static_cast<U32>(std::clamp(
-            shaderInputs().mGlobal.mShadowFilterQuality, 0, 3));
+            shaderInputs().mGlobal.mShadowFilterQuality, 0, 3)) |
+            (gCubeSnapshot
+                 ? ALMetalWorldDirectionalShadowConstants::probe_single_tap
+                 : 0u);
 
         capture.impostor_directional_shadows.depth_texture = texture;
         capture.impostor_directional_shadows.constants = constants;

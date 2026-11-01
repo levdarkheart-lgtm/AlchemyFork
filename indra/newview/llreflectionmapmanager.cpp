@@ -300,6 +300,7 @@ struct LLReflectionMapManager::MetalProbeArrayMirror
     bool mCaptureActive = false;
     bool mRadiancePending = false;
     bool mNativeCaptureRadiance = false;
+    bool mNativeCaptureRealtime = false;
     bool mNativeSHPublishedThisPass = false;
     bool mNativeRadiancePublishedThisPass = false;
     bool mNativeDefaultPublishedThisPass = false;
@@ -362,6 +363,7 @@ struct LLReflectionMapManager::MetalProbeArrayMirror
         mCaptureActive = false;
         mRadiancePending = false;
         mNativeCaptureRadiance = false;
+        mNativeCaptureRealtime = false;
         mNativeSHPublishedThisPass = false;
         mNativeRadiancePublishedThisPass = false;
         mNativeDefaultPublishedThisPass = false;
@@ -502,6 +504,7 @@ void LLReflectionMapManager::collectNativeMetalProbe()
 
 bool LLReflectionMapManager::beginNativeMetalProbeFaceCapture(
     LLReflectionMap* probe, U32 face, bool radiance_pass,
+    bool realtime_capture,
     std::string* error)
 {
     if (!probe || probe->mCubeIndex < 0 || face >= 6 ||
@@ -528,6 +531,23 @@ bool LLReflectionMapManager::beginNativeMetalProbeFaceCapture(
     {
         if (!radiance_pass)
         {
+            // The scheduled updater advances one face per frame while the
+            // realtime updater renders a whole cube in that same frame. They
+            // share this scratch transaction, so realtime must not preempt a
+            // scheduled twelve-face generation. The scheduled lane may
+            // replace a stale/failed sequence when its serialized updater
+            // begins the next logical probe.
+            if (realtime_capture &&
+                mirror.mNativeCaptureSequence != 0 &&
+                !mirror.mNativeCaptureRealtime)
+            {
+                if (error)
+                {
+                    *error =
+                        "Metal scheduled reflection-probe capture owns the native scratch transaction";
+                }
+                return false;
+            }
             ++mirror.mNativeNextSequence;
             if (mirror.mNativeNextSequence == 0)
             {
@@ -539,18 +559,22 @@ bool LLReflectionMapManager::beginNativeMetalProbeFaceCapture(
         else if (mirror.mNativeCaptureCube != cube ||
                  mirror.mNativeCaptureGeneration != generation ||
                  mirror.mNativeCaptureRadiance ||
-                 mirror.mNativeCaptureSequence == 0)
+                 mirror.mNativeCaptureRealtime != realtime_capture ||
+                 mirror.mNativeCaptureSequence == 0 ||
+                 mirror.mNativeValidFaces != 0x3fu ||
+                 !mirror.mNativeSHPublishedThisPass)
         {
             if (error)
             {
                 *error =
-                    "Metal reflection-probe radiance pass has no matching SH capture sequence";
+                    "Metal reflection-probe radiance pass has no complete matching irradiance/SH capture sequence";
             }
             return false;
         }
         mirror.mNativeCaptureCube = cube;
         mirror.mNativeCaptureGeneration = generation;
         mirror.mNativeCaptureRadiance = radiance_pass;
+        mirror.mNativeCaptureRealtime = realtime_capture;
         mirror.mNativeValidFaces = 0;
         if (radiance_pass)
         {
@@ -565,6 +589,7 @@ bool LLReflectionMapManager::beginNativeMetalProbeFaceCapture(
     else if (mirror.mNativeCaptureCube != cube ||
              mirror.mNativeCaptureGeneration != generation ||
              mirror.mNativeCaptureRadiance != radiance_pass ||
+             mirror.mNativeCaptureRealtime != realtime_capture ||
              mirror.mNativeCaptureSequence == 0)
     {
         if (error)
@@ -592,6 +617,7 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
     ALMetalWorldGBufferRenderer& renderer,
     const ALMetalRenderTarget& source,
     LLReflectionMap* probe, U32 face, bool radiance_pass,
+    bool realtime_capture,
     std::string* error)
 {
     if (!probe || probe->mCubeIndex < 0 || face >= 6 ||
@@ -618,6 +644,7 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
     if (mirror.mNativeCaptureCube != cube ||
         mirror.mNativeCaptureGeneration != generation ||
         mirror.mNativeCaptureRadiance != radiance_pass ||
+        mirror.mNativeCaptureRealtime != realtime_capture ||
         mirror.mNativeCaptureSequence == 0 ||
         mirror.mNativeValidFaces != preceding_faces)
     {
@@ -719,15 +746,54 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
         return true;
     }
 
+    // A realtime probe renders all six irradiance faces in one frame and all
+    // six radiance faces in the next.  The SH projection committed at the end
+    // of the irradiance frame can therefore still be in flight when the next
+    // frame begins.  Poll once more after the six radiance faces have been
+    // submitted, then rely on the single viewer Metal queue for the remaining
+    // dependency: the publication blit below is ordered after the matching SH
+    // projection without stalling the CPU for GPU completion.
+    collectNativeMetalProbe();
     const bool sh_ready = mirror.mNativeReadySHCube == cube &&
         mirror.mNativeReadySHGeneration == generation &&
         mirror.mNativeReadySHSequence == mirror.mNativeCaptureSequence &&
         mirror.mNativeStagedSH;
-    if (!sh_ready)
+    const ALMetalCommandStatus pending_status = mirror.mNativeSHPending
+        ? mirror.mNativeSHPending->status()
+        : ALMetalCommandStatus::not_enqueued;
+    const bool sh_queued = mirror.mNativePendingSHCube == cube &&
+        mirror.mNativePendingSHGeneration == generation &&
+        mirror.mNativePendingSHSequence == mirror.mNativeCaptureSequence &&
+        mirror.mNativeStagedSH &&
+        (pending_status == ALMetalCommandStatus::committed ||
+         pending_status == ALMetalCommandStatus::scheduled ||
+         pending_status == ALMetalCommandStatus::completed);
+    if (!sh_ready && !sh_queued)
     {
         if (error)
         {
-            *error = "Metal reflection-probe SH is not ready for this radiance generation";
+            *error = llformat(
+                "Metal reflection-probe SH is neither ready nor queued "
+                "for cube %u generation %llu sequence %llu lane %s; "
+                "ready %u/%llu/%llu, pending %u/%llu/%llu status %d, "
+                "staged %s",
+                cube,
+                static_cast<unsigned long long>(generation),
+                static_cast<unsigned long long>(
+                    mirror.mNativeCaptureSequence),
+                realtime_capture ? "realtime" : "scheduled",
+                mirror.mNativeReadySHCube,
+                static_cast<unsigned long long>(
+                    mirror.mNativeReadySHGeneration),
+                static_cast<unsigned long long>(
+                    mirror.mNativeReadySHSequence),
+                mirror.mNativePendingSHCube,
+                static_cast<unsigned long long>(
+                    mirror.mNativePendingSHGeneration),
+                static_cast<unsigned long long>(
+                    mirror.mNativePendingSHSequence),
+                static_cast<int>(pending_status),
+                mirror.mNativeStagedSH ? "yes" : "no");
         }
         return false;
     }
@@ -909,6 +975,9 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
     mirror.mNativeReadySHCube = 0;
     mirror.mNativeReadySHGeneration = 0;
     mirror.mNativeReadySHSequence = 0;
+    // Release the shared scratch transaction only after the coherent
+    // radiance + SH pair is ordered on the Metal queue.
+    mirror.mNativeCaptureSequence = 0;
     return true;
 }
 
@@ -2051,12 +2120,26 @@ void LLReflectionMapManager::update()
         // store and override the value of "isRadiancePass" -- parts of the render pipe rely on "isRadiancePass" to set
         // lighting values etc
         bool radiance_pass = isRadiancePass();
-        mRadiancePass = mRealtimeRadiancePass;
+        const bool realtime_radiance_pass = mRealtimeRadiancePass;
+        bool native_realtime_pass_complete = true;
+        mRadiancePass = realtime_radiance_pass;
         for (U32 i = 0; i < 6; ++i)
         {
-            updateProbeFace(closestDynamic, i);
+            native_realtime_pass_complete =
+                updateProbeFace(closestDynamic, i, true) &&
+                native_realtime_pass_complete;
         }
         mRealtimeRadiancePass = !mRealtimeRadiancePass;
+
+        // Reserve the following frame for the dependent radiance half when
+        // an otherwise-idle realtime irradiance pass has queued native SH.
+        // Starting a scheduled face zero below would replace the shared
+        // scratch owner before the coherent pair could publish.
+        if (!realtime_radiance_pass &&
+            native_realtime_pass_complete)
+        {
+            did_update = true;
+        }
 
         // restore "isRadiancePass"
         mRadiancePass = radiance_pass;
@@ -2373,7 +2456,8 @@ void LLReflectionMapManager::doProbeUpdate()
 // The next six passes render the scene with both radiance and irradiance into the same scratch space cube map and generate a simple mip chain.
 // At the end of these passes, a radiance map is generated for this probe and placed into the radiance cube map array at the index for this probe.
 // In effect this simulates single-bounce lighting.
-void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
+bool LLReflectionMapManager::updateProbeFace(
+    LLReflectionMap* probe, U32 face, bool realtime_capture)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
     LL_PROFILE_GPU_ZONE("probe update");
@@ -2383,7 +2467,8 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
 #if LL_DARWIN
     const bool native_face_capture =
         gPipeline.beginMetalReflectionProbeFaceCapture(
-            probe, face, isRadiancePass());
+            probe, face, isRadiancePass(), realtime_capture);
+    bool native_face_published = false;
 #endif
 
     mLightScale = 1.f;
@@ -2416,7 +2501,8 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
 #if LL_DARWIN
     if (native_face_capture)
     {
-        gPipeline.endMetalReflectionProbeFaceCapture();
+        native_face_published =
+            gPipeline.endMetalReflectionProbeFaceCapture();
     }
 #endif
 
@@ -2696,6 +2782,12 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
             }
         }
     }
+
+#if LL_DARWIN
+    return native_face_published;
+#else
+    return false;
+#endif
 }
 
 U32 LLReflectionMapManager::shProjectionRes(S32& mip) const

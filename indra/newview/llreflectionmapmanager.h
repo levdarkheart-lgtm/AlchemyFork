@@ -265,7 +265,9 @@ private:
     void doProbeUpdate();
 
     // update the specified face of the specified probe
-    void updateProbeFace(LLReflectionMap* probe, U32 face);
+    bool updateProbeFace(
+        LLReflectionMap* probe, U32 face,
+        bool realtime_capture = false);
 
     // face edge length of the probe mip the SH irradiance projection integrates over, from
     // ALProbeSHProjectionRes, and in `mip` the level of mTexture that holds it
@@ -291,11 +293,13 @@ private:
     void collectNativeMetalProbe();
     bool beginNativeMetalProbeFaceCapture(
         LLReflectionMap* probe, U32 face, bool radiance_pass,
+        bool realtime_capture,
         std::string* error = nullptr);
     bool captureNativeMetalProbeFace(
         ALMetalWorldGBufferRenderer& renderer,
         const ALMetalRenderTarget& source,
         LLReflectionMap* probe, U32 face, bool radiance_pass,
+        bool realtime_capture,
         std::string* error = nullptr);
     std::unique_ptr<MetalDefaultProbeMirror> mMetalDefaultProbe;
     std::unique_ptr<MetalProbeArrayMirror> mMetalProbeArray;

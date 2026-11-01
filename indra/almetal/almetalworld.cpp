@@ -985,6 +985,9 @@ namespace
             shadows->depth_texture->descriptor();
         const ALMetalWorldDirectionalShadowConstants& constants =
             shadows->constants;
+        const std::uint32_t filter_config = constants.config[3];
+        const std::uint32_t filter_quality = filter_config &
+            ALMetalWorldDirectionalShadowConstants::filter_quality_mask;
         return descriptor.type == ALMetalTextureType::texture_2d_array &&
                descriptor.format == ALMetalPixelFormat::r32_float &&
                descriptor.array_length == 4 &&
@@ -1002,8 +1005,11 @@ namespace
                constants.parameters[3] > 0.f &&
                constants.config[0] >= 1 && constants.config[0] <= 4 &&
                (constants.config[1] & ~0xfu) == 0 &&
-               constants.config[2] <= 1 && constants.config[3] <= 3 &&
-               (constants.config[3] < 3 || constants.parameters[2] > 0.f);
+               constants.config[2] <= 1 &&
+               (filter_config &
+                ~ALMetalWorldDirectionalShadowConstants::filter_config_mask) ==
+                   0 &&
+               (filter_quality < 3 || constants.parameters[2] > 0.f);
     }
 
     bool validProjectorShadows(

@@ -161,6 +161,11 @@ struct alignas(16) ALMetalWorldLegacyAlphaLighting
 // quality-tier filter so both sources share one contract.
 struct alignas(16) ALMetalWorldDirectionalShadowConstants
 {
+    static constexpr std::uint32_t filter_quality_mask = 0x3u;
+    static constexpr std::uint32_t probe_single_tap = 0x4u;
+    static constexpr std::uint32_t filter_config_mask =
+        filter_quality_mask | probe_single_tap;
+
     float shadow_matrix[4][16]{};
     float shadow_clip[4]{};
     // xy = shadow-map resolution, zw = GL screen_res used by PCSS rotation.
@@ -169,7 +174,8 @@ struct alignas(16) ALMetalWorldDirectionalShadowConstants
     // w = destination height for Metal-to-GL fragment-coordinate inversion.
     float parameters[4]{};
     // x = cascade count, y = unbuilt-map mask, z = reverse-Z,
-    // w = filter quality (0/1/2 Gaussian 2/4/6, 3 PCSS).
+    // w low two bits = filter quality (0/1/2 Gaussian 2/4/6, 3 PCSS);
+    // bit 2 = reflection-probe single-tap shortcut matching cube_snapshot.
     std::uint32_t config[4]{};
 };
 

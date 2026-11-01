@@ -10809,6 +10809,63 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         INFO(error);
         CHECK(upper_lit_pixels[light_center + 0] == 255);
 
+        // Reflection-probe captures take shadowUtil.glsl's uniform
+        // cube_snapshot shortcut: one hardware tap instead of the ordinary
+        // 2/4/6-wide or PCSS filter. Compare tiers retain the tap's bilinear
+        // 2x2 depth comparison, while Ultra's raw point sampler reads one
+        // texel. A single lit texel at the lower-left of the four around
+        // (0.5, 0.5) distinguishes both contracts from the full filters.
+        std::array<float, 8 * 8> probe_single_tap_depth = shadowed_depth;
+        probe_single_tap_depth[3 * 8 + 3] = 1.f;
+        auto probe_shadow_upload = device->makeCommandBuffer(
+            "Alchemy probe single-tap shadow upload", &error);
+        INFO(error);
+        REQUIRE(probe_shadow_upload);
+        REQUIRE(world_shadow_texture->upload(
+            *probe_shadow_upload, 0, 0, {},
+            probe_single_tap_depth.data(), 8 * sizeof(float), &error));
+        REQUIRE(probe_shadow_upload->commitAndWait(&error));
+        INFO(error);
+
+        world_shadows.constants.shadow_matrix[0][13] = 0.5f;
+        for (std::uint32_t quality = 0; quality < 3; ++quality)
+        {
+            CAPTURE(quality);
+            world_shadows.constants.config[3] = quality |
+                ALMetalWorldDirectionalShadowConstants::probe_single_tap;
+            auto probe_compare_light_map = renderer->renderLightMap(
+                light_map_scene, &error);
+            INFO(error);
+            REQUIRE(probe_compare_light_map);
+            std::array<std::uint8_t, 32 * 32 * 2> probe_compare_pixels{};
+            REQUIRE(probe_compare_light_map->colorTexture(0)->readback(
+                *device, 0, 0, {}, probe_compare_pixels.data(), 32 * 2,
+                &error));
+            INFO(error);
+            CHECK(std::abs(static_cast<int>(
+                               probe_compare_pixels[light_center + 0]) -
+                           64) <= 1);
+        }
+
+        world_shadows.constants.config[3] = 3u |
+            ALMetalWorldDirectionalShadowConstants::probe_single_tap;
+        auto probe_raw_light_map = renderer->renderLightMap(
+            light_map_scene, &error);
+        INFO(error);
+        REQUIRE(probe_raw_light_map);
+        std::array<std::uint8_t, 32 * 32 * 2> probe_raw_pixels{};
+        REQUIRE(probe_raw_light_map->colorTexture(0)->readback(
+            *device, 0, 0, {}, probe_raw_pixels.data(), 32 * 2,
+            &error));
+        INFO(error);
+        CHECK(probe_raw_pixels[light_center + 0] == 0);
+
+        world_shadows.constants.config[3] = 0x8u;
+        error.clear();
+        CHECK_FALSE(renderer->renderLightMap(light_map_scene, &error));
+        CHECK(error == "Metal world light-map scene is incomplete");
+        world_shadows.constants.config[3] = 1u;
+
         light_map_scene.directional_shadows = nullptr;
         light_map_scene.constants.config[1] = 0;
 
@@ -17380,15 +17437,37 @@ TEST_CASE("almetal: native ordinary probes filter radiance and project SH", "[al
         INFO(error);
         REQUIRE(packed_words);
         REQUIRE(pending);
-        REQUIRE(pending->waitUntilCompleted(&error));
+
+        // Realtime reflection probes begin the radiance pass on the frame
+        // after this asynchronous SH projection.  Prove that its publication
+        // can remain nonblocking: a dependent blit committed to the viewer's
+        // one Metal queue must observe the projected row without a CPU wait.
+        ALMetalTextureDescriptor published_sh_descriptor = sh_descriptor;
+        published_sh_descriptor.label =
+            "Alchemy queue-ordered ordinary-probe SH publication test";
+        auto published_sh = ALMetalTexture::create(
+            *device, published_sh_descriptor, &error);
+        INFO(error);
+        REQUIRE(published_sh);
+        auto publication = device->makeCommandBuffer(
+            "Alchemy queue-ordered ordinary-probe SH publication", &error);
+        INFO(error);
+        REQUIRE(publication);
+        ALMetalTextureCopy sh_publication_copy;
+        sh_publication_copy.source_region = {0, 3, 4, 1};
+        sh_publication_copy.destination_y = 5;
+        REQUIRE(published_sh->copyFrom(
+            *publication, *sh_texture, sh_publication_copy, &error));
+        REQUIRE(publication->commitAndWait(&error));
+        CHECK(pending->status() == ALMetalCommandStatus::completed);
         INFO(error);
 
         std::array<std::uint32_t, 16> buffer_words{};
         std::array<std::uint32_t, 16> texture_words{};
         REQUIRE(packed_words->read(
             0, buffer_words.data(), sizeof(buffer_words), &error));
-        const ALMetalRegion2D sh_row{0, 3, 4, 1};
-        REQUIRE(sh_texture->readback(
+        const ALMetalRegion2D sh_row{0, 5, 4, 1};
+        REQUIRE(published_sh->readback(
             *device, 0, 0, sh_row, texture_words.data(),
             4 * 4 * sizeof(std::uint32_t), &error));
         INFO(error);

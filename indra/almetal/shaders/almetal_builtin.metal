@@ -6140,6 +6140,54 @@ static float almetal_shadow_compare(
         : (bounded <= depth ? 1.0 : 0.0);
 }
 
+static float almetal_shadow_single_tap(
+    texture2d_array<float> shadow_maps, uint cascade,
+    float3 uvz, uint2 resolution, uint quality, bool reverse_z)
+{
+    // shadowUtil.glsl's cube_snapshot shortcut preserves the sampler baked
+    // into its quality variant. Ultra uses PointClamp over raw depth; the
+    // compare tiers use one linearly filtered comparison tap, whose four
+    // depth comparisons Metal reproduces explicitly over retained GL rows.
+    if (quality >= 3u)
+    {
+        const int2 texel = int2(floor(
+            uvz.xy * float2(resolution)));
+        return almetal_shadow_compare(
+            almetal_shadow_depth(
+                shadow_maps, cascade, texel, resolution),
+            uvz.z, reverse_z);
+    }
+
+    const float2 location =
+        uvz.xy * float2(resolution) - 0.5;
+    const int2 lower_left = int2(floor(location));
+    const float2 fraction = fract(location);
+    const float lower = mix(
+        almetal_shadow_compare(
+            almetal_shadow_depth(
+                shadow_maps, cascade, lower_left, resolution),
+            uvz.z, reverse_z),
+        almetal_shadow_compare(
+            almetal_shadow_depth(
+                shadow_maps, cascade, lower_left + int2(1, 0),
+                resolution),
+            uvz.z, reverse_z),
+        fraction.x);
+    const float upper = mix(
+        almetal_shadow_compare(
+            almetal_shadow_depth(
+                shadow_maps, cascade, lower_left + int2(0, 1),
+                resolution),
+            uvz.z, reverse_z),
+        almetal_shadow_compare(
+            almetal_shadow_depth(
+                shadow_maps, cascade, lower_left + int2(1, 1),
+                resolution),
+            uvz.z, reverse_z),
+        fraction.x);
+    return mix(lower, upper, fraction.y);
+}
+
 static float2 almetal_shadow_receiver_plane_bias(
     float2 duvdx, float2 duvdy, float dzdx, float dzdy,
     float2 texel)
@@ -6371,6 +6419,14 @@ static float almetal_filter_directional_shadow(
     const float inverse_w = 1.0 / light_position.w;
     float3 uvz = light_position.xyz * inverse_w;
     uvz.z += constant_bias;
+    const uint quality = shadows.config.w & 0x3u;
+    const uint2 resolution = uint2(shadows.resolution.xy);
+    if ((shadows.config.w & 0x4u) != 0u)
+    {
+        return almetal_shadow_single_tap(
+            shadow_maps, cascade, uvz, resolution,
+            quality, shadows.config.z != 0u);
+    }
     const float2 duvdx =
         (light_dx.xy - uvz.xy * light_dx.w) * inverse_w;
     const float2 duvdy =
@@ -6379,17 +6435,16 @@ static float almetal_filter_directional_shadow(
         (light_dx.z - uvz.z * light_dx.w) * inverse_w;
     const float dzdy =
         (light_dy.z - uvz.z * light_dy.w) * inverse_w;
-    const uint2 resolution = uint2(shadows.resolution.xy);
     const float2 dz_texel = almetal_shadow_receiver_plane_bias(
         duvdx, duvdy, dzdx, dzdy, 1.0 / shadows.resolution.xy);
     const bool reverse_z = shadows.config.z != 0u;
-    return shadows.config.w >= 3u
+    return quality >= 3u
         ? almetal_shadow_pcss(
               shadow_maps, cascade, uvz, resolution, dz_texel,
               screen_position, shadows.parameters.z, reverse_z)
         : almetal_shadow_gaussian_pcf(
               shadow_maps, cascade, uvz, resolution, dz_texel,
-              shadows.config.w, reverse_z);
+              quality, reverse_z);
 }
 
 static float almetal_directional_shadow(
