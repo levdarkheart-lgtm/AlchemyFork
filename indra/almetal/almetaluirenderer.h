@@ -121,6 +121,8 @@ enum class ALMetalHUDShader
     fullbright_alpha_mask,
     fullbright_alpha,
     pbr_alpha,
+    highlight,
+    highlight_skinned,
 };
 
 // One indexed static HUD-attachment draw. Unlike immediate-mode UI, volume
@@ -137,6 +139,7 @@ struct ALMetalHUDIndexedBatch
     std::size_t position_offset = 0;
     std::size_t texcoord_offset = 0;
     std::size_t color_offset = 0;
+    std::size_t weight_offset = 0;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;
@@ -145,6 +148,10 @@ struct ALMetalHUDIndexedBatch
     std::array<const ALMetalTexture*, max_textures> textures{};
     std::uint32_t texture_count = 0;
     const ALMetalTexture* emissive_texture = nullptr;
+    const float* skin_palette = nullptr;
+    std::size_t skin_palette_float_count = 0;
+    std::uint32_t skin_joint_count = 0;
+    float highlight_color[4] = {1.f, 1.f, 1.f, 1.f};
     float pbr_base_color_transform[8] = {
         1.f, 1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
     float pbr_emissive_transform[8] = {

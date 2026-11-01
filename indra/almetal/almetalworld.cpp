@@ -1240,7 +1240,7 @@ struct ALMetalWorldGBufferRenderer::Impl
         ssr_history_pipelines;
     std::array<OpaqueForwardMaskPipelines, 2>
         opaque_forward_fullbright_pipelines;
-    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+    std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
         highlight_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         opaque_forward_shiny_pipelines;
@@ -2225,32 +2225,53 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     }};
     for (std::size_t hdr = 0; hdr < screen_formats.size(); ++hdr)
     {
-        ALMetalRenderPipelineDescriptor highlight_descriptor;
-        highlight_descriptor.library = impl->library.get();
-        highlight_descriptor.vertex_function =
-            "almetal_world_highlight_vertex";
-        highlight_descriptor.fragment_function =
-            "almetal_world_highlight_fragment";
-        highlight_descriptor.colors[0].format = screen_formats[hdr];
-        highlight_descriptor.colors[0].blending_enabled = true;
-        highlight_descriptor.colors[0].source_rgb =
-            ALMetalBlendFactor::source_alpha;
-        highlight_descriptor.colors[0].destination_rgb =
-            ALMetalBlendFactor::one_minus_source_alpha;
-        highlight_descriptor.colors[0].source_alpha =
-            ALMetalBlendFactor::source_alpha;
-        highlight_descriptor.colors[0].destination_alpha =
-            ALMetalBlendFactor::one_minus_source_alpha;
-        highlight_descriptor.depth_stencil_format =
-            ALMetalPixelFormat::depth32_float_stencil8;
-        highlight_descriptor.label = hdr
-            ? "Alchemy HDR world selected-face highlight pipeline"
-            : "Alchemy world selected-face highlight pipeline";
-        impl->highlight_pipelines[hdr] = ALMetalRenderPipeline::create(
-            device, highlight_descriptor, error);
-        if (!impl->highlight_pipelines[hdr])
+        for (std::size_t write_alpha = 0; write_alpha < 2; ++write_alpha)
+        for (std::size_t rigged = 0; rigged < 2; ++rigged)
         {
-            return nullptr;
+            ALMetalRenderPipelineDescriptor highlight_descriptor;
+            highlight_descriptor.library = impl->library.get();
+            highlight_descriptor.vertex_function = rigged
+                ? "almetal_world_highlight_skinned_vertex"
+                : "almetal_world_highlight_vertex";
+            highlight_descriptor.fragment_function =
+                "almetal_world_highlight_fragment";
+            highlight_descriptor.colors[0].format = screen_formats[hdr];
+            highlight_descriptor.colors[0].blending_enabled = true;
+            highlight_descriptor.colors[0].source_rgb =
+                ALMetalBlendFactor::source_alpha;
+            highlight_descriptor.colors[0].destination_rgb =
+                ALMetalBlendFactor::one_minus_source_alpha;
+            highlight_descriptor.colors[0].source_alpha =
+                ALMetalBlendFactor::source_alpha;
+            highlight_descriptor.colors[0].destination_alpha =
+                ALMetalBlendFactor::one_minus_source_alpha;
+            if (!write_alpha)
+            {
+                highlight_descriptor.colors[0].write_mask =
+                    static_cast<ALMetalColorWriteMask>(
+                        static_cast<std::uint8_t>(
+                            ALMetalColorWriteMask::red) |
+                        static_cast<std::uint8_t>(
+                            ALMetalColorWriteMask::green) |
+                        static_cast<std::uint8_t>(
+                            ALMetalColorWriteMask::blue));
+            }
+            highlight_descriptor.depth_stencil_format =
+                ALMetalPixelFormat::depth32_float_stencil8;
+            highlight_descriptor.label = hdr
+                ? (rigged
+                       ? "Alchemy HDR world rigged highlight pipeline"
+                       : "Alchemy HDR world highlight pipeline")
+                : (rigged
+                       ? "Alchemy world rigged highlight pipeline"
+                       : "Alchemy world highlight pipeline");
+            impl->highlight_pipelines[hdr][write_alpha][rigged] =
+                ALMetalRenderPipeline::create(
+                    device, highlight_descriptor, error);
+            if (!impl->highlight_pipelines[hdr][write_alpha][rigged])
+            {
+                return nullptr;
+            }
         }
 
         ALMetalRenderPipelineDescriptor descriptor;
@@ -10053,6 +10074,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     {
         const ALMetalWorldHighlightBatch& batch =
             scene.highlight_batches[index];
+        const bool skinned = batch.skin_palette != nullptr ||
+            batch.skin_palette_float_count != 0 ||
+            batch.skin_joint_count != 0 || batch.weight_offset != 0;
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         if (!batch.vertices || !batch.indices || !batch.texture ||
@@ -10070,7 +10094,18 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             !sampleableTexture(batch.texture) ||
             !finiteValues(batch.modelview_projection, 16) ||
             !finiteValues(batch.texture_matrix, 16) ||
-            !finiteValues(batch.color, 4))
+            !finiteValues(batch.color, 4) ||
+            (skinned &&
+             (!batch.skin_palette || batch.skin_joint_count == 0 ||
+              batch.skin_joint_count > max_skin_joints ||
+              batch.skin_palette_float_count !=
+                  4u + static_cast<std::size_t>(
+                           batch.skin_joint_count) * 12u ||
+              batch.weight_offset % float4_stride != 0 ||
+              !rangeFits(batch.weight_offset, batch.vertex_count,
+                         float4_stride, batch.vertices->length()) ||
+              !finiteValues(batch.skin_palette,
+                            batch.skin_palette_float_count))))
         {
             setError(error, "Metal world highlight batch is invalid");
             return nullptr;
@@ -11034,6 +11069,53 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         palette_buffers[batch_index] = palette.get();
         palette_storage.push_back(std::move(palette));
+    }
+
+    std::vector<std::unique_ptr<ALMetalBuffer>> highlight_palette_storage;
+    std::vector<const ALMetalBuffer*> highlight_palette_buffers(
+        scene.highlight_batch_count, nullptr);
+    for (std::size_t batch_index = 0;
+         batch_index < scene.highlight_batch_count; ++batch_index)
+    {
+        const ALMetalWorldHighlightBatch& batch =
+            scene.highlight_batches[batch_index];
+        if (!batch.skin_palette)
+        {
+            continue;
+        }
+        for (std::size_t previous = 0; previous < batch_index; ++previous)
+        {
+            const ALMetalWorldHighlightBatch& candidate =
+                scene.highlight_batches[previous];
+            if (candidate.skin_palette == batch.skin_palette &&
+                candidate.skin_palette_float_count ==
+                    batch.skin_palette_float_count &&
+                candidate.skin_joint_count == batch.skin_joint_count)
+            {
+                highlight_palette_buffers[batch_index] =
+                    highlight_palette_buffers[previous];
+                break;
+            }
+        }
+        if (highlight_palette_buffers[batch_index])
+        {
+            continue;
+        }
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length =
+            batch.skin_palette_float_count * sizeof(float);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world highlight skin palette";
+        auto palette = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!palette || !palette->write(
+                0, batch.skin_palette, descriptor.length, error))
+        {
+            return nullptr;
+        }
+        highlight_palette_buffers[batch_index] = palette.get();
+        highlight_palette_storage.push_back(std::move(palette));
     }
 
     std::unique_ptr<ALMetalBuffer> probe_constants_buffer;
@@ -12813,6 +12895,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     {
         const ALMetalWorldHighlightBatch& batch =
             scene.highlight_batches[index];
+        const bool rigged = highlight_palette_buffers[index] != nullptr;
         WorldHighlightConstants constants{};
         std::memcpy(constants.modelview_projection,
                     batch.modelview_projection,
@@ -12827,7 +12910,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
             encoder->setCullMode(ALMetalCullMode::back, error) &&
             encoder->setPipeline(
-                *mImpl->highlight_pipelines[scene.hdr ? 1 : 0], error) &&
+                *mImpl->highlight_pipelines[scene.hdr ? 1 : 0]
+                                            [batch.write_alpha ? 1 : 0]
+                                            [rigged ? 1 : 0],
+                error) &&
             encoder->setVertexBuffer(
                 0, *batch.vertices, batch.position_offset, error) &&
             encoder->setVertexBuffer(
@@ -12838,7 +12924,19 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->setFragmentSampler(
                 0, mImpl->diffuse_sampler.get(), error) &&
             encoder->setFragmentBytes(
-                0, &constants, sizeof(constants), error) &&
+                0, &constants, sizeof(constants), error);
+        if (encoded && rigged)
+        {
+            encoded =
+                encoder->setVertexBuffer(
+                    5, *highlight_palette_buffers[index], 0, error) &&
+                encoder->setVertexBuffer(
+                    6, *batch.vertices, batch.weight_offset, error) &&
+                encoder->setVertexBytes(
+                    7, &batch.skin_joint_count,
+                    sizeof(batch.skin_joint_count), error);
+        }
+        encoded = encoded &&
             encoder->drawIndexed(
                 ALMetalPrimitiveType::triangle, batch.index_count,
                 batch.index_type, *batch.indices,

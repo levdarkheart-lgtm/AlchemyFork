@@ -4445,8 +4445,68 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(highlighted_depth[16 * 32 + 16] - 0.625f) <
               0.0001f);
 
+        // Highlight Transparent uses the same sampled-uniform-color shader,
+        // but GL has already restored an RGB-only color mask. Prove that the
+        // diagnostic overlay leaves the retained glow/coverage alpha alone,
+        // then move the same triangle through the object-skin palette so the
+        // rigged pipeline cannot pass by accidentally using static vertices.
+        ALMetalWorldHighlightBatch debug_highlight = highlight;
+        debug_highlight.color[0] = 1.f;
+        debug_highlight.color[1] = 0.f;
+        debug_highlight.color[2] = 0.f;
+        debug_highlight.color[3] = 1.f;
+        debug_highlight.write_alpha = false;
+        opaque_forward_scene.highlight_batches = &debug_highlight;
+        auto debug_highlighted = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(debug_highlighted);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            debug_highlighted_pixels{};
+        REQUIRE(debug_highlighted->colorTexture(0)->readback(
+            *device, 0, 0, {}, debug_highlighted_pixels.data(), 32 * 8,
+            &error));
+        const std::size_t debug_static = (16 * 32 + 12) * 4;
+        const std::size_t debug_shifted = (16 * 32 + 25) * 4;
+        CHECK(debug_highlighted_pixels[debug_static + 0] == 0x3c00);
+        CHECK(debug_highlighted_pixels[debug_static + 1] == 0u);
+        CHECK(debug_highlighted_pixels[debug_static + 2] == 0u);
+        CHECK(debug_highlighted_pixels[debug_static + 3] ==
+              opaque_forward_pixels[debug_static + 3]);
+
+        std::array<float, 16> debug_skin_palette = alpha_skin_palette;
+        debug_skin_palette[7] = 0.5f;
+        debug_highlight.weight_offset = weight_offset;
+        debug_highlight.skin_palette = debug_skin_palette.data();
+        debug_highlight.skin_palette_float_count =
+            debug_skin_palette.size();
+        debug_highlight.skin_joint_count = 1;
+        auto rigged_debug_highlighted =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(rigged_debug_highlighted);
+        debug_highlighted_pixels.fill(0xffffu);
+        REQUIRE(rigged_debug_highlighted->colorTexture(0)->readback(
+            *device, 0, 0, {}, debug_highlighted_pixels.data(), 32 * 8,
+            &error));
+        CHECK(debug_highlighted_pixels[debug_static + 0] ==
+              opaque_forward_pixels[debug_static + 0]);
+        CHECK(debug_highlighted_pixels[debug_shifted + 0] == 0x3c00);
+        CHECK(debug_highlighted_pixels[debug_shifted + 1] == 0u);
+        CHECK(debug_highlighted_pixels[debug_shifted + 2] == 0u);
+        CHECK(debug_highlighted_pixels[debug_shifted + 3] ==
+              opaque_forward_pixels[debug_shifted + 3]);
+
+        debug_highlight.skin_palette_float_count = 4;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world highlight batch is invalid");
+        error.clear();
+
         opaque_forward_scene.gbuffer = reverse_coverage_result.get();
         opaque_forward_scene.reverse_z = true;
+        opaque_forward_scene.highlight_batches = &highlight;
         auto reverse_highlighted = renderer->renderOpaquePostDeferred(
             opaque_forward_scene, &error);
         INFO(error);
@@ -23487,6 +23547,145 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(composed_pixels[center + 1] == 40u);
         CHECK(composed_pixels[center + 2] == 80u);
         CHECK(composed_pixels[center + 3] == 255u);
+
+        // Highlight Transparent is a sampled uniform-colour HUD draw, not a
+        // streamed-tint fullbright draw. Its RGB-only mask must preserve the
+        // retained world alpha. Move the rigged variant to the right so a
+        // static-vertex implementation cannot satisfy both controls.
+        hud_batch.shader = ALMetalHUDShader::highlight;
+        hud_batch.textures[0] = texture.get();
+        hud_batch.texture_count = 1;
+        hud_batch.emissive_texture = nullptr;
+        hud_batch.minimum_alpha = 0.f;
+        hud_batch.highlight_color[0] = 1.f;
+        hud_batch.highlight_color[1] = 0.f;
+        hud_batch.highlight_color[2] = 0.f;
+        hud_batch.highlight_color[3] = 1.f;
+        hud_batch.blend.enabled = true;
+        hud_batch.blend.source_rgb = ALMetalBlendFactor::source_alpha;
+        hud_batch.blend.destination_rgb =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        hud_batch.blend.source_alpha = ALMetalBlendFactor::zero;
+        hud_batch.blend.destination_alpha =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        hud_batch.blend.write_mask =
+            static_cast<ALMetalColorWriteMask>(
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+        hud_batch.depth.write_enabled = false;
+        hud_batch.double_sided = false;
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        const std::size_t hud_highlight_static = (16 * 32 + 12) * 4;
+        CHECK(composed_pixels[hud_highlight_static + 0] == 0u);
+        CHECK(composed_pixels[hud_highlight_static + 1] == 0u);
+        CHECK(composed_pixels[hud_highlight_static + 2] == 255u);
+        CHECK(composed_pixels[hud_highlight_static + 3] == 255u);
+
+        constexpr std::size_t hud_highlight_weight_offset =
+            (color_offset + sizeof(hud_colors) + 15u) & ~std::size_t{15u};
+        const std::array<std::array<float, 4>, 3> hud_highlight_weights{{
+            {{0.5f, 0.f, 0.f, 0.f}},
+            {{0.5f, 0.f, 0.f, 0.f}},
+            {{0.5f, 0.f, 0.f, 0.f}},
+        }};
+        std::array<std::uint8_t,
+                   hud_highlight_weight_offset +
+                       sizeof(hud_highlight_weights)>
+            hud_highlight_bytes{};
+        std::memcpy(hud_highlight_bytes.data(), hud_bytes.data(),
+                    hud_bytes.size());
+        std::memcpy(
+            hud_highlight_bytes.data() + hud_highlight_weight_offset,
+            hud_highlight_weights.data(), sizeof(hud_highlight_weights));
+        ALMetalBufferDescriptor hud_highlight_vertex_descriptor =
+            hud_vertex_descriptor;
+        hud_highlight_vertex_descriptor.length =
+            hud_highlight_bytes.size();
+        hud_highlight_vertex_descriptor.label =
+            "Alchemy rigged HUD highlight vertices";
+        auto hud_highlight_vertices = ALMetalBuffer::create(
+            *device, hud_highlight_vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(hud_highlight_vertices);
+        REQUIRE(hud_highlight_vertices->write(
+            0, hud_highlight_bytes.data(), hud_highlight_bytes.size(),
+            &error));
+        std::array<float, 16> hud_highlight_palette{{
+            0.f, 0.f, 0.f, 0.f,
+            1.f, 0.f, 0.f, 0.5f,
+            0.f, 1.f, 0.f, 0.f,
+            0.f, 0.f, 1.f, 0.f,
+        }};
+        hud_batch.shader = ALMetalHUDShader::highlight_skinned;
+        hud_batch.vertices = hud_highlight_vertices.get();
+        hud_batch.weight_offset = hud_highlight_weight_offset;
+        hud_batch.skin_palette = hud_highlight_palette.data();
+        hud_batch.skin_palette_float_count = hud_highlight_palette.size();
+        hud_batch.skin_joint_count = 1;
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        composed_pixels.fill(0xffu);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(composed_pixels[hud_highlight_static + 0] == 20u);
+        CHECK(composed_pixels[hud_highlight_static + 1] == 40u);
+        CHECK(composed_pixels[hud_highlight_static + 2] == 80u);
+        CHECK(composed_pixels[hud_highlight_static + 3] == 255u);
+        std::size_t rigged_highlight_first_x = 32;
+        std::size_t rigged_highlight_last_x = 0;
+        std::size_t rigged_highlight_pixel_count = 0;
+        for (std::size_t x = 0; x < 32; ++x)
+        {
+            const std::size_t pixel = (16 * 32 + x) * 4;
+            if (composed_pixels[pixel + 0] == 0u &&
+                composed_pixels[pixel + 1] == 0u &&
+                composed_pixels[pixel + 2] == 255u &&
+                composed_pixels[pixel + 3] == 255u)
+            {
+                rigged_highlight_first_x = std::min(
+                    rigged_highlight_first_x, x);
+                rigged_highlight_last_x = std::max(
+                    rigged_highlight_last_x, x);
+                ++rigged_highlight_pixel_count;
+            }
+        }
+        CHECK(rigged_highlight_pixel_count > 0);
+        CHECK(rigged_highlight_first_x >= 17);
+        CHECK(rigged_highlight_last_x >= 23);
+
+        hud_batch.skin_palette_float_count = 4;
+        error.clear();
+        CHECK_FALSE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        CHECK(error == "Metal HUD highlight skinning data is invalid");
+        CHECK_FALSE(hud_renderer->hasOpenFrame());
+        hud_batch.vertices = hud_vertices.get();
+        hud_batch.weight_offset = 0;
+        hud_batch.skin_palette = nullptr;
+        hud_batch.skin_palette_float_count = 0;
+        hud_batch.skin_joint_count = 0;
+        hud_batch.blend.write_mask = ALMetalColorWriteMask::all;
 
         // PBR HUD alpha keeps the same coverage/blend contract, but its glTF
         // colour maps and streamed tint are decoded before base + emissive

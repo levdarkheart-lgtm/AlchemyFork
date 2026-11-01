@@ -1907,6 +1907,32 @@ vertex ALMetalWorldHighlightVaryings almetal_world_highlight_vertex(
     return output;
 }
 
+vertex ALMetalWorldHighlightVaryings almetal_world_highlight_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(2)]],
+    constant ALMetalWorldHighlightConstants& constants [[buffer(4)]],
+    const device float4* skin_palette [[buffer(5)]],
+    const device float4* encoded_weights [[buffer(6)]],
+    constant uint& joint_count [[buffer(7)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        positions[vertex_id], float4(0.0), encoded_weights[vertex_id],
+        skin_palette, joint_count);
+    const float4 rebased_position =
+        skinned.position + float4(skin_palette[0].xyz, 1.0);
+    float4 clip_position =
+        constants.modelview_projection * rebased_position;
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldHighlightVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    return output;
+}
+
 fragment float4 almetal_world_highlight_fragment(
     ALMetalWorldHighlightVaryings input [[stage_in]],
     texture2d<float> diffuse_texture [[texture(0)]],
@@ -17802,6 +17828,84 @@ fragment float4 almetal_hud_fullbright_fragment(
         discard_fragment();
     }
     return max(float4(texture_color.rgb * input.color.rgb, final_alpha),
+               float4(0.0));
+}
+
+struct ALMetalHUDHighlightConstants
+{
+    float4x4 modelview_projection;
+    float4x4 texture_matrix;
+    float4 material;
+    uint4 config;
+    float4 base_color_transform[2];
+    float4 emissive_transform[2];
+    float4 emissive_color;
+    float4 highlight_color;
+};
+
+vertex ALMetalHUDFullbrightVaryings almetal_hud_highlight_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(1)]],
+    constant ALMetalHUDHighlightConstants& constants [[buffer(3)]],
+    uint vertex_id [[vertex_id]])
+{
+    float4 clip_position = constants.modelview_projection *
+        float4(positions[vertex_id].xyz, 1.0);
+    if (constants.config.z != 0u)
+    {
+        clip_position.y = -clip_position.y;
+    }
+
+    ALMetalHUDFullbrightVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.color = constants.highlight_color;
+    output.texture_index = 0u;
+    output.texture_count = 1u;
+    return output;
+}
+
+vertex ALMetalHUDFullbrightVaryings almetal_hud_highlight_skinned_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords [[buffer(1)]],
+    constant ALMetalHUDHighlightConstants& constants [[buffer(3)]],
+    const device float4* skin_palette [[buffer(4)]],
+    const device float4* encoded_weights [[buffer(5)]],
+    constant uint& joint_count [[buffer(6)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalObjectSkinnedVertex skinned = almetal_object_skin_vertex(
+        positions[vertex_id], float4(0.0), encoded_weights[vertex_id],
+        skin_palette, joint_count);
+    const float4 rebased_position =
+        skinned.position + float4(skin_palette[0].xyz, 1.0);
+    float4 clip_position =
+        constants.modelview_projection * rebased_position;
+    if (constants.config.z != 0u)
+    {
+        clip_position.y = -clip_position.y;
+    }
+
+    ALMetalHUDFullbrightVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord = (constants.texture_matrix *
+                       float4(texcoords[vertex_id], 0.0, 1.0)).xy;
+    output.color = constants.highlight_color;
+    output.texture_index = 0u;
+    output.texture_count = 1u;
+    return output;
+}
+
+fragment float4 almetal_hud_highlight_fragment(
+    ALMetalHUDFullbrightVaryings input [[stage_in]],
+    texture2d<float> diffuse_texture [[texture(0)]],
+    sampler diffuse_sampler [[sampler(0)]])
+{
+    return max(input.color *
+               diffuse_texture.sample(diffuse_sampler, input.texcoord),
                float4(0.0));
 }
 

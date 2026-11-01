@@ -930,6 +930,9 @@ public:
         LLVertexBuffer* buffer, U32 index_count, U32 index_start,
         LLViewerTexture* texture, const LLColor4& color,
         U32 texcoord_type);
+    void captureMetalDebugAlphaBatch(
+        const LLDrawInfo& params, LLViewerTexture* texture,
+        const LLColor4& color);
     void captureMetalWorldTreeBatch(LLVertexBuffer* buffer,
                                     LLViewerTexture* texture);
     void captureMetalWorldTerrainBatch(

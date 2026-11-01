@@ -393,12 +393,16 @@ struct ALMetalWorldHighlightBatch
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
     std::size_t texcoord_offset = 0;
+    std::size_t weight_offset = 0;
     std::uint32_t vertex_count = 0;
     const ALMetalBuffer* indices = nullptr;
     std::size_t index_offset = 0;
     ALMetalIndexType index_type = ALMetalIndexType::uint16;
     std::uint32_t index_count = 0;
     const ALMetalTexture* texture = nullptr;
+    const float* skin_palette = nullptr;
+    std::size_t skin_palette_float_count = 0;
+    std::uint32_t skin_joint_count = 0;
     float modelview_projection[16]{};
     float texture_matrix[16] = {
         1.f, 0.f, 0.f, 0.f,
@@ -407,6 +411,7 @@ struct ALMetalWorldHighlightBatch
         0.f, 0.f, 0.f, 1.f,
     };
     float color[4]{};
+    bool write_alpha = true;
 };
 
 struct ALMetalWorldGBufferScene

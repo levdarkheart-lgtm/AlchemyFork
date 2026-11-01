@@ -341,45 +341,90 @@ void LLDrawPoolAlpha::renderDebugAlpha()
 {
     if (sShowDebugAlpha && !gCubeSnapshot)
     {
-        gHighlightProgram.bind();
-        gGL.diffuseColor4f(1, 0, 0, 1);
-        gGL.getTextureSlot(0)->bindFast(LLViewerFetchedTexture::getSmokeImage(), ALSamplers::AnisoWrap);
+        LLViewerFetchedTexture* smoke =
+            LLViewerFetchedTexture::getSmokeImage();
+        const auto draw_debug_batches =
+            [this, smoke](U32 type, bool rigged,
+                          const LLColor4& color)
+        {
+            const LLVOAvatar* last_avatar = nullptr;
+            U64 last_mesh_id = 0;
+            bool skip_last_skin = false;
+            auto* begin = gPipeline.beginRenderMap(type);
+            auto* end = gPipeline.endRenderMap(type);
+            for (auto* iterator = begin; iterator != end; )
+            {
+                LLDrawInfo* params = *iterator;
+                LLCullResult::increment_iterator(iterator, end);
+                if (!params ||
+                    (rigged && !uploadMatrixPalette(
+                        params->mAvatar, params->mSkinInfo,
+                        last_avatar, last_mesh_id, skip_last_skin)))
+                {
+                    continue;
+                }
+#if LL_DARWIN
+                applyModelMatrix(*params);
+                gPipeline.captureMetalDebugAlphaBatch(
+                    *params, smoke, color);
+#endif
+                pushUntexturedBatch(*params);
+            }
+        };
 
+        gHighlightProgram.bind();
+        const LLColor4 red(1, 0, 0, 1);
+        const LLColor4 blue(0, 0, 1, 1);
+        const LLColor4 green(0, 1, 0, 1);
+        gGL.diffuseColor4fv(red.mV);
+        gGL.getTextureSlot(0)->bindFast(smoke, ALSamplers::AnisoWrap);
 
         renderAlphaHighlight();
 
-        pushUntexturedBatches(LLRenderPass::PASS_ALPHA_MASK);
-        pushUntexturedBatches(LLRenderPass::PASS_ALPHA_INVISIBLE);
+        draw_debug_batches(LLRenderPass::PASS_ALPHA_MASK, false, red);
+        draw_debug_batches(LLRenderPass::PASS_ALPHA_INVISIBLE, false, red);
 
         // Material alpha mask
-        gGL.diffuseColor4f(0, 0, 1, 1);
-        pushUntexturedBatches(LLRenderPass::PASS_MATERIAL_ALPHA_MASK);
-        pushUntexturedBatches(LLRenderPass::PASS_NORMMAP_MASK);
-        pushUntexturedBatches(LLRenderPass::PASS_SPECMAP_MASK);
-        pushUntexturedBatches(LLRenderPass::PASS_NORMSPEC_MASK);
-        pushUntexturedBatches(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK);
-        pushUntexturedBatches(LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK);
+        gGL.diffuseColor4fv(blue.mV);
+        draw_debug_batches(
+            LLRenderPass::PASS_MATERIAL_ALPHA_MASK, false, blue);
+        draw_debug_batches(LLRenderPass::PASS_NORMMAP_MASK, false, blue);
+        draw_debug_batches(LLRenderPass::PASS_SPECMAP_MASK, false, blue);
+        draw_debug_batches(LLRenderPass::PASS_NORMSPEC_MASK, false, blue);
+        draw_debug_batches(
+            LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, false, blue);
+        draw_debug_batches(
+            LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK, false, blue);
 
-        gGL.diffuseColor4f(0, 1, 0, 1);
-        pushUntexturedBatches(LLRenderPass::PASS_INVISIBLE);
+        gGL.diffuseColor4fv(green.mV);
+        draw_debug_batches(LLRenderPass::PASS_INVISIBLE, false, green);
 
         gHighlightProgram.riggedVariant()->bind();
-        gGL.diffuseColor4f(1, 0, 0, 1);
+        gGL.diffuseColor4fv(red.mV);
 
-        pushRiggedBatches(LLRenderPass::PASS_ALPHA_MASK_RIGGED, false);
-        pushRiggedBatches(LLRenderPass::PASS_ALPHA_INVISIBLE_RIGGED, false);
+        draw_debug_batches(
+            LLRenderPass::PASS_ALPHA_MASK_RIGGED, true, red);
+        draw_debug_batches(
+            LLRenderPass::PASS_ALPHA_INVISIBLE_RIGGED, true, red);
 
         // Material alpha mask
-        gGL.diffuseColor4f(0, 0, 1, 1);
-        pushRiggedBatches(LLRenderPass::PASS_MATERIAL_ALPHA_MASK_RIGGED, false);
-        pushRiggedBatches(LLRenderPass::PASS_NORMMAP_MASK_RIGGED, false);
-        pushRiggedBatches(LLRenderPass::PASS_SPECMAP_MASK_RIGGED, false);
-        pushRiggedBatches(LLRenderPass::PASS_NORMSPEC_MASK_RIGGED, false);
-        pushRiggedBatches(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED, false);
-        pushRiggedBatches(LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK_RIGGED, false);
+        gGL.diffuseColor4fv(blue.mV);
+        draw_debug_batches(
+            LLRenderPass::PASS_MATERIAL_ALPHA_MASK_RIGGED, true, blue);
+        draw_debug_batches(
+            LLRenderPass::PASS_NORMMAP_MASK_RIGGED, true, blue);
+        draw_debug_batches(
+            LLRenderPass::PASS_SPECMAP_MASK_RIGGED, true, blue);
+        draw_debug_batches(
+            LLRenderPass::PASS_NORMSPEC_MASK_RIGGED, true, blue);
+        draw_debug_batches(
+            LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED, true, blue);
+        draw_debug_batches(
+            LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK_RIGGED, true, blue);
 
-        gGL.diffuseColor4f(0, 1, 0, 1);
-        pushRiggedBatches(LLRenderPass::PASS_INVISIBLE_RIGGED, false);
+        gGL.diffuseColor4fv(green.mV);
+        draw_debug_batches(
+            LLRenderPass::PASS_INVISIBLE_RIGGED, true, green);
         LLGLSLShader::sCurBoundShaderPtr->unbind();
     }
 }
@@ -420,6 +465,11 @@ void LLDrawPoolAlpha::renderAlphaHighlight()
 
                     gGL.diffuseColor4f(1, 0, 0, 1);
                     LLRenderPass::applyModelMatrix(params);
+#if LL_DARWIN
+                    gPipeline.captureMetalDebugAlphaBatch(
+                        params, LLViewerFetchedTexture::getSmokeImage(),
+                        LLColor4::red);
+#endif
                     params.mVertexBuffer->setBuffer();
                     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
                 }

@@ -673,12 +673,18 @@ struct ALMetalUIRenderer::Impl
         ALMetalRenderPipelineDescriptor descriptor;
         descriptor.library = library.get();
         const bool pbr = shader == ALMetalHUDShader::pbr_alpha;
+        const bool highlight = shader == ALMetalHUDShader::highlight ||
+            shader == ALMetalHUDShader::highlight_skinned;
         descriptor.vertex_function = pbr
             ? "almetal_hud_pbr_alpha_vertex"
-            : "almetal_hud_fullbright_vertex";
+            : shader == ALMetalHUDShader::highlight_skinned
+            ? "almetal_hud_highlight_skinned_vertex"
+            : highlight ? "almetal_hud_highlight_vertex"
+                        : "almetal_hud_fullbright_vertex";
         descriptor.fragment_function = pbr
             ? "almetal_hud_pbr_alpha_fragment"
-            : "almetal_hud_fullbright_fragment";
+            : highlight ? "almetal_hud_highlight_fragment"
+                        : "almetal_hud_fullbright_fragment";
         descriptor.color_attachment_count = 1;
         descriptor.colors[0].format = output_format;
         descriptor.colors[0].blending_enabled = target_blend.enabled;
@@ -705,6 +711,13 @@ struct ALMetalUIRenderer::Impl
                 break;
             case ALMetalHUDShader::pbr_alpha:
                 descriptor.label = "Alchemy HUD PBR alpha pipeline";
+                break;
+            case ALMetalHUDShader::highlight:
+                descriptor.label = "Alchemy HUD highlight pipeline";
+                break;
+            case ALMetalHUDShader::highlight_skinned:
+                descriptor.label =
+                    "Alchemy HUD rigged highlight pipeline";
                 break;
         }
 
@@ -1796,6 +1809,10 @@ bool ALMetalUIRenderer::drawHUDIndexed(
     const ALMetalHUDIndexedBatch& batch,
     std::string* error)
 {
+    const bool highlight = batch.shader == ALMetalHUDShader::highlight ||
+        batch.shader == ALMetalHUDShader::highlight_skinned;
+    const bool skinned =
+        batch.shader == ALMetalHUDShader::highlight_skinned;
     if (!mImpl || !batch.vertices || batch.vertex_count == 0 ||
         !batch.indices || batch.index_count == 0 ||
         batch.target_width == 0 || batch.target_height == 0)
@@ -1814,14 +1831,16 @@ bool ALMetalUIRenderer::drawHUDIndexed(
         batch.index_type == ALMetalIndexType::uint32 ? 4u : 2u;
     if (batch.position_offset % (sizeof(float) * 4) != 0 ||
         batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
-        batch.color_offset % (sizeof(std::uint8_t) * 4) != 0 ||
         batch.index_offset % index_stride != 0 ||
         !rangeFits(batch.position_offset, batch.vertex_count,
                    sizeof(float) * 4, batch.vertices->length()) ||
         !rangeFits(batch.texcoord_offset, batch.vertex_count,
                    sizeof(float) * 2, batch.vertices->length()) ||
-        !rangeFits(batch.color_offset, batch.vertex_count,
-                   sizeof(std::uint8_t) * 4, batch.vertices->length()) ||
+        (!highlight &&
+         (batch.color_offset % (sizeof(std::uint8_t) * 4) != 0 ||
+          !rangeFits(batch.color_offset, batch.vertex_count,
+                     sizeof(std::uint8_t) * 4,
+                     batch.vertices->length()))) ||
         !rangeFits(batch.index_offset, batch.index_count,
                    index_stride, batch.indices->length()))
     {
@@ -1829,7 +1848,8 @@ bool ALMetalUIRenderer::drawHUDIndexed(
         return false;
     }
     if (!finiteFloats(batch.matrices.modelview_projection, 16) ||
-        !finiteFloats(batch.matrices.texture0, 16))
+        !finiteFloats(batch.matrices.texture0, 16) ||
+        (highlight && !finiteFloats(batch.highlight_color, 4)))
     {
         setError(error, "Metal HUD matrices must be finite");
         return false;
@@ -1850,6 +1870,28 @@ bool ALMetalUIRenderer::drawHUDIndexed(
          !finiteFloats(batch.pbr_emissive_color, 4)))
     {
         setError(error, "Metal HUD PBR material state is invalid");
+        return false;
+    }
+    const std::size_t expected_palette_floats =
+        4u + static_cast<std::size_t>(batch.skin_joint_count) * 12u;
+    if (skinned &&
+        (!batch.skin_palette || batch.skin_joint_count == 0 ||
+         batch.skin_joint_count > 110 ||
+         batch.skin_palette_float_count != expected_palette_floats ||
+         batch.weight_offset % (sizeof(float) * 4) != 0 ||
+         !rangeFits(batch.weight_offset, batch.vertex_count,
+                    sizeof(float) * 4, batch.vertices->length()) ||
+         !finiteFloats(batch.skin_palette,
+                       batch.skin_palette_float_count)))
+    {
+        setError(error, "Metal HUD highlight skinning data is invalid");
+        return false;
+    }
+    if (!skinned &&
+        (batch.skin_palette || batch.skin_palette_float_count != 0 ||
+         batch.skin_joint_count != 0 || batch.weight_offset != 0))
+    {
+        setError(error, "Metal HUD batch has unexpected skinning data");
         return false;
     }
     if (batch.depth.write_enabled && !batch.depth.enabled)
@@ -1874,6 +1916,25 @@ bool ALMetalUIRenderer::drawHUDIndexed(
         return false;
     }
 
+    const ALMetalBuffer* palette_buffer = nullptr;
+    if (skinned)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = batch.skin_palette_float_count * sizeof(float);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy HUD highlight skin palette";
+        auto palette = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!palette || !palette->write(
+                0, batch.skin_palette, descriptor.length, error))
+        {
+            return false;
+        }
+        palette_buffer = palette.get();
+        mImpl->selection_frame_palettes.push_back(std::move(palette));
+    }
+
     ALMetalRenderPipeline* pipeline = mImpl->hudPipeline(
         batch.shader, batch.blend, mImpl->frameDepthFormat(), error);
     ALMetalSamplerState* sampler = mImpl->sampler(batch.sampler, error);
@@ -1892,8 +1953,9 @@ bool ALMetalUIRenderer::drawHUDIndexed(
         float pbr_base_color_transform[8]{};
         float pbr_emissive_transform[8]{};
         float pbr_emissive_color[4]{};
+        float highlight_color[4]{};
     } constants;
-    static_assert(sizeof(HUDConstants) == 240);
+    static_assert(sizeof(HUDConstants) == 256);
     std::memcpy(constants.modelview_projection,
                 batch.matrices.modelview_projection,
                 sizeof(constants.modelview_projection));
@@ -1906,6 +1968,8 @@ bool ALMetalUIRenderer::drawHUDIndexed(
     constants.config[3] =
         batch.shader == ALMetalHUDShader::fullbright_alpha_mask ? 1u :
         batch.shader == ALMetalHUDShader::fullbright_alpha ? 2u : 0u;
+    std::memcpy(constants.highlight_color, batch.highlight_color,
+                sizeof(constants.highlight_color));
     std::memcpy(constants.pbr_base_color_transform,
                 batch.pbr_base_color_transform,
                 sizeof(constants.pbr_base_color_transform));
@@ -1924,13 +1988,26 @@ bool ALMetalUIRenderer::drawHUDIndexed(
             0, *batch.vertices, batch.position_offset, error) &&
         encoder.setVertexBuffer(
             1, *batch.vertices, batch.texcoord_offset, error) &&
-        encoder.setVertexBuffer(
-            2, *batch.vertices, batch.color_offset, error) &&
         encoder.setVertexBytes(
             3, &constants, sizeof(constants), error) &&
         encoder.setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
         encoder.setFragmentSampler(0, sampler, error);
+    if (encoded && !highlight)
+    {
+        encoded = encoder.setVertexBuffer(
+            2, *batch.vertices, batch.color_offset, error);
+    }
+    if (encoded && skinned)
+    {
+        encoded =
+            encoder.setVertexBuffer(4, *palette_buffer, 0, error) &&
+            encoder.setVertexBuffer(
+                5, *batch.vertices, batch.weight_offset, error) &&
+            encoder.setVertexBytes(
+                6, &batch.skin_joint_count,
+                sizeof(batch.skin_joint_count), error);
+    }
     if (encoded && pbr)
     {
         // glTF base/emissive colour uses the texture's sRGB view so fixed

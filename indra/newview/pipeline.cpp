@@ -78,6 +78,7 @@
 #include "llwindow.h"   // swapBuffers()
 #include "workqueue.h"
 #if LL_DARWIN
+#include "../almetal/almetaluirenderer.h"
 #include "../almetal/almetalworld.h"
 #include "alhexlattice.h"
 #include "alwaterheightbake.h"
@@ -7277,6 +7278,153 @@ void LLPipeline::captureMetalWorldHighlightBatch(
                 sizeof(batch.texture_matrix));
     std::memcpy(batch.color, color.mV, sizeof(batch.color));
     capture.highlight_batches.push_back(batch);
+}
+
+void LLPipeline::captureMetalDebugAlphaBatch(
+    const LLDrawInfo& params, LLViewerTexture* texture,
+    const LLColor4& color)
+{
+    const bool hud_capture = sRenderingHUDs &&
+        gGL.hasMetalUITextureCapture();
+    const bool world_capture = mMetalWorldSimpleCapture &&
+        mMetalWorldSimpleCapture->frame_active &&
+        mMetalWorldSimpleCapture->world_post_deferred_active &&
+        !mMetalWorldSimpleCapture->world_post_deferred_phase;
+    if (!hud_capture && !world_capture)
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture* capture = world_capture
+        ? mMetalWorldSimpleCapture.get() : nullptr;
+    const auto fail = [capture, hud_capture](const char* reason)
+    {
+        if (capture)
+        {
+            capture->markIncomplete(__LINE__);
+            capture->batches.clear();
+            capture->highlight_batches.clear();
+        }
+        if (hud_capture)
+        {
+            gGL.invalidateMetalUITextureCapture(reason);
+        }
+    };
+
+    LLVertexBuffer* buffer = params.mVertexBuffer.get();
+    LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+    const bool rigged = params.mAvatar != nullptr;
+    if (!buffer || params.mCount == 0 || !image ||
+        !image->getMetalTexture() ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer() ||
+        (buffer->getIndexStride() != 2 &&
+         buffer->getIndexStride() != 4) ||
+        (rigged &&
+         (!params.mSkinInfo ||
+          !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))))
+    {
+        fail("Highlight Transparent geometry is incomplete");
+        return;
+    }
+
+    const F32* skin_palette = nullptr;
+    std::size_t skin_palette_float_count = 0;
+    U32 skin_joint_count = 0;
+    std::size_t weight_offset = 0;
+    if (rigged)
+    {
+        const LLVOAvatar::MatrixPaletteCache& palette =
+            params.mAvatar->updateSkinInfoMatrixPalette(params.mSkinInfo);
+        skin_joint_count = static_cast<U32>(palette.mMatrixPalette.size());
+        skin_palette_float_count = palette.mGLMp.size();
+        if (skin_joint_count == 0 ||
+            skin_palette_float_count !=
+                4u + static_cast<std::size_t>(skin_joint_count) * 12u)
+        {
+            fail("Highlight Transparent skin palette is incomplete");
+            return;
+        }
+        skin_palette = palette.mGLMp.data();
+        weight_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_WEIGHT4);
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    const std::size_t index_offset =
+        static_cast<std::size_t>(params.mOffset) *
+        buffer->getIndexStride();
+
+    if (world_capture)
+    {
+        ALMetalWorldHighlightBatch batch;
+        batch.vertices = buffer->getMetalVertexBuffer();
+        batch.position_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_VERTEX);
+        batch.texcoord_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_TEXCOORD0);
+        batch.weight_offset = weight_offset;
+        batch.vertex_count = buffer->getNumVerts();
+        batch.indices = buffer->getMetalIndexBuffer();
+        batch.index_offset = index_offset;
+        batch.index_type = buffer->getIndexStride() == 4
+            ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+        batch.index_count = params.mCount;
+        batch.texture = image->getMetalTexture();
+        batch.skin_palette = skin_palette;
+        batch.skin_palette_float_count = skin_palette_float_count;
+        batch.skin_joint_count = skin_joint_count;
+        std::memcpy(batch.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.modelview_projection));
+        std::memcpy(batch.texture_matrix,
+                    gGL.getTextureMatrix().getF32ptr(),
+                    sizeof(batch.texture_matrix));
+        std::memcpy(batch.color, color.mV, sizeof(batch.color));
+        // renderDebugAlpha runs after forwardRender restores RGB-only output.
+        // Preserve glow/coverage alpha underneath the diagnostic overlay.
+        batch.write_alpha = false;
+        capture->highlight_batches.push_back(batch);
+    }
+
+    if (hud_capture)
+    {
+        ALMetalHUDIndexedBatch batch;
+        batch.shader = rigged
+            ? ALMetalHUDShader::highlight_skinned
+            : ALMetalHUDShader::highlight;
+        batch.vertices = buffer->getMetalVertexBuffer();
+        batch.position_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_VERTEX);
+        batch.texcoord_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_TEXCOORD0);
+        batch.weight_offset = weight_offset;
+        batch.vertex_count = buffer->getNumVerts();
+        batch.indices = buffer->getMetalIndexBuffer();
+        batch.index_offset = index_offset;
+        batch.index_type = buffer->getIndexStride() == 4
+            ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+        batch.index_count = params.mCount;
+        batch.textures[0] = image->getMetalTexture();
+        batch.texture_count = 1;
+        batch.skin_palette = skin_palette;
+        batch.skin_palette_float_count = skin_palette_float_count;
+        batch.skin_joint_count = skin_joint_count;
+        batch.double_sided = !LLGLState::isEnabled(GL_CULL_FACE);
+        std::memcpy(batch.matrices.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.matrices.modelview_projection));
+        std::memcpy(batch.matrices.texture0,
+                    gGL.getTextureMatrix().getF32ptr(),
+                    sizeof(batch.matrices.texture0));
+        std::memcpy(batch.highlight_color, color.mV,
+                    sizeof(batch.highlight_color));
+        gGL.drawMetalHUDIndexedBatch(batch);
+    }
 }
 
 void LLPipeline::captureMetalWorldBumpBatch(
