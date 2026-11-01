@@ -385,6 +385,13 @@ public:
     void captureMetalDebugPoint(const LLVector3& position);
     void endMetalDebugPointBatch(std::size_t point_count);
     void endMetalDebugPointCapture();
+    // Retain the ordered orange/yellow neighbor links emitted by Develop >
+    // Reflection Probes. Each source link becomes exactly two line vertices.
+    void beginMetalReflectionProbeLinkCapture(std::size_t link_count);
+    void captureMetalReflectionProbeLink(const LLVector4a& start,
+                                         const LLVector4a& end,
+                                         const LLColor4& color);
+    void endMetalReflectionProbeLinkCapture(std::size_t link_count);
     // Retain only the live heights for Develop > Composition's fixed grid;
     // Metal derives coordinates and red/blue classification by vertex ID.
     void beginMetalCompositionDebugCapture(std::size_t point_count);
@@ -1471,8 +1478,7 @@ public:
             RENDER_DEBUG_PHYSICS_SHAPES |
             RENDER_DEBUG_NORMALS |
             RENDER_DEBUG_TEXEL_DENSITY |
-            RENDER_DEBUG_IMPOSTORS |
-            RENDER_DEBUG_REFLECTION_PROBES,
+            RENDER_DEBUG_IMPOSTORS,
     };
 
 public:

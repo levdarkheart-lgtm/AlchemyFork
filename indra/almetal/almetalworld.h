@@ -459,6 +459,7 @@ using ALMetalWorldAgentTargetVertex = ALMetalWorldDebugBlip;
 // bridge boundaries and can interleave the self-avatar Agent Target owner, so
 // each contiguous point batch retains both its transform and traversal order.
 using ALMetalWorldDebugPointVertex = ALMetalWorldDebugBlip;
+using ALMetalWorldReflectionProbeLinkVertex = ALMetalWorldDebugBlip;
 
 struct ALMetalWorldDebugPointBatch
 {
@@ -788,6 +789,10 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t debug_point_count = 0;
     const ALMetalWorldDebugPointBatch* debug_point_batches = nullptr;
     std::size_t debug_point_batch_count = 0;
+    const ALMetalWorldReflectionProbeLinkVertex* reflection_probe_links =
+        nullptr;
+    std::size_t reflection_probe_link_vertex_count = 0;
+    float reflection_probe_link_modelview_projection[16]{};
     const float* composition_debug_heights = nullptr;
     std::size_t composition_debug_height_count = 0;
     float composition_debug_modelview_projection[16]{};

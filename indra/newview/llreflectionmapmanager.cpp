@@ -32,6 +32,7 @@
 #include "llreflectionmapmanager.h"
 
 #include <deque>
+#include <limits>
 #include <vector>
 
 #include <fmt/format.h>
@@ -3262,6 +3263,11 @@ void renderReflectionProbe(LLReflectionMap* probe)
                 continue;
             }
 
+#if LL_DARWIN
+            gPipeline.captureMetalReflectionProbeLink(
+                probe->mOrigin, neighbor->mOrigin,
+                LLColor4(1.f, 0.5f, 0.f, 1.f));
+#endif
             gGL.vertex3fv(po);
             gGL.vertex3fv(neighbor->mOrigin.getF32ptr());
         }
@@ -3274,6 +3280,11 @@ void renderReflectionProbe(LLReflectionMap* probe)
         {
             if (probe->mViewerObject && neighbor->mViewerObject)
             {
+#if LL_DARWIN
+                gPipeline.captureMetalReflectionProbeLink(
+                    probe->mOrigin, neighbor->mOrigin,
+                    LLColor4(1.f, 1.f, 0.f, 1.f));
+#endif
                 gGL.vertex3fv(po);
                 gGL.vertex3fv(neighbor->mOrigin.getF32ptr());
             }
@@ -3332,6 +3343,24 @@ void renderReflectionProbe(LLReflectionMap* probe)
 
 void LLReflectionMapManager::renderDebug()
 {
+#if LL_DARWIN
+    std::size_t link_count = 0;
+    for (const LLPointer<LLReflectionMap>& probe : mProbes)
+    {
+        if (!probe->isRelevant())
+        {
+            continue;
+        }
+        if (probe->mNeighbors.size() >
+            std::numeric_limits<std::size_t>::max() - link_count)
+        {
+            link_count = std::numeric_limits<std::size_t>::max();
+            break;
+        }
+        link_count += probe->mNeighbors.size();
+    }
+    gPipeline.beginMetalReflectionProbeLinkCapture(link_count);
+#endif
     gDebugProgram.bind();
 
     for (auto& probe : mProbes)
@@ -3340,6 +3369,9 @@ void LLReflectionMapManager::renderDebug()
     }
 
     gDebugProgram.unbind();
+#if LL_DARWIN
+    gPipeline.endMetalReflectionProbeLinkCapture(link_count);
+#endif
 }
 
 void LLReflectionMapManager::initReflectionMaps()

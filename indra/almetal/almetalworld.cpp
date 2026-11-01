@@ -10523,6 +10523,42 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             return nullptr;
         }
     }
+    if ((scene.reflection_probe_link_vertex_count != 0 &&
+         !scene.reflection_probe_links) ||
+        (scene.reflection_probe_link_vertex_count & 1u) != 0 ||
+        scene.reflection_probe_link_vertex_count >
+            std::numeric_limits<std::uint32_t>::max() ||
+        scene.reflection_probe_link_vertex_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldReflectionProbeLinkVertex) ||
+        (scene.reflection_probe_link_vertex_count != 0 &&
+         !finiteValues(
+             scene.reflection_probe_link_modelview_projection, 16)))
+    {
+        setError(error,
+                 "Metal world reflection-probe link storage is invalid");
+        return nullptr;
+    }
+    for (std::size_t index = 0;
+         index < scene.reflection_probe_link_vertex_count; ++index)
+    {
+        const ALMetalWorldReflectionProbeLinkVertex& vertex =
+            scene.reflection_probe_links[index];
+        const bool orange =
+            vertex.color[0] == 1.f && vertex.color[1] == 0.5f &&
+            vertex.color[2] == 0.f && vertex.color[3] == 1.f;
+        const bool yellow =
+            vertex.color[0] == 1.f && vertex.color[1] == 1.f &&
+            vertex.color[2] == 0.f && vertex.color[3] == 1.f;
+        if (!finiteValues(vertex.position, 4) ||
+            !finiteValues(vertex.color, 4) ||
+            vertex.position[3] != 1.f || (!orange && !yellow))
+        {
+            setError(error,
+                     "Metal world reflection-probe link data is invalid");
+            return nullptr;
+        }
+    }
     if ((scene.composition_debug_height_count != 0 &&
          !scene.composition_debug_heights) ||
         (scene.composition_debug_height_count != 0 &&
@@ -11784,6 +11820,26 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             *mImpl->device, descriptor, error);
         if (!debug_point_buffer || !debug_point_buffer->write(
                 0, scene.debug_points, descriptor.length, error))
+        {
+            return nullptr;
+        }
+    }
+
+    std::unique_ptr<ALMetalBuffer> reflection_probe_link_buffer;
+    if (scene.reflection_probe_link_vertex_count != 0)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = scene.reflection_probe_link_vertex_count *
+            sizeof(ALMetalWorldReflectionProbeLinkVertex);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world reflection-probe neighbor links";
+        reflection_probe_link_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!reflection_probe_link_buffer ||
+            !reflection_probe_link_buffer->write(
+                0, scene.reflection_probe_links,
+                descriptor.length, error))
         {
             return nullptr;
         }
@@ -13903,6 +13959,37 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     if (encoded && !agent_target_encoded)
     {
         encoded = encode_agent_target();
+    }
+
+    if (encoded && scene.reflection_probe_link_vertex_count != 0)
+    {
+        WorldDebugBlipConstants constants{};
+        std::memcpy(
+            constants.modelview_projection,
+            scene.reflection_probe_link_modelview_projection,
+            sizeof(constants.modelview_projection));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        encoded =
+            encoder->setDepthStencilState(
+                scene.reverse_z ? mImpl->reverse_depth.get()
+                                : mImpl->forward_depth.get(),
+                error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *mImpl->debug_point_pipelines[scene.hdr ? 1 : 0],
+                error) &&
+            encoder->setVertexBuffer(
+                0, *reflection_probe_link_buffer, 0, error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::line, 0,
+                static_cast<std::uint32_t>(
+                    scene.reflection_probe_link_vertex_count),
+                1, error);
     }
 
     if (encoded && scene.reflection_probe_volume_constants)

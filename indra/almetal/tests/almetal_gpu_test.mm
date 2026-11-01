@@ -5462,6 +5462,210 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(agent_target_pixels == opaque_forward_pixels);
         CHECK(agent_target_depth == opaque_forward_depth);
 
+        // Develop > Reflection Probes draws one-pixel neighbor links for
+        // relevant probes: orange unless both endpoints own viewer objects,
+        // yellow when both do. The ordered stream inherits read/write depth.
+        std::array<ALMetalWorldReflectionProbeLinkVertex, 4>
+            reflection_probe_links{};
+        const float reflection_probe_link_positions[4][3] = {
+            {-0.84375f, 0.84375f, 0.f},
+            {-0.34375f, 0.84375f, 0.f},
+            {0.34375f, 0.84375f, 0.f},
+            {0.84375f, 0.84375f, 0.f},
+        };
+        for (std::size_t vertex = 0;
+             vertex < reflection_probe_links.size(); ++vertex)
+        {
+            std::memcpy(
+                reflection_probe_links[vertex].position,
+                reflection_probe_link_positions[vertex],
+                sizeof(reflection_probe_link_positions[vertex]));
+            reflection_probe_links[vertex].color[0] = 1.f;
+            reflection_probe_links[vertex].color[1] =
+                vertex < 2 ? 0.5f : 1.f;
+            reflection_probe_links[vertex].color[2] = 0.f;
+        }
+        opaque_forward_scene.reflection_probe_links =
+            reflection_probe_links.data();
+        opaque_forward_scene.reflection_probe_link_vertex_count =
+            reflection_probe_links.size();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            opaque_forward_scene
+                .reflection_probe_link_modelview_projection[
+                    axis * 4 + axis] = 1.f;
+        }
+
+        opaque_forward_scene.reflection_probe_links = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world reflection-probe link storage is invalid");
+        opaque_forward_scene.reflection_probe_links =
+            reflection_probe_links.data();
+        opaque_forward_scene.reflection_probe_link_vertex_count = 3;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world reflection-probe link storage is invalid");
+        opaque_forward_scene.reflection_probe_link_vertex_count =
+            reflection_probe_links.size();
+        reflection_probe_links[0].color[1] = 0.25f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world reflection-probe link data is invalid");
+        reflection_probe_links[0].color[1] = 0.5f;
+        reflection_probe_links[0].position[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world reflection-probe link data is invalid");
+        reflection_probe_links[0].position[0] = -0.84375f;
+        error.clear();
+
+        auto native_reflection_probe_links =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(native_reflection_probe_links);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reflection_probe_link_pixels{};
+        std::array<float, 32 * 32> reflection_probe_link_depth{};
+        REQUIRE(native_reflection_probe_links->colorTexture(0)->readback(
+            *device, 0, 0, {}, reflection_probe_link_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(native_reflection_probe_links->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reflection_probe_link_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        std::size_t orange_link_pixels = 0;
+        std::size_t yellow_link_pixels = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool orange =
+                reflection_probe_link_pixels[offset + 0] == 0x3c00 &&
+                reflection_probe_link_pixels[offset + 1] == 0x3800 &&
+                reflection_probe_link_pixels[offset + 2] == 0u;
+            const bool yellow =
+                reflection_probe_link_pixels[offset + 0] == 0x3c00 &&
+                reflection_probe_link_pixels[offset + 1] == 0x3c00 &&
+                reflection_probe_link_pixels[offset + 2] == 0u;
+            orange_link_pixels += orange;
+            yellow_link_pixels += yellow;
+            if (orange || yellow)
+            {
+                CHECK(reflection_probe_link_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+                CHECK(std::abs(
+                    reflection_probe_link_depth[pixel] - 0.5f) < 0.0001f);
+            }
+        }
+        CHECK(orange_link_pixels >= 8);
+        CHECK(yellow_link_pixels >= 8);
+
+        for (ALMetalWorldReflectionProbeLinkVertex& vertex :
+             reflection_probe_links)
+        {
+            vertex.position[0] *= 0.2f;
+            vertex.position[1] = 0.f;
+            vertex.position[2] = 0.75f;
+        }
+        auto hidden_reflection_probe_links =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(hidden_reflection_probe_links);
+        reflection_probe_link_pixels.fill(0xffffu);
+        reflection_probe_link_depth.fill(-1.f);
+        REQUIRE(hidden_reflection_probe_links->colorTexture(0)->readback(
+            *device, 0, 0, {}, reflection_probe_link_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(hidden_reflection_probe_links->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reflection_probe_link_depth.data(),
+            32 * sizeof(float), &error));
+        const std::size_t covered_center = (16 * 32 + 16) * 4;
+        CHECK(reflection_probe_link_pixels[covered_center + 0] ==
+              opaque_forward_pixels[covered_center + 0]);
+        CHECK(reflection_probe_link_pixels[covered_center + 1] ==
+              opaque_forward_pixels[covered_center + 1]);
+        CHECK(reflection_probe_link_pixels[covered_center + 2] ==
+              opaque_forward_pixels[covered_center + 2]);
+        CHECK(std::abs(
+            reflection_probe_link_depth[16 * 32 + 16] -
+            opaque_forward_depth[16 * 32 + 16]) < 0.0001f);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        for (ALMetalWorldReflectionProbeLinkVertex& vertex :
+             reflection_probe_links)
+        {
+            vertex.position[2] = 0.9f;
+        }
+        auto reverse_reflection_probe_links =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_reflection_probe_links);
+        reflection_probe_link_pixels.fill(0xffffu);
+        reflection_probe_link_depth.fill(-1.f);
+        REQUIRE(
+            reverse_reflection_probe_links->colorTexture(0)->readback(
+                *device, 0, 0, {}, reflection_probe_link_pixels.data(),
+                32 * 8, &error));
+        REQUIRE(
+            reverse_reflection_probe_links->depthStencilTexture()->readback(
+                *device, 0, 0, {}, reflection_probe_link_depth.data(),
+                32 * sizeof(float), &error));
+        std::size_t reverse_reflection_probe_link_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                reflection_probe_link_pixels[offset + 0] !=
+                    reverse_agent_target_baseline_pixels[offset + 0] ||
+                reflection_probe_link_pixels[offset + 1] !=
+                    reverse_agent_target_baseline_pixels[offset + 1] ||
+                reflection_probe_link_pixels[offset + 2] !=
+                    reverse_agent_target_baseline_pixels[offset + 2];
+            reverse_reflection_probe_link_changed += changed;
+            if (changed)
+            {
+                CHECK(reflection_probe_link_pixels[offset + 3] ==
+                      reverse_agent_target_baseline_pixels[offset + 3]);
+                CHECK(std::abs(
+                    reflection_probe_link_depth[pixel] - 0.9f) < 0.0001f);
+            }
+        }
+        CHECK(reverse_reflection_probe_link_changed >= 4);
+        CHECK(reflection_probe_link_depth !=
+              reverse_agent_target_baseline_depth);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.reflection_probe_links = nullptr;
+        opaque_forward_scene.reflection_probe_link_vertex_count = 0;
+        auto no_reflection_probe_links =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_reflection_probe_links);
+        reflection_probe_link_pixels.fill(0xffffu);
+        reflection_probe_link_depth.fill(-1.f);
+        REQUIRE(no_reflection_probe_links->colorTexture(0)->readback(
+            *device, 0, 0, {}, reflection_probe_link_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(no_reflection_probe_links->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reflection_probe_link_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(reflection_probe_link_pixels == opaque_forward_pixels);
+        CHECK(reflection_probe_link_depth == opaque_forward_depth);
+
         // Develop > Wind Vectors follows the probe-volume display and emits
         // one-pixel green lattice points plus red line segments. It inherits
         // the ambient GL_LEQUAL read/write depth state (GEQUAL under

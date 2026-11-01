@@ -592,6 +592,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     U64 render_debug_order = 0;
     bool debug_point_capture_active = false;
     bool debug_point_batch_active = false;
+    std::vector<ALMetalWorldReflectionProbeLinkVertex>
+        reflection_probe_links;
+    F32 reflection_probe_link_modelview_projection[16]{};
+    bool reflection_probe_link_capture_active = false;
     std::vector<F32> composition_debug_heights;
     F32 composition_debug_modelview_projection[16]{};
     bool composition_debug_capture_active = false;
@@ -4014,6 +4018,8 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.render_debug_order = 0;
     capture.debug_point_capture_active = false;
     capture.debug_point_batch_active = false;
+    capture.reflection_probe_links.clear();
+    capture.reflection_probe_link_capture_active = false;
     capture.composition_debug_heights.clear();
     capture.composition_debug_capture_active = false;
     capture.far_plane_overlay_columns.clear();
@@ -4505,6 +4511,113 @@ void LLPipeline::endMetalDebugPointCapture()
         capture.debug_points.clear();
         capture.debug_point_batches.clear();
         capture.debug_point_batch_active = false;
+    }
+}
+
+void LLPipeline::beginMetalReflectionProbeLinkCapture(
+    std::size_t link_count)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    if (!capture.complete || capture.reflection_probe_link_capture_active ||
+        !capture.reflection_probe_links.empty() ||
+        link_count > std::numeric_limits<std::uint32_t>::max() / 2 ||
+        link_count > std::numeric_limits<std::size_t>::max() / 2 ||
+        !LLGLState::isEnabled(GL_BLEND) ||
+        !LLGLDepthTest::depthEnabled() ||
+        !LLGLDepthTest::depthWriteEnabled() ||
+        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
+        gGL.getLineWidth() != 1.f ||
+        !color_mask[0] || !color_mask[1] || !color_mask[2] || color_mask[3])
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(
+        capture.reflection_probe_link_modelview_projection,
+        modelview_projection.getF32ptr(),
+        sizeof(capture.reflection_probe_link_modelview_projection));
+    try
+    {
+        capture.reflection_probe_links.reserve(link_count * 2);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.reflection_probe_links.clear();
+        return;
+    }
+    capture.reflection_probe_link_capture_active = true;
+}
+
+void LLPipeline::captureMetalReflectionProbeLink(
+    const LLVector4a& start, const LLVector4a& end,
+    const LLColor4& color)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete ||
+        !capture.reflection_probe_link_capture_active)
+    {
+        return;
+    }
+
+    ALMetalWorldReflectionProbeLinkVertex vertices[2];
+    std::memcpy(vertices[0].position, start.getF32ptr(),
+                sizeof(F32) * 3);
+    std::memcpy(vertices[1].position, end.getF32ptr(),
+                sizeof(F32) * 3);
+    for (ALMetalWorldReflectionProbeLinkVertex& vertex : vertices)
+    {
+        std::memcpy(vertex.color, color.mV, sizeof(vertex.color));
+    }
+    try
+    {
+        capture.reflection_probe_links.push_back(vertices[0]);
+        capture.reflection_probe_links.push_back(vertices[1]);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.reflection_probe_links.clear();
+        capture.reflection_probe_link_capture_active = false;
+    }
+}
+
+void LLPipeline::endMetalReflectionProbeLinkCapture(
+    std::size_t link_count)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.reflection_probe_link_capture_active)
+    {
+        return;
+    }
+    capture.reflection_probe_link_capture_active = false;
+    if (!capture.complete ||
+        link_count > std::numeric_limits<std::size_t>::max() / 2 ||
+        capture.reflection_probe_links.size() != link_count * 2)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.reflection_probe_links.clear();
     }
 }
 
@@ -5362,6 +5475,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.debug_point_batches = capture.debug_point_batches.data();
         scene.debug_point_batch_count =
             capture.debug_point_batches.size();
+        scene.reflection_probe_links =
+            capture.reflection_probe_links.data();
+        scene.reflection_probe_link_vertex_count =
+            capture.reflection_probe_links.size();
+        std::memcpy(
+            scene.reflection_probe_link_modelview_projection,
+            capture.reflection_probe_link_modelview_projection,
+            sizeof(scene.reflection_probe_link_modelview_projection));
         scene.composition_debug_heights =
             capture.composition_debug_heights.data();
         scene.composition_debug_height_count =
@@ -7000,6 +7121,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.render_debug_order = 0;
     capture.debug_point_capture_active = false;
     capture.debug_point_batch_active = false;
+    capture.reflection_probe_links.clear();
+    capture.reflection_probe_link_capture_active = false;
     capture.composition_debug_heights.clear();
     capture.composition_debug_capture_active = false;
     capture.far_plane_overlay_columns.clear();
