@@ -18,7 +18,7 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Main native world chain publishes exact frames; advanced material/reference coverage remains incomplete. |
-| M-008 | Advanced views/effects and compute | doing | Legacy normal raw-data seam fixed at `80924cdae2`; next bounded alpha/foliage or PBR fidelity seam is active. |
+| M-008 | Advanced views/effects and compute | doing | Material and bump normal raw-data seams fixed through `7b27e5d62e`; next bounded projector, mirror-geometry or advanced-pass seam is active. |
 | M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Tooling and structural reductions exist; qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
@@ -29,12 +29,14 @@ item; it never implies product completion.
 
 ## Active checkpoint — 2026-11-01
 
-Commit `80924cdae2` preserves raw tangent-space legacy normal data in the opaque,
-lit-alpha and impostor-alpha native owners. The pre-fix physical negative control
-failed all three paths; corrected focused validation passes 1,316 assertions and
-both complete physical configurations pass 44,859 assertions/50 cases. The
-expanded neutral gate passes 484/484 tests. Warnings-as-errors Development 68010
-builds source-exact from the renderer code checkpoint, repeats with no work,
+Commit `7b27e5d62e` closes the standard/generated legacy bump owner: its pre-fix
+physical control failed half channels `56820 != 65280` and `15337 != 32895`.
+The preceding `80924cdae2` checkpoint preserves raw tangent-space material
+normal data in the opaque, lit-alpha and impostor-alpha owners. Corrected
+focused validation passes 1,322 assertions; both complete physical
+configurations pass 44,865 assertions/50 cases. The neutral gate passes 484/484
+tests.
+Warnings-as-errors Development 68012 builds source-exact, repeats with no work,
 passes deep signing and verifies 349/349 ARM64 slices.
 
 The build cache now uses Homebrew Bison 3.8.2 and a build-local Python environment
@@ -51,26 +53,28 @@ release-invariant checks. The 29-file harness and all 15 tooling tests pass.
 At every substantial engineering checkpoint, update all three fields:
 
 1. **Product advancement:** name the product/release requirement moved by the
-   change and the causal evidence. The current fix advances material correctness
-   and test coverage; it does not close M-008.
+   change and the causal evidence. The current fix advances retained legacy bump
+   correctness with a physical negative control; it does not close M-008.
 2. **Deferred critical work:** list still-open critical dependencies. Current:
    advanced-family parity, full matrix/stability, strict no-GL, independent
    review/reproducibility and paired M1 Max performance evidence.
 3. **Priority reassessment:** choose the next action from dependency/risk
-   evidence. Current: another bounded M-008 source contract precedes M-009,
-   owner-by-owner M-011 cutover and final M-010 claims.
+   evidence. Current: foliage and PBR contracts inspected in this checkpoint
+   match their reference owners, so move to a bounded projector, mirror-geometry
+   or other advanced-pass contract before M-009, owner-by-owner M-011 cutover
+   and final M-010 claims.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Time-box a different M-008 alpha/foliage or PBR fidelity source comparison.
-Trace the OpenGL sampler/pass-state contract to its native owner, add a physical
-negative control that fails for the suspected divergence, implement only the
-demonstrated correction, and run focused plus complete Debug/RelWithDebInfo Metal
-validation. Use Computer Use only for a controlled fixture that visibly
-attributes the family under test.
+Time-box a different M-008 projector, mirror-geometry or advanced-pass source
+comparison. Trace its OpenGL data/pass-state contract to the native owner, add a
+physical negative control that fails for the suspected divergence, implement
+only the demonstrated correction, and run focused plus complete
+Debug/RelWithDebInfo Metal validation. Use Computer Use only for a controlled
+fixture that visibly attributes the family under test.
 
 ## Non-negotiable open gates
 
