@@ -20,6 +20,7 @@ chronological transcript.
 | Same-frame projector per-view constant refresh implementation and validation, 2026-11-01 | [metal-port-projector-per-view-checkpoint-2026-11-01.md](metal-port-projector-per-view-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 | Native static/rigged world and HUD Highlight Transparent implementation and validation, 2026-11-01 | [metal-port-transparent-highlight-checkpoint-2026-11-01.md](metal-port-transparent-highlight-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 | Fail-closed active pathfinding and transient object-update overlay implementation and validation, 2026-11-01 | [metal-port-world-overlay-eligibility-checkpoint-2026-11-01.md](metal-port-world-overlay-eligibility-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
+| Native object-update blip implementation and OSS pathfinding reachability correction, 2026-11-01 | [metal-port-object-update-blips-checkpoint-2026-11-01.md](metal-port-object-update-blips-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.

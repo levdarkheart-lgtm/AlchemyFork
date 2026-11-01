@@ -43,3 +43,14 @@ uncovered mode fail-closed. Port object-update blips after pathfinding.
 
 Full feature/stability, strict no-GL and qualifying performance evidence remain
 open. Exact RLVa parity stays in the persistent M-013 nice-to-have ledger.
+
+## Erratum — open-source linkage audit
+
+The pathfinding reachability and next-priority claims above are superseded.
+The built ARM64 OSS target links only the nonfunctional
+`llphysicsextensionsos` pathing stub: functionality is hard-false,
+initialization is not implemented and no singleton/render output exists.
+Implementing unavailable proprietary pathing is not part of eliminating a
+reachable OpenGL owner. The guard remains latent for any future functional
+extension. The independently reachable object-update-blip boundary is closed
+by native replay in `b328cba4b6`.

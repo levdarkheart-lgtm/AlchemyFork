@@ -68,3 +68,15 @@ owner after pathfinding.
 
 The complete feature, stability, strict no-GL and performance release gates
 remain open. The executable still links both Metal and OpenGL during migration.
+
+## Erratum — open-source linkage audit
+
+The pathfinding reachability and priority claims above are superseded. The
+current ARM64 OSS executable links `llphysicsextensionsos`, whose
+`LLPathingLib::isFunctional()` returns false, whose initialization returns
+`LLPL_NOT_IMPLEMENTED`, and whose singleton/render methods supply no output.
+Pathfinding therefore cannot contribute to this retained-Alchemy product build;
+recreating its missing proprietary implementation is not a Metal/no-GL porting
+requirement. The eligibility bit remains only as a latent future-extension
+guard. The object-update-blip omission was reachable and is closed natively by
+`b328cba4b6`; see the indexed object-update-blips checkpoint.
