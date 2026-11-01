@@ -18,69 +18,58 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Main native world chain publishes exact frames; advanced material/reference coverage remains incomplete. |
-| M-008 | Advanced views/effects and compute | doing | GPU-owned Lightbox reference wipe/side-by-side is physically and in-world verified; continue post, alpha/PBR, probe and advanced-view parity. |
+| M-008 | Advanced views/effects and compute | doing | Native reference stills and main/probe-safe temporal post history are physically and in-world verified; continue remaining post, alpha/PBR, probe and advanced-view parity. |
 | M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
-| M-012 | Development Computer Use / LLUI accessibility | complete | Exact app/profile/hash preflight and semantic login/in-world/control/logout operation pass. |
+| M-012 | Development Computer Use / LLUI accessibility | complete | Exact-path semantic login/in-world/control/logout is verified and used for current acceptance. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item; it never implies product completion.
 
 ## Active checkpoint — 2026-11-01
 
-Commit `011ede6cf9` closes the concrete GL-owned Lightbox reference-still gap.
-The native owner copies the exact post-AA/CAS RGB10_A2 or RGBA8 source on GPU,
-joins the active command batch, publishes only after commit, and clears stale
-state on replacement, resize, allocation or batch failure. The final native
-presentation shader now receives that coherent still for wipe and side-by-side;
-missing demanded data continues to fail closed to established GL authority.
+Commit `f9cc59d963` closes the temporal-post lifecycle gap exposed by a real
+nondefault native Snapshot. Main-world renderer warm-up now restarts GL/Metal
+flare history at their shared exact-black boundary. Initializing an independent
+reflection/hero capture no longer clears main-world exposure/flare readiness,
+and auxiliary passes hold the global flare state because their color correction
+does not consume it. Eligibility and GL authority remain fail-closed.
 
-The focused physical test passes 1,850 assertions and byte-compares the captured
-GPU texture before asymmetric wipe/side-by-side checks. The full physical suite
-passes 44,871 assertions/50 cases. Build 68016 passes deep signing, 349/349 ARM64
-slices and the 484/484 neutral gate. Actual Computer Use completed semantic
-login, Lightbox Grab, 0.50 wipe, visible side-by-side, Clear, Look restoration
-and confirmed clean Quit. The runtime log has no native-reference, Metal
-validation or command-buffer error and ends with `Goodbye!`; no process remains.
+The complete physical suite passes 44,871 assertions/50 cases, the neutral gate
+passes 484/484 in 245.95 seconds, and build 68018 passes deep signing and
+349/349 ARM64 inspection. Actual Computer Use produced a native 2048x1476 PNG
+after both main/probe warm-up, then logged out cleanly with no process remaining.
+Preflight and post-run effective visual settings match 416/416.
 
-The source audit also compared base/local lights, energy compensation,
-atmosphere/water fog, map decoding and exposure initialization with active GLSL
-owners and found no demonstrated divergence. The prior mirror comparison remains
-admissible only because post-run manifests prove 416/416 identical visual
-settings. Any future image score must likewise fail closed on a graphics-setting
-mismatch; matched presets alone are insufficient if per-feature settings differ.
-
-The continuity harness validates 31 live files and 24 tooling tests, including
-document-relative skill paths. `gpu-validation` now resolves the real
-`docs/metal/benchmarks/scenarios.json` file. Bison 3.8.2 and the build-local
-Python environment containing Linden's `llsd 1.2.4` remain explicitly selected.
+The earlier GL/native image score is deliberately not accepted as parity:
+although graphics settings match, source revision, region lighting and avatar
+pose changed. A scored pair must also hold source, view, environment/time and
+warm state constant. Raw logs and authenticated-world images remain local.
 
 ## Complete-product checkpoint gate
 
-At every substantial engineering checkpoint, update all three fields:
-
-1. **Product advancement:** retained Lightbox comparison now has an exact native
-   GPU owner plus physical and actual UI evidence. This is bounded M-008 progress,
-   not feature parity, native-only completion or performance proof.
-2. **Deferred critical work:** remaining advanced-family parity; full matrix and
-   prolonged stability; strict no-GL; independent review/reproducibility; and
-   paired quality-equivalent M1 Max performance evidence.
-3. **Priority reassessment:** do not revisit aligned light/fog contracts or the
-   disproven one-fixture mirror blur without new evidence. Audit the next open
-   post or alpha/PBR boundary and implement only a demonstrated contract gap.
+1. **Product advancement:** a real temporal-post owner now survives renderer
+   warm-up and independent-probe lifecycle boundaries, and native post Snapshot
+   readback is observed in-world. This is bounded M-008 progress.
+2. **Deferred critical work:** remaining post/alpha/PBR/probe/advanced views;
+   source- and scene-identical post comparison; full parity/stability; strict
+   no-GL; independent review; and qualifying M1 Max performance evidence.
+3. **Priority reassessment:** the repaired lifecycle boundary has direct runtime
+   proof. Continue at the next demonstrated source gap rather than accumulating
+   more activity on it; improve capture controls before accepting new metrics.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Trace the next unverified post and alpha/PBR pass from its active GLSL caller
+Trace the next unverified post or alpha/PBR pass from its active GLSL caller
 through resource format, binding, state and ordering. Add an asymmetric physical
 negative control for the first demonstrated divergence, implement the bounded
-native owner, then run focused/full Metal validation and the neutral test gate.
-Any new live image pair must pass exact preflight and identical post-run graphics
-manifests before metrics are admissible.
+native owner, then rerun focused/full Metal validation and the neutral gate.
+Any new image pair must match source, camera, environment/time, warm state and
+effective graphics manifests before metrics are admissible.
 
 ## Non-negotiable open gates
 
