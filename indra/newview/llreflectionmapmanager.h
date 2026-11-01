@@ -39,6 +39,7 @@ class LLViewerObject;
 #if LL_DARWIN
 struct ALMetalPBRPreviewEnvironment;
 struct ALMetalWorldReflectionProbes;
+struct ALMetalWorldReflectionProbeConstants;
 class ALMetalRenderTarget;
 class ALMetalWorldGBufferRenderer;
 #endif
@@ -201,6 +202,11 @@ public:
     // GL owner. Old generations remain usable while that same probe refreshes;
     // a recycled slot fails closed until its new owner has been mirrored.
     bool fillMetalReflectionProbes(ALMetalWorldReflectionProbes& probes) const;
+
+    // Snapshot the live selection pack for native owners that inspect probe
+    // volumes without sampling their radiance or irradiance generations.
+    bool fillMetalReflectionProbeConstants(
+        ALMetalWorldReflectionProbeConstants& constants) const;
 #endif
 
     U32 probeCount();

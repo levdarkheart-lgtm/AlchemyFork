@@ -580,6 +580,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::vector<ALMetalWorldFarPlaneOverlayColumn> far_plane_overlay_columns;
     std::size_t far_plane_overlay_near_count = 0;
     F32 far_plane_overlay_modelview_projection[16]{};
+    ALMetalWorldReflectionProbeConstants reflection_probe_volume_constants;
+    F32 reflection_probe_volume_inverse_projection[16]{};
+    bool reflection_probe_volume_valid = false;
     std::vector<ALMetalWorldHDRISkyBatch> hdri_sky_batches;
     const ALMetalTexture* hdri_sky_environment = nullptr;
     F32 hdri_sky_camera_local[4]{};
@@ -3933,14 +3936,6 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
         return;
     }
 
-    // These services draw after the native world pass but before final
-    // presentation. They are deliberately outside the ordered UI capture.
-    // Keep the native base useful for independent probes, while preventing a
-    // later world/UI transaction from claiming exact coverage when one of
-    // these optional GL-only overlays actually contributed to the frame.
-    static LLCachedControl<bool> reflection_probe_volumes(
-        gSavedSettings, "RenderReflectionProbeVolumes", false);
-
     bool pathfinding_overlay = false;
     if (LLPathingLib::getInstance())
     {
@@ -3979,8 +3974,6 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     ALMetalWorldOverlayEligibility overlay_eligibility;
     overlay_eligibility.render_debug = mRenderDebugMask != 0;
     overlay_eligibility.wireframe = gUseWireframe;
-    overlay_eligibility.reflection_probe_volumes =
-        reflection_probe_volumes;
     overlay_eligibility.pathfinding = pathfinding_overlay;
     capture.world_ui_overlay_exact = overlay_eligibility.exact();
 
@@ -3989,6 +3982,7 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.debug_blips.clear();
     capture.far_plane_overlay_columns.clear();
     capture.far_plane_overlay_near_count = 0;
+    capture.reflection_probe_volume_valid = false;
     capture.avatar_palettes.clear();
     capture.resetCompleteness();
     capture.frame_active = true;
@@ -4016,6 +4010,38 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.world_alpha_lighting = {};
     capture.world_alpha_lighting_valid = false;
     capture.world_alpha_uses_shadows = false;
+}
+
+void LLPipeline::captureMetalReflectionProbeVolumes()
+{
+    if (!mMetalWorldSimpleCapture || !sReflectionProbesEnabled ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete)
+    {
+        return;
+    }
+    if (capture.reflection_probe_volume_valid ||
+        !mReflectionMapManager.fillMetalReflectionProbeConstants(
+            capture.reflection_probe_volume_constants))
+    {
+        capture.markIncomplete(__LINE__);
+        capture.reflection_probe_volume_valid = false;
+        return;
+    }
+
+    LLMatrix4a inverse_projection;
+    inverse_projection.setInverse(
+        LLViewerCamera::getCurrent().getProjection());
+    std::memcpy(capture.reflection_probe_volume_inverse_projection,
+                inverse_projection.getF32ptr(),
+                sizeof(capture.reflection_probe_volume_inverse_projection));
+    capture.reflection_probe_volume_valid = true;
 }
 
 void LLPipeline::captureMetalFarPlaneOverlay()
@@ -4767,6 +4793,13 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         std::memcpy(scene.far_plane_overlay_modelview_projection,
                     capture.far_plane_overlay_modelview_projection,
                     sizeof(scene.far_plane_overlay_modelview_projection));
+        scene.reflection_probe_volume_constants =
+            capture.reflection_probe_volume_valid
+                ? &capture.reflection_probe_volume_constants : nullptr;
+        std::memcpy(
+            scene.reflection_probe_volume_inverse_projection,
+            capture.reflection_probe_volume_inverse_projection,
+            sizeof(scene.reflection_probe_volume_inverse_projection));
         scene.reflection_probes = needs_reflection_probes
             ? &capture.impostor_reflection_probes : nullptr;
         scene.legacy_environment = legacy_environment;
@@ -6369,6 +6402,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.debug_blips.clear();
     capture.far_plane_overlay_columns.clear();
     capture.far_plane_overlay_near_count = 0;
+    capture.reflection_probe_volume_valid = false;
     capture.avatar_palettes.clear();
     capture.resetCompleteness();
     capture.impostor_fullbright = false;
@@ -18919,6 +18953,9 @@ void LLPipeline::renderDebug()
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("probe debug display");
 
+#if LL_DARWIN
+        captureMetalReflectionProbeVolumes();
+#endif
         bindDeferredShader(gReflectionProbeDisplayProgram, NULL);
         mScreenTriangleVB->setBuffer();
 

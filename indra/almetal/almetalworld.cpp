@@ -135,6 +135,13 @@ namespace
     static_assert(sizeof(ALMetalWorldFarPlaneOverlayColumn) == 48);
     static_assert(sizeof(WorldFarPlaneOverlayConstants) == 80);
 
+    struct alignas(16) WorldReflectionProbeVolumeConstants
+    {
+        float inverse_projection[16];
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldReflectionProbeVolumeConstants) == 80);
+
     struct alignas(16) WorldSpotShadowConstants
     {
         float modelview_projection[16];
@@ -857,6 +864,38 @@ namespace
         return true;
     }
 
+    bool validReflectionProbeVolumeConstants(
+        const ALMetalWorldReflectionProbeConstants* probes)
+    {
+        static_assert(sizeof(ALMetalWorldReflectionProbeConstants) == 49216);
+        if (!probes || !finiteValues(probes->config, 4))
+        {
+            return false;
+        }
+        const float count_value = probes->config[0];
+        if (count_value < 0.f ||
+            count_value > static_cast<float>(
+                ALMetalWorldReflectionProbeConstants::max_probe_count) ||
+            std::floor(count_value) != count_value)
+        {
+            return false;
+        }
+        const std::size_t probe_count =
+            static_cast<std::size_t>(count_value);
+        for (std::size_t index = 1; index < probe_count; ++index)
+        {
+            const std::int32_t shape = probes->ref_index[index][3];
+            if ((shape < 0 && !finiteValues(probes->ref_box[index], 16)) ||
+                (shape > 0 &&
+                 (!finiteValues(probes->ref_sphere[index], 4) ||
+                  probes->ref_sphere[index][3] < 0.f)))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     bool validPBRReflectionProbes(
         const ALMetalWorldReflectionProbes* probes)
     {
@@ -1260,6 +1299,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         highlight_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         debug_blip_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        reflection_probe_volume_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> far_plane_overlay_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         far_plane_overlay_composite_pipelines;
@@ -1563,6 +1604,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             "almetal_world_far_plane_overlay_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_far_plane_overlay_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_reflection_probe_volume_fragment") ||
         !impl->library->hasFunction("almetal_world_spot_shadow_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_spot_shadow_skinned_vertex") ||
@@ -2342,6 +2385,36 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         impl->debug_blip_pipelines[hdr] = ALMetalRenderPipeline::create(
             device, debug_blip_descriptor, error);
         if (!impl->debug_blip_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor probe_volume_descriptor;
+        probe_volume_descriptor.library = impl->library.get();
+        probe_volume_descriptor.vertex_function =
+            "almetal_resample_vertex";
+        probe_volume_descriptor.fragment_function =
+            "almetal_world_reflection_probe_volume_fragment";
+        probe_volume_descriptor.colors[0].format = screen_formats[hdr];
+        probe_volume_descriptor.colors[0].blending_enabled = true;
+        probe_volume_descriptor.colors[0].source_rgb =
+            ALMetalBlendFactor::source_alpha;
+        probe_volume_descriptor.colors[0].destination_rgb =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        probe_volume_descriptor.colors[0].write_mask =
+            static_cast<ALMetalColorWriteMask>(
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+        probe_volume_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        probe_volume_descriptor.label = hdr
+            ? "Alchemy HDR reflection-probe volume overlay pipeline"
+            : "Alchemy reflection-probe volume overlay pipeline";
+        impl->reflection_probe_volume_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, probe_volume_descriptor, error);
+        if (!impl->reflection_probe_volume_pipelines[hdr])
         {
             return nullptr;
         }
@@ -10259,6 +10332,19 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             "Metal world opaque post-deferred continuation target is incompatible");
         return nullptr;
     }
+    if (scene.reflection_probe_volume_constants &&
+        (!validReflectionProbeVolumeConstants(
+             scene.reflection_probe_volume_constants) ||
+         !finiteValues(
+             scene.reflection_probe_volume_inverse_projection, 16) ||
+         !gbuffer.depth_stencil_shader_read ||
+         !sampleableTexture(scene.gbuffer->depthStencilTexture())))
+    {
+        setError(
+            error,
+            "Metal world reflection-probe volume overlay is invalid");
+        return nullptr;
+    }
 
     constexpr std::size_t float4_stride = sizeof(float) * 4;
     constexpr std::size_t float2_stride = sizeof(float) * 2;
@@ -11351,6 +11437,26 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             *mImpl->device, descriptor, error);
         if (!far_plane_overlay_buffer || !far_plane_overlay_buffer->write(
                 0, scene.far_plane_overlay_columns,
+                descriptor.length, error))
+        {
+            return nullptr;
+        }
+    }
+
+    std::unique_ptr<ALMetalBuffer> reflection_probe_volume_buffer;
+    if (scene.reflection_probe_volume_constants)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = sizeof(ALMetalWorldReflectionProbeConstants);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label =
+            "Alchemy reflection-probe volume overlay constants";
+        reflection_probe_volume_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!reflection_probe_volume_buffer ||
+            !reflection_probe_volume_buffer->write(
+                0, scene.reflection_probe_volume_constants,
                 descriptor.length, error))
         {
             return nullptr;
@@ -13300,6 +13406,35 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 ALMetalPrimitiveType::point, 0,
                 static_cast<std::uint32_t>(scene.debug_blip_count),
                 1, error);
+    }
+
+    if (encoded && scene.reflection_probe_volume_constants)
+    {
+        WorldReflectionProbeVolumeConstants constants{};
+        std::memcpy(
+            constants.inverse_projection,
+            scene.reflection_probe_volume_inverse_projection,
+            sizeof(constants.inverse_projection));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        encoded =
+            encoder->setDepthStencilState(
+                mImpl->overlay_composite_depth.get(), error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setPipeline(
+                *mImpl->reflection_probe_volume_pipelines[
+                    scene.hdr ? 1 : 0],
+                error) &&
+            encoder->setFragmentTexture(
+                0, scene.gbuffer->depthStencilTexture(), error) &&
+            encoder->setFragmentSampler(
+                0, mImpl->point_clamp_sampler.get(), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->setFragmentBuffer(
+                1, *reflection_probe_volume_buffer, 0, error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     }
 
     if (encoded && scene.far_plane_overlay_column_count != 0)

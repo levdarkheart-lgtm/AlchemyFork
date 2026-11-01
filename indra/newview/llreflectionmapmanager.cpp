@@ -1674,39 +1674,54 @@ bool LLReflectionMapManager::fillMetalReflectionProbes(
                 mirror.mSlotGenerations[cube];
     }
 
-    static_assert(sizeof(LLMatrix4) == sizeof(float) * 16);
     probes = {};
     probes.radiance_texture = mirror.mPublishedRadiance.get();
     probes.irradiance_texture = complete_sh
         ? mirror.mPublishedSH.get() : nullptr;
-    memcpy(probes.constants.ref_box, mProbeData.refBox,
-           sizeof(probes.constants.ref_box));
-    memcpy(probes.constants.ref_sphere, mProbeData.refSphere,
-           sizeof(probes.constants.ref_sphere));
-    memcpy(probes.constants.ref_params, mProbeData.refParams,
-           sizeof(probes.constants.ref_params));
-    memcpy(probes.constants.ref_index, mProbeData.refIndex,
-           sizeof(probes.constants.ref_index));
-    memcpy(probes.constants.ref_neighbor, mProbeData.refNeighbor,
-           sizeof(probes.constants.ref_neighbor));
-    memcpy(probes.constants.ref_bucket, mProbeData.refBucket,
-           sizeof(probes.constants.ref_bucket));
+    return fillMetalReflectionProbeConstants(probes.constants);
+}
+
+bool LLReflectionMapManager::fillMetalReflectionProbeConstants(
+    ALMetalWorldReflectionProbeConstants& constants) const
+{
+    const S32 count = mProbeData.refmapCount;
+    if (count < 0 ||
+        count > static_cast<S32>(
+            ALMetalWorldReflectionProbeConstants::max_probe_count))
+    {
+        return false;
+    }
+
+    static_assert(sizeof(LLMatrix4) == sizeof(float) * 16);
+    constants = {};
+    memcpy(constants.ref_box, mProbeData.refBox,
+           sizeof(constants.ref_box));
+    memcpy(constants.ref_sphere, mProbeData.refSphere,
+           sizeof(constants.ref_sphere));
+    memcpy(constants.ref_params, mProbeData.refParams,
+           sizeof(constants.ref_params));
+    memcpy(constants.ref_index, mProbeData.refIndex,
+           sizeof(constants.ref_index));
+    memcpy(constants.ref_neighbor, mProbeData.refNeighbor,
+           sizeof(constants.ref_neighbor));
+    memcpy(constants.ref_bucket, mProbeData.refBucket,
+           sizeof(constants.ref_bucket));
 
     // setEnvMat uploads the transpose of the current view rotation. Spell
     // the resulting columns out for MSL's column-major multiply.
     const F32* matrix =
         LLViewerCamera::getCurrent().getModelview().getF32ptr();
-    probes.constants.env_matrix[0][0] = matrix[0];
-    probes.constants.env_matrix[0][1] = matrix[4];
-    probes.constants.env_matrix[0][2] = matrix[8];
-    probes.constants.env_matrix[1][0] = matrix[1];
-    probes.constants.env_matrix[1][1] = matrix[5];
-    probes.constants.env_matrix[1][2] = matrix[9];
-    probes.constants.env_matrix[2][0] = matrix[2];
-    probes.constants.env_matrix[2][1] = matrix[6];
-    probes.constants.env_matrix[2][2] = matrix[10];
-    probes.constants.config[0] = static_cast<F32>(count);
-    probes.constants.config[1] = mMaxProbeLOD;
+    constants.env_matrix[0][0] = matrix[0];
+    constants.env_matrix[0][1] = matrix[4];
+    constants.env_matrix[0][2] = matrix[8];
+    constants.env_matrix[1][0] = matrix[1];
+    constants.env_matrix[1][1] = matrix[5];
+    constants.env_matrix[1][2] = matrix[9];
+    constants.env_matrix[2][0] = matrix[2];
+    constants.env_matrix[2][1] = matrix[6];
+    constants.env_matrix[2][2] = matrix[10];
+    constants.config[0] = static_cast<F32>(count);
+    constants.config[1] = mMaxProbeLOD;
     return true;
 }
 #endif

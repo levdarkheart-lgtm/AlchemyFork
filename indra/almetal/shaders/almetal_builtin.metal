@@ -607,6 +607,12 @@ struct ALMetalWorldReflectionProbeConstants
     float4 config;
 };
 
+struct ALMetalWorldReflectionProbeVolumeConstants
+{
+    float4x4 inverse_projection;
+    uint4 config;
+};
+
 struct ALMetalWorldHeroProbeConstants
 {
     float4x4 hero_box;
@@ -4909,6 +4915,155 @@ static float almetal_probe_box_depth(float3 box_position)
 {
     return 1.0 - max(max(abs(box_position.x), abs(box_position.y)),
                      abs(box_position.z));
+}
+
+static void almetal_probe_debug_add(
+    thread float4& color, float4 contribution)
+{
+    color += contribution * (1.0 - min(color.a, 1.0));
+}
+
+static void almetal_probe_sphere_intersect_debug(
+    float3 direction, float3 center, float radius_squared,
+    float scene_depth, thread float4& color)
+{
+    const float projection = dot(center, direction);
+    const float perpendicular_squared =
+        dot(center, center) - projection * projection;
+    if (perpendicular_squared > radius_squared)
+    {
+        return;
+    }
+    const float half_chord = sqrt(max(
+        radius_squared - perpendicular_squared, 0.0));
+    const float intersections[2] = {
+        projection - half_chord,
+        projection + half_chord,
+    };
+    for (uint intersection = 0u; intersection < 2u; ++intersection)
+    {
+        const float distance = intersections[intersection];
+        if (distance <= 0.0)
+        {
+            continue;
+        }
+        if (distance > scene_depth)
+        {
+            const float weight =
+                0.125 / ((distance - scene_depth) * 0.125 + 1.0);
+            almetal_probe_debug_add(
+                color, float4(0.0, 0.0, weight, weight));
+        }
+        else
+        {
+            constexpr float weight = 0.25;
+            almetal_probe_debug_add(
+                color, float4(weight, weight, 0.0, weight));
+        }
+    }
+}
+
+static void almetal_probe_box_intersection_color_debug(
+    float3 origin, float3 direction, float distance,
+    float3 scene_position, thread float4& color)
+{
+    const float3 intersection = direction * distance;
+    const float3 position = scene_position - origin;
+    float weight = 0.25;
+    if (dot(intersection, intersection) > dot(position, position))
+    {
+        weight *= 0.5;
+        weight /=
+            (length(intersection) - length(position)) * 0.5 + 1.0;
+        almetal_probe_debug_add(
+            color, float4(0.0, 0.0, weight, weight));
+    }
+    else
+    {
+        almetal_probe_debug_add(
+            color, float4(weight, weight, 0.0, weight));
+    }
+}
+
+static void almetal_probe_box_intersect_debug(
+    float3 scene_position, float4x4 clip_to_local,
+    thread float4& color)
+{
+    const float3 origin = (clip_to_local * float4(0.0, 0.0, 0.0, 1.0)).xyz;
+    const float3 position =
+        (clip_to_local * float4(scene_position, 1.0)).xyz;
+    const float3 delta = position - origin;
+    if (dot(delta, delta) <= 0.0)
+    {
+        return;
+    }
+    const float3 direction = normalize(delta);
+    const float3 reciprocal = 1.0 / direction;
+    const float3 scaled_origin = reciprocal * origin;
+    const float3 extent = abs(reciprocal);
+    const float3 near_planes = -scaled_origin - extent;
+    const float3 far_planes = -scaled_origin + extent;
+    const float near_distance = max(
+        max(near_planes.x, near_planes.y), near_planes.z);
+    const float far_distance = min(
+        min(far_planes.x, far_planes.y), far_planes.z);
+    if (near_distance > far_distance || far_distance < 0.0)
+    {
+        return;
+    }
+
+    const float first_distance = near_distance < 0.0
+        ? far_distance : near_distance;
+    almetal_probe_box_intersection_color_debug(
+        origin, direction, first_distance, position, color);
+    if (near_distance > 0.0)
+    {
+        almetal_probe_box_intersection_color_debug(
+            origin, direction, far_distance, position, color);
+    }
+}
+
+fragment float4 almetal_world_reflection_probe_volume_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> depth_texture [[texture(0)]],
+    sampler depth_sampler [[sampler(0)]],
+    constant ALMetalWorldReflectionProbeVolumeConstants& constants
+        [[buffer(0)]],
+    constant ALMetalWorldReflectionProbeConstants& probes [[buffer(1)]])
+{
+    const float depth = depth_texture.sample(
+        depth_sampler, input.texcoord, level(0.0)).r;
+    const float ndc_z = constants.config.x != 0u
+        ? depth : depth * 2.0 - 1.0;
+    float4 position = constants.inverse_projection *
+        float4(input.texcoord * 2.0 - 1.0, ndc_z, 1.0);
+    position.xyz /= max(position.w, 0.000001);
+
+    const float scene_depth = length(position.xyz);
+    if (scene_depth <= 0.0)
+    {
+        return 0.0;
+    }
+    const float3 direction = position.xyz / scene_depth;
+    float4 color = 0.0;
+    const int probe_count = int(probes.config.x);
+    for (int index = 1; index < probe_count; ++index)
+    {
+        const int shape = probes.ref_index[index].w;
+        if (shape < 0)
+        {
+            almetal_probe_box_intersect_debug(
+                position.xyz, probes.ref_box[index], color);
+        }
+        else if (shape > 0)
+        {
+            const float radius = probes.ref_sphere[index].w;
+            almetal_probe_sphere_intersect_debug(
+                direction, probes.ref_sphere[index].xyz,
+                radius * radius, scene_depth, color);
+        }
+    }
+    return max(color, float4(0.0));
 }
 
 static float almetal_probe_weight(

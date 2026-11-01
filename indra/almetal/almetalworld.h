@@ -27,13 +27,11 @@ struct ALMetalWorldOverlayEligibility
 {
     bool render_debug = false;
     bool wireframe = false;
-    bool reflection_probe_volumes = false;
     bool pathfinding = false;
 
     bool exact() const
     {
-        return !render_debug && !wireframe &&
-            !reflection_probe_volumes && !pathfinding;
+        return !render_debug && !wireframe && !pathfinding;
     }
 };
 
@@ -746,6 +744,12 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t far_plane_overlay_column_count = 0;
     std::size_t far_plane_overlay_near_count = 0;
     float far_plane_overlay_modelview_projection[16]{};
+    // Optional full-screen developer visualization of the live manual probe
+    // influence volumes. It consumes only the selection constants and scene
+    // depth; radiance/irradiance generations are irrelevant to this owner.
+    const ALMetalWorldReflectionProbeConstants*
+        reflection_probe_volume_constants = nullptr;
+    float reflection_probe_volume_inverse_projection[16]{};
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
     // Mutually exclusive with reflection_probes for forward rendering.
     // This is the current LLCubeMap publication used by the class-2 GLSL

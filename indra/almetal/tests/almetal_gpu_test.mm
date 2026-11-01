@@ -54,8 +54,6 @@ namespace
         };
         CHECK(rejects(&ALMetalWorldOverlayEligibility::render_debug));
         CHECK(rejects(&ALMetalWorldOverlayEligibility::wireframe));
-        CHECK(rejects(
-            &ALMetalWorldOverlayEligibility::reflection_probe_volumes));
         CHECK(rejects(&ALMetalWorldOverlayEligibility::pathfinding));
     }
 
@@ -4636,6 +4634,130 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.debug_blips = nullptr;
         opaque_forward_scene.debug_blip_count = 0;
 
+        // The reflection-probe volume developer display is an independent
+        // full-screen owner inside renderDebug. It reconstructs eye-space
+        // scene depth, shows manual sphere/box intersections in yellow when
+        // visible and distance-faded blue when hidden, then leaves scene
+        // coverage and depth untouched. Identity projection makes the same
+        // covered texel reconstruct to z=0.25 in both depth conventions.
+        auto probe_volume_constants =
+            std::make_unique<ALMetalWorldReflectionProbeConstants>();
+        probe_volume_constants->config[0] = 2.f;
+        probe_volume_constants->ref_index[1][3] = 1;
+        probe_volume_constants->ref_sphere[1][3] = 0.5f;
+        opaque_forward_scene.reflection_probe_volume_constants =
+            probe_volume_constants.get();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            opaque_forward_scene.reflection_probe_volume_inverse_projection[
+                axis * 4 + axis] = 1.f;
+        }
+
+        probe_volume_constants->config[0] = 257.f;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world reflection-probe volume overlay is invalid");
+        probe_volume_constants->config[0] = 2.f;
+        opaque_forward_scene.reflection_probe_volume_inverse_projection[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world reflection-probe volume overlay is invalid");
+        opaque_forward_scene.reflection_probe_volume_inverse_projection[0] =
+            1.f;
+        error.clear();
+
+        auto sphere_probe_volume = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(sphere_probe_volume);
+        std::array<std::uint16_t, 32 * 32 * 4> sphere_probe_pixels{};
+        std::array<float, 32 * 32> sphere_probe_depth{};
+        REQUIRE(sphere_probe_volume->colorTexture(0)->readback(
+            *device, 0, 0, {}, sphere_probe_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(sphere_probe_volume->depthStencilTexture()->readback(
+            *device, 0, 0, {}, sphere_probe_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(sphere_probe_pixels[0] == opaque_forward_pixels[0]);
+        CHECK(sphere_probe_pixels[1] > opaque_forward_pixels[1]);
+        CHECK(sphere_probe_pixels[2] < opaque_forward_pixels[2]);
+        CHECK(sphere_probe_pixels[3] == opaque_forward_pixels[3]);
+        CHECK(sphere_probe_pixels[center + 0] <
+              opaque_forward_pixels[center + 0]);
+        CHECK(sphere_probe_pixels[center + 1] <
+              opaque_forward_pixels[center + 1]);
+        CHECK(sphere_probe_pixels[center + 2] >
+              opaque_forward_pixels[center + 2]);
+        CHECK(sphere_probe_pixels[center + 3] ==
+              opaque_forward_pixels[center + 3]);
+        CHECK(sphere_probe_depth == opaque_forward_depth);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        auto reverse_sphere_probe_volume =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_sphere_probe_volume);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_sphere_probe_pixels{};
+        REQUIRE(reverse_sphere_probe_volume->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_sphere_probe_pixels.data(),
+            32 * 8, &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(reverse_sphere_probe_pixels[channel] ==
+                  sphere_probe_pixels[channel]);
+            CHECK(reverse_sphere_probe_pixels[center + channel] ==
+                  sphere_probe_pixels[center + channel]);
+        }
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+
+        probe_volume_constants->ref_index[1][3] = -1;
+        probe_volume_constants->ref_sphere[1][3] = 0.f;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            probe_volume_constants->ref_box[1][axis * 4 + axis] = 1.f;
+        }
+        auto box_probe_volume = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(box_probe_volume);
+        std::array<std::uint16_t, 32 * 32 * 4> box_probe_pixels{};
+        REQUIRE(box_probe_volume->colorTexture(0)->readback(
+            *device, 0, 0, {}, box_probe_pixels.data(), 32 * 8, &error));
+        INFO(error);
+        CHECK(box_probe_pixels[1] > opaque_forward_pixels[1]);
+        CHECK(box_probe_pixels[2] < opaque_forward_pixels[2]);
+        CHECK(box_probe_pixels[center + 0] <
+              opaque_forward_pixels[center + 0]);
+        CHECK(box_probe_pixels[center + 2] >
+              opaque_forward_pixels[center + 2]);
+        CHECK(box_probe_pixels[center + 3] ==
+              opaque_forward_pixels[center + 3]);
+        CHECK(box_probe_pixels[center + 2] !=
+              sphere_probe_pixels[center + 2]);
+
+        probe_volume_constants->ref_index[1][3] = 0;
+        auto automatic_probe_volume = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(automatic_probe_volume);
+        std::array<std::uint16_t, 32 * 32 * 4> automatic_probe_pixels{};
+        REQUIRE(automatic_probe_volume->colorTexture(0)->readback(
+            *device, 0, 0, {}, automatic_probe_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        CHECK(automatic_probe_pixels == opaque_forward_pixels);
+        opaque_forward_scene.reflection_probe_volume_constants = nullptr;
+
         // The Develop far-plane overlay depth-tests nearer orange columns
         // against farther cyan columns in a private target, then RGB-only
         // composites over the world. Use one overlapping pair and one exposed
@@ -4790,13 +4912,33 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(overlay_ldr_pixels[far_overlay + 1] == 204u);
         CHECK(overlay_ldr_pixels[far_overlay + 2] == 255u);
         CHECK(overlay_ldr_pixels[far_overlay + 3] == 128u);
+        opaque_forward_scene.far_plane_overlay_columns = nullptr;
+        opaque_forward_scene.far_plane_overlay_column_count = 0;
+        opaque_forward_scene.far_plane_overlay_near_count = 0;
+        probe_volume_constants->ref_index[1][3] = 1;
+        probe_volume_constants->ref_sphere[1][3] = 0.5f;
+        opaque_forward_scene.reflection_probe_volume_constants =
+            probe_volume_constants.get();
+        auto ldr_probe_volume = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(ldr_probe_volume);
+        std::array<std::uint8_t, 32 * 32 * 4> ldr_probe_pixels{};
+        REQUIRE(ldr_probe_volume->colorTexture(0)->readback(
+            *device, 0, 0, {}, ldr_probe_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(ldr_probe_pixels[0] == 64u);
+        CHECK(ldr_probe_pixels[1] > 32u);
+        CHECK(ldr_probe_pixels[2] < 16u);
+        CHECK(ldr_probe_pixels[3] == 128u);
+        CHECK(ldr_probe_pixels[center + 0] < 64u);
+        CHECK(ldr_probe_pixels[center + 2] > 16u);
+        CHECK(ldr_probe_pixels[center + 3] == 128u);
+        opaque_forward_scene.reflection_probe_volume_constants = nullptr;
         opaque_forward_scene.composed_lighting = final_light.get();
         opaque_forward_scene.hdr = true;
         opaque_forward_scene.batches = &normal_free_fullbright;
         opaque_forward_scene.batch_count = 1;
-        opaque_forward_scene.far_plane_overlay_columns = nullptr;
-        opaque_forward_scene.far_plane_overlay_column_count = 0;
-        opaque_forward_scene.far_plane_overlay_near_count = 0;
 
         // Final-color publication is opt-in because only the continuously
         // advancing main-world path needs to sample combined depth. Prove

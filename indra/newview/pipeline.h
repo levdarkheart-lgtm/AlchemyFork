@@ -842,6 +842,7 @@ public:
     void beginMetalImpostorAlphaPhase();
     void endMetalImpostorAlphaCapture();
     void beginMetalWorldPostDeferredCapture();
+    void captureMetalReflectionProbeVolumes();
     void beginMetalWorldPreWaterAlphaPhase();
     void endMetalWorldPreWaterAlphaPhase();
     void beginMetalWorldPostWaterAlphaPhase();
