@@ -777,6 +777,17 @@ static bool metalWorldPresentationRequested()
     return publish_world;
 }
 
+static bool metalHeroMirrorSnapshotValidationRequested()
+{
+#if !LL_RELEASE_FOR_DOWNLOAD
+    static LLCachedControl<bool> validate_snapshot(
+        gSavedSettings, "ALMetalHeroMirrorSnapshotValidation", false);
+    return validate_snapshot;
+#else
+    return false;
+#endif
+}
+
 bool LLPipeline::metalWorldPresentationCurrent() const
 {
     return mMetalWorldSimpleCapture &&
@@ -849,8 +860,13 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
     // while every resource-generation check still passes. Keep both live
     // publication and saved snapshots on the authoritative GL path whenever
     // a hero mirror is active until that complete route has parity evidence.
-    const bool hero_mirror_exact = !sReflectionProbesEnabled ||
-        mHeroProbeManager.mHeroData.heroProbeCount == 0;
+    const bool hero_mirror_active = sReflectionProbesEnabled &&
+        mHeroProbeManager.mHeroData.heroProbeCount != 0;
+    const bool hero_mirror_snapshot_validation =
+        hero_mirror_active && mMetalWorldSnapshotRequested &&
+        metalHeroMirrorSnapshotValidationRequested();
+    const bool hero_mirror_exact = !hero_mirror_active ||
+        hero_mirror_snapshot_validation;
     const bool eligible = started && hdr && main_world && ordinary_world &&
         native_dynamic_exposure && native_lens_flare && native_lens_dirt &&
         grade.native_resources_ready && post_enabled && sky &&
@@ -862,12 +878,14 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
             "Metal world presentation is ineligible: started={}, hdr={}, "
             "main_world={}, ordinary_world={}, dynamic_exposure={}, "
             "lens_flare={}, lens_dirt={}, color_grade={}, post={}, sky={}, "
-            "antialiasing={}, sphere={}, final_buffer={}, hero_mirror={}",
+            "antialiasing={}, sphere={}, final_buffer={}, hero_mirror={}, "
+            "hero_mirror_snapshot_validation={}",
             started, hdr, main_world, ordinary_world,
             native_dynamic_exposure, native_lens_flare, native_lens_dirt,
             grade.native_resources_ready, post_enabled,
             static_cast<bool>(sky), exact_antialiasing,
-            sphere_unrestricted, final_buffer, hero_mirror_exact);
+            sphere_unrestricted, final_buffer, hero_mirror_exact,
+            hero_mirror_snapshot_validation);
     }
     return eligible;
 }
@@ -6044,6 +6062,15 @@ bool LLPipeline::requestMetalWorldSnapshotCapture(std::string* error)
     {
         mMetalWorldSnapshotRequested = false;
         return false;
+    }
+    if (sReflectionProbesEnabled &&
+        mHeroProbeManager.mHeroData.heroProbeCount != 0 &&
+        metalHeroMirrorSnapshotValidationRequested())
+    {
+        LL_INFOS("Metal")
+            << "Development-only native authored-mirror Snapshot validation "
+               "is active; continuous live presentation remains guarded"
+            << LL_ENDL;
     }
     return true;
 }

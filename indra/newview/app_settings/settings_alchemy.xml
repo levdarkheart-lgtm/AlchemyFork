@@ -15,6 +15,19 @@
             <key>Value</key>
             <integer>0</integer>
         </map>
+        <key>ALMetalHeroMirrorSnapshotValidation</key>
+        <map>
+            <key>Comment</key>
+            <string>Development-only, non-persistent: admit an explicitly requested native Snapshot while an authored hero mirror is active so it can be compared with the external GL reference. Never admits continuous live presentation and remains unavailable in release-for-download builds.</string>
+            <key>Persist</key>
+            <integer>0</integer>
+            <key>HideFromEditor</key>
+            <integer>1</integer>
+            <key>Type</key>
+            <string>Boolean</string>
+            <key>Value</key>
+            <integer>0</integer>
+        </map>
         <key>ALCefAcceleratedPaint</key>
         <map>
             <key>Comment</key>
