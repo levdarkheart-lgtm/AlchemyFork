@@ -18,7 +18,7 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Main native world chain publishes exact frames; advanced material/reference coverage remains incomplete. |
-| M-008 | Advanced views/effects and compute | doing | Water/default-probe zero follows GLSL's unshifted-ray rule under an asymmetric physical control; continue live water, probes/mirrors, shadows, transparency/materials, post and output parity. |
+| M-008 | Advanced views/effects and compute | doing | Water/default-probe zero has physical proof and one accepted matched live Grignano fixture; continue broader water, probes/mirrors, shadows, transparency/materials, post and output parity. |
 | M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
@@ -48,38 +48,43 @@ Exact-path preflight and actual Computer Use on 68026 completed semantic login,
 reached `STATE_STARTED`, showed a coherent upright world/UI, and completed
 semantic logout. Logs contain `LogoutReply`, `Goodbye!` and stopped status; the
 final viewer/helper census is zero and launch validation variables are cleared.
-No Metal validation error was observed. This is an ordinary runtime regression
-smoke, not live reference parity for water. Raw logs and authenticated-world
-images remain local.
+No Metal validation error was observed.
+
+The bounded live comparison is now accepted. Actual Computer Use flew and
+Map-teleported candidate build 68026 and reference build 67607 to
+`Grignano (128, 228, 74)`, selected Midday, and captured fresh 2048x1476 PNGs.
+Post-exit capture compared 416/416 effective graphics settings with no mismatch
+or missing/one-sided setting. Camera/focus X/Y matched within serialized
+precision and Z differed by about 1 cm. Human inspection found the frames
+materially the same; blurred whole-frame structural SSIM was 0.993616 and the
+bounded water/sky crop was 0.998397. Raw temporal SSIM 0.870878 is descriptive,
+not a pixel-identity claim. Both viewers stopped cleanly; raw authenticated
+artifacts remain local and untracked.
 
 ## Complete-product checkpoint gate
 
 1. **Product advancement:** native water no longer applies sphere parallax to
-   default probe zero where the active GLSL contract explicitly does not. This
-   is bounded deterministic M-008 progress.
+   default probe zero where the active GLSL contract explicitly does not; a
+   matched live fixture corroborates the physical proof. This remains bounded
+   M-008 progress.
 2. **Deferred critical work:** remaining post/alpha/PBR/probe/advanced views;
    source- and scene-identical post comparison; full parity/stability; strict
    no-GL; independent review; and qualifying M1 Max performance evidence.
-3. **Priority reassessment:** attempt a water-visible pair only with exact
-   provenance and the complete 416-setting/view/environment/warm/window
-   contract. Reject metrics on any mismatch. If a controlled water fixture is
-   not practical, move directly to the next source-demonstrated probe/shadow
-   gap; activity on another inadmissible comparison would not advance release
-   evidence.
+3. **Priority reassessment:** the bounded water pair is accepted and must not
+   be repeated. Move directly to the next source-demonstrated probe/mirror or
+   projector/cascade-shadow gap; activity on this completed fixture would not
+   advance another release criterion.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Run the bounded water-visible candidate/reference pair if—and only if—exact
-source provenance, all 416 effective graphics settings, camera,
-environment/time, warm state and window/snapshot contract match. Otherwise
-fail closed without scoring and resume source-led work through probes/mirrors,
-the isolated projector/cascade shadow fixture, transparency/material replay,
-non-default post and advanced output. Add an asymmetric physical negative
-control for each demonstrated divergence, then rerun focused/full Metal and
-neutral validation.
+Resume source-led work through probes/mirrors and the isolated
+projector/cascade shadow fixture. Implement only the first demonstrated
+divergence, add an asymmetric physical negative control, then rerun
+focused/full Metal and neutral validation. Continue next through
+transparency/material replay, non-default post and advanced output.
 
 ## Non-negotiable open gates
 

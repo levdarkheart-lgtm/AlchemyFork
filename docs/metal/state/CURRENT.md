@@ -30,6 +30,16 @@ world/UI was visibly coherent and no Metal validation error was observed.
 Semantic Quit logged `LogoutReply`, `Goodbye!` and `status: stopped`; the final
 viewer/helper census was zero and launch validation variables were cleared.
 
+The subsequent bounded live-water pair is admissible and accepted. Actual
+Computer Use flew and Map-teleported candidate build 68026 and reference build
+67607 to `Grignano (128, 228, 74)`, selected Midday and captured fresh
+2048x1476 snapshots. All 416 effective graphics settings matched; camera/focus
+X/Y matched within serialization precision and Z differed by about 1 cm. Human
+inspection found the views materially the same. Blurred structural whole-frame
+SSIM was 0.993616 and the bounded water/sky crop was 0.998397. Raw temporal
+SSIM 0.870878 is retained descriptively, not treated as pixel identity. Both
+viewers stopped cleanly and the final process census was zero.
+
 ## Build and test evidence
 
 - Source-exact warnings-as-errors RelWithDebInfo build 68026 linked, staged and
@@ -51,6 +61,9 @@ viewer/helper census was zero and launch validation variables were cleared.
   production change.
 - Harness validation and all tooling tests pass after this documentation
   checkpoint.
+- The accepted live-pair image hashes, executable provenance, commands and
+  scope are retained in the indexed water-live-pair archive; authenticated
+  images, profiles and logs remain local and untracked.
 - Homebrew Bison 3.8.2 remains selected explicitly. The ignored build-local
   Python environment supplies Linden Research's `llsd 1.2.4` and PyYAML.
 
@@ -59,7 +72,7 @@ viewer/helper census was zero and launch validation variables were cleared.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-007 renderer | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
-| M-008 advanced views/effects | doing | Water/default-probe zero now matches GLSL's unshifted-ray rule under an asymmetric physical control; live water, broader probes/mirrors, shadows, transparency/materials, post and output parity stay open. |
+| M-008 advanced views/effects | doing | Water/default-probe zero has physical proof plus one accepted matched live Grignano fixture; broader water, probes/mirrors, shadows, transparency/materials, post and output parity stay open. |
 | M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
@@ -68,9 +81,10 @@ viewer/helper census was zero and launch validation variables were cleared.
 ## Complete-product advancement assessment
 
 **Advances the complete product:** yes. A source-demonstrated GLSL/Metal water
-reflection divergence is now closed under a physical six-face negative
-control. This is bounded deterministic M-008 progress, not live water parity,
-broad reflection/mirror parity, native-only completion or a performance claim.
+reflection divergence is closed under a physical six-face negative control and
+corroborated by one admissible live fixture. This is bounded M-008 progress,
+not broad water/reflection/mirror parity, native-only completion or a
+performance claim.
 
 **Deferred critical work:** remaining post/alpha/PBR/probe/advanced-view parity;
 a source- and scene-identical scored post pair; full feature/stability matrices;
@@ -78,25 +92,21 @@ viewer-owned OpenGL removal; independent build/review evidence and reproducible
 distinct release proof; and paired quality-equivalent M1 Max measurements.
 The strict no-GL gate remains open.
 
-**Evidence-based priority:** run one controlled water-visible candidate/reference
-pair only if exact source provenance plus all 416 effective graphics settings,
-camera, environment/time, warm state and window/snapshot contract can be made
-identical. Fail closed before metrics if any invariant differs. If a controlled
-fixture is not practical, continue immediately to the next source-demonstrated
-probe or shadow gap rather than spending time on an inadmissible pair. The
-informational GL scan currently covers 2,408 viewer-owned files and reports
-3,303 potential findings; macros, comments and duplicates mean this is not an
-equal-sized task count, and the strict release gate remains open.
+**Evidence-based priority:** the bounded water pair is accepted; do not repeat
+it. Return to source-led tracing and close the first demonstrated probe/mirror
+or projector/cascade-shadow divergence with an asymmetric physical control,
+then continue transparency/material replay, non-default post and advanced
+output. The informational GL scan currently covers 2,408 viewer-owned files
+and reports 3,303 potential findings; macros, comments and duplicates mean
+this is not an equal-sized task count, and the strict release gate remains
+open.
 
 ## Exact next actions
 
-1. Attempt the bounded water-visible pair with pinned provenance and identical
-   416-setting, camera, environment/time, warm-state and window/snapshot
-   manifests; reject it before scoring on any mismatch.
-2. Continue the source-led M-008 graph through probes/mirrors, the isolated
+1. Continue the source-led M-008 graph through probes/mirrors, the isolated
    projector/cascade shadow fixture, transparency/material replay, non-default
    post and advanced output; add an asymmetric physical control for each
    demonstrated divergence.
-3. Keep live-water breadth, moving mirrors, full feature/stability, strict
+2. Keep live-water breadth, moving mirrors, full feature/stability, strict
    no-GL and qualifying performance gates open until their release evidence
    exists.

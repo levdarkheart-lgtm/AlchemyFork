@@ -15,6 +15,7 @@ chronological transcript.
 | Reflection-probe neighbor/manual-box selection execution, 2026-11-01 | [metal-port-probe-neighbor-selection-checkpoint-2026-11-01.md](metal-port-probe-neighbor-selection-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 | Deferred default-probe radiance/SH publication implementation and validation, 2026-11-01 | [metal-port-default-probe-deferred-publication-checkpoint-2026-11-01.md](metal-port-default-probe-deferred-publication-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 | Water/default-probe no-parallax implementation and validation, 2026-11-01 | [metal-port-water-default-probe-parallax-checkpoint-2026-11-01.md](metal-port-water-default-probe-parallax-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
+| Matched live Grignano water/default-probe execution, 2026-11-01 | [metal-port-water-live-pair-checkpoint-2026-11-01.md](metal-port-water-live-pair-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.
