@@ -63,6 +63,39 @@ MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 WORK_STATES = {"todo", "doing", "blocked", "deferred", "complete"}
 
 
+def markdown_anchors(text: str):
+    """Return GitHub-style anchors for Markdown headings, including duplicates."""
+    anchors = set()
+    occurrences = {}
+    for line in text.splitlines():
+        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
+        if not match:
+            continue
+        slug = match.group(1).strip().lower()
+        slug = re.sub(r"[^\w\s-]", "", slug)
+        slug = re.sub(r"\s+", "-", slug)
+        count = occurrences.get(slug, 0)
+        occurrences[slug] = count + 1
+        anchors.add(slug if count == 0 else f"{slug}-{count}")
+    return anchors
+
+
+def validate_evidence_reference(root: Path, evidence: str, context: str):
+    """Validate a repository-local evidence path and optional Markdown anchor."""
+    if not evidence or evidence.startswith(("http://", "https://")):
+        return []
+    relative, separator, anchor = evidence.partition("#")
+    target = root / relative
+    if not target.is_file():
+        return [f"Missing evidence path for {context}: {relative}"]
+    if separator and anchor:
+        if target.suffix.lower() != ".md":
+            return [f"Evidence anchor targets non-Markdown file for {context}: {evidence}"]
+        if anchor not in markdown_anchors(target.read_text(encoding="utf-8")):
+            return [f"Stale evidence anchor for {context}: {evidence}"]
+    return []
+
+
 def milestone_states(text: str):
     states = {}
     for line in text.splitlines():
@@ -245,6 +278,9 @@ def validate(root: Path, release: bool = False):
                         errors.append(f"Invalid critical flag at row {n}")
                     if (row["metal"] == "verified" or row["reference"] == "verified") and not row["evidence"]:
                         errors.append(f"Missing evidence for verified feature at row {n}")
+                    errors.extend(validate_evidence_reference(
+                        root, row["evidence"],
+                        f"feature-matrix row {n} ({row['id']})"))
                     if release and row["critical"] == "yes" and (row["metal"] != "verified" or row["reference"] != "verified"):
                         errors.append(f"Release feature unverified at row {n}: {row['id']}")
     spec = root / "docs/metal/benchmarks/scenarios.json"

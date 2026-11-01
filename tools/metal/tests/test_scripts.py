@@ -440,6 +440,27 @@ class HarnessTests(unittest.TestCase):
                 "benchmarks/scenarios.json" in error for error in errors
             ))
 
+    def test_feature_evidence_path_and_anchor_are_validated(self):
+        module = load("validate_harness")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            evidence = root / "docs/evidence.md"
+            evidence.parent.mkdir(parents=True)
+            evidence.write_text("# Exact checkpoint\n", encoding="utf-8")
+            self.assertEqual([], module.validate_evidence_reference(
+                root, "docs/evidence.md#exact-checkpoint", "fixture"
+            ))
+            errors = module.validate_evidence_reference(
+                root, "docs/evidence.md#old-checkpoint", "fixture"
+            )
+            self.assertTrue(any("Stale evidence anchor" in error
+                                for error in errors))
+            errors = module.validate_evidence_reference(
+                root, "docs/missing.md#exact-checkpoint", "fixture"
+            )
+            self.assertTrue(any("Missing evidence path" in error
+                                for error in errors))
+
     def test_referenced_command_must_be_executable(self):
         module = load("validate_harness")
         with tempfile.TemporaryDirectory() as d:
