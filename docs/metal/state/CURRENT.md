@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-01 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `23ce2f7190` (`feat(metal): replay world wireframe natively`)
+**Renderer code checkpoint:** `9e28d64932` (`fix(metal): narrow debug fallback to world output`)
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -38,9 +38,12 @@ Prior native advanced-output owners remain covered: static/rigged world and HUD
 far-plane projection overlay and manual reflection-probe volumes. The current
 OSS ARM64 viewer links only the nonfunctional `llphysicsextensionsos`
 pathfinding stub, so pathfinding visualization is not a reachable retained-
-Alchemy output or a release-critical port target. The remaining reachable
-fail-closed advanced-output owner is general render-debug output; the latent
-pathfinding guard remains.
+Alchemy output or a release-critical port target. The render-debug audit at
+`9e28d64932` replaces the broad `mRenderDebugMask != 0` veto with an explicit
+mask of the 20 modes that still emit uncaptured world pixels or alter captured
+world geometry. Nine modes that only feed LLHUD/debug text after native world
+publication and four unused masks no longer force a GL world fallback. The 20
+visual modes remain fail-closed; the latent pathfinding guard also remains.
 
 The preceding reflection-probe production-call audit found no valid viewer-
 produced divergence; its extra Metal bounds checks do not alter valid data. That
@@ -67,12 +70,14 @@ prove shadow parity.
 - Warnings-as-errors RelWithDebInfo production viewer integration compiled,
   linked, staged and signed. Debug and Release Metal renderer, built-in MSL and
   GPU tests compiled and linked.
-- `ctest --test-dir build-Darwin-ninja-os-arm64 -C RelWithDebInfo -LE
-  'manual|gl' --output-on-failure -j 8` passed 484/484 in 35.58 seconds.
-- Source-exact warnings-as-errors Release Development build `26.4.0d68047`
-  linked, staged and signed at committed code head `23ce2f7190`.
+- The render-debug eligibility change passed a warnings-as-errors RelWithDebInfo
+  production viewer build. `ctest --test-dir build-Darwin-ninja-os-arm64 -C
+  RelWithDebInfo -LE 'manual|gl' --output-on-failure -j 8` passed 484/484 in
+  35.39 seconds.
+- Source-exact warnings-as-errors Release Development build `26.4.0d68049`
+  linked, staged and signed at committed code head `9e28d64932`.
 - Executable SHA-256:
-  `779d8233a2d62c05de54fe527ec70143ec20d36b6c09f8d6ab75bfc3baf89b18`.
+  `f8dd26047e89afd0aca67de34de3eb64a2bc2ae986caad4f7d189288c14c7691`.
   Packaged/source MSL SHA-256:
   `dd51886cc8cc33a8b19ac69206fed5045421c8905bb51c7d596fdeaefb467214`;
   compiled metallib SHA-256:
@@ -91,8 +96,8 @@ prove shadow parity.
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
 | M-007 world/material | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence; broader live parity remains open. |
-| M-008 advanced views/effects | doing | Wireframe, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. OSS pathfinding is a nonfunctional stub. Broader reachable debug/shadows/post/output parity remains open; exact RLVa parity is M-013. |
-| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. General render-debug output remains fail-closed pending audit/porting. |
+| M-008 advanced views/effects | doing | Wireframe, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. Text-only/unused render-debug modes no longer veto; 20 visual modes remain fail-closed. OSS pathfinding is a nonfunctional stub. Broader debug/shadows/post/output parity remains open; exact RLVa parity is M-013. |
+| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The explicit 20-mode render-debug world-output set remains pending audit/porting. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
 | M-012 Computer Use bridge | complete | Exact-path semantic login/in-world/control/logout operation is verified and used for acceptance. |
@@ -100,9 +105,9 @@ prove shadow parity.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. A reachable global raster mode now owns
-its exact line/fill scope, G-buffer clear semantics and downstream ordering in
-native Metal instead of vetoing presentation.
+**Advances the complete product:** yes. Native authority is no longer rejected
+for debug settings that cannot change the world surface, while every setting
+that can change world pixels remains fail-closed.
 
 **Deferred critical work:** remaining non-RLVa advanced-view/post/output owners;
 controlled live wireframe, material, editing and shadow comparisons; full
@@ -111,16 +116,16 @@ equivalent M1 Max measurements. Independent build/review evidence and
 reproducible distinct release proof also remain open. Exact RLVa behavior/image
 parity is separately deferred as non-critical M-013.
 
-**Evidence-based priority:** trace general render-debug production contribution.
-Select the smallest owner that actually emits uncaptured output, preserve its
-exact state and ordering, and avoid speculative ports for inactive or already-
-captured paths.
+**Evidence-based priority:** implement **Wind Vectors**, the smallest bounded
+remaining visual owner: one fixed 16x16 lattice, with 256 one-pixel green points
+and 256 red line segments sourced from the live simulator wind field. Preserve
+its camera/depth/order state and remove only that bit after asymmetric proof.
 
 ## Exact next actions
 
-1. Trace production contribution conditions and output ownership for general
-   render-debug output; retain the latent pathfinding guard.
-2. Implement the smallest confirmed reachable omission with asymmetric physical
-   state/output proof; leave every uncovered owner fail-closed.
+1. Capture and replay Develop **Wind Vectors** as bounded Metal point/line
+   primitives; retain the other 19 visual debug bits and pathfinding fail-closed.
+2. Prove count, transform, color, depth/order and empty/off controls on the
+   physical M1 Max before removing `RENDER_DEBUG_WIND_VECTORS` from the veto.
 3. Continue strict no-GL work and controlled live parity; keep exact RLVa parity
    in M-013 and require shadows enabled in both viewers for shadow pairs.
