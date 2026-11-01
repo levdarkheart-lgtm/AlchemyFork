@@ -708,6 +708,12 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::uint32_t height = 0;
     bool reverse_z = false;
     bool hdr = false;
+    // The same eye-space half-space used by the G-buffer MIRROR_CLIP
+    // variants. Forward alpha is replayed after deferred lighting, so it
+    // must carry the plane independently instead of relying on clipped
+    // opaque depth to reject transparent geometry.
+    float mirror_clip_plane[4] = {0.f, 0.f, 0.f, 1.f};
+    bool mirror_clip = false;
     // Immediately before the first alpha family, clear final color and
     // coverage where retained depth is still at the far plane, then stamp
     // opaque depth into alpha. Subsequent alpha pipelines accumulate their

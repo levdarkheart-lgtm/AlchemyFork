@@ -539,11 +539,13 @@ struct ALMetalWorldShinyConstants
     float4 avatar_sin_wave;
     float4 avatar_gravity;
     float4 avatar_cloth_depth;
+    float4 mirror_clip_plane;
 };
 
 struct ALMetalWorldShinyVaryings
 {
     float4 position [[position]];
+    float mirror_clip_distance [[clip_distance]];
     float3 eye_position;
     float3 normal;
     float4 color;
@@ -555,6 +557,7 @@ struct ALMetalWorldShinyVaryings
 struct ALMetalWorldLegacyAlphaVaryings
 {
     float4 position [[position]];
+    float mirror_clip_distance [[clip_distance]];
     float3 eye_position;
     float3 normal;
     float3 tangent;
@@ -4529,8 +4532,10 @@ vertex ALMetalWorldShinyVaryings almetal_world_shiny_vertex(
     ALMetalWorldShinyVaryings output;
     output.position = constants.config.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
-    output.eye_position =
-        (constants.modelview * object_position).xyz;
+    const float4 eye_position = constants.modelview * object_position;
+    output.mirror_clip_distance = constants.config.z != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
+    output.eye_position = eye_position.xyz;
     output.normal = normalize(normal_matrix * normals[vertex_id].xyz);
     output.color = float4(
         almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
@@ -4570,9 +4575,11 @@ vertex ALMetalWorldShinyVaryings almetal_world_shiny_skinned_vertex(
     ALMetalWorldShinyVaryings output;
     output.position = constants.config.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
-    output.eye_position =
-        (constants.modelview * skinned.position +
-         constants.modelview * origin).xyz;
+    const float4 eye_position = constants.modelview * skinned.position +
+                                constants.modelview * origin;
+    output.mirror_clip_distance = constants.config.z != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
+    output.eye_position = eye_position.xyz;
     output.normal = normalize(normal_matrix * skinned.normal.xyz);
     output.color = float4(
         almetal_srgb_to_linear(encoded_color.rgb), encoded_color.a);
@@ -4611,8 +4618,10 @@ vertex ALMetalWorldLegacyAlphaVaryings almetal_world_legacy_alpha_vertex(
     ALMetalWorldLegacyAlphaVaryings output;
     output.position = constants.config.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
-    output.eye_position =
-        (constants.modelview * object_position).xyz;
+    const float4 eye_position = constants.modelview * object_position;
+    output.mirror_clip_distance = constants.config.z != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
+    output.eye_position = eye_position.xyz;
     output.normal = normal;
     output.tangent = tangent;
     output.bitangent = tangents[vertex_id].w * cross(normal, tangent);
@@ -4666,9 +4675,11 @@ almetal_world_legacy_alpha_skinned_vertex(
     ALMetalWorldLegacyAlphaVaryings output;
     output.position = constants.config.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
-    output.eye_position =
-        (constants.modelview * skinned.position +
-         constants.modelview * origin).xyz;
+    const float4 eye_position = constants.modelview * skinned.position +
+                                constants.modelview * origin;
+    output.mirror_clip_distance = constants.config.z != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
+    output.eye_position = eye_position.xyz;
     output.normal = normal;
     output.tangent = tangent;
     output.bitangent = tangents[vertex_id].w * cross(normal, tangent);
@@ -9180,6 +9191,9 @@ static ALMetalWorldShinyVaryings almetal_world_avatar_alpha_varyings(
     ALMetalWorldShinyVaryings output;
     output.position = constants.config.x != 0
         ? clip_position : almetal_clip_from_gl(clip_position);
+    output.mirror_clip_distance = constants.config.z != 0u
+        ? dot(float4(eye_position, 1.0),
+              constants.mirror_clip_plane) : 1.0;
     output.eye_position = eye_position;
     output.normal = normalize(eye_normal);
     output.color = 1.0;

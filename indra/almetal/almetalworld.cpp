@@ -419,8 +419,9 @@ namespace
         float avatar_sin_wave[4]{};
         float avatar_gravity[4]{};
         float avatar_cloth_depth[4]{};
+        float mirror_clip_plane[4] = {0.f, 0.f, 0.f, 1.f};
     };
-    static_assert(sizeof(WorldShinyConstants) == 368);
+    static_assert(sizeof(WorldShinyConstants) == 384);
     static_assert(sizeof(ALMetalWorldAlphaEnvironment) == 320);
     static_assert(sizeof(ALMetalWorldLegacyAlphaLight) == 64);
     static_assert(sizeof(ALMetalWorldLegacyAlphaLighting) == 496);
@@ -9724,6 +9725,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                  "Metal world highlight batch storage is missing");
         return nullptr;
     }
+    if (!finiteValues(scene.mirror_clip_plane, 4))
+    {
+        setError(error,
+                 "Metal world opaque post-deferred mirror clip is non-finite");
+        return nullptr;
+    }
 
     const ALMetalPixelFormat color_format = scene.hdr
         ? ALMetalPixelFormat::rgba16_float
@@ -11825,6 +11832,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             std::memcpy(world.avatar_cloth_depth,
                         batch.avatar_cloth_depth,
                         sizeof(world.avatar_cloth_depth));
+            world.config[2] = scene.mirror_clip ? 1u : 0u;
+            std::memcpy(world.mirror_clip_plane,
+                        scene.mirror_clip_plane,
+                        sizeof(world.mirror_clip_plane));
 
             WorldSimpleConstants pbr_world{};
             std::memcpy(pbr_world.modelview_projection,
@@ -11842,6 +11853,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             pbr_world.depth_convention[0] =
                 scene.reverse_z ? 1u : 0u;
             pbr_world.depth_convention[1] = batch.texture_count;
+            pbr_world.depth_convention[2] =
+                scene.mirror_clip ? 1u : 0u;
+            std::memcpy(pbr_world.mirror_clip_plane,
+                        scene.mirror_clip_plane,
+                        sizeof(pbr_world.mirror_clip_plane));
 
             ALMetalWorldAlphaEnvironment alpha_environment =
                 *scene.alpha_environment;
@@ -12384,6 +12400,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         world.material[3] = batch.alpha_mask ? 1.f : 0.f;
         world.depth_convention[0] = scene.reverse_z ? 1u : 0u;
         world.depth_convention[1] = batch.texture_count;
+        world.depth_convention[2] = scene.mirror_clip ? 1u : 0u;
+        std::memcpy(world.modelview, batch.modelview,
+                    sizeof(world.modelview));
+        std::memcpy(world.mirror_clip_plane,
+                    scene.mirror_clip_plane,
+                    sizeof(world.mirror_clip_plane));
 
         WorldShinyConstants shiny_world{};
         std::memcpy(shiny_world.modelview_projection,
@@ -12400,6 +12422,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     sizeof(shiny_world.texture_matrix));
         shiny_world.config[0] = scene.reverse_z ? 1u : 0u;
         shiny_world.config[1] = batch.texture_count;
+        shiny_world.config[2] = scene.mirror_clip ? 1u : 0u;
+        std::memcpy(shiny_world.mirror_clip_plane,
+                    scene.mirror_clip_plane,
+                    sizeof(shiny_world.mirror_clip_plane));
 
         const ALMetalDepthStencilState* depth = batch.impostor_emboss
             ? (scene.reverse_z ? mImpl->reverse_readonly_depth.get()

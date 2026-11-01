@@ -6469,6 +6469,111 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             pbr_radiance_scale;
         directional_shadows.constants.config[1] = 0xeu;
 
+        // GLSL calls mirrorClip for flat/simple alpha, legacy BLEND
+        // materials, glTF PBR alpha and the earlier forward fullbright/shiny
+        // families. These draws happen after the opaque G-buffer, so clipped
+        // opaque depth cannot stand in for clipping the replayed geometry.
+        // Cross the eye-space x=0 plane with each native vertex family: both
+        // halves must draw normally, while the mirror variant must reject
+        // every negative-x fragment and keep the positive half at exactly the
+        // same depth.
+        const auto check_mirror_clipped_forward =
+            [&](ALMetalWorldSimpleBatch mirror_batch)
+        {
+            std::fill(std::begin(mirror_batch.modelview),
+                      std::end(mirror_batch.modelview), 0.f);
+            std::fill(std::begin(mirror_batch.modelview_projection),
+                      std::end(mirror_batch.modelview_projection), 0.f);
+            for (std::size_t diagonal = 0; diagonal < 4; ++diagonal)
+            {
+                mirror_batch.modelview[diagonal * 4 + diagonal] = 1.f;
+                mirror_batch.modelview_projection[
+                    diagonal * 4 + diagonal] = 1.f;
+            }
+            mirror_batch.modelview_projection[14] = -0.25f;
+            mirror_batch.skin_palette = nullptr;
+            mirror_batch.skin_palette_float_count = 0;
+            mirror_batch.skin_joint_count = 0;
+            mirror_batch.weight_offset = 0;
+
+            opaque_forward_scene.batches = &mirror_batch;
+            opaque_forward_scene.batch_count = 1;
+            opaque_forward_scene.gbuffer = coverage_result.get();
+            opaque_forward_scene.reverse_z = false;
+            opaque_forward_scene.alpha_environment = &alpha_environment;
+            opaque_forward_scene.alpha_lighting =
+                &simple_alpha_lighting;
+            opaque_forward_scene.alpha_directional_shadows = nullptr;
+            opaque_forward_scene.mirror_clip = false;
+            auto ordinary = renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+            INFO(error);
+            REQUIRE(ordinary);
+            std::array<float, 32 * 32> ordinary_depth{};
+            REQUIRE(ordinary->depthStencilTexture()->readback(
+                *device, 0, 0, {}, ordinary_depth.data(),
+                32 * sizeof(float), &error));
+            INFO(error);
+
+            std::size_t ordinary_negative = 0;
+            std::size_t ordinary_positive = 0;
+            for (std::size_t y = 0; y < 32; ++y)
+            {
+                for (std::size_t x = 0; x < 32; ++x)
+                {
+                    if (std::abs(ordinary_depth[y * 32 + x] - 0.5f) <
+                        0.0001f)
+                    {
+                        (x < 16 ? ordinary_negative : ordinary_positive)++;
+                    }
+                }
+            }
+            CHECK(ordinary_negative > 0);
+            CHECK(ordinary_positive > 0);
+
+            opaque_forward_scene.mirror_clip_plane[0] = 1.f;
+            opaque_forward_scene.mirror_clip_plane[1] = 0.f;
+            opaque_forward_scene.mirror_clip_plane[2] = 0.f;
+            opaque_forward_scene.mirror_clip_plane[3] = 0.f;
+            opaque_forward_scene.mirror_clip = true;
+            auto clipped = renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+            INFO(error);
+            REQUIRE(clipped);
+            std::array<float, 32 * 32> clipped_depth{};
+            REQUIRE(clipped->depthStencilTexture()->readback(
+                *device, 0, 0, {}, clipped_depth.data(),
+                32 * sizeof(float), &error));
+            INFO(error);
+
+            std::size_t clipped_negative = 0;
+            std::size_t clipped_positive = 0;
+            for (std::size_t y = 0; y < 32; ++y)
+            {
+                for (std::size_t x = 0; x < 32; ++x)
+                {
+                    if (std::abs(clipped_depth[y * 32 + x] - 0.5f) <
+                        0.0001f)
+                    {
+                        (x < 16 ? clipped_negative : clipped_positive)++;
+                    }
+                }
+            }
+            CHECK(clipped_negative == 0);
+            CHECK(clipped_positive == ordinary_positive);
+            opaque_forward_scene.mirror_clip = false;
+        };
+
+        check_mirror_clipped_forward(pre_water_alpha);
+        check_mirror_clipped_forward(pre_water_material);
+        check_mirror_clipped_forward(pre_water_pbr);
+        check_mirror_clipped_forward(normal_free_fullbright);
+        ALMetalWorldSimpleBatch mirror_shiny = fullbright_batch;
+        mirror_shiny.impostor_fullbright = false;
+        mirror_shiny.impostor_shiny = true;
+        mirror_shiny.alpha_mask = false;
+        check_mirror_clipped_forward(mirror_shiny);
+
         // Particle batches differ from otherwise identical fullbright alpha
         // in two production states: anisotropic clamp sampling and disabled
         // culling. Shift a red/green two-texel source beyond U=1 so wrap

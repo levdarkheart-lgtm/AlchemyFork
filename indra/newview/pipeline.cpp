@@ -4588,6 +4588,40 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.height = capture.height;
         scene.reverse_z = capture.reverse_z;
         scene.hdr = capture.hdr;
+        if (mMetalHeroWorldCaptureActive &&
+            mHeroProbeManager.isMirrorPass())
+        {
+            // Alpha/material/PBR-alpha GLSL variants all call mirrorClip.
+            // The post-deferred replay is a separate Metal transaction from
+            // the G-buffer, so carry the same eye-space plane into its
+            // forward vertex paths instead of assuming clipped opaque depth
+            // can reject transparent geometry.
+            const LLMatrix4a& modelview =
+                LLViewerCamera::getCurrent().getModelview();
+            LLMatrix4a normal_matrix;
+            normal_matrix.setNormalMatrix(modelview);
+            const LLVector3& mirror_normal =
+                mHeroProbeManager.mMirrorNormal;
+            const LLVector3& mirror_position =
+                mHeroProbeManager.mMirrorPosition;
+            LLVector4a normal(
+                mirror_normal.mV[VX], mirror_normal.mV[VY],
+                mirror_normal.mV[VZ], 0.f);
+            LLVector4a position(
+                mirror_position.mV[VX], mirror_position.mV[VY],
+                mirror_position.mV[VZ], 1.f);
+            LLVector4a eye_normal;
+            LLVector4a eye_position;
+            normal_matrix.rotate(normal, eye_normal);
+            eye_normal.normalize3();
+            modelview.affineTransform(position, eye_position);
+            scene.mirror_clip_plane[0] = eye_normal[0];
+            scene.mirror_clip_plane[1] = eye_normal[1];
+            scene.mirror_clip_plane[2] = eye_normal[2];
+            scene.mirror_clip_plane[3] =
+                -eye_position.dot3(eye_normal).getF32();
+            scene.mirror_clip = true;
+        }
         scene.seed_cutout_coverage =
             sCutoutRender && mMetalWorldSnapshotRequested;
         scene.publish_screen_space_reflection_history = ssr_active;
