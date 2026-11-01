@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-01 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `8361addd0f` (`feat(metal): replay transparent highlights natively`)
+**Renderer code checkpoint:** `daa19101a9` (`fix(metal): reject uncaptured world overlays`)
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -10,7 +10,23 @@ append-only archives.
 
 ## Active implementation checkpoint
 
-M-008 remains `doing`; M-012 is complete. Commit `8361addd0f` closes a
+M-008 remains `doing`; M-012 is complete. Commit `daa19101a9` closes two
+reachable native-publication eligibility holes. Pathfinding visualization can
+draw or clear the world for navmesh, path, shape, water and selected-character
+capsule modes without setting the general render-debug mask. The developer
+**Show Updates to Objects** mode can independently emit depth-tested transient
+blips. Both occur after retained native world replay and outside ordered UI,
+but previously left native presentation eligible and could disappear silently.
+
+The explicit overlay policy now rejects publication only while either output
+actually contributes. Hidden/default pathfinding floaters do not block Metal;
+active capsule, console/path output or nonempty blips keep the exact GL frame
+authoritative. The existing render-debug, wireframe, reflection-probe-volume
+and far-plane boundaries remain unchanged. Native pathfinding visualization is
+now a concrete critical M-008/M-009 follow-up; unlike exact RLVa parity, it is
+not deferred as a nice-to-have.
+
+Prior commit `8361addd0f` closes a
 reachable native-output omission in the viewer's **Highlight Transparent**
 diagnostic. `LLDrawPoolAlpha::renderDebugAlpha()` rendered static and rigged
 alpha classifications after the retained native world replay, and it also
@@ -53,17 +69,18 @@ both viewers, save, and restart both viewers before testing.
   assertions. They cover static and rigged geometry, RGB-only alpha retention,
   palette translation, invalid-palette rejection and the unchanged HUD PBR ABI.
 - Complete RelWithDebInfo, Debug and Release physical Metal suites each passed
-  45,008 assertions across 51 cases under the same validation layers.
+  45,015 assertions across 52 cases under the same validation layers. The new
+  seven-assertion policy case proves every uncaptured overlay class rejects
+  exact publication.
 - Warnings-as-errors RelWithDebInfo objects for the Metal renderer, built-in
-  MSL, GPU test, `lldrawpoolalpha.cpp` and `pipeline.cpp` compiled and linked.
+  MSL, GPU test, `lldrawpoolalpha.cpp` and `pipeline.cpp` compiled and linked;
+  the updated Metal and pipeline objects also compile in Debug.
 - `ctest --test-dir build-Darwin-ninja-os-arm64 -C RelWithDebInfo -LE
-  'manual|gl' --output-on-failure` passed 484/484 in 246.16 seconds.
-- Source-exact warnings-as-errors Release Development build `26.4.0d68036`
-  linked, staged and signed at committed code head `8361addd0f`. The committed-
-  head repeat reconfigured version provenance and rebuilt only affected
-  integration/version work before restaging successfully.
+  'manual|gl' --output-on-failure` passed 484/484 in 256.86 seconds.
+- Source-exact warnings-as-errors Release Development build `26.4.0d68038`
+  linked, staged and signed at committed code head `daa19101a9`.
 - Executable SHA-256:
-  `064266af7bf95d6e5ddfefe2796ffd0015d8316b22d2bd7fa13ace27cdfd9fdf`.
+  `be70f1e858e43c1d0d059f8369dfbfff1baa766a6770f1e466dfc8e1c37c01b3`.
   Packaged MSL SHA-256:
   `21093c0c3ef9481e55327ecfa17b34dcf25ab771a0021c07d7d7cdcea7bce5d0`;
   compiled metallib SHA-256:
@@ -82,8 +99,8 @@ both viewers, save, and restart both viewers before testing.
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
 | M-007 world/material | doing | Bounded active transparency/material shader audit found no valid-production divergence; broader live alpha/material parity remains open. |
-| M-008 advanced views/effects | doing | Static/rigged world and HUD Highlight Transparent output now replays natively and fails closed. Broader shadows/post/output parity remains open; exact RLVa parity is M-013. |
-| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. |
+| M-008 advanced views/effects | doing | Highlight Transparent is native. Active pathfinding and object-update blips now reject exact publication instead of disappearing; native pathfinding remains critical. Broader shadows/post/output parity remains open; exact RLVa parity is M-013. |
+| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. Pathfinding's GL renderer is now an explicit removal boundary. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
 | M-012 Computer Use bridge | complete | Exact-path semantic login/in-world/control/logout operation is verified and used for acceptance. |
@@ -92,9 +109,10 @@ both viewers, save, and restart both viewers before testing.
 ## Complete-product advancement assessment
 
 **Advances the complete product:** yes. Native publication can no longer omit
-the reachable Highlight Transparent overlay for static objects, rigged avatars
-or HUD attachments. Physical asymmetric controls prove skinning movement and
-RGB-only alpha preservation, while malformed inputs reject native authority.
+active pathfinding visualization or transient object-update blips. The exact
+frame remains on GL until those owners are represented natively; ordinary
+frames retain Metal eligibility. Highlight Transparent remains natively
+covered for static/rigged world and HUD geometry.
 
 **Deferred critical work:** remaining non-RLVa advanced-view/post/output
 owners; controlled live transparency/material and editing comparisons; full
@@ -103,21 +121,18 @@ equivalent M1 Max measurements. Independent build/review evidence and
 reproducible distinct release proof also remain open. Exact RLVa behavior/image
 parity is separately deferred as non-critical M-013.
 
-**Evidence-based priority:** inspect the remaining draws executed after the
-retained world replay and inside ordered UI capture. Implement only the first
-reachable non-RLVa output that can be omitted while native presentation stays
-eligible, add an asymmetric physical control, then continue owner-by-owner
-authority removal. The informational GL scan currently covers 2,408 viewer-
-owned files and reports 3,303 potential findings; macros, comments and
-duplicates mean this is not an equal-sized task count.
+**Evidence-based priority:** replace the now-explicit pathfinding GL boundary.
+Inventory `LLPathingLib`'s navmesh, edge, path, bookend, shape, water-plane and
+capsule buffers; define a retained Metal batch contract that preserves clear,
+depth-only, solid, blend, line/x-ray and polygon-offset ordering. Keep the
+eligibility guard until deterministic native controls cover every active mode.
 
 ## Exact next actions
 
-1. Trace the post-water/final diagnostic-overlay and ordered-UI production
-   calls and identify the next reachable output owner missing from native
-   publication; do not edit when source inspection shows valid parity.
-2. Implement and physically validate the first demonstrated non-RLVa omission,
-   preserving fail-closed whole-frame authority and current GL migration
-   output.
-3. Continue full feature/stability, strict no-GL and qualifying performance
-   work; keep exact RLVa parity in M-013.
+1. Trace `LLPathingLib` buffer ownership and render calls for navmesh, edges,
+   paths/bookends, shapes, water plane and selected-character capsules.
+2. Implement the smallest retained Metal batch/pipeline set that covers the
+   first coherent pathfinding mode with asymmetric depth/blend proof; keep all
+   uncovered modes fail-closed.
+3. Port the remaining pathfinding modes, then the small object-update blip
+   owner. Continue strict no-GL work; keep exact RLVa parity in M-013.

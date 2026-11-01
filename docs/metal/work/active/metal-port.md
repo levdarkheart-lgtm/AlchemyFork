@@ -18,8 +18,8 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent now replays through ordered static/rigged HUD capture. Moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | The active transparency/material shader audit found no valid-production divergence; static/rigged Highlight Transparent world output is now native. Broader live alpha/material/reference coverage remains incomplete. |
-| M-008 | Advanced views/effects and compute | doing | World/HUD Highlight Transparent can no longer be omitted from an eligible native frame. Continue non-RLVa shadows, post, diagnostic-overlay and output parity. |
-| M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. |
+| M-008 | Advanced views/effects and compute | doing | Highlight Transparent is native. Active pathfinding and object-update blips now reject exact publication instead of disappearing; implement native pathfinding next. Continue non-RLVa shadows/post/output parity. |
+| M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. Pathfinding's GL renderer is an explicit removal boundary. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Exact-path semantic login/in-world/control/logout is verified and used for current acceptance. |
@@ -30,7 +30,24 @@ item; it never implies product completion.
 
 ## Active checkpoint — 2026-11-01
 
-Commit `8361addd0f` repairs a reachable publication omission in
+Commit `daa19101a9` repairs two reachable publication-eligibility omissions.
+`renderDebug()` can draw pathfinding navmesh, edges, paths/bookends, physics
+shapes, water plane and selected-character capsules without setting
+`mRenderDebugMask`; the developer Show Updates mode can also retain transient
+depth-tested blips. Both outputs sit after native world replay and outside
+ordered UI, so they could previously disappear from an otherwise eligible
+Metal-published frame.
+
+`ALMetalWorldOverlayEligibility` now makes every known uncaptured world overlay
+explicit. Pipeline activation checks reject exact publication only when a
+pathfinding mode actually contributes or the blip list is nonempty. Hidden or
+default pathfinding floaters do not penalize ordinary Metal frames. Existing
+debug-mask, wireframe, reflection-probe-volume and far-plane guards retain their
+behavior. This is a bounded correctness boundary, not native pathfinding
+completion; GL remains authoritative for active pathfinding until its retained
+buffers and render-state sequence are ported.
+
+Prior commit `8361addd0f` repairs a reachable publication omission in
 `LLDrawPoolAlpha::renderDebugAlpha()`. Highlight Transparent draws occur after
 the retained native world replay and, for HUD attachments, during ordered UI
 capture. The prior native eligibility accounting did not consume either draw,
@@ -56,15 +73,17 @@ hero inputs, glare coverage, fog, local lights, blend state and glow. It found
 no reachable difference for valid viewer-produced data, so no speculative
 shader change was made.
 
-Focused physical RelWithDebInfo validation passes 1,364 world assertions and
-485 ordered-HUD assertions under Metal API/GPU/load-store/shader validation.
-Complete RelWithDebInfo, Debug and Release suites each pass 45,008 assertions/
-51 cases. The neutral gate passes 484/484 in 246.16 seconds. Warnings-as-errors
-RelWithDebInfo touched objects and the full Release viewer compile and link.
+Focused physical RelWithDebInfo Highlight Transparent validation passes 1,364
+world assertions and 485 ordered-HUD assertions under Metal API/GPU/load-store/
+shader validation.
+The overlay policy adds seven focused assertions. Complete RelWithDebInfo,
+Debug and Release suites each pass 45,015 assertions/52 cases. The neutral gate
+passes 484/484 in 256.86 seconds. Warnings-as-errors RelWithDebInfo/Debug Metal
+and pipeline objects plus the full Release viewer compile and link.
 
-Source-exact Development `26.4.0d68036` at `8361addd0f` stages and signs. Deep
+Source-exact Development `26.4.0d68038` at `daa19101a9` stages and signs. Deep
 strict signing and 349/349 ARM64 inspection pass. Executable SHA-256 is
-`064266af7bf95d6e5ddfefe2796ffd0015d8316b22d2bd7fa13ace27cdfd9fdf`;
+`be70f1e858e43c1d0d059f8369dfbfff1baa766a6770f1e466dfc8e1c37c01b3`;
 packaged MSL is
 `21093c0c3ef9481e55327ecfa17b34dcf25ab771a0021c07d7d7cdcea7bce5d0`;
 compiled metallib is
@@ -81,28 +100,28 @@ demonstrated native-cutover blocker.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** static/rigged world and HUD Highlight Transparent
-   output now participates in native eligibility, with physical skinning,
-   alpha-retention and invalid-input proof.
+1. **Product advancement:** active pathfinding and update blips can no longer
+   disappear from a native-published frame. Static/rigged world and HUD
+   Highlight Transparent remains natively reproduced.
 2. **Deferred critical work:** remaining non-RLVa advanced output/post/shadows;
    controlled live material/editing parity; full stability/feature matrices;
    strict no-GL; independent review; and qualifying M1 Max performance
    evidence. Exact RLVa parity remains non-critical M-013.
-3. **Priority reassessment:** the broad shader audit found no valid-production
-   mismatch and is closed without an edit. Continue at concrete presentation
-   eligibility boundaries after retained world replay and inside ordered UI.
+3. **Priority reassessment:** implement pathfinding's retained native buffer and
+   pipeline sequence next. It is core viewer behavior and a strict no-GL owner;
+   unlike exact RLVa parity it is not deferred.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Trace post-water/final diagnostic-overlay and ordered-UI production calls.
-Implement the first reachable non-RLVa draw that can be omitted while native
-presentation remains eligible, add an asymmetric physical control, and rerun
-focused/full physical plus neutral validation. If source inspection proves
-valid parity, close that bounded audit without a speculative edit and move to
-the next concrete owner.
+Trace `LLPathingLib` ownership for navmesh, edges, paths/bookends, physics
+shapes, water plane and selected-character capsules. Define the smallest
+retained Metal batch contract that covers one coherent mode with its clear,
+depth-only, solid, blend, line/x-ray and polygon-offset ordering; add asymmetric
+physical controls and leave every uncovered mode fail-closed. Port the small
+object-update blip owner after pathfinding.
 
 ## Non-negotiable open gates
 
