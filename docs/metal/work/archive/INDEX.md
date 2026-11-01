@@ -26,6 +26,7 @@ chronological transcript.
 | Native global world wireframe implementation and source-exact validation, 2026-11-01 | [metal-port-wireframe-checkpoint-2026-11-01.md](metal-port-wireframe-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 | Precise render-debug world-output eligibility audit and source-exact validation, 2026-11-01 | [metal-port-render-debug-eligibility-checkpoint-2026-11-01.md](metal-port-render-debug-eligibility-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 | Native live Wind Vectors implementation and source-exact validation, 2026-11-01 | [metal-port-wind-vectors-checkpoint-2026-11-01.md](metal-port-wind-vectors-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
+| Native Agent Target implementation and source-exact validation, 2026-11-01 | [metal-port-agent-target-checkpoint-2026-11-01.md](metal-port-agent-target-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.
