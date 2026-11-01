@@ -286,6 +286,10 @@ private:
     U32 mMetalExposureGLFrame = std::numeric_limits<U32>::max();
     bool mMetalExposureLastWasFixed = true;
     bool mMetalExposureHistoryReady = false;
+    // Renderer warm-up can complete while another GL target is bound. Mark
+    // the known-EV reset immediately for native eligibility, then clear the
+    // GL ping-pong target at generateExposure's established safe boundary.
+    bool mMetalExposureClearPending = false;
     // The native 2x1 flare state is accepted only while it has advanced beside
     // every GL update since the same exact-black reset boundary.
     U64 mMetalLensFlareHistoryEpoch = 1;

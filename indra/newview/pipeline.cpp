@@ -2179,12 +2179,36 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                         owner.attempted = false;
 #if LL_DARWIN
                         // Main-world pipelines warm asynchronously only after
-                        // STATE_STARTED. GL can advance an already-enabled
-                        // temporal flare during that build, leaving Metal no
-                        // exact prior texel from which to continue. Restart
-                        // both histories together at generateLensFlareState's
-                        // safe clear boundary; the following native and GL
-                        // updates then consume the same known-black history.
+                        // STATE_STARTED. GL can advance already-enabled
+                        // temporal exposure and flare during that build,
+                        // leaving Metal no exact prior texel from which to
+                        // continue. Restart each diverged history at its known
+                        // fixed boundary. Their GL clears are deferred to the
+                        // established pass boundaries; native and GL then
+                        // consume the same EV 0 / black history this frame.
+                        if (completed->owner == "main-world" &&
+                            !mMetalExposureLastWasFixed)
+                        {
+                            mMetalExposureClearPending = true;
+                            ++mMetalExposureHistoryEpoch;
+                            if (mMetalExposureHistoryEpoch == 0)
+                            {
+                                ++mMetalExposureHistoryEpoch;
+                            }
+                            mMetalExposureGLFrame =
+                                std::numeric_limits<U32>::max();
+                            mMetalExposureLastWasFixed = true;
+                            mMetalExposureHistoryReady = false;
+                            owner.exposure_target.reset();
+                            owner.exposure_frame =
+                                std::numeric_limits<U32>::max();
+                            owner.exposure_epoch = 0;
+                            LL_INFOS("Metal")
+                                << "Native main-world renderer warm-up "
+                                   "restarted GL and Metal exposure history "
+                                   "from their fixed-EV boundary"
+                                << LL_ENDL;
+                        }
                         if (completed->owner == "main-world" &&
                             !mMetalLensFlareLastWasZero)
                         {
@@ -13769,6 +13793,7 @@ void LLPipeline::releaseAllGLResources()
     mMetalExposureGLFrame = std::numeric_limits<U32>::max();
     mMetalExposureLastWasFixed = true;
     mMetalExposureHistoryReady = false;
+    mMetalExposureClearPending = false;
 #endif
 
     releaseRenderTargets();
@@ -14332,6 +14357,7 @@ void LLPipeline::resetExposureHistory()
         clearLensFlareState();
     }
 #if LL_DARWIN
+    mMetalExposureClearPending = false;
     ++mMetalExposureHistoryEpoch;
     if (mMetalExposureHistoryEpoch == 0)
     {
@@ -21159,6 +21185,26 @@ void LLPipeline::generateExposure(LLRenderTarget* src, LLRenderTarget* dst, bool
 
     // A classic sky reproduces pre-PBR lighting, which assumed a fixed exposure.
     const bool meter = dynamic_exposure_enabled && !LLRender::sClassicMode;
+
+#if LL_DARWIN
+    if (mMetalExposureClearPending)
+    {
+        // Warm-up can finish inside the native capture hook while another GL
+        // target is live, so it cannot bind the exposure FBO there. Clear the
+        // current target here, before the normal swap makes it the previous
+        // frame sampled by both exposure shaders. The epoch/native state was
+        // already reset when warm-up completed; do not advance it again.
+        if (mExposureMap.isComplete())
+        {
+            mExposureMap.bindTarget();
+            gGL.setClearColor(LLColor4::red);
+            mExposureMap.clear();
+            gGL.setClearColor(LLColor4::transparent);
+            mExposureMap.flush();
+        }
+        mMetalExposureClearPending = false;
+    }
+#endif
 
     if (meter)
     {

@@ -13437,6 +13437,26 @@ TEST_CASE("almetal: world exposure matches the production meter and history", "[
         CHECK(std::abs(half_to_float(exposure_pixel[1]) -
                        expected_adapted) < 0.003f);
 
+        // A main-world renderer that finishes warming after GL has already
+        // adapted cannot continue from that unowned history. Its synchronized
+        // restart deliberately supplies no previous texture, which means the
+        // first native update advances from fixed EV 0 rather than from the
+        // stale first-frame value above. Keep this asymmetric: the two
+        // expected values differ, so accidentally retaining history fails.
+        exposure_scene.previous = nullptr;
+        auto restarted = renderer->renderExposure(
+            exposure_scene, &error);
+        INFO(error);
+        REQUIRE(restarted);
+        REQUIRE(restarted->colorTexture(0)->readback(
+            *device, 0, 0, {}, exposure_pixel.data(),
+            sizeof(exposure_pixel), &error));
+        const float expected_restarted =
+            bright_target * (1.f - std::exp(-3.f));
+        CHECK(std::abs(expected_restarted - expected_adapted) > 0.01f);
+        CHECK(std::abs(half_to_float(exposure_pixel[1]) -
+                       expected_restarted) < 0.003f);
+
         // Sky weight zero removes the HDRI/skip-atmos half from the meter,
         // while weight one retains its brighter log-luminance contribution.
         for (std::uint32_t y = 0; y < height; ++y)
