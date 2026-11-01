@@ -358,6 +358,7 @@ class GraphicsSettingsTests(unittest.TestCase):
             profile = root / "profile.xml"
             values = self.complete_values()
             values["RenderHeroProbeResolution"] = 256
+            values["AlchemyExposureCompensation"] = -1.0
             values["RenderShaderCacheVersion"] = "reference-cache"
             values["RenderMetalNativeOnly"] = True
             self.write_settings(defaults, values)
@@ -365,11 +366,13 @@ class GraphicsSettingsTests(unittest.TestCase):
                 profile,
                 {
                     "RenderHeroProbeResolution": 512,
+                    "AlchemyExposureCompensation": 0.5,
                     "RenderShaderCacheVersion": "candidate-cache",
                 },
             )
             manifest = self.module.build_manifest([defaults], profile, "fixture")
             self.assertEqual(512, manifest["settings"]["RenderHeroProbeResolution"])
+            self.assertEqual(0.5, manifest["settings"]["AlchemyExposureCompensation"])
             self.assertNotIn("RenderShaderCacheVersion", manifest["settings"])
             self.assertNotIn("RenderMetalNativeOnly", manifest["settings"])
 

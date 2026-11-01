@@ -12,9 +12,22 @@ from pathlib import Path
 
 SCHEMA_VERSION = 1
 
+# Visual controls are primarily Render*, but Alchemy owns additional exposure,
+# tonemap, lighting, shadow, terrain and water controls outside that namespace.
+VISUAL_SETTING_PREFIXES = ("Render", "AlchemyRender", "AlchemyExposure")
+VISUAL_SETTING_NAMES = {"AlchemyGlobalLightScale"}
+
 # These settings identify caches, implementation choices or diagnostics rather
 # than the visual-quality contract of a paired capture.
 IGNORED_RENDER_SETTINGS = {
+    "AlchemyRenderDepthBoundsTest",
+    "AlchemyRenderDisableCompute",
+    "AlchemyRenderMaxFramesAhead",
+    "AlchemyRenderMirrorShaderReload",
+    "AlchemyRenderPacingSlackWork",
+    "AlchemyRenderReverseZ",
+    "AlchemyRenderSpotShadowCache",
+    "AlchemyRenderUBOUpdateMode",
     "RenderAppleUseMultGL",
     "RenderDebugGL",
     "RenderDebugPipeline",
@@ -26,6 +39,18 @@ IGNORED_RENDER_SETTINGS = {
 
 # Missing any of these makes a profile unsuitable for a controlled comparison.
 REQUIRED_SETTINGS = {
+    "AlchemyExposureCompensation",
+    "AlchemyExposureHighPercent",
+    "AlchemyExposureLowPercent",
+    "AlchemyExposureMaxEV",
+    "AlchemyExposureMeteringMode",
+    "AlchemyExposureMinEV",
+    "AlchemyExposureSkyWeight",
+    "AlchemyExposureSpeedDown",
+    "AlchemyExposureSpeedUp",
+    "AlchemyGlobalLightScale",
+    "AlchemyRenderShadowFilterQuality",
+    "AlchemyRenderTonemapType",
     "RenderAnisotropicLevel",
     "RenderAvatarLODFactor",
     "RenderAvatarMaxComplexity",
@@ -113,7 +138,10 @@ def source_record(path):
 
 
 def is_visual_setting(name):
-    return name.startswith("Render") and name not in IGNORED_RENDER_SETTINGS
+    return (
+        name.startswith(VISUAL_SETTING_PREFIXES) or
+        name in VISUAL_SETTING_NAMES
+    ) and name not in IGNORED_RENDER_SETTINGS
 
 
 def build_manifest(defaults, profile, label):

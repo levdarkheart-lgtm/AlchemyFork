@@ -24,7 +24,7 @@ Those scores are retained only as superseded history and are not parity
 evidence.
 
 Actual Computer Use repeated the fixed view with identical effective settings.
-Post-run manifests compare 386/386 settings with zero mismatches: quality `3`,
+Post-run manifests compare 416/416 settings with zero mismatches: quality `3`,
 mirrors enabled and mirror resolution `512`. The complete 2048x1476 pair scores
 SSIM `0.987409` / PSNR `39.185075 dB`; the mirror frame scores `0.988105` /
 `37.793470 dB`, and the mirror interior scores `0.991375` / `41.100904 dB`.
@@ -84,7 +84,7 @@ authority remains fail-closed.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-008 native renderer | doing | Broad native world/UI owners and physical regressions exist; advanced-family reference parity is incomplete. |
-| M-008 advanced views/effects | doing | A matched 386-setting authored-mirror pair rejects the suspected large blur defect for one fixture; broader probes, post, transparency/PBR and advanced-family parity remain open. |
+| M-008 advanced views/effects | doing | A matched 416-setting authored-mirror pair rejects the suspected large blur defect for one fixture; broader probes, post, transparency/PBR and advanced-family parity remain open. |
 | M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. |
 | M-010 measured performance | deferred | Structural wins exist, but no qualifying paired M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |

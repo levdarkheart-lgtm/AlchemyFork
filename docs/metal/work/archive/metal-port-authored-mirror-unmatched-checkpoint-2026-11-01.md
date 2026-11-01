@@ -14,8 +14,10 @@ the inferred mirror-blur priority are retained only to explain the decision
 history; they are not product evidence.
 
 Actual Computer Use repeated the pair at identical quality `3`, mirrors enabled
-and mirror resolution `512`. Post-run manifests matched all 386 settings and
-the mirror-interior result was SSIM `0.991375` / PSNR `41.100904 dB`, with no
+and mirror resolution `512`. Expanded post-run manifests matched all 416
+visual settings, including Alchemy exposure, tonemap, lighting, shadow, terrain
+and water controls. The mirror-interior result was SSIM `0.991375` / PSNR
+`41.100904 dB`, with no
 material residual under visual and amplified-difference inspection. The active
 ledger therefore returns to the broader M-008 matrix instead of continuing the
 unsupported blur hypothesis.

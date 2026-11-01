@@ -18,7 +18,7 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Main native world chain publishes exact frames; advanced material/reference coverage remains incomplete. |
-| M-008 | Advanced views/effects and compute | doing | A matched 386-setting authored-mirror pair rejects the suspected large blur defect for one fixture; continue the broader post, transparency/PBR, probe and advanced-family matrix. |
+| M-008 | Advanced views/effects and compute | doing | A matched 416-setting authored-mirror pair rejects the suspected large blur defect for one fixture; continue the broader post, transparency/PBR, probe and advanced-family matrix. |
 | M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Tooling and structural reductions exist; qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
@@ -39,7 +39,7 @@ ARM64 slices.
 An initial authored-mirror comparison was invalid because its effective
 profiles differed on 25 of 386 visual settings, including the quality preset
 and mirror resolution. Actual Computer Use repeated the fixed 2048x1476 view
-with post-run manifests proving 386/386 identical settings: quality `3`,
+with post-run manifests proving 416/416 identical settings: quality `3`,
 mirrors enabled and mirror resolution `512`. The full frame scores SSIM
 `0.987409` / PSNR `39.185075 dB`; the mirror frame scores `0.988105` /
 `37.793470 dB`, and the mirror interior scores `0.991375` / `41.100904 dB`.

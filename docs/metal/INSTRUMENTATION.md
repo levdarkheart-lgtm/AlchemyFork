@@ -91,9 +91,10 @@ python3 tools/metal/graphics_settings.py compare \
   --output artifacts/metal/settings-comparison.json
 ```
 
-The comparison is fail-closed: every captured visual `Render*` key must exist
-on both sides with the same effective value, and the required quality, mirror,
-LOD, texture, lighting, shadow and probe keys must be present. Exit `1` means
+The comparison is fail-closed: every captured visual `Render*`,
+`AlchemyRender*`, `AlchemyExposure*` and global-light key must exist on both
+sides with the same effective value, and the required quality, mirror, LOD,
+texture, exposure, lighting, shadow and probe keys must be present. Exit `1` means
 the images are incomparable; fix the profiles and recapture before computing
 SSIM, PSNR or performance claims. The manifests include source-path hashes for
 provenance but no account or session data.
