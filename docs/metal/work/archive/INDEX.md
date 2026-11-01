@@ -28,6 +28,7 @@ chronological transcript.
 | Native live Wind Vectors implementation and source-exact validation, 2026-11-01 | [metal-port-wind-vectors-checkpoint-2026-11-01.md](metal-port-wind-vectors-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 | Native Agent Target implementation and source-exact validation, 2026-11-01 | [metal-port-agent-target-checkpoint-2026-11-01.md](metal-port-agent-target-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 | Native drawable-centre Points implementation and source-exact validation, 2026-11-01 | [metal-port-drawable-centre-points-checkpoint-2026-11-01.md](metal-port-drawable-centre-points-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
+| Native Composition debug-grid implementation and source-exact validation, 2026-11-01 | [metal-port-composition-debug-grid-checkpoint-2026-11-01.md](metal-port-composition-debug-grid-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.

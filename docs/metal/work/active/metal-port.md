@@ -18,8 +18,8 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent replays through ordered static/rigged HUD capture. Moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence. Broader live parity remains incomplete. |
-| M-008 | Advanced views/effects and compute | doing | Wireframe, Wind Vectors, Agent Target, Points, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. Text-only/unused render-debug modes no longer veto; 17 visual modes remain fail-closed. OSS pathfinding is a nonfunctional stub. Continue reachable debug/shadows/post/output parity. |
-| M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. The explicit 17-mode render-debug world-output set stays fail-closed pending audit/porting. |
+| M-008 | Advanced views/effects and compute | doing | Wireframe, Wind Vectors, Agent Target, Points, Composition, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. Text-only/unused render-debug modes no longer veto; 16 visual modes remain fail-closed. OSS pathfinding is a nonfunctional stub. Continue reachable debug/shadows/post/output parity. |
+| M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. The explicit 16-mode render-debug world-output set stays fail-closed pending audit/porting. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Exact-path semantic login/in-world/control/logout is verified and used for current acceptance. |
@@ -30,45 +30,42 @@ item; it never implies product completion.
 
 ## Active checkpoint — 2026-11-01
 
-Commit `93dbcc131f` captures and replays Develop **Points** natively at the
-exact `renderPoints(LLDrawable*)` owner. It retains one opaque-white one-pixel
-point at each valid face's local center and captures the current transform for
-each region partition or visible spatial bridge traversal.
+Commit `cc1dcff766` captures and replays Develop **Composition** natively at
+its sole current-region owner. It retains the fixed 261-by-261 grid's 68,121
+live heights after the original `composition * 5 + 50` transform. Metal derives
+X/Y, original loop order and blue 0..255/red 256..260 classification by vertex
+ID, reducing the streamed payload to 272,484 bytes.
 
-The native opaque-post pass stores flat point data plus ordered transform
-batches, coalescing only consecutive equal transforms. It merges Points and
-Agent Target batches by captured order before reflection-probe-volume
-visualization. Dedicated LDR/HDR pipelines use source-alpha blending for RGB,
-leave alpha untouched and use always-pass/no-write depth state, matching the
-disabled inherited GL depth state. Missing/mismatched storage, bad ranges,
-overflow, duplicate/non-monotonic or cross-owner-colliding order, non-finite
-data, allocation failure or inherited-state mismatch invalidates publication;
-empty/no-owner input is a no-op.
+The native opaque-post pass draws Composition after Wind Vectors and before the
+far-plane composite with dedicated LDR/HDR RGB-only pipelines and inherited
+forward/reverse read/write depth. Capture skips the HUD-only pass and requires
+blend enabled, RGB-only color mask, one-pixel size and the observed depth state.
+Wrong cardinality, missing storage, non-finite height/transform or allocation
+failure invalidates publication; no-region/off input is a no-op.
 
-Physical GPU tests prove exact two-point output, per-batch bridge transforms,
-RGB-only alpha preservation, forward/reverse-Z depth identity even behind a
-covered surface, input rejection, empty/no-owner identity and Points/Agent
-Target order in both directions. The focused RelWithDebInfo Points/world case
-passes 2,053 assertions under Metal API/GPU/load-store/shader validation.
-Complete RelWithDebInfo, Debug and Release suites each pass 45,709 assertions/
-52 cases under the same validators.
+Physical GPU tests prove exact blue interior/red border output, RGB-only alpha,
+forward occlusion and depth writes, reverse-Z depth writes, invalid storage and
+non-finite rejection, and no-owner identity. The focused RelWithDebInfo
+Composition/world case passes 2,092 assertions under Metal API/GPU/load-store/
+shader validation. Complete RelWithDebInfo, Debug and Release suites each pass
+45,748 assertions/52 cases under the same validators.
 
 Warnings-as-errors RelWithDebInfo production integration compiles, links,
-stages and signs. The neutral gate passes 484/484 in 35.42 seconds. Source-exact
-Release Development build `26.4.0d68055` at `93dbcc131f` stages and signs. Deep
+stages and signs. The neutral gate passes 484/484 in 35.65 seconds. Source-exact
+Release Development build `26.4.0d68057` at `cc1dcff766` stages and signs. Deep
 strict signing and 349/349 ARM64 inspection pass. Executable SHA-256 is
-`13da93dd728e38b406a3714c040ae32f32547aba875344044916c9f8de79a3ca`;
+`db5f7ab0f748a1a9017b843858e169b6ac8c076b07ddc7ad675dcab22bec6c56`;
 packaged/source MSL is
-`a33ec7160965a1c6805ad5b2a2f69d95da8bff630cf2b05c346a57deb13e2033`;
+`d05669c80b490283e9376fb797a48715bb079bc1928022884193130149643a21`;
 compiled metallib is
-`537685a0c488cded37fc64b7a532f57610771deeaf9f17d6ae9c1772787549b1`.
+`994eaa49f2c573361c5951c443165ce63c6919b44c032fb6d4e027358dbbcd1b`.
 The executable still links OpenGL during migration, so strict no-GL is open.
 
-The render-debug guard now contains exactly the 17 modes that still emit
-uncaptured world pixels or alter captured geometry. Points joins Agent Target,
+The render-debug guard now contains exactly the 16 modes that still emit
+uncaptured world pixels or alter captured geometry. Composition joins Points, Agent Target,
 Wind Vectors, wireframe, Highlight Transparent, update blips, reflection-probe
 volumes and the far-plane overlay as a native advanced-output owner. Nine text-
-only and four unused masks remain native-eligible. The 17 visual modes and the
+only and four unused masks remain native-eligible. The 16 visual modes and the
 latent pathfinding guard remain fail-closed; the current OSS pathfinding implementation
 is a hard-disabled stub and does not block normal authority.
 
@@ -82,29 +79,28 @@ minimum behavior needed to unblock Metal/no-GL cutover.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** Develop Points can retain native world authority; all
+1. **Product advancement:** Develop Composition can retain native world authority; all
    other uncaptured world-output modes remain protected by the explicit fail-
    closed mask.
 2. **Deferred critical work:** remaining non-RLVa advanced output/post/shadows;
    controlled live wireframe/material/editing parity; full stability/feature
    matrices; strict no-GL; independent review; and qualifying M1 Max performance
    evidence. Exact RLVa parity remains non-critical M-013.
-3. **Priority reassessment:** implement Develop Composition next. Source
-   inspection shows one fixed 261-by-261 point grid from the current region,
-   blue over 0..255 and red on the five-coordinate border, with height
-   `composition * 5 + 50`. Remaining alternatives expand into per-object
-   geometry, variable-width lines or multi-primitive debug replay.
+3. **Priority reassessment:** implement Develop Reflection Probes neighbor links
+   next. The sole active renderer emits two one-pixel line groups for relevant
+   probes, orange unless both ends own viewer objects and yellow when both do;
+   its older node-volume block is compiled out.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Capture and replay Develop **Composition** as its fixed 261-by-261 current-
-region point grid. Prove coordinate bounds, red/blue partitioning, exact height
-transform, point-size/state and no-region/off controls on the physical M1 Max
-before removing only `RENDER_DEBUG_COMPOSITION` from the visual-output mask.
-Retain the other 16 visual debug bits and the latent pathfinding guard.
+Capture and replay Develop **Reflection Probes** neighbor links. Prove relevance
+filtering, orange/yellow viewer-object classification, per-probe ordering,
+transform, inherited line/depth/blend state and empty/off controls on the
+physical M1 Max before removing only `RENDER_DEBUG_REFLECTION_PROBES` from the
+visual-output mask. Retain the other 15 visual debug bits and pathfinding guard.
 
 ## Non-negotiable open gates
 

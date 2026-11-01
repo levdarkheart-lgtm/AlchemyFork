@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-01 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `93dbcc131f` (`feat(metal): replay drawable centre points natively`)
+**Renderer code checkpoint:** `cc1dcff766` (`feat(metal): replay composition debug grid natively`)
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -10,33 +10,31 @@ append-only archives.
 
 ## Active implementation checkpoint
 
-M-008 remains `doing`; M-012 is complete. Commit `93dbcc131f` captures and
-replays Develop **Points** in the native opaque-post scene. It retains the
-original one-pixel opaque-white point at each valid `LLFace::mCenterLocal`,
-with each region-partition or visible-spatial-bridge model-view-projection
-transform preserved. The original GL path remains during migration.
+M-008 remains `doing`; M-012 is complete. Commit `cc1dcff766` captures and
+replays Develop **Composition** in the native opaque-post scene. It retains the
+fixed current-region 261-by-261 point grid: coordinates 0..255 are blue,
+coordinates 256..260 on either axis are red, and each height is the original
+`getCompositionXY(x, y) * 5 + 50` result.
 
-Capture is bounded around the original `renderPoints(LLDrawable*)` owner and
-coalesces only consecutive batches with the same transform. Publication
-requires the inherited blend, RGB-only color-mask, one-pixel point-size and
-disabled depth-read/write state. Missing or mismatched storage, invalid ranges,
-overflow, allocation failure, duplicate/non-monotonic ordering, a collision
-with Agent Target ordering or non-finite input invalidates native publication
-instead of silently dropping the overlay. Empty/no-owner input is an exact
-no-op. Native encoding merges Points batches and Agent Target by captured
-traversal order before reflection-probe-volume visualization, matching their
-observed cross-owner order.
+Only the 68,121 live heights cross the CPU/GPU boundary (272,484 bytes); the
+Metal vertex stage derives X/Y, loop order and color. Capture is skipped in the
+HUD-only pass, preserves the current transform, and requires the inherited
+blend, RGB-only mask, one-pixel point size and forward/reverse read/write depth
+state. Wrong cardinality, missing storage, allocation failure or non-finite
+height/transform invalidates native publication. No region or an off setting is
+an exact no-op. Native encoding follows Wind Vectors and precedes the far-plane
+composite, matching the active GL owner order.
 
 Prior native advanced-output owners remain covered: global world wireframe,
 static/rigged world and HUD **Highlight Transparent**, **Show Updates to
-Objects** blips, Wind Vectors, Agent Target, Points, the Develop far-plane
+Objects** blips, Wind Vectors, Agent Target, Points, Composition, the Develop far-plane
 projection overlay and manual reflection-probe volumes. The current OSS ARM64 viewer links
 only the nonfunctional
 `llphysicsextensionsos` pathfinding stub, so pathfinding visualization is not a
 reachable retained-Alchemy output or a release-critical port target. The
-render-debug guard now contains the 17 modes that still emit uncaptured world
+render-debug guard now contains the 16 modes that still emit uncaptured world
 pixels or alter captured world geometry. Nine text-only and four unused masks
-remain eligible for native publication; the remaining 17 visual modes and the
+remain eligible for native publication; the remaining 16 visual modes and the
 latent pathfinding guard remain fail-closed.
 
 The preceding reflection-probe production-call audit found no valid viewer-
@@ -56,25 +54,25 @@ prove shadow parity.
 
 ## Build and test evidence
 
-- Focused physical RelWithDebInfo Points/world replay passed 2,053
+- Focused physical RelWithDebInfo Composition/world replay passed 2,092
   assertions under Metal API/GPU/load-store/shader validation.
 - Complete RelWithDebInfo, Debug and Release physical Metal suites each passed
-  45,709 assertions across 52 cases under the same validation layers.
+  45,748 assertions across 52 cases under the same validation layers.
 - Warnings-as-errors RelWithDebInfo production viewer integration compiled,
   linked, staged and signed. Debug and Release Metal renderer, built-in MSL and
   GPU tests compiled and linked.
-- The Points change passed a warnings-as-errors RelWithDebInfo production
+- The Composition change passed a warnings-as-errors RelWithDebInfo production
   viewer build. `ctest --test-dir build-Darwin-ninja-os-arm64 -C
   RelWithDebInfo -LE 'manual|gl' --output-on-failure -j 8` passed 484/484 in
-  35.42 seconds.
-- Source-exact warnings-as-errors Release Development build `26.4.0d68055`
-  linked, staged and signed at committed code head `93dbcc131f`.
+  35.65 seconds.
+- Source-exact warnings-as-errors Release Development build `26.4.0d68057`
+  linked, staged and signed at committed code head `cc1dcff766`.
 - Executable SHA-256:
-  `13da93dd728e38b406a3714c040ae32f32547aba875344044916c9f8de79a3ca`.
+  `db5f7ab0f748a1a9017b843858e169b6ac8c076b07ddc7ad675dcab22bec6c56`.
   Packaged/source MSL SHA-256:
-  `a33ec7160965a1c6805ad5b2a2f69d95da8bff630cf2b05c346a57deb13e2033`;
+  `d05669c80b490283e9376fb797a48715bb079bc1928022884193130149643a21`;
   compiled metallib SHA-256:
-  `537685a0c488cded37fc64b7a532f57610771deeaf9f17d6ae9c1772787549b1`.
+  `994eaa49f2c573361c5951c443165ce63c6919b44c032fb6d4e027358dbbcd1b`.
 - Deep strict signing passed; `tools/metal/verify_app.sh` verified all 349
   Mach-O slices as ARM64, and the main executable reports arm64.
 - `tools/metal/doctor.sh` passed on Apple M1 Max with unified memory and Apple7-
@@ -89,8 +87,8 @@ prove shadow parity.
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
 | M-007 world/material | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence; broader live parity remains open. |
-| M-008 advanced views/effects | doing | Wireframe, Wind Vectors, Agent Target, Points, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. Text-only/unused render-debug modes no longer veto; 17 visual modes remain fail-closed. OSS pathfinding is a nonfunctional stub. Broader debug/shadows/post/output parity remains open; exact RLVa parity is M-013. |
-| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The explicit 17-mode render-debug world-output set remains pending audit/porting. |
+| M-008 advanced views/effects | doing | Wireframe, Wind Vectors, Agent Target, Points, Composition, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. Text-only/unused render-debug modes no longer veto; 16 visual modes remain fail-closed. OSS pathfinding is a nonfunctional stub. Broader debug/shadows/post/output parity remains open; exact RLVa parity is M-013. |
+| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The explicit 16-mode render-debug world-output set remains pending audit/porting. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
 | M-012 Computer Use bridge | complete | Exact-path semantic login/in-world/control/logout operation is verified and used for acceptance. |
@@ -98,7 +96,7 @@ prove shadow parity.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Develop Points no longer requires GL
+**Advances the complete product:** yes. Develop Composition no longer requires GL
 world presentation, while every other uncaptured visual debug setting remains
 fail-closed.
 
@@ -109,19 +107,20 @@ equivalent M1 Max measurements. Independent build/review evidence and
 reproducible distinct release proof also remain open. Exact RLVa behavior/image
 parity is separately deferred as non-critical M-013.
 
-**Evidence-based priority:** implement Develop **Composition** next. Its sole
-production owner emits one fixed 261-by-261 point grid from the current region,
-blue for coordinates 0..255 and red for the five-coordinate border, with height
-`composition * 5 + 50`. It is bounded compared with remaining per-object
-geometry, variable-width-line and multi-primitive debug owners.
+**Evidence-based priority:** implement Develop **Reflection Probes** neighbor
+links next. Its sole active renderer emits orange and yellow one-pixel line
+groups for relevant probes; the former node-volume block is compiled out. This
+is bounded compared with the remaining per-object geometry, variable-width
+lines and multi-primitive debug owners.
 
 ## Exact next actions
 
-1. Capture and replay Develop **Composition** as its fixed 261-by-261 current-
-   region point grid; retain the other 16 visual debug bits and pathfinding
+1. Capture and replay Develop **Reflection Probes** neighbor links, retaining
+   relevance, viewer-object pair classification and per-probe order; retain the
+   other 15 visual debug bits and pathfinding
    fail-closed.
-2. Prove coordinate bounds, red/blue partitioning, exact height transform,
-   point size/state, no-region and off controls on the physical M1 Max before
-   removing `RENDER_DEBUG_COMPOSITION` from the veto.
+2. Prove orange/yellow classification, ordering, transform, inherited line/
+   depth/blend state and empty/off controls on the physical M1 Max before
+   removing `RENDER_DEBUG_REFLECTION_PROBES` from the veto.
 3. Continue strict no-GL work and controlled live parity; keep exact RLVa parity
    in M-013 and require shadows enabled in both viewers for shadow pairs.
