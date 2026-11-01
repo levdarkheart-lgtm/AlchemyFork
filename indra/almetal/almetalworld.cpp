@@ -362,6 +362,7 @@ namespace
     {
         float modelview[16];
         float normal_matrix[3][4];
+        float environment_matrix[3][4];
         float eye_position[4];
         float big_phase[4];
         float little_phase[4];
@@ -381,8 +382,10 @@ namespace
         std::int32_t patch_order[4];
         float screen[4];
         std::uint32_t config[4];
+        // x = legacy sky-cube environment instead of reflection probes.
+        std::uint32_t environment_config[4];
     };
-    static_assert(sizeof(WorldWaterSurfaceConstants) == 416);
+    static_assert(sizeof(WorldWaterSurfaceConstants) == 480);
 
     struct alignas(16) WorldWaterOcclusionConstants
     {
@@ -10335,6 +10338,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             surface->water_far[0] <= 0.f ||
             (!surface->underwater &&
              (!finiteValues(&surface->normal_matrix[0][0], 12) ||
+              !finiteValues(&surface->environment_matrix[0][0], 12) ||
               surface->normal_scale_glint[3] < 0.05f ||
               surface->normal_scale_glint[3] > 1.f ||
               surface->optics[2] < 0.f ||
@@ -10555,10 +10559,30 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             return nullptr;
         }
     }
+    const bool probe_environment =
+        validPBRReflectionProbes(scene.reflection_probes);
+    const bool legacy_environment =
+        validLegacyEnvironment(scene.legacy_environment);
+    if ((scene.legacy_environment && !legacy_environment) ||
+        (scene.legacy_environment && scene.reflection_probes) ||
+        (has_above_water_surface &&
+         probe_environment == legacy_environment))
+    {
+        setError(error,
+                 "Metal world above-water environment is invalid");
+        return nullptr;
+    }
     if ((has_pre_water_simple || has_pre_water_material ||
-         has_pre_water_pbr || has_above_water_surface) &&
+         has_pre_water_pbr) &&
         (!validLegacyAlphaLighting(scene.alpha_lighting) ||
-         !validPBRReflectionProbes(scene.reflection_probes)))
+         !probe_environment))
+    {
+        setError(error,
+                 "Metal world pre-water alpha lighting is invalid");
+        return nullptr;
+    }
+    if (has_above_water_surface &&
+        !validLegacyAlphaLighting(scene.alpha_lighting))
     {
         setError(error,
                  "Metal world pre-water alpha lighting is invalid");
@@ -10650,8 +10674,13 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             "Alchemy world opaque post-deferred reflection constants";
         probe_constants_buffer = ALMetalBuffer::create(
             *mImpl->device, descriptor, error);
+        const ALMetalWorldReflectionProbeConstants inactive_constants{};
+        const ALMetalWorldReflectionProbeConstants& constants =
+            scene.reflection_probes
+                ? scene.reflection_probes->constants
+                : inactive_constants;
         if (!probe_constants_buffer || !probe_constants_buffer->write(
-                0, &scene.reflection_probes->constants,
+                0, &constants,
                 descriptor.length, error))
         {
             return nullptr;
@@ -10913,19 +10942,26 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         if (has_shiny || has_pre_water_simple || has_pre_water_material ||
             has_pre_water_pbr || has_above_water_surface)
         {
+            const ALMetalTexture* probe_radiance = scene.reflection_probes
+                ? scene.reflection_probes->radiance_texture
+                : mImpl->inactive_probe_radiance.get();
             bound =
             active.setFragmentSampler(
                 1, mImpl->probe_sampler.get(), error) &&
             active.setFragmentTexture(
-                32, scene.reflection_probes->radiance_texture, error) &&
+                32, probe_radiance, error) &&
             active.setFragmentBuffer(
                 1, *probe_constants_buffer, 0, error);
         }
         if (bound && (has_pre_water_simple || has_pre_water_material ||
                       has_pre_water_pbr))
         {
+            const ALMetalTexture* probe_irradiance =
+                scene.reflection_probes
+                    ? scene.reflection_probes->irradiance_texture
+                    : mImpl->inactive_probe_irradiance.get();
             bound = active.setFragmentTexture(
-                37, scene.reflection_probes->irradiance_texture, error);
+                37, probe_irradiance, error);
         }
         if (bound && (has_shiny || has_pre_water_material ||
                       has_pre_water_pbr))
@@ -11402,6 +11438,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             std::memcpy(water_constants.normal_matrix,
                         water.normal_matrix,
                         sizeof(water_constants.normal_matrix));
+            std::memcpy(water_constants.environment_matrix,
+                        water.environment_matrix,
+                        sizeof(water_constants.environment_matrix));
             std::memcpy(water_constants.eye_position,
                         water.eye_position,
                         sizeof(water_constants.eye_position));
@@ -11455,6 +11494,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             water_constants.config[2] = static_cast<std::uint32_t>(
                 water.parameters[3]);
             water_constants.config[3] = water.refracts ? 1u : 0u;
+            water_constants.environment_config[0] =
+                scene.legacy_environment ? 1u : 0u;
 
             const ALMetalTexture* refraction = water.refracts
                 ? water_color_snapshot->colorTexture(0)
@@ -11541,6 +11582,14 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     ssr_constants = scene.screen_space_reflections
                         ? scene.screen_space_reflections->constants
                         : mImpl->inactive_ssr_constants;
+                const ALMetalTexture* probe_radiance =
+                    scene.reflection_probes
+                        ? scene.reflection_probes->radiance_texture
+                        : mImpl->inactive_probe_radiance.get();
+                const ALMetalTexture* legacy_environment_texture =
+                    scene.legacy_environment
+                        ? scene.legacy_environment
+                        : mImpl->inactive_hero_probe.get();
                 encoded =
                     encoder->setFragmentBytes(
                         2, scene.alpha_environment,
@@ -11568,8 +11617,9 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         7, &ssr_constants,
                         sizeof(ssr_constants), error) &&
                     encoder->setFragmentTexture(
-                        32, scene.reflection_probes->radiance_texture,
-                        error) &&
+                        32, probe_radiance, error) &&
+                    encoder->setFragmentTexture(
+                        37, legacy_environment_texture, error) &&
                     encoder->setFragmentSampler(
                         2, mImpl->probe_sampler.get(), error) &&
                     encoder->setFragmentSampler(

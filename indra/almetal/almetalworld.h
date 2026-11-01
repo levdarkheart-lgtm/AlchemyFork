@@ -550,6 +550,14 @@ struct ALMetalWorldWaterSurface
     float modelview[16]{};
     // Three vec4-strided columns, matching the live GLSL normal matrix.
     float normal_matrix[3][4]{};
+    // The probe-disabled GL water path rotates reflected eye-space vectors
+    // into the current legacy sky cube with env_mat. These are the same
+    // three padded columns captured from the live modelview.
+    float environment_matrix[3][4] = {
+        {1.f, 0.f, 0.f, 0.f},
+        {0.f, 1.f, 0.f, 0.f},
+        {0.f, 0.f, 1.f, 0.f},
+    };
     // xyz = camera in agent space.
     float eye_position[4]{};
     float big_phase[4]{};
@@ -654,6 +662,10 @@ struct ALMetalWorldOpaquePostDeferredScene
     const ALMetalWorldHighlightBatch* highlight_batches = nullptr;
     std::size_t highlight_batch_count = 0;
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
+    // Mutually exclusive with reflection_probes for above-water rendering.
+    // This is the current LLCubeMap publication used by the class-2 GLSL
+    // water path when reflection probes are disabled.
+    const ALMetalTexture* legacy_environment = nullptr;
     const ALMetalWorldHeroProbe* hero_probe = nullptr;
     const ALMetalWorldScreenSpaceReflections* screen_space_reflections =
         nullptr;

@@ -6873,6 +6873,41 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             sizeof(above_water_surface_cell), &error));
         REQUIRE(above_water_surface_upload->commitAndWait(&error));
 
+        ALMetalTextureDescriptor water_legacy_environment_descriptor;
+        water_legacy_environment_descriptor.type =
+            ALMetalTextureType::texture_cube;
+        water_legacy_environment_descriptor.format =
+            ALMetalPixelFormat::rgba8_unorm;
+        water_legacy_environment_descriptor.width = 1;
+        water_legacy_environment_descriptor.height = 1;
+        water_legacy_environment_descriptor.storage =
+            ALMetalStorageMode::private_gpu;
+        water_legacy_environment_descriptor.usage =
+            ALMetalTextureUsage::shader_read;
+        water_legacy_environment_descriptor.label =
+            "Alchemy above-water legacy sky environment";
+        auto water_legacy_environment = ALMetalTexture::create(
+            *device, water_legacy_environment_descriptor, &error);
+        INFO(error);
+        REQUIRE(water_legacy_environment);
+        const std::array<std::uint8_t, 4> water_legacy_blue{{
+            0, 64, 255, 255,
+        }};
+        auto water_legacy_environment_upload =
+            device->makeCommandBuffer(
+                "Alchemy above-water legacy sky upload", &error);
+        INFO(error);
+        REQUIRE(water_legacy_environment_upload);
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            REQUIRE(water_legacy_environment->upload(
+                *water_legacy_environment_upload, 0, face, {},
+                water_legacy_blue.data(), water_legacy_blue.size(),
+                &error));
+        }
+        REQUIRE(water_legacy_environment_upload->commitAndWait(&error));
+        INFO(error);
+
         ALMetalWorldWaterSurface above_water_surface =
             underwater_surface;
         above_water_surface.field.default_height[0] = -0.5f;
@@ -6949,6 +6984,52 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             0.5f) < 0.002f);
         CHECK(std::abs(
             pre_water_depth[above_water_pixel / 4] - 0.25f) < 0.0001f);
+
+        // With reflection probes disabled, class2 water samples the current
+        // sharp sky cube through env_mat and does not apply SSR or hero-probe
+        // finishing. Prove the mutually exclusive Metal path consumes that
+        // physical cube and rejects missing or ambiguous ownership.
+        const std::array<float, 3> probe_water_color{{
+            half_to_float(pre_water_pixels[above_water_pixel + 0]),
+            half_to_float(pre_water_pixels[above_water_pixel + 1]),
+            half_to_float(pre_water_pixels[above_water_pixel + 2]),
+        }};
+        opaque_forward_scene.reflection_probes = nullptr;
+        opaque_forward_scene.legacy_environment =
+            water_legacy_environment.get();
+        auto legacy_above_water = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(legacy_above_water);
+        REQUIRE(legacy_above_water->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const std::array<float, 3> legacy_water_color{{
+            half_to_float(pre_water_pixels[above_water_pixel + 0]),
+            half_to_float(pre_water_pixels[above_water_pixel + 1]),
+            half_to_float(pre_water_pixels[above_water_pixel + 2]),
+        }};
+        CHECK(legacy_water_color[2] > legacy_water_color[1]);
+        CHECK(legacy_water_color[2] > legacy_water_color[0]);
+        CHECK((std::abs(legacy_water_color[0] - probe_water_color[0]) +
+               std::abs(legacy_water_color[1] - probe_water_color[1]) +
+               std::abs(legacy_water_color[2] - probe_water_color[2])) >
+              0.01f);
+
+        opaque_forward_scene.reflection_probes = &reflection_probes;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world above-water environment is invalid");
+        opaque_forward_scene.reflection_probes = nullptr;
+        opaque_forward_scene.legacy_environment = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world above-water environment is invalid");
+        opaque_forward_scene.reflection_probes = &reflection_probes;
+        error.clear();
 
         ALMetalWorldWaterSurface above_water_wave =
             above_water_surface;

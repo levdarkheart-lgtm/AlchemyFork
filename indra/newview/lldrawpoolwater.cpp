@@ -341,6 +341,18 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
             std::memcpy(metal_water.normal_matrix,
                         normal_matrix.getF32ptr(),
                         sizeof(metal_water.normal_matrix));
+            // Match bindDeferredShader's transpose=true env_mat upload for
+            // the probe-disabled legacy sky cube path.
+            const F32* modelview = camera.getModelview().getF32ptr();
+            metal_water.environment_matrix[0][0] = modelview[0];
+            metal_water.environment_matrix[0][1] = modelview[4];
+            metal_water.environment_matrix[0][2] = modelview[8];
+            metal_water.environment_matrix[1][0] = modelview[1];
+            metal_water.environment_matrix[1][1] = modelview[5];
+            metal_water.environment_matrix[1][2] = modelview[9];
+            metal_water.environment_matrix[2][0] = modelview[2];
+            metal_water.environment_matrix[2][1] = modelview[6];
+            metal_water.environment_matrix[2][2] = modelview[10];
             std::memcpy(metal_water.eye_position, eye.mV,
                         sizeof(F32) * 3);
             std::memcpy(metal_water.big_phase, phases.mBig.mV,

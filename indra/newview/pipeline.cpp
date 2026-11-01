@@ -4402,10 +4402,13 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         });
     const bool needs_reflection_probes =
         has_shiny || has_simple_alpha || has_material_alpha ||
-        has_pbr_alpha || has_above_water_surface;
-    const bool hero_active = !gCubeSnapshot &&
+        has_pbr_alpha ||
+        (has_above_water_surface && sReflectionProbesEnabled);
+    const bool needs_legacy_environment =
+        has_above_water_surface && !sReflectionProbesEnabled;
+    const bool hero_active = sReflectionProbesEnabled && !gCubeSnapshot &&
         mHeroProbeManager.mHeroData.heroProbeCount > 0;
-    const bool ssr_active =
+    const bool ssr_active = sReflectionProbesEnabled &&
         mResourcePlan.wants(ALRenderResourcePlan::Id::SSRScene) &&
         !gCubeSnapshot && !sCutoutRender;
     if (capture.complete && needs_reflection_probes &&
@@ -4416,6 +4419,23 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         LL_WARNS("Metal")
             << "Could not acquire a coherent reflection-probe pack for "
                "the native world post-deferred slice" << LL_ENDL;
+    }
+    const ALMetalTexture* legacy_environment = nullptr;
+    if (capture.complete && needs_legacy_environment)
+    {
+        LLCubeMap* cube_map =
+            gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : nullptr;
+        std::string environment_error;
+        legacy_environment = cube_map
+            ? cube_map->getMetalTexture(&environment_error) : nullptr;
+        if (!legacy_environment)
+        {
+            capture.markIncomplete(__LINE__);
+            LL_WARNS("Metal")
+                << "Could not acquire the legacy sky cube for the native "
+                   "above-water slice: "
+                << environment_error << LL_ENDL;
+        }
     }
     if (capture.complete &&
         (has_simple_alpha || has_material_alpha || has_pbr_alpha ||
@@ -4470,6 +4490,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.highlight_batch_count = capture.highlight_batches.size();
         scene.reflection_probes = needs_reflection_probes
             ? &capture.impostor_reflection_probes : nullptr;
+        scene.legacy_environment = legacy_environment;
         scene.hero_probe =
             (has_shiny || material_uses_environment || has_pbr_alpha ||
              has_above_water_surface) &&

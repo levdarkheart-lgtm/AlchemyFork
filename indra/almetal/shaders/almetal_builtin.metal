@@ -455,6 +455,7 @@ struct ALMetalWorldWaterSurfaceConstants
 {
     float4x4 modelview;
     float4 normal_matrix[3];
+    float4 environment_matrix[3];
     float4 eye_position;
     float4 big_phase;
     float4 little_phase;
@@ -474,6 +475,7 @@ struct ALMetalWorldWaterSurfaceConstants
     int4 patch_order;
     float4 screen;
     uint4 config;
+    uint4 environment_config;
 };
 
 struct ALMetalWorldWaterOcclusionConstants
@@ -6570,6 +6572,30 @@ static float3 almetal_sample_water_probes(
         sums.gloss[0], sums.gloss[1], sums, true);
 }
 
+static float3 almetal_sample_water_environment(
+    float3 position, float3 normal, float glossiness,
+    texturecube_array<float> radiance,
+    texturecube<float> legacy_environment,
+    sampler probe_sampler,
+    constant ALMetalWorldReflectionProbeConstants& probes,
+    constant ALMetalWorldWaterSurfaceConstants& water)
+{
+    if (water.environment_config.x != 0u)
+    {
+        const float3x3 environment_matrix = float3x3(
+            water.environment_matrix[0].xyz,
+            water.environment_matrix[1].xyz,
+            water.environment_matrix[2].xyz);
+        const float3 reflection = normalize(reflect(position, normal));
+        return almetal_srgb_to_linear(
+            legacy_environment.sample(
+                probe_sampler, environment_matrix * reflection).rgb);
+    }
+    return almetal_sample_water_probes(
+        position, normal, glossiness,
+        radiance, probe_sampler, probes);
+}
+
 static float3 almetal_world_water_depth_position(
     float2 uv, float depth, bool reverse_z,
     constant ALMetalWorldWaterHazeConstants& field)
@@ -6599,6 +6625,7 @@ fragment float4 almetal_world_above_water_fragment(
     texturecube<float> hero_probe [[texture(34)]],
     texture2d<float> ssr_scene_color [[texture(35)]],
     texture2d<float> ssr_scene_depth [[texture(36)]],
+    texturecube<float> legacy_environment [[texture(37)]],
     sampler normal_sampler [[sampler(0)]],
     sampler screen_sampler [[sampler(1)]],
     sampler probe_sampler [[sampler(2)]],
@@ -6707,22 +6734,26 @@ fragment float4 almetal_world_above_water_fragment(
     }
 
     const float glossiness = 1.0 - water.optics.z;
-    float3 radiance = almetal_sample_water_probes(
+    float3 radiance = almetal_sample_water_environment(
         input.eye_position, wave_ibl, glossiness,
-        reflection_radiance, probe_sampler, probes);
+        reflection_radiance, legacy_environment, probe_sampler,
+        probes, water);
     const float3 reflection = normalize(
         reflect(input.eye_position, wave_ibl));
     const float3 dominant = almetal_base_dominant_direction(
         wave_ibl, reflection, water.optics.z);
-    const float4 ssr_sample = almetal_sample_ssr(
-        refracted_uv,
-        input.eye_position, wave_ibl, dominant, glossiness, false,
-        ssr_scene_color, ssr_scene_depth,
-        screen_sampler, depth_sampler, ssr);
-    radiance = mix(radiance, ssr_sample.rgb, ssr_sample.a);
-    radiance = almetal_finish_hero_probe(
-        radiance, input.eye_position, wave_ibl, glossiness,
-        hero_probe, probe_sampler, probes, hero);
+    if (water.environment_config.x == 0u)
+    {
+        const float4 ssr_sample = almetal_sample_ssr(
+            refracted_uv,
+            input.eye_position, wave_ibl, dominant, glossiness, false,
+            ssr_scene_color, ssr_scene_depth,
+            screen_sampler, depth_sampler, ssr);
+        radiance = mix(radiance, ssr_sample.rgb, ssr_sample.a);
+        radiance = almetal_finish_hero_probe(
+            radiance, input.eye_position, wave_ibl, glossiness,
+            hero_probe, probe_sampler, probes, hero);
+    }
 
     const float3 view = -view_vector;
     const float glint_alpha =
@@ -6756,20 +6787,24 @@ fragment float4 almetal_world_above_water_fragment(
             min(to_rim.x, to_rim.y));
         if (gone > 0.0)
         {
-            float3 sky = almetal_sample_water_probes(
+            float3 sky = almetal_sample_water_environment(
                 input.eye_position, up, 1.0,
-                reflection_radiance, probe_sampler, probes);
-            const float3 sky_reflection = normalize(
-                reflect(input.eye_position, up));
-            const float4 sky_ssr = almetal_sample_ssr(
-                screen_uv,
-                input.eye_position, up, sky_reflection, 1.0, false,
-                ssr_scene_color, ssr_scene_depth,
-                screen_sampler, depth_sampler, ssr);
-            sky = mix(sky, sky_ssr.rgb, sky_ssr.a);
-            sky = almetal_finish_hero_probe(
-                sky, input.eye_position, up, 1.0,
-                hero_probe, probe_sampler, probes, hero);
+                reflection_radiance, legacy_environment, probe_sampler,
+                probes, water);
+            if (water.environment_config.x == 0u)
+            {
+                const float3 sky_reflection = normalize(
+                    reflect(input.eye_position, up));
+                const float4 sky_ssr = almetal_sample_ssr(
+                    screen_uv,
+                    input.eye_position, up, sky_reflection, 1.0, false,
+                    ssr_scene_color, ssr_scene_depth,
+                    screen_sampler, depth_sampler, ssr);
+                sky = mix(sky, sky_ssr.rgb, sky_ssr.a);
+                sky = almetal_finish_hero_probe(
+                    sky, input.eye_position, up, 1.0,
+                    hero_probe, probe_sampler, probes, hero);
+            }
             color = mix(color, sky, gone);
             glow *= 1.0 - gone;
         }
