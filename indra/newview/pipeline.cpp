@@ -10783,6 +10783,11 @@ void LLPipeline::captureMetalWorldTreeBatch(LLVertexBuffer* buffer,
     std::memcpy(batch.modelview_projection,
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
+    // treeF applies the hero-mirror plane to vary_position in eye space.
+    // The shared Metal cutout vertex path derives the same value from this
+    // matrix; leaving it zero retains every tree fragment at clip distance 0.
+    std::memcpy(batch.modelview, modelview.getF32ptr(),
+                sizeof(batch.modelview));
 
     const F32* inverse = inverse_modelview.getF32ptr();
     const F32* modelview_values = modelview.getF32ptr();

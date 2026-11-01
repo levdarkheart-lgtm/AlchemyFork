@@ -3499,6 +3499,40 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(static_cast<int>(tree_biased_albedo[center + 2]) -
                        32) <= 1);
 
+        // The dedicated tree producer does not use the generic draw-info
+        // capture, but treeF still clips its cutout in eye space. Reject the
+        // former zero-initialized model-view payload, then prove the exact
+        // tree contract clips the negative half and preserves the positive
+        // half just like the GLSL mirrorClip(vary_position) call.
+        batch.alpha_cutoff_bias = false;
+        batch.alpha_cutoff = 0.5f;
+        batch.diffuse_textures[1] = indexed_diffuse.get();
+        scene.mirror_clip = true;
+        scene.mirror_clip_plane[0] = 1.f;
+        scene.mirror_clip_plane[1] = 0.f;
+        scene.mirror_clip_plane[2] = 0.f;
+        scene.mirror_clip_plane[3] = 0.f;
+        batch.modelview[15] = 0.f;
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal world simple batch is invalid");
+        batch.modelview[15] = 1.f;
+        error.clear();
+        auto tree_mirror_clipped = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(tree_mirror_clipped);
+        std::array<std::uint8_t, 32 * 32 * 4> tree_clipped_albedo{};
+        REQUIRE(tree_mirror_clipped->colorTexture(0)->readback(
+            *device, 0, 0, {}, tree_clipped_albedo.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(tree_clipped_albedo[clipped_side + 0] == 255);
+        CHECK(tree_clipped_albedo[clipped_side + 1] == 0);
+        CHECK(tree_clipped_albedo[clipped_side + 2] == 255);
+        CHECK(tree_clipped_albedo[retained_side + 0] == 0);
+        CHECK(tree_clipped_albedo[retained_side + 1] == 255);
+        CHECK(tree_clipped_albedo[retained_side + 2] == 0);
+        scene.mirror_clip = false;
+
         batch.diffuse_textures[1] = indexed_diffuse.get();
         batch.use_vertex_color = true;
         batch.alpha_cutoff = 0.6f;
@@ -8640,6 +8674,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         for (std::size_t index = 0; index < 4; ++index)
         {
             batch.modelview_projection[index * 4 + index] = 1.f;
+            batch.modelview[index * 4 + index] = 1.f;
         }
         for (std::size_t index = 0; index < 3; ++index)
         {

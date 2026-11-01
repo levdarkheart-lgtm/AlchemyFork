@@ -5164,6 +5164,9 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             batch.index_offset % index_stride != 0 ||
             !std::isfinite(batch.alpha_cutoff) ||
             !finiteValues(batch.modelview_projection, 16) ||
+            (!batch.avatar_skinning &&
+             (!finiteValues(batch.modelview, 16) ||
+              batch.modelview[15] != 1.f)) ||
             !finiteValues(&batch.normal_matrix[0][0], 12) ||
             !finiteValues(&batch.rigged_normal_matrix[0][0], 12) ||
             !finiteValues(batch.texture_matrix, 16) ||
