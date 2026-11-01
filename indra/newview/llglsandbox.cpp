@@ -306,14 +306,27 @@ void LLWind::renderVectors()
     LLVector3 origin_agent;
     origin_agent = gAgent.getPosAgentFromGlobal(mOriginGlobal);
     gGL.translatef(origin_agent.mV[VX], origin_agent.mV[VY], gAgent.getPositionAgent().mV[VZ] + WIND_RELATIVE_ALTITUDE);
+#if LL_DARWIN
+    const std::size_t vector_count = static_cast<std::size_t>(mSize) *
+                                     static_cast<std::size_t>(mSize);
+    gPipeline.beginMetalWindVectorCapture(vector_count);
+#endif
     for (j = 0; j < mSize; j++)
     {
         for (i = 0; i < mSize; i++)
         {
             x = mVelX[i + j*mSize] * WIND_SCALE_HACK;
             y = mVelY[i + j*mSize] * WIND_SCALE_HACK;
+            const F32 cell_x = (F32)i * region_width_meters/mSize;
+            const F32 cell_y = (F32)j * region_width_meters/mSize;
+#if LL_DARWIN
+            gPipeline.captureMetalWindVector(
+                LLVector3(cell_x, cell_y, 0.f),
+                LLVector3(cell_x + x * 0.1f, cell_y + y * 0.1f, 0.f),
+                LLVector3(cell_x + x, cell_y + y, 0.f));
+#endif
             gGL.pushMatrix();
-            gGL.translatef((F32)i * region_width_meters/mSize, (F32)j * region_width_meters/mSize, 0.f);
+            gGL.translatef(cell_x, cell_y, 0.f);
             gGL.color3f(0.f, 1.f, 0.f);
             gGL.begin(LLRender::POINTS);
                 gGL.vertex3f(0.f, 0.f, 0.f);
@@ -326,6 +339,9 @@ void LLWind::renderVectors()
             gGL.popMatrix();
         }
     }
+#if LL_DARWIN
+    gPipeline.endMetalWindVectorCapture(vector_count);
+#endif
     gGL.popMatrix();
 }
 

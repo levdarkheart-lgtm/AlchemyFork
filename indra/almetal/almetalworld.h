@@ -440,6 +440,12 @@ struct ALMetalWorldDebugBlip
     float color[4] = {1.f, 1.f, 1.f, 1.f};
 };
 
+// Develop > Wind Vectors is a fixed simulator lattice of one-pixel green
+// points and red line segments. Its immediate-mode GL owner has the same
+// position/color payload as an object-update blip, but uses the ambient
+// read/write world depth state and a one-pixel raster footprint.
+using ALMetalWorldWindVectorVertex = ALMetalWorldDebugBlip;
+
 // One axis-aligned column in the developer far-plane projection overlay. The
 // native vertex stage expands these retained center/half-extent records into
 // the same 12 triangles as the immediate GL owner. Columns are ordered with
@@ -739,6 +745,11 @@ struct ALMetalWorldOpaquePostDeferredScene
     const ALMetalWorldDebugBlip* debug_blips = nullptr;
     std::size_t debug_blip_count = 0;
     float debug_blip_modelview_projection[16]{};
+    const ALMetalWorldWindVectorVertex* wind_vector_points = nullptr;
+    std::size_t wind_vector_point_count = 0;
+    const ALMetalWorldWindVectorVertex* wind_vector_lines = nullptr;
+    std::size_t wind_vector_line_vertex_count = 0;
+    float wind_vector_modelview_projection[16]{};
     const ALMetalWorldFarPlaneOverlayColumn* far_plane_overlay_columns =
         nullptr;
     std::size_t far_plane_overlay_column_count = 0;

@@ -4718,6 +4718,225 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.debug_blips = nullptr;
         opaque_forward_scene.debug_blip_count = 0;
 
+        // Develop > Wind Vectors follows the probe-volume display and emits
+        // one-pixel green lattice points plus red line segments. It inherits
+        // the ambient GL_LEQUAL read/write depth state (GEQUAL under
+        // reverse-Z), disabled blending and an RGB-only color mask.
+        std::array<ALMetalWorldWindVectorVertex, 2> wind_points{};
+        std::array<ALMetalWorldWindVectorVertex, 4> wind_lines{};
+        wind_points[0].position[0] = 0.84375f;
+        wind_points[0].position[1] = 0.84375f;
+        wind_points[0].color[0] = 0.f;
+        wind_points[0].color[1] = 1.f;
+        wind_points[0].color[2] = 0.f;
+        wind_points[1].position[0] = 0.03125f;
+        wind_points[1].position[1] = 0.03125f;
+        wind_points[1].position[2] = 0.75f;
+        wind_points[1].color[0] = 0.f;
+        wind_points[1].color[1] = 1.f;
+        wind_points[1].color[2] = 0.f;
+        wind_lines[0].position[0] = -0.84375f;
+        wind_lines[0].position[1] = 0.84375f;
+        wind_lines[1].position[0] = -0.34375f;
+        wind_lines[1].position[1] = 0.84375f;
+        wind_lines[2].position[0] = -0.21875f;
+        wind_lines[2].position[1] = 0.03125f;
+        wind_lines[2].position[2] = 0.75f;
+        wind_lines[3].position[0] = 0.21875f;
+        wind_lines[3].position[1] = 0.03125f;
+        wind_lines[3].position[2] = 0.75f;
+        for (ALMetalWorldWindVectorVertex& vertex : wind_lines)
+        {
+            vertex.color[0] = 1.f;
+            vertex.color[1] = 0.f;
+            vertex.color[2] = 0.f;
+        }
+        opaque_forward_scene.wind_vector_points = wind_points.data();
+        opaque_forward_scene.wind_vector_point_count = wind_points.size();
+        opaque_forward_scene.wind_vector_lines = wind_lines.data();
+        opaque_forward_scene.wind_vector_line_vertex_count =
+            wind_lines.size();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            opaque_forward_scene.wind_vector_modelview_projection[
+                axis * 4 + axis] = 1.f;
+        }
+
+        opaque_forward_scene.wind_vector_points = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world wind-vector storage is invalid");
+        opaque_forward_scene.wind_vector_points = wind_points.data();
+        opaque_forward_scene.wind_vector_line_vertex_count = 3;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world wind-vector storage is invalid");
+        opaque_forward_scene.wind_vector_line_vertex_count =
+            wind_lines.size();
+        wind_lines[0].position[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world wind-vector data is non-finite");
+        wind_lines[0].position[0] = -0.84375f;
+        error.clear();
+
+        auto native_wind_vectors = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(native_wind_vectors);
+        std::array<std::uint16_t, 32 * 32 * 4> wind_pixels{};
+        std::array<float, 32 * 32> wind_depth{};
+        REQUIRE(native_wind_vectors->colorTexture(0)->readback(
+            *device, 0, 0, {}, wind_pixels.data(), 32 * 8, &error));
+        REQUIRE(native_wind_vectors->depthStencilTexture()->readback(
+            *device, 0, 0, {}, wind_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        std::size_t wind_green_pixels = 0;
+        std::size_t wind_red_pixels = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                wind_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                wind_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                wind_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            wind_green_pixels += changed &&
+                wind_pixels[offset + 0] == 0u &&
+                wind_pixels[offset + 1] == 0x3c00 &&
+                wind_pixels[offset + 2] == 0u;
+            wind_red_pixels += changed &&
+                wind_pixels[offset + 0] == 0x3c00 &&
+                wind_pixels[offset + 1] == 0u &&
+                wind_pixels[offset + 2] == 0u;
+            if (changed)
+            {
+                CHECK(wind_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+                CHECK(std::abs(wind_depth[pixel] - 0.5f) < 0.0001f);
+            }
+        }
+        CHECK(wind_green_pixels == 1);
+        CHECK(wind_red_pixels >= 7);
+        CHECK(wind_pixels[center + 0] == opaque_forward_pixels[center + 0]);
+        CHECK(wind_pixels[center + 1] == opaque_forward_pixels[center + 1]);
+        CHECK(wind_pixels[center + 2] == opaque_forward_pixels[center + 2]);
+        CHECK(std::abs(wind_depth[16 * 32 + 16] -
+                       opaque_forward_depth[16 * 32 + 16]) < 0.0001f);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        opaque_forward_scene.wind_vector_points = nullptr;
+        opaque_forward_scene.wind_vector_point_count = 0;
+        opaque_forward_scene.wind_vector_lines = nullptr;
+        opaque_forward_scene.wind_vector_line_vertex_count = 0;
+        auto reverse_wind_baseline = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_wind_baseline);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_wind_baseline_pixels{};
+        std::array<float, 32 * 32> reverse_wind_baseline_depth{};
+        REQUIRE(reverse_wind_baseline->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_wind_baseline_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(reverse_wind_baseline->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_wind_baseline_depth.data(),
+            32 * sizeof(float), &error));
+        for (ALMetalWorldWindVectorVertex& point : wind_points)
+        {
+            point.position[2] = 0.5f;
+        }
+        wind_points[1].position[2] = 0.1f;
+        for (ALMetalWorldWindVectorVertex& vertex : wind_lines)
+        {
+            vertex.position[2] = 0.5f;
+        }
+        wind_lines[2].position[2] = 0.1f;
+        wind_lines[3].position[2] = 0.1f;
+        opaque_forward_scene.wind_vector_points = wind_points.data();
+        opaque_forward_scene.wind_vector_point_count = wind_points.size();
+        opaque_forward_scene.wind_vector_lines = wind_lines.data();
+        opaque_forward_scene.wind_vector_line_vertex_count =
+            wind_lines.size();
+        auto reverse_wind_vectors = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_wind_vectors);
+        std::array<std::uint16_t, 32 * 32 * 4> reverse_wind_pixels{};
+        std::array<float, 32 * 32> reverse_wind_depth{};
+        REQUIRE(reverse_wind_vectors->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_wind_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(reverse_wind_vectors->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_wind_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t reverse_wind_green_pixels = 0;
+        std::size_t reverse_wind_red_pixels = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                reverse_wind_pixels[offset + 0] !=
+                    reverse_wind_baseline_pixels[offset + 0] ||
+                reverse_wind_pixels[offset + 1] !=
+                    reverse_wind_baseline_pixels[offset + 1] ||
+                reverse_wind_pixels[offset + 2] !=
+                    reverse_wind_baseline_pixels[offset + 2];
+            reverse_wind_green_pixels += changed &&
+                reverse_wind_pixels[offset + 0] == 0u &&
+                reverse_wind_pixels[offset + 1] == 0x3c00 &&
+                reverse_wind_pixels[offset + 2] == 0u;
+            reverse_wind_red_pixels += changed &&
+                reverse_wind_pixels[offset + 0] == 0x3c00 &&
+                reverse_wind_pixels[offset + 1] == 0u &&
+                reverse_wind_pixels[offset + 2] == 0u;
+            if (changed)
+            {
+                CHECK(reverse_wind_pixels[offset + 3] ==
+                      reverse_wind_baseline_pixels[offset + 3]);
+                CHECK(std::abs(reverse_wind_depth[pixel] - 0.5f) <
+                      0.0001f);
+            }
+        }
+        CHECK(reverse_wind_green_pixels == 1);
+        CHECK(reverse_wind_red_pixels >= 7);
+        CHECK(reverse_wind_pixels[center + 0] ==
+              reverse_wind_baseline_pixels[center + 0]);
+        CHECK(reverse_wind_pixels[center + 1] ==
+              reverse_wind_baseline_pixels[center + 1]);
+        CHECK(reverse_wind_pixels[center + 2] ==
+              reverse_wind_baseline_pixels[center + 2]);
+        CHECK(std::abs(reverse_wind_depth[16 * 32 + 16] -
+                       reverse_wind_baseline_depth[16 * 32 + 16]) <
+              0.0001f);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.wind_vector_points = nullptr;
+        opaque_forward_scene.wind_vector_point_count = 0;
+        opaque_forward_scene.wind_vector_lines = nullptr;
+        opaque_forward_scene.wind_vector_line_vertex_count = 0;
+        auto no_wind_vectors = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_wind_vectors);
+        wind_pixels.fill(0xffffu);
+        wind_depth.fill(-1.f);
+        REQUIRE(no_wind_vectors->colorTexture(0)->readback(
+            *device, 0, 0, {}, wind_pixels.data(), 32 * 8, &error));
+        REQUIRE(no_wind_vectors->depthStencilTexture()->readback(
+            *device, 0, 0, {}, wind_depth.data(), 32 * sizeof(float),
+            &error));
+        CHECK(wind_pixels == opaque_forward_pixels);
+        CHECK(wind_depth == opaque_forward_depth);
+
         // The reflection-probe volume developer display is an independent
         // full-screen owner inside renderDebug. It reconstructs eye-space
         // scene depth, shows manual sphere/box intersections in yellow when

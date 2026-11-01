@@ -360,6 +360,15 @@ public:
     // owner boundary. The post-deferred Metal transaction expands and depth-
     // tests the same column pairs, then composites them after world diagnostics.
     void captureMetalFarPlaneOverlay();
+    // Retain the exact immediate-mode Develop > Wind Vectors lattice at its
+    // owner boundary. The begin/end pair makes allocation or cardinality
+    // failure invalidate the whole native frame instead of publishing a
+    // partial developer display.
+    void beginMetalWindVectorCapture(std::size_t vector_count);
+    void captureMetalWindVector(const LLVector3& point,
+                                const LLVector3& line_start,
+                                const LLVector3& line_end);
+    void endMetalWindVectorCapture(std::size_t vector_count);
     // One bounded offscreen probe connects the completed current-frame native
     // world presentation and retained depth to the real ordered UI/HUD draw
     // stream. It never changes the live surface; publication remains locked
@@ -1430,7 +1439,6 @@ public:
             RENDER_DEBUG_COMPOSITION |
             RENDER_DEBUG_BBOXES |
             RENDER_DEBUG_OCTREE |
-            RENDER_DEBUG_WIND_VECTORS |
             RENDER_DEBUG_OCCLUSION |
             RENDER_DEBUG_POINTS |
             RENDER_DEBUG_TEXTURE_ANIM |

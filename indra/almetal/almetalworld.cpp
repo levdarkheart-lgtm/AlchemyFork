@@ -126,6 +126,7 @@ namespace
     };
     static_assert(sizeof(ALMetalWorldDebugBlip) == 32);
     static_assert(sizeof(WorldDebugBlipConstants) == 80);
+    static_assert(sizeof(ALMetalWorldWindVectorVertex) == 32);
 
     struct alignas(16) WorldFarPlaneOverlayConstants
     {
@@ -1300,6 +1301,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         debug_blip_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        wind_vector_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         reflection_probe_volume_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> far_plane_overlay_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -2385,6 +2388,30 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         impl->debug_blip_pipelines[hdr] = ALMetalRenderPipeline::create(
             device, debug_blip_descriptor, error);
         if (!impl->debug_blip_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor wind_vector_descriptor;
+        wind_vector_descriptor.library = impl->library.get();
+        wind_vector_descriptor.vertex_function =
+            "almetal_world_wind_vector_vertex";
+        wind_vector_descriptor.fragment_function =
+            "almetal_world_debug_blip_fragment";
+        wind_vector_descriptor.colors[0].format = screen_formats[hdr];
+        wind_vector_descriptor.colors[0].write_mask =
+            static_cast<ALMetalColorWriteMask>(
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+        wind_vector_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        wind_vector_descriptor.label = hdr
+            ? "Alchemy HDR world wind-vector pipeline"
+            : "Alchemy world wind-vector pipeline";
+        impl->wind_vector_pipelines[hdr] = ALMetalRenderPipeline::create(
+            device, wind_vector_descriptor, error);
+        if (!impl->wind_vector_pipelines[hdr])
         {
             return nullptr;
         }
@@ -10266,6 +10293,59 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             return nullptr;
         }
     }
+    const bool has_wind_vectors = scene.wind_vector_point_count != 0 ||
+        scene.wind_vector_line_vertex_count != 0;
+    if ((scene.wind_vector_point_count != 0 &&
+         !scene.wind_vector_points) ||
+        (scene.wind_vector_line_vertex_count != 0 &&
+         !scene.wind_vector_lines) ||
+        (scene.wind_vector_point_count == 0) !=
+            (scene.wind_vector_line_vertex_count == 0) ||
+        (scene.wind_vector_line_vertex_count & 1u) != 0 ||
+        scene.wind_vector_point_count >
+            std::numeric_limits<std::uint32_t>::max() ||
+        scene.wind_vector_line_vertex_count >
+            std::numeric_limits<std::uint32_t>::max() ||
+        scene.wind_vector_point_count >
+            std::numeric_limits<std::size_t>::max() / 2 ||
+        scene.wind_vector_line_vertex_count !=
+            scene.wind_vector_point_count * 2 ||
+        scene.wind_vector_point_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldWindVectorVertex) ||
+        scene.wind_vector_line_vertex_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldWindVectorVertex) ||
+        (has_wind_vectors && !finiteValues(
+            scene.wind_vector_modelview_projection, 16)))
+    {
+        setError(error, "Metal world wind-vector storage is invalid");
+        return nullptr;
+    }
+    for (std::size_t index = 0;
+         index < scene.wind_vector_point_count; ++index)
+    {
+        const ALMetalWorldWindVectorVertex& vertex =
+            scene.wind_vector_points[index];
+        if (!finiteValues(vertex.position, 4) ||
+            !finiteValues(vertex.color, 4))
+        {
+            setError(error, "Metal world wind-vector data is non-finite");
+            return nullptr;
+        }
+    }
+    for (std::size_t index = 0;
+         index < scene.wind_vector_line_vertex_count; ++index)
+    {
+        const ALMetalWorldWindVectorVertex& vertex =
+            scene.wind_vector_lines[index];
+        if (!finiteValues(vertex.position, 4) ||
+            !finiteValues(vertex.color, 4))
+        {
+            setError(error, "Metal world wind-vector data is non-finite");
+            return nullptr;
+        }
+    }
     if ((scene.far_plane_overlay_column_count != 0 &&
          !scene.far_plane_overlay_columns) ||
         scene.far_plane_overlay_column_count >
@@ -11432,6 +11512,40 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             *mImpl->device, descriptor, error);
         if (!debug_blip_buffer || !debug_blip_buffer->write(
                 0, scene.debug_blips, descriptor.length, error))
+        {
+            return nullptr;
+        }
+    }
+
+    std::unique_ptr<ALMetalBuffer> wind_vector_buffer;
+    std::size_t wind_vector_line_offset = 0;
+    if (has_wind_vectors)
+    {
+        wind_vector_line_offset = scene.wind_vector_point_count *
+            sizeof(ALMetalWorldWindVectorVertex);
+        const std::size_t line_bytes =
+            scene.wind_vector_line_vertex_count *
+            sizeof(ALMetalWorldWindVectorVertex);
+        if (wind_vector_line_offset >
+            std::numeric_limits<std::size_t>::max() - line_bytes)
+        {
+            setError(error, "Metal world wind-vector storage is invalid");
+            return nullptr;
+        }
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = wind_vector_line_offset + line_bytes;
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world wind vectors";
+        wind_vector_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!wind_vector_buffer ||
+            !wind_vector_buffer->write(
+                0, scene.wind_vector_points,
+                wind_vector_line_offset, error) ||
+            !wind_vector_buffer->write(
+                wind_vector_line_offset, scene.wind_vector_lines,
+                line_bytes, error))
         {
             return nullptr;
         }
@@ -13482,6 +13596,42 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 1, *reflection_probe_volume_buffer, 0, error) &&
             encoder->draw(
                 ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    }
+
+    if (encoded && has_wind_vectors)
+    {
+        WorldDebugBlipConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    scene.wind_vector_modelview_projection,
+                    sizeof(constants.modelview_projection));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        const ALMetalDepthStencilState* wind_depth = scene.reverse_z
+            ? mImpl->reverse_depth.get() : mImpl->forward_depth.get();
+        encoded =
+            encoder->setDepthStencilState(wind_depth, error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *mImpl->wind_vector_pipelines[scene.hdr ? 1 : 0],
+                error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->setVertexBuffer(
+                0, *wind_vector_buffer, 0, error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::point, 0,
+                static_cast<std::uint32_t>(
+                    scene.wind_vector_point_count),
+                1, error) &&
+            encoder->setVertexBuffer(
+                0, *wind_vector_buffer, wind_vector_line_offset, error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::line, 0,
+                static_cast<std::uint32_t>(
+                    scene.wind_vector_line_vertex_count),
+                1, error);
     }
 
     if (encoded && scene.far_plane_overlay_column_count != 0)

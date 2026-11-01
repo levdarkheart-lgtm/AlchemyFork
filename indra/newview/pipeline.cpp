@@ -577,6 +577,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::vector<ALMetalWorldHighlightBatch> highlight_batches;
     std::vector<ALMetalWorldDebugBlip> debug_blips;
     F32 debug_blip_modelview_projection[16]{};
+    std::vector<ALMetalWorldWindVectorVertex> wind_vector_points;
+    std::vector<ALMetalWorldWindVectorVertex> wind_vector_lines;
+    F32 wind_vector_modelview_projection[16]{};
+    bool wind_vector_capture_active = false;
     std::vector<ALMetalWorldFarPlaneOverlayColumn> far_plane_overlay_columns;
     std::size_t far_plane_overlay_near_count = 0;
     F32 far_plane_overlay_modelview_projection[16]{};
@@ -3983,6 +3987,9 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.batches.clear();
     capture.highlight_batches.clear();
     capture.debug_blips.clear();
+    capture.wind_vector_points.clear();
+    capture.wind_vector_lines.clear();
+    capture.wind_vector_capture_active = false;
     capture.far_plane_overlay_columns.clear();
     capture.far_plane_overlay_near_count = 0;
     capture.reflection_probe_volume_valid = false;
@@ -4045,6 +4052,114 @@ void LLPipeline::captureMetalReflectionProbeVolumes()
                 inverse_projection.getF32ptr(),
                 sizeof(capture.reflection_probe_volume_inverse_projection));
     capture.reflection_probe_volume_valid = true;
+}
+
+void LLPipeline::beginMetalWindVectorCapture(std::size_t vector_count)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || capture.wind_vector_capture_active ||
+        !capture.wind_vector_points.empty() ||
+        !capture.wind_vector_lines.empty() ||
+        vector_count > std::numeric_limits<std::size_t>::max() / 2)
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(capture.wind_vector_modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(capture.wind_vector_modelview_projection));
+    try
+    {
+        capture.wind_vector_points.reserve(vector_count);
+        capture.wind_vector_lines.reserve(vector_count * 2);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.wind_vector_points.clear();
+        capture.wind_vector_lines.clear();
+        return;
+    }
+    capture.wind_vector_capture_active = true;
+}
+
+void LLPipeline::captureMetalWindVector(const LLVector3& point,
+                                        const LLVector3& line_start,
+                                        const LLVector3& line_end)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || !capture.wind_vector_capture_active)
+    {
+        return;
+    }
+
+    ALMetalWorldWindVectorVertex point_vertex;
+    ALMetalWorldWindVectorVertex line_vertices[2];
+    std::memcpy(point_vertex.position, point.mV, sizeof(point.mV));
+    point_vertex.color[0] = 0.f;
+    point_vertex.color[1] = 1.f;
+    point_vertex.color[2] = 0.f;
+    std::memcpy(line_vertices[0].position, line_start.mV,
+                sizeof(line_start.mV));
+    std::memcpy(line_vertices[1].position, line_end.mV,
+                sizeof(line_end.mV));
+    for (ALMetalWorldWindVectorVertex& vertex : line_vertices)
+    {
+        vertex.color[0] = 1.f;
+        vertex.color[1] = 0.f;
+        vertex.color[2] = 0.f;
+    }
+    try
+    {
+        capture.wind_vector_points.push_back(point_vertex);
+        capture.wind_vector_lines.push_back(line_vertices[0]);
+        capture.wind_vector_lines.push_back(line_vertices[1]);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.wind_vector_points.clear();
+        capture.wind_vector_lines.clear();
+        capture.wind_vector_capture_active = false;
+    }
+}
+
+void LLPipeline::endMetalWindVectorCapture(std::size_t vector_count)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.wind_vector_capture_active)
+    {
+        return;
+    }
+    capture.wind_vector_capture_active = false;
+    if (!capture.complete ||
+        capture.wind_vector_points.size() != vector_count ||
+        vector_count > std::numeric_limits<std::size_t>::max() / 2 ||
+        capture.wind_vector_lines.size() != vector_count * 2)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.wind_vector_points.clear();
+        capture.wind_vector_lines.clear();
+    }
 }
 
 void LLPipeline::captureMetalFarPlaneOverlay()
@@ -4787,6 +4902,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         std::memcpy(scene.debug_blip_modelview_projection,
                     capture.debug_blip_modelview_projection,
                     sizeof(scene.debug_blip_modelview_projection));
+        scene.wind_vector_points = capture.wind_vector_points.data();
+        scene.wind_vector_point_count = capture.wind_vector_points.size();
+        scene.wind_vector_lines = capture.wind_vector_lines.data();
+        scene.wind_vector_line_vertex_count =
+            capture.wind_vector_lines.size();
+        std::memcpy(scene.wind_vector_modelview_projection,
+                    capture.wind_vector_modelview_projection,
+                    sizeof(scene.wind_vector_modelview_projection));
         scene.far_plane_overlay_columns =
             capture.far_plane_overlay_columns.data();
         scene.far_plane_overlay_column_count =
@@ -6404,6 +6527,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.batches.clear();
     capture.highlight_batches.clear();
     capture.debug_blips.clear();
+    capture.wind_vector_points.clear();
+    capture.wind_vector_lines.clear();
+    capture.wind_vector_capture_active = false;
     capture.far_plane_overlay_columns.clear();
     capture.far_plane_overlay_near_count = 0;
     capture.reflection_probe_volume_valid = false;
