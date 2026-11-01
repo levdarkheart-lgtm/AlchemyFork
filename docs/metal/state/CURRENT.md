@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-01 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `5f64b5ac2b` (`fix(metal): defer default probe publication`)
+**Renderer code checkpoint:** `fd0fa7cea5` (`fix(metal): keep water default probe unshifted`)
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -10,42 +10,44 @@ append-only archives.
 
 ## Active implementation checkpoint
 
-M-008 remains `doing`; M-012 is complete. Source tracing found a bounded
-default-probe publication race: native cube radiance could be ready while its
-small CPU-visible spherical-harmonics row was still GPU-pending, and the
-material-preview/default path previously published only when both happened to
-be ready in the same pass.
+M-008 remains `doing`; M-012 is complete. Source tracing found a bounded water
+reflection mismatch. GLSL deliberately samples default probe zero along the
+reflected water ray without parallax, while the native Metal water path used
+the generic sphere-intersection correction. Moving the camera-relative default
+probe centre could therefore steer water into a different cubemap face.
 
-Commit `5f64b5ac2b` retains one private deferred default cube with its probe
-generation and capture sequence. It publishes only after the matching SH row
-is readable, and discards the cube on error, generation/layout/device change or
-sequence mismatch. A coherent native pair suppresses redundant GL/PBO default
-mirroring; the last coherent published environment remains on a later failure.
-GL traversal and normal presentation authority remain intact.
+Commit `fd0fa7cea5` passes water context into the shared native radiance helper
+and uses the unshifted reflected ray only for water/default-probe zero. Other
+water probes, boxes and all non-water callers retain their existing parallax
+rules. A six-distinct-face physical regression moves only the default centre
+from +4000 to -4000 X: before the fix it failed with aggregate RGB delta
+1.596944809; afterward it passes below 0.002. GL traversal and normal
+presentation authority remain intact.
 
-Source-exact build 68024 passed exact-path preflight and actual Computer Use.
+Source-exact build 68026 passed exact-path preflight and actual Computer Use.
 Semantic login reached `STATE_STARTED` at the intended Danim location; the
-world/UI was visibly coherent and Metal validation emitted no observed error.
+world/UI was visibly coherent and no Metal validation error was observed.
 Semantic Quit logged `LogoutReply`, `Goodbye!` and `status: stopped`; the final
-viewer/helper census was zero. The one-time delayed-promotion marker did not
-occur naturally, so this is runtime regression evidence, not physical coverage
-of the rare scheduling branch.
+viewer/helper census was zero and launch validation variables were cleared.
 
 ## Build and test evidence
 
-- Warnings-as-errors RelWithDebInfo build 68023 linked, staged and signed from
-  the final source content. Source-exact incremental package 68024 was then
-  observed and verified at committed/pushed head `5f64b5ac2b`.
+- Source-exact warnings-as-errors RelWithDebInfo build 68026 linked, staged and
+  signed at committed/pushed head `fd0fa7cea5`.
 - Executable SHA-256:
-  `fa718e362311afa7c74bff8cd641620e7a6b2b644f0465d3fee1fea7fa0e5fd3`.
+  `d33603803c5d45434d06e0332e14980dc095505b060624f09143a41f434e1d4e`.
+- Packaged MSL SHA-256:
+  `fb170421c26a1d75e556a46d14e52d660fe989a379bb62fbf80ba2eb5a317a1e`;
+  compiled metallib SHA-256:
+  `40617ce97a852bb2a92454020d050d7ee146501bff24bf992b0432c006423b33`.
 - Deep strict signing passed; `tools/metal/verify_app.sh` verified 349/349
   ARM64 slices.
-- Complete physical Metal validation passed 44,882 assertions across 50 cases
-  in RelWithDebInfo with Metal API/GPU validation enabled. The preceding probe
-  selection checkpoint also passed the same complete Debug suite and its
-  focused 1,329-assertion case.
+- The pre-fix focused physical test failed only the new asymmetric assertion at
+  1,348/1,349. After the fix it passed 1,349/1,349 with Metal API/GPU
+  validation enabled. Complete RelWithDebInfo and Debug physical suites each
+  passed 44,902 assertions across 50 cases.
 - `ctest --test-dir build-Darwin-ninja-os-arm64 -C RelWithDebInfo -LE
-  'manual|gl' --output-on-failure` passed 484/484 in 259.50 seconds after the
+  'manual|gl' --output-on-failure` passed 484/484 in 259.22 seconds after the
   production change.
 - Harness validation and all tooling tests pass after this documentation
   checkpoint.
@@ -57,7 +59,7 @@ of the rare scheduling branch.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-007 renderer | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
-| M-008 advanced views/effects | doing | Default native radiance/SH publication now remains generation/sequence coherent under delayed SH completion; broad probe publication, post, alpha/PBR and advanced-view parity stay open. |
+| M-008 advanced views/effects | doing | Water/default-probe zero now matches GLSL's unshifted-ray rule under an asymmetric physical control; live water, broader probes/mirrors, shadows, transparency/materials, post and output parity stay open. |
 | M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
@@ -65,34 +67,36 @@ of the rare scheduling branch.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. The default native reflection
-environment can no longer be lost merely because its matching CPU-visible SH
-row finishes after the radiance pass. The repair preserves generation/sequence
-coherence and fail-closed authority. This is bounded M-008 progress, not broad
-probe parity, native-only completion or a performance claim.
+**Advances the complete product:** yes. A source-demonstrated GLSL/Metal water
+reflection divergence is now closed under a physical six-face negative
+control. This is bounded deterministic M-008 progress, not live water parity,
+broad reflection/mirror parity, native-only completion or a performance claim.
 
 **Deferred critical work:** remaining post/alpha/PBR/probe/advanced-view parity;
 a source- and scene-identical scored post pair; full feature/stability matrices;
 viewer-owned OpenGL removal; independent build/review evidence and reproducible
 distinct release proof; and paired quality-equivalent M1 Max measurements.
+The strict no-GL gate remains open.
 
-**Evidence-based priority:** the source race is repaired, the ordinary runtime
-path is regression-checked and the rare delayed branch did not occur naturally.
-Do not keep forcing this scheduler boundary without new evidence. Continue the
-source-led M-008 graph at the next unverified advanced owner. For any
-cross-backend pair, pin exact source provenance and keep camera,
-environment/time, warm state, window/snapshot contract and all effective
-graphics settings identical; fail closed before metrics if any invariant
-differs.
+**Evidence-based priority:** run one controlled water-visible candidate/reference
+pair only if exact source provenance plus all 416 effective graphics settings,
+camera, environment/time, warm state and window/snapshot contract can be made
+identical. Fail closed before metrics if any invariant differs. If a controlled
+fixture is not practical, continue immediately to the next source-demonstrated
+probe or shadow gap rather than spending time on an inadmissible pair. The
+informational GL scan currently covers 2,408 viewer-owned files and reports
+3,303 potential findings; macros, comments and duplicates mean this is not an
+equal-sized task count, and the strict release gate remains open.
 
 ## Exact next actions
 
-1. Trace the next open non-default probe-publication, post or advanced-view
-   owner through active GLSL call sites, formats, bindings, state and ordering;
-   implement the first demonstrated gap.
-2. Add an asymmetric physical control, then rerun focused/complete Metal
-   validation and the neutral gate.
-3. Capture the next live comparison with pinned source provenance and identical
-   camera, environment/time, window/snapshot contract and 416-setting
-   manifests; keep strict no-GL, feature parity, stability and performance
-   gates open until their release evidence exists.
+1. Attempt the bounded water-visible pair with pinned provenance and identical
+   416-setting, camera, environment/time, warm-state and window/snapshot
+   manifests; reject it before scoring on any mismatch.
+2. Continue the source-led M-008 graph through probes/mirrors, the isolated
+   projector/cascade shadow fixture, transparency/material replay, non-default
+   post and advanced output; add an asymmetric physical control for each
+   demonstrated divergence.
+3. Keep live-water breadth, moving mirrors, full feature/stability, strict
+   no-GL and qualifying performance gates open until their release evidence
+   exists.

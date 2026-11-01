@@ -12,13 +12,13 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | ARM64 build/package/runtime identity is evidenced; controlled fixed-view reference benchmark remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | Informational owned-source inventory exists; strict release audit is not green. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | Informational scan covers 2,408 viewer-owned files and 3,303 potential findings (including macros/comments/duplicates); strict release audit is not green. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Authenticated exact publication and clean lifecycle are observed; preserve while advanced families are validated. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Core typed resource paths have physical coverage; remaining advanced/media matrices stay open. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Main native world chain publishes exact frames; advanced material/reference coverage remains incomplete. |
-| M-008 | Advanced views/effects and compute | doing | Default native radiance/SH publication is generation/sequence coherent even when CPU SH completion is delayed; continue broader probe publication, post, alpha/PBR and advanced-view parity. |
+| M-008 | Advanced views/effects and compute | doing | Water/default-probe zero follows GLSL's unshifted-ray rule under an asymmetric physical control; continue live water, probes/mirrors, shadows, transparency/materials, post and output parity. |
 | M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
@@ -29,58 +29,57 @@ item; it never implies product completion.
 
 ## Active checkpoint — 2026-11-01
 
-Commit `5f64b5ac2b` closes one default-probe publication timing gap. Native
-radiance that finishes before its 64-byte CPU-visible SH copy is retained in a
-private cube with the capture generation and sequence. It is published only
-when the matching row becomes readable; error, stale/recycled generation,
-sequence mismatch and device/layout reconciliation discard it. A coherent
-native pair suppresses redundant GL/PBO default mirroring, while normal GL
-traversal and presentation authority remain unchanged.
+Commit `fd0fa7cea5` closes one source-demonstrated water reflection mismatch.
+GLSL keeps default probe zero on the reflected water ray, but Metal applied the
+generic sphere-parallax correction. The shared radiance helper now receives
+water context and skips parallax only for that exact water/default case; every
+other probe caller retains its prior rule. A six-face physical control that
+moves only the default centre from +4000 to -4000 X failed before the fix with
+aggregate RGB delta 1.596944809 and passes afterward below 0.002.
 
-Warnings-as-errors build 68023 succeeded from the final source content. The
-committed/pushed head then produced source-exact package 68024; deep strict
-signing, 349/349 ARM64 inspection and executable SHA-256
-`fa718e362311afa7c74bff8cd641620e7a6b2b644f0465d3fee1fea7fa0e5fd3`
-pass. Complete RelWithDebInfo physical Metal validation passes 44,882
-assertions/50 cases, and the post-change neutral gate passes 484/484 in 259.50
-seconds.
+Source-exact warnings-as-errors build 68026 at the committed/pushed head passed
+deep strict signing and 349/349 ARM64 inspection. Executable SHA-256 is
+`d33603803c5d45434d06e0332e14980dc095505b060624f09143a41f434e1d4e`.
+Focused validation passes 1,349/1,349 after the pre-fix 1,348/1,349 failure;
+complete RelWithDebInfo and Debug suites each pass 44,902 assertions/50 cases.
+The post-change neutral gate passes 484/484 in 259.22 seconds.
 
-Exact-path preflight and actual Computer Use on 68024 completed semantic login,
+Exact-path preflight and actual Computer Use on 68026 completed semantic login,
 reached `STATE_STARTED`, showed a coherent upright world/UI, and completed
 semantic logout. Logs contain `LogoutReply`, `Goodbye!` and stopped status; the
-final viewer/helper census is zero. No Metal validation error was observed. The
-rare delayed-promotion marker did not occur naturally, so the live run is a
-regression smoke and not direct coverage of that scheduling branch. Raw logs
-and authenticated-world images remain local.
+final viewer/helper census is zero and launch validation variables are cleared.
+No Metal validation error was observed. This is an ordinary runtime regression
+smoke, not live reference parity for water. Raw logs and authenticated-world
+images remain local.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** default native probe radiance and SH publication
-   now remains coherent when CPU SH completion is delayed. This is bounded
-   M-008 progress toward retained PBR/material-preview behavior.
+1. **Product advancement:** native water no longer applies sphere parallax to
+   default probe zero where the active GLSL contract explicitly does not. This
+   is bounded deterministic M-008 progress.
 2. **Deferred critical work:** remaining post/alpha/PBR/probe/advanced views;
    source- and scene-identical post comparison; full parity/stability; strict
    no-GL; independent review; and qualifying M1 Max performance evidence.
-3. **Priority reassessment:** the source race is repaired and the ordinary live
-   path is regression-checked; the rare delayed branch did not naturally fire.
-   Continue at the next demonstrated source gap rather than spending more time
-   forcing scheduler timing without evidence. Reject future metrics unless
-   exact provenance plus the settings/view/environment/window contract is
-   recorded.
+3. **Priority reassessment:** attempt a water-visible pair only with exact
+   provenance and the complete 416-setting/view/environment/warm/window
+   contract. Reject metrics on any mismatch. If a controlled water fixture is
+   not practical, move directly to the next source-demonstrated probe/shadow
+   gap; activity on another inadmissible comparison would not advance release
+   evidence.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Trace the next unverified non-default probe-publication, post or advanced-view
-pass from its active GLSL caller through resource format, binding, state and
-ordering. Add an asymmetric physical negative control for the first
-demonstrated divergence, implement the bounded native owner, then rerun
-focused/full Metal validation and the neutral gate.
-Any new cross-backend image pair must pin exact source provenance and match
-camera, environment/time, warm state, window/snapshot contract and effective
-graphics manifests before metrics are admissible.
+Run the bounded water-visible candidate/reference pair if—and only if—exact
+source provenance, all 416 effective graphics settings, camera,
+environment/time, warm state and window/snapshot contract match. Otherwise
+fail closed without scoring and resume source-led work through probes/mirrors,
+the isolated projector/cascade shadow fixture, transparency/material replay,
+non-default post and advanced output. Add an asymmetric physical negative
+control for each demonstrated divergence, then rerun focused/full Metal and
+neutral validation.
 
 ## Non-negotiable open gates
 
