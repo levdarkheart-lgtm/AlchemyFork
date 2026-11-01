@@ -6581,6 +6581,82 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             pbr_radiance_scale;
         pre_water_pbr_slot.roughness_factor = 0.f;
         pre_water_pbr_slot.metallic_factor = 1.f;
+
+        // The production probe walk can leave its depth-sorted list for a
+        // selected probe's neighbor list. A containing manual box reached
+        // that way must suppress every automatic tap already accumulated,
+        // including the default probe. Keep both array layers distinct so
+        // this is an asymmetric physical control: without the neighbor edge
+        // the red automatic/default family wins; with it, the blue manual
+        // box is the only surviving family.
+        ALMetalWorldReflectionProbes neighbor_probes = reflection_probes;
+        neighbor_probes.constants.config[0] = 3.f;
+        neighbor_probes.constants.ref_sphere[1][0] = 0.f;
+        neighbor_probes.constants.ref_sphere[1][1] = 0.f;
+        neighbor_probes.constants.ref_sphere[1][2] = 0.f;
+        neighbor_probes.constants.ref_sphere[1][3] = 100.f;
+        neighbor_probes.constants.ref_params[1][0] = 0.f;
+        neighbor_probes.constants.ref_params[1][1] = 1.f;
+        neighbor_probes.constants.ref_params[1][2] = 1.f;
+        neighbor_probes.constants.ref_params[1][3] = -100.f;
+        neighbor_probes.constants.ref_index[1][0] = 0;
+        neighbor_probes.constants.ref_index[1][1] = -1;
+        neighbor_probes.constants.ref_index[1][2] = 0;
+        neighbor_probes.constants.ref_index[1][3] = 0;
+        neighbor_probes.constants.ref_sphere[2][0] = 0.f;
+        neighbor_probes.constants.ref_sphere[2][1] = 0.f;
+        neighbor_probes.constants.ref_sphere[2][2] = 0.f;
+        neighbor_probes.constants.ref_sphere[2][3] = 100.f;
+        neighbor_probes.constants.ref_params[2][0] = 0.f;
+        neighbor_probes.constants.ref_params[2][1] = 1.f;
+        neighbor_probes.constants.ref_params[2][2] = 1.f;
+        // Keep the box beyond the sorted walk; it is admitted only through
+        // the neighbor edge below.
+        neighbor_probes.constants.ref_params[2][3] = 100.f;
+        neighbor_probes.constants.ref_index[2][0] = 1;
+        neighbor_probes.constants.ref_index[2][1] = -1;
+        neighbor_probes.constants.ref_index[2][2] = 0;
+        neighbor_probes.constants.ref_index[2][3] = -1;
+        neighbor_probes.constants.ref_box[2][0] = 0.25f;
+        neighbor_probes.constants.ref_box[2][5] = 0.25f;
+        neighbor_probes.constants.ref_box[2][10] = 0.25f;
+        neighbor_probes.constants.ref_box[2][15] = 1.f;
+        neighbor_probes.constants.ref_neighbor[0] = 2;
+
+        opaque_forward_scene.reflection_probes = &neighbor_probes;
+        auto automatic_probe_result =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(automatic_probe_result);
+        REQUIRE(automatic_probe_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float automatic_probe_red = half_to_float(
+            pre_water_pixels[material_pixel + 0]);
+        const float automatic_probe_blue = half_to_float(
+            pre_water_pixels[material_pixel + 2]);
+        CHECK(automatic_probe_red > automatic_probe_blue);
+
+        neighbor_probes.constants.ref_index[1][1] = 0;
+        neighbor_probes.constants.ref_index[1][2] = 1;
+        auto neighbor_box_result = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(neighbor_box_result);
+        REQUIRE(neighbor_box_result->colorTexture(0)->readback(
+            *device, 0, 0, {}, pre_water_pixels.data(), 32 * 8,
+            &error));
+        INFO(error);
+        const float neighbor_box_red = half_to_float(
+            pre_water_pixels[material_pixel + 0]);
+        const float neighbor_box_blue = half_to_float(
+            pre_water_pixels[material_pixel + 2]);
+        CHECK(neighbor_box_blue > automatic_probe_blue);
+        CHECK(neighbor_box_red < automatic_probe_red);
+        opaque_forward_scene.reflection_probes = &reflection_probes;
+
         auto ordinary_pbr_alpha_result =
             renderer->renderOpaquePostDeferred(
                 opaque_forward_scene, &error);

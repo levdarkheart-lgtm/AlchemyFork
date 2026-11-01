@@ -12,6 +12,7 @@ chronological transcript.
 | Matched authored-mirror correction and native Lightbox reference-still execution, 2026-11-01 | [metal-port-matched-mirror-and-reference-still-2026-11-01.md](metal-port-matched-mirror-and-reference-still-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 | Main/probe temporal post-history repair and native post Snapshot execution, 2026-11-01 | [metal-port-post-history-snapshot-checkpoint-2026-11-01.md](metal-port-post-history-snapshot-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 | Cold-warm-up exposure reset and matched authored-mirror replay, 2026-11-01 | [metal-port-exposure-warmup-mirror-checkpoint-2026-11-01.md](metal-port-exposure-warmup-mirror-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
+| Reflection-probe neighbor/manual-box selection execution, 2026-11-01 | [metal-port-probe-neighbor-selection-checkpoint-2026-11-01.md](metal-port-probe-neighbor-selection-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.

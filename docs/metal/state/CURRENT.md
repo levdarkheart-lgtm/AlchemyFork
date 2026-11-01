@@ -35,6 +35,14 @@ avatar pose changed sequentially. The stable mirror interior reached SSIM
 `0.985163` / PSNR `34.480 dB`, with no material residual on direct inspection.
 This accepts one fixture only, not broad probe/mirror parity.
 
+The next bounded M-008 audit found no new divergence in the active alpha/PBR
+capture and replay seam, so no production behavior was changed speculatively.
+It did identify missing physical coverage for the live reflection-probe walk.
+A new asymmetric GPU regression now proves that a containing manual box reached
+only through a selected probe's neighbor list suppresses already accumulated
+automatic/default taps, while removing that edge restores the automatic/default
+family. This closes one probe-selection/transition contract only.
+
 ## Build and test evidence
 
 - Warnings-as-errors RelWithDebInfo build 68020 linked, staged and signed.
@@ -42,10 +50,12 @@ This accepts one fixture only, not broad probe/mirror parity.
   `42717a577f42cfd5e553d8e09e4ece86dc88ad4e283aa49eedfb24d4cbe71763`.
 - Deep strict signing passed; `tools/metal/verify_app.sh` verified 349/349
   ARM64 slices.
-- Complete physical Metal validation passed 44,875 assertions across 50 cases
-  with Metal API/load-action validation enabled.
+- Complete physical Metal validation passed 44,882 assertions across 50 cases
+  in both Debug and RelWithDebInfo with Metal API/GPU validation enabled. The
+  focused production-world case passed 1,329 assertions.
 - `ctest --test-dir build-Darwin-ninja-os-arm64 -C RelWithDebInfo -LE
-  'manual|gl' --output-on-failure` passed 484/484 in 240.06 seconds.
+  'manual|gl' --output-on-failure` passed 484/484 in 239.08 seconds after the
+  probe-neighbor regression was added.
 - Harness validation and all tooling tests pass after this documentation
   checkpoint.
 - Homebrew Bison 3.8.2 remains selected explicitly. The ignored build-local
@@ -56,7 +66,7 @@ This accepts one fixture only, not broad probe/mirror parity.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-007 renderer | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
-| M-008 advanced views/effects | doing | Reference stills and synchronized exposure/flare history have physical/in-world evidence; remaining post, alpha/PBR, probes and advanced views stay open. |
+| M-008 advanced views/effects | doing | Reference stills, synchronized exposure/flare history and one neighbor-selected manual-box probe transition have physical evidence; remaining post, alpha/PBR, broader probes and advanced views stay open. |
 | M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
@@ -64,28 +74,31 @@ This accepts one fixture only, not broad probe/mirror parity.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Production temporal exposure now
-survives cold asynchronous renderer warm-up, and an authored-mirror native
-Snapshot completed under a matched cross-backend contract. This is bounded
-M-008 progress, not broad feature parity, native-only completion or a
-performance claim.
+**Advances the complete product:** yes. Production temporal exposure survives
+cold asynchronous renderer warm-up, an authored-mirror native Snapshot
+completed under a matched cross-backend contract, and the native probe selector
+now has an asymmetric physical control for a previously untested neighbor/box
+transition. This is bounded M-008 progress, not broad feature parity,
+native-only completion or a performance claim.
 
 **Deferred critical work:** remaining post/alpha/PBR/probe/advanced-view parity;
 a source- and scene-identical scored post pair; full feature/stability matrices;
 viewer-owned OpenGL removal; independent build/review evidence and reproducible
 distinct release proof; and paired quality-equivalent M1 Max measurements.
 
-**Evidence-based priority:** do not revisit the repaired temporal boundary
-without new evidence. Continue the source-led M-008 graph at the next
-unverified post or alpha/PBR owner. For a cross-backend pair, pin exact source
-provenance and keep camera, environment/time, warm state, window/snapshot
-contract and all effective graphics settings identical; fail closed before
-metrics if any comparison invariant differs.
+**Evidence-based priority:** do not revisit the repaired temporal or proven
+probe-neighbor boundaries without new evidence. Continue the source-led M-008
+graph at the next unverified advanced owner; use a live probe transition only
+when a controlled fixture visibly attributes it. For any cross-backend pair,
+pin exact source provenance and keep camera, environment/time, warm state,
+window/snapshot contract and all effective graphics settings identical; fail
+closed before metrics if any comparison invariant differs.
 
 ## Exact next actions
 
-1. Trace the next open post or alpha/PBR owner through active GLSL call sites,
-   formats, bindings, state and ordering; implement the first demonstrated gap.
+1. Trace the next open probe-publication, post or advanced-view owner through
+   active GLSL call sites, formats, bindings, state and ordering; implement the
+   first demonstrated gap.
 2. Add an asymmetric physical control, then rerun focused/complete Metal
    validation and the neutral gate.
 3. Capture the next live comparison with pinned source provenance and identical
