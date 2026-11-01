@@ -25,6 +25,7 @@ reload the chronological history.
 | Native reflection-probe volume replay and source-exact build 68044, 2026-11-01 | [CURRENT-reflection-probe-volume-checkpoint-2026-11-01.md](CURRENT-reflection-probe-volume-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | Native global world wireframe replay and source-exact build 68047, 2026-11-01 | [CURRENT-wireframe-checkpoint-2026-11-01.md](CURRENT-wireframe-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | Precise render-debug world-output eligibility and source-exact build 68049, 2026-11-01 | [CURRENT-render-debug-eligibility-checkpoint-2026-11-01.md](CURRENT-render-debug-eligibility-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
+| Native live Wind Vectors replay and source-exact build 68051, 2026-11-01 | [CURRENT-wind-vectors-checkpoint-2026-11-01.md](CURRENT-wind-vectors-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
