@@ -40,6 +40,27 @@
 
 namespace
 {
+    TEST_CASE("almetal: uncaptured world overlays reject exact publication",
+              "[almetal][world][overlay]")
+    {
+        ALMetalWorldOverlayEligibility eligibility;
+        CHECK(eligibility.exact());
+
+        const auto rejects = [](auto member)
+        {
+            ALMetalWorldOverlayEligibility candidate;
+            candidate.*member = true;
+            return !candidate.exact();
+        };
+        CHECK(rejects(&ALMetalWorldOverlayEligibility::render_debug));
+        CHECK(rejects(&ALMetalWorldOverlayEligibility::wireframe));
+        CHECK(rejects(
+            &ALMetalWorldOverlayEligibility::reflection_probe_volumes));
+        CHECK(rejects(&ALMetalWorldOverlayEligibility::far_plane_overlay));
+        CHECK(rejects(&ALMetalWorldOverlayEligibility::debug_blips));
+        CHECK(rejects(&ALMetalWorldOverlayEligibility::pathfinding));
+    }
+
     id<MTLDevice> nativeDevice(const ALMetalDevice& device)
     {
         return (__bridge id<MTLDevice>)device.nativeHandle();

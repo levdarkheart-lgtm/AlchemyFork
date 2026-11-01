@@ -3937,9 +3937,51 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
         gSavedSettings, "RenderReflectionProbeVolumes", false);
     static LLCachedControl<bool> far_plane_overlay(
         gSavedSettings, "AlchemyRenderFarPlaneOverlay", false);
-    capture.world_ui_overlay_exact =
-        mRenderDebugMask == 0 && !gUseWireframe &&
-        !reflection_probe_volumes && !far_plane_overlay;
+
+    bool pathfinding_overlay = false;
+    if (LLPathingLib::getInstance())
+    {
+        const bool mouselook = gAgentCamera.cameraMouselook();
+        LLHandle<LLFloaterPathfindingCharacters> characters_handle =
+            LLFloaterPathfindingCharacters::getInstanceHandle();
+        if (!characters_handle.isDead())
+        {
+            LLFloaterPathfindingCharacters* characters =
+                characters_handle.get();
+            LLUUID id;
+            LLVector3 position;
+            LLQuaternion rotation;
+            pathfinding_overlay = characters &&
+                (characters->getVisible() || mouselook) &&
+                characters->isPhysicsCapsuleEnabled(
+                    id, position, rotation);
+        }
+
+        LLHandle<LLFloaterPathfindingConsole> console_handle =
+            LLFloaterPathfindingConsole::getInstanceHandle();
+        if (!pathfinding_overlay && !console_handle.isDead())
+        {
+            LLFloaterPathfindingConsole* console = console_handle.get();
+            const bool visible = console &&
+                (console->getVisible() || mouselook);
+            pathfinding_overlay = visible &&
+                (!console->isRenderWorld() ||
+                 console->isRenderNavMesh() ||
+                 console->isRenderAnyShapes() ||
+                 console->isRenderWaterPlane() ||
+                 LLPathfindingPathTool::getInstance()->isRenderPath());
+        }
+    }
+
+    ALMetalWorldOverlayEligibility overlay_eligibility;
+    overlay_eligibility.render_debug = mRenderDebugMask != 0;
+    overlay_eligibility.wireframe = gUseWireframe;
+    overlay_eligibility.reflection_probe_volumes =
+        reflection_probe_volumes;
+    overlay_eligibility.far_plane_overlay = far_plane_overlay;
+    overlay_eligibility.debug_blips = !mDebugBlips.empty();
+    overlay_eligibility.pathfinding = pathfinding_overlay;
+    capture.world_ui_overlay_exact = overlay_eligibility.exact();
 
     capture.batches.clear();
     capture.highlight_batches.clear();

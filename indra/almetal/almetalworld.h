@@ -19,6 +19,27 @@
 #include <string>
 #include <vector>
 
+// World/UI publication is exact only when every viewer draw after the retained
+// native world replay is either represented in the ordered Metal transaction
+// or absent. Keep this small policy explicit so new GL-only overlays cannot be
+// omitted silently while native presentation remains eligible.
+struct ALMetalWorldOverlayEligibility
+{
+    bool render_debug = false;
+    bool wireframe = false;
+    bool reflection_probe_volumes = false;
+    bool far_plane_overlay = false;
+    bool debug_blips = false;
+    bool pathfinding = false;
+
+    bool exact() const
+    {
+        return !render_debug && !wireframe &&
+            !reflection_probe_volumes && !far_plane_overlay &&
+            !debug_blips && !pathfinding;
+    }
+};
+
 struct ALMetalWorldMaterialSlot
 {
     const ALMetalTexture* normal_texture = nullptr;
