@@ -11862,6 +11862,157 @@ TEST_CASE("almetal: native world G-buffer feeds exact deferred point lights", "[
         base_hero.constants.config[2] = 4;
         base_scene.hero_probe = nullptr;
 
+        // A uniform hero cube only proves that hero sampling changes the
+        // result; it cannot catch a wrong face or row convention. Exercise
+        // the production base-light consumer with a fully metallic,
+        // glossiness-one surface and an asymmetric cube. In the GL cube
+        // convention used by the viewer, +Y within the +Z face addresses
+        // its first stored rows. A 90-degree environment rotation then maps
+        // the same center reflection onto +X.
+        const std::array<std::uint8_t, 4> oriented_pbr_orm{{
+            255, 0, 255, 0,
+        }};
+        auto oriented_gbuffer_upload = device->makeCommandBuffer(
+            "Alchemy oriented hero-consumer G-buffer upload", &error);
+        INFO(error);
+        REQUIRE(oriented_gbuffer_upload);
+        REQUIRE(specular->upload(
+            *oriented_gbuffer_upload, 0, 0, {},
+            oriented_pbr_orm.data(), 4, &error));
+        REQUIRE(normal->upload(
+            *oriented_gbuffer_upload, 0, 0, {},
+            glossy_pbr_normal.data(), 8, &error));
+        REQUIRE(oriented_gbuffer_upload->commitAndWait(&error));
+        INFO(error);
+        auto oriented_gbuffer = renderer->render(gbuffer_scene, &error);
+        INFO(error);
+        REQUIRE(oriented_gbuffer);
+
+        auto oriented_gbuffer_restore = device->makeCommandBuffer(
+            "Alchemy restore oriented hero-consumer G-buffer upload",
+            &error);
+        INFO(error);
+        REQUIRE(oriented_gbuffer_restore);
+        REQUIRE(specular->upload(
+            *oriented_gbuffer_restore, 0, 0, {}, pbr_orm.data(), 4,
+            &error));
+        REQUIRE(normal->upload(
+            *oriented_gbuffer_restore, 0, 0, {}, pbr_normal.data(), 8,
+            &error));
+        REQUIRE(oriented_gbuffer_restore->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalTextureDescriptor oriented_hero_descriptor;
+        oriented_hero_descriptor.type = ALMetalTextureType::texture_cube;
+        oriented_hero_descriptor.format = ALMetalPixelFormat::rgba8_unorm;
+        oriented_hero_descriptor.width = 4;
+        oriented_hero_descriptor.height = 4;
+        oriented_hero_descriptor.mipmap_level_count = 1;
+        oriented_hero_descriptor.storage =
+            ALMetalStorageMode::private_gpu;
+        oriented_hero_descriptor.usage = ALMetalTextureUsage::shader_read;
+        oriented_hero_descriptor.label =
+            "Alchemy asymmetric base-light hero cube";
+        auto oriented_hero_texture = ALMetalTexture::create(
+            *device, oriented_hero_descriptor, &error);
+        INFO(error);
+        REQUIRE(oriented_hero_texture);
+
+        const std::array<std::array<std::uint8_t, 4>, 6>
+            oriented_face_colors{{
+                {{255, 0, 0, 255}},
+                {{0, 255, 255, 255}},
+                {{255, 255, 0, 255}},
+                {{255, 0, 255, 255}},
+                {{0, 255, 0, 255}},
+                {{255, 255, 255, 255}},
+            }};
+        std::array<std::array<std::uint8_t, 4 * 4 * 4>, 6>
+            oriented_faces{};
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            for (std::uint32_t y = 0; y < 4; ++y)
+            {
+                const std::array<std::uint8_t, 4> color =
+                    face == 4 && y >= 2
+                        ? std::array<std::uint8_t, 4>{{0, 0, 255, 255}}
+                        : oriented_face_colors[face];
+                for (std::uint32_t x = 0; x < 4; ++x)
+                {
+                    const std::size_t texel = (y * 4 + x) * 4;
+                    std::copy(color.begin(), color.end(),
+                              oriented_faces[face].begin() + texel);
+                }
+            }
+        }
+        auto oriented_hero_upload = device->makeCommandBuffer(
+            "Alchemy asymmetric base-light hero upload", &error);
+        INFO(error);
+        REQUIRE(oriented_hero_upload);
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            REQUIRE(oriented_hero_texture->upload(
+                *oriented_hero_upload, 0, face, {},
+                oriented_faces[face].data(), 4 * 4, &error));
+        }
+        REQUIRE(oriented_hero_upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldHeroProbe oriented_hero;
+        oriented_hero.radiance_texture = oriented_hero_texture.get();
+        oriented_hero.constants.hero_sphere[3] = 100.f;
+        oriented_hero.constants.clip_plane[3] = 1.f;
+        oriented_hero.constants.config[0] = 1;
+        oriented_hero.constants.config[1] = 1;
+        oriented_hero.constants.config[2] = 0;
+        base_scene.gbuffer = oriented_gbuffer.get();
+        base_scene.hero_probe = &oriented_hero;
+
+        auto oriented_identity = renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(oriented_identity);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            oriented_identity_pixels{};
+        REQUIRE(oriented_identity->colorTexture(0)->readback(
+            *device, 0, 0, {}, oriented_identity_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        const std::size_t positive_y = (20 * 32 + 16) * 4;
+        const std::size_t negative_y = (11 * 32 + 16) * 4;
+        CHECK(oriented_identity_pixels[positive_y + 1] >
+              oriented_identity_pixels[positive_y + 2]);
+        CHECK(oriented_identity_pixels[negative_y + 2] >
+              oriented_identity_pixels[negative_y + 1]);
+
+        std::fill(&base_probes.constants.env_matrix[0][0],
+                  &base_probes.constants.env_matrix[0][0] + 12, 0.f);
+        base_probes.constants.env_matrix[0][2] = -1.f;
+        base_probes.constants.env_matrix[1][1] = 1.f;
+        base_probes.constants.env_matrix[2][0] = 1.f;
+        auto oriented_rotated = renderer->renderBaseLighting(
+            base_scene, &error);
+        INFO(error);
+        REQUIRE(oriented_rotated);
+        std::array<std::uint8_t, 32 * 32 * 4>
+            oriented_rotated_pixels{};
+        REQUIRE(oriented_rotated->colorTexture(0)->readback(
+            *device, 0, 0, {}, oriented_rotated_pixels.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(oriented_rotated_pixels[center + 0] >
+              oriented_rotated_pixels[center + 1]);
+        CHECK(oriented_rotated_pixels[center + 0] >
+              oriented_rotated_pixels[center + 2]);
+
+        std::fill(&base_probes.constants.env_matrix[0][0],
+                  &base_probes.constants.env_matrix[0][0] + 12, 0.f);
+        base_probes.constants.env_matrix[0][0] = 1.f;
+        base_probes.constants.env_matrix[1][1] = 1.f;
+        base_probes.constants.env_matrix[2][2] = 1.f;
+        base_scene.gbuffer = pbr_gbuffer.get();
+        base_scene.hero_probe = nullptr;
+
         // The opaque SSR finish uses the same 0.567 gloss threshold and GGX
         // dominant ray as reflectionProbeF. Turn the surface toward the view,
         // arrange a first-step red history hit, and require that hit to raise
