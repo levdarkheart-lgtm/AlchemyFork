@@ -29,6 +29,7 @@ reload the chronological history.
 | Native Agent Target replay and source-exact build 68053, 2026-11-01 | [CURRENT-agent-target-checkpoint-2026-11-01.md](CURRENT-agent-target-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | Native drawable-centre Points replay and source-exact build 68055, 2026-11-01 | [CURRENT-drawable-centre-points-checkpoint-2026-11-01.md](CURRENT-drawable-centre-points-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | Native Composition debug-grid replay and source-exact build 68057, 2026-11-01 | [CURRENT-composition-debug-grid-checkpoint-2026-11-01.md](CURRENT-composition-debug-grid-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
+| Native reflection-probe neighbor-link replay and source-exact build 68059, 2026-11-01 | [CURRENT-reflection-probe-links-checkpoint-2026-11-01.md](CURRENT-reflection-probe-links-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
