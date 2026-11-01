@@ -479,6 +479,7 @@ struct ALMetalWorldWaterSurfaceConstants
     float4 screen;
     uint4 config;
     uint4 environment_config;
+    float4 mirror_clip_plane;
 };
 
 struct ALMetalWorldWaterOcclusionConstants
@@ -3421,6 +3422,10 @@ fragment float4 almetal_world_underwater_fragment(
     sampler normal_sampler [[sampler(0)]],
     sampler screen_sampler [[sampler(1)]])
 {
+    const bool mirror_clipped =
+        water.environment_config.y != 0u &&
+        dot(float4(input.eye_position, 1.0),
+            water.mirror_clip_plane) < 0.0;
     float3 wave1;
     float3 wave2;
     float3 wave3;
@@ -3436,6 +3441,10 @@ fragment float4 almetal_world_underwater_fragment(
     const float3 source = water.config.w != 0u
         ? refraction_color.sample(screen_sampler, distorted_uv).rgb
         : almetal_srgb_to_linear(field.fog_color.rgb);
+    if (mirror_clipped)
+    {
+        discard_fragment();
+    }
     return max(float4(
         almetal_world_underwater_fog(
             input.eye_position, source, field), 0.0),
@@ -6787,6 +6796,10 @@ fragment float4 almetal_world_above_water_fragment(
     sampler probe_sampler [[sampler(2)]],
     sampler depth_sampler [[sampler(3)]])
 {
+    const bool mirror_clipped =
+        water.environment_config.y != 0u &&
+        dot(float4(input.eye_position, 1.0),
+            water.mirror_clip_plane) < 0.0;
     const float3 position_dx = dfdx(input.eye_position);
     const float3 position_dy = dfdy(input.eye_position);
     float3 wave1;
@@ -6966,6 +6979,10 @@ fragment float4 almetal_world_above_water_fragment(
         }
     }
 
+    if (mirror_clipped)
+    {
+        discard_fragment();
+    }
     return max(float4(color, glow), float4(0.0));
 }
 

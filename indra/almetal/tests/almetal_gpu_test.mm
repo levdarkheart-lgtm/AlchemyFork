@@ -6773,6 +6773,83 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(error == "Metal world water-surface inputs are invalid");
         opaque_forward_scene.water_surface = &underwater_surface;
         error.clear();
+
+        // Both authored water fragments call mirrorClipped in GLSL after
+        // their derivative-dependent work. Exercise the same physical
+        // crossing plane here: the rejected half must recover the retained
+        // G-buffer depth, while the accepted half remains bit-for-bit the
+        // ordinary native water result. The caller selects underwater or
+        // above-water by installing its production surface and environment.
+        const auto check_mirror_clipped_water_surface = [&]()
+        {
+            std::array<float, 32 * 32> base_depth{};
+            REQUIRE(opaque_forward_scene.gbuffer->depthStencilTexture()->
+                readback(*device, 0, 0, {}, base_depth.data(),
+                         32 * sizeof(float), &error));
+            INFO(error);
+
+            opaque_forward_scene.mirror_clip = false;
+            auto ordinary = renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+            INFO(error);
+            REQUIRE(ordinary);
+            std::array<float, 32 * 32> ordinary_depth{};
+            REQUIRE(ordinary->depthStencilTexture()->readback(
+                *device, 0, 0, {}, ordinary_depth.data(),
+                32 * sizeof(float), &error));
+            INFO(error);
+
+            opaque_forward_scene.mirror_clip_plane[0] = 1.f;
+            opaque_forward_scene.mirror_clip_plane[1] = 0.f;
+            opaque_forward_scene.mirror_clip_plane[2] = 0.f;
+            opaque_forward_scene.mirror_clip_plane[3] = 0.f;
+            opaque_forward_scene.mirror_clip = true;
+            auto clipped = renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+            INFO(error);
+            REQUIRE(clipped);
+            std::array<float, 32 * 32> clipped_depth{};
+            REQUIRE(clipped->depthStencilTexture()->readback(
+                *device, 0, 0, {}, clipped_depth.data(),
+                32 * sizeof(float), &error));
+            INFO(error);
+
+            std::size_t ordinary_negative = 0;
+            std::size_t ordinary_positive = 0;
+            bool rejected_matches_base = true;
+            bool retained_matches_ordinary = true;
+            for (std::size_t y = 0; y < 32; ++y)
+            {
+                for (std::size_t x = 0; x < 32; ++x)
+                {
+                    const std::size_t pixel = y * 32 + x;
+                    const bool water_changed_depth = std::abs(
+                        ordinary_depth[pixel] - base_depth[pixel]) >
+                        0.0001f;
+                    if (x < 16)
+                    {
+                        ordinary_negative += water_changed_depth ? 1 : 0;
+                        rejected_matches_base = rejected_matches_base &&
+                            std::abs(clipped_depth[pixel] -
+                                     base_depth[pixel]) < 0.0001f;
+                    }
+                    else
+                    {
+                        ordinary_positive += water_changed_depth ? 1 : 0;
+                        retained_matches_ordinary =
+                            retained_matches_ordinary &&
+                            std::abs(clipped_depth[pixel] -
+                                     ordinary_depth[pixel]) < 0.0001f;
+                    }
+                }
+            }
+            CHECK(ordinary_negative > 0);
+            CHECK(ordinary_positive > 0);
+            CHECK(rejected_matches_base);
+            CHECK(retained_matches_ordinary);
+            opaque_forward_scene.mirror_clip = false;
+        };
+
         auto underwater_surface_result =
             renderer->renderOpaquePostDeferred(
                 opaque_forward_scene, &error);
@@ -6799,6 +6876,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             0.5f) < 0.002f);
         CHECK(std::abs(
             pre_water_depth[stencil_center / 4] - 0.25f) < 0.0001f);
+        check_mirror_clipped_water_surface();
 
         // The same shader handles both runtime hextile tiers. A one-texel
         // flat map makes their exact lattice reads deterministic while still
@@ -7301,6 +7379,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             0.5f) < 0.002f);
         CHECK(std::abs(
             pre_water_depth[above_water_pixel / 4] - 0.25f) < 0.0001f);
+        check_mirror_clipped_water_surface();
 
         // Viewer assets share sRGB storage even when the active bind treats
         // them as data. GL's AnisoWrap water bind suppresses decoding; Metal

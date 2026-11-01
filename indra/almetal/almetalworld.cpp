@@ -389,10 +389,12 @@ namespace
         std::int32_t patch_order[4];
         float screen[4];
         std::uint32_t config[4];
-        // x = legacy sky-cube environment instead of reflection probes.
+        // x = legacy sky-cube environment instead of reflection probes,
+        // y = authored hero-mirror half-space clipping.
         std::uint32_t environment_config[4];
+        float mirror_clip_plane[4];
     };
-    static_assert(sizeof(WorldWaterSurfaceConstants) == 480);
+    static_assert(sizeof(WorldWaterSurfaceConstants) == 496);
 
     struct alignas(16) WorldWaterOcclusionConstants
     {
@@ -11599,6 +11601,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             water_constants.config[3] = water.refracts ? 1u : 0u;
             water_constants.environment_config[0] =
                 scene.legacy_environment ? 1u : 0u;
+            water_constants.environment_config[1] =
+                scene.mirror_clip ? 1u : 0u;
+            std::memcpy(water_constants.mirror_clip_plane,
+                        scene.mirror_clip_plane,
+                        sizeof(water_constants.mirror_clip_plane));
 
             const ALMetalTexture* refraction = water.refracts
                 ? water_color_snapshot->colorTexture(0)
