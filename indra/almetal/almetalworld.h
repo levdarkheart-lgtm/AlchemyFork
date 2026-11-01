@@ -29,14 +29,13 @@ struct ALMetalWorldOverlayEligibility
     bool wireframe = false;
     bool reflection_probe_volumes = false;
     bool far_plane_overlay = false;
-    bool debug_blips = false;
     bool pathfinding = false;
 
     bool exact() const
     {
         return !render_debug && !wireframe &&
             !reflection_probe_volumes && !far_plane_overlay &&
-            !debug_blips && !pathfinding;
+            !pathfinding;
     }
 };
 
@@ -435,6 +434,17 @@ struct ALMetalWorldHighlightBatch
     bool write_alpha = true;
 };
 
+// Developer "Show Updates to Objects" markers are emitted as immediate-mode
+// eight-pixel points after all retained world geometry. Their streamed world
+// position and color are small enough to retain directly; the renderer keeps
+// the live camera transform separate so the batch matches the gUIProgram draw
+// without manufacturing an LLVertexBuffer.
+struct ALMetalWorldDebugBlip
+{
+    float position[4] = {0.f, 0.f, 0.f, 1.f};
+    float color[4] = {1.f, 1.f, 1.f, 1.f};
+};
+
 struct ALMetalWorldGBufferScene
 {
     const ALMetalWorldSimpleBatch* batches = nullptr;
@@ -717,6 +727,9 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t batch_count = 0;
     const ALMetalWorldHighlightBatch* highlight_batches = nullptr;
     std::size_t highlight_batch_count = 0;
+    const ALMetalWorldDebugBlip* debug_blips = nullptr;
+    std::size_t debug_blip_count = 0;
+    float debug_blip_modelview_projection[16]{};
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
     // Mutually exclusive with reflection_probes for forward rendering.
     // This is the current LLCubeMap publication used by the class-2 GLSL

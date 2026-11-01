@@ -57,7 +57,6 @@ namespace
         CHECK(rejects(
             &ALMetalWorldOverlayEligibility::reflection_probe_volumes));
         CHECK(rejects(&ALMetalWorldOverlayEligibility::far_plane_overlay));
-        CHECK(rejects(&ALMetalWorldOverlayEligibility::debug_blips));
         CHECK(rejects(&ALMetalWorldOverlayEligibility::pathfinding));
     }
 
@@ -4542,6 +4541,101 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.reverse_z = false;
         opaque_forward_scene.highlight_batches = nullptr;
         opaque_forward_scene.highlight_batch_count = 0;
+
+        // "Show Updates to Objects" emits eight-pixel gUIProgram points at
+        // the end of renderDebug. Reproduce the streamed position/color,
+        // RGB-only mask and GL_ALWAYS depth write at the same pre-post
+        // boundary. Half-pixel centers make an exact 8x8 footprint for each
+        // asymmetric marker.
+        std::array<ALMetalWorldDebugBlip, 2> debug_blips{};
+        debug_blips[0].position[0] = -0.46875f;
+        debug_blips[0].position[1] = 0.03125f;
+        debug_blips[0].color[0] = 1.f;
+        debug_blips[0].color[1] = 0.f;
+        debug_blips[0].color[2] = 0.f;
+        debug_blips[1].position[0] = 0.53125f;
+        debug_blips[1].position[1] = 0.03125f;
+        debug_blips[1].color[0] = 0.f;
+        debug_blips[1].color[1] = 1.f;
+        debug_blips[1].color[2] = 0.f;
+        opaque_forward_scene.debug_blips = debug_blips.data();
+        opaque_forward_scene.debug_blip_count = debug_blips.size();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            opaque_forward_scene.debug_blip_modelview_projection[
+                axis * 4 + axis] = 1.f;
+        }
+
+        opaque_forward_scene.debug_blips = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world object-update blip storage is invalid");
+        opaque_forward_scene.debug_blips = debug_blips.data();
+        debug_blips[0].color[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world object-update blip data is non-finite");
+        debug_blips[0].color[0] = 1.f;
+        error.clear();
+
+        auto native_debug_blips = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(native_debug_blips);
+        std::array<std::uint16_t, 32 * 32 * 4> debug_blip_pixels{};
+        std::array<float, 32 * 32> debug_blip_depth{};
+        REQUIRE(native_debug_blips->colorTexture(0)->readback(
+            *device, 0, 0, {}, debug_blip_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(native_debug_blips->depthStencilTexture()->readback(
+            *device, 0, 0, {}, debug_blip_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        const std::size_t red_blip = (16 * 32 + 8) * 4;
+        const std::size_t green_blip = (16 * 32 + 24) * 4;
+        CHECK(debug_blip_pixels[red_blip + 0] == 0x3c00);
+        CHECK(debug_blip_pixels[red_blip + 1] == 0u);
+        CHECK(debug_blip_pixels[red_blip + 2] == 0u);
+        CHECK(debug_blip_pixels[red_blip + 3] ==
+              opaque_forward_pixels[red_blip + 3]);
+        CHECK(debug_blip_pixels[green_blip + 0] == 0u);
+        CHECK(debug_blip_pixels[green_blip + 1] == 0x3c00);
+        CHECK(debug_blip_pixels[green_blip + 2] == 0u);
+        CHECK(debug_blip_pixels[green_blip + 3] ==
+              opaque_forward_pixels[green_blip + 3]);
+        std::size_t red_blip_pixels = 0;
+        std::size_t green_blip_pixels = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            red_blip_pixels +=
+                std::abs(debug_blip_depth[pixel] - 0.5f) < 0.0001f &&
+                std::abs(opaque_forward_depth[pixel] - 0.5f) >= 0.0001f &&
+                debug_blip_pixels[offset + 0] == 0x3c00 &&
+                debug_blip_pixels[offset + 1] == 0u &&
+                debug_blip_pixels[offset + 2] == 0u;
+            green_blip_pixels +=
+                std::abs(debug_blip_depth[pixel] - 0.5f) < 0.0001f &&
+                std::abs(opaque_forward_depth[pixel] - 0.5f) >= 0.0001f &&
+                debug_blip_pixels[offset + 0] == 0u &&
+                debug_blip_pixels[offset + 1] == 0x3c00 &&
+                debug_blip_pixels[offset + 2] == 0u;
+        }
+        CHECK(red_blip_pixels == 64);
+        CHECK(green_blip_pixels == 64);
+        CHECK(std::abs(debug_blip_depth[16 * 32 + 8] - 0.5f) <
+              0.0001f);
+        CHECK(std::abs(debug_blip_depth[16 * 32 + 24] - 0.5f) <
+              0.0001f);
+        CHECK(debug_blip_pixels[0] == opaque_forward_pixels[0]);
+        CHECK(std::abs(debug_blip_depth[0] - opaque_forward_depth[0]) <
+              0.0001f);
+        opaque_forward_scene.debug_blips = nullptr;
+        opaque_forward_scene.debug_blip_count = 0;
 
         // Final-color publication is opt-in because only the continuously
         // advancing main-world path needs to sample combined depth. Prove

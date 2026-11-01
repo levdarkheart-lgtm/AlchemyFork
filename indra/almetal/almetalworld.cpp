@@ -119,6 +119,14 @@ namespace
         std::uint32_t config[4];
     };
 
+    struct alignas(16) WorldDebugBlipConstants
+    {
+        float modelview_projection[16];
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(ALMetalWorldDebugBlip) == 32);
+    static_assert(sizeof(WorldDebugBlipConstants) == 80);
+
     struct alignas(16) WorldSpotShadowConstants
     {
         float modelview_projection[16];
@@ -1242,6 +1250,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         opaque_forward_fullbright_pipelines;
     std::array<std::array<OpaqueForwardRiggedPipelines, 2>, 2>
         highlight_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        debug_blip_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         opaque_forward_shiny_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
@@ -1325,6 +1335,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalDepthStencilState> reverse_readonly_depth;
     std::unique_ptr<ALMetalDepthStencilState> forward_coverage_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_coverage_depth;
+    std::unique_ptr<ALMetalDepthStencilState> debug_blip_depth;
     std::unique_ptr<ALMetalDepthStencilState>
         forward_atmospheric_haze_depth;
     std::unique_ptr<ALMetalDepthStencilState>
@@ -2272,6 +2283,30 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             {
                 return nullptr;
             }
+        }
+
+        ALMetalRenderPipelineDescriptor debug_blip_descriptor;
+        debug_blip_descriptor.library = impl->library.get();
+        debug_blip_descriptor.vertex_function =
+            "almetal_world_debug_blip_vertex";
+        debug_blip_descriptor.fragment_function =
+            "almetal_world_debug_blip_fragment";
+        debug_blip_descriptor.colors[0].format = screen_formats[hdr];
+        debug_blip_descriptor.colors[0].write_mask =
+            static_cast<ALMetalColorWriteMask>(
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+        debug_blip_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        debug_blip_descriptor.label = hdr
+            ? "Alchemy HDR world object-update blip pipeline"
+            : "Alchemy world object-update blip pipeline";
+        impl->debug_blip_pipelines[hdr] = ALMetalRenderPipeline::create(
+            device, debug_blip_descriptor, error);
+        if (!impl->debug_blip_pipelines[hdr])
+        {
+            return nullptr;
         }
 
         ALMetalRenderPipelineDescriptor descriptor;
@@ -3924,6 +3959,16 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->reverse_coverage_depth = ALMetalDepthStencilState::create(
         device, depth, error);
     if (!impl->reverse_coverage_depth)
+    {
+        return nullptr;
+    }
+
+    depth.depth_compare = ALMetalCompareFunction::always;
+    depth.depth_write_enabled = true;
+    depth.label = "Alchemy world object-update blip depth";
+    impl->debug_blip_depth = ALMetalDepthStencilState::create(
+        device, depth, error);
+    if (!impl->debug_blip_depth)
     {
         return nullptr;
     }
@@ -10024,6 +10069,30 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                  "Metal world highlight batch storage is missing");
         return nullptr;
     }
+    if ((scene.debug_blip_count != 0 && !scene.debug_blips) ||
+        scene.debug_blip_count >
+            std::numeric_limits<std::uint32_t>::max() ||
+        scene.debug_blip_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldDebugBlip) ||
+        (scene.debug_blip_count != 0 &&
+         !finiteValues(scene.debug_blip_modelview_projection, 16)))
+    {
+        setError(error,
+                 "Metal world object-update blip storage is invalid");
+        return nullptr;
+    }
+    for (std::size_t index = 0; index < scene.debug_blip_count; ++index)
+    {
+        const ALMetalWorldDebugBlip& blip = scene.debug_blips[index];
+        if (!finiteValues(blip.position, 4) ||
+            !finiteValues(blip.color, 4))
+        {
+            setError(error,
+                     "Metal world object-update blip data is non-finite");
+            return nullptr;
+        }
+    }
     if (!finiteValues(scene.mirror_clip_plane, 4))
     {
         setError(error,
@@ -11116,6 +11185,24 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         highlight_palette_buffers[batch_index] = palette.get();
         highlight_palette_storage.push_back(std::move(palette));
+    }
+
+    std::unique_ptr<ALMetalBuffer> debug_blip_buffer;
+    if (scene.debug_blip_count != 0)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = scene.debug_blip_count *
+                            sizeof(ALMetalWorldDebugBlip);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world object-update blips";
+        debug_blip_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!debug_blip_buffer || !debug_blip_buffer->write(
+                0, scene.debug_blips, descriptor.length, error))
+        {
+            return nullptr;
+        }
     }
 
     std::unique_ptr<ALMetalBuffer> probe_constants_buffer;
@@ -12941,6 +13028,31 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 ALMetalPrimitiveType::triangle, batch.index_count,
                 batch.index_type, *batch.indices,
                 batch.index_offset, 1, error);
+    }
+
+    if (encoded && scene.debug_blip_count != 0)
+    {
+        WorldDebugBlipConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    scene.debug_blip_modelview_projection,
+                    sizeof(constants.modelview_projection));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        encoded =
+            encoder->setDepthStencilState(
+                mImpl->debug_blip_depth.get(), error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setPipeline(
+                *mImpl->debug_blip_pipelines[scene.hdr ? 1 : 0],
+                error) &&
+            encoder->setVertexBuffer(
+                0, *debug_blip_buffer, 0, error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::point, 0,
+                static_cast<std::uint32_t>(scene.debug_blip_count),
+                1, error);
     }
 
     const bool ended = encoder->end(error);

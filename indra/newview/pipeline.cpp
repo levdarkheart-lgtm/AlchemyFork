@@ -575,6 +575,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> impostor_bake_target;
     std::vector<ALMetalWorldSimpleBatch> batches;
     std::vector<ALMetalWorldHighlightBatch> highlight_batches;
+    std::vector<ALMetalWorldDebugBlip> debug_blips;
+    F32 debug_blip_modelview_projection[16]{};
     std::vector<ALMetalWorldHDRISkyBatch> hdri_sky_batches;
     const ALMetalTexture* hdri_sky_environment = nullptr;
     F32 hdri_sky_camera_local[4]{};
@@ -3979,12 +3981,12 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     overlay_eligibility.reflection_probe_volumes =
         reflection_probe_volumes;
     overlay_eligibility.far_plane_overlay = far_plane_overlay;
-    overlay_eligibility.debug_blips = !mDebugBlips.empty();
     overlay_eligibility.pathfinding = pathfinding_overlay;
     capture.world_ui_overlay_exact = overlay_eligibility.exact();
 
     capture.batches.clear();
     capture.highlight_batches.clear();
+    capture.debug_blips.clear();
     capture.avatar_palettes.clear();
     capture.resetCompleteness();
     capture.frame_active = true;
@@ -4663,6 +4665,11 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.batch_count = capture.batches.size();
         scene.highlight_batches = capture.highlight_batches.data();
         scene.highlight_batch_count = capture.highlight_batches.size();
+        scene.debug_blips = capture.debug_blips.data();
+        scene.debug_blip_count = capture.debug_blips.size();
+        std::memcpy(scene.debug_blip_modelview_projection,
+                    capture.debug_blip_modelview_projection,
+                    sizeof(scene.debug_blip_modelview_projection));
         scene.reflection_probes = needs_reflection_probes
             ? &capture.impostor_reflection_probes : nullptr;
         scene.legacy_environment = legacy_environment;
@@ -6262,6 +6269,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     }
     capture.batches.clear();
     capture.highlight_batches.clear();
+    capture.debug_blips.clear();
     capture.avatar_palettes.clear();
     capture.resetCompleteness();
     capture.impostor_fullbright = false;
@@ -18658,6 +18666,33 @@ void LLPipeline::renderDebug()
         gGL.setPointSize(8.f);
         LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
 
+        MetalWorldSimpleCapture* metal_capture =
+            mMetalWorldSimpleCapture &&
+                mMetalWorldSimpleCapture->frame_active &&
+                mMetalWorldSimpleCapture->world_post_deferred_active &&
+                !mMetalWorldSimpleCapture->world_post_deferred_phase
+            ? mMetalWorldSimpleCapture.get() : nullptr;
+        if (metal_capture && metal_capture->complete)
+        {
+            LLMatrix4a modelview_projection;
+            modelview_projection.setMul(
+                gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+            std::memcpy(
+                metal_capture->debug_blip_modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(metal_capture->debug_blip_modelview_projection));
+            try
+            {
+                metal_capture->debug_blips.reserve(mDebugBlips.size());
+            }
+            catch (const std::bad_alloc&)
+            {
+                metal_capture->markIncomplete(__LINE__);
+                metal_capture->debug_blips.clear();
+                metal_capture = nullptr;
+            }
+        }
+
         gGL.begin(LLRender::POINTS);
         for (std::list<DebugBlip>::iterator iter = mDebugBlips.begin(); iter != mDebugBlips.end(); )
         {
@@ -18667,6 +18702,7 @@ void LLPipeline::renderDebug()
             if (blip.mAge > 2.f)
             {
                 mDebugBlips.erase(iter++);
+                continue;
             }
             else
             {
@@ -18674,6 +18710,25 @@ void LLPipeline::renderDebug()
             }
 
             blip.mPosition.mV[2] += gFrameIntervalSeconds.value()*2.f;
+
+            if (metal_capture && metal_capture->complete)
+            {
+                ALMetalWorldDebugBlip native_blip;
+                std::memcpy(native_blip.position, blip.mPosition.mV,
+                            sizeof(blip.mPosition.mV));
+                std::memcpy(native_blip.color, blip.mColor.mV,
+                            sizeof(blip.mColor.mV));
+                try
+                {
+                    metal_capture->debug_blips.push_back(native_blip);
+                }
+                catch (const std::bad_alloc&)
+                {
+                    metal_capture->markIncomplete(__LINE__);
+                    metal_capture->debug_blips.clear();
+                    metal_capture = nullptr;
+                }
+            }
 
             gGL.color4fv(blip.mColor.mV);
             gGL.vertex3fv(blip.mPosition.mV);

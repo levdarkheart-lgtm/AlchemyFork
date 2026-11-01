@@ -1944,6 +1944,48 @@ fragment float4 almetal_world_highlight_fragment(
                float4(0.0));
 }
 
+struct ALMetalWorldDebugBlip
+{
+    float4 position;
+    float4 color;
+};
+
+struct ALMetalWorldDebugBlipConstants
+{
+    float4x4 modelview_projection;
+    uint4 config;
+};
+
+struct ALMetalWorldDebugBlipVaryings
+{
+    float4 position [[position]];
+    float point_size [[point_size]];
+    float4 color;
+};
+
+vertex ALMetalWorldDebugBlipVaryings almetal_world_debug_blip_vertex(
+    const device ALMetalWorldDebugBlip* blips [[buffer(0)]],
+    constant ALMetalWorldDebugBlipConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    float4 clip_position = constants.modelview_projection *
+                           float4(blips[vertex_id].position.xyz, 1.0);
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldDebugBlipVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.point_size = 8.0;
+    output.color = blips[vertex_id].color;
+    return output;
+}
+
+fragment float4 almetal_world_debug_blip_fragment(
+    ALMetalWorldDebugBlipVaryings input [[stage_in]])
+{
+    return input.color;
+}
+
 static ALMetalWorldSpotShadowVaryings almetal_world_spot_shadow_output(
     float4 clip_position, constant ALMetalWorldSpotShadowConstants& constants)
 {
