@@ -69,5 +69,34 @@ On supported macOS versions use `MTLCaptureManager` with an explicit request (sc
 ## Automated quality checks
 Create a reference/candidate image comparison mechanism over deterministic camera/scene captures; report color-space/format/scale, pixel diff distributions and screenshots with sensitive content redacted. Do not use a single global pixel-equality test for temporal rendering; define local tolerances for stochastic/animated effects. Validate asset/UI editing flows separately.
 
+Capture the effective graphics contract after each isolated viewer exits, using
+the shipped settings files in viewer load order followed by that run's profile:
+
+```sh
+python3 tools/metal/graphics_settings.py capture \
+  --defaults "/absolute/reference.app/Contents/Resources/app_settings/settings.xml" \
+  --defaults "/absolute/reference.app/Contents/Resources/app_settings/settings_alchemy.xml" \
+  --profile "/absolute/reference-profile/user_settings/settings.xml" \
+  --label reference --output artifacts/metal/reference-settings.json
+
+python3 tools/metal/graphics_settings.py capture \
+  --defaults "/absolute/candidate.app/Contents/Resources/app_settings/settings.xml" \
+  --defaults "/absolute/candidate.app/Contents/Resources/app_settings/settings_alchemy.xml" \
+  --profile "/absolute/candidate-profile/user_settings/settings.xml" \
+  --label candidate --output artifacts/metal/candidate-settings.json
+
+python3 tools/metal/graphics_settings.py compare \
+  artifacts/metal/reference-settings.json \
+  artifacts/metal/candidate-settings.json \
+  --output artifacts/metal/settings-comparison.json
+```
+
+The comparison is fail-closed: every captured visual `Render*` key must exist
+on both sides with the same effective value, and the required quality, mirror,
+LOD, texture, lighting, shadow and probe keys must be present. Exit `1` means
+the images are incomparable; fix the profiles and recapture before computing
+SSIM, PSNR or performance claims. The manifests include source-path hashes for
+provenance but no account or session data.
+
 ## Automation acceptance
 A performance comparison is admissible only with real raw CSV. Use `tools/metal/perf_compare.py --enforce --require-provenance`: the provenance gate rejects missing source/build/display fields, nonconsecutive frame indexes, metadata changes within a scenario, baseline/candidate build-type, resolution or quality mismatches, and any candidate row without `native_exact=1`. Common optional `cpu_ms`, `gpu_ms`, `draw_calls`, `metal_submissions`, `metal_completed`, `metal_timed` and `metal_gpu_ms` columns are validated and summarized under `secondary_metrics`; they do not affect the pass gate. The analyzer still only proves that the supplied numbers and metadata meet those mechanical checks and performance targets. It does **not** prove images, hardware identity, data authenticity, power state, thermal equivalence or camera/scene equivalence; Codex must supply that evidence explicitly.

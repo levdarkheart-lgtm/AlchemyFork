@@ -17,13 +17,21 @@ raw standard/generated bump maps in the native G-buffer owner, matching
 `LLDrawPoolBump::bindBumpMap`; colour textures retain colour decoding.
 
 Controlled Computer Use then exercised the guarded authored-mirror Snapshot
-path in source-exact build 68012. A fixed upper reflected band improved from
-SSIM `0.710348` / PSNR `12.456081 dB` to SSIM `0.806706` / PSNR
-`17.472924 dB` against the pinned aligned OpenGL reference. The complete mirror
-interior improved from SSIM `0.859180` / PSNR `17.934595 dB` to SSIM
-`0.874149` / PSNR `22.417276 dB`. The lower reflected floor still loses tile
-detail and its diagonal grout line, so this is progress evidence, not parity.
-Continuous live native authority remains fail-closed.
+path in source-exact build 68012. The first cross-backend scores were invalid:
+the effective profiles differed on 25 of 386 captured `Render*` settings,
+including quality `3` versus `0` and mirror resolution `512` versus `256`.
+Those scores are retained only as superseded history and are not parity
+evidence.
+
+Actual Computer Use repeated the fixed view with identical effective settings.
+Post-run manifests compare 386/386 settings with zero mismatches: quality `3`,
+mirrors enabled and mirror resolution `512`. The complete 2048x1476 pair scores
+SSIM `0.987409` / PSNR `39.185075 dB`; the mirror frame scores `0.988105` /
+`37.793470 dB`, and the mirror interior scores `0.991375` / `41.100904 dB`.
+Visual and amplified-difference inspection finds no material mirror-region
+residual. This rejects the alleged large blur regression for this controlled
+fixture; it does not close broader probe/mirror parity. Continuous live native
+authority remains fail-closed.
 
 ## Build and test evidence
 
@@ -58,19 +66,25 @@ Continuous live native authority remains fail-closed.
   observed, and no viewer/media process remained. Transient incomplete cloud
   generations occurred during scene arrival but ended before the successful
   native capture; they are not counted as parity or performance evidence.
+- Matched reference/candidate PNG SHA-256 values are respectively
+  `b9de1870760ea028e0bfa2f03297625ad589edefdb6f1f0a887eb04d6e70eea7` and
+  `126771e01bf02ac117cc0b633026d63f726721e19177d82fe8d7eb7f52a26f80`.
+  Both sessions exited semantically and left zero viewer processes.
 - The compact live state/ledger, indexed archives, seven-invariant coverage map,
   live-link/command-path checks, Python bytecode checks and shell syntax checks
   pass. The new fail-closed Computer Use preflight makes exact app version,
   executable hash, singleton process, isolated profile and open-log identity
-  mandatory before binding. `validate_harness.py` validates 30 required files
-  and all 19 tooling tests pass.
+  mandatory before binding. Effective graphics manifests now make image
+  comparisons fail closed on mismatched or unilateral visual settings.
+  `validate_harness.py` validates 31 required files; all 22 tooling tests,
+  Python bytecode compilation, `git diff --check` and the M1 Max doctor pass.
 
 ## Milestone snapshot
 
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-008 native renderer | doing | Broad native world/UI owners and physical regressions exist; advanced-family reference parity is incomplete. |
-| M-008 advanced views/effects | doing | Guarded authored-mirror colour improved against the pinned reference, but reflected floor detail remains over-blurred; parity and continuous authority stay open. |
+| M-008 advanced views/effects | doing | A matched 386-setting authored-mirror pair rejects the suspected large blur defect for one fixture; broader probes, post, transparency/PBR and advanced-family parity remain open. |
 | M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. |
 | M-010 measured performance | deferred | Structural wins exist, but no qualifying paired M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
@@ -78,31 +92,31 @@ Continuous live native authority remains fail-closed.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. The source corrections now have a
-controlled same-location authored-mirror comparison showing materially closer
-upper reflected colour and better fixed-crop metrics. Exact binary/profile
-attestation and native-readback logging make the live evidence attributable.
-The residual reflected-floor blur prevents M-008 or any release gate from
-closing.
+**Advances the complete product:** yes. The checkpoint corrects the validation
+contract: every image comparison now requires identical effective graphics
+settings, and the corrected fixed-view pair rejects a false mirror-defect
+signal. Exact binary/profile attestation and native-readback logging make the
+result attributable. This is validation-integrity progress, not a new renderer
+implementation or broad M-008 parity claim.
 
 **Deferred critical work:** complete advanced-family parity; feature-matrix and
 stability coverage; removal of viewer-owned OpenGL traversal/link/context use;
 independent build/review evidence; and paired, quality-equivalent M1 Max
 performance measurements. These are requirements, not waivers.
 
-**Evidence-based priority:** the fixed mirror crop localizes the remaining
-failure to reflected floor detail rather than the whole scene. Trace hero-probe
-LOD, roughness/normal inputs, mip generation and sampling against the OpenGL
-owner, then add a causal asymmetric physical control only for a demonstrated
-mismatch. M-009, M-011 and qualifying M-010 still depend on stable parity.
+**Evidence-based priority:** stop spending implementation time on the disproven
+large mirror-blur hypothesis. Resume the open M-008 matrix with a source-led
+audit of post effects and alpha/PBR advanced owners; add a physical control for
+the first demonstrated contract gap and use the graphics-manifest gate for any
+new live pair. M-009, M-011 and qualifying M-010 still depend on stable parity.
 
 ## Exact next actions
 
-1. Trace authored-mirror hero-probe LOD, roughness/normal data, mip construction
-   and sampling to explain the over-blurred reflected floor; compare source
-   owners before changing code.
-2. Add a physical negative control and implement a correction only after a
-   specific divergence is demonstrated; rerun focused and complete Metal
-   validation, then repeat the attested fixed-view comparison.
+1. Audit the next open M-008 post-effect and alpha/PBR owners against the
+   authoritative pass graph; identify one concrete missing or divergent data,
+   state or ordering contract before editing.
+2. Add an asymmetric physical control for that divergence, implement the
+   bounded correction, then run focused and complete Metal validation. Require
+   identical post-run graphics manifests before scoring any new live pair.
 3. Keep strict no-GL, feature parity, stability and performance gates open until
    their documented release evidence exists.

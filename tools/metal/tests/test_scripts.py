@@ -318,6 +318,92 @@ class CUAPreflightTests(unittest.TestCase):
         self.assertTrue(any("profile root" in error for error in errors))
 
 
+class GraphicsSettingsTests(unittest.TestCase):
+    def setUp(self):
+        self.module = load("graphics_settings")
+
+    @staticmethod
+    def write_settings(path, values):
+        records = []
+        for name, value in values.items():
+            if isinstance(value, bool):
+                encoded = f"<boolean>{str(value).lower()}</boolean>"
+                value_type = "Boolean"
+            elif isinstance(value, int):
+                encoded = f"<integer>{value}</integer>"
+                value_type = "S32"
+            elif isinstance(value, float):
+                encoded = f"<real>{value}</real>"
+                value_type = "F32"
+            else:
+                encoded = f"<string>{value}</string>"
+                value_type = "String"
+            records.append(
+                f"<key>{name}</key><map>"
+                f"<key>Type</key><string>{value_type}</string>"
+                f"<key>Value</key>{encoded}</map>"
+            )
+        path.write_text("<llsd><map>" + "".join(records) + "</map></llsd>")
+
+    def complete_values(self):
+        values = {name: 1 for name in self.module.REQUIRED_SETTINGS}
+        values["RenderMirrors"] = True
+        values["RenderTransparentWater"] = False
+        return values
+
+    def test_profile_overrides_defaults_and_ignores_backend_setting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            defaults = root / "defaults.xml"
+            profile = root / "profile.xml"
+            values = self.complete_values()
+            values["RenderHeroProbeResolution"] = 256
+            values["RenderShaderCacheVersion"] = "reference-cache"
+            values["RenderMetalNativeOnly"] = True
+            self.write_settings(defaults, values)
+            self.write_settings(
+                profile,
+                {
+                    "RenderHeroProbeResolution": 512,
+                    "RenderShaderCacheVersion": "candidate-cache",
+                },
+            )
+            manifest = self.module.build_manifest([defaults], profile, "fixture")
+            self.assertEqual(512, manifest["settings"]["RenderHeroProbeResolution"])
+            self.assertNotIn("RenderShaderCacheVersion", manifest["settings"])
+            self.assertNotIn("RenderMetalNativeOnly", manifest["settings"])
+
+    def test_visual_mismatch_fails_comparison(self):
+        settings = self.complete_values()
+        reference = {
+            "schema_version": 1,
+            "label": "reference",
+            "settings": dict(settings),
+        }
+        candidate = {
+            "schema_version": 1,
+            "label": "candidate",
+            "settings": dict(settings),
+        }
+        candidate["settings"]["RenderQualityPerformance"] = 0
+        report = self.module.compare_manifests(reference, candidate)
+        self.assertFalse(report["comparable"])
+        self.assertEqual("RenderQualityPerformance", report["mismatches"][0]["setting"])
+
+    def test_identical_visual_settings_pass(self):
+        settings = self.complete_values()
+        reference = {"label": "reference", "settings": dict(settings)}
+        candidate = {"label": "candidate", "settings": dict(settings)}
+        report = self.module.compare_manifests(reference, candidate)
+        self.assertTrue(report["comparable"])
+        candidate["settings"]["RenderFutureQualitySwitch"] = 7
+        report = self.module.compare_manifests(reference, candidate)
+        self.assertFalse(report["comparable"])
+        self.assertEqual(
+            ["RenderFutureQualitySwitch"], report["candidate_only"]
+        )
+
+
 class HarnessTests(unittest.TestCase):
     def test_initial_harness_contract(self):
         module = load("validate_harness")
