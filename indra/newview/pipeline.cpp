@@ -7499,7 +7499,7 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
 }
 
 void LLPipeline::captureMetalWorldPostWaterLegacyGlowBatch(
-    const LLDrawInfo& params)
+    const LLDrawInfo& params, bool particle_or_hud_particle)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->world_post_deferred_active ||
@@ -7526,12 +7526,14 @@ void LLPipeline::captureMetalWorldPostWaterLegacyGlowBatch(
     if (capture.complete &&
         capture.batches.size() == first_batch + 1)
     {
-        capture.batches.back().post_water_glow = true;
+        ALMetalWorldSimpleBatch& batch = capture.batches.back();
+        batch.post_water_glow = true;
+        batch.pre_water_particle = particle_or_hud_particle;
     }
 }
 
 void LLPipeline::captureMetalWorldPostWaterPBRGlowBatch(
-    const LLDrawInfo& params)
+    const LLDrawInfo& params, bool particle_or_hud_particle)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->world_post_deferred_active ||
@@ -7563,6 +7565,7 @@ void LLPipeline::captureMetalWorldPostWaterPBRGlowBatch(
     {
         ALMetalWorldSimpleBatch& batch = capture.batches.back();
         batch.post_water_glow = true;
+        batch.pre_water_particle = particle_or_hud_particle;
         for (std::size_t slot = 0; slot < batch.pbr_slot_count; ++slot)
         {
             // The alpha pool restores its ordinary 0.004 coverage floor

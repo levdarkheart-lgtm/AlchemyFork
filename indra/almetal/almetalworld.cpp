@@ -12313,7 +12313,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                         ? (scene.reverse_z ? 1.f : -1.f) : 0.f,
                     0.f, error) &&
                 encoder->setCullMode(
-                    batch.pbr_glow && batch.double_sided
+                    batch.pre_water_particle ||
+                            (batch.pbr_glow && batch.double_sided)
                         ? ALMetalCullMode::none : ALMetalCullMode::back,
                     error) &&
                 encoder->setPipeline(*glow_pipeline, error) &&

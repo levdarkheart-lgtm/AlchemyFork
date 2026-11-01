@@ -2991,6 +2991,17 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         REQUIRE(indices);
         REQUIRE(indices->write(
             0, index_values.data(), sizeof(index_values), &error));
+        const std::array<std::uint16_t, 3> reversed_index_values{{0, 2, 1}};
+        ALMetalBufferDescriptor reversed_index_descriptor = index_descriptor;
+        reversed_index_descriptor.label =
+            "Alchemy reversed world particle glow indices";
+        auto reversed_indices = ALMetalBuffer::create(
+            *device, reversed_index_descriptor, &error);
+        INFO(error);
+        REQUIRE(reversed_indices);
+        REQUIRE(reversed_indices->write(
+            0, reversed_index_values.data(),
+            sizeof(reversed_index_values), &error));
 
         ALMetalTextureDescriptor diffuse_descriptor;
         diffuse_descriptor.format = ALMetalPixelFormat::rgba8_unorm_srgb;
@@ -8060,6 +8071,33 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(post_water_glow_pixels[stencil_center + 3] >
               post_water_pixels[stencil_center + 3]);
 
+        // Particle culling is disabled around the entire GL group, including
+        // its alpha-only emissive replay. A reversed-winding glow draw must
+        // therefore survive for particles while an ordinary draw is culled.
+        post_water_glow_batches[2].indices = reversed_indices.get();
+        post_water_glow_batches[2].pre_water_particle = false;
+        auto culled_legacy_particle_glow =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(culled_legacy_particle_glow);
+        REQUIRE(culled_legacy_particle_glow->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_glow_pixels.data(), 32 * 8,
+            &error));
+        CHECK(post_water_glow_pixels[stencil_center + 3] ==
+              post_water_pixels[stencil_center + 3]);
+        post_water_glow_batches[2].pre_water_particle = true;
+        auto unculled_legacy_particle_glow =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(unculled_legacy_particle_glow);
+        REQUIRE(unculled_legacy_particle_glow->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_glow_pixels.data(), 32 * 8,
+            &error));
+        CHECK(post_water_glow_pixels[stencil_center + 3] >
+              post_water_pixels[stencil_center + 3]);
+
         ALMetalWorldSimpleBatch post_water_pbr_glow = pbr_glow_batch;
         post_water_pbr_glow.post_water_glow = true;
         post_water_pbr_glow.pbr_slots[0].alpha_cutoff = 0.004f;
@@ -8079,6 +8117,29 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
               post_water_pixels[stencil_center + 1]);
         CHECK(post_water_glow_pixels[stencil_center + 2] ==
               post_water_pixels[stencil_center + 2]);
+        CHECK(post_water_glow_pixels[stencil_center + 3] >
+              post_water_pixels[stencil_center + 3]);
+
+        post_water_glow_batches[2].indices = reversed_indices.get();
+        post_water_glow_batches[2].pre_water_particle = false;
+        auto culled_pbr_particle_glow = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(culled_pbr_particle_glow);
+        REQUIRE(culled_pbr_particle_glow->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_glow_pixels.data(), 32 * 8,
+            &error));
+        CHECK(post_water_glow_pixels[stencil_center + 3] ==
+              post_water_pixels[stencil_center + 3]);
+        post_water_glow_batches[2].pre_water_particle = true;
+        auto unculled_pbr_particle_glow =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(unculled_pbr_particle_glow);
+        REQUIRE(unculled_pbr_particle_glow->colorTexture(0)->readback(
+            *device, 0, 0, {}, post_water_glow_pixels.data(), 32 * 8,
+            &error));
         CHECK(post_water_glow_pixels[stencil_center + 3] >
               post_water_pixels[stencil_center + 3]);
 

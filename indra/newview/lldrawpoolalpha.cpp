@@ -566,7 +566,8 @@ void LLDrawPoolAlpha::drawEmissive(LLDrawInfo* draw)
 }
 
 
-void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
+void LLDrawPoolAlpha::renderEmissives(
+    std::vector<LLDrawInfo*>& emissives, bool particle_or_hud_particle)
 {
     emissive_shader->bind();
     emissive_shader->uniform1f(LLShaderMgr::EMISSIVE_BRIGHTNESS, 1.f);
@@ -574,7 +575,8 @@ void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
     for (LLDrawInfo* draw : emissives)
     {
 #if LL_DARWIN
-        gPipeline.captureMetalWorldPostWaterLegacyGlowBatch(*draw);
+        gPipeline.captureMetalWorldPostWaterLegacyGlowBatch(
+            *draw, particle_or_hud_particle);
 #endif
         bool tex_setup = TexSetup(draw, false, emissive_shader);
         drawEmissive(draw);
@@ -582,14 +584,16 @@ void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
     }
 }
 
-void LLDrawPoolAlpha::renderPbrEmissives(std::vector<LLDrawInfo*>& emissives)
+void LLDrawPoolAlpha::renderPbrEmissives(
+    std::vector<LLDrawInfo*>& emissives, bool particle_or_hud_particle)
 {
     pbr_emissive_shader->bind();
 
     for (LLDrawInfo* draw : emissives)
     {
 #if LL_DARWIN
-        gPipeline.captureMetalWorldPostWaterPBRGlowBatch(*draw);
+        gPipeline.captureMetalWorldPostWaterPBRGlowBatch(
+            *draw, particle_or_hud_particle);
 #endif
         llassert(draw->mGLTFMaterial);
         LLGLDisable cull_face(draw->mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
@@ -601,7 +605,8 @@ void LLDrawPoolAlpha::renderPbrEmissives(std::vector<LLDrawInfo*>& emissives)
     }
 }
 
-void LLDrawPoolAlpha::renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives)
+void LLDrawPoolAlpha::renderRiggedEmissives(
+    std::vector<LLDrawInfo*>& emissives, bool particle_or_hud_particle)
 {
     LLGLDepthTest depth(GL_TRUE, GL_FALSE); //disable depth writes since "emissive" is additive so sorting doesn't matter
     LLGLSLShader* shader = emissive_shader->riggedVariant();
@@ -619,7 +624,8 @@ void LLDrawPoolAlpha::renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives)
         if (uploadMatrixPalette(draw->mAvatar, draw->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
         {
 #if LL_DARWIN
-            gPipeline.captureMetalWorldPostWaterLegacyGlowBatch(*draw);
+            gPipeline.captureMetalWorldPostWaterLegacyGlowBatch(
+                *draw, particle_or_hud_particle);
 #endif
             bool tex_setup = TexSetup(draw, false, shader);
             drawEmissive(draw);
@@ -628,7 +634,8 @@ void LLDrawPoolAlpha::renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives)
     }
 }
 
-void LLDrawPoolAlpha::renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissives)
+void LLDrawPoolAlpha::renderRiggedPbrEmissives(
+    std::vector<LLDrawInfo*>& emissives, bool particle_or_hud_particle)
 {
     LLGLDepthTest depth(GL_TRUE, GL_FALSE); //disable depth writes since "emissive" is additive so sorting doesn't matter
     pbr_emissive_shader->bind(true);
@@ -645,7 +652,8 @@ void LLDrawPoolAlpha::renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissiv
         }
 
 #if LL_DARWIN
-        gPipeline.captureMetalWorldPostWaterPBRGlowBatch(*draw);
+        gPipeline.captureMetalWorldPostWaterPBRGlowBatch(
+            *draw, particle_or_hud_particle);
 #endif
 
         LLGLDisable cull_face(draw->mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
@@ -1008,28 +1016,32 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                 if (!emissives.empty())
                 {
                     light_enabled = true;
-                    renderEmissives(emissives);
+                    renderEmissives(emissives, is_particle_or_hud_particle);
                     rebind = true;
                 }
 
                 if (!pbr_emissives.empty())
                 {
                     light_enabled = true;
-                    renderPbrEmissives(pbr_emissives);
+                    renderPbrEmissives(
+                        pbr_emissives, is_particle_or_hud_particle);
                     rebind = true;
                 }
 
                 if (!rigged_emissives.empty())
                 {
                     light_enabled = true;
-                    renderRiggedEmissives(rigged_emissives);
+                    renderRiggedEmissives(
+                        rigged_emissives, is_particle_or_hud_particle);
                     rebind = true;
                 }
 
                 if (!pbr_rigged_emissives.empty())
                 {
                     light_enabled = true;
-                    renderRiggedPbrEmissives(pbr_rigged_emissives);
+                    renderRiggedPbrEmissives(
+                        pbr_rigged_emissives,
+                        is_particle_or_hud_particle);
                     rebind = true;
                 }
 

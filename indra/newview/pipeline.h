@@ -917,9 +917,9 @@ public:
     void captureMetalWorldLegacyGlowBatch(const LLDrawInfo& params,
                                           bool indexed_materials);
     void captureMetalWorldPostWaterLegacyGlowBatch(
-        const LLDrawInfo& params);
+        const LLDrawInfo& params, bool particle_or_hud_particle);
     void captureMetalWorldPostWaterPBRGlowBatch(
-        const LLDrawInfo& params);
+        const LLDrawInfo& params, bool particle_or_hud_particle);
     void captureMetalWorldBumpBatch(const LLDrawInfo& params,
                                    LLViewerTexture* normal_texture);
     void captureMetalWorldHighlightBatch(

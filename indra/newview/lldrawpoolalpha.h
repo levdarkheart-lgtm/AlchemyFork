@@ -85,10 +85,14 @@ private:
     LLGLSLShader* pbr_shader = nullptr;
 
     void drawEmissive(LLDrawInfo* draw);
-    void renderEmissives(std::vector<LLDrawInfo*>& emissives);
-    void renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives);
-    void renderPbrEmissives(std::vector<LLDrawInfo*>& emissives);
-    void renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissives);
+    void renderEmissives(std::vector<LLDrawInfo*>& emissives,
+                         bool particle_or_hud_particle);
+    void renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives,
+                               bool particle_or_hud_particle);
+    void renderPbrEmissives(std::vector<LLDrawInfo*>& emissives,
+                            bool particle_or_hud_particle);
+    void renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissives,
+                                  bool particle_or_hud_particle);
     // Bind this draw's textures for `shader`.
     //
     // The shader is passed explicitly rather than read from LLGLSLShader::sCurBoundShaderPtr:
