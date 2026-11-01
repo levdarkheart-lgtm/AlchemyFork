@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-01 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `c7e82c20bd` (`feat(metal): replay far plane overlay natively`)
+**Renderer code checkpoint:** `28c4dca74b` (`feat(metal): replay reflection probe volumes natively`)
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -10,35 +10,36 @@ append-only archives.
 
 ## Active implementation checkpoint
 
-M-008 remains `doing`; M-012 is complete. Commit `c7e82c20bd` replaces the
-reachable Develop **far-plane projection overlay** fallback with native Metal
-replay. `ALFarPlaneOverlay::render()` captures only after its authoritative GL
-target allocation succeeds. The transaction retains the exact live model-view-
-projection matrix and all 18 camera-relative columns, ordered as the GL owner
-draws them: nine nearer orange columns followed by nine farther cyan columns.
+M-008 remains `doing`; M-012 is complete. Commit `28c4dca74b` replaces the
+persisted Develop **Render Reflection Probe Volumes** fallback with a native
+Metal replay. Capture occurs at the authoritative GL draw boundary and retains
+the live manual-probe selection pack plus the current inverse projection.
+Radiance and irradiance textures are deliberately not dependencies because this
+visualization consumes only probe shapes and scene depth.
 
-The native owner expands each column procedurally to the same 12 triangles,
-depth-tests it in a private RGBA8/depth32-stencil8 target, and supports forward
-and reverse Z. It composites the result after native Highlight Transparent and
-object-update blips using source-alpha RGB blending while preserving destination
-alpha and the scene depth attachment. HDR and non-HDR output pipelines match
-their destination formats. The private target is reused at a stable size and
-released when the setting is off. Missing, nonfinite, inconsistent or
-unrepresentable capture data rejects native authority; the migration GL draw
-remains intact. `AlchemyRenderFarPlaneOverlay` therefore no longer makes native
-world publication ineligible.
+The native full-screen pass reconstructs eye-space position from the retained
+depth attachment under forward or reverse Z. It replays the GLSL sphere and box
+intersection rules for manual probes only: intersections before scene depth
+accumulate yellow and hidden intersections accumulate distance-faded blue. The
+result uses source-alpha RGB blending and RGB-only writes, preserving destination
+alpha and depth. HDR and non-HDR pipelines match their output formats. Invalid
+probe counts, nonfinite matrices or consumed shape data, negative sphere radii,
+an unreadable depth target, allocation failure or duplicate capture rejects
+native authority; the migration GL draw remains intact. The
+`RenderReflectionProbeVolumes` setting therefore no longer makes native world
+publication ineligible.
 
-Prior native owners remain covered: static/rigged world and HUD **Highlight
-Transparent**, plus the developer **Show Updates to Objects** eight-pixel blips.
-The current OSS ARM64 viewer links only the nonfunctional
-`llphysicsextensionsos` pathfinding stub, so pathfinding visualization is not a
-reachable retained-Alchemy output or a release-critical port target. The
-remaining bounded fail-closed owners are general render-debug output, wireframe
-and reflection-probe-volume visualization.
+Prior native advanced-output owners remain covered: static/rigged world and HUD
+**Highlight Transparent**, **Show Updates to Objects** blips, and the Develop
+far-plane projection overlay. The current OSS ARM64 viewer links only the
+nonfunctional `llphysicsextensionsos` pathfinding stub, so pathfinding
+visualization is not a reachable retained-Alchemy output or a release-critical
+port target. The remaining reachable fail-closed output owners are general
+render-debug output and wireframe; the latent pathfinding guard is retained.
 
 The preceding production-call audit found no valid viewer-produced
 reflection-probe divergence; its extra Metal bounds checks do not alter valid
-data. That audit remains closed without a speculative edit.
+data. That bounded audit remains closed without a speculative edit.
 
 Exact RLVa parity is owner-deferred M-013 nice-to-have. Implement only enough
 RLVa behavior to avoid blocking Metal authority and viewer-owned OpenGL removal.
@@ -53,26 +54,26 @@ prove shadow parity.
 
 ## Build and test evidence
 
-- Focused physical RelWithDebInfo world replay passed 1,424 assertions under
-  Metal API/GPU/load-store/shader validation. It covers invalid overlay storage,
-  an invalid nearer/farther partition, nonfinite data, forward- and reverse-Z
-  overlap ordering, exposed farther coverage, HDR/non-HDR output, destination-
-  alpha preservation, untouched scene depth and unchanged background.
+- Focused physical RelWithDebInfo world replay passed 1,470 assertions under
+  Metal API/GPU/load-store/shader validation. It covers invalid count and
+  inverse-projection input, manual sphere foreground/background behavior, the
+  box branch, automatic-probe exclusion, forward/reverse-Z samples, HDR/non-HDR
+  output, destination-alpha preservation and untouched scene depth.
 - Complete RelWithDebInfo, Debug and Release physical Metal suites each passed
-  45,073 assertions across 52 cases under the same validation layers.
-- Warnings-as-errors RelWithDebInfo, Debug and Release Metal renderer, built-in
-  MSL, GPU test and production viewer integration compiled and linked. A full
-  Debug viewer build also staged successfully.
+  45,118 assertions across 52 cases under the same validation layers.
+- Warnings-as-errors RelWithDebInfo production viewer integration compiled,
+  linked, staged and signed. Debug and Release Metal renderer, built-in MSL and
+  GPU tests compiled and linked.
 - `ctest --test-dir build-Darwin-ninja-os-arm64 -C RelWithDebInfo -LE
-  'manual|gl' --output-on-failure` passed 484/484 in 245.18 seconds.
-- Source-exact warnings-as-errors Release Development build `26.4.0d68042`
-  linked, staged and signed at committed code head `c7e82c20bd`.
+  'manual|gl' --output-on-failure -j 8` passed 484/484 in 40.46 seconds.
+- Source-exact warnings-as-errors Release Development build `26.4.0d68044`
+  linked, staged and signed at committed code head `28c4dca74b`.
 - Executable SHA-256:
-  `080570aaed0771fca9b60044ad55f0d555601f09f24cc717f93e6df5e203c673`.
+  `4306dea5dedc006eab0017f40404985d323f224d0b40c864b54bc61f2fcc45e0`.
   Packaged/source MSL SHA-256:
-  `230cb3ea57d16c378111dc2a26c614e6367363ea3052e76ad5dd03c53230f004`;
+  `dd51886cc8cc33a8b19ac69206fed5045421c8905bb51c7d596fdeaefb467214`;
   compiled metallib SHA-256:
-  `3afd67c7bd57e5e3292b0a6dba30cf530b56f8daebdd83068448dec0e4771c0b`.
+  `b5ccb104ec22fade3cf1822595924c751128b6ca14e0ab188276890339357e58`.
 - Deep strict signing passed; `tools/metal/verify_app.sh` verified all 349
   Mach-O slices as ARM64, and the main executable reports arm64.
 - `tools/metal/doctor.sh` passed on Apple M1 Max with unified memory and Apple7-
@@ -87,8 +88,8 @@ prove shadow parity.
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
 | M-007 world/material | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence; broader live parity remains open. |
-| M-008 advanced views/effects | doing | Highlight Transparent, object-update blips and the far-plane projection overlay are native. OSS pathfinding is a nonfunctional stub. Broader reachable debug/shadows/post/output parity remains open; exact RLVa parity is M-013. |
-| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. General render-debug, wireframe and reflection-probe-volume owners remain fail-closed pending audit/porting. |
+| M-008 advanced views/effects | doing | Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. OSS pathfinding is a nonfunctional stub. Broader reachable debug/shadows/post/output parity remains open; exact RLVa parity is M-013. |
+| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. General render-debug and wireframe owners remain fail-closed pending audit/porting. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
 | M-012 Computer Use bridge | complete | Exact-path semantic login/in-world/control/logout operation is verified and used for acceptance. |
@@ -96,9 +97,10 @@ prove shadow parity.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. A persisted, reachable developer output
-owner now reproduces its exact columns, depth order, blend/order and attachment
-side effects in native Metal instead of vetoing presentation.
+**Advances the complete product:** yes. A persisted, reachable advanced-output
+owner now reproduces its manual sphere/box intersections, depth reconstruction,
+blend/order and attachment side effects in native Metal instead of vetoing
+presentation.
 
 **Deferred critical work:** remaining non-RLVa advanced-view/post/output owners;
 controlled live material, editing and shadow comparisons; full feature and
@@ -107,16 +109,15 @@ M1 Max measurements. Independent build/review evidence and reproducible distinct
 release proof also remain open. Exact RLVa behavior/image parity is separately
 deferred as non-critical M-013.
 
-**Evidence-based priority:** continue the bounded production-call audit across
-general render-debug, wireframe and reflection-probe-volume visualization.
-Select the smallest owner that actually emits uncaptured output, preserve its
-exact state and ordering, and avoid speculative ports for inactive or already-
-captured paths.
+**Evidence-based priority:** trace wireframe and general render-debug production
+contribution. Select the smallest owner that actually emits uncaptured output,
+preserve its exact state and ordering, and avoid speculative ports for inactive
+or already-captured paths.
 
 ## Exact next actions
 
-1. Trace production contribution conditions and output ownership for general
-   render-debug, wireframe and reflection-probe-volume visualization.
+1. Trace production contribution conditions and output ownership for wireframe
+   and general render-debug output; retain the latent pathfinding guard.
 2. Implement the smallest confirmed reachable omission with asymmetric physical
    state/output proof; leave every uncovered owner fail-closed.
 3. Continue strict no-GL work and controlled live parity; keep exact RLVa parity
