@@ -16,6 +16,7 @@ reload the chronological history.
 | Deferred default-probe radiance/SH publication and source-exact runtime smoke, 2026-11-01 | [CURRENT-default-probe-deferred-publication-checkpoint-2026-11-01.md](CURRENT-default-probe-deferred-publication-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | Water/default-probe no-parallax correction and source-exact runtime smoke, 2026-11-01 | [CURRENT-water-default-probe-parallax-checkpoint-2026-11-01.md](CURRENT-water-default-probe-parallax-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | Matched live Grignano water/default-probe pair, 2026-11-01 | [CURRENT-water-live-pair-checkpoint-2026-11-01.md](CURRENT-water-live-pair-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
+| RLVa minimum Metal/no-GL cutover and exact-parity deferral, 2026-11-01 | [CURRENT-rlva-minimum-cutover-checkpoint-2026-11-01.md](CURRENT-rlva-minimum-cutover-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.

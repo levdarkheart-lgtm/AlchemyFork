@@ -18,14 +18,18 @@ A run that changes the preference without restarting is inadmissible.
 
 ## Recoverable backlog
 
-| Surface | Minimum native/no-GL state | Nice-to-have work left |
-| --- | --- | --- |
-| `@setsphere` | Native Metal post owner implements blend, fixed blur, bounded variable blur, chromatic aberration and pixelation; it consumes retained depth and no longer makes valid native presentation ineligible. | Restart-qualified live checks; exact multi-effect/tween/reference parity; unusual or malformed-script cases; snapshot/cutout interaction. |
-| `@setoverlay`, `@setoverlay_touch`, `@setoverlay_tween` | Confirm the existing UI-command mirror carries texture/tint/alpha output and remove any remaining dependency on executing the GL draw when GL authority is retired. This is a minimal cutover task, not a reference-pixel gate. | Exact overlay sampling, tween timing, alpha hit-test/touch behaviour and reference comparison. |
-| `@setcam_textures`, avatar-distance silhouette and camera visual modifiers | Audit the native world census so an active modifier cannot invalidate or bypass native publication; implement only missing native data needed for cutover. | Exact texture replacement, silhouette thresholds and transition parity. |
-| Camera position/focus/FOV/mouselook restrictions | CPU camera state is shared with the retained native world route; ensure no GL-only side effect is required at authority removal. | Complete command/reply and edge-condition parity matrix. |
-| Names, UI visibility, chat/IM, inventory/outfit, attachment, movement, interaction and teleport restrictions | Preserve existing CPU/UI policy paths while removing renderer-owned GL. No separate Metal renderer is expected unless source tracing finds one. | Full RLVa behavioural regression suite and viewer-reference comparison. |
-| Snapshot/cutout policy | Ordinary snapshot owners remain functional; source currently blocks cutouts while sphere or overlay is active. This policy must not block ordinary Metal presentation. | Decide and compare RLVa-specific cutout semantics. |
+The minimum cutover column is closed at this checkpoint. Everything in the
+rightmost column is deliberately retained so a later “what remains from the
+nice-to-have?” audit can answer from the repository rather than memory.
+
+| Surface | Minimum cutover status | Minimum native/no-GL state | Nice-to-have work left |
+| --- | --- | --- | --- |
+| `@setsphere` | complete at `9c141e0887` | Native Metal post owner implements blend, fixed blur, bounded variable blur, chromatic aberration and pixelation; it consumes retained depth and no longer makes valid native presentation ineligible. | Restart-qualified live checks; exact multi-effect/tween/reference parity; unusual or malformed-script cases; snapshot/cutout interaction. |
+| `@setoverlay`, `@setoverlay_touch`, `@setoverlay_tween` | complete at `79356bfd4f` | The ordered UI-command mirror carries the existing textured `gUIProgram` draw, AnisoWrap sampler, tint/alpha and blend. Missing Metal texture state fails the complete transaction closed. Touch masking remains CPU-side. | Exact overlay sampling, tween timing, alpha hit-test/touch behaviour and reference comparison. |
+| `@setcam_textures`, avatar-distance silhouette and camera visual modifiers | source-audited complete | Forced textures mutate the `LLFace`/`LLDrawInfo` texture before native batch capture. Silhouettes select the shared avatar-impostor/color route, which the native world owner consumes. No separate presentation rejection remains. | Exact texture replacement, silhouette thresholds and transition parity. |
+| Camera position/focus/FOV/mouselook restrictions | source-audited complete | These update the shared CPU camera state before either renderer consumes it; no GL-only presentation side effect or Metal eligibility rejection was found. | Complete command/reply and edge-condition parity matrix. |
+| Names, UI visibility, chat/IM, inventory/outfit, attachment, movement, interaction and teleport restrictions | source-audited complete | Existing CPU/UI policy paths remain in place and do not require a separate renderer. Re-audit only if later OpenGL removal exposes a concrete dependency. | Full RLVa behavioural regression suite and viewer-reference comparison. |
+| Snapshot/cutout policy | ordinary Metal path unblocked | Ordinary snapshot owners remain functional. RLVa-specific cutout policy does not reject ordinary Metal presentation. | Decide and compare RLVa-specific cutout semantics. |
 
 The source census is deliberately broader than renderer work: at this
 checkpoint 211 `indra/newview`/`indra/llrender` C++ headers or sources mention
@@ -39,5 +43,5 @@ rg -l 'RLVa|RLV_BHVR|RlvActions' indra/newview indra/llrender \
 The authoritative behaviour/modifier inventory remains
 `indra/newview/rlvdefines.h`; the two explicit visual-effect owners are in
 `indra/newview/rlveffects.*`. When M-013 is resumed, first re-audit those
-sources at HEAD, then close only minimum native/no-GL blockers before spending
-time on the nice-to-have parity column.
+sources at HEAD, then work only the rightmost nice-to-have column unless a new
+concrete Metal/no-GL blocker has appeared.

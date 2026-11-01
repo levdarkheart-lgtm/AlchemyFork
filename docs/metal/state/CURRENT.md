@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-01 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `9c141e0887` (`feat(metal): own RLVa sphere post processing`)
+**Renderer code checkpoint:** `79356bfd4f` (`fix(metal): admit RLVa overlay UI capture`)
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -31,13 +31,25 @@ priority order. Missing, malformed or failed state retains the complete GL
 chain for that frame. A physical asymmetric depth/reconstruction control and
 all five modes pass; exact live RLVa image/behaviour parity remains deferred.
 
+Commit `79356bfd4f` removes the second explicit RLVa cutover rejection.
+`@setoverlay` already renders as a textured `gUIProgram` batch inside the
+ordered world/UI stream. Native capture now mirrors its texture, AnisoWrap
+sampler, streamed tint/alpha and blend instead of rejecting the transaction
+before encoding. A missing texture mirror or unsupported batch still discards
+the complete native transaction and leaves GL authoritative for that frame.
+Source audit found the other renderer-affecting RLVa families enter shared
+state before capture: forced textures mutate the `LLFace`/`LLDrawInfo` texture,
+avatar-distance silhouettes select the shared impostor/color route, and camera
+restrictions update the camera consumed by both paths. No other explicit RLVa
+native-eligibility rejection remains.
+
 ## Build and test evidence
 
-- Source-exact warnings-as-errors RelWithDebInfo Development build 68029
-  linked, staged and signed at committed code head `9c141e0887`; an immediate
+- Source-exact warnings-as-errors RelWithDebInfo Development build 68031
+  linked, staged and signed at committed code head `79356bfd4f`; an immediate
   repeat reported no work.
 - Executable SHA-256:
-  `7457bbf98030e6674d0eb4ba6c7ed1c5dfabb5ab1b9a09748bff63eebca2da6c`.
+  `3f481298d69ecd8892d14271af072568996065ab10bd44c7571bf5eacae37efd`.
 - Packaged MSL SHA-256:
   `06454d17c307c6e1b9493a15edbf16e0c59bc385707f59bac327f5b4f71f006c`;
   compiled metallib SHA-256:
@@ -46,10 +58,13 @@ all five modes pass; exact live RLVa image/behaviour parity remains deferred.
   ARM64 slices.
 - The focused RLVa sphere physical case passes 44 assertions; the focused case
   plus offline builtin contract passes 255 assertions across two cases.
+  The ordered UI composition case covering the `@setoverlay` sampler,
+  tint/alpha and blend contract passes 455 assertions in both RelWithDebInfo
+  and Debug.
   Complete RelWithDebInfo and Debug physical Metal suites each pass 44,947
   assertions across 51 cases with Metal API/GPU validation enabled.
 - `ctest --test-dir build-Darwin-ninja-os-arm64 -C RelWithDebInfo -LE
-  'manual|gl' --output-on-failure` passed 484/484 in 247.57 seconds after the
+  'manual|gl' --output-on-failure` passed 484/484 in 247.94 seconds after the
   production change.
 - Harness validation and all tooling tests pass after this documentation
   checkpoint.
@@ -61,7 +76,7 @@ all five modes pass; exact live RLVa image/behaviour parity remains deferred.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-007 renderer | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
-| M-008 advanced views/effects | doing | RLVa `@setsphere` no longer disqualifies native presentation and has physical five-mode coverage; exact RLVa parity is M-013 nice-to-have. Broader non-RLVa shadows, transparency/materials, post and output parity stay open. |
+| M-008 advanced views/effects | doing | RLVa `@setsphere` and `@setoverlay` no longer disqualify native presentation; exact RLVa parity is M-013 nice-to-have. Broader non-RLVa shadows, transparency/materials, post and output parity stay open. |
 | M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
@@ -70,11 +85,12 @@ all five modes pass; exact live RLVa image/behaviour parity remains deferred.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Active RLVa `@setsphere` no longer
-automatically makes an otherwise exact native presentation ineligible. Five
-post modes and retained-depth reconstruction have physical coverage. This is
-minimum cutover support, not a claim of strict RLVa parity, native-only
-completion or a performance improvement.
+**Advances the complete product:** yes. The two explicit RLVa rendering
+boundaries no longer automatically reject an otherwise exact native frame.
+Sphere has physical five-mode/depth coverage; overlay uses the physically
+covered ordered UI texture/tint/alpha/sampler owner. This is minimum cutover
+support, not a claim of strict RLVa parity, native-only completion or a
+performance improvement.
 
 **Deferred critical work:** remaining non-RLVa post/alpha/PBR/probe/advanced
 view parity; full feature/stability matrices; viewer-owned OpenGL removal;
@@ -82,20 +98,19 @@ independent build/review evidence and reproducible distinct release proof; and
 paired quality-equivalent M1 Max measurements. Strict no-GL remains open.
 Exact RLVa behaviour/image parity is separately deferred as non-critical M-013.
 
-**Evidence-based priority:** `@setoverlay` is the next demonstrated RLVa
-cutover boundary because active overlay currently prevents native world/UI
-composition and its draw is GL-owned. Implement only enough native overlay
-state and presentation to stop blocking Metal authority; leave exact sampling,
-tween, touch-mask and reference parity in M-013. Then return directly to
-non-RLVa native-authority/no-GL owners. The informational GL scan currently
-covers 2,408 viewer-owned files and reports 3,303 potential findings; macros,
-comments and duplicates mean this is not an equal-sized task count.
+**Evidence-based priority:** the bounded RLVa minimum-cutover audit is closed;
+do not spend release-gate time on its exact-parity backlog. Return directly to
+the non-RLVa advanced/native-authority graph, beginning with the isolated
+projector/cascade-shadow fixture and then transparency/material replay. The
+informational GL scan currently covers 2,408 viewer-owned files and reports
+3,303 potential findings; macros, comments and duplicates mean this is not an
+equal-sized task count.
 
 ## Exact next actions
 
-1. Replace the active `@setoverlay` GL-only draw/native-composition rejection
-   with a minimum fail-closed Metal/UI owner and physical control; do not turn
-   that bounded cutover task into strict RLVa parity work.
-2. Resume source-led non-RLVa authority removal and the remaining M-008/M-009
-   graph. Keep full feature/stability, strict no-GL and qualifying performance
-   gates open until their release evidence exists.
+1. Resume source-led non-RLVa work at the isolated projector/cascade-shadow
+   fixture; implement only a demonstrated divergence and add an asymmetric
+   physical control.
+2. Continue transparency/material replay and native-authority removal. Keep
+   full feature/stability, strict no-GL and qualifying performance gates open
+   until their release evidence exists; keep RLVa exact work in M-013.
