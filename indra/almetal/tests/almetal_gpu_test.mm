@@ -4718,6 +4718,337 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.debug_blips = nullptr;
         opaque_forward_scene.debug_blip_count = 0;
 
+        // Develop > Agent Target emits four 0.2 m self-avatar crosshairs as
+        // translucent RGB-only lines. The enclosing spatial-debug owner has
+        // alpha blending enabled and inherits the display's read/write
+        // GL_LEQUAL depth state (GEQUAL under reverse-Z), while scene alpha
+        // remains untouched.
+        std::array<ALMetalWorldAgentTargetVertex, 24>
+            agent_target_lines{};
+        std::size_t agent_target_offset = 0;
+        const auto append_agent_target =
+            [&](float x, float y, float z,
+                const std::array<float, 4>& color)
+            {
+                constexpr float size = 0.1875f;
+                const float positions[6][3] = {
+                    {x - size, y, z}, {x + size, y, z},
+                    {x, y - size, z}, {x, y + size, z},
+                    {x, y, z - size}, {x, y, z + size},
+                };
+                for (const auto& position : positions)
+                {
+                    ALMetalWorldAgentTargetVertex& vertex =
+                        agent_target_lines[agent_target_offset++];
+                    std::memcpy(
+                        vertex.position, position, sizeof(position));
+                    std::memcpy(
+                        vertex.color, color.data(),
+                        sizeof(vertex.color));
+                }
+            };
+        const std::array<std::array<float, 4>, 4>
+            agent_target_source_colors{{
+                {{1.f, 0.f, 0.f, 0.8f}},
+                {{0.f, 1.f, 0.f, 0.8f}},
+                {{1.f, 1.f, 1.f, 0.8f}},
+                {{0.f, 0.f, 1.f, 0.8f}},
+            }};
+        append_agent_target(
+            -0.71875f, -0.71875f, 0.f,
+            agent_target_source_colors[0]);
+        append_agent_target(
+            -0.21875f, -0.71875f, 0.f,
+            agent_target_source_colors[1]);
+        append_agent_target(
+            0.28125f, -0.71875f, 0.f,
+            agent_target_source_colors[2]);
+        append_agent_target(
+            0.71875f, -0.71875f, 0.f,
+            agent_target_source_colors[3]);
+        REQUIRE(agent_target_offset == agent_target_lines.size());
+        opaque_forward_scene.agent_target_lines =
+            agent_target_lines.data();
+        opaque_forward_scene.agent_target_line_vertex_count =
+            agent_target_lines.size();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            opaque_forward_scene.agent_target_modelview_projection[
+                axis * 4 + axis] = 1.f;
+        }
+
+        opaque_forward_scene.agent_target_lines = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world agent-target storage is invalid");
+        opaque_forward_scene.agent_target_lines =
+            agent_target_lines.data();
+        opaque_forward_scene.agent_target_line_vertex_count = 6;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world agent-target storage is invalid");
+        opaque_forward_scene.agent_target_line_vertex_count =
+            agent_target_lines.size();
+        agent_target_lines[0].position[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world agent-target data is non-finite");
+        agent_target_lines[0].position[0] = -0.90625f;
+        error.clear();
+
+        auto native_agent_target = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(native_agent_target);
+        std::array<std::uint16_t, 32 * 32 * 4> agent_target_pixels{};
+        std::array<float, 32 * 32> agent_target_depth{};
+        REQUIRE(native_agent_target->colorTexture(0)->readback(
+            *device, 0, 0, {}, agent_target_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(native_agent_target->depthStencilTexture()->readback(
+            *device, 0, 0, {}, agent_target_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        std::array<std::size_t, 4> agent_target_color_pixels{};
+        const std::array<int, 4> agent_target_centers{{4, 12, 20, 27}};
+        const auto agent_half_to_float = [](std::uint16_t bits)
+        {
+            __fp16 value;
+            std::memcpy(&value, &bits, sizeof(value));
+            return static_cast<float>(value);
+        };
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                agent_target_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                agent_target_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                agent_target_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            if (changed)
+            {
+                const int x = static_cast<int>(pixel % 32);
+                const int y = static_cast<int>(pixel / 32);
+                std::size_t owner = agent_target_centers.size();
+                for (std::size_t crosshair = 0;
+                     crosshair < agent_target_centers.size(); ++crosshair)
+                {
+                    if (std::abs(x - agent_target_centers[crosshair]) <= 3 &&
+                        std::abs(y - 4) <= 3)
+                    {
+                        owner = crosshair;
+                        break;
+                    }
+                }
+                REQUIRE(owner < agent_target_centers.size());
+                CHECK(agent_target_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+                CHECK(agent_target_depth[pixel] <=
+                      opaque_forward_depth[pixel]);
+                // The X/Y/Z line pairs deliberately meet at the center, so
+                // that one pixel can receive the same alpha blend more than
+                // once. Every arm pixel receives exactly one blend.
+                if (x != agent_target_centers[owner] || y != 4)
+                {
+                    CHECK(std::abs(agent_target_depth[pixel] - 0.5f) <
+                          0.0001f);
+                    for (std::size_t channel = 0; channel < 3; ++channel)
+                    {
+                        const float destination = agent_half_to_float(
+                            opaque_forward_pixels[offset + channel]);
+                        const float expected =
+                            agent_target_source_colors[owner][channel] *
+                                0.8f +
+                            destination * 0.2f;
+                        CHECK(std::abs(
+                            agent_half_to_float(
+                                agent_target_pixels[offset + channel]) -
+                            expected) < 0.001f);
+                    }
+                }
+                ++agent_target_color_pixels[owner];
+            }
+        }
+        for (std::size_t color = 0;
+             color < agent_target_color_pixels.size(); ++color)
+        {
+            CAPTURE(color, agent_target_color_pixels[color]);
+            CHECK(agent_target_color_pixels[color] >= 8);
+        }
+        CHECK(agent_target_depth != opaque_forward_depth);
+
+        // Place all four crosshairs inside the known covered centre. At GL
+        // depth 0 (Metal 0.5) they pass and write; at GL depth 0.75 (Metal
+        // 0.875) they are behind the retained 0.625 surface and every line is
+        // rejected. This distinguishes inherited read/write depth from an
+        // always-on-top diagnostic composite.
+        auto agent_target_depth_lines = agent_target_lines;
+        const float depth_crosshair_positions[6][2] = {
+            {-0.1875f, 0.f}, {0.1875f, 0.f},
+            {0.f, -0.1875f}, {0.f, 0.1875f},
+            {0.f, 0.f}, {0.f, 0.f},
+        };
+        for (std::size_t crosshair = 0; crosshair < 4; ++crosshair)
+        {
+            for (std::size_t vertex = 0; vertex < 6; ++vertex)
+            {
+                ALMetalWorldAgentTargetVertex& target =
+                    agent_target_depth_lines[crosshair * 6 + vertex];
+                target.position[0] =
+                    depth_crosshair_positions[vertex][0];
+                target.position[1] =
+                    depth_crosshair_positions[vertex][1];
+                target.position[2] = 0.f;
+            }
+        }
+        opaque_forward_scene.agent_target_lines =
+            agent_target_depth_lines.data();
+        auto near_agent_target = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(near_agent_target);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            near_agent_target_pixels{};
+        std::array<float, 32 * 32> near_agent_target_depth{};
+        REQUIRE(near_agent_target->colorTexture(0)->readback(
+            *device, 0, 0, {}, near_agent_target_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(near_agent_target->depthStencilTexture()->readback(
+            *device, 0, 0, {}, near_agent_target_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t near_agent_target_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                near_agent_target_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                near_agent_target_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                near_agent_target_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            near_agent_target_changed += changed;
+            if (changed)
+            {
+                CHECK(near_agent_target_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+                CHECK(std::abs(near_agent_target_depth[pixel] - 0.5f) <
+                      0.0001f);
+            }
+        }
+        CHECK(near_agent_target_changed > 0);
+        for (ALMetalWorldAgentTargetVertex& vertex :
+             agent_target_depth_lines)
+        {
+            vertex.position[2] = 0.75f;
+        }
+        auto hidden_agent_target = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(hidden_agent_target);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            hidden_agent_target_pixels{};
+        std::array<float, 32 * 32> hidden_agent_target_depth{};
+        REQUIRE(hidden_agent_target->colorTexture(0)->readback(
+            *device, 0, 0, {}, hidden_agent_target_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(hidden_agent_target->depthStencilTexture()->readback(
+            *device, 0, 0, {}, hidden_agent_target_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(hidden_agent_target_pixels == opaque_forward_pixels);
+        CHECK(hidden_agent_target_depth == opaque_forward_depth);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        opaque_forward_scene.agent_target_lines = nullptr;
+        opaque_forward_scene.agent_target_line_vertex_count = 0;
+        auto reverse_agent_target_baseline =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_agent_target_baseline);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_agent_target_baseline_pixels{};
+        std::array<float, 32 * 32>
+            reverse_agent_target_baseline_depth{};
+        REQUIRE(reverse_agent_target_baseline->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            reverse_agent_target_baseline_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(
+            reverse_agent_target_baseline->depthStencilTexture()->readback(
+                *device, 0, 0, {},
+                reverse_agent_target_baseline_depth.data(),
+                32 * sizeof(float), &error));
+        for (ALMetalWorldAgentTargetVertex& vertex : agent_target_lines)
+        {
+            vertex.position[2] = 0.9f;
+        }
+        opaque_forward_scene.agent_target_lines =
+            agent_target_lines.data();
+        opaque_forward_scene.agent_target_line_vertex_count =
+            agent_target_lines.size();
+        auto reverse_agent_target = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_agent_target);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_agent_target_pixels{};
+        std::array<float, 32 * 32> reverse_agent_target_depth{};
+        REQUIRE(reverse_agent_target->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_agent_target_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(reverse_agent_target->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_agent_target_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t reverse_agent_target_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                reverse_agent_target_pixels[offset + 0] !=
+                    reverse_agent_target_baseline_pixels[offset + 0] ||
+                reverse_agent_target_pixels[offset + 1] !=
+                    reverse_agent_target_baseline_pixels[offset + 1] ||
+                reverse_agent_target_pixels[offset + 2] !=
+                    reverse_agent_target_baseline_pixels[offset + 2];
+            reverse_agent_target_changed += changed;
+            if (changed)
+            {
+                CHECK(reverse_agent_target_pixels[offset + 3] ==
+                      reverse_agent_target_baseline_pixels[offset + 3]);
+                CHECK(std::abs(reverse_agent_target_depth[pixel] - 0.9f) <
+                      0.0001f);
+            }
+        }
+        CHECK(reverse_agent_target_changed >= 32);
+        CHECK(reverse_agent_target_depth !=
+              reverse_agent_target_baseline_depth);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.agent_target_lines = nullptr;
+        opaque_forward_scene.agent_target_line_vertex_count = 0;
+        auto no_agent_target = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_agent_target);
+        agent_target_pixels.fill(0xffffu);
+        agent_target_depth.fill(-1.f);
+        REQUIRE(no_agent_target->colorTexture(0)->readback(
+            *device, 0, 0, {}, agent_target_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(no_agent_target->depthStencilTexture()->readback(
+            *device, 0, 0, {}, agent_target_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(agent_target_pixels == opaque_forward_pixels);
+        CHECK(agent_target_depth == opaque_forward_depth);
+
         // Develop > Wind Vectors follows the probe-volume display and emits
         // one-pixel green lattice points plus red line segments. It inherits
         // the ambient GL_LEQUAL read/write depth state (GEQUAL under

@@ -446,6 +446,14 @@ struct ALMetalWorldDebugBlip
 // read/write world depth state and a one-pixel raster footprint.
 using ALMetalWorldWindVectorVertex = ALMetalWorldDebugBlip;
 
+// Develop > Agent Target draws four translucent axis crosshairs for the self
+// avatar. Each crosshair is six immediate-mode line vertices. The streamed
+// position/color layout is shared with the other compact developer overlays;
+// unlike Wind Vectors, this owner alpha-blends over the scene while retaining
+// the same ambient read/write world depth convention. Scene alpha remains
+// untouched.
+using ALMetalWorldAgentTargetVertex = ALMetalWorldDebugBlip;
+
 // One axis-aligned column in the developer far-plane projection overlay. The
 // native vertex stage expands these retained center/half-extent records into
 // the same 12 triangles as the immediate GL owner. Columns are ordered with
@@ -750,6 +758,9 @@ struct ALMetalWorldOpaquePostDeferredScene
     const ALMetalWorldWindVectorVertex* wind_vector_lines = nullptr;
     std::size_t wind_vector_line_vertex_count = 0;
     float wind_vector_modelview_projection[16]{};
+    const ALMetalWorldAgentTargetVertex* agent_target_lines = nullptr;
+    std::size_t agent_target_line_vertex_count = 0;
+    float agent_target_modelview_projection[16]{};
     const ALMetalWorldFarPlaneOverlayColumn* far_plane_overlay_columns =
         nullptr;
     std::size_t far_plane_overlay_column_count = 0;

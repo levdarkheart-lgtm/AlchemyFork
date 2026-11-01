@@ -369,6 +369,14 @@ public:
                                 const LLVector3& line_start,
                                 const LLVector3& line_end);
     void endMetalWindVectorCapture(std::size_t vector_count);
+    // Retain the four self-avatar crosshairs emitted by Develop > Agent
+    // Target. The bounded begin/end transaction rejects duplicate or partial
+    // traversal instead of publishing an incomplete developer overlay.
+    void beginMetalAgentTargetCapture(std::size_t crosshair_count);
+    void captureMetalAgentTargetCrosshair(const LLVector3& position,
+                                          F32 size,
+                                          const LLColor4& color);
+    void endMetalAgentTargetCapture(std::size_t crosshair_count);
     // One bounded offscreen probe connects the completed current-frame native
     // world presentation and retained depth to the real ordered UI/HUD draw
     // stream. It never changes the live surface; publication remains locked
@@ -1448,7 +1456,6 @@ public:
             RENDER_DEBUG_SHADOW_FRUSTA |
             RENDER_DEBUG_AVATAR_VOLUME |
             RENDER_DEBUG_AVATAR_JOINTS |
-            RENDER_DEBUG_AGENT_TARGET |
             RENDER_DEBUG_UPDATE_TYPE |
             RENDER_DEBUG_PHYSICS_SHAPES |
             RENDER_DEBUG_NORMALS |

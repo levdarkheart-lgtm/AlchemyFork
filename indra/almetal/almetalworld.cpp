@@ -1303,6 +1303,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         wind_vector_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        agent_target_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         reflection_probe_volume_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> far_plane_overlay_pipeline;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -2412,6 +2414,39 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         impl->wind_vector_pipelines[hdr] = ALMetalRenderPipeline::create(
             device, wind_vector_descriptor, error);
         if (!impl->wind_vector_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor agent_target_descriptor;
+        agent_target_descriptor.library = impl->library.get();
+        agent_target_descriptor.vertex_function =
+            "almetal_world_wind_vector_vertex";
+        agent_target_descriptor.fragment_function =
+            "almetal_world_debug_blip_fragment";
+        agent_target_descriptor.colors[0].format = screen_formats[hdr];
+        agent_target_descriptor.colors[0].blending_enabled = true;
+        agent_target_descriptor.colors[0].source_rgb =
+            ALMetalBlendFactor::source_alpha;
+        agent_target_descriptor.colors[0].destination_rgb =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        agent_target_descriptor.colors[0].source_alpha =
+            ALMetalBlendFactor::source_alpha;
+        agent_target_descriptor.colors[0].destination_alpha =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        agent_target_descriptor.colors[0].write_mask =
+            static_cast<ALMetalColorWriteMask>(
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+        agent_target_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        agent_target_descriptor.label = hdr
+            ? "Alchemy HDR world agent-target pipeline"
+            : "Alchemy world agent-target pipeline";
+        impl->agent_target_pipelines[hdr] = ALMetalRenderPipeline::create(
+            device, agent_target_descriptor, error);
+        if (!impl->agent_target_pipelines[hdr])
         {
             return nullptr;
         }
@@ -10346,6 +10381,36 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             return nullptr;
         }
     }
+    constexpr std::size_t agent_target_line_vertex_count = 4 * 6;
+    if ((scene.agent_target_line_vertex_count != 0 &&
+         !scene.agent_target_lines) ||
+        (scene.agent_target_line_vertex_count != 0 &&
+         scene.agent_target_line_vertex_count !=
+             agent_target_line_vertex_count) ||
+        scene.agent_target_line_vertex_count >
+            std::numeric_limits<std::uint32_t>::max() ||
+        scene.agent_target_line_vertex_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldAgentTargetVertex) ||
+        (scene.agent_target_line_vertex_count != 0 &&
+         !finiteValues(
+             scene.agent_target_modelview_projection, 16)))
+    {
+        setError(error, "Metal world agent-target storage is invalid");
+        return nullptr;
+    }
+    for (std::size_t index = 0;
+         index < scene.agent_target_line_vertex_count; ++index)
+    {
+        const ALMetalWorldAgentTargetVertex& vertex =
+            scene.agent_target_lines[index];
+        if (!finiteValues(vertex.position, 4) ||
+            !finiteValues(vertex.color, 4))
+        {
+            setError(error, "Metal world agent-target data is non-finite");
+            return nullptr;
+        }
+    }
     if ((scene.far_plane_overlay_column_count != 0 &&
          !scene.far_plane_overlay_columns) ||
         scene.far_plane_overlay_column_count >
@@ -11546,6 +11611,24 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             !wind_vector_buffer->write(
                 wind_vector_line_offset, scene.wind_vector_lines,
                 line_bytes, error))
+        {
+            return nullptr;
+        }
+    }
+
+    std::unique_ptr<ALMetalBuffer> agent_target_buffer;
+    if (scene.agent_target_line_vertex_count != 0)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = scene.agent_target_line_vertex_count *
+                            sizeof(ALMetalWorldAgentTargetVertex);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world agent-target crosshairs";
+        agent_target_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!agent_target_buffer || !agent_target_buffer->write(
+                0, scene.agent_target_lines, descriptor.length, error))
         {
             return nullptr;
         }
@@ -13564,6 +13647,36 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->draw(
                 ALMetalPrimitiveType::point, 0,
                 static_cast<std::uint32_t>(scene.debug_blip_count),
+                1, error);
+    }
+
+    if (encoded && scene.agent_target_line_vertex_count != 0)
+    {
+        WorldDebugBlipConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    scene.agent_target_modelview_projection,
+                    sizeof(constants.modelview_projection));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        encoded =
+            encoder->setDepthStencilState(
+                scene.reverse_z ? mImpl->reverse_depth.get()
+                                : mImpl->forward_depth.get(),
+                error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *mImpl->agent_target_pipelines[scene.hdr ? 1 : 0],
+                error) &&
+            encoder->setVertexBuffer(
+                0, *agent_target_buffer, 0, error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::line, 0,
+                static_cast<std::uint32_t>(
+                    scene.agent_target_line_vertex_count),
                 1, error);
     }
 
