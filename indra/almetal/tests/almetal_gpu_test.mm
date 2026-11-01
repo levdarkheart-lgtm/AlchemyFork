@@ -56,7 +56,6 @@ namespace
         CHECK(rejects(&ALMetalWorldOverlayEligibility::wireframe));
         CHECK(rejects(
             &ALMetalWorldOverlayEligibility::reflection_probe_volumes));
-        CHECK(rejects(&ALMetalWorldOverlayEligibility::far_plane_overlay));
         CHECK(rejects(&ALMetalWorldOverlayEligibility::pathfinding));
     }
 
@@ -4636,6 +4635,168 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
               0.0001f);
         opaque_forward_scene.debug_blips = nullptr;
         opaque_forward_scene.debug_blip_count = 0;
+
+        // The Develop far-plane overlay depth-tests nearer orange columns
+        // against farther cyan columns in a private target, then RGB-only
+        // composites over the world. Use one overlapping pair and one exposed
+        // far column so depth order, coverage, destination alpha and retained
+        // scene depth are independently visible.
+        std::array<ALMetalWorldFarPlaneOverlayColumn, 3> overlay_columns{};
+        for (ALMetalWorldFarPlaneOverlayColumn& column : overlay_columns)
+        {
+            column.half_extent[0] = 0.2f;
+            column.half_extent[1] = 0.2f;
+            column.half_extent[2] = 0.05f;
+        }
+        overlay_columns[0].center[0] = -0.5f;
+        overlay_columns[0].center[2] = -0.5f;
+        overlay_columns[0].color[0] = 1.f;
+        overlay_columns[0].color[1] = 0.5f;
+        overlay_columns[0].color[2] = 0.f;
+        overlay_columns[1].center[0] = -0.5f;
+        overlay_columns[1].center[2] = 0.5f;
+        overlay_columns[1].color[0] = 0.f;
+        overlay_columns[1].color[1] = 0.8f;
+        overlay_columns[1].color[2] = 1.f;
+        overlay_columns[2] = overlay_columns[1];
+        overlay_columns[2].center[0] = 0.5f;
+        opaque_forward_scene.far_plane_overlay_columns =
+            overlay_columns.data();
+        opaque_forward_scene.far_plane_overlay_column_count =
+            overlay_columns.size();
+        opaque_forward_scene.far_plane_overlay_near_count = 1;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            opaque_forward_scene.far_plane_overlay_modelview_projection[
+                axis * 4 + axis] = 1.f;
+        }
+
+        opaque_forward_scene.far_plane_overlay_columns = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world far-plane overlay storage is invalid");
+        opaque_forward_scene.far_plane_overlay_columns =
+            overlay_columns.data();
+        opaque_forward_scene.far_plane_overlay_near_count = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world far-plane overlay storage is invalid");
+        opaque_forward_scene.far_plane_overlay_near_count = 1;
+        overlay_columns[0].color[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world far-plane overlay data is invalid");
+        overlay_columns[0].color[0] = 1.f;
+        error.clear();
+
+        auto native_far_plane_overlay = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(native_far_plane_overlay);
+        std::array<std::uint16_t, 32 * 32 * 4> overlay_pixels{};
+        std::array<float, 32 * 32> overlay_depth{};
+        REQUIRE(native_far_plane_overlay->colorTexture(0)->readback(
+            *device, 0, 0, {}, overlay_pixels.data(), 32 * 8, &error));
+        REQUIRE(native_far_plane_overlay->depthStencilTexture()->readback(
+            *device, 0, 0, {}, overlay_depth.data(), 32 * sizeof(float),
+            &error));
+        INFO(error);
+        const std::size_t near_overlay = (16 * 32 + 8) * 4;
+        const std::size_t far_overlay = (16 * 32 + 24) * 4;
+        CHECK(overlay_pixels[near_overlay + 0] == 0x3c00);
+        CHECK(overlay_pixels[near_overlay + 1] == 0x3804);
+        CHECK(overlay_pixels[near_overlay + 2] == 0u);
+        CHECK(overlay_pixels[near_overlay + 3] ==
+              opaque_forward_pixels[near_overlay + 3]);
+        CHECK(overlay_pixels[far_overlay + 0] == 0u);
+        CHECK(overlay_pixels[far_overlay + 1] == 0x3a66);
+        CHECK(overlay_pixels[far_overlay + 2] == 0x3c00);
+        CHECK(overlay_pixels[far_overlay + 3] ==
+              opaque_forward_pixels[far_overlay + 3]);
+        CHECK(std::abs(overlay_depth[16 * 32 + 8] -
+                       opaque_forward_depth[16 * 32 + 8]) < 0.0001f);
+        CHECK(std::abs(overlay_depth[16 * 32 + 24] -
+                       opaque_forward_depth[16 * 32 + 24]) < 0.0001f);
+        CHECK(overlay_pixels[0] == opaque_forward_pixels[0]);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        overlay_columns[0].center[2] = 0.5f;
+        overlay_columns[1].center[2] = -0.5f;
+        overlay_columns[2].center[2] = -0.5f;
+        auto reverse_far_plane_overlay = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_far_plane_overlay);
+        overlay_pixels.fill(0xffffu);
+        REQUIRE(reverse_far_plane_overlay->colorTexture(0)->readback(
+            *device, 0, 0, {}, overlay_pixels.data(), 32 * 8, &error));
+        INFO(error);
+        CHECK(overlay_pixels[near_overlay + 0] == 0x3c00);
+        CHECK(overlay_pixels[near_overlay + 1] == 0x3804);
+        CHECK(overlay_pixels[near_overlay + 2] == 0u);
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        overlay_columns[0].center[2] = -0.5f;
+        overlay_columns[1].center[2] = 0.5f;
+        overlay_columns[2].center[2] = 0.5f;
+
+        ALMetalRenderTargetDescriptor overlay_ldr_descriptor;
+        overlay_ldr_descriptor.width = 32;
+        overlay_ldr_descriptor.height = 32;
+        overlay_ldr_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        overlay_ldr_descriptor.label =
+            "Alchemy far-plane overlay LDR test lighting";
+        auto overlay_ldr_lighting = ALMetalRenderTarget::create(
+            *device, overlay_ldr_descriptor, &error);
+        REQUIRE(overlay_ldr_lighting);
+        ALMetalRenderPassConfig overlay_ldr_clear;
+        overlay_ldr_clear.colors[0].load = ALMetalLoadAction::clear;
+        overlay_ldr_clear.colors[0].store = ALMetalStoreAction::store;
+        overlay_ldr_clear.colors[0].clear = {0.25, 0.125, 0.0625, 0.5};
+        auto overlay_ldr_pass = overlay_ldr_lighting->makeRenderPass(
+            overlay_ldr_clear, &error);
+        auto overlay_ldr_command = device->makeCommandBuffer(
+            "Alchemy far-plane overlay LDR test clear", &error);
+        auto overlay_ldr_encoder = overlay_ldr_pass && overlay_ldr_command
+            ? ALMetalRenderEncoder::begin(
+                  *overlay_ldr_command, *overlay_ldr_pass,
+                  "Alchemy far-plane overlay LDR clear encoder", &error)
+            : nullptr;
+        REQUIRE(overlay_ldr_encoder);
+        REQUIRE(overlay_ldr_encoder->end(&error));
+        REQUIRE(overlay_ldr_command->commitAndWait(&error));
+        opaque_forward_scene.composed_lighting = overlay_ldr_lighting.get();
+        opaque_forward_scene.hdr = false;
+        opaque_forward_scene.batches = nullptr;
+        opaque_forward_scene.batch_count = 0;
+        auto ldr_far_plane_overlay = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(ldr_far_plane_overlay);
+        std::array<std::uint8_t, 32 * 32 * 4> overlay_ldr_pixels{};
+        REQUIRE(ldr_far_plane_overlay->colorTexture(0)->readback(
+            *device, 0, 0, {}, overlay_ldr_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(overlay_ldr_pixels[near_overlay + 0] == 255u);
+        CHECK(overlay_ldr_pixels[near_overlay + 1] == 128u);
+        CHECK(overlay_ldr_pixels[near_overlay + 2] == 0u);
+        CHECK(overlay_ldr_pixels[near_overlay + 3] == 128u);
+        CHECK(overlay_ldr_pixels[far_overlay + 0] == 0u);
+        CHECK(overlay_ldr_pixels[far_overlay + 1] == 204u);
+        CHECK(overlay_ldr_pixels[far_overlay + 2] == 255u);
+        CHECK(overlay_ldr_pixels[far_overlay + 3] == 128u);
+        opaque_forward_scene.composed_lighting = final_light.get();
+        opaque_forward_scene.hdr = true;
+        opaque_forward_scene.batches = &normal_free_fullbright;
+        opaque_forward_scene.batch_count = 1;
+        opaque_forward_scene.far_plane_overlay_columns = nullptr;
+        opaque_forward_scene.far_plane_overlay_column_count = 0;
+        opaque_forward_scene.far_plane_overlay_near_count = 0;
 
         // Final-color publication is opt-in because only the continuously
         // advancing main-world path needs to sample combined depth. Prove

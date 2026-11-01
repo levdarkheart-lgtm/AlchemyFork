@@ -112,6 +112,12 @@ void render()
         return;
     }
 
+#if LL_DARWIN
+    // Capture only after the authoritative owner has a drawable target. If its
+    // allocation failed above, neither backend contributes an overlay.
+    gPipeline.captureMetalFarPlaneOverlay();
+#endif
+
     const LLVector3 origin = LLViewerCamera::getInstance()->getOrigin();
 
     gGL.flush();

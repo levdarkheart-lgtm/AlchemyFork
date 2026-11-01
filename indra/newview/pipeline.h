@@ -356,6 +356,10 @@ public:
     void bindScreenToTexture();
     void renderFinalize();
 #if LL_DARWIN
+    // Retain the successfully allocated Develop far-plane overlay at its GL
+    // owner boundary. The post-deferred Metal transaction expands and depth-
+    // tests the same column pairs, then composites them after world diagnostics.
+    void captureMetalFarPlaneOverlay();
     // One bounded offscreen probe connects the completed current-frame native
     // world presentation and retained depth to the real ordered UI/HUD draw
     // stream. It never changes the live surface; publication remains locked

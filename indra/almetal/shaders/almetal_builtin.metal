@@ -1986,6 +1986,65 @@ fragment float4 almetal_world_debug_blip_fragment(
     return input.color;
 }
 
+struct ALMetalWorldFarPlaneOverlayColumn
+{
+    float4 center;
+    float4 half_extent;
+    float4 color;
+};
+
+struct ALMetalWorldFarPlaneOverlayConstants
+{
+    float4x4 modelview_projection;
+    uint4 config;
+};
+
+struct ALMetalWorldFarPlaneOverlayVaryings
+{
+    float4 position [[position]];
+    float4 color;
+};
+
+vertex ALMetalWorldFarPlaneOverlayVaryings
+almetal_world_far_plane_overlay_vertex(
+    const device ALMetalWorldFarPlaneOverlayColumn* columns [[buffer(0)]],
+    constant ALMetalWorldFarPlaneOverlayConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]], uint instance_id [[instance_id]])
+{
+    constexpr uchar indices[36] = {
+        0, 1, 2, 0, 2, 3,
+        4, 5, 6, 4, 6, 7,
+        0, 1, 5, 0, 5, 4,
+        1, 2, 6, 1, 6, 5,
+        2, 3, 7, 2, 7, 6,
+        3, 0, 4, 3, 4, 7,
+    };
+    constexpr float3 signs[8] = {
+        {-1.0, -1.0, -1.0}, { 1.0, -1.0, -1.0},
+        { 1.0,  1.0, -1.0}, {-1.0,  1.0, -1.0},
+        {-1.0, -1.0,  1.0}, { 1.0, -1.0,  1.0},
+        { 1.0,  1.0,  1.0}, {-1.0,  1.0,  1.0},
+    };
+    const ALMetalWorldFarPlaneOverlayColumn column = columns[instance_id];
+    const float3 position = column.center.xyz +
+                            column.half_extent.xyz * signs[indices[vertex_id]];
+    float4 clip_position = constants.modelview_projection *
+                           float4(position, 1.0);
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldFarPlaneOverlayVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.color = column.color;
+    return output;
+}
+
+fragment float4 almetal_world_far_plane_overlay_fragment(
+    ALMetalWorldFarPlaneOverlayVaryings input [[stage_in]])
+{
+    return input.color;
+}
+
 static ALMetalWorldSpotShadowVaryings almetal_world_spot_shadow_output(
     float4 clip_position, constant ALMetalWorldSpotShadowConstants& constants)
 {

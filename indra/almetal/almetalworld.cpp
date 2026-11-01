@@ -127,6 +127,14 @@ namespace
     static_assert(sizeof(ALMetalWorldDebugBlip) == 32);
     static_assert(sizeof(WorldDebugBlipConstants) == 80);
 
+    struct alignas(16) WorldFarPlaneOverlayConstants
+    {
+        float modelview_projection[16];
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(ALMetalWorldFarPlaneOverlayColumn) == 48);
+    static_assert(sizeof(WorldFarPlaneOverlayConstants) == 80);
+
     struct alignas(16) WorldSpotShadowConstants
     {
         float modelview_projection[16];
@@ -1252,6 +1260,10 @@ struct ALMetalWorldGBufferRenderer::Impl
         highlight_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         debug_blip_pipelines;
+    std::unique_ptr<ALMetalRenderPipeline> far_plane_overlay_pipeline;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        far_plane_overlay_composite_pipelines;
+    std::unique_ptr<ALMetalRenderTarget> far_plane_overlay_target;
     std::array<OpaqueForwardRiggedPipelines, 2>
         opaque_forward_shiny_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
@@ -1336,6 +1348,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::unique_ptr<ALMetalDepthStencilState> forward_coverage_depth;
     std::unique_ptr<ALMetalDepthStencilState> reverse_coverage_depth;
     std::unique_ptr<ALMetalDepthStencilState> debug_blip_depth;
+    std::unique_ptr<ALMetalDepthStencilState> overlay_composite_depth;
     std::unique_ptr<ALMetalDepthStencilState>
         forward_atmospheric_haze_depth;
     std::unique_ptr<ALMetalDepthStencilState>
@@ -1546,6 +1559,10 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     if (!impl->library ||
         !impl->library->hasFunction("almetal_resample_vertex") ||
         !impl->library->hasFunction("almetal_resample_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_far_plane_overlay_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_far_plane_overlay_fragment") ||
         !impl->library->hasFunction("almetal_world_spot_shadow_vertex") ||
         !impl->library->hasFunction(
             "almetal_world_spot_shadow_skinned_vertex") ||
@@ -2234,6 +2251,26 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         ALMetalPixelFormat::rgba8_unorm,
         ALMetalPixelFormat::rgba16_float,
     }};
+
+    ALMetalRenderPipelineDescriptor far_plane_overlay_descriptor;
+    far_plane_overlay_descriptor.library = impl->library.get();
+    far_plane_overlay_descriptor.vertex_function =
+        "almetal_world_far_plane_overlay_vertex";
+    far_plane_overlay_descriptor.fragment_function =
+        "almetal_world_far_plane_overlay_fragment";
+    far_plane_overlay_descriptor.colors[0].format =
+        ALMetalPixelFormat::rgba8_unorm;
+    far_plane_overlay_descriptor.depth_stencil_format =
+        ALMetalPixelFormat::depth32_float_stencil8;
+    far_plane_overlay_descriptor.label =
+        "Alchemy far-plane projection overlay depth pipeline";
+    impl->far_plane_overlay_pipeline = ALMetalRenderPipeline::create(
+        device, far_plane_overlay_descriptor, error);
+    if (!impl->far_plane_overlay_pipeline)
+    {
+        return nullptr;
+    }
+
     for (std::size_t hdr = 0; hdr < screen_formats.size(); ++hdr)
     {
         for (std::size_t write_alpha = 0; write_alpha < 2; ++write_alpha)
@@ -2305,6 +2342,40 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         impl->debug_blip_pipelines[hdr] = ALMetalRenderPipeline::create(
             device, debug_blip_descriptor, error);
         if (!impl->debug_blip_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor overlay_composite_descriptor;
+        overlay_composite_descriptor.library = impl->library.get();
+        overlay_composite_descriptor.vertex_function =
+            "almetal_resample_vertex";
+        overlay_composite_descriptor.fragment_function =
+            "almetal_resample_fragment";
+        overlay_composite_descriptor.colors[0].format = screen_formats[hdr];
+        overlay_composite_descriptor.colors[0].blending_enabled = true;
+        overlay_composite_descriptor.colors[0].source_rgb =
+            ALMetalBlendFactor::source_alpha;
+        overlay_composite_descriptor.colors[0].destination_rgb =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        overlay_composite_descriptor.colors[0].source_alpha =
+            ALMetalBlendFactor::one;
+        overlay_composite_descriptor.colors[0].destination_alpha =
+            ALMetalBlendFactor::zero;
+        overlay_composite_descriptor.colors[0].write_mask =
+            static_cast<ALMetalColorWriteMask>(
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+        overlay_composite_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        overlay_composite_descriptor.label = hdr
+            ? "Alchemy HDR far-plane projection overlay composite pipeline"
+            : "Alchemy far-plane projection overlay composite pipeline";
+        impl->far_plane_overlay_composite_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, overlay_composite_descriptor, error);
+        if (!impl->far_plane_overlay_composite_pipelines[hdr])
         {
             return nullptr;
         }
@@ -3969,6 +4040,15 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     impl->debug_blip_depth = ALMetalDepthStencilState::create(
         device, depth, error);
     if (!impl->debug_blip_depth)
+    {
+        return nullptr;
+    }
+
+    depth.depth_write_enabled = false;
+    depth.label = "Alchemy far-plane overlay composite depth";
+    impl->overlay_composite_depth = ALMetalDepthStencilState::create(
+        device, depth, error);
+    if (!impl->overlay_composite_depth)
     {
         return nullptr;
     }
@@ -10093,6 +10173,52 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             return nullptr;
         }
     }
+    if ((scene.far_plane_overlay_column_count != 0 &&
+         !scene.far_plane_overlay_columns) ||
+        scene.far_plane_overlay_column_count >
+            std::numeric_limits<std::uint32_t>::max() ||
+        scene.far_plane_overlay_column_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldFarPlaneOverlayColumn) ||
+        scene.far_plane_overlay_near_count >
+            scene.far_plane_overlay_column_count ||
+        ((scene.far_plane_overlay_column_count == 0) !=
+         (scene.far_plane_overlay_near_count == 0)) ||
+        (scene.far_plane_overlay_column_count != 0 &&
+         (scene.far_plane_overlay_near_count == 0 ||
+          scene.far_plane_overlay_near_count >=
+              scene.far_plane_overlay_column_count ||
+          !finiteValues(
+              scene.far_plane_overlay_modelview_projection, 16))))
+    {
+        setError(error,
+                 "Metal world far-plane overlay storage is invalid");
+        return nullptr;
+    }
+    for (std::size_t index = 0;
+         index < scene.far_plane_overlay_column_count; ++index)
+    {
+        const ALMetalWorldFarPlaneOverlayColumn& column =
+            scene.far_plane_overlay_columns[index];
+        if (!finiteValues(column.center, 4) ||
+            !finiteValues(column.half_extent, 4) ||
+            !finiteValues(column.color, 4) ||
+            column.center[3] != 1.f ||
+            column.half_extent[0] <= 0.f ||
+            column.half_extent[1] <= 0.f ||
+            column.half_extent[2] <= 0.f ||
+            column.half_extent[3] != 0.f ||
+            std::any_of(column.color, column.color + 4,
+                        [](float value)
+                        {
+                            return value < 0.f || value > 1.f;
+                        }))
+        {
+            setError(error,
+                     "Metal world far-plane overlay data is invalid");
+            return nullptr;
+        }
+    }
     if (!finiteValues(scene.mirror_clip_plane, 4))
     {
         setError(error,
@@ -11205,6 +11331,32 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
     }
 
+    if (scene.far_plane_overlay_column_count == 0)
+    {
+        // Match the GL owner's setting-off release instead of retaining a
+        // screen-sized diagnostic color/depth pair after the overlay is gone.
+        mImpl->far_plane_overlay_target.reset();
+    }
+
+    std::unique_ptr<ALMetalBuffer> far_plane_overlay_buffer;
+    if (scene.far_plane_overlay_column_count != 0)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = scene.far_plane_overlay_column_count *
+                            sizeof(ALMetalWorldFarPlaneOverlayColumn);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy far-plane projection overlay columns";
+        far_plane_overlay_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!far_plane_overlay_buffer || !far_plane_overlay_buffer->write(
+                0, scene.far_plane_overlay_columns,
+                descriptor.length, error))
+        {
+            return nullptr;
+        }
+    }
+
     std::unique_ptr<ALMetalBuffer> probe_constants_buffer;
     if (has_shiny || has_pre_water_simple || has_pre_water_material ||
         has_pre_water_pbr || has_above_water_surface)
@@ -11336,6 +11488,29 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     {
         return nullptr;
     }
+    if (scene.far_plane_overlay_column_count != 0 &&
+        (!mImpl->far_plane_overlay_target ||
+         mImpl->far_plane_overlay_target->descriptor().width != scene.width ||
+         mImpl->far_plane_overlay_target->descriptor().height != scene.height))
+    {
+        ALMetalRenderTargetDescriptor overlay_descriptor;
+        overlay_descriptor.width = scene.width;
+        overlay_descriptor.height = scene.height;
+        overlay_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        overlay_descriptor.colors[0].label =
+            "Alchemy far-plane projection overlay color";
+        overlay_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        overlay_descriptor.label =
+            "Alchemy far-plane projection overlay target";
+        mImpl->far_plane_overlay_target = ALMetalRenderTarget::create(
+            *mImpl->device, overlay_descriptor, error);
+        if (!mImpl->far_plane_overlay_target)
+        {
+            return nullptr;
+        }
+    }
     std::unique_ptr<ALMetalRenderTarget> haze_depth_snapshot;
     if (has_water_haze)
     {
@@ -11429,6 +11604,78 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
               *command, *scene.gbuffer->depthStencilTexture(), {}, error))))
     {
         return fail_command();
+    }
+
+    if (scene.far_plane_overlay_column_count != 0)
+    {
+        ALMetalRenderPassConfig overlay_config;
+        overlay_config.colors[0].load = ALMetalLoadAction::clear;
+        overlay_config.colors[0].store = ALMetalStoreAction::store;
+        overlay_config.colors[0].clear = {0.0, 0.0, 0.0, 0.0};
+        overlay_config.depth_load = ALMetalLoadAction::clear;
+        overlay_config.depth_store = ALMetalStoreAction::dont_care;
+        overlay_config.clear_depth = scene.reverse_z ? 0.0 : 1.0;
+        overlay_config.stencil_load = ALMetalLoadAction::clear;
+        overlay_config.stencil_store = ALMetalStoreAction::dont_care;
+        overlay_config.clear_stencil = 0;
+        auto overlay_pass = mImpl->far_plane_overlay_target->makeRenderPass(
+            overlay_config, error);
+        auto overlay_encoder = overlay_pass ? ALMetalRenderEncoder::begin(
+            *command, *overlay_pass,
+            "Alchemy far-plane projection overlay encoder", error) : nullptr;
+        if (!overlay_encoder)
+        {
+            return fail_command();
+        }
+
+        const ALMetalViewport overlay_viewport{
+            0.0, 0.0, static_cast<double>(scene.width),
+            static_cast<double>(scene.height), 0.0, 1.0,
+        };
+        const ALMetalScissorRect overlay_scissor{
+            0, 0, scene.width, scene.height};
+        WorldFarPlaneOverlayConstants overlay_constants{};
+        std::memcpy(
+            overlay_constants.modelview_projection,
+            scene.far_plane_overlay_modelview_projection,
+            sizeof(overlay_constants.modelview_projection));
+        overlay_constants.config[0] = scene.reverse_z ? 1u : 0u;
+        const std::uint32_t near_count = static_cast<std::uint32_t>(
+            scene.far_plane_overlay_near_count);
+        const std::uint32_t far_count = static_cast<std::uint32_t>(
+            scene.far_plane_overlay_column_count -
+            scene.far_plane_overlay_near_count);
+        const std::size_t far_offset =
+            scene.far_plane_overlay_near_count *
+            sizeof(ALMetalWorldFarPlaneOverlayColumn);
+        bool overlay_encoded =
+            overlay_encoder->setViewport(overlay_viewport, error) &&
+            overlay_encoder->setScissor(overlay_scissor, error) &&
+            overlay_encoder->setFrontFacingWinding(
+                ALMetalWinding::clockwise, error) &&
+            overlay_encoder->setCullMode(ALMetalCullMode::none, error) &&
+            overlay_encoder->setDepthStencilState(
+                scene.reverse_z ? mImpl->reverse_depth.get()
+                                : mImpl->forward_depth.get(),
+                error) &&
+            overlay_encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            overlay_encoder->setPipeline(
+                *mImpl->far_plane_overlay_pipeline, error) &&
+            overlay_encoder->setVertexBytes(
+                1, &overlay_constants, sizeof(overlay_constants), error) &&
+            overlay_encoder->setVertexBuffer(
+                0, *far_plane_overlay_buffer, 0, error) &&
+            overlay_encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 36, near_count, error) &&
+            overlay_encoder->setVertexBuffer(
+                0, *far_plane_overlay_buffer, far_offset, error) &&
+            overlay_encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 36, far_count, error);
+        const bool overlay_ended = overlay_encoder->end(error);
+        if (!overlay_encoded || !overlay_ended)
+        {
+            return fail_command();
+        }
     }
 
     constexpr std::uint32_t pre_water_brdf_lut_size = 512;
@@ -13053,6 +13300,25 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 ALMetalPrimitiveType::point, 0,
                 static_cast<std::uint32_t>(scene.debug_blip_count),
                 1, error);
+    }
+
+    if (encoded && scene.far_plane_overlay_column_count != 0)
+    {
+        encoded =
+            encoder->setDepthStencilState(
+                mImpl->overlay_composite_depth.get(), error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setPipeline(
+                *mImpl->far_plane_overlay_composite_pipelines[
+                    scene.hdr ? 1 : 0],
+                error) &&
+            encoder->setFragmentTexture(
+                0, mImpl->far_plane_overlay_target->colorTexture(0), error) &&
+            encoder->setFragmentSampler(
+                0, mImpl->point_clamp_sampler.get(), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error);
     }
 
     const bool ended = encoder->end(error);

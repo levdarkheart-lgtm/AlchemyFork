@@ -28,14 +28,12 @@ struct ALMetalWorldOverlayEligibility
     bool render_debug = false;
     bool wireframe = false;
     bool reflection_probe_volumes = false;
-    bool far_plane_overlay = false;
     bool pathfinding = false;
 
     bool exact() const
     {
         return !render_debug && !wireframe &&
-            !reflection_probe_volumes && !far_plane_overlay &&
-            !pathfinding;
+            !reflection_probe_volumes && !pathfinding;
     }
 };
 
@@ -445,6 +443,19 @@ struct ALMetalWorldDebugBlip
     float color[4] = {1.f, 1.f, 1.f, 1.f};
 };
 
+// One axis-aligned column in the developer far-plane projection overlay. The
+// native vertex stage expands these retained center/half-extent records into
+// the same 12 triangles as the immediate GL owner. Columns are ordered with
+// all nearer (orange) records first, followed by farther (cyan) records, so a
+// private depth attachment proves projection reach and ordering before the
+// overlay is composited over the scene.
+struct alignas(16) ALMetalWorldFarPlaneOverlayColumn
+{
+    float center[4] = {0.f, 0.f, 0.f, 1.f};
+    float half_extent[4] = {0.f, 0.f, 0.f, 0.f};
+    float color[4] = {1.f, 1.f, 1.f, 1.f};
+};
+
 struct ALMetalWorldGBufferScene
 {
     const ALMetalWorldSimpleBatch* batches = nullptr;
@@ -730,6 +741,11 @@ struct ALMetalWorldOpaquePostDeferredScene
     const ALMetalWorldDebugBlip* debug_blips = nullptr;
     std::size_t debug_blip_count = 0;
     float debug_blip_modelview_projection[16]{};
+    const ALMetalWorldFarPlaneOverlayColumn* far_plane_overlay_columns =
+        nullptr;
+    std::size_t far_plane_overlay_column_count = 0;
+    std::size_t far_plane_overlay_near_count = 0;
+    float far_plane_overlay_modelview_projection[16]{};
     const ALMetalWorldReflectionProbes* reflection_probes = nullptr;
     // Mutually exclusive with reflection_probes for forward rendering.
     // This is the current LLCubeMap publication used by the class-2 GLSL

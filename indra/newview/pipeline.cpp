@@ -577,6 +577,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::vector<ALMetalWorldHighlightBatch> highlight_batches;
     std::vector<ALMetalWorldDebugBlip> debug_blips;
     F32 debug_blip_modelview_projection[16]{};
+    std::vector<ALMetalWorldFarPlaneOverlayColumn> far_plane_overlay_columns;
+    std::size_t far_plane_overlay_near_count = 0;
+    F32 far_plane_overlay_modelview_projection[16]{};
     std::vector<ALMetalWorldHDRISkyBatch> hdri_sky_batches;
     const ALMetalTexture* hdri_sky_environment = nullptr;
     F32 hdri_sky_camera_local[4]{};
@@ -3937,8 +3940,6 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     // these optional GL-only overlays actually contributed to the frame.
     static LLCachedControl<bool> reflection_probe_volumes(
         gSavedSettings, "RenderReflectionProbeVolumes", false);
-    static LLCachedControl<bool> far_plane_overlay(
-        gSavedSettings, "AlchemyRenderFarPlaneOverlay", false);
 
     bool pathfinding_overlay = false;
     if (LLPathingLib::getInstance())
@@ -3980,13 +3981,14 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     overlay_eligibility.wireframe = gUseWireframe;
     overlay_eligibility.reflection_probe_volumes =
         reflection_probe_volumes;
-    overlay_eligibility.far_plane_overlay = far_plane_overlay;
     overlay_eligibility.pathfinding = pathfinding_overlay;
     capture.world_ui_overlay_exact = overlay_eligibility.exact();
 
     capture.batches.clear();
     capture.highlight_batches.clear();
     capture.debug_blips.clear();
+    capture.far_plane_overlay_columns.clear();
+    capture.far_plane_overlay_near_count = 0;
     capture.avatar_palettes.clear();
     capture.resetCompleteness();
     capture.frame_active = true;
@@ -4014,6 +4016,92 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.world_alpha_lighting = {};
     capture.world_alpha_lighting_valid = false;
     capture.world_alpha_uses_shadows = false;
+}
+
+void LLPipeline::captureMetalFarPlaneOverlay()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete)
+    {
+        return;
+    }
+    if (!capture.far_plane_overlay_columns.empty())
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(capture.far_plane_overlay_modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(capture.far_plane_overlay_modelview_projection));
+
+    const LLVector3 origin = LLViewerCamera::getInstance()->getOrigin();
+    const std::vector<ALFarPlane::OverlayColumn>& columns =
+        ALFarPlane::overlayColumns();
+    try
+    {
+        capture.far_plane_overlay_columns.reserve(columns.size());
+        for (bool nearer : {true, false})
+        {
+            for (const ALFarPlane::OverlayColumn& column : columns)
+            {
+                if (column.mNearer != nearer)
+                {
+                    continue;
+                }
+                const F32 radians = column.mBearing * DEG_TO_RAD;
+                const LLVector3 forward(
+                    sinf(radians), cosf(radians), 0.f);
+                const LLVector3 right(
+                    cosf(radians), -sinf(radians), 0.f);
+                const LLVector3 center = origin +
+                    forward * column.mDistance +
+                    right * column.mOffset;
+
+                ALMetalWorldFarPlaneOverlayColumn retained;
+                std::memcpy(retained.center, center.mV, sizeof(center.mV));
+                retained.half_extent[0] = column.mHalfWidth;
+                retained.half_extent[1] = column.mHalfWidth;
+                retained.half_extent[2] = 0.5f * column.mHeight;
+                retained.color[0] = nearer ? 1.f : 0.f;
+                retained.color[1] = nearer ? 0.5f : 0.8f;
+                retained.color[2] = nearer ? 0.f : 1.f;
+                capture.far_plane_overlay_columns.push_back(retained);
+            }
+            if (nearer)
+            {
+                capture.far_plane_overlay_near_count =
+                    capture.far_plane_overlay_columns.size();
+            }
+        }
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.far_plane_overlay_columns.clear();
+        capture.far_plane_overlay_near_count = 0;
+    }
+
+    if (capture.complete &&
+        (capture.far_plane_overlay_columns.size() != columns.size() ||
+         capture.far_plane_overlay_near_count == 0 ||
+         capture.far_plane_overlay_near_count >=
+             capture.far_plane_overlay_columns.size()))
+    {
+        capture.markIncomplete(__LINE__);
+        capture.far_plane_overlay_columns.clear();
+        capture.far_plane_overlay_near_count = 0;
+    }
 }
 
 bool LLPipeline::fillMetalWorldAlphaEnvironment(
@@ -4670,6 +4758,15 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         std::memcpy(scene.debug_blip_modelview_projection,
                     capture.debug_blip_modelview_projection,
                     sizeof(scene.debug_blip_modelview_projection));
+        scene.far_plane_overlay_columns =
+            capture.far_plane_overlay_columns.data();
+        scene.far_plane_overlay_column_count =
+            capture.far_plane_overlay_columns.size();
+        scene.far_plane_overlay_near_count =
+            capture.far_plane_overlay_near_count;
+        std::memcpy(scene.far_plane_overlay_modelview_projection,
+                    capture.far_plane_overlay_modelview_projection,
+                    sizeof(scene.far_plane_overlay_modelview_projection));
         scene.reflection_probes = needs_reflection_probes
             ? &capture.impostor_reflection_probes : nullptr;
         scene.legacy_environment = legacy_environment;
@@ -6270,6 +6367,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.batches.clear();
     capture.highlight_batches.clear();
     capture.debug_blips.clear();
+    capture.far_plane_overlay_columns.clear();
+    capture.far_plane_overlay_near_count = 0;
     capture.avatar_palettes.clear();
     capture.resetCompleteness();
     capture.impostor_fullbright = false;
