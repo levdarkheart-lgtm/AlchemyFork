@@ -211,12 +211,16 @@ struct LLReflectionMapManager::MetalDefaultProbeMirror
     bool mRadiancePending = false;
 
     std::unique_ptr<ALMetalTexture> mPublishedRadiance;
+    std::unique_ptr<ALMetalTexture> mNativePendingRadiance;
+    U64 mNativePendingRadianceGeneration = 0;
+    U64 mNativePendingRadianceSequence = 0;
 
     bool hasResources() const
     {
         return mSHReadback.isAllocated() ||
                mRadianceReadback.isAllocated() ||
-               mPublishedRadiance != nullptr;
+               mPublishedRadiance != nullptr ||
+               mNativePendingRadiance != nullptr;
     }
 
     void release()
@@ -237,6 +241,9 @@ struct LLReflectionMapManager::MetalDefaultProbeMirror
         mCaptureActive = false;
         mRadiancePending = false;
         mPublishedRadiance.reset();
+        mNativePendingRadiance.reset();
+        mNativePendingRadianceGeneration = 0;
+        mNativePendingRadianceSequence = 0;
     }
 };
 
@@ -434,6 +441,10 @@ bool LLReflectionMapManager::reconcileMetalProbeArray()
         // The readback queue and its metadata must be discarded together:
         // retaining one across a cube-layout or device change could attach an
         // old row to a newly assigned probe slot.
+        MetalDefaultProbeMirror& default_mirror = *mMetalDefaultProbe;
+        default_mirror.mNativePendingRadiance.reset();
+        default_mirror.mNativePendingRadianceGeneration = 0;
+        default_mirror.mNativePendingRadianceSequence = 0;
         mirror.release();
         mirror.mDevice = device;
         mirror.mCubeCount = cube_count;
@@ -465,10 +476,14 @@ void LLReflectionMapManager::collectNativeMetalProbe()
         return;
     }
 
+    const U32 pending_cube = mirror.mNativePendingSHCube;
+    const U64 pending_generation = mirror.mNativePendingSHGeneration;
+    const U64 pending_sequence = mirror.mNativePendingSHSequence;
     const bool generation_valid =
         mirror.mNativePendingSHCube < mirror.mSlotGenerations.size() &&
         mirror.mSlotGenerations[mirror.mNativePendingSHCube] ==
             mirror.mNativePendingSHGeneration;
+    bool default_sh_ready = false;
     if (status == ALMetalCommandStatus::completed && generation_valid)
     {
         mirror.mNativeReadySHCube = mirror.mNativePendingSHCube;
@@ -487,6 +502,7 @@ void LLReflectionMapManager::collectNativeMetalProbe()
                     mirror.mNativePendingSHGeneration;
                 default_mirror.mNativeStagedSHSequence =
                     mirror.mNativePendingSHSequence;
+                default_sh_ready = true;
             }
         }
     }
@@ -495,6 +511,48 @@ void LLReflectionMapManager::collectNativeMetalProbe()
         LL_WARNS("Metal")
             << "Could not complete native reflection-probe SH: "
             << mirror.mNativeSHPending->errorDescription() << LL_ENDL;
+    }
+
+    if (pending_cube == 0)
+    {
+        MetalDefaultProbeMirror& default_mirror = *mMetalDefaultProbe;
+        const bool matching_deferred_radiance =
+            default_mirror.mNativePendingRadiance &&
+            default_mirror.mNativePendingRadianceGeneration ==
+                pending_generation &&
+            default_mirror.mNativePendingRadianceSequence ==
+                pending_sequence;
+        if (matching_deferred_radiance && default_sh_ready)
+        {
+            // The radiance copy was submitted after this SH command on the
+            // viewer's single Metal queue. Publishing the retained texture
+            // now is nonblocking: any later preview draw is ordered after the
+            // copy, while the CPU coefficients are already readable and from
+            // the same generation and sequence.
+            default_mirror.mPublishedRadiance =
+                std::move(default_mirror.mNativePendingRadiance);
+            default_mirror.mPublishedSH = default_mirror.mStagedSH;
+            default_mirror.mStagedSHValid = false;
+            default_mirror.mNativeStagedSHGeneration = 0;
+            default_mirror.mNativeStagedSHSequence = 0;
+            static bool logged_deferred_default = false;
+            if (!logged_deferred_default)
+            {
+                logged_deferred_default = true;
+                LL_INFOS("Metal")
+                    << "Published native default reflection-probe radiance "
+                       "after deferred matching SH completion"
+                    << LL_ENDL;
+            }
+        }
+        if (matching_deferred_radiance)
+        {
+            // Completion without a readable matching row, an errored command
+            // or a recycled cube generation can never form a coherent pair.
+            default_mirror.mNativePendingRadiance.reset();
+            default_mirror.mNativePendingRadianceGeneration = 0;
+            default_mirror.mNativePendingRadianceSequence = 0;
+        }
     }
     mirror.mNativeSHPending.reset();
     mirror.mNativePendingSHCube = 0;
@@ -875,14 +933,17 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
         default_mirror.mNativeStagedSHGeneration == generation &&
         default_mirror.mNativeStagedSHSequence ==
             mirror.mNativeCaptureSequence;
+    const bool defer_default = cube == 0 && !publish_default;
     std::unique_ptr<ALMetalTexture> default_replacement;
+    std::unique_ptr<ALMetalTexture> default_deferred;
     ALMetalTexture* default_destination =
         default_mirror.mPublishedRadiance.get();
-    if (publish_default)
+    if (publish_default || defer_default)
     {
-        const ALMetalTextureDescriptor* default_current = default_destination
-            ? &default_destination->descriptor() : nullptr;
-        if (!default_current ||
+        const ALMetalTextureDescriptor* default_current =
+            publish_default && default_destination
+                ? &default_destination->descriptor() : nullptr;
+        if (defer_default || !default_current ||
             default_current->type != ALMetalTextureType::texture_cube ||
             default_current->format != format ||
             default_current->width != mProbeResolution ||
@@ -897,11 +958,21 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
             descriptor.mipmap_level_count = mip_count;
             descriptor.storage = ALMetalStorageMode::private_gpu;
             descriptor.usage = ALMetalTextureUsage::shader_read;
-            descriptor.label =
-                "Alchemy native default reflection-probe radiance";
-            default_replacement = ALMetalTexture::create(
-                *device, descriptor, error);
-            default_destination = default_replacement.get();
+            descriptor.label = defer_default
+                ? "Alchemy deferred native default reflection-probe radiance"
+                : "Alchemy native default reflection-probe radiance";
+            if (defer_default)
+            {
+                default_deferred = ALMetalTexture::create(
+                    *device, descriptor, error);
+                default_destination = default_deferred.get();
+            }
+            else
+            {
+                default_replacement = ALMetalTexture::create(
+                    *device, descriptor, error);
+                default_destination = default_replacement.get();
+            }
         }
         if (!default_destination)
         {
@@ -923,7 +994,7 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
             copy.destination_slice = cube * 6 + face_index;
             copied = destination->copyFrom(
                 *command, *mirror.mNativeFilteredCube, copy, error);
-            if (copied && publish_default)
+            if (copied && (publish_default || defer_default))
             {
                 copy.destination_slice = face_index;
                 copied = default_destination->copyFrom(
@@ -970,6 +1041,18 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
         default_mirror.mStagedSHValid = false;
         default_mirror.mNativeStagedSHGeneration = 0;
         default_mirror.mNativeStagedSHSequence = 0;
+        mirror.mNativeDefaultPublishedThisPass = true;
+    }
+    else if (defer_default)
+    {
+        default_mirror.mNativePendingRadiance =
+            std::move(default_deferred);
+        default_mirror.mNativePendingRadianceGeneration = generation;
+        default_mirror.mNativePendingRadianceSequence =
+            mirror.mNativeCaptureSequence;
+        // The coherent native pair is now retained and will promote when its
+        // 64-byte shared SH copy completes. Do not start a redundant GL/PBO
+        // mirror of this same generation later in updateProbeFace().
         mirror.mNativeDefaultPublishedThisPass = true;
     }
     mirror.mNativeReadySHCube = 0;
