@@ -195,9 +195,9 @@ public:
     // The one native Metal device/queue owned for this window's complete
     // lifetime. Render infrastructure borrows it; LLWindowSDL destroys it
     // only after all render work and the window surface have shut down.
-    ALMetalDevice* getMetalDevice() const noexcept { return mMetalDevice.get(); }
-    ALMetalFrameScheduler* getMetalFrameScheduler() const noexcept { return mMetalFrames.get(); }
-    ALMetalSurface* getMetalSurface() const noexcept { return mMetalSurface.get(); }
+    ALMetalDevice* getMetalDevice() const noexcept override { return mMetalDevice.get(); }
+    ALMetalFrameScheduler* getMetalFrameScheduler() const noexcept override { return mMetalFrames.get(); }
+    ALMetalSurface* getMetalSurface() const noexcept override { return mMetalSurface.get(); }
 #endif
 
     // "wayland" / "x11" / "" - reports the SDL video driver this window is on.

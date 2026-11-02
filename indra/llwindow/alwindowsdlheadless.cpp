@@ -30,6 +30,11 @@
 #include "llrender.h"
 #include "llsdl.h"
 
+#if LL_DARWIN
+#include "almetaldevice.h"
+#include "almetalframe.h"
+#endif
+
 ALWindowSDLHeadless::ALWindowSDLHeadless(LLWindowCallbacks* callbacks,
     const std::string& title, const std::string& name,
     S32 x, S32 y, S32 width, S32 height,
@@ -132,6 +137,31 @@ ALWindowSDLHeadless::ALWindowSDLHeadless(LLWindowCallbacks* callbacks,
         return;
     }
 
+#if LL_DARWIN
+    // The hidden backend is also the headless appearance-baking backend. It
+    // has no drawable CAMetalLayer, but it still owns the same native device
+    // and ordered frame scheduler required by offscreen Metal captures.
+    std::string metal_error;
+    mMetalDevice = ALMetalDevice::create(&metal_error);
+    if (!mMetalDevice)
+    {
+        LL_WARNS("Metal") << "Hidden Metal device initialization failed: "
+                           << metal_error << LL_ENDL;
+        return;
+    }
+    mMetalFrames = ALMetalFrameScheduler::create(
+        *mMetalDevice, 3, &metal_error);
+    if (!mMetalFrames)
+    {
+        LL_WARNS("Metal") << "Hidden Metal frame scheduler initialization failed: "
+                           << metal_error << LL_ENDL;
+        mMetalDevice.reset();
+        return;
+    }
+    LL_INFOS("Metal") << "Hidden offscreen Metal backend initialized on "
+                       << mMetalDevice->info().name << LL_ENDL;
+#endif
+
 #if LL_LINUX
     gGLManager.initEGL();
 #endif
@@ -148,6 +178,23 @@ ALWindowSDLHeadless::~ALWindowSDLHeadless()
 void ALWindowSDLHeadless::close()
 {
     LLWindowHeadless::close();
+
+#if LL_DARWIN
+    // Render infrastructure only borrows these objects. Detach and drain it
+    // before the window-owned scheduler and device disappear.
+    gGL.setMetalBackend(nullptr, nullptr, nullptr);
+    if (mMetalFrames)
+    {
+        std::string metal_error;
+        if (!mMetalFrames->waitUntilIdle(5000, &metal_error))
+        {
+            LL_WARNS("Metal") << "Hidden Metal teardown did not reach idle: "
+                               << metal_error << LL_ENDL;
+        }
+    }
+    mMetalFrames.reset();
+    mMetalDevice.reset();
+#endif
 
     {
         // Normal shutdown joins the GL worker threads first, so anything still

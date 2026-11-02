@@ -890,13 +890,21 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     mMetalUICaptureFirstFailure.clear();
     mMetalUIReplacementEnabled = true;
     mMetalUISurfaceFrameSubmitted = false;
-    if (!device || !scheduler || !surface)
+    if (!device || !scheduler)
     {
         return;
     }
 
     mMetalDevice = device;
     mMetalFrames = scheduler;
+    // Hidden windows intentionally have no presentation surface. Publishing
+    // their device and scheduler is still sufficient for texture captures.
+    if (!surface)
+    {
+        LL_INFOS("Metal") << "Native offscreen capture backend initialized"
+                           << LL_ENDL;
+        return;
+    }
     std::string error;
     mMetalUIRenderer = ALMetalUIRenderer::createForSurface(
         *device, *scheduler, *surface, &error);
@@ -1269,6 +1277,45 @@ bool LLRender::collectMetalUITextureCapturePixel(
     y = at.second;
     color.set(bgra[2], bgra[1], bgra[0], bgra[3]);
     return true;
+}
+
+bool LLRender::readMetalUITextureCaptureRGBA(
+    S32 x, S32 y, S32 width, S32 height,
+    U8* rgba, size_t bytes_per_row)
+{
+    if (!mMetalDevice || !mMetalUICaptureRenderer ||
+        !mMetalUICaptureComplete || !rgba || x < 0 || y < 0 ||
+        width <= 0 || height <= 0)
+    {
+        return false;
+    }
+
+    // Materialize every immediate draw before splitting this exceptional
+    // synchronous boundary. The native renderer submits, reads and retains
+    // that exact output as the next offscreen frame's background.
+    flush();
+    if (!mMetalUICaptureComplete)
+    {
+        return false;
+    }
+    std::string error;
+    const bool complete = mMetalUICaptureRenderer->readFrameColorRGBA8(
+        {static_cast<U32>(x), static_cast<U32>(y),
+         static_cast<U32>(width), static_cast<U32>(height)},
+        rgba, bytes_per_row, &error);
+    if (!complete)
+    {
+        if (mMetalUICaptureFirstFailure.empty())
+        {
+            mMetalUICaptureFirstFailure =
+                "ordered RGBA readback: " + error;
+        }
+        mMetalUICaptureComplete = false;
+        LL_WARNS("Metal")
+            << "Native ordered RGBA readback failed closed: "
+            << error << LL_ENDL;
+    }
+    return complete;
 }
 
 void LLRender::releaseMetalUITextureCapturePixels()

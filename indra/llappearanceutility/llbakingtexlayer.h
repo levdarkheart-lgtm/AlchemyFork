@@ -55,6 +55,9 @@ private:
     void        midRenderTexLayerSet(bool success) override;
 
     LLPointer<LLImageJ2C> mCompressedImage;
+#if LL_DARWIN
+    bool mMetalCaptureActive = false;
+#endif
 };
 
 class LLBakingTexLayerSet : public LLTexLayerSet

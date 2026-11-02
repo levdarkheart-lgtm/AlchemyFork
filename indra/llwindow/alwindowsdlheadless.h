@@ -29,7 +29,14 @@
 
 #include "SDL3/SDL.h"
 
+#include <memory>
 #include <set>
+
+#if LL_DARWIN
+class ALMetalDevice;
+class ALMetalFrameScheduler;
+class ALMetalSurface;
+#endif
 
 // The headless backend for anything that renders: the appearance utility, the
 // GL-backed tests, a viewer with no desktop. An SDL window is created hidden
@@ -51,7 +58,14 @@ public:
         bool enable_vsync, bool ignore_pixel_depth, U32 fsaa_samples);
     ~ALWindowSDLHeadless() override;
 
-    bool isValid() override { return mContext != nullptr; }
+    bool isValid() override
+    {
+#if LL_DARWIN
+        return mContext && mMetalDevice && mMetalFrames;
+#else
+        return mContext != nullptr;
+#endif
+    }
 
     // Tears the context and the window down; LLWindowManager::destroyWindow
     // calls it before it quits SDL. The destructor finishes anything left.
@@ -59,6 +73,12 @@ public:
 
     void swapBuffers() override;
     void* getPlatformWindow() override { return mWindow; }
+
+#if LL_DARWIN
+    ALMetalDevice* getMetalDevice() const noexcept override { return mMetalDevice.get(); }
+    ALMetalFrameScheduler* getMetalFrameScheduler() const noexcept override { return mMetalFrames.get(); }
+    ALMetalSurface* getMetalSurface() const noexcept override { return nullptr; }
+#endif
 
     // Worker-thread contexts, through the same platform path LLWindowSDL uses.
     void* createSharedContext() override;
@@ -68,6 +88,10 @@ public:
 private:
     SDL_Window*   mWindow = nullptr;
     SDL_GLContext mContext = nullptr;
+#if LL_DARWIN
+    std::unique_ptr<ALMetalDevice> mMetalDevice;
+    std::unique_ptr<ALMetalFrameScheduler> mMetalFrames;
+#endif
 
     // Live shared-context handles, so any a worker failed to release can be
     // reclaimed before the main context goes.

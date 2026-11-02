@@ -37,6 +37,12 @@
 #include "llmd5.h"
 #include "llbakingavatar.h"
 
+#if LL_DARWIN
+#include "almetalresource.h"
+#endif
+
+#include <vector>
+
 //#define DEBUG_TEXTURE_IDS 1
 
 static const char* BAKE_HASH_VERSION = "3";
@@ -51,6 +57,13 @@ LLBakingTexLayerSetBuffer::LLBakingTexLayerSetBuffer(LLTexLayerSet* const owner,
 // virtual
 LLBakingTexLayerSetBuffer::~LLBakingTexLayerSetBuffer()
 {
+#if LL_DARWIN
+    if (mMetalCaptureActive)
+    {
+        gGL.endMetalUITextureCapture(false);
+        mMetalCaptureActive = false;
+    }
+#endif
     destroyGLTexture();
 }
 
@@ -59,7 +72,33 @@ bool LLBakingTexLayerSetBuffer::render()
     bool result = false;
 
     preRenderTexLayerSet();
-    result = renderTexLayerSet(nullptr);
+#if LL_DARWIN
+    mMetalCaptureActive = gGL.beginMetalUITextureCapture(
+        ALMetalPixelFormat::rgba8_unorm, &gAlphaMaskProgram);
+    if (!mMetalCaptureActive)
+    {
+        postRenderTexLayerSet(false);
+        throw LLAppException(
+            RV_UNABLE_TO_BAKE,
+            " Native appearance capture is unavailable.");
+    }
+#endif
+    try
+    {
+        result = renderTexLayerSet(nullptr);
+    }
+    catch (...)
+    {
+#if LL_DARWIN
+        if (mMetalCaptureActive)
+        {
+            gGL.endMetalUITextureCapture(false);
+            mMetalCaptureActive = false;
+        }
+#endif
+        postRenderTexLayerSet(false);
+        throw;
+    }
     postRenderTexLayerSet(result);
 
     return result;
@@ -79,15 +118,30 @@ void LLBakingTexLayerSetBuffer::midRenderTexLayerSet(bool success)
         throw LLAppException(RV_UNABLE_TO_BAKE, " Rendering process failed.");
     }
 
-    // Get the COLOR information from our texture
-    LL_DEBUGS() << "glReadPixels..." << LL_ENDL;
-    LL_DEBUGS() << "getCompositeWidth()" << getCompositeWidth() << "getCompositeHeight()" << getCompositeHeight() << LL_ENDL;
+    // Get the color at this exact ordered boundary, then resume the remaining
+    // morph-mask draws from the complete native output.
+    LL_DEBUGS() << "Reading native appearance color..." << LL_ENDL;
+    LL_DEBUGS() << "getCompositeWidth()" << getCompositeWidth()
+                << "getCompositeHeight()" << getCompositeHeight() << LL_ENDL;
 
-    U8* baked_color_data = new U8[ getCompositeWidth() * getCompositeHeight() * 4 ];
-    glReadPixels(getCompositeOriginX(), getCompositeOriginY(),
-                 getCompositeWidth(), getCompositeHeight(),
-                 GL_RGBA, GL_UNSIGNED_BYTE, baked_color_data );
-    stop_glerror();
+    std::vector<U8> baked_color_data(
+        (size_t)getCompositeWidth() * getCompositeHeight() * 4);
+#if LL_DARWIN
+    if (!mMetalCaptureActive ||
+        !gGL.readMetalUITextureCaptureRGBA(
+            getCompositeOriginX(), getCompositeOriginY(),
+            getCompositeWidth(), getCompositeHeight(),
+            baked_color_data.data(), (size_t)getCompositeWidth() * 4))
+    {
+        throw LLAppException(
+            RV_UNABLE_TO_BAKE,
+            " Native appearance color readback failed.");
+    }
+#else
+    throw LLAppException(
+        RV_UNABLE_TO_BAKE,
+        " Native appearance capture requires macOS Metal.");
+#endif
 
     // Get the MASK information from our texture
     LLGLSUIDefault gls_ui;
@@ -96,9 +150,14 @@ void LLBakingTexLayerSetBuffer::midRenderTexLayerSet(bool success)
     U8* baked_mask_data = baked_mask_image->getData();
 
     LL_DEBUGS() << "Gathering Morph Mask Alpha..." << LL_ENDL;
-    mTexLayerSet->gatherMorphMaskAlpha(baked_mask_data,
-            getCompositeOriginX(), getCompositeOriginY(),
-            getCompositeWidth(), getCompositeHeight(), nullptr);
+    if (!mTexLayerSet->gatherMorphMaskAlpha(
+            baked_mask_data, getCompositeOriginX(), getCompositeOriginY(),
+            getCompositeWidth(), getCompositeHeight(), nullptr))
+    {
+        throw LLAppException(
+            RV_UNABLE_TO_BAKE,
+            " Native appearance morph-mask readback failed.");
+    }
 
     // Create the baked image from our color and mask information
     const S32 baked_image_components = 5; // red green blue [bump] clothing
@@ -131,7 +190,16 @@ void LLBakingTexLayerSetBuffer::midRenderTexLayerSet(bool success)
         }
     }
 
-    delete [] baked_color_data;
+#if LL_DARWIN
+    auto native_output = gGL.endMetalUITextureCapture(true);
+    mMetalCaptureActive = false;
+    if (!native_output)
+    {
+        throw LLAppException(
+            RV_UNABLE_TO_BAKE,
+            " Native appearance capture did not complete.");
+    }
+#endif
 }
 
 LLBakingTexLayerSet::LLBakingTexLayerSet(LLAvatarAppearance* const appearance) :

@@ -60,9 +60,32 @@ LLBakingWindow::LLBakingWindow(S32 width, S32 height, ALWindowBackend backend)
         throw LLAppException(RV_UNABLE_TO_INIT_GL);
     }
 
+#if LL_DARWIN
+    // Validate the window-owned native backend before bringing up render
+    // singletons. A constructor exception does not run this class's
+    // destructor, so reclaim the window explicitly on this failure path.
+    if (!mWindow->getMetalDevice() || !mWindow->getMetalFrameScheduler())
+    {
+        LLWindowManager::destroyWindow(mWindow);
+        mWindow = nullptr;
+        throw LLAppException(
+            RV_UNABLE_TO_INIT_GL,
+            " Native Metal appearance backend is unavailable.");
+    }
+#endif
+
     LLVertexBuffer::initClass(mWindow);
 
     gGL.init(true);
+
+#if LL_DARWIN
+    LLVertexBuffer::setMetalDevice(mWindow->getMetalDevice());
+    LLImageGL::setMetalDevice(mWindow->getMetalDevice());
+    gGL.setMetalBackend(
+        mWindow->getMetalDevice(),
+        mWindow->getMetalFrameScheduler(),
+        mWindow->getMetalSurface());
+#endif
 
     if (!LLBakingShaderMgr::sInitialized)
     { //immediately initialize shaders
@@ -80,6 +103,11 @@ LLBakingWindow::LLBakingWindow(S32 width, S32 height, ALWindowBackend backend)
 
 LLBakingWindow::~LLBakingWindow()
 {
+#if LL_DARWIN
+    gGL.setMetalBackend(nullptr, nullptr, nullptr);
+    LLImageGL::setMetalDevice(nullptr);
+    LLVertexBuffer::setMetalDevice(nullptr);
+#endif
     if (mWindow)
     {
         LLWindowManager::destroyWindow(mWindow);

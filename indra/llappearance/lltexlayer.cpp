@@ -482,18 +482,21 @@ const LLTexLayerSetBuffer* LLTexLayerSet::getComposite() const
     return mComposite;
 }
 
-void LLTexLayerSet::gatherMorphMaskAlpha(U8 *data, S32 origin_x, S32 origin_y, S32 width, S32 height, LLRenderTarget* bound_target)
+bool LLTexLayerSet::gatherMorphMaskAlpha(U8 *data, S32 origin_x, S32 origin_y, S32 width, S32 height, LLRenderTarget* bound_target)
 {
     LL_PROFILE_ZONE_SCOPED;
     memset(data, 255, width * height);
 
+    bool success = true;
     for(LLTexLayerInterface* layer : mLayerList)
     {
-        layer->gatherAlphaMasks(data, origin_x, origin_y, width, height, bound_target);
+        success &= layer->gatherAlphaMasks(
+            data, origin_x, origin_y, width, height, bound_target);
     }
 
     // Set alpha back to that of our alpha masks.
     renderAlphaMaskTextures(origin_x, origin_y, width, height, bound_target, true);
+    return success;
 }
 
 void LLTexLayerSet::renderAlphaMaskTextures(S32 x, S32 y, S32 width, S32 height, LLRenderTarget* bound_target, bool forceClear)
@@ -1099,7 +1102,8 @@ bool LLTexLayer::render(S32 x, S32 y, S32 width, S32 height, LLRenderTarget* bou
         }//*/
 
         const bool force_render = true;
-        renderMorphMasks(x, y, width, height, net_color, bound_target, force_render);
+        success &= renderMorphMasks(
+            x, y, width, height, net_color, bound_target, force_render);
         alpha_mask_specified = true;
         gGL.flush();
         gGL.blendFunc(LLRender::BF_DEST_ALPHA, LLRender::BF_ONE_MINUS_DEST_ALPHA);
@@ -1309,17 +1313,18 @@ bool LLTexLayer::blendAlphaTexture(S32 x, S32 y, S32 width, S32 height)
     return success;
 }
 
-/*virtual*/ void LLTexLayer::gatherAlphaMasks(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target)
+/*virtual*/ bool LLTexLayer::gatherAlphaMasks(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target)
 {
-    addAlphaMask(data, originX, originY, width, height, bound_target);
+    return addAlphaMask(data, originX, originY, width, height, bound_target);
 }
 
-void LLTexLayer::renderMorphMasks(S32 x, S32 y, S32 width, S32 height, const LLColor4 &layer_color, LLRenderTarget* bound_target, bool force_render)
+bool LLTexLayer::renderMorphMasks(S32 x, S32 y, S32 width, S32 height, const LLColor4 &layer_color, LLRenderTarget* bound_target, bool force_render)
 {
+    (void)bound_target;
     if (!force_render && !hasMorph())
     {
         LL_DEBUGS("Morph") << "skipping renderMorphMasks for " << getUUID() << LL_ENDL;
-        return;
+        return true;
     }
     LL_PROFILE_ZONE_SCOPED;
     bool success = true;
@@ -1351,7 +1356,7 @@ void LLTexLayer::renderMorphMasks(S32 x, S32 y, S32 width, S32 height, const LLC
         if (!success && !force_render)
         {
             LL_DEBUGS("Morph") << "Failed to render param " << param->getID() << " ; skipping morph mask." << LL_ENDL;
-            return;
+            return false;
         }
     }
 
@@ -1426,7 +1431,9 @@ void LLTexLayer::renderMorphMasks(S32 x, S32 y, S32 width, S32 height, const LLC
                 // We can get bad morph masks during login, on minimize, and occasional gl errors.
                 // We should only be doing this when we believe something has changed with respect to the user's appearance.
         {
-            LL_DEBUGS("Morph") << "gl alpha cache of morph mask not found, doing readback: " << getName() << LL_ENDL;
+            LL_DEBUGS("Morph")
+                << "Native alpha cache of morph mask not found, doing ordered readback: "
+                << getName() << LL_ENDL;
 
             // Replace the cached mask without leaking its old allocation.
             alpha_cache_t::iterator cached = mAlphaCache.find(cache_index);
@@ -1454,38 +1461,32 @@ void LLTexLayer::renderMorphMasks(S32 x, S32 y, S32 width, S32 height, const LLC
             {
                 LLError::LLUserWarningMsg::showOutOfMemory();
                 LL_ERRS() << "Failed to allocate memory for morph texture: " << (S32)(mem_size) << LL_ENDL;
-                return;
+                return false;
             }
 
-            bool skip_readback = LLRender::sNsightDebugSupport; // nSight doesn't support use of glReadPixels
-
-            if (!skip_readback)
-            {
-                // Intel's drivers locked up reading the alpha alone out of an RGBA framebuffer with glReadPixels,
-                // so they read the target's texture instead.
-                const bool from_texture = gGLManager.mIsIntel && bound_target;
-                const size_t scratch_bytes = alphaReadbackScratchBytes(bound_target, width, height, from_texture);
-                U8* scratch = (U8*)ll_aligned_malloc_32(scratch_bytes);
-                if (!scratch)
-                {
-                    ll_aligned_free_32(alpha_data);
-                    LLError::LLUserWarningMsg::showOutOfMemory();
-                    LL_ERRS() << "Failed to allocate temporary memory for morph texture readback: " << scratch_bytes << LL_ENDL;
-                    return;
-                }
-
-                const GLenum error = readBackAlpha(bound_target, x, y, width, height, from_texture, scratch, scratch_bytes, alpha_data);
-                if (error != GL_NO_ERROR)
-                {
-                    LL_INFOS("Morph") << "GL Error while reading back morph texture. Error code: " << error << LL_ENDL;
-                }
-
-                ll_aligned_free_32(scratch);
-            }
-            else
+            const size_t scratch_bytes =
+                alphaReadbackScratchBytes(width, height);
+            U8* scratch = (U8*)ll_aligned_malloc_32(scratch_bytes);
+            if (!scratch)
             {
                 ll_aligned_free_32(alpha_data);
-                alpha_data = nullptr;
+                LLError::LLUserWarningMsg::showOutOfMemory();
+                LL_ERRS()
+                    << "Failed to allocate temporary memory for morph texture readback: "
+                    << scratch_bytes << LL_ENDL;
+                return false;
+            }
+            const bool read = readBackAlpha(
+                x, y, width, height,
+                scratch, scratch_bytes, alpha_data);
+            ll_aligned_free_32(scratch);
+            if (!read)
+            {
+                ll_aligned_free_32(alpha_data);
+                LL_WARNS("Morph")
+                    << "Native ordered morph-mask readback failed for "
+                    << getName() << LL_ENDL;
+                return false;
             }
 
             mAlphaCache[cache_index] = alpha_data;
@@ -1496,82 +1497,46 @@ void LLTexLayer::renderMorphMasks(S32 x, S32 y, S32 width, S32 height, const LLC
         mMorphMasksValid = true;
         getTexLayerSet()->applyMorphMask(alpha_data, width, height, 1);
     }
+    return success;
 }
 
 // static
-size_t LLTexLayer::alphaReadbackScratchBytes(const LLRenderTarget* bound_target, S32 width, S32 height, bool from_texture)
+size_t LLTexLayer::alphaReadbackScratchBytes(S32 width, S32 height)
 {
-    if (from_texture && bound_target)
-    {
-        return (size_t)bound_target->getWidth() * bound_target->getHeight() * 4;
-    }
     return (size_t)llmax(width, 0) * llmax(height, 0) * 4;
 }
 
 // static
-GLenum LLTexLayer::readBackAlpha(LLRenderTarget* bound_target, S32 x, S32 y, S32 width, S32 height, bool from_texture,
-                                 U8* scratch, size_t scratch_bytes, U8* alpha)
+bool LLTexLayer::readBackAlpha(S32 x, S32 y, S32 width, S32 height,
+                               U8* scratch, size_t scratch_bytes, U8* alpha)
 {
-    // Rows of RGBA8 are whole words, so they read back tight under any pack alignment up to 4 (LLRender keeps 1).
     constexpr size_t RGBA = 4;
-
-    if (width <= 0 || height <= 0 || (from_texture && !bound_target))
+    if (width <= 0 || height <= 0 || !scratch || !alpha)
     {
-        return GL_INVALID_VALUE;
+        return false;
     }
     const size_t pixels = (size_t)width * height;
-
-    if (!from_texture)
+    if (scratch_bytes < pixels * RGBA)
     {
-        // GL_ALPHA is no format to read in a core profile: the RGBA, and the alpha out of it.
-        if (scratch_bytes < pixels * RGBA)
-        {
-            return GL_INVALID_VALUE;
-        }
-        glReadPixels(x, y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, scratch);
-        for (size_t pixel = 0; pixel < pixels; ++pixel)
-        {
-            alpha[pixel] = scratch[pixel * RGBA + 3];
-        }
-        return GL_NO_ERROR;
+        return false;
     }
-
-    // glGetTexImage writes the whole level, however little of it the layer drew, so scratch takes all of it: the
-    // level's size as GL has it, not as the target was asked for.
-    const GLenum texture_type = ALTextureSlot::getInternalType(ALTextureSlot::TT_TEXTURE);
-    gGL.getTextureSlot(0)->bind(bound_target);
-    GLint level_width = 0;
-    GLint level_height = 0;
-    glGetTexLevelParameteriv(texture_type, 0, GL_TEXTURE_WIDTH, &level_width);
-    glGetTexLevelParameteriv(texture_type, 0, GL_TEXTURE_HEIGHT, &level_height);
-    GLenum error = GL_INVALID_VALUE;
-    if (level_width > 0 && level_height > 0 && (size_t)level_width * level_height * RGBA <= scratch_bytes)
+#if LL_DARWIN
+    if (!gGL.readMetalUITextureCaptureRGBA(
+            x, y, width, height, scratch, (size_t)width * RGBA))
     {
-        glGetTexImage(texture_type, 0, GL_RGBA, GL_UNSIGNED_BYTE, scratch);
-        error = glGetError();
+        return false;
     }
-    gGL.getTextureSlot(0)->unbind();
-    if (error != GL_NO_ERROR)
+#else
+    return false;
+#endif
+    for (size_t pixel = 0; pixel < pixels; ++pixel)
     {
-        return error;
+        alpha[pixel] = scratch[pixel * RGBA + 3];
     }
-
-    // The rectangle's rows out of the level's; what of the rectangle lies outside the level reads as 0.
-    for (S32 row = 0; row < height; ++row)
-    {
-        U8* out = alpha + (size_t)row * width;
-        const S32 level_y = y + row;
-        for (S32 col = 0; col < width; ++col)
-        {
-            const S32 level_x = x + col;
-            const bool inside = level_x >= 0 && level_x < level_width && level_y >= 0 && level_y < level_height;
-            out[col] = inside ? scratch[((size_t)level_y * level_width + level_x) * RGBA + 3] : 0;
-        }
-    }
-    return GL_NO_ERROR;
+    return true;
 }
 
-void LLTexLayer::addAlphaMask(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target)
+bool LLTexLayer::addAlphaMask(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target)
 {
     LL_PROFILE_ZONE_SCOPED;
     S32 size = width * height;
@@ -1583,7 +1548,12 @@ void LLTexLayer::addAlphaMask(U8 *data, S32 originX, S32 originY, S32 width, S32
         // TODO: eliminate need for layer morph mask valid flag
         invalidateMorphMasks();
         const bool force_render = false;
-        renderMorphMasks(originX, originY, width, height, net_color, bound_target, force_render);
+        if (!renderMorphMasks(
+                originX, originY, width, height, net_color,
+                bound_target, force_render))
+        {
+            return false;
+        }
         alphaData = getAlphaData();
     }
     if (alphaData)
@@ -1597,6 +1567,7 @@ void LLTexLayer::addAlphaMask(U8 *data, S32 originX, S32 originY, S32 width, S32
             data[i] = (U8)resultAlpha;
         }
     }
+    return true;
 }
 
 /*virtual*/ bool LLTexLayer::isInvisibleAlphaMask() const
@@ -1764,15 +1735,21 @@ LLTexLayer* LLTexLayerTemplate::getLayer(U32 i) const
     return success;
 }
 
-/*virtual*/ void LLTexLayerTemplate::gatherAlphaMasks(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target)
+/*virtual*/ bool LLTexLayerTemplate::gatherAlphaMasks(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target)
 {
     U32 num_wearables = updateWearableCache();
+    if (num_wearables == 0)
+    {
+        return true;
+    }
     U32 i = num_wearables - 1; // For rendering morph masks, we only want to use the top wearable
     LLTexLayer *layer = getLayer(i);
     if (layer)
     {
-        layer->addAlphaMask(data, originX, originY, width, height, bound_target);
+        return layer->addAlphaMask(
+            data, originX, originY, width, height, bound_target);
     }
+    return true;
 }
 
 /*virtual*/ void LLTexLayerTemplate::setHasMorph(bool newval)

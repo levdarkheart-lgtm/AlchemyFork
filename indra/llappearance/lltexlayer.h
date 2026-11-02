@@ -85,7 +85,7 @@ public:
     bool                    isMorphValid() const        { return mMorphMasksValid; }
 
     void                    requestUpdate();
-    virtual void            gatherAlphaMasks(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target) = 0;
+    virtual bool            gatherAlphaMasks(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target) = 0;
     bool                    hasAlphaParams() const      { return !mParamAlphaList.empty(); }
 
     ERenderPass             getRenderPass() const;
@@ -124,7 +124,7 @@ public:
     /*virtual*/ bool        render(S32 x, S32 y, S32 width, S32 height, LLRenderTarget* bound_target);
     /*virtual*/ bool        setInfo(const LLTexLayerInfo *info, LLWearable* wearable); // This sets mInfo and calls initialization functions
     /*virtual*/ bool        blendAlphaTexture(S32 x, S32 y, S32 width, S32 height); // Multiplies a single alpha texture against the frame buffer
-    /*virtual*/ void        gatherAlphaMasks(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target);
+    /*virtual*/ bool        gatherAlphaMasks(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target);
     /*virtual*/ void        setHasMorph(bool newval);
     /*virtual*/ void        deleteCaches();
     /*virtual*/ bool        isInvisibleAlphaMask() const;
@@ -159,9 +159,9 @@ public:
 
     bool                    findNetColor(LLColor4* color) const;
     /*virtual*/ bool        blendAlphaTexture(S32 x, S32 y, S32 width, S32 height); // Multiplies a single alpha texture against the frame buffer
-    /*virtual*/ void        gatherAlphaMasks(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target);
-    void                    renderMorphMasks(S32 x, S32 y, S32 width, S32 height, const LLColor4 &layer_color, LLRenderTarget* bound_target, bool force_render);
-    void                    addAlphaMask(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target);
+    /*virtual*/ bool        gatherAlphaMasks(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target);
+    bool                    renderMorphMasks(S32 x, S32 y, S32 width, S32 height, const LLColor4 &layer_color, LLRenderTarget* bound_target, bool force_render);
+    bool                    addAlphaMask(U8 *data, S32 originX, S32 originY, S32 width, S32 height, LLRenderTarget* bound_target);
     /*virtual*/ bool        isInvisibleAlphaMask() const;
 
     void                    setLTO(LLLocalTextureObject *lto)   { mLocalTextureObject = lto; }
@@ -171,14 +171,12 @@ public:
 
     static void             calculateTexLayerColor(const param_color_list_t &param_list, LLColor4 &net_color);
 
-    // The scratch readBackAlpha takes for a rectangle (width, height), in bytes: the RGBA of the whole of
-    // bound_target's texture when from_texture, as glGetTexImage reads no less, else of the rectangle alone.
-    static size_t           alphaReadbackScratchBytes(const LLRenderTarget* bound_target, S32 width, S32 height, bool from_texture);
-    // Reads the alpha of the rectangle (x, y, width, height) of the bound target into alpha, width * height bytes with
-    // rows bottom to top, through scratch. from_texture reads bound_target's texture rather than the bound framebuffer.
-    // Reads nothing and answers GL_INVALID_VALUE when scratch_bytes is short of what the read writes; else
-    // GL_NO_ERROR, or what glGetError says after a read from the texture.
-    static GLenum           readBackAlpha(LLRenderTarget* bound_target, S32 x, S32 y, S32 width, S32 height, bool from_texture,
+    // Reads the exact ordered native capture rectangle as RGBA8, then extracts
+    // its alpha into width * height bytes with GL-compatible lower rows first.
+    // The capture checkpoint resumes later appearance draws from the complete
+    // native output. Nothing is published when the native read fails.
+    static size_t           alphaReadbackScratchBytes(S32 width, S32 height);
+    static bool             readBackAlpha(S32 x, S32 y, S32 width, S32 height,
                                           U8* scratch, size_t scratch_bytes, U8* alpha);
 protected:
     LLUUID                  getUUID() const;
@@ -204,7 +202,7 @@ public:
     const LLTexLayerSetBuffer*  getComposite() const; // Do not create one if it doesn't exist.
     virtual void                createComposite() = 0;
     void                        destroyComposite();
-    void                        gatherMorphMaskAlpha(U8 *data, S32 origin_x, S32 origin_y, S32 width, S32 height, LLRenderTarget* bound_target);
+    bool                        gatherMorphMaskAlpha(U8 *data, S32 origin_x, S32 origin_y, S32 width, S32 height, LLRenderTarget* bound_target);
 
     const LLTexLayerSetInfo*    getInfo() const             { return mInfo; }
     bool                        setInfo(const LLTexLayerSetInfo *info); // This sets mInfo and calls initialization functions

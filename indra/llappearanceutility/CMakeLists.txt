@@ -48,6 +48,12 @@ target_link_libraries(
   appearance-utility-bin
   PRIVATE al::flags llcharacter llinventory llappearance llwindow llrender llxml
 )
+if(DARWIN)
+  # The Apple Silicon utility consumes the native offscreen capture API
+  # directly; do not rely on llrender/llwindow's private implementation link
+  # to publish either the headers or the final executable dependency.
+  target_link_libraries(appearance-utility-bin PRIVATE almetal)
+endif()
 
 # What the utility reads at run time, beside the executable as the viewer
 # has it: the avatar definitions and the baking shaders, from the viewer's

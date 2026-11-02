@@ -320,6 +320,13 @@ public:
     bool collectMetalUITextureCapturePixel(
         S32& x, S32& y, LLColor4U& color);
     void releaseMetalUITextureCapturePixels();
+    // Synchronously checkpoint the active ordered RGBA8 offscreen capture,
+    // return the selected GL-row rectangle, and resume later draws from that
+    // complete native output. Reserved for exceptional appearance CPU
+    // consumers whose legacy GL path already stalled at this boundary.
+    bool readMetalUITextureCaptureRGBA(
+        S32 x, S32 y, S32 width, S32 height,
+        U8* rgba, size_t bytes_per_row);
     // Encode the selection owner's private face-id/depth pass into the active
     // ordered world/UI capture. GL remains authoritative until the later
     // contour/glow passes complete the transaction.

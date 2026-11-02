@@ -30251,6 +30251,35 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(reused_output_stats.pipeline_states == 1);
         CHECK(reused_output_stats.sampler_states == 1);
 
+        // Appearance morph masks are exceptional synchronous consumers. The
+        // checkpoint must expose the exact ordered RGBA pixel, then retain the
+        // completed target as the background of a distinct resumed target.
+        // A later draw clipped away from the sample proves final submission
+        // loaded rather than cleared that checkpoint.
+        auto reused_output = rgba_renderer->takeOutputTexture();
+        REQUIRE(reused_output);
+        REQUIRE(rgba_renderer->draw(batch, &error));
+        std::array<std::uint8_t, 4> checkpoint_pixel{};
+        REQUIRE(rgba_renderer->readFrameColorRGBA8(
+            {16, 16, 1, 1}, checkpoint_pixel.data(), 4, &error));
+        INFO(error);
+        CHECK(checkpoint_pixel[0] == 255);
+        CHECK(checkpoint_pixel[1] == 32);
+        CHECK(checkpoint_pixel[2] == 16);
+        CHECK(checkpoint_pixel[3] == 255);
+        batch.scissor = {0, 0, 8, 8};
+        REQUIRE(rgba_renderer->draw(batch, &error));
+        batch.scissor = {0, 0, 32, 32};
+        REQUIRE(rgba_renderer->endFrame(&error));
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        pixels.fill(0);
+        REQUIRE(rgba_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        CHECK(std::equal(
+            checkpoint_pixel.begin(), checkpoint_pixel.end(),
+            pixels.begin() + center));
+
         // The appearance compositor uses the same vertex layout with the
         // alpha-mask shader, including untextured clear/color rectangles.
         auto alpha_renderer = ALMetalUIRenderer::createForTexture(

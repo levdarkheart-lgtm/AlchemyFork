@@ -253,6 +253,9 @@ struct ALMetalUIRenderer::Impl
     std::uint32_t frame_width = 0;
     std::uint32_t frame_height = 0;
     const ALMetalTexture* frame_background = nullptr;
+    // Owns only a background made by readFrameColorRGBA8. External retained
+    // world inputs stay borrowed under setFrameBackground's existing contract.
+    std::unique_ptr<ALMetalTexture> frame_background_owner;
     const ALMetalTexture* frame_depth = nullptr;
 
     ALMetalPixelFormat frameDepthFormat() const noexcept
@@ -1539,6 +1542,7 @@ bool ALMetalUIRenderer::setFrameBackground(
     if (!background)
     {
         mImpl->frame_background = nullptr;
+        mImpl->frame_background_owner.reset();
         return true;
     }
     const ALMetalTextureDescriptor& descriptor = background->descriptor();
@@ -1560,6 +1564,7 @@ bool ALMetalUIRenderer::setFrameBackground(
                  "Metal UI frame background cannot alias its destination");
         return false;
     }
+    mImpl->frame_background_owner.reset();
     mImpl->frame_background = background;
     return true;
 }
@@ -1724,6 +1729,47 @@ std::unique_ptr<ALMetalTexture> ALMetalUIRenderer::copyFrameColorPixel(
         setError(error, snapshot_error);
     }
     return snapshot;
+}
+
+bool ALMetalUIRenderer::readFrameColorRGBA8(
+    ALMetalRegion2D region,
+    void* bytes,
+    std::size_t bytes_per_row,
+    std::string* error)
+{
+    if (!mImpl || mImpl->surface || !bytes || region.width == 0 ||
+        region.height == 0 ||
+        mImpl->output_format != ALMetalPixelFormat::rgba8_unorm)
+    {
+        setError(error,
+                 "Metal UI RGBA readback requires an offscreen RGBA8 frame and destination");
+        return false;
+    }
+
+    // finishFrame submits the command that produces the current target. The
+    // texture readback uses the same device queue and waits for its own command,
+    // so queue ordering makes the exceptional CPU result source-exact.
+    if (!finishFrame(nullptr, error))
+    {
+        return false;
+    }
+    auto completed = takeOutputTexture();
+    if (!completed)
+    {
+        setError(error, "Metal UI RGBA readback produced no complete target");
+        return false;
+    }
+    if (!completed->readback(
+            *mImpl->device, 0, 0, region, bytes, bytes_per_row, error))
+    {
+        return false;
+    }
+
+    // Taking the completed texture reset the destination target, so the next
+    // lazy begin allocates a distinct target and cannot sample from itself.
+    mImpl->frame_background_owner = std::move(completed);
+    mImpl->frame_background = mImpl->frame_background_owner.get();
+    return true;
 }
 
 bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
@@ -3009,14 +3055,24 @@ bool ALMetalUIRenderer::drawSelectionContour(
 
 bool ALMetalUIRenderer::endFrame(std::string* error)
 {
-    return finishFrame(nullptr, error);
+    const bool complete = finishFrame(nullptr, error);
+    if (mImpl)
+    {
+        mImpl->frame_background_owner.reset();
+    }
+    return complete;
 }
 
 bool ALMetalUIRenderer::endFrameAndPresent(
     ALMetalSurface& surface,
     std::string* error)
 {
-    return finishFrame(&surface, error);
+    const bool complete = finishFrame(&surface, error);
+    if (mImpl)
+    {
+        mImpl->frame_background_owner.reset();
+    }
+    return complete;
 }
 
 bool ALMetalUIRenderer::finishFrame(

@@ -37,6 +37,11 @@
 class LLSplashScreen;
 class LLPreeditor;
 class LLWindowCallbacks;
+#if LL_DARWIN
+class ALMetalDevice;
+class ALMetalFrameScheduler;
+class ALMetalSurface;
+#endif
 
 // Result of an OS font-fallback query; empty mPath means no font was found.
 struct LLFontFallbackMatch
@@ -219,6 +224,16 @@ public:
 // return a platform-specific window reference (HWND on Windows, WindowRef on the Mac, Gtk window on Linux)
     virtual void *getPlatformWindow() = 0;
 
+#if LL_DARWIN
+    // Native and hidden macOS windows publish the Metal objects they own at
+    // the common window boundary. A hidden window has no presentation
+    // surface, but its device and scheduler still drive ordered offscreen
+    // rendering (notably avatar baking and renderer tests).
+    virtual ALMetalDevice* getMetalDevice() const noexcept { return nullptr; }
+    virtual ALMetalFrameScheduler* getMetalFrameScheduler() const noexcept { return nullptr; }
+    virtual ALMetalSurface* getMetalSurface() const noexcept { return nullptr; }
+#endif
+
     // Lowercase name of the display server / windowing backend in use
     // ("wayland" or "x11" on Linux/SDL). Empty when not applicable or unknown.
     // Lets out-of-process children (e.g. the CEF media plugin) pin their backend
@@ -354,7 +369,7 @@ constexpr S32 OSBTN_CANCEL = 3;
 enum class ALWindowBackend
 {
     Native,     // the platform's window: LLWindowWin32 or LLWindowSDL
-    Hidden,     // ALWindowSDLHeadless: an SDL window never shown, with a GL context on it
+    Hidden,     // ALWindowSDLHeadless: never shown; migration GL plus native offscreen Metal
     None,       // LLWindowHeadless: no window and no GL
 };
 

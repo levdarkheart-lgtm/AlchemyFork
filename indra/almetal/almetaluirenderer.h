@@ -349,6 +349,18 @@ public:
         std::uint32_t x,
         std::uint32_t y,
         std::string* error = nullptr);
+    // Exceptional synchronous consumer for appearance morph-mask and bake
+    // generation. Finish and submit every draw ordered before this boundary,
+    // read the selected RGBA8 rectangle with row zero in the retained GL-row
+    // convention, then retain that complete output as the next frame's
+    // background so later draws resume rather than clear it. This deliberately
+    // splits the transaction and waits; recurring diagnostics use the
+    // asynchronous readback ring instead.
+    bool readFrameColorRGBA8(
+        ALMetalRegion2D region,
+        void* bytes,
+        std::size_t bytes_per_row,
+        std::string* error = nullptr);
     bool draw(const ALMetalUIBatch& batch, std::string* error = nullptr);
     bool drawHUDIndexed(
         const ALMetalHUDIndexedBatch& batch,
