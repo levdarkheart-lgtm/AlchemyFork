@@ -41,6 +41,7 @@ chronological transcript.
 | Native Bounding Boxes thin/wide implementation and source-exact validation, 2026-11-02 | [metal-port-bounding-box-debug-checkpoint-2026-11-02.md](metal-port-bounding-box-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Native Raycast branch/triangle/hit-marker implementation and source-exact validation, 2026-11-02 | [metal-port-raycast-debug-checkpoint-2026-11-02.md](metal-port-raycast-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Native Occlusion x-ray/selected-bounds implementation and source-exact validation, 2026-11-02 | [metal-port-occlusion-debug-checkpoint-2026-11-02.md](metal-port-occlusion-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
+| Native Octree flash/static-rigged/group-outline implementation and source-exact validation, 2026-11-02 | [metal-port-octree-debug-checkpoint-2026-11-02.md](metal-port-octree-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.
