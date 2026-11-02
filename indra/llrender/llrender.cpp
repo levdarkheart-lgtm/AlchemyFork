@@ -3435,12 +3435,6 @@ void LLRender::applyDepthConvention()
     glClearDepth(sReverseZ ? 0.0 : 1.0);
 }
 
-void LLRender::readPixels(S32 x, S32 y, S32 width, S32 height, U32 format, U32 type, void* data)
-{
-    flush();
-    glReadPixels(x, y, width, height, format, type, data);
-}
-
 void LLRender::drawArraysInstanced(eGeomModes mode, U32 first, U32 count, U32 instances)
 {
     // An input left in the program would read whatever buffer the last vertex buffer left on its array.

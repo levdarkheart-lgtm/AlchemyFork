@@ -607,13 +607,6 @@ public:
     // (gGLManager.mHasClipControl). Both are issued whether or not they changed.
     static void applyDepthConvention();
 
-    // Reads the `width` x `height` rectangle at (x, y) of the framebuffer bound for reading into `data`, as
-    // glReadPixels reads it in `format` and `type` under the pack alignment of 1 init() set, after what is batched
-    // has been drawn. Synchronous: it waits for the GPU, and for a threaded driver's own thread, to finish everything
-    // issued before it. For a read made once on purpose, a snapshot or a click's probe; anything read every frame
-    // reads through the native Metal readback rings.
-    void readPixels(S32 x, S32 y, S32 width, S32 height, U32 format, U32 type, void* data);
-
     // The colour glClear fills colour buffers with. Every writer in the tree goes through
     // here, so the cache is the state. Redundant sets are dropped; nothing batched reads it,
     // so a change needs no flush.

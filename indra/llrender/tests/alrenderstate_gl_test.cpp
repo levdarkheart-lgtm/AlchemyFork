@@ -402,8 +402,6 @@ namespace
         CHECK(drawsBatched([] { gGL.setBlendEquation(GL_FUNC_ADD, GL_MAX); }));
         CHECK_FALSE(drawsBatched([] { gGL.setViewport(0, 0, 8, 8); }));
         CHECK(drawsBatched([] { gGL.setViewport(0, 0, 4, 4); }));
-        U8 rgba[4] = { 0 };
-        CHECK(drawsBatched([&] { gGL.readPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba); }));
         CHECK((U32)glGetError() == (U32)GL_NO_ERROR);
     }
 
@@ -467,7 +465,7 @@ namespace
         gGL.setStencilMask(0x0F);
         stenciled.clear(GL_STENCIL_BUFFER_BIT);
         U8 value = 0;
-        gGL.readPixels(1, 1, 1, 1, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, &value);
+        glReadPixels(1, 1, 1, 1, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, &value);
         CHECK((U32)value == 0x0Fu);
 
         gGL.setStencilMask(~0u);
@@ -494,20 +492,6 @@ namespace
                 CHECK((U32)glInteger(GL_CLIP_ORIGIN) == (U32)GL_LOWER_LEFT);
             }
         }
-        CHECK((U32)glGetError() == (U32)GL_NO_ERROR);
-    }
-
-    // readPixels reads the framebuffer bound for reading.
-    TEST_CASE_METHOD(alrenderstate_data, "alrenderstate_gl: readPixels reads the bound framebuffer", "[alrenderstate_gl]")
-    {
-        setUp();
-        mTarget.bindTarget();
-        gGL.setClearColor(LLColor4::red);
-        mTarget.clear();
-        U8 rgba[4] = { 0 };
-        gGL.readPixels(1, 1, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-        CHECK(LLColor4U(rgba[0], rgba[1], rgba[2], rgba[3]) == RED);
-        mTarget.flush();
         CHECK((U32)glGetError() == (U32)GL_NO_ERROR);
     }
 
