@@ -750,6 +750,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_avatar_alpha_skinned_vertex",
             "almetal_world_avatar_alpha_cloth_skinned_vertex",
             "almetal_world_impostor_vertex",
+            "almetal_world_impostor_debug_vertex",
             "almetal_world_coverage_vertex",
             "almetal_world_simple_fragment",
             "almetal_world_highlight_fragment",
@@ -795,6 +796,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_flat_alpha_fragment",
             "almetal_world_pbr_alpha_fragment",
             "almetal_world_impostor_fragment",
+            "almetal_world_impostor_debug_fragment",
             "almetal_world_coverage_fragment",
             "almetal_world_terrain_vertex",
             "almetal_world_terrain_fragment",
@@ -12019,6 +12021,7 @@ TEST_CASE("almetal: avatar impostor replays a coherent baked G-buffer", "[almeta
         for (std::size_t axis = 0; axis < 4; ++axis)
         {
             batch.modelview_projection[axis * 4 + axis] = 1.f;
+            batch.modelview[axis * 4 + axis] = 1.f;
             if (axis < 3)
             {
                 batch.impostor_normal_rotation[axis][axis] = 1.f;
@@ -12032,6 +12035,10 @@ TEST_CASE("almetal: avatar impostor replays a coherent baked G-buffer", "[almeta
         scene.height = 32;
         scene.normal_hdr = true;
         scene.hdr = false;
+        scene.clear_color[0] = 0.25f;
+        scene.clear_color[1] = 0.125f;
+        scene.clear_color[2] = 0.0625f;
+        scene.clear_color[3] = 0.25f;
 
         auto result = renderer->render(scene, &error);
         INFO(error);
@@ -12093,6 +12100,189 @@ TEST_CASE("almetal: avatar impostor replays a coherent baked G-buffer", "[almeta
         CHECK(output_emissive[center + 1] == emissive_pixel[1]);
         CHECK(output_emissive[center + 2] == emissive_pixel[2]);
         CHECK(output_emissive[center + 3] == 0);
+
+        std::array<float, 32 * 32> output_depth{};
+        REQUIRE(result->depthStencilTexture()->readback(
+            *device, 0, 0, {}, output_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+
+        // Develop > Impostors draws four additive white line segments before
+        // the billboard. The native owner expands those segments in screen
+        // space because Metal has no wide-line state. At five pixels the
+        // right edge reaches x=30; at the one-pixel floor it does not.
+        const std::size_t outline_pixel = (16 * 32 + 30) * 4;
+        const std::size_t outline_depth = 16 * 32 + 30;
+        batch.impostor_debug_outline = true;
+        batch.impostor_debug_line_width = 5.f;
+        auto wide_outline = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(wide_outline);
+        std::array<std::uint8_t, 32 * 32 * 4> wide_albedo{};
+        std::array<std::uint8_t, 32 * 32 * 4> wide_specular{};
+        std::array<std::uint16_t, 32 * 32 * 4> wide_normal{};
+        std::array<std::uint8_t, 32 * 32 * 4> wide_emissive{};
+        std::array<float, 32 * 32> wide_depth{};
+        REQUIRE(wide_outline->colorTexture(0)->readback(
+            *device, 0, 0, {}, wide_albedo.data(), 32 * 4, &error));
+        REQUIRE(wide_outline->colorTexture(1)->readback(
+            *device, 0, 0, {}, wide_specular.data(), 32 * 4, &error));
+        REQUIRE(wide_outline->colorTexture(2)->readback(
+            *device, 0, 0, {}, wide_normal.data(), 32 * 8, &error));
+        REQUIRE(wide_outline->colorTexture(3)->readback(
+            *device, 0, 0, {}, wide_emissive.data(), 32 * 4, &error));
+        REQUIRE(wide_outline->depthStencilTexture()->readback(
+            *device, 0, 0, {}, wide_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(wide_albedo[outline_pixel + 0] == 255);
+        CHECK(wide_albedo[outline_pixel + 1] == 255);
+        CHECK(wide_albedo[outline_pixel + 2] == 255);
+        CHECK(wide_albedo[outline_pixel + 3] ==
+              output_albedo[outline_pixel + 3]);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(wide_specular[outline_pixel + channel] ==
+                  output_specular[outline_pixel + channel]);
+            CHECK(wide_normal[outline_pixel + channel] ==
+                  output_normal[outline_pixel + channel]);
+            CHECK(wide_emissive[outline_pixel + channel] ==
+                  output_emissive[outline_pixel + channel]);
+            CHECK(wide_albedo[center + channel] ==
+                  output_albedo[center + channel]);
+        }
+        CHECK(std::abs(wide_depth[outline_depth] - 0.5f) < 0.0001f);
+        CHECK(std::abs(wide_depth[16 * 32 + 16] -
+                       output_depth[16 * 32 + 16]) < 0.0001f);
+
+        batch.impostor_debug_line_width = 1.f;
+        auto narrow_outline = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(narrow_outline);
+        std::array<std::uint8_t, 32 * 32 * 4> narrow_albedo{};
+        std::array<float, 32 * 32> narrow_depth{};
+        REQUIRE(narrow_outline->colorTexture(0)->readback(
+            *device, 0, 0, {}, narrow_albedo.data(), 32 * 4, &error));
+        REQUIRE(narrow_outline->depthStencilTexture()->readback(
+            *device, 0, 0, {}, narrow_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(narrow_albedo[outline_pixel + channel] ==
+                  output_albedo[outline_pixel + channel]);
+        }
+        CHECK(std::abs(narrow_depth[outline_depth] -
+                       output_depth[outline_depth]) < 0.0001f);
+
+        // The same screen-space edge writes the reverse-Z depth convention.
+        batch.impostor_debug_line_width = 5.f;
+        batch.impostor_center[2] = 0.5f;
+        scene.reverse_z = true;
+        auto reverse_outline = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(reverse_outline);
+        std::array<float, 32 * 32> reverse_outline_depth{};
+        REQUIRE(reverse_outline->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_outline_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(std::abs(reverse_outline_depth[outline_depth] - 0.5f) <
+              0.0001f);
+        scene.reverse_z = false;
+        batch.impostor_center[2] = 0.f;
+
+        // Mirror clipping uses the endpoint's original eye-space position,
+        // not the screen-expanded vertex. The positive-X edge remains while
+        // the negative-X edge is removed.
+        scene.mirror_clip = true;
+        scene.mirror_clip_plane[0] = 1.f;
+        scene.mirror_clip_plane[1] = 0.f;
+        scene.mirror_clip_plane[2] = 0.f;
+        scene.mirror_clip_plane[3] = 0.f;
+        auto clipped_outline = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(clipped_outline);
+        std::array<std::uint8_t, 32 * 32 * 4> clipped_outline_albedo{};
+        REQUIRE(clipped_outline->colorTexture(0)->readback(
+            *device, 0, 0, {}, clipped_outline_albedo.data(),
+            32 * 4, &error));
+        INFO(error);
+        CHECK(clipped_outline_albedo[outline_pixel + 0] == 255);
+        CHECK(clipped_outline_albedo[outline_pixel + 1] == 255);
+        CHECK(clipped_outline_albedo[outline_pixel + 2] == 255);
+        const std::size_t clipped_edge = (16 * 32 + 1) * 4;
+        for (std::size_t channel = 0; channel < 4; ++channel)
+        {
+            CHECK(clipped_outline_albedo[clipped_edge + channel] ==
+                  output_albedo[clipped_edge + channel]);
+        }
+        scene.mirror_clip = false;
+
+        // A closer retained impostor occludes the later debug edge; the
+        // outline participates in the same read/write depth convention.
+        std::array<ALMetalWorldSimpleBatch, 2> depth_batches{{batch, batch}};
+        depth_batches[0].impostor_debug_outline = false;
+        depth_batches[0].impostor_debug_line_width = 0.f;
+        depth_batches[0].impostor_center[2] = -0.5f;
+        depth_batches[0].impostor_left[0] = 0.95f;
+        depth_batches[0].impostor_up[1] = 0.95f;
+        scene.batches = depth_batches.data();
+        scene.batch_count = depth_batches.size();
+        auto occluded_outline = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(occluded_outline);
+        std::array<std::uint8_t, 32 * 32 * 4> occluded_albedo{};
+        std::array<float, 32 * 32> occluded_depth{};
+        REQUIRE(occluded_outline->colorTexture(0)->readback(
+            *device, 0, 0, {}, occluded_albedo.data(), 32 * 4, &error));
+        REQUIRE(occluded_outline->depthStencilTexture()->readback(
+            *device, 0, 0, {}, occluded_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK_FALSE((occluded_albedo[outline_pixel + 0] == 255 &&
+                     occluded_albedo[outline_pixel + 1] == 255 &&
+                     occluded_albedo[outline_pixel + 2] == 255));
+        CHECK(std::abs(occluded_depth[outline_depth] - 0.25f) < 0.0001f);
+        scene.batches = &batch;
+        scene.batch_count = 1;
+
+        // Reject a debug payload without its owner and every width outside
+        // the exact GL-produced one-to-five-pixel interval.
+        batch.impostor_debug_outline = false;
+        batch.impostor_debug_line_width = 1.f;
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal world impostor batch is invalid");
+        batch.impostor_debug_outline = true;
+        batch.impostor_debug_line_width = 0.f;
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal world impostor batch is invalid");
+        batch.impostor_debug_line_width = 6.f;
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal world impostor batch is invalid");
+        batch.impostor_debug_line_width =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal world impostor batch is invalid");
+        batch.impostor_debug_outline = false;
+        batch.impostor_debug_line_width = 0.f;
+        error.clear();
+        auto no_debug_outline = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(no_debug_outline);
+        std::array<std::uint8_t, 32 * 32 * 4> no_debug_albedo{};
+        std::array<float, 32 * 32> no_debug_depth{};
+        REQUIRE(no_debug_outline->colorTexture(0)->readback(
+            *device, 0, 0, {}, no_debug_albedo.data(), 32 * 4, &error));
+        REQUIRE(no_debug_outline->depthStencilTexture()->readback(
+            *device, 0, 0, {}, no_debug_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(no_debug_albedo == output_albedo);
+        CHECK(no_debug_depth == output_depth);
 
         // The viewer publishes a completed native impostor bake by moving
         // all four resolved attachments directly into the retained per-avatar

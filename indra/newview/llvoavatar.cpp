@@ -6008,7 +6008,21 @@ U32 LLVOAvatar::renderImpostor(LLColor4U color, S32 diffuse_channel)
     left *= mImpostorDim.mV[0];
     up *= mImpostorDim.mV[1];
 
-    if (gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_IMPOSTORS))
+    // Rebase the baked normals into the CURRENT view basis: inverse(bake_view), then main_view.
+    // Both are pure rotations sharing an origin, so the inverse is the transpose. Uploaded
+    // per avatar because each impostor was baked aiming at its own subject, and re-derived
+    // every frame because the impostor outlives the camera position that produced it.
+    const LLMatrix4a& mv = LLViewerCamera::getCurrent().getModelview();
+    LLMatrix3a main_view;
+    main_view.setRows(mv.getRow<0>(), mv.getRow<1>(), mv.getRow<2>());
+    LLMatrix3a bake_view;
+    bake_view.loadu(getImpostorViewRotation());
+    LLMatrix3a rebase;
+    rebase.setMul(bake_view, main_view);
+
+    const bool debug_impostor =
+        gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_IMPOSTORS);
+    if (debug_impostor)
     {
         LLGLEnable blend(GL_BLEND);
         gGL.setSceneBlendType(LLRender::BT_ADD);
@@ -6018,6 +6032,13 @@ U32 LLVOAvatar::renderImpostor(LLColor4U color, S32 diffuse_channel)
         gGL.color4f(1.f,1.f,1.f,1.f);
         F32 thickness = llmax(F32(5.0f-5.0f*(gFrameTimeSeconds-mLastImpostorUpdateFrameTime)),1.0f);
         gGL.setLineWidth(thickness);
+#if LL_DARWIN
+        // Capture while the exact additive blend/depth/line state is live.
+        // The native renderer expands the four source lines to triangles but
+        // keeps them immediately before this same impostor billboard.
+        gPipeline.captureMetalWorldImpostorBatch(
+            *this, pos, left, up, rebase, thickness);
+#endif
         gGL.vertex3fv((pos+left-up).mV);
         gGL.vertex3fv((pos-left-up).mV);
         gGL.vertex3fv((pos-left-up).mV);
@@ -6032,17 +6053,6 @@ U32 LLVOAvatar::renderImpostor(LLColor4U color, S32 diffuse_channel)
     {
     gGL.flush();
 
-    // Rebase the baked normals into the CURRENT view basis: inverse(bake_view), then main_view.
-    // Both are pure rotations sharing an origin, so the inverse is the transpose. Uploaded
-    // per avatar because each impostor was baked aiming at its own subject, and re-derived
-    // every frame because the impostor outlives the camera position that produced it.
-    const LLMatrix4a& mv = LLViewerCamera::getCurrent().getModelview();
-    LLMatrix3a main_view;
-    main_view.setRows(mv.getRow<0>(), mv.getRow<1>(), mv.getRow<2>());
-    LLMatrix3a bake_view;
-    bake_view.loadu(getImpostorViewRotation());
-    LLMatrix3a rebase;
-    rebase.setMul(bake_view, main_view);
     if (LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr)
     {
         if (shader->hasUniform(LLShaderMgr::IMPOSTOR_NORM_ROTATION))
@@ -6053,8 +6063,11 @@ U32 LLVOAvatar::renderImpostor(LLColor4U color, S32 diffuse_channel)
     }
 
 #if LL_DARWIN
-    gPipeline.captureMetalWorldImpostorBatch(
-        *this, pos, left, up, rebase);
+    if (!debug_impostor)
+    {
+        gPipeline.captureMetalWorldImpostorBatch(
+            *this, pos, left, up, rebase);
+    }
 #endif
 
     gGL.color4ubv(color.mV);

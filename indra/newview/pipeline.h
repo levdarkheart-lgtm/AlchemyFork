@@ -1024,7 +1024,8 @@ public:
     void captureMetalWorldImpostorBatch(
         LLVOAvatar& avatar, const LLVector3& center,
         const LLVector3& left, const LLVector3& up,
-        const LLMatrix3a& normal_rotation);
+        const LLMatrix3a& normal_rotation,
+        F32 debug_outline_width = 0.f);
     void captureMetalImpostorMirror(LLVOAvatar& avatar);
     void releaseMetalImpostorMirror(const LLUUID& avatar_id);
     void renderMetalWorldLocalLights(
@@ -1493,8 +1494,7 @@ public:
             RENDER_DEBUG_AVATAR_JOINTS |
             RENDER_DEBUG_PHYSICS_SHAPES |
             RENDER_DEBUG_NORMALS |
-            RENDER_DEBUG_TEXEL_DENSITY |
-            RENDER_DEBUG_IMPOSTORS,
+            RENDER_DEBUG_TEXEL_DENSITY,
     };
 
 public:

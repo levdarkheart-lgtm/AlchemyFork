@@ -324,6 +324,11 @@ struct ALMetalWorldSimpleBatch
     bool avatar_depth_write = true;
     bool avatar_color_write = true;
     bool impostor = false;
+    // Develop > Impostors draws a white additive outline immediately before
+    // this billboard. Metal has no wide-line state, so retain the live GL
+    // width and expand the four billboard edges in screen space.
+    bool impostor_debug_outline = false;
+    float impostor_debug_line_width = 0.f;
     bool impostor_fullbright = false;
     bool impostor_shiny = false;
     bool impostor_emboss = false;

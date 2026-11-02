@@ -1785,6 +1785,8 @@ struct ALMetalWorldImpostorConstants
     float4 normal_rotation[3];
     uint4 depth_convention;
     float4 mirror_clip_plane;
+    // xy = target dimensions, z = Develop > Impostors line width.
+    float4 debug_outline;
 };
 
 struct ALMetalWorldImpostorVaryings
@@ -1846,6 +1848,88 @@ vertex ALMetalWorldImpostorVaryings almetal_world_impostor_vertex(
     output.mirror_clip_distance = constants.depth_convention.y != 0u
         ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
     output.texcoord = texcoord[vertex_id];
+    return output;
+}
+
+vertex ALMetalWorldImpostorVaryings
+almetal_world_impostor_debug_vertex(
+    constant ALMetalWorldImpostorConstants& constants [[buffer(0)]],
+    uint vertex_id [[vertex_id]])
+{
+    // The GL owner submits four independent line segments around the same
+    // billboard basis. Metal has no wide-line state, so expand each segment
+    // to two screen-space triangles with the exact full width in pixels.
+    constexpr float2 edge_corners[8] = {
+        float2( 1.0, -1.0), float2(-1.0, -1.0),
+        float2(-1.0, -1.0), float2(-1.0,  1.0),
+        float2(-1.0,  1.0), float2( 1.0,  1.0),
+        float2( 1.0,  1.0), float2( 1.0, -1.0),
+    };
+    constexpr uchar endpoint_lanes[6] = {0, 0, 1, 0, 1, 1};
+    constexpr float side_lanes[6] = {1.0, -1.0, -1.0,
+                                      1.0, -1.0,  1.0};
+    const uint edge = vertex_id / 6u;
+    const uint lane = vertex_id % 6u;
+    const float2 from_corner = edge_corners[edge * 2u];
+    const float2 to_corner = edge_corners[edge * 2u + 1u];
+    const float3 from_world = constants.center.xyz +
+        from_corner.x * constants.left.xyz +
+        from_corner.y * constants.up.xyz;
+    const float3 to_world = constants.center.xyz +
+        to_corner.x * constants.left.xyz +
+        to_corner.y * constants.up.xyz;
+
+    float4 from_clip = constants.modelview_projection *
+                       float4(from_world, 1.0);
+    float4 to_clip = constants.modelview_projection *
+                     float4(to_world, 1.0);
+    from_clip.y = -from_clip.y;
+    to_clip.y = -to_clip.y;
+    if (constants.depth_convention.x == 0u)
+    {
+        from_clip = almetal_clip_from_gl(from_clip);
+        to_clip = almetal_clip_from_gl(to_clip);
+    }
+
+    const float2 screen = max(constants.debug_outline.xy, float2(1.0));
+    const float2 from_ndc = from_clip.xy / from_clip.w;
+    const float2 to_ndc = to_clip.xy / to_clip.w;
+    const float2 delta_pixels = (to_ndc - from_ndc) * screen * 0.5;
+    const float delta_length = length(delta_pixels);
+    const float2 perpendicular_pixels = delta_length > 1.0e-5
+        ? float2(-delta_pixels.y, delta_pixels.x) / delta_length *
+              constants.debug_outline.z * 0.5
+        : float2(0.0);
+    const float2 perpendicular_ndc = perpendicular_pixels * 2.0 / screen;
+
+    const bool use_to = endpoint_lanes[lane] != 0u;
+    float4 clip_position = use_to ? to_clip : from_clip;
+    clip_position.xy += perpendicular_ndc * side_lanes[lane] *
+                        clip_position.w;
+    const float3 world_position = use_to ? to_world : from_world;
+    const float4 eye_position = constants.modelview *
+                                float4(world_position, 1.0);
+
+    ALMetalWorldImpostorVaryings output;
+    output.position = clip_position;
+    output.mirror_clip_distance = constants.depth_convention.y != 0u
+        ? dot(eye_position, constants.mirror_clip_plane) : 1.0;
+    output.texcoord = 0.0;
+    return output;
+}
+
+fragment ALMetalWorldGBufferOutput
+almetal_world_impostor_debug_fragment(
+    ALMetalWorldImpostorVaryings input [[stage_in]])
+{
+    ALMetalWorldGBufferOutput output;
+    // BT_ADD makes white saturate the visible albedo edge. A zero source
+    // alpha and zero auxiliary attachments preserve the retained G-buffer
+    // payload outside the billboard exactly as the debug owner intends.
+    output.albedo = float4(1.0, 1.0, 1.0, 0.0);
+    output.specular_orm = 0.0;
+    output.normal = 0.0;
+    output.emissive = 0.0;
     return output;
 }
 

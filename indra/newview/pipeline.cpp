@@ -12210,7 +12210,7 @@ void LLPipeline::captureMetalWorldAvatarBatch(
 void LLPipeline::captureMetalWorldImpostorBatch(
     LLVOAvatar& avatar, const LLVector3& center,
     const LLVector3& left, const LLVector3& up,
-    const LLMatrix3a& normal_rotation)
+    const LLMatrix3a& normal_rotation, F32 debug_outline_width)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->frame_active ||
@@ -12220,6 +12220,49 @@ void LLPipeline::captureMetalWorldImpostorBatch(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const bool debug_requested =
+        hasRenderDebugMask(RENDER_DEBUG_IMPOSTORS);
+    const bool debug_outline = debug_outline_width > 0.f;
+    bool debug_state_valid = !debug_requested && !debug_outline &&
+        debug_outline_width == 0.f;
+    if (debug_requested && debug_outline)
+    {
+        LLRender::eBlendFactor color_source;
+        LLRender::eBlendFactor color_destination;
+        LLRender::eBlendFactor alpha_source;
+        LLRender::eBlendFactor alpha_destination;
+        gGL.getBlendFunc(color_source, color_destination,
+                         alpha_source, alpha_destination);
+        U32 rgb_equation = 0;
+        U32 alpha_equation = 0;
+        gGL.getBlendEquation(rgb_equation, alpha_equation);
+        bool color_mask[4]{};
+        gGL.getColorMask(color_mask);
+        debug_state_valid =
+            std::isfinite(debug_outline_width) &&
+            debug_outline_width >= 1.f && debug_outline_width <= 5.f &&
+            gGL.getLineWidth() == debug_outline_width &&
+            LLGLState::isEnabled(GL_BLEND) &&
+            LLGLState::isEnabled(GL_CULL_FACE) &&
+            LLGLDepthTest::depthEnabled() &&
+            LLGLDepthTest::depthWriteEnabled() &&
+            LLGLDepthTest::depthFunction() == GL_LEQUAL &&
+            color_source == LLRender::BF_ONE &&
+            color_destination == LLRender::BF_ONE &&
+            alpha_source == LLRender::BF_ONE &&
+            alpha_destination == LLRender::BF_ONE &&
+            rgb_equation == GL_FUNC_ADD &&
+            alpha_equation == GL_FUNC_ADD &&
+            color_mask[0] && color_mask[1] &&
+            color_mask[2] && color_mask[3];
+    }
+    if (!capture.complete || !debug_state_valid)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.batches.clear();
+        capture.avatar_palettes.clear();
+        return;
+    }
     const auto mirror_it = capture.impostor_mirrors.find(avatar.getID());
     const bool has_mirror =
         mirror_it != capture.impostor_mirrors.end() &&
@@ -12234,7 +12277,7 @@ void LLPipeline::captureMetalWorldImpostorBatch(
             {
                 return texture != nullptr;
             });
-    if (!capture.complete || !has_mirror)
+    if (!has_mirror)
     {
         capture.markIncomplete(__LINE__);
         capture.batches.clear();
@@ -12259,6 +12302,8 @@ void LLPipeline::captureMetalWorldImpostorBatch(
 
     ALMetalWorldSimpleBatch batch;
     batch.impostor = true;
+    batch.impostor_debug_outline = debug_outline;
+    batch.impostor_debug_line_width = debug_outline_width;
     for (std::size_t texture = 0;
          texture < batch.impostor_textures.size(); ++texture)
     {
@@ -12279,7 +12324,16 @@ void LLPipeline::captureMetalWorldImpostorBatch(
                     normal_rotation.getRow(row).getF32ptr(),
                     sizeof(batch.impostor_normal_rotation[row]));
     }
-    capture.batches.push_back(batch);
+    try
+    {
+        capture.batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.batches.clear();
+        capture.avatar_palettes.clear();
+    }
 }
 
 void LLPipeline::captureMetalImpostorMirror(LLVOAvatar& avatar)

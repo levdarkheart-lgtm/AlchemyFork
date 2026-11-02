@@ -577,7 +577,10 @@ namespace
         float normal_rotation[3][4];
         std::uint32_t depth_convention[4]{};
         float mirror_clip_plane[4] = {0.f, 0.f, 0.f, 1.f};
+        // xy = target dimensions, z = Develop > Impostors line width.
+        float debug_outline[4]{};
     };
+    static_assert(sizeof(WorldImpostorConstants) == 272);
 
     struct alignas(16) WorldMaterialConstants
     {
@@ -1258,6 +1261,7 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<MaterialRiggedPipelines, 2> legacy_alpha_pipelines;
     std::array<AvatarVariantPipelines, 2> avatar_pipelines;
     std::array<NormalPipelines, 2> impostor_pipelines;
+    std::array<NormalPipelines, 2> impostor_debug_pipelines;
     std::array<NormalPipelines, 2> coverage_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         cutout_background_pipelines;
@@ -1680,6 +1684,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction(
             "almetal_world_avatar_alpha_cloth_skinned_vertex") ||
         !impl->library->hasFunction("almetal_world_impostor_vertex") ||
+        !impl->library->hasFunction(
+            "almetal_world_impostor_debug_vertex") ||
         !impl->library->hasFunction("almetal_world_coverage_vertex") ||
         !impl->library->hasFunction("almetal_world_terrain_vertex") ||
         !impl->library->hasFunction("almetal_world_simple_fragment") ||
@@ -1748,6 +1754,8 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction(
             "almetal_world_legacy_alpha_fragment") ||
         !impl->library->hasFunction("almetal_world_impostor_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_impostor_debug_fragment") ||
         !impl->library->hasFunction("almetal_world_coverage_fragment") ||
         !impl->library->hasFunction("almetal_world_terrain_fragment") ||
         !impl->library->hasFunction("almetal_world_pbr_terrain_fragment") ||
@@ -3912,6 +3920,32 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             {
                 return nullptr;
             }
+
+            descriptor.vertex_function =
+                "almetal_world_impostor_debug_vertex";
+            descriptor.fragment_function =
+                "almetal_world_impostor_debug_fragment";
+            for (std::size_t attachment = 0; attachment < 4;
+                 ++attachment)
+            {
+                descriptor.colors[attachment].blending_enabled = true;
+                descriptor.colors[attachment].source_rgb =
+                    ALMetalBlendFactor::one;
+                descriptor.colors[attachment].destination_rgb =
+                    ALMetalBlendFactor::one;
+                descriptor.colors[attachment].source_alpha =
+                    ALMetalBlendFactor::one;
+                descriptor.colors[attachment].destination_alpha =
+                    ALMetalBlendFactor::one;
+            }
+            descriptor.label =
+                "Alchemy world impostor debug-outline G-buffer pipeline";
+            impl->impostor_debug_pipelines[hdr][normal_hdr] =
+                ALMetalRenderPipeline::create(device, descriptor, error);
+            if (!impl->impostor_debug_pipelines[hdr][normal_hdr])
+            {
+                return nullptr;
+            }
         }
     }
     for (std::size_t hdr = 0; hdr < emissive_formats.size(); ++hdr)
@@ -5417,6 +5451,12 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             const ALMetalPixelFormat expected_emissive = scene.hdr
                 ? ALMetalPixelFormat::rg11b10_float
                 : ALMetalPixelFormat::rgba8_unorm;
+            const bool debug_outline_valid =
+                batch.impostor_debug_outline
+                    ? std::isfinite(batch.impostor_debug_line_width) &&
+                          batch.impostor_debug_line_width >= 1.f &&
+                          batch.impostor_debug_line_width <= 5.f
+                    : batch.impostor_debug_line_width == 0.f;
             if (batch.vertices || batch.indices || batch.vertex_count != 0 ||
                 batch.index_count != 0 || batch.texture_count != 0 ||
                 batch.normal_texture || batch.material_slot_count != 0 ||
@@ -5424,7 +5464,7 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 batch.avatar_rigid || batch.avatar_skinning ||
                 batch.avatar_cloth || batch.impostor_fullbright ||
                 batch.impostor_shiny ||
-                batch.impostor_emboss ||
+                batch.impostor_emboss || !debug_outline_valid ||
                 batch.terrain ||
                 !finiteValues(batch.modelview_projection, 16) ||
                 !finiteValues(batch.impostor_center, 4) ||
@@ -5468,7 +5508,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
                 batch.pbr_slot_count != (pbr_terrain ? 4u : 0u) ||
                 batch.skin_palette ||
                 batch.avatar_rigid || batch.avatar_skinning ||
-                batch.avatar_cloth || !valid_factors ||
+                batch.avatar_cloth || batch.impostor_debug_outline ||
+                batch.impostor_debug_line_width != 0.f || !valid_factors ||
                 (!pbr_terrain &&
                  (batch.terrain_paint_texture || batch.alpha_mask ||
                   batch.terrain_flat_normals)) ||
@@ -5595,7 +5636,8 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
         if (!batch.vertices || !batch.indices || batch.texture_count == 0 ||
             batch.impostor_fullbright || batch.impostor_shiny ||
-            batch.impostor_emboss ||
+            batch.impostor_emboss || batch.impostor_debug_outline ||
+            batch.impostor_debug_line_width != 0.f ||
             batch.texture_count >
                 ALMetalWorldSimpleBatch::max_diffuse_textures ||
             (material &&
@@ -5992,15 +6034,47 @@ std::unique_ptr<ALMetalRenderTarget> ALMetalWorldGBufferRenderer::render(
             std::memcpy(constants.mirror_clip_plane,
                         scene.mirror_clip_plane,
                         sizeof(constants.mirror_clip_plane));
+            constants.debug_outline[0] =
+                static_cast<float>(scene.width);
+            constants.debug_outline[1] =
+                static_cast<float>(scene.height);
+            constants.debug_outline[2] =
+                batch.impostor_debug_line_width;
             const ALMetalRenderPipeline* pipeline =
                 mImpl->impostor_pipelines[scene.hdr ? 1 : 0]
                                          [scene.normal_hdr ? 1 : 0].get();
-            encoded =
+            if (batch.impostor_debug_outline)
+            {
+                const ALMetalRenderPipeline* debug_pipeline =
+                    mImpl->impostor_debug_pipelines[
+                        scene.hdr ? 1 : 0]
+                        [scene.normal_hdr ? 1 : 0].get();
+                encoded =
+                    encoder->setDepthStencilState(depth, error) &&
+                    encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+                    encoder->setCullMode(ALMetalCullMode::none, error) &&
+                    // GL polygon mode does not alter line primitives. Keep
+                    // the expanded quads filled even in world wireframe.
+                    encoder->setTriangleFillMode(
+                        ALMetalTriangleFillMode::fill, error) &&
+                    encoder->setPipeline(*debug_pipeline, error) &&
+                    encoder->setVertexBytes(
+                        0, &constants, sizeof(constants), error) &&
+                    encoder->draw(
+                        ALMetalPrimitiveType::triangle, 0, 24, 1, error);
+            }
+            encoded = encoded &&
                 // A camera-facing impostor is intrinsically two-sided. The
                 // GL path inherits culling state, but its generated winding
                 // changes sign with the viewer basis; accepting both avoids
                 // dropping the billboard at those basis transitions.
+                encoder->setDepthStencilState(depth, error) &&
+                encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
                 encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setTriangleFillMode(
+                    scene.wireframe ? ALMetalTriangleFillMode::lines
+                                    : ALMetalTriangleFillMode::fill,
+                    error) &&
                 encoder->setPipeline(*pipeline, error) &&
                 encoder->setVertexBytes(
                     0, &constants, sizeof(constants), error) &&
