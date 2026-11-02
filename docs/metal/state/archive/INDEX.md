@@ -45,6 +45,7 @@ reload the chronological history.
 | Native Physics Shapes three-pass/all-shape-family replay and source-exact build 68085, 2026-11-02 | [CURRENT-physics-shapes-debug-checkpoint-2026-11-02.md](CURRENT-physics-shapes-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native CPU/indexed Normals and Tangents replay and source-exact build 68087, 2026-11-02 | [CURRENT-normals-debug-checkpoint-2026-11-02.md](CURRENT-normals-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native Texel Density indexed replay and source-exact build 68089, 2026-11-02 | [CURRENT-texel-density-debug-checkpoint-2026-11-02.md](CURRENT-texel-density-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
+| Preferences/save/restart-qualified fixed-Midday shadow replay and refreshed strict GL inventory, 2026-11-02 | [CURRENT-shadow-preference-qualified-checkpoint-2026-11-02.md](CURRENT-shadow-preference-qualified-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.

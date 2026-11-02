@@ -12,14 +12,14 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | ARM64 build/package/runtime identity is evidenced; controlled fixed-view reference benchmark remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | Informational scan covers 2,408 viewer-owned files and 3,303 potential findings including macros/comments/duplicates; strict release audit is not green. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | Refreshed informational scan covers 2,408 viewer-owned files and 3,351 potential findings including macros/comments/duplicates; strict release audit exits 1 and is not green. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Authenticated exact publication and clean lifecycle are observed; preserve while advanced families are validated. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Core typed resource paths have physical coverage; remaining advanced/media matrices stay open. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent and Batch Size have ordered static/rigged HUD replay. Moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence. Broader live parity remains incomplete. |
 | M-008 | Advanced views/effects and compute | doing | The established native advanced-output set now includes Raycast, Occlusion, Octree, Physics Shapes, Normals and Texel Density. No reachable render-debug world-geometry bit remains in the explicit visual veto. OSS pathfinding is a nonfunctional stub. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, prolonged stability and strict no-GL release evidence remain open. Run a fresh strict GL/authority inventory and controlled live parity now that the render-debug veto is empty. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, prolonged stability and strict no-GL release evidence remain open. The refreshed 3,351-finding inventory exits 1. Preference-qualified fixed-Midday replay corroborates directional shadows and native shadow-owner provenance; isolated projector-visible parity and presentation-authority gates remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Exact-path semantic login/in-world/control/logout is verified and used for current acceptance. |
@@ -66,8 +66,23 @@ pathfinding guard remains separately fail-closed. The main executable still
 links OpenGL and Metal, so this is not a native-only claim.
 
 Shadow comparison prerequisite: enable shadows in Graphics Preferences in
-**both** viewers before capture. A mismatched off/on pair is invalid, and a
-both-off control may isolate a residual but cannot close shadow parity.
+**both** viewers, save the setting and restart **both** viewers before capture.
+A mismatched off/on pair is invalid, and a both-off control may isolate a
+residual but cannot close shadow parity.
+
+The 2026-11-02 fixed-Midday Grignano run satisfied that workflow. Both isolated
+profiles had effective `RenderShadowDetail=2`, all 416 captured visual settings
+matched, and both restarted Advanced Graphics panels displayed
+`ShadowDetail=2`. Exact-path preflight passed for reference `26.4.0.67607` and
+candidate `26.4.0.68089`. With `ALMetalWorldPresentation=true`, candidate logs
+proved direct Metal directional/projector shadow slices and continuous exact
+native world plus ordered UI/HUD publication without GL swap. Fixed geometry
+and directional shadow edges remained coherent (raw SSIM `0.933767`, average
+PSNR `22.091122 dB`, half-size sigma-8 structural SSIM `0.968037`). This
+preference-qualified run corroborates directional shadows only: the fixture did
+not isolate a visible projector contribution, and projector-visible,
+alpha/avatar-caster, cascade and PCSS/quality parity remain open. Earlier
+Debug-Settings-only evidence cannot independently close a shadow row.
 
 Any exact RLVa comparison must enable RLV in Preferences in both viewers, save,
 and restart both. Exact RLVa correctness is deferred M-013; implement only the
@@ -78,24 +93,26 @@ minimum behavior needed to unblock Metal/no-GL cutover.
 1. **Product advancement:** Develop Texel Density can retain native authority,
    and no reachable render-debug world-geometry bit remains in the explicit
    visual veto. Other uncaptured owner families remain fail-closed.
-2. **Deferred critical work:** broader post/shadow parity, controlled live
-   comparisons, stability/feature matrices, strict no-GL, independent review
+2. **Deferred critical work:** broader post parity; projector-visible,
+   alpha/avatar-caster, cascade and quality shadow coverage; controlled live
+   comparisons; stability/feature matrices; strict no-GL; independent review;
    and qualifying M1 Max performance evidence.
-3. **Priority reassessment:** move into M-009 with a fresh strict viewer-owned
-   GL and presentation-authority inventory, then select the next concrete
-   reachable release blocker from source evidence.
+3. **Priority reassessment:** continue M-009 from the refreshed strict
+   viewer-owned GL and presentation-authority inventory, then resolve the next
+   concrete reachable release blocker from current source and live evidence.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Run informational and strict GL inventories against the committed source and
-classify each remaining application-owned finding by actual reachability and
-presentation authority. Select the highest-value concrete M-009 blocker,
-retain its exact production behavior with physical proof, and continue
-controlled parity/stability work. Keep shadow pairs preference-qualified and
-exact RLVa work deferred in M-013.
+Reconcile the refreshed 3,351-finding strict GL inventory against actual
+reachability and presentation authority. Resolve the highest-value concrete
+M-009 gate, including current hero-mirror exact eligibility where reachable,
+with source and physical proof; do not remove a guard from an old fixture
+alone. Continue controlled parity/stability work, keep all shadow evidence
+Preferences/save/restart-qualified, and leave exact RLVa work deferred in
+M-013.
 
 ## Non-negotiable open gates
 
