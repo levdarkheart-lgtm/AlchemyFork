@@ -442,6 +442,21 @@ public:
     void captureMetalOctreeGeometry(
         const LLFace& face, const LLFace* skin_owner);
     void endMetalOctreeCapture();
+    // Retain Develop > Physics Shapes as its exact three-pass late overlay.
+    // Generated CPU vertices deliberately outlive transient decomposition and
+    // LLVolume storage until the native post-deferred scene is encoded.
+    void beginMetalPhysicsShapeCapture();
+    void beginMetalPhysicsShapePass(U32 pass);
+    void captureMetalPhysicsShapeTriangles(
+        const LLVector3* vertices, std::size_t vertex_count);
+    void captureMetalPhysicsShapeIndexedTriangles(
+        const LLVector4a* vertices, std::size_t vertex_count,
+        const U16* indices, std::size_t index_count);
+    void captureMetalPhysicsShapeBox(
+        const LLVector3& center, const LLVector3& half_extent,
+        bool outline);
+    void endMetalPhysicsShapePass(U32 pass);
+    void endMetalPhysicsShapeCapture();
     // Retain Develop > Points across the complete world spatial traversal.
     // Each drawable batch records its current region/bridge transform; the
     // traversal order also preserves interleaving with Agent Target.
@@ -1554,7 +1569,6 @@ public:
         // Keep this list explicit: broad mRenderDebugMask != 0 eligibility
         // silently turns text-only diagnostics into a GL world fallback.
         RENDER_DEBUG_GL_WORLD_OUTPUT =
-            RENDER_DEBUG_PHYSICS_SHAPES |
             RENDER_DEBUG_NORMALS |
             RENDER_DEBUG_TEXEL_DENSITY,
     };

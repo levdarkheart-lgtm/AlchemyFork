@@ -7554,6 +7554,253 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             &error));
         CHECK(no_octree_pixels == opaque_forward_pixels);
 
+        // Develop > Physics Shapes is one late three-pass transaction. The
+        // first triangle pass writes depth only, the second blends RGB at the
+        // same depth, and the final three-pixel edge pass is biased behind
+        // that fill. Generated vertices are owned by the scene so temporary
+        // decomposition and LLVolume storage cannot escape into encoding.
+        std::array<ALMetalWorldPhysicsShapeVertex, 9>
+            physics_shape_vertices{};
+        const std::array<std::array<float, 3>, 3>
+            physics_triangle{{
+                {{-0.55f, -0.55f, -0.5f}},
+                {{ 0.55f, -0.55f, -0.5f}},
+                {{ 0.f,    0.55f, -0.5f}},
+            }};
+        for (std::size_t index = 0; index < 3; ++index)
+        {
+            std::copy(
+                physics_triangle[index].begin(),
+                physics_triangle[index].end(),
+                physics_shape_vertices[index].position);
+            physics_shape_vertices[index].position[3] = 1.f;
+        }
+        const std::array<std::size_t, 6> physics_edges{{
+            0, 1, 1, 2, 2, 0,
+        }};
+        for (std::size_t index = 0; index < physics_edges.size();
+             ++index)
+        {
+            physics_shape_vertices[index + 3] =
+                physics_shape_vertices[physics_edges[index]];
+        }
+        std::array<ALMetalWorldPhysicsShapeBatch, 4>
+            physics_shape_batches{};
+        for (std::size_t index = 0;
+             index < physics_shape_batches.size(); ++index)
+        {
+            auto& batch = physics_shape_batches[index];
+            for (std::size_t axis = 0; axis < 4; ++axis)
+            {
+                batch.modelview_projection[axis * 4 + axis] = 1.f;
+            }
+            batch.color[1] = index >= 2 ? 0.5f : 1.f;
+            batch.color[3] = index >= 2 ? 0.25f : 0.5f;
+            batch.cull_back = true;
+            batch.order = index;
+        }
+        physics_shape_batches[0].pass =
+            ALMetalWorldPhysicsShapePass::depth_fill;
+        physics_shape_batches[0].first_vertex = 0;
+        physics_shape_batches[0].vertex_count = 3;
+        physics_shape_batches[1].pass =
+            ALMetalWorldPhysicsShapePass::color_fill;
+        physics_shape_batches[1].first_vertex = 0;
+        physics_shape_batches[1].vertex_count = 3;
+        physics_shape_batches[2].pass =
+            ALMetalWorldPhysicsShapePass::color_wire;
+        physics_shape_batches[2].first_vertex = 0;
+        physics_shape_batches[2].vertex_count = 3;
+        physics_shape_batches[2].triangle_wire = true;
+        physics_shape_batches[2].polygon_offset = true;
+        physics_shape_batches[3].pass =
+            ALMetalWorldPhysicsShapePass::color_wire;
+        physics_shape_batches[3].first_vertex = 3;
+        physics_shape_batches[3].vertex_count = 6;
+        physics_shape_batches[3].wide_lines = true;
+
+        opaque_forward_scene.physics_shape_vertices = nullptr;
+        opaque_forward_scene.physics_shape_vertex_count =
+            physics_shape_vertices.size();
+        opaque_forward_scene.physics_shape_batches =
+            physics_shape_batches.data();
+        opaque_forward_scene.physics_shape_batch_count = 1;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Physics Shapes storage is invalid");
+        opaque_forward_scene.physics_shape_vertices =
+            physics_shape_vertices.data();
+        physics_shape_vertices[0].position[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Physics Shapes vertex is invalid");
+        physics_shape_vertices[0].position[0] = -0.55f;
+        physics_shape_batches[0].vertex_count = 10;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Physics Shapes batch is invalid");
+        physics_shape_batches[0].vertex_count = 3;
+        physics_shape_batches[0].pass =
+            static_cast<ALMetalWorldPhysicsShapePass>(99);
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Physics Shapes batch is invalid");
+        physics_shape_batches[0].pass =
+            ALMetalWorldPhysicsShapePass::depth_fill;
+        physics_shape_batches[0].polygon_offset = true;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Physics Shapes batch is invalid");
+        physics_shape_batches[0].polygon_offset = false;
+        opaque_forward_scene.agent_target_lines =
+            agent_target_lines.data();
+        opaque_forward_scene.agent_target_line_vertex_count =
+            agent_target_lines.size();
+        opaque_forward_scene.agent_target_order = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Physics Shapes batch is invalid");
+        opaque_forward_scene.agent_target_lines = nullptr;
+        opaque_forward_scene.agent_target_line_vertex_count = 0;
+
+        error.clear();
+        auto physics_depth_only = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(physics_depth_only);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            physics_depth_only_pixels{};
+        std::array<float, 32 * 32> physics_depth_only_depth{};
+        REQUIRE(physics_depth_only->colorTexture(0)->readback(
+            *device, 0, 0, {}, physics_depth_only_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(physics_depth_only->depthStencilTexture()->readback(
+            *device, 0, 0, {}, physics_depth_only_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(physics_depth_only_pixels == opaque_forward_pixels);
+        CHECK(physics_depth_only_depth != opaque_forward_depth);
+
+        opaque_forward_scene.physics_shape_batch_count =
+            physics_shape_batches.size();
+        error.clear();
+        auto physics_three_pass = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(physics_three_pass);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            physics_three_pass_pixels{};
+        std::array<float, 32 * 32> physics_three_pass_depth{};
+        REQUIRE(physics_three_pass->colorTexture(0)->readback(
+            *device, 0, 0, {}, physics_three_pass_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(physics_three_pass->depthStencilTexture()->readback(
+            *device, 0, 0, {}, physics_three_pass_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t physics_shape_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                physics_three_pass_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                physics_three_pass_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                physics_three_pass_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            physics_shape_changed += changed;
+            if (changed)
+            {
+                CHECK(physics_three_pass_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+            }
+        }
+        CHECK(physics_shape_changed >= 64);
+        CHECK(physics_three_pass_depth == physics_depth_only_depth);
+
+        std::swap(physics_shape_batches[0],
+                  physics_shape_batches[1]);
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Physics Shapes batch is invalid");
+        std::swap(physics_shape_batches[0],
+                  physics_shape_batches[1]);
+        physics_shape_batches[0].order = 0;
+        physics_shape_batches[1].order = 1;
+        physics_shape_batches[2].order = 2;
+        physics_shape_batches[3].order = 3;
+
+        debug_points[0].position[0] = 0.f;
+        debug_points[0].position[1] = 0.f;
+        debug_points[0].position[2] = 0.f;
+        debug_point_batches[0].first_vertex = 0;
+        debug_point_batches[0].vertex_count = 1;
+        debug_point_batches[0].order = 3;
+        opaque_forward_scene.debug_points = debug_points.data();
+        opaque_forward_scene.debug_point_count = 1;
+        opaque_forward_scene.debug_point_batches =
+            debug_point_batches.data();
+        opaque_forward_scene.debug_point_batch_count = 1;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world render-debug ordering is invalid");
+        opaque_forward_scene.debug_points = nullptr;
+        opaque_forward_scene.debug_point_count = 0;
+        opaque_forward_scene.debug_point_batches = nullptr;
+        opaque_forward_scene.debug_point_batch_count = 0;
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        for (auto& vertex : physics_shape_vertices)
+        {
+            vertex.position[2] = 0.9f;
+        }
+        error.clear();
+        auto reverse_physics_shapes =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_physics_shapes);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_physics_shape_pixels{};
+        std::array<float, 32 * 32> reverse_physics_shape_depth{};
+        REQUIRE(reverse_physics_shapes->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_physics_shape_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(reverse_physics_shapes->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_physics_shape_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(reverse_physics_shape_pixels !=
+              reverse_agent_target_baseline_pixels);
+        CHECK(reverse_physics_shape_depth !=
+              reverse_agent_target_baseline_depth);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.physics_shape_vertices = nullptr;
+        opaque_forward_scene.physics_shape_vertex_count = 0;
+        opaque_forward_scene.physics_shape_batches = nullptr;
+        opaque_forward_scene.physics_shape_batch_count = 0;
+        error.clear();
+        auto no_physics_shapes = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_physics_shapes);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            no_physics_shape_pixels{};
+        REQUIRE(no_physics_shapes->colorTexture(0)->readback(
+            *device, 0, 0, {}, no_physics_shape_pixels.data(),
+            32 * 8, &error));
+        CHECK(no_physics_shape_pixels == opaque_forward_pixels);
+
         // Develop > Texture Anim selects visible draw-info triangles whose
         // texture matrix is non-null, but gDebugProgram consumes positions
         // only and emits one fixed translucent-yellow uniform. The enclosing

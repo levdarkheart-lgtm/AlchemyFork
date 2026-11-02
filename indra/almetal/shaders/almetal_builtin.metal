@@ -2264,6 +2264,41 @@ almetal_world_raycast_wide_line_vertex(
     return output;
 }
 
+// Metal has no programmable line width for triangle line-fill. Physics
+// Shapes needs GL's three-pixel, back-face-culled polygon wire, so retain the
+// original triangle topology and rasterize nine one-pixel instances offset by
+// the surrounding pixel grid. Culling therefore still classifies the source
+// triangle rather than the expanded quads used for explicit GL_LINES owners.
+vertex ALMetalWorldTextureAnimVaryings
+almetal_world_physics_shape_wire_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldBoundingBoxConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]], uint instance_id [[instance_id]])
+{
+    constexpr float2 offsets[9] = {
+        {-1.0, -1.0}, {0.0, -1.0}, {1.0, -1.0},
+        {-1.0,  0.0}, {0.0,  0.0}, {1.0,  0.0},
+        {-1.0,  1.0}, {0.0,  1.0}, {1.0,  1.0},
+    };
+    float4 clip_position = constants.modelview_projection *
+                           float4(positions[vertex_id].xyz, 1.0);
+    clip_position.y = -clip_position.y;
+    if (constants.config.x == 0u)
+    {
+        clip_position = almetal_clip_from_gl(clip_position);
+    }
+    const float2 screen = max(
+        constants.screen_line_width.xy, float2(1.0));
+    const float half_width = max(
+        constants.screen_line_width.z - 1.0, 0.0) * 0.5;
+    const float2 offset_ndc = offsets[min(instance_id, 8u)] *
+                              half_width * 2.0 / screen;
+    clip_position.xy += offset_ndc * clip_position.w;
+    ALMetalWorldTextureAnimVaryings output;
+    output.position = clip_position;
+    return output;
+}
+
 vertex ALMetalWorldTextureAnimVaryings almetal_world_raycast_box_vertex(
     constant ALMetalWorldBoundingBoxConstants& constants [[buffer(1)]],
     uint vertex_id [[vertex_id]])

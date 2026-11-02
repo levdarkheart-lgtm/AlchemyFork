@@ -1368,6 +1368,12 @@ struct ALMetalWorldGBufferRenderer::Impl
         raycast_box_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         raycast_particle_pipelines;
+    // HDR x regular/wide depth-only variants. Colored Physics Shapes reuse
+    // the existing RGB-only texture-animation and wide-line pipelines.
+    std::array<std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>
+        physics_shape_depth_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        physics_shape_wire_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         composition_debug_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -2741,6 +2747,44 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             ALMetalRenderPipeline::create(
                 device, raycast_wide_line_descriptor, error);
         if (!impl->raycast_wide_line_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        for (std::size_t wide = 0; wide < 2; ++wide)
+        {
+            ALMetalRenderPipelineDescriptor physics_depth_descriptor =
+                wide ? raycast_wide_line_descriptor
+                     : texture_anim_descriptor;
+            physics_depth_descriptor.colors[0].blending_enabled = false;
+            physics_depth_descriptor.colors[0].write_mask =
+                ALMetalColorWriteMask::none;
+            physics_depth_descriptor.label = hdr
+                ? (wide
+                       ? "Alchemy HDR world Physics Shapes wide depth pipeline"
+                       : "Alchemy HDR world Physics Shapes depth pipeline")
+                : (wide
+                       ? "Alchemy world Physics Shapes wide depth pipeline"
+                       : "Alchemy world Physics Shapes depth pipeline");
+            impl->physics_shape_depth_pipelines[hdr][wide] =
+                ALMetalRenderPipeline::create(
+                    device, physics_depth_descriptor, error);
+            if (!impl->physics_shape_depth_pipelines[hdr][wide])
+            {
+                return nullptr;
+            }
+        }
+        ALMetalRenderPipelineDescriptor physics_wire_descriptor =
+            raycast_line_descriptor;
+        physics_wire_descriptor.vertex_function =
+            "almetal_world_physics_shape_wire_vertex";
+        physics_wire_descriptor.label = hdr
+            ? "Alchemy HDR world Physics Shapes triangle-wire pipeline"
+            : "Alchemy world Physics Shapes triangle-wire pipeline";
+        impl->physics_shape_wire_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, physics_wire_descriptor, error);
+        if (!impl->physics_shape_wire_pipelines[hdr])
         {
             return nullptr;
         }
@@ -11387,6 +11431,91 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         previous_octree_order = batch.order;
     }
+    if ((scene.physics_shape_vertex_count != 0 &&
+         !scene.physics_shape_vertices) ||
+        (scene.physics_shape_batch_count != 0 &&
+         !scene.physics_shape_batches) ||
+        (scene.physics_shape_vertex_count == 0) !=
+            (scene.physics_shape_batch_count == 0) ||
+        scene.physics_shape_vertex_count >
+            std::numeric_limits<std::uint32_t>::max() ||
+        scene.physics_shape_vertex_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldPhysicsShapeVertex) ||
+        scene.physics_shape_batch_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldPhysicsShapeBatch))
+    {
+        setError(error,
+                 "Metal world Physics Shapes storage is invalid");
+        return nullptr;
+    }
+    for (std::size_t index = 0;
+         index < scene.physics_shape_vertex_count; ++index)
+    {
+        const ALMetalWorldPhysicsShapeVertex& vertex =
+            scene.physics_shape_vertices[index];
+        if (!finiteValues(vertex.position, 4) ||
+            vertex.position[3] != 1.f)
+        {
+            setError(error,
+                     "Metal world Physics Shapes vertex is invalid");
+            return nullptr;
+        }
+    }
+    std::uint64_t previous_physics_shape_order = 0;
+    ALMetalWorldPhysicsShapePass previous_physics_shape_pass =
+        ALMetalWorldPhysicsShapePass::depth_fill;
+    for (std::size_t index = 0;
+         index < scene.physics_shape_batch_count; ++index)
+    {
+        const ALMetalWorldPhysicsShapeBatch& batch =
+            scene.physics_shape_batches[index];
+        const bool pass_valid =
+            batch.pass == ALMetalWorldPhysicsShapePass::depth_fill ||
+            batch.pass == ALMetalWorldPhysicsShapePass::color_fill ||
+            batch.pass == ALMetalWorldPhysicsShapePass::color_wire;
+        const std::size_t first = batch.first_vertex;
+        const std::size_t count = batch.vertex_count;
+        const bool range_valid = count != 0 &&
+            first <= scene.physics_shape_vertex_count &&
+            count <= scene.physics_shape_vertex_count - first;
+        const bool topology_valid = batch.wide_lines
+            ? !batch.triangle_wire && count % 2 == 0 &&
+                  count <= std::numeric_limits<std::uint32_t>::max() / 3u
+            : count % 3 == 0;
+        if (!pass_valid || !range_valid || !topology_valid ||
+            !batch.cull_back ||
+            (batch.pass ==
+                 ALMetalWorldPhysicsShapePass::color_wire &&
+             !batch.wide_lines && !batch.triangle_wire) ||
+            (batch.triangle_wire &&
+             (batch.pass !=
+                  ALMetalWorldPhysicsShapePass::color_wire ||
+              batch.wide_lines || !batch.cull_back ||
+              !batch.polygon_offset)) ||
+            (batch.polygon_offset &&
+             (batch.pass !=
+                  ALMetalWorldPhysicsShapePass::color_wire ||
+              !batch.triangle_wire)) ||
+            !finiteValues(batch.modelview_projection, 16) ||
+            !finiteValues(batch.color, 4) ||
+            (index != 0 &&
+             batch.order <= previous_physics_shape_order) ||
+            (index != 0 &&
+             static_cast<std::uint32_t>(batch.pass) <
+                 static_cast<std::uint32_t>(
+                     previous_physics_shape_pass)) ||
+            (scene.agent_target_line_vertex_count != 0 &&
+             batch.order == scene.agent_target_order))
+        {
+            setError(error,
+                     "Metal world Physics Shapes batch is invalid");
+            return nullptr;
+        }
+        previous_physics_shape_order = batch.order;
+        previous_physics_shape_pass = batch.pass;
+    }
     const bool has_shadow_frusta =
         scene.shadow_frustum_vertex_count != 0 ||
         scene.shadow_frustum_batch_count != 0;
@@ -11926,6 +12055,53 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         return false;
     };
     if (order_collides(
+            scene.physics_shape_batches,
+            scene.physics_shape_batch_count,
+            scene.octree_batches, scene.octree_batch_count) ||
+        order_collides(
+            scene.physics_shape_batches,
+            scene.physics_shape_batch_count,
+            scene.occlusion_batches, scene.occlusion_batch_count) ||
+        order_collides(
+            scene.physics_shape_batches,
+            scene.physics_shape_batch_count,
+            scene.avatar_volume_batches,
+            scene.avatar_volume_batch_count) ||
+        order_collides(
+            scene.physics_shape_batches,
+            scene.physics_shape_batch_count,
+            scene.avatar_joint_batches,
+            scene.avatar_joint_batch_count) ||
+        order_collides(
+            scene.physics_shape_batches,
+            scene.physics_shape_batch_count,
+            scene.bounding_box_batches,
+            scene.bounding_box_batch_count) ||
+        order_collides(
+            scene.physics_shape_batches,
+            scene.physics_shape_batch_count,
+            scene.raycast_batches, scene.raycast_batch_count) ||
+        order_collides(
+            scene.physics_shape_batches,
+            scene.physics_shape_batch_count,
+            scene.debug_point_batches, scene.debug_point_batch_count) ||
+        order_collides(
+            scene.physics_shape_batches,
+            scene.physics_shape_batch_count,
+            scene.texture_anim_batches, scene.texture_anim_batch_count) ||
+        order_collides(
+            scene.physics_shape_batches,
+            scene.physics_shape_batch_count,
+            scene.update_type_batches, scene.update_type_batch_count) ||
+        order_collides(
+            scene.physics_shape_batches,
+            scene.physics_shape_batch_count,
+            scene.batch_size_batches, scene.batch_size_batch_count) ||
+        order_collides(
+            scene.physics_shape_batches,
+            scene.physics_shape_batch_count,
+            scene.light_debug_batches, scene.light_debug_batch_count) ||
+        order_collides(
             scene.octree_batches, scene.octree_batch_count,
             scene.occlusion_batches, scene.occlusion_batch_count) ||
         order_collides(
@@ -13395,6 +13571,26 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         octree_palette_buffers[batch_index] = palette.get();
         octree_palette_storage.push_back(std::move(palette));
+    }
+
+    std::unique_ptr<ALMetalBuffer> physics_shape_vertex_buffer;
+    if (scene.physics_shape_vertex_count != 0)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = scene.physics_shape_vertex_count *
+            sizeof(ALMetalWorldPhysicsShapeVertex);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world Physics Shapes vertices";
+        physics_shape_vertex_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!physics_shape_vertex_buffer ||
+            !physics_shape_vertex_buffer->write(
+                0, scene.physics_shape_vertices,
+                descriptor.length, error))
+        {
+            return nullptr;
+        }
     }
 
     std::unique_ptr<ALMetalBuffer> debug_blip_buffer;
@@ -16041,6 +16237,71 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                       : ALMetalPrimitiveType::line,
                 0, flash ? 72 : 24, 1, error);
     };
+    const auto encode_physics_shape_batch =
+        [&](const ALMetalWorldPhysicsShapeBatch& batch)
+    {
+        WorldBoundingBoxConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(constants.modelview_projection));
+        std::memcpy(constants.color, batch.color,
+                    sizeof(constants.color));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        constants.screen_line_width[0] =
+            static_cast<float>(scene.width);
+        constants.screen_line_width[1] =
+            static_cast<float>(scene.height);
+        constants.screen_line_width[2] = 3.f;
+        const bool depth_only = batch.pass ==
+            ALMetalWorldPhysicsShapePass::depth_fill;
+        const ALMetalDepthStencilState* depth = depth_only
+            ? (scene.reverse_z ? mImpl->reverse_depth.get()
+                               : mImpl->forward_depth.get())
+            : (scene.reverse_z ? mImpl->reverse_readonly_depth.get()
+                               : mImpl->forward_readonly_depth.get());
+        const float bias = batch.polygon_offset
+            ? (scene.reverse_z ? 3.f : -3.f) : 0.f;
+        const ALMetalRenderPipeline* pipeline = depth_only
+            ? mImpl->physics_shape_depth_pipelines[
+                  scene.hdr ? 1 : 0][batch.wide_lines ? 1 : 0].get()
+            : (batch.triangle_wire
+                   ? mImpl->physics_shape_wire_pipelines[
+                         scene.hdr ? 1 : 0].get()
+                   : batch.wide_lines
+                   ? mImpl->raycast_wide_line_pipelines[
+                         scene.hdr ? 1 : 0].get()
+                   : mImpl->texture_anim_pipelines[
+                         scene.hdr ? 1 : 0].get());
+        const std::size_t offset =
+            static_cast<std::size_t>(batch.first_vertex) *
+            sizeof(ALMetalWorldPhysicsShapeVertex);
+        const std::uint32_t draw_count = batch.wide_lines
+            ? batch.vertex_count * 3u : batch.vertex_count;
+        const std::uint32_t instance_count =
+            batch.triangle_wire ? 9u : 1u;
+        return physics_shape_vertex_buffer &&
+            encoder->setDepthStencilState(depth, error) &&
+            encoder->setDepthBias(bias, bias, 0.f, error) &&
+            encoder->setCullMode(
+                batch.wide_lines || !batch.cull_back
+                    ? ALMetalCullMode::none : ALMetalCullMode::back,
+                error) &&
+            encoder->setTriangleFillMode(
+                batch.triangle_wire
+                    ? ALMetalTriangleFillMode::lines
+                    : ALMetalTriangleFillMode::fill,
+                error) &&
+            encoder->setPipeline(*pipeline, error) &&
+            encoder->setVertexBuffer(
+                0, *physics_shape_vertex_buffer, offset, error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle,
+                0, draw_count, instance_count, error);
+    };
     const auto encode_debug_point_batch =
         [&](const ALMetalWorldDebugPointBatch& batch)
     {
@@ -16259,6 +16520,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     std::size_t raycast_batch_index = 0;
     std::size_t occlusion_batch_index = 0;
     std::size_t octree_batch_index = 0;
+    std::size_t physics_shape_batch_index = 0;
     std::size_t debug_point_batch_index = 0;
     std::size_t texture_anim_batch_index = 0;
     std::size_t update_type_batch_index = 0;
@@ -16271,6 +16533,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             raycast_batch_index < scene.raycast_batch_count ||
             occlusion_batch_index < scene.occlusion_batch_count ||
             octree_batch_index < scene.octree_batch_count ||
+            physics_shape_batch_index <
+                scene.physics_shape_batch_count ||
             debug_point_batch_index < scene.debug_point_batch_count ||
             texture_anim_batch_index < scene.texture_anim_batch_count ||
             update_type_batch_index < scene.update_type_batch_count ||
@@ -16287,6 +16551,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             raycast,
             occlusion,
             octree,
+            physics_shape,
             debug_point,
             texture_anim,
             update_type,
@@ -16359,6 +16624,18 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             if (!owner_selected || order < owner_order)
             {
                 owner = RenderDebugOwner::octree;
+                owner_selected = true;
+                owner_order = order;
+            }
+        }
+        if (physics_shape_batch_index <
+            scene.physics_shape_batch_count)
+        {
+            const std::uint64_t order = scene.physics_shape_batches[
+                physics_shape_batch_index].order;
+            if (!owner_selected || order < owner_order)
+            {
+                owner = RenderDebugOwner::physics_shape;
                 owner_selected = true;
                 owner_order = order;
             }
@@ -16452,6 +16729,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     scene.octree_batches[octree_batch_index],
                     octree_batch_index);
                 ++octree_batch_index;
+                break;
+            case RenderDebugOwner::physics_shape:
+                encoded = encode_physics_shape_batch(
+                    scene.physics_shape_batches[
+                        physics_shape_batch_index++]);
                 break;
             case RenderDebugOwner::debug_point:
                 encoded = encode_debug_point_batch(

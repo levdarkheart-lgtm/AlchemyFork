@@ -617,6 +617,38 @@ struct ALMetalWorldOctreeBatch
     float line_width = 1.f;
 };
 
+// Develop > Physics Shapes is emitted after the ordinary render-debug walk as
+// three complete passes: unoffset depth-only triangles, alpha-blended fill,
+// then three-pixel polygon/line wire pushed behind the fill. CPU-owned debug
+// vertices keep generated meshes, convex hulls and fallback boxes under one
+// explicit contract without retaining transient decomposition storage.
+enum class ALMetalWorldPhysicsShapePass : std::uint32_t
+{
+    depth_fill,
+    color_fill,
+    color_wire,
+};
+
+struct ALMetalWorldPhysicsShapeVertex
+{
+    float position[4] = {0.f, 0.f, 0.f, 1.f};
+};
+
+struct ALMetalWorldPhysicsShapeBatch
+{
+    ALMetalWorldPhysicsShapePass pass =
+        ALMetalWorldPhysicsShapePass::depth_fill;
+    std::uint32_t first_vertex = 0;
+    std::uint32_t vertex_count = 0;
+    bool wide_lines = false;
+    bool triangle_wire = false;
+    bool polygon_offset = false;
+    bool cull_back = false;
+    std::uint64_t order = 0;
+    float modelview_projection[16]{};
+    float color[4]{};
+};
+
 // Develop > Points emits one opaque white, one-pixel point at every valid
 // drawable face centre. World traversal can switch transforms at spatial-
 // bridge boundaries and can interleave the self-avatar Agent Target owner, so
@@ -1078,6 +1110,10 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t occlusion_batch_count = 0;
     const ALMetalWorldOctreeBatch* octree_batches = nullptr;
     std::size_t octree_batch_count = 0;
+    const ALMetalWorldPhysicsShapeVertex* physics_shape_vertices = nullptr;
+    std::size_t physics_shape_vertex_count = 0;
+    const ALMetalWorldPhysicsShapeBatch* physics_shape_batches = nullptr;
+    std::size_t physics_shape_batch_count = 0;
     const ALMetalWorldDebugPointVertex* debug_points = nullptr;
     std::size_t debug_point_count = 0;
     const ALMetalWorldDebugPointBatch* debug_point_batches = nullptr;

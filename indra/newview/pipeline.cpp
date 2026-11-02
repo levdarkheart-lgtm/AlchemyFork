@@ -612,6 +612,11 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool occlusion_capture_active = false;
     std::vector<ALMetalWorldOctreeBatch> octree_batches;
     bool octree_capture_active = false;
+    std::vector<ALMetalWorldPhysicsShapeVertex> physics_shape_vertices;
+    std::vector<ALMetalWorldPhysicsShapeBatch> physics_shape_batches;
+    U32 physics_shape_pass = 0;
+    bool physics_shape_capture_active = false;
+    bool physics_shape_pass_active = false;
     std::vector<ALMetalWorldDebugPointVertex> debug_points;
     std::vector<ALMetalWorldDebugPointBatch> debug_point_batches;
     ALMetalWorldDebugPointBatch debug_point_batch;
@@ -4074,6 +4079,11 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.occlusion_capture_active = false;
     capture.octree_batches.clear();
     capture.octree_capture_active = false;
+    capture.physics_shape_vertices.clear();
+    capture.physics_shape_batches.clear();
+    capture.physics_shape_pass = 0;
+    capture.physics_shape_capture_active = false;
+    capture.physics_shape_pass_active = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -5914,6 +5924,415 @@ void LLPipeline::endMetalOctreeCapture()
     if (!capture.complete)
     {
         capture.octree_batches.clear();
+    }
+}
+
+static bool metalPhysicsShapePassStateIsExact(U32 pass)
+{
+    if (pass > 2)
+    {
+        return false;
+    }
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    LLRender::eBlendFactor color_source;
+    LLRender::eBlendFactor color_destination;
+    LLRender::eBlendFactor alpha_source;
+    LLRender::eBlendFactor alpha_destination;
+    gGL.getBlendFunc(color_source, color_destination,
+                     alpha_source, alpha_destination);
+    U32 rgb_equation = 0;
+    U32 alpha_equation = 0;
+    gGL.getBlendEquation(rgb_equation, alpha_equation);
+    const bool color_writes = pass != 0;
+    return LLGLState::isEnabled(GL_BLEND) &&
+        LLGLState::isEnabled(GL_CULL_FACE) &&
+        LLGLState::isEnabled(GL_POLYGON_OFFSET_LINE) &&
+        LLGLDepthTest::depthEnabled() &&
+        LLGLDepthTest::depthWriteEnabled() == (pass == 0) &&
+        LLGLDepthTest::depthFunction() == GL_LEQUAL &&
+        color_source == LLRender::BF_SOURCE_ALPHA &&
+        color_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
+        alpha_source == LLRender::BF_SOURCE_ALPHA &&
+        alpha_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
+        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
+        color_mask[0] == color_writes &&
+        color_mask[1] == color_writes &&
+        color_mask[2] == color_writes && !color_mask[3] &&
+        gGL.getLineWidth() == 3.f &&
+        gGL.getPolygonOffsetFactor() == -3.f &&
+        gGL.getPolygonOffsetUnits() == -3.f &&
+        gGL.getPolygonMode() == (pass == 2 ? GL_LINE : GL_FILL);
+}
+
+void LLPipeline::beginMetalPhysicsShapeCapture()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || capture.physics_shape_capture_active ||
+        capture.physics_shape_pass_active ||
+        !capture.physics_shape_vertices.empty() ||
+        !capture.physics_shape_batches.empty())
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+    capture.physics_shape_capture_active = true;
+}
+
+void LLPipeline::beginMetalPhysicsShapePass(U32 pass)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.physics_shape_capture_active)
+    {
+        return;
+    }
+    if (!capture.complete || capture.physics_shape_pass_active ||
+        pass > 2 || pass != capture.physics_shape_pass ||
+        !metalPhysicsShapePassStateIsExact(pass))
+    {
+        capture.markIncomplete(__LINE__);
+        capture.physics_shape_vertices.clear();
+        capture.physics_shape_batches.clear();
+        return;
+    }
+    capture.physics_shape_pass_active = true;
+}
+
+template <typename Capture>
+static void clearMetalPhysicsShapeCapture(
+    Capture& capture, U32 line)
+{
+    capture.markIncomplete(line);
+    capture.physics_shape_vertices.clear();
+    capture.physics_shape_batches.clear();
+}
+
+template <typename Capture>
+static bool appendMetalPhysicsShapeVertex(
+    Capture& capture, const F32* position)
+{
+    if (!position || !std::isfinite(position[0]) ||
+        !std::isfinite(position[1]) || !std::isfinite(position[2]))
+    {
+        return false;
+    }
+    ALMetalWorldPhysicsShapeVertex vertex;
+    std::memcpy(vertex.position, position, sizeof(F32) * 3);
+    vertex.position[3] = 1.f;
+    capture.physics_shape_vertices.push_back(vertex);
+    return true;
+}
+
+template <typename Capture>
+static bool beginMetalPhysicsShapeBatch(
+    Capture& capture,
+    ALMetalWorldPhysicsShapeBatch& batch, bool wide_lines,
+    bool triangle_wire, bool polygon_offset,
+    std::size_t appended_vertex_count)
+{
+    if (appended_vertex_count == 0 ||
+        appended_vertex_count > std::numeric_limits<U32>::max() ||
+        capture.physics_shape_vertices.size() < appended_vertex_count ||
+        capture.physics_shape_vertices.size() - appended_vertex_count >
+            std::numeric_limits<U32>::max() ||
+        capture.render_debug_order == std::numeric_limits<U64>::max())
+    {
+        return false;
+    }
+    const LLColor4& color = gGL.getDiffuseColor();
+    if (!std::all_of(
+            std::begin(color.mV), std::end(color.mV),
+            [](F32 value) { return std::isfinite(value); }))
+    {
+        return false;
+    }
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    batch.pass = static_cast<ALMetalWorldPhysicsShapePass>(
+        capture.physics_shape_pass);
+    batch.first_vertex = static_cast<U32>(
+        capture.physics_shape_vertices.size() - appended_vertex_count);
+    batch.vertex_count = static_cast<U32>(appended_vertex_count);
+    batch.wide_lines = wide_lines;
+    batch.triangle_wire = triangle_wire;
+    batch.polygon_offset = polygon_offset;
+    batch.cull_back = LLGLState::isEnabled(GL_CULL_FACE);
+    batch.order = capture.render_debug_order++;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.color, color.mV, sizeof(batch.color));
+    return true;
+}
+
+void LLPipeline::captureMetalPhysicsShapeTriangles(
+    const LLVector3* vertices, std::size_t vertex_count)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.physics_shape_capture_active ||
+        !capture.physics_shape_pass_active)
+    {
+        return;
+    }
+    if (!capture.complete || !vertices || vertex_count == 0 ||
+        vertex_count % 3 != 0)
+    {
+        clearMetalPhysicsShapeCapture(capture, __LINE__);
+        return;
+    }
+    const bool triangle_wire = capture.physics_shape_pass == 2;
+    const std::size_t output_count = vertex_count;
+    if (capture.physics_shape_vertices.size() >
+            std::numeric_limits<std::size_t>::max() - output_count)
+    {
+        clearMetalPhysicsShapeCapture(capture, __LINE__);
+        return;
+    }
+    const std::size_t first = capture.physics_shape_vertices.size();
+    try
+    {
+        capture.physics_shape_vertices.reserve(first + output_count);
+        for (std::size_t index = 0; index < vertex_count; ++index)
+        {
+            if (!appendMetalPhysicsShapeVertex(
+                    capture, vertices[index].mV))
+            {
+                capture.physics_shape_vertices.resize(first);
+                clearMetalPhysicsShapeCapture(capture, __LINE__);
+                return;
+            }
+        }
+        ALMetalWorldPhysicsShapeBatch batch;
+        if (!beginMetalPhysicsShapeBatch(
+                capture, batch, false, triangle_wire,
+                triangle_wire, output_count))
+        {
+            capture.physics_shape_vertices.resize(first);
+            clearMetalPhysicsShapeCapture(capture, __LINE__);
+            return;
+        }
+        capture.physics_shape_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        clearMetalPhysicsShapeCapture(capture, __LINE__);
+    }
+}
+
+void LLPipeline::captureMetalPhysicsShapeIndexedTriangles(
+    const LLVector4a* vertices, std::size_t vertex_count,
+    const U16* indices, std::size_t index_count)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.physics_shape_capture_active ||
+        !capture.physics_shape_pass_active)
+    {
+        return;
+    }
+    if (!capture.complete || !vertices || !indices ||
+        vertex_count == 0 || index_count == 0 ||
+        index_count % 3 != 0)
+    {
+        clearMetalPhysicsShapeCapture(capture, __LINE__);
+        return;
+    }
+    const bool triangle_wire = capture.physics_shape_pass == 2;
+    const std::size_t output_count = index_count;
+    if (capture.physics_shape_vertices.size() >
+            std::numeric_limits<std::size_t>::max() - output_count)
+    {
+        clearMetalPhysicsShapeCapture(capture, __LINE__);
+        return;
+    }
+    const std::size_t first = capture.physics_shape_vertices.size();
+    try
+    {
+        capture.physics_shape_vertices.reserve(first + output_count);
+        const auto append_index = [&](U16 index)
+        {
+            return index < vertex_count && appendMetalPhysicsShapeVertex(
+                capture, vertices[index].getF32ptr());
+        };
+        for (std::size_t index = 0; index < index_count; index += 3)
+        {
+            const U16 a = indices[index];
+            const U16 b = indices[index + 1];
+            const U16 c = indices[index + 2];
+            const bool appended = append_index(a) && append_index(b) &&
+                append_index(c);
+            if (!appended)
+            {
+                capture.physics_shape_vertices.resize(first);
+                clearMetalPhysicsShapeCapture(capture, __LINE__);
+                return;
+            }
+        }
+        ALMetalWorldPhysicsShapeBatch batch;
+        if (!beginMetalPhysicsShapeBatch(
+                capture, batch, false, triangle_wire,
+                triangle_wire, output_count))
+        {
+            capture.physics_shape_vertices.resize(first);
+            clearMetalPhysicsShapeCapture(capture, __LINE__);
+            return;
+        }
+        capture.physics_shape_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        clearMetalPhysicsShapeCapture(capture, __LINE__);
+    }
+}
+
+void LLPipeline::captureMetalPhysicsShapeBox(
+    const LLVector3& center, const LLVector3& half_extent,
+    bool outline)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.physics_shape_capture_active ||
+        !capture.physics_shape_pass_active)
+    {
+        return;
+    }
+    if (!capture.complete || !center.isFinite() ||
+        !half_extent.isFinite())
+    {
+        clearMetalPhysicsShapeCapture(capture, __LINE__);
+        return;
+    }
+    const LLVector3 ppp = center + half_extent.scaledVec(
+        LLVector3(1.f, 1.f, 1.f));
+    const LLVector3 npp = center + half_extent.scaledVec(
+        LLVector3(-1.f, 1.f, 1.f));
+    const LLVector3 nnp = center + half_extent.scaledVec(
+        LLVector3(-1.f, -1.f, 1.f));
+    const LLVector3 pnp = center + half_extent.scaledVec(
+        LLVector3(1.f, -1.f, 1.f));
+    const LLVector3 ppn = center + half_extent.scaledVec(
+        LLVector3(1.f, 1.f, -1.f));
+    const LLVector3 npn = center + half_extent.scaledVec(
+        LLVector3(-1.f, 1.f, -1.f));
+    const LLVector3 nnn = center + half_extent.scaledVec(
+        LLVector3(-1.f, -1.f, -1.f));
+    const LLVector3 pnn = center + half_extent.scaledVec(
+        LLVector3(1.f, -1.f, -1.f));
+    if (outline)
+    {
+        const LLVector3 lines[] = {
+            ppp,npp, npp,nnp, nnp,pnp, pnp,ppp,
+            nnn,pnn, pnn,ppn, ppn,npn, npn,nnn,
+            ppp,ppn, pnp,pnn, npp,npn, nnp,nnn,
+        };
+        const std::size_t first = capture.physics_shape_vertices.size();
+        try
+        {
+            capture.physics_shape_vertices.reserve(
+                first + std::size(lines));
+            for (const LLVector3& position : lines)
+            {
+                if (!appendMetalPhysicsShapeVertex(capture, position.mV))
+                {
+                    capture.physics_shape_vertices.resize(first);
+                    clearMetalPhysicsShapeCapture(capture, __LINE__);
+                    return;
+                }
+            }
+            ALMetalWorldPhysicsShapeBatch batch;
+            if (!beginMetalPhysicsShapeBatch(
+                    capture, batch, true, false, false,
+                    std::size(lines)))
+            {
+                capture.physics_shape_vertices.resize(first);
+                clearMetalPhysicsShapeCapture(capture, __LINE__);
+                return;
+            }
+            capture.physics_shape_batches.push_back(batch);
+        }
+        catch (const std::bad_alloc&)
+        {
+            clearMetalPhysicsShapeCapture(capture, __LINE__);
+        }
+        return;
+    }
+    const LLVector3 triangles[] = {
+        npn,npp,ppn, ppn,npp,ppp,
+        ppn,ppp,pnn, pnn,ppp,pnp,
+        pnn,pnp,nnn, nnn,pnp,nnp,
+        nnn,nnp,npn, npn,nnp,npp,
+        ppn,pnn,npn, npn,pnn,nnn,
+        ppp,npp,pnp, pnp,npp,nnp,
+    };
+    captureMetalPhysicsShapeTriangles(
+        triangles, std::size(triangles));
+}
+
+void LLPipeline::endMetalPhysicsShapePass(U32 pass)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.physics_shape_capture_active)
+    {
+        return;
+    }
+    if (!capture.physics_shape_pass_active ||
+        pass != capture.physics_shape_pass ||
+        !metalPhysicsShapePassStateIsExact(pass))
+    {
+        clearMetalPhysicsShapeCapture(capture, __LINE__);
+        return;
+    }
+    capture.physics_shape_pass_active = false;
+    ++capture.physics_shape_pass;
+}
+
+void LLPipeline::endMetalPhysicsShapeCapture()
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.physics_shape_capture_active)
+    {
+        return;
+    }
+    if (capture.physics_shape_pass_active ||
+        capture.physics_shape_pass != 3)
+    {
+        clearMetalPhysicsShapeCapture(capture, __LINE__);
+    }
+    capture.physics_shape_capture_active = false;
+    if (!capture.complete)
+    {
+        capture.physics_shape_vertices.clear();
+        capture.physics_shape_batches.clear();
     }
 }
 
@@ -7762,6 +8181,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.occlusion_batch_count = capture.occlusion_batches.size();
         scene.octree_batches = capture.octree_batches.data();
         scene.octree_batch_count = capture.octree_batches.size();
+        scene.physics_shape_vertices =
+            capture.physics_shape_vertices.data();
+        scene.physics_shape_vertex_count =
+            capture.physics_shape_vertices.size();
+        scene.physics_shape_batches =
+            capture.physics_shape_batches.data();
+        scene.physics_shape_batch_count =
+            capture.physics_shape_batches.size();
         scene.debug_points = capture.debug_points.data();
         scene.debug_point_count = capture.debug_points.size();
         scene.debug_point_batches = capture.debug_point_batches.data();
@@ -9461,6 +9888,11 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.occlusion_capture_active = false;
     capture.octree_batches.clear();
     capture.octree_capture_active = false;
+    capture.physics_shape_vertices.clear();
+    capture.physics_shape_batches.clear();
+    capture.physics_shape_pass = 0;
+    capture.physics_shape_capture_active = false;
+    capture.physics_shape_pass_active = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -21607,6 +22039,10 @@ void LLPipeline::renderPhysicsDisplay()
     LLGLEnable blend(GL_BLEND);
     gGL.setSceneBlendType(LLRender::BT_ALPHA);
 
+#if LL_DARWIN
+    beginMetalPhysicsShapeCapture();
+#endif
+
     for (int pass = 0; pass < 3; ++pass)
     {
         // pass 0 - depth write enabled, color write disabled, fill
@@ -21621,6 +22057,10 @@ void LLPipeline::renderPhysicsDisplay()
         {
             gGL.setPolygonMode(GL_LINE);
         }
+
+#if LL_DARWIN
+        beginMetalPhysicsShapePass(static_cast<U32>(pass));
+#endif
 
         for (LLWorld::region_list_t::const_iterator iter = LLWorld::getInstance()->getRegionList().begin();
             iter != LLWorld::getInstance()->getRegionList().end(); ++iter)
@@ -21640,11 +22080,18 @@ void LLPipeline::renderPhysicsDisplay()
         }
         gGL.flush();
 
+#if LL_DARWIN
+        endMetalPhysicsShapePass(static_cast<U32>(pass));
+#endif
+
         if (wireframe)
         {
             gGL.setPolygonMode(GL_FILL);
         }
     }
+#if LL_DARWIN
+    endMetalPhysicsShapeCapture();
+#endif
     gGL.setLineWidth(1.f);
     gDebugProgram.unbind();
 

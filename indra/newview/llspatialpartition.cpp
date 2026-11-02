@@ -2239,6 +2239,26 @@ S32 get_physics_detail(const LLVolumeParams& volume_params, const LLVector3& sca
     return detail;
 }
 
+#if LL_DARWIN
+void captureMetalPhysicsVolume(const LLVolume& volume)
+{
+    for (S32 face_index = 0;
+         face_index < volume.getNumVolumeFaces(); ++face_index)
+    {
+        const LLVolumeFace& face = volume.getVolumeFace(face_index);
+        if (face.mPositions && face.mIndices &&
+            face.mNumVertices > 0 && face.mNumIndices > 0)
+        {
+            gPipeline.captureMetalPhysicsShapeIndexedTriangles(
+                face.mPositions,
+                static_cast<std::size_t>(face.mNumVertices),
+                face.mIndices,
+                static_cast<std::size_t>(face.mNumIndices));
+        }
+    }
+}
+#endif
+
 void renderMeshBaseHull(LLVOVolume* volume, U32 data_mask, LLColor4& color)
 {
     LLUUID mesh_id = volume->getVolume()->getParams().getSculptID();
@@ -2252,12 +2272,20 @@ void renderMeshBaseHull(LLVOVolume* volume, U32 data_mask, LLColor4& color)
         if (!decomp->mBaseHullMesh.empty())
         {
             gGL.diffuseColor4fv(color.mV);
+#if LL_DARWIN
+            gPipeline.captureMetalPhysicsShapeTriangles(
+                decomp->mBaseHullMesh.mPositions.data(),
+                decomp->mBaseHullMesh.mPositions.size());
+#endif
             LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mBaseHullMesh.mPositions);
         }
         else
         {
             gMeshRepo.buildPhysicsMesh(*decomp);
             gGL.diffuseColor4f(0,1,1,1);
+#if LL_DARWIN
+            gPipeline.captureMetalPhysicsShapeBox(center, size, true);
+#endif
             drawBoxOutline(center, size);
         }
 
@@ -2265,6 +2293,9 @@ void renderMeshBaseHull(LLVOVolume* volume, U32 data_mask, LLColor4& color)
     else
     {
         gGL.diffuseColor3f(1,0,1);
+#if LL_DARWIN
+        gPipeline.captureMetalPhysicsShapeBox(center, size, true);
+#endif
         drawBoxOutline(center, size);
     }
 }
@@ -2272,6 +2303,10 @@ void renderMeshBaseHull(LLVOVolume* volume, U32 data_mask, LLColor4& color)
 void render_hull(LLModel::PhysicsMesh& mesh, const LLColor4& color)
 {
     gGL.diffuseColor4fv(color.mV);
+#if LL_DARWIN
+    gPipeline.captureMetalPhysicsShapeTriangles(
+        mesh.mPositions.data(), mesh.mPositions.size());
+#endif
     LLVertexBuffer::drawArrays(LLRender::TRIANGLES, mesh.mPositions);
 }
 
@@ -2356,6 +2391,11 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
                 //decomp has physics mesh, render that mesh
                 gGL.diffuseColor4fv(color.mV);
 
+#if LL_DARWIN
+                gPipeline.captureMetalPhysicsShapeTriangles(
+                    decomp->mPhysicsShapeMesh.mPositions.data(),
+                    decomp->mPhysicsShapeMesh.mPositions.size());
+#endif
                 LLVertexBuffer::drawArrays(LLRender::TRIANGLES, decomp->mPhysicsShapeMesh.mPositions);
             }
             else
@@ -2372,6 +2412,9 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
         else
         {
             gGL.diffuseColor3f(1,1,0);
+#if LL_DARWIN
+            gPipeline.captureMetalPhysicsShapeBox(center, size, true);
+#endif
             drawBoxOutline(center, size);
         }
     }
@@ -2479,11 +2522,24 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
                 gGL.diffuseColor4fv(color.mV);
 
                 LLVertexBuffer::unbind();
+#if LL_DARWIN
+                gPipeline.captureMetalPhysicsShapeIndexedTriangles(
+                    phys_volume->mHullPoints,
+                    static_cast<std::size_t>(
+                        phys_volume->mNumHullPoints),
+                    phys_volume->mHullIndices,
+                    static_cast<std::size_t>(
+                        phys_volume->mNumHullIndices));
+#endif
                 LLVertexBuffer::drawElements(LLRender::TRIANGLES, phys_volume->mHullPoints, NULL, phys_volume->mNumHullIndices, phys_volume->mHullIndices);
             }
             else
             {
                 gGL.diffuseColor4f(1,0,1,1);
+#if LL_DARWIN
+                gPipeline.captureMetalPhysicsShapeBox(
+                    center, size, true);
+#endif
                 drawBoxOutline(center, size);
             }
 
@@ -2500,6 +2556,10 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
             scale.set(scale[0] / vscale[0], scale[1] / vscale[1], scale[2] / vscale[2]);
 
             gGL.diffuseColor4fv(color.mV);
+#if LL_DARWIN
+            gPipeline.captureMetalPhysicsShapeBox(
+                center, scale, false);
+#endif
             drawBox(center, scale);
         }
     }
@@ -2516,6 +2576,9 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
             LLVolume* sphere = LLPrimitive::sVolumeManager->refVolume(volume_params, 3);
 
             gGL.diffuseColor4fv(color.mV);
+#if LL_DARWIN
+            captureMetalPhysicsVolume(*sphere);
+#endif
             pushVerts(sphere);
             LLPrimitive::sVolumeManager->unrefVolume(sphere);
         }
@@ -2533,6 +2596,9 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
             LLVolume* cylinder = LLPrimitive::sVolumeManager->refVolume(volume_params, 3);
 
             gGL.diffuseColor4fv(color.mV);
+#if LL_DARWIN
+            captureMetalPhysicsVolume(*cylinder);
+#endif
             pushVerts(cylinder);
             LLPrimitive::sVolumeManager->unrefVolume(cylinder);
         }
@@ -2545,6 +2611,9 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
         LLVolume* phys_volume = LLPrimitive::sVolumeManager->refVolume(volume_params, detail);
 
         gGL.diffuseColor4fv(color.mV);
+#if LL_DARWIN
+        captureMetalPhysicsVolume(*phys_volume);
+#endif
         pushVerts(phys_volume);
 
         LLPrimitive::sVolumeManager->unrefVolume(phys_volume);
@@ -2565,11 +2634,21 @@ void renderPhysicsShape(LLDrawable* drawable, LLVOVolume* volume, bool wireframe
             gGL.diffuseColor4fv(color.mV);
             gGL.syncMatrices();
 
+#if LL_DARWIN
+            gPipeline.captureMetalPhysicsShapeIndexedTriangles(
+                phys_volume->mHullPoints,
+                static_cast<std::size_t>(phys_volume->mNumHullPoints),
+                phys_volume->mHullIndices,
+                static_cast<std::size_t>(phys_volume->mNumHullIndices));
+#endif
             LLVertexBuffer::drawElements(LLRender::TRIANGLES, phys_volume->mHullPoints, nullptr, phys_volume->mNumHullIndices, phys_volume->mHullIndices);
         }
         else
         {
             gGL.diffuseColor3f(1,0,1);
+#if LL_DARWIN
+            gPipeline.captureMetalPhysicsShapeBox(center, size, true);
+#endif
             drawBoxOutline(center, size);
             gMeshRepo.buildHull(volume_params, detail);
         }
