@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `53de84c79c`.
+**Renderer checkpoint:** Commit `35082663e5`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,51 +13,50 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,408 files and 3,337 potential findings; strict exits 1. SSR cutover removed 14 owned calls. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,408 files and 3,279 findings; strict exits 1. `pipeline.cpp` has zero direct `gl_function` findings. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Exact Metal publication exists; SSR warm-up is explicitly barred from presentation. |
-| M-004 | Metal resources, transfers, readback and synchronization | doing | Core paths are physical-GPU covered; remove remaining GL/PBO ingress owner by owner. |
+| M-004 | Metal resources, transfers, readback and synchronization | doing | Core paths are physical-GPU covered; SSR/impostor/shadow/hero/base-light pixel ingress is native-only. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native world/UI and CEF IOSurface paths exist; moving media parity is queued for owner review. |
 | M-007 | World scene and material correctness | doing | Opaque fullbright is corrected; legacy BLEND/stained glass and broad material parity remain open. |
 | M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners are native; visual-only validation is batched in the daily queue. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL, linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | GL/PBO SSR bootstrap is removed; next inspect avatar-impostor bake ingress. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Four further pipeline pixel bridges are removed; next inspect ordinary reflection-probe PBO ingress. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is now reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — native SSR cutover
+## Active checkpoint — pipeline pixel-ingress cutover
 
-Commit `53de84c79c` deletes the paired GL framebuffer/PBO SSR readback path,
-including queueing, CPU buffers, private texture re-upload and fallback
-generation bookkeeping. Metal's completed final-color target is now the sole
-producer for Metal SSR consumers.
+Commits `bdefc6b2d7`, `60c9ee55f2`, `bc79f48aca` and `35082663e5` delete the
+remaining GL pixel fallbacks used by `pipeline.cpp` Metal consumers. Native
+avatar-impostor attachments move directly between Metal targets; directional
+and projector lighting consume native caster-depth arrays; hero finish consumes
+the identity-matched native radiance cube; and base lighting requires the native
+directional-shadow/SSAO light map.
 
-At startup or resize, no prior native history exists. The first complete Metal
-frame omits SSR feedback, publishes the paired native history and is prohibited
-from UI composition, snapshot readback or drawable publication. A later frame
-may consume only a complete color/depth generation. Failed publication retains
-the prior native pair or repeats the offscreen warm-up. Texture validation uses
-the current Metal capture dimensions plus RGBA8/R11G11B10F and R32F formats; it
-does not consult GL target dimensions.
+Every missing/mismatched producer now leaves the native frame incomplete. No
+fallback maps a PBO, reads a GL attachment/texture, stages CPU pixels or uploads
+them back to Metal. The retained legacy renderer remains active for still-open
+owners; global traversal was not suppressed.
 
-This cutover preserves the retained GL renderer for still-unported owners and
-does not suppress global traversal. The strict scan fell from 3,351 to 3,337,
-but the executable still links Metal and OpenGL and the release gate is open.
-[Exact evidence](../../state/archive/CURRENT-native-ssr-cutover-checkpoint-2026-11-02.md).
+The strict scan fell from 3,337 to 3,279. `pipeline.cpp` has zero direct
+`gl_function` findings, though it still has GL shader/state/traversal references
+and the executable still links OpenGL.
+[Exact evidence](../../state/archive/CURRENT-pipeline-pixel-ingress-cutover-checkpoint-2026-11-02.md).
 
 ## Validation checkpoint
 
-- Source-exact RelWithDebInfo build `26.4.0d68103` at `53de84c79c` compiles,
+- Source-exact RelWithDebInfo build `26.4.0d68108` at `35082663e5` compiles,
   links, stages and signs with warnings as errors.
 - Physical Metal validation passes 52,190 assertions across 52 cases with API
   and load-action checks enabled.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices.
 - Executable SHA-256:
-  `12fcfbe8780f4bae179f3d1e1f77f99fb50b405d7ff4331542b9eefa43f909c8`.
+  `10086bb6ef963c3168658a5d83a2bb208bae1728bfe3d30fd32dcf02189e47bc`.
   Source/packaged MSL:
   `fa6821703a980b570305fc2384fcb11a1980fccad43d35e4626e40cc4b323324`.
   Metallib:
@@ -81,8 +80,8 @@ be summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—one live GL-to-Metal data dependency and 14
-   owned GL calls are removed, with a non-presentable native warm-up boundary.
+1. **Product advancement:** yes—four more GL-to-Metal pixel dependencies and
+   58 audited findings are removed after the SSR cutover.
 2. **Deferred critical work:** remaining GL context/traversal/resources;
    feature/stability matrices; visual queue; strict binary/runtime audit;
    measured M1 Max performance; independent review and release proof.
@@ -94,9 +93,10 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Inspect the avatar-impostor bake attachment/PBO transfer and its existing native
-bake owner. Remove the next source-proven duplicate producer or data crossing,
-then rebuild, rerun the physical suite and refresh the strict count.
+Inspect the two `llreflectionmapmanager.cpp` GL/PBO face readbacks against the
+existing native ordinary-probe face/radiance owners. Remove the next
+source-proven crossing, then rebuild, rerun the physical suite and refresh the
+strict count.
 
 ## Non-negotiable open gates
 

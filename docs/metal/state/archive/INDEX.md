@@ -52,6 +52,7 @@ reload the chronological history.
 | Source-correct opaque/RGB-only ordinary and masked fullbright presentation, 2026-11-02 | [CURRENT-opaque-fullbright-parity-checkpoint-2026-11-02.md](CURRENT-opaque-fullbright-parity-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Owner-confirmed controlled authored-mirror reference/native pair, 2026-11-02 | [CURRENT-authored-mirror-owner-confirmed-checkpoint-2026-11-02.md](CURRENT-authored-mirror-owner-confirmed-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native SSR GL/PBO bootstrap removal and owner-attended visual-review cadence, 2026-11-02 | [CURRENT-native-ssr-cutover-checkpoint-2026-11-02.md](CURRENT-native-ssr-cutover-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
+| Native-only pipeline pixel ingress for impostors, shadows, hero radiance and base lighting, 2026-11-02 | [CURRENT-pipeline-pixel-ingress-cutover-checkpoint-2026-11-02.md](CURRENT-pipeline-pixel-ingress-cutover-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
