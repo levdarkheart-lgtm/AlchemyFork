@@ -44,6 +44,7 @@ chronological transcript.
 | Native Octree flash/static-rigged/group-outline implementation and source-exact validation, 2026-11-02 | [metal-port-octree-debug-checkpoint-2026-11-02.md](metal-port-octree-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Native Physics Shapes three-pass/all-shape-family implementation and source-exact validation, 2026-11-02 | [metal-port-physics-shapes-debug-checkpoint-2026-11-02.md](metal-port-physics-shapes-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Native CPU/indexed Normals and Tangents implementation and source-exact validation, 2026-11-02 | [metal-port-normals-debug-checkpoint-2026-11-02.md](metal-port-normals-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
+| Native Texel Density indexed implementation and source-exact validation, 2026-11-02 | [metal-port-texel-density-debug-checkpoint-2026-11-02.md](metal-port-texel-density-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.
