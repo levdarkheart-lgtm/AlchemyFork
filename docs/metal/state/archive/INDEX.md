@@ -33,6 +33,7 @@ reload the chronological history.
 | Native Texture Anim replay and source-exact build 68061, 2026-11-01 | [CURRENT-texture-animation-debug-checkpoint-2026-11-01.md](CURRENT-texture-animation-debug-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | Native Update Type replay and source-exact build 68063, 2026-11-02 | [CURRENT-update-type-debug-checkpoint-2026-11-02.md](CURRENT-update-type-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native Batch Size static/rigged replay and source-exact build 68065, 2026-11-02 | [CURRENT-batch-size-debug-checkpoint-2026-11-02.md](CURRENT-batch-size-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
+| Native Lights face and procedural-bounds replay and source-exact build 68067, 2026-11-02 | [CURRENT-lights-debug-checkpoint-2026-11-02.md](CURRENT-lights-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.

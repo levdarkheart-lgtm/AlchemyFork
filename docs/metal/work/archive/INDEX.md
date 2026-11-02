@@ -33,6 +33,7 @@ chronological transcript.
 | Native Texture Anim implementation and source-exact validation, 2026-11-01 | [metal-port-texture-animation-debug-checkpoint-2026-11-01.md](metal-port-texture-animation-debug-checkpoint-2026-11-01.md) | `docs/metal/work/active/metal-port.md` |
 | Native Update Type implementation and source-exact validation, 2026-11-02 | [metal-port-update-type-debug-checkpoint-2026-11-02.md](metal-port-update-type-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Native Batch Size static/rigged implementation and source-exact validation, 2026-11-02 | [metal-port-batch-size-debug-checkpoint-2026-11-02.md](metal-port-batch-size-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
+| Native Lights face and procedural-bounds implementation and source-exact validation, 2026-11-02 | [metal-port-lights-debug-checkpoint-2026-11-02.md](metal-port-lights-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.
