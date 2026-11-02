@@ -544,8 +544,6 @@ struct LLPipeline::MetalWorldSimpleCapture
     F32 spot_shadow_avatar_cloth_depth[4]{};
     std::unique_ptr<ALMetalRenderTarget> base_light_map_target;
     std::unique_ptr<ALMetalTexture> base_noise_texture;
-    std::unique_ptr<ALMetalTexture> base_light_map_texture;
-    std::vector<U8> base_light_map_bytes;
     std::unique_ptr<ALMetalRenderTarget> base_light_target;
     std::unique_ptr<ALMetalRenderTarget> impostor_bake_target;
     std::vector<ALMetalWorldSimpleBatch> batches;
@@ -1748,8 +1746,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.direct_directional_shadow_valid = {};
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
-        capture.base_light_map_texture.reset();
-        capture.base_light_map_bytes.clear();
         capture.base_light_target.reset();
         capture.hdri_sky_batches.clear();
         capture.hdri_sky_environment = nullptr;
@@ -3660,8 +3656,6 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.direct_directional_shadow_valid = {};
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
-        capture.base_light_map_texture.reset();
-        capture.base_light_map_bytes.clear();
         capture.base_light_target.reset();
         capture.hdri_sky_batches.clear();
         capture.hdri_sky_environment = nullptr;
@@ -15960,123 +15954,6 @@ bool LLPipeline::renderMetalWorldLightMap(
     return true;
 }
 
-bool LLPipeline::mirrorMetalWorldBaseLightMap(LLRenderTarget* source)
-{
-    if (!source || !mMetalWorldSimpleCapture)
-    {
-        return false;
-    }
-    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    if (!capture.device || !capture.target ||
-        capture.base_lighting_attempted)
-    {
-        return false;
-    }
-    ALMetalWorldReflectionProbes ready_probes;
-    const ALMetalTexture* legacy_environment = nullptr;
-    if (sReflectionProbesEnabled)
-    {
-        if (!mReflectionMapManager.fillMetalReflectionProbes(
-                ready_probes) ||
-            !ready_probes.irradiance_texture)
-        {
-            // Do not pay the synchronous one-shot bridge until every
-            // downstream input is publishable in the same frame.
-            return false;
-        }
-    }
-    else
-    {
-        LLCubeMap* cube_map =
-            gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : nullptr;
-        std::string environment_error;
-        legacy_environment = cube_map
-            ? cube_map->getMetalTexture(&environment_error) : nullptr;
-        if (!legacy_environment)
-        {
-            return false;
-        }
-    }
-    const U32 width = source->getWidth();
-    const U32 height = source->getHeight();
-    if (width == 0 || height == 0 ||
-        width != capture.target->descriptor().width ||
-        height != capture.target->descriptor().height ||
-        static_cast<std::size_t>(width) >
-            std::numeric_limits<std::size_t>::max() /
-                (static_cast<std::size_t>(height) * 2))
-    {
-        return false;
-    }
-
-    // A one-shot migration input, not the eventual producer. Preserve the
-    // exact post-blur GL light-map bytes while the native shadow/SSAO writers
-    // remain separate work. This retained target is never presented, so the
-    // synchronous bridge cannot become a steady-state frame cost.
-    capture.base_light_map_bytes.resize(
-        static_cast<std::size_t>(width) * height * 2);
-    GLint previous_pack_alignment = 4;
-    GLint previous_pack_buffer = 0;
-    glGetIntegerv(GL_PACK_ALIGNMENT, &previous_pack_alignment);
-    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &previous_pack_buffer);
-    source->bindTarget();
-    clear_glerror();
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glReadPixels(0, 0, width, height, GL_RG, GL_UNSIGNED_BYTE,
-                 capture.base_light_map_bytes.data());
-    const GLenum read_error = glGetError();
-    glPixelStorei(GL_PACK_ALIGNMENT, previous_pack_alignment);
-    glBindBuffer(
-        GL_PIXEL_PACK_BUFFER, static_cast<GLuint>(previous_pack_buffer));
-    if (read_error != GL_NO_ERROR)
-    {
-        return false;
-    }
-
-    ALMetalTextureDescriptor descriptor;
-    descriptor.format = ALMetalPixelFormat::rg8_unorm;
-    descriptor.width = width;
-    descriptor.height = height;
-    descriptor.storage = ALMetalStorageMode::private_gpu;
-    descriptor.usage = ALMetalTextureUsage::shader_read;
-    descriptor.label = "Alchemy blurred world light-map migration mirror";
-    const ALMetalTextureDescriptor* existing =
-        capture.base_light_map_texture
-            ? &capture.base_light_map_texture->descriptor() : nullptr;
-    if (!existing || existing->format != descriptor.format ||
-        existing->width != descriptor.width ||
-        existing->height != descriptor.height)
-    {
-        std::string error;
-        capture.base_light_map_texture = ALMetalTexture::create(
-            *capture.device, descriptor, &error);
-        if (!capture.base_light_map_texture)
-        {
-            LL_WARNS("Metal")
-                << "Could not allocate the native base-light map mirror: "
-                << error << LL_ENDL;
-            return false;
-        }
-    }
-
-    std::string error;
-    auto upload = capture.device->makeCommandBuffer(
-        "Alchemy blurred world light-map migration upload", &error);
-    const bool uploaded = upload &&
-        capture.base_light_map_texture->upload(
-            *upload, 0, 0, {}, capture.base_light_map_bytes.data(),
-            static_cast<std::size_t>(width) * 2, &error) &&
-        upload->commit(&error);
-    if (!uploaded)
-    {
-        LL_WARNS("Metal")
-            << "Could not upload the native base-light map mirror: "
-            << error << LL_ENDL;
-    }
-    return uploaded;
-}
-
 void LLPipeline::renderMetalWorldBaseLighting(
     LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao,
     F32 ssao_scale, F32 ssao_max)
@@ -16090,8 +15967,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     if (!capture.device || !capture.renderer || !capture.target ||
-        (!capture.base_light_map_target &&
-         !capture.base_light_map_texture) ||
+        !capture.base_light_map_target ||
         capture.base_lighting_attempted)
     {
         return;
@@ -16140,9 +16016,7 @@ void LLPipeline::renderMetalWorldBaseLighting(
 
     ALMetalWorldBaseLightingScene scene;
     scene.gbuffer = capture.target.get();
-    scene.light_map = capture.base_light_map_target
-        ? capture.base_light_map_target->colorTexture(0)
-        : capture.base_light_map_texture.get();
+    scene.light_map = capture.base_light_map_target->colorTexture(0);
     scene.reflection_probes = sReflectionProbesEnabled
         ? &probes : nullptr;
     scene.legacy_environment = legacy_environment;
@@ -16233,8 +16107,6 @@ void LLPipeline::renderMetalWorldBaseLighting(
     capture.base_light_target = std::move(target);
     capture.base_lighting_attempted = true;
     capture.base_lighting_failed_frames = 0;
-    capture.base_light_map_texture.reset();
-    capture.base_light_map_bytes.clear();
     if (!capture.continuous_world_capture &&
         !capture.world_ui_continuous_unlocked)
     {
@@ -28529,17 +28401,12 @@ void LLPipeline::renderDeferredLighting()
                     << lighting_batch_error << LL_ENDL;
             }
         }
-        // Prefer the native directional-shadow/SSAO owner. Its inputs remain
-        // transitional mirrors, but the per-frame full-screen RG result no
-        // longer crosses back through GL. If it cannot encode, retain the
-        // exact post-blur GL bridge for this one-shot migration probe.
-        if (!renderMetalWorldLightMap(
-                *camera, mResourceInputs.mShadowDetail > 0,
-                mResourceInputs.mSSAO))
-        {
-            mirrorMetalWorldBaseLightMap(
-                light_blurred ? light_blurred : deferred_light_target);
-        }
+        // The native directional-shadow/SSAO owner is the sole producer for
+        // Metal base lighting. A missing input or encode failure leaves this
+        // native frame incomplete; no legacy post-blur RG pixels cross back.
+        renderMetalWorldLightMap(
+            *camera, mResourceInputs.mShadowDetail > 0,
+            mResourceInputs.mSSAO);
 #endif
         screen_target->bindTarget();
         // clear color buffer here - zeroing alpha (glow) is important or it will accumulate against sky

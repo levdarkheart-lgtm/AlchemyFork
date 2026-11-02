@@ -1189,7 +1189,6 @@ public:
         F32 density_multiplier);
     void captureMetalWorldWindLightCloudBatch(LLVertexBuffer* buffer);
     void endMetalWorldWindLightClouds();
-    bool mirrorMetalWorldBaseLightMap(LLRenderTarget* source);
     void renderMetalWorldBaseLighting(
         LLViewerCamera& camera, bool has_sun_shadow, bool has_ssao,
         F32 ssao_scale, F32 ssao_max);
