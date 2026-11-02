@@ -475,6 +475,32 @@ struct ALMetalWorldAvatarVolumeBatch
     std::uint64_t order = 0;
 };
 
+// Develop > Joints reuses the same visible/occluded line-and-sphere helper for
+// every skeleton segment, then appends generated outlines for rigged joint and
+// attachment-face bounds. One ordered record stream preserves the exact
+// per-avatar source order without retaining immediate-mode box vertices.
+enum class ALMetalWorldAvatarJointKind : std::uint32_t
+{
+    segment = 0,
+    joint_bounds = 1,
+    attachment_bounds = 2,
+};
+
+struct ALMetalWorldAvatarJointBatch
+{
+    ALMetalWorldAvatarJointKind kind =
+        ALMetalWorldAvatarJointKind::segment;
+    float line_modelview_projection[16]{};
+    float sphere_modelview_projection[16]{};
+    float end[4] = {0.f, 0.f, 0.f, 1.f};
+    float visible_color[4] = {1.f, 1.f, 1.f, 1.f};
+    float occluded_color[4] = {1.f, 1.f, 1.f, 1.f};
+    float sphere_scale = 1.f;
+    float center[4] = {0.f, 0.f, 0.f, 1.f};
+    float half_extent[4]{};
+    std::uint64_t order = 0;
+};
+
 // Develop > Points emits one opaque white, one-pixel point at every valid
 // drawable face centre. World traversal can switch transforms at spatial-
 // bridge boundaries and can interleave the self-avatar Agent Target owner, so
@@ -923,6 +949,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::uint64_t agent_target_order = 0;
     const ALMetalWorldAvatarVolumeBatch* avatar_volume_batches = nullptr;
     std::size_t avatar_volume_batch_count = 0;
+    const ALMetalWorldAvatarJointBatch* avatar_joint_batches = nullptr;
+    std::size_t avatar_joint_batch_count = 0;
     const ALMetalWorldDebugPointVertex* debug_points = nullptr;
     std::size_t debug_point_count = 0;
     const ALMetalWorldDebugPointBatch* debug_point_batches = nullptr;

@@ -592,6 +592,11 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool avatar_volume_capture_active = false;
     bool avatar_volume_pair_active = false;
     bool avatar_volume_sphere_transform_captured = false;
+    std::vector<ALMetalWorldAvatarJointBatch> avatar_joint_batches;
+    std::size_t avatar_joint_capture_first = 0;
+    std::size_t avatar_joint_expected_segments = 0;
+    std::size_t avatar_joint_captured_segments = 0;
+    bool avatar_joint_capture_active = false;
     std::vector<ALMetalWorldDebugPointVertex> debug_points;
     std::vector<ALMetalWorldDebugPointBatch> debug_point_batches;
     ALMetalWorldDebugPointBatch debug_point_batch;
@@ -4034,6 +4039,11 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.avatar_volume_capture_active = false;
     capture.avatar_volume_pair_active = false;
     capture.avatar_volume_sphere_transform_captured = false;
+    capture.avatar_joint_batches.clear();
+    capture.avatar_joint_capture_first = 0;
+    capture.avatar_joint_expected_segments = 0;
+    capture.avatar_joint_captured_segments = 0;
+    capture.avatar_joint_capture_active = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -4367,6 +4377,7 @@ void LLPipeline::beginMetalAvatarVolumeCapture(
         pair_count > std::numeric_limits<std::size_t>::max() -
             capture.avatar_volume_batches.size();
     if (!capture.complete || capture.avatar_volume_capture_active ||
+        capture.avatar_joint_capture_active ||
         capture.avatar_volume_pair_active || count_overflows ||
         reserve_overflows ||
         pair_count > std::numeric_limits<U64>::max() -
@@ -4406,17 +4417,24 @@ void LLPipeline::beginMetalAvatarVolumePair(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    if (!capture.avatar_volume_capture_active)
+    const bool volume_capture = capture.avatar_volume_capture_active;
+    const bool joint_capture = capture.avatar_joint_capture_active;
+    if (!volume_capture && !joint_capture)
     {
         return;
     }
 
     bool color_mask[4]{};
     gGL.getColorMask(color_mask);
-    const std::size_t captured_pairs = capture.avatar_volume_batches.size() -
-        capture.avatar_volume_capture_first;
+    const std::size_t captured_pairs = volume_capture
+        ? capture.avatar_volume_batches.size() -
+              capture.avatar_volume_capture_first
+        : capture.avatar_joint_captured_segments;
+    const std::size_t expected_pairs = volume_capture
+        ? capture.avatar_volume_expected_pairs
+        : capture.avatar_joint_expected_segments;
     if (!capture.complete || capture.avatar_volume_pair_active ||
-        captured_pairs >= capture.avatar_volume_expected_pairs ||
+        captured_pairs >= expected_pairs ||
         !LLGLState::isEnabled(GL_BLEND) ||
         LLGLState::isEnabled(GL_CULL_FACE) ||
         !LLGLDepthTest::depthEnabled() ||
@@ -4500,7 +4518,7 @@ void LLPipeline::endMetalAvatarVolumePair()
         !LLGLDepthTest::depthWriteEnabled() &&
         LLGLDepthTest::depthFunction() == GL_GREATER &&
         color_mask[0] && color_mask[1] && color_mask[2] && !color_mask[3];
-    if (state_valid)
+    if (state_valid && capture.avatar_volume_capture_active)
     {
         try
         {
@@ -4512,11 +4530,189 @@ void LLPipeline::endMetalAvatarVolumePair()
             capture.markIncomplete(__LINE__);
         }
     }
+    else if (state_valid && capture.avatar_joint_capture_active)
+    {
+        ALMetalWorldAvatarJointBatch joint_batch;
+        joint_batch.kind = ALMetalWorldAvatarJointKind::segment;
+        std::memcpy(
+            joint_batch.line_modelview_projection,
+            capture.avatar_volume_batch.line_modelview_projection,
+            sizeof(joint_batch.line_modelview_projection));
+        std::memcpy(
+            joint_batch.sphere_modelview_projection,
+            capture.avatar_volume_batch.sphere_modelview_projection,
+            sizeof(joint_batch.sphere_modelview_projection));
+        std::memcpy(joint_batch.end, capture.avatar_volume_batch.end,
+                    sizeof(joint_batch.end));
+        std::memcpy(
+            joint_batch.visible_color,
+            capture.avatar_volume_batch.visible_color,
+            sizeof(joint_batch.visible_color));
+        std::memcpy(
+            joint_batch.occluded_color,
+            capture.avatar_volume_batch.occluded_color,
+            sizeof(joint_batch.occluded_color));
+        joint_batch.sphere_scale =
+            capture.avatar_volume_batch.sphere_scale;
+        joint_batch.order = capture.avatar_volume_batch.order;
+        try
+        {
+            capture.avatar_joint_batches.push_back(joint_batch);
+            ++capture.avatar_joint_captured_segments;
+        }
+        catch (const std::bad_alloc&)
+        {
+            capture.markIncomplete(__LINE__);
+        }
+    }
     else
     {
         capture.markIncomplete(__LINE__);
     }
     capture.avatar_volume_batch = {};
+    capture.avatar_volume_pair_active = false;
+    capture.avatar_volume_sphere_transform_captured = false;
+}
+
+void LLPipeline::beginMetalAvatarJointCapture(
+    std::size_t skeleton_segment_count)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    const bool reserve_overflows = skeleton_segment_count >
+        std::numeric_limits<std::size_t>::max() -
+            capture.avatar_joint_batches.size();
+    if (!capture.complete || capture.avatar_volume_capture_active ||
+        capture.avatar_joint_capture_active ||
+        capture.avatar_volume_pair_active || reserve_overflows ||
+        skeleton_segment_count > std::numeric_limits<U64>::max() -
+            capture.render_debug_order ||
+        !LLGLState::isEnabled(GL_BLEND) ||
+        LLGLState::isEnabled(GL_CULL_FACE) ||
+        !color_mask[0] || !color_mask[1] || !color_mask[2] || color_mask[3])
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+
+    capture.avatar_joint_capture_first =
+        capture.avatar_joint_batches.size();
+    capture.avatar_joint_expected_segments = skeleton_segment_count;
+    capture.avatar_joint_captured_segments = 0;
+    try
+    {
+        capture.avatar_joint_batches.reserve(
+            capture.avatar_joint_batches.size() + skeleton_segment_count);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.avatar_joint_batches.clear();
+        return;
+    }
+    capture.avatar_joint_capture_active = true;
+}
+
+void LLPipeline::captureMetalAvatarJointBox(
+    const LLVector4a& center, const LLVector4a& half_extent,
+    bool attachment_bounds)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.avatar_joint_capture_active)
+    {
+        return;
+    }
+    if (!center.isFinite3() || !half_extent.isFinite3())
+    {
+        // drawBoxOutline() makes the same valid no-output decision.
+        return;
+    }
+
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    if (!capture.complete || capture.avatar_volume_pair_active ||
+        capture.render_debug_order == std::numeric_limits<U64>::max() ||
+        !LLGLState::isEnabled(GL_BLEND) ||
+        LLGLState::isEnabled(GL_CULL_FACE) ||
+        !LLGLDepthTest::depthEnabled() ||
+        !LLGLDepthTest::depthWriteEnabled() ||
+        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
+        !color_mask[0] || !color_mask[1] || !color_mask[2] || color_mask[3])
+    {
+        capture.markIncomplete(__LINE__);
+        capture.avatar_joint_batches.clear();
+        return;
+    }
+
+    ALMetalWorldAvatarJointBatch batch;
+    batch.kind = attachment_bounds
+        ? ALMetalWorldAvatarJointKind::attachment_bounds
+        : ALMetalWorldAvatarJointKind::joint_bounds;
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(batch.line_modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.line_modelview_projection));
+    std::memcpy(batch.center, center.getF32ptr(), sizeof(float) * 3);
+    batch.center[3] = 1.f;
+    std::memcpy(batch.half_extent, half_extent.getF32ptr(),
+                sizeof(float) * 3);
+    batch.half_extent[3] = 0.f;
+    batch.visible_color[0] = attachment_bounds ? 0.f : 1.f;
+    batch.visible_color[1] = 1.f;
+    batch.visible_color[2] = attachment_bounds ? 1.f : 0.f;
+    batch.visible_color[3] = 1.f;
+    batch.order = capture.render_debug_order++;
+    try
+    {
+        capture.avatar_joint_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.avatar_joint_batches.clear();
+    }
+}
+
+void LLPipeline::endMetalAvatarJointCapture(
+    std::size_t skeleton_segment_count)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.avatar_joint_capture_active)
+    {
+        return;
+    }
+    capture.avatar_joint_capture_active = false;
+    if (!capture.complete || capture.avatar_volume_pair_active ||
+        skeleton_segment_count != capture.avatar_joint_expected_segments ||
+        capture.avatar_joint_captured_segments != skeleton_segment_count ||
+        capture.avatar_joint_batches.size() <
+            capture.avatar_joint_capture_first + skeleton_segment_count)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.avatar_joint_batches.clear();
+    }
+    capture.avatar_volume_batch = {};
+    capture.avatar_joint_capture_first = 0;
+    capture.avatar_joint_expected_segments = 0;
+    capture.avatar_joint_captured_segments = 0;
     capture.avatar_volume_pair_active = false;
     capture.avatar_volume_sphere_transform_captured = false;
 }
@@ -6506,6 +6702,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.avatar_volume_batches.data();
         scene.avatar_volume_batch_count =
             capture.avatar_volume_batches.size();
+        scene.avatar_joint_batches = capture.avatar_joint_batches.data();
+        scene.avatar_joint_batch_count =
+            capture.avatar_joint_batches.size();
         scene.debug_points = capture.debug_points.data();
         scene.debug_point_count = capture.debug_points.size();
         scene.debug_point_batches = capture.debug_point_batches.data();
@@ -8185,6 +8384,11 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.avatar_volume_capture_active = false;
     capture.avatar_volume_pair_active = false;
     capture.avatar_volume_sphere_transform_captured = false;
+    capture.avatar_joint_batches.clear();
+    capture.avatar_joint_capture_first = 0;
+    capture.avatar_joint_expected_segments = 0;
+    capture.avatar_joint_captured_segments = 0;
+    capture.avatar_joint_capture_active = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};

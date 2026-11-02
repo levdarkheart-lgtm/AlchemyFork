@@ -389,6 +389,14 @@ public:
     void captureMetalAvatarVolumeSphereTransform();
     void endMetalAvatarVolumePair();
     void endMetalAvatarVolumeCapture(std::size_t collision_volume_count);
+    // Retain Develop > Joints only around the world spatial renderBones()
+    // owner. Skeleton segments reuse the shared pair hooks above; generated
+    // rigged bounds are appended to the same exact ordered owner stream.
+    void beginMetalAvatarJointCapture(std::size_t skeleton_segment_count);
+    void captureMetalAvatarJointBox(const LLVector4a& center,
+                                    const LLVector4a& half_extent,
+                                    bool attachment_bounds);
+    void endMetalAvatarJointCapture(std::size_t skeleton_segment_count);
     // Retain Develop > Points across the complete world spatial traversal.
     // Each drawable batch records its current region/bridge transform; the
     // traversal order also preserves interleaving with Agent Target.
@@ -1505,7 +1513,6 @@ public:
             RENDER_DEBUG_OCTREE |
             RENDER_DEBUG_OCCLUSION |
             RENDER_DEBUG_RAYCAST |
-            RENDER_DEBUG_AVATAR_JOINTS |
             RENDER_DEBUG_PHYSICS_SHAPES |
             RENDER_DEBUG_NORMALS |
             RENDER_DEBUG_TEXEL_DENSITY,

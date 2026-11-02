@@ -10815,6 +10815,82 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         previous_avatar_volume_order = batch.order;
     }
+    if ((scene.avatar_joint_batch_count != 0 &&
+         !scene.avatar_joint_batches) ||
+        scene.avatar_joint_batch_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldAvatarJointBatch))
+    {
+        setError(error,
+                 "Metal world avatar-joint batch storage is invalid");
+        return nullptr;
+    }
+    std::uint64_t previous_avatar_joint_order = 0;
+    for (std::size_t index = 0;
+         index < scene.avatar_joint_batch_count; ++index)
+    {
+        const ALMetalWorldAvatarJointBatch& batch =
+            scene.avatar_joint_batches[index];
+        const auto color_is = [](const float* color, float red,
+                                 float green, float blue)
+        {
+            return color[0] == red && color[1] == green &&
+                   color[2] == blue && color[3] == 1.f;
+        };
+        bool kind_valid = false;
+        switch (batch.kind)
+        {
+            case ALMetalWorldAvatarJointKind::segment:
+            {
+                const bool visible_color = color_is(
+                    batch.visible_color, 0.5f, 0.5f, 0.5f);
+                const bool selected =
+                    batch.sphere_scale == 0.016f &&
+                    color_is(batch.occluded_color, 1.f, 1.f, 0.f);
+                const bool ordinary =
+                    batch.sphere_scale == 0.001f &&
+                    (color_is(batch.occluded_color, 1.f, 0.f, 0.f) ||
+                     color_is(batch.occluded_color, 0.f, 1.f, 1.f) ||
+                     color_is(batch.occluded_color, 0.f, 1.f, 0.f));
+                kind_valid =
+                    finiteValues(batch.sphere_modelview_projection, 16) &&
+                    finiteValues(batch.end, 4) &&
+                    finiteValues(batch.occluded_color, 4) &&
+                    std::isfinite(batch.sphere_scale) &&
+                    batch.end[3] == 1.f &&
+                    visible_color && (selected || ordinary);
+                break;
+            }
+            case ALMetalWorldAvatarJointKind::joint_bounds:
+            case ALMetalWorldAvatarJointKind::attachment_bounds:
+            {
+                const bool joint_bounds = batch.kind ==
+                    ALMetalWorldAvatarJointKind::joint_bounds;
+                kind_valid = finiteValues(batch.center, 4) &&
+                    finiteValues(batch.half_extent, 4) &&
+                    batch.center[3] == 1.f &&
+                    batch.half_extent[3] == 0.f &&
+                    batch.half_extent[0] >= 0.f &&
+                    batch.half_extent[1] >= 0.f &&
+                    batch.half_extent[2] >= 0.f &&
+                    color_is(
+                        batch.visible_color,
+                        joint_bounds ? 1.f : 0.f, 1.f,
+                        joint_bounds ? 0.f : 1.f);
+                break;
+            }
+        }
+        if (!finiteValues(batch.line_modelview_projection, 16) ||
+            !finiteValues(batch.visible_color, 4) || !kind_valid ||
+            (index != 0 && batch.order <= previous_avatar_joint_order) ||
+            (scene.agent_target_line_vertex_count != 0 &&
+             batch.order == scene.agent_target_order))
+        {
+            setError(error, "Metal world avatar-joint batch is invalid");
+            return nullptr;
+        }
+        previous_avatar_joint_order = batch.order;
+    }
     const bool has_shadow_frusta =
         scene.shadow_frustum_vertex_count != 0 ||
         scene.shadow_frustum_batch_count != 0;
@@ -11388,6 +11464,24 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             scene.batch_size_batches, scene.batch_size_batch_count) ||
         order_collides(
             scene.avatar_volume_batches, scene.avatar_volume_batch_count,
+            scene.light_debug_batches, scene.light_debug_batch_count) ||
+        order_collides(
+            scene.avatar_joint_batches, scene.avatar_joint_batch_count,
+            scene.avatar_volume_batches, scene.avatar_volume_batch_count) ||
+        order_collides(
+            scene.avatar_joint_batches, scene.avatar_joint_batch_count,
+            scene.debug_point_batches, scene.debug_point_batch_count) ||
+        order_collides(
+            scene.avatar_joint_batches, scene.avatar_joint_batch_count,
+            scene.texture_anim_batches, scene.texture_anim_batch_count) ||
+        order_collides(
+            scene.avatar_joint_batches, scene.avatar_joint_batch_count,
+            scene.update_type_batches, scene.update_type_batch_count) ||
+        order_collides(
+            scene.avatar_joint_batches, scene.avatar_joint_batch_count,
+            scene.batch_size_batches, scene.batch_size_batch_count) ||
+        order_collides(
+            scene.avatar_joint_batches, scene.avatar_joint_batch_count,
             scene.light_debug_batches, scene.light_debug_batch_count))
     {
         setError(error, "Metal world render-debug ordering is invalid");
@@ -14848,8 +14942,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     scene.agent_target_line_vertex_count),
                 1, error);
     };
-    const auto encode_avatar_volume_batch =
-        [&](const ALMetalWorldAvatarVolumeBatch& batch)
+    const auto encode_avatar_pair = [&](const auto& batch)
     {
         const float line_positions[2][4] = {
             {0.f, 0.f, 0.f, 1.f},
@@ -14916,6 +15009,44 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                encode_part(
                    batch.sphere_modelview_projection,
                    batch.occluded_color, true, occluded_depth);
+    };
+    const auto encode_avatar_joint_batch =
+        [&](const ALMetalWorldAvatarJointBatch& batch)
+    {
+        if (batch.kind == ALMetalWorldAvatarJointKind::segment)
+        {
+            return encode_avatar_pair(batch);
+        }
+
+        WorldLightDebugOutlineConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    batch.line_modelview_projection,
+                    sizeof(constants.modelview_projection));
+        std::memcpy(constants.color, batch.visible_color,
+                    sizeof(constants.color));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        std::memcpy(constants.center, batch.center,
+                    sizeof(constants.center));
+        std::memcpy(constants.half_extent, batch.half_extent,
+                    sizeof(constants.half_extent));
+        return
+            encoder->setDepthStencilState(
+                scene.reverse_z ? mImpl->reverse_depth.get()
+                                : mImpl->forward_depth.get(),
+                error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *mImpl->light_debug_outline_pipelines[
+                    scene.hdr ? 1 : 0], error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::line, 0, 24, 1, error);
     };
     const auto encode_debug_point_batch =
         [&](const ALMetalWorldDebugPointBatch& batch)
@@ -15130,6 +15261,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     bool agent_target_encoded =
         scene.agent_target_line_vertex_count == 0;
     std::size_t avatar_volume_batch_index = 0;
+    std::size_t avatar_joint_batch_index = 0;
     std::size_t debug_point_batch_index = 0;
     std::size_t texture_anim_batch_index = 0;
     std::size_t update_type_batch_index = 0;
@@ -15137,6 +15269,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     std::size_t light_debug_batch_index = 0;
     while (encoded &&
            (avatar_volume_batch_index < scene.avatar_volume_batch_count ||
+            avatar_joint_batch_index < scene.avatar_joint_batch_count ||
             debug_point_batch_index < scene.debug_point_batch_count ||
             texture_anim_batch_index < scene.texture_anim_batch_count ||
             update_type_batch_index < scene.update_type_batch_count ||
@@ -15148,6 +15281,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         {
             agent_target,
             avatar_volume,
+            avatar_joint,
             debug_point,
             texture_anim,
             update_type,
@@ -15165,6 +15299,17 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             if (!owner_selected || order < owner_order)
             {
                 owner = RenderDebugOwner::avatar_volume;
+                owner_selected = true;
+                owner_order = order;
+            }
+        }
+        if (avatar_joint_batch_index < scene.avatar_joint_batch_count)
+        {
+            const std::uint64_t order = scene.avatar_joint_batches[
+                avatar_joint_batch_index].order;
+            if (!owner_selected || order < owner_order)
+            {
+                owner = RenderDebugOwner::avatar_joint;
                 owner_selected = true;
                 owner_order = order;
             }
@@ -15231,9 +15376,14 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 agent_target_encoded = true;
                 break;
             case RenderDebugOwner::avatar_volume:
-                encoded = encode_avatar_volume_batch(
+                encoded = encode_avatar_pair(
                     scene.avatar_volume_batches[
                         avatar_volume_batch_index++]);
+                break;
+            case RenderDebugOwner::avatar_joint:
+                encoded = encode_avatar_joint_batch(
+                    scene.avatar_joint_batches[
+                        avatar_joint_batch_index++]);
                 break;
             case RenderDebugOwner::debug_point:
                 encoded = encode_debug_point_batch(

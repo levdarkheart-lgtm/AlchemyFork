@@ -5811,6 +5811,365 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.avatar_volume_batches = nullptr;
         opaque_forward_scene.avatar_volume_batch_count = 0;
 
+        // Develop > Joints emits one visible/occluded line-and-sphere pair
+        // per skeleton joint, followed by yellow joint-space and cyan
+        // attachment-face rigged bounds. All records share the global debug
+        // order while retaining the source's writable visible depth and
+        // complementary read-only hidden pass.
+        std::array<ALMetalWorldAvatarJointBatch, 3>
+            avatar_joint_batches{};
+        ALMetalWorldAvatarJointBatch& avatar_joint_segment =
+            avatar_joint_batches[0];
+        avatar_joint_segment.kind =
+            ALMetalWorldAvatarJointKind::segment;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            avatar_joint_segment
+                .line_modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        set_avatar_volume_transform(
+            avatar_joint_segment.sphere_modelview_projection,
+            0.125f, 0.f);
+        avatar_joint_segment.end[0] = 0.5f;
+        avatar_joint_segment.visible_color[0] = 0.5f;
+        avatar_joint_segment.visible_color[1] = 0.5f;
+        avatar_joint_segment.visible_color[2] = 0.5f;
+        avatar_joint_segment.visible_color[3] = 1.f;
+        avatar_joint_segment.occluded_color[0] = 0.f;
+        avatar_joint_segment.occluded_color[1] = 1.f;
+        avatar_joint_segment.occluded_color[2] = 1.f;
+        avatar_joint_segment.occluded_color[3] = 1.f;
+        avatar_joint_segment.sphere_scale = 0.001f;
+        avatar_joint_segment.order = 0;
+
+        const auto configure_avatar_joint_bounds = [](
+            ALMetalWorldAvatarJointBatch& batch,
+            ALMetalWorldAvatarJointKind kind, std::uint64_t order)
+        {
+            batch.kind = kind;
+            for (std::size_t axis = 0; axis < 4; ++axis)
+            {
+                batch.line_modelview_projection[axis * 4 + axis] = 1.f;
+            }
+            batch.center[3] = 1.f;
+            batch.half_extent[0] = 0.35f;
+            batch.half_extent[1] = 0.25f;
+            batch.half_extent[2] = 0.1f;
+            const bool attachment = kind ==
+                ALMetalWorldAvatarJointKind::attachment_bounds;
+            batch.visible_color[0] = attachment ? 0.f : 1.f;
+            batch.visible_color[1] = 1.f;
+            batch.visible_color[2] = attachment ? 1.f : 0.f;
+            batch.visible_color[3] = 1.f;
+            batch.order = order;
+        };
+        configure_avatar_joint_bounds(
+            avatar_joint_batches[1],
+            ALMetalWorldAvatarJointKind::joint_bounds, 1);
+        configure_avatar_joint_bounds(
+            avatar_joint_batches[2],
+            ALMetalWorldAvatarJointKind::attachment_bounds, 2);
+        avatar_joint_batches[2].center[1] = 0.4f;
+        opaque_forward_scene.avatar_joint_batches =
+            avatar_joint_batches.data();
+        opaque_forward_scene.avatar_joint_batch_count =
+            avatar_joint_batches.size();
+
+        opaque_forward_scene.avatar_joint_batches = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world avatar-joint batch storage is invalid");
+        opaque_forward_scene.avatar_joint_batches =
+            avatar_joint_batches.data();
+        avatar_joint_segment.line_modelview_projection[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world avatar-joint batch is invalid");
+        avatar_joint_segment.line_modelview_projection[0] = 1.f;
+        avatar_joint_segment.sphere_scale = 0.01f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world avatar-joint batch is invalid");
+        avatar_joint_segment.sphere_scale = 0.001f;
+        avatar_joint_segment.occluded_color[2] = 0.25f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world avatar-joint batch is invalid");
+        avatar_joint_segment.occluded_color[2] = 1.f;
+        avatar_joint_batches[1].center[3] = 0.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world avatar-joint batch is invalid");
+        avatar_joint_batches[1].center[3] = 1.f;
+        avatar_joint_batches[2].kind =
+            static_cast<ALMetalWorldAvatarJointKind>(99);
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world avatar-joint batch is invalid");
+        avatar_joint_batches[2].kind =
+            ALMetalWorldAvatarJointKind::attachment_bounds;
+        opaque_forward_scene.agent_target_lines =
+            agent_target_lines.data();
+        opaque_forward_scene.agent_target_line_vertex_count =
+            agent_target_lines.size();
+        opaque_forward_scene.agent_target_order = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world avatar-joint batch is invalid");
+        opaque_forward_scene.agent_target_lines = nullptr;
+        opaque_forward_scene.agent_target_line_vertex_count = 0;
+        error.clear();
+
+        opaque_forward_scene.agent_target_lines =
+            agent_target_depth_lines.data();
+        opaque_forward_scene.agent_target_line_vertex_count =
+            agent_target_depth_lines.size();
+        opaque_forward_scene.agent_target_order = 3;
+        auto agent_after_avatar_joints =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(agent_after_avatar_joints);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            agent_after_avatar_joint_pixels{};
+        REQUIRE(agent_after_avatar_joints->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            agent_after_avatar_joint_pixels.data(), 32 * 8,
+            &error));
+
+        opaque_forward_scene.agent_target_order = 0;
+        for (std::size_t index = 0;
+             index < avatar_joint_batches.size(); ++index)
+        {
+            avatar_joint_batches[index].order = index + 1;
+        }
+        auto agent_before_avatar_joints =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(agent_before_avatar_joints);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            agent_before_avatar_joint_pixels{};
+        REQUIRE(agent_before_avatar_joints->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            agent_before_avatar_joint_pixels.data(), 32 * 8,
+            &error));
+        CHECK(agent_after_avatar_joint_pixels !=
+              agent_before_avatar_joint_pixels);
+        opaque_forward_scene.agent_target_lines = nullptr;
+        opaque_forward_scene.agent_target_line_vertex_count = 0;
+        for (std::size_t index = 0;
+             index < avatar_joint_batches.size(); ++index)
+        {
+            avatar_joint_batches[index].order = index;
+        }
+
+        auto visible_avatar_joints = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(visible_avatar_joints);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            visible_avatar_joint_pixels{};
+        std::array<float, 32 * 32> visible_avatar_joint_depth{};
+        REQUIRE(visible_avatar_joints->colorTexture(0)->readback(
+            *device, 0, 0, {}, visible_avatar_joint_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(visible_avatar_joints->depthStencilTexture()->readback(
+            *device, 0, 0, {}, visible_avatar_joint_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t visible_avatar_joint_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                visible_avatar_joint_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                visible_avatar_joint_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                visible_avatar_joint_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            visible_avatar_joint_changed += changed;
+            if (changed)
+            {
+                CHECK(visible_avatar_joint_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+                CHECK(visible_avatar_joint_depth[pixel] <=
+                      opaque_forward_depth[pixel]);
+            }
+        }
+        CHECK(visible_avatar_joint_changed >= 16);
+        CHECK(visible_avatar_joint_depth != opaque_forward_depth);
+
+        // The generated rigged-bound path must raster independently of the
+        // shared skeleton segment primitive.
+        opaque_forward_scene.avatar_joint_batches =
+            avatar_joint_batches.data() + 1;
+        opaque_forward_scene.avatar_joint_batch_count = 2;
+        auto avatar_joint_bounds = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(avatar_joint_bounds);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            avatar_joint_bound_pixels{};
+        REQUIRE(avatar_joint_bounds->colorTexture(0)->readback(
+            *device, 0, 0, {}, avatar_joint_bound_pixels.data(),
+            32 * 8, &error));
+        CHECK(avatar_joint_bound_pixels != opaque_forward_pixels);
+        opaque_forward_scene.avatar_joint_batches =
+            avatar_joint_batches.data();
+        opaque_forward_scene.avatar_joint_batch_count =
+            avatar_joint_batches.size();
+
+        for (ALMetalWorldAvatarJointBatch& batch : avatar_joint_batches)
+        {
+            batch.line_modelview_projection[14] = 0.75f;
+        }
+        avatar_joint_segment.sphere_modelview_projection[14] = 0.75f;
+        auto occluded_avatar_joints = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(occluded_avatar_joints);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            occluded_avatar_joint_pixels{};
+        std::array<float, 32 * 32> occluded_avatar_joint_depth{};
+        REQUIRE(occluded_avatar_joints->colorTexture(0)->readback(
+            *device, 0, 0, {}, occluded_avatar_joint_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(occluded_avatar_joints->depthStencilTexture()->readback(
+            *device, 0, 0, {}, occluded_avatar_joint_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t occluded_avatar_joint_changed = 0;
+        std::size_t occluded_avatar_joint_readonly = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                occluded_avatar_joint_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                occluded_avatar_joint_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                occluded_avatar_joint_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            occluded_avatar_joint_changed += changed;
+            if (changed && opaque_forward_depth[pixel] < 1.f)
+            {
+                CHECK(occluded_avatar_joint_depth[pixel] ==
+                      opaque_forward_depth[pixel]);
+                ++occluded_avatar_joint_readonly;
+            }
+        }
+        CHECK(occluded_avatar_joint_changed >= 4);
+        CHECK(occluded_avatar_joint_readonly >= 4);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        for (ALMetalWorldAvatarJointBatch& batch : avatar_joint_batches)
+        {
+            batch.line_modelview_projection[14] = 0.9f;
+        }
+        avatar_joint_segment.sphere_modelview_projection[14] = 0.9f;
+        auto reverse_visible_avatar_joints =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_visible_avatar_joints);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_visible_avatar_joint_pixels{};
+        std::array<float, 32 * 32>
+            reverse_visible_avatar_joint_depth{};
+        REQUIRE(reverse_visible_avatar_joints->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            reverse_visible_avatar_joint_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(
+            reverse_visible_avatar_joints->depthStencilTexture()->readback(
+                *device, 0, 0, {},
+                reverse_visible_avatar_joint_depth.data(),
+                32 * sizeof(float), &error));
+        std::size_t reverse_visible_avatar_joint_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                reverse_visible_avatar_joint_pixels[offset + 0] !=
+                    reverse_agent_target_baseline_pixels[offset + 0] ||
+                reverse_visible_avatar_joint_pixels[offset + 1] !=
+                    reverse_agent_target_baseline_pixels[offset + 1] ||
+                reverse_visible_avatar_joint_pixels[offset + 2] !=
+                    reverse_agent_target_baseline_pixels[offset + 2];
+            reverse_visible_avatar_joint_changed += changed;
+            if (changed)
+            {
+                CHECK(reverse_visible_avatar_joint_pixels[offset + 3] ==
+                      reverse_agent_target_baseline_pixels[offset + 3]);
+                CHECK(reverse_visible_avatar_joint_depth[pixel] >=
+                      reverse_agent_target_baseline_depth[pixel]);
+            }
+        }
+        CHECK(reverse_visible_avatar_joint_changed >= 16);
+        CHECK(reverse_visible_avatar_joint_depth !=
+              reverse_agent_target_baseline_depth);
+
+        for (ALMetalWorldAvatarJointBatch& batch : avatar_joint_batches)
+        {
+            batch.line_modelview_projection[14] = 0.1f;
+        }
+        avatar_joint_segment.sphere_modelview_projection[14] = 0.1f;
+        auto reverse_occluded_avatar_joints =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_occluded_avatar_joints);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_occluded_avatar_joint_pixels{};
+        std::array<float, 32 * 32>
+            reverse_occluded_avatar_joint_depth{};
+        REQUIRE(reverse_occluded_avatar_joints->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            reverse_occluded_avatar_joint_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(
+            reverse_occluded_avatar_joints->depthStencilTexture()->readback(
+                *device, 0, 0, {},
+                reverse_occluded_avatar_joint_depth.data(),
+                32 * sizeof(float), &error));
+        std::size_t reverse_occluded_avatar_joint_changed = 0;
+        std::size_t reverse_occluded_avatar_joint_readonly = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                reverse_occluded_avatar_joint_pixels[offset + 0] !=
+                    reverse_agent_target_baseline_pixels[offset + 0] ||
+                reverse_occluded_avatar_joint_pixels[offset + 1] !=
+                    reverse_agent_target_baseline_pixels[offset + 1] ||
+                reverse_occluded_avatar_joint_pixels[offset + 2] !=
+                    reverse_agent_target_baseline_pixels[offset + 2];
+            reverse_occluded_avatar_joint_changed += changed;
+            if (changed &&
+                reverse_agent_target_baseline_depth[pixel] > 0.f)
+            {
+                CHECK(reverse_occluded_avatar_joint_depth[pixel] ==
+                      reverse_agent_target_baseline_depth[pixel]);
+                ++reverse_occluded_avatar_joint_readonly;
+            }
+        }
+        CHECK(reverse_occluded_avatar_joint_changed >= 4);
+        CHECK(reverse_occluded_avatar_joint_readonly >= 4);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.avatar_joint_batches = nullptr;
+        opaque_forward_scene.avatar_joint_batch_count = 0;
+
         // Develop > Texture Anim selects visible draw-info triangles whose
         // texture matrix is non-null, but gDebugProgram consumes positions
         // only and emits one fixed translucent-yellow uniform. The enclosing

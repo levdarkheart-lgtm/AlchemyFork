@@ -1955,6 +1955,9 @@ void LLVOAvatar::renderBones(const std::string &selected_joint)
             size.setSub(extents[1], extents[0]);
             size.mul(0.5f);
 
+#if LL_DARWIN
+            gPipeline.captureMetalAvatarJointBox(pos, size, false);
+#endif
             drawBoxOutline(pos, size);
 
             gGL.popMatrix();
@@ -1995,6 +1998,10 @@ void LLVOAvatar::renderBones(const std::string &selected_joint)
                                 center.mul(0.5f);
                                 size.setSub(extents[1], extents[0]);
                                 size.mul(0.5f);
+#if LL_DARWIN
+                                gPipeline.captureMetalAvatarJointBox(
+                                    center, size, true);
+#endif
                                 drawBoxOutline(center, size);
                             }
                         }
