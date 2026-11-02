@@ -583,6 +583,40 @@ struct ALMetalWorldOcclusionBatch
     float half_extent[4]{};
 };
 
+// Develop > Octree draws a short-lived rebuild flash with depth disabled and
+// additive blending, followed by the ordinary cyan spatial-group outline.
+// Flash geometry can be static or object-skinned; the first face of the
+// drawable owns the same palette for every emitted face as the source path.
+enum class ALMetalWorldOctreeKind : std::uint32_t
+{
+    flash_bounds,
+    flash_geometry,
+    group_outline,
+};
+
+struct ALMetalWorldOctreeBatch
+{
+    ALMetalWorldOctreeKind kind =
+        ALMetalWorldOctreeKind::group_outline;
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::size_t weight_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
+    const float* skin_palette = nullptr;
+    std::size_t skin_palette_float_count = 0;
+    std::uint32_t skin_joint_count = 0;
+    std::uint64_t order = 0;
+    float modelview_projection[16]{};
+    float center[4] = {0.f, 0.f, 0.f, 1.f};
+    float half_extent[4]{};
+    float color[4]{};
+    float line_width = 1.f;
+};
+
 // Develop > Points emits one opaque white, one-pixel point at every valid
 // drawable face centre. World traversal can switch transforms at spatial-
 // bridge boundaries and can interleave the self-avatar Agent Target owner, so
@@ -1042,6 +1076,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     const ALMetalWorldRaycastParticle* raycast_particle = nullptr;
     const ALMetalWorldOcclusionBatch* occlusion_batches = nullptr;
     std::size_t occlusion_batch_count = 0;
+    const ALMetalWorldOctreeBatch* octree_batches = nullptr;
+    std::size_t octree_batch_count = 0;
     const ALMetalWorldDebugPointVertex* debug_points = nullptr;
     std::size_t debug_point_count = 0;
     const ALMetalWorldDebugPointBatch* debug_point_batches = nullptr;

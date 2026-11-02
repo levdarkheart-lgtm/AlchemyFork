@@ -610,6 +610,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool raycast_particle_valid = false;
     std::vector<ALMetalWorldOcclusionBatch> occlusion_batches;
     bool occlusion_capture_active = false;
+    std::vector<ALMetalWorldOctreeBatch> octree_batches;
+    bool octree_capture_active = false;
     std::vector<ALMetalWorldDebugPointVertex> debug_points;
     std::vector<ALMetalWorldDebugPointBatch> debug_point_batches;
     ALMetalWorldDebugPointBatch debug_point_batch;
@@ -4070,6 +4072,8 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.raycast_particle_valid = false;
     capture.occlusion_batches.clear();
     capture.occlusion_capture_active = false;
+    capture.octree_batches.clear();
+    capture.octree_capture_active = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -5655,6 +5659,261 @@ void LLPipeline::endMetalOcclusionCapture()
     if (!capture.complete)
     {
         capture.occlusion_batches.clear();
+    }
+}
+
+static bool metalOctreeAdditiveStateIsExact(F32 line_width)
+{
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    LLRender::eBlendFactor color_source;
+    LLRender::eBlendFactor color_destination;
+    LLRender::eBlendFactor alpha_source;
+    LLRender::eBlendFactor alpha_destination;
+    gGL.getBlendFunc(color_source, color_destination,
+                     alpha_source, alpha_destination);
+    U32 rgb_equation = 0;
+    U32 alpha_equation = 0;
+    gGL.getBlendEquation(rgb_equation, alpha_equation);
+    return LLGLState::isEnabled(GL_BLEND) &&
+        !LLGLState::isEnabled(GL_CULL_FACE) &&
+        !LLGLDepthTest::depthEnabled() &&
+        !LLGLDepthTest::depthWriteEnabled() &&
+        color_source == LLRender::BF_SOURCE_ALPHA &&
+        color_destination == LLRender::BF_ONE &&
+        alpha_source == LLRender::BF_SOURCE_ALPHA &&
+        alpha_destination == LLRender::BF_ONE &&
+        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
+        color_mask[0] && color_mask[1] && color_mask[2] &&
+        !color_mask[3] && gGL.getLineWidth() == line_width &&
+        gGL.getPolygonMode() == GL_LINE;
+}
+
+static bool metalOctreeOutlineStateIsExact()
+{
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    LLRender::eBlendFactor color_source;
+    LLRender::eBlendFactor color_destination;
+    LLRender::eBlendFactor alpha_source;
+    LLRender::eBlendFactor alpha_destination;
+    gGL.getBlendFunc(color_source, color_destination,
+                     alpha_source, alpha_destination);
+    U32 rgb_equation = 0;
+    U32 alpha_equation = 0;
+    gGL.getBlendEquation(rgb_equation, alpha_equation);
+    return LLGLState::isEnabled(GL_BLEND) &&
+        !LLGLState::isEnabled(GL_CULL_FACE) &&
+        LLGLDepthTest::depthEnabled() &&
+        LLGLDepthTest::depthWriteEnabled() &&
+        LLGLDepthTest::depthFunction() == GL_LEQUAL &&
+        color_source == LLRender::BF_SOURCE_ALPHA &&
+        color_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
+        alpha_source == LLRender::BF_SOURCE_ALPHA &&
+        alpha_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
+        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
+        color_mask[0] && color_mask[1] && color_mask[2] &&
+        !color_mask[3] && gGL.getLineWidth() == 1.f &&
+        gGL.getPolygonMode() == GL_FILL;
+}
+
+void LLPipeline::beginMetalOctreeCapture()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || capture.octree_capture_active ||
+        !capture.octree_batches.empty())
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+    capture.octree_capture_active = true;
+}
+
+void LLPipeline::captureMetalOctreeBounds(
+    const LLVector4a& center, const LLVector4a& half_extent,
+    bool rebuild_flash)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.octree_capture_active)
+    {
+        return;
+    }
+
+    const LLColor4& color = gGL.getDiffuseColor();
+    const bool exact_color = rebuild_flash
+        ? color.mV[0] == 1.f && color.mV[1] == 0.f &&
+              color.mV[2] == 0.f && std::isfinite(color.mV[3])
+        : color.mV[0] == 0.f && color.mV[1] == 1.f &&
+              color.mV[2] == 1.f && color.mV[3] == 1.f;
+    if (!capture.complete || !center.isFinite3() ||
+        !half_extent.isFinite3() || !exact_color ||
+        !(rebuild_flash ? metalOctreeAdditiveStateIsExact(5.f)
+                        : metalOctreeOutlineStateIsExact()) ||
+        capture.render_debug_order == std::numeric_limits<U64>::max())
+    {
+        capture.markIncomplete(__LINE__);
+        capture.octree_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldOctreeBatch batch;
+    batch.kind = rebuild_flash
+        ? ALMetalWorldOctreeKind::flash_bounds
+        : ALMetalWorldOctreeKind::group_outline;
+    batch.line_width = rebuild_flash ? 5.f : 1.f;
+    batch.order = capture.render_debug_order++;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.center, center.getF32ptr(), sizeof(float) * 3);
+    batch.center[3] = 1.f;
+    std::memcpy(batch.half_extent, half_extent.getF32ptr(),
+                sizeof(float) * 3);
+    batch.half_extent[3] = 0.f;
+    std::memcpy(batch.color, color.mV, sizeof(batch.color));
+    try
+    {
+        capture.octree_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.octree_batches.clear();
+    }
+}
+
+void LLPipeline::captureMetalOctreeGeometry(
+    const LLFace& face, const LLFace* skin_owner)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.octree_capture_active)
+    {
+        return;
+    }
+
+    LLVertexBuffer* buffer = face.getVertexBuffer();
+    if (!buffer || face.getIndicesCount() == 0)
+    {
+        return;
+    }
+    const LLColor4& color = gGL.getDiffuseColor();
+    const auto color_is = [&](F32 red, F32 green, F32 blue)
+    {
+        return color.mV[0] == red && color.mV[1] == green &&
+            color.mV[2] == blue && std::isfinite(color.mV[3]);
+    };
+    const bool color_valid = color_is(0.f, 1.f, 1.f) ||
+        color_is(0.f, 1.f, 0.f) || color_is(1.f, 1.f, 0.f) ||
+        color_is(1.f, 0.f, 0.f);
+    const bool rigged = skin_owner != nullptr;
+    if (!capture.complete || face.getIndicesStart() < 0 ||
+        face.getIndicesCount() % 3 != 0 ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer() ||
+        (buffer->getIndexStride() != 2 &&
+         buffer->getIndexStride() != 4) ||
+        !color_valid || !metalOctreeAdditiveStateIsExact(1.f) ||
+        (rigged && (!skin_owner->mAvatar || !skin_owner->mSkinInfo ||
+                    !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))) ||
+        capture.render_debug_order == std::numeric_limits<U64>::max())
+    {
+        capture.markIncomplete(__LINE__);
+        capture.octree_batches.clear();
+        return;
+    }
+
+    const F32* skin_palette = nullptr;
+    std::size_t skin_palette_float_count = 0;
+    U32 skin_joint_count = 0;
+    std::size_t weight_offset = 0;
+    if (rigged)
+    {
+        const LLVOAvatar::MatrixPaletteCache& palette =
+            skin_owner->mAvatar->updateSkinInfoMatrixPalette(
+                skin_owner->mSkinInfo);
+        skin_joint_count = static_cast<U32>(palette.mMatrixPalette.size());
+        skin_palette_float_count = palette.mGLMp.size();
+        if (skin_joint_count == 0 || skin_joint_count > 110 ||
+            skin_palette_float_count !=
+                4u + static_cast<std::size_t>(skin_joint_count) * 12u)
+        {
+            capture.markIncomplete(__LINE__);
+            capture.octree_batches.clear();
+            return;
+        }
+        skin_palette = palette.mGLMp.data();
+        weight_offset = buffer->getOffset(LLVertexBuffer::TYPE_WEIGHT4);
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldOctreeBatch batch;
+    batch.kind = ALMetalWorldOctreeKind::flash_geometry;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.weight_offset = weight_offset;
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_offset =
+        static_cast<std::size_t>(face.getIndicesStart()) *
+        buffer->getIndexStride();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = face.getIndicesCount();
+    batch.skin_palette = skin_palette;
+    batch.skin_palette_float_count = skin_palette_float_count;
+    batch.skin_joint_count = skin_joint_count;
+    batch.order = capture.render_debug_order++;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.color, color.mV, sizeof(batch.color));
+    try
+    {
+        capture.octree_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.octree_batches.clear();
+    }
+}
+
+void LLPipeline::endMetalOctreeCapture()
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.octree_capture_active)
+    {
+        return;
+    }
+    capture.octree_capture_active = false;
+    if (!capture.complete)
+    {
+        capture.octree_batches.clear();
     }
 }
 
@@ -7501,6 +7760,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             ? &capture.raycast_particle : nullptr;
         scene.occlusion_batches = capture.occlusion_batches.data();
         scene.occlusion_batch_count = capture.occlusion_batches.size();
+        scene.octree_batches = capture.octree_batches.data();
+        scene.octree_batch_count = capture.octree_batches.size();
         scene.debug_points = capture.debug_points.data();
         scene.debug_point_count = capture.debug_points.size();
         scene.debug_point_batches = capture.debug_point_batches.data();
@@ -9198,6 +9459,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.raycast_particle_valid = false;
     capture.occlusion_batches.clear();
     capture.occlusion_capture_active = false;
+    capture.octree_batches.clear();
+    capture.octree_capture_active = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -21793,6 +22056,12 @@ void LLPipeline::renderDebug()
             !hud_only && hasRenderDebugMask(RENDER_DEBUG_BBOXES);
         const bool capture_raycast =
             !hud_only && hasRenderDebugMask(RENDER_DEBUG_RAYCAST);
+        const bool capture_octree =
+            !hud_only && hasRenderDebugMask(RENDER_DEBUG_OCTREE);
+        if (capture_octree)
+        {
+            beginMetalOctreeCapture();
+        }
         if (capture_debug_points)
         {
             beginMetalDebugPointCapture();
@@ -21835,6 +22104,10 @@ void LLPipeline::renderDebug()
             }
         }
 #if LL_DARWIN
+        if (capture_octree)
+        {
+            endMetalOctreeCapture();
+        }
         if (capture_raycast)
         {
             endMetalRaycastCapture();

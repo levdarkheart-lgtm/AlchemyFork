@@ -432,6 +432,16 @@ public:
     void captureMetalOcclusionBounds(
         const LLVector4a& center, const LLVector4a& half_extent);
     void endMetalOcclusionCapture();
+    // Retain Develop > Octree's complete post-order owner: the additive,
+    // no-depth rebuild flash (wide object bounds plus static/rigged face wire)
+    // and the ordinary depth-writing cyan group outline.
+    void beginMetalOctreeCapture();
+    void captureMetalOctreeBounds(
+        const LLVector4a& center, const LLVector4a& half_extent,
+        bool rebuild_flash);
+    void captureMetalOctreeGeometry(
+        const LLFace& face, const LLFace* skin_owner);
+    void endMetalOctreeCapture();
     // Retain Develop > Points across the complete world spatial traversal.
     // Each drawable batch records its current region/bridge transform; the
     // traversal order also preserves interleaving with Agent Target.
@@ -1544,7 +1554,6 @@ public:
         // Keep this list explicit: broad mRenderDebugMask != 0 eligibility
         // silently turns text-only diagnostics into a GL world fallback.
         RENDER_DEBUG_GL_WORLD_OUTPUT =
-            RENDER_DEBUG_OCTREE |
             RENDER_DEBUG_PHYSICS_SHAPES |
             RENDER_DEBUG_NORMALS |
             RENDER_DEBUG_TEXEL_DENSITY,

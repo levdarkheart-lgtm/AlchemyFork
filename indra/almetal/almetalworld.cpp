@@ -1352,6 +1352,10 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::uint32_t avatar_volume_sphere_index_count = 0;
     std::array<OpaqueForwardRiggedPipelines, 2>
         batch_size_pipelines;
+    std::array<OpaqueForwardRiggedPipelines, 2>
+        octree_flash_geometry_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        octree_flash_bounds_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         light_debug_outline_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -2639,6 +2643,46 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             {
                 return nullptr;
             }
+        }
+
+        ALMetalRenderPipelineDescriptor octree_flash_descriptor =
+            texture_anim_descriptor;
+        octree_flash_descriptor.colors[0].destination_rgb =
+            ALMetalBlendFactor::one;
+        octree_flash_descriptor.colors[0].destination_alpha =
+            ALMetalBlendFactor::one;
+        for (std::size_t rigged = 0; rigged < 2; ++rigged)
+        {
+            octree_flash_descriptor.vertex_function = rigged
+                ? "almetal_world_batch_size_skinned_vertex"
+                : "almetal_world_texture_anim_vertex";
+            octree_flash_descriptor.label = hdr
+                ? (rigged
+                       ? "Alchemy HDR world rigged octree flash pipeline"
+                       : "Alchemy HDR world octree flash pipeline")
+                : (rigged
+                       ? "Alchemy world rigged octree flash pipeline"
+                       : "Alchemy world octree flash pipeline");
+            impl->octree_flash_geometry_pipelines[hdr][rigged] =
+                ALMetalRenderPipeline::create(
+                    device, octree_flash_descriptor, error);
+            if (!impl->octree_flash_geometry_pipelines[hdr][rigged])
+            {
+                return nullptr;
+            }
+        }
+
+        octree_flash_descriptor.vertex_function =
+            "almetal_world_bounding_box_wide_vertex";
+        octree_flash_descriptor.label = hdr
+            ? "Alchemy HDR world wide octree flash pipeline"
+            : "Alchemy world wide octree flash pipeline";
+        impl->octree_flash_bounds_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, octree_flash_descriptor, error);
+        if (!impl->octree_flash_bounds_pipelines[hdr])
+        {
+            return nullptr;
         }
 
         ALMetalRenderPipelineDescriptor light_debug_outline_descriptor =
@@ -11241,6 +11285,108 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         previous_occlusion_order = batch.order;
     }
+    if ((scene.octree_batch_count != 0 && !scene.octree_batches) ||
+        scene.octree_batch_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldOctreeBatch))
+    {
+        setError(error, "Metal world octree batch storage is invalid");
+        return nullptr;
+    }
+    constexpr std::size_t octree_float4_stride = sizeof(float) * 4;
+    constexpr std::uint32_t octree_max_skin_joints = 110;
+    std::uint64_t previous_octree_order = 0;
+    for (std::size_t index = 0;
+         index < scene.octree_batch_count; ++index)
+    {
+        const ALMetalWorldOctreeBatch& batch =
+            scene.octree_batches[index];
+        const bool index_type_valid =
+            batch.index_type == ALMetalIndexType::uint16 ||
+            batch.index_type == ALMetalIndexType::uint32;
+        const std::size_t index_stride =
+            batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
+        const bool skinned = batch.skin_palette != nullptr ||
+            batch.skin_palette_float_count != 0 ||
+            batch.skin_joint_count != 0 || batch.weight_offset != 0;
+        const bool skinning_valid = skinned
+            ? batch.skin_palette && batch.skin_joint_count != 0 &&
+                  batch.skin_joint_count <= octree_max_skin_joints &&
+                  batch.skin_palette_float_count ==
+                      4u + static_cast<std::size_t>(
+                               batch.skin_joint_count) * 12u &&
+                  batch.weight_offset % octree_float4_stride == 0 &&
+                  rangeFits(batch.weight_offset, batch.vertex_count,
+                            octree_float4_stride,
+                            batch.vertices
+                                ? batch.vertices->length() : 0) &&
+                  finiteValues(batch.skin_palette,
+                               batch.skin_palette_float_count)
+            : batch.skin_palette == nullptr &&
+                  batch.skin_palette_float_count == 0 &&
+                  batch.skin_joint_count == 0 &&
+                  batch.weight_offset == 0;
+        const bool indexed_geometry = batch.vertices && batch.indices &&
+            index_type_valid && batch.vertex_count != 0 &&
+            batch.index_count != 0 && batch.index_count % 3 == 0 &&
+            batch.position_offset % octree_float4_stride == 0 &&
+            batch.index_offset % index_stride == 0 &&
+            rangeFits(batch.position_offset, batch.vertex_count,
+                      octree_float4_stride, batch.vertices->length()) &&
+            rangeFits(batch.index_offset, batch.index_count,
+                      index_stride, batch.indices->length()) &&
+            skinning_valid;
+        const bool generated_bounds = !batch.vertices && !batch.indices &&
+            batch.position_offset == 0 && batch.weight_offset == 0 &&
+            batch.vertex_count == 0 && batch.index_offset == 0 &&
+            batch.index_count == 0 && !batch.skin_palette &&
+            batch.skin_palette_float_count == 0 &&
+            batch.skin_joint_count == 0 &&
+            finiteValues(batch.center, 4) &&
+            finiteValues(batch.half_extent, 4) &&
+            batch.center[3] == 1.f && batch.half_extent[3] == 0.f &&
+            batch.half_extent[0] >= 0.f &&
+            batch.half_extent[1] >= 0.f &&
+            batch.half_extent[2] >= 0.f;
+        const bool flash_red = batch.color[0] == 1.f &&
+            batch.color[1] == 0.f && batch.color[2] == 0.f;
+        const bool flash_geometry_color =
+            (batch.color[0] == 0.f && batch.color[1] == 1.f &&
+             batch.color[2] == 1.f) ||
+            (batch.color[0] == 0.f && batch.color[1] == 1.f &&
+             batch.color[2] == 0.f) ||
+            (batch.color[0] == 1.f && batch.color[1] == 1.f &&
+             batch.color[2] == 0.f) || flash_red;
+        const bool outline_cyan = batch.color[0] == 0.f &&
+            batch.color[1] == 1.f && batch.color[2] == 1.f &&
+            batch.color[3] == 1.f;
+        bool kind_valid = false;
+        switch (batch.kind)
+        {
+            case ALMetalWorldOctreeKind::flash_bounds:
+                kind_valid = generated_bounds && flash_red &&
+                    batch.line_width == 5.f;
+                break;
+            case ALMetalWorldOctreeKind::flash_geometry:
+                kind_valid = indexed_geometry && flash_geometry_color &&
+                    batch.line_width == 1.f;
+                break;
+            case ALMetalWorldOctreeKind::group_outline:
+                kind_valid = generated_bounds && outline_cyan &&
+                    batch.line_width == 1.f;
+                break;
+        }
+        if (!finiteValues(batch.modelview_projection, 16) ||
+            !finiteValues(batch.color, 4) || !kind_valid ||
+            (index != 0 && batch.order <= previous_octree_order) ||
+            (scene.agent_target_line_vertex_count != 0 &&
+             batch.order == scene.agent_target_order))
+        {
+            setError(error, "Metal world octree batch is invalid");
+            return nullptr;
+        }
+        previous_octree_order = batch.order;
+    }
     const bool has_shadow_frusta =
         scene.shadow_frustum_vertex_count != 0 ||
         scene.shadow_frustum_batch_count != 0;
@@ -11780,6 +11926,36 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         return false;
     };
     if (order_collides(
+            scene.octree_batches, scene.octree_batch_count,
+            scene.occlusion_batches, scene.occlusion_batch_count) ||
+        order_collides(
+            scene.octree_batches, scene.octree_batch_count,
+            scene.avatar_volume_batches, scene.avatar_volume_batch_count) ||
+        order_collides(
+            scene.octree_batches, scene.octree_batch_count,
+            scene.avatar_joint_batches, scene.avatar_joint_batch_count) ||
+        order_collides(
+            scene.octree_batches, scene.octree_batch_count,
+            scene.bounding_box_batches, scene.bounding_box_batch_count) ||
+        order_collides(
+            scene.octree_batches, scene.octree_batch_count,
+            scene.raycast_batches, scene.raycast_batch_count) ||
+        order_collides(
+            scene.octree_batches, scene.octree_batch_count,
+            scene.debug_point_batches, scene.debug_point_batch_count) ||
+        order_collides(
+            scene.octree_batches, scene.octree_batch_count,
+            scene.texture_anim_batches, scene.texture_anim_batch_count) ||
+        order_collides(
+            scene.octree_batches, scene.octree_batch_count,
+            scene.update_type_batches, scene.update_type_batch_count) ||
+        order_collides(
+            scene.octree_batches, scene.octree_batch_count,
+            scene.batch_size_batches, scene.batch_size_batch_count) ||
+        order_collides(
+            scene.octree_batches, scene.octree_batch_count,
+            scene.light_debug_batches, scene.light_debug_batch_count) ||
+        order_collides(
             scene.occlusion_batches, scene.occlusion_batch_count,
             scene.avatar_volume_batches, scene.avatar_volume_batch_count) ||
         order_collides(
@@ -13170,6 +13346,55 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         batch_size_palette_buffers[batch_index] = palette.get();
         batch_size_palette_storage.push_back(std::move(palette));
+    }
+
+    std::vector<std::unique_ptr<ALMetalBuffer>>
+        octree_palette_storage;
+    std::vector<const ALMetalBuffer*> octree_palette_buffers(
+        scene.octree_batch_count, nullptr);
+    for (std::size_t batch_index = 0;
+         batch_index < scene.octree_batch_count; ++batch_index)
+    {
+        const ALMetalWorldOctreeBatch& batch =
+            scene.octree_batches[batch_index];
+        if (!batch.skin_palette)
+        {
+            continue;
+        }
+        for (std::size_t previous = 0;
+             previous < batch_index; ++previous)
+        {
+            const ALMetalWorldOctreeBatch& candidate =
+                scene.octree_batches[previous];
+            if (candidate.skin_palette == batch.skin_palette &&
+                candidate.skin_palette_float_count ==
+                    batch.skin_palette_float_count &&
+                candidate.skin_joint_count == batch.skin_joint_count)
+            {
+                octree_palette_buffers[batch_index] =
+                    octree_palette_buffers[previous];
+                break;
+            }
+        }
+        if (octree_palette_buffers[batch_index])
+        {
+            continue;
+        }
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length =
+            batch.skin_palette_float_count * sizeof(float);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world octree skin palette";
+        auto palette = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!palette || !palette->write(
+                0, batch.skin_palette, descriptor.length, error))
+        {
+            return nullptr;
+        }
+        octree_palette_buffers[batch_index] = palette.get();
+        octree_palette_storage.push_back(std::move(palette));
     }
 
     std::unique_ptr<ALMetalBuffer> debug_blip_buffer;
@@ -15722,6 +15947,100 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 ALMetalPrimitiveType::triangle_strip,
                 14, 4, 1, error);
     };
+    const auto encode_octree_batch =
+        [&](const ALMetalWorldOctreeBatch& batch,
+            std::size_t batch_index)
+    {
+        if (batch.kind == ALMetalWorldOctreeKind::flash_geometry)
+        {
+            const bool rigged =
+                octree_palette_buffers[batch_index] != nullptr;
+            WorldTextureAnimConstants constants{};
+            std::memcpy(constants.modelview_projection,
+                        batch.modelview_projection,
+                        sizeof(constants.modelview_projection));
+            std::memcpy(constants.color, batch.color,
+                        sizeof(constants.color));
+            constants.config[0] = scene.reverse_z ? 1u : 0u;
+            bool batch_encoded =
+                encoder->setDepthStencilState(
+                    mImpl->overlay_composite_depth.get(), error) &&
+                encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+                encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setTriangleFillMode(
+                    ALMetalTriangleFillMode::lines, error) &&
+                encoder->setPipeline(
+                    *mImpl->octree_flash_geometry_pipelines[
+                        scene.hdr ? 1 : 0][rigged ? 1 : 0], error) &&
+                encoder->setVertexBuffer(
+                    0, *batch.vertices, batch.position_offset, error) &&
+                encoder->setVertexBytes(
+                    1, &constants, sizeof(constants), error) &&
+                encoder->setFragmentBytes(
+                    0, &constants, sizeof(constants), error);
+            if (batch_encoded && rigged)
+            {
+                batch_encoded =
+                    encoder->setVertexBuffer(
+                        2, *octree_palette_buffers[batch_index],
+                        0, error) &&
+                    encoder->setVertexBuffer(
+                        3, *batch.vertices, batch.weight_offset, error) &&
+                    encoder->setVertexBytes(
+                        4, &batch.skin_joint_count,
+                        sizeof(batch.skin_joint_count), error);
+            }
+            return batch_encoded && encoder->drawIndexed(
+                ALMetalPrimitiveType::triangle, batch.index_count,
+                batch.index_type, *batch.indices,
+                batch.index_offset, 1, error);
+        }
+
+        WorldBoundingBoxConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(constants.modelview_projection));
+        std::memcpy(constants.color, batch.color,
+                    sizeof(constants.color));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        std::memcpy(constants.center, batch.center,
+                    sizeof(constants.center));
+        std::memcpy(constants.half_extent, batch.half_extent,
+                    sizeof(constants.half_extent));
+        constants.screen_line_width[0] =
+            static_cast<float>(scene.width);
+        constants.screen_line_width[1] =
+            static_cast<float>(scene.height);
+        constants.screen_line_width[2] = batch.line_width;
+        const bool flash =
+            batch.kind == ALMetalWorldOctreeKind::flash_bounds;
+        return
+            encoder->setDepthStencilState(
+                flash
+                    ? mImpl->overlay_composite_depth.get()
+                    : (scene.reverse_z ? mImpl->reverse_depth.get()
+                                       : mImpl->forward_depth.get()),
+                error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *(flash
+                    ? mImpl->octree_flash_bounds_pipelines[
+                          scene.hdr ? 1 : 0]
+                    : mImpl->light_debug_outline_pipelines[
+                          scene.hdr ? 1 : 0]),
+                error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->draw(
+                flash ? ALMetalPrimitiveType::triangle
+                      : ALMetalPrimitiveType::line,
+                0, flash ? 72 : 24, 1, error);
+    };
     const auto encode_debug_point_batch =
         [&](const ALMetalWorldDebugPointBatch& batch)
     {
@@ -15939,6 +16258,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     std::size_t bounding_box_batch_index = 0;
     std::size_t raycast_batch_index = 0;
     std::size_t occlusion_batch_index = 0;
+    std::size_t octree_batch_index = 0;
     std::size_t debug_point_batch_index = 0;
     std::size_t texture_anim_batch_index = 0;
     std::size_t update_type_batch_index = 0;
@@ -15950,6 +16270,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             bounding_box_batch_index < scene.bounding_box_batch_count ||
             raycast_batch_index < scene.raycast_batch_count ||
             occlusion_batch_index < scene.occlusion_batch_count ||
+            octree_batch_index < scene.octree_batch_count ||
             debug_point_batch_index < scene.debug_point_batch_count ||
             texture_anim_batch_index < scene.texture_anim_batch_count ||
             update_type_batch_index < scene.update_type_batch_count ||
@@ -15965,6 +16286,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             bounding_box,
             raycast,
             occlusion,
+            octree,
             debug_point,
             texture_anim,
             update_type,
@@ -16026,6 +16348,17 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             if (!owner_selected || order < owner_order)
             {
                 owner = RenderDebugOwner::occlusion;
+                owner_selected = true;
+                owner_order = order;
+            }
+        }
+        if (octree_batch_index < scene.octree_batch_count)
+        {
+            const std::uint64_t order = scene.octree_batches[
+                octree_batch_index].order;
+            if (!owner_selected || order < owner_order)
+            {
+                owner = RenderDebugOwner::octree;
                 owner_selected = true;
                 owner_order = order;
             }
@@ -16113,6 +16446,12 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             case RenderDebugOwner::occlusion:
                 encoded = encode_occlusion_batch(
                     scene.occlusion_batches[occlusion_batch_index++]);
+                break;
+            case RenderDebugOwner::octree:
+                encoded = encode_octree_batch(
+                    scene.octree_batches[octree_batch_index],
+                    octree_batch_index);
+                ++octree_batch_index;
                 break;
             case RenderDebugOwner::debug_point:
                 encoded = encode_debug_point_batch(

@@ -7188,6 +7188,372 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             32 * 8, &error));
         CHECK(no_occlusion_pixels == opaque_forward_pixels);
 
+        // Develop > Octree preserves one complete post-order source owner:
+        // an additive, no-depth rebuild flash (wide bounds and static/rigged
+        // face wireframes) followed by the ordinary depth-writing cyan group
+        // outline. Destination alpha remains owned by the composed scene.
+        ALMetalWorldOctreeBatch octree_batch;
+        octree_batch.kind = ALMetalWorldOctreeKind::flash_bounds;
+        octree_batch.center[3] = 1.f;
+        octree_batch.half_extent[0] = 0.4f;
+        octree_batch.half_extent[1] = 0.3f;
+        octree_batch.half_extent[2] = 0.1f;
+        octree_batch.color[0] = 1.f;
+        octree_batch.color[3] = 0.5f;
+        octree_batch.line_width = 5.f;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            octree_batch.modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        opaque_forward_scene.octree_batches = &octree_batch;
+        opaque_forward_scene.octree_batch_count = 1;
+
+        opaque_forward_scene.octree_batches = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world octree batch storage is invalid");
+        opaque_forward_scene.octree_batches = &octree_batch;
+        octree_batch.half_extent[0] = -0.1f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world octree batch is invalid");
+        octree_batch.half_extent[0] = 0.4f;
+        octree_batch.kind = static_cast<ALMetalWorldOctreeKind>(99);
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world octree batch is invalid");
+        octree_batch.kind = ALMetalWorldOctreeKind::flash_bounds;
+        opaque_forward_scene.agent_target_lines =
+            agent_target_lines.data();
+        opaque_forward_scene.agent_target_line_vertex_count =
+            agent_target_lines.size();
+        opaque_forward_scene.agent_target_order = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world octree batch is invalid");
+        opaque_forward_scene.agent_target_lines = nullptr;
+        opaque_forward_scene.agent_target_line_vertex_count = 0;
+
+        error.clear();
+        auto octree_flash_bounds = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(octree_flash_bounds);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            octree_flash_bounds_pixels{};
+        std::array<float, 32 * 32> octree_flash_bounds_depth{};
+        REQUIRE(octree_flash_bounds->colorTexture(0)->readback(
+            *device, 0, 0, {}, octree_flash_bounds_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(octree_flash_bounds->depthStencilTexture()->readback(
+            *device, 0, 0, {}, octree_flash_bounds_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t octree_flash_bounds_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                octree_flash_bounds_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                octree_flash_bounds_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                octree_flash_bounds_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            octree_flash_bounds_changed += changed;
+            if (changed)
+            {
+                CHECK(octree_flash_bounds_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+            }
+        }
+        CHECK(octree_flash_bounds_changed >= 32);
+        CHECK(octree_flash_bounds_depth == opaque_forward_depth);
+
+        octree_batch.kind = ALMetalWorldOctreeKind::flash_geometry;
+        octree_batch.vertices = vertices.get();
+        octree_batch.vertex_count = positions.size();
+        octree_batch.indices = indices.get();
+        octree_batch.index_count = index_values.size();
+        octree_batch.center[0] = 0.f;
+        octree_batch.center[1] = 0.f;
+        octree_batch.center[2] = 0.f;
+        octree_batch.half_extent[0] = 0.f;
+        octree_batch.half_extent[1] = 0.f;
+        octree_batch.half_extent[2] = 0.f;
+        octree_batch.color[0] = 0.f;
+        octree_batch.color[1] = 1.f;
+        octree_batch.color[2] = 0.f;
+        octree_batch.line_width = 1.f;
+        octree_batch.vertices = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world octree batch is invalid");
+        octree_batch.vertices = vertices.get();
+        octree_batch.index_count = 2;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world octree batch is invalid");
+        octree_batch.index_count = index_values.size();
+        octree_batch.index_type = static_cast<ALMetalIndexType>(99);
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world octree batch is invalid");
+        octree_batch.index_type = ALMetalIndexType::uint16;
+        octree_batch.position_offset = sizeof(float);
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world octree batch is invalid");
+        octree_batch.position_offset = 0;
+        octree_batch.modelview_projection[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world octree batch is invalid");
+        octree_batch.modelview_projection[0] = 1.f;
+
+        error.clear();
+        auto octree_static_flash = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(octree_static_flash);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            octree_static_flash_pixels{};
+        std::array<float, 32 * 32> octree_static_flash_depth{};
+        REQUIRE(octree_static_flash->colorTexture(0)->readback(
+            *device, 0, 0, {}, octree_static_flash_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(octree_static_flash->depthStencilTexture()->readback(
+            *device, 0, 0, {}, octree_static_flash_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t octree_static_flash_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                octree_static_flash_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                octree_static_flash_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                octree_static_flash_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            octree_static_flash_changed += changed;
+            if (changed)
+            {
+                CHECK(octree_static_flash_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+            }
+        }
+        CHECK(octree_static_flash_changed >= 4);
+        CHECK(octree_static_flash_depth == opaque_forward_depth);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        error.clear();
+        auto reverse_octree_static_flash =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_octree_static_flash);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_octree_static_flash_pixels{};
+        std::array<float, 32 * 32> reverse_octree_static_flash_depth{};
+        REQUIRE(reverse_octree_static_flash->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            reverse_octree_static_flash_pixels.data(), 32 * 8, &error));
+        REQUIRE(
+            reverse_octree_static_flash->depthStencilTexture()->readback(
+                *device, 0, 0, {},
+                reverse_octree_static_flash_depth.data(),
+                32 * sizeof(float), &error));
+        CHECK(reverse_octree_static_flash_pixels !=
+              reverse_agent_target_baseline_pixels);
+        CHECK(reverse_octree_static_flash_depth ==
+              reverse_agent_target_baseline_depth);
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+
+        // All four source movement/update colours are accepted, and the
+        // rigged variant consumes the same rebased object-skin palette.
+        const std::array<std::array<float, 3>, 4> octree_colors{{
+            {{0.f, 1.f, 1.f}}, {{0.f, 1.f, 0.f}},
+            {{1.f, 1.f, 0.f}}, {{1.f, 0.f, 0.f}},
+        }};
+        for (const auto& color : octree_colors)
+        {
+            std::copy(color.begin(), color.end(), octree_batch.color);
+            error.clear();
+            REQUIRE(renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error));
+        }
+        octree_batch.weight_offset = weight_offset;
+        octree_batch.skin_palette = skin_palette.data();
+        octree_batch.skin_palette_float_count = skin_palette.size() - 1;
+        octree_batch.skin_joint_count = 1;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world octree batch is invalid");
+        octree_batch.skin_palette_float_count = skin_palette.size();
+        error.clear();
+        auto octree_rigged_flash = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(octree_rigged_flash);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            octree_rigged_flash_pixels{};
+        REQUIRE(octree_rigged_flash->colorTexture(0)->readback(
+            *device, 0, 0, {}, octree_rigged_flash_pixels.data(),
+            32 * 8, &error));
+        CHECK(octree_rigged_flash_pixels != octree_static_flash_pixels);
+
+        octree_batch.vertices = nullptr;
+        octree_batch.vertex_count = 0;
+        octree_batch.indices = nullptr;
+        octree_batch.index_count = 0;
+        octree_batch.weight_offset = 0;
+        octree_batch.skin_palette = nullptr;
+        octree_batch.skin_palette_float_count = 0;
+        octree_batch.skin_joint_count = 0;
+        octree_batch.kind = ALMetalWorldOctreeKind::group_outline;
+        octree_batch.half_extent[0] = 0.4f;
+        octree_batch.half_extent[1] = 0.3f;
+        octree_batch.half_extent[2] = 0.1f;
+        octree_batch.color[0] = 0.f;
+        octree_batch.color[1] = 1.f;
+        octree_batch.color[2] = 1.f;
+        octree_batch.color[3] = 1.f;
+        octree_batch.line_width = 1.f;
+        error.clear();
+        auto octree_group_outline = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(octree_group_outline);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            octree_group_outline_pixels{};
+        std::array<float, 32 * 32> octree_group_outline_depth{};
+        REQUIRE(octree_group_outline->colorTexture(0)->readback(
+            *device, 0, 0, {}, octree_group_outline_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(octree_group_outline->depthStencilTexture()->readback(
+            *device, 0, 0, {}, octree_group_outline_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(octree_group_outline_pixels != opaque_forward_pixels);
+        CHECK(octree_group_outline_depth != opaque_forward_depth);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        octree_batch.modelview_projection[14] = 0.9f;
+        auto reverse_octree_group_outline =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_octree_group_outline);
+        std::array<float, 32 * 32> reverse_octree_group_depth{};
+        REQUIRE(reverse_octree_group_outline->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_octree_group_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(reverse_octree_group_depth !=
+              reverse_agent_target_baseline_depth);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        octree_batch.modelview_projection[14] = 0.f;
+        ALMetalWorldOctreeBatch flash_order_batch = octree_batch;
+        flash_order_batch.kind = ALMetalWorldOctreeKind::flash_bounds;
+        flash_order_batch.color[0] = 1.f;
+        flash_order_batch.color[1] = 0.f;
+        flash_order_batch.color[2] = 0.f;
+        flash_order_batch.color[3] = 0.5f;
+        flash_order_batch.line_width = 5.f;
+        std::array<ALMetalWorldOctreeBatch, 2> octree_order_batches{{
+            flash_order_batch, octree_batch,
+        }};
+        octree_order_batches[0].order = 1;
+        octree_order_batches[1].order = 0;
+        opaque_forward_scene.octree_batches =
+            octree_order_batches.data();
+        opaque_forward_scene.octree_batch_count =
+            octree_order_batches.size();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world octree batch is invalid");
+
+        opaque_forward_scene.octree_batches = &flash_order_batch;
+        opaque_forward_scene.octree_batch_count = 1;
+        debug_points[0].position[0] = 0.f;
+        debug_points[0].position[1] = 0.f;
+        debug_points[0].position[2] = 0.f;
+        debug_point_batches[0].first_vertex = 0;
+        debug_point_batches[0].vertex_count = 1;
+        flash_order_batch.order = 0;
+        debug_point_batches[0].order = 0;
+        opaque_forward_scene.debug_points = debug_points.data();
+        opaque_forward_scene.debug_point_count = 1;
+        opaque_forward_scene.debug_point_batches =
+            debug_point_batches.data();
+        opaque_forward_scene.debug_point_batch_count = 1;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world render-debug ordering is invalid");
+
+        // The merged order is behavioral, not metadata-only: the opaque
+        // magenta selected bounds erase an earlier additive red flash, while
+        // a later flash adds red over those same edge pixels.
+        opaque_forward_scene.debug_points = nullptr;
+        opaque_forward_scene.debug_point_count = 0;
+        opaque_forward_scene.debug_point_batches = nullptr;
+        opaque_forward_scene.debug_point_batch_count = 0;
+        occlusion_bounds.order = 1;
+        flash_order_batch.order = 0;
+        opaque_forward_scene.occlusion_batches = &occlusion_bounds;
+        opaque_forward_scene.occlusion_batch_count = 1;
+        auto occlusion_after_octree = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(occlusion_after_octree);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            occlusion_after_octree_pixels{};
+        REQUIRE(occlusion_after_octree->colorTexture(0)->readback(
+            *device, 0, 0, {}, occlusion_after_octree_pixels.data(),
+            32 * 8, &error));
+        occlusion_bounds.order = 0;
+        flash_order_batch.order = 1;
+        auto octree_after_occlusion = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(octree_after_occlusion);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            octree_after_occlusion_pixels{};
+        REQUIRE(octree_after_occlusion->colorTexture(0)->readback(
+            *device, 0, 0, {}, octree_after_occlusion_pixels.data(),
+            32 * 8, &error));
+        CHECK(occlusion_after_octree_pixels !=
+              octree_after_occlusion_pixels);
+
+        opaque_forward_scene.occlusion_batches = nullptr;
+        opaque_forward_scene.occlusion_batch_count = 0;
+        opaque_forward_scene.octree_batches = nullptr;
+        opaque_forward_scene.octree_batch_count = 0;
+        auto no_octree = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_octree);
+        std::array<std::uint16_t, 32 * 32 * 4> no_octree_pixels{};
+        REQUIRE(no_octree->colorTexture(0)->readback(
+            *device, 0, 0, {}, no_octree_pixels.data(), 32 * 8,
+            &error));
+        CHECK(no_octree_pixels == opaque_forward_pixels);
+
         // Develop > Texture Anim selects visible draw-info triangles whose
         // texture matrix is non-null, but gDebugProgram consumes positions
         // only and emits one fixed translucent-yellow uniform. The enclosing

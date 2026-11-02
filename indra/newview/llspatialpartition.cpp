@@ -1690,6 +1690,10 @@ void renderOctree(LLSpatialGroup* group)
             gGL.setLineWidth(5.f);
 
             const LLVector4a* bounds = group->getObjectBounds();
+#if LL_DARWIN
+            gPipeline.captureMetalOctreeBounds(
+                bounds[0], bounds[1], true);
+#endif
             drawBoxOutline(bounds[0], bounds[1]);
             gGL.setLineWidth(1.f);
             gGL.flush();
@@ -1715,8 +1719,8 @@ void renderOctree(LLSpatialGroup* group)
                     gGL.translatef(trans.mV[0], trans.mV[1], trans.mV[2]);
                 }
 
-                LLFace* face = drawable->getFace(0);
-                bool rigged = face->isState(LLFace::RIGGED);
+                LLFace* skin_face = drawable->getFace(0);
+                bool rigged = skin_face->isState(LLFace::RIGGED);
                 gDebugProgram.bind(rigged);
 
                 gGL.diffuseColor4f(1, 0, 0, 1);
@@ -1725,7 +1729,9 @@ void renderOctree(LLSpatialGroup* group)
                 {
                     gGL.pushMatrix();
                     gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-                    if (!LLRenderPass::uploadMatrixPalette(face->mAvatar, face->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
+                    if (!LLRenderPass::uploadMatrixPalette(
+                            skin_face->mAvatar, skin_face->mSkinInfo,
+                            lastAvatar, lastMeshId, skipLastSkin))
                     {
                         // Both pushes above are popped at the end of the iteration this skips.
                         gGL.popMatrix();
@@ -1770,6 +1776,10 @@ void renderOctree(LLSpatialGroup* group)
                             continue;
                         }
 
+#if LL_DARWIN
+                        gPipeline.captureMetalOctreeGeometry(
+                            *face, rigged ? skin_face : nullptr);
+#endif
                         face->getVertexBuffer()->setBuffer();
                         face->getVertexBuffer()->draw(LLRender::TRIANGLES, face->getIndicesCount(), face->getIndicesStart());
                     }
@@ -1802,6 +1812,10 @@ void renderOctree(LLSpatialGroup* group)
         gGL.diffuseColor4f(0,1,1,1);
 
         const LLVector4a* bounds = group->getBounds();
+#if LL_DARWIN
+        gPipeline.captureMetalOctreeBounds(
+            bounds[0], bounds[1], false);
+#endif
         drawBoxOutline(bounds[0], bounds[1]);
     }
 }
