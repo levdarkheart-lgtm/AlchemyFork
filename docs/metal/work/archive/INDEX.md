@@ -54,6 +54,7 @@ chronological transcript.
 | Native-only pipeline diagnostic readback and source-exact validation, 2026-11-02 | [metal-port-native-diagnostic-readback-cutover-checkpoint-2026-11-02.md](metal-port-native-diagnostic-readback-cutover-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Native ordered DebugShowColor readback and dead GL readback-helper removal, 2026-11-02 | [metal-port-debug-color-readback-cutover-checkpoint-2026-11-02.md](metal-port-debug-color-readback-cutover-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Native-only six-face 360 snapshot publication and source-exact validation, 2026-11-02 | [metal-port-native-360-snapshot-cutover-checkpoint-2026-11-02.md](metal-port-native-360-snapshot-cutover-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
+| Native-only ordinary/depth/cutout/tiled Snapshot readback and dead GL wrapper removal, 2026-11-02 | [metal-port-native-snapshot-readback-cutover-checkpoint-2026-11-02.md](metal-port-native-snapshot-readback-cutover-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.
