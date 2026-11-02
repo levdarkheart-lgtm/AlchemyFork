@@ -6309,9 +6309,9 @@ static float2 almetal_ssr_project(
 
 static float2 almetal_ssr_source_uv(float2 gl_uv)
 {
-    // glReadPixels writes GL's lower row first, and the upload preserves that
-    // byte order as Metal row zero. Keep the GL coordinate unchanged: a
-    // second origin conversion here would invert the mirrored history.
+    // The native history publisher reverses Metal's top row into the
+    // lower-row-first contract expected by the ported SSR math. Keep that
+    // coordinate unchanged: a second origin conversion would invert history.
     return gl_uv;
 }
 

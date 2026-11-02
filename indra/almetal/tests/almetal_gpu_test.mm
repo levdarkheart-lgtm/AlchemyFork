@@ -11405,8 +11405,8 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             "Alchemy world SSR scene-history upload", &error);
         INFO(error);
         REQUIRE(ssr_upload);
-        // The bridge uploads glReadPixels verbatim: row zero is GL's lower
-        // row. Keep the upper row black so a second Y flip in the Metal
+        // Native SSR history retains the ported lower-row-first coordinate
+        // contract. Keep the upper row black so a second Y flip in the Metal
         // sampler makes the lower-half assertion below fail visibly.
         const std::array<std::uint8_t, 8> red_lower_ssr{{
             255, 0, 0, 255,

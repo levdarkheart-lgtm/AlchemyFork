@@ -119,10 +119,10 @@ struct ALMetalWorldHeroProbe
     ALMetalWorldHeroProbeConstants constants;
 };
 
-// Previous-frame scene history plus the matrices and tuning values used by
-// legacyProbeFinish's transparent SSR branch. GL readback bootstraps and
-// fail-closes the migration path; a complete native final-color frame may
-// publish the same lower-row-first color/depth contract directly on-GPU.
+// Previous-frame native scene history plus the matrices and tuning values
+// used by legacyProbeFinish's transparent SSR branch. The first complete
+// native final-color frame publishes the lower-row-first color/depth pair
+// directly on-GPU and is retained offscreen as the history warm-up.
 struct alignas(16) ALMetalWorldScreenSpaceReflectionConstants
 {
     float projection[16]{};
