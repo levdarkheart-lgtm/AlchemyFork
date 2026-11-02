@@ -397,6 +397,14 @@ public:
     // the offscreen HUD-attachment encoding when HUD partitions are visited.
     void captureMetalBatchSizeBatch(
         const LLDrawInfo& params, const LLColor4U& color);
+    // Retain Develop > Lights as one ordered stream: existing translucent-
+    // cyan face triangles followed by always-pass white spatial bounds and
+    // ambient-depth yellow radius bounds.
+    void captureMetalLightDebugFace(
+        const LLFace& face, const LLColor4& color);
+    void captureMetalLightDebugBox(
+        const LLVector4a& center, const LLVector4a& half_extent,
+        const LLColor4& color, bool radius_bounds);
     // Retain the ordered orange/yellow neighbor links emitted by Develop >
     // Reflection Probes. Each source link becomes exactly two line vertices.
     void beginMetalReflectionProbeLinkCapture(std::size_t link_count);
@@ -1479,7 +1487,6 @@ public:
             RENDER_DEBUG_BBOXES |
             RENDER_DEBUG_OCTREE |
             RENDER_DEBUG_OCCLUSION |
-            RENDER_DEBUG_LIGHTS |
             RENDER_DEBUG_RAYCAST |
             RENDER_DEBUG_SHADOW_FRUSTA |
             RENDER_DEBUG_AVATAR_VOLUME |

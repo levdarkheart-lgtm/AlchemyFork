@@ -595,6 +595,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::vector<ALMetalWorldTextureAnimBatch> texture_anim_batches;
     std::vector<ALMetalWorldUpdateTypeBatch> update_type_batches;
     std::vector<ALMetalWorldBatchSizeBatch> batch_size_batches;
+    std::vector<ALMetalWorldLightDebugBatch> light_debug_batches;
     std::vector<ALMetalWorldReflectionProbeLinkVertex>
         reflection_probe_links;
     F32 reflection_probe_link_modelview_projection[16]{};
@@ -4024,6 +4025,7 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.texture_anim_batches.clear();
     capture.update_type_batches.clear();
     capture.batch_size_batches.clear();
+    capture.light_debug_batches.clear();
     capture.reflection_probe_links.clear();
     capture.reflection_probe_link_capture_active = false;
     capture.composition_debug_heights.clear();
@@ -4847,6 +4849,211 @@ void LLPipeline::captureMetalBatchSizeBatch(
         {
             fail("Batch Size HUD attachment encoding failed");
         }
+    }
+}
+
+static bool metalLightDebugStateIsExact(bool depth_test_enabled,
+                                        bool require_unit_line)
+{
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    LLRender::eBlendFactor color_source;
+    LLRender::eBlendFactor color_destination;
+    LLRender::eBlendFactor alpha_source;
+    LLRender::eBlendFactor alpha_destination;
+    gGL.getBlendFunc(color_source, color_destination,
+                     alpha_source, alpha_destination);
+    U32 rgb_equation = 0;
+    U32 alpha_equation = 0;
+    gGL.getBlendEquation(rgb_equation, alpha_equation);
+    return LLGLState::isEnabled(GL_BLEND) &&
+        !LLGLState::isEnabled(GL_CULL_FACE) &&
+        LLGLDepthTest::depthEnabled() == depth_test_enabled &&
+        LLGLDepthTest::depthWriteEnabled() &&
+        LLGLDepthTest::depthFunction() == GL_LEQUAL &&
+        color_source == LLRender::BF_SOURCE_ALPHA &&
+        color_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
+        alpha_source == LLRender::BF_SOURCE_ALPHA &&
+        alpha_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
+        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
+        color_mask[0] && color_mask[1] && color_mask[2] &&
+        !color_mask[3] && (!require_unit_line || gGL.getLineWidth() == 1.f);
+}
+
+void LLPipeline::captureMetalLightDebugFace(
+    const LLFace& face, const LLColor4& color)
+{
+    const bool hud_capture = sRenderingHUDs &&
+        gGL.hasMetalUITextureCapture();
+    const bool world_capture = mMetalWorldSimpleCapture &&
+        mMetalWorldSimpleCapture->frame_active &&
+        mMetalWorldSimpleCapture->world_post_deferred_active &&
+        !mMetalWorldSimpleCapture->world_post_deferred_phase;
+    if (!hud_capture && !world_capture)
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture* capture = world_capture
+        ? mMetalWorldSimpleCapture.get() : nullptr;
+    const auto fail = [capture, hud_capture](const char* reason)
+    {
+        if (capture)
+        {
+            capture->markIncomplete(__LINE__);
+            capture->light_debug_batches.clear();
+        }
+        if (hud_capture)
+        {
+            gGL.invalidateMetalUITextureCapture(reason);
+        }
+    };
+    LLVertexBuffer* buffer = face.getVertexBuffer();
+    if (!buffer || face.getGeomCount() == 0 ||
+        face.getIndicesCount() == 0)
+    {
+        return;
+    }
+
+    const bool color_valid =
+        color.mV[0] == 0.f && color.mV[1] == 1.f &&
+        color.mV[2] == 1.f && color.mV[3] == 0.5f;
+    if ((capture && (!capture->complete ||
+         capture->render_debug_order ==
+             std::numeric_limits<U64>::max())) ||
+        face.getIndicesCount() % 3 != 0 ||
+        face.getIndicesStart() < 0 ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer() ||
+        (buffer->getIndexStride() != 2 &&
+         buffer->getIndexStride() != 4) ||
+        !color_valid || !metalLightDebugStateIsExact(true, false))
+    {
+        fail("Lights face geometry or render state is incomplete");
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    const std::size_t index_offset =
+        static_cast<std::size_t>(face.getIndicesStart()) *
+        buffer->getIndexStride();
+    if (capture)
+    {
+        ALMetalWorldLightDebugBatch batch;
+        batch.kind = ALMetalWorldLightDebugKind::triangles;
+        batch.vertices = buffer->getMetalVertexBuffer();
+        batch.position_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_VERTEX);
+        batch.vertex_count = buffer->getNumVerts();
+        batch.indices = buffer->getMetalIndexBuffer();
+        batch.index_offset = index_offset;
+        batch.index_type = buffer->getIndexStride() == 4
+            ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+        batch.index_count = face.getIndicesCount();
+        batch.order = capture->render_debug_order++;
+        std::memcpy(batch.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.modelview_projection));
+        std::memcpy(batch.color, color.mV, sizeof(batch.color));
+        try
+        {
+            capture->light_debug_batches.push_back(batch);
+        }
+        catch (const std::bad_alloc&)
+        {
+            fail("Lights face batch allocation failed");
+            return;
+        }
+    }
+
+    if (hud_capture)
+    {
+        ALMetalHUDIndexedBatch batch;
+        batch.shader = ALMetalHUDShader::debug;
+        batch.vertices = buffer->getMetalVertexBuffer();
+        batch.position_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_VERTEX);
+        batch.vertex_count = buffer->getNumVerts();
+        batch.indices = buffer->getMetalIndexBuffer();
+        batch.index_offset = index_offset;
+        batch.index_type = buffer->getIndexStride() == 4
+            ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+        batch.index_count = face.getIndicesCount();
+        batch.double_sided = true;
+        std::memcpy(batch.matrices.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.matrices.modelview_projection));
+        std::memcpy(batch.highlight_color, color.mV,
+                    sizeof(batch.highlight_color));
+        if (!gGL.drawMetalHUDIndexedBatch(batch))
+        {
+            fail("Lights HUD face encoding failed");
+        }
+    }
+}
+
+void LLPipeline::captureMetalLightDebugBox(
+    const LLVector4a& center, const LLVector4a& half_extent,
+    const LLColor4& color, bool radius_bounds)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    if (!center.isFinite3() || !half_extent.isFinite3())
+    {
+        // drawBoxOutline() makes the same valid no-output decision.
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const bool color_valid = radius_bounds
+        ? color.mV[0] == 1.f && color.mV[1] == 1.f &&
+              color.mV[2] == 0.f && color.mV[3] == 1.f
+        : color.mV[0] == 1.f && color.mV[1] == 1.f &&
+              color.mV[2] == 1.f && color.mV[3] == 1.f;
+    if (!capture.complete ||
+        capture.render_debug_order ==
+            std::numeric_limits<U64>::max() ||
+        !color_valid ||
+        !metalLightDebugStateIsExact(radius_bounds, true))
+    {
+        capture.markIncomplete(__LINE__);
+        capture.light_debug_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldLightDebugBatch batch;
+    batch.kind = radius_bounds
+        ? ALMetalWorldLightDebugKind::radius_bounds
+        : ALMetalWorldLightDebugKind::spatial_bounds;
+    batch.order = capture.render_debug_order++;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.center, center.getF32ptr(), sizeof(float) * 3);
+    batch.center[3] = 1.f;
+    std::memcpy(batch.half_extent, half_extent.getF32ptr(),
+                sizeof(float) * 3);
+    batch.half_extent[3] = 0.f;
+    std::memcpy(batch.color, color.mV, sizeof(batch.color));
+    try
+    {
+        capture.light_debug_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.light_debug_batches.clear();
     }
 }
 
@@ -5823,6 +6030,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.batch_size_batches.data();
         scene.batch_size_batch_count =
             capture.batch_size_batches.size();
+        scene.light_debug_batches =
+            capture.light_debug_batches.data();
+        scene.light_debug_batch_count =
+            capture.light_debug_batches.size();
         scene.reflection_probe_links =
             capture.reflection_probe_links.data();
         scene.reflection_probe_link_vertex_count =
@@ -7472,6 +7683,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.texture_anim_batches.clear();
     capture.update_type_batches.clear();
     capture.batch_size_batches.clear();
+    capture.light_debug_batches.clear();
     capture.reflection_probe_links.clear();
     capture.reflection_probe_link_capture_active = false;
     capture.composition_debug_heights.clear();

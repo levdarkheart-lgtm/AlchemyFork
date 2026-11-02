@@ -528,6 +528,37 @@ struct ALMetalWorldBatchSizeBatch
     float color[4]{};
 };
 
+// Develop > Lights draws every light drawable's existing face triangles in
+// translucent cyan, then emits two generated box outlines. The white spatial
+// bounds disable the depth test while retaining depth writes; the yellow
+// light-radius bounds restore the ambient read/write LEQUAL convention. One
+// ordered record type keeps those three source emissions exact without
+// manufacturing retained vertex buffers for the two boxes.
+enum class ALMetalWorldLightDebugKind : std::uint32_t
+{
+    triangles = 0,
+    spatial_bounds = 1,
+    radius_bounds = 2,
+};
+
+struct ALMetalWorldLightDebugBatch
+{
+    ALMetalWorldLightDebugKind kind =
+        ALMetalWorldLightDebugKind::triangles;
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
+    std::uint64_t order = 0;
+    float modelview_projection[16]{};
+    float center[4] = {0.f, 0.f, 0.f, 1.f};
+    float half_extent[4]{};
+    float color[4]{};
+};
+
 // Develop > Composition is a fixed 261-by-261 point grid. X/Y and the
 // interior-blue/border-red classification are derived from vertex_id in MSL;
 // only the live composition height needs to cross the CPU/GPU boundary.
@@ -854,6 +885,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t update_type_batch_count = 0;
     const ALMetalWorldBatchSizeBatch* batch_size_batches = nullptr;
     std::size_t batch_size_batch_count = 0;
+    const ALMetalWorldLightDebugBatch* light_debug_batches = nullptr;
+    std::size_t light_debug_batch_count = 0;
     const ALMetalWorldReflectionProbeLinkVertex* reflection_probe_links =
         nullptr;
     std::size_t reflection_probe_link_vertex_count = 0;

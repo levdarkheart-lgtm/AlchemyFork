@@ -808,6 +808,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_rlv_sphere_fragment",
             "almetal_world_texture_anim_vertex",
             "almetal_world_batch_size_skinned_vertex",
+            "almetal_world_light_debug_outline_vertex",
             "almetal_world_texture_anim_fragment",
             "almetal_world_presentation_fragment",
             "almetal_world_display_post_fragment",
@@ -6108,6 +6109,289 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             32 * sizeof(float), &error));
         CHECK(batch_size_pixels == opaque_forward_pixels);
         CHECK(batch_size_depth == opaque_forward_depth);
+
+        // Develop > Lights is one ordered source transaction per light:
+        // translucent-cyan indexed faces, an always-pass depth-writing white
+        // spatial box, then a yellow radius box under ambient read/write
+        // LEQUAL depth. Generated box vertices must not hide an accidental
+        // triangle-only implementation.
+        std::array<ALMetalWorldLightDebugBatch, 3>
+            light_debug_batches{};
+        ALMetalWorldLightDebugBatch& light_faces =
+            light_debug_batches[0];
+        light_faces.kind = ALMetalWorldLightDebugKind::triangles;
+        light_faces.vertices = vertices.get();
+        light_faces.vertex_count = positions.size();
+        light_faces.indices = indices.get();
+        light_faces.index_count = index_values.size();
+        light_faces.color[0] = 0.f;
+        light_faces.color[1] = 1.f;
+        light_faces.color[2] = 1.f;
+        light_faces.color[3] = 0.5f;
+
+        ALMetalWorldLightDebugBatch& light_spatial_bounds =
+            light_debug_batches[1];
+        light_spatial_bounds.kind =
+            ALMetalWorldLightDebugKind::spatial_bounds;
+        light_spatial_bounds.center[0] = -0.25f;
+        light_spatial_bounds.center[1] = 0.f;
+        light_spatial_bounds.center[2] = 0.8f;
+        light_spatial_bounds.half_extent[0] = 0.06f;
+        light_spatial_bounds.half_extent[1] = 0.1f;
+        light_spatial_bounds.half_extent[2] = 0.05f;
+        light_spatial_bounds.color[0] = 1.f;
+        light_spatial_bounds.color[1] = 1.f;
+        light_spatial_bounds.color[2] = 1.f;
+        light_spatial_bounds.color[3] = 1.f;
+
+        ALMetalWorldLightDebugBatch& light_radius_bounds =
+            light_debug_batches[2];
+        light_radius_bounds.kind =
+            ALMetalWorldLightDebugKind::radius_bounds;
+        light_radius_bounds.center[0] = 0.25f;
+        light_radius_bounds.center[1] = 0.f;
+        light_radius_bounds.center[2] = 0.8f;
+        light_radius_bounds.half_extent[0] = 0.06f;
+        light_radius_bounds.half_extent[1] = 0.1f;
+        light_radius_bounds.half_extent[2] = 0.05f;
+        light_radius_bounds.color[0] = 1.f;
+        light_radius_bounds.color[1] = 1.f;
+        light_radius_bounds.color[2] = 0.f;
+        light_radius_bounds.color[3] = 1.f;
+
+        for (std::size_t batch = 0;
+             batch < light_debug_batches.size(); ++batch)
+        {
+            light_debug_batches[batch].order = batch;
+            for (std::size_t axis = 0; axis < 4; ++axis)
+            {
+                light_debug_batches[batch].modelview_projection[
+                    axis * 4 + axis] = 1.f;
+            }
+        }
+        opaque_forward_scene.light_debug_batches =
+            light_debug_batches.data();
+        opaque_forward_scene.light_debug_batch_count =
+            light_debug_batches.size();
+
+        opaque_forward_scene.light_debug_batches = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world light-debug batch storage is invalid");
+        opaque_forward_scene.light_debug_batches =
+            light_debug_batches.data();
+        light_faces.color[3] = 1.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world light-debug batch is invalid");
+        light_faces.color[3] = 0.5f;
+        light_spatial_bounds.center[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world light-debug batch is invalid");
+        light_spatial_bounds.center[0] = -0.25f;
+        error.clear();
+
+        auto native_light_debug = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(native_light_debug);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            light_debug_pixels{};
+        std::array<float, 32 * 32> light_debug_depth{};
+        REQUIRE(native_light_debug->colorTexture(0)->readback(
+            *device, 0, 0, {}, light_debug_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(native_light_debug->depthStencilTexture()->readback(
+            *device, 0, 0, {}, light_debug_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        const float light_face_source[3] = {0.f, 1.f, 1.f};
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float expected = light_face_source[channel] * 0.5f +
+                texture_anim_destination[channel] * 0.5f;
+            CHECK(std::abs(agent_half_to_float(
+                light_debug_pixels[center + channel]) - expected) <
+                0.001f);
+        }
+        CHECK(light_debug_pixels[center + 3] ==
+              opaque_forward_pixels[center + 3]);
+        CHECK(std::abs(light_debug_depth[16 * 32 + 16] - 0.625f) <
+              0.0001f);
+
+        std::size_t white_light_pixels = 0;
+        std::size_t yellow_light_pixels = 0;
+        std::size_t white_depth_writes = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool white =
+                light_debug_pixels[offset + 0] == 0x3c00 &&
+                light_debug_pixels[offset + 1] == 0x3c00 &&
+                light_debug_pixels[offset + 2] == 0x3c00;
+            const bool yellow =
+                light_debug_pixels[offset + 0] == 0x3c00 &&
+                light_debug_pixels[offset + 1] == 0x3c00 &&
+                light_debug_pixels[offset + 2] == 0u;
+            white_light_pixels += white;
+            yellow_light_pixels += yellow;
+            white_depth_writes += white &&
+                light_debug_depth[pixel] > 0.8f;
+            if (white || yellow)
+            {
+                CHECK(light_debug_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+            }
+        }
+        CHECK(white_light_pixels > 0);
+        CHECK(white_depth_writes > 0);
+        CHECK(yellow_light_pixels == 0);
+
+        // Move the radius outline in front of retained geometry. Its yellow
+        // pixels and depth writes distinguish ordinary LEQUAL from the
+        // preceding always-pass white outline.
+        light_radius_bounds.center[2] = -0.2f;
+        auto visible_light_radius = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(visible_light_radius);
+        light_debug_pixels.fill(0xffffu);
+        light_debug_depth.fill(-1.f);
+        REQUIRE(visible_light_radius->colorTexture(0)->readback(
+            *device, 0, 0, {}, light_debug_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(visible_light_radius->depthStencilTexture()->readback(
+            *device, 0, 0, {}, light_debug_depth.data(),
+            32 * sizeof(float), &error));
+        yellow_light_pixels = 0;
+        std::size_t yellow_depth_writes = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool yellow =
+                light_debug_pixels[offset + 0] == 0x3c00 &&
+                light_debug_pixels[offset + 1] == 0x3c00 &&
+                light_debug_pixels[offset + 2] == 0u;
+            yellow_light_pixels += yellow;
+            yellow_depth_writes += yellow &&
+                light_debug_depth[pixel] < 0.5f;
+        }
+        CHECK(yellow_light_pixels > 0);
+        CHECK(yellow_depth_writes > 0);
+
+        light_faces.indices = reversed_indices.get();
+        auto reverse_winding_light = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_winding_light);
+        light_debug_pixels.fill(0xffffu);
+        REQUIRE(reverse_winding_light->colorTexture(0)->readback(
+            *device, 0, 0, {}, light_debug_pixels.data(), 32 * 8,
+            &error));
+        CHECK(light_debug_pixels[center + 1] !=
+              opaque_forward_pixels[center + 1]);
+        light_faces.indices = indices.get();
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        light_radius_bounds.center[2] = 0.75f;
+        auto reverse_light_debug = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_light_debug);
+        light_debug_pixels.fill(0xffffu);
+        light_debug_depth.fill(-1.f);
+        REQUIRE(reverse_light_debug->colorTexture(0)->readback(
+            *device, 0, 0, {}, light_debug_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(reverse_light_debug->depthStencilTexture()->readback(
+            *device, 0, 0, {}, light_debug_depth.data(),
+            32 * sizeof(float), &error));
+        yellow_light_pixels = 0;
+        yellow_depth_writes = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool yellow =
+                light_debug_pixels[offset + 0] == 0x3c00 &&
+                light_debug_pixels[offset + 1] == 0x3c00 &&
+                light_debug_pixels[offset + 2] == 0u;
+            yellow_light_pixels += yellow;
+            yellow_depth_writes += yellow &&
+                light_debug_depth[pixel] > 0.6f;
+        }
+        CHECK(yellow_light_pixels > 0);
+        CHECK(yellow_depth_writes > 0);
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+
+        // Light faces participate in the same traversal order as Update
+        // Type. Exercise both directions and reject one colliding order.
+        light_radius_bounds.center[2] = -0.2f;
+        std::memcpy(update_type_batch.color,
+                    update_type_colors[4].data(),
+                    sizeof(update_type_batch.color));
+        opaque_forward_scene.update_type_batches = &update_type_batch;
+        opaque_forward_scene.update_type_batch_count = 1;
+        light_debug_batches[0].order = 0;
+        light_debug_batches[1].order = 1;
+        light_debug_batches[2].order = 2;
+        update_type_batch.order = 3;
+        auto update_after_light = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(update_after_light);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            update_after_light_pixels{};
+        REQUIRE(update_after_light->colorTexture(0)->readback(
+            *device, 0, 0, {}, update_after_light_pixels.data(),
+            32 * 8, &error));
+
+        update_type_batch.order = 0;
+        light_debug_batches[0].order = 1;
+        light_debug_batches[1].order = 2;
+        light_debug_batches[2].order = 3;
+        auto light_after_update = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(light_after_update);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            light_after_update_pixels{};
+        REQUIRE(light_after_update->colorTexture(0)->readback(
+            *device, 0, 0, {}, light_after_update_pixels.data(),
+            32 * 8, &error));
+        CHECK(update_after_light_pixels[center + 1] !=
+              light_after_update_pixels[center + 1]);
+
+        update_type_batch.order = 2;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world render-debug ordering is invalid");
+        error.clear();
+        opaque_forward_scene.update_type_batches = nullptr;
+        opaque_forward_scene.update_type_batch_count = 0;
+        opaque_forward_scene.light_debug_batches = nullptr;
+        opaque_forward_scene.light_debug_batch_count = 0;
+        auto no_light_debug = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_light_debug);
+        light_debug_pixels.fill(0xffffu);
+        light_debug_depth.fill(-1.f);
+        REQUIRE(no_light_debug->colorTexture(0)->readback(
+            *device, 0, 0, {}, light_debug_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(no_light_debug->depthStencilTexture()->readback(
+            *device, 0, 0, {}, light_debug_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(light_debug_pixels == opaque_forward_pixels);
+        CHECK(light_debug_depth == opaque_forward_depth);
 
         // Develop > Reflection Probes draws one-pixel neighbor links for
         // relevant probes: orange unless both endpoints own viewer objects,

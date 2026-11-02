@@ -2879,13 +2879,18 @@ void renderLights(LLDrawable* drawablep)
     if (drawablep->getNumFaces())
     {
         LLGLEnable blend(GL_BLEND);
-        gGL.diffuseColor4f(0,1,1,0.5f);
+        const LLColor4 face_color(0.f, 1.f, 1.f, 0.5f);
+        gGL.diffuseColor4fv(face_color.mV);
 
         for (S32 i = 0; i < drawablep->getNumFaces(); i++)
         {
             LLFace * face = drawablep->getFace(i);
             if (face)
             {
+#if LL_DARWIN
+                gPipeline.captureMetalLightDebugFace(
+                    *face, face_color);
+#endif
                 pushVerts(face);
             }
         }
@@ -2901,13 +2906,24 @@ void renderLights(LLDrawable* drawablep)
 
         {
             LLGLDepthTest depth(GL_FALSE, GL_TRUE);
-            gGL.diffuseColor4f(1,1,1,1);
+            const LLColor4 bounds_color(1.f, 1.f, 1.f, 1.f);
+            gGL.diffuseColor4fv(bounds_color.mV);
+#if LL_DARWIN
+            gPipeline.captureMetalLightDebugBox(
+                pos, size, bounds_color, false);
+#endif
             drawBoxOutline(pos, size);
         }
 
-        gGL.diffuseColor4f(1,1,0,1);
+        const LLColor4 radius_color(1.f, 1.f, 0.f, 1.f);
+        gGL.diffuseColor4fv(radius_color.mV);
         F32 rad = drawablep->getVOVolume()->getLightRadius();
-        drawBoxOutline(pos, LLVector4a(rad));
+        const LLVector4a radius(rad);
+#if LL_DARWIN
+        gPipeline.captureMetalLightDebugBox(
+            pos, radius, radius_color, true);
+#endif
+        drawBoxOutline(pos, radius);
     }
 }
 

@@ -2006,6 +2006,44 @@ fragment float4 almetal_world_texture_anim_fragment(
     return max(constants.color, float4(0.0));
 }
 
+struct ALMetalWorldLightDebugOutlineConstants
+{
+    float4x4 modelview_projection;
+    float4 color;
+    uint4 config;
+    float4 center;
+    float4 half_extent;
+};
+
+vertex ALMetalWorldTextureAnimVaryings
+almetal_world_light_debug_outline_vertex(
+    constant ALMetalWorldLightDebugOutlineConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    // Exact drawBoxOutline edge order: top, bottom, right, then left.
+    constexpr uchar indices[24] = {
+        0, 1, 1, 2, 2, 3, 3, 0,
+        4, 5, 5, 6, 6, 7, 7, 4,
+        0, 6, 3, 5, 1, 7, 2, 4,
+    };
+    constexpr float3 signs[8] = {
+        { 1.0,  1.0,  1.0}, {-1.0,  1.0,  1.0},
+        {-1.0, -1.0,  1.0}, { 1.0, -1.0,  1.0},
+        {-1.0, -1.0, -1.0}, { 1.0, -1.0, -1.0},
+        { 1.0,  1.0, -1.0}, {-1.0,  1.0, -1.0},
+    };
+    const float3 position = constants.center.xyz +
+        constants.half_extent.xyz * signs[indices[vertex_id]];
+    float4 clip_position = constants.modelview_projection *
+                           float4(position, 1.0);
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldTextureAnimVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    return output;
+}
+
 struct ALMetalWorldDebugBlip
 {
     float4 position;

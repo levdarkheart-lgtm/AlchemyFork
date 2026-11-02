@@ -134,6 +134,16 @@ namespace
     static_assert(sizeof(ALMetalWorldDebugBlip) == 32);
     static_assert(sizeof(WorldDebugBlipConstants) == 80);
     static_assert(sizeof(WorldTextureAnimConstants) == 96);
+
+    struct alignas(16) WorldLightDebugOutlineConstants
+    {
+        float modelview_projection[16];
+        float color[4]{};
+        std::uint32_t config[4]{};
+        float center[4]{};
+        float half_extent[4]{};
+    };
+    static_assert(sizeof(WorldLightDebugOutlineConstants) == 128);
     static_assert(sizeof(ALMetalWorldWindVectorVertex) == 32);
 
     struct alignas(16) WorldFarPlaneOverlayConstants
@@ -1318,6 +1328,8 @@ struct ALMetalWorldGBufferRenderer::Impl
         texture_anim_pipelines;
     std::array<OpaqueForwardRiggedPipelines, 2>
         batch_size_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        light_debug_outline_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         composition_debug_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -2555,6 +2567,21 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             {
                 return nullptr;
             }
+        }
+
+        ALMetalRenderPipelineDescriptor light_debug_outline_descriptor =
+            texture_anim_descriptor;
+        light_debug_outline_descriptor.vertex_function =
+            "almetal_world_light_debug_outline_vertex";
+        light_debug_outline_descriptor.label = hdr
+            ? "Alchemy HDR world light-debug outline pipeline"
+            : "Alchemy world light-debug outline pipeline";
+        impl->light_debug_outline_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, light_debug_outline_descriptor, error);
+        if (!impl->light_debug_outline_pipelines[hdr])
+        {
+            return nullptr;
         }
 
         ALMetalRenderPipelineDescriptor composition_debug_descriptor =
@@ -10831,6 +10858,79 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         previous_batch_size_order = batch.order;
     }
+    if ((scene.light_debug_batch_count != 0 &&
+         !scene.light_debug_batches) ||
+        scene.light_debug_batch_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldLightDebugBatch))
+    {
+        setError(error,
+                 "Metal world light-debug batch storage is invalid");
+        return nullptr;
+    }
+    std::uint64_t previous_light_debug_order = 0;
+    for (std::size_t index = 0;
+         index < scene.light_debug_batch_count; ++index)
+    {
+        const ALMetalWorldLightDebugBatch& batch =
+            scene.light_debug_batches[index];
+        const bool index_type_valid =
+            batch.index_type == ALMetalIndexType::uint16 ||
+            batch.index_type == ALMetalIndexType::uint32;
+        const std::size_t index_stride =
+            batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
+        const bool triangle_color =
+            batch.color[0] == 0.f && batch.color[1] == 1.f &&
+            batch.color[2] == 1.f && batch.color[3] == 0.5f;
+        const bool spatial_color =
+            batch.color[0] == 1.f && batch.color[1] == 1.f &&
+            batch.color[2] == 1.f && batch.color[3] == 1.f;
+        const bool radius_color =
+            batch.color[0] == 1.f && batch.color[1] == 1.f &&
+            batch.color[2] == 0.f && batch.color[3] == 1.f;
+        const bool triangle_geometry =
+            batch.vertices && batch.indices && index_type_valid &&
+            batch.vertex_count != 0 && batch.index_count != 0 &&
+            batch.index_count % 3 == 0 &&
+            batch.position_offset % debug_float4_stride == 0 &&
+            batch.index_offset % index_stride == 0 &&
+            rangeFits(batch.position_offset, batch.vertex_count,
+                      debug_float4_stride, batch.vertices->length()) &&
+            rangeFits(batch.index_offset, batch.index_count,
+                      index_stride, batch.indices->length());
+        const bool outline_geometry =
+            !batch.vertices && !batch.indices &&
+            batch.position_offset == 0 && batch.vertex_count == 0 &&
+            batch.index_offset == 0 && batch.index_count == 0 &&
+            finiteValues(batch.center, 4) &&
+            finiteValues(batch.half_extent, 4) &&
+            batch.center[3] == 1.f && batch.half_extent[3] == 0.f;
+        bool kind_valid = false;
+        switch (batch.kind)
+        {
+            case ALMetalWorldLightDebugKind::triangles:
+                kind_valid = triangle_geometry && triangle_color;
+                break;
+            case ALMetalWorldLightDebugKind::spatial_bounds:
+                kind_valid = outline_geometry && spatial_color;
+                break;
+            case ALMetalWorldLightDebugKind::radius_bounds:
+                kind_valid = outline_geometry && radius_color;
+                break;
+        }
+        if (!finiteValues(batch.modelview_projection, 16) ||
+            !finiteValues(batch.color, 4) || !kind_valid ||
+            (index != 0 &&
+             batch.order <= previous_light_debug_order) ||
+            (scene.agent_target_line_vertex_count != 0 &&
+             batch.order == scene.agent_target_order))
+        {
+            setError(error,
+                     "Metal world light-debug batch is invalid");
+            return nullptr;
+        }
+        previous_light_debug_order = batch.order;
+    }
     const auto order_collides = [](const auto* left,
                                    std::size_t left_count,
                                    const auto* right,
@@ -10863,7 +10963,19 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             scene.batch_size_batches, scene.batch_size_batch_count) ||
         order_collides(
             scene.update_type_batches, scene.update_type_batch_count,
-            scene.batch_size_batches, scene.batch_size_batch_count))
+            scene.batch_size_batches, scene.batch_size_batch_count) ||
+        order_collides(
+            scene.debug_point_batches, scene.debug_point_batch_count,
+            scene.light_debug_batches, scene.light_debug_batch_count) ||
+        order_collides(
+            scene.texture_anim_batches, scene.texture_anim_batch_count,
+            scene.light_debug_batches, scene.light_debug_batch_count) ||
+        order_collides(
+            scene.update_type_batches, scene.update_type_batch_count,
+            scene.light_debug_batches, scene.light_debug_batch_count) ||
+        order_collides(
+            scene.batch_size_batches, scene.batch_size_batch_count,
+            scene.light_debug_batches, scene.light_debug_batch_count))
     {
         setError(error, "Metal world render-debug ordering is invalid");
         return nullptr;
@@ -14445,6 +14557,74 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             batch.index_type, *batch.indices,
             batch.index_offset, 1, error);
     };
+    const auto encode_light_debug_batch =
+        [&](const ALMetalWorldLightDebugBatch& batch)
+    {
+        if (batch.kind == ALMetalWorldLightDebugKind::triangles)
+        {
+            WorldTextureAnimConstants constants{};
+            std::memcpy(constants.modelview_projection,
+                        batch.modelview_projection,
+                        sizeof(constants.modelview_projection));
+            std::memcpy(constants.color, batch.color,
+                        sizeof(constants.color));
+            constants.config[0] = scene.reverse_z ? 1u : 0u;
+            return
+                encoder->setDepthStencilState(
+                    scene.reverse_z ? mImpl->reverse_depth.get()
+                                    : mImpl->forward_depth.get(),
+                    error) &&
+                encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+                encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setTriangleFillMode(
+                    ALMetalTriangleFillMode::fill, error) &&
+                encoder->setPipeline(
+                    *mImpl->texture_anim_pipelines[
+                        scene.hdr ? 1 : 0], error) &&
+                encoder->setVertexBuffer(
+                    0, *batch.vertices, batch.position_offset, error) &&
+                encoder->setVertexBytes(
+                    1, &constants, sizeof(constants), error) &&
+                encoder->setFragmentBytes(
+                    0, &constants, sizeof(constants), error) &&
+                encoder->drawIndexed(
+                    ALMetalPrimitiveType::triangle,
+                    batch.index_count, batch.index_type,
+                    *batch.indices, batch.index_offset, 1, error);
+        }
+
+        WorldLightDebugOutlineConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(constants.modelview_projection));
+        std::memcpy(constants.color, batch.color,
+                    sizeof(constants.color));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        std::memcpy(constants.center, batch.center,
+                    sizeof(constants.center));
+        std::memcpy(constants.half_extent, batch.half_extent,
+                    sizeof(constants.half_extent));
+        const ALMetalDepthStencilState* depth =
+            batch.kind == ALMetalWorldLightDebugKind::spatial_bounds
+                ? mImpl->debug_blip_depth.get()
+                : (scene.reverse_z ? mImpl->reverse_depth.get()
+                                   : mImpl->forward_depth.get());
+        return
+            encoder->setDepthStencilState(depth, error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *mImpl->light_debug_outline_pipelines[
+                    scene.hdr ? 1 : 0], error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::line, 0, 24, 1, error);
+    };
 
     bool agent_target_encoded =
         scene.agent_target_line_vertex_count == 0;
@@ -14452,11 +14632,13 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     std::size_t texture_anim_batch_index = 0;
     std::size_t update_type_batch_index = 0;
     std::size_t batch_size_batch_index = 0;
+    std::size_t light_debug_batch_index = 0;
     while (encoded &&
            (debug_point_batch_index < scene.debug_point_batch_count ||
             texture_anim_batch_index < scene.texture_anim_batch_count ||
             update_type_batch_index < scene.update_type_batch_count ||
             batch_size_batch_index < scene.batch_size_batch_count ||
+            light_debug_batch_index < scene.light_debug_batch_count ||
             !agent_target_encoded))
     {
         enum class RenderDebugOwner
@@ -14466,6 +14648,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             texture_anim,
             update_type,
             batch_size,
+            light_debug,
         };
         RenderDebugOwner owner = RenderDebugOwner::agent_target;
         bool owner_selected = !agent_target_encoded;
@@ -14514,6 +14697,17 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 owner_order = order;
             }
         }
+        if (light_debug_batch_index < scene.light_debug_batch_count)
+        {
+            const std::uint64_t order = scene.light_debug_batches[
+                light_debug_batch_index].order;
+            if (!owner_selected || order < owner_order)
+            {
+                owner = RenderDebugOwner::light_debug;
+                owner_selected = true;
+                owner_order = order;
+            }
+        }
         switch (owner)
         {
             case RenderDebugOwner::agent_target:
@@ -14540,6 +14734,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     scene.batch_size_batches[batch_size_batch_index],
                     batch_size_batch_index);
                 ++batch_size_batch_index;
+                break;
+            case RenderDebugOwner::light_debug:
+                encoded = encode_light_debug_batch(
+                    scene.light_debug_batches[
+                        light_debug_batch_index++]);
                 break;
         }
     }
