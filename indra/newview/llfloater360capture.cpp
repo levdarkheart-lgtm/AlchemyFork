@@ -539,98 +539,63 @@ void LLFloater360Capture::capture360Images()
     int num_render_passes = gSavedSettings.getU32("360CaptureNumRenderPasses");
 
     // A panorama is one renderer transaction even though it has six CPU
-    // images. If a later native face fails after earlier native faces
-    // succeeded, discard the aggregate and rerender every face through GL.
-    // Never feed the stitcher a mixture of native and fallback faces.
-    bool allow_metal_faces = true;
+    // images. Every face must come from the exact native producer; one failed
+    // face discards the aggregate and no partial set reaches the stitcher.
+    bool panorama_complete = true;
     U32 native_faces = 0;
-    for (;;)
+    camera_changed_times = 0;
+    for (int i = 0; i < 6; i++)
     {
-        native_faces = 0;
-        camera_changed_times = 0;
-        bool restart_entire_panorama_with_gl = false;
+        LLAppViewer::instance()->pauseMainloopTimeout();
+        LLViewerStats::instance().getRecording().stop();
 
-        // for each of the 6 directions we shoot...
-        for (int i = 0; i < 6; i++)
+        // These buffers hold the six raw cube faces. Recreate a previously
+        // used slot so stale bytes can never survive a failed capture.
+        if (mRawImages[i] == nullptr)
         {
-            LLAppViewer::instance()->pauseMainloopTimeout();
-            LLViewerStats::instance().getRecording().stop();
-
-            // these buffers are where the raw, captured pixels are stored and
-            // the first time we use them, we have to make a new one
-            if (mRawImages[i] == nullptr)
-            {
-                mRawImages[i] = new LLImageRaw(mSourceImageSize,
-                                                mSourceImageSize, 3);
-            }
-            else
-                // subsequent capture with floater open so we resize the buffer from
-                // the previous run
-            {
-                // LLImageRaw deletes the old one via operator= but just to be
-                // sure, we delete its' large data member first...
-                mRawImages[i]->deleteData();
-                mRawImages[i] = new LLImageRaw(mSourceImageSize,
-                                                mSourceImageSize, 3);
-            }
-
-            // set up camera to look in each direction
-            camera->lookDir(look_dirs[i], look_upvecs[i]);
-
-            // record if camera changed to try to understand the "all shots are the same issue"
-            if (camera->isChanged())
-            {
-                ++camera_changed_times;
-            }
-
-            // call the (very) simplified snapshot code that simply deals
-            // with a single image, no sub-images etc. but is very fast
-            bool used_metal = false;
-            gViewerWindow->simpleSnapshot(
-                mRawImages[i], mSourceImageSize, mSourceImageSize,
-                num_render_passes, allow_metal_faces, &used_metal);
-
-            if (used_metal)
-            {
-                ++native_faces;
-            }
-            else if (allow_metal_faces)
-            {
-                if (native_faces > 0)
-                {
-                    LL_INFOS("360Capture")
-                        << "Native 360 capture retained the whole-panorama "
-                           "GL fallback after "
-                        << native_faces << " complete face(s)" << LL_ENDL;
-                    restart_entire_panorama_with_gl = true;
-                }
-                // A failure on the first face already produced that face
-                // through GL, so subsequent faces can continue in the same
-                // all-GL aggregate without rerendering it.
-                allow_metal_faces = false;
-            }
-
-            LLViewerStats::instance().getRecording().resume();
-            LLAppViewer::instance()->resumeMainloopTimeout();
-
-            // update main loop timeout state
-            LLAppViewer::instance()->pingMainloopTimeout(
-                "LLFloater360Capture::capture360Images");
-
-            if (restart_entire_panorama_with_gl)
-            {
-                break;
-            }
+            mRawImages[i] = new LLImageRaw(
+                mSourceImageSize, mSourceImageSize, 3);
+        }
+        else
+        {
+            mRawImages[i]->deleteData();
+            mRawImages[i] = new LLImageRaw(
+                mSourceImageSize, mSourceImageSize, 3);
         }
 
-        if (restart_entire_panorama_with_gl)
+        camera->lookDir(look_dirs[i], look_upvecs[i]);
+        if (camera->isChanged())
         {
-            continue;
+            ++camera_changed_times;
         }
-        break;
+
+        const bool face_complete = gViewerWindow->simpleSnapshot(
+            mRawImages[i], mSourceImageSize, mSourceImageSize,
+            num_render_passes);
+        if (face_complete)
+        {
+            ++native_faces;
+        }
+        else
+        {
+            panorama_complete = false;
+            LL_WARNS("360Capture")
+                << "Native 360 panorama aborted after "
+                << native_faces << " complete face(s)" << LL_ENDL;
+        }
+
+        LLViewerStats::instance().getRecording().resume();
+        LLAppViewer::instance()->resumeMainloopTimeout();
+        LLAppViewer::instance()->pingMainloopTimeout(
+            "LLFloater360Capture::capture360Images");
+
+        if (!panorama_complete)
+        {
+            break;
+        }
     }
 
-    if (native_faces == 6)
+    if (panorama_complete)
     {
         LL_INFOS("360Capture")
             << "Native 360 panorama snapshot readback completed across 6 "
@@ -638,40 +603,38 @@ void LLFloater360Capture::capture360Images()
             << mSourceImageSize << 'x' << mSourceImageSize << LL_ENDL;
     }
 
-    // Encode only after the complete renderer-consistent face set exists.
-    // This also prevents a discarded native attempt from leaking into the
-    // JavaScript array consumed by the equirectangular stitcher.
-    auto encode_time_total = 0.0;
-    for (int i = 0; i < 6; ++i)
+    if (panorama_complete)
     {
-        LLAppViewer::instance()->pauseMainloopTimeout();
-        LLViewerStats::instance().getRecording().stop();
+        // Encode only after the complete renderer-consistent face set exists.
+        // This prevents a failed native attempt from leaking into the
+        // JavaScript array consumed by the equirectangular stitcher.
+        auto encode_time_total = 0.0;
+        for (int i = 0; i < 6; ++i)
+        {
+            LLAppViewer::instance()->pauseMainloopTimeout();
+            LLViewerStats::instance().getRecording().stop();
 
-        auto t_start = std::chrono::steady_clock::now();
-        encodeAndSave(mRawImages[i], cubemap_js_full_path, prefixes[i]);
-        auto t_end = std::chrono::steady_clock::now();
-        auto duration = std::chrono::duration_cast<
-            std::chrono::duration<double>>(t_end - t_start);
-        encode_time_total += duration.count();
+            auto t_start = std::chrono::steady_clock::now();
+            encodeAndSave(
+                mRawImages[i], cubemap_js_full_path, prefixes[i]);
+            auto t_end = std::chrono::steady_clock::now();
+            auto duration = std::chrono::duration_cast<
+                std::chrono::duration<double>>(t_end - t_start);
+            encode_time_total += duration.count();
 
-        LLViewerStats::instance().getRecording().resume();
-        LLAppViewer::instance()->resumeMainloopTimeout();
-        LLAppViewer::instance()->pingMainloopTimeout(
-            "LLFloater360Capture::capture360Images");
+            LLViewerStats::instance().getRecording().resume();
+            LLAppViewer::instance()->resumeMainloopTimeout();
+            LLAppViewer::instance()->pingMainloopTimeout(
+                "LLFloater360Capture::capture360Images");
+        }
+
+        LL_INFOS("360Capture")
+            << "Time to encode and save 6 images was "
+            << encode_time_total << " seconds" << LL_ENDL;
+
+        // Complete the JavaScript only when all six native faces exist.
+        writeDataURLFooter(cubemap_js_full_path);
     }
-
-    // display time to encode all 6 images.  It tends to be a fairly linear
-    // time for each so we don't need to worry about displaying the time
-    // for each - this gives us plenty to use for optimizing
-    LL_INFOS("360Capture") << "Time to encode and save 6 images was " <<
-                           encode_time_total << " seconds" << LL_ENDL;
-
-    // Write the JavaScript file footer (the bottom of the file after the
-    // declarations of the actual data URLs array). The footer comprises of
-    // a JavaScript array declaration that references the 6 data URLs generated
-    // previously and is what is referred to in the display HTML file
-    // (newview/skins/default/html/common/equirectangular/display_eqr.html)
-    writeDataURLFooter(cubemap_js_full_path);
 
     // unfreeze the world now we have our shots
     freezeWorld(false);
@@ -699,10 +662,13 @@ void LLFloater360Capture::capture360Images()
         LL_WARNS("360Capture") << "360 image capture expected 5 or more images, only captured " << camera_changed_times << " images." << LL_ENDL;
     }
 
-    // now we have the 6 shots saved in a well specified location,
-    // we can load the web content that uses them
-    std::string url = "file:///" + getHTMLBaseFolder() + mEqrGenHTML;
-    mWebBrowser->navigateTo(url);
+    if (panorama_complete)
+    {
+        // Only a complete six-face set may reach the WebGL stitcher.
+        std::string url =
+            "file:///" + getHTMLBaseFolder() + mEqrGenHTML;
+        mWebBrowser->navigateTo(url);
+    }
 
     // page is loaded and ready so we can turn on the buttons again
     mCaptureBtn->setEnabled(true);

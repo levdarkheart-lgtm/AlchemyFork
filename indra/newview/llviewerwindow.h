@@ -396,12 +396,11 @@ public:
                      LLSnapshotModel::ESnapshotLayerType type = LLSnapshotModel::SNAPSHOT_TYPE_COLOR, S32 max_size = MAX_SNAPSHOT_IMAGE_SIZE,
                      const ALSnapshotCutout* cutout = nullptr, bool* cutout_drawn = nullptr);
 
-    // Capture one square face for the 360 panorama owner. The caller may ask
-    // for the exact current-frame Metal target and is told whether it was
-    // used, so all six faces can remain one atomic renderer transaction.
+    // Capture one square face for the 360 panorama owner from the exact
+    // current-frame Metal target. False leaves the caller responsible for
+    // discarding the complete six-face transaction.
     bool simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_height,
-                        int num_render_passes, bool allow_metal,
-                        bool* used_metal);
+                        int num_render_passes);
 
 
 

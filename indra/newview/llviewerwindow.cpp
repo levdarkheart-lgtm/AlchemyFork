@@ -6283,15 +6283,9 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
 
 bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width,
                                     S32 image_height,
-                                    int num_render_passes,
-                                    bool allow_metal,
-                                    bool* used_metal)
+                                    int num_render_passes)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_APP;
-    if (used_metal)
-    {
-        *used_metal = false;
-    }
 
     bool metal_snapshot_requested = false;
     OnScopeExit cancel_metal_snapshot([&]()
@@ -6301,8 +6295,6 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width,
         {
             gPipeline.cancelMetalWorldSnapshotCapture();
         }
-#else
-        (void)allow_metal;
 #endif
     });
 
@@ -6374,15 +6366,15 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width,
         // request there so earlier passes do not perform redundant complete
         // world/UI Metal transactions.
 #if LL_DARWIN
-        if (allow_metal && i + 1 == render_passes)
+        if (i + 1 == render_passes)
         {
             std::string error;
             metal_snapshot_requested =
                 gPipeline.requestMetalWorldSnapshotCapture(&error);
             if (!metal_snapshot_requested)
             {
-                LL_INFOS("360Capture")
-                    << "Native 360 face retained the GL readback fallback: "
+                LL_WARNS("360Capture")
+                    << "Native 360 face capture could not begin: "
                     << error << LL_ENDL;
             }
         }
@@ -6415,28 +6407,13 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width,
         }
         else
         {
-            LL_INFOS("360Capture")
-                << "Native 360 face retained the GL readback fallback: "
+            LL_WARNS("360Capture")
+                << "Native 360 face capture did not complete: "
                 << error << LL_ENDL;
         }
     }
 #endif
-
-    if (!metal_snapshot_read)
-    {
-        gGL.readPixels(
-            0, 0,
-            image_width,
-            image_height,
-            GL_RGB, GL_UNSIGNED_BYTE,
-            raw->getData());
-    }
     stop_glerror();
-
-    if (used_metal)
-    {
-        *used_metal = metal_snapshot_read;
-    }
 
     gDisplaySwapBuffers = false;
     gDepthDirty = true;
@@ -6462,7 +6439,7 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width,
     scratch_space.release();
     render_size.reset();
 
-    return true;
+    return metal_snapshot_read;
 }
 
 void display_cube_face();
