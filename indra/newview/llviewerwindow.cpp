@@ -5943,10 +5943,9 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     // The exact native transaction owns ordinary and clean-plate
     // display-encoded color, scene depth, and isolated RGBA cutouts. A tiled
     // request refreshes that exact transaction for every subfield and only
-    // publishes the assembled Metal image when every tile succeeds. Keep 360
-    // capture on its established path until it has a native owner with
-    // evidence.
-    // An unavailable or incomplete native frame falls through to GL below.
+    // publishes the assembled Metal image when every tile succeeds. There is
+    // no framebuffer fallback: an unavailable or incomplete native frame
+    // fails the complete snapshot transaction closed.
     const bool native_snapshot_type =
         type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR ||
         type == LLSnapshotModel::SNAPSHOT_TYPE_DEPTH ||
@@ -5955,282 +5954,206 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
         ? type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR &&
             raw->getComponents() == 4
         : raw->getComponents() == 3;
-    if (native_snapshot_type && native_snapshot_shape &&
-        scale_factor > 0.f &&
-        (!cutout || scale_factor == 1.f))
+    if (!native_snapshot_type || !native_snapshot_shape ||
+        scale_factor <= 0.f || (cutout && scale_factor != 1.f))
     {
-        std::string error;
-        metal_snapshot_requested =
-            gPipeline.requestMetalWorldSnapshotCapture(&error);
-        if (!metal_snapshot_requested)
-        {
-            LL_INFOS("Snapshot")
-                << "Native snapshot retained the GL readback fallback before rendering: "
-                << error << LL_ENDL;
-        }
-    }
-    else
-    {
-        LL_INFOS("Snapshot")
-            << "Native snapshot retained the GL readback fallback before requesting: "
-            << "type=" << static_cast<S32>(type)
+        LL_WARNS("Snapshot")
+            << "Native snapshot rejected an unsupported request before "
+               "rendering: type=" << static_cast<S32>(type)
             << ", native_type=" << (native_snapshot_type ? "true" : "false")
             << ", components=" << raw->getComponents()
             << ", scale=" << scale_factor
             << ", cutout=" << (cutout ? "true" : "false")
             << LL_ENDL;
+        return false;
     }
+
+    std::string snapshot_request_error;
+    metal_snapshot_requested =
+        gPipeline.requestMetalWorldSnapshotCapture(&snapshot_request_error);
+    if (!metal_snapshot_requested)
+    {
+        LL_WARNS("Snapshot")
+            << "Native snapshot request failed closed before rendering: "
+            << snapshot_request_error
+            << LL_ENDL;
+        return false;
+    }
+#else
+    LL_WARNS("Snapshot")
+        << "Snapshot capture requires the native Metal producer" << LL_ENDL;
+    return false;
 #endif
 
     // Subimages are partial renderings of the final view. This happens when
     // the final view is bigger than the screen. A native tiled attempt is
-    // aggregate-atomic: if any current-frame tile is incomplete, discard all
-    // Metal tiles, cancel the request, and rerender the entire image through
-    // the established GL path. A saved image can therefore never silently
-    // mix tiles from two renderers.
-    for (;;)
+    // aggregate-atomic: if any current-frame tile is incomplete, the complete
+    // snapshot returns failure and the caller cannot publish its partial raw
+    // image.
+    U32 native_tiles_read = 0;
+    S32 output_buffer_offset_y = 0;
+
+    // In most common cases scale_factor is 1 and each loop runs once.
+    for (int subimage_y = 0; subimage_y < scale_factor; ++subimage_y)
     {
-        bool restart_entire_image_with_gl = false;
-        U32 native_tiles_read = 0;
-        S32 output_buffer_offset_y = 0;
+        S32 subimage_y_offset = llclamp(
+            buffer_y_offset - (subimage_y * window_height),
+            0, window_height);
+        // Handle fractional rows.
+        U32 read_height = llmax(
+            0, (window_height - subimage_y_offset) -
+                llmax(0, (window_height * (subimage_y + 1)) -
+                    (buffer_y_offset + raw->getHeight())));
 
-        // In most common cases scale_factor is 1 and each loop runs once.
-        for (int subimage_y = 0;
-             subimage_y < scale_factor && !restart_entire_image_with_gl;
-             ++subimage_y)
+        S32 output_buffer_offset_x = 0;
+        for (int subimage_x = 0; subimage_x < scale_factor; ++subimage_x)
         {
-            S32 subimage_y_offset = llclamp(
-                buffer_y_offset - (subimage_y * window_height),
-                0, window_height);
-            // Handle fractional rows.
-            U32 read_height = llmax(
-                0, (window_height - subimage_y_offset) -
-                    llmax(0, (window_height * (subimage_y + 1)) -
-                        (buffer_y_offset + raw->getHeight())));
+            gDisplaySwapBuffers = false;
+            gDepthDirty = true;
 
-            S32 output_buffer_offset_x = 0;
-            for (int subimage_x = 0;
-                 subimage_x < scale_factor &&
-                     !restart_entire_image_with_gl;
-                 ++subimage_x)
+            S32 subimage_x_offset = llclamp(
+                buffer_x_offset - (subimage_x * window_width),
+                0, window_width);
+            // Handle fractional columns.
+            U32 read_width = llmax(
+                0, (window_width - subimage_x_offset) -
+                    llmax(0, (window_width * (subimage_x + 1)) -
+                        (buffer_x_offset + raw->getWidth())));
+
+            // Skip rendering and sampling altogether if either dimension
+            // degenerates to zero (common in cropping cases).
+            if (read_width && read_height)
             {
-                gDisplaySwapBuffers = false;
-                gDepthDirty = true;
+                const U32 subfield = subimage_x +
+                    (subimage_y * llceil(scale_factor));
+                display(do_rebuild, scale_factor, subfield, true);
 
-                S32 subimage_x_offset = llclamp(
-                    buffer_x_offset - (subimage_x * window_width),
-                    0, window_width);
-                // Handle fractional columns.
-                U32 read_width = llmax(
-                    0, (window_width - subimage_x_offset) -
-                        llmax(0, (window_width * (subimage_x + 1)) -
-                            (buffer_x_offset + raw->getWidth())));
-
-                // Skip rendering and sampling altogether if either dimension
-                // degenerates to zero (common in cropping cases).
-                if (read_width && read_height)
+                if (cutout)
                 {
-                    const U32 subfield = subimage_x +
-                        (subimage_y * llceil(scale_factor));
-                    display(do_rebuild, scale_factor, subfield, true);
+                    // The colour is the subject premultiplied by its
+                    // coverage; the coverage itself goes into alpha here.
+                    gPipeline.copyCutoutCoverageToAlpha();
+                }
 
-                    if (cutout)
-                    {
-                        // The colour is the subject premultiplied by its
-                        // coverage; the coverage itself goes into alpha here.
-                        gPipeline.copyCutoutCoverageToAlpha();
-                    }
+                if (!LLPipeline::sRenderDeferred)
+                {
+                    // Required for showing the GUI in snapshots and
+                    // performing bloom composite overlay. Call even if
+                    // show_ui is false.
+                    render_ui(scale_factor, subfield);
+                    swap();
+                }
 
-                    if (!LLPipeline::sRenderDeferred)
-                    {
-                        // Required for showing the GUI in snapshots and
-                        // performing bloom composite overlay. Call even if
-                        // show_ui is false.
-                        render_ui(scale_factor, subfield);
-                        swap();
-                    }
+                const S64 tile_output_pixel =
+                    (S64)window_width * subimage_x +
+                    (S64)raw->getWidth() * window_height * subimage_y -
+                    output_buffer_offset_x -
+                    (S64)output_buffer_offset_y * raw->getWidth();
+                llassert(tile_output_pixel >= 0);
+                U8* const tile_output = raw->getData() +
+                    (std::size_t)tile_output_pixel * raw->getComponents();
+                const std::size_t output_row_bytes =
+                    (std::size_t)raw->getWidth() * raw->getComponents();
 
-                    const S64 tile_output_pixel =
-                        (S64)window_width * subimage_x +
-                        (S64)raw->getWidth() * window_height * subimage_y -
-                        output_buffer_offset_x -
-                        (S64)output_buffer_offset_y * raw->getWidth();
-                    llassert(tile_output_pixel >= 0);
-                    U8* const tile_output = raw->getData() +
-                        (std::size_t)tile_output_pixel *
-                            raw->getComponents();
-                    const std::size_t output_row_bytes =
-                        (std::size_t)raw->getWidth() *
-                        raw->getComponents();
-
-                    bool metal_snapshot_read = false;
+                bool metal_snapshot_read = false;
+                std::string error;
 #if LL_DARWIN
-                    if (metal_snapshot_requested)
+                if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR)
+                {
+                    metal_snapshot_read = cutout
+                        ? gPipeline.readMetalWorldSnapshotRGBA(
+                            subimage_x_offset, subimage_y_offset,
+                            read_width, read_height, tile_output,
+                            output_row_bytes, &error)
+                        : gPipeline.readMetalWorldSnapshot(
+                            subimage_x_offset, subimage_y_offset,
+                            read_width, read_height, tile_output,
+                            output_row_bytes, &error);
+                }
+                else
+                {
+                    std::vector<F32> depth;
+                    try
                     {
-                        std::string error;
-                        if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR)
-                        {
-                            metal_snapshot_read = cutout
-                                ? gPipeline.readMetalWorldSnapshotRGBA(
-                                    subimage_x_offset, subimage_y_offset,
-                                    read_width, read_height, tile_output,
-                                    output_row_bytes, &error)
-                                : gPipeline.readMetalWorldSnapshot(
-                                    subimage_x_offset, subimage_y_offset,
-                                    read_width, read_height, tile_output,
-                                    output_row_bytes, &error);
-                        }
-                        else
-                        {
-                            std::vector<F32> depth;
-                            try
-                            {
-                                depth.resize(
-                                    static_cast<std::size_t>(read_width) *
-                                    read_height);
-                            }
-                            catch (const std::bad_alloc&)
-                            {
-                                error = "could not allocate native snapshot depth staging";
-                            }
-                            if (!depth.empty())
-                            {
-                                metal_snapshot_read =
-                                    gPipeline.readMetalWorldSnapshotDepth(
-                                    subimage_x_offset, subimage_y_offset,
-                                    read_width, read_height, depth.data(),
-                                    static_cast<std::size_t>(read_width) *
-                                        sizeof(F32),
-                                    &error);
-                            }
-                            if (metal_snapshot_read)
-                            {
-                                for (U32 row = 0; row < read_height; ++row)
-                                {
-                                    if (row % 100 == 0)
-                                    {
-                                        LLAppViewer::instance()
-                                            ->pingMainloopTimeout(
-                                                "LLViewerWindow::rawSnapshot");
-                                    }
-                                    write_snapshot_depth(
-                                        depth.data() + row * read_width,
-                                        tile_output +
-                                            static_cast<std::size_t>(row) *
-                                                output_row_bytes,
-                                        read_width);
-                                }
-                            }
-                        }
-                        if (!metal_snapshot_read)
-                        {
-                            if (scale_factor > 1.f)
-                            {
-                                LL_INFOS("Snapshot")
-                                    << "Native tiled snapshot retained the "
-                                       "whole-image GL fallback after "
-                                    << native_tiles_read
-                                    << " complete tile(s): " << error
-                                    << LL_ENDL;
-                                gPipeline.cancelMetalWorldSnapshotCapture();
-                                metal_snapshot_requested = false;
-                                restart_entire_image_with_gl = true;
-                            }
-                            else
-                            {
-                                LL_INFOS("Snapshot")
-                                    << "Native snapshot retained the GL "
-                                       "readback fallback: "
-                                    << error << LL_ENDL;
-                            }
-                        }
-                        else
-                        {
-                            ++native_tiles_read;
-                            if (scale_factor <= 1.f)
-                            {
-                                LL_INFOS("Snapshot")
-                                    << "Native "
-                                    << (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR
-                                            ? (cutout ? "cutout color" : "color")
-                                            : "depth")
-                                    << " snapshot readback completed at "
-                                    << read_width << 'x' << read_height
-                                    << LL_ENDL;
-                            }
-                        }
+                        depth.resize(
+                            static_cast<std::size_t>(read_width) *
+                            read_height);
                     }
-#endif
-
-                    for (U32 out_y = 0;
-                         !restart_entire_image_with_gl &&
-                             !metal_snapshot_read && out_y < read_height;
-                         ++out_y)
+                    catch (const std::bad_alloc&)
                     {
-                        // Ping the watchdog every 100 lines to keep us alive.
-                        if (out_y % 100 == 0)
+                        error = "could not allocate native snapshot depth staging";
+                    }
+                    if (!depth.empty())
+                    {
+                        metal_snapshot_read =
+                            gPipeline.readMetalWorldSnapshotDepth(
+                                subimage_x_offset, subimage_y_offset,
+                                read_width, read_height, depth.data(),
+                                static_cast<std::size_t>(read_width) *
+                                    sizeof(F32),
+                                &error);
+                    }
+                    if (metal_snapshot_read)
+                    {
+                        for (U32 row = 0; row < read_height; ++row)
                         {
-                            LLAppViewer::instance()->pingMainloopTimeout(
-                                "LLViewerWindow::rawSnapshot");
-                        }
-                        // Disable glReadPixels while NVIDIA Nsight debugging.
-                        if (!LLRender::sNsightDebugSupport)
-                        {
-                            U8* const output = tile_output +
-                                static_cast<std::size_t>(out_y) *
-                                    output_row_bytes;
-                            if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR)
+                            if (row % 100 == 0)
                             {
-                                gGL.readPixels(
-                                    subimage_x_offset,
-                                    out_y + subimage_y_offset,
-                                    read_width, 1,
-                                    cutout ? GL_RGBA : GL_RGB,
-                                    GL_UNSIGNED_BYTE, output);
+                                LLAppViewer::instance()
+                                    ->pingMainloopTimeout(
+                                        "LLViewerWindow::rawSnapshot");
                             }
-                            else
-                            {
-                                LLPointer<LLImageRaw> depth_line_buffer =
-                                    new LLImageRaw(read_width, 1,
-                                                   sizeof(GLfloat));
-                                gGL.readPixels(
-                                    subimage_x_offset,
-                                    out_y + subimage_y_offset,
-                                    read_width, 1,
-                                    GL_DEPTH_COMPONENT, GL_FLOAT,
-                                    depth_line_buffer->getData());
-                                write_snapshot_depth(
-                                    reinterpret_cast<const F32*>(
-                                        depth_line_buffer->getData()),
-                                    output, read_width);
-                            }
+                            write_snapshot_depth(
+                                depth.data() + row * read_width,
+                                tile_output +
+                                    static_cast<std::size_t>(row) *
+                                        output_row_bytes,
+                                read_width);
                         }
                     }
                 }
-                output_buffer_offset_x += subimage_x_offset;
-                stop_glerror();
-            }
-            output_buffer_offset_y += subimage_y_offset;
-        }
-
-        if (restart_entire_image_with_gl)
-        {
-            continue;
-        }
-#if LL_DARWIN
-        if (native_tiles_read > 0 && scale_factor > 1.f)
-        {
-            LL_INFOS("Snapshot")
-                << "Native tiled "
-                << (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR
-                        ? "color" : "depth")
-                << " snapshot readback completed across "
-                << native_tiles_read << " tiles at "
-                << raw->getWidth() << 'x' << raw->getHeight()
-                << LL_ENDL;
-        }
 #endif
-        break;
+
+                if (!metal_snapshot_read)
+                {
+                    LL_WARNS("Snapshot")
+                        << "Native "
+                        << (scale_factor > 1.f ? "tiled " : "")
+                        << "snapshot failed closed after "
+                        << native_tiles_read << " complete tile(s): "
+                        << error << LL_ENDL;
+                    return false;
+                }
+
+                ++native_tiles_read;
+                if (scale_factor <= 1.f)
+                {
+                    LL_INFOS("Snapshot")
+                        << "Native "
+                        << (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR
+                                ? (cutout ? "cutout color" : "color")
+                                : "depth")
+                        << " snapshot readback completed at "
+                        << read_width << 'x' << read_height
+                        << LL_ENDL;
+                }
+            }
+            output_buffer_offset_x += subimage_x_offset;
+            stop_glerror();
+        }
+        output_buffer_offset_y += subimage_y_offset;
+    }
+
+    if (native_tiles_read > 0 && scale_factor > 1.f)
+    {
+        LL_INFOS("Snapshot")
+            << "Native tiled "
+            << (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR
+                    ? "color" : "depth")
+            << " snapshot readback completed across "
+            << native_tiles_read << " tiles at "
+            << raw->getWidth() << 'x' << raw->getHeight()
+            << LL_ENDL;
     }
 
     /*if (high_res)
