@@ -18,8 +18,8 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent and Batch Size have ordered static/rigged HUD replay. Moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence. Broader live parity remains incomplete. |
-| M-008 | Advanced views/effects and compute | doing | Wireframe, Wind Vectors, Agent Target, Points, Composition, reflection-probe links, Texture Anim, Update Type, Batch Size, Lights, Impostors, Shadow Frusta, Collision Skeleton, Joints, BBOXES, Raycast, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. Text-only/unused render-debug modes no longer veto; five visual modes remain fail-closed. OSS pathfinding is a nonfunctional stub. Continue reachable debug/shadows/post/output parity. |
-| M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. The explicit five-mode render-debug world-output set stays fail-closed pending audit/porting. |
+| M-008 | Advanced views/effects and compute | doing | The established native advanced-output set now includes Raycast and Occlusion. Four explicit visual modes remain fail-closed: OCTREE, PHYSICS_SHAPES, NORMALS and TEXEL_DENSITY. OSS pathfinding is a nonfunctional stub. |
+| M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. The four-mode render-debug set stays fail-closed pending audit/porting. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Exact-path semantic login/in-world/control/logout is verified and used for current acceptance. |
@@ -30,45 +30,38 @@ item; it never implies product completion.
 
 ## Active checkpoint — 2026-11-02
 
-Commit `e8f6613c4e` captures and replays Develop **Raycast** natively across the
-complete world spatial traversal. It retains every intersected volume-octree
-branch outline and expands immediate triangles to explicit edge pairs for the
-source one-pixel hidden and three-pixel visible passes.
+Commit `ae691b02da` captures and replays Develop **Occlusion** natively. Each
+non-null group vertex buffer is captured immediately before its x-ray GL draw;
+the later selected-group loop captures its filled magenta bounds. Records retain
+zero-copy external vertex/index mirrors, exact MVP and global source order.
 
-Records preserve exact MVP, center, extent, palette, line width, triangle data
-and global order. Branch outlines use writable depth; hidden outline/triangle
-passes use complementary read-only depth; visible triangles use ordinary
-read-only depth. The selected object retains its three oriented filled axis
-boxes and always-visible read-only bounds. Selected avatars reuse the proven
-Collision Skeleton owner. The later particle-hit crosshair is replayed at its
-separate post-deferred source point after reflection-probe diagnostics.
+The Metal x-ray path uses back-face culling, indexed triangle line fill, the
+source line-polygon offset, standard alpha blend into RGB only, and complementary
+read-only forward/reverse depth. Selected bounds use filled procedural boxes,
+back-face culling and ordinary read-only forward/reverse depth. Validation rejects
+invalid storage/index/range/count/offset/transform/extent/kind/order and cross-
+owner collisions.
 
-Validation rejects invalid storage, transform, vertex, extent, palette, kind,
-range, width and order. Complete RelWithDebInfo, Debug and Release physical
-Metal suites each pass 50,153 assertions in 52 cases, covering all owners,
-forward/reverse depth classes, alpha retention, width growth, invalid/no-owner
-controls and Raycast-vs-Points order. Warnings-as-errors production integration
-passes. The neutral gate passes 484/484 in 39.45 seconds.
+RelWithDebInfo, Debug and Release physical Metal suites each pass 50,687
+assertions in 52 cases under Metal API/load-action validation. Warnings-as-errors
+production integration passes, and the neutral non-manual/non-GL gate passes
+484/484 in 37.43 seconds. The prior unfiltered 574-test inventory was not rerun;
+its six GL-only failures and five skips remain recorded without a green claim.
+Harness validation covers all 31 required files and all 24 tooling tests pass.
 
-The unfiltered 574-test inventory has six reproducible GL-only failures: three
-primary tests (`alframefences_gl_test`, `llrendertarget_gl_test`,
-`aldof_gl_test`) and their three aggregate/benchmark entries; five tests skip.
-This full inventory is not claimed green and does not implicate the Raycast owner.
-
-Source-exact Release Development build `26.4.0d68079` (`26.4.0.68079`) at
-`e8f6613c4e` passes after a 161-step rebuild. Deep strict signing and 349/349
+Source-exact Release Development build `26.4.0d68081` (`26.4.0.68081`) at
+`ae691b02da` passes after a 161-step rebuild. Deep strict signing and 349/349
 ARM64 inspection pass. Executable SHA-256 is
-`f113ecab21125f63f88c2f3185038eb123ced6b0a48e1f258f73168259f8ec5e`;
+`cb22d7020ea6f2663c53d362847c8a7031bbc3487129b8003f06e22907cb351c`;
 packaged/source MSL is
 `12989bd3fcbce372c0d28a680d93afbe111994cfa871ddb83df2bccd3f54e14e`;
 compiled metallib is
 `c6f84163e2367f9dac55b55504773528360fedc38174516e8c8b0957ca14d5d5`.
-The executable still links OpenGL during migration, so strict no-GL is open.
+The executable still links OpenGL, so strict no-GL remains open.
 
-The render-debug guard now contains exactly five world-output modes: OCTREE,
-OCCLUSION, PHYSICS_SHAPES, NORMALS and TEXEL_DENSITY. The latent
-pathfinding guard remains separately fail-closed; the current OSS implementation
-is a hard-disabled stub.
+The render-debug guard now contains exactly four world-output modes: OCTREE,
+PHYSICS_SHAPES, NORMALS and TEXEL_DENSITY. The latent pathfinding guard remains
+separately fail-closed.
 
 Shadow comparison prerequisite: enable shadows in Graphics Preferences in
 **both** viewers before capture. A mismatched off/on pair is invalid, and a
@@ -80,28 +73,27 @@ minimum behavior needed to unblock Metal/no-GL cutover.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** Develop Raycast can retain native world authority
-   for octree branches/triangles, selected object/avatar hits and the particle
-   marker; all uncaptured world-output modes remain fail-closed.
-2. **Deferred critical work:** remaining non-RLVa advanced output/post/shadows;
-   controlled live wireframe/material/editing parity; full stability/feature
-   matrices; strict no-GL; independent review; and qualifying M1 Max performance
-   evidence. Exact RLVa parity remains non-critical M-013.
-3. **Priority reassessment:** implement `RENDER_DEBUG_OCCLUSION` next. Its
-   group-buffer x-ray geometry and selected-group boxes reuse established
-   indexed geometry and procedural boxes; the other four owners are broader.
+1. **Product advancement:** Develop Occlusion can retain native authority for
+   group x-ray geometry and selected filled bounds; every uncaptured world-output
+   mode remains fail-closed.
+2. **Deferred critical work:** four remaining non-RLVa advanced outputs, broader
+   post/shadow parity, controlled live comparisons, stability/feature matrices,
+   strict no-GL, independent review and qualifying M1 Max performance evidence.
+3. **Priority reassessment:** audit and implement `RENDER_DEBUG_OCTREE` next as
+   one coherent owner, including flash lifetime, rigged faces, palettes, blend
+   and wide-outline state. The other three modes own broader derived geometry.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Capture Occlusion group-buffer x-ray geometry and the later selected-group boxes
-at exact source sites without altering visibility bookkeeping. Preserve bridge/
-model transforms, indexed ranges, cull, line polygon offset, complementary read-
-only depth, blend/palette and order. Prove empty, selected, forward/reverse and
-invalid-input cases on the physical M1 Max before removing only
-`RENDER_DEBUG_OCCLUSION`. Retain the other four bits and pathfinding guard.
+Inventory every Octree draw and side effect at its exact source sites, then
+capture/replay the complete owner without changing rebuild behavior or GL output.
+Preserve bridge/model transforms, rigged palettes, indexed ranges, group bounds,
+flash lifetime, additive blend, depth/cull/raster state and global order. Prove
+forward/reverse, static/rigged, flash/no-flash and invalid/no-owner cases on the
+physical M1 Max before removing only `RENDER_DEBUG_OCTREE`.
 
 ## Non-negotiable open gates
 

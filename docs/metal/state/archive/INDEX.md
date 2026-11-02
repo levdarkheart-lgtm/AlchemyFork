@@ -40,6 +40,7 @@ reload the chronological history.
 | Native Avatar Joints segment/bounds replay and source-exact build 68075, 2026-11-02 | [CURRENT-avatar-joints-debug-checkpoint-2026-11-02.md](CURRENT-avatar-joints-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native Bounding Boxes thin/wide replay and source-exact build 68077, 2026-11-02 | [CURRENT-bounding-box-debug-checkpoint-2026-11-02.md](CURRENT-bounding-box-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native Raycast branch/triangle/hit-marker replay and source-exact build 68079, 2026-11-02 | [CURRENT-raycast-debug-checkpoint-2026-11-02.md](CURRENT-raycast-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
+| Native Occlusion x-ray/selected-bounds replay and source-exact build 68081, 2026-11-02 | [CURRENT-occlusion-debug-checkpoint-2026-11-02.md](CURRENT-occlusion-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
