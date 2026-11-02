@@ -340,6 +340,15 @@ public:
         std::size_t count,
         ALMetalCompareFunction compare,
         std::string* error = nullptr);
+    // Snapshot one output pixel at the current ordered draw boundary, then
+    // resume the same frame. Coordinates address the retained offscreen
+    // texture directly; row zero is the GL-compatible lower row. The returned
+    // private texture is populated by the still-open frame command and must
+    // not be consumed until that frame has been submitted.
+    std::unique_ptr<ALMetalTexture> copyFrameColorPixel(
+        std::uint32_t x,
+        std::uint32_t y,
+        std::string* error = nullptr);
     bool draw(const ALMetalUIBatch& batch, std::string* error = nullptr);
     bool drawHUDIndexed(
         const ALMetalHUDIndexedBatch& batch,

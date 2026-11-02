@@ -33,7 +33,6 @@
 #include <iostream>
 #include <fstream>
 #include <algorithm>
-#include <deque>
 #include <new>
 #include <vector>
 
@@ -451,11 +450,8 @@ private:
     LLRect mBackRectCamera1;
     LLRect mBackRectCamera2;
 
-    // DebugShowColor's reads of the pixel under the mouse, collected a frame or two after they are made, so the
-    // overlay waits on neither the GPU nor a threaded driver's own thread: where each read in flight was made, and
-    // the line for the newest that has landed.
-    ALGPUReadback mColorReads;
-    std::deque<std::pair<S32, S32>> mColorReadAt;
+    // DebugShowColor's native ordered-world/UI samples land a frame or two
+    // after they are made, so the overlay waits on neither GPU nor driver.
     std::string mColorText;
 
     void addText(S32 x, S32 y, const std::string &text)
@@ -846,9 +842,8 @@ public:
             addText(xpos, ypos, "View Matrix");
             ypos += y_inc;
         }
-        // disable use of glReadPixels which messes up nVidia nSight graphics debugging
         static LLCachedControl<bool> debug_show_color(gSavedSettings, "DebugShowColor", false);
-        if (debug_show_color() && !LLRender::sNsightDebugSupport)
+        if (debug_show_color())
         {
             LLCoordGL coord = gViewerWindow->getCurrentMouse();
 
@@ -856,31 +851,34 @@ public:
             S32 x_raw = (S32)ll_round(coord.mX * gViewerWindow->getWindowWidthRaw() / (F32)gViewerWindow->getWindowWidthScaled());
             S32 y_raw = (S32)ll_round(coord.mY * gViewerWindow->getWindowHeightRaw() / (F32)gViewerWindow->getWindowHeightScaled());
 
-            U8 color[4];
-            if (mColorReads.isAllocated() || mColorReads.allocate(sizeof(color), 3, "DebugShowColor"))
+            LLColor4U color;
+            S32 sampled_x = 0;
+            S32 sampled_y = 0;
+#if LL_DARWIN
+            // Every read that has landed, the newest last. A read still in
+            // flight remains queued for a later frame.
+            while (gGL.collectMetalUITextureCapturePixel(
+                       sampled_x, sampled_y, color))
             {
-                // Every read that has landed, the newest last; one still in flight is collected on a later frame.
-                while (!mColorReadAt.empty() && mColorReads.collect(color, sizeof(color)))
-                {
-                    mColorText = llformat("Pixel <%1d, %1d> R:%1d G:%1d B:%1d A:%1d", mColorReadAt.front().first,
-                                          mColorReadAt.front().second, color[0], color[1], color[2], color[3]);
-                    mColorReadAt.pop_front();
-                }
-                if (mColorReads.requestPixels(x_raw, y_raw, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, sizeof(color)))
-                {
-                    mColorReadAt.emplace_back(x_raw, y_raw);
-                }
+                mColorText = llformat(
+                    "Pixel <%1d, %1d> R:%1d G:%1d B:%1d A:%1d",
+                    sampled_x, sampled_y,
+                    color.mV[VRED], color.mV[VGREEN],
+                    color.mV[VBLUE], color.mV[VALPHA]);
             }
+            gGL.requestMetalUITextureCapturePixel(x_raw, y_raw);
+#endif
             if (!mColorText.empty())
             {
                 addText(xpos, ypos, mColorText);
                 ypos += y_inc;
             }
         }
-        else if (mColorReads.isAllocated())
+        else
         {
-            mColorReads.release();
-            mColorReadAt.clear();
+#if LL_DARWIN
+            gGL.releaseMetalUITextureCapturePixels();
+#endif
             mColorText.clear();
         }
 

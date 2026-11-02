@@ -499,6 +499,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     // than the bounded/continuous surface-presentation probe. It neither
     // spends that probe's budget nor reaches the live CAMetalLayer.
     bool world_ui_chain_snapshot = false;
+    bool world_ui_chain_debug_color = false;
     U32 world_ui_chain_attempts = 0;
     U32 world_ui_chain_last_attempt_frame =
         std::numeric_limits<U32>::max();
@@ -816,6 +817,15 @@ static bool metalWorldPresentationRequested()
     static LLCachedControl<bool> publish_world(
         gSavedSettings, "ALMetalWorldPresentation", false);
     return publish_world;
+}
+
+static bool metalDebugColorRequested()
+{
+    static LLCachedControl<bool> debug_show_color(
+        gSavedSettings, "DebugShowColor", false);
+    return debug_show_color() &&
+        gPipeline.hasRenderDebugFeatureMask(
+            LLPipeline::RENDER_DEBUG_FEATURE_UI);
 }
 
 static bool metalHeroMirrorSnapshotValidationRequested()
@@ -1712,6 +1722,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.world_ui_chain_active = false;
         capture.world_ui_chain_counted = false;
         capture.world_ui_chain_snapshot = false;
+        capture.world_ui_chain_debug_color = false;
         capture.world_ui_chain_attempts = 0;
         capture.world_ui_chain_last_attempt_frame =
             std::numeric_limits<U32>::max();
@@ -1944,6 +1955,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     // handoff a few independent world transactions, but never turn an
     // incomplete UI census into permanent duplicate rendering.
     const bool presentation_requested = metalWorldPresentationRequested();
+    const bool debug_color_requested =
+        main_world_capture && metalDebugColorRequested();
     if (!snapshot_request && main_world_capture && !capture.frame_active &&
         capture.attempted &&
         !capture.world_ui_continuous_unlocked &&
@@ -1991,7 +2004,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         world_ui_retry_due;
     const bool request_world_ui_chain = main_world_capture &&
         (snapshot_request || request_continuous_world_ui ||
-         request_bounded_world_ui_probe) &&
+         request_bounded_world_ui_probe || debug_color_requested) &&
         canCaptureMetalWorldPresentation();
     if (!capture.frame_active &&
         (snapshot_request ||
@@ -2020,6 +2033,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.world_ui_chain_active = false;
         capture.world_ui_chain_counted = false;
         capture.world_ui_chain_snapshot = false;
+        capture.world_ui_chain_debug_color = false;
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_applied = false;
@@ -2052,6 +2066,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.world_ui_chain_counted = false;
     capture.world_ui_chain_snapshot =
         request_world_ui_chain && snapshot_request;
+    capture.world_ui_chain_debug_color =
+        request_world_ui_chain && debug_color_requested;
     if (!capture.renderer)
     {
         if (capture.renderer_build)
@@ -2181,6 +2197,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     {
                         if (owner.world_ui_chain_active &&
                             !owner.world_ui_chain_snapshot &&
+                            !owner.world_ui_chain_debug_color &&
                             !owner.world_ui_continuous_unlocked)
                         {
                             ++owner.world_ui_chain_attempts;
@@ -3628,6 +3645,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.world_ui_chain_active = false;
         capture.world_ui_chain_counted = false;
         capture.world_ui_chain_snapshot = false;
+        capture.world_ui_chain_debug_color = false;
         capture.world_ui_chain_attempts = 0;
         capture.world_ui_chain_last_attempt_frame =
             std::numeric_limits<U32>::max();
@@ -10434,6 +10452,7 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     const bool world_ui_transaction_eligible =
         capture.world_ui_chain_snapshot ||
+        capture.world_ui_chain_debug_color ||
         capture.world_ui_continuous_unlocked ||
         capture.world_ui_probe_attempts <
             MetalWorldSimpleCapture::max_world_ui_probe_attempts;
@@ -10441,6 +10460,7 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
         !capture.world_ui_chain_active ||
         capture.world_ssr_history_warmup ||
         (!capture.world_ui_chain_snapshot &&
+         !capture.world_ui_chain_debug_color &&
          capture.world_ui_probe_attempted) ||
         !world_ui_transaction_eligible ||
         !capture.world_ui_overlay_exact ||
@@ -10478,7 +10498,8 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
     if (!capture.world_ui_chain_snapshot)
     {
         capture.world_ui_probe_attempted = true;
-        if (!capture.world_ui_continuous_unlocked)
+        if (!capture.world_ui_continuous_unlocked &&
+            !capture.world_ui_chain_debug_color)
         {
             ++capture.world_ui_probe_attempts;
         }
@@ -10560,6 +10581,12 @@ void LLPipeline::endMetalWorldUICompositionCapture()
                        "retries"
                     << LL_ENDL;
             }
+        }
+        else if (capture.world_ui_chain_debug_color)
+        {
+            // The diagnostic consumes a fresh exact prefix every frame and
+            // must not latch the bounded presentation probe's one-shot gate.
+            capture.world_ui_probe_attempted = false;
         }
     }
     else
@@ -14769,6 +14796,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
         {
             if (capture.world_ui_chain_active &&
                 !capture.world_ui_chain_snapshot &&
+                !capture.world_ui_chain_debug_color &&
                 !capture.world_ui_continuous_unlocked &&
                 !capture.world_ui_chain_counted)
             {
@@ -14883,6 +14911,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
         {
             if (capture.world_ui_chain_active &&
                 !capture.world_ui_chain_snapshot &&
+                !capture.world_ui_chain_debug_color &&
                 !capture.world_ui_continuous_unlocked &&
                 !capture.world_ui_chain_counted)
             {
@@ -14912,6 +14941,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
     {
         if (capture.world_ui_chain_active &&
             !capture.world_ui_chain_snapshot &&
+            !capture.world_ui_chain_debug_color &&
             !capture.world_ui_continuous_unlocked &&
             !capture.world_ui_chain_counted)
         {

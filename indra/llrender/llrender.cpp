@@ -44,6 +44,7 @@
 
 #if LL_DARWIN
 #include "almetaldevice.h"
+#include "almetalresource.h"
 #include "almetalsurface.h"
 #include "almetaluirenderer.h"
 #endif
@@ -738,6 +739,7 @@ void LLRender::shutdown()
     {
         endMetalUITextureCapture(false);
     }
+    releaseMetalUITextureCapturePixels();
     if (mMetalUICaptureRendererCreations != 0)
     {
         ALMetalUIRendererStats capture_stats{};
@@ -858,6 +860,7 @@ void LLRender::setMetalBackend(ALMetalDevice* device, ALMetalFrameScheduler* sch
     {
         endMetalUITextureCapture(false);
     }
+    releaseMetalUITextureCapturePixels();
     if (mMetalUIRenderer)
     {
         std::string error;
@@ -923,6 +926,7 @@ bool LLRender::beginMetalUITextureCapture(
     {
         return false;
     }
+    mMetalUICapturePixel.reset();
     mMetalUICaptureUsesDepth = false;
     mMetalUICaptureDepthWidth = 0;
     mMetalUICaptureDepthHeight = 0;
@@ -1190,6 +1194,94 @@ bool LLRender::hasMetalUITextureCapture() const noexcept
     return mMetalUICaptureRenderer != nullptr && mMetalUICaptureComplete;
 }
 
+bool LLRender::requestMetalUITextureCapturePixel(S32 x, S32 y)
+{
+    if (!mMetalDevice || !mMetalUICaptureRenderer ||
+        !mMetalUICaptureComplete || mMetalUICapturePixel || x < 0 || y < 0)
+    {
+        return false;
+    }
+    if (!mMetalUICapturePixelReads)
+    {
+        auto reads = std::make_unique<ALMetalTextureReadbackRing>();
+        std::string error;
+        if (!reads->allocate(
+                *mMetalDevice, 3, "Alchemy ordered UI pixel readback", &error))
+        {
+            LL_WARNS("Metal")
+                << "Could not allocate the native UI pixel readback: "
+                << error << LL_ENDL;
+            return false;
+        }
+        mMetalUICapturePixelReads = std::move(reads);
+    }
+    if (mMetalUICapturePixelReads->pending() >= 3)
+    {
+        return false;
+    }
+
+    // Materialize any immediate-mode vertices that precede the sample before
+    // the native renderer splits its pass at this exact ordered boundary.
+    flush();
+    if (!mMetalUICaptureComplete)
+    {
+        return false;
+    }
+    std::string error;
+    mMetalUICapturePixel =
+        mMetalUICaptureRenderer->copyFrameColorPixel(
+            static_cast<U32>(x), static_cast<U32>(y), &error);
+    if (!mMetalUICapturePixel)
+    {
+        LL_DEBUGS("Metal")
+            << "Native ordered UI pixel snapshot was skipped: "
+            << error << LL_ENDL;
+        return false;
+    }
+    mMetalUICapturePixelAt = {x, y};
+    return true;
+}
+
+bool LLRender::collectMetalUITextureCapturePixel(
+    S32& x, S32& y, LLColor4U& color)
+{
+    if (!mMetalUICapturePixelReads ||
+        mMetalUICapturePixelReadAt.empty())
+    {
+        return false;
+    }
+    U8 bgra[4]{};
+    std::string error;
+    if (!mMetalUICapturePixelReads->collect(
+            bgra, sizeof(bgra), false, &error))
+    {
+        if (!error.empty())
+        {
+            LL_WARNS("Metal")
+                << "Could not collect the native UI pixel readback: "
+                << error << LL_ENDL;
+        }
+        return false;
+    }
+    const auto at = mMetalUICapturePixelReadAt.front();
+    mMetalUICapturePixelReadAt.pop_front();
+    x = at.first;
+    y = at.second;
+    color.set(bgra[2], bgra[1], bgra[0], bgra[3]);
+    return true;
+}
+
+void LLRender::releaseMetalUITextureCapturePixels()
+{
+    mMetalUICapturePixel.reset();
+    mMetalUICapturePixelReadAt.clear();
+    if (mMetalUICapturePixelReads)
+    {
+        mMetalUICapturePixelReads->release();
+        mMetalUICapturePixelReads.reset();
+    }
+}
+
 bool LLRender::drawMetalSelectionIDs(
     const ALMetalSelectionIDScene& scene)
 {
@@ -1356,6 +1448,22 @@ std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
     if (complete)
     {
         output = mMetalUICaptureRenderer->takeOutputTexture();
+        if (mMetalUICapturePixel && mMetalUICapturePixelReads)
+        {
+            std::string readback_error;
+            if (mMetalUICapturePixelReads->request(
+                    *mMetalUICapturePixel, 0, 0, {}, &readback_error))
+            {
+                mMetalUICapturePixelReadAt.push_back(
+                    mMetalUICapturePixelAt);
+            }
+            else if (!readback_error.empty())
+            {
+                LL_WARNS("Metal")
+                    << "Could not submit the native UI pixel readback: "
+                    << readback_error << LL_ENDL;
+            }
+        }
     }
     else if (!error.empty())
     {
@@ -1411,6 +1519,7 @@ std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
     mMetalUICaptureUsesDepth = false;
     mMetalUICaptureDepthWidth = 0;
     mMetalUICaptureDepthHeight = 0;
+    mMetalUICapturePixel.reset();
     return output;
 }
 

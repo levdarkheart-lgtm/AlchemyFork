@@ -1234,7 +1234,7 @@ struct ALMetalUIRenderer::Impl
         if (!frame || !target || surface)
         {
             setError(error,
-                     "Metal selection pass cannot resume a non-offscreen UI frame");
+                     "Metal UI pass cannot resume a non-offscreen frame");
             return false;
         }
         ALMetalRenderPassConfig config;
@@ -1661,6 +1661,69 @@ bool ALMetalUIRenderer::restoreFrameDepthRects(
         return false;
     }
     return mImpl->drawDepthRects(rects, count, true, 0.f, compare, error);
+}
+
+std::unique_ptr<ALMetalTexture> ALMetalUIRenderer::copyFrameColorPixel(
+    std::uint32_t x,
+    std::uint32_t y,
+    std::string* error)
+{
+    if (!mImpl || mImpl->surface || !mImpl->frame_background)
+    {
+        setError(error,
+                 "Metal UI pixel snapshot requires an offscreen retained frame");
+        return nullptr;
+    }
+    const ALMetalTextureDescriptor& background =
+        mImpl->frame_background->descriptor();
+    if (x >= background.width || y >= background.height)
+    {
+        setError(error, "Metal UI pixel snapshot is outside the retained frame");
+        return nullptr;
+    }
+    if (!mImpl->beginFrame(background.width, background.height, error) ||
+        !mImpl->encoder || !mImpl->encoder->end(error))
+    {
+        return nullptr;
+    }
+    mImpl->encoder.reset();
+    mImpl->pass.reset();
+
+    ALMetalTextureDescriptor descriptor;
+    descriptor.format = mImpl->output_format;
+    descriptor.width = 1;
+    descriptor.height = 1;
+    descriptor.storage = ALMetalStorageMode::private_gpu;
+    descriptor.usage = ALMetalTextureUsage::shader_read;
+    descriptor.label = "Alchemy ordered UI pixel snapshot";
+    std::string snapshot_error;
+    auto snapshot = ALMetalTexture::create(
+        *mImpl->device, descriptor, &snapshot_error);
+    ALMetalTextureCopy copy;
+    copy.source_region = {x, y, 1, 1};
+    const ALMetalTexture* source = mImpl->target
+        ? mImpl->target->colorTexture(0) : nullptr;
+    if (!snapshot || !source || !snapshot->copyFrom(
+            mImpl->frame->commandBuffer(), *source, copy, &snapshot_error))
+    {
+        snapshot.reset();
+        if (snapshot_error.empty())
+        {
+            snapshot_error = "Metal UI pixel snapshot source is unavailable";
+        }
+    }
+
+    std::string resume_error;
+    if (!mImpl->resumeMainPass(&resume_error))
+    {
+        setError(error, resume_error);
+        return nullptr;
+    }
+    if (!snapshot)
+    {
+        setError(error, snapshot_error);
+    }
+    return snapshot;
 }
 
 bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)

@@ -54,6 +54,7 @@
 
 #include <array>
 #include <chrono>
+#include <deque>
 #include <list>
 #include <memory>
 #include <string>
@@ -71,6 +72,7 @@ class ALMetalDevice;
 class ALMetalFrameScheduler;
 class ALMetalSurface;
 class ALMetalTexture;
+class ALMetalTextureReadbackRing;
 class ALMetalUIRenderer;
 struct ALMetalSelectionIDScene;
 struct ALMetalSelectionContourScene;
@@ -309,6 +311,15 @@ public:
     // capture. GL remains authoritative regardless of the return value.
     bool drawMetalHUDIndexedBatch(const ALMetalHUDIndexedBatch& batch);
     bool hasMetalUITextureCapture() const noexcept;
+    // Snapshot and asynchronously read one BGRA8 pixel at the current ordered
+    // offscreen UI boundary. Request coordinates use the GL-compatible
+    // lower-left row convention retained by the native world/UI texture.
+    // Collection returns only samples whose complete source transaction was
+    // submitted; neither call waits in steady state.
+    bool requestMetalUITextureCapturePixel(S32 x, S32 y);
+    bool collectMetalUITextureCapturePixel(
+        S32& x, S32& y, LLColor4U& color);
+    void releaseMetalUITextureCapturePixels();
     // Encode the selection owner's private face-id/depth pass into the active
     // ordered world/UI capture. GL remains authoritative until the later
     // contour/glow passes complete the transaction.
@@ -600,7 +611,7 @@ public:
     // glReadPixels reads it in `format` and `type` under the pack alignment of 1 init() set, after what is batched
     // has been drawn. Synchronous: it waits for the GPU, and for a threaded driver's own thread, to finish everything
     // issued before it. For a read made once on purpose, a snapshot or a click's probe; anything read every frame
-    // reads through ALGPUReadback.
+    // reads through the native Metal readback rings.
     void readPixels(S32 x, S32 y, S32 width, S32 height, U32 format, U32 type, void* data);
 
     // The colour glClear fills colour buffers with. Every writer in the tree goes through
@@ -932,6 +943,10 @@ private:
     static constexpr U32 METAL_UI_CAPTURE_CACHE_SIZE = 4;
     std::unique_ptr<ALMetalUIRenderer> mMetalUIRenderer;
     std::unique_ptr<ALMetalUIRenderer> mMetalUICaptureRenderer;
+    std::unique_ptr<ALMetalTexture> mMetalUICapturePixel;
+    std::unique_ptr<ALMetalTextureReadbackRing> mMetalUICapturePixelReads;
+    std::deque<std::pair<S32, S32>> mMetalUICapturePixelReadAt;
+    std::pair<S32, S32> mMetalUICapturePixelAt{};
     // Offscreen capture output textures are transferred to their callers, but
     // the format-specific renderer owns reusable shader libraries, pipeline
     // states, samplers and intermediate selection targets. Keep one idle

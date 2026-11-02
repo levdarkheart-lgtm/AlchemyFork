@@ -142,8 +142,7 @@ public:
     // ranges do not overlap.
     void copyFrom(const ALGPUBuffer& src, size_t src_offset, size_t dst_offset, size_t bytes);
 
-    // Read `bytes` at `offset` into `out`. Synchronous: waits for the GPU. Tests and debugging only; ALGPUReadback
-    // reads back without waiting.
+    // Read `bytes` at `offset` into `out`. Synchronous: waits for the GPU. Tests and debugging only.
     bool read(size_t offset, void* out, size_t bytes) const;
 
     // Every live ALGPUBuffer's store, in bytes.
@@ -154,67 +153,6 @@ private:
     size_t mSize   = 0;
     U32    mFlags  = 0;
     U8*    mMapped = nullptr;
-};
-
-// Results the GPU wrote, read back without waiting on it. request() copies a range of a buffer, and requestPixels() a
-// rectangle of the framebuffer, into the next of a few slots, GPU-side, noting the frame it is issued in; collect()
-// hands back the oldest result once the frame fences show that frame finished (ALFrameFences), which is a frame or two
-// later. A request that finds every slot holding a result not yet collected is refused rather than stalling on the
-// oldest. Slots are mapped for reading where persistent maps resolved, and read by glGetBufferSubData elsewhere --
-// once the frame has finished, so neither waits on the GPU. Neither a request nor a mapped slot's collect lays or polls
-// a fence of its own, so nothing waits on a threaded driver's own thread either.
-//
-// All operations require the GL context of the frame fences to be current: gGL's, unless others are given. Non-copyable.
-class ALGPUReadback
-{
-public:
-    explicit ALGPUReadback(ALFrameFences* frames = nullptr) : mFrameFences(frames) {}
-    ~ALGPUReadback();
-
-    ALGPUReadback(const ALGPUReadback&) = delete;
-    ALGPUReadback& operator=(const ALGPUReadback&) = delete;
-
-    // Replaces what this held: `slots` results of up to `bytes` each may be in flight at once.
-    bool allocate(size_t bytes, U32 slots = 3, const char* label = nullptr);
-    void release();
-
-    bool   isAllocated() const { return mStore.isAllocated(); }
-    size_t getSlotSize() const { return mSlotBytes; }
-    // Requests made and not yet collected.
-    U32    getPending() const { return mPending; }
-
-    // Copy [src_offset, src_offset + bytes) of `src` into the next slot. A shader's writes to `src` are ordered before
-    // the copy here. False, and nothing copied, while every slot is pending.
-    bool request(const ALGPUBuffer& src, size_t src_offset, size_t bytes);
-
-    // Read the `width` x `height` rectangle at (x, y) of the framebuffer bound for reading into the next slot, as
-    // glReadPixels reads it in `format` and `type` under LLRender's pack alignment of 1. `bytes` is what the read
-    // writes. False, and nothing read, while every slot is pending.
-    bool requestPixels(S32 x, S32 y, S32 width, S32 height, U32 format, U32 type, size_t bytes);
-
-    // The oldest pending result into `out`, the `bytes` its request copied, once the frame fences have shown the frame
-    // it was issued in finished, which is at a later frame's end: false before, or when nothing is pending. No GL call
-    // for a mapped slot. `wait` waits for it instead, for a teardown or a test.
-    bool collect(void* out, size_t bytes, bool wait = false);
-
-private:
-    struct Slot
-    {
-        U32    mFrame = 0;  // the frame the slot's copy was issued in
-        size_t mBytes = 0;
-    };
-
-    ALFrameFences& frames() const;
-    // Notes the `bytes` just written into the next slot, and moves on to the one after.
-    void issueNext(size_t bytes);
-
-    ALFrameFences*    mFrameFences = nullptr;  // gGL's where null
-    ALGPUBuffer       mStore;
-    std::vector<Slot> mSlots;
-    size_t            mSlotBytes  = 0;  // what a slot holds
-    size_t            mSlotStride = 0;  // the distance between slots in mStore
-    U32               mNext       = 0;  // the slot the next request fills
-    U32               mPending    = 0;  // the oldest pending slot is mPending behind mNext
 };
 
 // Data the CPU writes for the GPU every frame, without waiting on an upload or on the GPU: a ring of regions in one

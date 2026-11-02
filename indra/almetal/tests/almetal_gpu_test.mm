@@ -28966,6 +28966,57 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(backing_stats.batches == 0);
         CHECK(backing_stats.vertices == 0);
 
+        // DebugShowColor samples after ordinary HUD/interface draws but
+        // before the debug-text overlay. Snapshot the center between two
+        // opaque draws, then prove the retained 1x1 copy contains the first
+        // draw while the resumed final target contains the second.
+        REQUIRE(buffer->write(
+            color_offset, colors, sizeof(colors), &error));
+        batch.blend.enabled = false;
+        REQUIRE(composition_renderer->setFrameBackground(
+            background.get(), &error));
+        REQUIRE(composition_renderer->draw(batch, &error));
+        auto ordered_pixel =
+            composition_renderer->copyFrameColorPixel(16, 16, &error);
+        INFO(error);
+        REQUIRE(ordered_pixel);
+        const std::uint8_t later_colors[3][4] = {
+            {8, 224, 40, 255}, {8, 224, 40, 255},
+            {8, 224, 40, 255},
+        };
+        auto later_bytes = bytes;
+        std::memcpy(
+            later_bytes.data() + color_offset,
+            later_colors, sizeof(later_colors));
+        auto later_buffer = ALMetalBuffer::create(
+            *device, buffer_descriptor, &error);
+        INFO(error);
+        REQUIRE(later_buffer);
+        REQUIRE(later_buffer->write(
+            0, later_bytes.data(), later_bytes.size(), &error));
+        batch.vertices = later_buffer.get();
+        REQUIRE(composition_renderer->draw(batch, &error));
+        REQUIRE(composition_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        std::array<std::uint8_t, 4> ordered_pixel_bytes{};
+        REQUIRE(ordered_pixel->readback(
+            *device, 0, 0, {}, ordered_pixel_bytes.data(), 4, &error));
+        INFO(error);
+        CHECK(ordered_pixel_bytes[0] == 16u);
+        CHECK(ordered_pixel_bytes[1] == 32u);
+        CHECK(ordered_pixel_bytes[2] == 255u);
+        CHECK(ordered_pixel_bytes[3] == 255u);
+        REQUIRE(composition_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(composed_pixels[center + 0] == 40u);
+        CHECK(composed_pixels[center + 1] == 224u);
+        CHECK(composed_pixels[center + 2] == 8u);
+        CHECK(composed_pixels[center + 3] == 255u);
+        batch.vertices = buffer.get();
+
         error.clear();
         CHECK_FALSE(composition_renderer->setFrameBackground(
             composition_renderer->outputTexture(), &error));
