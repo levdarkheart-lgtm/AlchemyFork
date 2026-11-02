@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-02 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `38b89cfd58` (`fix(metal): admit mirror validation on dev channel`)
+**Renderer code checkpoint:** `ed9e64736d` (`fix(metal): admit mirror validation on dev channel`)
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -10,7 +10,7 @@ append-only archives.
 
 ## Active implementation checkpoint
 
-M-008 and M-009 are `doing`; M-012 is complete. Commit `b0e0973898` captures
+M-008 and M-009 are `doing`; M-012 is complete. Commit `47d253a91c` captures
 and replays every reachable Develop **Texel Density** face draw. Source audit
 proved that all three current/desired/full modes bind the checkerboard and
 calculate a texture matrix, but the bound production `gDebugProgram` consumes
@@ -42,7 +42,7 @@ remain native-eligible. No reachable render-debug world-geometry bit remains in
 the explicit visual veto. The separate latent pathfinding guard remains
 fail-closed.
 
-Commit `38b89cfd58` makes the scoped native authored-mirror Snapshot diagnostic
+Commit `ed9e64736d` makes the scoped native authored-mirror Snapshot diagnostic
 reachable in optimized Development builds; compiled public Release channels
 remain ineligible, and mirror rendering/live authority are unchanged.
 
@@ -95,8 +95,8 @@ pair and metrics are archived](archive/CURRENT-hero-mirror-release-gate-and-dive
   and is not represented as a green gate.
 - Source-exact `AL_METAL_PRESET=ninja-os-arm64
   AL_METAL_BUILD_DIR=build-Darwin-ninja-os-arm64 AL_METAL_CONFIG=Release
-  AL_METAL_JOBS=8 tools/metal/build.sh build` passed at committed code head
-  `38b89cfd58d93bc6ec7d0841a8cdf67b705926dd`, producing Development build
+  AL_METAL_JOBS=8 tools/metal/build.sh build` passed at the pre-rewrite,
+  tree-equivalent build identity `38b89cfd58d93bc6ec7d0841a8cdf67b705926dd`, producing Development build
   `26.4.0d68093` (`26.4.0.68093`) with the full SHA embedded.
 - Executable SHA-256:
   `144f256b4d87a35825ac0029f751bf5056ab5af9c1ba8c7cfd4c80fe2a3d00ce`.

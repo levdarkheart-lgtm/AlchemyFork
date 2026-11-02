@@ -30,8 +30,8 @@ item; it never implies product completion.
 
 ## Active checkpoint — 2026-11-02
 
-Commit `38b89cfd58` admits the scoped native mirror Snapshot diagnostic only in
-non-public compiled channels. Retained renderer commit `b0e0973898` captures
+Commit `ed9e64736d` admits the scoped native mirror Snapshot diagnostic only in
+non-public compiled channels. Retained renderer commit `47d253a91c` captures
 and replays every reachable Develop **Texel Density** face draw. Its
 current/desired/full modes still perform their exact
 texture lookup, checkerboard bind and texture-matrix side effects in source.
@@ -54,8 +54,8 @@ non-manual/non-GL gate passes 484/484 in 35.57 seconds. The prior unfiltered
 its six GL-only failures and five skips remain recorded without a green claim.
 Harness validation covers all 31 required files and all 24 tooling tests pass.
 
-Source-exact Release Development build `26.4.0d68093` (`26.4.0.68093`) at
-`38b89cfd58d93bc6ec7d0841a8cdf67b705926dd` passes.
+Source-exact Release Development build `26.4.0d68093` (`26.4.0.68093`) at its
+pre-rewrite, tree-equivalent build identity `38b89cfd58d93bc6ec7d0841a8cdf67b705926dd` passes.
 Deep strict signing and 349/349 ARM64 inspection pass. Executable SHA-256 is
 `144f256b4d87a35825ac0029f751bf5056ab5af9c1ba8c7cfd4c80fe2a3d00ce`;
 packaged/source MSL is
@@ -91,7 +91,7 @@ A retained pre-signal sample corrects the next authored-mirror attempt: all
 40 main-thread samples were active in renderer work under full Metal validation,
 and later `SIGTERM` shutdown completed cleanly. The actual blocker was that the
 Release configuration compiled the Development validation setting to false.
-Commit `38b89cfd58` now gates the scoped diagnostic by immutable compiled
+Commit `ed9e64736d` now gates the scoped diagnostic by immutable compiled
 channel, leaving public Release and normal live authority unchanged.
 
 The source-exact 68093 diagnostic produced a matched 2048x1476 pair with
