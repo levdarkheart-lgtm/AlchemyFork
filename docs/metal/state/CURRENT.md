@@ -57,9 +57,9 @@ Any exact RLVa comparison must enable RLV in Preferences in both viewers, save,
 and restart both viewers before testing.
 
 Any candidate/reference shadow comparison is admissible only when shadows are
-enabled and saved through Graphics Preferences in **both** viewers and both
-viewers have been restarted before capture. A mismatched off/on pair is invalid;
-a both-off control can isolate a residual but cannot prove shadow parity.
+enabled and saved through Graphics Preferences in **both** viewers before
+capture. Shadows do not require a restart; restart applies only to RLVa state
+changes. A mismatched off/on pair is invalid; a both-off control is diagnostic.
 
 The 2026-11-02 fixed-Midday Grignano replay satisfies that prerequisite: both
 profiles and restarted panels reported `RenderShadowDetail=2`, all 416 visual
@@ -68,15 +68,17 @@ direct Metal directional/projector owners. It corroborates directional shadows
 only; projector-visible, alpha/avatar-caster, cascade and PCSS/quality coverage
 remain open. [Exact evidence is archived](archive/CURRENT-shadow-preference-qualified-checkpoint-2026-11-02.md).
 
-A pre-signal sample corrected the subsequent mirror-timeout classification:
-40/40 main-thread samples were actively rendering under full Metal validation,
-and the process later exited cleanly on `SIGTERM`. The actual blocker was the
-Release-configuration compile gate used by the Development package.
-Source-exact build 68093 now reaches native Snapshot readback, but its matched
-256-square pair visibly omits door-glass, wall-media and nearby forward content
-(raw SSIM `0.855629`). The mirror guard remains fail-closed. [Exact correction,
-pair and metrics are archived](archive/CURRENT-hero-mirror-release-gate-and-divergence-checkpoint-2026-11-02.md).
+A pre-signal sample found 40/40 main-thread samples actively rendering under
+full Metal validation; the blocker was the Development package's Release compile
+gate. Source-exact 68093 reaches native Snapshot readback, but its matched
+256-square pair omits forward content (SSIM `0.855629`); [evidence is archived](archive/CURRENT-hero-mirror-release-gate-and-divergence-checkpoint-2026-11-02.md).
 
+The replacement private dry fixture is frozen: World Map, fixed chair, two
+`Esc` resets and visible mirror. Its 2048x1476 pair matches 416/416 saved visual
+settings, but the non-pixel-exact camera and divergent mirror contents make it
+diagnostic, not parity (`146158b4dd2f...316635a` / `5f2949522861...94f34`).
+Candidate exited cleanly; reference hung at `Display:RenderFlush` after
+`SIGTERM` and required verified-process termination (137). Water is separate.
 ## Build and test evidence
 
 - The complete RelWithDebInfo, Debug and Release physical Metal suites each
@@ -143,18 +145,16 @@ behavior/image parity is separately deferred as non-critical M-013.
 Reproducible distinct release proof and independent build/review evidence also
 remain open.
 
-**Evidence-based priority:** continue M-009 from the refreshed strict
-viewer-owned GL and presentation-authority inventory. Use the now-empty
-explicit render-debug veto and preference-qualified directional-shadow result
-as bounded facts, not as a native-only claim; resolve the highest-value
-remaining presentation-authority gate from current source and live evidence.
+**Evidence-based priority:** continue M-009 from the strict GL inventory; use
+the empty debug veto and directional-shadow result only as bounded facts while
+resolving the highest-value presentation-authority gate.
 
 ## Exact next actions
 
 1. Reconcile the refreshed 3,351-finding strict GL inventory against actual
    reachability and presentation authority; the strict exit remains 1.
-2. Isolate missing door-glass, wall-media and related forward categories in the
-   current mirror pair; keep its guard closed until a new matched diagnostic.
+2. Use the new controlled mirror pair to isolate the native hero-cube
+   face/row/transform or capture-owner divergence; keep the guard closed.
 3. Continue controlled live parity and stability. Keep projector-visible and
-   remaining shadow coverage open unless Preferences/save/restart-qualified,
+   remaining shadow coverage open unless Preferences/save-qualified,
    and keep exact RLVa parity deferred in M-013.

@@ -69,9 +69,9 @@ pathfinding guard remains separately fail-closed. The main executable still
 links OpenGL and Metal, so this is not a native-only claim.
 
 Shadow comparison prerequisite: enable shadows in Graphics Preferences in
-**both** viewers, save the setting and restart **both** viewers before capture.
-A mismatched off/on pair is invalid, and a both-off control may isolate a
-residual but cannot close shadow parity.
+**both** viewers and save the setting before capture. Shadows do not require a
+restart; restart applies only to RLVa state changes. A mismatched off/on pair is
+invalid, and a both-off control cannot close shadow parity.
 
 The 2026-11-02 fixed-Midday Grignano run satisfied that workflow. Both isolated
 profiles had effective `RenderShadowDetail=2`, all 416 captured visual settings
@@ -102,6 +102,28 @@ surfaces. Whole-frame raw SSIM is `0.855629`; half-size sigma-8 structural SSIM
 is `0.938252`. Normal mirror authority remains fail-closed. The indexed archive
 retains exact images, hashes, crops, metrics and provenance.
 
+The banned/uncontrolled authored-mirror region is retired. Its replacement is
+an owner-controlled private dry fixture whose exact SLURL remains only in the
+ignored evidence tree. Reproduction is: teleport with World Map, sit on the
+fixed red chair, press `Esc` twice, wait for convergence, then capture reference
+and candidate sequentially as custom 2048x1476 PNGs with UI/HUD off,
+post-processing on and `No Filter`. Pause after each save for the owner to check
+Graphics Preferences. Water will use a separate controlled fixture.
+
+That procedure produced canonical candidate/reference images with SHA-256
+`146158b4dd2ff42e8231e570aae0545cb8d4a2f7f5aec75d4ad5ec9ad316635a`
+and `5f2949522861431cd973f040aa3c4692b0aec651909d9b8786689ac40b294f34`.
+Fresh profile manifests compare all 416 visual settings with zero mismatches;
+mirrors and shadows are on and SSR is off. The ordinary scene is coherent, but
+camera alignment is not pixel-exact and the mirror contents visibly differ, so
+the pair is diagnostic rather than a parity pass. The candidate logged complete
+six-face native mirror-clipped publication/readback and exited cleanly. The
+reference accepted `SIGTERM`, then hung in `Display:RenderFlush`, triggered its
+watchdog and required termination of the exact verified process (exit 137);
+all verified reference helpers were drained. Exact images, settings manifests,
+comparison and private reproduction notes are retained under ignored
+`artifacts/metal/` and `/private/tmp` paths.
+
 Any exact RLVa comparison must enable RLV in Preferences in both viewers, save,
 and restart both. Exact RLVa correctness is deferred M-013; implement only the
 minimum behavior needed to unblock Metal/no-GL cutover.
@@ -124,12 +146,13 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Trace current capture and ordered replay ownership for the missing authored-
-mirror door-glass, wall-media and related forward categories. Implement only a
-source-proven missing owner, then repeat the matched 256-square diagnostic
-before changing mirror authority. Continue the refreshed 3,351-finding GL
-inventory independently. Keep all shadow evidence Preferences/save/restart-
-qualified and exact RLVa deferred in M-013.
+Trace the controlled dry pair's native hero-cube face/row convention,
+environment transform and capture/replay ownership. The direct Metal face copy
+has only same-API synthetic coverage; derive and physically regress the GL
+cube-camera to Metal texture-cube convention before any production edit, then
+repeat this fixture before changing mirror authority. Continue the 3,351-finding GL
+inventory independently. Keep all shadow evidence Preferences/save-qualified
+and exact RLVa deferred in M-013.
 
 ## Non-negotiable open gates
 
