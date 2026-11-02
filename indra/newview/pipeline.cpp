@@ -596,6 +596,11 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::vector<ALMetalWorldUpdateTypeBatch> update_type_batches;
     std::vector<ALMetalWorldBatchSizeBatch> batch_size_batches;
     std::vector<ALMetalWorldLightDebugBatch> light_debug_batches;
+    std::vector<ALMetalWorldShadowFrustumVertex>
+        shadow_frustum_vertices;
+    std::vector<ALMetalWorldShadowFrustumBatch>
+        shadow_frustum_batches;
+    F32 shadow_frustum_modelview_projection[16]{};
     std::vector<ALMetalWorldReflectionProbeLinkVertex>
         reflection_probe_links;
     F32 reflection_probe_link_modelview_projection[16]{};
@@ -4026,6 +4031,8 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.update_type_batches.clear();
     capture.batch_size_batches.clear();
     capture.light_debug_batches.clear();
+    capture.shadow_frustum_vertices.clear();
+    capture.shadow_frustum_batches.clear();
     capture.reflection_probe_links.clear();
     capture.reflection_probe_link_capture_active = false;
     capture.composition_debug_heights.clear();
@@ -5057,6 +5064,264 @@ void LLPipeline::captureMetalLightDebugBox(
     }
 }
 
+void LLPipeline::captureMetalShadowFrusta()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const auto fail = [&capture]()
+    {
+        capture.markIncomplete(__LINE__);
+        capture.shadow_frustum_vertices.clear();
+        capture.shadow_frustum_batches.clear();
+    };
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    LLRender::eBlendFactor color_source;
+    LLRender::eBlendFactor color_destination;
+    LLRender::eBlendFactor alpha_source;
+    LLRender::eBlendFactor alpha_destination;
+    gGL.getBlendFunc(color_source, color_destination,
+                     alpha_source, alpha_destination);
+    U32 rgb_equation = 0;
+    U32 alpha_equation = 0;
+    gGL.getBlendEquation(rgb_equation, alpha_equation);
+    if (!capture.complete ||
+        !capture.shadow_frustum_vertices.empty() ||
+        !capture.shadow_frustum_batches.empty() ||
+        !hasRenderDebugMask(RENDER_DEBUG_SHADOW_FRUSTA) ||
+        !LLGLState::isEnabled(GL_BLEND) ||
+        LLGLState::isEnabled(GL_CULL_FACE) ||
+        !LLGLDepthTest::depthEnabled() ||
+        LLGLDepthTest::depthWriteEnabled() ||
+        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
+        gGL.getPointSize() != 1.f || gGL.getLineWidth() != 1.f ||
+        color_source != LLRender::BF_SOURCE_ALPHA ||
+        color_destination != LLRender::BF_ONE_MINUS_SOURCE_ALPHA ||
+        alpha_source != LLRender::BF_SOURCE_ALPHA ||
+        alpha_destination != LLRender::BF_ONE_MINUS_SOURCE_ALPHA ||
+        rgb_equation != GL_FUNC_ADD || alpha_equation != GL_FUNC_ADD ||
+        !color_mask[0] || !color_mask[1] || !color_mask[2] ||
+        color_mask[3])
+    {
+        fail();
+        return;
+    }
+
+    constexpr std::size_t fixed_vertex_count = 4 * (24 + 24);
+    constexpr std::size_t maximum_volume_vertex_count = 4 * (10 + 4 + 4);
+    std::size_t point_count = 0;
+    std::size_t volume_vertex_count = 0;
+    for (std::size_t cascade = 0; cascade < 4; ++cascade)
+    {
+        const std::size_t count = mShadowFrustPoints[cascade].size();
+        if (count > std::numeric_limits<std::uint32_t>::max() -
+                        point_count ||
+            !mShadowExtents[cascade][0].isFinite() ||
+            !mShadowExtents[cascade][1].isFinite())
+        {
+            fail();
+            return;
+        }
+        point_count += count;
+        if (count != 0)
+        {
+            volume_vertex_count += 18;
+        }
+        for (std::size_t corner = 0; corner < 8; ++corner)
+        {
+            if (!mShadowCamera[cascade].mAgentFrustum[corner].isFinite() ||
+                (count != 0 &&
+                 !mShadowCamera[cascade + 4]
+                      .mAgentFrustum[corner].isFinite()))
+            {
+                fail();
+                return;
+            }
+        }
+    }
+    if (volume_vertex_count > maximum_volume_vertex_count ||
+        point_count > std::numeric_limits<std::uint32_t>::max() -
+                          fixed_vertex_count - volume_vertex_count)
+    {
+        fail();
+        return;
+    }
+
+    const LLColor4 cascade_colors[4] = {
+        LLColor4(1.f, 0.f, 0.f, 1.f),
+        LLColor4(0.f, 1.f, 0.f, 1.f),
+        LLColor4(0.f, 0.f, 1.f, 1.f),
+        LLColor4(1.f, 0.f, 1.f, 1.f),
+    };
+    std::vector<ALMetalWorldShadowFrustumVertex> vertices;
+    std::vector<ALMetalWorldShadowFrustumBatch> batches;
+    try
+    {
+        vertices.reserve(point_count + fixed_vertex_count +
+                         volume_vertex_count);
+        batches.reserve(4 * 3 + 4 * 3);
+        const auto append_vertex = [&vertices](
+            const LLVector3& position, const LLColor4& color)
+        {
+            ALMetalWorldShadowFrustumVertex vertex;
+            std::memcpy(vertex.position, position.mV,
+                        sizeof(position.mV));
+            vertex.position[3] = 1.f;
+            std::memcpy(vertex.color, color.mV, sizeof(vertex.color));
+            vertices.push_back(vertex);
+        };
+        const auto begin_batch = [&vertices](
+            std::size_t cascade, ALMetalWorldShadowFrustumKind kind)
+        {
+            ALMetalWorldShadowFrustumBatch batch;
+            batch.first_vertex = static_cast<std::uint32_t>(vertices.size());
+            batch.cascade = static_cast<std::uint32_t>(cascade);
+            batch.kind = kind;
+            return batch;
+        };
+        const auto end_batch = [&vertices, &batches](
+            ALMetalWorldShadowFrustumBatch batch)
+        {
+            batch.vertex_count = static_cast<std::uint32_t>(
+                vertices.size() - batch.first_vertex);
+            batches.push_back(batch);
+        };
+        const auto append_box = [&append_vertex](
+            const LLVector3& position, const LLVector3& size,
+            const LLColor4& color)
+        {
+            const LLVector3 corner[4] = {
+                size.scaledVec(LLVector3(1.f, 1.f, 1.f)),
+                size.scaledVec(LLVector3(-1.f, 1.f, 1.f)),
+                size.scaledVec(LLVector3(-1.f, -1.f, 1.f)),
+                size.scaledVec(LLVector3(1.f, -1.f, 1.f)),
+            };
+            constexpr std::uint32_t pairs[24] = {
+                0, 1, 1, 2, 2, 3, 3, 0,
+                4, 5, 5, 6, 6, 7, 7, 4,
+                0, 6, 3, 5, 1, 7, 2, 4,
+            };
+            for (std::uint32_t index : pairs)
+            {
+                const bool bottom = index >= 4;
+                const LLVector3& offset = corner[index & 3u];
+                append_vertex(
+                    bottom ? position - offset : position + offset, color);
+            }
+        };
+        constexpr std::uint32_t outline_indices[24] = {
+            0, 1, 1, 2, 2, 3, 3, 0,
+            4, 5, 5, 6, 6, 7, 7, 4,
+            0, 4, 1, 5, 2, 6, 3, 7,
+        };
+
+        for (std::size_t cascade = 0; cascade < 4; ++cascade)
+        {
+            const LLColor4& color = cascade_colors[cascade];
+            const std::vector<LLVector3>& points =
+                mShadowFrustPoints[cascade];
+            if (!points.empty())
+            {
+                auto batch = begin_batch(
+                    cascade,
+                    ALMetalWorldShadowFrustumKind::cascade_points);
+                for (const LLVector3& point : points)
+                {
+                    if (!point.isFinite())
+                    {
+                        fail();
+                        return;
+                    }
+                    append_vertex(point, color);
+                }
+                end_batch(batch);
+            }
+
+            const LLVector3 position =
+                (mShadowExtents[cascade][0] +
+                 mShadowExtents[cascade][1]) * 0.5f;
+            const LLVector3 size =
+                (mShadowExtents[cascade][1] -
+                 mShadowExtents[cascade][0]) * 0.5f;
+            auto extent_batch = begin_batch(
+                cascade,
+                ALMetalWorldShadowFrustumKind::cascade_extent);
+            append_box(position, size, color);
+            end_batch(extent_batch);
+
+            auto outline_batch = begin_batch(
+                cascade,
+                ALMetalWorldShadowFrustumKind::cascade_outline);
+            LLVector3* frustum = mShadowCamera[cascade].mAgentFrustum;
+            for (std::uint32_t index : outline_indices)
+            {
+                append_vertex(frustum[index], color);
+            }
+            end_batch(outline_batch);
+        }
+
+        for (std::size_t cascade = 0; cascade < 4; ++cascade)
+        {
+            if (mShadowFrustPoints[cascade].empty())
+            {
+                continue;
+            }
+            LLColor4 color = cascade_colors[cascade];
+            color.mV[3] = 0.1f;
+            LLVector3* frustum = mShadowCamera[cascade + 4].mAgentFrustum;
+            auto sides = begin_batch(
+                cascade, ALMetalWorldShadowFrustumKind::volume_sides);
+            constexpr std::uint32_t side_indices[10] = {
+                0, 4, 1, 5, 2, 6, 3, 7, 0, 4,
+            };
+            for (std::uint32_t index : side_indices)
+            {
+                append_vertex(frustum[index], color);
+            }
+            end_batch(sides);
+
+            auto near_face = begin_batch(
+                cascade, ALMetalWorldShadowFrustumKind::volume_near);
+            constexpr std::uint32_t near_indices[4] = {0, 1, 3, 2};
+            for (std::uint32_t index : near_indices)
+            {
+                append_vertex(frustum[index], color);
+            }
+            end_batch(near_face);
+
+            auto far_face = begin_batch(
+                cascade, ALMetalWorldShadowFrustumKind::volume_far);
+            constexpr std::uint32_t far_indices[4] = {4, 5, 7, 6};
+            for (std::uint32_t index : far_indices)
+            {
+                append_vertex(frustum[index], color);
+            }
+            end_batch(far_face);
+        }
+    }
+    catch (const std::bad_alloc&)
+    {
+        fail();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(capture.shadow_frustum_modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(capture.shadow_frustum_modelview_projection));
+    capture.shadow_frustum_vertices = std::move(vertices);
+    capture.shadow_frustum_batches = std::move(batches);
+}
+
 void LLPipeline::beginMetalReflectionProbeLinkCapture(
     std::size_t link_count)
 {
@@ -6034,6 +6299,18 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.light_debug_batches.data();
         scene.light_debug_batch_count =
             capture.light_debug_batches.size();
+        scene.shadow_frustum_vertices =
+            capture.shadow_frustum_vertices.data();
+        scene.shadow_frustum_vertex_count =
+            capture.shadow_frustum_vertices.size();
+        scene.shadow_frustum_batches =
+            capture.shadow_frustum_batches.data();
+        scene.shadow_frustum_batch_count =
+            capture.shadow_frustum_batches.size();
+        std::memcpy(
+            scene.shadow_frustum_modelview_projection,
+            capture.shadow_frustum_modelview_projection,
+            sizeof(scene.shadow_frustum_modelview_projection));
         scene.reflection_probe_links =
             capture.reflection_probe_links.data();
         scene.reflection_probe_link_vertex_count =
@@ -7684,6 +7961,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.update_type_batches.clear();
     capture.batch_size_batches.clear();
     capture.light_debug_batches.clear();
+    capture.shadow_frustum_vertices.clear();
+    capture.shadow_frustum_batches.clear();
     capture.reflection_probe_links.clear();
     capture.reflection_probe_link_capture_active = false;
     capture.composition_debug_heights.clear();
@@ -20387,6 +20666,10 @@ void LLPipeline::renderDebug()
 
         gGL.color4f(1,1,1,1);
         gGL.getTextureSlot(0)->unbind();
+
+#if LL_DARWIN
+        captureMetalShadowFrusta();
+#endif
 
         F32 a = 0.1f;
 

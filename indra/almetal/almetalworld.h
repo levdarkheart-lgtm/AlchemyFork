@@ -465,6 +465,7 @@ using ALMetalWorldAgentTargetVertex = ALMetalWorldDebugBlip;
 // each contiguous point batch retains both its transform and traversal order.
 using ALMetalWorldDebugPointVertex = ALMetalWorldDebugBlip;
 using ALMetalWorldReflectionProbeLinkVertex = ALMetalWorldDebugBlip;
+using ALMetalWorldShadowFrustumVertex = ALMetalWorldDebugBlip;
 
 struct ALMetalWorldDebugPointBatch
 {
@@ -472,6 +473,30 @@ struct ALMetalWorldDebugPointBatch
     std::uint32_t vertex_count = 0;
     std::uint64_t order = 0;
     float modelview_projection[16]{};
+};
+
+// Develop > Shadow Frusta is one centralized debug owner. The first four
+// cascades always emit an optional eight-pixel point cloud, an extent box and
+// a 12-edge frustum outline. A non-empty point cloud also enables the matching
+// translucent volume from shadow cameras four through seven. Batch kinds make
+// that conditional source topology independently verifiable before encoding.
+enum class ALMetalWorldShadowFrustumKind : std::uint32_t
+{
+    cascade_points = 0,
+    cascade_extent = 1,
+    cascade_outline = 2,
+    volume_sides = 3,
+    volume_near = 4,
+    volume_far = 5,
+};
+
+struct ALMetalWorldShadowFrustumBatch
+{
+    std::uint32_t first_vertex = 0;
+    std::uint32_t vertex_count = 0;
+    std::uint32_t cascade = 0;
+    ALMetalWorldShadowFrustumKind kind =
+        ALMetalWorldShadowFrustumKind::cascade_points;
 };
 
 // Develop > Texture Anim replays every visible draw-info triangle whose
@@ -892,6 +917,11 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t batch_size_batch_count = 0;
     const ALMetalWorldLightDebugBatch* light_debug_batches = nullptr;
     std::size_t light_debug_batch_count = 0;
+    const ALMetalWorldShadowFrustumVertex* shadow_frustum_vertices = nullptr;
+    std::size_t shadow_frustum_vertex_count = 0;
+    const ALMetalWorldShadowFrustumBatch* shadow_frustum_batches = nullptr;
+    std::size_t shadow_frustum_batch_count = 0;
+    float shadow_frustum_modelview_projection[16]{};
     const ALMetalWorldReflectionProbeLinkVertex* reflection_probe_links =
         nullptr;
     std::size_t reflection_probe_link_vertex_count = 0;

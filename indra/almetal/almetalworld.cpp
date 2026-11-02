@@ -134,6 +134,7 @@ namespace
     static_assert(sizeof(ALMetalWorldDebugBlip) == 32);
     static_assert(sizeof(WorldDebugBlipConstants) == 80);
     static_assert(sizeof(WorldTextureAnimConstants) == 96);
+    static_assert(sizeof(ALMetalWorldShadowFrustumBatch) == 16);
 
     struct alignas(16) WorldLightDebugOutlineConstants
     {
@@ -1327,6 +1328,8 @@ struct ALMetalWorldGBufferRenderer::Impl
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         agent_target_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        shadow_frustum_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         debug_point_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         texture_anim_pipelines;
@@ -2483,6 +2486,40 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         impl->agent_target_pipelines[hdr] = ALMetalRenderPipeline::create(
             device, agent_target_descriptor, error);
         if (!impl->agent_target_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor shadow_frustum_descriptor;
+        shadow_frustum_descriptor.library = impl->library.get();
+        shadow_frustum_descriptor.vertex_function =
+            "almetal_world_debug_blip_vertex";
+        shadow_frustum_descriptor.fragment_function =
+            "almetal_world_debug_blip_fragment";
+        shadow_frustum_descriptor.colors[0].format = screen_formats[hdr];
+        shadow_frustum_descriptor.colors[0].blending_enabled = true;
+        shadow_frustum_descriptor.colors[0].source_rgb =
+            ALMetalBlendFactor::source_alpha;
+        shadow_frustum_descriptor.colors[0].destination_rgb =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        shadow_frustum_descriptor.colors[0].source_alpha =
+            ALMetalBlendFactor::source_alpha;
+        shadow_frustum_descriptor.colors[0].destination_alpha =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        shadow_frustum_descriptor.colors[0].write_mask =
+            static_cast<ALMetalColorWriteMask>(
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+        shadow_frustum_descriptor.depth_stencil_format =
+            ALMetalPixelFormat::depth32_float_stencil8;
+        shadow_frustum_descriptor.label = hdr
+            ? "Alchemy HDR world shadow-frustum debug pipeline"
+            : "Alchemy world shadow-frustum debug pipeline";
+        impl->shadow_frustum_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, shadow_frustum_descriptor, error);
+        if (!impl->shadow_frustum_pipelines[hdr])
         {
             return nullptr;
         }
@@ -10633,6 +10670,148 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             return nullptr;
         }
     }
+    const bool has_shadow_frusta =
+        scene.shadow_frustum_vertex_count != 0 ||
+        scene.shadow_frustum_batch_count != 0;
+    if ((scene.shadow_frustum_vertex_count != 0 &&
+         !scene.shadow_frustum_vertices) ||
+        (scene.shadow_frustum_batch_count != 0 &&
+         !scene.shadow_frustum_batches) ||
+        (scene.shadow_frustum_vertex_count == 0) !=
+            (scene.shadow_frustum_batch_count == 0) ||
+        scene.shadow_frustum_vertex_count >
+            std::numeric_limits<std::uint32_t>::max() ||
+        scene.shadow_frustum_vertex_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldShadowFrustumVertex) ||
+        scene.shadow_frustum_batch_count > 24 ||
+        scene.shadow_frustum_batch_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldShadowFrustumBatch) ||
+        (has_shadow_frusta && !finiteValues(
+            scene.shadow_frustum_modelview_projection, 16)))
+    {
+        setError(error, "Metal world shadow-frustum storage is invalid");
+        return nullptr;
+    }
+    for (std::size_t index = 0;
+         index < scene.shadow_frustum_vertex_count; ++index)
+    {
+        const ALMetalWorldShadowFrustumVertex& vertex =
+            scene.shadow_frustum_vertices[index];
+        if (!finiteValues(vertex.position, 4) ||
+            !finiteValues(vertex.color, 4) ||
+            vertex.position[3] != 1.f)
+        {
+            setError(error, "Metal world shadow-frustum data is invalid");
+            return nullptr;
+        }
+    }
+    if (has_shadow_frusta)
+    {
+        std::size_t batch_index = 0;
+        std::size_t expected_vertex = 0;
+        bool cascade_has_points[4]{};
+        const auto batch_is = [&](
+            std::size_t cascade, ALMetalWorldShadowFrustumKind kind,
+            std::uint32_t exact_count, bool variable_count)
+        {
+            if (batch_index >= scene.shadow_frustum_batch_count)
+            {
+                return false;
+            }
+            const ALMetalWorldShadowFrustumBatch& batch =
+                scene.shadow_frustum_batches[batch_index];
+            if (batch.cascade != cascade || batch.kind != kind ||
+                batch.first_vertex != expected_vertex ||
+                batch.vertex_count == 0 ||
+                (!variable_count && batch.vertex_count != exact_count) ||
+                batch.vertex_count >
+                    scene.shadow_frustum_vertex_count - expected_vertex)
+            {
+                return false;
+            }
+            constexpr float rgb[4][3] = {
+                {1.f, 0.f, 0.f},
+                {0.f, 1.f, 0.f},
+                {0.f, 0.f, 1.f},
+                {1.f, 0.f, 1.f},
+            };
+            const float alpha =
+                kind >= ALMetalWorldShadowFrustumKind::volume_sides
+                    ? 0.1f : 1.f;
+            for (std::size_t vertex = expected_vertex;
+                 vertex < expected_vertex + batch.vertex_count; ++vertex)
+            {
+                const float* color =
+                    scene.shadow_frustum_vertices[vertex].color;
+                if (color[0] != rgb[cascade][0] ||
+                    color[1] != rgb[cascade][1] ||
+                    color[2] != rgb[cascade][2] || color[3] != alpha)
+                {
+                    return false;
+                }
+            }
+            expected_vertex += batch.vertex_count;
+            ++batch_index;
+            return true;
+        };
+        bool topology_valid = true;
+        for (std::size_t cascade = 0;
+             topology_valid && cascade < 4; ++cascade)
+        {
+            if (batch_index < scene.shadow_frustum_batch_count)
+            {
+                const ALMetalWorldShadowFrustumBatch& candidate =
+                    scene.shadow_frustum_batches[batch_index];
+                if (candidate.cascade == cascade &&
+                    candidate.kind ==
+                        ALMetalWorldShadowFrustumKind::cascade_points)
+                {
+                    cascade_has_points[cascade] = true;
+                    topology_valid = batch_is(
+                        cascade,
+                        ALMetalWorldShadowFrustumKind::cascade_points,
+                        0, true);
+                }
+            }
+            topology_valid = topology_valid && batch_is(
+                cascade,
+                ALMetalWorldShadowFrustumKind::cascade_extent,
+                24, false);
+            topology_valid = topology_valid && batch_is(
+                cascade,
+                ALMetalWorldShadowFrustumKind::cascade_outline,
+                24, false);
+        }
+        for (std::size_t cascade = 0;
+             topology_valid && cascade < 4; ++cascade)
+        {
+            if (!cascade_has_points[cascade])
+            {
+                continue;
+            }
+            topology_valid = batch_is(
+                cascade,
+                ALMetalWorldShadowFrustumKind::volume_sides,
+                10, false) &&
+                batch_is(
+                    cascade,
+                    ALMetalWorldShadowFrustumKind::volume_near,
+                    4, false) &&
+                batch_is(
+                    cascade,
+                    ALMetalWorldShadowFrustumKind::volume_far,
+                    4, false);
+        }
+        if (!topology_valid ||
+            batch_index != scene.shadow_frustum_batch_count ||
+            expected_vertex != scene.shadow_frustum_vertex_count)
+        {
+            setError(error, "Metal world shadow-frustum topology is invalid");
+            return nullptr;
+        }
+    }
     if ((scene.debug_point_count != 0 && !scene.debug_points) ||
         (scene.debug_point_batch_count != 0 &&
          !scene.debug_point_batches) ||
@@ -12382,6 +12561,25 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             *mImpl->device, descriptor, error);
         if (!agent_target_buffer || !agent_target_buffer->write(
                 0, scene.agent_target_lines, descriptor.length, error))
+        {
+            return nullptr;
+        }
+    }
+
+    std::unique_ptr<ALMetalBuffer> shadow_frustum_buffer;
+    if (has_shadow_frusta)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = scene.shadow_frustum_vertex_count *
+            sizeof(ALMetalWorldShadowFrustumVertex);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world shadow-frustum debug vertices";
+        shadow_frustum_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!shadow_frustum_buffer || !shadow_frustum_buffer->write(
+                0, scene.shadow_frustum_vertices,
+                descriptor.length, error))
         {
             return nullptr;
         }
@@ -14877,6 +15075,53 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 1, *reflection_probe_volume_buffer, 0, error) &&
             encoder->draw(
                 ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    }
+
+    if (encoded && has_shadow_frusta)
+    {
+        WorldDebugBlipConstants constants{};
+        std::memcpy(
+            constants.modelview_projection,
+            scene.shadow_frustum_modelview_projection,
+            sizeof(constants.modelview_projection));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        encoded =
+            encoder->setDepthStencilState(
+                scene.reverse_z ? mImpl->reverse_readonly_depth.get()
+                                : mImpl->forward_readonly_depth.get(),
+                error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *mImpl->shadow_frustum_pipelines[
+                    scene.hdr ? 1 : 0],
+                error) &&
+            encoder->setVertexBuffer(
+                0, *shadow_frustum_buffer, 0, error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error);
+        for (std::size_t index = 0;
+             encoded && index < scene.shadow_frustum_batch_count; ++index)
+        {
+            const ALMetalWorldShadowFrustumBatch& batch =
+                scene.shadow_frustum_batches[index];
+            ALMetalPrimitiveType primitive = ALMetalPrimitiveType::line;
+            if (batch.kind ==
+                ALMetalWorldShadowFrustumKind::cascade_points)
+            {
+                primitive = ALMetalPrimitiveType::point;
+            }
+            else if (batch.kind >=
+                     ALMetalWorldShadowFrustumKind::volume_sides)
+            {
+                primitive = ALMetalPrimitiveType::triangle_strip;
+            }
+            encoded = encoder->draw(
+                primitive, batch.first_vertex, batch.vertex_count,
+                1, error);
+        }
     }
 
     if (encoded && has_wind_vectors)

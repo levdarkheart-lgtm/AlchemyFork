@@ -6599,6 +6599,278 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(reflection_probe_link_pixels == opaque_forward_pixels);
         CHECK(reflection_probe_link_depth == opaque_forward_depth);
 
+        // Develop > Shadow Frusta is a read-only-depth, alpha-blended owner
+        // between probe debug display and Wind Vectors. The exact source
+        // topology is four optional eight-pixel point clouds, eight mandatory
+        // line batches, then three volume strips for each non-empty cascade.
+        std::vector<ALMetalWorldShadowFrustumVertex>
+            shadow_frustum_vertices;
+        std::vector<ALMetalWorldShadowFrustumBatch>
+            shadow_frustum_batches;
+        const float shadow_colors[4][3] = {
+            {1.f, 0.f, 0.f},
+            {0.f, 1.f, 0.f},
+            {0.f, 0.f, 1.f},
+            {1.f, 0.f, 1.f},
+        };
+        const auto append_shadow_vertex = [&](
+            float x, float y, float z, std::size_t cascade, float alpha)
+        {
+            ALMetalWorldShadowFrustumVertex vertex;
+            vertex.position[0] = x;
+            vertex.position[1] = y;
+            vertex.position[2] = z;
+            vertex.color[0] = shadow_colors[cascade][0];
+            vertex.color[1] = shadow_colors[cascade][1];
+            vertex.color[2] = shadow_colors[cascade][2];
+            vertex.color[3] = alpha;
+            shadow_frustum_vertices.push_back(vertex);
+        };
+        const auto begin_shadow_batch = [&]()
+        {
+            ALMetalWorldShadowFrustumBatch batch;
+            batch.first_vertex = static_cast<std::uint32_t>(
+                shadow_frustum_vertices.size());
+            return batch;
+        };
+        const auto end_shadow_batch = [&](
+            ALMetalWorldShadowFrustumBatch batch)
+        {
+            batch.vertex_count = static_cast<std::uint32_t>(
+                shadow_frustum_vertices.size() - batch.first_vertex);
+            shadow_frustum_batches.push_back(batch);
+        };
+
+        auto point_batch = begin_shadow_batch();
+        point_batch.cascade = 0;
+        point_batch.kind =
+            ALMetalWorldShadowFrustumKind::cascade_points;
+        append_shadow_vertex(-0.75f, 0.75f, 0.f, 0, 1.f);
+        end_shadow_batch(point_batch);
+        for (std::size_t cascade = 0; cascade < 4; ++cascade)
+        {
+            const float y = 0.65f - static_cast<float>(cascade) * 0.35f;
+            auto extent_batch = begin_shadow_batch();
+            extent_batch.cascade = static_cast<std::uint32_t>(cascade);
+            extent_batch.kind =
+                ALMetalWorldShadowFrustumKind::cascade_extent;
+            for (std::size_t line = 0; line < 12; ++line)
+            {
+                append_shadow_vertex(0.2f, y, 0.f, cascade, 1.f);
+                append_shadow_vertex(0.8f, y, 0.f, cascade, 1.f);
+            }
+            end_shadow_batch(extent_batch);
+
+            auto outline_batch = begin_shadow_batch();
+            outline_batch.cascade = static_cast<std::uint32_t>(cascade);
+            outline_batch.kind =
+                ALMetalWorldShadowFrustumKind::cascade_outline;
+            for (std::size_t line = 0; line < 12; ++line)
+            {
+                append_shadow_vertex(0.2f, y + 0.03f, 0.f,
+                                     cascade, 1.f);
+                append_shadow_vertex(0.8f, y + 0.03f, 0.f,
+                                     cascade, 1.f);
+            }
+            end_shadow_batch(outline_batch);
+        }
+
+        const float volume_positions[10][2] = {
+            {-0.8f, -0.8f}, {-0.8f, -0.2f},
+            {-0.2f, -0.8f}, {-0.2f, -0.2f},
+            {-0.8f, -0.8f}, {-0.8f, -0.2f},
+            {-0.2f, -0.8f}, {-0.2f, -0.2f},
+            {-0.8f, -0.8f}, {-0.8f, -0.2f},
+        };
+        auto volume_sides = begin_shadow_batch();
+        volume_sides.cascade = 0;
+        volume_sides.kind = ALMetalWorldShadowFrustumKind::volume_sides;
+        for (const auto& position : volume_positions)
+        {
+            append_shadow_vertex(
+                position[0], position[1], -0.5f, 0, 0.1f);
+        }
+        end_shadow_batch(volume_sides);
+        const float face_positions[4][2] = {
+            {-0.8f, -0.8f}, {-0.8f, -0.2f},
+            {-0.2f, -0.8f}, {-0.2f, -0.2f},
+        };
+        auto volume_near = begin_shadow_batch();
+        volume_near.cascade = 0;
+        volume_near.kind = ALMetalWorldShadowFrustumKind::volume_near;
+        for (const auto& position : face_positions)
+        {
+            append_shadow_vertex(
+                position[0], position[1], -0.5f, 0, 0.1f);
+        }
+        end_shadow_batch(volume_near);
+        auto volume_far = begin_shadow_batch();
+        volume_far.cascade = 0;
+        volume_far.kind = ALMetalWorldShadowFrustumKind::volume_far;
+        for (const auto& position : face_positions)
+        {
+            append_shadow_vertex(
+                position[0], position[1], -0.5f, 0, 0.1f);
+        }
+        end_shadow_batch(volume_far);
+
+        opaque_forward_scene.shadow_frustum_vertices =
+            shadow_frustum_vertices.data();
+        opaque_forward_scene.shadow_frustum_vertex_count =
+            shadow_frustum_vertices.size();
+        opaque_forward_scene.shadow_frustum_batches =
+            shadow_frustum_batches.data();
+        opaque_forward_scene.shadow_frustum_batch_count =
+            shadow_frustum_batches.size();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            opaque_forward_scene.shadow_frustum_modelview_projection[
+                axis * 4 + axis] = 1.f;
+        }
+
+        opaque_forward_scene.shadow_frustum_vertices = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world shadow-frustum storage is invalid");
+        opaque_forward_scene.shadow_frustum_vertices =
+            shadow_frustum_vertices.data();
+        shadow_frustum_vertices[0].position[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world shadow-frustum data is invalid");
+        shadow_frustum_vertices[0].position[0] = -0.75f;
+        ++shadow_frustum_batches[1].first_vertex;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world shadow-frustum topology is invalid");
+        --shadow_frustum_batches[1].first_vertex;
+        shadow_frustum_vertices[0].color[3] = 0.1f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world shadow-frustum topology is invalid");
+        shadow_frustum_vertices[0].color[3] = 1.f;
+        error.clear();
+
+        auto native_shadow_frusta = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(native_shadow_frusta);
+        std::array<std::uint16_t, 32 * 32 * 4> shadow_frustum_pixels{};
+        std::array<float, 32 * 32> shadow_frustum_depth{};
+        REQUIRE(native_shadow_frusta->colorTexture(0)->readback(
+            *device, 0, 0, {}, shadow_frustum_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(native_shadow_frusta->depthStencilTexture()->readback(
+            *device, 0, 0, {}, shadow_frustum_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(shadow_frustum_depth == opaque_forward_depth);
+        std::size_t red_pixels = 0;
+        std::size_t green_pixels = 0;
+        std::size_t blue_pixels = 0;
+        std::size_t magenta_pixels = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool red =
+                shadow_frustum_pixels[offset + 0] == 0x3c00 &&
+                shadow_frustum_pixels[offset + 1] == 0u &&
+                shadow_frustum_pixels[offset + 2] == 0u;
+            const bool green =
+                shadow_frustum_pixels[offset + 0] == 0u &&
+                shadow_frustum_pixels[offset + 1] == 0x3c00 &&
+                shadow_frustum_pixels[offset + 2] == 0u;
+            const bool blue =
+                shadow_frustum_pixels[offset + 0] == 0u &&
+                shadow_frustum_pixels[offset + 1] == 0u &&
+                shadow_frustum_pixels[offset + 2] == 0x3c00;
+            const bool magenta =
+                shadow_frustum_pixels[offset + 0] == 0x3c00 &&
+                shadow_frustum_pixels[offset + 1] == 0u &&
+                shadow_frustum_pixels[offset + 2] == 0x3c00;
+            red_pixels += red;
+            green_pixels += green;
+            blue_pixels += blue;
+            magenta_pixels += magenta;
+            if (red || green || blue || magenta)
+            {
+                CHECK(shadow_frustum_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+            }
+        }
+        CHECK(red_pixels >= 32);
+        CHECK(green_pixels >= 8);
+        CHECK(blue_pixels >= 8);
+        CHECK(magenta_pixels >= 8);
+        const std::size_t volume_pixel = (8 * 32 + 8) * 4;
+        CHECK(shadow_frustum_pixels[volume_pixel + 0] >
+              opaque_forward_pixels[volume_pixel + 0]);
+        CHECK(shadow_frustum_pixels[volume_pixel + 3] ==
+              opaque_forward_pixels[volume_pixel + 3]);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        for (ALMetalWorldShadowFrustumVertex& vertex :
+             shadow_frustum_vertices)
+        {
+            vertex.position[2] = 0.9f;
+        }
+        auto reverse_shadow_frusta = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_shadow_frusta);
+        shadow_frustum_pixels.fill(0xffffu);
+        shadow_frustum_depth.fill(-1.f);
+        REQUIRE(reverse_shadow_frusta->colorTexture(0)->readback(
+            *device, 0, 0, {}, shadow_frustum_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(reverse_shadow_frusta->depthStencilTexture()->readback(
+            *device, 0, 0, {}, shadow_frustum_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        CHECK(shadow_frustum_depth ==
+              reverse_agent_target_baseline_depth);
+        std::size_t reverse_shadow_frustum_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            reverse_shadow_frustum_changed +=
+                shadow_frustum_pixels[offset + 0] !=
+                    reverse_agent_target_baseline_pixels[offset + 0] ||
+                shadow_frustum_pixels[offset + 1] !=
+                    reverse_agent_target_baseline_pixels[offset + 1] ||
+                shadow_frustum_pixels[offset + 2] !=
+                    reverse_agent_target_baseline_pixels[offset + 2];
+            CHECK(shadow_frustum_pixels[offset + 3] ==
+                  reverse_agent_target_baseline_pixels[offset + 3]);
+        }
+        CHECK(reverse_shadow_frustum_changed >= 32);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.shadow_frustum_vertices = nullptr;
+        opaque_forward_scene.shadow_frustum_vertex_count = 0;
+        opaque_forward_scene.shadow_frustum_batches = nullptr;
+        opaque_forward_scene.shadow_frustum_batch_count = 0;
+        auto no_shadow_frusta = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_shadow_frusta);
+        shadow_frustum_pixels.fill(0xffffu);
+        shadow_frustum_depth.fill(-1.f);
+        REQUIRE(no_shadow_frusta->colorTexture(0)->readback(
+            *device, 0, 0, {}, shadow_frustum_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(no_shadow_frusta->depthStencilTexture()->readback(
+            *device, 0, 0, {}, shadow_frustum_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(shadow_frustum_pixels == opaque_forward_pixels);
+        CHECK(shadow_frustum_depth == opaque_forward_depth);
+
         // Develop > Wind Vectors follows the probe-volume display and emits
         // one-pixel green lattice points plus red line segments. It inherits
         // the ambient GL_LEQUAL read/write depth state (GEQUAL under
@@ -6710,6 +6982,76 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(wind_pixels[center + 2] == opaque_forward_pixels[center + 2]);
         CHECK(std::abs(wind_depth[16 * 32 + 16] -
                        opaque_forward_depth[16 * 32 + 16]) < 0.0001f);
+
+        // Shadow Frusta precedes Wind Vectors in renderDebug. Collide the
+        // one-pixel green wind point with the eight-pixel red cascade-point
+        // footprint: green must win only at that pixel while retained red
+        // remains around it. Depth-reject the later shadow batches so the
+        // ordering assertion isolates these two owners.
+        for (ALMetalWorldShadowFrustumVertex& vertex :
+             shadow_frustum_vertices)
+        {
+            vertex.position[2] = 1.f;
+        }
+        shadow_frustum_vertices[0].position[0] = 0.84375f;
+        shadow_frustum_vertices[0].position[1] = 0.84375f;
+        shadow_frustum_vertices[0].position[2] = 0.f;
+        for (std::size_t vertex = 1;
+             vertex < shadow_frustum_vertices.size(); ++vertex)
+        {
+            shadow_frustum_vertices[vertex].position[0] = 2.f;
+            shadow_frustum_vertices[vertex].position[1] = 2.f;
+        }
+        opaque_forward_scene.shadow_frustum_vertices =
+            shadow_frustum_vertices.data();
+        opaque_forward_scene.shadow_frustum_vertex_count =
+            shadow_frustum_vertices.size();
+        opaque_forward_scene.shadow_frustum_batches =
+            shadow_frustum_batches.data();
+        opaque_forward_scene.shadow_frustum_batch_count =
+            shadow_frustum_batches.size();
+        auto shadow_then_wind = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(shadow_then_wind);
+        wind_pixels.fill(0xffffu);
+        REQUIRE(shadow_then_wind->colorTexture(0)->readback(
+            *device, 0, 0, {}, wind_pixels.data(), 32 * 8, &error));
+        INFO(error);
+        std::size_t shadow_wind_green_pixels = 0;
+        std::size_t shadow_wind_red_pixels = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                wind_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                wind_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                wind_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            const bool green = changed &&
+                wind_pixels[offset + 0] == 0u &&
+                wind_pixels[offset + 1] == 0x3c00 &&
+                wind_pixels[offset + 2] == 0u;
+            const bool red = changed &&
+                wind_pixels[offset + 0] == 0x3c00 &&
+                wind_pixels[offset + 1] == 0u &&
+                wind_pixels[offset + 2] == 0u;
+            shadow_wind_green_pixels += green;
+            shadow_wind_red_pixels += red;
+            if (green || red)
+            {
+                CHECK(wind_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+            }
+        }
+        CHECK(shadow_wind_green_pixels == 1);
+        CHECK(shadow_wind_red_pixels >= 7);
+        opaque_forward_scene.shadow_frustum_vertices = nullptr;
+        opaque_forward_scene.shadow_frustum_vertex_count = 0;
+        opaque_forward_scene.shadow_frustum_batches = nullptr;
+        opaque_forward_scene.shadow_frustum_batch_count = 0;
 
         opaque_forward_scene.gbuffer = reverse_coverage_result.get();
         opaque_forward_scene.reverse_z = true;

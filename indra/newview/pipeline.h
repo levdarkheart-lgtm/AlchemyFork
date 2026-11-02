@@ -405,6 +405,10 @@ public:
     void captureMetalLightDebugBox(
         const LLVector4a& center, const LLVector4a& half_extent,
         const LLColor4& color, bool radius_bounds);
+    // Retain Develop > Shadow Frusta's centralized eight-camera transaction:
+    // four cascade point/box/outline groups followed by conditional volume
+    // strips for exactly the cascades whose point sets are non-empty.
+    void captureMetalShadowFrusta();
     // Retain the ordered orange/yellow neighbor links emitted by Develop >
     // Reflection Probes. Each source link becomes exactly two line vertices.
     void beginMetalReflectionProbeLinkCapture(std::size_t link_count);
@@ -1489,7 +1493,6 @@ public:
             RENDER_DEBUG_OCTREE |
             RENDER_DEBUG_OCCLUSION |
             RENDER_DEBUG_RAYCAST |
-            RENDER_DEBUG_SHADOW_FRUSTA |
             RENDER_DEBUG_AVATAR_VOLUME |
             RENDER_DEBUG_AVATAR_JOINTS |
             RENDER_DEBUG_PHYSICS_SHAPES |
