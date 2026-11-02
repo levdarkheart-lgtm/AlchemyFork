@@ -2128,6 +2128,83 @@ almetal_world_light_debug_outline_vertex(
     return output;
 }
 
+struct ALMetalWorldBoundingBoxConstants
+{
+    float4x4 modelview_projection;
+    float4 color;
+    uint4 config;
+    float4 center;
+    float4 half_extent;
+    // xy = render-target size, z = full line width in pixels.
+    float4 screen_line_width;
+};
+
+vertex ALMetalWorldTextureAnimVaryings
+almetal_world_bounding_box_wide_vertex(
+    constant ALMetalWorldBoundingBoxConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    // Expand each drawBoxOutline edge to two screen-space triangles. This is
+    // the native equivalent of the active drawable's pulsing glLineWidth.
+    constexpr uchar indices[24] = {
+        0, 1, 1, 2, 2, 3, 3, 0,
+        4, 5, 5, 6, 6, 7, 7, 4,
+        0, 6, 3, 5, 1, 7, 2, 4,
+    };
+    constexpr float3 signs[8] = {
+        { 1.0,  1.0,  1.0}, {-1.0,  1.0,  1.0},
+        {-1.0, -1.0,  1.0}, { 1.0, -1.0,  1.0},
+        {-1.0, -1.0, -1.0}, { 1.0, -1.0, -1.0},
+        { 1.0,  1.0, -1.0}, {-1.0,  1.0, -1.0},
+    };
+    constexpr uchar endpoint_lanes[6] = {0, 0, 1, 0, 1, 1};
+    constexpr float side_lanes[6] = {1.0, -1.0, -1.0,
+                                      1.0, -1.0,  1.0};
+    const uint edge = vertex_id / 6u;
+    const uint lane = vertex_id % 6u;
+    const float3 from_position = constants.center.xyz +
+        constants.half_extent.xyz * signs[indices[edge * 2u]];
+    const float3 to_position = constants.center.xyz +
+        constants.half_extent.xyz * signs[indices[edge * 2u + 1u]];
+    float4 from_clip = constants.modelview_projection *
+                       float4(from_position, 1.0);
+    float4 to_clip = constants.modelview_projection *
+                     float4(to_position, 1.0);
+    from_clip.y = -from_clip.y;
+    to_clip.y = -to_clip.y;
+    if (constants.config.x == 0u)
+    {
+        from_clip = almetal_clip_from_gl(from_clip);
+        to_clip = almetal_clip_from_gl(to_clip);
+    }
+
+    const float2 screen = max(
+        constants.screen_line_width.xy, float2(1.0));
+    // A visible active drawable can straddle the camera plane. Keep the
+    // extrusion finite at w == 0 and leave homogeneous clipping to Metal.
+    const float from_w = abs(from_clip.w) > 1.0e-5
+        ? from_clip.w : copysign(1.0e-5, from_clip.w);
+    const float to_w = abs(to_clip.w) > 1.0e-5
+        ? to_clip.w : copysign(1.0e-5, to_clip.w);
+    const float2 from_ndc = from_clip.xy / from_w;
+    const float2 to_ndc = to_clip.xy / to_w;
+    const float2 delta_pixels = (to_ndc - from_ndc) * screen * 0.5;
+    const float delta_length = length(delta_pixels);
+    const float2 perpendicular_pixels = delta_length > 1.0e-5
+        ? float2(-delta_pixels.y, delta_pixels.x) / delta_length *
+              constants.screen_line_width.z * 0.5
+        : float2(0.0);
+    const float2 perpendicular_ndc = perpendicular_pixels * 2.0 / screen;
+    const bool use_to = endpoint_lanes[lane] != 0u;
+    float4 clip_position = use_to ? to_clip : from_clip;
+    clip_position.xy += perpendicular_ndc * side_lanes[lane] *
+                        clip_position.w;
+
+    ALMetalWorldTextureAnimVaryings output;
+    output.position = clip_position;
+    return output;
+}
+
 struct ALMetalWorldDebugBlip
 {
     float4 position;

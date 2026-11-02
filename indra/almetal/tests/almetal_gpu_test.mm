@@ -6170,6 +6170,238 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         opaque_forward_scene.avatar_joint_batches = nullptr;
         opaque_forward_scene.avatar_joint_batch_count = 0;
 
+        // Develop > Bounding Boxes emits generated 12-edge outlines under the
+        // ambient writable world depth state. Region and bridge transforms
+        // are already folded into the retained MVP. Active drawables retain
+        // their live one-to-five-pixel pulse through screen-space expansion.
+        ALMetalWorldBoundingBoxBatch bounding_box_batch;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            bounding_box_batch.modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        bounding_box_batch.center[3] = 1.f;
+        bounding_box_batch.half_extent[0] = 0.4f;
+        bounding_box_batch.half_extent[1] = 0.3f;
+        bounding_box_batch.half_extent[2] = 0.1f;
+        bounding_box_batch.color[0] = 0.f;
+        bounding_box_batch.color[1] = 0.f;
+        bounding_box_batch.color[2] = 1.f;
+        bounding_box_batch.color[3] = 1.f;
+        bounding_box_batch.line_width = 1.f;
+        bounding_box_batch.order = 0;
+        opaque_forward_scene.bounding_box_batches = &bounding_box_batch;
+        opaque_forward_scene.bounding_box_batch_count = 1;
+
+        opaque_forward_scene.bounding_box_batches = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world bounding-box batch storage is invalid");
+        opaque_forward_scene.bounding_box_batches = &bounding_box_batch;
+        bounding_box_batch.modelview_projection[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world bounding-box batch is invalid");
+        bounding_box_batch.modelview_projection[0] = 1.f;
+        bounding_box_batch.half_extent[0] = -0.1f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world bounding-box batch is invalid");
+        bounding_box_batch.half_extent[0] = 0.4f;
+        bounding_box_batch.color[2] = 0.25f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world bounding-box batch is invalid");
+        bounding_box_batch.color[2] = 1.f;
+        bounding_box_batch.line_width = 6.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world bounding-box batch is invalid");
+        bounding_box_batch.line_width = 1.f;
+        opaque_forward_scene.agent_target_lines = agent_target_lines.data();
+        opaque_forward_scene.agent_target_line_vertex_count =
+            agent_target_lines.size();
+        opaque_forward_scene.agent_target_order = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world bounding-box batch is invalid");
+        opaque_forward_scene.agent_target_lines = nullptr;
+        opaque_forward_scene.agent_target_line_vertex_count = 0;
+        error.clear();
+
+        auto thin_bounding_box = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(thin_bounding_box);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            thin_bounding_box_pixels{};
+        std::array<float, 32 * 32> thin_bounding_box_depth{};
+        REQUIRE(thin_bounding_box->colorTexture(0)->readback(
+            *device, 0, 0, {}, thin_bounding_box_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(thin_bounding_box->depthStencilTexture()->readback(
+            *device, 0, 0, {}, thin_bounding_box_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t thin_bounding_box_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                thin_bounding_box_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                thin_bounding_box_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                thin_bounding_box_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            thin_bounding_box_changed += changed;
+            if (changed)
+            {
+                CHECK(thin_bounding_box_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+                CHECK(thin_bounding_box_depth[pixel] <=
+                      opaque_forward_depth[pixel]);
+            }
+        }
+        CHECK(thin_bounding_box_changed >= 16);
+        CHECK(thin_bounding_box_depth != opaque_forward_depth);
+
+        bounding_box_batch.line_width = 5.f;
+        auto wide_bounding_box = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(wide_bounding_box);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            wide_bounding_box_pixels{};
+        REQUIRE(wide_bounding_box->colorTexture(0)->readback(
+            *device, 0, 0, {}, wide_bounding_box_pixels.data(),
+            32 * 8, &error));
+        std::size_t wide_bounding_box_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            wide_bounding_box_changed +=
+                wide_bounding_box_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                wide_bounding_box_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                wide_bounding_box_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            CHECK(wide_bounding_box_pixels[offset + 3] ==
+                  opaque_forward_pixels[offset + 3]);
+        }
+        CHECK(wide_bounding_box_changed > thin_bounding_box_changed);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        bounding_box_batch.modelview_projection[14] = 0.9f;
+        auto reverse_bounding_box = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_bounding_box);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_bounding_box_pixels{};
+        std::array<float, 32 * 32> reverse_bounding_box_depth{};
+        REQUIRE(reverse_bounding_box->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_bounding_box_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(reverse_bounding_box->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_bounding_box_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t reverse_bounding_box_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                reverse_bounding_box_pixels[offset + 0] !=
+                    reverse_agent_target_baseline_pixels[offset + 0] ||
+                reverse_bounding_box_pixels[offset + 1] !=
+                    reverse_agent_target_baseline_pixels[offset + 1] ||
+                reverse_bounding_box_pixels[offset + 2] !=
+                    reverse_agent_target_baseline_pixels[offset + 2];
+            reverse_bounding_box_changed += changed;
+            if (changed)
+            {
+                CHECK(reverse_bounding_box_pixels[offset + 3] ==
+                      reverse_agent_target_baseline_pixels[offset + 3]);
+                CHECK(reverse_bounding_box_depth[pixel] >=
+                      reverse_agent_target_baseline_depth[pixel]);
+            }
+        }
+        CHECK(reverse_bounding_box_changed >= 32);
+        CHECK(reverse_bounding_box_depth !=
+              reverse_agent_target_baseline_depth);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        bounding_box_batch.modelview_projection[14] = 0.f;
+        bounding_box_batch.line_width = 5.f;
+        bounding_box_batch.center[0] = 0.03125f;
+        bounding_box_batch.center[1] = 0.03125f;
+        bounding_box_batch.half_extent[0] = 0.1875f;
+        bounding_box_batch.half_extent[1] = 0.f;
+        bounding_box_batch.color[0] = 1.f;
+        bounding_box_batch.color[2] = 0.f;
+        bounding_box_batch.order = 0;
+        debug_points[0].position[0] = 0.03125f;
+        debug_points[0].position[1] = 0.03125f;
+        debug_points[0].position[2] = 0.9f;
+        debug_point_batches[0].first_vertex = 0;
+        debug_point_batches[0].vertex_count = 1;
+        debug_point_batches[0].order = 1;
+        opaque_forward_scene.debug_points = debug_points.data();
+        opaque_forward_scene.debug_point_count = 1;
+        opaque_forward_scene.debug_point_batches =
+            debug_point_batches.data();
+        opaque_forward_scene.debug_point_batch_count = 1;
+        auto point_after_bounding_box =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(point_after_bounding_box);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            point_after_bounding_box_pixels{};
+        REQUIRE(point_after_bounding_box->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            point_after_bounding_box_pixels.data(), 32 * 8, &error));
+
+        debug_point_batches[0].order = 0;
+        bounding_box_batch.order = 1;
+        auto bounding_box_after_point =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(bounding_box_after_point);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            bounding_box_after_point_pixels{};
+        REQUIRE(bounding_box_after_point->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            bounding_box_after_point_pixels.data(), 32 * 8, &error));
+        CHECK(point_after_bounding_box_pixels !=
+              bounding_box_after_point_pixels);
+
+        opaque_forward_scene.debug_points = nullptr;
+        opaque_forward_scene.debug_point_count = 0;
+        opaque_forward_scene.debug_point_batches = nullptr;
+        opaque_forward_scene.debug_point_batch_count = 0;
+        opaque_forward_scene.bounding_box_batches = nullptr;
+        opaque_forward_scene.bounding_box_batch_count = 0;
+        auto no_bounding_box = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_bounding_box);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            no_bounding_box_pixels{};
+        REQUIRE(no_bounding_box->colorTexture(0)->readback(
+            *device, 0, 0, {}, no_bounding_box_pixels.data(),
+            32 * 8, &error));
+        CHECK(no_bounding_box_pixels == opaque_forward_pixels);
+
         // Develop > Texture Anim selects visible draw-info triangles whose
         // texture matrix is non-null, but gDebugProgram consumes positions
         // only and emits one fixed translucent-yellow uniform. The enclosing

@@ -501,6 +501,21 @@ struct ALMetalWorldAvatarJointBatch
     std::uint64_t order = 0;
 };
 
+// Develop > Bounding Boxes emits one generated 12-edge outline for each
+// non-empty spatial group's object bounds, each volume face and every
+// drawable. The exact live MVP retains region/bridge-local coordinates. Most
+// outlines are one pixel, while active drawables pulse between one and five
+// pixels and therefore require explicit screen-space expansion in Metal.
+struct ALMetalWorldBoundingBoxBatch
+{
+    float modelview_projection[16]{};
+    float center[4] = {0.f, 0.f, 0.f, 1.f};
+    float half_extent[4]{};
+    float color[4] = {1.f, 1.f, 1.f, 1.f};
+    float line_width = 1.f;
+    std::uint64_t order = 0;
+};
+
 // Develop > Points emits one opaque white, one-pixel point at every valid
 // drawable face centre. World traversal can switch transforms at spatial-
 // bridge boundaries and can interleave the self-avatar Agent Target owner, so
@@ -951,6 +966,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t avatar_volume_batch_count = 0;
     const ALMetalWorldAvatarJointBatch* avatar_joint_batches = nullptr;
     std::size_t avatar_joint_batch_count = 0;
+    const ALMetalWorldBoundingBoxBatch* bounding_box_batches = nullptr;
+    std::size_t bounding_box_batch_count = 0;
     const ALMetalWorldDebugPointVertex* debug_points = nullptr;
     std::size_t debug_point_count = 0;
     const ALMetalWorldDebugPointBatch* debug_point_batches = nullptr;

@@ -459,6 +459,10 @@ public:
     void diffuseColor4fv(const F32* c);
     void diffuseColor4ubv(const U8* c);
     void diffuseColor4ub(U8 r, U8 g, U8 b, U8 a);
+    // CPU mirror of the uniform solid colour last submitted through the
+    // diffuseColor* family. Native sidecar captures use it at exact generated-
+    // geometry boundaries without issuing a GL query or changing the shader.
+    const LLColor4& getDiffuseColor() const { return mMetalSolidColor; }
 
     // The UI text shader's only per-pass constant. The GL uniform remains
     // owned by its shader; this shadows the value at the batch boundary for

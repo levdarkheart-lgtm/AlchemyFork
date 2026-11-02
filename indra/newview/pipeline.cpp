@@ -597,6 +597,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::size_t avatar_joint_expected_segments = 0;
     std::size_t avatar_joint_captured_segments = 0;
     bool avatar_joint_capture_active = false;
+    std::vector<ALMetalWorldBoundingBoxBatch> bounding_box_batches;
+    bool bounding_box_capture_active = false;
     std::vector<ALMetalWorldDebugPointVertex> debug_points;
     std::vector<ALMetalWorldDebugPointBatch> debug_point_batches;
     ALMetalWorldDebugPointBatch debug_point_batch;
@@ -4044,6 +4046,8 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.avatar_joint_expected_segments = 0;
     capture.avatar_joint_captured_segments = 0;
     capture.avatar_joint_capture_active = false;
+    capture.bounding_box_batches.clear();
+    capture.bounding_box_capture_active = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -5305,6 +5309,102 @@ static bool metalLightDebugStateIsExact(bool depth_test_enabled,
         rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
         color_mask[0] && color_mask[1] && color_mask[2] &&
         !color_mask[3] && (!require_unit_line || gGL.getLineWidth() == 1.f);
+}
+
+void LLPipeline::beginMetalBoundingBoxCapture()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || capture.bounding_box_capture_active ||
+        !capture.bounding_box_batches.empty())
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+    capture.bounding_box_capture_active = true;
+}
+
+void LLPipeline::captureMetalBoundingBox(
+    const LLVector4a& center, const LLVector4a& half_extent)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.bounding_box_capture_active)
+    {
+        return;
+    }
+    if (!center.isFinite3() || !half_extent.isFinite3())
+    {
+        // drawBoxOutline() makes the same valid no-output decision.
+        return;
+    }
+
+    const LLColor4& color = gGL.getDiffuseColor();
+    const F32 line_width = gGL.getLineWidth();
+    if (!capture.complete ||
+        capture.render_debug_order == std::numeric_limits<U64>::max() ||
+        !std::isfinite(color.mV[0]) || !std::isfinite(color.mV[1]) ||
+        !std::isfinite(color.mV[2]) || !std::isfinite(color.mV[3]) ||
+        color.mV[3] != 1.f ||
+        !std::isfinite(line_width) || line_width < 1.f || line_width > 5.f ||
+        !metalLightDebugStateIsExact(true, false))
+    {
+        capture.markIncomplete(__LINE__);
+        capture.bounding_box_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldBoundingBoxBatch batch;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.center, center.getF32ptr(), sizeof(float) * 3);
+    batch.center[3] = 1.f;
+    std::memcpy(batch.half_extent, half_extent.getF32ptr(),
+                sizeof(float) * 3);
+    batch.half_extent[3] = 0.f;
+    std::memcpy(batch.color, color.mV, sizeof(batch.color));
+    batch.line_width = line_width;
+    batch.order = capture.render_debug_order++;
+    try
+    {
+        capture.bounding_box_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.bounding_box_batches.clear();
+    }
+}
+
+void LLPipeline::endMetalBoundingBoxCapture()
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.bounding_box_capture_active)
+    {
+        return;
+    }
+    capture.bounding_box_capture_active = false;
+    if (!capture.complete)
+    {
+        capture.bounding_box_batches.clear();
+    }
 }
 
 void LLPipeline::captureMetalLightDebugFace(
@@ -6705,6 +6805,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.avatar_joint_batches = capture.avatar_joint_batches.data();
         scene.avatar_joint_batch_count =
             capture.avatar_joint_batches.size();
+        scene.bounding_box_batches =
+            capture.bounding_box_batches.data();
+        scene.bounding_box_batch_count =
+            capture.bounding_box_batches.size();
         scene.debug_points = capture.debug_points.data();
         scene.debug_point_count = capture.debug_points.size();
         scene.debug_point_batches = capture.debug_point_batches.data();
@@ -8389,6 +8493,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.avatar_joint_expected_segments = 0;
     capture.avatar_joint_captured_segments = 0;
     capture.avatar_joint_capture_active = false;
+    capture.bounding_box_batches.clear();
+    capture.bounding_box_capture_active = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -20972,9 +21078,15 @@ void LLPipeline::renderDebug()
 #if LL_DARWIN
         const bool capture_debug_points =
             !hud_only && hasRenderDebugMask(RENDER_DEBUG_POINTS);
+        const bool capture_bounding_boxes =
+            !hud_only && hasRenderDebugMask(RENDER_DEBUG_BBOXES);
         if (capture_debug_points)
         {
             beginMetalDebugPointCapture();
+        }
+        if (capture_bounding_boxes)
+        {
+            beginMetalBoundingBoxCapture();
         }
 #endif
 
@@ -21006,6 +21118,10 @@ void LLPipeline::renderDebug()
             }
         }
 #if LL_DARWIN
+        if (capture_bounding_boxes)
+        {
+            endMetalBoundingBoxCapture();
+        }
         if (capture_debug_points)
         {
             endMetalDebugPointCapture();

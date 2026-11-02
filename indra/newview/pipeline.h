@@ -397,6 +397,13 @@ public:
                                     const LLVector4a& half_extent,
                                     bool attachment_bounds);
     void endMetalAvatarJointCapture(std::size_t skeleton_segment_count);
+    // Retain Develop > Bounding Boxes across the complete world spatial
+    // traversal. Each generated outline records the exact live transform,
+    // solid color, extents and active-object line width.
+    void beginMetalBoundingBoxCapture();
+    void captureMetalBoundingBox(const LLVector4a& center,
+                                 const LLVector4a& half_extent);
+    void endMetalBoundingBoxCapture();
     // Retain Develop > Points across the complete world spatial traversal.
     // Each drawable batch records its current region/bridge transform; the
     // traversal order also preserves interleaving with Agent Target.
@@ -1509,7 +1516,6 @@ public:
         // Keep this list explicit: broad mRenderDebugMask != 0 eligibility
         // silently turns text-only diagnostics into a GL world fallback.
         RENDER_DEBUG_GL_WORLD_OUTPUT =
-            RENDER_DEBUG_BBOXES |
             RENDER_DEBUG_OCTREE |
             RENDER_DEBUG_OCCLUSION |
             RENDER_DEBUG_RAYCAST |

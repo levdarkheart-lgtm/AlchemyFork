@@ -2001,6 +2001,9 @@ void renderBoundingBox(LLDrawable* drawable, bool set_color = true)
                 size.setSub(ext[1], ext[0]);
                 size.mul(0.5f);
 
+#if LL_DARWIN
+                gPipeline.captureMetalBoundingBox(pos, size);
+#endif
                 drawBoxOutline(pos,size);
             }
         }
@@ -2020,11 +2023,17 @@ void renderBoundingBox(LLDrawable* drawable, bool set_color = true)
         gGL.setLineWidth(llmax(4.f*sinf((F32)fmod(gFrameTimeSeconds.value()*2.0, (F64)F_TWO_PI))+1.f, 1.f));
         //gGL.setLineWidth(4.f*(sinf(gFrameTimeSeconds*2.f)*0.25f+0.75f));
         stop_glerror();
+#if LL_DARWIN
+        gPipeline.captureMetalBoundingBox(pos, size);
+#endif
         drawBoxOutline(pos,size);
         gGL.setLineWidth(1.f);
     }
     else
     {
+#if LL_DARWIN
+        gPipeline.captureMetalBoundingBox(pos, size);
+#endif
         drawBoxOutline(pos,size);
     }
 }
@@ -3326,6 +3335,10 @@ public:
             {
                 gGL.diffuseColor3f(0,0,1);
                 const LLVector4a* obj_bounds = group->getObjectBounds();
+#if LL_DARWIN
+                gPipeline.captureMetalBoundingBox(
+                    obj_bounds[0], obj_bounds[1]);
+#endif
                 drawBoxOutline(obj_bounds[0], obj_bounds[1]);
             }
         }
