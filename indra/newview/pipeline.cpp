@@ -781,10 +781,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool world_alpha_uses_shadows = false;
 
     ALMetalWorldReflectionProbes impostor_reflection_probes;
-    std::unique_ptr<ALMetalTexture> impostor_hero_probe_texture;
     ALMetalWorldHeroProbe impostor_hero_probe;
-    std::vector<U8> impostor_hero_probe_bytes;
-    U64 impostor_hero_probe_generation = 0;
     std::unique_ptr<ALMetalTexture> hero_probe_source_cube;
     std::unique_ptr<ALMetalTexture> hero_probe_radiance_cube;
     LLUUID hero_probe_owner_id;
@@ -1825,10 +1822,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.windlight_clouds_complete = false;
         capture.windlight_clouds_native_available = false;
         capture.impostor_bake_target.reset();
-        capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
-        capture.impostor_hero_probe_bytes.clear();
-        capture.impostor_hero_probe_generation = 0;
         capture.hero_probe_source_cube.reset();
         capture.hero_probe_radiance_cube.reset();
         capture.hero_probe_valid_faces = 0;
@@ -3729,10 +3723,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.windlight_clouds_complete = false;
         capture.windlight_clouds_native_available = false;
         capture.impostor_bake_target.reset();
-        capture.impostor_hero_probe_texture.reset();
         capture.impostor_hero_probe = {};
-        capture.impostor_hero_probe_bytes.clear();
-        capture.impostor_hero_probe_generation = 0;
         capture.impostor_ssr_history_target.reset();
         capture.impostor_screen_space_reflections = {};
         capture.world_ssr_history_warmup = false;
@@ -12309,28 +12300,16 @@ bool LLPipeline::fillMetalImpostorHeroProbe()
         manager.mHeroData.heroShape > 1 ||
         !manager.mMetalRadianceReady ||
         manager.mMetalRadianceGeneration == 0 ||
-        manager.mTexture.isNull() ||
-        manager.mTexture->getGLName() == 0 ||
-        manager.mTexture->getWidth() == 0 ||
-        manager.mTexture->getCount() == 0 ||
-        manager.mMipChain.empty() ||
         !std::isfinite(manager.mHeroData.heroMaxLod) ||
         manager.mHeroData.heroMaxLod < 0.f)
     {
         return false;
     }
 
-    const U32 resolution = manager.mTexture->getWidth();
     const U32 hero_max_lod = static_cast<U32>(
         std::lround(manager.mHeroData.heroMaxLod));
-    const U32 radiance_mips = std::min<U32>(
-        static_cast<U32>(manager.mMipChain.size()),
-        static_cast<U32>(
-            std::ceil(0.25f * manager.mHeroData.heroMaxLod)) + 1);
-    if (radiance_mips == 0)
-    {
-        return false;
-    }
+    const U32 radiance_mips = static_cast<U32>(
+        std::ceil(0.25f * manager.mHeroData.heroMaxLod)) + 1;
     const ALMetalPixelFormat metal_format = manager.mHDR
         ? ALMetalPixelFormat::rg11b10_float
         : ALMetalPixelFormat::rgba8_unorm;
@@ -12354,178 +12333,12 @@ bool LLPipeline::fillMetalImpostorHeroProbe()
             manager.mMetalRadianceGeneration &&
         native_descriptor->type == ALMetalTextureType::texture_cube &&
         native_descriptor->format == metal_format &&
-        native_descriptor->width == resolution &&
-        native_descriptor->height == resolution &&
+        native_descriptor->width != 0 &&
+        native_descriptor->height == native_descriptor->width &&
         native_descriptor->mipmap_level_count == radiance_mips;
-    const ALMetalTextureDescriptor* mirrored =
-        capture.impostor_hero_probe_texture
-            ? &capture.impostor_hero_probe_texture->descriptor()
-            : nullptr;
-    const bool needs_radiance =
-        capture.impostor_hero_probe_generation !=
-            manager.mMetalRadianceGeneration ||
-        !mirrored ||
-        mirrored->type != ALMetalTextureType::texture_cube ||
-        mirrored->format != metal_format ||
-        mirrored->width != resolution ||
-        mirrored->height != resolution ||
-        mirrored->mipmap_level_count != radiance_mips;
-
-    if (!native_radiance && needs_radiance)
+    if (!native_radiance)
     {
-        struct MipLayout
-        {
-            U32 resolution = 0;
-            std::size_t face_bytes = 0;
-            std::size_t offset = 0;
-        };
-        std::vector<MipLayout> mip_layouts;
-        mip_layouts.reserve(radiance_mips);
-        std::size_t total_bytes = 0;
-        U32 mip_resolution = resolution;
-        for (U32 mip = 0; mip < radiance_mips; ++mip)
-        {
-            const std::size_t face_pixels =
-                static_cast<std::size_t>(mip_resolution) * mip_resolution;
-            if (face_pixels >
-                    std::numeric_limits<std::size_t>::max() /
-                        (6 * sizeof(U32)) ||
-                total_bytes > std::numeric_limits<std::size_t>::max() -
-                    face_pixels * 6 * sizeof(U32))
-            {
-                return false;
-            }
-            const std::size_t face_bytes = face_pixels * sizeof(U32);
-            mip_layouts.push_back(
-                {mip_resolution, face_bytes, total_bytes});
-            total_bytes += face_bytes * 6;
-            mip_resolution = std::max<U32>(mip_resolution / 2, 1);
-        }
-        capture.impostor_hero_probe_bytes.assign(total_bytes, U8{0});
-
-        GLint previous_read_framebuffer = 0;
-        GLint previous_pack_buffer = 0;
-        GLint previous_read_buffer = GL_BACK;
-        GLint previous_pack_alignment = 4;
-        GLint previous_pack_row_length = 0;
-        GLint previous_pack_skip_pixels = 0;
-        GLint previous_pack_skip_rows = 0;
-        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,
-                      &previous_read_framebuffer);
-        glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING,
-                      &previous_pack_buffer);
-        glGetIntegerv(GL_READ_BUFFER, &previous_read_buffer);
-        glGetIntegerv(GL_PACK_ALIGNMENT, &previous_pack_alignment);
-        glGetIntegerv(GL_PACK_ROW_LENGTH, &previous_pack_row_length);
-        glGetIntegerv(GL_PACK_SKIP_PIXELS, &previous_pack_skip_pixels);
-        glGetIntegerv(GL_PACK_SKIP_ROWS, &previous_pack_skip_rows);
-
-        GLuint read_framebuffer = 0;
-        clear_glerror();
-        glGenFramebuffers(1, &read_framebuffer);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, read_framebuffer);
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-        glPixelStorei(GL_PACK_ALIGNMENT, 4);
-        glPixelStorei(GL_PACK_ROW_LENGTH, 0);
-        glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
-        glPixelStorei(GL_PACK_SKIP_ROWS, 0);
-        glReadBuffer(GL_COLOR_ATTACHMENT0);
-
-        bool read_ok = read_framebuffer != 0;
-        const GLenum gl_format = manager.mHDR ? GL_RGB : GL_RGBA;
-        const GLenum gl_type = manager.mHDR
-            ? GL_UNSIGNED_INT_10F_11F_11F_REV
-            : GL_UNSIGNED_BYTE;
-        for (U32 mip = 0; read_ok && mip < radiance_mips; ++mip)
-        {
-            const MipLayout& layout = mip_layouts[mip];
-            for (U32 face = 0; read_ok && face < 6; ++face)
-            {
-                glFramebufferTextureLayer(
-                    GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                    manager.mTexture->getGLName(), mip,
-                    static_cast<GLint>(face));
-                read_ok = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) ==
-                    GL_FRAMEBUFFER_COMPLETE;
-                if (read_ok)
-                {
-                    glReadPixels(
-                        0, 0, layout.resolution, layout.resolution,
-                        gl_format, gl_type,
-                        capture.impostor_hero_probe_bytes.data() +
-                            layout.offset + layout.face_bytes * face);
-                }
-            }
-        }
-        const GLenum read_error = glGetError();
-
-        glBindFramebuffer(
-            GL_READ_FRAMEBUFFER,
-            static_cast<GLuint>(previous_read_framebuffer));
-        glReadBuffer(previous_read_buffer);
-        glBindBuffer(
-            GL_PIXEL_PACK_BUFFER,
-            static_cast<GLuint>(previous_pack_buffer));
-        glPixelStorei(GL_PACK_ALIGNMENT, previous_pack_alignment);
-        glPixelStorei(GL_PACK_ROW_LENGTH, previous_pack_row_length);
-        glPixelStorei(GL_PACK_SKIP_PIXELS, previous_pack_skip_pixels);
-        glPixelStorei(GL_PACK_SKIP_ROWS, previous_pack_skip_rows);
-        if (read_framebuffer != 0)
-        {
-            glDeleteFramebuffers(1, &read_framebuffer);
-        }
-
-        if (!read_ok || read_error != GL_NO_ERROR)
-        {
-            LL_WARNS("Metal")
-                << "Could not read the live hero-probe cube for the native "
-                   "avatar-impostor owner: GL error 0x"
-                << std::hex << read_error << std::dec << LL_ENDL;
-            return false;
-        }
-
-        ALMetalTextureDescriptor descriptor;
-        descriptor.type = ALMetalTextureType::texture_cube;
-        descriptor.format = metal_format;
-        descriptor.width = resolution;
-        descriptor.height = resolution;
-        descriptor.mipmap_level_count = radiance_mips;
-        descriptor.storage = ALMetalStorageMode::private_gpu;
-        descriptor.usage = ALMetalTextureUsage::shader_read;
-        descriptor.label = "Alchemy live hero-probe mirror";
-        std::string error;
-        auto hero_texture = ALMetalTexture::create(
-            *capture.device, descriptor, &error);
-        auto upload = hero_texture
-            ? capture.device->makeCommandBuffer(
-                  "Alchemy live hero-probe upload", &error)
-            : nullptr;
-        bool uploaded = upload != nullptr;
-        for (U32 mip = 0; uploaded && mip < radiance_mips; ++mip)
-        {
-            const MipLayout& layout = mip_layouts[mip];
-            for (U32 face = 0; uploaded && face < 6; ++face)
-            {
-                uploaded = hero_texture->upload(
-                    *upload, mip, face, {},
-                    capture.impostor_hero_probe_bytes.data() +
-                        layout.offset + layout.face_bytes * face,
-                    static_cast<std::size_t>(layout.resolution) *
-                        sizeof(U32),
-                    &error);
-            }
-        }
-        uploaded = uploaded && upload->commit(&error);
-        if (!uploaded)
-        {
-            LL_WARNS("Metal")
-                << "Could not upload the live hero-probe mirror: "
-                << error << LL_ENDL;
-            return false;
-        }
-        capture.impostor_hero_probe_texture = std::move(hero_texture);
-        capture.impostor_hero_probe_generation =
-            manager.mMetalRadianceGeneration;
+        return false;
     }
 
     static_assert(sizeof(LLMatrix4) == sizeof(F32) * 16);
@@ -12562,9 +12375,7 @@ bool LLPipeline::fillMetalImpostorHeroProbe()
     constants.config[2] = hero_max_lod;
 
     capture.impostor_hero_probe.radiance_texture =
-        native_radiance
-            ? native_capture->hero_probe_radiance_cube.get()
-            : capture.impostor_hero_probe_texture.get();
+        native_capture->hero_probe_radiance_cube.get();
     capture.impostor_hero_probe.constants = constants;
     return true;
 }
