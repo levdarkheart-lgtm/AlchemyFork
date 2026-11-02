@@ -35,6 +35,7 @@ reload the chronological history.
 | Native Batch Size static/rigged replay and source-exact build 68065, 2026-11-02 | [CURRENT-batch-size-debug-checkpoint-2026-11-02.md](CURRENT-batch-size-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native Lights face and procedural-bounds replay and source-exact build 68067, 2026-11-02 | [CURRENT-lights-debug-checkpoint-2026-11-02.md](CURRENT-lights-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native Impostors additive wide-outline replay and source-exact build 68069, 2026-11-02 | [CURRENT-impostor-debug-checkpoint-2026-11-02.md](CURRENT-impostor-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
+| Native Shadow Frusta cascade/volume replay and source-exact build 68071, 2026-11-02 | [CURRENT-shadow-frusta-debug-checkpoint-2026-11-02.md](CURRENT-shadow-frusta-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
