@@ -282,18 +282,8 @@ private:
 #if LL_DARWIN
     struct MetalDefaultProbeMirror;
     struct MetalProbeArrayMirror;
-    void collectMetalDefaultProbe();
-    void requestMetalDefaultProbeSH();
-    bool beginMetalDefaultProbeRadianceCapture();
-    void captureMetalDefaultProbeRadiance(U32 mip, U32 face, U32 resolution);
-    void endMetalDefaultProbeRadianceCapture();
     void releaseMetalDefaultProbe();
-    void collectMetalProbeArray();
     bool reconcileMetalProbeArray();
-    void requestMetalProbeSH(LLReflectionMap* probe);
-    bool beginMetalProbeRadianceCapture(LLReflectionMap* probe);
-    void captureMetalProbeRadiance(U32 mip, U32 face, U32 resolution);
-    void endMetalProbeRadianceCapture();
     void invalidateMetalProbeSlot(U32 cube_index);
     void releaseMetalProbeArray();
     void collectNativeMetalProbe();
