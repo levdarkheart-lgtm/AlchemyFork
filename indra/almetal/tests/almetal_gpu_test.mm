@@ -6402,6 +6402,491 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             32 * 8, &error));
         CHECK(no_bounding_box_pixels == opaque_forward_pixels);
 
+        // Develop > Raycast retains every volume-octree branch intersected by
+        // the live cursor ray. Branch outlines keep their ordinary writable
+        // depth, immediate triangles become explicit edge pairs for the
+        // hidden one-pixel and visible three-pixel read-only passes, and the
+        // selected-hit boxes plus later particle crosshair remain ordered.
+        std::array<ALMetalWorldRaycastVertex, 12> raycast_vertices{};
+        const float raycast_triangle[6][3] = {
+            {-0.5f, -0.4f, 0.f}, {0.5f, -0.4f, 0.f},
+            {0.5f, -0.4f, 0.f}, {0.f, 0.5f, 0.f},
+            {0.f, 0.5f, 0.f}, {-0.5f, -0.4f, 0.f},
+        };
+        for (std::size_t copy = 0; copy < 2; ++copy)
+        {
+            for (std::size_t vertex = 0; vertex < 6; ++vertex)
+            {
+                std::memcpy(
+                    raycast_vertices[copy * 6 + vertex].position,
+                    raycast_triangle[vertex], sizeof(float) * 3);
+                raycast_vertices[copy * 6 + vertex].position[3] = 1.f;
+            }
+        }
+        const auto set_raycast_identity = [](float (&matrix)[16])
+        {
+            std::fill(std::begin(matrix), std::end(matrix), 0.f);
+            for (std::size_t axis = 0; axis < 4; ++axis)
+            {
+                matrix[axis * 4 + axis] = 1.f;
+            }
+        };
+        ALMetalWorldRaycastBatch raycast_batch;
+        raycast_batch.kind = ALMetalWorldRaycastKind::branch_outline;
+        set_raycast_identity(raycast_batch.modelview_projection);
+        raycast_batch.center[3] = 1.f;
+        raycast_batch.half_extent[0] = 0.4f;
+        raycast_batch.half_extent[1] = 0.3f;
+        raycast_batch.half_extent[2] = 0.1f;
+        raycast_batch.color[0] = 1.f;
+        raycast_batch.color[1] = 0.2f;
+        raycast_batch.color[2] = 0.f;
+        raycast_batch.color[3] = 1.f;
+        raycast_batch.line_width = 1.f;
+        raycast_batch.order = 0;
+        opaque_forward_scene.raycast_batches = &raycast_batch;
+        opaque_forward_scene.raycast_batch_count = 1;
+
+        opaque_forward_scene.raycast_batches = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world raycast storage is invalid");
+        opaque_forward_scene.raycast_batches = &raycast_batch;
+        raycast_batch.modelview_projection[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world raycast batch is invalid");
+        raycast_batch.modelview_projection[0] = 1.f;
+        raycast_batch.half_extent[0] = -0.1f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world raycast batch is invalid");
+        raycast_batch.half_extent[0] = 0.4f;
+        raycast_batch.color[1] = 0.25f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world raycast batch is invalid");
+        raycast_batch.color[1] = 0.2f;
+        raycast_batch.kind =
+            static_cast<ALMetalWorldRaycastKind>(99);
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world raycast batch is invalid");
+        raycast_batch.kind = ALMetalWorldRaycastKind::branch_outline;
+        opaque_forward_scene.agent_target_lines =
+            agent_target_lines.data();
+        opaque_forward_scene.agent_target_line_vertex_count =
+            agent_target_lines.size();
+        opaque_forward_scene.agent_target_order = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world raycast batch is invalid");
+        opaque_forward_scene.agent_target_lines = nullptr;
+        opaque_forward_scene.agent_target_line_vertex_count = 0;
+
+        raycast_batch.kind =
+            ALMetalWorldRaycastKind::hidden_triangles;
+        raycast_batch.first_vertex = 0;
+        raycast_batch.vertex_count = 6;
+        raycast_batch.color[0] = 0.f;
+        raycast_batch.color[1] = 0.5f;
+        raycast_batch.color[2] = 0.5f;
+        raycast_batch.color[3] = 0.25f;
+        raycast_batch.center[0] = 0.f;
+        raycast_batch.center[1] = 0.f;
+        raycast_batch.center[2] = 0.f;
+        raycast_batch.half_extent[0] = 0.f;
+        raycast_batch.half_extent[1] = 0.f;
+        raycast_batch.half_extent[2] = 0.f;
+        opaque_forward_scene.raycast_vertex_count = 6;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world raycast storage is invalid");
+        opaque_forward_scene.raycast_vertices = raycast_vertices.data();
+        raycast_vertices[0].position[3] = 0.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world raycast vertex is invalid");
+        raycast_vertices[0].position[3] = 1.f;
+
+        ALMetalWorldRaycastParticle raycast_particle;
+        set_raycast_identity(raycast_particle.modelview_projection);
+        raycast_particle.center[3] = 1.f;
+        raycast_particle.half_extent[0] = 0.1f;
+        raycast_particle.half_extent[1] = 0.1f;
+        raycast_particle.half_extent[2] = 0.1f;
+        opaque_forward_scene.raycast_particle = &raycast_particle;
+        raycast_particle.half_extent[0] = 0.2f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world raycast particle is invalid");
+        raycast_particle.half_extent[0] = 0.1f;
+        opaque_forward_scene.raycast_particle = nullptr;
+
+        set_raycast_identity(raycast_batch.modelview_projection);
+        raycast_batch.modelview_projection[14] = 0.75f;
+        error.clear();
+        auto hidden_raycast = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(hidden_raycast);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            hidden_raycast_pixels{};
+        std::array<float, 32 * 32> hidden_raycast_depth{};
+        REQUIRE(hidden_raycast->colorTexture(0)->readback(
+            *device, 0, 0, {}, hidden_raycast_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(hidden_raycast->depthStencilTexture()->readback(
+            *device, 0, 0, {}, hidden_raycast_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t hidden_raycast_changed = 0;
+        std::size_t hidden_raycast_readonly = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                hidden_raycast_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                hidden_raycast_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                hidden_raycast_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            hidden_raycast_changed += changed;
+            if (changed && opaque_forward_depth[pixel] < 1.f)
+            {
+                CHECK(hidden_raycast_depth[pixel] ==
+                      opaque_forward_depth[pixel]);
+                ++hidden_raycast_readonly;
+            }
+        }
+        CHECK(hidden_raycast_changed >= 4);
+        CHECK(hidden_raycast_readonly >= 4);
+
+        raycast_batch.kind =
+            ALMetalWorldRaycastKind::visible_triangles;
+        raycast_batch.color[1] = 1.f;
+        raycast_batch.color[2] = 1.f;
+        raycast_batch.color[3] = 0.5f;
+        raycast_batch.line_width = 3.f;
+        raycast_batch.modelview_projection[14] = 0.f;
+        auto visible_raycast = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(visible_raycast);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            visible_raycast_pixels{};
+        std::array<float, 32 * 32> visible_raycast_depth{};
+        REQUIRE(visible_raycast->colorTexture(0)->readback(
+            *device, 0, 0, {}, visible_raycast_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(visible_raycast->depthStencilTexture()->readback(
+            *device, 0, 0, {}, visible_raycast_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t visible_raycast_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                visible_raycast_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                visible_raycast_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                visible_raycast_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            visible_raycast_changed += changed;
+            if (changed)
+            {
+                CHECK(visible_raycast_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+                CHECK(visible_raycast_depth[pixel] ==
+                      opaque_forward_depth[pixel]);
+            }
+        }
+        CHECK(visible_raycast_changed > hidden_raycast_changed);
+
+        raycast_batch.kind = ALMetalWorldRaycastKind::hit_axis_box;
+        raycast_batch.first_vertex = 0;
+        raycast_batch.vertex_count = 0;
+        raycast_batch.color[0] = 1.f;
+        raycast_batch.color[1] = 0.f;
+        raycast_batch.color[2] = 0.f;
+        raycast_batch.half_extent[0] = 0.1f;
+        raycast_batch.half_extent[1] = 0.022f;
+        raycast_batch.half_extent[2] = 0.022f;
+        raycast_batch.line_width = 1.f;
+        raycast_batch.modelview_projection[0] = 4.f;
+        raycast_batch.modelview_projection[5] = 4.f;
+        opaque_forward_scene.raycast_vertices = nullptr;
+        opaque_forward_scene.raycast_vertex_count = 0;
+        auto raycast_axis = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(raycast_axis);
+        std::array<std::uint16_t, 32 * 32 * 4> raycast_axis_pixels{};
+        REQUIRE(raycast_axis->colorTexture(0)->readback(
+            *device, 0, 0, {}, raycast_axis_pixels.data(),
+            32 * 8, &error));
+        CHECK(raycast_axis_pixels != opaque_forward_pixels);
+
+        raycast_batch.kind = ALMetalWorldRaycastKind::hit_bounds;
+        set_raycast_identity(raycast_batch.modelview_projection);
+        raycast_batch.modelview_projection[14] = 0.75f;
+        raycast_batch.color[0] = 0.f;
+        raycast_batch.color[1] = 0.5f;
+        raycast_batch.color[2] = 0.5f;
+        raycast_batch.color[3] = 1.f;
+        raycast_batch.half_extent[0] = 0.4f;
+        raycast_batch.half_extent[1] = 0.3f;
+        raycast_batch.half_extent[2] = 0.1f;
+        auto raycast_hit_bounds = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(raycast_hit_bounds);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            raycast_hit_bounds_pixels{};
+        std::array<float, 32 * 32> raycast_hit_bounds_depth{};
+        REQUIRE(raycast_hit_bounds->colorTexture(0)->readback(
+            *device, 0, 0, {}, raycast_hit_bounds_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(raycast_hit_bounds->depthStencilTexture()->readback(
+            *device, 0, 0, {}, raycast_hit_bounds_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(raycast_hit_bounds_pixels != opaque_forward_pixels);
+        CHECK(raycast_hit_bounds_depth == opaque_forward_depth);
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        raycast_batch.kind = ALMetalWorldRaycastKind::branch_outline;
+        set_raycast_identity(raycast_batch.modelview_projection);
+        raycast_batch.modelview_projection[14] = 0.9f;
+        raycast_batch.color[0] = 1.f;
+        raycast_batch.color[1] = 0.2f;
+        raycast_batch.color[2] = 0.f;
+        raycast_batch.color[3] = 1.f;
+        auto reverse_raycast_branch =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_raycast_branch);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_raycast_branch_pixels{};
+        std::array<float, 32 * 32> reverse_raycast_branch_depth{};
+        REQUIRE(reverse_raycast_branch->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            reverse_raycast_branch_pixels.data(), 32 * 8, &error));
+        REQUIRE(
+            reverse_raycast_branch->depthStencilTexture()->readback(
+                *device, 0, 0, {},
+                reverse_raycast_branch_depth.data(),
+                32 * sizeof(float), &error));
+        std::size_t reverse_raycast_branch_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                reverse_raycast_branch_pixels[offset + 0] !=
+                    reverse_agent_target_baseline_pixels[offset + 0] ||
+                reverse_raycast_branch_pixels[offset + 1] !=
+                    reverse_agent_target_baseline_pixels[offset + 1] ||
+                reverse_raycast_branch_pixels[offset + 2] !=
+                    reverse_agent_target_baseline_pixels[offset + 2];
+            reverse_raycast_branch_changed += changed;
+            if (changed)
+            {
+                CHECK(reverse_raycast_branch_pixels[offset + 3] ==
+                      reverse_agent_target_baseline_pixels[offset + 3]);
+                CHECK(reverse_raycast_branch_depth[pixel] >=
+                      reverse_agent_target_baseline_depth[pixel]);
+            }
+        }
+        CHECK(reverse_raycast_branch_changed >= 16);
+        CHECK(reverse_raycast_branch_depth !=
+              reverse_agent_target_baseline_depth);
+
+        raycast_batch.kind =
+            ALMetalWorldRaycastKind::hidden_triangles;
+        set_raycast_identity(raycast_batch.modelview_projection);
+        raycast_batch.modelview_projection[14] = 0.1f;
+        raycast_batch.first_vertex = 0;
+        raycast_batch.vertex_count = 6;
+        raycast_batch.color[0] = 0.f;
+        raycast_batch.color[1] = 0.5f;
+        raycast_batch.color[2] = 0.5f;
+        raycast_batch.color[3] = 0.25f;
+        raycast_batch.center[0] = 0.f;
+        raycast_batch.center[1] = 0.f;
+        raycast_batch.center[2] = 0.f;
+        raycast_batch.half_extent[0] = 0.f;
+        raycast_batch.half_extent[1] = 0.f;
+        raycast_batch.half_extent[2] = 0.f;
+        opaque_forward_scene.raycast_vertices = raycast_vertices.data();
+        opaque_forward_scene.raycast_vertex_count = 6;
+        auto reverse_hidden_raycast =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_hidden_raycast);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_hidden_raycast_pixels{};
+        std::array<float, 32 * 32> reverse_hidden_raycast_depth{};
+        REQUIRE(reverse_hidden_raycast->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            reverse_hidden_raycast_pixels.data(), 32 * 8, &error));
+        REQUIRE(reverse_hidden_raycast->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_hidden_raycast_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t reverse_hidden_raycast_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                reverse_hidden_raycast_pixels[offset + 0] !=
+                    reverse_agent_target_baseline_pixels[offset + 0] ||
+                reverse_hidden_raycast_pixels[offset + 1] !=
+                    reverse_agent_target_baseline_pixels[offset + 1] ||
+                reverse_hidden_raycast_pixels[offset + 2] !=
+                    reverse_agent_target_baseline_pixels[offset + 2];
+            reverse_hidden_raycast_changed += changed;
+            if (changed &&
+                reverse_agent_target_baseline_depth[pixel] > 0.f)
+            {
+                CHECK(reverse_hidden_raycast_depth[pixel] ==
+                      reverse_agent_target_baseline_depth[pixel]);
+            }
+        }
+        CHECK(reverse_hidden_raycast_changed >= 4);
+        CHECK(reverse_hidden_raycast_depth ==
+              reverse_agent_target_baseline_depth);
+
+        raycast_batch.kind =
+            ALMetalWorldRaycastKind::visible_triangles;
+        raycast_batch.modelview_projection[14] = 0.9f;
+        raycast_batch.color[1] = 1.f;
+        raycast_batch.color[2] = 1.f;
+        raycast_batch.color[3] = 0.5f;
+        raycast_batch.line_width = 3.f;
+        auto reverse_visible_raycast =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_visible_raycast);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_visible_raycast_pixels{};
+        std::array<float, 32 * 32> reverse_visible_raycast_depth{};
+        REQUIRE(reverse_visible_raycast->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            reverse_visible_raycast_pixels.data(), 32 * 8, &error));
+        REQUIRE(reverse_visible_raycast->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_visible_raycast_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t reverse_visible_raycast_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            reverse_visible_raycast_changed +=
+                reverse_visible_raycast_pixels[offset + 0] !=
+                    reverse_agent_target_baseline_pixels[offset + 0] ||
+                reverse_visible_raycast_pixels[offset + 1] !=
+                    reverse_agent_target_baseline_pixels[offset + 1] ||
+                reverse_visible_raycast_pixels[offset + 2] !=
+                    reverse_agent_target_baseline_pixels[offset + 2];
+        }
+        CHECK(reverse_visible_raycast_changed >
+              reverse_hidden_raycast_changed);
+        CHECK(reverse_visible_raycast_depth ==
+              reverse_agent_target_baseline_depth);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.raycast_vertices = nullptr;
+        opaque_forward_scene.raycast_vertex_count = 0;
+        raycast_batch.kind = ALMetalWorldRaycastKind::branch_outline;
+        set_raycast_identity(raycast_batch.modelview_projection);
+        raycast_batch.center[0] = 0.03125f;
+        raycast_batch.center[1] = 0.03125f;
+        raycast_batch.half_extent[0] = 0.1875f;
+        raycast_batch.half_extent[1] = 0.f;
+        raycast_batch.half_extent[2] = 0.f;
+        raycast_batch.color[0] = 1.f;
+        raycast_batch.color[1] = 0.2f;
+        raycast_batch.color[2] = 0.f;
+        raycast_batch.color[3] = 1.f;
+        raycast_batch.line_width = 1.f;
+        raycast_batch.first_vertex = 0;
+        raycast_batch.vertex_count = 0;
+        raycast_batch.order = 0;
+        debug_points[0].position[0] = 0.03125f;
+        debug_points[0].position[1] = 0.03125f;
+        debug_points[0].position[2] = 0.9f;
+        debug_point_batches[0].first_vertex = 0;
+        debug_point_batches[0].vertex_count = 1;
+        debug_point_batches[0].order = 1;
+        opaque_forward_scene.debug_points = debug_points.data();
+        opaque_forward_scene.debug_point_count = 1;
+        opaque_forward_scene.debug_point_batches =
+            debug_point_batches.data();
+        opaque_forward_scene.debug_point_batch_count = 1;
+        auto point_after_raycast = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(point_after_raycast);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            point_after_raycast_pixels{};
+        REQUIRE(point_after_raycast->colorTexture(0)->readback(
+            *device, 0, 0, {}, point_after_raycast_pixels.data(),
+            32 * 8, &error));
+
+        debug_point_batches[0].order = 0;
+        raycast_batch.order = 1;
+        auto raycast_after_point = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(raycast_after_point);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            raycast_after_point_pixels{};
+        REQUIRE(raycast_after_point->colorTexture(0)->readback(
+            *device, 0, 0, {}, raycast_after_point_pixels.data(),
+            32 * 8, &error));
+        CHECK(point_after_raycast_pixels != raycast_after_point_pixels);
+
+        opaque_forward_scene.debug_points = nullptr;
+        opaque_forward_scene.debug_point_count = 0;
+        opaque_forward_scene.debug_point_batches = nullptr;
+        opaque_forward_scene.debug_point_batch_count = 0;
+        opaque_forward_scene.raycast_batches = nullptr;
+        opaque_forward_scene.raycast_batch_count = 0;
+        opaque_forward_scene.raycast_particle = &raycast_particle;
+        auto particle_raycast = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(particle_raycast);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            particle_raycast_pixels{};
+        REQUIRE(particle_raycast->colorTexture(0)->readback(
+            *device, 0, 0, {}, particle_raycast_pixels.data(),
+            32 * 8, &error));
+        CHECK(particle_raycast_pixels != opaque_forward_pixels);
+        opaque_forward_scene.raycast_particle = nullptr;
+
+        auto no_raycast = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_raycast);
+        std::array<std::uint16_t, 32 * 32 * 4> no_raycast_pixels{};
+        REQUIRE(no_raycast->colorTexture(0)->readback(
+            *device, 0, 0, {}, no_raycast_pixels.data(),
+            32 * 8, &error));
+        CHECK(no_raycast_pixels == opaque_forward_pixels);
+
         // Develop > Texture Anim selects visible draw-info triangles whose
         // texture matrix is non-null, but gDebugProgram consumes positions
         // only and emits one fixed translucent-yellow uniform. The enclosing

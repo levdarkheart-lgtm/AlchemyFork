@@ -599,6 +599,15 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool avatar_joint_capture_active = false;
     std::vector<ALMetalWorldBoundingBoxBatch> bounding_box_batches;
     bool bounding_box_capture_active = false;
+    std::vector<ALMetalWorldRaycastVertex> raycast_vertices;
+    std::vector<ALMetalWorldRaycastBatch> raycast_batches;
+    ALMetalWorldRaycastBatch raycast_triangle_batch;
+    std::size_t raycast_triangle_first = 0;
+    bool raycast_capture_active = false;
+    bool raycast_triangle_batch_active = false;
+    bool raycast_triangle_batch_visible = false;
+    ALMetalWorldRaycastParticle raycast_particle;
+    bool raycast_particle_valid = false;
     std::vector<ALMetalWorldDebugPointVertex> debug_points;
     std::vector<ALMetalWorldDebugPointBatch> debug_point_batches;
     ALMetalWorldDebugPointBatch debug_point_batch;
@@ -4048,6 +4057,15 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.avatar_joint_capture_active = false;
     capture.bounding_box_batches.clear();
     capture.bounding_box_capture_active = false;
+    capture.raycast_vertices.clear();
+    capture.raycast_batches.clear();
+    capture.raycast_triangle_batch = {};
+    capture.raycast_triangle_first = 0;
+    capture.raycast_capture_active = false;
+    capture.raycast_triangle_batch_active = false;
+    capture.raycast_triangle_batch_visible = false;
+    capture.raycast_particle = {};
+    capture.raycast_particle_valid = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -5405,6 +5423,472 @@ void LLPipeline::endMetalBoundingBoxCapture()
     {
         capture.bounding_box_batches.clear();
     }
+}
+
+static bool metalRaycastStateIsExact(bool depth_enabled,
+                                     bool depth_write_enabled,
+                                     U32 depth_function,
+                                     F32 line_width,
+                                     U32 polygon_mode)
+{
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    LLRender::eBlendFactor color_source;
+    LLRender::eBlendFactor color_destination;
+    LLRender::eBlendFactor alpha_source;
+    LLRender::eBlendFactor alpha_destination;
+    gGL.getBlendFunc(color_source, color_destination,
+                     alpha_source, alpha_destination);
+    U32 rgb_equation = 0;
+    U32 alpha_equation = 0;
+    gGL.getBlendEquation(rgb_equation, alpha_equation);
+    return LLGLState::isEnabled(GL_BLEND) &&
+        !LLGLState::isEnabled(GL_CULL_FACE) &&
+        LLGLDepthTest::depthEnabled() == depth_enabled &&
+        LLGLDepthTest::depthWriteEnabled() == depth_write_enabled &&
+        (!depth_enabled ||
+         LLGLDepthTest::depthFunction() == depth_function) &&
+        color_source == LLRender::BF_SOURCE_ALPHA &&
+        color_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
+        alpha_source == LLRender::BF_SOURCE_ALPHA &&
+        alpha_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
+        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
+        color_mask[0] && color_mask[1] && color_mask[2] &&
+        !color_mask[3] && gGL.getLineWidth() == line_width &&
+        gGL.getPolygonMode() == polygon_mode;
+}
+
+void LLPipeline::beginMetalRaycastCapture()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || capture.raycast_capture_active ||
+        capture.raycast_triangle_batch_active ||
+        !capture.raycast_vertices.empty() ||
+        !capture.raycast_batches.empty())
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+    capture.raycast_capture_active = true;
+}
+
+void LLPipeline::captureMetalRaycastOutline(
+    const LLVector3& center, const LLVector3& half_extent, bool hidden)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.raycast_capture_active)
+    {
+        return;
+    }
+    if (!center.isFinite() || !half_extent.isFinite())
+    {
+        // drawBoxOutline() makes the same valid no-output decision.
+        return;
+    }
+
+    const LLColor4& color = gGL.getDiffuseColor();
+    const bool color_valid = hidden
+        ? color.mV[0] == 0.f && color.mV[1] == 0.5f &&
+              color.mV[2] == 0.5f && color.mV[3] == 0.25f
+        : ((color.mV[0] == 1.f && color.mV[1] == 0.2f &&
+            color.mV[2] == 0.f && color.mV[3] == 1.f) ||
+           (color.mV[0] == 0.75f && color.mV[1] == 1.f &&
+            color.mV[2] == 0.f && color.mV[3] == 1.f));
+    const bool state_valid = hidden
+        ? metalRaycastStateIsExact(
+              true, false, GL_GREATER, 1.f, GL_LINE)
+        : metalRaycastStateIsExact(
+              true, true, GL_LEQUAL, 1.f, GL_LINE);
+    if (!capture.complete || !color_valid || !state_valid ||
+        capture.render_debug_order == std::numeric_limits<U64>::max())
+    {
+        capture.markIncomplete(__LINE__);
+        capture.raycast_vertices.clear();
+        capture.raycast_batches.clear();
+        capture.raycast_triangle_batch_active = false;
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldRaycastBatch batch;
+    batch.kind = hidden
+        ? ALMetalWorldRaycastKind::hidden_outline
+        : ALMetalWorldRaycastKind::branch_outline;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.center, center.mV, sizeof(center.mV));
+    batch.center[3] = 1.f;
+    std::memcpy(batch.half_extent, half_extent.mV,
+                sizeof(half_extent.mV));
+    batch.half_extent[3] = 0.f;
+    std::memcpy(batch.color, color.mV, sizeof(batch.color));
+    batch.order = capture.render_debug_order++;
+    try
+    {
+        capture.raycast_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.raycast_vertices.clear();
+        capture.raycast_batches.clear();
+        capture.raycast_triangle_batch_active = false;
+    }
+}
+
+void LLPipeline::beginMetalRaycastTriangleBatch(bool visible)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.raycast_capture_active)
+    {
+        return;
+    }
+    const LLColor4& color = gGL.getDiffuseColor();
+    const F32 line_width = visible ? 3.f : 1.f;
+    const bool color_valid = visible
+        ? color.mV[0] == 0.f && color.mV[1] == 1.f &&
+              color.mV[2] == 1.f && color.mV[3] == 0.5f
+        : color.mV[0] == 0.f && color.mV[1] == 0.5f &&
+              color.mV[2] == 0.5f && color.mV[3] == 0.25f;
+    if (!capture.complete || capture.raycast_triangle_batch_active ||
+        !color_valid ||
+        !metalRaycastStateIsExact(
+            true, false, visible ? GL_LEQUAL : GL_GREATER,
+            line_width, GL_LINE))
+    {
+        capture.markIncomplete(__LINE__);
+        capture.raycast_vertices.clear();
+        capture.raycast_batches.clear();
+        capture.raycast_triangle_batch = {};
+        capture.raycast_triangle_first = 0;
+        capture.raycast_triangle_batch_active = false;
+        capture.raycast_triangle_batch_visible = false;
+        return;
+    }
+
+    capture.raycast_triangle_batch = {};
+    capture.raycast_triangle_batch.kind = visible
+        ? ALMetalWorldRaycastKind::visible_triangles
+        : ALMetalWorldRaycastKind::hidden_triangles;
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(
+        capture.raycast_triangle_batch.modelview_projection,
+        modelview_projection.getF32ptr(),
+        sizeof(capture.raycast_triangle_batch.modelview_projection));
+    std::memcpy(capture.raycast_triangle_batch.color,
+                color.mV,
+                sizeof(capture.raycast_triangle_batch.color));
+    capture.raycast_triangle_batch.line_width = line_width;
+    capture.raycast_triangle_first = capture.raycast_vertices.size();
+    capture.raycast_triangle_batch_active = true;
+    capture.raycast_triangle_batch_visible = visible;
+}
+
+void LLPipeline::captureMetalRaycastTriangle(
+    const LLVector4a& a, const LLVector4a& b, const LLVector4a& c)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.raycast_triangle_batch_active)
+    {
+        return;
+    }
+    if (!a.isFinite3() || !b.isFinite3() || !c.isFinite3() ||
+        capture.raycast_vertices.size() >
+            std::numeric_limits<std::uint32_t>::max() - 6u)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.raycast_vertices.clear();
+        capture.raycast_batches.clear();
+        capture.raycast_triangle_batch = {};
+        capture.raycast_triangle_first = 0;
+        capture.raycast_triangle_batch_active = false;
+        capture.raycast_triangle_batch_visible = false;
+        return;
+    }
+
+    const LLVector4a* line_vertices[6] = {&a, &b, &b, &c, &c, &a};
+    try
+    {
+        const std::size_t first = capture.raycast_vertices.size();
+        capture.raycast_vertices.resize(first + 6);
+        for (std::size_t index = 0; index < 6; ++index)
+        {
+            ALMetalWorldRaycastVertex& vertex =
+                capture.raycast_vertices[first + index];
+            std::memcpy(vertex.position,
+                        line_vertices[index]->getF32ptr(),
+                        sizeof(float) * 3);
+            vertex.position[3] = 1.f;
+        }
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.raycast_vertices.clear();
+        capture.raycast_batches.clear();
+        capture.raycast_triangle_batch = {};
+        capture.raycast_triangle_first = 0;
+        capture.raycast_triangle_batch_active = false;
+        capture.raycast_triangle_batch_visible = false;
+    }
+}
+
+void LLPipeline::endMetalRaycastTriangleBatch(bool visible)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.raycast_triangle_batch_active)
+    {
+        return;
+    }
+    const std::size_t first = capture.raycast_triangle_first;
+    const bool first_valid = first <= capture.raycast_vertices.size();
+    const std::size_t count = first_valid
+        ? capture.raycast_vertices.size() - first : 0;
+    if (!capture.complete ||
+        capture.raycast_triangle_batch_visible != visible ||
+        !first_valid ||
+        (count % 6u) != 0 ||
+        first > std::numeric_limits<std::uint32_t>::max() ||
+        count > std::numeric_limits<std::uint32_t>::max() ||
+        (count != 0 &&
+         capture.render_debug_order == std::numeric_limits<U64>::max()))
+    {
+        capture.markIncomplete(__LINE__);
+        capture.raycast_vertices.clear();
+        capture.raycast_batches.clear();
+    }
+    else if (count != 0)
+    {
+        capture.raycast_triangle_batch.first_vertex =
+            static_cast<std::uint32_t>(first);
+        capture.raycast_triangle_batch.vertex_count =
+            static_cast<std::uint32_t>(count);
+        capture.raycast_triangle_batch.order =
+            capture.render_debug_order++;
+        try
+        {
+            capture.raycast_batches.push_back(
+                capture.raycast_triangle_batch);
+        }
+        catch (const std::bad_alloc&)
+        {
+            capture.markIncomplete(__LINE__);
+            capture.raycast_vertices.clear();
+            capture.raycast_batches.clear();
+        }
+    }
+    capture.raycast_triangle_batch = {};
+    capture.raycast_triangle_first = 0;
+    capture.raycast_triangle_batch_active = false;
+    capture.raycast_triangle_batch_visible = false;
+}
+
+void LLPipeline::captureMetalRaycastHitAxisBox(
+    const LLVector3& center, const LLVector3& half_extent)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.raycast_capture_active)
+    {
+        return;
+    }
+    const LLColor4& color = gGL.getDiffuseColor();
+    const bool color_valid = color.mV[3] == 0.5f &&
+        ((color.mV[0] == 1.f && color.mV[1] == 0.f &&
+          color.mV[2] == 0.f) ||
+         (color.mV[0] == 0.f && color.mV[1] == 1.f &&
+          color.mV[2] == 0.f) ||
+         (color.mV[0] == 0.f && color.mV[1] == 0.f &&
+          color.mV[2] == 1.f));
+    if (!capture.complete || !center.isFinite() ||
+        !half_extent.isFinite() || !color_valid ||
+        !metalRaycastStateIsExact(
+            true, true, GL_LEQUAL, 1.f, GL_FILL) ||
+        capture.render_debug_order == std::numeric_limits<U64>::max())
+    {
+        capture.markIncomplete(__LINE__);
+        capture.raycast_vertices.clear();
+        capture.raycast_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldRaycastBatch batch;
+    batch.kind = ALMetalWorldRaycastKind::hit_axis_box;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.center, center.mV, sizeof(center.mV));
+    batch.center[3] = 1.f;
+    std::memcpy(batch.half_extent, half_extent.mV,
+                sizeof(half_extent.mV));
+    batch.half_extent[3] = 0.f;
+    std::memcpy(batch.color, color.mV, sizeof(batch.color));
+    batch.order = capture.render_debug_order++;
+    try
+    {
+        capture.raycast_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.raycast_vertices.clear();
+        capture.raycast_batches.clear();
+    }
+}
+
+void LLPipeline::captureMetalRaycastHitBounds(
+    const LLVector4a& center, const LLVector4a& half_extent)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.raycast_capture_active)
+    {
+        return;
+    }
+    const LLColor4& color = gGL.getDiffuseColor();
+    if (!capture.complete || !center.isFinite3() ||
+        !half_extent.isFinite3() || color.mV[0] != 0.f ||
+        color.mV[1] != 0.5f || color.mV[2] != 0.5f ||
+        color.mV[3] != 1.f ||
+        !metalRaycastStateIsExact(
+            false, false, GL_LEQUAL, 1.f, GL_FILL) ||
+        capture.render_debug_order == std::numeric_limits<U64>::max())
+    {
+        capture.markIncomplete(__LINE__);
+        capture.raycast_vertices.clear();
+        capture.raycast_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldRaycastBatch batch;
+    batch.kind = ALMetalWorldRaycastKind::hit_bounds;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.center, center.getF32ptr(), sizeof(float) * 3);
+    batch.center[3] = 1.f;
+    std::memcpy(batch.half_extent, half_extent.getF32ptr(),
+                sizeof(float) * 3);
+    batch.half_extent[3] = 0.f;
+    std::memcpy(batch.color, color.mV, sizeof(batch.color));
+    batch.order = capture.render_debug_order++;
+    try
+    {
+        capture.raycast_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.raycast_vertices.clear();
+        capture.raycast_batches.clear();
+    }
+}
+
+void LLPipeline::endMetalRaycastCapture()
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.raycast_capture_active)
+    {
+        return;
+    }
+    capture.raycast_capture_active = false;
+    if (capture.raycast_triangle_batch_active)
+    {
+        capture.markIncomplete(__LINE__);
+    }
+    capture.raycast_triangle_batch = {};
+    capture.raycast_triangle_first = 0;
+    capture.raycast_triangle_batch_active = false;
+    capture.raycast_triangle_batch_visible = false;
+    if (!capture.complete)
+    {
+        capture.raycast_vertices.clear();
+        capture.raycast_batches.clear();
+    }
+}
+
+void LLPipeline::captureMetalRaycastParticle(
+    const LLVector3& center, const LLVector3& half_extent)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const LLColor4& color = gGL.getDiffuseColor();
+    if (!capture.complete || capture.raycast_particle_valid ||
+        !center.isFinite() || !half_extent.isFinite() ||
+        color.mV[0] != 1.f || color.mV[1] != 1.f ||
+        color.mV[2] != 0.f || color.mV[3] != 1.f ||
+        !metalRaycastStateIsExact(
+            true, true, GL_LEQUAL, 1.f, GL_FILL))
+    {
+        capture.markIncomplete(__LINE__);
+        capture.raycast_vertices.clear();
+        capture.raycast_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(capture.raycast_particle.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(capture.raycast_particle.modelview_projection));
+    std::memcpy(capture.raycast_particle.center,
+                center.mV, sizeof(center.mV));
+    capture.raycast_particle.center[3] = 1.f;
+    std::memcpy(capture.raycast_particle.half_extent,
+                half_extent.mV, sizeof(half_extent.mV));
+    capture.raycast_particle.half_extent[3] = 0.f;
+    capture.raycast_particle_valid = true;
 }
 
 void LLPipeline::captureMetalLightDebugFace(
@@ -6809,6 +7293,12 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.bounding_box_batches.data();
         scene.bounding_box_batch_count =
             capture.bounding_box_batches.size();
+        scene.raycast_vertices = capture.raycast_vertices.data();
+        scene.raycast_vertex_count = capture.raycast_vertices.size();
+        scene.raycast_batches = capture.raycast_batches.data();
+        scene.raycast_batch_count = capture.raycast_batches.size();
+        scene.raycast_particle = capture.raycast_particle_valid
+            ? &capture.raycast_particle : nullptr;
         scene.debug_points = capture.debug_points.data();
         scene.debug_point_count = capture.debug_points.size();
         scene.debug_point_batches = capture.debug_point_batches.data();
@@ -8495,6 +8985,15 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.avatar_joint_capture_active = false;
     capture.bounding_box_batches.clear();
     capture.bounding_box_capture_active = false;
+    capture.raycast_vertices.clear();
+    capture.raycast_batches.clear();
+    capture.raycast_triangle_batch = {};
+    capture.raycast_triangle_first = 0;
+    capture.raycast_capture_active = false;
+    capture.raycast_triangle_batch_active = false;
+    capture.raycast_triangle_batch_visible = false;
+    capture.raycast_particle = {};
+    capture.raycast_particle_valid = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -21080,6 +21579,8 @@ void LLPipeline::renderDebug()
             !hud_only && hasRenderDebugMask(RENDER_DEBUG_POINTS);
         const bool capture_bounding_boxes =
             !hud_only && hasRenderDebugMask(RENDER_DEBUG_BBOXES);
+        const bool capture_raycast =
+            !hud_only && hasRenderDebugMask(RENDER_DEBUG_RAYCAST);
         if (capture_debug_points)
         {
             beginMetalDebugPointCapture();
@@ -21087,6 +21588,10 @@ void LLPipeline::renderDebug()
         if (capture_bounding_boxes)
         {
             beginMetalBoundingBoxCapture();
+        }
+        if (capture_raycast)
+        {
+            beginMetalRaycastCapture();
         }
 #endif
 
@@ -21118,6 +21623,10 @@ void LLPipeline::renderDebug()
             }
         }
 #if LL_DARWIN
+        if (capture_raycast)
+        {
+            endMetalRaycastCapture();
+        }
         if (capture_bounding_boxes)
         {
             endMetalBoundingBoxCapture();
@@ -21200,6 +21709,9 @@ void LLPipeline::renderDebug()
 
             gGL.begin(LLRender::LINES);
             gGL.diffuseColor3f(1.f, 1.f, 0.f);
+#if LL_DARWIN
+            captureMetalRaycastParticle(center, size);
+#endif
             for (U32 i = 0; i < 6; i++)
             {
                 gGL.vertex3fv(p[i].mV);

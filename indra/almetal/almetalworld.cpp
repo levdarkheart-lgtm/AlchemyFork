@@ -156,6 +156,7 @@ namespace
         float screen_line_width[4]{};
     };
     static_assert(sizeof(WorldBoundingBoxConstants) == 144);
+    static_assert(sizeof(ALMetalWorldRaycastVertex) == 16);
     static_assert(sizeof(ALMetalWorldWindVectorVertex) == 32);
     static_assert(sizeof(ALMetalWorldAvatarVolumeBatch) == 192);
 
@@ -1354,6 +1355,14 @@ struct ALMetalWorldGBufferRenderer::Impl
         light_debug_outline_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         bounding_box_wide_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        raycast_line_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        raycast_wide_line_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        raycast_box_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        raycast_particle_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         composition_debug_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -2657,6 +2666,66 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
             ALMetalRenderPipeline::create(
                 device, bounding_box_wide_descriptor, error);
         if (!impl->bounding_box_wide_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor raycast_line_descriptor =
+            light_debug_outline_descriptor;
+        raycast_line_descriptor.vertex_function =
+            "almetal_world_raycast_line_vertex";
+        raycast_line_descriptor.label = hdr
+            ? "Alchemy HDR world raycast line pipeline"
+            : "Alchemy world raycast line pipeline";
+        impl->raycast_line_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, raycast_line_descriptor, error);
+        if (!impl->raycast_line_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor raycast_wide_line_descriptor =
+            raycast_line_descriptor;
+        raycast_wide_line_descriptor.vertex_function =
+            "almetal_world_raycast_wide_line_vertex";
+        raycast_wide_line_descriptor.label = hdr
+            ? "Alchemy HDR world wide raycast line pipeline"
+            : "Alchemy world wide raycast line pipeline";
+        impl->raycast_wide_line_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, raycast_wide_line_descriptor, error);
+        if (!impl->raycast_wide_line_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor raycast_box_descriptor =
+            raycast_line_descriptor;
+        raycast_box_descriptor.vertex_function =
+            "almetal_world_raycast_box_vertex";
+        raycast_box_descriptor.label = hdr
+            ? "Alchemy HDR world raycast hit-axis box pipeline"
+            : "Alchemy world raycast hit-axis box pipeline";
+        impl->raycast_box_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, raycast_box_descriptor, error);
+        if (!impl->raycast_box_pipelines[hdr])
+        {
+            return nullptr;
+        }
+
+        ALMetalRenderPipelineDescriptor raycast_particle_descriptor =
+            raycast_line_descriptor;
+        raycast_particle_descriptor.vertex_function =
+            "almetal_world_raycast_particle_vertex";
+        raycast_particle_descriptor.label = hdr
+            ? "Alchemy HDR world raycast particle-crosshair pipeline"
+            : "Alchemy world raycast particle-crosshair pipeline";
+        impl->raycast_particle_pipelines[hdr] =
+            ALMetalRenderPipeline::create(
+                device, raycast_particle_descriptor, error);
+        if (!impl->raycast_particle_pipelines[hdr])
         {
             return nullptr;
         }
@@ -10969,6 +11038,154 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         }
         previous_bounding_box_order = batch.order;
     }
+    if ((scene.raycast_vertex_count != 0 && !scene.raycast_vertices) ||
+        (scene.raycast_batch_count != 0 && !scene.raycast_batches) ||
+        scene.raycast_vertex_count >
+            std::numeric_limits<std::uint32_t>::max() ||
+        scene.raycast_vertex_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldRaycastVertex) ||
+        scene.raycast_batch_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldRaycastBatch))
+    {
+        setError(error, "Metal world raycast storage is invalid");
+        return nullptr;
+    }
+    std::size_t expected_raycast_vertex = 0;
+    std::uint64_t previous_raycast_order = 0;
+    for (std::size_t index = 0;
+         index < scene.raycast_batch_count; ++index)
+    {
+        const ALMetalWorldRaycastBatch& batch =
+            scene.raycast_batches[index];
+        const bool red_axis =
+            batch.color[0] == 1.f && batch.color[1] == 0.f &&
+            batch.color[2] == 0.f && batch.color[3] == 0.5f;
+        const bool green_axis =
+            batch.color[0] == 0.f && batch.color[1] == 1.f &&
+            batch.color[2] == 0.f && batch.color[3] == 0.5f;
+        const bool blue_axis =
+            batch.color[0] == 0.f && batch.color[1] == 0.f &&
+            batch.color[2] == 1.f && batch.color[3] == 0.5f;
+        bool kind_valid = false;
+        switch (batch.kind)
+        {
+            case ALMetalWorldRaycastKind::branch_outline:
+                kind_valid = batch.first_vertex == 0 &&
+                    batch.vertex_count == 0 && batch.line_width == 1.f &&
+                    ((batch.color[0] == 1.f &&
+                      batch.color[1] == 0.2f &&
+                      batch.color[2] == 0.f &&
+                      batch.color[3] == 1.f) ||
+                     (batch.color[0] == 0.75f &&
+                      batch.color[1] == 1.f &&
+                      batch.color[2] == 0.f &&
+                      batch.color[3] == 1.f));
+                break;
+            case ALMetalWorldRaycastKind::hidden_outline:
+                kind_valid = batch.first_vertex == 0 &&
+                    batch.vertex_count == 0 && batch.line_width == 1.f &&
+                    batch.color[0] == 0.f &&
+                    batch.color[1] == 0.5f &&
+                    batch.color[2] == 0.5f &&
+                    batch.color[3] == 0.25f;
+                break;
+            case ALMetalWorldRaycastKind::hidden_triangles:
+            case ALMetalWorldRaycastKind::visible_triangles:
+            {
+                const bool visible = batch.kind ==
+                    ALMetalWorldRaycastKind::visible_triangles;
+                kind_valid =
+                    batch.first_vertex == expected_raycast_vertex &&
+                    batch.vertex_count != 0 &&
+                    (batch.vertex_count % 6u) == 0 &&
+                    batch.vertex_count <=
+                        scene.raycast_vertex_count -
+                            expected_raycast_vertex &&
+                    (!visible || batch.vertex_count <=
+                        std::numeric_limits<std::uint32_t>::max() / 3u) &&
+                    batch.line_width == (visible ? 3.f : 1.f) &&
+                    batch.color[0] == 0.f &&
+                    batch.color[1] == (visible ? 1.f : 0.5f) &&
+                    batch.color[2] == (visible ? 1.f : 0.5f) &&
+                    batch.color[3] == (visible ? 0.5f : 0.25f);
+                if (kind_valid)
+                {
+                    expected_raycast_vertex += batch.vertex_count;
+                }
+                break;
+            }
+            case ALMetalWorldRaycastKind::hit_axis_box:
+                kind_valid = batch.first_vertex == 0 &&
+                    batch.vertex_count == 0 && batch.line_width == 1.f &&
+                    batch.center[0] == 0.f && batch.center[1] == 0.f &&
+                    batch.center[2] == 0.f &&
+                    ((red_axis && batch.half_extent[0] == 0.1f &&
+                      batch.half_extent[1] == 0.022f &&
+                      batch.half_extent[2] == 0.022f) ||
+                     (green_axis && batch.half_extent[0] == 0.021f &&
+                      batch.half_extent[1] == 0.1f &&
+                      batch.half_extent[2] == 0.021f) ||
+                     (blue_axis && batch.half_extent[0] == 0.02f &&
+                      batch.half_extent[1] == 0.02f &&
+                      batch.half_extent[2] == 0.1f));
+                break;
+            case ALMetalWorldRaycastKind::hit_bounds:
+                kind_valid = batch.first_vertex == 0 &&
+                    batch.vertex_count == 0 && batch.line_width == 1.f &&
+                    batch.color[0] == 0.f &&
+                    batch.color[1] == 0.5f &&
+                    batch.color[2] == 0.5f &&
+                    batch.color[3] == 1.f;
+                break;
+        }
+        if (!finiteValues(batch.modelview_projection, 16) ||
+            !finiteValues(batch.center, 4) ||
+            !finiteValues(batch.half_extent, 4) ||
+            !finiteValues(batch.color, 4) ||
+            batch.center[3] != 1.f || batch.half_extent[3] != 0.f ||
+            batch.half_extent[0] < 0.f ||
+            batch.half_extent[1] < 0.f ||
+            batch.half_extent[2] < 0.f || !kind_valid ||
+            (index != 0 && batch.order <= previous_raycast_order) ||
+            (scene.agent_target_line_vertex_count != 0 &&
+             batch.order == scene.agent_target_order))
+        {
+            setError(error, "Metal world raycast batch is invalid");
+            return nullptr;
+        }
+        previous_raycast_order = batch.order;
+    }
+    if (expected_raycast_vertex != scene.raycast_vertex_count)
+    {
+        setError(error, "Metal world raycast storage is invalid");
+        return nullptr;
+    }
+    for (std::size_t index = 0;
+         index < scene.raycast_vertex_count; ++index)
+    {
+        if (!finiteValues(scene.raycast_vertices[index].position, 4) ||
+            scene.raycast_vertices[index].position[3] != 1.f)
+        {
+            setError(error, "Metal world raycast vertex is invalid");
+            return nullptr;
+        }
+    }
+    if (scene.raycast_particle &&
+        (!finiteValues(
+             scene.raycast_particle->modelview_projection, 16) ||
+         !finiteValues(scene.raycast_particle->center, 4) ||
+         !finiteValues(scene.raycast_particle->half_extent, 4) ||
+         scene.raycast_particle->center[3] != 1.f ||
+         scene.raycast_particle->half_extent[0] != 0.1f ||
+         scene.raycast_particle->half_extent[1] != 0.1f ||
+         scene.raycast_particle->half_extent[2] != 0.1f ||
+         scene.raycast_particle->half_extent[3] != 0.f))
+    {
+        setError(error, "Metal world raycast particle is invalid");
+        return nullptr;
+    }
     const bool has_shadow_frusta =
         scene.shadow_frustum_vertex_count != 0 ||
         scene.shadow_frustum_batch_count != 0;
@@ -11581,6 +11798,30 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             scene.batch_size_batches, scene.batch_size_batch_count) ||
         order_collides(
             scene.bounding_box_batches, scene.bounding_box_batch_count,
+            scene.light_debug_batches, scene.light_debug_batch_count) ||
+        order_collides(
+            scene.raycast_batches, scene.raycast_batch_count,
+            scene.avatar_volume_batches, scene.avatar_volume_batch_count) ||
+        order_collides(
+            scene.raycast_batches, scene.raycast_batch_count,
+            scene.avatar_joint_batches, scene.avatar_joint_batch_count) ||
+        order_collides(
+            scene.raycast_batches, scene.raycast_batch_count,
+            scene.bounding_box_batches, scene.bounding_box_batch_count) ||
+        order_collides(
+            scene.raycast_batches, scene.raycast_batch_count,
+            scene.debug_point_batches, scene.debug_point_batch_count) ||
+        order_collides(
+            scene.raycast_batches, scene.raycast_batch_count,
+            scene.texture_anim_batches, scene.texture_anim_batch_count) ||
+        order_collides(
+            scene.raycast_batches, scene.raycast_batch_count,
+            scene.update_type_batches, scene.update_type_batch_count) ||
+        order_collides(
+            scene.raycast_batches, scene.raycast_batch_count,
+            scene.batch_size_batches, scene.batch_size_batch_count) ||
+        order_collides(
+            scene.raycast_batches, scene.raycast_batch_count,
             scene.light_debug_batches, scene.light_debug_batch_count))
     {
         setError(error, "Metal world render-debug ordering is invalid");
@@ -12933,6 +13174,24 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         if (!shadow_frustum_buffer || !shadow_frustum_buffer->write(
                 0, scene.shadow_frustum_vertices,
                 descriptor.length, error))
+        {
+            return nullptr;
+        }
+    }
+
+    std::unique_ptr<ALMetalBuffer> raycast_vertex_buffer;
+    if (scene.raycast_vertex_count != 0)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = scene.raycast_vertex_count *
+                            sizeof(ALMetalWorldRaycastVertex);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world raycast triangle edges";
+        raycast_vertex_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!raycast_vertex_buffer || !raycast_vertex_buffer->write(
+                0, scene.raycast_vertices, descriptor.length, error))
         {
             return nullptr;
         }
@@ -15191,6 +15450,117 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                      : ALMetalPrimitiveType::line,
                 0, wide ? 72 : 24, 1, error);
     };
+    const auto encode_raycast_batch =
+        [&](const ALMetalWorldRaycastBatch& batch)
+    {
+        WorldBoundingBoxConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(constants.modelview_projection));
+        std::memcpy(constants.color, batch.color,
+                    sizeof(constants.color));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        std::memcpy(constants.center, batch.center,
+                    sizeof(constants.center));
+        std::memcpy(constants.half_extent, batch.half_extent,
+                    sizeof(constants.half_extent));
+        constants.screen_line_width[0] =
+            static_cast<float>(scene.width);
+        constants.screen_line_width[1] =
+            static_cast<float>(scene.height);
+        constants.screen_line_width[2] = batch.line_width;
+
+        const bool hidden =
+            batch.kind == ALMetalWorldRaycastKind::hidden_outline ||
+            batch.kind == ALMetalWorldRaycastKind::hidden_triangles;
+        const bool visible_triangles =
+            batch.kind == ALMetalWorldRaycastKind::visible_triangles;
+        const ALMetalDepthStencilState* depth = nullptr;
+        if (hidden)
+        {
+            depth = scene.reverse_z
+                ? mImpl->reverse_coverage_depth.get()
+                : mImpl->forward_coverage_depth.get();
+        }
+        else if (visible_triangles)
+        {
+            depth = scene.reverse_z
+                ? mImpl->reverse_readonly_depth.get()
+                : mImpl->forward_readonly_depth.get();
+        }
+        else if (batch.kind == ALMetalWorldRaycastKind::hit_bounds)
+        {
+            depth = mImpl->overlay_composite_depth.get();
+        }
+        else
+        {
+            depth = scene.reverse_z
+                ? mImpl->reverse_depth.get()
+                : mImpl->forward_depth.get();
+        }
+
+        bool batch_encoded =
+            encoder->setDepthStencilState(depth, error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error);
+        if (!batch_encoded)
+        {
+            return false;
+        }
+
+        if (batch.kind == ALMetalWorldRaycastKind::hidden_triangles ||
+            batch.kind == ALMetalWorldRaycastKind::visible_triangles)
+        {
+            const bool wide = visible_triangles;
+            const std::size_t offset =
+                static_cast<std::size_t>(batch.first_vertex) *
+                sizeof(ALMetalWorldRaycastVertex);
+            const std::uint32_t vertex_count = wide
+                ? batch.vertex_count * 3u : batch.vertex_count;
+            return
+                encoder->setPipeline(
+                    *(wide
+                        ? mImpl->raycast_wide_line_pipelines[
+                              scene.hdr ? 1 : 0]
+                        : mImpl->raycast_line_pipelines[
+                              scene.hdr ? 1 : 0]),
+                    error) &&
+                encoder->setVertexBuffer(
+                    0, *raycast_vertex_buffer, offset, error) &&
+                encoder->draw(
+                    wide ? ALMetalPrimitiveType::triangle
+                         : ALMetalPrimitiveType::line,
+                    0, vertex_count, 1, error);
+        }
+        if (batch.kind == ALMetalWorldRaycastKind::hit_axis_box)
+        {
+            return
+                encoder->setPipeline(
+                    *mImpl->raycast_box_pipelines[
+                        scene.hdr ? 1 : 0], error) &&
+                encoder->draw(
+                    ALMetalPrimitiveType::triangle_strip,
+                    0, 10, 1, error) &&
+                encoder->draw(
+                    ALMetalPrimitiveType::triangle_strip,
+                    10, 4, 1, error) &&
+                encoder->draw(
+                    ALMetalPrimitiveType::triangle_strip,
+                    14, 4, 1, error);
+        }
+        return
+            encoder->setPipeline(
+                *mImpl->light_debug_outline_pipelines[
+                    scene.hdr ? 1 : 0], error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::line, 0, 24, 1, error);
+    };
     const auto encode_debug_point_batch =
         [&](const ALMetalWorldDebugPointBatch& batch)
     {
@@ -15406,6 +15776,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     std::size_t avatar_volume_batch_index = 0;
     std::size_t avatar_joint_batch_index = 0;
     std::size_t bounding_box_batch_index = 0;
+    std::size_t raycast_batch_index = 0;
     std::size_t debug_point_batch_index = 0;
     std::size_t texture_anim_batch_index = 0;
     std::size_t update_type_batch_index = 0;
@@ -15415,6 +15786,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
            (avatar_volume_batch_index < scene.avatar_volume_batch_count ||
             avatar_joint_batch_index < scene.avatar_joint_batch_count ||
             bounding_box_batch_index < scene.bounding_box_batch_count ||
+            raycast_batch_index < scene.raycast_batch_count ||
             debug_point_batch_index < scene.debug_point_batch_count ||
             texture_anim_batch_index < scene.texture_anim_batch_count ||
             update_type_batch_index < scene.update_type_batch_count ||
@@ -15428,6 +15800,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             avatar_volume,
             avatar_joint,
             bounding_box,
+            raycast,
             debug_point,
             texture_anim,
             update_type,
@@ -15467,6 +15840,17 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             if (!owner_selected || order < owner_order)
             {
                 owner = RenderDebugOwner::bounding_box;
+                owner_selected = true;
+                owner_order = order;
+            }
+        }
+        if (raycast_batch_index < scene.raycast_batch_count)
+        {
+            const std::uint64_t order = scene.raycast_batches[
+                raycast_batch_index].order;
+            if (!owner_selected || order < owner_order)
+            {
+                owner = RenderDebugOwner::raycast;
                 owner_selected = true;
                 owner_order = order;
             }
@@ -15546,6 +15930,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoded = encode_bounding_box_batch(
                     scene.bounding_box_batches[
                         bounding_box_batch_index++]);
+                break;
+            case RenderDebugOwner::raycast:
+                encoded = encode_raycast_batch(
+                    scene.raycast_batches[raycast_batch_index++]);
                 break;
             case RenderDebugOwner::debug_point:
                 encoded = encode_debug_point_batch(
@@ -15636,6 +16024,44 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 1, *reflection_probe_volume_buffer, 0, error) &&
             encoder->draw(
                 ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    }
+
+    if (encoded && scene.raycast_particle)
+    {
+        WorldBoundingBoxConstants constants{};
+        std::memcpy(
+            constants.modelview_projection,
+            scene.raycast_particle->modelview_projection,
+            sizeof(constants.modelview_projection));
+        constants.color[0] = 1.f;
+        constants.color[1] = 1.f;
+        constants.color[2] = 0.f;
+        constants.color[3] = 1.f;
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        std::memcpy(constants.center,
+                    scene.raycast_particle->center,
+                    sizeof(constants.center));
+        std::memcpy(constants.half_extent,
+                    scene.raycast_particle->half_extent,
+                    sizeof(constants.half_extent));
+        encoded =
+            encoder->setDepthStencilState(
+                scene.reverse_z ? mImpl->reverse_depth.get()
+                                : mImpl->forward_depth.get(),
+                error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *mImpl->raycast_particle_pipelines[
+                    scene.hdr ? 1 : 0], error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::line, 0, 6, 1, error);
     }
 
     if (encoded && has_shadow_frusta)

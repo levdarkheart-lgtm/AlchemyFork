@@ -404,6 +404,26 @@ public:
     void captureMetalBoundingBox(const LLVector4a& center,
                                  const LLVector4a& half_extent);
     void endMetalBoundingBoxCapture();
+    // Retain Develop > Raycast across the complete world spatial traversal.
+    // Branch outlines and immediate triangles preserve the live cursor-ray
+    // walk; selected-object axes/bounds and the later particle crosshair close
+    // the two source owners without widening capture to other debug modes.
+    void beginMetalRaycastCapture();
+    void captureMetalRaycastOutline(
+        const LLVector3& center, const LLVector3& half_extent,
+        bool hidden);
+    void beginMetalRaycastTriangleBatch(bool visible);
+    void captureMetalRaycastTriangle(
+        const LLVector4a& a, const LLVector4a& b,
+        const LLVector4a& c);
+    void endMetalRaycastTriangleBatch(bool visible);
+    void captureMetalRaycastHitAxisBox(
+        const LLVector3& center, const LLVector3& half_extent);
+    void captureMetalRaycastHitBounds(
+        const LLVector4a& center, const LLVector4a& half_extent);
+    void endMetalRaycastCapture();
+    void captureMetalRaycastParticle(
+        const LLVector3& center, const LLVector3& half_extent);
     // Retain Develop > Points across the complete world spatial traversal.
     // Each drawable batch records its current region/bridge transform; the
     // traversal order also preserves interleaving with Agent Target.
@@ -1518,7 +1538,6 @@ public:
         RENDER_DEBUG_GL_WORLD_OUTPUT =
             RENDER_DEBUG_OCTREE |
             RENDER_DEBUG_OCCLUSION |
-            RENDER_DEBUG_RAYCAST |
             RENDER_DEBUG_PHYSICS_SHAPES |
             RENDER_DEBUG_NORMALS |
             RENDER_DEBUG_TEXEL_DENSITY,

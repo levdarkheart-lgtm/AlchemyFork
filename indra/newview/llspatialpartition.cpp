@@ -2964,6 +2964,9 @@ public:
             size.set(vl->mBounds[1].getF32ptr());
         }
 
+#if LL_DARWIN
+        gPipeline.captureMetalRaycastOutline(center, size, false);
+#endif
         drawBoxOutline(center, size);
 
         for (U32 i = 0; i < 2; i++)
@@ -2977,6 +2980,9 @@ public:
             else
             {
                 gGL.diffuseColor4f(0,0.5f,0.5f, 0.25f);
+#if LL_DARWIN
+                gPipeline.captureMetalRaycastOutline(center, size, true);
+#endif
                 drawBoxOutline(center, size);
             }
 
@@ -2985,6 +2991,9 @@ public:
                 gGL.setLineWidth(3.f);
             }
 
+#if LL_DARWIN
+            gPipeline.beginMetalRaycastTriangleBatch(i == 1);
+#endif
             gGL.begin(LLRender::TRIANGLES);
             for (LLOctreeNode<LLVolumeTriangle, LLVolumeTriangle*>::const_element_iter iter = branch->getDataBegin();
                     iter != branch->getDataEnd();
@@ -2992,11 +3001,18 @@ public:
             {
                 const LLVolumeTriangle* tri = *iter;
 
+#if LL_DARWIN
+                gPipeline.captureMetalRaycastTriangle(
+                    *tri->mV[0], *tri->mV[1], *tri->mV[2]);
+#endif
                 gGL.vertex3fv(tri->mV[0]->getF32ptr());
                 gGL.vertex3fv(tri->mV[1]->getF32ptr());
                 gGL.vertex3fv(tri->mV[2]->getF32ptr());
             }
             gGL.end();
+#if LL_DARWIN
+            gPipeline.endMetalRaycastTriangleBatch(i == 1);
+#endif
             // Drawn under this pass's depth func and colour, which the next pass changes.
             gGL.flush();
 
@@ -3014,6 +3030,8 @@ void renderOctreeRaycast(const LLVector4a& start, const LLVector4a& end, const L
     LLRenderOctreeRaycast render(start, end, &t);
     render.traverse(octree);
 }
+
+void renderAvatarCollisionVolumes(LLVOAvatar* avatar);
 
 void renderRaycast(LLDrawable* drawablep)
 {
@@ -3101,7 +3119,7 @@ void renderRaycast(LLDrawable* drawablep)
             {
                 LLGLDepthTest depth(GL_FALSE);
                 LLVOAvatar* av = (LLVOAvatar*) drawablep->getVObj().get();
-                av->renderCollisionVolumes();
+                renderAvatarCollisionVolumes(av);
             }
         }
 
@@ -3127,11 +3145,24 @@ void renderRaycast(LLDrawable* drawablep)
             gGL.multMatrix((float*)rotation.mMatrix);
 
             gGL.diffuseColor4f(1,0,0,0.5f);
-            drawBox(LLVector3(0, 0, 0), LLVector3(0.1f, 0.022f, 0.022f));
+            const LLVector3 axis_center(0, 0, 0);
+            const LLVector3 axis_x(0.1f, 0.022f, 0.022f);
+#if LL_DARWIN
+            gPipeline.captureMetalRaycastHitAxisBox(axis_center, axis_x);
+#endif
+            drawBox(axis_center, axis_x);
             gGL.diffuseColor4f(0,1,0,0.5f);
-            drawBox(LLVector3(0, 0, 0), LLVector3(0.021f, 0.1f, 0.021f));
+            const LLVector3 axis_y(0.021f, 0.1f, 0.021f);
+#if LL_DARWIN
+            gPipeline.captureMetalRaycastHitAxisBox(axis_center, axis_y);
+#endif
+            drawBox(axis_center, axis_y);
             gGL.diffuseColor4f(0,0,1,0.5f);
-            drawBox(LLVector3(0, 0, 0), LLVector3(0.02f, 0.02f, 0.1f));
+            const LLVector3 axis_z(0.02f, 0.02f, 0.1f);
+#if LL_DARWIN
+            gPipeline.captureMetalRaycastHitAxisBox(axis_center, axis_z);
+#endif
+            drawBox(axis_center, axis_z);
             gGL.popMatrix();
 
             // draw bounding box of prim
@@ -3146,6 +3177,9 @@ void renderRaycast(LLDrawable* drawablep)
 
             LLGLDepthTest depth(GL_FALSE, GL_TRUE);
             gGL.diffuseColor4f(0,0.5f,0.5f,1);
+#if LL_DARWIN
+            gPipeline.captureMetalRaycastHitBounds(pos, size);
+#endif
             drawBoxOutline(pos, size);
         }
     }

@@ -516,6 +516,46 @@ struct ALMetalWorldBoundingBoxBatch
     std::uint64_t order = 0;
 };
 
+// Develop > Raycast walks every volume-octree branch intersected by the live
+// cursor ray, then annotates the selected object/avatar. Immediate-mode source
+// triangles are retained as explicit line pairs so Metal can reproduce both
+// the one-pixel hidden pass and the three-pixel visible pass.
+enum class ALMetalWorldRaycastKind : std::uint32_t
+{
+    branch_outline,
+    hidden_outline,
+    hidden_triangles,
+    visible_triangles,
+    hit_axis_box,
+    hit_bounds,
+};
+
+struct ALMetalWorldRaycastVertex
+{
+    float position[4] = {0.f, 0.f, 0.f, 1.f};
+};
+
+struct ALMetalWorldRaycastBatch
+{
+    ALMetalWorldRaycastKind kind =
+        ALMetalWorldRaycastKind::branch_outline;
+    std::uint32_t first_vertex = 0;
+    std::uint32_t vertex_count = 0;
+    float modelview_projection[16]{};
+    float center[4] = {0.f, 0.f, 0.f, 1.f};
+    float half_extent[4]{};
+    float color[4] = {1.f, 1.f, 1.f, 1.f};
+    float line_width = 1.f;
+    std::uint64_t order = 0;
+};
+
+struct ALMetalWorldRaycastParticle
+{
+    float modelview_projection[16]{};
+    float center[4] = {0.f, 0.f, 0.f, 1.f};
+    float half_extent[4] = {0.1f, 0.1f, 0.1f, 0.f};
+};
+
 // Develop > Points emits one opaque white, one-pixel point at every valid
 // drawable face centre. World traversal can switch transforms at spatial-
 // bridge boundaries and can interleave the self-avatar Agent Target owner, so
@@ -968,6 +1008,11 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t avatar_joint_batch_count = 0;
     const ALMetalWorldBoundingBoxBatch* bounding_box_batches = nullptr;
     std::size_t bounding_box_batch_count = 0;
+    const ALMetalWorldRaycastVertex* raycast_vertices = nullptr;
+    std::size_t raycast_vertex_count = 0;
+    const ALMetalWorldRaycastBatch* raycast_batches = nullptr;
+    std::size_t raycast_batch_count = 0;
+    const ALMetalWorldRaycastParticle* raycast_particle = nullptr;
     const ALMetalWorldDebugPointVertex* debug_points = nullptr;
     std::size_t debug_point_count = 0;
     const ALMetalWorldDebugPointBatch* debug_point_batches = nullptr;

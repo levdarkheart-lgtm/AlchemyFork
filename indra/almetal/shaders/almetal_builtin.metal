@@ -2205,6 +2205,113 @@ almetal_world_bounding_box_wide_vertex(
     return output;
 }
 
+vertex ALMetalWorldTextureAnimVaryings almetal_world_raycast_line_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldBoundingBoxConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    float4 clip_position = constants.modelview_projection *
+                           float4(positions[vertex_id].xyz, 1.0);
+    clip_position.y = -clip_position.y;
+    ALMetalWorldTextureAnimVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    return output;
+}
+
+vertex ALMetalWorldTextureAnimVaryings
+almetal_world_raycast_wide_line_vertex(
+    const device float4* positions [[buffer(0)]],
+    constant ALMetalWorldBoundingBoxConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    constexpr uchar endpoint_lanes[6] = {0, 0, 1, 0, 1, 1};
+    constexpr float side_lanes[6] = {1.0, -1.0, -1.0,
+                                      1.0, -1.0,  1.0};
+    const uint edge = vertex_id / 6u;
+    const uint lane = vertex_id % 6u;
+    float4 from_clip = constants.modelview_projection *
+                       float4(positions[edge * 2u].xyz, 1.0);
+    float4 to_clip = constants.modelview_projection *
+                     float4(positions[edge * 2u + 1u].xyz, 1.0);
+    from_clip.y = -from_clip.y;
+    to_clip.y = -to_clip.y;
+    if (constants.config.x == 0u)
+    {
+        from_clip = almetal_clip_from_gl(from_clip);
+        to_clip = almetal_clip_from_gl(to_clip);
+    }
+    const float2 screen = max(
+        constants.screen_line_width.xy, float2(1.0));
+    const float from_w = abs(from_clip.w) > 1.0e-5
+        ? from_clip.w : copysign(1.0e-5, from_clip.w);
+    const float to_w = abs(to_clip.w) > 1.0e-5
+        ? to_clip.w : copysign(1.0e-5, to_clip.w);
+    const float2 delta_pixels =
+        (to_clip.xy / to_w - from_clip.xy / from_w) * screen * 0.5;
+    const float delta_length = length(delta_pixels);
+    const float2 perpendicular_pixels = delta_length > 1.0e-5
+        ? float2(-delta_pixels.y, delta_pixels.x) / delta_length *
+              constants.screen_line_width.z * 0.5
+        : float2(0.0);
+    const float2 perpendicular_ndc = perpendicular_pixels * 2.0 / screen;
+    float4 clip_position = endpoint_lanes[lane] != 0u
+        ? to_clip : from_clip;
+    clip_position.xy += perpendicular_ndc * side_lanes[lane] *
+                        clip_position.w;
+    ALMetalWorldTextureAnimVaryings output;
+    output.position = clip_position;
+    return output;
+}
+
+vertex ALMetalWorldTextureAnimVaryings almetal_world_raycast_box_vertex(
+    constant ALMetalWorldBoundingBoxConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    // Preserve drawBox()'s side, bottom and top triangle-strip topology.
+    constexpr float3 signs[8] = {
+        {-1.0,  1.0, -1.0}, {-1.0,  1.0,  1.0},
+        { 1.0,  1.0, -1.0}, { 1.0,  1.0,  1.0},
+        { 1.0, -1.0, -1.0}, { 1.0, -1.0,  1.0},
+        {-1.0, -1.0, -1.0}, {-1.0, -1.0,  1.0},
+    };
+    constexpr uchar indices[18] = {
+        0, 1, 2, 3, 4, 5, 6, 7, 0, 1,
+        2, 4, 0, 6,
+        3, 1, 5, 7,
+    };
+    const float3 position = constants.center.xyz +
+        constants.half_extent.xyz * signs[indices[vertex_id]];
+    float4 clip_position = constants.modelview_projection *
+                           float4(position, 1.0);
+    clip_position.y = -clip_position.y;
+    ALMetalWorldTextureAnimVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    return output;
+}
+
+vertex ALMetalWorldTextureAnimVaryings
+almetal_world_raycast_particle_vertex(
+    constant ALMetalWorldBoundingBoxConstants& constants [[buffer(1)]],
+    uint vertex_id [[vertex_id]])
+{
+    constexpr float3 directions[6] = {
+        { 1.0, 0.0, 0.0}, {-1.0, 0.0, 0.0},
+        {0.0,  1.0, 0.0}, {0.0, -1.0, 0.0},
+        {0.0, 0.0,  1.0}, {0.0, 0.0, -1.0},
+    };
+    const float3 position = constants.center.xyz +
+        constants.half_extent.xyz * directions[vertex_id];
+    float4 clip_position = constants.modelview_projection *
+                           float4(position, 1.0);
+    clip_position.y = -clip_position.y;
+    ALMetalWorldTextureAnimVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    return output;
+}
+
 struct ALMetalWorldDebugBlip
 {
     float4 position;
