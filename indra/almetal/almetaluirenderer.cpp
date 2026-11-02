@@ -675,14 +675,20 @@ struct ALMetalUIRenderer::Impl
         const bool pbr = shader == ALMetalHUDShader::pbr_alpha;
         const bool highlight = shader == ALMetalHUDShader::highlight ||
             shader == ALMetalHUDShader::highlight_skinned;
+        const bool debug = shader == ALMetalHUDShader::debug ||
+            shader == ALMetalHUDShader::debug_skinned;
         descriptor.vertex_function = pbr
             ? "almetal_hud_pbr_alpha_vertex"
+            : shader == ALMetalHUDShader::debug_skinned
+            ? "almetal_hud_debug_skinned_vertex"
+            : debug ? "almetal_hud_debug_vertex"
             : shader == ALMetalHUDShader::highlight_skinned
             ? "almetal_hud_highlight_skinned_vertex"
             : highlight ? "almetal_hud_highlight_vertex"
                         : "almetal_hud_fullbright_vertex";
         descriptor.fragment_function = pbr
             ? "almetal_hud_pbr_alpha_fragment"
+            : debug ? "almetal_hud_debug_fragment"
             : highlight ? "almetal_hud_highlight_fragment"
                         : "almetal_hud_fullbright_fragment";
         descriptor.color_attachment_count = 1;
@@ -718,6 +724,13 @@ struct ALMetalUIRenderer::Impl
             case ALMetalHUDShader::highlight_skinned:
                 descriptor.label =
                     "Alchemy HUD rigged highlight pipeline";
+                break;
+            case ALMetalHUDShader::debug:
+                descriptor.label = "Alchemy HUD debug-color pipeline";
+                break;
+            case ALMetalHUDShader::debug_skinned:
+                descriptor.label =
+                    "Alchemy HUD rigged debug-color pipeline";
                 break;
         }
 
@@ -1714,6 +1727,7 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
     ALMetalRenderEncoder& encoder = *mImpl->encoder;
     if (!encoder.setPipeline(*pipeline, error) ||
         !encoder.setDepthStencilState(depth, error) ||
+        !encoder.setDepthBias(0.f, 0.f, 0.f, error) ||
         !encoder.setVertexBuffer(0, *batch.vertices, batch.position_offset, error))
     {
         return false;
@@ -1811,8 +1825,10 @@ bool ALMetalUIRenderer::drawHUDIndexed(
 {
     const bool highlight = batch.shader == ALMetalHUDShader::highlight ||
         batch.shader == ALMetalHUDShader::highlight_skinned;
-    const bool skinned =
-        batch.shader == ALMetalHUDShader::highlight_skinned;
+    const bool debug = batch.shader == ALMetalHUDShader::debug ||
+        batch.shader == ALMetalHUDShader::debug_skinned;
+    const bool skinned = batch.shader == ALMetalHUDShader::highlight_skinned ||
+        batch.shader == ALMetalHUDShader::debug_skinned;
     if (!mImpl || !batch.vertices || batch.vertex_count == 0 ||
         !batch.indices || batch.index_count == 0 ||
         batch.target_width == 0 || batch.target_height == 0)
@@ -1821,8 +1837,10 @@ bool ALMetalUIRenderer::drawHUDIndexed(
                  "Metal HUD batch is missing geometry or target dimensions");
         return false;
     }
-    if (batch.texture_count == 0 ||
-        batch.texture_count > ALMetalHUDIndexedBatch::max_textures)
+    if ((!debug && (batch.texture_count == 0 ||
+                    batch.texture_count >
+                        ALMetalHUDIndexedBatch::max_textures)) ||
+        (debug && batch.texture_count != 0))
     {
         setError(error, "Metal HUD batch has an invalid texture count");
         return false;
@@ -1830,13 +1848,14 @@ bool ALMetalUIRenderer::drawHUDIndexed(
     const std::size_t index_stride =
         batch.index_type == ALMetalIndexType::uint32 ? 4u : 2u;
     if (batch.position_offset % (sizeof(float) * 4) != 0 ||
-        batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
         batch.index_offset % index_stride != 0 ||
         !rangeFits(batch.position_offset, batch.vertex_count,
                    sizeof(float) * 4, batch.vertices->length()) ||
-        !rangeFits(batch.texcoord_offset, batch.vertex_count,
-                   sizeof(float) * 2, batch.vertices->length()) ||
-        (!highlight &&
+        (!debug &&
+         (batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
+          !rangeFits(batch.texcoord_offset, batch.vertex_count,
+                     sizeof(float) * 2, batch.vertices->length()))) ||
+        (!highlight && !debug &&
          (batch.color_offset % (sizeof(std::uint8_t) * 4) != 0 ||
           !rangeFits(batch.color_offset, batch.vertex_count,
                      sizeof(std::uint8_t) * 4,
@@ -1849,7 +1868,8 @@ bool ALMetalUIRenderer::drawHUDIndexed(
     }
     if (!finiteFloats(batch.matrices.modelview_projection, 16) ||
         !finiteFloats(batch.matrices.texture0, 16) ||
-        (highlight && !finiteFloats(batch.highlight_color, 4)))
+        ((highlight || debug) &&
+         !finiteFloats(batch.highlight_color, 4)))
     {
         setError(error, "Metal HUD matrices must be finite");
         return false;
@@ -1884,7 +1904,9 @@ bool ALMetalUIRenderer::drawHUDIndexed(
          !finiteFloats(batch.skin_palette,
                        batch.skin_palette_float_count)))
     {
-        setError(error, "Metal HUD highlight skinning data is invalid");
+        setError(error, debug
+            ? "Metal HUD debug skinning data is invalid"
+            : "Metal HUD highlight skinning data is invalid");
         return false;
     }
     if (!skinned &&
@@ -1897,6 +1919,12 @@ bool ALMetalUIRenderer::drawHUDIndexed(
     if (batch.depth.write_enabled && !batch.depth.enabled)
     {
         setError(error, "Metal HUD depth writes require depth testing");
+        return false;
+    }
+    if (!std::isfinite(batch.depth_bias_slope) ||
+        !std::isfinite(batch.depth_bias_units))
+    {
+        setError(error, "Metal HUD depth bias must be finite");
         return false;
     }
     if (batch.depth.enabled && !mImpl->frame_depth)
@@ -1923,7 +1951,9 @@ bool ALMetalUIRenderer::drawHUDIndexed(
         descriptor.length = batch.skin_palette_float_count * sizeof(float);
         descriptor.storage = ALMetalStorageMode::shared;
         descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
-        descriptor.label = "Alchemy HUD highlight skin palette";
+        descriptor.label = debug
+            ? "Alchemy HUD debug skin palette"
+            : "Alchemy HUD highlight skin palette";
         auto palette = ALMetalBuffer::create(
             *mImpl->device, descriptor, error);
         if (!palette || !palette->write(
@@ -1937,9 +1967,10 @@ bool ALMetalUIRenderer::drawHUDIndexed(
 
     ALMetalRenderPipeline* pipeline = mImpl->hudPipeline(
         batch.shader, batch.blend, mImpl->frameDepthFormat(), error);
-    ALMetalSamplerState* sampler = mImpl->sampler(batch.sampler, error);
+    ALMetalSamplerState* sampler = debug
+        ? nullptr : mImpl->sampler(batch.sampler, error);
     ALMetalDepthStencilState* depth = mImpl->depthState(batch.depth, error);
-    if (!pipeline || !sampler || !depth)
+    if (!pipeline || (!debug && !sampler) || !depth)
     {
         return false;
     }
@@ -1984,16 +2015,25 @@ bool ALMetalUIRenderer::drawHUDIndexed(
     bool encoded =
         encoder.setPipeline(*pipeline, error) &&
         encoder.setDepthStencilState(depth, error) &&
+        encoder.setDepthBias(
+            (batch.depth.reverse_z ? 1.f : -1.f) *
+                batch.depth_bias_units,
+            (batch.depth.reverse_z ? 1.f : -1.f) *
+                batch.depth_bias_slope,
+            0.f, error) &&
         encoder.setVertexBuffer(
             0, *batch.vertices, batch.position_offset, error) &&
-        encoder.setVertexBuffer(
-            1, *batch.vertices, batch.texcoord_offset, error) &&
         encoder.setVertexBytes(
             3, &constants, sizeof(constants), error) &&
         encoder.setFragmentBytes(
-            0, &constants, sizeof(constants), error) &&
-        encoder.setFragmentSampler(0, sampler, error);
-    if (encoded && !highlight)
+            0, &constants, sizeof(constants), error);
+    if (encoded && !debug)
+    {
+        encoded = encoder.setVertexBuffer(
+                      1, *batch.vertices, batch.texcoord_offset, error) &&
+                  encoder.setFragmentSampler(0, sampler, error);
+    }
+    if (encoded && !highlight && !debug)
     {
         encoded = encoder.setVertexBuffer(
             2, *batch.vertices, batch.color_offset, error);

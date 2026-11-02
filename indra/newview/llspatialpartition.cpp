@@ -2747,8 +2747,16 @@ void renderBatchSize(LLDrawInfo* params)
     }
 
 
-    gGL.diffuseColor4ubv(params->getDebugColor().mV);
-    pushVerts(params);
+    const LLColor4U debug_color = params->getDebugColor();
+    gGL.diffuseColor4ubv(debug_color.mV);
+    LLRenderPass::applyModelMatrix(*params);
+#if LL_DARWIN
+    gPipeline.captureMetalBatchSizeBatch(*params, debug_color);
+#endif
+    params->mVertexBuffer->setBuffer();
+    params->mVertexBuffer->drawRange(
+        LLRender::TRIANGLES, params->mStart, params->mEnd,
+        params->mCount, params->mOffset);
 
     if (bind)
     {

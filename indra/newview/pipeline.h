@@ -392,6 +392,11 @@ public:
     // Retain Develop > Update Type's position-only per-face color replay.
     void captureMetalUpdateTypeFace(
         const LLFace& face, const LLColor4& color);
+    // Retain Develop > Batch Size's per-draw hash colour, semantic polygon
+    // offset and optional avatar object-skin palette. The same boundary owns
+    // the offscreen HUD-attachment encoding when HUD partitions are visited.
+    void captureMetalBatchSizeBatch(
+        const LLDrawInfo& params, const LLColor4U& color);
     // Retain the ordered orange/yellow neighbor links emitted by Develop >
     // Reflection Probes. Each source link becomes exactly two line vertices.
     void beginMetalReflectionProbeLinkCapture(std::size_t link_count);
@@ -1475,7 +1480,6 @@ public:
             RENDER_DEBUG_OCTREE |
             RENDER_DEBUG_OCCLUSION |
             RENDER_DEBUG_LIGHTS |
-            RENDER_DEBUG_BATCH_SIZE |
             RENDER_DEBUG_RAYCAST |
             RENDER_DEBUG_SHADOW_FRUSTA |
             RENDER_DEBUG_AVATAR_VOLUME |

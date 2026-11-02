@@ -487,6 +487,16 @@ public:
     // applies separate blend functions to color and alpha
     void blendFunc(eBlendFactor color_sfactor, eBlendFactor color_dfactor,
                eBlendFactor alpha_sfactor, eBlendFactor alpha_dfactor);
+    void getBlendFunc(eBlendFactor& color_sfactor,
+                      eBlendFactor& color_dfactor,
+                      eBlendFactor& alpha_sfactor,
+                      eBlendFactor& alpha_dfactor) const
+    {
+        color_sfactor = mCurrBlendColorSFactor;
+        color_dfactor = mCurrBlendColorDFactor;
+        alpha_sfactor = mCurrBlendAlphaSFactor;
+        alpha_dfactor = mCurrBlendAlphaDFactor;
+    }
 
     LLLightState* getLight(U32 index);
     // Snapshot the exact CPU mirror consumed by UB_LIGHTS. This updates only
@@ -509,6 +519,8 @@ public:
     // intent survives the flipped depth mapping -- the cache holds what the caller asked
     // for, not what was issued. Redundant sets are dropped without a flush.
     void setPolygonOffset(F32 factor, F32 units);
+    F32 getPolygonOffsetFactor() const { return mPolygonOffsetFactor; }
+    F32 getPolygonOffsetUnits() const { return mPolygonOffsetUnits; }
     // Re-issue the physical offset for the current convention. Call after LLRender::sReverseZ
     // changes: the cached semantic values are unchanged, but the translation they were issued
     // under is not. Mirrors LLGLDepthTest::rebase().

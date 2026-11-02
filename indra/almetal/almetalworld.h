@@ -504,6 +504,30 @@ struct ALMetalWorldUpdateTypeBatch
     float color[4]{};
 };
 
+// Develop > Batch Size replays every draw-info triangle with the stable hash
+// colour produced by LLDrawInfo::getDebugColor(). Unlike the adjacent
+// position-only overlays, avatar draw infos bind gDebugProgram's rigged
+// variant and upload their object-skin palette. The source also applies the
+// semantic polygon offset (-1 factor, +1 unit), represented by the owner
+// rather than inferred from neighboring debug draws.
+struct ALMetalWorldBatchSizeBatch
+{
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::size_t weight_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
+    const float* skin_palette = nullptr;
+    std::size_t skin_palette_float_count = 0;
+    std::uint32_t skin_joint_count = 0;
+    std::uint64_t order = 0;
+    float modelview_projection[16]{};
+    float color[4]{};
+};
+
 // Develop > Composition is a fixed 261-by-261 point grid. X/Y and the
 // interior-blue/border-red classification are derived from vertex_id in MSL;
 // only the live composition height needs to cross the CPU/GPU boundary.
@@ -828,6 +852,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t texture_anim_batch_count = 0;
     const ALMetalWorldUpdateTypeBatch* update_type_batches = nullptr;
     std::size_t update_type_batch_count = 0;
+    const ALMetalWorldBatchSizeBatch* batch_size_batches = nullptr;
+    std::size_t batch_size_batch_count = 0;
     const ALMetalWorldReflectionProbeLinkVertex* reflection_probe_links =
         nullptr;
     std::size_t reflection_probe_link_vertex_count = 0;

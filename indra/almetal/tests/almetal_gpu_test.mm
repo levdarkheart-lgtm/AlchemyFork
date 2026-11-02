@@ -807,6 +807,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_world_lens_dirt_fragment",
             "almetal_world_rlv_sphere_fragment",
             "almetal_world_texture_anim_vertex",
+            "almetal_world_batch_size_skinned_vertex",
             "almetal_world_texture_anim_fragment",
             "almetal_world_presentation_fragment",
             "almetal_world_display_post_fragment",
@@ -879,6 +880,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_hud_fullbright_fragment",
             "almetal_hud_pbr_alpha_vertex",
             "almetal_hud_pbr_alpha_fragment",
+            "almetal_hud_debug_vertex",
+            "almetal_hud_debug_skinned_vertex",
+            "almetal_hud_debug_fragment",
             "almetal_selection_id_vertex",
             "almetal_selection_id_skinned_vertex",
             "almetal_selection_id_fragment",
@@ -5903,6 +5907,207 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             32 * sizeof(float), &error));
         CHECK(update_type_pixels == opaque_forward_pixels);
         CHECK(update_type_depth == opaque_forward_depth);
+
+        // Develop > Batch Size uses one stable hash colour per LLDrawInfo,
+        // applies semantic polygon offset (-1 factor, +1 unit), and switches
+        // to gDebugProgram's object-skinned variant for avatar draw infos.
+        // It otherwise inherits the same RGB-only alpha blend, no-cull and
+        // read/write depth state as the adjacent debug overlays.
+        ALMetalWorldBatchSizeBatch batch_size_batch;
+        batch_size_batch.vertices = vertices.get();
+        batch_size_batch.vertex_count = positions.size();
+        batch_size_batch.indices = indices.get();
+        batch_size_batch.index_count = index_values.size();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            batch_size_batch.modelview_projection[
+                axis * 4 + axis] = 1.f;
+        }
+        const std::array<float, 4> batch_size_color{{
+            64.f / 255.f, 128.f / 255.f, 1.f, 200.f / 255.f,
+        }};
+        std::memcpy(batch_size_batch.color,
+                    batch_size_color.data(),
+                    sizeof(batch_size_batch.color));
+        opaque_forward_scene.batch_size_batches = &batch_size_batch;
+        opaque_forward_scene.batch_size_batch_count = 1;
+
+        opaque_forward_scene.batch_size_batches = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world batch-size batch storage is invalid");
+        opaque_forward_scene.batch_size_batches = &batch_size_batch;
+        batch_size_batch.color[3] = 1.f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world batch-size batch is invalid");
+        std::memcpy(batch_size_batch.color,
+                    batch_size_color.data(),
+                    sizeof(batch_size_batch.color));
+        error.clear();
+
+        auto native_batch_size = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(native_batch_size);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            batch_size_pixels{};
+        std::array<float, 32 * 32> batch_size_depth{};
+        REQUIRE(native_batch_size->colorTexture(0)->readback(
+            *device, 0, 0, {}, batch_size_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(native_batch_size->depthStencilTexture()->readback(
+            *device, 0, 0, {}, batch_size_depth.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float alpha = batch_size_color[3];
+            const float expected = batch_size_color[channel] * alpha +
+                texture_anim_destination[channel] * (1.f - alpha);
+            CHECK(std::abs(agent_half_to_float(
+                batch_size_pixels[center + channel]) - expected) <
+                0.001f);
+        }
+        CHECK(batch_size_pixels[center + 3] ==
+              opaque_forward_pixels[center + 3]);
+        CHECK(batch_size_depth[16 * 32 + 16] < 0.625f);
+
+        batch_size_batch.indices = reversed_indices.get();
+        auto reverse_winding_batch_size =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_winding_batch_size);
+        batch_size_pixels.fill(0xffffu);
+        REQUIRE(reverse_winding_batch_size->colorTexture(0)->readback(
+            *device, 0, 0, {}, batch_size_pixels.data(), 32 * 8,
+            &error));
+        CHECK(batch_size_pixels[center + 0] !=
+              opaque_forward_pixels[center + 0]);
+        batch_size_batch.indices = indices.get();
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        auto reverse_batch_size = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_batch_size);
+        batch_size_depth.fill(-1.f);
+        REQUIRE(reverse_batch_size->depthStencilTexture()->readback(
+            *device, 0, 0, {}, batch_size_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(batch_size_depth[16 * 32 + 16] > 0.25f);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        batch_size_batch.weight_offset = weight_offset;
+        batch_size_batch.skin_palette = skin_palette.data();
+        batch_size_batch.skin_palette_float_count =
+            skin_palette.size() - 1;
+        batch_size_batch.skin_joint_count = 1;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world batch-size batch is invalid");
+        batch_size_batch.skin_palette_float_count = skin_palette.size();
+        error.clear();
+        auto rigged_batch_size = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(rigged_batch_size);
+        batch_size_pixels.fill(0xffffu);
+        REQUIRE(rigged_batch_size->colorTexture(0)->readback(
+            *device, 0, 0, {}, batch_size_pixels.data(), 32 * 8,
+            &error));
+        std::size_t rigged_batch_size_first_x = 32;
+        std::size_t rigged_batch_size_last_x = 0;
+        for (std::size_t x = 0; x < 32; ++x)
+        {
+            const std::size_t pixel = (16 * 32 + x) * 4;
+            const bool changed =
+                batch_size_pixels[pixel + 0] !=
+                    opaque_forward_pixels[pixel + 0] ||
+                batch_size_pixels[pixel + 1] !=
+                    opaque_forward_pixels[pixel + 1] ||
+                batch_size_pixels[pixel + 2] !=
+                    opaque_forward_pixels[pixel + 2];
+            if (changed)
+            {
+                rigged_batch_size_first_x = std::min(
+                    rigged_batch_size_first_x, x);
+                rigged_batch_size_last_x = std::max(
+                    rigged_batch_size_last_x, x);
+            }
+        }
+        CHECK(rigged_batch_size_first_x >= 11);
+        CHECK(rigged_batch_size_last_x >= 28);
+
+        batch_size_batch.skin_palette = nullptr;
+        batch_size_batch.skin_palette_float_count = 0;
+        batch_size_batch.skin_joint_count = 0;
+        batch_size_batch.weight_offset = 0;
+        std::memcpy(update_type_batch.color,
+                    update_type_colors[4].data(),
+                    sizeof(update_type_batch.color));
+        opaque_forward_scene.update_type_batches = &update_type_batch;
+        opaque_forward_scene.update_type_batch_count = 1;
+        batch_size_batch.order = 0;
+        update_type_batch.order = 1;
+        auto update_after_batch_size =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(update_after_batch_size);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            update_after_batch_size_pixels{};
+        REQUIRE(update_after_batch_size->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            update_after_batch_size_pixels.data(), 32 * 8, &error));
+
+        batch_size_batch.order = 1;
+        update_type_batch.order = 0;
+        auto batch_size_after_update =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(batch_size_after_update);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            batch_size_after_update_pixels{};
+        REQUIRE(batch_size_after_update->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            batch_size_after_update_pixels.data(), 32 * 8, &error));
+        CHECK(update_after_batch_size_pixels[center + 0] !=
+              batch_size_after_update_pixels[center + 0]);
+        CHECK(update_after_batch_size_pixels[center + 2] !=
+              batch_size_after_update_pixels[center + 2]);
+
+        batch_size_batch.order = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world render-debug ordering is invalid");
+        error.clear();
+        opaque_forward_scene.update_type_batches = nullptr;
+        opaque_forward_scene.update_type_batch_count = 0;
+        opaque_forward_scene.batch_size_batches = nullptr;
+        opaque_forward_scene.batch_size_batch_count = 0;
+        auto no_batch_size = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_batch_size);
+        batch_size_pixels.fill(0xffffu);
+        batch_size_depth.fill(-1.f);
+        REQUIRE(no_batch_size->colorTexture(0)->readback(
+            *device, 0, 0, {}, batch_size_pixels.data(), 32 * 8,
+            &error));
+        REQUIRE(no_batch_size->depthStencilTexture()->readback(
+            *device, 0, 0, {}, batch_size_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(batch_size_pixels == opaque_forward_pixels);
+        CHECK(batch_size_depth == opaque_forward_depth);
 
         // Develop > Reflection Probes draws one-pixel neighbor links for
         // relevant probes: orange unless both endpoints own viewer objects,
@@ -25824,6 +26029,147 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         hud_batch.skin_palette = nullptr;
         hud_batch.skin_palette_float_count = 0;
         hud_batch.skin_joint_count = 0;
+        hud_batch.blend.write_mask = ALMetalColorWriteMask::all;
+
+        // Batch Size HUD attachments are untextured uniform-color indexed
+        // draws. They retain the world owner's RGB-only alpha blend, no-cull
+        // state, read/write depth, polygon offset and optional object skinning
+        // instead of falling through the ordinary textured HUD pipeline.
+        hud_batch.shader = ALMetalHUDShader::debug;
+        hud_batch.vertices = hud_vertices.get();
+        hud_batch.texture_count = 0;
+        hud_batch.textures.fill(nullptr);
+        hud_batch.highlight_color[0] = 1.f;
+        hud_batch.highlight_color[1] = 64.f / 255.f;
+        hud_batch.highlight_color[2] = 0.f;
+        hud_batch.highlight_color[3] = 200.f / 255.f;
+        hud_batch.blend.enabled = true;
+        hud_batch.blend.source_rgb = ALMetalBlendFactor::source_alpha;
+        hud_batch.blend.destination_rgb =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        hud_batch.blend.source_alpha = ALMetalBlendFactor::source_alpha;
+        hud_batch.blend.destination_alpha =
+            ALMetalBlendFactor::one_minus_source_alpha;
+        hud_batch.blend.write_mask =
+            static_cast<ALMetalColorWriteMask>(
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::red) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::green) |
+                static_cast<std::uint8_t>(ALMetalColorWriteMask::blue));
+        hud_batch.depth.write_enabled = true;
+        hud_batch.depth_bias_slope = -1.f;
+        hud_batch.depth_bias_units = 1.f;
+        hud_batch.double_sided = true;
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        composed_pixels.fill(0xffu);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        REQUIRE(hud_renderer->outputDepthTexture()->readback(
+            *device, 0, 0, {}, depth_region_values.data(),
+            32 * sizeof(float), &error));
+        INFO(error);
+        const float hud_debug_alpha = 200.f / 255.f;
+        const std::array<float, 3> hud_debug_source{{
+            0.f, 64.f / 255.f, 1.f,
+        }};
+        const std::array<float, 3> hud_debug_background{{
+            20.f / 255.f, 40.f / 255.f, 80.f / 255.f,
+        }};
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float expected = hud_debug_source[channel] *
+                    hud_debug_alpha +
+                hud_debug_background[channel] *
+                    (1.f - hud_debug_alpha);
+            CHECK(std::abs(
+                static_cast<float>(composed_pixels[center + channel]) /
+                    255.f - expected) < 0.01f);
+        }
+        CHECK(composed_pixels[center + 3] == 255u);
+        CHECK(depth_region_values[16 * 32 + 16] < 0.25f);
+
+        hud_batch.indices = hud_reversed_indices.get();
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        CHECK(composed_pixels[center + 2] > 180u);
+        hud_batch.indices = hud_indices.get();
+
+        hud_batch.shader = ALMetalHUDShader::debug_skinned;
+        hud_batch.vertices = hud_highlight_vertices.get();
+        hud_batch.weight_offset = hud_highlight_weight_offset;
+        hud_batch.skin_palette = hud_highlight_palette.data();
+        hud_batch.skin_palette_float_count =
+            hud_highlight_palette.size();
+        hud_batch.skin_joint_count = 1;
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        composed_pixels.fill(0xffu);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        std::size_t rigged_debug_first_x = 32;
+        std::size_t rigged_debug_last_x = 0;
+        for (std::size_t x = 0; x < 32; ++x)
+        {
+            const std::size_t pixel = (16 * 32 + x) * 4;
+            if (composed_pixels[pixel + 0] != 20u ||
+                composed_pixels[pixel + 1] != 40u ||
+                composed_pixels[pixel + 2] != 80u)
+            {
+                rigged_debug_first_x = std::min(
+                    rigged_debug_first_x, x);
+                rigged_debug_last_x = std::max(
+                    rigged_debug_last_x, x);
+            }
+        }
+        CHECK(rigged_debug_first_x >= 17);
+        CHECK(rigged_debug_last_x >= 23);
+
+        hud_batch.skin_palette_float_count = 4;
+        error.clear();
+        CHECK_FALSE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        CHECK(error == "Metal HUD debug skinning data is invalid");
+        CHECK_FALSE(hud_renderer->hasOpenFrame());
+        hud_batch.depth_bias_units =
+            std::numeric_limits<float>::quiet_NaN();
+        hud_batch.skin_palette_float_count =
+            hud_highlight_palette.size();
+        error.clear();
+        CHECK_FALSE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        CHECK(error == "Metal HUD depth bias must be finite");
+        CHECK_FALSE(hud_renderer->hasOpenFrame());
+        hud_batch.vertices = hud_vertices.get();
+        hud_batch.weight_offset = 0;
+        hud_batch.skin_palette = nullptr;
+        hud_batch.skin_palette_float_count = 0;
+        hud_batch.skin_joint_count = 0;
+        hud_batch.depth_bias_slope = 0.f;
+        hud_batch.depth_bias_units = 0.f;
         hud_batch.blend.write_mask = ALMetalColorWriteMask::all;
 
         // PBR HUD alpha keeps the same coverage/blend contract, but its glTF

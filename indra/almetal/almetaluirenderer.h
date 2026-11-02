@@ -123,6 +123,8 @@ enum class ALMetalHUDShader
     pbr_alpha,
     highlight,
     highlight_skinned,
+    debug,
+    debug_skinned,
 };
 
 // One indexed static HUD-attachment draw. Unlike immediate-mode UI, volume
@@ -165,6 +167,10 @@ struct ALMetalHUDIndexedBatch
     ALMetalScissorRect scissor{};
     ALMetalHUDShader shader = ALMetalHUDShader::fullbright;
     float minimum_alpha = 0.004f;
+    // Semantic GL polygon-offset terms. The encoder translates these to
+    // Metal's depth-bias sign for the active forward/reverse-Z convention.
+    float depth_bias_slope = 0.f;
+    float depth_bias_units = 0.f;
     bool double_sided = false;
     std::uint32_t target_width = 0;
     std::uint32_t target_height = 0;
