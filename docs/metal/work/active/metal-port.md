@@ -19,7 +19,7 @@ checkpoint detail belongs in the indexed archive.
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent and Batch Size have ordered static/rigged HUD replay. Moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence. Broader live parity remains incomplete. |
 | M-008 | Advanced views/effects and compute | doing | The established native advanced-output set now includes Raycast, Occlusion, Octree, Physics Shapes, Normals and Texel Density. No reachable render-debug world-geometry bit remains in the explicit visual veto. OSS pathfinding is a nonfunctional stub. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, prolonged stability and strict no-GL release evidence remain open. The refreshed 3,351-finding inventory exits 1. Preference-qualified fixed-Midday replay corroborates directional shadows and native shadow-owner provenance; isolated projector-visible parity and presentation-authority gates remain open. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, prolonged stability and strict no-GL release evidence remain open. The refreshed 3,351-finding inventory exits 1. Directional shadows are preference-qualified; projector-visible parity is open. Current authored-mirror validation hit a semantic-UI timeout and watchdog shutdown hang after native hero publication, so its guard remains fail-closed. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Exact-path semantic login/in-world/control/logout is verified and used for current acceptance. |
@@ -84,6 +84,16 @@ not isolate a visible projector contribution, and projector-visible,
 alpha/avatar-caster, cascade and PCSS/quality parity remain open. Earlier
 Debug-Settings-only evidence cannot independently close a shadow row.
 
+The next current-build authored-mirror attempt was invalid. Exact-path
+preflight passed, the pinned reference saved a coherent 2048x1476 control, and
+the candidate published complete native 256-square hero radiance. The candidate
+then stopped servicing semantic UI observation. A graceful `SIGTERM` entered
+`status: quitting` but did not complete; after 60 seconds the watchdog reported
+`Pipeline:RenderGeomDeferred`, and only then was the stuck process force-killed.
+No candidate image or parity score is claimed. Normal mirror authority remains
+fail-closed. The indexed archive retains exact provenance and the bounded next
+diagnostic.
+
 Any exact RLVa comparison must enable RLV in Preferences in both viewers, save,
 and restart both. Exact RLVa correctness is deferred M-013; implement only the
 minimum behavior needed to unblock Metal/no-GL cutover.
@@ -106,12 +116,11 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Reconcile the refreshed 3,351-finding strict GL inventory against actual
-reachability and presentation authority. Resolve the highest-value concrete
-M-009 gate, including current hero-mirror exact eligibility where reachable,
-with source and physical proof; do not remove a guard from an old fixture
-alone. Continue controlled parity/stability work, keep all shadow evidence
-Preferences/save/restart-qualified, and leave exact RLVa work deferred in
+Reproduce the current hero-mirror semantic-UI/shutdown hang in a candidate-only
+diagnostic, sampling the main thread at the first timeout before termination.
+Classify the stall before changing mirror authority. Then resume the refreshed
+3,351-finding GL inventory by reachability/presentation authority. Keep all
+shadow evidence Preferences/save/restart-qualified and exact RLVa deferred in
 M-013.
 
 ## Non-negotiable open gates

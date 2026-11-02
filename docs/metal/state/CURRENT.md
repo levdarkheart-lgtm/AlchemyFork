@@ -57,21 +57,19 @@ enabled and saved through Graphics Preferences in **both** viewers and both
 viewers have been restarted before capture. A mismatched off/on pair is invalid;
 a both-off control can isolate a residual but cannot prove shadow parity.
 
-The 2026-11-02 fixed-Midday Grignano replay satisfies that prerequisite. Both
-isolated profiles reported effective `RenderShadowDetail=2`; all 416 captured
-visual settings matched, and the restarted Advanced Graphics panels displayed
-`ShadowDetail=2` in both viewers. Exact-path preflight passed for the pinned
-reference `26.4.0.67607` and candidate `26.4.0.68089`. The candidate ran with
-`ALMetalWorldPresentation=true`; its log proved `STATE_STARTED`, retained direct
-Metal directional- and projector-shadow slices, and continuous exact native
-world plus ordered UI/HUD publication without GL swap. The aligned fixed scene
-corroborates the existing directional-shadow result (raw whole-frame SSIM
-`0.933767`, average PSNR `22.091122 dB`, half-size sigma-8 structural SSIM
-`0.968037`). Avatar pose and streamed media remained temporal differences.
-The public fixture did not isolate a visible projector contribution, so
-projector-visible parity, alpha/avatar casters, all cascades and PCSS/quality
-coverage remain open. Earlier Debug-Settings-only shadow evidence is not
-independently admissible under the preference/save/restart rule.
+The 2026-11-02 fixed-Midday Grignano replay satisfies that prerequisite: both
+profiles and restarted panels reported `RenderShadowDetail=2`, all 416 visual
+settings matched, and candidate logs proved continuous native publication plus
+direct Metal directional/projector owners. It corroborates directional shadows
+only; projector-visible, alpha/avatar-caster, cascade and PCSS/quality coverage
+remain open. [Exact evidence is archived](archive/CURRENT-shadow-preference-qualified-checkpoint-2026-11-02.md).
+
+A subsequent current-build authored-mirror attempt did not yield an admissible
+pair. After exact native 256-square hero-radiance publication, candidate semantic
+UI observation timed out; `SIGTERM` entered quitting but failed to finish, and
+the watchdog identified `Pipeline:RenderGeomDeferred` before forced process
+termination. The mirror guard remains fail-closed. [Failure evidence and the
+next diagnostic are archived](archive/CURRENT-hero-mirror-validation-hang-checkpoint-2026-11-02.md).
 
 ## Build and test evidence
 
@@ -119,7 +117,7 @@ independently admissible under the preference/save/restart rule.
 | M-003..M-006 platform/resources/UI | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
 | M-007 world/material | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence; broader live parity remains open. |
 | M-008 advanced views/effects | doing | Wireframe, Wind Vectors, Agent Target, Points, Composition, reflection-probe links, Texture Anim, Update Type, Texel Density, Batch Size, Lights, Impostors, Shadow Frusta, Collision Skeleton, Joints, BBOXES, Raycast, Occlusion, Octree, Physics Shapes, Normals, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. No reachable render-debug world-geometry bit remains in the explicit veto; exact RLVa parity is M-013. |
-| M-009 parity/stability/no-GL | doing | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The refreshed scan covers 2,408 files and 3,351 informational findings; strict exits 1. Preference-qualified fixed-Midday shadow replay corroborates directional shadows and native owner provenance, while isolated projector-visible parity and the remaining presentation-authority gates stay open. |
+| M-009 parity/stability/no-GL | doing | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The refreshed scan covers 2,408 files and 3,351 findings; strict exits 1. Directional shadows are preference-qualified, but projector-visible parity remains open. A current authored-mirror diagnostic then hit a semantic-UI timeout and watchdog shutdown hang after native hero publication; its guard remains fail-closed. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
 | M-012 Computer Use bridge | complete | Exact-path semantic login/in-world/control/logout operation is verified and used for acceptance. |
@@ -150,9 +148,8 @@ remaining presentation-authority gate from current source and live evidence.
 
 1. Reconcile the refreshed 3,351-finding strict GL inventory against actual
    reachability and presentation authority; the strict exit remains 1.
-2. Resolve the next concrete M-009 presentation gate, including current hero-
-   mirror exact eligibility where reachable, with source and physical proof;
-   do not remove a guard from an old fixture alone.
+2. Reproduce and sample the current hero-mirror semantic-UI/shutdown hang before
+   changing its guard; do not remove the guard from an old fixture alone.
 3. Continue controlled live parity and stability. Keep projector-visible and
    remaining shadow coverage open unless Preferences/save/restart-qualified,
    and keep exact RLVa parity deferred in M-013.
