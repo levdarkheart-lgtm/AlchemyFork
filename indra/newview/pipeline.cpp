@@ -518,11 +518,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> lens_dirt_target;
     LensDirtPlateParams lens_dirt_params;
     std::unique_ptr<ALMetalRenderTarget> sky_behind_target;
-    std::unique_ptr<ALMetalTexture> projector_shadow_texture;
     std::unique_ptr<ALMetalTexture> direct_projector_shadow_texture;
     std::unique_ptr<ALMetalTexture> direct_directional_shadow_texture;
     ALMetalWorldDirectionalShadows projector_shadows;
-    std::vector<F32> projector_shadow_depth;
     U32 projector_shadow_frame = std::numeric_limits<U32>::max();
     std::array<bool, 2> direct_projector_shadow_valid{};
     std::array<bool, 4> direct_directional_shadow_valid{};
@@ -811,9 +809,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 continuous_world_frame = std::numeric_limits<U32>::max();
     ALMetalWorldLegacyAlphaLighting impostor_legacy_alpha_lighting;
     bool impostor_legacy_alpha_lighting_valid = false;
-    std::unique_ptr<ALMetalTexture> impostor_directional_shadow_texture;
     ALMetalWorldDirectionalShadows impostor_directional_shadows;
-    std::vector<F32> impostor_directional_shadow_depth;
     U32 impostor_directional_shadow_frame = std::numeric_limits<U32>::max();
     bool impostor_legacy_alpha_uses_shadows = false;
     LLUUID impostor_bake_avatar_id;
@@ -1747,11 +1743,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         }
         capture.lens_dirt_target.reset();
         capture.lens_dirt_params = LensDirtPlateParams();
-        capture.projector_shadow_texture.reset();
         capture.direct_projector_shadow_texture.reset();
         capture.direct_directional_shadow_texture.reset();
         capture.projector_shadows = {};
-        capture.projector_shadow_depth.clear();
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
         capture.direct_projector_shadow_valid = {};
         capture.direct_directional_shadow_valid = {};
@@ -1844,9 +1838,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.world_ssr_history_warmup = false;
         capture.continuous_world_capture = false;
         capture.continuous_world_frame = std::numeric_limits<U32>::max();
-        capture.impostor_directional_shadow_texture.reset();
         capture.impostor_directional_shadows = {};
-        capture.impostor_directional_shadow_depth.clear();
         capture.impostor_directional_shadow_frame =
             std::numeric_limits<U32>::max();
         capture.impostor_bake_avatar_id.setNull();
@@ -3666,11 +3658,9 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         mMetalLensFlareHistoryReady = false;
         capture.lens_dirt_target.reset();
         capture.lens_dirt_params = LensDirtPlateParams();
-        capture.projector_shadow_texture.reset();
         capture.direct_projector_shadow_texture.reset();
         capture.direct_directional_shadow_texture.reset();
         capture.projector_shadows = {};
-        capture.projector_shadow_depth.clear();
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
         capture.direct_projector_shadow_valid = {};
         capture.direct_directional_shadow_valid = {};
@@ -3748,9 +3738,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.world_ssr_history_warmup = false;
         capture.continuous_world_capture = false;
         capture.continuous_world_frame = std::numeric_limits<U32>::max();
-        capture.impostor_directional_shadow_texture.reset();
         capture.impostor_directional_shadows = {};
-        capture.impostor_directional_shadow_depth.clear();
         capture.impostor_directional_shadow_frame =
             std::numeric_limits<U32>::max();
         capture.impostor_bake_avatar_id.setNull();
@@ -12621,34 +12609,9 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
         return true;
     }
 
-    U32 width = 0;
-    U32 height = 0;
-    for (U32 cascade = 0; cascade < 4; ++cascade)
-    {
-        if ((unbuilt & (1u << cascade)) == 0)
-        {
-            LLRenderTarget* target = getSunShadowTarget(cascade);
-            if (!target || target->getUsage() != ALTextureSlot::TT_TEXTURE ||
-                !target->getDepth())
-            {
-                return false;
-            }
-            if (width == 0)
-            {
-                width = target->getWidth();
-                height = target->getHeight();
-            }
-            else if (target->getWidth() != width ||
-                     target->getHeight() != height)
-            {
-                return false;
-            }
-        }
-    }
-
-    // No cascade exists. The GL shader returns fully lit from its unbuilt
-    // mask without sampling, which is also the renderer's null-pack fallback.
-    if (width == 0 || height == 0)
+    // No cascade exists. Both renderers return fully lit from the unbuilt
+    // mask without sampling, which is also the native null-pack fallback.
+    if (unbuilt == 0xfu)
     {
         capture.impostor_directional_shadows = {};
         capture.impostor_directional_shadow_frame = gFrameCount;
@@ -12695,114 +12658,15 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
     bool direct_complete = direct &&
         direct->type == ALMetalTextureType::texture_2d_array &&
         direct->format == ALMetalPixelFormat::r32_float &&
-        direct->width == width && direct->height == height &&
+        direct->width != 0 && direct->height != 0 &&
         direct->array_length == 4;
     for (U32 cascade = 0; direct_complete && cascade < 4; ++cascade)
     {
         direct_complete = (unbuilt & (1u << cascade)) != 0 ||
             capture.direct_directional_shadow_valid[cascade];
     }
-    if (direct_complete)
-    {
-        return publish(capture.direct_directional_shadow_texture.get());
-    }
-
-    const std::size_t slice_pixels =
-        static_cast<std::size_t>(width) * height;
-    if (slice_pixels >
-        std::numeric_limits<std::size_t>::max() / (sizeof(F32) * 4))
-    {
-        return false;
-    }
-    capture.impostor_directional_shadow_depth.assign(
-        slice_pixels * 4, capture.reverse_z ? 0.f : 1.f);
-
-    GLint previous_texture = 0;
-    GLint previous_pack_buffer = 0;
-    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture);
-    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &previous_pack_buffer);
-    clear_glerror();
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-    for (U32 cascade = 0; cascade < 4; ++cascade)
-    {
-        if ((unbuilt & (1u << cascade)) != 0)
-        {
-            continue;
-        }
-        LLRenderTarget* target = getSunShadowTarget(cascade);
-        glBindTexture(GL_TEXTURE_2D, target->getDepth());
-        glGetTexImage(
-            GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, GL_FLOAT,
-            capture.impostor_directional_shadow_depth.data() +
-                slice_pixels * cascade);
-    }
-    const GLenum read_error = glGetError();
-    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous_texture));
-    glBindBuffer(
-        GL_PIXEL_PACK_BUFFER, static_cast<GLuint>(previous_pack_buffer));
-    if (read_error != GL_NO_ERROR)
-    {
-        LL_WARNS("Metal")
-            << "Could not read the live directional-shadow cascades for "
-               "native world lighting: GL error 0x"
-            << std::hex << read_error << std::dec << LL_ENDL;
-        return false;
-    }
-
-    ALMetalTextureDescriptor descriptor;
-    descriptor.type = ALMetalTextureType::texture_2d_array;
-    descriptor.format = ALMetalPixelFormat::r32_float;
-    descriptor.width = width;
-    descriptor.height = height;
-    descriptor.array_length = 4;
-    descriptor.storage = ALMetalStorageMode::private_gpu;
-    descriptor.usage = ALMetalTextureUsage::shader_read;
-    descriptor.label = "Alchemy live directional-shadow mirror";
-    const ALMetalTextureDescriptor* existing =
-        capture.impostor_directional_shadow_texture
-            ? &capture.impostor_directional_shadow_texture->descriptor()
-            : nullptr;
-    if (!existing || existing->type != descriptor.type ||
-        existing->format != descriptor.format ||
-        existing->width != descriptor.width ||
-        existing->height != descriptor.height ||
-        existing->array_length != descriptor.array_length)
-    {
-        std::string create_error;
-        capture.impostor_directional_shadow_texture =
-            ALMetalTexture::create(
-                *capture.device, descriptor, &create_error);
-        if (!capture.impostor_directional_shadow_texture)
-        {
-            LL_WARNS("Metal")
-                << "Could not allocate the live directional-shadow mirror: "
-                << create_error << LL_ENDL;
-            return false;
-        }
-    }
-
-    std::string error;
-    auto upload = capture.device->makeCommandBuffer(
-        "Alchemy live directional-shadow upload", &error);
-    bool uploaded = upload != nullptr;
-    for (U32 cascade = 0; uploaded && cascade < 4; ++cascade)
-    {
-        uploaded = capture.impostor_directional_shadow_texture->upload(
-            *upload, 0, cascade, {},
-            capture.impostor_directional_shadow_depth.data() +
-                slice_pixels * cascade,
-            static_cast<std::size_t>(width) * sizeof(F32), &error);
-    }
-    uploaded = uploaded && upload->commit(&error);
-    if (!uploaded)
-    {
-        LL_WARNS("Metal")
-            << "Could not upload the live directional-shadow mirror: "
-            << error << LL_ENDL;
-        return false;
-    }
-
-    return publish(capture.impostor_directional_shadow_texture.get());
+    return direct_complete &&
+        publish(capture.direct_directional_shadow_texture.get());
 }
 
 void LLPipeline::countMetalShadowBatches(
@@ -13871,8 +13735,7 @@ void LLPipeline::endMetalSpotShadowCapture()
             mMetalDirectionalShadowReported = true;
             LL_INFOS("Metal")
                 << "Direct Metal directional-shadow slices are retained "
-                   "from native caster draws; the GL depth mirror is "
-                   "fail-closed fallback only"
+                   "from native caster draws; no GL depth import remains"
                 << LL_ENDL;
         }
     }
@@ -13885,8 +13748,7 @@ void LLPipeline::endMetalSpotShadowCapture()
             mMetalProjectorShadowReported = true;
             LL_INFOS("Metal")
                 << "Direct Metal projector-shadow slices are retained "
-                   "from native caster draws; the GL depth mirror is "
-                   "fail-closed fallback only"
+                   "from native caster draws; no GL depth import remains"
                 << LL_ENDL;
         }
     }
@@ -13902,35 +13764,19 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
 
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     const U32 unbuilt = (unbuiltShadowMaps() >> 4u) & 0x3u;
-    U32 width = 0;
-    U32 height = 0;
-    for (U32 index = 0; index < 2; ++index)
-    {
-        if ((unbuilt & (1u << index)) != 0)
-        {
-            continue;
-        }
-        LLRenderTarget* target = getSpotShadowTarget(index);
-        if (!target || target->getUsage() != ALTextureSlot::TT_TEXTURE ||
-            !target->getDepth())
-        {
-            return false;
-        }
-        if (width == 0)
-        {
-            width = target->getWidth();
-            height = target->getHeight();
-        }
-        else if (target->getWidth() != width ||
-                 target->getHeight() != height)
-        {
-            return false;
-        }
-    }
-    if (width == 0 || height == 0)
+    const ALMetalTextureDescriptor* direct =
+        capture.direct_projector_shadow_texture
+            ? &capture.direct_projector_shadow_texture->descriptor()
+            : nullptr;
+    if (!direct || direct->type != ALMetalTextureType::texture_2d_array ||
+        direct->format != ALMetalPixelFormat::r32_float ||
+        direct->width == 0 || direct->height == 0 ||
+        direct->array_length != 2)
     {
         return false;
     }
+    const U32 width = direct->width;
+    const U32 height = direct->height;
 
     const auto publish = [&](const ALMetalTexture* texture)
     {
@@ -13978,118 +13824,14 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
         return publish(capture.projector_shadows.depth_texture);
     }
 
-    const ALMetalTextureDescriptor* direct =
-        capture.direct_projector_shadow_texture
-            ? &capture.direct_projector_shadow_texture->descriptor()
-            : nullptr;
-    bool direct_complete = direct && direct->width == width &&
-        direct->height == height;
+    bool direct_complete = true;
     for (U32 index = 0; direct_complete && index < 2; ++index)
     {
         direct_complete = (unbuilt & (1u << index)) != 0 ||
             capture.direct_projector_shadow_valid[index];
     }
-    if (direct_complete)
-    {
-        return publish(capture.direct_projector_shadow_texture.get());
-    }
-
-    const std::size_t slice_pixels =
-        static_cast<std::size_t>(width) * height;
-    if (slice_pixels >
-        std::numeric_limits<std::size_t>::max() / (sizeof(F32) * 2))
-    {
-        return false;
-    }
-    capture.projector_shadow_depth.assign(
-        slice_pixels * 2, capture.reverse_z ? 0.f : 1.f);
-
-    GLint previous_texture = 0;
-    GLint previous_pack_buffer = 0;
-    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture);
-    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING,
-                  &previous_pack_buffer);
-    clear_glerror();
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-    for (U32 index = 0; index < 2; ++index)
-    {
-        if ((unbuilt & (1u << index)) != 0)
-        {
-            continue;
-        }
-        LLRenderTarget* target = getSpotShadowTarget(index);
-        glBindTexture(GL_TEXTURE_2D, target->getDepth());
-        glGetTexImage(
-            GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, GL_FLOAT,
-            capture.projector_shadow_depth.data() +
-                slice_pixels * index);
-    }
-    const GLenum read_error = glGetError();
-    glBindTexture(GL_TEXTURE_2D,
-                  static_cast<GLuint>(previous_texture));
-    glBindBuffer(GL_PIXEL_PACK_BUFFER,
-                 static_cast<GLuint>(previous_pack_buffer));
-    if (read_error != GL_NO_ERROR)
-    {
-        LL_WARNS("Metal")
-            << "Could not read the raw projector-shadow maps: GL error 0x"
-            << std::hex << read_error << std::dec << LL_ENDL;
-        return false;
-    }
-
-    ALMetalTextureDescriptor descriptor;
-    descriptor.type = ALMetalTextureType::texture_2d_array;
-    descriptor.format = ALMetalPixelFormat::r32_float;
-    descriptor.width = width;
-    descriptor.height = height;
-    descriptor.array_length = 2;
-    descriptor.storage = ALMetalStorageMode::private_gpu;
-    descriptor.usage = ALMetalTextureUsage::shader_read;
-    descriptor.label = "Alchemy live raw projector-shadow mirror";
-    const ALMetalTextureDescriptor* existing =
-        capture.projector_shadow_texture
-            ? &capture.projector_shadow_texture->descriptor()
-            : nullptr;
-    if (!existing || existing->type != descriptor.type ||
-        existing->format != descriptor.format ||
-        existing->width != descriptor.width ||
-        existing->height != descriptor.height ||
-        existing->array_length != descriptor.array_length)
-    {
-        std::string create_error;
-        capture.projector_shadow_texture = ALMetalTexture::create(
-            *capture.device, descriptor, &create_error);
-        if (!capture.projector_shadow_texture)
-        {
-            LL_WARNS("Metal")
-                << "Could not allocate the raw projector-shadow mirror: "
-                << create_error << LL_ENDL;
-            return false;
-        }
-    }
-
-    std::string error;
-    auto upload = capture.device->makeCommandBuffer(
-        "Alchemy live raw projector-shadow upload", &error);
-    bool uploaded = upload != nullptr;
-    for (U32 index = 0; uploaded && index < 2; ++index)
-    {
-        uploaded = capture.projector_shadow_texture->upload(
-            *upload, 0, index, {},
-            capture.projector_shadow_depth.data() +
-                slice_pixels * index,
-            static_cast<std::size_t>(width) * sizeof(F32), &error);
-    }
-    uploaded = uploaded && upload->commit(&error);
-    if (!uploaded)
-    {
-        LL_WARNS("Metal")
-            << "Could not upload the raw projector-shadow mirror: "
-            << error << LL_ENDL;
-        return false;
-    }
-
-    return publish(capture.projector_shadow_texture.get());
+    return direct_complete &&
+        publish(capture.direct_projector_shadow_texture.get());
 }
 
 void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
@@ -16169,9 +15911,7 @@ void LLPipeline::renderMetalWorldProjectorLights(
         // The raw maps and selected shadow-owning lights are one frame's
         // transaction. A retry must capture both again rather than combine
         // a later light list with stale spot-map contents or matrices.
-        capture.projector_shadow_texture.reset();
         capture.projector_shadows = {};
-        capture.projector_shadow_depth.clear();
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
         const U32 failed_frames =
             ++capture.projector_lighting_failed_frames;
@@ -16190,7 +15930,6 @@ void LLPipeline::renderMetalWorldProjectorLights(
 
     capture.projector_lighting_attempted = true;
     capture.projector_lighting_failed_frames = 0;
-    capture.projector_shadow_depth.clear();
     if (!capture.continuous_world_capture &&
         !capture.world_ui_continuous_unlocked)
     {
@@ -16201,7 +15940,7 @@ void LLPipeline::renderMetalWorldProjectorLights(
             << capture.base_light_target->descriptor().height
             << (needs_projector_shadows
                     ? "; exact native spot-shadow filtering consumes "
-                      "transitional raw GL depth maps"
+                      "direct Metal depth slices"
                     : "; no live spot-shadow channel was consumed")
             << LL_ENDL;
     }
@@ -16403,8 +16142,8 @@ bool LLPipeline::renderMetalWorldLightMap(
                "encoded at "
             << capture.base_light_map_target->descriptor().width << "x"
             << capture.base_light_map_target->descriptor().height
-            << "; the static noise and live cascades remain transitional "
-               "GL input mirrors"
+            << "; static noise is CPU-published and live cascades are "
+               "direct Metal depth slices"
             << LL_ENDL;
     }
     return true;
