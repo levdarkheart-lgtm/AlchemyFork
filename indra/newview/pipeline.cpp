@@ -1035,7 +1035,6 @@ void LLPipeline::init()
         }
     }
     mLensDirtMap.setLabel("lens.dirt");
-    mScopeSample.setLabel("scopes.sample");
     mReferenceStill.setLabel("reference.still");
 
     gOctreeMaxCapacity = gSavedSettings.getU32("OctreeMaxNodeCapacity");
@@ -9040,7 +9039,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             // linear target is already the exact input to colorCorrect's
             // modern or legacy-gamma base permutation. This is intentionally stricter
             // than the GL renderer: every omitted upstream owner must be
-            // inactive, or scopes keep their established GL/PBO source.
+            // inactive, or native-only scopes skip this frame.
             static LLCachedControl<bool> auto_adjust(
                 gSavedSettings, "RenderSkyAutoAdjustLegacy", false);
 
@@ -9337,7 +9336,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 {
                     // Antialiasing is the first post-colorCorrect owner.
                     // Publish only a completed demanded transaction before
-                    // CAS; any failure retains the established GL/PBO path.
+                    // CAS; any failure leaves native-only scopes without a
+                    // sample for this frame.
                     static LLCachedControl<U32> aa_quality(
                         gSavedSettings, "RenderFSAASamples", 0U);
                     const U32 native_aa_quality =
@@ -9419,7 +9419,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     // Scope capture forces the GL CAS implementation into
                     // its standalone one-to-one pass. Reproduce that exact
                     // boundary here before publishing the native display
-                    // source; a demanded CAS failure retains GL/PBO.
+                    // source; a demanded CAS failure makes the native scope
+                    // transaction incomplete.
                     static LLCachedControl<F32> cas_sharpness(
                         gSavedSettings, "RenderCASSharpness", 0.4f);
                     const bool wants_native_cas =
@@ -9918,7 +9919,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 {
                     LL_INFOS_ONCE("Metal")
                         << "Native world display-post source is available; "
-                           "visible GL and scope fallback remain authoritative"
+                           "visible GL remains authoritative while scopes "
+                           "require this exact native source"
                         << LL_ENDL;
                 }
             }
@@ -24081,15 +24083,6 @@ void LLPipeline::serviceScenePixelProbe(LLRenderTarget* src)
     scene_pixel_cb_t callback;
     callback.swap(mScenePixelCallback);
 
-    // glReadPixels upsets nSight, which is why every other readback in the
-    // tree is gated the same way. Nothing to report, so nothing is reported --
-    // the caller has already been told the answer comes later, and a tool that
-    // simply does not fire beats one that fires with a lie in it.
-    if (LLRender::sNsightDebugSupport)
-    {
-        return;
-    }
-
     // The mouse arrives in scaled window coordinates; the buffer is in raw
     // pixels, is only the world view rather than the whole window, and may be
     // rendered at a fraction of that again under resolution scaling. All three
@@ -24104,11 +24097,12 @@ void LLPipeline::serviceScenePixelProbe(LLRenderTarget* src)
         return;
     }
 
-    const S32 px = llclamp((S32)(u * (F32)src->getWidth()),  0, (S32)src->getWidth()  - 1);
-    const S32 py = llclamp((S32)(v * (F32)src->getHeight()), 0, (S32)src->getHeight() - 1);
-
-    F32 texel[4] = { 0.f, 0.f, 0.f, 0.f };
 #if LL_DARWIN
+    const S32 px = llclamp((S32)(u * (F32)src->getWidth()),
+                           0, (S32)src->getWidth() - 1);
+    const S32 py = llclamp((S32)(v * (F32)src->getHeight()),
+                           0, (S32)src->getHeight() - 1);
+    F32 texel[4] = { 0.f, 0.f, 0.f, 0.f };
     if (mMetalWorldSimpleCapture &&
         !mMetalHeroWorldCaptureActive &&
         !mMetalReflectionWorldCaptureActive)
@@ -24136,25 +24130,19 @@ void LLPipeline::serviceScenePixelProbe(LLRenderTarget* src)
                 return;
             }
             LL_WARNS("Metal")
-                << "Native scene-pixel readback retained the GL fallback: "
+                << "Native scene-pixel readback failed; request dropped: "
                 << error << LL_ENDL;
+            return;
         }
     }
+    LL_WARNS("Metal")
+        << "Native scene-pixel source was not exact; request dropped"
+        << LL_ENDL;
 #endif
-    src->bindTarget();
-    gGL.readPixels(px, py, 1, 1, GL_RGBA, GL_FLOAT, texel);
-    src->flush();
-
-    // A synchronous read stalls the pipe. That is the right trade here: it
-    // happens once, on a click, and a PBO round trip would mean holding the
-    // request across frames for a result no one is waiting on but the person
-    // who just clicked.
-    callback(LLColor3(texel[0], texel[1], texel[2]));
 }
 
 void LLPipeline::releaseScopeBuffers()
 {
-    mScopeCaptures.release();
 #if LL_DARWIN
     if (mMetalScopeCaptures)
     {
@@ -24164,7 +24152,9 @@ void LLPipeline::releaseScopeBuffers()
     mMetalScopeSample.reset();
     mMetalScopeDevice = nullptr;
 #endif
-    mScopeSample.release();
+    mScopeSampleWidth = 0;
+    mScopeSampleHeight = 0;
+    mScopeReadback.clear();
     mScopeData.clear();
 }
 
@@ -24196,8 +24186,8 @@ bool LLPipeline::worldViewUV(S32 scaled_x, S32 scaled_y, F32& u, F32& v)
 
 bool LLPipeline::getScopePixel(S32 scaled_x, S32 scaled_y, LLColor4U& out) const
 {
-    const S32 width  = mScopeSample.getWidth();
-    const S32 height = mScopeSample.getHeight();
+    const S32 width = static_cast<S32>(mScopeSampleWidth);
+    const S32 height = static_cast<S32>(mScopeSampleHeight);
     if (width <= 0 || height <= 0 || mScopeReadback.size() < (size_t)width * height * 4)
     {
         return false;
@@ -24324,19 +24314,14 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
     const S32 width = llclamp(sample_width(), 32, 1024);
     const F32 aspect = (F32)llmax(1U, src->getHeight()) / (F32)llmax(1U, src->getWidth());
     const S32 height = llclamp(ll_round((F32)width * aspect), 16, 1024);
-    const S32 pixels = width * height;
-    const size_t bytes = (size_t)pixels * 4;
 
-    if (mScopeSample.getWidth() != (U32)width || mScopeSample.getHeight() != (U32)height)
+    if (mScopeSampleWidth != static_cast<U32>(width) ||
+        mScopeSampleHeight != static_cast<U32>(height))
     {
         // Resolution changed under us (window resize, or the debug key moved).
         // Anything in flight was measured against the old size, so drop it --
-        // and the readback slots with it, since they were sized to that old
-        // frame. Left alone, a grown sample would be read into slots too small
-        // for it. The block below rebuilds them at the new size, exactly as it
-        // built them the first time.
-        mScopeSample.release();
-        mScopeCaptures.release();
+        // and the native readback slots with it. Left alone, a grown sample
+        // would be read into slots too small for it.
 #if LL_DARWIN
         if (mMetalScopeCaptures)
         {
@@ -24346,26 +24331,22 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
         mMetalScopeSample.reset();
         mMetalScopeDevice = nullptr;
 #endif
+        mScopeSampleWidth = static_cast<U32>(width);
+        mScopeSampleHeight = static_cast<U32>(height);
         // The last readback was laid out at the old stride. getScopePixel
         // indexes it against the target's dimensions, which are about to be
         // the new ones, so a shrink would read the wrong pixel until the next
         // collect. mScopeData stays: its bins are shares, still a true
         // measurement of the same scene, and clearing it would blank the plot.
         mScopeReadback.clear();
-        if (!mScopeSample.allocate(width, height, GL_RGBA8))
-        {
-            sScopeCapture = false;
-            LL_WARNS("Pipeline") << "Could not allocate the scope sample target; scopes disabled." << LL_ENDL;
-            return;
-        }
     }
 
     // Collect the previous capture first. It was issued a whole sample
     // interval ago -- many frames -- so it has all but always landed, and
     // collecting it waits on nothing. One that has not is left for the next
     // sample, and nothing is captured meanwhile: the plot can wait.
-    bool collected = false;
 #if LL_DARWIN
+    const size_t bytes = static_cast<size_t>(width) * height * 4;
     if (mMetalScopeCaptures && mMetalScopeCaptures->pending() > 0)
     {
         const bool new_size = mScopeReadback.size() != bytes;
@@ -24386,27 +24367,6 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
             }
             return;
         }
-        collected = true;
-    }
-#endif
-    if (!collected && mScopeCaptures.getPending() > 0)
-    {
-        const bool new_size = mScopeReadback.size() != bytes;
-        mScopeReadback.resize(bytes);
-        if (!mScopeCaptures.collect(mScopeReadback.data(), bytes))
-        {
-            // Nothing was written: what it held stays, and a store just sized
-            // for the new frame holds nothing yet.
-            if (new_size)
-            {
-                mScopeReadback.clear();
-            }
-            return;
-        }
-        collected = true;
-    }
-    if (collected)
-    {
         ALScopeData fresh;
         fresh.accumulate(mScopeReadback.data(), width, height);
 
@@ -24417,11 +24377,10 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
         mScopeData.blendToward(fresh, llclamp(smoothing(), 0.f, 1.f));
     }
 
-#if LL_DARWIN
-    // The native display target is the scope source only when no later GL
-    // owner would have changed it. The upstream color-correct census was
-    // already applied when display_post_target was produced; this second
-    // census covers the passes between colorCorrect and captureScopeSample.
+    // Accept the native display target only when every intervening post owner
+    // matches the retained GL scheduling state. The upstream color-correct
+    // census was already applied when display_post_target was produced; this
+    // second census covers the passes between colorCorrect and this boundary.
     MetalWorldSimpleCapture* metal_capture =
         mMetalWorldSimpleCapture.get();
     const bool native_exact = metal_capture && metal_capture->renderer &&
@@ -24454,9 +24413,11 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
             {
                 LL_WARNS("Metal")
                     << "Could not allocate the native scope readback; "
-                       "retaining GL/PBO: " << error << LL_ENDL;
+                       "scopes disabled: " << error << LL_ENDL;
                 mMetalScopeCaptures.reset();
                 mMetalScopeDevice = nullptr;
+                sScopeCapture = false;
+                return;
             }
             else
             {
@@ -24476,44 +24437,23 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
                 mMetalScopeSample = std::move(sample);
                 LL_INFOS_ONCE("Metal")
                     << "Scopes are consuming the native display-post sample "
-                       "without a CPU wait; GL remains the fail-closed fallback"
+                       "without a CPU wait or GL fallback"
                     << LL_ENDL;
                 return;
             }
             if (!error.empty())
             {
                 LL_WARNS("Metal")
-                    << "Native scope sampling retained GL/PBO: "
+                    << "Native scope sampling failed; no sample published: "
                     << error << LL_ENDL;
             }
+            return;
         }
     }
+    LL_DEBUGS_ONCE("Metal")
+        << "Scope sample skipped until the native display-post source is exact"
+        << LL_ENDL;
 #endif
-
-    if (!mScopeCaptures.isAllocated() &&
-        !mScopeCaptures.allocate(bytes, 2, "Scope readback"))
-    {
-        sScopeCapture = false;
-        LL_WARNS("Pipeline")
-            << "Could not allocate the scope readback; scopes disabled."
-            << LL_ENDL;
-        return;
-    }
-
-    // GL_NEAREST on a downscaling blit picks one source texel per destination
-    // texel: a point decimation of the frame, not an average of it. That
-    // distinction is the whole point. A box filter would pull every value
-    // toward the local mean, narrowing the histogram and erasing both tails --
-    // so a small blown highlight, the thing a photographer most wants to be
-    // warned about, would simply vanish into its neighbours.
-    mScopeSample.copyContents(*src, 0, 0, src->getWidth(), src->getHeight(),
-                              0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-
-    // No capture is in flight here, so one of the two slots is free and the
-    // request is never refused.
-    mScopeSample.bindTarget();
-    mScopeCaptures.requestPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, bytes);
-    mScopeSample.flush();
 }
 
 void LLPipeline::generateLuminance(LLRenderTarget* src, LLRenderTarget* dst)

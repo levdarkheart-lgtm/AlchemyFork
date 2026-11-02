@@ -42,7 +42,6 @@
 #include "lldrawable.h"
 #include "aldepthpyramid.h"
 #include "alprimitiveplot.h"
-#include "algpubuffer.h"
 #include "alquerypool.h"
 #include "alrenderinputrequests.h"
 #include "alrenderresourceplan.h"
@@ -1773,22 +1772,16 @@ public:
     // downres scratch space for GPU downscaling of textures
     LLRenderTarget          mDownResMap;
 
-    // Scopes floater sample. Point-decimated copy of the presented frame plus
-    // two readback slots: the read-back of one capture is collected at the
-    // next one, several frames later, once it has landed, so neither the read
-    // nor the collect waits -- on the GPU, or on a threaded driver's own
-    // thread.
-    LLRenderTarget          mScopeSample;
-    ALGPUReadback           mScopeCaptures;
 #if LL_DARWIN
-    // Native equivalent of mScopeSample/mScopeCaptures. The target is point
-    // decimated on the GPU from RGB10_A2/RGBA8; the bounded ring copies it
-    // without waiting and is used only when every intervening post owner has
-    // an exact native result. GL remains the fail-closed authority otherwise.
+    // Scopes consume only the exact native display-post source. The target is
+    // point-decimated on the GPU from RGB10_A2/RGBA8; the bounded ring copies
+    // it without waiting and publishes only complete native samples.
     std::unique_ptr<ALMetalRenderTarget> mMetalScopeSample;
     std::unique_ptr<ALMetalTextureReadbackRing> mMetalScopeCaptures;
     const ALMetalDevice* mMetalScopeDevice = nullptr;
 #endif
+    U32                     mScopeSampleWidth = 0;
+    U32                     mScopeSampleHeight = 0;
     LLFrameTimer            mScopeSampleTimer;
     ALScopeData             mScopeData;
     std::vector<U8>         mScopeReadback;
