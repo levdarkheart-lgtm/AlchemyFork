@@ -58,6 +58,7 @@ reload the chronological history.
 | Native ordered DebugShowColor readback and dead GL readback-helper removal, 2026-11-02 | [CURRENT-debug-color-readback-cutover-checkpoint-2026-11-02.md](CURRENT-debug-color-readback-cutover-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native-only six-face 360 snapshot publication and aggregate failure handling, 2026-11-02 | [CURRENT-native-360-snapshot-cutover-checkpoint-2026-11-02.md](CURRENT-native-360-snapshot-cutover-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native-only ordinary/depth/cutout/tiled Snapshot readback and dead GL wrapper removal, 2026-11-02 | [CURRENT-native-snapshot-readback-cutover-checkpoint-2026-11-02.md](CURRENT-native-snapshot-readback-cutover-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
+| Native-only avatar morph-mask and appearance-utility ordered readback, 2026-11-02 | [CURRENT-native-appearance-readback-cutover-checkpoint-2026-11-02.md](CURRENT-native-appearance-readback-cutover-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
