@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `ae2b436442`.
+**Renderer checkpoint:** Commit `53de84c79c`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -12,169 +12,98 @@ checkpoint detail belongs in the indexed archive.
 
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
-| M-001 | Reproducible ARM64 OSS build and reference baseline | doing | ARM64 build/package/runtime identity is evidenced; controlled fixed-view reference benchmark remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | Refreshed informational scan covers 2,408 viewer-owned files and 3,351 potential findings including macros/comments/duplicates; strict release audit exits 1 and is not green. |
-| M-003 | Native drawable, presentation and lifecycle | doing | Authenticated exact publication and clean lifecycle are observed; preserve while advanced families are validated. |
-| M-004 | Metal resources, transfers, readback and synchronization | doing | Core typed resource paths have physical coverage; remaining advanced/media matrices stay open. |
+| M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,408 files and 3,337 potential findings; strict exits 1. SSR cutover removed 14 owned calls. |
+| M-003 | Native drawable, presentation and lifecycle | doing | Exact Metal publication exists; SSR warm-up is explicitly barred from presentation. |
+| M-004 | Metal resources, transfers, readback and synchronization | doing | Core paths are physical-GPU covered; remove remaining GL/PBO ingress owner by owner. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
-| M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent and Batch Size have ordered static/rigged HUD replay. Moving CEF/VLC reference parity remains open. |
-| M-007 | World scene and material correctness | doing | Ordinary/masked fullbright now match GL opaque/RGB-only semantics with physical coverage. Legacy BLEND/stained-glass and broader live parity remain incomplete. |
-| M-008 | Advanced views/effects and compute | doing | The established native advanced-output set now includes Raycast, Occlusion, Octree, Physics Shapes, Normals and Texel Density. One controlled dry authored-mirror sample is owner-confirmed; broader probe/mirror coverage remains open. No reachable render-debug world-geometry bit remains in the explicit visual veto. OSS pathfinding is a nonfunctional stub. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability and strict no-GL evidence remain open; the 3,351-finding inventory exits 1. Directional shadows, hero cube orientation and one dry authored-mirror sample are bounded/proven. Opaque fullbright is corrected; legacy alpha/stained-glass and broader mirror parity remain open. |
-| M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
-| M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; kernel-proven relative launches pass and Firestorm siblings fail closed. |
-| M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; keep only enough native implementation to avoid blocking Metal/no-GL cutover. Exact inventory and restart-qualified prerequisite: [RLVa backlog](../deferred/rlva-parity.md). |
+| M-006 | UI, fonts, HUD and media ingress | doing | Native world/UI and CEF IOSurface paths exist; moving media parity is queued for owner review. |
+| M-007 | World scene and material correctness | doing | Opaque fullbright is corrected; legacy BLEND/stained glass and broad material parity remain open. |
+| M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners are native; visual-only validation is batched in the daily queue. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL, linked/runtime no-GL and visual review remain open. |
+| M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | GL/PBO SSR bootstrap is removed; next inspect avatar-impostor bake ingress. |
+| M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is now reserved for the owner-attended daily window. |
+| M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
-item; it never implies product completion.
+item and never implies product completion.
 
-## Active checkpoint — 2026-11-02
+## Active checkpoint — native SSR cutover
 
-Commit `ed9e64736d` admits the scoped native mirror Snapshot diagnostic only in
-non-public compiled channels. Retained renderer commit `47d253a91c` captures
-and replays every reachable Develop **Texel Density** face draw. Its
-current/desired/full modes perform the exact texture lookup, checkerboard bind
-and texture-matrix side effects in source.
-The bound production `gDebugProgram`, however, consumes only position and the
-current uniform color, so native presentation replays that actual visible
-zero-copy indexed overlay without inventing a texture/UV shader path.
+Commit `53de84c79c` deletes the paired GL framebuffer/PBO SSR readback path,
+including queueing, CPU buffers, private texture re-upload and fallback
+generation bookkeeping. Metal's completed final-color target is now the sole
+producer for Metal SSR consumers.
 
-Replay preserves live transforms, arbitrary finite current color, u16/u32
-indices, disabled culling, fill raster, source-over blend, RGB-only writes and
-writable LEQUAL depth under forward/reverse Z. HUD faces remain in native
-ordered indexed UI capture. Validation rejects invalid storage, buffers,
-ranges, offsets, index width, transforms, values, state/order and all cross-
-owner collisions.
+At startup or resize, no prior native history exists. The first complete Metal
+frame omits SSR feedback, publishes the paired native history and is prohibited
+from UI composition, snapshot readback or drawable publication. A later frame
+may consume only a complete color/depth generation. Failed publication retains
+the prior native pair or repeats the offscreen warm-up. Texture validation uses
+the current Metal capture dimensions plus RGBA8/R11G11B10F and R32F formats; it
+does not consult GL target dimensions.
 
-Commit `1518b533ce` adds a source-derived physical regression of the GL
-cube-camera to Metal texture-cube convention. It publishes asymmetric values
-through the production six-face hero path, samples all 96 texel-centre rays and
-would fail a face swap, row/column flip or 90-degree rotation. The direct face
-copy is correct, so no speculative production transform was added.
+This cutover preserves the retained GL renderer for still-unported owners and
+does not suppress global traversal. The strict scan fell from 3,351 to 3,337,
+but the executable still links Metal and OpenGL and the release gate is open.
+[Exact evidence](../../state/archive/CURRENT-native-ssr-cutover-checkpoint-2026-11-02.md).
 
-Commit `ae2b436442` corrects ordinary/masked fullbright; `renderDeferredLighting` enters `renderGeomPostDeferred` with GL blending
-disabled; the fullbright pool changes factors but does not enable blending, and
-the outer owner uses RGB-only writes. `fullbrightF.glsl` confirms that vertex
-alpha is shininess outside the alpha pool. The prior Metal source-alpha blend
-could therefore attenuate or erase zero-shiny wall art/screens. The pipeline
-now disables blending and writes RGB only. Its physical regression uses 0.5
-vertex alpha and proves full green replacement plus preserved destination alpha.
+## Validation checkpoint
 
-All three physical Metal configurations pass 52,190 assertions in 52 cases under Metal API/load-action validation. Warnings-as-errors
-production integration passes, and the source-exact Release neutral
-non-manual/non-GL gate passes 484/484 in 36.60 seconds. The prior unfiltered
-574-test inventory was not rerun; its six GL-only failures and five skips remain
-recorded without a green claim.
-Harness validation covers 31 files and 27 tooling tests; `proc_pidpath` admits relative launches while wrong binaries and Firestorm siblings fail closed.
+- Source-exact RelWithDebInfo build `26.4.0d68103` at `53de84c79c` compiles,
+  links, stages and signs with warnings as errors.
+- Physical Metal validation passes 52,190 assertions across 52 cases with API
+  and load-action checks enabled.
+- `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices.
+- Executable SHA-256:
+  `12fcfbe8780f4bae179f3d1e1f77f99fb50b405d7ff4331542b9eefa43f909c8`.
+  Source/packaged MSL:
+  `fa6821703a980b570305fc2384fcb11a1980fccad43d35e4626e40cc4b323324`.
+  Metallib:
+  `ebd7034235c4f35b13c9874029eff6bbcb61cc3f56c7f3907fd581c112eb96ab`.
+- The 574-entry broad CTest inventory completed with 568 passes, six GL-host
+  failures and five skips in 1,268.61 seconds. Focused reruns reproduce three
+  unique failures in untouched GL test code: frame-fence pacing, depth format,
+  and DoF clip-control availability. This is recorded as a failed broad gate,
+  not hidden or promoted to green.
+- Harness validation and its unit suite pass with the daily review queue in the
+  mandatory live-document inventory.
+- No viewer executable was launched, driven or compared for this checkpoint.
 
-Source-exact Release Development build `26.4.0d68099` (`26.4.0.68099`) at
-`ae2b43644211a73802d4197efa39a361ad5614bb` passes.
-Deep strict signing and 349/349 ARM64 inspection pass. Executable SHA-256 is
-`ea063150c286acf7498a3c6e065cbe367e140b401ef3682536d1771d357f602a`;
-packaged/source MSL is
-`d263315d1ea0c2c834e9e5a5d37109e9ec5d56325153220dedc1b2a9ab2ffac9`;
-compiled metallib is
-`ebd7034235c4f35b13c9874029eff6bbcb61cc3f56c7f3907fd581c112eb96ab`.
-The executable still links OpenGL, so strict no-GL remains open.
+## Owner-attended visual review cadence
 
-The explicit render-debug world-output guard is now empty. The latent
-pathfinding guard remains separately fail-closed. The main executable still
-links OpenGL and Metal, so this is not a native-only claim.
+Do not autonomously launch either viewer, navigate login/world UI or capture a
+comparison. Add a bounded question and prerequisites to the
+[daily visual review queue](visual-review-queue.md). At most once per day, the
+owner and Codex may work through the ready rows together. Existing artifacts may
+be summarized, but no row closes without explicit owner-attended evidence.
 
-Shadow comparison prerequisite: enable shadows in Graphics Preferences in
-**both** viewers and save the setting before capture. Shadows do not require a
-restart; restart applies only to RLVa state changes. A mismatched off/on pair is
-invalid, and a both-off control cannot close shadow parity.
-
-The 2026-11-02 fixed-Midday Grignano run satisfied that workflow. Both isolated
-profiles had effective `RenderShadowDetail=2`, all 416 captured visual settings
-matched, and both restarted Advanced Graphics panels displayed
-`ShadowDetail=2`. Exact-path preflight passed for reference `26.4.0.67607` and
-candidate `26.4.0.68089`. With `ALMetalWorldPresentation=true`, candidate logs
-proved direct Metal directional/projector shadow slices and continuous exact
-native world plus ordered UI/HUD publication without GL swap. Fixed geometry
-and directional shadow edges remained coherent (raw SSIM `0.933767`, average
-PSNR `22.091122 dB`, half-size sigma-8 structural SSIM `0.968037`). This
-preference-qualified run corroborates directional shadows only: the fixture did
-not isolate a visible projector contribution, and projector-visible,
-alpha/avatar-caster, cascade and PCSS/quality parity remain open. Earlier
-Debug-Settings-only evidence cannot independently close a shadow row.
-
-A retained pre-signal sample corrects the next authored-mirror attempt: all
-40 main-thread samples were active in renderer work under full Metal validation,
-and later `SIGTERM` shutdown completed cleanly. The actual blocker was that the
-Release configuration compiled the Development validation setting to false.
-Commit `ed9e64736d` now gates the scoped diagnostic by immutable compiled
-channel, leaving public Release and normal live authority unchanged.
-
-The source-exact 68093 diagnostic produced a matched 2048x1476 pair with
-416/416 visual settings aligned and complete six-face native hero publication.
-It exposes real divergence: patterned/stained door glass, wall media/art and
-nearby forward content are missing or replaced by gray translucent/blurred
-surfaces. Whole-frame raw SSIM is `0.855629`; half-size sigma-8 structural SSIM
-is `0.938252`. Normal mirror authority remains fail-closed. The indexed archive
-retains exact images, hashes, crops, metrics and provenance.
-
-The banned/uncontrolled authored-mirror region is retired. Its replacement is
-an owner-controlled private dry fixture whose exact SLURL remains only in the
-ignored evidence tree. Reproduction is: teleport with World Map, sit on the
-fixed red chair, press `Esc` twice, wait for convergence, then capture reference
-and candidate sequentially as custom 2048x1476 PNGs with UI/HUD off,
-post-processing on and `No Filter`. Pause after each save for the owner to check
-Graphics Preferences. Water will use a separate controlled fixture.
-
-That procedure produced canonical candidate/reference images with SHA-256
-`146158b4dd2ff42e8231e570aae0545cb8d4a2f7f5aec75d4ad5ec9ad316635a`
-and `5f2949522861431cd973f040aa3c4692b0aec651909d9b8786689ac40b294f34`.
-Fresh profile manifests compare all 416 visual settings with zero mismatches;
-mirrors and shadows are on and SSR is off. The ordinary scene is coherent, but
-camera alignment is not pixel-exact and the mirror contents visibly differ, so
-the pair is diagnostic rather than a parity pass. The candidate logged complete
-six-face native mirror-clipped publication/readback and exited cleanly. The
-reference accepted `SIGTERM`, then hung in `Display:RenderFlush`, triggered its
-watchdog and required termination of the exact verified process (exit 137);
-all verified reference helpers were drained. Exact images, settings manifests,
-comparison and private reproduction notes are retained under ignored
-`artifacts/metal/` and `/private/tmp` paths.
-The prior dry pair cannot assign its difference: cameras/mirror contents differ
-and logs have 64 candidate versus 24 reference fetch/missing-resource matches.
-A later owner-attended replay supersedes it for this fixture. Reference `67607`
-and candidate `68099` used byte-identical 175-setting sessions, the same seated
-coordinates and 12 matching live controls. Both 2048x1476 images contain the
-avatar, horizon and stairs with equivalent exposure/tone; the owner confirmed
-visual equivalence. Native readback, six-face publication and clean exits are
-logged. Camera/cloud/foliage phase keeps metrics descriptive. This accepts one
-dry sample, not all mirrors. [Evidence](../../state/archive/CURRENT-authored-mirror-owner-confirmed-checkpoint-2026-11-02.md).
-Exact RLVa comparison requires RLV saved and both viewers restarted. Exact
-parity is deferred M-013; implement only enough to unblock Metal/no-GL cutover.
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** source-correct opaque fullbright restores content
-   that shininess-alpha blending could attenuate or erase; physical coverage
-   protects it and the cube convention. One dry mirror sample is confirmed;
-   legacy alpha/stained glass and broader mirrors stay open.
-2. **Deferred critical work:** broader post parity; projector-visible,
-   alpha/avatar-caster, cascade and quality shadow coverage; controlled live
-   comparisons; stability/feature matrices; strict no-GL; independent review;
-   and qualifying M1 Max performance evidence.
-3. **Priority reassessment:** continue M-009 from the refreshed strict
-   viewer-owned GL and presentation-authority inventory, then resolve the next
-   concrete reachable release blocker from current source and live evidence.
+1. **Product advancement:** yes—one live GL-to-Metal data dependency and 14
+   owned GL calls are removed, with a non-presentable native warm-up boundary.
+2. **Deferred critical work:** remaining GL context/traversal/resources;
+   feature/stability matrices; visual queue; strict binary/runtime audit;
+   measured M1 Max performance; independent review and release proof.
+3. **Priority reassessment:** continue M-011 on the next synchronous GL/PBO
+   ingress. Do not return to one-off viewer comparison driving.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Move past the accepted dry mirror sample and trace legacy alpha-pool
-BLEND/stained glass. Continue the 3,351-finding GL inventory; keep shadow
-evidence Preferences-qualified and exact RLVa deferred M-013.
+Inspect the avatar-impostor bake attachment/PBO transfer and its existing native
+bake owner. Remove the next source-proven duplicate producer or data crossing,
+then rebuild, rerun the physical suite and refresh the strict count.
 
 ## Non-negotiable open gates
 
-- Do not disable OpenGL traversal before per-owner parity and side-effect proof.
-- Do not mark feature parity from build/test success alone.
+- Do not globally suppress GL traversal before each retained side effect has a
+  native owner or an explicit removal proof.
+- Do not mark feature parity from build/test success alone. An unreviewed queue
+  row is not evidence.
 - Do not claim performance improvement without paired, provenance-complete,
   quality-equivalent M1 Max measurements meeting `docs/metal/PERFORMANCE.md`.
-- Do not weaken fail-closed native authority or owner-only waiver rules.
+- Do not weaken fail-closed native authority, snapshot or presentation gates.

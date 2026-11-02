@@ -20,6 +20,7 @@ This directory is the persistent product and engineering record for Codex. `AGEN
 | [state/archive/INDEX.md](state/archive/INDEX.md) | Indexed superseded recovery evidence |
 | [state/BLOCKERS.md](state/BLOCKERS.md) | Only reproducible unresolved blockers |
 | [work/active/metal-port.md](work/active/metal-port.md) | Current execution ledger |
+| [work/active/visual-review-queue.md](work/active/visual-review-queue.md) | Owner-attended daily visual comparison queue |
 | [work/archive/INDEX.md](work/archive/INDEX.md) | Indexed superseded ledger checkpoints |
 | [feature-matrix.csv](feature-matrix.csv) | Comprehensive user-facing parity inventory |
 | [benchmarks/scenarios.json](benchmarks/scenarios.json) | Required reference workloads |
