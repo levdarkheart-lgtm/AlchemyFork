@@ -438,31 +438,14 @@ struct LLPipeline::MetalWorldSimpleCapture
     static constexpr U32 max_world_ui_probe_attempts = 3;
     static constexpr U32 max_continuous_world_ui_failures = 3;
 
-    struct ImpostorPlane
+    struct ImpostorTextures
     {
-        std::size_t offset = 0;
-        std::size_t row_bytes = 0;
-        std::size_t bytes = 0;
-        U32 gl_format = 0;
-        U32 gl_type = 0;
-        ALMetalPixelFormat metal_format = ALMetalPixelFormat::invalid;
-        bool source_present = false;
-    };
-
-    struct ImpostorMirror
-    {
-        ALGPUBuffer readback;
-        std::array<ImpostorPlane, 4> planes{};
-        std::vector<U8> bytes;
         std::array<std::unique_ptr<ALMetalTexture>, 4> textures;
         const ALMetalDevice* device = nullptr;
         U32 width = 0;
         U32 height = 0;
-        U32 source_attachment_count = 0;
-        U32 frame = 0;
         bool normal_hdr = false;
         bool hdr = false;
-        bool pending = false;
         bool ready = false;
     };
 
@@ -834,7 +817,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 impostor_directional_shadow_frame = std::numeric_limits<U32>::max();
     bool impostor_legacy_alpha_uses_shadows = false;
     LLUUID impostor_bake_avatar_id;
-    std::unordered_map<LLUUID, ImpostorMirror> impostor_mirrors;
+    std::unordered_map<LLUUID, ImpostorTextures> impostor_textures;
 };
 
 static bool metalWorldPresentationRequested()
@@ -1867,7 +1850,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.impostor_directional_shadow_frame =
             std::numeric_limits<U32>::max();
         capture.impostor_bake_avatar_id.setNull();
-        capture.impostor_mirrors.clear();
+        capture.impostor_textures.clear();
         capture.attempted = false;
         capture.local_lighting_attempted = false;
         capture.local_lighting_failed_frames = 0;
@@ -1891,89 +1874,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.impostor_legacy_alpha_uses_shadows = false;
         capture.failed_frames = 0;
         capture.device = device;
-    }
-
-    // An impostor bake is still produced by the GL draw pools. Its four
-    // attachments cross to Metal through a PBO only after the frame fence
-    // proves the copy complete, so neither the bake nor this collection path
-    // waits on GL. Publish all four textures from one generation together.
-    for (auto& entry : capture.impostor_mirrors)
-    {
-        MetalWorldSimpleCapture::ImpostorMirror& mirror = entry.second;
-        if (!mirror.pending ||
-            !gGL.frameFences().isComplete(mirror.frame))
-        {
-            continue;
-        }
-
-        std::fill(mirror.bytes.begin(), mirror.bytes.end(), U8{0});
-        bool copied = true;
-        for (const MetalWorldSimpleCapture::ImpostorPlane& plane :
-             mirror.planes)
-        {
-            if (!plane.source_present)
-            {
-                continue;
-            }
-            if (const U8* mapped = mirror.readback.getMapped())
-            {
-                std::memcpy(mirror.bytes.data() + plane.offset,
-                            mapped + plane.offset, plane.bytes);
-            }
-            else
-            {
-                copied = copied && mirror.readback.read(
-                    plane.offset, mirror.bytes.data() + plane.offset,
-                    plane.bytes);
-            }
-        }
-        // The readback store is only an in-flight transfer, not a second
-        // permanent copy of every avatar. A later bake allocates it again;
-        // the published Metal textures remain usable meanwhile.
-        mirror.readback.release();
-
-        std::string error;
-        std::array<std::unique_ptr<ALMetalTexture>, 4> textures;
-        auto upload = copied ? device->makeCommandBuffer(
-            "Alchemy avatar impostor mirror upload", &error) : nullptr;
-        bool uploaded = upload != nullptr;
-        for (std::size_t plane_index = 0;
-             uploaded && plane_index < mirror.planes.size(); ++plane_index)
-        {
-            const MetalWorldSimpleCapture::ImpostorPlane& plane =
-                mirror.planes[plane_index];
-            ALMetalTextureDescriptor texture;
-            texture.format = plane.metal_format;
-            texture.width = plane.source_present ? mirror.width : 1;
-            texture.height = plane.source_present ? mirror.height : 1;
-            texture.storage = ALMetalStorageMode::private_gpu;
-            texture.usage = ALMetalTextureUsage::shader_read;
-            texture.label = fmt::format(
-                "Alchemy avatar impostor Metal mirror {}", plane_index);
-            textures[plane_index] = ALMetalTexture::create(
-                *device, texture, &error);
-            uploaded = textures[plane_index] &&
-                textures[plane_index]->upload(
-                    *upload, 0, 0, {},
-                    mirror.bytes.data() + plane.offset,
-                    plane.row_bytes, &error);
-        }
-        uploaded = uploaded && upload->commit(&error);
-        mirror.pending = false;
-        if (!uploaded)
-        {
-            mirror.bytes.clear();
-            mirror.bytes.shrink_to_fit();
-            LL_WARNS("Metal")
-                << "Could not publish avatar impostor mirror "
-                << entry.first << ": " << error << LL_ENDL;
-            continue;
-        }
-        mirror.textures = std::move(textures);
-        mirror.bytes.clear();
-        mirror.bytes.shrink_to_fit();
-        mirror.device = device;
-        mirror.ready = true;
     }
 
     // Native scope eligibility consumes the same baked curve state as the GL
@@ -3854,7 +3754,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.impostor_directional_shadow_frame =
             std::numeric_limits<U32>::max();
         capture.impostor_bake_avatar_id.setNull();
-        capture.impostor_mirrors.clear();
+        capture.impostor_textures.clear();
         capture.attempted = false;
         capture.local_lighting_attempted = false;
         capture.local_lighting_failed_frames = 0;
@@ -3881,7 +3781,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
     }
     if (capture.impostor_bake_attempted)
     {
-        // A prior GL bake can be abandoned before its native transaction is
+        // A prior native bake can be abandoned before its transaction is
         // published (for example if the avatar target was resized during the
         // bake). Do not let that stale target monopolize the single retained
         // native bake slot and prevent later avatars from trying.
@@ -3896,11 +3796,11 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         // The main-world owner constructs this shared renderer on the
         // General work queue. Avatar impostor baking can run during startup,
         // so it must never become a second synchronous pipeline-compilation
-        // entry point on the UI thread. The authoritative GL bake remains
-        // available until the asynchronous renderer is ready.
+        // entry point on the UI thread. The legacy display bake remains
+        // independent while the native world transaction stays incomplete.
         LL_INFOS_ONCE("Metal")
             << "Native avatar-impostor baking is waiting for the asynchronous "
-               "world renderer warm-up; GL remains authoritative"
+               "world renderer warm-up; the native world remains incomplete"
             << LL_ENDL;
         return;
     }
@@ -14552,38 +14452,34 @@ void LLPipeline::captureMetalWorldImpostorBatch(
         capture.avatar_palettes.clear();
         return;
     }
-    const auto mirror_it = capture.impostor_mirrors.find(avatar.getID());
-    const bool has_mirror =
-        mirror_it != capture.impostor_mirrors.end() &&
-        mirror_it->second.ready &&
-        mirror_it->second.device == capture.device &&
-        mirror_it->second.normal_hdr == capture.normal_hdr &&
-        mirror_it->second.hdr == capture.hdr &&
+    const auto textures_it = capture.impostor_textures.find(avatar.getID());
+    const bool has_textures =
+        textures_it != capture.impostor_textures.end() &&
+        textures_it->second.ready &&
+        textures_it->second.device == capture.device &&
+        textures_it->second.normal_hdr == capture.normal_hdr &&
+        textures_it->second.hdr == capture.hdr &&
         std::all_of(
-            mirror_it->second.textures.begin(),
-            mirror_it->second.textures.end(),
+            textures_it->second.textures.begin(),
+            textures_it->second.textures.end(),
             [](const std::unique_ptr<ALMetalTexture>& texture)
             {
                 return texture != nullptr;
             });
-    if (!has_mirror)
+    if (!has_textures)
     {
         capture.markIncomplete(__LINE__);
         capture.batches.clear();
         capture.avatar_palettes.clear();
-        if (mirror_it == capture.impostor_mirrors.end() ||
-            !mirror_it->second.pending)
-        {
-            // Ask the normal avatar scheduler for one fresh bake. That bake
-            // queues the coherent four-attachment mirror below; a pending
-            // copy needs no second bake while its frame fence is outstanding.
-            avatar.mNeedsImpostorUpdate = true;
-        }
+        // Ask the normal avatar scheduler for one fresh bake. The draw-pool
+        // capture publishes one coherent four-attachment native generation;
+        // no legacy render-target pixels are imported as a fallback.
+        avatar.mNeedsImpostorUpdate = true;
         return;
     }
 
-    const MetalWorldSimpleCapture::ImpostorMirror& mirror =
-        mirror_it->second;
+    const MetalWorldSimpleCapture::ImpostorTextures& textures =
+        textures_it->second;
     const LLMatrix4a& modelview = gGL.getModelviewMatrix();
     LLMatrix4a modelview_projection;
     modelview_projection.setMul(
@@ -14597,7 +14493,7 @@ void LLPipeline::captureMetalWorldImpostorBatch(
          texture < batch.impostor_textures.size(); ++texture)
     {
         batch.impostor_textures[texture] =
-            mirror.textures[texture].get();
+            textures.textures[texture].get();
     }
     std::memcpy(batch.modelview_projection,
                 modelview_projection.getF32ptr(),
@@ -14625,279 +14521,99 @@ void LLPipeline::captureMetalWorldImpostorBatch(
     }
 }
 
-void LLPipeline::captureMetalImpostorMirror(LLVOAvatar& avatar)
+void LLPipeline::publishMetalImpostorBake(LLVOAvatar& avatar)
 {
-    if (!avatar.mImpostor.isComplete() ||
-        avatar.mImpostor.getNumTextures() < 3)
-    {
-        return;
-    }
     if (!mMetalWorldSimpleCapture)
     {
-        mMetalWorldSimpleCapture =
-            std::make_unique<MetalWorldSimpleCapture>();
+        return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    if (!capture.device)
-    {
-        return;
-    }
-    MetalWorldSimpleCapture::ImpostorMirror& mirror =
-        capture.impostor_mirrors[avatar.getID()];
-
-    const U32 width = avatar.mImpostor.getWidth();
-    const U32 height = avatar.mImpostor.getHeight();
-    const U32 attachment_count = avatar.mImpostor.getNumTextures();
-    if (width == 0 || height == 0 || attachment_count > 4)
+    if (!capture.device ||
+        capture.impostor_bake_avatar_id != avatar.getID())
     {
         return;
     }
 
-    const bool owns_native_transaction =
-        capture.impostor_bake_avatar_id == avatar.getID();
-    if (owns_native_transaction)
+    const U32 width = capture.width;
+    const U32 height = capture.height;
+    bool native_ready = width != 0 && height != 0 &&
+        capture.impostor_bake_attempted &&
+        capture.impostor_bake_native_valid &&
+        capture.impostor_bake_native_complete &&
+        capture.impostor_bake_target;
+    if (native_ready)
     {
-        bool native_ready = capture.impostor_bake_attempted &&
-            capture.impostor_bake_native_valid &&
-            capture.impostor_bake_native_complete &&
-            capture.impostor_bake_target;
+        const ALMetalRenderTargetDescriptor& descriptor =
+            capture.impostor_bake_target->descriptor();
+        native_ready = descriptor.width == width &&
+            descriptor.height == height && descriptor.sample_count == 1 &&
+            descriptor.color_attachment_count == 4 &&
+            descriptor.colors[0].format ==
+                ALMetalPixelFormat::rgba8_unorm_srgb &&
+            descriptor.colors[1].format ==
+                ALMetalPixelFormat::rgba8_unorm &&
+            descriptor.colors[2].format ==
+                (capture.normal_hdr
+                     ? ALMetalPixelFormat::rgba16_unorm
+                     : ALMetalPixelFormat::rgb10a2_unorm) &&
+            descriptor.colors[3].format ==
+                (capture.hdr ? ALMetalPixelFormat::rg11b10_float
+                             : ALMetalPixelFormat::rgba8_unorm);
+        for (U32 attachment = 0; native_ready && attachment < 4;
+             ++attachment)
+        {
+            native_ready =
+                capture.impostor_bake_target->colorTexture(attachment) !=
+                nullptr;
+        }
+    }
+
+    if (native_ready)
+    {
+        std::array<std::unique_ptr<ALMetalTexture>, 4> textures;
+        for (U32 attachment = 0; attachment < textures.size(); ++attachment)
+        {
+            textures[attachment] =
+                capture.impostor_bake_target->takeColorTexture(attachment);
+        }
+        native_ready = std::all_of(
+            textures.begin(), textures.end(),
+            [](const std::unique_ptr<ALMetalTexture>& texture)
+            {
+                return texture != nullptr;
+            });
         if (native_ready)
         {
-            const ALMetalRenderTargetDescriptor& descriptor =
-                capture.impostor_bake_target->descriptor();
-            native_ready = descriptor.width == width &&
-                descriptor.height == height && descriptor.sample_count == 1 &&
-                descriptor.color_attachment_count == 4 &&
-                descriptor.colors[0].format ==
-                    ALMetalPixelFormat::rgba8_unorm_srgb &&
-                descriptor.colors[1].format ==
-                    ALMetalPixelFormat::rgba8_unorm &&
-                descriptor.colors[2].format ==
-                    (capture.normal_hdr
-                         ? ALMetalPixelFormat::rgba16_unorm
-                         : ALMetalPixelFormat::rgb10a2_unorm) &&
-                descriptor.colors[3].format ==
-                    (capture.hdr ? ALMetalPixelFormat::rg11b10_float
-                                 : ALMetalPixelFormat::rgba8_unorm);
-            for (U32 attachment = 0; native_ready && attachment < 4;
-                 ++attachment)
-            {
-                native_ready =
-                    capture.impostor_bake_target->colorTexture(attachment) !=
-                    nullptr;
-            }
-        }
-
-        if (native_ready)
-        {
-            std::array<std::unique_ptr<ALMetalTexture>, 4> textures;
-            for (U32 attachment = 0; attachment < textures.size();
-                 ++attachment)
-            {
-                textures[attachment] =
-                    capture.impostor_bake_target->takeColorTexture(
-                        attachment);
-            }
-            native_ready = std::all_of(
-                textures.begin(), textures.end(),
-                [](const std::unique_ptr<ALMetalTexture>& texture)
-                {
-                    return texture != nullptr;
-                });
-            if (native_ready)
-            {
-                mirror.readback.release();
-                mirror.planes = {};
-                mirror.bytes.clear();
-                mirror.bytes.shrink_to_fit();
-                mirror.textures = std::move(textures);
-                mirror.device = capture.device;
-                mirror.width = width;
-                mirror.height = height;
-                mirror.source_attachment_count = 4;
-                mirror.normal_hdr = capture.normal_hdr;
-                mirror.hdr = capture.hdr;
-                mirror.pending = false;
-                mirror.ready = true;
-                LL_DEBUGS("Metal")
-                    << "Published native avatar-impostor G-buffer "
-                    << avatar.getID() << " at " << width << "x" << height
-                    << " without a GL readback" << LL_ENDL;
-            }
-        }
-
-        capture.impostor_bake_target.reset();
-        capture.impostor_bake_avatar_id.setNull();
-        capture.impostor_bake_attempted = false;
-        capture.impostor_bake_native_valid = false;
-        capture.impostor_bake_native_complete = false;
-        capture.impostor_alpha_active = false;
-        capture.impostor_alpha_phase = false;
-        if (native_ready)
-        {
-            return;
-        }
-        // The GL target is still current here. A failed or incomplete native
-        // transaction therefore falls through to the asynchronous PBO mirror
-        // and preserves the viewer's existing visible impostor authority.
-    }
-
-    if (mirror.pending)
-    {
-        return;
-    }
-
-    const auto configure_plane = [width, height](
-        MetalWorldSimpleCapture::ImpostorPlane& plane,
-        U32 internal_format, bool source_present) -> bool
-    {
-        plane = {};
-        plane.source_present = source_present;
-        if (!source_present)
-        {
-            plane.row_bytes = 4;
-            plane.bytes = 4;
-            return true;
-        }
-        switch (internal_format)
-        {
-        case GL_SRGB8_ALPHA8:
-            plane.gl_format = GL_RGBA;
-            plane.gl_type = GL_UNSIGNED_BYTE;
-            plane.metal_format = ALMetalPixelFormat::rgba8_unorm_srgb;
-            plane.row_bytes = static_cast<std::size_t>(width) * 4;
-            break;
-        case GL_RGBA8:
-        case GL_RGB8:
-            plane.gl_format = GL_RGBA;
-            plane.gl_type = GL_UNSIGNED_BYTE;
-            plane.metal_format = ALMetalPixelFormat::rgba8_unorm;
-            plane.row_bytes = static_cast<std::size_t>(width) * 4;
-            break;
-        case GL_RGBA16:
-            plane.gl_format = GL_RGBA;
-            plane.gl_type = GL_UNSIGNED_SHORT;
-            plane.metal_format = ALMetalPixelFormat::rgba16_unorm;
-            plane.row_bytes = static_cast<std::size_t>(width) * 8;
-            break;
-        case GL_RGB10_A2:
-            plane.gl_format = GL_RGBA;
-            plane.gl_type = GL_UNSIGNED_INT_2_10_10_10_REV;
-            plane.metal_format = ALMetalPixelFormat::rgb10a2_unorm;
-            plane.row_bytes = static_cast<std::size_t>(width) * 4;
-            break;
-        case GL_R11F_G11F_B10F:
-            plane.gl_format = GL_RGB;
-            plane.gl_type = GL_UNSIGNED_INT_10F_11F_11F_REV;
-            plane.metal_format = ALMetalPixelFormat::rg11b10_float;
-            plane.row_bytes = static_cast<std::size_t>(width) * 4;
-            break;
-        default:
-            return false;
-        }
-        plane.bytes = plane.row_bytes * height;
-        return true;
-    };
-
-    std::array<MetalWorldSimpleCapture::ImpostorPlane, 4> planes;
-    bool configured = true;
-    for (U32 attachment = 0; attachment < planes.size(); ++attachment)
-    {
-        const bool present = attachment < attachment_count;
-        configured = configured && configure_plane(
-            planes[attachment],
-            present ? avatar.mImpostor.getInternalFormat(attachment) : 0,
-            present);
-    }
-    if (!configured ||
-        planes[0].metal_format != ALMetalPixelFormat::rgba8_unorm_srgb ||
-        planes[1].metal_format != ALMetalPixelFormat::rgba8_unorm ||
-        (planes[2].metal_format != ALMetalPixelFormat::rgba16_unorm &&
-         planes[2].metal_format != ALMetalPixelFormat::rgb10a2_unorm))
-    {
-        return;
-    }
-    const bool normal_hdr =
-        planes[2].metal_format == ALMetalPixelFormat::rgba16_unorm;
-    const bool hdr = hdrEnabled();
-    if (!planes[3].source_present)
-    {
-        planes[3].metal_format = hdr
-            ? ALMetalPixelFormat::rg11b10_float
-            : ALMetalPixelFormat::rgba8_unorm;
-    }
-    else if (planes[3].metal_format !=
-                 (hdr ? ALMetalPixelFormat::rg11b10_float
-                      : ALMetalPixelFormat::rgba8_unorm))
-    {
-        return;
-    }
-
-    std::size_t total_bytes = 0;
-    for (MetalWorldSimpleCapture::ImpostorPlane& plane : planes)
-    {
-        plane.offset = total_bytes;
-        total_bytes += plane.bytes;
-    }
-    const bool layout_changed =
-        mirror.width != width || mirror.height != height ||
-        mirror.source_attachment_count != attachment_count ||
-        mirror.normal_hdr != normal_hdr || mirror.hdr != hdr;
-    if (layout_changed)
-    {
-        mirror.readback.release();
-        mirror.textures = {};
-        mirror.ready = false;
-    }
-    if (!mirror.readback.isAllocated() ||
-        mirror.readback.size() != total_bytes)
-    {
-        mirror.readback.release();
-        if (!mirror.readback.allocate(
-                total_bytes, ALGPUBuffer::READBACK, nullptr,
-                "avatar.impostor.metal.readback"))
-        {
-            return;
+            MetalWorldSimpleCapture::ImpostorTextures& published =
+                capture.impostor_textures[avatar.getID()];
+            published.textures = std::move(textures);
+            published.device = capture.device;
+            published.width = width;
+            published.height = height;
+            published.normal_hdr = capture.normal_hdr;
+            published.hdr = capture.hdr;
+            published.ready = true;
+            LL_DEBUGS("Metal")
+                << "Published native avatar-impostor G-buffer "
+                << avatar.getID() << " at " << width << "x" << height
+                << " without a legacy render-target readback" << LL_ENDL;
         }
     }
-    mirror.planes = planes;
-    mirror.bytes.assign(total_bytes, U8{0});
-    mirror.width = width;
-    mirror.height = height;
-    mirror.source_attachment_count = attachment_count;
-    mirror.normal_hdr = normal_hdr;
-    mirror.hdr = hdr;
 
-    // generateImpostor calls this while its FBO is still current and after
-    // every opaque/alpha writer. The PBO receives each attachment without a
-    // CPU wait; beginMetalWorldGBufferCapture publishes it after this frame's
-    // normal fence signals.
-    gGL.flush();
-    GLint previous_pack_buffer = 0;
-    GLint previous_read_buffer = GL_COLOR_ATTACHMENT0;
-    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &previous_pack_buffer);
-    glGetIntegerv(GL_READ_BUFFER, &previous_read_buffer);
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, mirror.readback.getGLName());
-    for (U32 attachment = 0; attachment < attachment_count; ++attachment)
-    {
-        const MetalWorldSimpleCapture::ImpostorPlane& plane =
-            mirror.planes[attachment];
-        glReadBuffer(GL_COLOR_ATTACHMENT0 + attachment);
-        glReadPixels(
-            0, 0, width, height, plane.gl_format, plane.gl_type,
-            reinterpret_cast<void*>(plane.offset));
-    }
-    glReadBuffer(previous_read_buffer);
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, previous_pack_buffer);
-    mirror.frame = gGL.frameFences().frame();
-    mirror.pending = true;
+    capture.impostor_bake_target.reset();
+    capture.impostor_bake_avatar_id.setNull();
+    capture.impostor_bake_attempted = false;
+    capture.impostor_bake_native_valid = false;
+    capture.impostor_bake_native_complete = false;
+    capture.impostor_alpha_active = false;
+    capture.impostor_alpha_phase = false;
 }
 
-void LLPipeline::releaseMetalImpostorMirror(const LLUUID& avatar_id)
+void LLPipeline::releaseMetalImpostorTextures(const LLUUID& avatar_id)
 {
     if (mMetalWorldSimpleCapture)
     {
-        mMetalWorldSimpleCapture->impostor_mirrors.erase(avatar_id);
+        mMetalWorldSimpleCapture->impostor_textures.erase(avatar_id);
         if (mMetalWorldSimpleCapture->impostor_bake_avatar_id == avatar_id)
         {
             mMetalWorldSimpleCapture->impostor_bake_target.reset();
@@ -17855,9 +17571,9 @@ void LLPipeline::releaseAllGLResources()
     assertInitialized();
 
 #if LL_DARWIN
-    // Includes the impostor PBO mirrors. Drop them while the GL context that
-    // allocated their names is still current; a restored context starts a
-    // fresh bounded native-world probe.
+    // Drop all retained native-world resources before rebuilding the legacy
+    // context; a restored device/context pairing starts a fresh bounded
+    // native-world probe.
     if (mMetalHeroWorldCaptureActive ||
         mMetalReflectionWorldCaptureActive)
     {
@@ -32756,7 +32472,7 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
     if (!preview_avatar && !for_profile)
     {
 #if LL_DARWIN
-        captureMetalImpostorMirror(*avatar);
+        publishMetalImpostorBake(*avatar);
 #endif
         avatar->mImpostor.flush();
         avatar->setImpostorDim(tdim);

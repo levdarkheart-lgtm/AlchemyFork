@@ -955,7 +955,7 @@ void LLVOAvatar::debugAvatarRezTime(std::string notification_name, std::string c
 LLVOAvatar::~LLVOAvatar()
 {
 #if LL_DARWIN
-    gPipeline.releaseMetalImpostorMirror(mID);
+    gPipeline.releaseMetalImpostorTextures(mID);
 #endif
     sInstances.remove(this);
 
