@@ -42,6 +42,7 @@ reload the chronological history.
 | Native Raycast branch/triangle/hit-marker replay and source-exact build 68079, 2026-11-02 | [CURRENT-raycast-debug-checkpoint-2026-11-02.md](CURRENT-raycast-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native Occlusion x-ray/selected-bounds replay and source-exact build 68081, 2026-11-02 | [CURRENT-occlusion-debug-checkpoint-2026-11-02.md](CURRENT-occlusion-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native Octree flash/static-rigged/group-outline replay and source-exact build 68083, 2026-11-02 | [CURRENT-octree-debug-checkpoint-2026-11-02.md](CURRENT-octree-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
+| Native Physics Shapes three-pass/all-shape-family replay and source-exact build 68085, 2026-11-02 | [CURRENT-physics-shapes-debug-checkpoint-2026-11-02.md](CURRENT-physics-shapes-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
