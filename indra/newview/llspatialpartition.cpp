@@ -2935,6 +2935,17 @@ void renderTexelDensity(LLDrawable* drawable)
 
         if (buffer && (facep->getGeomCount() >= 3))
         {
+#if LL_DARWIN
+            gPipeline.captureMetalTexelDensityFace(
+                *facep, gGL.getDiffuseColor());
+            if (facep->getIndicesCount() != 0)
+            {
+                gGL.captureMetalUIIndexedBuffer(
+                    buffer, LLRender::TRIANGLES,
+                    facep->getIndicesCount(),
+                    facep->getIndicesStart());
+            }
+#endif
             buffer->setBuffer();
             U16 start = facep->getGeomStart();
             U16 end = start + facep->getGeomCount()-1;

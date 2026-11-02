@@ -12039,6 +12039,49 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             ++update_type_order_index;
         }
     }
+    if ((scene.texel_density_batch_count != 0 &&
+         !scene.texel_density_batches) ||
+        scene.texel_density_batch_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldTexelDensityBatch))
+    {
+        setError(error,
+                 "Metal world texel-density batch storage is invalid");
+        return nullptr;
+    }
+    std::uint64_t previous_texel_density_order = 0;
+    for (std::size_t index = 0;
+         index < scene.texel_density_batch_count; ++index)
+    {
+        const ALMetalWorldTexelDensityBatch& batch =
+            scene.texel_density_batches[index];
+        const bool index_type_valid =
+            batch.index_type == ALMetalIndexType::uint16 ||
+            batch.index_type == ALMetalIndexType::uint32;
+        const std::size_t index_stride =
+            batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
+        if (!batch.vertices || !batch.indices || !index_type_valid ||
+            batch.vertex_count == 0 || batch.index_count == 0 ||
+            batch.index_count % 3 != 0 ||
+            batch.position_offset % (sizeof(float) * 4) != 0 ||
+            batch.index_offset % index_stride != 0 ||
+            !rangeFits(batch.position_offset, batch.vertex_count,
+                       sizeof(float) * 4, batch.vertices->length()) ||
+            !rangeFits(batch.index_offset, batch.index_count,
+                       index_stride, batch.indices->length()) ||
+            !finiteValues(batch.modelview_projection, 16) ||
+            !finiteValues(batch.color, 4) ||
+            (index != 0 &&
+             batch.order <= previous_texel_density_order) ||
+            (scene.agent_target_line_vertex_count != 0 &&
+             batch.order == scene.agent_target_order))
+        {
+            setError(error,
+                     "Metal world texel-density batch is invalid");
+            return nullptr;
+        }
+        previous_texel_density_order = batch.order;
+    }
     if ((scene.batch_size_batch_count != 0 &&
          !scene.batch_size_batches) ||
         scene.batch_size_batch_count >
@@ -12209,6 +12252,65 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         return false;
     };
     if (order_collides(
+            scene.texel_density_batches,
+            scene.texel_density_batch_count,
+            scene.normal_batches, scene.normal_batch_count) ||
+        order_collides(
+            scene.texel_density_batches,
+            scene.texel_density_batch_count,
+            scene.physics_shape_batches,
+            scene.physics_shape_batch_count) ||
+        order_collides(
+            scene.texel_density_batches,
+            scene.texel_density_batch_count,
+            scene.octree_batches, scene.octree_batch_count) ||
+        order_collides(
+            scene.texel_density_batches,
+            scene.texel_density_batch_count,
+            scene.occlusion_batches, scene.occlusion_batch_count) ||
+        order_collides(
+            scene.texel_density_batches,
+            scene.texel_density_batch_count,
+            scene.avatar_volume_batches,
+            scene.avatar_volume_batch_count) ||
+        order_collides(
+            scene.texel_density_batches,
+            scene.texel_density_batch_count,
+            scene.avatar_joint_batches,
+            scene.avatar_joint_batch_count) ||
+        order_collides(
+            scene.texel_density_batches,
+            scene.texel_density_batch_count,
+            scene.bounding_box_batches,
+            scene.bounding_box_batch_count) ||
+        order_collides(
+            scene.texel_density_batches,
+            scene.texel_density_batch_count,
+            scene.raycast_batches, scene.raycast_batch_count) ||
+        order_collides(
+            scene.texel_density_batches,
+            scene.texel_density_batch_count,
+            scene.debug_point_batches, scene.debug_point_batch_count) ||
+        order_collides(
+            scene.texel_density_batches,
+            scene.texel_density_batch_count,
+            scene.texture_anim_batches,
+            scene.texture_anim_batch_count) ||
+        order_collides(
+            scene.texel_density_batches,
+            scene.texel_density_batch_count,
+            scene.update_type_batches,
+            scene.update_type_batch_count) ||
+        order_collides(
+            scene.texel_density_batches,
+            scene.texel_density_batch_count,
+            scene.batch_size_batches, scene.batch_size_batch_count) ||
+        order_collides(
+            scene.texel_density_batches,
+            scene.texel_density_batch_count,
+            scene.light_debug_batches,
+            scene.light_debug_batch_count) ||
+        order_collides(
             scene.normal_batches, scene.normal_batch_count,
             scene.physics_shape_batches,
             scene.physics_shape_batch_count) ||
@@ -16684,6 +16786,39 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 batch.index_type, *batch.indices,
                 batch.index_offset, 1, error);
     };
+    const auto encode_texel_density_batch =
+        [&](const ALMetalWorldTexelDensityBatch& batch)
+    {
+        WorldTextureAnimConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(constants.modelview_projection));
+        std::memcpy(constants.color, batch.color,
+                    sizeof(constants.color));
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        return
+            encoder->setDepthStencilState(
+                scene.reverse_z ? mImpl->reverse_depth.get()
+                                : mImpl->forward_depth.get(),
+                error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *mImpl->texture_anim_pipelines[scene.hdr ? 1 : 0],
+                error) &&
+            encoder->setVertexBuffer(
+                0, *batch.vertices, batch.position_offset, error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->drawIndexed(
+                ALMetalPrimitiveType::triangle, batch.index_count,
+                batch.index_type, *batch.indices,
+                batch.index_offset, 1, error);
+    };
     const auto encode_batch_size_batch =
         [&](const ALMetalWorldBatchSizeBatch& batch,
             std::size_t batch_index)
@@ -16817,6 +16952,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     std::size_t debug_point_batch_index = 0;
     std::size_t texture_anim_batch_index = 0;
     std::size_t update_type_batch_index = 0;
+    std::size_t texel_density_batch_index = 0;
     std::size_t batch_size_batch_index = 0;
     std::size_t light_debug_batch_index = 0;
     while (encoded &&
@@ -16832,6 +16968,8 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             debug_point_batch_index < scene.debug_point_batch_count ||
             texture_anim_batch_index < scene.texture_anim_batch_count ||
             update_type_batch_index < scene.update_type_batch_count ||
+            texel_density_batch_index <
+                scene.texel_density_batch_count ||
             batch_size_batch_index < scene.batch_size_batch_count ||
             light_debug_batch_index < scene.light_debug_batch_count ||
             !agent_target_encoded))
@@ -16850,6 +16988,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             debug_point,
             texture_anim,
             update_type,
+            texel_density,
             batch_size,
             light_debug,
         };
@@ -16979,6 +17118,18 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 owner_order = order;
             }
         }
+        if (texel_density_batch_index <
+            scene.texel_density_batch_count)
+        {
+            const std::uint64_t order = scene.texel_density_batches[
+                texel_density_batch_index].order;
+            if (!owner_selected || order < owner_order)
+            {
+                owner = RenderDebugOwner::texel_density;
+                owner_selected = true;
+                owner_order = order;
+            }
+        }
         if (batch_size_batch_index < scene.batch_size_batch_count)
         {
             const std::uint64_t order = scene.batch_size_batches[
@@ -17059,6 +17210,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoded = encode_update_type_batch(
                     scene.update_type_batches[
                         update_type_batch_index++]);
+                break;
+            case RenderDebugOwner::texel_density:
+                encoded = encode_texel_density_batch(
+                    scene.texel_density_batches[
+                        texel_density_batch_index++]);
                 break;
             case RenderDebugOwner::batch_size:
                 encoded = encode_batch_size_batch(

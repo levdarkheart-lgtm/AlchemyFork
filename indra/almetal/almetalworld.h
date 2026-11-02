@@ -763,6 +763,25 @@ struct ALMetalWorldUpdateTypeBatch
     float color[4]{};
 };
 
+// Develop > Texel Density currently keeps gDebugProgram bound. That production
+// shader consumes only position and the current uniform color: the checkerboard
+// binding and texture matrix selected by current/desired/full are not shader
+// inputs. Retain the exact visible indexed overlay without adding an invented
+// sampled-texture path.
+struct ALMetalWorldTexelDensityBatch
+{
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
+    std::uint64_t order = 0;
+    float modelview_projection[16]{};
+    float color[4]{};
+};
+
 // Develop > Batch Size replays every draw-info triangle with the stable hash
 // colour produced by LLDrawInfo::getDebugColor(). Unlike the adjacent
 // position-only overlays, avatar draw infos bind gDebugProgram's rigged
@@ -1165,6 +1184,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t texture_anim_batch_count = 0;
     const ALMetalWorldUpdateTypeBatch* update_type_batches = nullptr;
     std::size_t update_type_batch_count = 0;
+    const ALMetalWorldTexelDensityBatch* texel_density_batches = nullptr;
+    std::size_t texel_density_batch_count = 0;
     const ALMetalWorldBatchSizeBatch* batch_size_batches = nullptr;
     std::size_t batch_size_batch_count = 0;
     const ALMetalWorldLightDebugBatch* light_debug_batches = nullptr;

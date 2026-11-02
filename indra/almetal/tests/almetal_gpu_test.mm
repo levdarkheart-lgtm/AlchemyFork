@@ -8155,6 +8155,194 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             32 * 8, &error));
         CHECK(no_normal_pixels == opaque_forward_pixels);
 
+        // Develop > Texel Density's three source modes bind a checkerboard
+        // and calculate its texture matrix, but the production gDebugProgram
+        // has no texture or UV input. The reachable visual draw is therefore
+        // the current uniform color over each indexed face, with ordinary
+        // RGB-only blending and writable world depth.
+        ALMetalWorldTexelDensityBatch texel_density_batch;
+        texel_density_batch.vertices = normal_debug_vertices.get();
+        texel_density_batch.vertex_count = positions.size();
+        texel_density_batch.indices = indices.get();
+        texel_density_batch.index_type = ALMetalIndexType::uint16;
+        texel_density_batch.index_count = index_values.size();
+        texel_density_batch.color[0] = 0.25f;
+        texel_density_batch.color[1] = 0.75f;
+        texel_density_batch.color[2] = 0.5f;
+        texel_density_batch.color[3] = 0.5f;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            texel_density_batch.modelview_projection[
+                axis * 4 + axis] = 1.f;
+        }
+        // The shared test positions currently sit at GL z=0.9. Move them to
+        // z=-0.5 for the forward-depth proof so they cover the retained
+        // G-buffer triangle and visibly replace its depth.
+        texel_density_batch.modelview_projection[14] = -1.4f;
+        opaque_forward_scene.texel_density_batches =
+            &texel_density_batch;
+        opaque_forward_scene.texel_density_batch_count = 1;
+
+        opaque_forward_scene.texel_density_batches = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world texel-density batch storage is invalid");
+        opaque_forward_scene.texel_density_batches =
+            &texel_density_batch;
+        texel_density_batch.vertices = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world texel-density batch is invalid");
+        texel_density_batch.vertices = normal_debug_vertices.get();
+        texel_density_batch.position_offset = sizeof(float);
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world texel-density batch is invalid");
+        texel_density_batch.position_offset = 0;
+        texel_density_batch.index_type =
+            static_cast<ALMetalIndexType>(99);
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world texel-density batch is invalid");
+        texel_density_batch.index_type = ALMetalIndexType::uint16;
+        texel_density_batch.color[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world texel-density batch is invalid");
+        texel_density_batch.color[0] = 0.25f;
+        std::array<ALMetalWorldTexelDensityBatch, 2>
+            texel_density_order_batches{{
+                texel_density_batch, texel_density_batch,
+            }};
+        texel_density_order_batches[0].order = 1;
+        texel_density_order_batches[1].order = 0;
+        opaque_forward_scene.texel_density_batches =
+            texel_density_order_batches.data();
+        opaque_forward_scene.texel_density_batch_count =
+            texel_density_order_batches.size();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world texel-density batch is invalid");
+        opaque_forward_scene.texel_density_batches =
+            &texel_density_batch;
+        opaque_forward_scene.texel_density_batch_count = 1;
+
+        error.clear();
+        auto texel_density = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(texel_density);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            texel_density_pixels{};
+        std::array<float, 32 * 32> texel_density_depth{};
+        REQUIRE(texel_density->colorTexture(0)->readback(
+            *device, 0, 0, {}, texel_density_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(texel_density->depthStencilTexture()->readback(
+            *device, 0, 0, {}, texel_density_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t texel_density_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                texel_density_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                texel_density_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                texel_density_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            texel_density_changed += changed;
+            if (changed)
+            {
+                CHECK(texel_density_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+            }
+        }
+        CHECK(texel_density_changed >= 128);
+        CHECK(texel_density_depth != opaque_forward_depth);
+
+        texel_density_batch.indices = normal_indices32.get();
+        texel_density_batch.index_type = ALMetalIndexType::uint32;
+        error.clear();
+        auto texel_density_u32 = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(texel_density_u32);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            texel_density_u32_pixels{};
+        REQUIRE(texel_density_u32->colorTexture(0)->readback(
+            *device, 0, 0, {}, texel_density_u32_pixels.data(),
+            32 * 8, &error));
+        CHECK(texel_density_u32_pixels == texel_density_pixels);
+
+        debug_points[0].position[0] = 0.f;
+        debug_points[0].position[1] = 0.f;
+        debug_points[0].position[2] = 0.f;
+        debug_point_batches[0].first_vertex = 0;
+        debug_point_batches[0].vertex_count = 1;
+        debug_point_batches[0].order = texel_density_batch.order;
+        opaque_forward_scene.debug_points = debug_points.data();
+        opaque_forward_scene.debug_point_count = 1;
+        opaque_forward_scene.debug_point_batches =
+            debug_point_batches.data();
+        opaque_forward_scene.debug_point_batch_count = 1;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world render-debug ordering is invalid");
+        opaque_forward_scene.debug_points = nullptr;
+        opaque_forward_scene.debug_point_count = 0;
+        opaque_forward_scene.debug_point_batches = nullptr;
+        opaque_forward_scene.debug_point_batch_count = 0;
+
+        texel_density_batch.modelview_projection[14] = 0.f;
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        error.clear();
+        auto reverse_texel_density =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_texel_density);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_texel_density_pixels{};
+        std::array<float, 32 * 32> reverse_texel_density_depth{};
+        REQUIRE(reverse_texel_density->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_texel_density_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(reverse_texel_density->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_texel_density_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(reverse_texel_density_pixels !=
+              reverse_agent_target_baseline_pixels);
+        CHECK(reverse_texel_density_depth !=
+              reverse_agent_target_baseline_depth);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.texel_density_batches = nullptr;
+        opaque_forward_scene.texel_density_batch_count = 0;
+        error.clear();
+        auto no_texel_density = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_texel_density);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            no_texel_density_pixels{};
+        REQUIRE(no_texel_density->colorTexture(0)->readback(
+            *device, 0, 0, {}, no_texel_density_pixels.data(),
+            32 * 8, &error));
+        CHECK(no_texel_density_pixels == opaque_forward_pixels);
+
         // Develop > Texture Anim selects visible draw-info triangles whose
         // texture matrix is non-null, but gDebugProgram consumes positions
         // only and emits one fixed translucent-yellow uniform. The enclosing

@@ -484,6 +484,11 @@ public:
     // Retain Develop > Update Type's position-only per-face color replay.
     void captureMetalUpdateTypeFace(
         const LLFace& face, const LLColor4& color);
+    // Retain the actual Develop > Texel Density production draw. The bound
+    // gDebugProgram is position/uniform-color only; checkerboard dimensions
+    // and the texture matrix remain source side effects, not visual inputs.
+    void captureMetalTexelDensityFace(
+        const LLFace& face, const LLColor4& color);
     // Retain Develop > Batch Size's per-draw hash colour, semantic polygon
     // offset and optional avatar object-skin palette. The same boundary owns
     // the offscreen HUD-attachment encoding when HUD partitions are visited.
@@ -1574,14 +1579,12 @@ public:
         RENDER_DEBUG_REFLECTION_PROBES  = 0x200000000,
         RENDER_DEBUG_PROBE_UPDATES      = 0x400000000,
 
-        // Only these modes still emit viewer-owned world geometry that the
-        // native Metal publication does not retain. The remaining bits are
-        // either unused (VERIFY/GLOW/ALPHA_BINS/NODES) or feed LLHUD/debug
-        // text, which is drawn after the native world has been published.
-        // Keep this list explicit: broad mRenderDebugMask != 0 eligibility
-        // silently turns text-only diagnostics into a GL world fallback.
-        RENDER_DEBUG_GL_WORLD_OUTPUT =
-            RENDER_DEBUG_TEXEL_DENSITY,
+        // All reachable render-debug world geometry now has a native owner.
+        // The remaining bits are unused (VERIFY/GLOW/ALPHA_BINS/NODES) or
+        // feed LLHUD/debug text drawn after native world publication. Keep
+        // this explicit zero: broad mRenderDebugMask != 0 eligibility would
+        // silently turn text-only diagnostics into a GL world fallback.
+        RENDER_DEBUG_GL_WORLD_OUTPUT = 0,
     };
 
 public:
