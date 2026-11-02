@@ -47,6 +47,7 @@ chronological transcript.
 | Native Texel Density indexed implementation and source-exact validation, 2026-11-02 | [metal-port-texel-density-debug-checkpoint-2026-11-02.md](metal-port-texel-density-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Preferences/save/restart-qualified fixed-Midday shadow execution and strict GL refresh, 2026-11-02 | [metal-port-shadow-preference-qualified-checkpoint-2026-11-02.md](metal-port-shadow-preference-qualified-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Current-build authored-mirror semantic-UI timeout and watchdog shutdown-hang execution, 2026-11-02 | [metal-port-hero-mirror-validation-hang-checkpoint-2026-11-02.md](metal-port-hero-mirror-validation-hang-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
+| Development mirror diagnostic gate correction and current divergence execution, 2026-11-02 | [metal-port-hero-mirror-release-gate-and-divergence-checkpoint-2026-11-02.md](metal-port-hero-mirror-release-gate-and-divergence-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.

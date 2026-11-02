@@ -19,7 +19,7 @@ checkpoint detail belongs in the indexed archive.
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent and Batch Size have ordered static/rigged HUD replay. Moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence. Broader live parity remains incomplete. |
 | M-008 | Advanced views/effects and compute | doing | The established native advanced-output set now includes Raycast, Occlusion, Octree, Physics Shapes, Normals and Texel Density. No reachable render-debug world-geometry bit remains in the explicit visual veto. OSS pathfinding is a nonfunctional stub. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, prolonged stability and strict no-GL release evidence remain open. The refreshed 3,351-finding inventory exits 1. Directional shadows are preference-qualified; projector-visible parity is open. Current authored-mirror validation hit a semantic-UI timeout and watchdog shutdown hang after native hero publication, so its guard remains fail-closed. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, prolonged stability and strict no-GL release evidence remain open. The refreshed 3,351-finding inventory exits 1. Directional shadows are preference-qualified; projector-visible parity is open. Current native mirror Snapshot evidence exposes missing forward/material content, so its guard remains fail-closed. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Exact-path semantic login/in-world/control/logout is verified and used for current acceptance. |
@@ -30,8 +30,10 @@ item; it never implies product completion.
 
 ## Active checkpoint — 2026-11-02
 
-Commit `b0e0973898` captures and replays every reachable Develop **Texel
-Density** face draw. Its current/desired/full modes still perform their exact
+Commit `38b89cfd58` admits the scoped native mirror Snapshot diagnostic only in
+non-public compiled channels. Retained renderer commit `b0e0973898` captures
+and replays every reachable Develop **Texel Density** face draw. Its
+current/desired/full modes still perform their exact
 texture lookup, checkerboard bind and texture-matrix side effects in source.
 The bound production `gDebugProgram`, however, consumes only position and the
 current uniform color, so native presentation replays that actual visible
@@ -46,15 +48,16 @@ owner collisions.
 
 RelWithDebInfo, Debug and Release physical Metal suites each pass 51,784
 assertions in 52 cases under Metal API/load-action validation. Warnings-as-errors
-production integration passes, and the neutral non-manual/non-GL gate passes
-484/484 in 37.42 seconds. The prior unfiltered 574-test inventory was not rerun;
+production integration passes, and the source-exact Release neutral
+non-manual/non-GL gate passes 484/484 in 35.57 seconds. The prior unfiltered
+574-test inventory was not rerun;
 its six GL-only failures and five skips remain recorded without a green claim.
 Harness validation covers all 31 required files and all 24 tooling tests pass.
 
-Source-exact Release Development build `26.4.0d68089` (`26.4.0.68089`) at
-`b0e0973898da8e3a275b8a29ed72e7ce7f4e9db5` passes after a 161-step rebuild.
+Source-exact Release Development build `26.4.0d68093` (`26.4.0.68093`) at
+`38b89cfd58d93bc6ec7d0841a8cdf67b705926dd` passes.
 Deep strict signing and 349/349 ARM64 inspection pass. Executable SHA-256 is
-`f5fa05484b57fd77f108838e6d5b82ffde0e8a41697116db742b39b9e9b083f7`;
+`144f256b4d87a35825ac0029f751bf5056ab5af9c1ba8c7cfd4c80fe2a3d00ce`;
 packaged/source MSL is
 `73955209f611038a5e4fe0305642614fefee30766dcd26fd03b7df7d3933df20`;
 compiled metallib is
@@ -84,15 +87,20 @@ not isolate a visible projector contribution, and projector-visible,
 alpha/avatar-caster, cascade and PCSS/quality parity remain open. Earlier
 Debug-Settings-only evidence cannot independently close a shadow row.
 
-The next current-build authored-mirror attempt was invalid. Exact-path
-preflight passed, the pinned reference saved a coherent 2048x1476 control, and
-the candidate published complete native 256-square hero radiance. The candidate
-then stopped servicing semantic UI observation. A graceful `SIGTERM` entered
-`status: quitting` but did not complete; after 60 seconds the watchdog reported
-`Pipeline:RenderGeomDeferred`, and only then was the stuck process force-killed.
-No candidate image or parity score is claimed. Normal mirror authority remains
-fail-closed. The indexed archive retains exact provenance and the bounded next
-diagnostic.
+A retained pre-signal sample corrects the next authored-mirror attempt: all
+40 main-thread samples were active in renderer work under full Metal validation,
+and later `SIGTERM` shutdown completed cleanly. The actual blocker was that the
+Release configuration compiled the Development validation setting to false.
+Commit `38b89cfd58` now gates the scoped diagnostic by immutable compiled
+channel, leaving public Release and normal live authority unchanged.
+
+The source-exact 68093 diagnostic produced a matched 2048x1476 pair with
+416/416 visual settings aligned and complete six-face native hero publication.
+It exposes real divergence: patterned/stained door glass, wall media/art and
+nearby forward content are missing or replaced by gray translucent/blurred
+surfaces. Whole-frame raw SSIM is `0.855629`; half-size sigma-8 structural SSIM
+is `0.938252`. Normal mirror authority remains fail-closed. The indexed archive
+retains exact images, hashes, crops, metrics and provenance.
 
 Any exact RLVa comparison must enable RLV in Preferences in both viewers, save,
 and restart both. Exact RLVa correctness is deferred M-013; implement only the
@@ -116,12 +124,12 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Reproduce the current hero-mirror semantic-UI/shutdown hang in a candidate-only
-diagnostic, sampling the main thread at the first timeout before termination.
-Classify the stall before changing mirror authority. Then resume the refreshed
-3,351-finding GL inventory by reachability/presentation authority. Keep all
-shadow evidence Preferences/save/restart-qualified and exact RLVa deferred in
-M-013.
+Trace current capture and ordered replay ownership for the missing authored-
+mirror door-glass, wall-media and related forward categories. Implement only a
+source-proven missing owner, then repeat the matched 256-square diagnostic
+before changing mirror authority. Continue the refreshed 3,351-finding GL
+inventory independently. Keep all shadow evidence Preferences/save/restart-
+qualified and exact RLVa deferred in M-013.
 
 ## Non-negotiable open gates
 
