@@ -3433,15 +3433,15 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
                     descriptor.color_attachment_count = 4;
                     descriptor.colors[0].format =
                         ALMetalPixelFormat::rgba8_unorm_srgb;
-                    descriptor.colors[0].blending_enabled = !alpha_mask;
-                    descriptor.colors[0].source_rgb =
-                        ALMetalBlendFactor::source_alpha;
-                    descriptor.colors[0].destination_rgb =
-                        ALMetalBlendFactor::one_minus_source_alpha;
-                    descriptor.colors[0].source_alpha =
-                        ALMetalBlendFactor::one;
-                    descriptor.colors[0].destination_alpha =
-                        ALMetalBlendFactor::one_minus_source_alpha;
+                    // POOL_FULLBRIGHT and POOL_FULLBRIGHT_ALPHA_MASK are
+                    // opaque post-deferred owners. GL enters them with
+                    // blending disabled and RGB-only writes; LLFace stores
+                    // shininess, not coverage, in vertex alpha here. Source-
+                    // alpha blending would therefore erase a zero-shiny
+                    // poster or screen even though its GL draw is opaque.
+                    descriptor.colors[0].blending_enabled = false;
+                    descriptor.colors[0].write_mask =
+                        avatar_rgb_write_mask;
                     descriptor.colors[1].format =
                         ALMetalPixelFormat::rgba8_unorm;
                     descriptor.colors[1].write_mask =

@@ -4455,6 +4455,35 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         CHECK(std::abs(
                   opaque_forward_depth[24 * 32 + 8] - 0.625f) < 0.0001f);
         CHECK(std::abs(opaque_forward_depth[0] - 1.f) < 0.0001f);
+
+        // Ordinary POOL_FULLBRIGHT is opaque even though the streamed vertex
+        // alpha holds shininess (0.5 in this fixture). GL keeps blending
+        // disabled and writes RGB only, so Metal must replace the background
+        // with the full green texel while preserving the lighting target's
+        // destination alpha. Source-alpha blending would leave a half-strength
+        // poster and raise destination alpha from 0.5 to 0.75.
+        normal_free_fullbright.alpha_mask = false;
+        normal_free_fullbright.alpha_cutoff = 0.f;
+        auto opaque_unmasked_fullbright =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(opaque_unmasked_fullbright);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            opaque_unmasked_fullbright_pixels{};
+        REQUIRE(opaque_unmasked_fullbright->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            opaque_unmasked_fullbright_pixels.data(), 32 * 8, &error));
+        INFO(error);
+        CHECK(opaque_unmasked_fullbright_pixels[fullbright_top + 0] == 0);
+        CHECK(opaque_unmasked_fullbright_pixels[fullbright_top + 1] ==
+              0x3c00);
+        CHECK(opaque_unmasked_fullbright_pixels[fullbright_top + 2] == 0);
+        CHECK(opaque_unmasked_fullbright_pixels[fullbright_top + 3] ==
+              0x3800);
+        normal_free_fullbright.alpha_mask = true;
+        normal_free_fullbright.alpha_cutoff = 0.5f;
+
         float opaque_scene_pixel[4]{};
         REQUIRE(renderer->readSceneColorPixel(
             *opaque_forward, 0, 0, opaque_scene_pixel, &error));
