@@ -18,8 +18,8 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent and Batch Size have ordered static/rigged HUD replay. Moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence. Broader live parity remains incomplete. |
-| M-008 | Advanced views/effects and compute | doing | The established native advanced-output set now includes Raycast, Occlusion, Octree and Physics Shapes. Two explicit visual modes remain fail-closed: NORMALS and TEXEL_DENSITY. OSS pathfinding is a nonfunctional stub. |
-| M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. The two-mode render-debug set stays fail-closed pending audit/porting. |
+| M-008 | Advanced views/effects and compute | doing | The established native advanced-output set now includes Raycast, Occlusion, Octree, Physics Shapes and Normals. TEXEL_DENSITY is the sole explicit visual veto. OSS pathfinding is a nonfunctional stub. |
+| M-009 | Feature parity, stability and native-only cleanup | todo | Full matrix, prolonged stability and strict no-GL release evidence remain open. The final explicit render-debug owner stays fail-closed pending audit/porting. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Exact-path semantic login/in-world/control/logout is verified and used for current acceptance. |
@@ -30,40 +30,39 @@ item; it never implies product completion.
 
 ## Active checkpoint — 2026-11-02
 
-Commit `5110b2b9fc` captures and replays Develop **Physics Shapes** natively as
-one exact three-pass transaction. It covers box, sphere, cylinder, primitive-
-volume mesh, decomposition/base hull and generated convex hull production while
-retaining bridge/model transforms and asynchronous hull-build/fetch side
-effects. Depth fill, translucent color fill and color wire preserve source
-ordering, topology, RGB-only masks, LEQUAL depth and back-face culling.
+Commit `08973b83dc` captures and replays both reachable Develop **Normals**
+paths. Volume faces retain exact CPU-expanded yellow normal and cyan tangent
+line pairs with inverse-scale normalization and live transforms. Non-volume
+drawables retain zero-copy Metal position/normal/tangent and u16/u32 index
+buffers; four native vertex variants expand one normal and optional tangent
+line per triangle-index occurrence like the source GL geometry shader.
 
-Triangle wire retains triangle topology and culling, applies reverse-aware
-polygon offset and reconstructs the three-pixel footprint with nine one-pixel
-screen-space instances. Fallback boxes preserve their uncullable three-pixel
-line behavior and cyan/magenta/yellow source colors. Validation rejects invalid
-storage/vertices/transforms/colors/pass/range/topology/state/order and all
-cross-owner collisions.
+Replay preserves view-space direction normalization, one-pixel raster,
+disabled culling, source-over blend, RGB-only writes and read-only LEQUAL depth
+under forward/reverse Z. Existing volume HUD lines stay in native ordered UI
+capture; unexpected non-volume HUD use fails closed. Validation rejects invalid
+storage/data/kind/color/ranges/buffers/index width/transforms/draw length/
+tangent contract/state/order and all cross-owner collisions.
 
-RelWithDebInfo, Debug and Release physical Metal suites each pass 51,308
+RelWithDebInfo, Debug and Release physical Metal suites each pass 51,416
 assertions in 52 cases under Metal API/load-action validation. Warnings-as-errors
 production integration passes, and the neutral non-manual/non-GL gate passes
-484/484 in 40.43 seconds. The prior unfiltered 574-test inventory was not rerun;
+484/484 in 35.58 seconds. The prior unfiltered 574-test inventory was not rerun;
 its six GL-only failures and five skips remain recorded without a green claim.
 Harness validation covers all 31 required files and all 24 tooling tests pass.
 
-Source-exact Release Development build `26.4.0d68085` (`26.4.0.68085`) at
-`5110b2b9fc21e300f7cdf724aa70ceefb8624435` passes after a 161-step rebuild. Deep strict signing and 349/349
+Source-exact Release Development build `26.4.0d68087` (`26.4.0.68087`) at
+`08973b83dccad57d39fa0386c4f8463385761d2a` passes after a 161-step rebuild. Deep strict signing and 349/349
 ARM64 inspection pass. Executable SHA-256 is
-`791597f39f48a34c005891fd8216371dddba769993957b434185df48661363f8`;
+`039fbe6e2af93d5c9fc63d8c94b79a574323aa908a4a27a08c7a16c6807f445d`;
 packaged/source MSL is
-`16d904f070eb3000210b7581f42312bc88bfa5f257d6ff1593c13646752f51b9`;
+`73955209f611038a5e4fe0305642614fefee30766dcd26fd03b7df7d3933df20`;
 compiled metallib is
-`f6266b2331e1a410967fb79902d33446c44647e3d73706f1e6fdf13f69f1b7ae`.
+`fd64dfedceb9056e85090916b7e0dab2d8e17c553cc4ffe63ea1b5e67647c297`.
 The executable still links OpenGL, so strict no-GL remains open.
 
-The render-debug guard now contains exactly two world-output modes: NORMALS and
-TEXEL_DENSITY. The latent pathfinding guard remains
-separately fail-closed.
+The render-debug guard now contains exactly one world-output mode:
+TEXEL_DENSITY. The latent pathfinding guard remains separately fail-closed.
 
 Shadow comparison prerequisite: enable shadows in Graphics Preferences in
 **both** viewers before capture. A mismatched off/on pair is invalid, and a
@@ -75,27 +74,27 @@ minimum behavior needed to unblock Metal/no-GL cutover.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** Develop Physics Shapes can retain native authority
-   for all three passes and every reachable source shape family; every
-   uncaptured world-output mode remains fail-closed.
-2. **Deferred critical work:** two remaining non-RLVa advanced outputs, broader
+1. **Product advancement:** Develop Normals can retain native authority for its
+   CPU volume-line and indexed non-volume paths; every uncaptured world-output
+   mode remains fail-closed.
+2. **Deferred critical work:** the final non-RLVa advanced output, broader
    post/shadow parity, controlled live comparisons, stability/feature matrices,
    strict no-GL, independent review and qualifying M1 Max performance evidence.
-3. **Priority reassessment:** audit `RENDER_DEBUG_NORMALS` next. Its CPU immediate
-   normal/tangent path and drawable-buffer derived path must remain one coherent
-   owner before Texel Density becomes the final explicit visual veto.
+3. **Priority reassessment:** audit `RENDER_DEBUG_TEXEL_DENSITY` next. Its full
+   producer/shader/resource/state surface must remain one coherent owner before
+   the explicit visual veto can become empty.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Inventory every Normals draw at its exact source site, then capture/replay the
-complete owner without changing source geometry or GL output. Preserve CPU
-immediate normal/tangent lines, drawable-buffer derived lines, transforms, face
-filters, colors, depth/cull/raster state and global order. Prove both production
-paths, forward/reverse depth and invalid/no-owner cases on the physical M1 Max
-before removing only `RENDER_DEBUG_NORMALS`.
+Inventory every Texel Density draw at its exact source site, then capture/replay
+the complete owner without changing source geometry or GL output. Preserve all
+producer selection, vertex/index/texture inputs, transforms, face filters,
+colors, depth/cull/raster/blend state, side effects and global order. Prove the
+production paths, forward/reverse depth and invalid/no-owner cases on the
+physical M1 Max before removing only `RENDER_DEBUG_TEXEL_DENSITY`.
 
 ## Non-negotiable open gates
 

@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-02 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `5110b2b9fc` (`feat(metal): replay physics shapes natively`)
+**Renderer code checkpoint:** `08973b83dc` (`feat(metal): replay debug normals natively`)
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -10,36 +10,35 @@ append-only archives.
 
 ## Active implementation checkpoint
 
-M-008 remains `doing`; M-012 is complete. Commit `5110b2b9fc` captures and
-replays Develop **Physics Shapes** across the source's exact three-pass
-transaction. Depth fill, translucent color fill and color wire records preserve
-box, sphere, cylinder, primitive-volume mesh, decomposition/base hull and
-generated convex-hull production, including bridge/model transforms and the
-existing asynchronous hull-build/fetch side effects.
+M-008 remains `doing`; M-012 is complete. Commit `08973b83dc` captures and
+replays both reachable Develop **Normals** source paths. Volume faces retain the
+exact CPU yellow normal and cyan tangent line construction, including inverse-
+scale normalization, draw length and live transform. Non-volume drawables
+retain their live Metal position/normal/tangent and 16- or 32-bit index buffers;
+native vertex variants expand one normal and optional tangent line per triangle-
+index occurrence without a per-frame geometry copy.
 
-Fill replay uses original triangle topology, back-face culling, LEQUAL depth and
-the source RGB-only color masks. Triangle wire replay retains triangle topology
-and culling, applies the exact polygon-offset sign for forward/reverse depth and
-reconstructs the source three-pixel line footprint with nine one-pixel
-screen-space instances. Cyan/magenta/yellow fallback boxes use the established
-three-pixel wide-line path and remain uncullable line primitives. Validation
-rejects missing storage, non-finite vertices/transforms/colors, invalid pass,
-ranges/topology/state/order and every cross-owner collision. Physics Shapes
-participates in the global render-debug order merge without changing physics
-shape generation or fallback behavior.
+Replay preserves the GL vertex/geometry shader's view-space direction
+normalization, one-pixel lines, disabled culling, standard alpha blend,
+RGB-only writes and read-only LEQUAL world depth under forward and reverse Z.
+Volume HUD normals remain covered by ordered native immediate-mode UI capture;
+an unexpected non-volume HUD path invalidates the transaction. Validation
+rejects missing storage, non-finite data, invalid kinds/colors/ranges/index
+widths/buffer offsets/transforms/draw lengths/tangent contracts/state/order and
+every cross-owner collision.
 
 Prior native advanced-output owners remain covered: global world wireframe,
 static/rigged world and HUD Highlight Transparent, Show Updates to Objects blips,
 Wind Vectors, Agent Target, Points, Composition, reflection-probe neighbor links,
 Texture Anim, Update Type, Batch Size, Lights, Impostors, Shadow Frusta, the
 Develop far-plane projection overlay, manual reflection-probe volumes, Collision
-Skeleton, Joints, Bounding Boxes, Raycast, Occlusion, Octree and Physics Shapes. The current OSS ARM64
+Skeleton, Joints, Bounding Boxes, Raycast, Occlusion, Octree, Physics Shapes and
+Normals. The current OSS ARM64
 viewer links only the nonfunctional `llphysicsextensionsos` pathfinding stub, so
 pathfinding visualization is not a reachable retained-Alchemy output or a
 release-critical port target. Nine text-only and four unused render-debug masks
 remain native-eligible. The explicit visual veto now contains exactly:
 
-- NORMALS
 - TEXEL_DENSITY
 
 The separate latent pathfinding guard remains fail-closed.
@@ -62,32 +61,32 @@ prove shadow parity.
 ## Build and test evidence
 
 - The complete RelWithDebInfo, Debug and Release physical Metal suites each
-  passed 51,308 assertions across 52 cases under Metal API and load-action
+  passed 51,416 assertions across 52 cases under Metal API and load-action
   validation. Offline MSL compiled in all three configurations.
-- Coverage proves depth-only color preservation, all three passes, triangle-wire
-  and explicit fallback-wide-line production, forward/reverse depth, exact RGB-
-  only destination-alpha preservation, invalid/no-owner inputs and cross-owner
-  order rejection.
+- Coverage proves explicit CPU normal/tangent lines, zero-copy u16/u32 indexed
+  normal and optional tangent expansion, forward/reverse read-only depth, exact
+  RGB-only destination-alpha preservation, invalid/no-owner inputs and cross-
+  owner order rejection.
 - Warnings-as-errors RelWithDebInfo production integration and the source-exact
   Release build below compiled, linked, staged and signed the final code.
 - The neutral gate, `ctest --test-dir build-Darwin-ninja-os-arm64 -C
   RelWithDebInfo -LE 'manual|gl' --output-on-failure -j 8`, passed 484/484 in
-  40.43 seconds.
+  35.58 seconds.
 - The preceding deliberately unfiltered 574-test inventory had six reproducible
   legacy GL-only failures and five skips. It was not rerun for this bounded owner
   and is not represented as a green gate.
 - Source-exact `AL_METAL_PRESET=ninja-os-arm64
   AL_METAL_BUILD_DIR=build-Darwin-ninja-os-arm64 AL_METAL_CONFIG=Release
   AL_METAL_JOBS=8 tools/metal/build.sh build` passed at committed code head
-  `5110b2b9fc21e300f7cdf724aa70ceefb8624435` after a 161-step rebuild and
-  produced Development build `26.4.0d68085` (`26.4.0.68085`). Generated build
+  `08973b83dccad57d39fa0386c4f8463385761d2a` after a 161-step rebuild and
+  produced Development build `26.4.0d68087` (`26.4.0.68087`). Generated build
   state embeds the full SHA.
 - Executable SHA-256:
-  `791597f39f48a34c005891fd8216371dddba769993957b434185df48661363f8`.
+  `039fbe6e2af93d5c9fc63d8c94b79a574323aa908a4a27a08c7a16c6807f445d`.
   Packaged/source MSL SHA-256:
-  `16d904f070eb3000210b7581f42312bc88bfa5f257d6ff1593c13646752f51b9`;
+  `73955209f611038a5e4fe0305642614fefee30766dcd26fd03b7df7d3933df20`;
   compiled metallib SHA-256:
-  `f6266b2331e1a410967fb79902d33446c44647e3d73706f1e6fdf13f69f1b7ae`.
+  `fd64dfedceb9056e85090916b7e0dab2d8e17c553cc4ffe63ea1b5e67647c297`.
 - Deep strict signing passed; `tools/metal/verify_app.sh` verified all 349
   Mach-O slices as ARM64. Packaged and source MSL compare byte-identically.
 - `tools/metal/doctor.sh` passed on Apple M1 Max with 64 GiB unified memory and
@@ -103,8 +102,8 @@ prove shadow parity.
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
 | M-007 world/material | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence; broader live parity remains open. |
-| M-008 advanced views/effects | doing | Wireframe, Wind Vectors, Agent Target, Points, Composition, reflection-probe links, Texture Anim, Update Type, Batch Size, Lights, Impostors, Shadow Frusta, Collision Skeleton, Joints, BBOXES, Raycast, Occlusion, Octree, Physics Shapes, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. Two visual modes remain fail-closed; exact RLVa parity is M-013. |
-| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The explicit two-mode render-debug world-output set remains pending audit/porting. |
+| M-008 advanced views/effects | doing | Wireframe, Wind Vectors, Agent Target, Points, Composition, reflection-probe links, Texture Anim, Update Type, Batch Size, Lights, Impostors, Shadow Frusta, Collision Skeleton, Joints, BBOXES, Raycast, Occlusion, Octree, Physics Shapes, Normals, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. Texel Density is the sole explicit visual veto; exact RLVa parity is M-013. |
+| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The final explicit render-debug world-output owner remains pending audit/porting. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
 | M-012 Computer Use bridge | complete | Exact-path semantic login/in-world/control/logout operation is verified and used for acceptance. |
@@ -112,29 +111,28 @@ prove shadow parity.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Develop Physics Shapes no longer
-requires GL world presentation for its depth, fill or wire passes across every
-reachable shape family, while every uncaptured visual debug setting remains
-fail-closed.
+**Advances the complete product:** yes. Develop Normals no longer requires GL
+world presentation for volume CPU lines or non-volume indexed normal/tangent
+expansion, while every uncaptured visual debug setting remains fail-closed.
 
-**Deferred critical work:** the two remaining non-RLVa advanced-view owners;
+**Deferred critical work:** the final remaining non-RLVa advanced-view owner;
 controlled live wireframe, material, editing and shadow comparisons; full feature
 and stability matrices; viewer-owned OpenGL removal; and paired quality-equivalent
 M1 Max measurements. Exact RLVa behavior/image parity is separately deferred as
 non-critical M-013. Reproducible distinct release proof and independent build/review evidence also remain open.
 
-**Evidence-based priority:** audit `RENDER_DEBUG_NORMALS` next. It contains both
-CPU immediate normal/tangent line generation and drawable-buffer geometry-
-derived output, so its exact source paths, transforms, filtering and state must
-be reconciled before changing authority. Texel Density remains the final
-explicit textured-geometry owner.
+**Evidence-based priority:** audit `RENDER_DEBUG_TEXEL_DENSITY` next. It is the
+final explicit textured-geometry owner and must retain every reachable producer,
+shader input, texture/state dependency, transform and side effect before the
+world-output veto can become empty.
 
 ## Exact next actions
 
-1. Inventory every Normals source path, transform, face filter and normal/tangent
-   construction rule before changing presentation ownership.
-2. Capture/replay the complete owner with physical CPU-generated, drawable-
-   derived and forward/reverse-Z proof before removing only
-   `RENDER_DEBUG_NORMALS` from the veto.
+1. Inventory every Texel Density producer, shader, buffer/texture dependency,
+   transform, filter, state transition and side effect before changing
+   presentation ownership.
+2. Capture/replay the complete owner with physical textured-geometry and
+   forward/reverse-Z proof before removing only `RENDER_DEBUG_TEXEL_DENSITY`
+   from the veto.
 3. Continue strict no-GL and controlled live parity; keep exact RLVa parity in
    M-013 and require shadows enabled in both viewers for shadow pairs.
