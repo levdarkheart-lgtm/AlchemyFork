@@ -36,6 +36,7 @@ chronological transcript.
 | Native Lights face and procedural-bounds implementation and source-exact validation, 2026-11-02 | [metal-port-lights-debug-checkpoint-2026-11-02.md](metal-port-lights-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Native Impostors additive wide-outline implementation and source-exact validation, 2026-11-02 | [metal-port-impostor-debug-checkpoint-2026-11-02.md](metal-port-impostor-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Native Shadow Frusta cascade/volume implementation and source-exact validation, 2026-11-02 | [metal-port-shadow-frusta-debug-checkpoint-2026-11-02.md](metal-port-shadow-frusta-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
+| Native avatar collision-volume line/sphere implementation and source-exact validation, 2026-11-02 | [metal-port-avatar-volume-debug-checkpoint-2026-11-02.md](metal-port-avatar-volume-debug-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.

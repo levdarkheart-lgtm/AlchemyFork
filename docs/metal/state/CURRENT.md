@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-02 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `c9f600b12f` (`feat(metal): replay shadow frusta debug output`)
+**Renderer code checkpoint:** `ad3970530d` (`feat(metal): replay avatar collision volumes`)
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -10,38 +10,41 @@ append-only archives.
 
 ## Active implementation checkpoint
 
-M-008 remains `doing`; M-012 is complete. Commit `c9f600b12f` captures and
-replays Develop **Shadow Frusta** from the exact centralized source block. The
-capture retains four optional cascade point sets, each cascade's 24-vertex
-extent box and 24-vertex camera outline, and the conditional 10/4/4-vertex
-side/near/far volume strips in source order. It validates the live RGB-only
-alpha-blend, no-cull, one-pixel line/point, read-only `LEQUAL` depth state and
-fails the frame closed on state, topology, finite-data, overflow or allocation
-disagreement.
+M-008 remains `doing`; M-012 is complete. Commit `ad3970530d` captures and
+replays Develop **Collision Skeleton** from the exact centralized avatar
+collision-volume owner. An outer transaction limits the shared
+`render_sphere_and_line()` helper to this owner and requires exactly two
+line-plus-sphere pairs per collision volume. Each pair retains the live line
+MVP, exact post-scale sphere MVP, end vector, visible/occluded colors, source
+scale and traversal order. Capture validates RGB-only alpha blend, no cull,
+visible `LEQUAL` writable depth, occluded `GREATER` read-only depth and rejects
+partial or count-mismatched traversal.
 
-The native owner reuses the established debug vertex/fragment pair, with exact
-red/green/blue/magenta cascade colors, opaque points/lines, alpha-0.1 volume
-strips, eight-pixel cascade points and destination-alpha preservation. It uses
-forward/reverse read-only depth and encodes after reflection-probe debug output
-but before Wind Vectors, matching source order. Validation requires the exact
-batch grammar and conditional volume presence; no-owner output remains identical.
+The native owner builds one immutable LLRenderSphere-compatible 20x30 mesh
+(651 float4 vertices and 3,600 uint16 indices) and reuses the established
+constant-colour pipeline. For each source pair it encodes the visible line and
+sphere with writable depth, then the occluded line and sphere with complementary
+read-only depth; reverse-Z uses `GEQUAL` and `LESS`. Validation enforces the
+1.0/0.05 shell/dot alternation, ordinary blue/pastel-blue or control-avatar
+red/pastel-red shell colors, white dot colors, shared pair transforms and exact
+cross-owner source ordering. Destination alpha remains unchanged.
 
 Prior native advanced-output owners remain covered: global world wireframe,
 static/rigged world and HUD Highlight Transparent, Show Updates to Objects blips,
 Wind Vectors, Agent Target, Points, Composition, reflection-probe neighbor links,
 Texture Anim, Update Type, Batch Size, Lights, Impostors, Shadow Frusta, the
-Develop far-plane projection overlay and manual reflection-probe volumes. The
+Develop far-plane projection overlay, manual reflection-probe volumes and
+Collision Skeleton. The
 current OSS ARM64 viewer links
 only the nonfunctional `llphysicsextensionsos` pathfinding stub, so pathfinding
 visualization is not a reachable retained-Alchemy output or release-critical port
 target. Nine text-only and four unused render-debug masks remain native-eligible.
-The explicit visual veto now contains these 9 modes:
+The explicit visual veto now contains these 8 modes:
 
 - BBOXES
 - OCTREE
 - OCCLUSION
 - RAYCAST
-- AVATAR_VOLUME
 - AVATAR_JOINTS
 - PHYSICS_SHAPES
 - NORMALS
@@ -66,27 +69,27 @@ shadow parity.
 
 ## Build and test evidence
 
-- Focused physical RelWithDebInfo world-owner case passed 3,744 assertions under
+- Focused physical RelWithDebInfo world-owner case passed 3,907 assertions under
   Metal API/load-action validation.
 - Complete RelWithDebInfo, Debug and Release physical Metal suites each passed
-  47,512 assertions across 52 cases under the same validation layers. Warm
-  elapsed times were 2.49, 2.70 and 2.55 seconds respectively. Offline MSL
+  47,675 assertions across 52 cases under the same validation layers. Warm
+  elapsed times were 1.17, 1.40 and 1.19 seconds respectively. Offline MSL
   compiled in all three configurations.
-- Tests prove exact topology and colors, conditional volume presence, alpha
-  blending with destination alpha retained, forward/reverse read-only depth,
-  no-owner color/depth identity, invalid storage/data/topology rejection and the
-  shadow-before-wind overwrite order. No new MSL entry point was required.
+- Tests prove exact shell/dot scale and colors, pair transform agreement, alpha
+  preservation, forward/reverse visible writable depth, forward/reverse occluded
+  read-only depth, invalid input rejection and explicit cross-owner source order.
+  No new MSL entry point was required.
 - Warnings-as-errors RelWithDebInfo production viewer integration compiled,
   linked, staged and signed across 127 cacheable tasks. Debug and Release Metal
   renderer, built-in MSL and GPU tests compiled and linked.
 - `ctest --test-dir build-Darwin-ninja-os-arm64 -C RelWithDebInfo -LE
-  'manual|gl' --output-on-failure -j 8` passed 484/484 in 35.42 seconds.
+  'manual|gl' --output-on-failure -j 8` passed 484/484 in 41.47 seconds.
 - Source-exact `AL_METAL_CONFIG=Release AL_METAL_JOBS=8
-  tools/metal/build.sh build` passed at committed code head `c9f600b12f` after
-  127 cacheable compilation tasks and produced Development build
-  `26.4.0d68071`.
+  tools/metal/build.sh build` passed at committed code head `ad3970530d` with
+  0 hits across 127 cacheable compilation tasks and produced Development build
+  `26.4.0d68073` (`26.4.0.68073`).
 - Executable SHA-256:
-  `a32a43c92176b4873ccec625e951f68079c60eb67aeb49feddf76a29f2428c42`.
+  `f14c2d56eb3e3bb82d055c1fabdce935832c32d606b64bf21be97ef493b3ca15`.
   Packaged/source MSL SHA-256:
   `3c918952dd66d3122d683d478020e13d99e0485508e95ce9d0245dc0f13bf393`;
   compiled metallib SHA-256:
@@ -105,8 +108,8 @@ shadow parity.
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
 | M-007 world/material | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence; broader live parity remains open. |
-| M-008 advanced views/effects | doing | Wireframe, Wind Vectors, Agent Target, Points, Composition, reflection-probe links, Texture Anim, Update Type, Batch Size, Lights, Impostors, Shadow Frusta, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. Text-only/unused render-debug modes no longer veto; 9 visual modes remain fail-closed. OSS pathfinding is a nonfunctional stub. Broader debug/shadows/post/output parity remains open; exact RLVa parity is M-013. |
-| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The explicit 9-mode render-debug world-output set remains pending audit/porting. |
+| M-008 advanced views/effects | doing | Wireframe, Wind Vectors, Agent Target, Points, Composition, reflection-probe links, Texture Anim, Update Type, Batch Size, Lights, Impostors, Shadow Frusta, Collision Skeleton, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. Text-only/unused render-debug modes no longer veto; 8 visual modes remain fail-closed. OSS pathfinding is a nonfunctional stub. Broader debug/shadows/post/output parity remains open; exact RLVa parity is M-013. |
+| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The explicit 8-mode render-debug world-output set remains pending audit/porting. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
 | M-012 Computer Use bridge | complete | Exact-path semantic login/in-world/control/logout operation is verified and used for acceptance. |
@@ -114,7 +117,7 @@ shadow parity.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Develop Shadow Frusta no longer requires GL
+**Advances the complete product:** yes. Develop Collision Skeleton no longer requires GL
 world presentation, while every other uncaptured visual debug setting remains
 fail-closed.
 
@@ -125,20 +128,23 @@ M1 Max measurements. Independent build/review evidence and reproducible distinct
 release proof also remain open. Exact RLVa behavior/image parity is separately
 deferred as non-critical M-013.
 
-**Evidence-based priority:** implement `RENDER_DEBUG_AVATAR_VOLUME` next. Bounded
-source inspection shows a centralized finite owner: for each collision volume,
-two line-plus-sphere pairs share the joint world matrix and switch between the
-visible `LEQUAL` pass and occluded `GREATER` read-only pass. It is narrower than
-the remaining octree, occlusion, bounding-box, raycast, avatar-joint, physics,
-normal and texel-density owners.
+**Evidence-based priority:** implement `RENDER_DEBUG_AVATAR_JOINTS` next. Bounded
+source inspection shows one world call to `renderBones()`. Its skeleton segment
+loop reuses the now-native line-plus-sphere primitive; the remaining finite
+output is yellow joint-space rigged bounds and cyan world-space rigged attachment
+face bounds. The world transaction must stay separate from model-preview calls.
+This is narrower and has more proven reusable infrastructure than the remaining
+octree, occlusion, bounding-box, raycast, physics, normal and texel-density
+owners.
 
 ## Exact next actions
 
-1. Capture and replay Develop **Collision Skeleton** from the centralized avatar
-   collision-volume owner, preserving joint transforms, end vectors, two sphere
-   scales, control-avatar colors and visible/occluded pass order and depth state.
-2. Prove empty controls, ordinary/control-avatar colors, forward/reverse visible
-   and occluded depth, ordering and invalid-input rejection on the physical M1
-   Max before removing only `RENDER_DEBUG_AVATAR_VOLUME` from the veto.
+1. Capture and replay Develop **Joints** only around the spatial
+   `renderBones()` call, preserving skeleton transforms, override/rigged/default
+   colors, 0.001 sphere scale and visible/occluded depth order.
+2. Capture the yellow joint-space rigged bounds and cyan world-space rigged
+   attachment-face bounds; prove empty controls, forward/reverse depth, ordering
+   and invalid-input rejection on the physical M1 Max before removing only
+   `RENDER_DEBUG_AVATAR_JOINTS` from the veto.
 3. Continue strict no-GL work and controlled live parity; keep exact RLVa parity
    in M-013 and require shadows enabled in both viewers for shadow pairs.
