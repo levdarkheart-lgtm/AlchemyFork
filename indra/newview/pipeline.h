@@ -80,6 +80,7 @@ class LLViewerJointMesh;
 class LLGLTexture;
 class LLImageGL;
 class LLVertexBuffer;
+class LLVolumeFace;
 #if LL_DARWIN
 class ALMetalDevice;
 class ALMetalRenderTarget;
@@ -457,6 +458,17 @@ public:
         bool outline);
     void endMetalPhysicsShapePass(U32 pass);
     void endMetalPhysicsShapeCapture();
+    // Retain Develop > Normals across the complete world spatial traversal.
+    // Volume faces preserve the source CPU inverse-scale line construction;
+    // other drawable faces retain their Metal vertex/index mirrors and let
+    // the native vertex stage replace the GL geometry-shader expansion.
+    void beginMetalNormalCapture();
+    void captureMetalNormalVolumeFace(
+        const LLVolumeFace& face, const LLVector4a& inverse_scale,
+        F32 draw_length, bool tangent);
+    void captureMetalNormalBufferFace(
+        const LLFace& face, F32 draw_length, bool with_tangents);
+    void endMetalNormalCapture();
     // Retain Develop > Points across the complete world spatial traversal.
     // Each drawable batch records its current region/bridge transform; the
     // traversal order also preserves interleaving with Agent Target.
@@ -1569,7 +1581,6 @@ public:
         // Keep this list explicit: broad mRenderDebugMask != 0 eligibility
         // silently turns text-only diagnostics into a GL world fallback.
         RENDER_DEBUG_GL_WORLD_OUTPUT =
-            RENDER_DEBUG_NORMALS |
             RENDER_DEBUG_TEXEL_DENSITY,
     };
 

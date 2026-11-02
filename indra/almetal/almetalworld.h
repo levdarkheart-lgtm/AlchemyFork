@@ -649,6 +649,45 @@ struct ALMetalWorldPhysicsShapeBatch
     float color[4]{};
 };
 
+// Develop > Normals has two source paths. LLVOVolume faces generate explicit
+// CPU normal/tangent line pairs after applying the source inverse-scale rule;
+// non-volume drawables retain their indexed position/normal/tangent buffers
+// and expand one line per triangle-index occurrence in the vertex shader.
+enum class ALMetalWorldNormalKind : std::uint32_t
+{
+    explicit_lines,
+    indexed_geometry,
+};
+
+struct ALMetalWorldNormalVertex
+{
+    float position[4] = {0.f, 0.f, 0.f, 1.f};
+};
+
+struct ALMetalWorldNormalBatch
+{
+    ALMetalWorldNormalKind kind =
+        ALMetalWorldNormalKind::explicit_lines;
+    std::uint32_t first_vertex = 0;
+    std::uint32_t line_vertex_count = 0;
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::size_t normal_offset = 0;
+    std::size_t tangent_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
+    bool with_tangents = false;
+    std::uint64_t order = 0;
+    float modelview_projection[16]{};
+    float modelview[16]{};
+    float projection[16]{};
+    float color[4]{};
+    float draw_length = 0.f;
+};
+
 // Develop > Points emits one opaque white, one-pixel point at every valid
 // drawable face centre. World traversal can switch transforms at spatial-
 // bridge boundaries and can interleave the self-avatar Agent Target owner, so
@@ -1114,6 +1153,10 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t physics_shape_vertex_count = 0;
     const ALMetalWorldPhysicsShapeBatch* physics_shape_batches = nullptr;
     std::size_t physics_shape_batch_count = 0;
+    const ALMetalWorldNormalVertex* normal_vertices = nullptr;
+    std::size_t normal_vertex_count = 0;
+    const ALMetalWorldNormalBatch* normal_batches = nullptr;
+    std::size_t normal_batch_count = 0;
     const ALMetalWorldDebugPointVertex* debug_points = nullptr;
     std::size_t debug_point_count = 0;
     const ALMetalWorldDebugPointBatch* debug_point_batches = nullptr;

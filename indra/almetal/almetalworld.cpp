@@ -156,6 +156,15 @@ namespace
         float screen_line_width[4]{};
     };
     static_assert(sizeof(WorldBoundingBoxConstants) == 144);
+    struct alignas(16) WorldNormalConstants
+    {
+        float modelview[16]{};
+        float projection[16]{};
+        float draw[4]{};
+        std::uint32_t config[4]{};
+    };
+    static_assert(sizeof(WorldNormalConstants) == 160);
+    static_assert(sizeof(ALMetalWorldNormalVertex) == 16);
     static_assert(sizeof(ALMetalWorldRaycastVertex) == 16);
     static_assert(sizeof(ALMetalWorldOcclusionBatch) % 16 == 0);
     static_assert(sizeof(ALMetalWorldWindVectorVertex) == 32);
@@ -1374,6 +1383,10 @@ struct ALMetalWorldGBufferRenderer::Impl
         physics_shape_depth_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         physics_shape_wire_pipelines;
+    // HDR x index width x normal-only/normal+tangent.
+    std::array<std::array<
+        std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>, 2>, 2>
+        normal_debug_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         composition_debug_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -2787,6 +2800,36 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         if (!impl->physics_shape_wire_pipelines[hdr])
         {
             return nullptr;
+        }
+
+        for (std::size_t index32 = 0; index32 < 2; ++index32)
+        for (std::size_t tangents = 0; tangents < 2; ++tangents)
+        {
+            ALMetalRenderPipelineDescriptor normal_descriptor =
+                raycast_line_descriptor;
+            normal_descriptor.vertex_function = index32
+                ? (tangents
+                       ? "almetal_world_normal_u32_tangent_vertex"
+                       : "almetal_world_normal_u32_vertex")
+                : (tangents
+                       ? "almetal_world_normal_u16_tangent_vertex"
+                       : "almetal_world_normal_u16_vertex");
+            normal_descriptor.fragment_function =
+                "almetal_world_normal_fragment";
+            normal_descriptor.label = hdr
+                ? (tangents
+                       ? "Alchemy HDR world normal/tangent debug pipeline"
+                       : "Alchemy HDR world normal debug pipeline")
+                : (tangents
+                       ? "Alchemy world normal/tangent debug pipeline"
+                       : "Alchemy world normal debug pipeline");
+            impl->normal_debug_pipelines[hdr][index32][tangents] =
+                ALMetalRenderPipeline::create(
+                    device, normal_descriptor, error);
+            if (!impl->normal_debug_pipelines[hdr][index32][tangents])
+            {
+                return nullptr;
+            }
         }
 
         ALMetalRenderPipelineDescriptor raycast_box_descriptor =
@@ -11516,6 +11559,117 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         previous_physics_shape_order = batch.order;
         previous_physics_shape_pass = batch.pass;
     }
+    if ((scene.normal_vertex_count != 0 && !scene.normal_vertices) ||
+        (scene.normal_batch_count != 0 && !scene.normal_batches) ||
+        scene.normal_vertex_count >
+            std::numeric_limits<std::uint32_t>::max() ||
+        scene.normal_vertex_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldNormalVertex) ||
+        scene.normal_batch_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldNormalBatch))
+    {
+        setError(error, "Metal world Normals storage is invalid");
+        return nullptr;
+    }
+    for (std::size_t index = 0;
+         index < scene.normal_vertex_count; ++index)
+    {
+        const ALMetalWorldNormalVertex& vertex =
+            scene.normal_vertices[index];
+        if (!finiteValues(vertex.position, 4) ||
+            vertex.position[3] != 1.f)
+        {
+            setError(error, "Metal world Normals vertex is invalid");
+            return nullptr;
+        }
+    }
+    constexpr std::size_t normal_float4_stride = sizeof(float) * 4;
+    std::size_t expected_normal_vertex = 0;
+    std::uint64_t previous_normal_order = 0;
+    for (std::size_t index = 0;
+         index < scene.normal_batch_count; ++index)
+    {
+        const ALMetalWorldNormalBatch& batch =
+            scene.normal_batches[index];
+        const bool index_type_valid =
+            batch.index_type == ALMetalIndexType::uint16 ||
+            batch.index_type == ALMetalIndexType::uint32;
+        const std::size_t index_stride =
+            batch.index_type == ALMetalIndexType::uint32 ? 4u : 2u;
+        const std::size_t first = batch.first_vertex;
+        const std::size_t line_count = batch.line_vertex_count;
+        const bool explicit_color =
+            ((batch.color[0] == 1.f && batch.color[1] == 1.f &&
+              batch.color[2] == 0.f) ||
+             (batch.color[0] == 0.f && batch.color[1] == 1.f &&
+              batch.color[2] == 1.f)) && batch.color[3] == 1.f;
+        const bool explicit_lines =
+            batch.kind == ALMetalWorldNormalKind::explicit_lines &&
+            !batch.vertices && !batch.indices &&
+            batch.position_offset == 0 && batch.normal_offset == 0 &&
+            batch.tangent_offset == 0 && batch.vertex_count == 0 &&
+            batch.index_offset == 0 && batch.index_count == 0 &&
+            !batch.with_tangents && batch.draw_length == 0.f &&
+            line_count != 0 && line_count % 2 == 0 &&
+            first == expected_normal_vertex &&
+            first <= scene.normal_vertex_count &&
+            line_count <= scene.normal_vertex_count - first &&
+            explicit_color &&
+            finiteValues(batch.modelview_projection, 16);
+        const bool tangent_range = !batch.with_tangents
+            ? batch.tangent_offset == 0
+            : batch.tangent_offset % normal_float4_stride == 0 &&
+                  rangeFits(batch.tangent_offset, batch.vertex_count,
+                            normal_float4_stride,
+                            batch.vertices
+                                ? batch.vertices->length() : 0);
+        const bool indexed_geometry =
+            batch.kind == ALMetalWorldNormalKind::indexed_geometry &&
+            first == 0 && line_count == 0 && batch.vertices &&
+            batch.indices && index_type_valid &&
+            batch.vertex_count != 0 && batch.index_count != 0 &&
+            batch.index_count % 3 == 0 &&
+            batch.index_count <=
+                std::numeric_limits<std::uint32_t>::max() /
+                    (batch.with_tangents ? 4u : 2u) &&
+            batch.position_offset % normal_float4_stride == 0 &&
+            batch.normal_offset % normal_float4_stride == 0 &&
+            batch.index_offset % index_stride == 0 &&
+            rangeFits(batch.position_offset, batch.vertex_count,
+                      normal_float4_stride, batch.vertices->length()) &&
+            rangeFits(batch.normal_offset, batch.vertex_count,
+                      normal_float4_stride, batch.vertices->length()) &&
+            tangent_range &&
+            rangeFits(batch.index_offset, batch.index_count,
+                      index_stride, batch.indices->length()) &&
+            finiteValues(batch.modelview, 16) &&
+            finiteValues(batch.projection, 16) &&
+            std::isfinite(batch.draw_length) &&
+            std::all_of(
+                std::begin(batch.color), std::end(batch.color),
+                [](float value) { return value == 0.f; });
+        if ((!explicit_lines && !indexed_geometry) ||
+            !finiteValues(batch.modelview_projection, 16) ||
+            (index != 0 && batch.order <= previous_normal_order) ||
+            (scene.agent_target_line_vertex_count != 0 &&
+             batch.order == scene.agent_target_order))
+        {
+            setError(error, "Metal world Normals batch is invalid");
+            return nullptr;
+        }
+        if (explicit_lines)
+        {
+            expected_normal_vertex += line_count;
+        }
+        previous_normal_order = batch.order;
+    }
+    if (expected_normal_vertex != scene.normal_vertex_count)
+    {
+        setError(error, "Metal world Normals storage is invalid");
+        return nullptr;
+    }
     const bool has_shadow_frusta =
         scene.shadow_frustum_vertex_count != 0 ||
         scene.shadow_frustum_batch_count != 0;
@@ -12055,6 +12209,49 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         return false;
     };
     if (order_collides(
+            scene.normal_batches, scene.normal_batch_count,
+            scene.physics_shape_batches,
+            scene.physics_shape_batch_count) ||
+        order_collides(
+            scene.normal_batches, scene.normal_batch_count,
+            scene.octree_batches, scene.octree_batch_count) ||
+        order_collides(
+            scene.normal_batches, scene.normal_batch_count,
+            scene.occlusion_batches, scene.occlusion_batch_count) ||
+        order_collides(
+            scene.normal_batches, scene.normal_batch_count,
+            scene.avatar_volume_batches,
+            scene.avatar_volume_batch_count) ||
+        order_collides(
+            scene.normal_batches, scene.normal_batch_count,
+            scene.avatar_joint_batches,
+            scene.avatar_joint_batch_count) ||
+        order_collides(
+            scene.normal_batches, scene.normal_batch_count,
+            scene.bounding_box_batches,
+            scene.bounding_box_batch_count) ||
+        order_collides(
+            scene.normal_batches, scene.normal_batch_count,
+            scene.raycast_batches, scene.raycast_batch_count) ||
+        order_collides(
+            scene.normal_batches, scene.normal_batch_count,
+            scene.debug_point_batches, scene.debug_point_batch_count) ||
+        order_collides(
+            scene.normal_batches, scene.normal_batch_count,
+            scene.texture_anim_batches,
+            scene.texture_anim_batch_count) ||
+        order_collides(
+            scene.normal_batches, scene.normal_batch_count,
+            scene.update_type_batches,
+            scene.update_type_batch_count) ||
+        order_collides(
+            scene.normal_batches, scene.normal_batch_count,
+            scene.batch_size_batches, scene.batch_size_batch_count) ||
+        order_collides(
+            scene.normal_batches, scene.normal_batch_count,
+            scene.light_debug_batches,
+            scene.light_debug_batch_count) ||
+        order_collides(
             scene.physics_shape_batches,
             scene.physics_shape_batch_count,
             scene.octree_batches, scene.octree_batch_count) ||
@@ -13588,6 +13785,25 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             !physics_shape_vertex_buffer->write(
                 0, scene.physics_shape_vertices,
                 descriptor.length, error))
+        {
+            return nullptr;
+        }
+    }
+
+    std::unique_ptr<ALMetalBuffer> normal_vertex_buffer;
+    if (scene.normal_vertex_count != 0)
+    {
+        ALMetalBufferDescriptor descriptor;
+        descriptor.length = scene.normal_vertex_count *
+            sizeof(ALMetalWorldNormalVertex);
+        descriptor.storage = ALMetalStorageMode::shared;
+        descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+        descriptor.label = "Alchemy world explicit normal lines";
+        normal_vertex_buffer = ALMetalBuffer::create(
+            *mImpl->device, descriptor, error);
+        if (!normal_vertex_buffer ||
+            !normal_vertex_buffer->write(
+                0, scene.normal_vertices, descriptor.length, error))
         {
             return nullptr;
         }
@@ -16302,6 +16518,82 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 ALMetalPrimitiveType::triangle,
                 0, draw_count, instance_count, error);
     };
+    const auto encode_normal_batch =
+        [&](const ALMetalWorldNormalBatch& batch)
+    {
+        const ALMetalDepthStencilState* depth = scene.reverse_z
+            ? mImpl->reverse_readonly_depth.get()
+            : mImpl->forward_readonly_depth.get();
+        if (batch.kind == ALMetalWorldNormalKind::explicit_lines)
+        {
+            WorldBoundingBoxConstants constants{};
+            std::memcpy(constants.modelview_projection,
+                        batch.modelview_projection,
+                        sizeof(constants.modelview_projection));
+            std::memcpy(constants.color, batch.color,
+                        sizeof(constants.color));
+            constants.config[0] = scene.reverse_z ? 1u : 0u;
+            const std::size_t offset =
+                static_cast<std::size_t>(batch.first_vertex) *
+                sizeof(ALMetalWorldNormalVertex);
+            return normal_vertex_buffer &&
+                encoder->setDepthStencilState(depth, error) &&
+                encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+                encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setTriangleFillMode(
+                    ALMetalTriangleFillMode::fill, error) &&
+                encoder->setPipeline(
+                    *mImpl->raycast_line_pipelines[
+                        scene.hdr ? 1 : 0], error) &&
+                encoder->setVertexBuffer(
+                    0, *normal_vertex_buffer, offset, error) &&
+                encoder->setVertexBytes(
+                    1, &constants, sizeof(constants), error) &&
+                encoder->setFragmentBytes(
+                    0, &constants, sizeof(constants), error) &&
+                encoder->draw(
+                    ALMetalPrimitiveType::line, 0,
+                    batch.line_vertex_count, 1, error);
+        }
+
+        WorldNormalConstants constants{};
+        std::memcpy(constants.modelview, batch.modelview,
+                    sizeof(constants.modelview));
+        std::memcpy(constants.projection, batch.projection,
+                    sizeof(constants.projection));
+        constants.draw[0] = batch.draw_length;
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        const std::size_t index32 =
+            batch.index_type == ALMetalIndexType::uint32 ? 1u : 0u;
+        const std::size_t tangents = batch.with_tangents ? 1u : 0u;
+        bool batch_encoded =
+            encoder->setDepthStencilState(depth, error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::none, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *mImpl->normal_debug_pipelines[
+                    scene.hdr ? 1 : 0][index32][tangents], error) &&
+            encoder->setVertexBuffer(
+                0, *batch.vertices, batch.position_offset, error) &&
+            encoder->setVertexBuffer(
+                1, *batch.vertices, batch.normal_offset, error) &&
+            encoder->setVertexBuffer(
+                3, *batch.indices, batch.index_offset, error) &&
+            encoder->setVertexBytes(
+                4, &constants, sizeof(constants), error);
+        if (batch_encoded && batch.with_tangents)
+        {
+            batch_encoded = encoder->setVertexBuffer(
+                2, *batch.vertices, batch.tangent_offset, error);
+        }
+        const std::uint32_t expansion =
+            batch.with_tangents ? 4u : 2u;
+        return batch_encoded && encoder->draw(
+            ALMetalPrimitiveType::line, 0,
+            batch.index_count * expansion, 1, error);
+    };
     const auto encode_debug_point_batch =
         [&](const ALMetalWorldDebugPointBatch& batch)
     {
@@ -16521,6 +16813,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     std::size_t occlusion_batch_index = 0;
     std::size_t octree_batch_index = 0;
     std::size_t physics_shape_batch_index = 0;
+    std::size_t normal_batch_index = 0;
     std::size_t debug_point_batch_index = 0;
     std::size_t texture_anim_batch_index = 0;
     std::size_t update_type_batch_index = 0;
@@ -16535,6 +16828,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             octree_batch_index < scene.octree_batch_count ||
             physics_shape_batch_index <
                 scene.physics_shape_batch_count ||
+            normal_batch_index < scene.normal_batch_count ||
             debug_point_batch_index < scene.debug_point_batch_count ||
             texture_anim_batch_index < scene.texture_anim_batch_count ||
             update_type_batch_index < scene.update_type_batch_count ||
@@ -16552,6 +16846,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             occlusion,
             octree,
             physics_shape,
+            normal,
             debug_point,
             texture_anim,
             update_type,
@@ -16636,6 +16931,17 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             if (!owner_selected || order < owner_order)
             {
                 owner = RenderDebugOwner::physics_shape;
+                owner_selected = true;
+                owner_order = order;
+            }
+        }
+        if (normal_batch_index < scene.normal_batch_count)
+        {
+            const std::uint64_t order = scene.normal_batches[
+                normal_batch_index].order;
+            if (!owner_selected || order < owner_order)
+            {
+                owner = RenderDebugOwner::normal;
                 owner_selected = true;
                 owner_order = order;
             }
@@ -16734,6 +17040,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                 encoded = encode_physics_shape_batch(
                     scene.physics_shape_batches[
                         physics_shape_batch_index++]);
+                break;
+            case RenderDebugOwner::normal:
+                encoded = encode_normal_batch(
+                    scene.normal_batches[normal_batch_index++]);
                 break;
             case RenderDebugOwner::debug_point:
                 encoded = encode_debug_point_batch(

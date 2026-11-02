@@ -2219,6 +2219,117 @@ vertex ALMetalWorldTextureAnimVaryings almetal_world_raycast_line_vertex(
     return output;
 }
 
+struct ALMetalWorldNormalConstants
+{
+    float4x4 modelview;
+    float4x4 projection;
+    // x = source debug_normal_draw_length.
+    float4 draw;
+    // x = reverse Z.
+    uint4 config;
+};
+
+struct ALMetalWorldNormalVaryings
+{
+    float4 position [[position]];
+    float4 color;
+};
+
+static ALMetalWorldNormalVaryings almetal_world_normal_output(
+    float4 position, float4 direction, bool tangent, uint endpoint,
+    constant ALMetalWorldNormalConstants& constants)
+{
+    float4 view_position = constants.modelview *
+        float4(position.xyz, 1.0);
+    if (endpoint != 0u)
+    {
+        const float3x3 modelview_direction = float3x3(
+            constants.modelview[0].xyz,
+            constants.modelview[1].xyz,
+            constants.modelview[2].xyz);
+        view_position.xyz += constants.draw.x * normalize(
+            modelview_direction * direction.xyz);
+    }
+    float4 clip_position = constants.projection * view_position;
+    clip_position.y = -clip_position.y;
+
+    ALMetalWorldNormalVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.color = tangent
+        ? float4(0.0, 1.0, 1.0, 1.0)
+        : float4(1.0, 1.0, 0.0, 1.0);
+    return output;
+}
+
+vertex ALMetalWorldNormalVaryings almetal_world_normal_u16_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device ushort* indices [[buffer(3)]],
+    constant ALMetalWorldNormalConstants& constants [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint source_index = uint(indices[vertex_id >> 1u]);
+    return almetal_world_normal_output(
+        positions[source_index], normals[source_index], false,
+        vertex_id & 1u, constants);
+}
+
+vertex ALMetalWorldNormalVaryings
+almetal_world_normal_u16_tangent_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float4* tangents [[buffer(2)]],
+    const device ushort* indices [[buffer(3)]],
+    constant ALMetalWorldNormalConstants& constants [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint line_id = vertex_id >> 1u;
+    const bool tangent = (line_id & 1u) != 0u;
+    const uint source_index = uint(indices[line_id >> 1u]);
+    return almetal_world_normal_output(
+        positions[source_index],
+        tangent ? tangents[source_index] : normals[source_index],
+        tangent, vertex_id & 1u, constants);
+}
+
+vertex ALMetalWorldNormalVaryings almetal_world_normal_u32_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device uint* indices [[buffer(3)]],
+    constant ALMetalWorldNormalConstants& constants [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint source_index = indices[vertex_id >> 1u];
+    return almetal_world_normal_output(
+        positions[source_index], normals[source_index], false,
+        vertex_id & 1u, constants);
+}
+
+vertex ALMetalWorldNormalVaryings
+almetal_world_normal_u32_tangent_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    const device float4* tangents [[buffer(2)]],
+    const device uint* indices [[buffer(3)]],
+    constant ALMetalWorldNormalConstants& constants [[buffer(4)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint line_id = vertex_id >> 1u;
+    const bool tangent = (line_id & 1u) != 0u;
+    const uint source_index = indices[line_id >> 1u];
+    return almetal_world_normal_output(
+        positions[source_index],
+        tangent ? tangents[source_index] : normals[source_index],
+        tangent, vertex_id & 1u, constants);
+}
+
+fragment float4 almetal_world_normal_fragment(
+    ALMetalWorldNormalVaryings input [[stage_in]])
+{
+    return max(input.color, float4(0.0));
+}
+
 vertex ALMetalWorldTextureAnimVaryings
 almetal_world_raycast_wide_line_vertex(
     const device float4* positions [[buffer(0)]],

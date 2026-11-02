@@ -2137,6 +2137,10 @@ void renderNormals(LLDrawable *drawablep)
 
                 gGL.flush();
                 gGL.diffuseColor4f(1, 1, 0, 1);
+#if LL_DARWIN
+                gPipeline.captureMetalNormalVolumeFace(
+                    face, inv_scale, draw_length, false);
+#endif
                 gGL.begin(LLRender::LINES);
                 for (S32 j = 0; j < face.mNumVertices; ++j)
                 {
@@ -2158,6 +2162,10 @@ void renderNormals(LLDrawable *drawablep)
                 {
                     gGL.flush();
                     gGL.diffuseColor4f(0, 1, 1, 1);
+#if LL_DARWIN
+                    gPipeline.captureMetalNormalVolumeFace(
+                        face, inv_scale, draw_length, true);
+#endif
                     gGL.begin(LLRender::LINES);
                     for (S32 j = 0; j < face.mNumVertices; ++j)
                     {
@@ -2189,8 +2197,12 @@ void renderNormals(LLDrawable *drawablep)
                 U32 mask_vn = LLVertexBuffer::TYPE_VERTEX | LLVertexBuffer::TYPE_NORMAL;
                 if ((buf->getTypeMask() & mask_vn) != mask_vn) { continue; }
 
+                const bool with_tangents =
+                    (buf->getTypeMask() &
+                     LLVertexBuffer::TYPE_TANGENT) ==
+                    LLVertexBuffer::TYPE_TANGENT;
                 LLGLSLShader* shader;
-                if ((buf->getTypeMask() & LLVertexBuffer::TYPE_TANGENT) != LLVertexBuffer::TYPE_TANGENT)
+                if (!with_tangents)
                 {
                     shader = &gNormalDebugProgram[NORMAL_DEBUG_SHADER_DEFAULT];
                 }
@@ -2205,6 +2217,10 @@ void renderNormals(LLDrawable *drawablep)
                 LLRenderPass::applyModelMatrix(&facep->getDrawable()->getRegion()->mRenderMatrix);
 
                 buf->setBuffer();
+#if LL_DARWIN
+                gPipeline.captureMetalNormalBufferFace(
+                    face, draw_length, with_tangents);
+#endif
                 // *NOTE: The render type in the vertex shader is TRIANGLES, but gets converted to LINES in the geometry shader
                 buf->drawRange(LLRender::TRIANGLES, face.getGeomIndex(), face.getGeomIndex() + face.getGeomCount()-1, face.getIndicesCount(), face.getIndicesStart());
             }

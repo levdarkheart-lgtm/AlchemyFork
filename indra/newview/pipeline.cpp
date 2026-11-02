@@ -617,6 +617,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 physics_shape_pass = 0;
     bool physics_shape_capture_active = false;
     bool physics_shape_pass_active = false;
+    std::vector<ALMetalWorldNormalVertex> normal_vertices;
+    std::vector<ALMetalWorldNormalBatch> normal_batches;
+    bool normal_capture_active = false;
     std::vector<ALMetalWorldDebugPointVertex> debug_points;
     std::vector<ALMetalWorldDebugPointBatch> debug_point_batches;
     ALMetalWorldDebugPointBatch debug_point_batch;
@@ -4084,6 +4087,9 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.physics_shape_pass = 0;
     capture.physics_shape_capture_active = false;
     capture.physics_shape_pass_active = false;
+    capture.normal_vertices.clear();
+    capture.normal_batches.clear();
+    capture.normal_capture_active = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -6336,6 +6342,269 @@ void LLPipeline::endMetalPhysicsShapeCapture()
     }
 }
 
+static bool metalNormalStateIsExact()
+{
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    LLRender::eBlendFactor color_source;
+    LLRender::eBlendFactor color_destination;
+    LLRender::eBlendFactor alpha_source;
+    LLRender::eBlendFactor alpha_destination;
+    gGL.getBlendFunc(color_source, color_destination,
+                     alpha_source, alpha_destination);
+    U32 rgb_equation = 0;
+    U32 alpha_equation = 0;
+    gGL.getBlendEquation(rgb_equation, alpha_equation);
+    return LLGLState::isEnabled(GL_BLEND) &&
+        !LLGLState::isEnabled(GL_CULL_FACE) &&
+        LLGLDepthTest::depthEnabled() &&
+        !LLGLDepthTest::depthWriteEnabled() &&
+        LLGLDepthTest::depthFunction() == GL_LEQUAL &&
+        color_source == LLRender::BF_SOURCE_ALPHA &&
+        color_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
+        alpha_source == LLRender::BF_SOURCE_ALPHA &&
+        alpha_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
+        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
+        color_mask[0] && color_mask[1] && color_mask[2] &&
+        !color_mask[3] && gGL.getLineWidth() == 1.f &&
+        gGL.getPolygonMode() == GL_FILL;
+}
+
+void LLPipeline::beginMetalNormalCapture()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || capture.normal_capture_active ||
+        !capture.normal_vertices.empty() ||
+        !capture.normal_batches.empty())
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+    capture.normal_capture_active = true;
+}
+
+void LLPipeline::captureMetalNormalVolumeFace(
+    const LLVolumeFace& face, const LLVector4a& inverse_scale,
+    F32 draw_length, bool tangent)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.normal_capture_active)
+    {
+        return;
+    }
+    if (face.mNumVertices <= 0)
+    {
+        return;
+    }
+
+    const LLColor4& color = gGL.getDiffuseColor();
+    const bool color_valid = tangent
+        ? color.mV[0] == 0.f && color.mV[1] == 1.f &&
+              color.mV[2] == 1.f && color.mV[3] == 1.f
+        : color.mV[0] == 1.f && color.mV[1] == 1.f &&
+              color.mV[2] == 0.f && color.mV[3] == 1.f;
+    const LLVector4a* directions = tangent
+        ? face.mTangents : face.mNormals;
+    const std::size_t vertex_count =
+        static_cast<std::size_t>(face.mNumVertices) * 2u;
+    if (!capture.complete || !face.mPositions || !directions ||
+        !inverse_scale.isFinite3() || !std::isfinite(draw_length) ||
+        !color_valid || !metalNormalStateIsExact() ||
+        vertex_count > std::numeric_limits<U32>::max() ||
+        capture.normal_vertices.size() >
+            std::numeric_limits<U32>::max() - vertex_count ||
+        capture.render_debug_order == std::numeric_limits<U64>::max())
+    {
+        capture.markIncomplete(__LINE__);
+        capture.normal_vertices.clear();
+        capture.normal_batches.clear();
+        return;
+    }
+
+    const std::size_t first = capture.normal_vertices.size();
+    try
+    {
+        capture.normal_vertices.reserve(first + vertex_count);
+        for (S32 index = 0; index < face.mNumVertices; ++index)
+        {
+            LLVector4a direction = directions[index];
+            if (!tangent)
+            {
+                direction.mul(inverse_scale);
+            }
+            direction.normalize3fast();
+            direction.mul(draw_length);
+            LLVector4a endpoint;
+            endpoint.setAdd(face.mPositions[index], direction);
+            if (!face.mPositions[index].isFinite3() ||
+                !endpoint.isFinite3())
+            {
+                capture.normal_vertices.resize(first);
+                capture.markIncomplete(__LINE__);
+                capture.normal_batches.clear();
+                return;
+            }
+            ALMetalWorldNormalVertex start;
+            ALMetalWorldNormalVertex end;
+            std::memcpy(start.position,
+                        face.mPositions[index].getF32ptr(),
+                        sizeof(float) * 3);
+            std::memcpy(end.position, endpoint.getF32ptr(),
+                        sizeof(float) * 3);
+            capture.normal_vertices.push_back(start);
+            capture.normal_vertices.push_back(end);
+        }
+
+        LLMatrix4a modelview_projection;
+        modelview_projection.setMul(
+            gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+        ALMetalWorldNormalBatch batch;
+        batch.kind = ALMetalWorldNormalKind::explicit_lines;
+        batch.first_vertex = static_cast<U32>(first);
+        batch.line_vertex_count = static_cast<U32>(vertex_count);
+        batch.order = capture.render_debug_order++;
+        std::memcpy(batch.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.modelview_projection));
+        std::memcpy(batch.color, color.mV, sizeof(batch.color));
+        capture.normal_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.normal_vertices.resize(first);
+        capture.markIncomplete(__LINE__);
+        capture.normal_batches.clear();
+    }
+}
+
+void LLPipeline::captureMetalNormalBufferFace(
+    const LLFace& face, F32 draw_length, bool with_tangents)
+{
+    // All current HUD-partition normal owners are LLVOVolumes and therefore
+    // use the immediate line path already mirrored by LLRender. If a future
+    // non-volume HUD drawable reaches this shader path, retain GL rather than
+    // silently omitting it from the ordered native UI transaction.
+    if (sRenderingHUDs && gGL.hasMetalUITextureCapture())
+    {
+        gGL.invalidateMetalUITextureCapture(
+            "Normals encountered an unsupported non-volume HUD drawable");
+        return;
+    }
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.normal_capture_active)
+    {
+        return;
+    }
+
+    LLVertexBuffer* buffer = face.getVertexBuffer();
+    if (!buffer || face.getGeomCount() == 0 ||
+        face.getIndicesCount() == 0)
+    {
+        return;
+    }
+    const std::uint32_t expansion = with_tangents ? 4u : 2u;
+    const std::size_t geom_first = face.getGeomIndex();
+    const std::size_t geom_count = face.getGeomCount();
+    if (!capture.complete || face.getIndicesStart() < 0 ||
+        face.getIndicesCount() % 3 != 0 ||
+        face.getIndicesCount() >
+            std::numeric_limits<U32>::max() / expansion ||
+        geom_first > buffer->getNumVerts() ||
+        geom_count > buffer->getNumVerts() - geom_first ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
+        (with_tangents &&
+         !buffer->hasDataType(LLVertexBuffer::TYPE_TANGENT)) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer() ||
+        (buffer->getIndexStride() != sizeof(U16) &&
+         buffer->getIndexStride() != sizeof(U32)) ||
+        !std::isfinite(draw_length) || !metalNormalStateIsExact() ||
+        capture.render_debug_order == std::numeric_limits<U64>::max())
+    {
+        capture.markIncomplete(__LINE__);
+        capture.normal_vertices.clear();
+        capture.normal_batches.clear();
+        return;
+    }
+
+    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    const LLMatrix4a& projection = gGL.getProjectionMatrix();
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(modelview, projection);
+    ALMetalWorldNormalBatch batch;
+    batch.kind = ALMetalWorldNormalKind::indexed_geometry;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(
+        LLVertexBuffer::TYPE_VERTEX);
+    batch.normal_offset = buffer->getOffset(
+        LLVertexBuffer::TYPE_NORMAL);
+    batch.tangent_offset = with_tangents
+        ? buffer->getOffset(LLVertexBuffer::TYPE_TANGENT) : 0;
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_offset =
+        static_cast<std::size_t>(face.getIndicesStart()) *
+        buffer->getIndexStride();
+    batch.index_type = buffer->getIndexStride() == sizeof(U32)
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = face.getIndicesCount();
+    batch.with_tangents = with_tangents;
+    batch.order = capture.render_debug_order++;
+    batch.draw_length = draw_length;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.modelview, modelview.getF32ptr(),
+                sizeof(batch.modelview));
+    std::memcpy(batch.projection, projection.getF32ptr(),
+                sizeof(batch.projection));
+    try
+    {
+        capture.normal_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.normal_vertices.clear();
+        capture.normal_batches.clear();
+    }
+}
+
+void LLPipeline::endMetalNormalCapture()
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.normal_capture_active)
+    {
+        return;
+    }
+    capture.normal_capture_active = false;
+    if (!capture.complete)
+    {
+        capture.normal_vertices.clear();
+        capture.normal_batches.clear();
+    }
+}
+
 void LLPipeline::beginMetalRaycastCapture()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -8189,6 +8458,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.physics_shape_batches.data();
         scene.physics_shape_batch_count =
             capture.physics_shape_batches.size();
+        scene.normal_vertices = capture.normal_vertices.data();
+        scene.normal_vertex_count = capture.normal_vertices.size();
+        scene.normal_batches = capture.normal_batches.data();
+        scene.normal_batch_count = capture.normal_batches.size();
         scene.debug_points = capture.debug_points.data();
         scene.debug_point_count = capture.debug_points.size();
         scene.debug_point_batches = capture.debug_point_batches.data();
@@ -9893,6 +10166,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.physics_shape_pass = 0;
     capture.physics_shape_capture_active = false;
     capture.physics_shape_pass_active = false;
+    capture.normal_vertices.clear();
+    capture.normal_batches.clear();
+    capture.normal_capture_active = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -22505,9 +22781,15 @@ void LLPipeline::renderDebug()
             !hud_only && hasRenderDebugMask(RENDER_DEBUG_RAYCAST);
         const bool capture_octree =
             !hud_only && hasRenderDebugMask(RENDER_DEBUG_OCTREE);
+        const bool capture_normals =
+            !hud_only && hasRenderDebugMask(RENDER_DEBUG_NORMALS);
         if (capture_octree)
         {
             beginMetalOctreeCapture();
+        }
+        if (capture_normals)
+        {
+            beginMetalNormalCapture();
         }
         if (capture_debug_points)
         {
@@ -22554,6 +22836,10 @@ void LLPipeline::renderDebug()
         if (capture_octree)
         {
             endMetalOctreeCapture();
+        }
+        if (capture_normals)
+        {
+            endMetalNormalCapture();
         }
         if (capture_raycast)
         {

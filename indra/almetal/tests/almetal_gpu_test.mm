@@ -7801,6 +7801,360 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             32 * 8, &error));
         CHECK(no_physics_shape_pixels == opaque_forward_pixels);
 
+        // Develop > Normals has two retained owners. Volume faces arrive as
+        // exact CPU-expanded yellow/cyan line pairs, while other drawables
+        // retain indexed geometry and expand normal/tangent lines in the
+        // vertex shader. Both inherit RGB-only standard-alpha blend and
+        // read-only world depth.
+        std::array<ALMetalWorldNormalVertex, 4>
+            explicit_normal_vertices{};
+        const std::array<std::array<float, 3>, 4>
+            explicit_normal_positions{{
+                {{-0.65f, -0.45f, -0.5f}},
+                {{ 0.65f, -0.45f, -0.5f}},
+                {{ 0.f,   -0.65f, -0.5f}},
+                {{ 0.f,    0.65f, -0.5f}},
+            }};
+        for (std::size_t index = 0;
+             index < explicit_normal_vertices.size(); ++index)
+        {
+            std::copy(explicit_normal_positions[index].begin(),
+                      explicit_normal_positions[index].end(),
+                      explicit_normal_vertices[index].position);
+            explicit_normal_vertices[index].position[3] = 1.f;
+        }
+        std::array<ALMetalWorldNormalBatch, 2>
+            explicit_normal_batches{};
+        for (std::size_t index = 0;
+             index < explicit_normal_batches.size(); ++index)
+        {
+            auto& batch = explicit_normal_batches[index];
+            batch.kind = ALMetalWorldNormalKind::explicit_lines;
+            batch.first_vertex = static_cast<std::uint32_t>(index * 2);
+            batch.line_vertex_count = 2;
+            batch.order = index;
+            for (std::size_t axis = 0; axis < 4; ++axis)
+            {
+                batch.modelview_projection[axis * 4 + axis] = 1.f;
+            }
+            batch.color[1] = 1.f;
+            batch.color[3] = 1.f;
+        }
+        explicit_normal_batches[0].color[0] = 1.f;
+        explicit_normal_batches[1].color[2] = 1.f;
+
+        opaque_forward_scene.normal_vertices = nullptr;
+        opaque_forward_scene.normal_vertex_count =
+            explicit_normal_vertices.size();
+        opaque_forward_scene.normal_batches =
+            explicit_normal_batches.data();
+        opaque_forward_scene.normal_batch_count =
+            explicit_normal_batches.size();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Normals storage is invalid");
+        opaque_forward_scene.normal_vertices =
+            explicit_normal_vertices.data();
+        explicit_normal_vertices[0].position[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Normals vertex is invalid");
+        explicit_normal_vertices[0].position[0] = -0.65f;
+        explicit_normal_batches[0].line_vertex_count = 3;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Normals batch is invalid");
+        explicit_normal_batches[0].line_vertex_count = 2;
+        explicit_normal_batches[0].color[0] = 0.5f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Normals batch is invalid");
+        explicit_normal_batches[0].color[0] = 1.f;
+        explicit_normal_batches[1].order = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Normals batch is invalid");
+        explicit_normal_batches[1].order = 1;
+        opaque_forward_scene.normal_batch_count = 1;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Normals storage is invalid");
+        opaque_forward_scene.normal_batch_count =
+            explicit_normal_batches.size();
+
+        error.clear();
+        auto explicit_normals = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(explicit_normals);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            explicit_normal_pixels{};
+        std::array<float, 32 * 32> explicit_normal_depth{};
+        REQUIRE(explicit_normals->colorTexture(0)->readback(
+            *device, 0, 0, {}, explicit_normal_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(explicit_normals->depthStencilTexture()->readback(
+            *device, 0, 0, {}, explicit_normal_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t explicit_normal_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                explicit_normal_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                explicit_normal_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                explicit_normal_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            explicit_normal_changed += changed;
+            if (changed)
+            {
+                CHECK(explicit_normal_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+            }
+        }
+        CHECK(explicit_normal_changed >= 32);
+        CHECK(explicit_normal_depth == opaque_forward_depth);
+
+        auto normal_debug_positions = positions;
+        for (auto& position : normal_debug_positions)
+        {
+            position[2] = -0.5f;
+        }
+        const std::array<std::array<float, 4>, 3>
+            normal_debug_normals{{
+                {{0.f, 1.f, 0.f, 0.f}},
+                {{0.f, 1.f, 0.f, 0.f}},
+                {{0.f, 1.f, 0.f, 0.f}},
+            }};
+        auto normal_debug_vertex_bytes = vertex_bytes;
+        std::memcpy(normal_debug_vertex_bytes.data(),
+                    normal_debug_positions.data(),
+                    sizeof(normal_debug_positions));
+        std::memcpy(normal_debug_vertex_bytes.data() + normal_offset,
+                    normal_debug_normals.data(),
+                    sizeof(normal_debug_normals));
+        ALMetalBufferDescriptor normal_vertex_descriptor =
+            vertex_descriptor;
+        normal_vertex_descriptor.label =
+            "Alchemy indexed normal-debug test vertices";
+        auto normal_debug_vertices = ALMetalBuffer::create(
+            *device, normal_vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(normal_debug_vertices);
+        REQUIRE(normal_debug_vertices->write(
+            0, normal_debug_vertex_bytes.data(),
+            normal_debug_vertex_bytes.size(), &error));
+        const std::array<std::uint32_t, 3>
+            normal_index32_values{{0, 1, 2}};
+        ALMetalBufferDescriptor normal_index32_descriptor;
+        normal_index32_descriptor.length = sizeof(normal_index32_values);
+        normal_index32_descriptor.storage = ALMetalStorageMode::shared;
+        normal_index32_descriptor.label =
+            "Alchemy uint32 normal-debug test indices";
+        auto normal_indices32 = ALMetalBuffer::create(
+            *device, normal_index32_descriptor, &error);
+        INFO(error);
+        REQUIRE(normal_indices32);
+        REQUIRE(normal_indices32->write(
+            0, normal_index32_values.data(),
+            sizeof(normal_index32_values), &error));
+
+        ALMetalWorldNormalBatch indexed_normal_batch;
+        indexed_normal_batch.kind =
+            ALMetalWorldNormalKind::indexed_geometry;
+        indexed_normal_batch.vertices = normal_debug_vertices.get();
+        indexed_normal_batch.position_offset = 0;
+        indexed_normal_batch.normal_offset = normal_offset;
+        indexed_normal_batch.vertex_count = positions.size();
+        indexed_normal_batch.indices = indices.get();
+        indexed_normal_batch.index_type = ALMetalIndexType::uint16;
+        indexed_normal_batch.index_count = index_values.size();
+        indexed_normal_batch.draw_length = 0.35f;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            indexed_normal_batch.modelview_projection[
+                axis * 4 + axis] = 1.f;
+            indexed_normal_batch.modelview[axis * 4 + axis] = 1.f;
+            indexed_normal_batch.projection[axis * 4 + axis] = 1.f;
+        }
+        opaque_forward_scene.normal_vertices = nullptr;
+        opaque_forward_scene.normal_vertex_count = 0;
+        opaque_forward_scene.normal_batches = &indexed_normal_batch;
+        opaque_forward_scene.normal_batch_count = 1;
+
+        indexed_normal_batch.vertices = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Normals batch is invalid");
+        indexed_normal_batch.vertices = normal_debug_vertices.get();
+        indexed_normal_batch.normal_offset =
+            normal_debug_vertex_bytes.size();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Normals batch is invalid");
+        indexed_normal_batch.normal_offset = normal_offset;
+        indexed_normal_batch.index_type =
+            static_cast<ALMetalIndexType>(99);
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Normals batch is invalid");
+        indexed_normal_batch.index_type = ALMetalIndexType::uint16;
+        indexed_normal_batch.with_tangents = true;
+        indexed_normal_batch.tangent_offset =
+            normal_debug_vertex_bytes.size();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Normals batch is invalid");
+        indexed_normal_batch.with_tangents = false;
+        indexed_normal_batch.tangent_offset = 0;
+        indexed_normal_batch.draw_length =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world Normals batch is invalid");
+        indexed_normal_batch.draw_length = 0.35f;
+
+        error.clear();
+        auto indexed_normals = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(indexed_normals);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            indexed_normal_pixels{};
+        std::array<float, 32 * 32> indexed_normal_depth{};
+        REQUIRE(indexed_normals->colorTexture(0)->readback(
+            *device, 0, 0, {}, indexed_normal_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(indexed_normals->depthStencilTexture()->readback(
+            *device, 0, 0, {}, indexed_normal_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t indexed_normal_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                indexed_normal_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                indexed_normal_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                indexed_normal_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            indexed_normal_changed += changed;
+            if (changed)
+            {
+                CHECK(indexed_normal_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+            }
+        }
+        CHECK(indexed_normal_changed >= 12);
+        CHECK(indexed_normal_depth == opaque_forward_depth);
+
+        indexed_normal_batch.with_tangents = true;
+        indexed_normal_batch.tangent_offset = tangent_offset;
+        error.clear();
+        auto indexed_tangents = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(indexed_tangents);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            indexed_tangent_pixels{};
+        REQUIRE(indexed_tangents->colorTexture(0)->readback(
+            *device, 0, 0, {}, indexed_tangent_pixels.data(),
+            32 * 8, &error));
+        CHECK(indexed_tangent_pixels != indexed_normal_pixels);
+
+        indexed_normal_batch.indices = normal_indices32.get();
+        indexed_normal_batch.index_type = ALMetalIndexType::uint32;
+        error.clear();
+        auto indexed_normals_u32 = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(indexed_normals_u32);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            indexed_normal_u32_pixels{};
+        REQUIRE(indexed_normals_u32->colorTexture(0)->readback(
+            *device, 0, 0, {}, indexed_normal_u32_pixels.data(),
+            32 * 8, &error));
+        CHECK(indexed_normal_u32_pixels == indexed_tangent_pixels);
+
+        debug_points[0].position[0] = 0.f;
+        debug_points[0].position[1] = 0.f;
+        debug_points[0].position[2] = 0.f;
+        debug_point_batches[0].first_vertex = 0;
+        debug_point_batches[0].vertex_count = 1;
+        debug_point_batches[0].order = indexed_normal_batch.order;
+        opaque_forward_scene.debug_points = debug_points.data();
+        opaque_forward_scene.debug_point_count = 1;
+        opaque_forward_scene.debug_point_batches =
+            debug_point_batches.data();
+        opaque_forward_scene.debug_point_batch_count = 1;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world render-debug ordering is invalid");
+        opaque_forward_scene.debug_points = nullptr;
+        opaque_forward_scene.debug_point_count = 0;
+        opaque_forward_scene.debug_point_batches = nullptr;
+        opaque_forward_scene.debug_point_batch_count = 0;
+
+        for (auto& position : normal_debug_positions)
+        {
+            position[2] = 0.9f;
+        }
+        REQUIRE(normal_debug_vertices->write(
+            0, normal_debug_positions.data(),
+            sizeof(normal_debug_positions), &error));
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        error.clear();
+        auto reverse_indexed_normals =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_indexed_normals);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_indexed_normal_pixels{};
+        std::array<float, 32 * 32> reverse_indexed_normal_depth{};
+        REQUIRE(reverse_indexed_normals->colorTexture(0)->readback(
+            *device, 0, 0, {}, reverse_indexed_normal_pixels.data(),
+            32 * 8, &error));
+        REQUIRE(reverse_indexed_normals->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_indexed_normal_depth.data(),
+            32 * sizeof(float), &error));
+        CHECK(reverse_indexed_normal_pixels !=
+              reverse_agent_target_baseline_pixels);
+        CHECK(reverse_indexed_normal_depth ==
+              reverse_agent_target_baseline_depth);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        opaque_forward_scene.normal_batches = nullptr;
+        opaque_forward_scene.normal_batch_count = 0;
+        error.clear();
+        auto no_normals = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_normals);
+        std::array<std::uint16_t, 32 * 32 * 4> no_normal_pixels{};
+        REQUIRE(no_normals->colorTexture(0)->readback(
+            *device, 0, 0, {}, no_normal_pixels.data(),
+            32 * 8, &error));
+        CHECK(no_normal_pixels == opaque_forward_pixels);
+
         // Develop > Texture Anim selects visible draw-info triangles whose
         // texture matrix is non-null, but gDebugProgram consumes positions
         // only and emits one fixed translucent-yellow uniform. The enclosing
