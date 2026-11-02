@@ -3,6 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
+**Renderer checkpoint:** Commit `1518b533ce`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -19,7 +20,7 @@ checkpoint detail belongs in the indexed archive.
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent and Batch Size have ordered static/rigged HUD replay. Moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence. Broader live parity remains incomplete. |
 | M-008 | Advanced views/effects and compute | doing | The established native advanced-output set now includes Raycast, Occlusion, Octree, Physics Shapes, Normals and Texel Density. No reachable render-debug world-geometry bit remains in the explicit visual veto. OSS pathfinding is a nonfunctional stub. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, prolonged stability and strict no-GL release evidence remain open. The refreshed 3,351-finding inventory exits 1. Directional shadows are preference-qualified; projector-visible parity is open. Current native mirror Snapshot evidence exposes missing forward/material content, so its guard remains fail-closed. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, prolonged stability and strict no-GL release evidence remain open. The refreshed 3,351-finding inventory exits 1. Directional shadows are preference-qualified; projector-visible parity is open. Hero cube orientation is proven; forward/material ownership and mirror parity remain open and fail-closed. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Exact-path semantic login/in-world/control/logout is verified and used for current acceptance. |
@@ -46,22 +47,28 @@ ordered indexed UI capture. Validation rejects invalid storage, buffers,
 ranges, offsets, index width, transforms, values, state/order and all cross-
 owner collisions.
 
-RelWithDebInfo, Debug and Release physical Metal suites each pass 51,784
+Commit `1518b533ce` adds a source-derived physical regression of the GL
+cube-camera to Metal texture-cube convention. It publishes asymmetric values
+through the production six-face hero path, samples all 96 texel-centre rays and
+would fail a face swap, row/column flip or 90-degree rotation. The direct face
+copy is correct, so no speculative production transform was added.
+
+RelWithDebInfo, Debug and Release physical Metal suites each pass 52,184
 assertions in 52 cases under Metal API/load-action validation. Warnings-as-errors
 production integration passes, and the source-exact Release neutral
-non-manual/non-GL gate passes 484/484 in 35.57 seconds. The prior unfiltered
+non-manual/non-GL gate passes 484/484 in 38.39 seconds. The prior unfiltered
 574-test inventory was not rerun;
 its six GL-only failures and five skips remain recorded without a green claim.
 Harness validation covers all 31 required files and all 24 tooling tests pass.
 
-Source-exact Release Development build `26.4.0d68093` (`26.4.0.68093`) at its
-pre-rewrite, tree-equivalent build identity `38b89cfd58d93bc6ec7d0841a8cdf67b705926dd` passes.
+Source-exact Release Development build `26.4.0d68097` (`26.4.0.68097`) at
+`1518b533ce48b68a13fdcb0d483bcd7df8e070b4` passes.
 Deep strict signing and 349/349 ARM64 inspection pass. Executable SHA-256 is
-`144f256b4d87a35825ac0029f751bf5056ab5af9c1ba8c7cfd4c80fe2a3d00ce`;
+`06c4e8f7b258dc24a64090a464da908fc4543a4819306a07d885a9dca7c57909`;
 packaged/source MSL is
-`73955209f611038a5e4fe0305642614fefee30766dcd26fd03b7df7d3933df20`;
+`d263315d1ea0c2c834e9e5a5d37109e9ec5d56325153220dedc1b2a9ab2ffac9`;
 compiled metallib is
-`fd64dfedceb9056e85090916b7e0dab2d8e17c553cc4ffe63ea1b5e67647c297`.
+`ebd7034235c4f35b13c9874029eff6bbcb61cc3f56c7f3907fd581c112eb96ab`.
 The executable still links OpenGL, so strict no-GL remains open.
 
 The explicit render-debug world-output guard is now empty. The latent
@@ -124,15 +131,20 @@ all verified reference helpers were drained. Exact images, settings manifests,
 comparison and private reproduction notes are retained under ignored
 `artifacts/metal/` and `/private/tmp` paths.
 
+The dry pair cannot assign the visible difference to a renderer owner: the
+cameras and mirror contents differ, and log inspection found 64 candidate
+versus 24 reference fetch-failure/HTTP/missing-resource matches. Require matched
+content/cache convergence before using another pair as causal parity evidence.
+
 Any exact RLVa comparison must enable RLV in Preferences in both viewers, save,
 and restart both. Exact RLVa correctness is deferred M-013; implement only the
 minimum behavior needed to unblock Metal/no-GL cutover.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** Develop Texel Density can retain native authority,
-   and no reachable render-debug world-geometry bit remains in the explicit
-   visual veto. Other uncaptured owner families remain fail-closed.
+1. **Product advancement:** source-derived physical coverage now protects the
+   correct six-face hero camera convention and eliminates a false production
+   transform candidate. Mirror/material ownership remains fail-closed.
 2. **Deferred critical work:** broader post parity; projector-visible,
    alpha/avatar-caster, cascade and quality shadow coverage; controlled live
    comparisons; stability/feature matrices; strict no-GL; independent review;
@@ -146,13 +158,12 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Trace the controlled dry pair's native hero-cube face/row convention,
-environment transform and capture/replay ownership. The direct Metal face copy
-has only same-API synthetic coverage; derive and physically regress the GL
-cube-camera to Metal texture-cube convention before any production edit, then
-repeat this fixture before changing mirror authority. Continue the 3,351-finding GL
-inventory independently. Keep all shadow evidence Preferences/save-qualified
-and exact RLVa deferred in M-013.
+Trace forward/material batch and texture ownership from source, then obtain a
+camera- and content-converged controlled pair before changing mirror authority.
+The six-face camera/row/rotation convention is physically proven and is no
+longer a production-edit candidate. Continue the 3,351-finding GL inventory
+independently. Keep all shadow evidence Preferences/save-qualified and exact
+RLVa deferred in M-013.
 
 ## Non-negotiable open gates
 

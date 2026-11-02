@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-02 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `ed9e64736d` (`fix(metal): admit mirror validation on dev channel`)
+**Renderer code checkpoint:** `1518b533ce` (`test(metal): verify hero cube camera orientation`)
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -68,44 +68,44 @@ direct Metal directional/projector owners. It corroborates directional shadows
 only; projector-visible, alpha/avatar-caster, cascade and PCSS/quality coverage
 remain open. [Exact evidence is archived](archive/CURRENT-shadow-preference-qualified-checkpoint-2026-11-02.md).
 
-A pre-signal sample found 40/40 main-thread samples actively rendering under
-full Metal validation; the blocker was the Development package's Release compile
-gate. Source-exact 68093 reaches native Snapshot readback, but its matched
-256-square pair omits forward content (SSIM `0.855629`); [evidence is archived](archive/CURRENT-hero-mirror-release-gate-and-divergence-checkpoint-2026-11-02.md).
+A source-derived physical regression now proves that GL cube-camera rays,
+native face publication and Metal cube sampling agree for every texel of all
+six asymmetric faces. Direct same-slice copy is correct; no production
+transform edit was justified. [Exact evidence is archived](archive/CURRENT-hero-cube-camera-orientation-checkpoint-2026-11-02.md).
 
-The replacement private dry fixture is frozen: World Map, fixed chair, two
-`Esc` resets and visible mirror. Its 2048x1476 pair matches 416/416 saved visual
-settings, but the non-pixel-exact camera and divergent mirror contents make it
-diagnostic, not parity (`146158b4dd2f...316635a` / `5f2949522861...94f34`).
-Candidate exited cleanly; reference hung at `Display:RenderFlush` after
-`SIGTERM` and required verified-process termination (137). Water is separate.
+The replacement private dry pair remains diagnostic: cameras and mirror
+contents differ, and logs contain 64 candidate versus 24 reference fetch/
+missing-resource matches. It cannot causally identify a renderer owner. The
+next fixture must prove content convergence while source-led forward/material
+batch and texture ownership are isolated. Water remains separate.
 ## Build and test evidence
 
 - The complete RelWithDebInfo, Debug and Release physical Metal suites each
-  passed 51,784 assertions across 52 cases under Metal API and load-action
+  passed 52,184 assertions across 52 cases under Metal API and load-action
   validation. Offline MSL compiled in all three configurations.
-- Coverage proves u16/u32 indexed replay, arbitrary uniform color,
+- Coverage additionally proves the exact six-face GL camera-to-Metal cube
+  convention across 96 asymmetric texels, alongside u16/u32 indexed replay,
   forward/reverse writable depth, exact RGB-only destination-alpha
   preservation, invalid/no-owner inputs and cross-owner order rejection.
 - Warnings-as-errors RelWithDebInfo production integration and the source-exact
   Release build below compiled, linked, staged and signed the final code.
 - The source-exact neutral gate, `ctest --test-dir
   build-Darwin-ninja-os-arm64 -C Release -LE 'manual|gl'
-  --output-on-failure -j 8`, passed 484/484 in 35.57 seconds.
+  --output-on-failure -j 8`, passed 484/484 in 38.39 seconds.
 - The preceding deliberately unfiltered 574-test inventory had six reproducible
   legacy GL-only failures and five skips. It was not rerun for this bounded owner
   and is not represented as a green gate.
 - Source-exact `AL_METAL_PRESET=ninja-os-arm64
   AL_METAL_BUILD_DIR=build-Darwin-ninja-os-arm64 AL_METAL_CONFIG=Release
-  AL_METAL_JOBS=8 tools/metal/build.sh build` passed at the pre-rewrite,
-  tree-equivalent build identity `38b89cfd58d93bc6ec7d0841a8cdf67b705926dd`, producing Development build
-  `26.4.0d68093` (`26.4.0.68093`) with the full SHA embedded.
+  AL_METAL_JOBS=8 tools/metal/build.sh build` passed at
+  `1518b533ce48b68a13fdcb0d483bcd7df8e070b4`, producing Development build
+  `26.4.0d68097` (`26.4.0.68097`) with the full SHA embedded.
 - Executable SHA-256:
-  `144f256b4d87a35825ac0029f751bf5056ab5af9c1ba8c7cfd4c80fe2a3d00ce`.
+  `06c4e8f7b258dc24a64090a464da908fc4543a4819306a07d885a9dca7c57909`.
   Packaged/source MSL SHA-256:
-  `73955209f611038a5e4fe0305642614fefee30766dcd26fd03b7df7d3933df20`;
+  `d263315d1ea0c2c834e9e5a5d37109e9ec5d56325153220dedc1b2a9ab2ffac9`;
   compiled metallib SHA-256:
-  `fd64dfedceb9056e85090916b7e0dab2d8e17c553cc4ffe63ea1b5e67647c297`.
+  `ebd7034235c4f35b13c9874029eff6bbcb61cc3f56c7f3907fd581c112eb96ab`.
 - Deep strict signing passed; `tools/metal/verify_app.sh` verified all 349
   Mach-O slices as ARM64. Packaged and source MSL compare byte-identically.
 - `tools/metal/doctor.sh` passed on Apple M1 Max with 64 GiB unified memory and
@@ -124,7 +124,7 @@ Candidate exited cleanly; reference hung at `Display:RenderFlush` after
 | M-003..M-006 platform/resources/UI | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
 | M-007 world/material | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence; broader live parity remains open. |
 | M-008 advanced views/effects | doing | Wireframe, Wind Vectors, Agent Target, Points, Composition, reflection-probe links, Texture Anim, Update Type, Texel Density, Batch Size, Lights, Impostors, Shadow Frusta, Collision Skeleton, Joints, BBOXES, Raycast, Occlusion, Octree, Physics Shapes, Normals, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. No reachable render-debug world-geometry bit remains in the explicit veto; exact RLVa parity is M-013. |
-| M-009 parity/stability/no-GL | doing | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The refreshed scan covers 2,408 files and 3,351 findings; strict exits 1. Directional shadows are preference-qualified, but projector-visible parity remains open. Current native mirror Snapshot evidence exposes missing forward/material content; its guard remains fail-closed. |
+| M-009 parity/stability/no-GL | doing | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The refreshed scan covers 2,408 files and 3,351 findings; strict exits 1. Directional shadows are preference-qualified, but projector-visible parity remains open. Hero cube orientation is physically proven; forward/material ownership and mirror parity remain open and fail-closed. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
 | M-012 Computer Use bridge | complete | Exact-path semantic login/in-world/control/logout operation is verified and used for acceptance. |
@@ -132,10 +132,10 @@ Candidate exited cleanly; reference hung at `Display:RenderFlush` after
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Develop Texel Density no longer requires
-GL world presentation, and the explicit reachable render-debug world-geometry
-veto is now empty. Uncaptured owners outside that bounded family remain
-fail-closed.
+**Advances the complete product:** yes. The physically regressed hero-cube
+camera convention eliminates a false production-edit candidate and prevents
+face/row/rotation regressions. It does not close mirror parity; uncaptured
+owners remain fail-closed.
 
 **Deferred critical work:** controlled live wireframe, material and editing
 comparisons; projector-visible, alpha/avatar-caster, cascade and quality shadow
@@ -153,8 +153,8 @@ resolving the highest-value presentation-authority gate.
 
 1. Reconcile the refreshed 3,351-finding strict GL inventory against actual
    reachability and presentation authority; the strict exit remains 1.
-2. Use the new controlled mirror pair to isolate the native hero-cube
-   face/row/transform or capture-owner divergence; keep the guard closed.
+2. Isolate forward/material batch and texture ownership with matched content
+   convergence; hero face/row/rotation is proven correct. Keep the guard closed.
 3. Continue controlled live parity and stability. Keep projector-visible and
    remaining shadow coverage open unless Preferences/save-qualified,
    and keep exact RLVa parity deferred in M-013.
