@@ -19,8 +19,8 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent and Batch Size have ordered static/rigged HUD replay. Moving CEF/VLC reference parity remains open. |
 | M-007 | World scene and material correctness | doing | Ordinary/masked fullbright now match GL opaque/RGB-only semantics with physical coverage. Legacy BLEND/stained-glass and broader live parity remain incomplete. |
-| M-008 | Advanced views/effects and compute | doing | The established native advanced-output set now includes Raycast, Occlusion, Octree, Physics Shapes, Normals and Texel Density. No reachable render-debug world-geometry bit remains in the explicit visual veto. OSS pathfinding is a nonfunctional stub. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability and strict no-GL evidence remain open; the 3,351-finding inventory exits 1. Directional shadows and hero cube orientation are bounded/proven. Opaque fullbright is corrected; legacy alpha/mirror parity remain fail-closed. |
+| M-008 | Advanced views/effects and compute | doing | The established native advanced-output set now includes Raycast, Occlusion, Octree, Physics Shapes, Normals and Texel Density. One controlled dry authored-mirror sample is owner-confirmed; broader probe/mirror coverage remains open. No reachable render-debug world-geometry bit remains in the explicit visual veto. OSS pathfinding is a nonfunctional stub. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability and strict no-GL evidence remain open; the 3,351-finding inventory exits 1. Directional shadows, hero cube orientation and one dry authored-mirror sample are bounded/proven. Opaque fullbright is corrected; legacy alpha/stained-glass and broader mirror parity remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; kernel-proven relative launches pass and Firestorm siblings fail closed. |
@@ -137,21 +137,23 @@ watchdog and required termination of the exact verified process (exit 137);
 all verified reference helpers were drained. Exact images, settings manifests,
 comparison and private reproduction notes are retained under ignored
 `artifacts/metal/` and `/private/tmp` paths.
-
-The dry pair cannot assign the visible difference to a renderer owner: the
-cameras and mirror contents differ, and log inspection found 64 candidate
-versus 24 reference fetch-failure/HTTP/missing-resource matches. Require matched
-content/cache convergence before using another pair as causal parity evidence.
-
-Any exact RLVa comparison must enable RLV in Preferences in both viewers, save,
-and restart both. Exact RLVa correctness is deferred M-013; implement only the
-minimum behavior needed to unblock Metal/no-GL cutover.
-
+The prior dry pair cannot assign its difference: cameras/mirror contents differ
+and logs have 64 candidate versus 24 reference fetch/missing-resource matches.
+A later owner-attended replay supersedes it for this fixture. Reference `67607`
+and candidate `68099` used byte-identical 175-setting sessions, the same seated
+coordinates and 12 matching live controls. Both 2048x1476 images contain the
+avatar, horizon and stairs with equivalent exposure/tone; the owner confirmed
+visual equivalence. Native readback, six-face publication and clean exits are
+logged. Camera/cloud/foliage phase keeps metrics descriptive. This accepts one
+dry sample, not all mirrors. [Evidence](../../state/archive/CURRENT-authored-mirror-owner-confirmed-checkpoint-2026-11-02.md).
+Exact RLVa comparison requires RLV saved and both viewers restarted. Exact
+parity is deferred M-013; implement only enough to unblock Metal/no-GL cutover.
 ## Complete-product checkpoint gate
 
 1. **Product advancement:** source-correct opaque fullbright restores content
    that shininess-alpha blending could attenuate or erase; physical coverage
-   protects it and the correct cube convention. Legacy alpha/mirror stay closed.
+   protects it and the cube convention. One dry mirror sample is confirmed;
+   legacy alpha/stained glass and broader mirrors stay open.
 2. **Deferred critical work:** broader post parity; projector-visible,
    alpha/avatar-caster, cascade and quality shadow coverage; controlled live
    comparisons; stability/feature matrices; strict no-GL; independent review;
@@ -165,11 +167,9 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Trace the legacy alpha-pool BLEND/stained-glass batch from source, then obtain a
-camera- and content-converged controlled fixture before changing mirror
-authority. Ordinary/masked fullbright and the six-face cube convention are now
-physically protected. Continue the 3,351-finding GL inventory independently;
-keep shadow evidence Preferences/save-qualified and exact RLVa deferred M-013.
+Move past the accepted dry mirror sample and trace legacy alpha-pool
+BLEND/stained glass. Continue the 3,351-finding GL inventory; keep shadow
+evidence Preferences-qualified and exact RLVa deferred M-013.
 
 ## Non-negotiable open gates
 
