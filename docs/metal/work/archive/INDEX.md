@@ -51,6 +51,7 @@ chronological transcript.
 | Native SSR GL/PBO bootstrap removal and daily visual-review queue execution, 2026-11-02 | [metal-port-native-ssr-cutover-checkpoint-2026-11-02.md](metal-port-native-ssr-cutover-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Native-only pipeline pixel-ingress cutover and source-exact validation, 2026-11-02 | [metal-port-pipeline-pixel-ingress-cutover-checkpoint-2026-11-02.md](metal-port-pipeline-pixel-ingress-cutover-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Native-only default/ordinary reflection-probe publication and source-exact validation, 2026-11-02 | [metal-port-reflection-probe-native-cutover-checkpoint-2026-11-02.md](metal-port-reflection-probe-native-cutover-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
+| Native-only pipeline diagnostic readback and source-exact validation, 2026-11-02 | [metal-port-native-diagnostic-readback-cutover-checkpoint-2026-11-02.md](metal-port-native-diagnostic-readback-cutover-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.
