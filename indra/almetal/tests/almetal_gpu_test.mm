@@ -6887,6 +6887,307 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
             32 * 8, &error));
         CHECK(no_raycast_pixels == opaque_forward_pixels);
 
+        // Develop > Occlusion keeps its split source ownership in one order
+        // stream. Spatial traversal contributes back-face-culled wire
+        // geometry under complementary read-only depth and line bias; the
+        // later selected-group loop contributes filled magenta bounds under
+        // ordinary read-only depth.
+        ALMetalWorldOcclusionBatch occlusion_xray;
+        occlusion_xray.kind =
+            ALMetalWorldOcclusionKind::xray_geometry;
+        occlusion_xray.vertices = vertices.get();
+        occlusion_xray.vertex_count = positions.size();
+        occlusion_xray.indices = indices.get();
+        occlusion_xray.index_count = index_values.size();
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            occlusion_xray.modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        opaque_forward_scene.occlusion_batches = &occlusion_xray;
+        opaque_forward_scene.occlusion_batch_count = 1;
+
+        opaque_forward_scene.occlusion_batches = nullptr;
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error ==
+              "Metal world occlusion batch storage is invalid");
+        opaque_forward_scene.occlusion_batches = &occlusion_xray;
+        occlusion_xray.vertices = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world occlusion batch is invalid");
+        occlusion_xray.vertices = vertices.get();
+        occlusion_xray.index_count = 2;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world occlusion batch is invalid");
+        occlusion_xray.index_count = index_values.size();
+        occlusion_xray.index_type =
+            static_cast<ALMetalIndexType>(99);
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world occlusion batch is invalid");
+        occlusion_xray.index_type = ALMetalIndexType::uint16;
+        occlusion_xray.position_offset = sizeof(float);
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world occlusion batch is invalid");
+        occlusion_xray.position_offset = 0;
+        occlusion_xray.modelview_projection[0] =
+            std::numeric_limits<float>::quiet_NaN();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world occlusion batch is invalid");
+        occlusion_xray.modelview_projection[0] = 1.f;
+        occlusion_xray.kind =
+            static_cast<ALMetalWorldOcclusionKind>(99);
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world occlusion batch is invalid");
+        occlusion_xray.kind =
+            ALMetalWorldOcclusionKind::xray_geometry;
+        opaque_forward_scene.agent_target_lines =
+            agent_target_lines.data();
+        opaque_forward_scene.agent_target_line_vertex_count =
+            agent_target_lines.size();
+        opaque_forward_scene.agent_target_order = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world occlusion batch is invalid");
+        opaque_forward_scene.agent_target_lines = nullptr;
+        opaque_forward_scene.agent_target_line_vertex_count = 0;
+
+        occlusion_xray.modelview_projection[14] = 0.5f;
+        error.clear();
+        auto forward_occlusion_xray =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(forward_occlusion_xray);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            forward_occlusion_xray_pixels{};
+        std::array<float, 32 * 32> forward_occlusion_xray_depth{};
+        REQUIRE(forward_occlusion_xray->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            forward_occlusion_xray_pixels.data(), 32 * 8, &error));
+        REQUIRE(forward_occlusion_xray->depthStencilTexture()->readback(
+            *device, 0, 0, {}, forward_occlusion_xray_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t forward_occlusion_xray_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                forward_occlusion_xray_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                forward_occlusion_xray_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                forward_occlusion_xray_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            forward_occlusion_xray_changed += changed;
+            if (changed)
+            {
+                CHECK(forward_occlusion_xray_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+                CHECK(forward_occlusion_xray_depth[pixel] ==
+                      opaque_forward_depth[pixel]);
+            }
+        }
+        CHECK(forward_occlusion_xray_changed >= 4);
+        CHECK(forward_occlusion_xray_depth == opaque_forward_depth);
+
+        // The source owner explicitly enables back-face culling.
+        occlusion_xray.indices = reversed_indices.get();
+        auto culled_occlusion_xray =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(culled_occlusion_xray);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            culled_occlusion_xray_pixels{};
+        REQUIRE(culled_occlusion_xray->colorTexture(0)->readback(
+            *device, 0, 0, {}, culled_occlusion_xray_pixels.data(),
+            32 * 8, &error));
+        CHECK(culled_occlusion_xray_pixels == opaque_forward_pixels);
+        occlusion_xray.indices = indices.get();
+
+        opaque_forward_scene.gbuffer = reverse_coverage_result.get();
+        opaque_forward_scene.reverse_z = true;
+        occlusion_xray.modelview_projection[14] = -0.15f;
+        auto reverse_occlusion_xray =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(reverse_occlusion_xray);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            reverse_occlusion_xray_pixels{};
+        std::array<float, 32 * 32> reverse_occlusion_xray_depth{};
+        REQUIRE(reverse_occlusion_xray->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            reverse_occlusion_xray_pixels.data(), 32 * 8, &error));
+        REQUIRE(reverse_occlusion_xray->depthStencilTexture()->readback(
+            *device, 0, 0, {}, reverse_occlusion_xray_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t reverse_occlusion_xray_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                reverse_occlusion_xray_pixels[offset + 0] !=
+                    reverse_agent_target_baseline_pixels[offset + 0] ||
+                reverse_occlusion_xray_pixels[offset + 1] !=
+                    reverse_agent_target_baseline_pixels[offset + 1] ||
+                reverse_occlusion_xray_pixels[offset + 2] !=
+                    reverse_agent_target_baseline_pixels[offset + 2];
+            reverse_occlusion_xray_changed += changed;
+            if (changed)
+            {
+                CHECK(reverse_occlusion_xray_pixels[offset + 3] ==
+                      reverse_agent_target_baseline_pixels[offset + 3]);
+                CHECK(reverse_occlusion_xray_depth[pixel] ==
+                      reverse_agent_target_baseline_depth[pixel]);
+            }
+        }
+        CHECK(reverse_occlusion_xray_changed >= 4);
+        CHECK(reverse_occlusion_xray_depth ==
+              reverse_agent_target_baseline_depth);
+
+        opaque_forward_scene.gbuffer = coverage_result.get();
+        opaque_forward_scene.reverse_z = false;
+        ALMetalWorldOcclusionBatch occlusion_bounds;
+        occlusion_bounds.kind =
+            ALMetalWorldOcclusionKind::selected_bounds;
+        occlusion_bounds.center[3] = 1.f;
+        occlusion_bounds.half_extent[0] = 0.4f;
+        occlusion_bounds.half_extent[1] = 0.3f;
+        occlusion_bounds.half_extent[2] = 0.1f;
+        for (std::size_t axis = 0; axis < 4; ++axis)
+        {
+            occlusion_bounds.modelview_projection[axis * 4 + axis] = 1.f;
+        }
+        opaque_forward_scene.occlusion_batches = &occlusion_bounds;
+        occlusion_bounds.half_extent[0] = -0.1f;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world occlusion batch is invalid");
+        occlusion_bounds.half_extent[0] = 0.4f;
+        std::array<ALMetalWorldOcclusionBatch, 2>
+            occlusion_order_batches{{occlusion_xray, occlusion_bounds}};
+        occlusion_order_batches[0].order = 1;
+        occlusion_order_batches[1].order = 0;
+        opaque_forward_scene.occlusion_batches =
+            occlusion_order_batches.data();
+        opaque_forward_scene.occlusion_batch_count =
+            occlusion_order_batches.size();
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world occlusion batch is invalid");
+        opaque_forward_scene.occlusion_batches = &occlusion_bounds;
+        opaque_forward_scene.occlusion_batch_count = 1;
+        error.clear();
+        auto selected_occlusion_bounds =
+            renderer->renderOpaquePostDeferred(
+                opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(selected_occlusion_bounds);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            selected_occlusion_bounds_pixels{};
+        std::array<float, 32 * 32> selected_occlusion_bounds_depth{};
+        REQUIRE(selected_occlusion_bounds->colorTexture(0)->readback(
+            *device, 0, 0, {},
+            selected_occlusion_bounds_pixels.data(), 32 * 8, &error));
+        REQUIRE(selected_occlusion_bounds->depthStencilTexture()->readback(
+            *device, 0, 0, {}, selected_occlusion_bounds_depth.data(),
+            32 * sizeof(float), &error));
+        std::size_t selected_occlusion_bounds_changed = 0;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            const std::size_t offset = pixel * 4;
+            const bool changed =
+                selected_occlusion_bounds_pixels[offset + 0] !=
+                    opaque_forward_pixels[offset + 0] ||
+                selected_occlusion_bounds_pixels[offset + 1] !=
+                    opaque_forward_pixels[offset + 1] ||
+                selected_occlusion_bounds_pixels[offset + 2] !=
+                    opaque_forward_pixels[offset + 2];
+            selected_occlusion_bounds_changed += changed;
+            if (changed)
+            {
+                CHECK(selected_occlusion_bounds_pixels[offset + 3] ==
+                      opaque_forward_pixels[offset + 3]);
+                CHECK(selected_occlusion_bounds_depth[pixel] ==
+                      opaque_forward_depth[pixel]);
+            }
+        }
+        CHECK(selected_occlusion_bounds_changed >= 32);
+        CHECK(selected_occlusion_bounds_depth == opaque_forward_depth);
+
+        debug_points[0].position[0] = 0.f;
+        debug_points[0].position[1] = 0.f;
+        debug_points[0].position[2] = 0.f;
+        debug_point_batches[0].first_vertex = 0;
+        debug_point_batches[0].vertex_count = 1;
+        occlusion_bounds.order = 0;
+        debug_point_batches[0].order = 0;
+        opaque_forward_scene.debug_points = debug_points.data();
+        opaque_forward_scene.debug_point_count = 1;
+        opaque_forward_scene.debug_point_batches =
+            debug_point_batches.data();
+        opaque_forward_scene.debug_point_batch_count = 1;
+        error.clear();
+        CHECK_FALSE(renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error));
+        CHECK(error == "Metal world render-debug ordering is invalid");
+
+        debug_point_batches[0].order = 1;
+        auto point_after_occlusion = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(point_after_occlusion);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            point_after_occlusion_pixels{};
+        REQUIRE(point_after_occlusion->colorTexture(0)->readback(
+            *device, 0, 0, {}, point_after_occlusion_pixels.data(),
+            32 * 8, &error));
+        debug_point_batches[0].order = 0;
+        occlusion_bounds.order = 1;
+        auto occlusion_after_point = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(occlusion_after_point);
+        std::array<std::uint16_t, 32 * 32 * 4>
+            occlusion_after_point_pixels{};
+        REQUIRE(occlusion_after_point->colorTexture(0)->readback(
+            *device, 0, 0, {}, occlusion_after_point_pixels.data(),
+            32 * 8, &error));
+        CHECK(point_after_occlusion_pixels !=
+              occlusion_after_point_pixels);
+
+        opaque_forward_scene.debug_points = nullptr;
+        opaque_forward_scene.debug_point_count = 0;
+        opaque_forward_scene.debug_point_batches = nullptr;
+        opaque_forward_scene.debug_point_batch_count = 0;
+        opaque_forward_scene.occlusion_batches = nullptr;
+        opaque_forward_scene.occlusion_batch_count = 0;
+        auto no_occlusion = renderer->renderOpaquePostDeferred(
+            opaque_forward_scene, &error);
+        INFO(error);
+        REQUIRE(no_occlusion);
+        std::array<std::uint16_t, 32 * 32 * 4> no_occlusion_pixels{};
+        REQUIRE(no_occlusion->colorTexture(0)->readback(
+            *device, 0, 0, {}, no_occlusion_pixels.data(),
+            32 * 8, &error));
+        CHECK(no_occlusion_pixels == opaque_forward_pixels);
+
         // Develop > Texture Anim selects visible draw-info triangles whose
         // texture matrix is non-null, but gDebugProgram consumes positions
         // only and emits one fixed translucent-yellow uniform. The enclosing

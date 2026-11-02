@@ -556,6 +556,33 @@ struct ALMetalWorldRaycastParticle
     float half_extent[4] = {0.1f, 0.1f, 0.1f, 0.f};
 };
 
+// Develop > Occlusion first draws every visible, non-occluded group's retained
+// geometry as back-face-culled wire under complementary read-only depth. It
+// later annotates selected groups with filled, magenta bounds. Keeping both in
+// one ordered stream preserves the split source owners without copying buffers.
+enum class ALMetalWorldOcclusionKind : std::uint32_t
+{
+    xray_geometry,
+    selected_bounds,
+};
+
+struct ALMetalWorldOcclusionBatch
+{
+    ALMetalWorldOcclusionKind kind =
+        ALMetalWorldOcclusionKind::xray_geometry;
+    const ALMetalBuffer* vertices = nullptr;
+    std::size_t position_offset = 0;
+    std::uint32_t vertex_count = 0;
+    const ALMetalBuffer* indices = nullptr;
+    std::size_t index_offset = 0;
+    ALMetalIndexType index_type = ALMetalIndexType::uint16;
+    std::uint32_t index_count = 0;
+    std::uint64_t order = 0;
+    float modelview_projection[16]{};
+    float center[4] = {0.f, 0.f, 0.f, 1.f};
+    float half_extent[4]{};
+};
+
 // Develop > Points emits one opaque white, one-pixel point at every valid
 // drawable face centre. World traversal can switch transforms at spatial-
 // bridge boundaries and can interleave the self-avatar Agent Target owner, so
@@ -1013,6 +1040,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     const ALMetalWorldRaycastBatch* raycast_batches = nullptr;
     std::size_t raycast_batch_count = 0;
     const ALMetalWorldRaycastParticle* raycast_particle = nullptr;
+    const ALMetalWorldOcclusionBatch* occlusion_batches = nullptr;
+    std::size_t occlusion_batch_count = 0;
     const ALMetalWorldDebugPointVertex* debug_points = nullptr;
     std::size_t debug_point_count = 0;
     const ALMetalWorldDebugPointBatch* debug_point_batches = nullptr;

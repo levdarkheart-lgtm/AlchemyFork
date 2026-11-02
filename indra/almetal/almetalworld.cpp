@@ -157,6 +157,7 @@ namespace
     };
     static_assert(sizeof(WorldBoundingBoxConstants) == 144);
     static_assert(sizeof(ALMetalWorldRaycastVertex) == 16);
+    static_assert(sizeof(ALMetalWorldOcclusionBatch) % 16 == 0);
     static_assert(sizeof(ALMetalWorldWindVectorVertex) == 32);
     static_assert(sizeof(ALMetalWorldAvatarVolumeBatch) == 192);
 
@@ -11186,6 +11187,60 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         setError(error, "Metal world raycast particle is invalid");
         return nullptr;
     }
+    if ((scene.occlusion_batch_count != 0 &&
+         !scene.occlusion_batches) ||
+        scene.occlusion_batch_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldOcclusionBatch))
+    {
+        setError(error, "Metal world occlusion batch storage is invalid");
+        return nullptr;
+    }
+    std::uint64_t previous_occlusion_order = 0;
+    for (std::size_t index = 0;
+         index < scene.occlusion_batch_count; ++index)
+    {
+        const ALMetalWorldOcclusionBatch& batch =
+            scene.occlusion_batches[index];
+        const bool index_type_valid =
+            batch.index_type == ALMetalIndexType::uint16 ||
+            batch.index_type == ALMetalIndexType::uint32;
+        const std::size_t index_stride =
+            batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
+        const bool xray_geometry =
+            batch.kind == ALMetalWorldOcclusionKind::xray_geometry &&
+            batch.vertices && batch.indices && index_type_valid &&
+            batch.vertex_count != 0 && batch.index_count != 0 &&
+            batch.index_count % 3 == 0 &&
+            batch.position_offset % (sizeof(float) * 4) == 0 &&
+            batch.index_offset % index_stride == 0 &&
+            rangeFits(batch.position_offset, batch.vertex_count,
+                      sizeof(float) * 4, batch.vertices->length()) &&
+            rangeFits(batch.index_offset, batch.index_count,
+                      index_stride, batch.indices->length());
+        const bool selected_bounds =
+            batch.kind == ALMetalWorldOcclusionKind::selected_bounds &&
+            !batch.vertices && !batch.indices &&
+            batch.position_offset == 0 && batch.vertex_count == 0 &&
+            batch.index_offset == 0 && batch.index_count == 0 &&
+            finiteValues(batch.center, 4) &&
+            finiteValues(batch.half_extent, 4) &&
+            batch.center[3] == 1.f && batch.half_extent[3] == 0.f &&
+            batch.half_extent[0] >= 0.f &&
+            batch.half_extent[1] >= 0.f &&
+            batch.half_extent[2] >= 0.f;
+        if (!finiteValues(batch.modelview_projection, 16) ||
+            (!xray_geometry && !selected_bounds) ||
+            (index != 0 &&
+             batch.order <= previous_occlusion_order) ||
+            (scene.agent_target_line_vertex_count != 0 &&
+             batch.order == scene.agent_target_order))
+        {
+            setError(error, "Metal world occlusion batch is invalid");
+            return nullptr;
+        }
+        previous_occlusion_order = batch.order;
+    }
     const bool has_shadow_frusta =
         scene.shadow_frustum_vertex_count != 0 ||
         scene.shadow_frustum_batch_count != 0;
@@ -11725,6 +11780,33 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         return false;
     };
     if (order_collides(
+            scene.occlusion_batches, scene.occlusion_batch_count,
+            scene.avatar_volume_batches, scene.avatar_volume_batch_count) ||
+        order_collides(
+            scene.occlusion_batches, scene.occlusion_batch_count,
+            scene.avatar_joint_batches, scene.avatar_joint_batch_count) ||
+        order_collides(
+            scene.occlusion_batches, scene.occlusion_batch_count,
+            scene.bounding_box_batches, scene.bounding_box_batch_count) ||
+        order_collides(
+            scene.occlusion_batches, scene.occlusion_batch_count,
+            scene.raycast_batches, scene.raycast_batch_count) ||
+        order_collides(
+            scene.occlusion_batches, scene.occlusion_batch_count,
+            scene.debug_point_batches, scene.debug_point_batch_count) ||
+        order_collides(
+            scene.occlusion_batches, scene.occlusion_batch_count,
+            scene.texture_anim_batches, scene.texture_anim_batch_count) ||
+        order_collides(
+            scene.occlusion_batches, scene.occlusion_batch_count,
+            scene.update_type_batches, scene.update_type_batch_count) ||
+        order_collides(
+            scene.occlusion_batches, scene.occlusion_batch_count,
+            scene.batch_size_batches, scene.batch_size_batch_count) ||
+        order_collides(
+            scene.occlusion_batches, scene.occlusion_batch_count,
+            scene.light_debug_batches, scene.light_debug_batch_count) ||
+        order_collides(
             scene.debug_point_batches, scene.debug_point_batch_count,
             scene.batch_size_batches, scene.batch_size_batch_count) ||
         order_collides(
@@ -15561,6 +15643,85 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             encoder->draw(
                 ALMetalPrimitiveType::line, 0, 24, 1, error);
     };
+    const auto encode_occlusion_batch =
+        [&](const ALMetalWorldOcclusionBatch& batch)
+    {
+        if (batch.kind == ALMetalWorldOcclusionKind::xray_geometry)
+        {
+            WorldTextureAnimConstants constants{};
+            std::memcpy(constants.modelview_projection,
+                        batch.modelview_projection,
+                        sizeof(constants.modelview_projection));
+            constants.color[0] = 0.5f;
+            constants.color[1] = 0.f;
+            constants.color[2] = 0.f;
+            constants.color[3] = 0.25f;
+            constants.config[0] = scene.reverse_z ? 1u : 0u;
+            const float bias = scene.reverse_z ? -1.f : 1.f;
+            return
+                encoder->setDepthStencilState(
+                    scene.reverse_z
+                        ? mImpl->reverse_coverage_depth.get()
+                        : mImpl->forward_coverage_depth.get(),
+                    error) &&
+                encoder->setDepthBias(bias, bias, 0.f, error) &&
+                encoder->setCullMode(ALMetalCullMode::back, error) &&
+                encoder->setTriangleFillMode(
+                    ALMetalTriangleFillMode::lines, error) &&
+                encoder->setPipeline(
+                    *mImpl->texture_anim_pipelines[
+                        scene.hdr ? 1 : 0], error) &&
+                encoder->setVertexBuffer(
+                    0, *batch.vertices, batch.position_offset, error) &&
+                encoder->setVertexBytes(
+                    1, &constants, sizeof(constants), error) &&
+                encoder->setFragmentBytes(
+                    0, &constants, sizeof(constants), error) &&
+                encoder->drawIndexed(
+                    ALMetalPrimitiveType::triangle,
+                    batch.index_count, batch.index_type,
+                    *batch.indices, batch.index_offset, 1, error);
+        }
+
+        WorldBoundingBoxConstants constants{};
+        std::memcpy(constants.modelview_projection,
+                    batch.modelview_projection,
+                    sizeof(constants.modelview_projection));
+        constants.color[0] = 1.f;
+        constants.color[2] = 1.f;
+        constants.color[3] = 1.f;
+        constants.config[0] = scene.reverse_z ? 1u : 0u;
+        std::memcpy(constants.center, batch.center,
+                    sizeof(constants.center));
+        std::memcpy(constants.half_extent, batch.half_extent,
+                    sizeof(constants.half_extent));
+        return
+            encoder->setDepthStencilState(
+                scene.reverse_z
+                    ? mImpl->reverse_readonly_depth.get()
+                    : mImpl->forward_readonly_depth.get(),
+                error) &&
+            encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+            encoder->setCullMode(ALMetalCullMode::back, error) &&
+            encoder->setTriangleFillMode(
+                ALMetalTriangleFillMode::fill, error) &&
+            encoder->setPipeline(
+                *mImpl->raycast_box_pipelines[
+                    scene.hdr ? 1 : 0], error) &&
+            encoder->setVertexBytes(
+                1, &constants, sizeof(constants), error) &&
+            encoder->setFragmentBytes(
+                0, &constants, sizeof(constants), error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle_strip,
+                0, 10, 1, error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle_strip,
+                10, 4, 1, error) &&
+            encoder->draw(
+                ALMetalPrimitiveType::triangle_strip,
+                14, 4, 1, error);
+    };
     const auto encode_debug_point_batch =
         [&](const ALMetalWorldDebugPointBatch& batch)
     {
@@ -15777,6 +15938,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
     std::size_t avatar_joint_batch_index = 0;
     std::size_t bounding_box_batch_index = 0;
     std::size_t raycast_batch_index = 0;
+    std::size_t occlusion_batch_index = 0;
     std::size_t debug_point_batch_index = 0;
     std::size_t texture_anim_batch_index = 0;
     std::size_t update_type_batch_index = 0;
@@ -15787,6 +15949,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             avatar_joint_batch_index < scene.avatar_joint_batch_count ||
             bounding_box_batch_index < scene.bounding_box_batch_count ||
             raycast_batch_index < scene.raycast_batch_count ||
+            occlusion_batch_index < scene.occlusion_batch_count ||
             debug_point_batch_index < scene.debug_point_batch_count ||
             texture_anim_batch_index < scene.texture_anim_batch_count ||
             update_type_batch_index < scene.update_type_batch_count ||
@@ -15801,6 +15964,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             avatar_joint,
             bounding_box,
             raycast,
+            occlusion,
             debug_point,
             texture_anim,
             update_type,
@@ -15851,6 +16015,17 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             if (!owner_selected || order < owner_order)
             {
                 owner = RenderDebugOwner::raycast;
+                owner_selected = true;
+                owner_order = order;
+            }
+        }
+        if (occlusion_batch_index < scene.occlusion_batch_count)
+        {
+            const std::uint64_t order = scene.occlusion_batches[
+                occlusion_batch_index].order;
+            if (!owner_selected || order < owner_order)
+            {
+                owner = RenderDebugOwner::occlusion;
                 owner_selected = true;
                 owner_order = order;
             }
@@ -15934,6 +16109,10 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             case RenderDebugOwner::raycast:
                 encoded = encode_raycast_batch(
                     scene.raycast_batches[raycast_batch_index++]);
+                break;
+            case RenderDebugOwner::occlusion:
+                encoded = encode_occlusion_batch(
+                    scene.occlusion_batches[occlusion_batch_index++]);
                 break;
             case RenderDebugOwner::debug_point:
                 encoded = encode_debug_point_batch(

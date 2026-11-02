@@ -424,6 +424,14 @@ public:
     void endMetalRaycastCapture();
     void captureMetalRaycastParticle(
         const LLVector3& center, const LLVector3& half_extent);
+    // Retain Develop > Occlusion across both source owners. Group-buffer x-ray
+    // geometry is captured during spatial traversal; selected-group filled
+    // bounds are appended by the later pipeline-level annotation loop.
+    void beginMetalOcclusionCapture();
+    void captureMetalOcclusionGeometry(const LLVertexBuffer& buffer);
+    void captureMetalOcclusionBounds(
+        const LLVector4a& center, const LLVector4a& half_extent);
+    void endMetalOcclusionCapture();
     // Retain Develop > Points across the complete world spatial traversal.
     // Each drawable batch records its current region/bridge transform; the
     // traversal order also preserves interleaving with Agent Target.
@@ -1537,7 +1545,6 @@ public:
         // silently turns text-only diagnostics into a GL world fallback.
         RENDER_DEBUG_GL_WORLD_OUTPUT =
             RENDER_DEBUG_OCTREE |
-            RENDER_DEBUG_OCCLUSION |
             RENDER_DEBUG_PHYSICS_SHAPES |
             RENDER_DEBUG_NORMALS |
             RENDER_DEBUG_TEXEL_DENSITY,

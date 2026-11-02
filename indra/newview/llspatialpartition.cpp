@@ -1553,6 +1553,12 @@ void pushBufferVerts(LLSpatialGroup* group, bool push_alpha = true)
                 {
                     for (LLSpatialGroup::buffer_list_t::iterator k = j->second.begin(); k != j->second.end(); ++k)
                     {
+#if LL_DARWIN
+                        if (!push_alpha && *k)
+                        {
+                            gPipeline.captureMetalOcclusionGeometry(**k);
+                        }
+#endif
                         pushBufferVerts(*k);
                     }
                 }

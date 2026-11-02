@@ -608,6 +608,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool raycast_triangle_batch_visible = false;
     ALMetalWorldRaycastParticle raycast_particle;
     bool raycast_particle_valid = false;
+    std::vector<ALMetalWorldOcclusionBatch> occlusion_batches;
+    bool occlusion_capture_active = false;
     std::vector<ALMetalWorldDebugPointVertex> debug_points;
     std::vector<ALMetalWorldDebugPointBatch> debug_point_batches;
     ALMetalWorldDebugPointBatch debug_point_batch;
@@ -4066,6 +4068,8 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.raycast_triangle_batch_visible = false;
     capture.raycast_particle = {};
     capture.raycast_particle_valid = false;
+    capture.occlusion_batches.clear();
+    capture.occlusion_capture_active = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -5456,6 +5460,202 @@ static bool metalRaycastStateIsExact(bool depth_enabled,
         color_mask[0] && color_mask[1] && color_mask[2] &&
         !color_mask[3] && gGL.getLineWidth() == line_width &&
         gGL.getPolygonMode() == polygon_mode;
+}
+
+static bool metalOcclusionXRayStateIsExact()
+{
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    LLRender::eBlendFactor color_source;
+    LLRender::eBlendFactor color_destination;
+    LLRender::eBlendFactor alpha_source;
+    LLRender::eBlendFactor alpha_destination;
+    gGL.getBlendFunc(color_source, color_destination,
+                     alpha_source, alpha_destination);
+    U32 rgb_equation = 0;
+    U32 alpha_equation = 0;
+    gGL.getBlendEquation(rgb_equation, alpha_equation);
+    return LLGLState::isEnabled(GL_BLEND) &&
+        LLGLState::isEnabled(GL_CULL_FACE) &&
+        gGL.getCullFace() == GL_BACK &&
+        LLGLState::isEnabled(GL_POLYGON_OFFSET_LINE) &&
+        LLGLDepthTest::depthEnabled() &&
+        !LLGLDepthTest::depthWriteEnabled() &&
+        LLGLDepthTest::depthFunction() == GL_GREATER &&
+        color_source == LLRender::BF_SOURCE_ALPHA &&
+        color_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
+        alpha_source == LLRender::BF_SOURCE_ALPHA &&
+        alpha_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
+        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
+        color_mask[0] && color_mask[1] && color_mask[2] &&
+        !color_mask[3] && gGL.getLineWidth() == 1.f &&
+        gGL.getPolygonMode() == GL_LINE &&
+        gGL.getPolygonOffsetFactor() == -1.f &&
+        gGL.getPolygonOffsetUnits() == -1.f;
+}
+
+static bool metalOcclusionBoundsStateIsExact()
+{
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    return LLGLState::isEnabled(GL_CULL_FACE) &&
+        gGL.getCullFace() == GL_BACK &&
+        LLGLDepthTest::depthEnabled() &&
+        !LLGLDepthTest::depthWriteEnabled() &&
+        LLGLDepthTest::depthFunction() == GL_LEQUAL &&
+        color_mask[0] && color_mask[1] && color_mask[2] &&
+        !color_mask[3] && gGL.getLineWidth() == 1.f &&
+        gGL.getPolygonMode() == GL_FILL;
+}
+
+void LLPipeline::beginMetalOcclusionCapture()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.complete || capture.occlusion_capture_active ||
+        !capture.occlusion_batches.empty())
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+    capture.occlusion_capture_active = true;
+}
+
+void LLPipeline::captureMetalOcclusionGeometry(
+    const LLVertexBuffer& buffer)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.occlusion_capture_active)
+    {
+        return;
+    }
+    if (buffer.getNumVerts() == 0 || buffer.getNumIndices() == 0)
+    {
+        return;
+    }
+
+    const LLColor4& color = gGL.getDiffuseColor();
+    if (!capture.complete ||
+        !buffer.hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer.getMetalVertexBuffer() ||
+        !buffer.getMetalIndexBuffer() ||
+        (buffer.getIndexStride() != 2 &&
+         buffer.getIndexStride() != 4) ||
+        buffer.getNumIndices() % 3 != 0 ||
+        color.mV[0] != 0.5f || color.mV[1] != 0.f ||
+        color.mV[2] != 0.f || color.mV[3] != 0.25f ||
+        !metalOcclusionXRayStateIsExact() ||
+        capture.render_debug_order == std::numeric_limits<U64>::max())
+    {
+        capture.markIncomplete(__LINE__);
+        capture.occlusion_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldOcclusionBatch batch;
+    batch.kind = ALMetalWorldOcclusionKind::xray_geometry;
+    batch.vertices = buffer.getMetalVertexBuffer();
+    batch.position_offset = buffer.getOffset(
+        LLVertexBuffer::TYPE_VERTEX);
+    batch.vertex_count = buffer.getNumVerts();
+    batch.indices = buffer.getMetalIndexBuffer();
+    batch.index_type = buffer.getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = buffer.getNumIndices();
+    batch.order = capture.render_debug_order++;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    try
+    {
+        capture.occlusion_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.occlusion_batches.clear();
+    }
+}
+
+void LLPipeline::captureMetalOcclusionBounds(
+    const LLVector4a& center, const LLVector4a& half_extent)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.occlusion_capture_active)
+    {
+        return;
+    }
+    const LLColor4& color = gGL.getDiffuseColor();
+    if (!capture.complete || !center.isFinite3() ||
+        !half_extent.isFinite3() ||
+        color.mV[0] != 1.f || color.mV[1] != 0.f ||
+        color.mV[2] != 1.f || color.mV[3] != 1.f ||
+        !metalOcclusionBoundsStateIsExact() ||
+        capture.render_debug_order == std::numeric_limits<U64>::max())
+    {
+        capture.markIncomplete(__LINE__);
+        capture.occlusion_batches.clear();
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    ALMetalWorldOcclusionBatch batch;
+    batch.kind = ALMetalWorldOcclusionKind::selected_bounds;
+    batch.order = capture.render_debug_order++;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+    std::memcpy(batch.center, center.getF32ptr(), sizeof(float) * 3);
+    batch.center[3] = 1.f;
+    std::memcpy(batch.half_extent, half_extent.getF32ptr(),
+                sizeof(float) * 3);
+    batch.half_extent[3] = 0.f;
+    try
+    {
+        capture.occlusion_batches.push_back(batch);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.occlusion_batches.clear();
+    }
+}
+
+void LLPipeline::endMetalOcclusionCapture()
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.occlusion_capture_active)
+    {
+        return;
+    }
+    capture.occlusion_capture_active = false;
+    if (!capture.complete)
+    {
+        capture.occlusion_batches.clear();
+    }
 }
 
 void LLPipeline::beginMetalRaycastCapture()
@@ -7299,6 +7499,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         scene.raycast_batch_count = capture.raycast_batches.size();
         scene.raycast_particle = capture.raycast_particle_valid
             ? &capture.raycast_particle : nullptr;
+        scene.occlusion_batches = capture.occlusion_batches.data();
+        scene.occlusion_batch_count = capture.occlusion_batches.size();
         scene.debug_points = capture.debug_points.data();
         scene.debug_point_count = capture.debug_points.size();
         scene.debug_point_batches = capture.debug_point_batches.data();
@@ -8994,6 +9196,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.raycast_triangle_batch_visible = false;
     capture.raycast_particle = {};
     capture.raycast_particle_valid = false;
+    capture.occlusion_batches.clear();
+    capture.occlusion_capture_active = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -21555,6 +21759,14 @@ void LLPipeline::renderDebug()
     }
 
     // Debug stuff.
+#if LL_DARWIN
+    const bool capture_occlusion =
+        !hud_only && hasRenderDebugMask(RENDER_DEBUG_OCCLUSION);
+    if (capture_occlusion)
+    {
+        beginMetalOcclusionCapture();
+    }
+#endif
     if (gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_OCTREE |
         LLPipeline::RENDER_DEBUG_OCCLUSION |
         LLPipeline::RENDER_DEBUG_LIGHTS |
@@ -21654,9 +21866,22 @@ void LLPipeline::renderDebug()
             const LLVector4a* bounds = group->getBounds();
             size.setAdd(fudge, bounds[1]);
 
+#if LL_DARWIN
+            if (capture_occlusion)
+            {
+                captureMetalOcclusionBounds(bounds[0], size);
+            }
+#endif
             drawBox(bounds[0], size);
         }
     }
+
+#if LL_DARWIN
+    if (capture_occlusion)
+    {
+        endMetalOcclusionCapture();
+    }
+#endif
 
     visible_selected_groups.clear();
 
