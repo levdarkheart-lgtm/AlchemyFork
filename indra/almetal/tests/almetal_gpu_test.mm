@@ -718,6 +718,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_test_compute",
             "almetal_test_sample_texture",
             "almetal_test_sample_cube_array",
+            "almetal_test_sample_cube_directions",
             "almetal_resample_vertex",
             "almetal_resample_fragment",
             "almetal_resample_flip_y_fragment",
@@ -24703,6 +24704,137 @@ TEST_CASE("almetal: native hero faces publish filtered cube radiance", "[almetal
         CHECK(source_cube->descriptor().type ==
               ALMetalTextureType::texture_cube);
         CHECK(source_cube->descriptor().mipmap_level_count == 2);
+
+        // cubeSnapshot renders each GL face with these forward/up vectors.
+        // Native world vertices flip clip-space Y, so Metal storage row zero
+        // retains GL's lower framebuffer row.  At texel coordinates (u, v),
+        // the captured world direction is therefore
+        // forward + u * (forward x up) + v * up.  Sample the production-
+        // copied cube through the physical Metal cube sampler at every texel
+        // centre: any face swap, row/column flip, or quarter-turn fails this
+        // asymmetric oracle instead of merely proving same-slice blits.
+        constexpr std::size_t direction_count = 6 * 4 * 4;
+        constexpr std::array<std::array<float, 3>, 6> look{{
+            {{ 1.f,  0.f,  0.f}}, {{-1.f,  0.f,  0.f}},
+            {{ 0.f,  1.f,  0.f}}, {{ 0.f, -1.f,  0.f}},
+            {{ 0.f,  0.f,  1.f}}, {{ 0.f,  0.f, -1.f}},
+        }};
+        constexpr std::array<std::array<float, 3>, 6> up{{
+            {{0.f, -1.f,  0.f}}, {{0.f, -1.f,  0.f}},
+            {{0.f,  0.f,  1.f}}, {{0.f,  0.f, -1.f}},
+            {{0.f, -1.f,  0.f}}, {{0.f, -1.f,  0.f}},
+        }};
+        std::array<std::array<float, 4>, direction_count> directions{};
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            const std::array<float, 3> right{{
+                look[face][1] * up[face][2] -
+                    look[face][2] * up[face][1],
+                look[face][2] * up[face][0] -
+                    look[face][0] * up[face][2],
+                look[face][0] * up[face][1] -
+                    look[face][1] * up[face][0],
+            }};
+            for (std::uint32_t y = 0; y < 4; ++y)
+            {
+                const float v =
+                    2.f * (static_cast<float>(y) + 0.5f) / 4.f - 1.f;
+                for (std::uint32_t x = 0; x < 4; ++x)
+                {
+                    const float u =
+                        2.f * (static_cast<float>(x) + 0.5f) / 4.f - 1.f;
+                    const std::size_t index = face * 16 + y * 4 + x;
+                    for (std::size_t axis = 0; axis < 3; ++axis)
+                    {
+                        directions[index][axis] = look[face][axis] +
+                            u * right[axis] + v * up[face][axis];
+                    }
+                    directions[index][3] = 0.f;
+                }
+            }
+        }
+
+        auto library = ALMetalShaderLibrary::loadBuiltin(*device, &error);
+        INFO(error);
+        REQUIRE(library);
+        ALMetalComputePipelineDescriptor sample_descriptor;
+        sample_descriptor.library = library.get();
+        sample_descriptor.function =
+            "almetal_test_sample_cube_directions";
+        sample_descriptor.label =
+            "Alchemy hero cube-camera orientation sample pipeline";
+        auto sample_pipeline = ALMetalComputePipeline::create(
+            *device, sample_descriptor, &error);
+        INFO(error);
+        REQUIRE(sample_pipeline);
+
+        ALMetalBufferDescriptor direction_descriptor;
+        direction_descriptor.length = sizeof(directions);
+        direction_descriptor.storage = ALMetalStorageMode::shared;
+        direction_descriptor.label =
+            "Alchemy hero cube-camera sample directions";
+        auto direction_buffer = ALMetalBuffer::create(
+            *device, direction_descriptor, &error);
+        INFO(error);
+        REQUIRE(direction_buffer);
+        REQUIRE(direction_buffer->write(
+            0, directions.data(), sizeof(directions), &error));
+
+        std::array<std::array<float, 4>, direction_count> samples{};
+        ALMetalBufferDescriptor sample_result_descriptor;
+        sample_result_descriptor.length = sizeof(samples);
+        sample_result_descriptor.storage = ALMetalStorageMode::shared;
+        sample_result_descriptor.label =
+            "Alchemy hero cube-camera orientation samples";
+        auto sample_results = ALMetalBuffer::create(
+            *device, sample_result_descriptor, &error);
+        INFO(error);
+        REQUIRE(sample_results);
+
+        auto sample_command = device->makeCommandBuffer(
+            "Alchemy hero cube-camera orientation sample", &error);
+        INFO(error);
+        REQUIRE(sample_command);
+        auto sample_encoder = ALMetalComputeEncoder::begin(
+            *sample_command,
+            "Alchemy hero cube-camera orientation sample encoder",
+            &error);
+        INFO(error);
+        REQUIRE(sample_encoder);
+        REQUIRE(sample_encoder->setPipeline(*sample_pipeline, &error));
+        REQUIRE(sample_encoder->setTexture(0, source_cube.get(), &error));
+        REQUIRE(sample_encoder->setBuffer(
+            0, *direction_buffer, 0, &error));
+        REQUIRE(sample_encoder->setBuffer(
+            1, *sample_results, 0, &error));
+        REQUIRE(sample_encoder->dispatch(
+            direction_count, 1, 1, 32, 1, 1, &error));
+        REQUIRE(sample_encoder->end(&error));
+        REQUIRE(sample_command->commitAndWait(&error));
+        INFO(error);
+        REQUIRE(sample_results->read(
+            0, samples.data(), sizeof(samples), &error));
+        INFO(error);
+        for (std::uint32_t face = 0; face < 6; ++face)
+        {
+            for (std::uint32_t y = 0; y < 4; ++y)
+            {
+                for (std::uint32_t x = 0; x < 4; ++x)
+                {
+                    const std::size_t index = face * 16 + y * 4 + x;
+                    const std::size_t texel = (y * 4 + x) * 4;
+                    CAPTURE(face, x, y);
+                    for (std::size_t channel = 0; channel < 4; ++channel)
+                    {
+                        CHECK(std::abs(samples[index][channel] -
+                            static_cast<float>(
+                                source_faces[face][texel + channel]) /
+                                255.f) < 0.001f);
+                    }
+                }
+            }
+        }
+
         REQUIRE(renderer->filterHeroProbeRadiance(
             *source_cube, valid_faces, 1, 0.5f,
             radiance_cube, &error));

@@ -53,6 +53,18 @@ kernel void almetal_test_sample_cube_array(
         cube_sampler, float3(0.0, 0.0, 1.0), 1u, level(0.0));
 }
 
+kernel void almetal_test_sample_cube_directions(
+    texturecube<float> source [[texture(0)]],
+    const device float4* directions [[buffer(0)]],
+    device float4* results [[buffer(1)]],
+    uint index [[thread_position_in_grid]])
+{
+    constexpr sampler cube_sampler(
+        coord::normalized, filter::nearest, address::clamp_to_edge);
+    results[index] = source.sample(
+        cube_sampler, directions[index].xyz, level(0.0));
+}
+
 struct ALMetalResampleVaryings
 {
     float4 position [[position]];
