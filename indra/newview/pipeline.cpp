@@ -37,6 +37,7 @@
 #include <limits>
 #include <new>
 #include <sstream>
+#include <string_view>
 #include <unordered_map>
 
 #include <fmt/format.h>
@@ -144,6 +145,7 @@
 #include "llviewerstats.h"
 #include "llviewerjoystick.h"
 #include "llviewerdisplay.h"
+#include "llversioninfovars.h"
 #include "llspatialpartition.h"
 #include "llmutelist.h"
 #include "lltoolpie.h"
@@ -861,13 +863,18 @@ static bool metalWorldPresentationRequested()
 
 static bool metalHeroMirrorSnapshotValidationRequested()
 {
-#if !LL_RELEASE_FOR_DOWNLOAD
     static LLCachedControl<bool> validate_snapshot(
         gSavedSettings, "ALMetalHeroMirrorSnapshotValidation", false);
-    return validate_snapshot;
-#else
-    return false;
-#endif
+    // The wrapper deliberately builds its signed Development application with
+    // the optimized Release configuration, so LL_RELEASE_FOR_DOWNLOAD cannot
+    // distinguish that validation artifact from the public Release channel.
+    // Gate on the immutable compiled channel instead: CmdLineChannel cannot
+    // turn a public Alchemy Release binary into a mirror-validation build.
+    static constexpr std::string_view compiled_channel(
+        LL_TO_STRING(LL_VIEWER_CHANNEL));
+    static constexpr bool public_release_channel =
+        compiled_channel.starts_with("Alchemy Release");
+    return !public_release_channel && validate_snapshot;
 }
 
 bool LLPipeline::metalWorldPresentationCurrent() const
