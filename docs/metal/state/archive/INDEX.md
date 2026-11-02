@@ -49,6 +49,7 @@ reload the chronological history.
 | Current-build authored-mirror semantic-UI timeout and watchdog shutdown hang, 2026-11-02 | [CURRENT-hero-mirror-validation-hang-checkpoint-2026-11-02.md](CURRENT-hero-mirror-validation-hang-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Development mirror diagnostic gate correction and current visible divergence, 2026-11-02 | [CURRENT-hero-mirror-release-gate-and-divergence-checkpoint-2026-11-02.md](CURRENT-hero-mirror-release-gate-and-divergence-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Source-derived and physically regressed hero cube-camera orientation, 2026-11-02 | [CURRENT-hero-cube-camera-orientation-checkpoint-2026-11-02.md](CURRENT-hero-cube-camera-orientation-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
+| Source-correct opaque/RGB-only ordinary and masked fullbright presentation, 2026-11-02 | [CURRENT-opaque-fullbright-parity-checkpoint-2026-11-02.md](CURRENT-opaque-fullbright-parity-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.

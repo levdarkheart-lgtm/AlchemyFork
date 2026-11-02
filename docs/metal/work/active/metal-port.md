@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `1518b533ce`.
+**Renderer checkpoint:** Commit `ae2b436442`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -18,9 +18,9 @@ checkpoint detail belongs in the indexed archive.
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Core typed resource paths have physical coverage; remaining advanced/media matrices stay open. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Native login/world UI and CEF IOSurface ingress work; Highlight Transparent and Batch Size have ordered static/rigged HUD replay. Moving CEF/VLC reference parity remains open. |
-| M-007 | World scene and material correctness | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence. Broader live parity remains incomplete. |
+| M-007 | World scene and material correctness | doing | Ordinary/masked fullbright now match GL opaque/RGB-only semantics with physical coverage. Legacy BLEND/stained-glass and broader live parity remain incomplete. |
 | M-008 | Advanced views/effects and compute | doing | The established native advanced-output set now includes Raycast, Occlusion, Octree, Physics Shapes, Normals and Texel Density. No reachable render-debug world-geometry bit remains in the explicit visual veto. OSS pathfinding is a nonfunctional stub. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, prolonged stability and strict no-GL release evidence remain open. The refreshed 3,351-finding inventory exits 1. Directional shadows are preference-qualified; projector-visible parity is open. Hero cube orientation is proven; forward/material ownership and mirror parity remain open and fail-closed. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability and strict no-GL evidence remain open; the 3,351-finding inventory exits 1. Directional shadows and hero cube orientation are bounded/proven. Opaque fullbright is corrected; legacy alpha/mirror parity remain fail-closed. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Exact-path semantic login/in-world/control/logout is verified and used for current acceptance. |
@@ -34,8 +34,8 @@ item; it never implies product completion.
 Commit `ed9e64736d` admits the scoped native mirror Snapshot diagnostic only in
 non-public compiled channels. Retained renderer commit `47d253a91c` captures
 and replays every reachable Develop **Texel Density** face draw. Its
-current/desired/full modes still perform their exact
-texture lookup, checkerboard bind and texture-matrix side effects in source.
+current/desired/full modes perform the exact texture lookup, checkerboard bind
+and texture-matrix side effects in source.
 The bound production `gDebugProgram`, however, consumes only position and the
 current uniform color, so native presentation replays that actual visible
 zero-copy indexed overlay without inventing a texture/UV shader path.
@@ -53,18 +53,25 @@ through the production six-face hero path, samples all 96 texel-centre rays and
 would fail a face swap, row/column flip or 90-degree rotation. The direct face
 copy is correct, so no speculative production transform was added.
 
-RelWithDebInfo, Debug and Release physical Metal suites each pass 52,184
-assertions in 52 cases under Metal API/load-action validation. Warnings-as-errors
+Commit `ae2b436442` corrects ordinary/masked fullbright; `renderDeferredLighting` enters `renderGeomPostDeferred` with GL blending
+disabled; the fullbright pool changes factors but does not enable blending, and
+the outer owner uses RGB-only writes. `fullbrightF.glsl` confirms that vertex
+alpha is shininess outside the alpha pool. The prior Metal source-alpha blend
+could therefore attenuate or erase zero-shiny wall art/screens. The pipeline
+now disables blending and writes RGB only. Its physical regression uses 0.5
+vertex alpha and proves full green replacement plus preserved destination alpha.
+
+All three physical Metal configurations pass 52,190 assertions in 52 cases under Metal API/load-action validation. Warnings-as-errors
 production integration passes, and the source-exact Release neutral
-non-manual/non-GL gate passes 484/484 in 38.39 seconds. The prior unfiltered
-574-test inventory was not rerun;
-its six GL-only failures and five skips remain recorded without a green claim.
+non-manual/non-GL gate passes 484/484 in 36.60 seconds. The prior unfiltered
+574-test inventory was not rerun; its six GL-only failures and five skips remain
+recorded without a green claim.
 Harness validation covers all 31 required files and all 24 tooling tests pass.
 
-Source-exact Release Development build `26.4.0d68097` (`26.4.0.68097`) at
-`1518b533ce48b68a13fdcb0d483bcd7df8e070b4` passes.
+Source-exact Release Development build `26.4.0d68099` (`26.4.0.68099`) at
+`ae2b43644211a73802d4197efa39a361ad5614bb` passes.
 Deep strict signing and 349/349 ARM64 inspection pass. Executable SHA-256 is
-`06c4e8f7b258dc24a64090a464da908fc4543a4819306a07d885a9dca7c57909`;
+`ea063150c286acf7498a3c6e065cbe367e140b401ef3682536d1771d357f602a`;
 packaged/source MSL is
 `d263315d1ea0c2c834e9e5a5d37109e9ec5d56325153220dedc1b2a9ab2ffac9`;
 compiled metallib is
@@ -142,9 +149,9 @@ minimum behavior needed to unblock Metal/no-GL cutover.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** source-derived physical coverage now protects the
-   correct six-face hero camera convention and eliminates a false production
-   transform candidate. Mirror/material ownership remains fail-closed.
+1. **Product advancement:** source-correct opaque fullbright restores content
+   that shininess-alpha blending could attenuate or erase; physical coverage
+   protects it and the correct cube convention. Legacy alpha/mirror stay closed.
 2. **Deferred critical work:** broader post parity; projector-visible,
    alpha/avatar-caster, cascade and quality shadow coverage; controlled live
    comparisons; stability/feature matrices; strict no-GL; independent review;
@@ -158,12 +165,11 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Trace forward/material batch and texture ownership from source, then obtain a
-camera- and content-converged controlled pair before changing mirror authority.
-The six-face camera/row/rotation convention is physically proven and is no
-longer a production-edit candidate. Continue the 3,351-finding GL inventory
-independently. Keep all shadow evidence Preferences/save-qualified and exact
-RLVa deferred in M-013.
+Trace the legacy alpha-pool BLEND/stained-glass batch from source, then obtain a
+camera- and content-converged controlled fixture before changing mirror
+authority. Ordinary/masked fullbright and the six-face cube convention are now
+physically protected. Continue the 3,351-finding GL inventory independently;
+keep shadow evidence Preferences/save-qualified and exact RLVa deferred M-013.
 
 ## Non-negotiable open gates
 

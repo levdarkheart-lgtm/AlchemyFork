@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-02 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `1518b533ce` (`test(metal): verify hero cube camera orientation`)
+**Renderer code checkpoint:** `ae2b436442` (`fix(metal): preserve opaque fullbright draws`)
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -46,10 +46,6 @@ Commit `ed9e64736d` makes the scoped native authored-mirror Snapshot diagnostic
 reachable in optimized Development builds; compiled public Release channels
 remain ineligible, and mirror rendering/live authority are unchanged.
 
-The bounded reflection-probe production-call audit found no valid viewer-
-produced divergence; its extra Metal bounds checks do not alter valid data. It
-remains closed without a speculative edit.
-
 Exact RLVa parity is owner-deferred M-013 nice-to-have. Implement only enough
 RLVa behavior to avoid blocking Metal authority and viewer-owned OpenGL removal.
 The persistent inventory is [the deferred RLVa backlog](../work/deferred/rlva-parity.md).
@@ -73,35 +69,40 @@ native face publication and Metal cube sampling agree for every texel of all
 six asymmetric faces. Direct same-slice copy is correct; no production
 transform edit was justified. [Exact evidence is archived](archive/CURRENT-hero-cube-camera-orientation-checkpoint-2026-11-02.md).
 
-The replacement private dry pair remains diagnostic: cameras and mirror
-contents differ, and logs contain 64 candidate versus 24 reference fetch/
-missing-resource matches. It cannot causally identify a renderer owner. The
-next fixture must prove content convergence while source-led forward/material
-batch and texture ownership are isolated. Water remains separate.
+Commit `ae2b436442` corrects the native ordinary/masked fullbright pipeline to
+match its GL owner: blending disabled and RGB-only writes. Source proves that
+vertex alpha is shininess outside the alpha pool, not coverage; blending by it
+could erase zero-shiny posters/screens. A physical regression now proves full
+texel replacement with destination-alpha preservation. [Exact evidence is
+archived](archive/CURRENT-opaque-fullbright-parity-checkpoint-2026-11-02.md).
+
+The replacement dry pair remains diagnostic: cameras/mirror contents differ
+and logs contain 64 candidate versus 24 reference fetch/missing-resource
+matches. Opaque fullbright is now source-correct, but legacy alpha-pool BLEND,
+stained glass and broader mirror parity remain unproven. Water remains separate.
 ## Build and test evidence
 
 - The complete RelWithDebInfo, Debug and Release physical Metal suites each
-  passed 52,184 assertions across 52 cases under Metal API and load-action
+  passed 52,190 assertions across 52 cases under Metal API and load-action
   validation. Offline MSL compiled in all three configurations.
-- Coverage additionally proves the exact six-face GL camera-to-Metal cube
-  convention across 96 asymmetric texels, alongside u16/u32 indexed replay,
-  forward/reverse writable depth, exact RGB-only destination-alpha
-  preservation, invalid/no-owner inputs and cross-owner order rejection.
+- Coverage additionally proves opaque fullbright texel replacement despite
+  vertex shininess alpha, RGB-only destination-alpha preservation and the exact
+  six-face GL camera-to-Metal convention across 96 asymmetric texels.
 - Warnings-as-errors RelWithDebInfo production integration and the source-exact
   Release build below compiled, linked, staged and signed the final code.
 - The source-exact neutral gate, `ctest --test-dir
   build-Darwin-ninja-os-arm64 -C Release -LE 'manual|gl'
-  --output-on-failure -j 8`, passed 484/484 in 38.39 seconds.
+  --output-on-failure -j 8`, passed 484/484 in 36.60 seconds.
 - The preceding deliberately unfiltered 574-test inventory had six reproducible
   legacy GL-only failures and five skips. It was not rerun for this bounded owner
   and is not represented as a green gate.
 - Source-exact `AL_METAL_PRESET=ninja-os-arm64
   AL_METAL_BUILD_DIR=build-Darwin-ninja-os-arm64 AL_METAL_CONFIG=Release
   AL_METAL_JOBS=8 tools/metal/build.sh build` passed at
-  `1518b533ce48b68a13fdcb0d483bcd7df8e070b4`, producing Development build
-  `26.4.0d68097` (`26.4.0.68097`) with the full SHA embedded.
+  `ae2b43644211a73802d4197efa39a361ad5614bb`, producing Development build
+  `26.4.0d68099` (`26.4.0.68099`) with the Git revision embedded.
 - Executable SHA-256:
-  `06c4e8f7b258dc24a64090a464da908fc4543a4819306a07d885a9dca7c57909`.
+  `ea063150c286acf7498a3c6e065cbe367e140b401ef3682536d1771d357f602a`.
   Packaged/source MSL SHA-256:
   `d263315d1ea0c2c834e9e5a5d37109e9ec5d56325153220dedc1b2a9ab2ffac9`;
   compiled metallib SHA-256:
@@ -122,9 +123,9 @@ batch and texture ownership are isolated. Water remains separate.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
-| M-007 world/material | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence; broader live parity remains open. |
+| M-007 world/material | doing | Ordinary/masked fullbright now match GL opaque/RGB-only semantics with a physical regression; legacy BLEND/stained-glass and broader live parity remain open. |
 | M-008 advanced views/effects | doing | Wireframe, Wind Vectors, Agent Target, Points, Composition, reflection-probe links, Texture Anim, Update Type, Texel Density, Batch Size, Lights, Impostors, Shadow Frusta, Collision Skeleton, Joints, BBOXES, Raycast, Occlusion, Octree, Physics Shapes, Normals, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. No reachable render-debug world-geometry bit remains in the explicit veto; exact RLVa parity is M-013. |
-| M-009 parity/stability/no-GL | doing | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The refreshed scan covers 2,408 files and 3,351 findings; strict exits 1. Directional shadows are preference-qualified, but projector-visible parity remains open. Hero cube orientation is physically proven; forward/material ownership and mirror parity remain open and fail-closed. |
+| M-009 parity/stability/no-GL | doing | Full matrix, stability and strict owned-OpenGL elimination are open; 3,351 findings still exit 1. Directional shadows and hero cube orientation are bounded/proven. Opaque fullbright is corrected; legacy alpha/mirror parity remain fail-closed. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
 | M-012 Computer Use bridge | complete | Exact-path semantic login/in-world/control/logout operation is verified and used for acceptance. |
@@ -132,14 +133,14 @@ batch and texture ownership are isolated. Water remains separate.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. The physically regressed hero-cube
-camera convention eliminates a false production-edit candidate and prevents
-face/row/rotation regressions. It does not close mirror parity; uncaptured
-owners remain fail-closed.
+**Advances the complete product:** yes. Source-correct opaque fullbright
+restores content that shininess-alpha blending could attenuate or erase, while
+the physical cube regression prevents orientation regressions. This does not
+close legacy BLEND, stained-glass or mirror parity; those remain fail-closed.
 
 **Deferred critical work:** controlled live wireframe, material and editing
 comparisons; projector-visible, alpha/avatar-caster, cascade and quality shadow
-coverage; full feature and stability matrices; viewer-owned OpenGL removal;
+coverage; full feature and prolonged stability matrices; owned OpenGL removal;
 and paired quality-equivalent M1 Max measurements. Exact RLVa
 behavior/image parity is separately deferred as non-critical M-013.
 Reproducible distinct release proof and independent build/review evidence also
@@ -153,8 +154,7 @@ resolving the highest-value presentation-authority gate.
 
 1. Reconcile the refreshed 3,351-finding strict GL inventory against actual
    reachability and presentation authority; the strict exit remains 1.
-2. Isolate forward/material batch and texture ownership with matched content
-   convergence; hero face/row/rotation is proven correct. Keep the guard closed.
-3. Continue controlled live parity and stability. Keep projector-visible and
-   remaining shadow coverage open unless Preferences/save-qualified,
-   and keep exact RLVa parity deferred in M-013.
+2. Isolate the legacy alpha-pool BLEND/stained-glass owner with a controlled,
+   content-converged fixture. Opaque fullbright and cube orientation are proven.
+3. Continue controlled parity/stability; keep remaining shadow coverage open
+   unless Preferences/save-qualified, and exact RLVa deferred in M-013.
