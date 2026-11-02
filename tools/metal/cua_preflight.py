@@ -2,6 +2,7 @@
 """Fail closed unless Computer Use is binding the intended isolated viewer."""
 
 import argparse
+import ctypes
 import hashlib
 import os
 import plistlib
@@ -18,6 +19,7 @@ class Process(NamedTuple):
     pid: int
     ppid: int
     command: str
+    executable: str | None = None
 
 
 def path_is_within(path: Path, root: Path) -> bool:
@@ -86,12 +88,45 @@ def read_process_table():
         capture_output=True,
         text=True,
     )
-    return parse_process_table(result.stdout)
+    processes = parse_process_table(result.stdout)
+    return [
+        process._replace(executable=process_executable_path(process.pid))
+        if command_is_viewer_main(process.command)
+        else process
+        for process in processes
+    ]
 
 
-def command_is_exact_executable(command: str, executable: Path) -> bool:
+def process_executable_path(pid: int) -> str | None:
+    """Return the kernel-reported executable path for a macOS process."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
+        buffer = ctypes.create_string_buffer(4096)
+        libproc.proc_pidpath.argtypes = (
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+        )
+        libproc.proc_pidpath.restype = ctypes.c_int
+        length = libproc.proc_pidpath(pid, buffer, ctypes.sizeof(buffer))
+    except (OSError, ValueError):
+        return None
+    if length <= 0:
+        return None
+    return os.path.realpath(os.fsdecode(buffer.value))
+
+
+def command_is_exact_executable(
+    command: str, executable: Path, actual_executable: str | None = None
+) -> bool:
     value = str(executable)
-    return command == value or command.startswith(value + " ")
+    if command == value or command.startswith(value + " "):
+        return True
+    if not actual_executable:
+        return False
+    return os.path.realpath(actual_executable) == os.path.realpath(value)
 
 
 def command_is_viewer_main(command: str) -> bool:
@@ -101,7 +136,7 @@ def command_is_viewer_main(command: str) -> bool:
         return False
     bundle_text = command[: marker_index + len(".app")]
     bundle_name = Path(bundle_text).name.lower()
-    return bundle_name.startswith(("alchemy", "second life"))
+    return bundle_name.startswith(("alchemy", "second life", "firestorm"))
 
 
 def process_environment(pid: int) -> str:
@@ -140,7 +175,9 @@ def validate_runtime_snapshot(
     exact = [
         process
         for process in processes
-        if command_is_exact_executable(process.command, executable)
+        if command_is_exact_executable(
+            process.command, executable, process.executable
+        )
     ]
     viewers = [process for process in processes if command_is_viewer_main(process.command)]
     if len(exact) != 1:
@@ -187,7 +224,9 @@ def inspect_live(identity, profile: Path):
     exact = [
         process
         for process in processes
-        if command_is_exact_executable(process.command, identity["executable"])
+        if command_is_exact_executable(
+            process.command, identity["executable"], process.executable
+        )
     ]
     if len(exact) != 1:
         return None, [f"Expected one exact viewer process, found {len(exact)}"]

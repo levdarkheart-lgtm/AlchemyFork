@@ -23,7 +23,7 @@ checkpoint detail belongs in the indexed archive.
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability and strict no-GL evidence remain open; the 3,351-finding inventory exits 1. Directional shadows and hero cube orientation are bounded/proven. Opaque fullbright is corrected; legacy alpha/mirror parity remain fail-closed. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements must follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | deferred | Resume only after each owner has correctness and side-effect proof; global traversal suppression remains rejected. |
-| M-012 | Development Computer Use / LLUI accessibility | complete | Exact-path semantic login/in-world/control/logout is verified and used for current acceptance. |
+| M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; kernel-proven relative launches pass and Firestorm siblings fail closed. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; keep only enough native implementation to avoid blocking Metal/no-GL cutover. Exact inventory and restart-qualified prerequisite: [RLVa backlog](../deferred/rlva-parity.md). |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
@@ -66,7 +66,7 @@ production integration passes, and the source-exact Release neutral
 non-manual/non-GL gate passes 484/484 in 36.60 seconds. The prior unfiltered
 574-test inventory was not rerun; its six GL-only failures and five skips remain
 recorded without a green claim.
-Harness validation covers all 31 required files and all 24 tooling tests pass.
+Harness validation covers 31 files and 27 tooling tests; `proc_pidpath` admits relative launches while wrong binaries and Firestorm siblings fail closed.
 
 Source-exact Release Development build `26.4.0d68099` (`26.4.0.68099`) at
 `ae2b43644211a73802d4197efa39a361ad5614bb` passes.

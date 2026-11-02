@@ -112,7 +112,7 @@ stained glass and broader mirror parity remain unproven. Water remains separate.
 - `tools/metal/doctor.sh` passed on Apple M1 Max with 64 GiB unified memory and
   Apple7-family Metal support.
 - `python3 tools/metal/validate_harness.py` validates all 31 required files;
-  `python3 -m unittest discover -s tools/metal/tests -v` passes 24/24.
+  all 27 tooling tests pass, including kernel-relative launches and Firestorm exclusion.
 - The [preference-qualified shadow archive](archive/CURRENT-shadow-preference-qualified-checkpoint-2026-11-02.md)
   retains effective-setting artifacts, screenshot hashes and exact metrics.
 - The main executable still links both Metal and OpenGL during migration.
@@ -128,7 +128,7 @@ stained glass and broader mirror parity remain unproven. Water remains separate.
 | M-009 parity/stability/no-GL | doing | Full matrix, stability and strict owned-OpenGL elimination are open; 3,351 findings still exit 1. Directional shadows and hero cube orientation are bounded/proven. Opaque fullbright is corrected; legacy alpha/mirror parity remain fail-closed. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
-| M-012 Computer Use bridge | complete | Exact-path semantic login/in-world/control/logout operation is verified and used for acceptance. |
+| M-012 Computer Use bridge | complete | Semantic operation is verified; preflight now accepts kernel-proven relative launches and rejects Firestorm siblings. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have. The persistent backlog records exact remaining work and the two-viewer restart prerequisite. |
 
 ## Complete-product advancement assessment

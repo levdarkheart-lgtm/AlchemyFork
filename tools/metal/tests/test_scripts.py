@@ -259,6 +259,54 @@ class CUAPreflightTests(unittest.TestCase):
                 ),
             )
 
+    def test_kernel_resolved_relative_executable_passes(self):
+        module = load("cua_preflight")
+        with tempfile.TemporaryDirectory() as directory:
+            values = self.valid_snapshot(module, Path(directory))
+            identity, profile, process, environment, open_files, log_text = values
+            relative = module.Process(
+                process.pid,
+                process.ppid,
+                "build/newview/Release/Alchemy Metal Development.app/Contents/"
+                "MacOS/Alchemy Metal Development --multiple --noaudio",
+                str(identity["executable"]),
+            )
+            relative_environment = environment.replace(
+                process.command, relative.command
+            )
+            self.assertEqual(
+                [],
+                module.validate_runtime_snapshot(
+                    identity,
+                    profile,
+                    [relative],
+                    relative_environment,
+                    open_files,
+                    log_text,
+                ),
+            )
+
+    def test_kernel_resolved_wrong_executable_is_rejected(self):
+        module = load("cua_preflight")
+        with tempfile.TemporaryDirectory() as directory:
+            values = self.valid_snapshot(module, Path(directory))
+            identity, profile, process, environment, open_files, log_text = values
+            relative = module.Process(
+                process.pid,
+                process.ppid,
+                "other/Alchemy Release.app/Contents/MacOS/Alchemy Release",
+                str(Path(directory) / "other/Alchemy Release"),
+            )
+            errors = module.validate_runtime_snapshot(
+                identity,
+                profile,
+                [relative],
+                environment,
+                open_files,
+                log_text,
+            )
+            self.assertTrue(any("Expected one exact" in error for error in errors))
+
     def test_stale_sibling_viewer_is_rejected(self):
         module = load("cua_preflight")
         with tempfile.TemporaryDirectory() as directory:
@@ -267,6 +315,26 @@ class CUAPreflightTests(unittest.TestCase):
             sibling = module.Process(
                 43, 1,
                 "/Applications/Alchemy Release.app/Contents/MacOS/Alchemy Release",
+            )
+            errors = module.validate_runtime_snapshot(
+                identity,
+                profile,
+                [process, sibling],
+                environment,
+                open_files,
+                log_text,
+            )
+            self.assertTrue(any("census" in error for error in errors))
+
+    def test_firestorm_sibling_viewer_is_rejected(self):
+        module = load("cua_preflight")
+        with tempfile.TemporaryDirectory() as directory:
+            values = self.valid_snapshot(module, Path(directory))
+            identity, profile, process, environment, open_files, log_text = values
+            sibling = module.Process(
+                43,
+                1,
+                "/Applications/Firestorm-Releasex64.app/Contents/MacOS/Firestorm",
             )
             errors = module.validate_runtime_snapshot(
                 identity,
