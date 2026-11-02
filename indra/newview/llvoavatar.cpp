@@ -1748,6 +1748,10 @@ void render_sphere_and_line(const LLVector3& begin_pos, const LLVector3& end_pos
 
     // Draw line segment for unoccluded joint
     gGL.diffuseColor3f(visible_color[0], visible_color[1], visible_color[2]);
+#if LL_DARWIN
+    gPipeline.beginMetalAvatarVolumePair(
+        end_pos, sphere_scale, occ_color, visible_color);
+#endif
 
     gGL.begin(LLRender::LINES);
     gGL.vertex3fv(begin_pos.mV);
@@ -1758,6 +1762,9 @@ void render_sphere_and_line(const LLVector3& begin_pos, const LLVector3& end_pos
     // Draw sphere representing joint pos
     gGL.pushMatrix();
     gGL.scalef(sphere_scale, sphere_scale, sphere_scale);
+#if LL_DARWIN
+    gPipeline.captureMetalAvatarVolumeSphereTransform();
+#endif
     gSphere.renderGGL();
     gGL.popMatrix();
 
@@ -1765,6 +1772,9 @@ void render_sphere_and_line(const LLVector3& begin_pos, const LLVector3& end_pos
 
     // Occluded bone portions
     gGL.diffuseColor3f(occ_color[0], occ_color[1], occ_color[2]);
+#if LL_DARWIN
+    gPipeline.endMetalAvatarVolumePair();
+#endif
 
     gGL.begin(LLRender::LINES);
     gGL.vertex3fv(begin_pos.mV);

@@ -585,6 +585,13 @@ struct LLPipeline::MetalWorldSimpleCapture
     F32 agent_target_modelview_projection[16]{};
     U64 agent_target_order = 0;
     bool agent_target_capture_active = false;
+    std::vector<ALMetalWorldAvatarVolumeBatch> avatar_volume_batches;
+    ALMetalWorldAvatarVolumeBatch avatar_volume_batch;
+    std::size_t avatar_volume_capture_first = 0;
+    std::size_t avatar_volume_expected_pairs = 0;
+    bool avatar_volume_capture_active = false;
+    bool avatar_volume_pair_active = false;
+    bool avatar_volume_sphere_transform_captured = false;
     std::vector<ALMetalWorldDebugPointVertex> debug_points;
     std::vector<ALMetalWorldDebugPointBatch> debug_point_batches;
     ALMetalWorldDebugPointBatch debug_point_batch;
@@ -4020,6 +4027,13 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.agent_target_lines.clear();
     capture.agent_target_order = 0;
     capture.agent_target_capture_active = false;
+    capture.avatar_volume_batches.clear();
+    capture.avatar_volume_batch = {};
+    capture.avatar_volume_capture_first = 0;
+    capture.avatar_volume_expected_pairs = 0;
+    capture.avatar_volume_capture_active = false;
+    capture.avatar_volume_pair_active = false;
+    capture.avatar_volume_sphere_transform_captured = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};
@@ -4329,6 +4343,216 @@ void LLPipeline::endMetalAgentTargetCapture(
         capture.markIncomplete(__LINE__);
         capture.agent_target_lines.clear();
     }
+}
+
+void LLPipeline::beginMetalAvatarVolumeCapture(
+    std::size_t collision_volume_count)
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    constexpr std::size_t pairs_per_volume = 2;
+    const bool count_overflows = collision_volume_count >
+        std::numeric_limits<std::size_t>::max() / pairs_per_volume;
+    const std::size_t pair_count = count_overflows
+        ? 0 : collision_volume_count * pairs_per_volume;
+    const bool reserve_overflows = !count_overflows &&
+        pair_count > std::numeric_limits<std::size_t>::max() -
+            capture.avatar_volume_batches.size();
+    if (!capture.complete || capture.avatar_volume_capture_active ||
+        capture.avatar_volume_pair_active || count_overflows ||
+        reserve_overflows ||
+        pair_count > std::numeric_limits<U64>::max() -
+            capture.render_debug_order ||
+        !LLGLState::isEnabled(GL_BLEND) ||
+        LLGLState::isEnabled(GL_CULL_FACE) ||
+        !color_mask[0] || !color_mask[1] || !color_mask[2] || color_mask[3])
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+
+    capture.avatar_volume_capture_first =
+        capture.avatar_volume_batches.size();
+    capture.avatar_volume_expected_pairs = pair_count;
+    try
+    {
+        capture.avatar_volume_batches.reserve(
+            capture.avatar_volume_batches.size() + pair_count);
+    }
+    catch (const std::bad_alloc&)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.avatar_volume_batches.clear();
+        return;
+    }
+    capture.avatar_volume_capture_active = true;
+}
+
+void LLPipeline::beginMetalAvatarVolumePair(
+    const LLVector3& end, F32 sphere_scale,
+    const LLVector3& occluded_color,
+    const LLVector3& visible_color)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.avatar_volume_capture_active)
+    {
+        return;
+    }
+
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    const std::size_t captured_pairs = capture.avatar_volume_batches.size() -
+        capture.avatar_volume_capture_first;
+    if (!capture.complete || capture.avatar_volume_pair_active ||
+        captured_pairs >= capture.avatar_volume_expected_pairs ||
+        !LLGLState::isEnabled(GL_BLEND) ||
+        LLGLState::isEnabled(GL_CULL_FACE) ||
+        !LLGLDepthTest::depthEnabled() ||
+        !LLGLDepthTest::depthWriteEnabled() ||
+        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
+        !color_mask[0] || !color_mask[1] || !color_mask[2] || color_mask[3])
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+
+    capture.avatar_volume_batch = {};
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(
+        capture.avatar_volume_batch.line_modelview_projection,
+        modelview_projection.getF32ptr(),
+        sizeof(capture.avatar_volume_batch.line_modelview_projection));
+    std::memcpy(capture.avatar_volume_batch.end, end.mV, sizeof(end.mV));
+    capture.avatar_volume_batch.end[3] = 1.f;
+    std::memcpy(capture.avatar_volume_batch.visible_color,
+                visible_color.mV, sizeof(visible_color.mV));
+    capture.avatar_volume_batch.visible_color[3] = 1.f;
+    std::memcpy(capture.avatar_volume_batch.occluded_color,
+                occluded_color.mV, sizeof(occluded_color.mV));
+    capture.avatar_volume_batch.occluded_color[3] = 1.f;
+    capture.avatar_volume_batch.sphere_scale = sphere_scale;
+    capture.avatar_volume_batch.order = capture.render_debug_order++;
+    capture.avatar_volume_sphere_transform_captured = false;
+    capture.avatar_volume_pair_active = true;
+}
+
+void LLPipeline::captureMetalAvatarVolumeSphereTransform()
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.avatar_volume_pair_active)
+    {
+        return;
+    }
+    if (!capture.complete ||
+        capture.avatar_volume_sphere_transform_captured)
+    {
+        capture.markIncomplete(__LINE__);
+        return;
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(
+        capture.avatar_volume_batch.sphere_modelview_projection,
+        modelview_projection.getF32ptr(),
+        sizeof(capture.avatar_volume_batch.sphere_modelview_projection));
+    capture.avatar_volume_sphere_transform_captured = true;
+}
+
+void LLPipeline::endMetalAvatarVolumePair()
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.avatar_volume_pair_active)
+    {
+        return;
+    }
+
+    bool color_mask[4]{};
+    gGL.getColorMask(color_mask);
+    const bool state_valid = capture.complete &&
+        capture.avatar_volume_sphere_transform_captured &&
+        LLGLState::isEnabled(GL_BLEND) &&
+        !LLGLState::isEnabled(GL_CULL_FACE) &&
+        LLGLDepthTest::depthEnabled() &&
+        !LLGLDepthTest::depthWriteEnabled() &&
+        LLGLDepthTest::depthFunction() == GL_GREATER &&
+        color_mask[0] && color_mask[1] && color_mask[2] && !color_mask[3];
+    if (state_valid)
+    {
+        try
+        {
+            capture.avatar_volume_batches.push_back(
+                capture.avatar_volume_batch);
+        }
+        catch (const std::bad_alloc&)
+        {
+            capture.markIncomplete(__LINE__);
+        }
+    }
+    else
+    {
+        capture.markIncomplete(__LINE__);
+    }
+    capture.avatar_volume_batch = {};
+    capture.avatar_volume_pair_active = false;
+    capture.avatar_volume_sphere_transform_captured = false;
+}
+
+void LLPipeline::endMetalAvatarVolumeCapture(
+    std::size_t collision_volume_count)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.avatar_volume_capture_active)
+    {
+        return;
+    }
+    capture.avatar_volume_capture_active = false;
+    constexpr std::size_t pairs_per_volume = 2;
+    const bool count_overflows = collision_volume_count >
+        std::numeric_limits<std::size_t>::max() / pairs_per_volume;
+    const std::size_t pair_count = count_overflows
+        ? 0 : collision_volume_count * pairs_per_volume;
+    const std::size_t captured_pairs = capture.avatar_volume_batches.size() -
+        capture.avatar_volume_capture_first;
+    if (!capture.complete || capture.avatar_volume_pair_active ||
+        count_overflows || pair_count != capture.avatar_volume_expected_pairs ||
+        captured_pairs != pair_count)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.avatar_volume_batches.clear();
+    }
+    capture.avatar_volume_batch = {};
+    capture.avatar_volume_capture_first = 0;
+    capture.avatar_volume_expected_pairs = 0;
+    capture.avatar_volume_pair_active = false;
+    capture.avatar_volume_sphere_transform_captured = false;
 }
 
 void LLPipeline::beginMetalDebugPointCapture()
@@ -6278,6 +6502,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     capture.agent_target_modelview_projection,
                     sizeof(scene.agent_target_modelview_projection));
         scene.agent_target_order = capture.agent_target_order;
+        scene.avatar_volume_batches =
+            capture.avatar_volume_batches.data();
+        scene.avatar_volume_batch_count =
+            capture.avatar_volume_batches.size();
         scene.debug_points = capture.debug_points.data();
         scene.debug_point_count = capture.debug_points.size();
         scene.debug_point_batches = capture.debug_point_batches.data();
@@ -7950,6 +8178,13 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.agent_target_lines.clear();
     capture.agent_target_order = 0;
     capture.agent_target_capture_active = false;
+    capture.avatar_volume_batches.clear();
+    capture.avatar_volume_batch = {};
+    capture.avatar_volume_capture_first = 0;
+    capture.avatar_volume_expected_pairs = 0;
+    capture.avatar_volume_capture_active = false;
+    capture.avatar_volume_pair_active = false;
+    capture.avatar_volume_sphere_transform_captured = false;
     capture.debug_points.clear();
     capture.debug_point_batches.clear();
     capture.debug_point_batch = {};

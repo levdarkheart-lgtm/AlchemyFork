@@ -146,6 +146,7 @@ namespace
     };
     static_assert(sizeof(WorldLightDebugOutlineConstants) == 128);
     static_assert(sizeof(ALMetalWorldWindVectorVertex) == 32);
+    static_assert(sizeof(ALMetalWorldAvatarVolumeBatch) == 192);
 
     struct alignas(16) WorldFarPlaneOverlayConstants
     {
@@ -1333,6 +1334,9 @@ struct ALMetalWorldGBufferRenderer::Impl
         debug_point_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         texture_anim_pipelines;
+    std::unique_ptr<ALMetalBuffer> avatar_volume_sphere_vertices;
+    std::unique_ptr<ALMetalBuffer> avatar_volume_sphere_indices;
+    std::uint32_t avatar_volume_sphere_index_count = 0;
     std::array<OpaqueForwardRiggedPipelines, 2>
         batch_size_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
@@ -4915,6 +4919,85 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
     {
         return nullptr;
     }
+
+    // Match LLRenderSphere's 20x30 diagnostic sphere once for every collision
+    // skeleton replay. Its source GL vertex buffer contains the same unit
+    // positions and indexed triangle topology; float4 storage matches the
+    // shared world constant-color vertex contract directly.
+    constexpr std::uint32_t latitude_slices = 20;
+    constexpr std::uint32_t longitude_slices = 30;
+    constexpr float two_pi = 6.28318530717958647692f;
+    std::array<std::array<float, 4>,
+               (latitude_slices + 1) * (longitude_slices + 1)>
+        sphere_positions{};
+    std::array<std::uint16_t,
+               latitude_slices * longitude_slices * 6>
+        sphere_indices{};
+    for (std::uint32_t latitude = 0; latitude <= latitude_slices; ++latitude)
+    {
+        const float lat = static_cast<float>(latitude) /
+                          static_cast<float>(latitude_slices);
+        for (std::uint32_t longitude = 0;
+             longitude <= longitude_slices; ++longitude)
+        {
+            const float lon = static_cast<float>(longitude) /
+                              static_cast<float>(longitude_slices);
+            sphere_positions[
+                latitude * (longitude_slices + 1) + longitude] = {
+                std::sin(two_pi * lat) * std::cos(two_pi * lon),
+                std::sin(two_pi * lat) * std::sin(two_pi * lon),
+                std::cos(two_pi * lat),
+                1.f,
+            };
+        }
+    }
+    for (std::uint32_t latitude = 0; latitude < latitude_slices; ++latitude)
+    {
+        for (std::uint32_t longitude = 0;
+             longitude < longitude_slices; ++longitude)
+        {
+            const std::size_t destination =
+                (latitude * longitude_slices + longitude) * 6;
+            const std::uint16_t current = static_cast<std::uint16_t>(
+                latitude * (longitude_slices + 1) + longitude);
+            const std::uint16_t next = static_cast<std::uint16_t>(
+                (latitude + 1) * (longitude_slices + 1) + longitude);
+            sphere_indices[destination + 0] = current;
+            sphere_indices[destination + 1] = current + 1;
+            sphere_indices[destination + 2] = next;
+            sphere_indices[destination + 3] = next;
+            sphere_indices[destination + 4] = current + 1;
+            sphere_indices[destination + 5] = next + 1;
+        }
+    }
+
+    ALMetalBufferDescriptor sphere_vertex_descriptor;
+    sphere_vertex_descriptor.length = sizeof(sphere_positions);
+    sphere_vertex_descriptor.storage = ALMetalStorageMode::shared;
+    sphere_vertex_descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+    sphere_vertex_descriptor.label =
+        "Alchemy world collision-volume sphere vertices";
+    impl->avatar_volume_sphere_vertices = ALMetalBuffer::create(
+        device, sphere_vertex_descriptor, error);
+    ALMetalBufferDescriptor sphere_index_descriptor;
+    sphere_index_descriptor.length = sizeof(sphere_indices);
+    sphere_index_descriptor.storage = ALMetalStorageMode::shared;
+    sphere_index_descriptor.cpu_cache = ALMetalCpuCacheMode::write_combined;
+    sphere_index_descriptor.label =
+        "Alchemy world collision-volume sphere indices";
+    impl->avatar_volume_sphere_indices = ALMetalBuffer::create(
+        device, sphere_index_descriptor, error);
+    if (!impl->avatar_volume_sphere_vertices ||
+        !impl->avatar_volume_sphere_indices ||
+        !impl->avatar_volume_sphere_vertices->write(
+            0, sphere_positions.data(), sizeof(sphere_positions), error) ||
+        !impl->avatar_volume_sphere_indices->write(
+            0, sphere_indices.data(), sizeof(sphere_indices), error))
+    {
+        return nullptr;
+    }
+    impl->avatar_volume_sphere_index_count =
+        static_cast<std::uint32_t>(sphere_indices.size());
 
     return std::unique_ptr<ALMetalWorldGBufferRenderer>(
         new ALMetalWorldGBufferRenderer(std::move(impl)));
@@ -10670,6 +10753,68 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             return nullptr;
         }
     }
+    if ((scene.avatar_volume_batch_count != 0 &&
+         !scene.avatar_volume_batches) ||
+        (scene.avatar_volume_batch_count & 1u) != 0 ||
+        scene.avatar_volume_batch_count >
+            std::numeric_limits<std::size_t>::max() /
+                sizeof(ALMetalWorldAvatarVolumeBatch))
+    {
+        setError(error,
+                 "Metal world avatar-volume batch storage is invalid");
+        return nullptr;
+    }
+    std::uint64_t previous_avatar_volume_order = 0;
+    for (std::size_t index = 0;
+         index < scene.avatar_volume_batch_count; ++index)
+    {
+        const ALMetalWorldAvatarVolumeBatch& batch =
+            scene.avatar_volume_batches[index];
+        const auto color_is = [](const float* color, float red,
+                                 float green, float blue)
+        {
+            return color[0] == red && color[1] == green &&
+                   color[2] == blue && color[3] == 1.f;
+        };
+        const bool shell = (index & 1u) == 0;
+        const bool ordinary_shell =
+            color_is(batch.visible_color, 0.5f, 0.5f, 1.f) &&
+            color_is(batch.occluded_color, 0.f, 0.f, 1.f);
+        const bool control_shell =
+            color_is(batch.visible_color, 1.f, 0.5f, 0.5f) &&
+            color_is(batch.occluded_color, 1.f, 0.f, 0.f);
+        const bool white_dot =
+            color_is(batch.visible_color, 1.f, 1.f, 1.f) &&
+            color_is(batch.occluded_color, 1.f, 1.f, 1.f);
+        const bool pair_matches = shell ||
+            (std::memcmp(
+                 batch.line_modelview_projection,
+                 scene.avatar_volume_batches[index - 1]
+                     .line_modelview_projection,
+                 sizeof(batch.line_modelview_projection)) == 0 &&
+             std::memcmp(
+                 batch.end,
+                 scene.avatar_volume_batches[index - 1].end,
+                 sizeof(batch.end)) == 0 &&
+             batch.order == previous_avatar_volume_order + 1);
+        if (!finiteValues(batch.line_modelview_projection, 16) ||
+            !finiteValues(batch.sphere_modelview_projection, 16) ||
+            !finiteValues(batch.end, 4) ||
+            !finiteValues(batch.visible_color, 4) ||
+            !finiteValues(batch.occluded_color, 4) ||
+            !std::isfinite(batch.sphere_scale) || batch.end[3] != 1.f ||
+            batch.sphere_scale != (shell ? 1.f : 0.05f) ||
+            (shell ? !(ordinary_shell || control_shell) : !white_dot) ||
+            !pair_matches ||
+            (index != 0 && batch.order <= previous_avatar_volume_order) ||
+            (scene.agent_target_line_vertex_count != 0 &&
+             batch.order == scene.agent_target_order))
+        {
+            setError(error, "Metal world avatar-volume batch is invalid");
+            return nullptr;
+        }
+        previous_avatar_volume_order = batch.order;
+    }
     const bool has_shadow_frusta =
         scene.shadow_frustum_vertex_count != 0 ||
         scene.shadow_frustum_batch_count != 0;
@@ -11228,6 +11373,21 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             scene.light_debug_batches, scene.light_debug_batch_count) ||
         order_collides(
             scene.batch_size_batches, scene.batch_size_batch_count,
+            scene.light_debug_batches, scene.light_debug_batch_count) ||
+        order_collides(
+            scene.avatar_volume_batches, scene.avatar_volume_batch_count,
+            scene.debug_point_batches, scene.debug_point_batch_count) ||
+        order_collides(
+            scene.avatar_volume_batches, scene.avatar_volume_batch_count,
+            scene.texture_anim_batches, scene.texture_anim_batch_count) ||
+        order_collides(
+            scene.avatar_volume_batches, scene.avatar_volume_batch_count,
+            scene.update_type_batches, scene.update_type_batch_count) ||
+        order_collides(
+            scene.avatar_volume_batches, scene.avatar_volume_batch_count,
+            scene.batch_size_batches, scene.batch_size_batch_count) ||
+        order_collides(
+            scene.avatar_volume_batches, scene.avatar_volume_batch_count,
             scene.light_debug_batches, scene.light_debug_batch_count))
     {
         setError(error, "Metal world render-debug ordering is invalid");
@@ -14688,6 +14848,75 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
                     scene.agent_target_line_vertex_count),
                 1, error);
     };
+    const auto encode_avatar_volume_batch =
+        [&](const ALMetalWorldAvatarVolumeBatch& batch)
+    {
+        const float line_positions[2][4] = {
+            {0.f, 0.f, 0.f, 1.f},
+            {batch.end[0], batch.end[1], batch.end[2], batch.end[3]},
+        };
+        const auto encode_part = [&](const float* modelview_projection,
+                                     const float* color,
+                                     bool sphere,
+                                     const ALMetalDepthStencilState* depth)
+        {
+            WorldTextureAnimConstants constants{};
+            std::memcpy(constants.modelview_projection,
+                        modelview_projection,
+                        sizeof(constants.modelview_projection));
+            std::memcpy(constants.color, color, sizeof(constants.color));
+            constants.config[0] = scene.reverse_z ? 1u : 0u;
+            bool part_encoded =
+                encoder->setDepthStencilState(depth, error) &&
+                encoder->setDepthBias(0.f, 0.f, 0.f, error) &&
+                encoder->setCullMode(ALMetalCullMode::none, error) &&
+                encoder->setTriangleFillMode(
+                    ALMetalTriangleFillMode::fill, error) &&
+                encoder->setPipeline(
+                    *mImpl->texture_anim_pipelines[
+                        scene.hdr ? 1 : 0], error) &&
+                encoder->setVertexBytes(
+                    1, &constants, sizeof(constants), error) &&
+                encoder->setFragmentBytes(
+                    0, &constants, sizeof(constants), error);
+            if (sphere)
+            {
+                return part_encoded &&
+                    encoder->setVertexBuffer(
+                        0, *mImpl->avatar_volume_sphere_vertices,
+                        0, error) &&
+                    encoder->drawIndexed(
+                        ALMetalPrimitiveType::triangle,
+                        mImpl->avatar_volume_sphere_index_count,
+                        ALMetalIndexType::uint16,
+                        *mImpl->avatar_volume_sphere_indices,
+                        0, 1, error);
+            }
+            return part_encoded &&
+                encoder->setVertexBytes(
+                    0, line_positions, sizeof(line_positions), error) &&
+                encoder->draw(
+                    ALMetalPrimitiveType::line, 0, 2, 1, error);
+        };
+
+        const ALMetalDepthStencilState* visible_depth = scene.reverse_z
+            ? mImpl->reverse_depth.get() : mImpl->forward_depth.get();
+        const ALMetalDepthStencilState* occluded_depth = scene.reverse_z
+            ? mImpl->reverse_coverage_depth.get()
+            : mImpl->forward_coverage_depth.get();
+        return encode_part(
+                   batch.line_modelview_projection,
+                   batch.visible_color, false, visible_depth) &&
+               encode_part(
+                   batch.sphere_modelview_projection,
+                   batch.visible_color, true, visible_depth) &&
+               encode_part(
+                   batch.line_modelview_projection,
+                   batch.occluded_color, false, occluded_depth) &&
+               encode_part(
+                   batch.sphere_modelview_projection,
+                   batch.occluded_color, true, occluded_depth);
+    };
     const auto encode_debug_point_batch =
         [&](const ALMetalWorldDebugPointBatch& batch)
     {
@@ -14900,13 +15129,15 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
 
     bool agent_target_encoded =
         scene.agent_target_line_vertex_count == 0;
+    std::size_t avatar_volume_batch_index = 0;
     std::size_t debug_point_batch_index = 0;
     std::size_t texture_anim_batch_index = 0;
     std::size_t update_type_batch_index = 0;
     std::size_t batch_size_batch_index = 0;
     std::size_t light_debug_batch_index = 0;
     while (encoded &&
-           (debug_point_batch_index < scene.debug_point_batch_count ||
+           (avatar_volume_batch_index < scene.avatar_volume_batch_count ||
+            debug_point_batch_index < scene.debug_point_batch_count ||
             texture_anim_batch_index < scene.texture_anim_batch_count ||
             update_type_batch_index < scene.update_type_batch_count ||
             batch_size_batch_index < scene.batch_size_batch_count ||
@@ -14916,6 +15147,7 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         enum class RenderDebugOwner
         {
             agent_target,
+            avatar_volume,
             debug_point,
             texture_anim,
             update_type,
@@ -14925,6 +15157,18 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
         RenderDebugOwner owner = RenderDebugOwner::agent_target;
         bool owner_selected = !agent_target_encoded;
         std::uint64_t owner_order = scene.agent_target_order;
+        if (avatar_volume_batch_index <
+            scene.avatar_volume_batch_count)
+        {
+            const std::uint64_t order = scene.avatar_volume_batches[
+                avatar_volume_batch_index].order;
+            if (!owner_selected || order < owner_order)
+            {
+                owner = RenderDebugOwner::avatar_volume;
+                owner_selected = true;
+                owner_order = order;
+            }
+        }
         if (debug_point_batch_index < scene.debug_point_batch_count)
         {
             const std::uint64_t order = scene.debug_point_batches[
@@ -14985,6 +15229,11 @@ ALMetalWorldGBufferRenderer::renderOpaquePostDeferred(
             case RenderDebugOwner::agent_target:
                 encoded = encode_agent_target();
                 agent_target_encoded = true;
+                break;
+            case RenderDebugOwner::avatar_volume:
+                encoded = encode_avatar_volume_batch(
+                    scene.avatar_volume_batches[
+                        avatar_volume_batch_index++]);
                 break;
             case RenderDebugOwner::debug_point:
                 encoded = encode_debug_point_batch(

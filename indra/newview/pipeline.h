@@ -377,6 +377,18 @@ public:
                                           F32 size,
                                           const LLColor4& color);
     void endMetalAgentTargetCapture(std::size_t crosshair_count);
+    // Retain Develop > Collision Skeleton at the shared avatar helper that
+    // owns its exact line/sphere transforms and visible/occluded depth split.
+    // The outer transaction prevents the same helper's joint-bone calls from
+    // entering this owner and rejects partial avatar traversal.
+    void beginMetalAvatarVolumeCapture(std::size_t collision_volume_count);
+    void beginMetalAvatarVolumePair(const LLVector3& end,
+                                    F32 sphere_scale,
+                                    const LLVector3& occluded_color,
+                                    const LLVector3& visible_color);
+    void captureMetalAvatarVolumeSphereTransform();
+    void endMetalAvatarVolumePair();
+    void endMetalAvatarVolumeCapture(std::size_t collision_volume_count);
     // Retain Develop > Points across the complete world spatial traversal.
     // Each drawable batch records its current region/bridge transform; the
     // traversal order also preserves interleaving with Agent Target.
@@ -1493,7 +1505,6 @@ public:
             RENDER_DEBUG_OCTREE |
             RENDER_DEBUG_OCCLUSION |
             RENDER_DEBUG_RAYCAST |
-            RENDER_DEBUG_AVATAR_VOLUME |
             RENDER_DEBUG_AVATAR_JOINTS |
             RENDER_DEBUG_PHYSICS_SHAPES |
             RENDER_DEBUG_NORMALS |

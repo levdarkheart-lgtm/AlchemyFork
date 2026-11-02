@@ -459,6 +459,22 @@ using ALMetalWorldWindVectorVertex = ALMetalWorldDebugBlip;
 // untouched.
 using ALMetalWorldAgentTargetVertex = ALMetalWorldDebugBlip;
 
+// Develop > Collision Skeleton draws each avatar collision volume as two
+// source-ordered line/sphere pairs: a full-size colored shell followed by a
+// small white centre dot. The visible pass writes ambient world depth; the
+// occluded pass uses the complementary read-only depth comparison. Capturing
+// both live transforms avoids reconstructing LLRender's matrix order here.
+struct ALMetalWorldAvatarVolumeBatch
+{
+    float line_modelview_projection[16]{};
+    float sphere_modelview_projection[16]{};
+    float end[4] = {0.f, 0.f, 0.f, 1.f};
+    float visible_color[4] = {1.f, 1.f, 1.f, 1.f};
+    float occluded_color[4] = {1.f, 1.f, 1.f, 1.f};
+    float sphere_scale = 1.f;
+    std::uint64_t order = 0;
+};
+
 // Develop > Points emits one opaque white, one-pixel point at every valid
 // drawable face centre. World traversal can switch transforms at spatial-
 // bridge boundaries and can interleave the self-avatar Agent Target owner, so
@@ -905,6 +921,8 @@ struct ALMetalWorldOpaquePostDeferredScene
     std::size_t agent_target_line_vertex_count = 0;
     float agent_target_modelview_projection[16]{};
     std::uint64_t agent_target_order = 0;
+    const ALMetalWorldAvatarVolumeBatch* avatar_volume_batches = nullptr;
+    std::size_t avatar_volume_batch_count = 0;
     const ALMetalWorldDebugPointVertex* debug_points = nullptr;
     std::size_t debug_point_count = 0;
     const ALMetalWorldDebugPointBatch* debug_point_batches = nullptr;

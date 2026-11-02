@@ -3145,7 +3145,15 @@ void renderRaycast(LLDrawable* drawablep)
 
 void renderAvatarCollisionVolumes(LLVOAvatar* avatar)
 {
+#if LL_DARWIN
+    gPipeline.beginMetalAvatarVolumeCapture(
+        static_cast<std::size_t>(avatar->mNumCollisionVolumes));
+#endif
     avatar->renderCollisionVolumes();
+#if LL_DARWIN
+    gPipeline.endMetalAvatarVolumeCapture(
+        static_cast<std::size_t>(avatar->mNumCollisionVolumes));
+#endif
 }
 
 void renderAvatarBones(LLVOAvatar* avatar)
