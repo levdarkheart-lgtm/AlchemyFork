@@ -1,8 +1,8 @@
 # Current engineering state
 
-**Observed:** 2026-11-01 on the physical Apple Silicon acceptance host.
+**Observed:** 2026-11-02 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `5001b10d20` (`feat(metal): replay texture animation debug overlay`)
+**Renderer code checkpoint:** `0ac23c10b1` (`feat(metal): replay update type debug overlay`)
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -10,34 +10,34 @@ append-only archives.
 
 ## Active implementation checkpoint
 
-M-008 remains `doing`; M-012 is complete. Commit `5001b10d20` captures and
-replays Develop **Texture Anim** in the native opaque-post scene. The source
-selects only visible draw infos with a non-null texture matrix, but its active
-`gDebugProgram` is position-only: the matrix and texture are not sampled. The
-native contract therefore reuses the source position/index buffers and current
-modelview-projection with a fixed `(1,1,0,0.5)` translucent-yellow uniform. It
-deliberately does not skin draw infos that merely carry avatar metadata because
-the source keeps the non-rigged debug shader bound.
+M-008 remains `doing`; M-012 is complete. Commit `0ac23c10b1` captures and
+replays Develop **Update Type** in the native opaque-post scene. Drawables with
+a known last simulator update class replay each valid face's indexed triangles:
+full is green, terse-improved cyan, compressed cached red, compressed uncached
+yellow and full-cached blue, all at alpha `0.5`. The source keeps the
+position-only, non-rigged `gDebugProgram` bound, so the native contract reuses
+the face's existing position/index buffers and current transform without
+texture or skin-palette input.
 
 Capture requires complete mirrored buffers, triangle cardinality, aligned and
-in-range offsets, enabled blend, disabled culling, RGB-only writes and inherited
-forward/reverse `LEQUAL` read/write depth. Non-finite transforms, invalid or
-duplicate traversal order, missing storage and allocation failure fail closed;
-empty/off input is an exact no-op. Texture Anim, Points and Agent Target are
-merged by the original traversal order. HUD-only output is retained through the
-established uniform-color capture transaction while the original GL draw stays
-unchanged during migration.
+in-range offsets, one of the five exact colors, enabled blend, disabled culling,
+RGB-only writes and inherited forward/reverse `LEQUAL` read/write depth.
+Non-finite transforms, invalid color/storage/order and allocation failure fail
+closed; unknown/off/no-face input is an exact no-op. Update Type is merged with
+Points, Agent Target and Texture Anim by the original traversal order. HUD-only
+output remains in the established uniform-color capture transaction while the
+original GL draw stays unchanged during migration.
 
 Prior native advanced-output owners remain covered: global world wireframe,
 static/rigged world and HUD **Highlight Transparent**, **Show Updates to
 Objects** blips, Wind Vectors, Agent Target, Points, Composition, reflection-
-probe neighbor links, Texture Anim, the Develop far-plane projection overlay and manual
+probe neighbor links, Texture Anim, Update Type, the Develop far-plane projection overlay and manual
 reflection-probe volumes. The current OSS ARM64 viewer links only the nonfunctional
 `llphysicsextensionsos` pathfinding stub, so pathfinding visualization is not a
 reachable retained-Alchemy output or a release-critical port target. The
-render-debug guard now contains the 14 modes that still emit uncaptured world
+render-debug guard now contains the 13 modes that still emit uncaptured world
 pixels or alter captured world geometry. Nine text-only and four unused masks
-remain eligible for native publication; the remaining 14 visual modes and the
+remain eligible for native publication; the remaining 13 visual modes and the
 latent pathfinding guard remain fail-closed.
 
 The preceding reflection-probe production-call audit found no valid viewer-
@@ -57,22 +57,22 @@ prove shadow parity.
 
 ## Build and test evidence
 
-- Focused physical RelWithDebInfo Texture Anim/world replay passed 2,214
+- Focused physical RelWithDebInfo Update Type/world replay passed 2,293
   assertions under Metal API/GPU/load-store/shader validation.
 - Complete RelWithDebInfo, Debug and Release physical Metal suites each passed
-  45,872 assertions across 52 cases under the same validation layers. Measured
-  elapsed times were 5.99, 8.05 and 7.84 seconds respectively.
+  45,951 assertions across 52 cases under the same validation layers. Measured
+  elapsed times were 5.94, 6.18 and 5.94 seconds respectively.
 - Warnings-as-errors RelWithDebInfo production viewer integration compiled,
   linked, staged and signed. Debug and Release Metal renderer, built-in MSL and
   GPU tests compiled and linked.
-- The Texture Anim change passed a warnings-as-errors RelWithDebInfo production
+- The Update Type change passed a warnings-as-errors RelWithDebInfo production
   viewer build. `ctest --test-dir build-Darwin-ninja-os-arm64 -C
   RelWithDebInfo -LE 'manual|gl' --output-on-failure -j 8` passed 484/484 in
-  35.43 seconds.
-- Source-exact warnings-as-errors Release Development build `26.4.0d68061`
-  linked, staged and signed at committed code head `5001b10d20`.
+  35.57 seconds.
+- Source-exact warnings-as-errors Release Development build `26.4.0d68063`
+  linked, staged and signed at committed code head `0ac23c10b1`.
 - Executable SHA-256:
-  `eac2133bf873934f01c63753864d477804b3f0b838ef6e2960ab31c260e68a1c`.
+  `2cbd61d22685d650f66861d9e2cdefc22d30156bdf2caf7345454f8631525ab6`.
   Packaged/source MSL SHA-256:
   `fc55ef6f5161d51eb6ce8b8ee8bfb6a9316c9752f5262592b8254fc3b06701fa`;
   compiled metallib SHA-256:
@@ -91,8 +91,8 @@ prove shadow parity.
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | Broad native world/UI/resource owners and physical regressions exist; complete parity remains open. |
 | M-007 world/material | doing | Bounded active transparency/material and reflection-probe audits found no valid-production divergence; broader live parity remains open. |
-| M-008 advanced views/effects | doing | Wireframe, Wind Vectors, Agent Target, Points, Composition, reflection-probe links, Texture Anim, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. Text-only/unused render-debug modes no longer veto; 14 visual modes remain fail-closed. OSS pathfinding is a nonfunctional stub. Broader debug/shadows/post/output parity remains open; exact RLVa parity is M-013. |
-| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The explicit 14-mode render-debug world-output set remains pending audit/porting. |
+| M-008 advanced views/effects | doing | Wireframe, Wind Vectors, Agent Target, Points, Composition, reflection-probe links, Texture Anim, Update Type, Highlight Transparent, object-update blips, far-plane projection and reflection-probe-volume visualization are native. Text-only/unused render-debug modes no longer veto; 13 visual modes remain fail-closed. OSS pathfinding is a nonfunctional stub. Broader debug/shadows/post/output parity remains open; exact RLVa parity is M-013. |
+| M-009 parity/stability/no-GL | todo | Full feature matrix, prolonged stability and strict owned-OpenGL elimination are not satisfied. The explicit 13-mode render-debug world-output set remains pending audit/porting. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max performance claim exists. |
 | M-011 GL authority removal | deferred | Keep fail-closed GL traversal until each owner has parity and side-effect evidence. |
 | M-012 Computer Use bridge | complete | Exact-path semantic login/in-world/control/logout operation is verified and used for acceptance. |
@@ -100,7 +100,7 @@ prove shadow parity.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Develop Texture Anim no longer requires
+**Advances the complete product:** yes. Develop Update Type no longer requires
 GL world presentation, while every other uncaptured
 visual debug setting remains fail-closed.
 
@@ -111,20 +111,20 @@ equivalent M1 Max measurements. Independent build/review evidence and
 reproducible distinct release proof also remain open. Exact RLVa behavior/image
 parity is separately deferred as non-critical M-013.
 
-**Evidence-based priority:** implement `RENDER_DEBUG_UPDATE_TYPE` next. Source
-inspection shows a bounded flat-overlay owner: drawables with a known last
-update type replay each face's indexed triangles under one of five fixed
-half-alpha colors. It uses the inherited position-only debug shader, blend,
-RGB-only mask and depth state, with no texture or generated primitive family.
+**Evidence-based priority:** implement `RENDER_DEBUG_BATCH_SIZE` next. Source
+inspection shows another draw-info triangle replay over already mirrored
+buffers, but its exact contract additionally includes `getDebugColor()`,
+polygon offset and rigid/skinned variants with the source matrix palette. Those
+differences make it the next direct-geometry owner rather than a generated-box,
+octree, raycast, avatar-skeleton, physics, normals or texel-density rewrite.
 
 ## Exact next actions
 
-1. Capture and replay Develop **Update Type** face triangles only for drawables
-   whose last update type is known; retain the other 13 visual debug bits and
-   pathfinding fail-closed after that owner passes.
-2. Prove all five source color classifications, face range/transform and
-   traversal order, RGB-only half-alpha blending, inherited forward/reverse
-   depth interaction, unknown/off identity and invalid-input rejection on the
-   physical M1 Max before removing `RENDER_DEBUG_UPDATE_TYPE` from the veto.
+1. Capture and replay Develop **Batch Size** draw-info triangles with the exact
+   debug color, polygon offset, static/rigged transform and palette contract;
+   retain the other 12 visual debug bits and pathfinding fail-closed afterward.
+2. Prove static and skinned geometry, color/range/order, forward/reverse depth
+   plus offset, empty/off identity and invalid-input rejection on the physical
+   M1 Max before removing `RENDER_DEBUG_BATCH_SIZE` from the veto.
 3. Continue strict no-GL work and controlled live parity; keep exact RLVa parity
    in M-013 and require shadows enabled in both viewers for shadow pairs.

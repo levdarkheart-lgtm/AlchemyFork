@@ -31,6 +31,7 @@ reload the chronological history.
 | Native Composition debug-grid replay and source-exact build 68057, 2026-11-01 | [CURRENT-composition-debug-grid-checkpoint-2026-11-01.md](CURRENT-composition-debug-grid-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | Native reflection-probe neighbor-link replay and source-exact build 68059, 2026-11-01 | [CURRENT-reflection-probe-links-checkpoint-2026-11-01.md](CURRENT-reflection-probe-links-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
 | Native Texture Anim replay and source-exact build 68061, 2026-11-01 | [CURRENT-texture-animation-debug-checkpoint-2026-11-01.md](CURRENT-texture-animation-debug-checkpoint-2026-11-01.md) | `docs/metal/state/CURRENT.md` |
+| Native Update Type replay and source-exact build 68063, 2026-11-02 | [CURRENT-update-type-debug-checkpoint-2026-11-02.md](CURRENT-update-type-debug-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
