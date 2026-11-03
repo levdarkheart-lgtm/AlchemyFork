@@ -3280,7 +3280,8 @@ void LLViewerMediaImpl::updateImagesMediaStreams()
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Zero-copy paint consumer. Bring the plugin's GPU shared texture straight into
-// the media GL texture with no CPU round-trip. Main thread (has the GL context).
+// the platform media texture with no CPU round-trip. Darwin publishes only the
+// native Metal destination; Windows/Linux still update their GL destination.
 bool LLViewerMediaImpl::updateAcceleratedTexture()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_MEDIA;
@@ -3375,6 +3376,48 @@ bool LLViewerMediaImpl::updateAcceleratedTexture()
     }
 
     LLImageGL* media_image = media_tex->getGLTexture();
+#if LL_DARWIN
+    // The IOSurface was imported directly into Metal above. Flip it into the
+    // render-target-capable media mirror and publish playing state only after
+    // that write succeeds; there is deliberately no parallel GL import/copy.
+    std::string metal_error;
+    ALMetalTexture* metal_destination = media_image->getMetalTexture();
+    std::unique_ptr<ALMetalTexture> replacement;
+    if (!metal_destination ||
+        !alMetalHasUsage(metal_destination->descriptor().usage,
+                         ALMetalTextureUsage::render_target))
+    {
+        replacement = media_image->createMetalRenderTexture(&metal_error);
+        metal_destination = replacement.get();
+    }
+    if (!metal_destination ||
+        !mAccelInterop->blitToMetal(*metal_destination, &metal_error))
+    {
+        media_image->discardMetalTexture();
+        LL_WARNS_ONCE("Media")
+            << "accelerated paint: Metal media copy failed; exact native "
+               "frames will fail closed"
+            << (metal_error.empty() ? "" : ": ") << metal_error
+            << LL_ENDL;
+        return false;
+    }
+    if (replacement)
+    {
+        if (!media_image->adoptMetalRenderTexture(std::move(replacement)))
+        {
+            media_image->discardMetalTexture();
+            LL_WARNS_ONCE("Media")
+                << "accelerated paint: the completed Metal media frame "
+                   "could not be published; exact native frames will fail closed"
+                << LL_ENDL;
+            return false;
+        }
+    }
+    else
+    {
+        media_image->markMetalRenderTextureUpdated();
+    }
+#else
     U32 tex_name = media_image->getTexName();
     if (!tex_name)
     {
@@ -3387,52 +3430,6 @@ bool LLViewerMediaImpl::updateAcceleratedTexture()
     if (!mAccelInterop->blitTo(tex_name, media_tex->getWidth(), media_tex->getHeight()))
     {
         return false;
-    }
-
-#if LL_DARWIN
-    // Accelerated paint bypasses LLImageGL::setSubImage, so the GL blit above
-    // cannot update the native mirror implicitly. Import the same IOSurface
-    // into Metal and flip it into a render-target-capable mirror on the same
-    // device. A failed native write discards the old mirror: an exact Metal
-    // world frame must then fail closed instead of presenting stale media.
-    std::string metal_error;
-    ALMetalTexture* metal_destination = media_image->getMetalTexture();
-    std::unique_ptr<ALMetalTexture> replacement;
-    if (!metal_destination ||
-        !alMetalHasUsage(metal_destination->descriptor().usage,
-                         ALMetalTextureUsage::render_target))
-    {
-        replacement = media_image->createMetalRenderTexture(&metal_error);
-        metal_destination = replacement.get();
-    }
-    const bool metal_updated = metal_destination &&
-        mAccelInterop->blitToMetal(*metal_destination, &metal_error);
-    if (metal_updated)
-    {
-        if (replacement)
-        {
-            if (!media_image->adoptMetalRenderTexture(std::move(replacement)))
-            {
-                media_image->discardMetalTexture();
-                LL_WARNS_ONCE("Media")
-                    << "accelerated paint: the completed Metal media frame "
-                       "could not be published; exact native frames will fail closed"
-                    << LL_ENDL;
-            }
-        }
-        else
-        {
-            media_image->markMetalRenderTextureUpdated();
-        }
-    }
-    else
-    {
-        media_image->discardMetalTexture();
-        LL_WARNS_ONCE("Media")
-            << "accelerated paint: Metal media copy failed; exact native "
-               "frames will fail closed"
-            << (metal_error.empty() ? "" : ": ") << metal_error
-            << LL_ENDL;
     }
 #endif
 

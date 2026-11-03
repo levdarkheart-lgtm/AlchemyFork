@@ -234,31 +234,18 @@ bool LLCEFAccelInterop::blitTo(unsigned int dst_tex, int width, int height)
     return true;
 }
 
-#elif LL_DARWIN  // macOS: bind the shared IOSurface to a GL texture, blit to media
+#elif LL_DARWIN  // macOS: import the shared IOSurface directly into Metal
 
 #include "almetalresource.h"
 #include "almetaltextureops.h"
-#include "altextureblit.h"
-#include "llgl.h"
 #include "llimagegl.h"
-#include "llrender.h"
-#include <OpenGL/CGLCurrent.h>
-#include <OpenGL/CGLIOSurface.h>
 #include <IOSurface/IOSurface.h>
-
-#ifndef GL_TEXTURE_RECTANGLE_ARB
-#define GL_TEXTURE_RECTANGLE_ARB 0x84F5
-#endif
 
 namespace
 {
     struct MacAccel
     {
-        GLuint      tex = 0;                 // GL_TEXTURE_RECTANGLE bound to the IOSurface
         IOSurfaceRef surface = nullptr;
-        int         width = 0;
-        int         height = 0;
-        ALTextureBlit blit;
         const ALMetalDevice* metal_device = nullptr;
         std::unique_ptr<ALMetalTexture> metal_source;
         std::unique_ptr<ALMetalTextureResampler> metal_resampler;
@@ -272,24 +259,26 @@ LLCEFAccelInterop::~LLCEFAccelInterop()
 
 bool LLCEFAccelInterop::init()
 {
-    if (!CGLGetCurrentContext())
+    MacAccel* m = new MacAccel();
+    m->metal_device = LLImageGL::getMetalDevice();
+    if (!m->metal_device)
     {
+        LL_WARNS("Media")
+            << "accelerated paint: no published Metal device; using CPU paint"
+            << LL_ENDL;
+        delete m;
         return false;
     }
-    MacAccel* m = new MacAccel();
-    LLImageGL::generateTextures(1, &m->tex);
-    m->metal_device = LLImageGL::getMetalDevice();
-    if (m->metal_device)
+    std::string error;
+    m->metal_resampler = ALMetalTextureResampler::create(
+        *m->metal_device, &error);
+    if (!m->metal_resampler)
     {
-        std::string error;
-        m->metal_resampler = ALMetalTextureResampler::create(
-            *m->metal_device, &error);
-        if (!m->metal_resampler)
-        {
-            LL_WARNS("Media")
-                << "accelerated paint: native Metal media copier is unavailable: "
-                << error << LL_ENDL;
-        }
+        LL_WARNS("Media")
+            << "accelerated paint: native Metal media copier is unavailable; "
+               "using CPU paint: " << error << LL_ENDL;
+        delete m;
+        return false;
     }
     mImpl = m;
     mValid = true;
@@ -303,8 +292,6 @@ void LLCEFAccelInterop::shutdown()
         return;
     }
     MacAccel* m = (MacAccel*)mImpl;
-    if (m->tex) { LLImageGL::deleteTextures(1, &m->tex); }
-    m->blit.release();
     m->metal_source.reset();
     m->metal_resampler.reset();
     if (m->surface) { CFRelease(m->surface); }
@@ -319,7 +306,8 @@ bool LLCEFAccelInterop::setStableTexture(unsigned long long handle, int width, i
                                          int plane_count, const unsigned long long* plane_fds,
                                          const unsigned int* plane_strides, const unsigned long long* plane_offsets)
 {
-    (void)format; (void)stride; (void)offset; (void)modifier; (void)src_pid;
+    (void)width; (void)height; (void)format; (void)stride;
+    (void)offset; (void)modifier; (void)src_pid;
     (void)plane_count; (void)plane_fds; (void)plane_strides; (void)plane_offsets;
     if (!mValid || !handle)
     {
@@ -336,77 +324,43 @@ bool LLCEFAccelInterop::setStableTexture(unsigned long long handle, int width, i
     {
         return false;
     }
-    // Bind into the GL texture first; only swap in the new surface once the bind
-    // succeeds, so a failed import leaves the previous (good) binding intact for
-    // blitTo() rather than dropping to a stale/invalid surface.
+    // Only swap in the new surface once its native texture exists, so a failed
+    // import leaves the previous complete source intact.
     const int new_width = (int)IOSurfaceGetWidth(surf);
     const int new_height = (int)IOSurfaceGetHeight(surf);
 
-    std::unique_ptr<ALMetalTexture> metal_source;
-    if (m->metal_device && m->metal_resampler &&
-        new_width > 0 && new_height > 0)
-    {
-        ALMetalTextureDescriptor descriptor;
-        descriptor.format = ALMetalPixelFormat::bgra8_unorm;
-        descriptor.width = static_cast<U32>(new_width);
-        descriptor.height = static_cast<U32>(new_height);
-        descriptor.storage = ALMetalStorageMode::shared;
-        descriptor.usage = ALMetalTextureUsage::shader_read;
-        descriptor.label = "Alchemy accelerated CEF IOSurface";
-        std::string error;
-        metal_source = ALMetalTexture::createFromIOSurface(
-            *m->metal_device, surf, 0, descriptor, &error);
-        if (!metal_source)
-        {
-            LL_WARNS("Media")
-                << "accelerated paint: IOSurface Metal import failed; "
-                   "exact native frames will fail closed: "
-                << error << LL_ENDL;
-        }
-    }
-
-    CGLContextObj cgl = CGLGetCurrentContext();
-    // Through the slot, so its record of what is bound stays true (see the Linux import).
-    ALTextureSlot* slot = gGL.getTextureSlot(0);
-    slot->bindManual(ALTextureSlot::TT_RECT_TEXTURE, m->tex);
-    CGLError err = CGLTexImageIOSurface2D(cgl, GL_TEXTURE_RECTANGLE_ARB, GL_RGBA,
-                                          new_width, new_height, GL_BGRA,
-                                          GL_UNSIGNED_INT_8_8_8_8_REV, surf, 0);
-    slot->unbind();
-    if (err != kCGLNoError)
+    if (!m->metal_device || !m->metal_resampler ||
+        new_width <= 0 || new_height <= 0)
     {
         CFRelease(surf);
         return false;
     }
 
-    if (m->surface) { CFRelease(m->surface); }
-    m->surface = surf;
+    ALMetalTextureDescriptor descriptor;
+    descriptor.format = ALMetalPixelFormat::bgra8_unorm;
+    descriptor.width = static_cast<U32>(new_width);
+    descriptor.height = static_cast<U32>(new_height);
+    descriptor.storage = ALMetalStorageMode::shared;
+    descriptor.usage = ALMetalTextureUsage::shader_read;
+    descriptor.label = "Alchemy accelerated CEF IOSurface";
+    std::string error;
+    std::unique_ptr<ALMetalTexture> metal_source =
+        ALMetalTexture::createFromIOSurface(
+            *m->metal_device, surf, 0, descriptor, &error);
+    if (!metal_source)
+    {
+        LL_WARNS("Media")
+            << "accelerated paint: IOSurface Metal import failed; "
+               "exact native frames will fail closed: "
+            << error << LL_ENDL;
+        CFRelease(surf);
+        return false;
+    }
+
+    IOSurfaceRef previous_surface = m->surface;
     m->metal_source = std::move(metal_source);
-    m->width = new_width;
-    m->height = new_height;
-    return true;
-}
-
-bool LLCEFAccelInterop::blitTo(unsigned int dst_tex, int width, int height)
-{
-    if (!mValid || !dst_tex)
-    {
-        return false;
-    }
-    MacAccel* m = (MacAccel*)mImpl;
-    if (!m->surface || !m->tex)
-    {
-        return false;
-    }
-    int cw = llmin(width, m->width);
-    int ch = llmin(height, m->height);
-    if (cw <= 0 || ch <= 0)
-    {
-        return false;
-    }
-
-    // Y-flipped: the IOSurface is top-down, the media texture bottom-up.
-    m->blit.blit(GL_TEXTURE_RECTANGLE_ARB, m->tex, dst_tex, cw, ch, true);
+    m->surface = surf;
+    if (previous_surface) { CFRelease(previous_surface); }
     return true;
 }
 
@@ -688,11 +642,10 @@ bool LLCEFAccelInterop::blitTo(unsigned int, int, int) { return false; }
 
 #endif
 
-// static - platform-agnostic capability preflight. Probes the interop once (it
-// needs a current GL/EGL context, which exists on the main thread when media
-// sources are created) so callers only request accelerated paint from the plugin
-// when the consumer can actually bind it - otherwise the plugin would emit GPU
-// frames the viewer drops, leaving the media blank with no CPU fallback.
+// static - platform-agnostic capability preflight. Probes the interop once so
+// callers only request accelerated paint from the plugin when the consumer can
+// actually import it. Windows/Linux require their GL/EGL context; Darwin uses
+// the published Metal device and never creates or consults a GL object here.
 bool LLCEFAccelInterop::isSupported()
 {
     static bool s_probed = false;
