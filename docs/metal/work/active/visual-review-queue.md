@@ -33,8 +33,9 @@ may be reused only when its provenance satisfies `docs/metal/VALIDATION.md`.
 | 4 | Terrain height/composition-map cutover | queued | On exact build 68133 or later, compare terrain geometry/composition at a stable region and camera after asset convergence. Match graphics preset, draw distance, environment and region state; inspect dirty-region boundaries as well as broad terrain appearance. |
 | 5 | Water cell/displacement-map cutover | queued | On exact build 68135 or later, use a stable water fixture, camera and environment. Inspect flat-field/cell boundaries, near/far wave mip transitions, displacement amplitude and water haze/exclusion behavior after asset convergence. Match graphics preset, draw distance, environment and region state. |
 | 6 | Parcel-owner terrain overlay cutover | queued | On exact build 68137 or later, enable Show Parcel Owners in stable classic and PBR terrain fixtures. Inspect ownership colors, point-clamped cell boundaries, region edges and refresh after a parcel-overlay update; match camera, environment, terrain mode and region state. |
-| 7 | Moving CEF/VLC media | queued | Compare motion, color, alpha, scaling and interaction only after the native media ingress is source- and log-qualified. Preserve media/voice behavior. |
-| 8 | Wireframe/material/editing matrix | queued | Batch remaining interactive advanced/editor views after source eligibility is complete; use identical selection/tool state and capture only questions that deterministic tests cannot answer. |
+| 7 | CPU-generated sky/shiny-face cutover | queued | On exact build 68139 or later, use a fixed environment and camera in the legacy CPU-sky path. Inspect all six sky seams, current/next transition, color/alpha linearity and shiny/water cubemap response after convergence; match sky settings and render mode. |
+| 8 | Moving CEF/VLC media | queued | Compare motion, color, alpha, scaling and interaction only after the native media ingress is source- and log-qualified. Preserve media/voice behavior. |
+| 9 | Wireframe/material/editing matrix | queued | Batch remaining interactive advanced/editor views after source eligibility is complete; use identical selection/tool state and capture only questions that deterministic tests cannot answer. |
 
 ## Next owner session
 

@@ -67,6 +67,7 @@ reload the chronological history.
 | Native-only Darwin terrain height/composition maps and source-exact build 68133, 2026-11-03 | [CURRENT-native-terrain-maps-checkpoint-2026-11-03.md](CURRENT-native-terrain-maps-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin water cell/displacement maps with generated mip chains and source-exact build 68135, 2026-11-03 | [CURRENT-native-water-maps-checkpoint-2026-11-03.md](CURRENT-native-water-maps-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin parcel-overlay publication/lifecycle and source-exact build 68137, 2026-11-03 | [CURRENT-native-parcel-overlay-checkpoint-2026-11-03.md](CURRENT-native-parcel-overlay-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Native-only Darwin CPU-generated sky/shiny faces and source-exact build 68139, 2026-11-03 | [CURRENT-native-sky-faces-checkpoint-2026-11-03.md](CURRENT-native-sky-faces-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
