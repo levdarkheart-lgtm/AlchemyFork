@@ -9108,8 +9108,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             const F32 native_halation_strength = bloom_halation
                 ? llmax(halation_strength(), 0.f) : 0.f;
             const F32 native_cross_filter_strength =
-                native_bloom_strength > 0.f &&
-                gCrossFilterProgram.isComplete()
+                native_bloom_strength > 0.f
                     ? llclamp(cross_filter_strength(), 0.f,
                               CROSS_FILTER_MAX_STRENGTH)
                     : 0.f;
@@ -9125,7 +9124,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.bloom_target.reset();
             capture.bloom_frame = std::numeric_limits<U32>::max();
             std::unique_ptr<ALMetalRenderTarget> cross_filter_target;
-            if (wants_native_bloom && bloomHDRReady())
+            if (wants_native_bloom)
             {
                 ALMetalWorldBloomScene bloom;
                 bloom.source = post_source;
@@ -9168,7 +9167,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 else
                 {
                     LL_WARNS("Metal")
-                        << "Native world bloom retained GL: "
+                        << "Native world bloom withheld native publication: "
                         << bloom_error << LL_ENDL;
                 }
             }
@@ -27384,6 +27383,7 @@ void LLPipeline::renderFinalize()
 #endif
 
     Bloom bloom;
+#if !LL_DARWIN
     if (hdr && !cutout)
     {
         // HDR bloom runs pre-tonemap against the linear scene buffer -- now the
@@ -27394,6 +27394,13 @@ void LLPipeline::renderFinalize()
         // extract pass, so prim glow survives the migration.
         bloom = generateBloomHDR(scene, post);
     }
+#else
+    // The exact Darwin Metal display transaction owns world-view bloom,
+    // halation, and cross-filter output. Keep this retained Bloom empty so
+    // colorCorrect cannot run a parallel GL world composite. The retained GL
+    // generator remains available to the material-preview path until that
+    // presentation surface has its own native transaction.
+#endif
 
     // Handles tonemap, colorgrading, and gamma correction in one pass. In the HDR
     // path, this also applies eye adaptation and bloom. In the non-HDR path, this
