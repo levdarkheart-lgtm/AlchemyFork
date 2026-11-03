@@ -131,6 +131,23 @@ std::string csv_field(const std::string& value)
     quoted.push_back('"');
     return quoted;
 }
+
+const char* presentation_state_name(
+    ALMetalBenchmarkRecorder::NativePresentationState state)
+{
+    using State = ALMetalBenchmarkRecorder::NativePresentationState;
+    switch (state)
+    {
+        case State::disabled: return "disabled";
+        case State::not_attempted: return "not_attempted";
+        case State::capture_started: return "capture_started";
+        case State::capture_failed: return "capture_failed";
+        case State::surface_unavailable: return "surface_unavailable";
+        case State::surface_submit_failed: return "surface_submit_failed";
+        case State::submitted: return "submitted";
+    }
+    return nullptr;
+}
 }
 
 std::optional<ALMetalBenchmarkRecorder::Config>
@@ -277,7 +294,8 @@ bool ALMetalBenchmarkRecorder::openOutput(std::string* error)
         << "scenario,variant,frame_ms,frame_index,source_sha,build_type,"
            "drawable_width,drawable_height,quality_profile,draw_calls,"
            "metal_submissions,metal_completed,metal_timed,metal_gpu_ms,"
-           "native_exact\n";
+           "native_requested,native_attempted,native_exact,gl_fallback,"
+           "native_presentation_state\n";
     return static_cast<bool>(*mOutput);
 }
 
@@ -318,6 +336,31 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
         {
             return fail(
                 "The Metal completion telemetry snapshot is inconsistent",
+                error);
+        }
+        resetSequence();
+        return Result::inactive;
+    }
+    const char* presentation_state =
+        presentation_state_name(frame.native_presentation_state);
+    const bool native_requested =
+        frame.native_presentation_state !=
+            NativePresentationState::disabled;
+    const bool native_attempted = native_requested &&
+        frame.native_presentation_state !=
+            NativePresentationState::not_attempted;
+    const bool native_submitted =
+        frame.native_presentation_state ==
+            NativePresentationState::submitted;
+    const bool valid_presentation_snapshot = presentation_state &&
+        frame.native_exact == native_submitted &&
+        frame.gl_fallback == (native_requested && !native_submitted);
+    if (!valid_presentation_snapshot)
+    {
+        if (mSamplesWritten != 0)
+        {
+            return fail(
+                "The native presentation telemetry snapshot is inconsistent",
                 error);
         }
         resetSequence();
@@ -410,7 +453,11 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
              << metal_submissions << ',' << metal_completed << ','
              << metal_timed << ',' << std::fixed << std::setprecision(6)
              << metal_gpu_ms << ','
-             << (frame.native_exact ? 1 : 0) << '\n';
+             << (native_requested ? 1 : 0) << ','
+             << (native_attempted ? 1 : 0) << ','
+             << (frame.native_exact ? 1 : 0) << ','
+             << (frame.gl_fallback ? 1 : 0) << ','
+             << presentation_state << '\n';
     if (!*mOutput)
     {
         return fail("Writing the benchmark CSV failed", error);

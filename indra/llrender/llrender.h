@@ -286,6 +286,16 @@ public:
         // with GL_FRAMEBUFFER_SRGB disabled.
         LINEAR_STORAGE
     };
+    enum class EMetalUICaptureEndState
+    {
+        INACTIVE,
+        SOURCE_INCOMPLETE,
+        CAPTURE_INCOMPLETE,
+        EMPTY,
+        COMMAND_SUBMISSION_FAILED,
+        SURFACE_SUBMISSION_FAILED,
+        COMPLETE
+    };
 
     // Install the window-owned native device and bounded frame scheduler on
     // the main renderer. The renderer borrows both; the window outlives gGL's
@@ -381,7 +391,8 @@ public:
         bool source_success,
         bool present_surface = false,
         bool* presented = nullptr,
-        std::string* failure = nullptr);
+        std::string* failure = nullptr,
+        EMetalUICaptureEndState* end_state = nullptr);
 
     // A startup frame can replace the GL window presentation only when every
     // eligible UI batch was encoded. The surface stays transparent for any

@@ -2,7 +2,8 @@
 """Analyze per-frame CSV evidence; never fabricate telemetry.
 
 CSV schema: scenario,frame_ms[,cpu_ms,gpu_ms,draw_calls,metal_submissions,
-metal_completed,metal_timed,metal_gpu_ms].
+metal_completed,metal_timed,metal_gpu_ms,native_requested,native_attempted,
+native_exact,gl_fallback,native_presentation_state].
 Samples must be warm-up-free and measured at comparable settings. --enforce
 applies docs/metal/benchmarks/scenarios.json. --require-provenance validates the
 development viewer's source-exact schema.
@@ -27,6 +28,15 @@ SECONDARY_METRICS = (
     "cpu_ms", "gpu_ms", "draw_calls", "metal_submissions",
     "metal_completed", "metal_timed", "metal_gpu_ms",
 )
+PRESENTATION_HEADERS = {
+    "native_requested", "native_attempted", "native_exact", "gl_fallback",
+    "native_presentation_state",
+}
+PRESENTATION_EXTRA_HEADERS = PRESENTATION_HEADERS - {"native_exact"}
+PRESENTATION_STATES = {
+    "disabled", "not_attempted", "capture_started", "capture_failed",
+    "surface_unavailable", "surface_submit_failed", "submitted",
+}
 
 
 def _unsigned(row, field, path, line, allow_zero=True):
@@ -44,6 +54,7 @@ def load_capture(path: Path, require_provenance=False, candidate=False):
     secondary = {}
     metadata = {}
     previous_index = {}
+    presentation = {}
     with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         headers = set(reader.fieldnames or [])
@@ -54,6 +65,12 @@ def load_capture(path: Path, require_provenance=False, candidate=False):
             field: defaultdict(list)
             for field in SECONDARY_METRICS if field in headers
         }
+        has_presentation = PRESENTATION_HEADERS.issubset(headers)
+        partial_presentation = PRESENTATION_EXTRA_HEADERS & headers
+        if partial_presentation and not has_presentation:
+            missing = ",".join(sorted(PRESENTATION_HEADERS - headers))
+            raise ValueError(
+                f"{path}: incomplete native presentation census; missing: {missing}")
         if require_provenance and not has_provenance:
             missing = ",".join(sorted(PROVENANCE_HEADERS - headers))
             raise ValueError(f"{path}: missing provenance headers: {missing}")
@@ -68,6 +85,46 @@ def load_capture(path: Path, require_provenance=False, candidate=False):
             if not math.isfinite(ms) or ms <= 0:
                 raise ValueError(f"{path}:{n}: nonpositive/nonfinite frame time")
             result[scene].append(ms)
+
+            if has_presentation:
+                requested = _unsigned(row, "native_requested", path, n)
+                attempted = _unsigned(row, "native_attempted", path, n)
+                exact = _unsigned(row, "native_exact", path, n)
+                fallback = _unsigned(row, "gl_fallback", path, n)
+                state = (row.get("native_presentation_state") or "").strip()
+                if any(value not in (0, 1) for value in
+                       (requested, attempted, exact, fallback)):
+                    raise ValueError(
+                        f"{path}:{n}: native presentation flags must be 0 or 1")
+                if state not in PRESENTATION_STATES:
+                    raise ValueError(
+                        f"{path}:{n}: invalid native_presentation_state")
+                expected_requested = state != "disabled"
+                expected_attempted = state not in ("disabled", "not_attempted")
+                expected_exact = state == "submitted"
+                expected_fallback = expected_requested and not expected_exact
+                if (bool(requested) != expected_requested or
+                        bool(attempted) != expected_attempted or
+                        bool(exact) != expected_exact or
+                        bool(fallback) != expected_fallback):
+                    raise ValueError(
+                        f"{path}:{n}: inconsistent native presentation census")
+                if scene not in presentation:
+                    presentation[scene] = {
+                        "frames": 0,
+                        "requested": 0,
+                        "attempted": 0,
+                        "exact": 0,
+                        "gl_fallback": 0,
+                        "states": {name: 0 for name in sorted(PRESENTATION_STATES)},
+                    }
+                census = presentation[scene]
+                census["frames"] += 1
+                census["requested"] += requested
+                census["attempted"] += attempted
+                census["exact"] += exact
+                census["gl_fallback"] += fallback
+                census["states"][state] += 1
 
             for field, scenes in secondary.items():
                 if field in (
@@ -123,6 +180,8 @@ def load_capture(path: Path, require_provenance=False, candidate=False):
         "secondary_metrics": secondary,
         "metadata": metadata,
         "provenance_verified": has_provenance,
+        "presentation_census": presentation,
+        "presentation_census_verified": has_presentation,
     }
 
 
@@ -195,6 +254,25 @@ def compare_secondary_metrics(baseline, candidate, required_scenes):
     return report
 
 
+def summarize_presentation_census(capture, required_scenes):
+    """Report exact publication/fallback incidence without making it a pass gate."""
+    if not capture["presentation_census_verified"]:
+        return {"available": False, "scenes": []}
+    scenes = []
+    for scene in required_scenes:
+        if scene not in capture["presentation_census"]:
+            continue
+        census = capture["presentation_census"][scene]
+        frames = census["frames"]
+        scenes.append({
+            "scenario": scene,
+            **census,
+            "exact_rate": round(census["exact"] / frames, 6),
+            "gl_fallback_rate": round(census["gl_fallback"] / frames, 6),
+        })
+    return {"available": True, "scenes": scenes}
+
+
 def compare(baseline, candidate, spec):
     required = [s["id"] for s in spec["scenarios"]]
     unknown = sorted((set(baseline) | set(candidate)) - set(required))
@@ -256,6 +334,12 @@ def main():
         report["secondary_metrics"] = compare_secondary_metrics(
             baseline["secondary_metrics"], candidate["secondary_metrics"],
             [s["id"] for s in spec["scenarios"]])
+        report["presentation_census"] = {
+            "baseline": summarize_presentation_census(
+                baseline, [s["id"] for s in spec["scenarios"]]),
+            "candidate": summarize_presentation_census(
+                candidate, [s["id"] for s in spec["scenarios"]]),
+        }
     except (ValueError, OSError, json.JSONDecodeError, KeyError) as e:
         ap.error(str(e))
     result = json.dumps(report, indent=2) + "\n"

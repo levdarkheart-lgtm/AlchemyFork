@@ -26,6 +26,15 @@ env \
 - Pre-sample discontinuity restarts warm-up. After the first row, a missing frame, ineligible frame, resolution/quality change, regressed submission/completion/timing counter or invalid clock interval fails and closes the run instead of combining unlike samples. The viewer logs arming, completion or one failure summary but no per-frame content.
 - Eligible frames require `STATE_STARTED`, a visible window, no snapshot, teleport, disconnect or logout transition, and either GL or exact native presentation. Frame intervals use `std::chrono::steady_clock`.
 - Each row is stamped with the CMake-configured Git commit and build type. Reconfigure after the source commit and verify the generated `LL_VIEWER_SOURCE_REVISION` before collecting source-exact evidence.
+- The publication census is taken from the actual current-frame transaction,
+  not from the default setting. `native_requested` records enabled Metal
+  authority, `native_attempted` distinguishes a transaction that reached the
+  ordered UI capture, `native_exact` requires a committed drawable,
+  `gl_fallback` records a requested-but-unpublished frame whose GL swap
+  remained visible, and `native_presentation_state` identifies the boundary:
+  `disabled`, `not_attempted`, `capture_started`, `capture_failed`,
+  `surface_unavailable`, `surface_submit_failed` or `submitted`. Contradictory
+  flags fail the run rather than producing ambiguous evidence.
 - The collector records wall/frame intervals, draw calls and `metal_submissions`: the delta of the process-wide count incremented after each successful `ALMetalCommandBuffer::commit()`. That delta includes all native-wrapper commits in the sample interval, including worker activity.
 - During an armed run only, each newly committed native-wrapper command installs a completion handler. Monotonic `metal_completed` and `metal_timed` deltas distinguish completed commands from commands with valid `GPUStartTime`/`GPUEndTime`; `metal_gpu_ms` is the sum of those completed app-owned Metal command durations observed between two CPU sampling points. A mutex makes each cumulative timing snapshot internally coherent. The M1 Max physical regression proves one real blit produces one submitted, completed and timed command plus a positive duration, normally and with Metal API validation.
 - Completion is asynchronous, so `metal_completed`, `metal_timed` and `metal_gpu_ms` can lag the frame that submitted the work. `metal_gpu_ms` excludes legacy-driver work and is neither whole-frame GPU duration nor pass attribution. Treat all four Metal columns as secondary diagnostics and average them only across a steady consecutive sequence. Use Instruments/Metal capture for per-label attribution and independent GPU evidence.
@@ -33,7 +42,7 @@ env \
 ## Frame observability (real viewer process)
 The implemented local CSV schema is:
 
-`scenario,variant,frame_ms,frame_index,source_sha,build_type,drawable_width,drawable_height,quality_profile,draw_calls,metal_submissions,metal_completed,metal_timed,metal_gpu_ms,native_exact`
+`scenario,variant,frame_ms,frame_index,source_sha,build_type,drawable_width,drawable_height,quality_profile,draw_calls,metal_submissions,metal_completed,metal_timed,metal_gpu_ms,native_requested,native_attempted,native_exact,gl_fallback,native_presentation_state`
 
 For a Metal System Trace captured separately, produce a deterministic labeled
 submission summary with:
@@ -100,4 +109,4 @@ SSIM, PSNR or performance claims. The manifests include source-path hashes for
 provenance but no account or session data.
 
 ## Automation acceptance
-A performance comparison is admissible only with real raw CSV. Use `tools/metal/perf_compare.py --enforce --require-provenance`: the provenance gate rejects missing source/build/display fields, nonconsecutive frame indexes, metadata changes within a scenario, baseline/candidate build-type, resolution or quality mismatches, and any candidate row without `native_exact=1`. Common optional `cpu_ms`, `gpu_ms`, `draw_calls`, `metal_submissions`, `metal_completed`, `metal_timed` and `metal_gpu_ms` columns are validated and summarized under `secondary_metrics`; they do not affect the pass gate. The analyzer still only proves that the supplied numbers and metadata meet those mechanical checks and performance targets. It does **not** prove images, hardware identity, data authenticity, power state, thermal equivalence or camera/scene equivalence; Codex must supply that evidence explicitly.
+A performance comparison is admissible only with real raw CSV. Use `tools/metal/perf_compare.py --enforce --require-provenance`: the provenance gate rejects missing source/build/display fields, nonconsecutive frame indexes, metadata changes within a scenario, baseline/candidate build-type, resolution or quality mismatches, and any candidate row without `native_exact=1`. Common optional `cpu_ms`, `gpu_ms`, `draw_calls`, `metal_submissions`, `metal_completed`, `metal_timed` and `metal_gpu_ms` columns are validated and summarized under `secondary_metrics`; they do not affect the pass gate. When the complete presentation-census group is present, the analyzer validates its internal consistency and reports per-scenario exact-publication and GL-fallback counts/rates plus state counts under `presentation_census`; those diagnostics also do not affect the performance pass gate. The analyzer still only proves that the supplied numbers and metadata meet those mechanical checks and performance targets. It does **not** prove images, hardware identity, data authenticity, power state, thermal equivalence or camera/scene equivalence; Codex must supply that evidence explicitly.

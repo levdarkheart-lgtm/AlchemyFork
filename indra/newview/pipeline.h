@@ -369,6 +369,17 @@ public:
     void bindScreenToTexture();
     void renderFinalize();
 #if LL_DARWIN
+    enum class MetalWorldPresentationState : U8
+    {
+        Disabled,
+        NotAttempted,
+        CaptureStarted,
+        CaptureFailed,
+        SurfaceUnavailable,
+        SurfaceSubmitFailed,
+        Submitted
+    };
+
     // Retain the successfully allocated Develop far-plane overlay at its GL
     // owner boundary. The post-deferred Metal transaction expands and depth-
     // tests the same column pairs, then composites them after world diagnostics.
@@ -558,6 +569,10 @@ public:
     // world/UI texture to a drawable. Benchmark collection uses this exact
     // fact instead of inferring native presentation from a setting.
     bool metalWorldPresentationCurrent() const;
+    // Machine-readable cutover census for this frame. A requested frame that
+    // never reached begin capture is distinct from an invalidated capture,
+    // an unavailable CAMetalLayer surface and a failed fused submission.
+    MetalWorldPresentationState metalWorldPresentationStateCurrent() const;
 #endif
     void copyScreenSpaceReflections(LLRenderTarget* src, LLRenderTarget* dst);
     // The current pack's scene depth (mRT->deferredScreen's, which mRT->screen shares) over the whole of `dst`'s,

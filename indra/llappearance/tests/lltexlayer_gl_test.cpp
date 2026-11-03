@@ -216,9 +216,13 @@ namespace
             }
         }
 
-        auto completed = gGL.endMetalUITextureCapture(true);
+        LLRender::EMetalUICaptureEndState end_state =
+            LLRender::EMetalUICaptureEndState::INACTIVE;
+        auto completed = gGL.endMetalUITextureCapture(
+            true, false, nullptr, nullptr, &end_state);
         capture.active = false;
         REQUIRE(completed);
+        CHECK(end_state == LLRender::EMetalUICaptureEndState::COMPLETE);
     }
 
     TEST_CASE("lltexlayer: native alpha readback rejects short scratch",

@@ -1561,8 +1561,12 @@ void LLRender::invalidateMetalUITextureCapture(const char* reason)
 
 std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
     bool source_success, bool present_surface, bool* presented,
-    std::string* failure)
+    std::string* failure, EMetalUICaptureEndState* end_state)
 {
+    if (end_state)
+    {
+        *end_state = EMetalUICaptureEndState::INACTIVE;
+    }
     if (failure)
     {
         failure->clear();
@@ -1664,6 +1668,37 @@ std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
         else
         {
             *failure = "the offscreen UI transaction did not complete";
+        }
+    }
+    if (end_state)
+    {
+        if (complete)
+        {
+            *end_state = EMetalUICaptureEndState::COMPLETE;
+        }
+        else if (!source_success)
+        {
+            *end_state = EMetalUICaptureEndState::SOURCE_INCOMPLETE;
+        }
+        else if (!mMetalUICaptureComplete)
+        {
+            *end_state = EMetalUICaptureEndState::CAPTURE_INCOMPLETE;
+        }
+        else if (mMetalUICaptureBatches == 0 && !mMetalUICaptureUsesDepth)
+        {
+            *end_state = EMetalUICaptureEndState::EMPTY;
+        }
+        else if (!error.empty())
+        {
+            *end_state = EMetalUICaptureEndState::COMMAND_SUBMISSION_FAILED;
+        }
+        else if (present_surface && !surface_submitted)
+        {
+            *end_state = EMetalUICaptureEndState::SURFACE_SUBMISSION_FAILED;
+        }
+        else
+        {
+            *end_state = EMetalUICaptureEndState::CAPTURE_INCOMPLETE;
         }
     }
     const U32 cache_index = mMetalUICaptureCacheIndex;

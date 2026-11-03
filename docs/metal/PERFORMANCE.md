@@ -18,7 +18,7 @@ Use scenario IDs and descriptions from `benchmarks/scenarios.json`. Codex must d
 - These thresholds can be changed only by an explicit recorded product decision with measured evidence, not lowered to make CI pass.
 
 ## Data and reproducibility
-Raw per-frame CSV input to `tools/metal/perf_compare.py` must have `scenario,frame_ms` columns; may include `cpu_ms,gpu_ms,draw_calls,metal_submissions,metal_completed,metal_timed,metal_gpu_ms` and frame metadata. `metal_gpu_ms` is the asynchronous completion-window sum for app-owned Metal commands only; it is not interchangeable with whole-frame `gpu_ms`. Run:
+Raw per-frame CSV input to `tools/metal/perf_compare.py` must have `scenario,frame_ms` columns; may include `cpu_ms,gpu_ms,draw_calls,metal_submissions,metal_completed,metal_timed,metal_gpu_ms`, the complete native-presentation census group and frame metadata. `metal_gpu_ms` is the asynchronous completion-window sum for app-owned Metal commands only; it is not interchangeable with whole-frame `gpu_ms`. Presentation-census counts and rates diagnose cutover coverage but do not decide the performance gate. Run:
 
 ```sh
 python3 tools/metal/perf_compare.py --baseline artifacts/metal/baseline.csv --candidate artifacts/metal/candidate.csv --enforce --require-provenance --output artifacts/metal/comparison.json

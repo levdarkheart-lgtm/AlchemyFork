@@ -84,7 +84,11 @@ ALMetalBenchmarkRecorder::Frame frame(
     result.metal_timing_completed = index * 2;
     result.metal_timing_valid = index * 2;
     result.metal_gpu_time_nanoseconds = index * 3'000'000;
+    result.native_presentation_state = exact
+        ? ALMetalBenchmarkRecorder::NativePresentationState::submitted
+        : ALMetalBenchmarkRecorder::NativePresentationState::not_attempted;
     result.native_exact = exact;
+    result.gl_fallback = !exact;
     result.eligible = true;
     return result;
 }
@@ -117,7 +121,8 @@ TEST_CASE("ALMetalBenchmark records only the requested consecutive post-warmup f
     CHECK(contents.find("scenario,variant,frame_ms") == 0);
     CHECK(contents.find("quiet-region,candidate,10.000000,12") !=
           std::string::npos);
-    CHECK(contents.find(",2048,1280,5,321,2,2,2,3.000000,1\n") !=
+    CHECK(contents.find(",2048,1280,5,321,2,2,2,3.000000,1,1,1,0,"
+                        "submitted\n") !=
           std::string::npos);
     CHECK(std::count(contents.begin(), contents.end(), '\n') == 4);
 }
@@ -225,5 +230,25 @@ TEST_CASE("ALMetalBenchmark rejects an invalid direct configuration",
           ALMetalBenchmarkRecorder::Result::failed);
     CHECK(error.find("frame counts") != std::string::npos);
     CHECK_FALSE(std::filesystem::exists(output.path()));
+}
+
+TEST_CASE("ALMetalBenchmark rejects inconsistent presentation telemetry",
+          "[ALMetalBenchmark]")
+{
+    benchmark_file output;
+    ALMetalBenchmarkRecorder recorder(output.config(0, 2, false));
+    std::string error;
+    CHECK(recorder.record(frame(60, 600), &error) ==
+          ALMetalBenchmarkRecorder::Result::warming);
+    CHECK(recorder.record(frame(61, 610), &error) ==
+          ALMetalBenchmarkRecorder::Result::recorded);
+
+    auto inconsistent = frame(62, 620);
+    inconsistent.native_presentation_state =
+        ALMetalBenchmarkRecorder::NativePresentationState::capture_failed;
+    CHECK(recorder.record(inconsistent, &error) ==
+          ALMetalBenchmarkRecorder::Result::failed);
+    CHECK(error.find("presentation telemetry") != std::string::npos);
+    CHECK(recorder.samplesWritten() == 1);
 }
 }

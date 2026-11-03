@@ -58,7 +58,8 @@ class PerfTests(unittest.TestCase):
 
     def write_capture(self, path, variant, exact=1, width=2048,
                       metal_submissions=None, metal_completed=None,
-                      metal_timed=None, metal_gpu_ms=None):
+                      metal_timed=None, metal_gpu_ms=None,
+                      presentation_state=None):
         headers = ["scenario", "variant", "frame_ms", "frame_index",
                    "source_sha", "build_type", "drawable_width",
                    "drawable_height", "quality_profile", "native_exact"]
@@ -70,6 +71,11 @@ class PerfTests(unittest.TestCase):
             headers.append("metal_timed")
         if metal_gpu_ms is not None:
             headers.append("metal_gpu_ms")
+        if presentation_state is not None:
+            headers.extend([
+                "native_requested", "native_attempted", "gl_fallback",
+                "native_presentation_state",
+            ])
         with path.open("w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(headers)
@@ -88,6 +94,14 @@ class PerfTests(unittest.TestCase):
                         row.append(metal_timed)
                     if metal_gpu_ms is not None:
                         row.append(metal_gpu_ms)
+                    if presentation_state is not None:
+                        requested = presentation_state != "disabled"
+                        attempted = presentation_state not in (
+                            "disabled", "not_attempted")
+                        row.extend([
+                            int(requested), int(attempted),
+                            int(requested and not exact), presentation_state,
+                        ])
                     writer.writerow(row)
                     frame_index += 1
 
@@ -164,6 +178,32 @@ class PerfTests(unittest.TestCase):
             self.assertEqual(2.25,
                              report["metal_gpu_ms"]["scenes"][0]
                              ["candidate"]["p50"])
+
+    def test_native_presentation_census_reports_fallback_causes(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "capture.csv"
+            self.write_capture(
+                path, "candidate", exact=0,
+                presentation_state="capture_failed")
+            capture = self.perf.load_capture(path)
+            report = self.perf.summarize_presentation_census(
+                capture, [s["id"] for s in self.spec["scenarios"]])
+            self.assertTrue(report["available"])
+            self.assertEqual(4, len(report["scenes"]))
+            scene = report["scenes"][0]
+            self.assertEqual(300, scene["attempted"])
+            self.assertEqual(300, scene["gl_fallback"])
+            self.assertEqual(300, scene["states"]["capture_failed"])
+            self.assertEqual(1.0, scene["gl_fallback_rate"])
+
+    def test_inconsistent_native_presentation_census_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "capture.csv"
+            self.write_capture(
+                path, "candidate", exact=1,
+                presentation_state="capture_failed")
+            with self.assertRaisesRegex(ValueError, "inconsistent native"):
+                self.perf.load_capture(path)
 
 
 class AuditTests(unittest.TestCase):

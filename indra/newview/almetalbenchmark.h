@@ -26,6 +26,17 @@ class ALMetalBenchmarkRecorder
 public:
     using Clock = std::chrono::steady_clock;
 
+    enum class NativePresentationState : std::uint8_t
+    {
+        disabled,
+        not_attempted,
+        capture_started,
+        capture_failed,
+        surface_unavailable,
+        surface_submit_failed,
+        submitted
+    };
+
     struct Config
     {
         std::string output_path;
@@ -51,7 +62,10 @@ public:
         std::uint64_t metal_timing_completed = 0;
         std::uint64_t metal_timing_valid = 0;
         std::uint64_t metal_gpu_time_nanoseconds = 0;
+        NativePresentationState native_presentation_state =
+            NativePresentationState::disabled;
         bool native_exact = false;
+        bool gl_fallback = false;
         bool eligible = false;
     };
 

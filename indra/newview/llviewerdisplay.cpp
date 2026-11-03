@@ -509,6 +509,32 @@ static void fill_pacing_slack()
 }
 
 #if LL_DARWIN && !defined(LL_RELEASE_FOR_DOWNLOAD)
+static ALMetalBenchmarkRecorder::NativePresentationState
+benchmark_presentation_state(
+    LLPipeline::MetalWorldPresentationState state)
+{
+    using PipelineState = LLPipeline::MetalWorldPresentationState;
+    using BenchmarkState = ALMetalBenchmarkRecorder::NativePresentationState;
+    switch (state)
+    {
+        case PipelineState::Disabled:
+            return BenchmarkState::disabled;
+        case PipelineState::NotAttempted:
+            return BenchmarkState::not_attempted;
+        case PipelineState::CaptureStarted:
+            return BenchmarkState::capture_started;
+        case PipelineState::CaptureFailed:
+            return BenchmarkState::capture_failed;
+        case PipelineState::SurfaceUnavailable:
+            return BenchmarkState::surface_unavailable;
+        case PipelineState::SurfaceSubmitFailed:
+            return BenchmarkState::surface_submit_failed;
+        case PipelineState::Submitted:
+            return BenchmarkState::submitted;
+    }
+    return BenchmarkState::disabled;
+}
+
 static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
 {
     static bool initialized = false;
@@ -550,6 +576,9 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
     }
 
     const bool native_exact = gPipeline.metalWorldPresentationCurrent();
+    const ALMetalBenchmarkRecorder::NativePresentationState
+        native_presentation_state = benchmark_presentation_state(
+            gPipeline.metalWorldPresentationStateCurrent());
     ALMetalBenchmarkRecorder::Frame frame;
     frame.timestamp = ALMetalBenchmarkRecorder::Clock::now();
     frame.frame_index = gFrameCount;
@@ -570,7 +599,11 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
     frame.metal_timing_valid = timing.timed;
     frame.metal_gpu_time_nanoseconds = timing.gpu_time_nanoseconds;
 #endif
+    frame.native_presentation_state = native_presentation_state;
     frame.native_exact = native_exact;
+    frame.gl_fallback = gl_presented && !native_exact &&
+        native_presentation_state !=
+            ALMetalBenchmarkRecorder::NativePresentationState::disabled;
     frame.eligible = LLStartUp::getStartupState() >= STATE_STARTED &&
         !for_snapshot && !gSnapshot && !gTeleportDisplay && !gDisconnected &&
         !LLAppViewer::instance()->logoutRequestSent() &&

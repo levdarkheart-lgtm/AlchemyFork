@@ -490,6 +490,10 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool world_ui_continuous_unlocked = false;
     U32 world_ui_last_submitted_frame =
         std::numeric_limits<U32>::max();
+    U32 world_ui_presentation_state_frame =
+        std::numeric_limits<U32>::max();
+    LLPipeline::MetalWorldPresentationState world_ui_presentation_state =
+        LLPipeline::MetalWorldPresentationState::NotAttempted;
     U32 world_ui_continuous_failure_streak = 0;
     U32 world_ui_continuous_last_failure_frame =
         std::numeric_limits<U32>::max();
@@ -850,6 +854,22 @@ bool LLPipeline::metalWorldPresentationCurrent() const
     return mMetalWorldSimpleCapture &&
         mMetalWorldSimpleCapture->world_ui_last_submitted_frame ==
             gFrameCount;
+}
+
+LLPipeline::MetalWorldPresentationState
+LLPipeline::metalWorldPresentationStateCurrent() const
+{
+    if (!metalWorldPresentationRequested())
+    {
+        return MetalWorldPresentationState::Disabled;
+    }
+    if (!mMetalWorldSimpleCapture ||
+        mMetalWorldSimpleCapture->world_ui_presentation_state_frame !=
+            gFrameCount)
+    {
+        return MetalWorldPresentationState::NotAttempted;
+    }
+    return mMetalWorldSimpleCapture->world_ui_presentation_state;
 }
 
 void LLPipeline::refreshMetalSMAASampleTexture()
@@ -1853,6 +1873,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.world_ui_continuous_unlocked = false;
         capture.world_ui_last_submitted_frame =
             std::numeric_limits<U32>::max();
+        capture.world_ui_presentation_state_frame =
+            std::numeric_limits<U32>::max();
+        capture.world_ui_presentation_state =
+            MetalWorldPresentationState::NotAttempted;
         capture.world_ui_continuous_failure_streak = 0;
         capture.world_ui_continuous_last_failure_frame =
             std::numeric_limits<U32>::max();
@@ -3774,6 +3798,10 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.world_ui_continuous_unlocked = false;
         capture.world_ui_last_submitted_frame =
             std::numeric_limits<U32>::max();
+        capture.world_ui_presentation_state_frame =
+            std::numeric_limits<U32>::max();
+        capture.world_ui_presentation_state =
+            MetalWorldPresentationState::NotAttempted;
         capture.world_ui_continuous_failure_streak = 0;
         capture.world_ui_continuous_last_failure_frame =
             std::numeric_limits<U32>::max();
@@ -10771,6 +10799,13 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
     capture.world_ui_target.reset();
     capture.world_ui_frame = std::numeric_limits<U32>::max();
     capture.world_ui_capture_active = true;
+    if (!capture.world_ui_chain_snapshot &&
+        metalWorldPresentationRequested())
+    {
+        capture.world_ui_presentation_state_frame = gFrameCount;
+        capture.world_ui_presentation_state =
+            MetalWorldPresentationState::CaptureStarted;
+    }
     if (!capture.world_ui_chain_snapshot)
     {
         capture.world_ui_probe_attempted = true;
@@ -10804,9 +10839,42 @@ void LLPipeline::endMetalWorldUICompositionCapture()
         gGL.setMetalPresentationOpaque(true);
     bool surface_submitted = false;
     std::string capture_failure;
+    LLRender::EMetalUICaptureEndState capture_end_state =
+        LLRender::EMetalUICaptureEndState::INACTIVE;
     capture.world_ui_target = gGL.endMetalUITextureCapture(
-        true, surface_ready, &surface_submitted, &capture_failure);
+        true, surface_ready, &surface_submitted, &capture_failure,
+        &capture_end_state);
     capture.world_ui_capture_active = false;
+    if (presentation_requested)
+    {
+        capture.world_ui_presentation_state_frame = gFrameCount;
+        if (surface_submitted)
+        {
+            capture.world_ui_presentation_state =
+                MetalWorldPresentationState::Submitted;
+        }
+        else if (capture.world_ui_target && !surface_ready)
+        {
+            capture.world_ui_presentation_state =
+                MetalWorldPresentationState::SurfaceUnavailable;
+        }
+        else if (surface_ready &&
+                 (capture_end_state ==
+                      LLRender::EMetalUICaptureEndState::
+                          COMMAND_SUBMISSION_FAILED ||
+                  capture_end_state ==
+                      LLRender::EMetalUICaptureEndState::
+                          SURFACE_SUBMISSION_FAILED))
+        {
+            capture.world_ui_presentation_state =
+                MetalWorldPresentationState::SurfaceSubmitFailed;
+        }
+        else
+        {
+            capture.world_ui_presentation_state =
+                MetalWorldPresentationState::CaptureFailed;
+        }
+    }
     if (capture.world_ui_target)
     {
         capture.world_ui_frame = gFrameCount;
