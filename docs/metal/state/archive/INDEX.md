@@ -86,6 +86,7 @@ reload the chronological history.
 | Native material-preview CPU matrices and preview-owned GL setup confined to fallback, source-exact build 68173, 2026-11-03 | [CURRENT-native-material-preview-cpu-matrices-checkpoint-2026-11-03.md](CURRENT-native-material-preview-cpu-matrices-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-first material-preview scheduling before shared GL target setup with same-frame fallback, source-exact build 68175, 2026-11-03 | [CURRENT-native-material-preview-targetless-checkpoint-2026-11-03.md](CURRENT-native-material-preview-targetless-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native material-preview readiness independent of retained GL targets with pending/fallback scheduling, source-exact build 68177, 2026-11-03 | [CURRENT-native-material-preview-readiness-checkpoint-2026-11-03.md](CURRENT-native-material-preview-readiness-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Demand-driven retained material-preview resources with fail-closed reconciliation, source-exact build 68179, 2026-11-03 | [CURRENT-native-material-preview-demand-checkpoint-2026-11-03.md](CURRENT-native-material-preview-demand-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
