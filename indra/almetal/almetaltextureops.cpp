@@ -41,12 +41,12 @@ std::unique_ptr<ALMetalTexture> alMetalCreateUnormTexture2D(
     std::string* error)
 {
     if (!pixels || width == 0 || height == 0 ||
-        (components != 3 && components != 4) ||
+        components < 1 || components > 4 ||
         (component_bytes != 1 && component_bytes != 2))
     {
         setError(error,
-                 "Metal unorm 2D upload requires non-empty 8/16-bit RGB or "
-                 "RGBA input");
+                 "Metal unorm 2D upload requires non-empty 8/16-bit input "
+                 "with one to four components");
         return nullptr;
     }
 
@@ -66,7 +66,7 @@ std::unique_ptr<ALMetalTexture> alMetalCreateUnormTexture2D(
 
     const void* upload_pixels = pixels;
     std::vector<std::uint8_t> expanded;
-    if (components == 3)
+    if (components != 4)
     {
         expanded.resize(pixel_count * 4u * component_bytes);
         const auto* source = static_cast<const std::uint8_t*>(pixels);
@@ -75,8 +75,13 @@ std::unique_ptr<ALMetalTexture> alMetalCreateUnormTexture2D(
             std::uint8_t* destination = expanded.data() +
                 pixel * 4u * component_bytes;
             std::memcpy(destination,
-                        source + pixel * 3u * component_bytes,
-                        3u * component_bytes);
+                        source + pixel * components * component_bytes,
+                        components * component_bytes);
+            if (components < 3)
+            {
+                std::memset(destination + components * component_bytes, 0,
+                            (3u - components) * component_bytes);
+            }
             std::memset(destination + 3u * component_bytes, 0xff,
                         component_bytes);
         }

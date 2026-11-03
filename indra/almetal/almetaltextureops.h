@@ -17,7 +17,9 @@
 #include <string>
 
 // Build a private, filterable 2D texture from tightly packed unorm pixels.
-// RGB input is expanded to RGBA with an opaque alpha channel.
+// One-, two- and three-component input is expanded to RGBA with missing color
+// channels zeroed and an opaque alpha channel, matching GL's base RGB upload
+// conversion. Four-component input is preserved.
 // component_bytes accepts 1 or 2 only.
 std::unique_ptr<ALMetalTexture> alMetalCreateUnormTexture2D(
     const ALMetalDevice& device,

@@ -9667,6 +9667,23 @@ ALMetalWorldGBufferRenderer::renderSMAAEdges(
         return nullptr;
     }
 
+    const ALMetalTexture* edge_source = scene.edge_source_texture
+        ? scene.edge_source_texture : scene.source->colorTexture(0);
+    if (scene.edge_source_texture)
+    {
+        const ALMetalTextureDescriptor& sample =
+            scene.edge_source_texture->descriptor();
+        if (sample.width == 0 || sample.height == 0 ||
+            sample.sample_count != 1 ||
+            sample.format != ALMetalPixelFormat::rgba8_unorm ||
+            !sampleableTexture(scene.edge_source_texture))
+        {
+            setError(error,
+                     "Metal world SMAA edge sample texture is incompatible");
+            return nullptr;
+        }
+    }
+
     if (scene.predication_texture)
     {
         const ALMetalTextureDescriptor& predication =
@@ -9740,7 +9757,7 @@ ALMetalWorldGBufferRenderer::renderSMAAEdges(
         encoder->setPipeline(
             *mImpl->smaa_edge_pipelines[predication], error) &&
         encoder->setFragmentTexture(
-            0, scene.source->colorTexture(0), error) &&
+            0, edge_source, error) &&
         encoder->setFragmentSampler(
             0, mImpl->linear_clamp_sampler.get(), error);
     if (encoded && scene.predication_texture)
@@ -9963,6 +9980,7 @@ ALMetalWorldGBufferRenderer::renderSMAA(
 {
     ALMetalWorldSMAAEdgeScene edge_scene;
     edge_scene.source = scene.source;
+    edge_scene.edge_source_texture = scene.edge_source_texture;
     edge_scene.predication_texture = scene.predication_texture;
     edge_scene.quality = scene.quality;
     edge_scene.predication_threshold = scene.predication_threshold;

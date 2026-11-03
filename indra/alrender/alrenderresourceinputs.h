@@ -69,7 +69,7 @@ struct ALRenderResourceInputs
 
     U32  mFSAAType = 0;          ///< RenderFSAAType: 0 none, 1 FXAA, 2 SMAA
     bool mSMAAStencil = true;    ///< RenderSMAAUseStencil
-    bool mSMAAUseSample = false; ///< RenderSMAAUseSample: retained GL sample-image mode
+    bool mSMAAUseSample = false; ///< RenderSMAAUseSample: alternate edge-detection image
     S32  mBloomMips = 5;       ///< RenderBloomMipCount
     S32  mBloomScale = 0;      ///< RenderBloomResolutionScale: full, 3/4, 1/2, 1/4 or 1/8 of the render size
     bool mBloomHalation = false;

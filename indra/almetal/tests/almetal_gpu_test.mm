@@ -1526,12 +1526,60 @@ TEST_CASE("almetal: unorm 2D upload preserves tone-curve precision",
         INFO(error);
         CHECK(readback == source);
 
+        // SamplePath historically uploads one- through four-channel PNGs into
+        // an RGB8 GL texture. Preserve that base-format conversion exactly:
+        // missing color is zero and alpha is opaque.
+        constexpr std::uint32_t compact_width = 3;
+        const std::array<std::uint8_t, compact_width> red{{
+            7u, 113u, 251u,
+        }};
+        auto red_texture = alMetalCreateUnormTexture2D(
+            *device, compact_width, 1, 1, 1, red.data(),
+            "Alchemy R8 sample expansion test", &error);
+        INFO(error);
+        REQUIRE(red_texture);
+        std::array<std::uint8_t, compact_width * 4> expanded{};
+        REQUIRE(red_texture->readback(
+            *device, 0, 0, {}, expanded.data(), compact_width * 4,
+            &error));
+        INFO(error);
+        for (std::size_t pixel = 0; pixel < compact_width; ++pixel)
+        {
+            CHECK(expanded[pixel * 4] == red[pixel]);
+            CHECK(expanded[pixel * 4 + 1] == 0u);
+            CHECK(expanded[pixel * 4 + 2] == 0u);
+            CHECK(expanded[pixel * 4 + 3] == 0xffu);
+        }
+
+        const std::array<std::uint8_t, compact_width * 2> red_green{{
+            3u, 5u, 79u, 131u, 241u, 17u,
+        }};
+        auto red_green_texture = alMetalCreateUnormTexture2D(
+            *device, compact_width, 1, 2, 1, red_green.data(),
+            "Alchemy RG8 sample expansion test", &error);
+        INFO(error);
+        REQUIRE(red_green_texture);
+        expanded.fill(0);
+        REQUIRE(red_green_texture->readback(
+            *device, 0, 0, {}, expanded.data(), compact_width * 4,
+            &error));
+        INFO(error);
+        for (std::size_t pixel = 0; pixel < compact_width; ++pixel)
+        {
+            CHECK(expanded[pixel * 4] == red_green[pixel * 2]);
+            CHECK(expanded[pixel * 4 + 1] == red_green[pixel * 2 + 1]);
+            CHECK(expanded[pixel * 4 + 2] == 0u);
+            CHECK(expanded[pixel * 4 + 3] == 0xffu);
+        }
+
         CHECK_FALSE(alMetalCreateUnormTexture2D(
             *device, 0, 1, 4, 2, source.data(), "invalid", &error));
         CHECK_FALSE(alMetalCreateUnormTexture2D(
             *device, width, 0, 4, 2, source.data(), "invalid", &error));
         CHECK_FALSE(alMetalCreateUnormTexture2D(
-            *device, width, 1, 2, 2, source.data(), "invalid", &error));
+            *device, width, 1, 0, 2, source.data(), "invalid", &error));
+        CHECK_FALSE(alMetalCreateUnormTexture2D(
+            *device, width, 1, 5, 2, source.data(), "invalid", &error));
         CHECK_FALSE(alMetalCreateUnormTexture2D(
             *device, width, 1, 4, 4, source.data(), "invalid", &error));
         CHECK_FALSE(alMetalCreateUnormTexture2D(
@@ -21931,12 +21979,18 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
         constexpr std::uint32_t width = 13;
         constexpr std::uint32_t height = 11;
         std::array<std::uint32_t, width * height> input{};
+        std::array<std::uint8_t, width * height * 4> sample_input{};
         std::array<float, width * height> depth{};
         for (std::uint32_t y = 0; y < height; ++y)
         {
             for (std::uint32_t x = 0; x < width; ++x)
             {
-                std::uint32_t value = 100u;
+                // Keep a sub-threshold, non-linear color field beneath the
+                // two strong display edges. Alternate-image weights then
+                // visibly blend the real display source at different places
+                // instead of degenerating to equal-color copies.
+                std::uint32_t value = 100u +
+                    (x * 17u + y * 29u + x * y * 7u) % 31u;
                 if (x >= 6)
                 {
                     value += 80u;
@@ -21947,6 +22001,16 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
                 }
                 input[y * width + x] = value | (value << 10u) |
                     (value << 20u) | (3u << 30u);
+                // Deliberately asymmetric in Y: a flipped upload mirrors the
+                // diagonal and fails the exact edge oracle.
+                const std::uint8_t sample_value = x + 2u * y >= 13u
+                    ? 224u : 32u;
+                const std::size_t sample_offset =
+                    (static_cast<std::size_t>(y) * width + x) * 4u;
+                sample_input[sample_offset] = sample_value;
+                sample_input[sample_offset + 1] = sample_value;
+                sample_input[sample_offset + 2] = sample_value;
+                sample_input[sample_offset + 3] = 0xffu;
                 depth[y * width + x] = x >= 6 ? 0.8f : 0.2f;
             }
         }
@@ -22003,6 +22067,12 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
         REQUIRE(upload->commitAndWait(&error));
         INFO(error);
 
+        auto sample_texture = alMetalCreateUnormTexture2D(
+            *device, width, height, 4, 1, sample_input.data(),
+            "Alchemy world SMAA alternate edge source", &error);
+        INFO(error);
+        REQUIRE(sample_texture);
+
         const auto clamp_x = [](int value)
         {
             return std::clamp(value, 0, static_cast<int>(width) - 1);
@@ -22011,8 +22081,17 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
         {
             return std::clamp(value, 0, static_cast<int>(height) - 1);
         };
-        const auto color = [&](int x, int y, std::uint32_t channel)
+        const auto color = [&](int x, int y, std::uint32_t channel,
+                               bool sample)
         {
+            if (sample)
+            {
+                const std::size_t offset =
+                    (static_cast<std::size_t>(clamp_y(y)) * width +
+                     static_cast<std::size_t>(clamp_x(x))) * 4u;
+                return static_cast<float>(
+                    sample_input[offset + channel]) / 255.f;
+            }
             const std::uint32_t packed = input[
                 static_cast<std::size_t>(clamp_y(y)) * width +
                 static_cast<std::size_t>(clamp_x(x))];
@@ -22024,14 +22103,15 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
             return depth[static_cast<std::size_t>(clamp_y(y)) * width +
                          static_cast<std::size_t>(clamp_x(x))];
         };
-        const auto color_delta = [&](int x0, int y0, int x1, int y1)
+        const auto color_delta = [&](int x0, int y0, int x1, int y1,
+                                     bool sample)
         {
             float maximum = 0.f;
             for (std::uint32_t channel = 0; channel < 3; ++channel)
             {
                 maximum = std::max(maximum, std::abs(
-                    color(x0, y0, channel) -
-                    color(x1, y1, channel)));
+                    color(x0, y0, channel, sample) -
+                    color(x1, y1, channel, sample)));
             }
             return maximum;
         };
@@ -22039,7 +22119,7 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
             0.15f, 0.10f, 0.10f, 0.05f,
         }};
         const auto oracle = [&](int x, int y, std::uint32_t quality,
-                                bool predicated)
+                                bool predicated, bool sample)
         {
             float threshold_x = thresholds[quality];
             float threshold_y = thresholds[quality];
@@ -22058,8 +22138,8 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
                     (1.f - 0.8f * pred_y);
             }
 
-            const float delta_x = color_delta(x, y, x - 1, y);
-            const float delta_y = color_delta(x, y, x, y + 1);
+            const float delta_x = color_delta(x, y, x - 1, y, sample);
+            const float delta_y = color_delta(x, y, x, y + 1, sample);
             float edge_x = delta_x >= threshold_x ? 1.f : 0.f;
             float edge_y = delta_y >= threshold_y ? 1.f : 0.f;
             if (edge_x + edge_y == 0.f)
@@ -22067,14 +22147,14 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
                 return std::array<std::uint8_t, 4>{{0, 0, 0, 0}};
             }
 
-            const float delta_right = color_delta(x, y, x + 1, y);
-            const float delta_bottom = color_delta(x, y, x, y - 1);
+            const float delta_right = color_delta(x, y, x + 1, y, sample);
+            const float delta_bottom = color_delta(x, y, x, y - 1, sample);
             float max_x = std::max(delta_x, delta_right);
             float max_y = std::max(delta_y, delta_bottom);
             const float delta_left_left =
-                color_delta(x, y, x - 2, y);
+                color_delta(x, y, x - 2, y, sample);
             const float delta_top_top =
-                color_delta(x, y, x, y + 2);
+                color_delta(x, y, x, y + 2, sample);
             max_x = std::max(max_x, delta_left_left);
             max_y = std::max(max_y, delta_top_top);
             const float final_delta = std::max(max_x, max_y);
@@ -22088,7 +22168,8 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
 
         const auto check_output = [&](const ALMetalRenderTarget& output,
                                       std::uint32_t quality,
-                                      bool predicated)
+                                      bool predicated,
+                                      bool sample)
         {
             CHECK(output.descriptor().width == width);
             CHECK(output.descriptor().height == height);
@@ -22104,8 +22185,8 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
                 {
                     const auto expected = oracle(
                         static_cast<int>(x), static_cast<int>(y),
-                        quality, predicated);
-                    CAPTURE(quality, predicated, x, y);
+                        quality, predicated, sample);
+                    CAPTURE(quality, predicated, sample, x, y);
                     for (std::size_t channel = 0;
                          channel < expected.size(); ++channel)
                     {
@@ -22126,11 +22207,12 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
             auto output = renderer->renderSMAAEdges(scene, &error);
             INFO(error);
             REQUIRE(output);
-            check_output(*output, quality, false);
+            check_output(*output, quality, false, false);
         }
 
         ALMetalWorldSMAAEdgeScene predicated_scene;
         predicated_scene.source = source.get();
+        predicated_scene.edge_source_texture = sample_texture.get();
         predicated_scene.predication_texture = predication.get();
         predicated_scene.quality = 1;
         predicated_scene.predication_threshold = 0.002f;
@@ -22140,7 +22222,7 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
             predicated_scene, &error);
         INFO(error);
         REQUIRE(predicated_output);
-        check_output(*predicated_output, 1, true);
+        check_output(*predicated_output, 1, true, true);
 
         // Compose the already oracle-checked stages independently, then
         // prove the production transaction publishes that exact final image.
@@ -22161,6 +22243,7 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
 
         ALMetalWorldSMAAScene complete_scene;
         complete_scene.source = source.get();
+        complete_scene.edge_source_texture = sample_texture.get();
         complete_scene.predication_texture = predication.get();
         complete_scene.quality = predicated_scene.quality;
         complete_scene.predication_threshold =
@@ -22188,6 +22271,22 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
             width * sizeof(std::uint32_t), &error));
         INFO(error);
         CHECK(complete_bytes == staged_bytes);
+
+        // The alternate image changes only edge/weight discovery. The
+        // published colors still come from source through the independently
+        // composed neighborhood stage above.
+        ALMetalWorldSMAAScene ordinary_scene = complete_scene;
+        ordinary_scene.edge_source_texture = nullptr;
+        auto ordinary_output = renderer->renderSMAA(
+            ordinary_scene, &error);
+        INFO(error);
+        REQUIRE(ordinary_output);
+        std::array<std::uint32_t, width * height> ordinary_bytes{};
+        REQUIRE(ordinary_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, ordinary_bytes.data(),
+            width * sizeof(std::uint32_t), &error));
+        INFO(error);
+        CHECK(complete_bytes != ordinary_bytes);
 
         ALMetalWorldSMAAScene invalid_complete;
         error.clear();
@@ -22228,6 +22327,23 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
         CHECK_FALSE(renderer->renderSMAAEdges(invalid, &error));
         CHECK(error ==
               "Metal world SMAA predication texture is incompatible");
+
+        ALMetalTextureDescriptor wrong_sample_descriptor;
+        wrong_sample_descriptor.width = width;
+        wrong_sample_descriptor.height = height;
+        wrong_sample_descriptor.format = ALMetalPixelFormat::r32_float;
+        wrong_sample_descriptor.storage = ALMetalStorageMode::private_gpu;
+        wrong_sample_descriptor.usage = ALMetalTextureUsage::shader_read;
+        auto wrong_sample = ALMetalTexture::create(
+            *device, wrong_sample_descriptor, &error);
+        INFO(error);
+        REQUIRE(wrong_sample);
+        invalid.predication_texture = nullptr;
+        invalid.edge_source_texture = wrong_sample.get();
+        error.clear();
+        CHECK_FALSE(renderer->renderSMAAEdges(invalid, &error));
+        CHECK(error ==
+              "Metal world SMAA edge sample texture is incompatible");
     }
 }
 

@@ -852,6 +852,129 @@ bool LLPipeline::metalWorldPresentationCurrent() const
             gFrameCount;
 }
 
+void LLPipeline::refreshMetalSMAASampleTexture()
+{
+    static LLCachedControl<std::string> sample_path(
+        gSavedSettings, "SamplePath", "");
+    ALMetalDevice* device = LLImageGL::getMetalDevice();
+    const std::string path = sample_path();
+    const bool wanted = mResourceInputs.mFSAAType == 2 &&
+        mResourceInputs.mSMAAUseSample;
+
+    if (!wanted || !device)
+    {
+        mMetalSMAASampleTexture.reset();
+        mMetalSMAASampleDevice = nullptr;
+        mMetalSMAASamplePath.clear();
+        mMetalSMAASampleSize = -1;
+        mMetalSMAASampleModifiedSeconds = -1;
+        mMetalSMAASampleModifiedNanoseconds = -1;
+        mMetalSMAASampleLastAttempt = std::numeric_limits<U32>::max();
+        mMetalSMAASampleFailureReported = false;
+        return;
+    }
+
+    llstat status{};
+    const bool source_exists = !path.empty() &&
+        LLFile::stat(path, &status) == 0;
+    const S64 size = source_exists ? static_cast<S64>(status.st_size) : -1;
+    const S64 modified_seconds = source_exists
+        ? static_cast<S64>(status.st_mtimespec.tv_sec) : -1;
+    const S64 modified_nanoseconds = source_exists
+        ? static_cast<S64>(status.st_mtimespec.tv_nsec) : -1;
+    const bool identity_changed = mMetalSMAASampleDevice != device ||
+        mMetalSMAASamplePath != path || mMetalSMAASampleSize != size ||
+        mMetalSMAASampleModifiedSeconds != modified_seconds ||
+        mMetalSMAASampleModifiedNanoseconds != modified_nanoseconds;
+    const bool retry_due = mMetalSMAASampleLastAttempt ==
+            std::numeric_limits<U32>::max() ||
+        gFrameCount - mMetalSMAASampleLastAttempt >=
+            MetalWorldSimpleCapture::max_failed_frames;
+    if (!identity_changed &&
+        (mMetalSMAASampleTexture || !retry_due))
+    {
+        return;
+    }
+
+    mMetalSMAASampleTexture.reset();
+    mMetalSMAASampleDevice = device;
+    mMetalSMAASamplePath = path;
+    mMetalSMAASampleSize = size;
+    mMetalSMAASampleModifiedSeconds = modified_seconds;
+    mMetalSMAASampleModifiedNanoseconds = modified_nanoseconds;
+    mMetalSMAASampleLastAttempt = gFrameCount;
+    if (identity_changed)
+    {
+        mMetalSMAASampleFailureReported = false;
+    }
+
+    const auto fail = [this, &path](const std::string& reason)
+    {
+        if (!mMetalSMAASampleFailureReported)
+        {
+            LL_WARNS("Metal")
+                << "Could not publish SMAA SamplePath '" << path
+                << "': " << reason
+                << "; native SMAA remains fail-closed" << LL_ENDL;
+            mMetalSMAASampleFailureReported = true;
+        }
+        else
+        {
+            LL_DEBUGS("Metal")
+                << "SMAA SamplePath retry retained the prior fail-closed "
+                   "state: "
+                << reason << LL_ENDL;
+        }
+    };
+
+    if (path.empty())
+    {
+        fail("the path is empty");
+        return;
+    }
+    if (!source_exists)
+    {
+        fail("the source file is unavailable");
+        return;
+    }
+
+    LLPointer<LLImageRaw> raw_image = new LLImageRaw;
+    LLPointer<LLImagePNG> png_image = new LLImagePNG;
+    if (!png_image->load(path) || !png_image->decode(raw_image, 0.0f))
+    {
+        fail("PNG decode failed");
+        return;
+    }
+
+    const S32 width = raw_image->getWidth();
+    const S32 height = raw_image->getHeight();
+    const S32 components = raw_image->getComponents();
+    const U32 max_dimension = device->info().max_texture_2d_dimension;
+    if (width <= 0 || height <= 0 || components < 1 || components > 4 ||
+        static_cast<U32>(width) > max_dimension ||
+        static_cast<U32>(height) > max_dimension)
+    {
+        fail("decoded dimensions or component count are unsupported");
+        return;
+    }
+
+    std::string upload_error;
+    mMetalSMAASampleTexture = alMetalCreateUnormTexture2D(
+        *device, static_cast<U32>(width), static_cast<U32>(height),
+        static_cast<U32>(components), sizeof(U8), raw_image->getData(),
+        "Alchemy native SMAA sample image", &upload_error);
+    if (!mMetalSMAASampleTexture)
+    {
+        fail(upload_error.empty() ? "Metal upload failed" : upload_error);
+        return;
+    }
+
+    mMetalSMAASampleFailureReported = false;
+    LL_INFOS("Metal")
+        << "Published SMAA SamplePath as a native " << width << "x"
+        << height << " RGBA8 edge-detection texture" << LL_ENDL;
+}
+
 bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
 {
     static LLCachedControl<bool> dynamic_exposure(
@@ -860,7 +983,14 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
         gSavedSettings, "RenderDisablePostProcessing", false);
     static LLCachedControl<U32> aa_quality(
         gSavedSettings, "RenderFSAASamples", 0U);
+    static LLCachedControl<std::string> sample_path(
+        gSavedSettings, "SamplePath", "");
     const bool use_smaa_sample = mResourceInputs.mSMAAUseSample;
+    const bool native_smaa_sample = !use_smaa_sample ||
+        (mMetalSMAASampleTexture &&
+         mMetalSMAASampleDevice == LLImageGL::getMetalDevice() &&
+         !mMetalSMAASamplePath.empty() &&
+         mMetalSMAASamplePath == sample_path());
 
     LLSettingsSky::ptr_t sky =
         LLEnvironment::instance().getCurrentSky();
@@ -884,7 +1014,7 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
         mResourceInputs.mFSAAType == 0 ||
         (mResourceInputs.mFSAAType == 1 &&
          gFXAAProgram[quality].isComplete()) ||
-        (mResourceInputs.mFSAAType == 2 && !use_smaa_sample &&
+        (mResourceInputs.mFSAAType == 2 && native_smaa_sample &&
          gSMAAEdgeDetectProgram[quality].isComplete() &&
          gSMAABlendWeightsProgram[quality].isComplete() &&
          gSMAANeighborhoodBlendProgram[quality].isComplete());
@@ -935,13 +1065,13 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
             "Metal world presentation is ineligible: started={}, hdr={}, "
             "main_world={}, ordinary_world={}, dynamic_exposure={}, "
             "lens_flare={}, lens_dirt={}, color_grade={}, post={}, sky={}, "
-            "antialiasing={}, sphere={}, final_buffer={}, hero_mirror={}, "
+            "antialiasing={}, smaa_sample={}, sphere={}, final_buffer={}, hero_mirror={}, "
             "hero_mirror_snapshot_validation={}",
             started, hdr, main_world, ordinary_world,
             native_dynamic_exposure, native_lens_flare, native_lens_dirt,
             grade.native_resources_ready, post_enabled,
             static_cast<bool>(sky), exact_antialiasing,
-            sphere_supported, final_buffer, hero_mirror_exact,
+            native_smaa_sample, sphere_supported, final_buffer, hero_mirror_exact,
             hero_mirror_snapshot_validation);
     }
     return eligible;
@@ -1695,6 +1825,11 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         // renderer failure.
         return;
     }
+
+    // SamplePath is mutable independently of the render-resource plan. Poll
+    // its cheap file identity at the transaction boundary and publish a new
+    // native texture before eligibility is evaluated below.
+    refreshMetalSMAASampleTexture();
 
     if (capture.device != device)
     {
@@ -9401,6 +9536,9 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             shaderInputs().mLocal.mSMAAPredication;
                         ALMetalWorldSMAAScene smaa;
                         smaa.source = display_target.get();
+                        smaa.edge_source_texture =
+                            mResourceInputs.mSMAAUseSample
+                            ? mMetalSMAASampleTexture.get() : nullptr;
                         smaa.predication_texture = use_predication &&
                                 capture.target
                             ? capture.target->depthStencilTexture() : nullptr;
@@ -9411,8 +9549,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         smaa.predication_strength = llclamp(
                             static_cast<F32>(pred_strength()), 0.f, 1.f);
                         std::string smaa_error;
-                        auto smaa_target = use_predication &&
-                                !smaa.predication_texture
+                        auto smaa_target =
+                            (mResourceInputs.mSMAAUseSample &&
+                             !smaa.edge_source_texture) ||
+                            (use_predication && !smaa.predication_texture)
                             ? nullptr
                             : capture.renderer->renderSMAA(
                                 smaa, &smaa_error);
@@ -9426,7 +9566,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             if (smaa_error.empty())
                             {
                                 smaa_error =
-                                    "matching predication depth is absent";
+                                    mResourceInputs.mSMAAUseSample &&
+                                        !smaa.edge_source_texture
+                                    ? "native SamplePath texture is absent"
+                                    : "matching predication depth is absent";
                             }
                             LL_WARNS("Metal")
                                 << "Native world SMAA retained GL: "
@@ -16924,6 +17067,9 @@ LLPipeline::ResourceChanges LLPipeline::reconcileResources(const ALRenderResourc
     mRequestedInputs = requested;
     mResourceInputs  = inputs;
     mResourcePlan    = plan;
+#if LL_DARWIN
+    refreshMetalSMAASampleTexture();
+#endif
 
     // The reflection manager's update runs after the frame is drawn, so the frame after probes come on would draw
     // through programs that read probes, with no cube array or coefficients to bind. Its update keeps them from then on.
@@ -17081,6 +17227,14 @@ void LLPipeline::releaseAllGLResources()
 #if LL_DARWIN
     mMetalCGLut.reset();
     mMetalToneCurveLut.reset();
+    mMetalSMAASampleTexture.reset();
+    mMetalSMAASampleDevice = nullptr;
+    mMetalSMAASamplePath.clear();
+    mMetalSMAASampleSize = -1;
+    mMetalSMAASampleModifiedSeconds = -1;
+    mMetalSMAASampleModifiedNanoseconds = -1;
+    mMetalSMAASampleLastAttempt = std::numeric_limits<U32>::max();
+    mMetalSMAASampleFailureReported = false;
 #endif
 
     releaseScopeBuffers();
@@ -17477,6 +17631,7 @@ void LLPipeline::createResourceTexture(ALRenderResourcePlan::Id id)
 
         case Id::SMAAArea:
         {
+#if !LL_DARWIN
             std::vector<U8> tempBuffer(AREATEX_SIZE);
             for (U32 y = 0; y < AREATEX_HEIGHT; y++)
             {
@@ -17489,11 +17644,13 @@ void LLPipeline::createResourceTexture(ALRenderResourcePlan::Id id)
             gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mSMAAAreaMap);
             LLImageGL::allocateTexture2D(ALTextureSlot::getInternalType(ALTextureSlot::TT_TEXTURE), GL_RG8, AREATEX_WIDTH,
                                          AREATEX_HEIGHT, GL_RG, GL_UNSIGNED_BYTE, tempBuffer.data());
+#endif
             break;
         }
 
         case Id::SMAASearch:
         {
+#if !LL_DARWIN
             std::vector<U8> tempBuffer(SEARCHTEX_SIZE);
             for (U32 y = 0; y < SEARCHTEX_HEIGHT; y++)
             {
@@ -17506,11 +17663,13 @@ void LLPipeline::createResourceTexture(ALRenderResourcePlan::Id id)
             gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mSMAASearchMap);
             LLImageGL::allocateTexture2D(ALTextureSlot::getInternalType(ALTextureSlot::TT_TEXTURE), GL_R8, SEARCHTEX_WIDTH,
                                          SEARCHTEX_HEIGHT, GL_RED, GL_UNSIGNED_BYTE, tempBuffer.data());
+#endif
             break;
         }
 
         case Id::SMAASample:
         {
+#if !LL_DARWIN
             LLPointer<LLImageRaw>               raw_image = new LLImageRaw;
             LLPointer<LLImagePNG>               png_image = new LLImagePNG;
             static LLCachedControl<std::string> sample_path(gSavedSettings, "SamplePath", "");
@@ -17540,6 +17699,7 @@ void LLPipeline::createResourceTexture(ALRenderResourcePlan::Id id)
                     raw_image->getHeight(), format, GL_UNSIGNED_BYTE, raw_image->getData());
                 stop_glerror();
             }
+#endif
             break;
         }
 
@@ -26491,16 +26651,10 @@ LLPipeline::SMAATargets LLPipeline::generateSMAABuffers(LLRenderTarget* src, ALT
 
     const bool use_sample = mResourceInputs.mSMAAUseSample;
 #if LL_DARWIN
-    // Ordinary Darwin SMAA is the native display transaction's responsibility;
-    // do not build a parallel GL result or bind lookup names the Darwin plan no
-    // longer owns. The optional sample-image feature is deliberately retained
-    // in GL: canCaptureMetalWorldPresentation rejects it, so that exact retained
-    // result remains presentation authority instead of being overwritten by a
-    // native transaction that does not consume SamplePath.
-    if (!use_sample)
-    {
-        return smaa;
-    }
+    // Darwin's complete normal and SamplePath SMAA transactions are native.
+    // Do not acquire GL intermediates or bind any of the retired lookup names.
+    (void)use_sample;
+    return smaa;
 #endif
 
     // Both from the caller's scope until the neighbourhood blend has read the weights, the weights over the edges'

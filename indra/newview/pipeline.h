@@ -246,6 +246,12 @@ private:
                            ResourceChanges& changes);
     // One of the pipeline's own GL textures, with its contents.
     void createResourceTexture(ALRenderResourcePlan::Id id);
+#if LL_DARWIN
+    // Keep the optional SMAA edge-detection image as a device-local Metal
+    // texture. Source identity changes invalidate it immediately; transient
+    // decode/upload failures retry without admitting an inexact transaction.
+    void refreshMetalSMAASampleTexture();
+#endif
     // Every resource the plan names, and what the pipeline keeps about them.
     void releaseRenderTargets();
 
@@ -282,6 +288,14 @@ private:
     // createResourceTexture fills this beside the GL authority so the native
     // light-map owner never has to read the static noise back from GL.
     std::vector<U16> mMetalNoiseMapRG16;
+    std::unique_ptr<ALMetalTexture> mMetalSMAASampleTexture;
+    const ALMetalDevice* mMetalSMAASampleDevice = nullptr;
+    std::string mMetalSMAASamplePath;
+    S64 mMetalSMAASampleSize = -1;
+    S64 mMetalSMAASampleModifiedSeconds = -1;
+    S64 mMetalSMAASampleModifiedNanoseconds = -1;
+    U32 mMetalSMAASampleLastAttempt = std::numeric_limits<U32>::max();
+    bool mMetalSMAASampleFailureReported = false;
     // Dynamic exposure is accepted only while the native 1x1 history has
     // advanced on every GL exposure frame since the same reset boundary.
     U64 mMetalExposureHistoryEpoch = 1;

@@ -117,14 +117,12 @@ namespace
     IdSet smaa_lookups(bool sample)
     {
 #if LL_DARWIN
-        if (!sample)
-        {
-            return {};
-        }
+        (void)sample;
+        return {};
 #else
         (void)sample;
-#endif
         return of({ Id::SMAAArea, Id::SMAASearch, Id::SMAASample });
+#endif
     }
 
     IdSet smaa_resources(bool sample)

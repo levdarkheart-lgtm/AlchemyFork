@@ -1528,6 +1528,10 @@ struct ALMetalWorldDepthOfFieldScene
 struct ALMetalWorldSMAAEdgeScene
 {
     const ALMetalRenderTarget* source = nullptr;
+    // The sample-image diagnostic substitutes only edge detection's color
+    // input. Output dimensions and the later neighborhood source still come
+    // from source, matching the retained SMAA transaction.
+    const ALMetalTexture* edge_source_texture = nullptr;
     const ALMetalTexture* predication_texture = nullptr;
     std::uint32_t quality = 0;
     float predication_threshold = 0.002f;
@@ -1558,6 +1562,7 @@ struct ALMetalWorldSMAANeighborhoodScene
 struct ALMetalWorldSMAAScene
 {
     const ALMetalRenderTarget* source = nullptr;
+    const ALMetalTexture* edge_source_texture = nullptr;
     const ALMetalTexture* predication_texture = nullptr;
     std::uint32_t quality = 0;
     float predication_threshold = 0.002f;

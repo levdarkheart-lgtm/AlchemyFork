@@ -360,21 +360,16 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
     plan.at(Id::ToneCurve).mDesc = ALRenderTargetDesc{ .color = { GL_RGBA16 } };
 
     // SMAA's area and search tables, and the debug image it can blend. Darwin's
-    // ordinary world transaction owns private Metal area/search tables and
-    // never reads these GL names. Keep the three retained GL textures only for
-    // the explicit sample-image mode, which native publication rejects so the
-    // retained GL feature remains exact. Other platforms retain the original
-    // GL resources whenever SMAA is selected.
+    // native transaction owns private Metal area/search tables and publishes
+    // SamplePath independently, so it never creates these GL names. Other
+    // platforms retain the original GL resources whenever SMAA is selected.
     if (in.mFSAAType == 2)
     {
-#if LL_DARWIN
-        if (in.mSMAAUseSample)
+#if !LL_DARWIN
+        plan.at(Id::SMAAArea).mDesc   = ALRenderTargetDesc{ .color = { GL_RG8 } };
+        plan.at(Id::SMAASearch).mDesc = ALRenderTargetDesc{ .color = { GL_R8 } };
+        plan.at(Id::SMAASample).mDesc = ALRenderTargetDesc{ .color = { GL_RGB8 } };
 #endif
-        {
-            plan.at(Id::SMAAArea).mDesc   = ALRenderTargetDesc{ .color = { GL_RG8 } };
-            plan.at(Id::SMAASearch).mDesc = ALRenderTargetDesc{ .color = { GL_R8 } };
-            plan.at(Id::SMAASample).mDesc = ALRenderTargetDesc{ .color = { GL_RGB8 } };
-        }
     }
 
     return plan;
