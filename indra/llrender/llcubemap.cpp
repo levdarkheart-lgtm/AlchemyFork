@@ -67,6 +67,12 @@ LLCubeMap::~LLCubeMap()
 
 void LLCubeMap::initGL()
 {
+#if LL_DARWIN
+    // Darwin's authoritative cube is the native resource built from the same
+    // transformed CPU faces in getMetalTexture(). Keep this entry point inert
+    // so a retained traversal caller cannot recreate duplicate GL ownership.
+    return;
+#else
     llassert(gGLManager.mInited);
 
     // Not initialized, do stuff.
@@ -115,6 +121,7 @@ void LLCubeMap::initGL()
         gGL.getTextureSlot(0)->unbind();
     }
     disable();
+#endif
 }
 
 void LLCubeMap::initRawData(const std::vector<LLPointer<LLImageRaw> >& rawimages)
@@ -126,6 +133,10 @@ void LLCubeMap::initRawData(const std::vector<LLPointer<LLImageRaw> >& rawimages
     // Yes, I know that this is inefficient! - djs 08/08/02
     for (int i = 0; i < 6; i++)
     {
+        if (mRawImages[i].isNull())
+        {
+            mRawImages[i] = new LLImageRaw(RESOLUTION, RESOLUTION, 4);
+        }
         LLImageDataCopyLock lock(rawimages[i], mRawImages[i]);
 
         const U8 *sd = rawimages[i]->getData();
@@ -171,15 +182,16 @@ void LLCubeMap::initRawData(const std::vector<LLPointer<LLImageRaw> >& rawimages
 void LLCubeMap::initGLData()
 {
     LL_PROFILE_ZONE_SCOPED;
+#if !LL_DARWIN
     for (int i = 0; i < 6; i++)
     {
         mImages[i]->setSubImage(mRawImages[i], 0, 0, RESOLUTION, RESOLUTION);
     }
-#if LL_DARWIN
+#else
     // The viewer installs the window's Metal device before the sky is
-    // initialized. Publish the matching cube beside the GL upload so the
-    // render path never has to read the GL texture back. A later consumer
-    // retries if startup ordering or a transient allocation prevented this.
+    // initialized. Publish the transformed CPU faces directly; a later
+    // consumer retries if startup ordering or a transient allocation prevented
+    // this publication.
     if (LLImageGL::getMetalDevice())
     {
         std::string error;
@@ -195,12 +207,23 @@ void LLCubeMap::initGLData()
 
 void LLCubeMap::init(const std::vector<LLPointer<LLImageRaw> >& rawimages)
 {
+#if LL_DARWIN
+    initRawData(rawimages);
+    std::string error;
+    if (!getMetalTexture(&error))
+    {
+        LL_WARNS("Metal")
+            << "Could not publish the legacy sky cube to Metal: "
+            << error << LL_ENDL;
+    }
+#else
     if (!gGLManager.mIsDisabled)
     {
         initGL();
         initRawData(rawimages);
         initGLData();
     }
+#endif
 }
 
 // initReflectionMap and initEnvironmentMap were deleted here: no callers, and both
@@ -210,7 +233,7 @@ void LLCubeMap::init(const std::vector<LLPointer<LLImageRaw> >& rawimages)
 
 GLuint LLCubeMap::getGLName()
 {
-    return mImages[0]->getTexName();
+    return mImages[0].notNull() ? mImages[0]->getTexName() : 0;
 }
 
 #if LL_DARWIN

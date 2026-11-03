@@ -31,6 +31,7 @@
 
 #include "linden_common.h"
 
+#include "../llcubemap.h"
 #include "../llimagegl.h"
 #include "../llgl.h"
 #include "../llgltexture.h"
@@ -50,6 +51,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -1407,6 +1409,112 @@ namespace
     }
 
 #if LL_DARWIN
+    TEST_CASE_METHOD(llimagegl_data, "LLCubeMap: Darwin publishes transformed faces only to one native cube", "[LLCubeMap][almetal]")
+    {
+        constexpr U32 resolution = 64;
+        constexpr U32 components = 4;
+        const bool flip_x[6] = {false, true, false, false, true, false};
+        const bool flip_y[6] = {true, true, true, false, true, true};
+        const bool transpose[6] = {false, false, false, false, true, true};
+        constexpr U32 source_for_slice[6] = {1, 0, 3, 2, 5, 4};
+
+        std::vector<LLPointer<LLImageRaw>> sources;
+        sources.reserve(6);
+        for (U32 face = 0; face < 6; ++face)
+        {
+            LLPointer<LLImageRaw> raw = new LLImageRaw(
+                resolution, resolution, components);
+            for (U32 y = 0; y < resolution; ++y)
+            {
+                for (U32 x = 0; x < resolution; ++x)
+                {
+                    U8* pixel = raw->getData() +
+                        (static_cast<std::size_t>(y) * resolution + x) *
+                            components;
+                    pixel[0] = static_cast<U8>(face * 31 + x);
+                    pixel[1] = static_cast<U8>(face * 17 + y);
+                    pixel[2] = static_cast<U8>(x * 3 + y * 5 + face);
+                    pixel[3] = static_cast<U8>(0x80 + face);
+                }
+            }
+            sources.push_back(raw);
+        }
+
+        LLPointer<LLCubeMap> cube = new LLCubeMap();
+        cube->init(sources);
+        CHECK(cube->getResolution() == resolution);
+        CHECK(cube->getGLName() == 0);
+
+        ALMetalTexture* texture = cube->getMetalTexture();
+        REQUIRE(texture);
+        CHECK(texture->descriptor().type == ALMetalTextureType::texture_cube);
+        CHECK(texture->descriptor().format == ALMetalPixelFormat::rgba8_unorm);
+        CHECK(texture->descriptor().width == resolution);
+        CHECK(texture->descriptor().height == resolution);
+        CHECK(texture->descriptor().mipmap_level_count == 1);
+
+        ALMetalDevice* device = LLImageGL::getMetalDevice();
+        REQUIRE(device);
+        std::string error;
+        std::vector<U8> actual(
+            static_cast<std::size_t>(resolution) * resolution * components);
+        std::vector<U8> expected(actual.size());
+        for (U32 slice = 0; slice < 6; ++slice)
+        {
+            const U32 source = source_for_slice[slice];
+            for (U32 y = 0; y < resolution; ++y)
+            {
+                for (U32 x = 0; x < resolution; ++x)
+                {
+                    U32 sx = flip_x[source] ? resolution - 1 - x : x;
+                    U32 sy = flip_y[source] ? resolution - 1 - y : y;
+                    if (transpose[source])
+                    {
+                        std::swap(sx, sy);
+                    }
+                    const U8* input = sources[source]->getData() +
+                        (static_cast<std::size_t>(sy) * resolution + sx) *
+                            components;
+                    std::copy_n(
+                        input, components,
+                        expected.begin() +
+                            (static_cast<std::size_t>(y) * resolution + x) *
+                                components);
+                }
+            }
+            REQUIRE(texture->readback(
+                *device, 0, slice, {}, actual.data(),
+                resolution * components, &error));
+            INFO(error);
+            CHECK(actual == expected);
+        }
+
+        // A generation prepared without a device remains unavailable instead
+        // of exposing the previous cube, then publishes exactly on retry.
+        struct DeviceRestore
+        {
+            ALMetalDevice* device;
+            ~DeviceRestore() { LLImageGL::setMetalDevice(device); }
+        } restore{device};
+        LLImageGL::setMetalDevice(nullptr);
+        sources[0]->getData()[0] ^= 0x5a;
+        cube->init(sources);
+        CHECK(cube->getMetalTexture() == nullptr);
+        CHECK(cube->getGLName() == 0);
+        LLImageGL::setMetalDevice(device);
+        ALMetalTexture* retried = cube->getMetalTexture(&error);
+        REQUIRE(retried);
+        INFO(error);
+        REQUIRE(retried->readback(
+            *device, 0, 1, {}, actual.data(), resolution * components,
+            &error));
+        INFO(error);
+        const std::size_t changed_pixel =
+            static_cast<std::size_t>(resolution - 1) * resolution * components;
+        CHECK(actual[changed_pixel] == sources[0]->getData()[0]);
+        CHECK(cube->getGLName() == 0);
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: native creation owns no GL texture", "[LLImageGL][almetal]")
     {
         std::string error;

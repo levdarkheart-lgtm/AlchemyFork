@@ -63,7 +63,14 @@ public:
     void setMatrix(S32 stage, const LLMatrix4a& modelview);
     void restoreMatrix();
 
-    U32 getResolution() { return mImages[0].notNull() ? mImages[0]->getWidth(0) : 0; }
+    U32 getResolution()
+    {
+        if (mImages[0].notNull())
+        {
+            return mImages[0]->getWidth(0);
+        }
+        return mRawImages[0].notNull() ? mRawImages[0]->getWidth() : 0;
+    }
 
     // generate mip maps for this Cube Map using GL
     // NOTE: Cube Map MUST already be resident in VRAM
@@ -71,10 +78,10 @@ public:
     GLuint getGLName();
 
 #if LL_DARWIN
-    // Return a coherent Metal cube containing the same six transformed face
-    // images as the legacy GL environment map. The mirror is rebuilt only
-    // after initRawData publishes a new sky generation or the Metal device
-    // changes; a failed rebuild never exposes the previous generation.
+    // Return the coherent native cube containing the six transformed legacy
+    // sky faces. It is rebuilt only after initRawData publishes a new sky
+    // generation or the Metal device changes; a failed rebuild never exposes
+    // the previous generation.
     ALMetalTexture* getMetalTexture(std::string* error = nullptr);
 #endif
 

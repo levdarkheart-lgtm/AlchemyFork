@@ -497,7 +497,14 @@ bool ALTextureSlot::bind(LLCubeMap* cubeMap, ALSampler key)
     // partially-constructed cubemap could have a null face here.
     if (cubeMap->mImages[0].isNull())
     {
+#if LL_DARWIN
+        // The native-only legacy sky cube deliberately has no GL face. Clear
+        // any older cube binding so retained GL traversal cannot sample stale
+        // storage while the Metal world owner consumes getMetalTexture().
+        unbind();
+#else
         LL_WARNS() << "ALTextureSlot::bind cubemap with null face 0" << LL_ENDL;
+#endif
         return false;
     }
 
