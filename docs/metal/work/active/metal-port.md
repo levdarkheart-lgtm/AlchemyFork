@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `c2bcd90b04`.
+**Renderer checkpoint:** Commit `63f8f0d528`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -15,10 +15,10 @@ checkpoint detail belongs in the indexed archive.
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
 | M-002 | GL/shader/pass/resource and binary inventory | doing | 2,406 files and 3,217 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Exact HDR/non-HDR world, presentation and ordered-UI Metal publication is default-on, fail-closed and machine-censused by current-frame failure boundary; dead restore authority/methods and redundant shutdown hooks are deleted. Live GL context creation/shutdown remains. |
-| M-004 | Metal resources, transfers, readback and synchronization | doing | Color-grade volume/tone-curve and world/preview PBR BRDF LUTs and the shared dynamic-texture framework are Metal-native on Darwin; previews, visual hints and avatar composites publish authoritatively. |
+| M-004 | Metal resources, transfers, readback and synchronization | doing | Color-grade volume/tone-curve and world/preview PBR BRDF LUTs and the shared dynamic-texture framework are Metal-native on Darwin; previews, visual hints and avatar composites publish authoritatively. Native-authoritative mip and no-mip scale-down stays entirely in Metal without manufacturing GL backing. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and font atlases are native-only; owner-attended text/emoji and moving-media parity remain open. |
-| M-007 | World scene and material correctness | doing | World capture consumes native legacy bumps; opaque fullbright is corrected. Legacy BLEND/stained glass and broad material parity remain open. |
+| M-007 | World scene and material correctness | doing | World capture consumes native legacy bumps; opaque fullbright is corrected. Native main-world/impostor legacy BLEND behavior and deterministic coverage exist; owner-attended stained-glass visual and broad material parity remain open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL, linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
@@ -30,6 +30,21 @@ States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
 ## Active checkpoint — Metal-first presentation fallback census
+
+Commit `63f8f0d528` adds a native-authoritative `LLImageGL::scaleDown()`
+lifecycle before any GL allocation path. Mip-backed resources select and copy
+an existing native mip, no-mip resources use the Metal bilinear resampler, and
+both replace the old resource only after successful GPU command submission.
+Physical regressions prove pixels, mip tails, discard/memory metadata and the
+no-GL-name/no-GL-allocation invariant. The dual-backed path remains only for
+textures still participating in complete per-frame GL recovery.
+
+Source audit also corrects the former immediate action: legacy BLEND/stained
+glass is not missing. Its native main-world and impostor shaders, production
+capture and broad deterministic physical coverage exist; the owner-attended
+visual question remains queued.
+
+### Preceding presentation checkpoint
 
 Commit `04edf7b27d` makes the exact native Metal
 world/presentation/ordered-UI transaction the default path. Commit
@@ -52,13 +67,13 @@ the CSV.
 
 ## Validation checkpoint
 
-- The source-exact warnings-as-errors Xcode Release build `26.4.0d68233`
-  passed at `c2bcd90b04`; the exact Ninja tree configured at 68233 and relinked
-  `newview_tests`. Changed-code appearance/shared targets also built cleanly.
+- The source-exact warnings-as-errors Xcode Release build `26.4.0d68235`
+  passed at `63f8f0d528`; the exact Ninja tree configured at 68235 and linked
+  all affected renderer, appearance, viewer and physical-test targets.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices; deep strict
   signing passes.
 - Viewer executable SHA-256:
-  `32ac96653c5ccea6301862cf4112266d74eefc756654be3b7d39a638026ece29`.
+  `0bf2f79ec710324438e20a2db6370e174022127302699bbc9863e8c0a8411bec`.
   Source/packaged MSL:
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`.
   Metallib:
@@ -67,22 +82,22 @@ the CSV.
   `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
   packaged Metal-presentation default: `1`.
 - With Metal API/GPU, shader and load-action validation,
-  `llappearance_gl_tests` passes 13,208/3. Unchanged preceding baselines remain
-  `almetal_tests` at 52,526/56, its focused legacy-glow case at 42 assertions,
-  and `llrender_gl_fresh_tests` at 2,612/96.
+  `llrender_gl_fresh_tests` passes 2,650/98 including both new native-only
+  scale-down cases, `almetal_tests` passes 52,526/56 and
+  `llappearance_gl_tests` passes 13,208/3.
 - The focused Metal-only upload case passes 17/17 assertions in the shared
   binary. The complete shared diagnostic suite remains non-green at
   8,352/8,357 assertions (182 pass, 4 fail, 39 skip): four legacy/headless
   frame-fence timing assertions and one depth-format expectation fail; the new
   case passes in that same environment.
 - `alrender_tests` passes 557,301 assertions/136 cases.
-  `newview_tests` self-reports build 68233 and passes 98,978 assertions/744
+  `newview_tests` self-reports build 68235 and passes 98,978 assertions/744
   cases; one established platform CRT case skips. The focused census slice
   passes 46 assertions/7 cases.
 - Harness structure validation, all 29 harness/tool tests and diff checks pass.
 - Strict inventory is 2,406 files / 3,217 findings / 2,906 unique
   path/kinds/snippet records, expected exit 1. Exact report SHA-256:
-  `a6787d443073bca3f462b3308f5d5573b280b29530bf07dba60b98609fe908f8`.
+  `4b3803cc47b02651b3a6a44f246253bcba20df37f45b53aa7f4847e9fad2b6a7`.
   Both OpenGL and Metal remain linked.
 - No viewer executable was launched, driven, photographed or compared.
 
@@ -96,11 +111,12 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—the complete native presentation transaction
-   is requested by default and its per-frame fallback boundary is now
-   machine-readable rather than guessed from logs.
-2. **Replacement boundary:** the existing Metal feature implementation becomes
-   primary; full GL remains only as fail-closed per-frame transition recovery.
+1. **Product advancement:** yes—native-authoritative resources now keep their
+   scale-down lifecycle in Metal, preserving content and memory/discard
+   metadata without reacquiring GL storage.
+2. **Replacement boundary:** the native-only route applies only after a
+   producer has retired its GL name; dual-backed resources retain fail-closed
+   transition recovery.
 3. **Deferred critical work:** remaining GL context/traversal/resources,
    feature/stability matrices, visual queue, strict binary/runtime audit,
    measured M1 Max performance and release proof.
@@ -110,11 +126,11 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Implement the missing legacy BLEND/stained-glass material behavior in Metal,
-with deterministic physical-GPU coverage. During the next owner-attended
-session, collect the default-path publication census without adding an
-independent comparison run. Use measured failure states to repair blockers and
-retire fallback only when complete native behavior is durable.
+Make process-wide texture residency accounting backend-neutral. Account native
+Metal create/replacement/scale-down/teardown without double-counting a
+transitional dual-backed image, and physically regress those transitions before
+changing eviction policy. During the next owner-attended session, collect the
+default-path publication census without adding an independent comparison run.
 
 ## Non-negotiable open gates
 
