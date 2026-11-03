@@ -36,7 +36,6 @@
 #include <type_traits>
 
 class ALGPUBuffer;
-class ALTexture3D;
 
 class LLShaderFeatures
 {
@@ -505,7 +504,6 @@ public:
     S32 bindImage(S32 uniform, LLRenderTarget* target, ALImageSlot::eAccess access, U32 attachment = 0, U32 level = 0,
                   U32 element = 0);
     S32 bindImage(S32 uniform, LLImageGL* image, ALImageSlot::eAccess access, U32 level = 0, U32 element = 0);
-    S32 bindImage(S32 uniform, ALTexture3D* texture, ALImageSlot::eAccess access, U32 level = 0, U32 element = 0);
     // Unbind every unit the uniform has, an array's elements all.
     S32 unbindImage(S32 uniform);
 

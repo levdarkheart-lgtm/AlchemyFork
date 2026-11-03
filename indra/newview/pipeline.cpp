@@ -17189,7 +17189,6 @@ void LLPipeline::releaseAllRenderResources()
     mLensDirtMap.release();
     mLensDirtParams = LensDirtPlateParams();
 
-    mCGLut = nullptr;
     mColorGradeLutLoaded = false;
     mCGLutSize = LLVector4();
 #if LL_DARWIN
@@ -18002,7 +18001,6 @@ namespace
 
 void LLPipeline::setupGradingLUT()
 {
-    mCGLut = nullptr;
     mColorGradeLutLoaded = false;
     mCGLutSize = LLVector4();
 #if LL_DARWIN
@@ -18040,7 +18038,10 @@ void LLPipeline::setupGradingLUT()
                 const U32 max_lut_dimension = metal_device
                     ? metal_device->info().max_texture_2d_dimension : 0;
 #else
-                const U32 max_lut_dimension = gGLManager.mGLMaxTextureSize;
+                LL_WARNS("Metal")
+                    << "Color grading LUTs require the native Metal renderer."
+                    << LL_ENDL;
+                return;
 #endif
                 if (static_cast<U32>(lutCube.size) > max_lut_dimension)
                 {
@@ -18067,16 +18068,6 @@ void LLPipeline::setupGradingLUT()
                     LL_WARNS("Metal")
                         << "Failed to allocate native color grading LUT: "
                         << metal_error << LL_ENDL;
-                    return;
-                }
-#else
-                mCGLut = new ALTexture3D();
-                if (!mCGLut->allocate(lutCube.size, lutCube.size, lutCube.size,
-                                      GL_RGBA16, GL_RGBA, GL_UNSIGNED_SHORT,
-                                      lutCube.colorCube.data()))
-                {
-                    LL_WARNS() << "Failed to allocate color grading LUT texture." << LL_ENDL;
-                    mCGLut = nullptr;
                     return;
                 }
 #endif
@@ -18174,28 +18165,12 @@ void LLPipeline::setupGradingLUT()
 
             if (decode_success && raw_image)
             {
-#if !LL_DARWIN
-                U32 primary_format = 0;
-                U32 int_format = 0;
-#endif
                 switch (raw_image->getComponents())
                 {
                     case 3:
-                    {
-#if !LL_DARWIN
-                        primary_format = GL_RGB;
-                        int_format = GL_RGB8;
-#endif
                         break;
-                    }
                     case 4:
-                    {
-#if !LL_DARWIN
-                        primary_format = GL_RGBA;
-                        int_format = GL_RGBA8;
-#endif
                         break;
-                    }
                     default:
                     {
                         LL_WARNS() << "Color LUT has invalid number of color components: " << raw_image->getComponents() << LL_ENDL;
@@ -18209,7 +18184,10 @@ void LLPipeline::setupGradingLUT()
                 const U32 max_lut_dimension = metal_device
                     ? metal_device->info().max_texture_2d_dimension : 0;
 #else
-                const U32 max_lut_dimension = gGLManager.mGLMaxTextureSize;
+                LL_WARNS("Metal")
+                    << "Color grading LUTs require the native Metal renderer."
+                    << LL_ENDL;
+                return;
 #endif
                 if ((image_height > 0 && static_cast<U32>(image_height) <= max_lut_dimension) // within dimension limit
                     && ((image_height * image_height) == image_width))                 // width is height * height
@@ -18227,16 +18205,6 @@ void LLPipeline::setupGradingLUT()
                         LL_WARNS("Metal")
                             << "Failed to allocate native color grading LUT: "
                             << metal_error << LL_ENDL;
-                        return;
-                    }
-#else
-                    mCGLut = new ALTexture3D();
-                    if (!mCGLut->allocate(image_height, image_height, image_height,
-                                          int_format, primary_format, GL_UNSIGNED_BYTE,
-                                          raw_image->getData()))
-                    {
-                        LL_WARNS() << "Failed to allocate color grading LUT texture." << LL_ENDL;
-                        mCGLut = nullptr;
                         return;
                     }
 #endif
@@ -25693,32 +25661,13 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
         }
 
         // Color correction LUT
-        S32 cglut_channel = -1;
         S32 tone_curve_channel = -1;
         if (color_grade)
         {
-            const bool gl_color_lut_active =
-                grade.color_lut_active && mCGLut.notNull();
-            if (gl_color_lut_active)
-            {
-                cglut_channel = shader->getTextureChannel(LLShaderMgr::COLOR_GRADE_LUT);
-                if (cglut_channel > -1)
-                {
-                    mCGLut->bind(cglut_channel);
-                }
-                shader->uniform4f(
-                    LLShaderMgr::COLOR_GRADE_LUT_SIZE,
-                    static_cast<F32>(grade.color_lut_size),
-                    grade.color_lut_flip_green ? 1.f : 0.f,
-                    grade.color_lut_swap_blue_green ? 1.f : 0.f, 0.f);
-                shader->uniform1f(
-                    LLShaderMgr::COLOR_GRADE_LUT_STRENGTH,
-                    grade.color_lut_strength);
-            }
-            else
-            {
-                shader->uniform1f(LLShaderMgr::COLOR_GRADE_LUT_STRENGTH, 0.f); // Disable lut path
-            }
+            // The Apple-only product publishes and samples LUTs through the
+            // native display-post pass. The legacy GL post path retains the
+            // shared grading controls but no longer owns a volume texture.
+            shader->uniform1f(LLShaderMgr::COLOR_GRADE_LUT_STRENGTH, 0.f);
 
             // The builder above owns every clamp, bypass and identity choice
             // shared with the native display-post owner.
@@ -25807,10 +25756,6 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
         mScreenTriangleVB->setBuffer();
         mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
 
-        if (cglut_channel > -1 && mCGLut.notNull())
-        {
-            mCGLut->unbind(cglut_channel);
-        }
         if (dirt_channel > -1)
         {
             gGL.getTextureSlot(dirt_channel)->unbind();

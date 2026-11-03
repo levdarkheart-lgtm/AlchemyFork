@@ -663,7 +663,7 @@ static void assertStorageAllocatable(U32 target, S32 intformat)
 {
     // A non-2D target needs its own glTexStorage variant, called ONCE for the whole object
     // -- six cube faces are one allocation, not six -- after which the members write
-    // sub-images. LLCubeMap, LLCubeMapArray and ALTexture3D each do that themselves and
+    // sub-images. LLCubeMap and LLCubeMapArray each do that themselves and
     // call markStorageAllocated(), so they never arrive here.
     if (target != GL_TEXTURE_2D)
     {

@@ -2149,16 +2149,6 @@ S32 LLGLSLShader::bindImage(S32 uniform, LLImageGL* image, ALImageSlot::eAccess 
     return unit;
 }
 
-S32 LLGLSLShader::bindImage(S32 uniform, ALTexture3D* texture, ALImageSlot::eAccess access, U32 level, U32 element)
-{
-    const S32 unit = getImageUnit(uniform, element);
-    if (unit < 0 || !gGL.getImageSlot(unit)->bind(texture, access, level))
-    {
-        return -1;
-    }
-    return unit;
-}
-
 S32 LLGLSLShader::unbindImage(S32 uniform)
 {
     const S32 unit = getImageUnit(uniform);

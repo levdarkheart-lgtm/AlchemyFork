@@ -27,7 +27,6 @@
 #include "linden_common.h"
 
 #include "../alimageslot.h"
-#include "../altexture3d.h"
 #include "../llgl.h"
 #include "../llglheaders.h"
 #include "../llimagegl.h"
@@ -307,17 +306,6 @@ namespace
         CHECK(state.mTexture == (GLint)linear->getTexName());
         CHECK(state.mFormat == GL_RGBA8);
         CHECK(state.mLayered == GL_FALSE);
-
-        LLPointer<ALTexture3D> volume = new ALTexture3D();
-        REQUIRE(volume->allocate(4, 4, 4, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, nullptr));
-        CHECK(slot->bind(volume.get(), ALImageSlot::WRITE_ONLY));
-        state = unitState(6);
-        CHECK(state.mTexture == (GLint)volume->getGLName());
-        UNSCOPED_INFO("every slice");
-        CHECK(state.mLayered == GL_TRUE);
-        UNSCOPED_INFO("at its own format");
-        CHECK(state.mFormat == GL_RGBA16F);
-        slot->unbind();
 
         CHECK(glGetError() == GLenum(GL_NO_ERROR));
     }

@@ -11,7 +11,6 @@ set(
   alprimitiveplot.cpp
   alquerypool.cpp
   alsamplerstate.cpp
-  altexture3d.cpp
   altextureblit.cpp
   altextureslot.cpp
   alfontcolrv1.cpp
@@ -54,7 +53,6 @@ set(
   alquerypool.h
   alrendertargetdesc.h
   alsamplerstate.h
-  altexture3d.h
   altextureblit.h
   altextureslot.h
   alfontcolrv1.h

@@ -50,7 +50,6 @@
 #include "altransienttargetpool.h"
 #include "altransienttargets.h"
 #include "alwatersurface.h"
-#include "altexture3d.h"
 #include "aluniformbuffer.h"
 #include "llrendertarget.h"
 #include "llreflectionmapmanager.h"
@@ -2178,13 +2177,11 @@ protected:
     // Note: no need to keep an quick-lookup to avatar pools, since there's only one per avatar
 
     // Color grading lookup texture and size
-    LLPointer<ALTexture3D> mCGLut;
-    // Backend-neutral publication state. Darwin owns only mMetalCGLut; other
-    // platforms own mCGLut until platform pruning removes that implementation.
+    // The LUT is a native Metal volume represented as a square 2D array, one
+    // blue slice per layer. There is no retained OpenGL volume-texture owner.
     bool mColorGradeLutLoaded = false;
     LLVector4 mCGLutSize{};
 #if LL_DARWIN
-    // The volume represented as a square 2D array, one blue slice per layer.
     std::unique_ptr<ALMetalTexture> mMetalCGLut;
 #endif
 

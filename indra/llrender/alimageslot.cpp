@@ -26,7 +26,6 @@
 
 #include "alimageslot.h"
 
-#include "altexture3d.h"
 #include "llgl.h"
 #include "llglheaders.h"
 #include "llimagegl.h"
@@ -145,17 +144,6 @@ bool ALImageSlot::bind(LLImageGL* image, eAccess access, U32 level)
     }
     return bindManual(image->getTexName(), level, is_layered(image->getTarget()), 0, access,
                       (U32)image->getStorageInternalFormat());
-}
-
-bool ALImageSlot::bind(ALTexture3D* texture, eAccess access, U32 level)
-{
-    if (!texture || !texture->isAllocated())
-    {
-        LL_WARNS("ImageSlot") << "Image slot " << mIndex << ": no volume to bind" << LL_ENDL;
-        llassert(false);
-        return false;
-    }
-    return bindManual(texture->getGLName(), level, true, 0, access, texture->getInternalFormat());
 }
 
 bool ALImageSlot::bindManual(U32 texture, U32 level, bool layered, S32 layer, eAccess access, U32 format)

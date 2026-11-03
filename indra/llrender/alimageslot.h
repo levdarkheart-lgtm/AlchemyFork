@@ -26,7 +26,6 @@
 
 #include "stdtypes.h"
 
-class ALTexture3D;
 class LLImageGL;
 class LLRenderTarget;
 
@@ -63,8 +62,6 @@ public:
     // depth, compressed) warns and binds nothing (returns false). `level` is the mip level the shader addresses.
     bool bind(LLRenderTarget* target, U32 attachment, eAccess access, U32 level = 0);
     bool bind(LLImageGL* image, eAccess access, U32 level = 0);
-    // Layered: every slice of the volume, addressed by the shader's z.
-    bool bind(ALTexture3D* texture, eAccess access, U32 level = 0);
     // A texture by name. `layered` binds every layer of an array, cube or volume; otherwise `layer` picks one.
     bool bindManual(U32 texture, U32 level, bool layered, S32 layer, eAccess access, U32 format);
 
