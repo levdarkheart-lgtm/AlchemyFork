@@ -190,7 +190,8 @@ public:
     const ALRenderResourceInputs& resourceInputs() const { return mResourceInputs; }
     const ALRenderResourcePlan& resourcePlan() const { return mResourcePlan; }
 
-    /// Draws the BRDF LUT with gDeferredGenBrdfLutProgram into its target.
+    /// Draws the non-Darwin GL BRDF LUT with gDeferredGenBrdfLutProgram into
+    /// its target. Darwin's native world and preview owners generate their own.
     void createBrdfLut();
     /// The auto-exposure's adapted state and the lens flare's history, as a first frame finds them.
     void resetExposureHistory();
@@ -219,7 +220,8 @@ private:
     bool rebuildGLBuffers(const ALRenderResourceInputs& requested, RebuildCause cause);
     // What the programs' reload alone invalidates, where no reconcile follows it, and its log line.
     void programsReloaded();
-    // Whether the BRDF LUT was drawn with a gDeferredGenBrdfLutProgram that has since linked again.
+    // Whether the non-Darwin BRDF LUT was drawn with a
+    // gDeferredGenBrdfLutProgram that has since linked again.
     bool brdfLutStale() const;
 
     // What the settings say the programs' and the resources' inputs are now, read by latchRenderInputs alone, so every

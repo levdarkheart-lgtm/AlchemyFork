@@ -17409,7 +17409,11 @@ void LLPipeline::programsReloaded()
 
 bool LLPipeline::brdfLutStale() const
 {
+#if LL_DARWIN
+    return false;
+#else
     return mPbrBrdfLut.isComplete() && gDeferredGenBrdfLutProgram.linkCount() != mBrdfLutLinks;
+#endif
 }
 
 void LLPipeline::createResourceTexture(ALRenderResourcePlan::Id id)
@@ -17570,6 +17574,12 @@ F32 lerpf(F32 a, F32 b, F32 w)
 
 void LLPipeline::createBrdfLut()
 {
+#if LL_DARWIN
+    // The Darwin plan owns no legacy BRDF target. Native world rendering and
+    // native PBR preview generate their tables with
+    // almetal_pbr_preview_brdf_lut at the point each owner first needs one.
+    return;
+#else
     if (!mPbrBrdfLut.isComplete())
     {
         return;
@@ -17607,6 +17617,7 @@ void LLPipeline::createBrdfLut()
 
     gDeferredGenBrdfLutProgram.unbind();
     mPbrBrdfLut.flush();
+#endif
 }
 
 void LLPipeline::resetExposureHistory()
@@ -27729,6 +27740,11 @@ void LLPipeline::renderFinalize()
 
 void LLPipeline::bindBrdfLut(LLGLSLShader& shader)
 {
+#if LL_DARWIN
+    // AL_METAL_NATIVE_BRDF compiles this sampler out of retained GLSL. Native
+    // world and preview rendering bind their own Metal RG16F tables.
+    (void)shader;
+#else
     S32 channel = shader.enableTexture(LLShaderMgr::DEFERRED_BRDF_LUT);
     if (channel > -1)
     {
@@ -27740,6 +27756,7 @@ void LLPipeline::bindBrdfLut(LLGLSLShader& shader)
         // where clamping saturates at the roughest entry the table holds.
         mPbrBrdfLut.bindTexture(0, channel, ALSamplers::BilinearClamp);
     }
+#endif
 }
 
 void LLPipeline::bindShadowMaps(LLGLSLShader& shader)

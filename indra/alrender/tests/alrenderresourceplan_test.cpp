@@ -385,6 +385,21 @@ namespace
         CHECK(names(Plan::refilled(from, from)) == "nothing");
     }
 
+    TEST_CASE("alrenderresourceplan: Darwin leaves the legacy BRDF table to native owners",
+              "[alrenderresourceplan]")
+    {
+        const Plan plan = Plan::make(defaults());
+#if LL_DARWIN
+        CHECK_FALSE(plan.wants(Id::BrdfLut));
+#else
+        REQUIRE(plan.wants(Id::BrdfLut));
+        const ALRenderTargetDesc& desc = *plan.desc(Id::BrdfLut);
+        CHECK(desc.width == Plan::BRDF_LUT_SIZE);
+        CHECK(desc.height == Plan::BRDF_LUT_SIZE);
+        CHECK(desc.color[0] != 0);
+#endif
+    }
+
     TEST_CASE("alrenderresourceplan: no other setting fills anything again", "[alrenderresourceplan]")
     {
         for (const Row& row : setting_rows())

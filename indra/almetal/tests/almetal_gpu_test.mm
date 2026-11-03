@@ -27416,6 +27416,225 @@ TEST_CASE("almetal: bundled MSL compute pipeline dispatches through typed bindin
     }
 }
 
+TEST_CASE("almetal: native BRDF LUT matches the GGX split-sum oracle",
+          "[almetal][brdf]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto library = ALMetalShaderLibrary::loadBuiltin(*device, &error);
+        INFO(error);
+        REQUIRE(library);
+        REQUIRE(library->hasFunction("almetal_pbr_preview_brdf_lut"));
+
+        ALMetalComputePipelineDescriptor pipeline_descriptor;
+        pipeline_descriptor.library = library.get();
+        pipeline_descriptor.function = "almetal_pbr_preview_brdf_lut";
+        pipeline_descriptor.label = "Alchemy native BRDF LUT regression";
+        auto pipeline = ALMetalComputePipeline::create(
+            *device, pipeline_descriptor, &error);
+        INFO(error);
+        REQUIRE(pipeline);
+
+        constexpr std::uint32_t size = 512;
+        ALMetalTextureDescriptor texture_descriptor;
+        texture_descriptor.format = ALMetalPixelFormat::rg16_float;
+        texture_descriptor.width = size;
+        texture_descriptor.height = size;
+        texture_descriptor.storage = ALMetalStorageMode::private_gpu;
+        texture_descriptor.usage = ALMetalTextureUsage::shader_read |
+                                   ALMetalTextureUsage::shader_write;
+        texture_descriptor.label = "Alchemy native BRDF LUT regression";
+        auto texture = ALMetalTexture::create(
+            *device, texture_descriptor, &error);
+        INFO(error);
+        REQUIRE(texture);
+        CHECK(texture->descriptor().type == ALMetalTextureType::texture_2d);
+        CHECK(texture->descriptor().format == ALMetalPixelFormat::rg16_float);
+        CHECK(texture->descriptor().width == size);
+        CHECK(texture->descriptor().height == size);
+        CHECK(texture->descriptor().array_length == 1);
+        CHECK(texture->descriptor().storage ==
+              ALMetalStorageMode::private_gpu);
+        CHECK(texture->descriptor().usage ==
+              (ALMetalTextureUsage::shader_read |
+               ALMetalTextureUsage::shader_write));
+
+        auto command = device->makeCommandBuffer(
+            "Alchemy native BRDF LUT regression", &error);
+        INFO(error);
+        REQUIRE(command);
+        auto encoder = ALMetalComputeEncoder::begin(
+            *command, "Alchemy native BRDF LUT regression", &error);
+        INFO(error);
+        REQUIRE(encoder);
+        REQUIRE(encoder->setPipeline(*pipeline, &error));
+        REQUIRE(encoder->setTexture(0, texture.get(), &error));
+        REQUIRE(encoder->dispatch(size, size, 1, 8, 8, 1, &error));
+        REQUIRE(encoder->end(&error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        std::vector<std::uint16_t> texels(
+            static_cast<std::size_t>(size) * size * 2u);
+        REQUIRE(texture->readback(
+            *device, 0, 0, {}, texels.data(),
+            size * 2u * sizeof(std::uint16_t), &error));
+        INFO(error);
+
+        struct Vec3
+        {
+            float x;
+            float y;
+            float z;
+        };
+        const auto dot = [](const Vec3& left, const Vec3& right)
+        {
+            return left.x * right.x + left.y * right.y +
+                   left.z * right.z;
+        };
+        const auto cross = [](const Vec3& left, const Vec3& right)
+        {
+            return Vec3{
+                left.y * right.z - left.z * right.y,
+                left.z * right.x - left.x * right.z,
+                left.x * right.y - left.y * right.x,
+            };
+        };
+        const auto normalize = [&](const Vec3& value)
+        {
+            const float inverse = 1.f / std::sqrt(dot(value, value));
+            return Vec3{
+                value.x * inverse,
+                value.y * inverse,
+                value.z * inverse,
+            };
+        };
+        const auto radical_inverse = [](std::uint32_t index)
+        {
+            index = (index << 16u) | (index >> 16u);
+            index = ((index & 0x55555555u) << 1u) |
+                    ((index & 0xaaaaaaaau) >> 1u);
+            index = ((index & 0x33333333u) << 2u) |
+                    ((index & 0xccccccccu) >> 2u);
+            index = ((index & 0x0f0f0f0fu) << 4u) |
+                    ((index & 0xf0f0f0f0u) >> 4u);
+            index = ((index & 0x00ff00ffu) << 8u) |
+                    ((index & 0xff00ff00u) >> 8u);
+            return static_cast<float>(index) *
+                   2.3283064365386963e-10f;
+        };
+        const auto integrate = [&](float nv, float roughness)
+        {
+            constexpr std::uint32_t sample_count = 1024;
+            constexpr float pi = 3.14159265358979323846f;
+            constexpr Vec3 normal{0.f, 0.f, 1.f};
+            const Vec3 view{
+                std::sqrt(std::max(1.f - nv * nv, 0.f)), 0.f, nv,
+            };
+            std::array<float, 2> result{};
+            for (std::uint32_t index = 0; index < sample_count; ++index)
+            {
+                const float xi_x = static_cast<float>(index) /
+                                   static_cast<float>(sample_count);
+                const float xi_y = radical_inverse(index);
+                const float alpha = roughness * roughness;
+                const float phi = 2.f * pi * xi_x;
+                const float cos_theta = std::sqrt(
+                    (1.f - xi_y) /
+                    (1.f + (alpha * alpha - 1.f) * xi_y));
+                const float sin_theta = std::sqrt(std::max(
+                    1.f - cos_theta * cos_theta, 0.f));
+                const Vec3 half_tangent{
+                    sin_theta * std::cos(phi),
+                    sin_theta * std::sin(phi),
+                    cos_theta,
+                };
+                const Vec3 up = std::abs(normal.z) < 0.999f
+                    ? Vec3{0.f, 0.f, 1.f}
+                    : Vec3{1.f, 0.f, 0.f};
+                const Vec3 tangent_x = normalize(cross(up, normal));
+                const Vec3 tangent_y = normalize(cross(normal, tangent_x));
+                const Vec3 half_vector = normalize(Vec3{
+                    tangent_x.x * half_tangent.x +
+                        tangent_y.x * half_tangent.y +
+                        normal.x * half_tangent.z,
+                    tangent_x.y * half_tangent.x +
+                        tangent_y.y * half_tangent.y +
+                        normal.y * half_tangent.z,
+                    tangent_x.z * half_tangent.x +
+                        tangent_y.z * half_tangent.y +
+                        normal.z * half_tangent.z,
+                });
+                const float view_half = dot(view, half_vector);
+                const Vec3 light{
+                    2.f * view_half * half_vector.x - view.x,
+                    2.f * view_half * half_vector.y - view.y,
+                    2.f * view_half * half_vector.z - view.z,
+                };
+                const float nl = std::max(light.z, 0.f);
+                const float vh = std::max(view_half, 0.f);
+                const float nh = std::max(half_vector.z, 0.f);
+                if (nl <= 0.f || nh <= 0.f)
+                {
+                    continue;
+                }
+                const float alpha2 = alpha * alpha;
+                const float lambda_v = nl * std::sqrt(
+                    nv * nv * (1.f - alpha2) + alpha2);
+                const float lambda_l = nv * std::sqrt(
+                    nl * nl * (1.f - alpha2) + alpha2);
+                const float denominator = lambda_v + lambda_l;
+                const float visibility = denominator > 0.f
+                    ? 0.5f / denominator : 0.f;
+                const float visibility_pdf = visibility * vh * nl / nh;
+                const float fresnel = std::pow(1.f - vh, 5.f);
+                result[0] += (1.f - fresnel) * visibility_pdf;
+                result[1] += fresnel * visibility_pdf;
+            }
+            result[0] *= 4.f / sample_count;
+            result[1] *= 4.f / sample_count;
+            return result;
+        };
+        const auto half_to_float = [](std::uint16_t bits)
+        {
+            __fp16 value;
+            std::memcpy(&value, &bits, sizeof(value));
+            return static_cast<float>(value);
+        };
+
+        constexpr std::array<std::array<std::uint32_t, 2>, 6> samples{{
+            {{0, 0}}, {{511, 0}}, {{0, 511}},
+            {{511, 511}}, {{127, 383}}, {{319, 191}},
+        }};
+        for (const auto& point : samples)
+        {
+            const std::uint32_t x = point[0];
+            const std::uint32_t y = point[1];
+            CAPTURE(x, y);
+            const float nv = (static_cast<float>(x) + 0.5f) / size;
+            const float roughness =
+                1.f - (static_cast<float>(y) + 0.5f) / size;
+            const std::array<float, 2> expected =
+                integrate(nv, roughness);
+            const std::size_t offset =
+                (static_cast<std::size_t>(y) * size + x) * 2u;
+            for (std::size_t component = 0; component < 2; ++component)
+            {
+                const float actual = half_to_float(
+                    texels[offset + component]);
+                CAPTURE(component, actual, expected[component]);
+                CHECK(std::isfinite(actual));
+                CHECK(actual >= 0.f);
+                CHECK(std::abs(actual - expected[component]) < 0.004f);
+            }
+        }
+    }
+}
+
 TEST_CASE("almetal: water depth pyramid culls only wholly hidden wave patches", "[almetal]")
 {
     @autoreleasepool

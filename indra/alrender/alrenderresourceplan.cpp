@@ -334,7 +334,15 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
                                                      .depth  = main_depth };
     plan.at(Id::Bake).mDesc = ALRenderTargetDesc{ .width = in.mBakeWidth, .height = in.mBakeHeight, .color = { GL_RGBA8 } };
 
-    plan.at(Id::BrdfLut).mDesc = ALRenderTargetDesc{ .width = BRDF_LUT_SIZE, .height = BRDF_LUT_SIZE, .color = { GL_RG16F } };
+#if !LL_DARWIN
+    // Darwin's world renderer and PBR preview each generate and consume their
+    // own native RG16F table. Keeping the legacy target out of the Darwin plan
+    // prevents resource reconciliation from creating a second GL authority.
+    plan.at(Id::BrdfLut).mDesc =
+        ALRenderTargetDesc{ .width = BRDF_LUT_SIZE,
+                            .height = BRDF_LUT_SIZE,
+                            .color = { GL_RG16F } };
+#endif
 
     // The auto-exposure: the meter, its histogram (RGBA32F: a bin sums thousands of points, past what a half float
     // counts exactly), the exposure and last frame's; and the lens flare's sun state, two swapped each frame.

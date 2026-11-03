@@ -51,7 +51,9 @@ SOFTWARE.
 uniform sampler2D normalMap;
 uniform sampler2D depthMap;
 uniform sampler2D projectionMap; // rgba
+#ifndef AL_METAL_NATIVE_BRDF
 uniform sampler2D brdfLut;
+#endif
 
 // projected lighted params
 uniform mat4 proj_mat; //screen space to light space projector
@@ -467,7 +469,14 @@ vec3 hue_to_rgb(float hue)
 
 vec2 BRDF(float NoV, float roughness)
 {
+#ifdef AL_METAL_NATIVE_BRDF
+    // Darwin's retained GLSL traversal is not a rendering authority and owns
+    // no BRDF table. A deterministic zero is safer than sampling an unrelated
+    // texture unit while that traversal is retired owner by owner.
+    return vec2(0.0);
+#else
     return texture(brdfLut, vec2(NoV, roughness)).rg;
+#endif
 }
 
 // Lagarde and de Rousiers 2014, "Moving Frostbite to PBR"
