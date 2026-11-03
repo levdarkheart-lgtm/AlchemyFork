@@ -279,7 +279,11 @@ public:
     // `font_overrides` is plumbed in from the caller (newview's
     // AlchemyUIFontOverrides setting) — llrender no longer reads
     // gSavedSettings on its own.
-    static void initClass(F32 screen_dpi, F32 x_scale, F32 y_scale, const std::string& app_dir, const LLSD& font_overrides, bool create_gl_textures = true);
+    static void initClass(F32 screen_dpi, F32 x_scale, F32 y_scale,
+                          const std::string& app_dir,
+                          const LLSD& font_overrides,
+                          bool create_gl_textures = true,
+                          bool create_metal_textures = false);
 
     // Variant of initClass that loads fonts.xml from `fonts_xml_path`
     // directly, bypassing gDirUtilp->findSkinnedFilenames. Single-shot:
@@ -289,7 +293,8 @@ public:
                           const std::string& app_dir,
                           const std::string& fonts_xml_path,
                           const LLSD& font_overrides,
-                          bool create_gl_textures = true);
+                          bool create_gl_textures = true,
+                          bool create_metal_textures = false);
 
            void dumpTextures();
     static void dumpFonts();

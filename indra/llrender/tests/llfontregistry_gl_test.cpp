@@ -150,7 +150,7 @@ namespace ll_test
         }
     };
 
-    // createFont with mCreateGLTextures=true must produce a head whose
+    // A registry with the explicit GL atlas backend must produce a head whose
     // bitmap cache, after rasterizing the ASCII range, has at least one
     // grayscale page bound to a live GL texture.
     TEST_CASE_METHOD(llfontregistry_gl_data, "LLFontRegistry-GL: createFont with GL textures backs the ASCII atlas with a live texture", "[LLFontRegistry-GL]")

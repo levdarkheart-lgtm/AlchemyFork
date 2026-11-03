@@ -297,11 +297,14 @@ void LLFontDescriptor::addFontFile(const std::string& file_name, EFontHinting hi
     mFontFiles.push_back(LLFontFileInfo(file_name, hinting, flags, size_delta, char_functor, monospace_ligatures, load_collection, var_axes));
 }
 
-LLFontRegistry::LLFontRegistry(bool create_gl_textures)
-:   mCreateGLTextures(create_gl_textures)
+LLFontRegistry::LLFontRegistry(bool create_gl_textures,
+                               bool create_metal_textures)
+:   mCreateGPUTextures(create_gl_textures || create_metal_textures)
 {
-    // The atlas is what needs a GL context, so the atlas is what is told.
-    LLFontBitmapCache::setUsesGL(create_gl_textures);
+    // The atlas owns the renderer resource, so it receives the explicit
+    // backend once for this process's registry.
+    LLFontBitmapCache::setTextureBackend(create_gl_textures,
+                                         create_metal_textures);
 
     // This is potentially a slow directory traversal, so we want to
     // cache the result.
@@ -2046,7 +2049,7 @@ bool LLFontRegistry::reload(const LLSD& font_overrides)
             head->mFontFreetype = fresh->mFontFreetype;
             head->mFontDescriptor = desc;
             storeFont(desc, head);
-            if (mCreateGLTextures)
+            if (mCreateGPUTextures)
             {
                 head->generateASCIIglyphs();
             }
@@ -2206,7 +2209,7 @@ LLFontGL *LLFontRegistry::getFont(const LLFontDescriptor& desc)
                     <<" style=[" << ((S32) desc.getStyle()) << "]"
                     << " size=[" << desc.getSize() << "]" << LL_ENDL;
         }
-        else if (mCreateGLTextures)
+        else if (mCreateGPUTextures)
         {
             // Generate glyphs for ASCII chars to avoid stalls later. Only
             // worth doing where there is an atlas to warm; without one the

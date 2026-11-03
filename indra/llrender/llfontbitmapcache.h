@@ -75,6 +75,13 @@ public:
     LLImageRaw* getImageRaw(EFontGlyphType bitmapType, U32 bitmapNum) const;
     LLImageGL* getImageGL(EFontGlyphType bitmapType, U32 bitmapNum) const;
 
+    // Publish one glyph-sized rectangle after its CPU atlas bytes have been
+    // written. Native pages update their Metal texture directly; a page whose
+    // first allocation failed retries by publishing the complete CPU image.
+    // CPU-only registries deliberately succeed without a GPU image.
+    bool publishGlyph(EFontGlyphType bitmap_type, U32 bitmap_num,
+                      S32 x, S32 y, S32 width, S32 height);
+
     S32 getMaxCharWidth() const { return mMaxCharWidth; }
     U32 getNumBitmaps(EFontGlyphType bitmapType) const { return (bitmapType < EFontGlyphType::Count) ? static_cast<U32>(mImageRawVec[static_cast<U32>(bitmapType)].size()) : 0U; }
     S32 getBitmapWidth() const { return mBitmapWidth; }
@@ -111,13 +118,19 @@ public:
     // for index stability but holds no images.
     bool isSheetReleased(EFontGlyphType bitmap_type, U32 bitmap_num) const;
 
-    // Whether this process has a GL context to upload glyph sheets to. A
-    // viewer has one; a headless test does not, and there a sheet stays on
-    // the CPU: glyphs still rasterize into it and still measure, and nothing
-    // is uploaded. A slot with no GL image is the state a released sheet is
-    // already in, so every reader of one already handles it.
-    static void setUsesGL(bool uses_gl) { sUsesGL = uses_gl; }
+    // Select the atlas publication backend for the process's one font
+    // registry. GL-specific tests name GL explicitly, the Darwin viewer names
+    // Metal explicitly, and headless layout tests name neither so glyphs stay
+    // CPU-only. The two GPU backends are mutually exclusive.
+    static void setTextureBackend(bool uses_gl, bool uses_metal)
+    {
+        llassert(!(uses_gl && uses_metal));
+        sUsesGL = uses_gl;
+        sUsesMetal = uses_metal;
+    }
     static bool usesGL() { return sUsesGL; }
+    static bool usesMetal() { return sUsesMetal; }
+    static bool usesGPU() { return sUsesGL || sUsesMetal; }
 
 protected:
     static U32 getNumComponents(EFontGlyphType bitmap_type);
@@ -165,6 +178,7 @@ private:
     S32 mGeneration;
     static S32 sNextGeneration;
     static bool sUsesGL;
+    static bool sUsesMetal;
     std::vector<LLPointer<LLImageRaw>> mImageRawVec[static_cast<U32>(EFontGlyphType::Count)];
     std::vector<LLPointer<LLImageGL>> mImageGLVec[static_cast<U32>(EFontGlyphType::Count)];
     // Per-sheet last-used timestamp, parallel-indexed with mImageRawVec /

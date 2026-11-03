@@ -35,6 +35,7 @@
 
 S32 LLFontBitmapCache::sNextGeneration = 0;
 bool LLFontBitmapCache::sUsesGL = true;
+bool LLFontBitmapCache::sUsesMetal = false;
 
 LLFontBitmapCache::LLFontBitmapCache()
     : mGeneration(++sNextGeneration)
@@ -102,6 +103,49 @@ LLImageGL *LLFontBitmapCache::getImageGL(EFontGlyphType bitmap_type, U32 bitmap_
 
     touchSheet(bitmap_type, bitmap_num);
     return mImageGLVec[bitmap_idx][bitmap_num];
+}
+
+bool LLFontBitmapCache::publishGlyph(EFontGlyphType bitmap_type,
+                                     U32 bitmap_num, S32 x, S32 y,
+                                     S32 width, S32 height)
+{
+    LLImageRaw* image_raw = getImageRaw(bitmap_type, bitmap_num);
+    if (!image_raw)
+    {
+        return false;
+    }
+    if (!usesGPU())
+    {
+        return true;
+    }
+
+    LLImageGL* image = getImageGL(bitmap_type, bitmap_num);
+    if (!image)
+    {
+        return false;
+    }
+
+#if LL_DARWIN
+    if (usesMetal())
+    {
+        const bool uploaded = image->getMetalTexture() &&
+                              !image->getHasGLTexture()
+            ? image->uploadMetalSubImage(
+                image_raw->getData(), image_raw->getWidth(),
+                image_raw->getHeight(), x, y, width, height)
+            : image->createMetalTexture(0, image_raw);
+        if (!uploaded)
+        {
+            LL_WARNS("Font") << "Could not publish a font-atlas glyph to native texture storage"
+                              << LL_ENDL;
+        }
+        return uploaded;
+    }
+#endif
+
+    return image->setSubImage(image_raw, x, y, width, height,
+                              /*force_fast_update=*/true, 0,
+                              /*skip_unbind=*/true);
 }
 
 
@@ -222,11 +266,31 @@ bool LLFontBitmapCache::nextOpenPos(S32 width, S32 height, S32& pos_x, S32& pos_
             image_raw->clear(0, 0, 0, 0);
         }
 
-        // Make corresponding GL image, where there is somewhere to put it.
-        // With no GL context the sheet is CPU-only: the glyphs go in and are
-        // measured, and the slot reads as a released one to everybody else.
-        mImageGLVec[bitmap_idx][slot] = sUsesGL ? new LLImageGL(image_raw, false) : nullptr;
-        LLImageGL* image_gl = mImageGLVec[bitmap_idx][slot];
+        // Publish the zero-cleared page through the selected renderer. Keep
+        // an LLImageGL identity after a transient native allocation failure:
+        // publishGlyph() retries by uploading the complete CPU page before it
+        // exposes a newly rasterized glyph.
+        if (sUsesGL)
+        {
+            mImageGLVec[bitmap_idx][slot] = new LLImageGL(image_raw, false);
+        }
+#if LL_DARWIN
+        else if (sUsesMetal)
+        {
+            mImageGLVec[bitmap_idx][slot] =
+                new LLImageGL(mBitmapWidth, mBitmapHeight, num_components,
+                              /*usemipmaps=*/false);
+            if (!mImageGLVec[bitmap_idx][slot]->createMetalTexture(0, image_raw))
+            {
+                LL_WARNS("Font") << "Could not create native font-atlas storage; the first glyph will retry"
+                                  << LL_ENDL;
+            }
+        }
+#endif
+        else
+        {
+            mImageGLVec[bitmap_idx][slot] = nullptr;
+        }
 
         // Fresh sheet hasn't been read or written yet.
         mLastUsedTime[bitmap_idx][slot] = 0.0;

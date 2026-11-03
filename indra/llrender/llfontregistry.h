@@ -189,9 +189,10 @@ public:
     // simulateReload-style state wipes in tests that exercise actual
     // freetype loading + size-change reloads.
     friend struct ::ll_test::llfontregistry_gl_data;
-    // create_gl_textures - set to false for test apps with no OpenGL window,
-    // such as llui_libtest
-    LLFontRegistry(bool create_gl_textures);
+    // A registry has exactly one atlas backend. Both false is the CPU-only
+    // layout/test mode used by apps without a renderer.
+    LLFontRegistry(bool create_gl_textures,
+                   bool create_metal_textures = false);
     ~LLFontRegistry();
 
     // Load standard font info from XML file(s). `font_overrides` is an LLSD
@@ -420,7 +421,7 @@ private:
     boost::unordered_map<FallbackInstanceKey, LLPointer<class LLFontFreetype>> mFallbackInstanceCache;
 
     string_vec_t mUltimateFallbackList;
-    bool mCreateGLTextures;
+    bool mCreateGPUTextures;
 
     // Snapshot of the LLSD overrides last applied via parseFontInfo /
     // applyFamilyOverrides. Compared (via llsd_equals) against the next

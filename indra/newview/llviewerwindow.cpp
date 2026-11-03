@@ -6926,7 +6926,9 @@ void LLViewerWindow::initFonts(F32 zoom_factor)
                                 mDisplayScale.mV[VX] * zoom_factor,
                                 mDisplayScale.mV[VY] * zoom_factor,
                                 gDirUtilp->getAppRODataDir(),
-                                gSavedSettings.getLLSD("AlchemyUIFontOverrides"));
+                                gSavedSettings.getLLSD("AlchemyUIFontOverrides"),
+                                /*create_gl_textures=*/!LL_DARWIN,
+                                /*create_metal_textures=*/LL_DARWIN);
 }
 
 void LLViewerWindow::requestResolutionUpdate()

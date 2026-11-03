@@ -33,6 +33,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#if LL_DARWIN
+#include "../../almetal/almetaldevice.h"
+#include "../../almetal/almetalresource.h"
+#endif
+
 namespace
 {
     using namespace ll_test;
@@ -78,6 +83,125 @@ namespace
         REQUIRE(raw != nullptr);
         CHECK((S32)raw->getComponents() == 4);
     }
+
+#if LL_DARWIN
+    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: native grayscale and color pages publish exact dirty rectangles without GL", "[LLFontBitmapCacheGL][almetal]")
+    {
+        REQUIRE(LLImageGL::getMetalDevice() != nullptr);
+        ALMetalDevice* device = LLImageGL::getMetalDevice();
+
+        const bool previous_gl = LLFontBitmapCache::usesGL();
+        const bool previous_metal = LLFontBitmapCache::usesMetal();
+        struct BackendReset
+        {
+            bool gl;
+            bool metal;
+            ~BackendReset()
+            {
+                LLFontBitmapCache::setTextureBackend(gl, metal);
+            }
+        } reset{previous_gl, previous_metal};
+        LLFontBitmapCache::setTextureBackend(false, true);
+
+        LLFontBitmapCache cache;
+        cache.init(2, 2);
+
+        S32 gray_x = 0;
+        S32 gray_y = 0;
+        U32 gray_sheet = 0;
+        REQUIRE(cache.nextOpenPos(
+            3, 2, gray_x, gray_y, EFontGlyphType::Grayscale,
+            gray_sheet));
+        LLImageRaw* gray_raw = cache.getImageRaw(
+            EFontGlyphType::Grayscale, gray_sheet);
+        LLImageGL* gray_page = cache.getImageGL(
+            EFontGlyphType::Grayscale, gray_sheet);
+        REQUIRE(gray_raw);
+        REQUIRE(gray_page);
+        CHECK_FALSE(gray_page->getHasGLTexture());
+        REQUIRE(gray_page->getMetalTexture());
+        CHECK(gray_page->getMetalTexture()->descriptor().format ==
+              ALMetalPixelFormat::rg8_unorm);
+        const auto& gray_swizzle =
+            gray_page->getMetalTexture()->descriptor().swizzle;
+        CHECK(gray_swizzle[0] == ALMetalTextureSwizzle::red);
+        CHECK(gray_swizzle[1] == ALMetalTextureSwizzle::red);
+        CHECK(gray_swizzle[2] == ALMetalTextureSwizzle::red);
+        CHECK(gray_swizzle[3] == ALMetalTextureSwizzle::green);
+
+        for (S32 y = gray_y; y < gray_y + 2; ++y)
+        {
+            for (S32 x = gray_x; x < gray_x + 3; ++x)
+            {
+                const std::size_t offset =
+                    (static_cast<std::size_t>(y) * gray_raw->getWidth() + x) * 2;
+                gray_raw->getData()[offset] = 0x80;
+                gray_raw->getData()[offset + 1] = 0x40;
+            }
+        }
+        REQUIRE(cache.publishGlyph(
+            EFontGlyphType::Grayscale, gray_sheet,
+            gray_x, gray_y, 3, 2));
+
+        std::vector<U8> gray_pixels(
+            static_cast<std::size_t>(gray_raw->getWidth()) *
+            gray_raw->getHeight() * 2);
+        std::string error;
+        REQUIRE(gray_page->getMetalTexture()->readback(
+            *device, 0, 0, {}, gray_pixels.data(),
+            gray_raw->getWidth() * 2, &error));
+        INFO(error);
+        const std::vector<U8> expected_gray(
+            gray_raw->getData(), gray_raw->getData() + gray_pixels.size());
+        CHECK(gray_pixels == expected_gray);
+        CHECK_FALSE(gray_page->getHasGLTexture());
+
+        S32 color_x = 0;
+        S32 color_y = 0;
+        U32 color_sheet = 0;
+        REQUIRE(cache.nextOpenPos(
+            2, 3, color_x, color_y, EFontGlyphType::Color,
+            color_sheet));
+        LLImageRaw* color_raw = cache.getImageRaw(
+            EFontGlyphType::Color, color_sheet);
+        LLImageGL* color_page = cache.getImageGL(
+            EFontGlyphType::Color, color_sheet);
+        REQUIRE(color_raw);
+        REQUIRE(color_page);
+        CHECK_FALSE(color_page->getHasGLTexture());
+        REQUIRE(color_page->getMetalTexture());
+        CHECK(color_page->getMetalTexture()->descriptor().format ==
+              ALMetalPixelFormat::rgba8_unorm_srgb);
+
+        for (S32 y = color_y; y < color_y + 3; ++y)
+        {
+            for (S32 x = color_x; x < color_x + 2; ++x)
+            {
+                const std::size_t offset =
+                    (static_cast<std::size_t>(y) * color_raw->getWidth() + x) * 4;
+                color_raw->getData()[offset] = 0x10;
+                color_raw->getData()[offset + 1] = 0x20;
+                color_raw->getData()[offset + 2] = 0x30;
+                color_raw->getData()[offset + 3] = 0x40;
+            }
+        }
+        REQUIRE(cache.publishGlyph(
+            EFontGlyphType::Color, color_sheet,
+            color_x, color_y, 2, 3));
+
+        std::vector<U8> color_pixels(
+            static_cast<std::size_t>(color_raw->getWidth()) *
+            color_raw->getHeight() * 4);
+        REQUIRE(color_page->getMetalTexture()->readback(
+            *device, 0, 0, {}, color_pixels.data(),
+            color_raw->getWidth() * 4, &error));
+        INFO(error);
+        const std::vector<U8> expected_color(
+            color_raw->getData(), color_raw->getData() + color_pixels.size());
+        CHECK(color_pixels == expected_color);
+        CHECK_FALSE(color_page->getHasGLTexture());
+    }
+#endif
 
     // The very first nextOpenPos on a fresh cache must yield (4, 4) —
     // pins the mCurrentOffsetX/Y = {4, 4} array-init in the header

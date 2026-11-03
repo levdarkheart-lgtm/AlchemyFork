@@ -1883,7 +1883,11 @@ const LLFontDescriptor& LLFontGL::getFontDesc() const
 }
 
 // static
-void LLFontGL::initClass(F32 screen_dpi, F32 x_scale, F32 y_scale, const std::string& app_dir, const LLSD& font_overrides, bool create_gl_textures)
+void LLFontGL::initClass(F32 screen_dpi, F32 x_scale, F32 y_scale,
+                         const std::string& app_dir,
+                         const LLSD& font_overrides,
+                         bool create_gl_textures,
+                         bool create_metal_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
     sVertDPI = (F32)llfloor(screen_dpi * y_scale);
@@ -1894,7 +1898,8 @@ void LLFontGL::initClass(F32 screen_dpi, F32 x_scale, F32 y_scale, const std::st
 
     if (!sFontRegistry)
     {
-        sFontRegistry = new LLFontRegistry(create_gl_textures);
+        sFontRegistry = new LLFontRegistry(create_gl_textures,
+                                           create_metal_textures);
         sFontRegistry->parseFontInfo("fonts.xml", font_overrides);
     }
     else
@@ -1963,7 +1968,8 @@ void LLFontGL::initClass(F32 screen_dpi, F32 x_scale, F32 y_scale,
                          const std::string& app_dir,
                          const std::string& fonts_xml_path,
                          const LLSD& font_overrides,
-                         bool create_gl_textures)
+                         bool create_gl_textures,
+                         bool create_metal_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
     // Single-shot: bail if the registry was already created via either
@@ -1983,7 +1989,8 @@ void LLFontGL::initClass(F32 screen_dpi, F32 x_scale, F32 y_scale,
     sScaleY = y_scale;
     sAppDir = app_dir;
 
-    sFontRegistry = new LLFontRegistry(create_gl_textures);
+    sFontRegistry = new LLFontRegistry(create_gl_textures,
+                                       create_metal_textures);
     sFontRegistry->parseFontInfoFromFile(fonts_xml_path, font_overrides);
 
     LLFontGL::loadDefaultFonts();

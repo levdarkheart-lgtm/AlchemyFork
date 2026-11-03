@@ -622,6 +622,7 @@ LLFontGlyphInfo* LLFontFreetype::renderAndCreateGlyph(const LLFontFreetype* font
     gi->mSourceFace = fontp->mFace.get();
 
     EFontGlyphType bitmap_glyph_type = EFontGlyphType::Unspecified;
+    bool publication_failed = false;
 
     for (U8 phase = 0; phase < num_phases; ++phase)
     {
@@ -762,27 +763,26 @@ LLFontGlyphInfo* LLFontFreetype::renderAndCreateGlyph(const LLFontFreetype* font
             // zero rather than crashing debug builds.
         }
 
-        LLImageGL *image_gl = fontp->getBitmapCache()->getImageGL(bitmap_glyph_type, bitmap_num);
-        LLImageRaw *image_raw = fontp->getBitmapCache()->getImageRaw(bitmap_glyph_type, bitmap_num);
-        if (image_gl && image_raw)
+        if (!fontp->getBitmapCache()->publishGlyph(
+                bitmap_glyph_type, bitmap_num, pos_x, pos_y, width, height))
         {
-            // Upload only the dirty glyph rect — passing full atlas dimensions
-            // routes through setImage() and re-uploads the entire 1024×1024 page
-            // (2 MB grayscale / 4 MB BGRA) for every new glyph.
-            image_gl->setSubImage(image_raw, pos_x, pos_y, width, height, /*force_fast_update=*/true, 0, true);
-        }
-        else if (!image_raw || LLFontBitmapCache::usesGL())
-        {
-            // nextOpenPos just made both, so a missing one is a fault --
-            // except where this process has no GL, and a sheet is CPU-only
-            // by design with nothing to upload the glyph to.
-            llassert(false);
+            // Do not cache glyph metadata whose pixels are not visible. The
+            // next lookup rasterizes into a fresh slot and retries; already
+            // published phases remain harmless unused atlas space.
+            publication_failed = true;
+            break;
         }
     }
 
     // Reset the FT face transform so subsequent non-phased renders (e.g. for
     // fallback paths or other faces sharing this FT_Library) aren't affected.
     FT_Set_Transform(fontp->getFTFace(), nullptr, nullptr);
+
+    if (publication_failed)
+    {
+        delete gi;
+        return nullptr;
+    }
 
     out_bitmap_glyph_type = bitmap_glyph_type;
     return gi;
