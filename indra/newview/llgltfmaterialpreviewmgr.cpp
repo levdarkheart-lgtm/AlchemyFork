@@ -54,6 +54,18 @@
 #include "../almetal/almetalresource.h"
 #endif
 
+    ALTransientTargets post(gPipeline.mTransientTargets);
+    LLRenderTarget* post_ping = nullptr;
+#if !LL_DARWIN
+    // Preserve the retained platforms' original fail-before-draw behavior.
+    post_ping = gPipeline.acquireResource(
+        post, ALRenderResourcePlan::Id::ProbePostPing);
+    if (!post_ping)
+    {
+        return false;
+    }
+#endif
+
 LLGLTFMaterialPreviewMgr gGLTFMaterialPreviewMgr;
 
 namespace
@@ -558,15 +570,6 @@ bool LLGLTFPreviewTexture::render()
     ALMetalPBRPreviewEnvironment metal_preview_environment;
 #endif
 
-    // The probe pack's post target the colour correction writes, from the pool with the bloom
-    // until the preview is drawn; acquired ahead of every bind below.
-    ALTransientTargets    post(gPipeline.mTransientTargets);
-    LLRenderTarget* const post_ping = gPipeline.acquireResource(post, ALRenderResourcePlan::Id::ProbePostPing);
-    if (!post_ping)
-    {
-        return false;
-    }
-
     // The swatch's alpha is its coverage, drawn over a checkerboard. Without this the
     // preview takes whatever mask the last frame ended on, and after a HUD pass that leaves
     // alpha unwritten from the clears through the final blit.
@@ -1041,54 +1044,78 @@ bool LLGLTFPreviewTexture::render()
         screen.flush();
     }
 
-    // *HACK: Hide mExposureMap from generateExposure
-    gPipeline.mExposureMap.swapFBORefs(gPipeline.mLastExposure);
-
-    const bool hdr = LLPipeline::hdrEnabled();
-    LLPipeline::Bloom bloom;
-    if (hdr)
+    bool post_succeeded = true;
+#if LL_DARWIN
+    // The native renderer already owns the complete exposure, HDR bloom,
+    // halation, cross-filter and tone-mapped preview. Do not run an
+    // authoritative GL post transaction or copy its framebuffer when that
+    // exact target exists. Configurations not yet represented natively retain
+    // their established path below until their feature variants are ported.
+    const bool native_post = mMetalPreview != nullptr;
+#else
+    constexpr bool native_post = false;
+#endif
+    if (!native_post)
     {
-        gPipeline.generateLuminance(&screen, &gPipeline.mLuminanceMap);
-        gPipeline.generateExposure(&gPipeline.mLuminanceMap, &gPipeline.mExposureMap, /*use_history = */ false);
-
-        // Bloom composite is folded into colorCorrect's tonemap variants, so we
-        // only generate the pyramid here.
-        bloom = gPipeline.generateBloomHDR(&screen, post);
-    }
-
-    gPipeline.colorCorrect(&screen, post_ping, true, false, &bloom);
-    LLVertexBuffer::unbind();
-
-    if (!hdr)
-    {
-        if (LLRenderTarget* glow = gPipeline.generateGlow(post_ping, post))
+        // The probe pack's post target is acquired only for the retained path;
+        // a native preview no longer takes or clears this GL resource.
+#if LL_DARWIN
+        post_ping = gPipeline.acquireResource(
+            post, ALRenderResourcePlan::Id::ProbePostPing);
+#endif
+        post_succeeded = post_ping != nullptr;
+        if (post_succeeded)
         {
-            gPipeline.combineGlow(post_ping, &screen, glow);
+            // *HACK: Hide mExposureMap from generateExposure
+            gPipeline.mExposureMap.swapFBORefs(gPipeline.mLastExposure);
+
+            const bool hdr = LLPipeline::hdrEnabled();
+            LLPipeline::Bloom bloom;
+            if (hdr)
+            {
+                gPipeline.generateLuminance(&screen, &gPipeline.mLuminanceMap);
+                gPipeline.generateExposure(&gPipeline.mLuminanceMap, &gPipeline.mExposureMap, /*use_history = */ false);
+
+                // Bloom composite is folded into colorCorrect's tonemap variants, so we
+                // only generate the pyramid here.
+                bloom = gPipeline.generateBloomHDR(&screen, post);
+            }
+
+            gPipeline.colorCorrect(&screen, post_ping, true, false, &bloom);
+            LLVertexBuffer::unbind();
+
+            if (!hdr)
+            {
+                if (LLRenderTarget* glow = gPipeline.generateGlow(post_ping, post))
+                {
+                    gPipeline.combineGlow(post_ping, &screen, glow);
+                }
+            }
+
+            // *HACK: Restore mExposureMap (it will be consumed by generateExposure next frame)
+            gPipeline.mExposureMap.swapFBORefs(gPipeline.mLastExposure);
+
+            // Final render
+            // Nested post-processing targets restore the full preview target's viewport.
+            gGL.setViewport(mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
+            gDeferredPostNoDoFProgram.bind();
+
+            // From LLPipeline::renderFinalize: "Whatever is last in the above post processing chain should _always_ be rendered directly here.  If not, expect problems."
+            // Under HDR that is colorCorrect's output in post_ping; otherwise the glow combine has
+            // written the result back to the screen.
+            LLRenderTarget* last_in_chain = hdr ? post_ping : &screen;
+            gDeferredPostNoDoFProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, last_in_chain);
+            gDeferredPostNoDoFProgram.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, &gPipeline.mAuxillaryRT.deferredScreen);
+
+            {
+                LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
+                gPipeline.mScreenTriangleVB->setBuffer();
+                gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+            }
+
+            gDeferredPostNoDoFProgram.unbind();
         }
     }
-
-    // *HACK: Restore mExposureMap (it will be consumed by generateExposure next frame)
-    gPipeline.mExposureMap.swapFBORefs(gPipeline.mLastExposure);
-
-    // Final render
-    // Nested post-processing targets restore the full preview target's viewport.
-    gGL.setViewport(mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
-    gDeferredPostNoDoFProgram.bind();
-
-    // From LLPipeline::renderFinalize: "Whatever is last in the above post processing chain should _always_ be rendered directly here.  If not, expect problems."
-    // Under HDR that is colorCorrect's output in post_ping; otherwise the glow combine has
-    // written the result back to the screen.
-    LLRenderTarget* last_in_chain = hdr ? post_ping : &screen;
-    gDeferredPostNoDoFProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, last_in_chain);
-    gDeferredPostNoDoFProgram.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, &gPipeline.mAuxillaryRT.deferredScreen);
-
-    {
-        LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
-        gPipeline.mScreenTriangleVB->setBuffer();
-        gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-    }
-
-    gDeferredPostNoDoFProgram.unbind();
 
     // Clean up
     gPipeline.setupHWLights();
@@ -1096,7 +1123,7 @@ bool LLGLTFPreviewTexture::render()
     gSavedSettings.set<S32>("RenderLocalLightCount", old_local_light_count);
     LLViewerCamera::setCurrent(saved_camera);
 
-    return true;
+    return post_succeeded;
 }
 
 void LLGLTFPreviewTexture::postRender(bool success)
@@ -1104,18 +1131,17 @@ void LLGLTFPreviewTexture::postRender(bool success)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
 
     if (!mShouldRender) { return; }
-    mShouldRender = false;
-    if (success)
-    {
-        mBestLoad = mPendingLoad;
-    }
-
-    LLViewerDynamicTexture::postRender(success);
 #if LL_DARWIN
-    if (lastPostRenderSucceeded() && mMetalPreview)
+    const bool native_post = success && mMetalPreview != nullptr;
+    if (native_post)
     {
+        // Restore the dynamic-texture viewport/camera without copying the
+        // retained GL framebuffer. Publication of the complete native target
+        // is the success condition for this path.
+        LLViewerDynamicTexture::postRender(false);
         if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
         {
+            mLastPostRenderSuccess = true;
             LL_INFOS_ONCE("Metal")
                 << "PBR material previews own a native Metal render target"
                 << LL_ENDL;
@@ -1127,8 +1153,19 @@ void LLGLTFPreviewTexture::postRender(bool success)
                 << LL_ENDL;
         }
     }
+    else
+    {
+        LLViewerDynamicTexture::postRender(success);
+    }
     mMetalPreview.reset();
+#else
+    LLViewerDynamicTexture::postRender(success);
 #endif
+    mShouldRender = !lastPostRenderSucceeded();
+    if (lastPostRenderSucceeded())
+    {
+        mBestLoad = mPendingLoad;
+    }
 }
 
 LLPointer<LLViewerTexture> LLGLTFMaterialPreviewMgr::getPreview(LLPointer<LLFetchedGLTFMaterial> &material)

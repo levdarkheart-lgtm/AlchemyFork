@@ -137,9 +137,10 @@ struct ALMetalPBRPreviewScene
     float chromatic_aberration_anisotropy = 0.f;
 };
 
-// A narrow owner for LLGLTFPreviewTexture's generated sphere. The GL render
-// remains authoritative during migration; an incomplete material or geometry
-// mirror rejects the entire native swatch rather than publishing mixed state.
+// A narrow owner for LLGLTFPreviewTexture's generated sphere. A complete native
+// result owns post processing and publication; configurations or inputs not yet
+// represented natively retain their established preview path during migration.
+// Incomplete native state is never mixed into a retained result.
 class ALMetalPBRPreviewRenderer final
 {
 public:
