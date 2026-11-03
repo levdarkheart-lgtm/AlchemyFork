@@ -252,11 +252,19 @@ bool LLViewerDynamicTexture::updateAllInstances()
                     {
                         continue;
                     }
-                    if (dynamic_texture->renderWithoutTarget())
+                    const ETargetlessRenderResult targetless_result =
+                        dynamic_texture->renderWithoutTarget();
+                    if (targetless_result ==
+                        ETargetlessRenderResult::COMPLETED)
                     {
                         ret = true;
                         result = true;
                         ++sNumRenders;
+                        continue;
+                    }
+                    if (targetless_result ==
+                        ETargetlessRenderResult::PENDING)
+                    {
                         continue;
                     }
 

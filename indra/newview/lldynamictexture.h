@@ -55,6 +55,13 @@ protected:
 public:
     enum EOrder { ORDER_FIRST = 0, ORDER_MIDDLE = 1, ORDER_LAST = 2, ORDER_RESET = 3, ORDER_COUNT = 4 };
 
+    enum class ETargetlessRenderResult
+    {
+        RETAINED_FALLBACK,
+        COMPLETED,
+        PENDING
+    };
+
     // No address-mode parameter: sampling state belongs to the bind, so a draw site that
     // wants its preview clamped names a clamped sampler there (LLVisualParamHint::draw).
     LLViewerDynamicTexture(S32 width,
@@ -70,10 +77,13 @@ public:
     S32         getSize()       { return mFullWidth * mFullHeight * mComponents; }
 
     virtual bool needsRender() { return true; }
-    // Complete a render without the shared GL target, including publication.
-    // Return false without changing the item's need to render when the
-    // ordinary preRender/render/postRender transaction must run instead.
-    virtual bool renderWithoutTarget() { return false; }
+    // Try to complete and publish without the shared GL target. The result
+    // distinguishes an ordinary retained callback from an item that must stay
+    // pending because that fallback is not ready this frame.
+    virtual ETargetlessRenderResult renderWithoutTarget()
+    {
+        return ETargetlessRenderResult::RETAINED_FALLBACK;
+    }
     virtual void preRender(bool clear_depth = true);
     virtual bool render();
     virtual void postRender(bool success);

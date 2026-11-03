@@ -53,7 +53,7 @@ public:
     static U32 liveCount() { return sLiveCount; }
 
     bool needsRender() override;
-    bool renderWithoutTarget() override;
+    ETargetlessRenderResult renderWithoutTarget() override;
     void preRender(bool clear_depth = true) override;
     bool render() override;
     void postRender(bool success) override;
@@ -76,6 +76,8 @@ public:
 
 private:
     static U32 sLiveCount;
+
+    bool retainedRenderReady() const;
 
     LLPointer<LLFetchedGLTFMaterial> mGLTFMaterial;
     bool mShouldRender = true;

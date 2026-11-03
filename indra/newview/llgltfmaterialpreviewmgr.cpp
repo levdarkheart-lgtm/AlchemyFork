@@ -311,13 +311,14 @@ bool LLGLTFPreviewTexture::needsRender()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
 
+#if !LL_DARWIN
     // Not before the probe pack it renders through is there, and planned with the post target the
     // preview takes from the pool; asked again each frame until it is.
-    if (!gPipeline.mAuxillaryRT.screen.isComplete() ||
-        !gPipeline.resourcePlan().wants(ALRenderResourcePlan::Id::ProbePostPing))
+    if (!retainedRenderReady())
     {
         return false;
     }
+#endif
 
     if (!mShouldRender && mBestLoad.isFullyLoaded()) { return false; }
     MaterialLoadLevels current_load = get_material_load_levels(*mGLTFMaterial.get());
@@ -330,7 +331,15 @@ bool LLGLTFPreviewTexture::needsRender()
     return false;
 }
 
-bool LLGLTFPreviewTexture::renderWithoutTarget()
+bool LLGLTFPreviewTexture::retainedRenderReady() const
+{
+    return gPipeline.mAuxillaryRT.screen.isComplete() &&
+        gPipeline.resourcePlan().wants(
+            ALRenderResourcePlan::Id::ProbePostPing);
+}
+
+LLViewerDynamicTexture::ETargetlessRenderResult
+LLGLTFPreviewTexture::renderWithoutTarget()
 {
 #if LL_DARWIN
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
@@ -339,7 +348,7 @@ bool LLGLTFPreviewTexture::renderWithoutTarget()
     llassert(!mBoundTarget);
     if (!mShouldRender || mBoundTarget)
     {
-        return false;
+        return ETargetlessRenderResult::RETAINED_FALLBACK;
     }
 
     // This pre-render snapshots only camera state on Darwin. render() must not
@@ -355,9 +364,11 @@ bool LLGLTFPreviewTexture::renderWithoutTarget()
     {
         mMetalPreview.reset();
         mLastPostRenderSuccess = false;
-        // The target-backed retry must be the retained callback, not a second
-        // identical Metal attempt in the same frame.
-        mSkipNativeAttemptOnce = true;
+        // If retained resources are ready, the target-backed retry must be the
+        // retained callback, not a second identical Metal attempt in this
+        // frame. Otherwise retry native next frame while those resources are
+        // still unavailable.
+        mSkipNativeAttemptOnce = retainedRenderReady();
     }
 
     mShouldRender = !published;
@@ -366,9 +377,15 @@ bool LLGLTFPreviewTexture::renderWithoutTarget()
         mSkipNativeAttemptOnce = false;
         mBestLoad = mPendingLoad;
     }
-    return published;
+    if (published)
+    {
+        return ETargetlessRenderResult::COMPLETED;
+    }
+    return mSkipNativeAttemptOnce
+        ? ETargetlessRenderResult::RETAINED_FALLBACK
+        : ETargetlessRenderResult::PENDING;
 #else
-    return false;
+    return ETargetlessRenderResult::RETAINED_FALLBACK;
 #endif
 }
 
