@@ -16845,6 +16845,9 @@ ALRenderResourceInputs LLPipeline::resourceInputsFromSettings(const ALShaderInpu
     in.mProbeAllCascades = gSavedSettings.getBOOL("AlchemyRenderProbeAllShadowCascades");
     in.mMirrors          = gSavedSettings.getBOOL("RenderMirrors");
 #if LL_DARWIN
+    // Native producer readiness retries targetlessly. Plan the retained pack
+    // only after an actual preview device/geometry/submission/publication
+    // failure has requested its one-shot recovery transaction.
     in.mMaterialPreview  = LLGLTFPreviewTexture::retainedFallbackCount() > 0;
 #else
     in.mMaterialPreview  = LLGLTFPreviewTexture::liveCount() > 0;

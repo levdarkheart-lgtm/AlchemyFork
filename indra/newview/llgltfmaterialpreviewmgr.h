@@ -50,7 +50,8 @@ public:
 
     // How many previews are alive. Retained platforms keep the probe pack for
     // this count; Darwin plans it only for previews whose native attempt has
-    // explicitly requested fallback.
+    // actually failed. Ordinary texture/probe publication waits do not make
+    // the retained renderer production-reachable.
     static U32 liveCount() { return sLiveCount; }
     static U32 retainedFallbackCount() { return sRetainedFallbackCount; }
 
@@ -92,6 +93,14 @@ private:
     MaterialLoadLevels mBestLoad;
     MaterialLoadLevels mPendingLoad;
 #if LL_DARWIN
+    enum class ENativeAttemptResult : U8
+    {
+        NOT_ATTEMPTED,
+        PENDING,
+        FAILED,
+        READY,
+    };
+
     void setRetainedFallbackRequested(bool requested);
     bool publishMetalPreview();
 
@@ -101,6 +110,8 @@ private:
     bool mRetainedFallbackRequested = false;
     bool mTargetlessAttempt = false;
     bool mSkipNativeAttemptOnce = false;
+    ENativeAttemptResult mNativeAttemptResult =
+        ENativeAttemptResult::NOT_ATTEMPTED;
 #endif
 };
 

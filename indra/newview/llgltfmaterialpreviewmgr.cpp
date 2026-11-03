@@ -421,10 +421,24 @@ LLGLTFPreviewTexture::renderWithoutTarget()
     {
         mMetalPreview.reset();
         mLastPostRenderSuccess = false;
+        if (mNativeAttemptResult == ENativeAttemptResult::PENDING)
+        {
+            // Texture uploads and the coherent default-probe publication are
+            // ordinary producer readiness, not a renderer failure. Retry the
+            // native transaction without making the retained GL pack part of
+            // the production path.
+            mShouldRender = true;
+            mSkipNativeAttemptOnce = false;
+            return ETargetlessRenderResult::PENDING;
+        }
+        // A completed native render whose logical texture refuses adoption is
+        // a publication failure and therefore eligible for recovery.
+        mNativeAttemptResult = ENativeAttemptResult::FAILED;
         // If retained resources are ready, the target-backed retry must be the
-        // retained callback, not a second identical Metal attempt in this
-        // frame. Otherwise ask the next frame's resource reconcile for them
-        // and leave this item pending until they exist.
+        // retained callback after a real native failure, not a second
+        // identical Metal attempt in this frame. Otherwise ask the next
+        // frame's resource reconcile for them and leave this item pending
+        // until they exist.
         setRetainedFallbackRequested(true);
         mSkipNativeAttemptOnce = retainedRenderReady();
     }
@@ -679,6 +693,7 @@ bool LLGLTFPreviewTexture::render()
 
 #if LL_DARWIN
     const bool skip_native_attempt = mBoundTarget && mSkipNativeAttemptOnce;
+    mNativeAttemptResult = ENativeAttemptResult::NOT_ATTEMPTED;
     if (mBoundTarget)
     {
         mSkipNativeAttemptOnce = false;
@@ -861,6 +876,8 @@ bool LLGLTFPreviewTexture::render()
 #if LL_DARWIN
     if (!skip_native_attempt)
     {
+        mNativeAttemptResult = ENativeAttemptResult::PENDING;
+        std::string native_error;
         ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
         LLViewerTexture* base_color_image = mGLTFMaterial->mBaseColorTexture
             ? mGLTFMaterial->mBaseColorTexture.get()
@@ -941,10 +958,19 @@ bool LLGLTFPreviewTexture::render()
             metal_preview_cross_filter_strength > 0.f;
         F32 metal_preview_sun_scale = 0.f;
 
-        bool metal_preview_eligible = metal_device &&
-            mMetalPreviewDescriptor && base_color_texture && normal_texture &&
-            orm_texture && emissive_texture;
-        if (metal_preview_eligible)
+        bool metal_preview_eligible = false;
+        if (!metal_device)
+        {
+            mNativeAttemptResult = ENativeAttemptResult::FAILED;
+            native_error = "Metal device is unavailable";
+        }
+        else if (!mMetalPreviewDescriptor)
+        {
+            mNativeAttemptResult = ENativeAttemptResult::FAILED;
+            native_error = "native destination storage is unavailable";
+        }
+        else if (base_color_texture && normal_texture && orm_texture &&
+                 emissive_texture)
         {
             metal_preview_eligible =
                 gPipeline.mReflectionMapManager.fillMetalDefaultProbe(
@@ -982,6 +1008,8 @@ bool LLGLTFPreviewTexture::render()
             !inverse_modelview.setAffineInverse(modelview))
         {
             metal_preview_eligible = false;
+            mNativeAttemptResult = ENativeAttemptResult::FAILED;
+            native_error = "preview modelview is not invertible";
         }
         if (metal_preview_eligible)
         {
@@ -991,9 +1019,13 @@ bool LLGLTFPreviewTexture::render()
 
         for (PreviewSpherePart& part : preview_sphere)
         {
+            if (!metal_preview_eligible)
+            {
+                break;
+            }
             LLDrawInfo* info = part->mDrawInfo.get();
             LLVertexBuffer* buffer = info ? info->mVertexBuffer.get() : nullptr;
-            if (!metal_preview_eligible || !buffer ||
+            if (!buffer ||
                 !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
                 !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
                 !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
@@ -1004,6 +1036,9 @@ bool LLGLTFPreviewTexture::render()
             {
                 metal_preview_eligible = false;
                 metal_preview_batches.clear();
+                mNativeAttemptResult = ENativeAttemptResult::FAILED;
+                native_error =
+                    "preview sphere geometry has no complete Metal mirror";
                 break;
             }
 
@@ -1079,7 +1114,6 @@ bool LLGLTFPreviewTexture::render()
         {
             static ALMetalDevice* renderer_device = nullptr;
             static std::unique_ptr<ALMetalPBRPreviewRenderer> renderer;
-            std::string error;
             if (renderer_device != metal_device)
             {
                 renderer.reset();
@@ -1088,7 +1122,7 @@ bool LLGLTFPreviewTexture::render()
             if (!renderer)
             {
                 renderer = ALMetalPBRPreviewRenderer::create(
-                    *metal_device, &error);
+                    *metal_device, &native_error);
             }
             if (renderer)
             {
@@ -1223,21 +1257,35 @@ bool LLGLTFPreviewTexture::render()
                     gSavedSettings.get<F32>(
                         "RenderChromaticAberrationAnisotropy"),
                     -1.f, 1.f);
-                mMetalPreview = renderer->render(metal_scene, &error);
+                mMetalPreview = renderer->render(
+                    metal_scene, &native_error);
             }
             if (!mMetalPreview)
             {
-                LL_WARNS("Metal")
-                    << "Could not mirror the PBR material preview: "
-                    << error << LL_ENDL;
+                mNativeAttemptResult = ENativeAttemptResult::FAILED;
+            }
+            else
+            {
+                mNativeAttemptResult = ENativeAttemptResult::READY;
             }
         }
-        else
+        else if (metal_preview_eligible)
         {
-            LL_WARNS_ONCE("Metal")
-                << "PBR material preview retained GL because its native "
-                   "geometry, textures, environment snapshot, device or "
-                   "destination is incomplete"
+            mNativeAttemptResult = ENativeAttemptResult::FAILED;
+            native_error = "preview sphere produced no native batches";
+        }
+
+        if (mNativeAttemptResult == ENativeAttemptResult::FAILED)
+        {
+            LL_WARNS("Metal")
+                << "Could not render the native PBR material preview: "
+                << native_error << LL_ENDL;
+        }
+        else if (mNativeAttemptResult == ENativeAttemptResult::PENDING)
+        {
+            LL_DEBUGS_ONCE("Metal")
+                << "PBR material preview is waiting for native texture or "
+                   "default-probe publication"
                 << LL_ENDL;
         }
     }
@@ -1252,10 +1300,20 @@ bool LLGLTFPreviewTexture::render()
         LLViewerCamera::setCurrent(saved_camera);
         return false;
     }
+    if (!mMetalPreview &&
+        mNativeAttemptResult == ENativeAttemptResult::PENDING)
+    {
+        // A target-backed caller can arrive while a producer is still
+        // publishing. Do not turn that normal readiness window into a GL
+        // rendering path; leave the preview pending for the native retry.
+        LLViewerCamera::setCurrent(saved_camera);
+        return false;
+    }
     if (!mMetalPreview)
     {
-        // Unsupported configurations and native failures retain the original
-        // render path until their Metal variants are implemented.
+        // Only an explicitly selected recovery attempt or a real native
+        // failure reaches the retained renderer. No supported configuration
+        // chooses GL as its production owner.
         render_retained_preview();
     }
 #endif
