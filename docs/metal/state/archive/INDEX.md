@@ -69,6 +69,7 @@ reload the chronological history.
 | Native-only Darwin parcel-overlay publication/lifecycle and source-exact build 68137, 2026-11-03 | [CURRENT-native-parcel-overlay-checkpoint-2026-11-03.md](CURRENT-native-parcel-overlay-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin CPU-generated sky/shiny faces and source-exact build 68139, 2026-11-03 | [CURRENT-native-sky-faces-checkpoint-2026-11-03.md](CURRENT-native-sky-faces-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin minimap object/parcel layers and source-exact build 68141, 2026-11-03 | [CURRENT-native-minimap-layers-checkpoint-2026-11-03.md](CURRENT-native-minimap-layers-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Native-only Darwin grayscale/color font atlases and source-exact build 68143, 2026-11-03 | [CURRENT-native-font-atlas-checkpoint-2026-11-03.md](CURRENT-native-font-atlas-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
