@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `2c09afc020`.
+**Renderer checkpoint:** Commit `f5513b7d3f`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -22,31 +22,31 @@ checkpoint detail belongs in the indexed archive.
 | M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners, color grading, tone curve, BRDF, post FXAA/SMAA/CAS, DoF and world HDR bloom/cross-filter are native-only; native-eligible PBR previews own geometry/post/publish. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL, linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | Native-eligible previews begin with Metal-only storage; retained GL storage is created only at a successful fallback boundary. Unsupported preview modes and other dynamic textures remain. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Modern HDR, non-HDR and post-suppressed previews own Metal storage/post; retained GL storage is lazy recovery. Classic preview lighting and other dynamic textures remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — native-only preview destination backing
+## Active checkpoint — native modern preview post modes
 
-Commit `2c09afc020` adds an explicit initial-backing choice to dynamic textures.
-Darwin material previews keep the logical image wrapper but create native
-storage with a zero GL texture name. Successful targetless preview work thus
-owns no GL destination; retained GL backing is created lazily only when the
-fallback callback succeeds. Other callers retain the established default. No
-viewer was launched or compared; visual row 17 advanced only to build 68183.
-[Exact evidence](../../state/archive/CURRENT-native-preview-backing-cutover-checkpoint-2026-11-03.md).
+Commit `f5513b7d3f` keeps modern non-HDR and post-suppressed material previews in
+the complete Metal transaction. Explicit post state bypasses exposure,
+tonemapping, bloom and chromatic effects when required, applies legacy gamma,
+and reproduces non-HDR 8-bit dithering. Classic lighting remains fail-closed on
+lazy retained fallback. No viewer was launched or compared; visual row 17
+advanced only to build 68185.
+[Exact evidence](../../state/archive/CURRENT-native-preview-post-modes-cutover-checkpoint-2026-11-03.md).
 
 ## Validation checkpoint
 
-- Source-exact warnings-as-errors Release build `26.4.0d68183` passed at
-  `2c09afc020cfac9b9a122cfdd5286d4b72e7c8f2`; the RelWithDebInfo appearance
+- Source-exact warnings-as-errors Release build `26.4.0d68185` passed at
+  `f5513b7d3fc839847262d1e855a8b5af6248dfe9`; the RelWithDebInfo appearance
   utility also builds at that source.
-- The full native Metal binary passes 52,381 assertions across 55 cases with
+- The full native Metal binary passes 52,402 assertions across 55 cases with
   API and shader validation enabled. Focused complete PBR material-preview
-  coverage passes 426 assertions across two cases.
+  coverage passes 447 assertions across two cases.
 - The full `alrender_tests` suite passes 557,312 assertions across 137 cases;
   its focused resource-plan matrix passes 3,376 assertions across 37 cases.
 - Physical fresh-context renderer validation passes 2,243 assertions across 94
@@ -56,18 +56,18 @@ viewer was launched or compared; visual row 17 advanced only to build 68183.
   one platform CRT case skips as expected.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices.
 - Viewer executable SHA-256:
-  `aff83936542ad53040913780376085218875fa4cf88035fd5e162aae39702ca3`.
+  `41eb926793007e4f5864f7dc65bb48740cebc7726a62fb60221261235ecb9a8a`.
   Appearance utility:
   `c3e87e6a8f87c09c44e61aee502f6afd22e5f4bd1b82dd8c952c2fa05fba89a5`.
   Source/packaged MSL:
-  `fa6821703a980b570305fc2384fcb11a1980fccad43d35e4626e40cc4b323324`.
+  `177f5548a11f65cd33c6a5fcaa268a5267eb9ec83b3610a7d7ce722771967574`.
   Metallib:
-  `ebd7034235c4f35b13c9874029eff6bbcb61cc3f56c7f3907fd581c112eb96ab`.
+  `4cfc9ab99b6d500abfa0b8e76297d3cabed87b75a5efe11b34cf1634318662c3`.
 - The broad retained-GL suite remains at 8,335/8,340 assertions and 181/224
   cases, with its four established failures and 39 skips.
 - Strict inventory is 2,408 files / 3,262 findings, expected exit 1. Exact
   report SHA-256:
-  `65fb81e70570f13ae98d61d306f666439d2d8aac504946e60602480d98a7abf2`.
+  `101f742754564f2c9c8a7b394e58df271ccf2da025eb1cb87d5da2663ef8e32c`.
   Both OpenGL and Metal remain linked.
 - Static symbol inspection finds none of the retained FXAA/SMAA/CAS/sharpen or
   DoF program globals or retained DoF methods in the exact Darwin objects.
@@ -86,23 +86,24 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—native-eligible previews no longer allocate GL
-   destination storage until a successful retained fallback explicitly needs it.
+1. **Product advancement:** yes—modern non-HDR, clean-plate and legacy-gamma
+   preview modes now stay inside the native geometry/post/publication owner.
 2. **Deferred critical work:** remaining GL context/traversal/resources;
    feature/stability matrices; visual queue; strict binary/runtime audit;
    measured M1 Max performance; independent review and release proof.
-3. **Priority reassessment:** widen native eligibility to the remaining preview
-   modes, prove retained preview code unreachable, then delete it.
+3. **Priority reassessment:** port exact classic preview lighting, then separate
+   failure recovery from production reachability before retained-code removal.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Extend exact native ownership to classic, non-HDR and post-suppressed material
-preview variants. Prove retained preview bloom/program reachability dead before
-removal. Treat broader pipeline lifetime under full GL teardown as a separate
-unmet boundary.
+Port the classic material-preview atmospheric, direct-light and probe
+conventions into the native shader with independent physical reference tests.
+Then distinguish failure-only recovery from production reachability before
+removing retained preview bloom/program resources. Treat broader pipeline
+lifetime under full GL teardown as a separate unmet boundary.
 
 ## Non-negotiable open gates
 
