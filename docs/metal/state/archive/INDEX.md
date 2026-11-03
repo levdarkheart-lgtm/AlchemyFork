@@ -65,6 +65,7 @@ reload the chronological history.
 | Native-only Darwin CPU-painted CEF/VLC upload and source-exact build 68129, 2026-11-03 | [CURRENT-native-cpu-media-upload-checkpoint-2026-11-03.md](CURRENT-native-cpu-media-upload-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin media placeholder and source-exact build 68131, 2026-11-03 | [CURRENT-native-media-placeholder-checkpoint-2026-11-03.md](CURRENT-native-media-placeholder-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin terrain height/composition maps and source-exact build 68133, 2026-11-03 | [CURRENT-native-terrain-maps-checkpoint-2026-11-03.md](CURRENT-native-terrain-maps-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Native-only Darwin water cell/displacement maps with generated mip chains and source-exact build 68135, 2026-11-03 | [CURRENT-native-water-maps-checkpoint-2026-11-03.md](CURRENT-native-water-maps-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.

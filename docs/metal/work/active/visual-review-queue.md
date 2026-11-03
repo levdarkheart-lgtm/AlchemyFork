@@ -31,8 +31,9 @@ may be reused only when its provenance satisfies `docs/metal/VALIDATION.md`.
 | 2 | Projector-visible shadows | queued | Use a fixture with an unmistakable projected spotlight contribution. Save shadows on in both profiles before capture; distinguish projector, alpha/avatar caster, cascade and PCSS/quality results. |
 | 3 | Broader authored mirrors | queued | Extend beyond the one accepted dry sample. Require identical seated/fixed camera, mirror settings, SSR state, time/weather and converged assets; review content differences rather than raw metrics alone. |
 | 4 | Terrain height/composition-map cutover | queued | On exact build 68133 or later, compare terrain geometry/composition at a stable region and camera after asset convergence. Match graphics preset, draw distance, environment and region state; inspect dirty-region boundaries as well as broad terrain appearance. |
-| 5 | Moving CEF/VLC media | queued | Compare motion, color, alpha, scaling and interaction only after the native media ingress is source- and log-qualified. Preserve media/voice behavior. |
-| 6 | Wireframe/material/editing matrix | queued | Batch remaining interactive advanced/editor views after source eligibility is complete; use identical selection/tool state and capture only questions that deterministic tests cannot answer. |
+| 5 | Water cell/displacement-map cutover | queued | On exact build 68135 or later, use a stable water fixture, camera and environment. Inspect flat-field/cell boundaries, near/far wave mip transitions, displacement amplitude and water haze/exclusion behavior after asset convergence. Match graphics preset, draw distance, environment and region state. |
+| 6 | Moving CEF/VLC media | queued | Compare motion, color, alpha, scaling and interaction only after the native media ingress is source- and log-qualified. Preserve media/voice behavior. |
+| 7 | Wireframe/material/editing matrix | queued | Batch remaining interactive advanced/editor views after source eligibility is complete; use identical selection/tool state and capture only questions that deterministic tests cannot answer. |
 
 ## Next owner session
 
