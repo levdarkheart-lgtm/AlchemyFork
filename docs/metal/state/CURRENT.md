@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-03 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `26801e499f`
+**Renderer code checkpoint:** `cb59cc05a3`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -10,25 +10,24 @@ append-only archives.
 
 ## Active implementation checkpoint
 
-M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit `26801e499f`
-removes the Darwin media texture's initial GL placeholder. Its main-thread
-creation path now allocates and populates only Metal storage, with no GL name.
-Both accelerated IOSurface ingress and ordinary CPU-painted CEF/VLC publication
-therefore begin and remain native-only on Darwin.
+M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit `cb59cc05a3`
+removes Darwin OpenGL ownership from the terrain height and composition maps.
+Their R32F and RG16F storage now allocates and uploads only through Metal, and
+full or dirty-rectangle refreshes do not create or mutate a GL name. Existing
+GL-owned or missing native images are rebuilt native-only.
 
-`ALTextureSlot` keeps that Metal-only image as the native logical binding. While
-retained GL traversal still executes, its physical GL slot uses the established
-white/default placeholder instead of allocating a duplicate media texture.
-Changing native logical identity flushes queued geometry first. Raw images,
-wrapped textures, slow bind and fast bind are covered by physical regressions;
-Windows/Linux media paths remain unchanged in this bounded cutover.
+`LLImageGL` now has an explicit typed native creation contract for formats that
+`LLImageRaw` cannot represent and a same-coordinate native subimage contract.
+Physical regressions prove exact R32F and float-to-half RG16F full uploads,
+partial updates and unchanged texels outside the region. A failed terrain map
+upload preserves dirty state for retry instead of silently dropping it.
 
 There are zero direct production framebuffer or texture-image readback calls.
-Strict inventory is 2,408 files / 3,254 findings and still exits 1. Two existing
-GL-binding snippets were equivalently reworded; the net increase of six consists
-of `LLImageGL`/native-binding symbol matches, not new GL calls. The packaged
-viewer has no `CGLTexImageIOSurface2D` dependency. Exact evidence is
-[archived](archive/CURRENT-native-media-placeholder-checkpoint-2026-11-03.md).
+Strict inventory is 2,408 files / 3,257 findings and still exits 1. Relative to
+the prior checkpoint, five new heuristic snippets and two replaced method
+signature snippets produce the net increase of three; none is a GL call. The
+packaged viewer has no `CGLTexImageIOSurface2D` dependency. Exact evidence is
+[archived](archive/CURRENT-native-terrain-maps-checkpoint-2026-11-03.md).
 
 Prior advanced-output, world/material, shadow, UI and presentation owners remain
 as recorded in the archive. Opaque fullbright and the six-face cube convention
@@ -50,29 +49,29 @@ case is a parity pass until the owner-attended review records that result.
 - `tools/metal/doctor.sh` passed on the M1 Max host with 64 GiB unified memory,
   Apple7-family support and the required Metal capabilities.
 - The required default warnings-as-errors Release wrapper completed at exact
-  source `26801e499ffdf5f895daae4b6659156bfb2e6588`, producing Development
-  build `26.4.0d68131` (`26.4.0.68131`). The separate warnings-as-errors
+  source `cb59cc05a368b756b86c1b525ea3a53adbc288b5`, producing Development
+  build `26.4.0d68133` (`26.4.0.68133`). The separate warnings-as-errors
   RelWithDebInfo appearance-utility build also completed at that source.
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64.
   Viewer executable SHA-256 is
-  `ad62e9b12d9c929e213481015ff24cc5610d60e1c9a4342e81d7f5c42d493fd5`.
+  `02b826dfacd8a42afe3b579d9a2bd7d1537f4760a1183ceae8a5bd4168150e19`.
   Appearance-utility SHA-256 is
-  `4c0a61cfff3e1ddbd8f3307fb75da958b9cc89ea83e62e087fc4400297b4e9fb`.
+  `3cfba52ae7d0fff7b6cb62bab25fcc44057a1b50e05c18cd5a96b143ae451ca5`.
 - Source and packaged MSL are byte-identical at
   `fa6821703a980b570305fc2384fcb11a1980fccad43d35e4626e40cc4b323324`;
   metallib SHA-256 is
   `ebd7034235c4f35b13c9874029eff6bbcb61cc3f56c7f3907fd581c112eb96ab`.
 - Under `MTL_DEBUG_LAYER=1`, the complete native Metal suite passed 52,221
   assertions across 52 cases with API validation enabled.
-- The source-exact renderer suite passed 1,527 assertions across 90 cases with
-  Metal API validation enabled, including native allocation and raw/wrapped
-  slow/fast sampled-binding regressions.
+- The source-exact renderer suite passed 1,692 assertions across 91 cases with
+  Metal API validation enabled, including exact typed R32F/RG16F allocation,
+  conversion and partial-region update regressions.
 - The complete source-exact `newview_tests` binary passed 98,973 assertions
   across 743 cases; 742 passed and one platform CRT case skipped as expected.
 - The broad retained-GL suite passed 8,335/8,340 assertions and 181/224 cases;
   its four established frame-fence/depth-format cases failed and 39 skipped.
   The run is recorded as failed, not promoted to green.
-- Strict inventory is 2,408 files / 3,254 findings, expected exit 1. Both
+- Strict inventory is 2,408 files / 3,257 findings, expected exit 1. Both
   OpenGL and Metal remain linked in the viewer and appearance utility.
 - No viewer executable was launched, driven, photographed or compared.
 
@@ -80,21 +79,21 @@ case is a parity pass until the owner-attended review records that result.
 
 | Area | State | Current fact |
 | --- | --- | --- |
-| M-003..M-006 platform/resources/UI | doing | Darwin media ingress/upload and initial placeholder allocation are native-only; moving-media parity and GL context removal remain open. |
+| M-003..M-006 platform/resources/UI | doing | Darwin media and terrain-map ownership are native-only; moving-media/terrain parity and GL context removal remain open. |
 | M-007 world/material | doing | Opaque fullbright is corrected; legacy BLEND/stained glass and broad material parity remain open. |
 | M-008 advanced views/effects | doing | Established advanced-output owners are native; visual-only validation is batched in the daily queue. |
-| M-009 parity/stability/no-GL | doing | Strict inventory is 3,254 and exits 1; full parity/stability and linked/runtime no-GL gates remain open. |
+| M-009 parity/stability/no-GL | doing | Strict inventory is 3,257 and exits 1; full parity/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Zero direct production framebuffer or texture-image readbacks remain; live duplicate GL resource and traversal owners are next. |
+| M-011 GL authority removal | doing | Zero direct production framebuffer or texture-image readbacks remain; media and terrain maps own no GL texture on Darwin, and live resource/traversal owners remain. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Both live Darwin media update modes and
-their initial texture allocation now own only Metal storage. Retained GL
-traversal sees the established fallback rather than a duplicate media copy, and
-native logical identity remains authoritative. Publication remains fail closed.
+**Advances the complete product:** yes. Terrain height/composition resources now
+own only Metal storage on Darwin, including exact typed full and partial upload.
+Their existing native consumers remain authoritative, and failed refreshes
+remain dirty for retry rather than publishing incomplete state.
 
 **Still incomplete:** the executable links OpenGL; application-owned GL context,
 traversal and resources remain; complete feature/stability, strict audit,
@@ -103,15 +102,15 @@ Prolonged stability remains open; independent build/review evidence remains
 open; strict no-GL is not satisfied.
 Visual parity cases remain queued, not waived.
 
-**Evidence-based priority:** continue M-011 at the bounded terrain-map ownership
-boundary. `ALTerrainSurfaceMaps` already exposes native height/composition
-textures, but its upload path still creates GL storage and generic `setSubImage`
-rejects Metal-only images before its Darwin update branch.
+**Evidence-based priority:** continue M-011 at `ALWaterSurface`. Its procedural
+RG32F cell map and baked RG16F displacement maps already feed explicit native
+water captures, but both still allocate through GL. The cell map can use the
+typed native path directly; displacement maps require native mip generation.
 
 ## Exact next actions
 
-1. Confirm every live consumer of `ALTerrainSurfaceMaps` height and composition
-   textures and preserve the existing native sampling contract.
-2. Add an explicit native full/region allocation and update path, remove the
-   Darwin duplicate GL allocation/upload, and physically prove byte formats and
-   partial updates. Keep visual questions in the daily owner-attended queue.
+1. Convert the `ALWaterSurface` RG32F cell map to typed native allocation/update
+   while preserving native capture and retained sampled-binding semantics.
+2. Extend typed native creation for production mip chains, cut the baked RG16F
+   height maps off GL, and physically prove base data plus generated mip levels.
+   Keep all visual questions in the daily owner-attended queue.
