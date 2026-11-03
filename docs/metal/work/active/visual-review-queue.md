@@ -38,8 +38,9 @@ may be reused only when its provenance satisfies `docs/metal/VALIDATION.md`.
 | 9 | Font-atlas cutover | queued | On exact build 68143 or later, inspect grayscale text at normal and subpixel positions, color emoji, shadows, font reload, UI-scale/DPI changes and atlas eviction/reappearance. Confirm no missing/stale glyph rectangles or color-space/swizzle change; match skin, font settings and window scale. |
 | 10 | Legacy sky-cube cutover | queued | On exact build 68145 or later, use a fixed environment and camera with reflection probes disabled so the legacy cube is authoritative. Inspect all six seams, shiny/water response and environment-generation changes after convergence; match graphics preset, environment, probe state and region state. |
 | 11 | Color-grading LUT cutover | queued | On exact build 68147 or later, select exact known 8-bit image-strip and 16-bit `.cube` LUT inputs with matching Look/profile state. Inspect strength, bypass and transition behavior, color precision/banding and missing/stale LUT failures; match graphics preset, environment, camera and all grade controls. |
-| 12 | Moving CEF/VLC media | queued | Compare motion, color, alpha, scaling and interaction only after the native media ingress is source- and log-qualified. Preserve media/voice behavior. |
-| 13 | Wireframe/material/editing matrix | queued | Batch remaining interactive advanced/editor views after source eligibility is complete; use identical selection/tool state and capture only questions that deterministic tests cannot answer. |
+| 12 | Tone-curve LUT cutover | queued | On exact build 68149 or later, use exact known non-identity master, red, green and blue curves. Inspect identity/non-identity transitions, amount/bypass, precision/banding and failed/stale publication behavior; match graphics preset, environment, camera and all grade controls. |
+| 13 | Moving CEF/VLC media | queued | Compare motion, color, alpha, scaling and interaction only after the native media ingress is source- and log-qualified. Preserve media/voice behavior. |
+| 14 | Wireframe/material/editing matrix | queued | Batch remaining interactive advanced/editor views after source eligibility is complete; use identical selection/tool state and capture only questions that deterministic tests cannot answer. |
 
 ## Next owner session
 

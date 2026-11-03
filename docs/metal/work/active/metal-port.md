@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `e213e9ac01`.
+**Renderer checkpoint:** Commit `56c78b9134`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -19,35 +19,35 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and grayscale/color font-atlas pages are native-only; owner-attended text/emoji and moving-media parity remain open. |
 | M-007 | World scene and material correctness | doing | Opaque fullbright is corrected; legacy BLEND/stained glass and broad material parity remain open. |
-| M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners and color-grading LUT are native; visual-only validation is batched in the daily queue. |
+| M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners, color-grading LUT and tone-curve LUT are native; visual-only validation is batched in the daily queue. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL, linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | Media, terrain, water, parcel, generated sky faces, legacy sky cube, minimap layers, font atlases and color-grading LUT own no GL texture on Darwin; baked tone curve is next. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Media, terrain, water, parcel, generated sky faces, legacy sky cube, minimap layers, font atlases, color-grading LUT and tone curve own no GL texture on Darwin; pipeline BRDF LUT is next. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — native color-grading LUT
+## Active checkpoint — native tone-curve LUT
 
-Commit `e213e9ac01` makes the Darwin color-grading LUT a native-only resource.
-Backend-neutral loaded state covers both 16-bit `.cube` and 8-bit image-strip
-inputs. A shared uploader preserves RGB/RGBA and 8/16-bit unorm semantics,
-expands RGB to opaque RGBA and maps volume slices to Metal array layers. The
-retained GL post safely disables its absent sampler; non-Darwin retains the GL
-3D texture. No viewer launch or comparison was performed; color-LUT appearance
-is queued for owner-attended review.
-[Exact evidence](../../state/archive/CURRENT-native-color-lut-checkpoint-2026-11-03.md).
+Commit `56c78b9134` makes the Darwin baked tone curve a native-only RGBA16
+resource with backend-neutral publication state. Identity releases native
+storage; failed publication remains unavailable and dirty for retry. A generic
+native 2D uploader preserves 8/16-bit RGB/RGBA unorm data and physically proves
+the exact production-size 512x1 row. The retained Darwin GL post safely bypasses
+the absent texture; non-Darwin retains GL behavior. No viewer launch or
+comparison was performed; tone-curve appearance is queued for owner-attended
+review. [Exact evidence](../../state/archive/CURRENT-native-tone-curve-checkpoint-2026-11-03.md).
 
 ## Validation checkpoint
 
-- Source-exact warnings-as-errors Release build `26.4.0d68147` passed at
-  `e213e9ac01d24efbdb5b587e818b24b845a456cb`; the RelWithDebInfo appearance
+- Source-exact warnings-as-errors Release build `26.4.0d68149` passed at
+  `56c78b9134fafdaad4e60e487aaddf892bd568c8`; the RelWithDebInfo appearance
   utility also builds at that source.
-- The full native Metal binary passes 52,272 assertions across 53 cases with
-  API validation enabled. The added 51-assertion physical case proves exact
-  RGB8 expansion, RGBA16 precision/layer order and invalid-input rejection.
+- The full native Metal binary passes 52,289 assertions across 54 cases with
+  API validation enabled. The added 17-assertion physical case proves the exact
+  512x1 RGBA16 row, descriptor semantics and invalid-input rejection.
 - Physical fresh-context renderer validation passes 2,243 assertions across 94
   cases with API validation enabled.
 - CPU-only renderer validation passes 1,513 assertions across 203 cases; 202
@@ -56,9 +56,9 @@ is queued for owner-attended review.
   one platform CRT case skips as expected.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices.
 - Viewer executable SHA-256:
-  `72bb699014c3e2b8eaf8dd882ccdd2a41ce5d9deb7cdcb83b6f93aa308704727`.
+  `67465065ff88a70c05e225d5c0f7c3f79b14b75efb5d0de6ab851aa1853545bf`.
   Appearance utility:
-  `3449cb8fb684d944cfb7f813f6379b6280b2060635ee6715ef452e01a1d951cd`.
+  `514308e32e9afd6e17c72c5545061749b8bc1d8bb35205ccca471a11623c864a`.
   Source/packaged MSL:
   `fa6821703a980b570305fc2384fcb11a1980fccad43d35e4626e40cc4b323324`.
   Metallib:
@@ -66,11 +66,9 @@ is queued for owner-attended review.
 - The broad retained-GL suite remains at 8,335/8,340 assertions and 181/224
   cases, with its four established failures and 39 skips.
 - Strict inventory is 2,408 files / 3,259 findings, expected exit 1. Precommit
-  and exact report hashes are respectively
-  `a8e681c2607c41595dc41da1329020ca29514676c8140daed419d3b73c6d9df9`
-  and `26f65a0e9a325d87dbf44ecac5b12d12cef4fc0ec3e5a475b1d204538adc0ab6`;
-  counts are neutral but source snippets differ. Both OpenGL and Metal remain
-  linked.
+  and exact reports are byte-identical at
+  `05c8780b14f7e52d6b49565c03076839279d7522bf96977d5e9770c2edb2f44c`.
+  Both OpenGL and Metal remain linked.
 - No viewer executable was launched, driven or compared for this checkpoint.
 
 ## Owner-attended visual review cadence
@@ -83,27 +81,27 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—Darwin color grading now publishes one native
-   Metal LUT authority for both supported source encodings, with exact physical
-   precision/layer proof and fail-closed loaded state.
+1. **Product advancement:** yes—Darwin tone-curve grading now publishes one
+   native RGBA16 authority, with exact physical sample proof and fail-closed
+   identity/publication/retry state.
 2. **Deferred critical work:** remaining GL context/traversal/resources;
    feature/stability matrices; visual queue; strict
    binary/runtime audit; measured M1 Max performance; independent review and
    release proof.
-3. **Priority reassessment:** the baked tone-curve LUT is the next bounded
-   owner. Darwin already creates `mMetalToneCurveLut` for native grading but
-   still allocates, updates, gates activation on and samples the parallel GL
-   `mToneCurveLut`.
+3. **Priority reassessment:** the pipeline BRDF LUT is the next bounded owner.
+   Darwin still allocates and draws a 512x512 GL RG16F target, while both native
+   world rendering and native PBR preview already generate and consume native
+   Metal RG16F tables.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Make tone-curve state independent of the GL texture name. On Darwin, allocate
-and update only `mMetalToneCurveLut`; retain non-Darwin RGBA16 GL behavior and
-make the retained Darwin GL post bypass the unavailable LUT safely. Prove exact
-RGBA16 samples, state transitions, identity handling and failure behavior.
+Remove the Darwin pipeline GL BRDF target/generator owner. Preserve non-Darwin
+GL behavior, keep retained Darwin GL callers safe with no pipeline table and
+prove native generation, one-time readiness, exact table semantics and failure
+handling through deterministic and physical tests.
 
 ## Non-negotiable open gates
 
