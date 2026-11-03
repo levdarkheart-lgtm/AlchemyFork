@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `bceb839ea5`.
+**Renderer checkpoint:** Commit `74a7338a44`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -22,28 +22,28 @@ checkpoint detail belongs in the indexed archive.
 | M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners, color grading, tone curve, BRDF, post FXAA/SMAA/CAS, DoF and world HDR bloom/cross-filter are native-only; native-eligible PBR previews own geometry/post/publish. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL, linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | Successful eligible PBR previews neither require nor plan retained probe/post resources; native failures demand them explicitly. The global GL-disabled scheduler guard, preview GL texture and unsupported fallbacks remain. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Targetless-capable work survives the GL-disabled scheduler state while retained work stays inert and cannot dirty the caller's GL-depth result. Eager preview GL texture ownership and unsupported fallbacks remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — demand-driven retained preview resources
+## Active checkpoint — targetless scheduling without retained GL
 
-Commit `bceb839ea5` makes retained material-preview planning explicit on Darwin.
-Creating a preview no longer requests the retained probe/post/bloom pack. A
-native failure raises reference-counted demand; ready resources preserve
-same-frame fallback, otherwise the preview remains pending until reconcile
-builds them without repeating the native attempt. Successful fallback releases
-demand. Non-Darwin still plans from the live-preview count. No viewer was
-launched or compared; visual row 17 advanced only to build 68179.
-[Exact evidence](../../state/archive/CURRENT-native-material-preview-demand-checkpoint-2026-11-03.md).
+Commit `74a7338a44` replaces the scheduler's GL-disabled early return with an
+explicit targetless-capability gate. Retained items are skipped before
+`needsRender()`; Darwin material previews may run their Metal transaction.
+Retained fallback stays pending with no GL unbind/target/clear/flush, and a
+native completion does not ask the display caller to clear GL depth. This does
+not prove the whole pipeline survives current GL teardown. No viewer was
+launched or compared; visual row 17 advanced only to build 68181.
+[Exact evidence](../../state/archive/CURRENT-targetless-scheduler-cutover-checkpoint-2026-11-03.md).
 
 ## Validation checkpoint
 
-- Source-exact warnings-as-errors Release build `26.4.0d68179` passed at
-  `bceb839ea5a9b55bb9d8d1917b2136d1218626b0`; the RelWithDebInfo appearance
+- Source-exact warnings-as-errors Release build `26.4.0d68181` passed at
+  `74a7338a44fcdd84967079e9dec4a8c19d79296f`; the RelWithDebInfo appearance
   utility also builds at that source.
 - The full native Metal binary passes 52,381 assertions across 55 cases with
   API and shader validation enabled. Focused complete PBR material-preview
@@ -57,7 +57,7 @@ launched or compared; visual row 17 advanced only to build 68179.
   one platform CRT case skips as expected.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices.
 - Viewer executable SHA-256:
-  `eeec153f9092884ad9a9ee35ba88d03f18dcf3de583b3bd8e5787572965cc2a0`.
+  `e7a73175e7edb851ab51862680dc5db07d10c4a1880fb41cceeba98becf9c8ef`.
   Appearance utility:
   `c3e87e6a8f87c09c44e61aee502f6afd22e5f4bd1b82dd8c952c2fa05fba89a5`.
   Source/packaged MSL:
@@ -68,7 +68,7 @@ launched or compared; visual row 17 advanced only to build 68179.
   cases, with its four established failures and 39 skips.
 - Strict inventory is 2,408 files / 3,262 findings, expected exit 1. Exact
   report SHA-256:
-  `e0c8e680275632fd2f47f3b6df95e010e95ff252d7d5c291aa41a6aa8fa16603`.
+  `00d70a892b0de47b76ccc7996990f52d77c34ab4727d7bab6c60e7e279c200eb`.
   Both OpenGL and Metal remain linked.
 - Static symbol inspection finds none of the retained FXAA/SMAA/CAS/sharpen or
   DoF program globals or retained DoF methods in the exact Darwin objects.
@@ -87,26 +87,25 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—a complete native PBR preview owns CPU-derived
-   camera matrices, geometry, light state, post and publication without retained
-   auxiliary-screen/post-target readiness; targetless-only work uses no GL.
+1. **Product advancement:** yes—targetless Metal previews remain schedulable
+   when retained GL execution is disabled; retained items stay inert, and native
+   completion causes no display-side GL-depth clear.
 2. **Deferred critical work:** remaining GL context/traversal/resources;
    feature/stability matrices; visual queue; strict binary/runtime audit;
    measured M1 Max performance; independent review and release proof.
-3. **Priority reassessment:** split the global GL-disabled scheduler guard so
-   targetless work survives cutover, then remove preview dual-resource ownership
-   and widen native eligibility.
+3. **Priority reassessment:** remove the native preview's eager GL texture
+   allocation while keeping fallback storage lazy, then widen native eligibility.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Refactor the global GL-disabled dynamic-texture guard so Darwin targetless work
-can proceed while retained-target items remain pending and the display caller
-does not clear GL depth without GL authority. Then remove the native preview's
-dual GL texture ownership and extend exact native ownership to classic/non-HDR/
-post-suppressed variants.
+Split Darwin native-preview destination creation from the dynamic-texture base's
+eager GL texture generation. Keep retained fallback allocation lazy and fail
+closed, then extend exact native ownership to classic/non-HDR/post-suppressed
+variants. Treat broader pipeline lifetime under full GL teardown as a separate
+unmet boundary.
 
 ## Non-negotiable open gates
 
