@@ -3125,6 +3125,7 @@ void LLViewerMediaImpl::update()
             // LLImageGL::beginUpload, taken here on the main thread before the post and
             // released in the callback.
             LLPointer<LLImageGL> gl_image = media_tex->getGLTexture();
+            auto upload_succeeded = std::make_shared<std::atomic<bool>>(false);
             gl_image->beginUpload();
             posted = main_queue->postTo(
                 mTexUpdateQueue, // Worker thread queue
@@ -3133,17 +3134,25 @@ void LLViewerMediaImpl::update()
 #if LL_IMAGEGL_THREAD_CHECK
                     media_tex->getGLTexture()->mActiveThread = LLThread::currentID();
 #endif
-                    doMediaTexUpdate(media_tex, data, data_width, data_height, x_pos, y_pos, width, height, true);
+                    upload_succeeded->store(
+                        doMediaTexUpdate(media_tex, data, data_width, data_height,
+                                         x_pos, y_pos, width, height, true),
+                        std::memory_order_release);
                 },
                 [=, this]() // callback to main thread
                 {
 #if LL_IMAGEGL_THREAD_CHECK
                     media_tex->getGLTexture()->mActiveThread = LLThread::currentID();
 #endif
-                    // The frame publishes once the GPU has finished with it; the next
-                    // update must not start before then.
-                    gl_image->afterPublish([=, this]()
+                    // The frame publishes once the worker's upload has reached its GL
+                    // fence or Metal submission boundary; the next update starts after it.
+                    gl_image->afterPublish([=, this](bool publication_succeeded)
                     {
+                        if (upload_succeeded->load(std::memory_order_acquire) &&
+                            publication_succeeded)
+                        {
+                            media_tex->setPlaying(true);
+                        }
                         // A no-op when syncTexName published the frame.
                         gl_image->endUpload();
                         mTextureUpdatePending = false;
@@ -3167,7 +3176,11 @@ void LLViewerMediaImpl::update()
         }
         if (!posted)
         {
-            doMediaTexUpdate(media_tex, data, data_width, data_height, x_pos, y_pos, width, height, false); // otherwise, update on main thread
+            if (doMediaTexUpdate(media_tex, data, data_width, data_height,
+                                 x_pos, y_pos, width, height, false))
+            {
+                media_tex->setPlaying(true);
+            }
         }
     }
 }
@@ -3189,9 +3202,6 @@ bool LLViewerMediaImpl::preMediaTexUpdate(LLViewerMediaTexture*& media_tex, U8*&
             S32 media_height = mMediaSource->getTextureHeight();
             //S32 media_depth = mMediaSource->getTextureDepth();
 
-            // Since we're updating this texture, we know it's playing.  Tell the texture to do its replacement magic so it gets rendered.
-            media_tex->setPlaying(true);
-
             if (mMediaSource->getDirty(&dirty_rect))
             {
                 // Constrain the dirty rect to be inside the texture
@@ -3208,7 +3218,8 @@ bool LLViewerMediaImpl::preMediaTexUpdate(LLViewerMediaTexture*& media_tex, U8*&
 
                     if (data != NULL)
                     {
-                        // data is ready to be copied to GL
+                        // Data is ready to be copied to the platform texture. Playing
+                        // state publishes only after that upload succeeds.
                         retval = true;
                     }
                 }
@@ -3222,13 +3233,47 @@ bool LLViewerMediaImpl::preMediaTexUpdate(LLViewerMediaTexture*& media_tex, U8*&
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-void LLViewerMediaImpl::doMediaTexUpdate(LLViewerMediaTexture* media_tex, U8* data, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool sync)
+bool LLViewerMediaImpl::doMediaTexUpdate(LLViewerMediaTexture* media_tex, U8* data, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool sync)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_MEDIA;
     LLCoros::LockType lock(mLock); // don't allow media source tear-down during update
 
     // wrap "data" in an LLImageRaw but do NOT make a copy
-    LLPointer<LLImageRaw> raw = new LLImageRaw(data, media_tex->getWidth(), media_tex->getHeight(), media_tex->getComponents(), true);
+#if LL_DARWIN
+    LLPointer<LLImageRaw> raw = new LLImageRaw(
+        data, data_width, data_height, media_tex->getComponents(), true);
+
+    (void)x_pos;
+    (void)y_pos;
+    (void)width;
+    (void)height;
+
+    // The plugin exposes the complete valid CPU frame even when its dirty rectangle is
+    // smaller. Its power-of-two destination can be larger than this buffer, so upload
+    // exactly data_width x data_height into a native pending mirror. The image worker
+    // never mutates storage the main Metal frame may still sample.
+    LLImageGL* image = media_tex->getGLTexture();
+    bool uploaded = false;
+    {
+        LL_PROFILE_ZONE_NAMED_CATEGORY_MEDIA("media metalUpload");
+        uploaded = image && image->uploadMetalImage(raw.get());
+    }
+    if (!uploaded)
+    {
+        LL_WARNS("Media") << "Failed to upload native media texture" << LL_ENDL;
+    }
+    else if (sync)
+    {
+        uploaded = image->syncMetalToMainThread();
+        if (!uploaded)
+        {
+            LL_WARNS("Media") << "Failed to queue native media publication" << LL_ENDL;
+        }
+    }
+#else
+    LLPointer<LLImageRaw> raw = new LLImageRaw(
+        data, media_tex->getWidth(), media_tex->getHeight(),
+        media_tex->getComponents(), true);
 
     // *NOTE: Recreating the GL texture each media update may seem wasteful
     // (note the texture creation in preMediaTexUpdate), however, it apparently
@@ -3237,6 +3282,7 @@ void LLViewerMediaImpl::doMediaTexUpdate(LLViewerMediaTexture* media_tex, U8* da
     // -Cosmic,2023-04-04
     // Allocate GL texture based on LLImageRaw but do NOT copy to GL
     LLGLuint tex_name = 0;
+    bool uploaded = false;
     {
         // Phase 0 baseline: this GL allocate + CPU->GPU upload is exactly the
         // per-surface cost the accelerated-paint (shared-texture) path removes,
@@ -3249,14 +3295,16 @@ void LLViewerMediaImpl::doMediaTexUpdate(LLViewerMediaTexture* media_tex, U8* da
         else
         {
             // copy just the subimage covered by the image raw to GL
-            media_tex->setSubImage(data, data_width, data_height, x_pos, y_pos, width, height, tex_name);
+            uploaded = media_tex->setSubImage(
+                data, data_width, data_height, x_pos, y_pos,
+                width, height, false, tex_name);
         }
     }
 
     // With no new texture there is nothing to upload into or publish. Given a tex_name of
     // 0, setSubImage writes the texture on screen instead -- from the worker, while the
     // main thread may be sampling it.
-    if (tex_name != 0)
+    if (uploaded && tex_name != 0)
     {
         if (sync)
         {
@@ -3267,10 +3315,12 @@ void LLViewerMediaImpl::doMediaTexUpdate(LLViewerMediaTexture* media_tex, U8* da
             media_tex->getGLTexture()->syncTexName(tex_name);
         }
     }
+#endif
 
     // release the data pointer before freeing raw so LLImageRaw destructor doesn't
     // free memory at data pointer
     raw->releaseData();
+    return uploaded;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////

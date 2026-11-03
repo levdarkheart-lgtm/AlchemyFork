@@ -54,6 +54,7 @@
 #include <atomic>
 #include <chrono>
 #include <bit>
+#include <thread>
 #include <boost/unordered_map.hpp>
 
 extern LL_COMMON_API bool on_main_thread();
@@ -172,14 +173,9 @@ namespace
     };
     std::vector<PendingPublish> sPendingPublishes;
 
-    // Whether the upload's fence has signalled, polled now; once it has, the fence goes.
+    // Whether the upload's GL fence has signalled, polled now; once it has, the fence goes.
     bool poll_signalled(PendingPublish& pending)
     {
-        if (pending.mMetalCompletion &&
-            pending.mMetalCompletion->load(std::memory_order_acquire) == METAL_UPLOAD_PENDING)
-        {
-            return false;
-        }
         const GLenum res = glClientWaitSync(pending.mFence, 0, 0);
         if (res == GL_TIMEOUT_EXPIRED)
         {
@@ -194,6 +190,21 @@ namespace
         glDeleteSync(pending.mFence);
         pending.mFence = nullptr;
         return true;
+    }
+
+    bool publication_ready(PendingPublish& pending, bool poll_gl)
+    {
+        if (pending.mMetalCompletion &&
+            pending.mMetalCompletion->load(std::memory_order_acquire) ==
+                METAL_UPLOAD_PENDING)
+        {
+            return false;
+        }
+        if (!pending.mFence)
+        {
+            return true;
+        }
+        return poll_gl && poll_signalled(pending);
     }
 }
 
@@ -478,9 +489,12 @@ void LLImageGL::cleanupClass()
             {
                 glDeleteSync(pending.mFence);
             }
-            deleteTextures(1, &pending.mName);
+            if (pending.mName)
+            {
+                deleteTextures(1, &pending.mName);
+            }
         }
-        else
+        else if (pending.mName)
         {
             free_tex_image(pending.mName);
         }
@@ -1590,6 +1604,54 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
     mGLTextureCreated = true;
     return true;
 }
+
+#if LL_DARWIN
+bool LLImageGL::uploadMetalImage(const LLImageRaw* image)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    checkActiveThread();
+    checkUploadBegun();
+
+    if (!image || image->isBufferInvalid() || !sImageMetalDevice ||
+        mExternalTexture || mTarget != GL_TEXTURE_2D || mUseMipMaps ||
+        image->getWidth() <= 0 || image->getHeight() <= 0 ||
+        image->getWidth() > liveWidth(mCurrentDiscardLevel) ||
+        image->getHeight() > liveHeight(mCurrentDiscardLevel) ||
+        image->getComponents() != mComponents)
+    {
+        return false;
+    }
+
+    mHasMipMaps = false;
+    mMipLevels = 1;
+    std::unique_ptr<ALMetalCommandBuffer> command_owner;
+    ALMetalCommandBuffer* command = nullptr;
+    if (!prepareMetalTexture(command_owner, command, true) ||
+        !command || !metalTextureForUpload())
+    {
+        return false;
+    }
+
+    const U8* pixels = image->getData();
+    const U32 width = static_cast<U32>(image->getWidth());
+    const U32 height = static_cast<U32>(image->getHeight());
+    if (!uploadMetalTextureRegion(*command, 0, 0, 0, width, height,
+                                  pixels, metalSourceBytesPerRow(width)) ||
+        !commitMetalUpload(command_owner, command))
+    {
+        return false;
+    }
+
+    analyzeAlpha(pixels, width, height);
+    updatePickMask(width, height, pixels);
+    touchContents();
+    if (on_main_thread())
+    {
+        mLastBindTime = sLastFrameTime;
+    }
+    return true;
+}
+#endif
 
 // Bytes one pixel of client data occupies, for stepping through it a row at a time.
 //
@@ -3212,9 +3274,45 @@ void LLImageGL::syncToMainThread(LLGLuint new_tex_name)
     LL_PROFILER_GPU_COLLECT;
 }
 
+#if LL_DARWIN
+bool LLImageGL::syncMetalToMainThread()
+{
+    LL_PROFILE_ZONE_SCOPED;
+    llassert(!on_main_thread());
+    llassert(mUploadInFlight);
+    llassert(mPendingMetalTexture);
+
+    UploadCompletion metal_completion = current_worker_metal_upload_completion();
+    ref();
+    const bool posted = LL::WorkQueue::postMaybe(
+            mMainQueue,
+            [this, metal_completion = std::move(metal_completion)]() mutable
+            {
+                LL_PROFILE_ZONE_NAMED("native image - queue publish");
+                queuePublish(0, nullptr, std::move(metal_completion));
+                unref();
+            });
+    if (!posted)
+    {
+        unref();
+    }
+
+    if (sWorkerMetalUploadBatch.mCommand &&
+        sWorkerMetalUploadBatch.mEncodedUploads >= METAL_UPLOAD_BATCH_LIMIT)
+    {
+        flush_worker_metal_upload_batch();
+    }
+    return posted;
+}
+#endif
+
 void LLImageGL::queuePublish(LLGLuint name, GLsync fence, UploadCompletion metal_completion)
 {
     llassert(on_main_thread());
+    if (mPublishesPending == 0)
+    {
+        mPublishesSucceeded = true;
+    }
     ++mPublishesPending;
     sPendingPublishes.push_back(
         { LLPointer<LLImageGL>(this), fence, name, std::move(metal_completion) });
@@ -3222,6 +3320,7 @@ void LLImageGL::queuePublish(LLGLuint name, GLsync fence, UploadCompletion metal
 
 void LLImageGL::finishPublish(LLGLuint name, bool metal_upload_succeeded)
 {
+    mPublishesSucceeded = mPublishesSucceeded && metal_upload_succeeded;
 #if LL_DARWIN
     if (!metal_upload_succeeded)
     {
@@ -3236,21 +3335,27 @@ void LLImageGL::finishPublish(LLGLuint name, bool metal_upload_succeeded)
     if (--mPublishesPending == 0 && !mOnPublished.empty())
     {
         // Moved out first: a callback may ask for another one.
-        std::vector<std::function<void()>> callbacks;
+        std::vector<std::function<void(bool)>> callbacks;
         callbacks.swap(mOnPublished);
-        for (std::function<void()>& callback : callbacks)
+        const bool succeeded = mPublishesSucceeded;
+        for (std::function<void(bool)>& callback : callbacks)
         {
-            callback();
+            callback(succeeded);
         }
     }
 }
 
 void LLImageGL::afterPublish(std::function<void()> fn)
 {
+    afterPublish([fn = std::move(fn)](bool) { fn(); });
+}
+
+void LLImageGL::afterPublish(std::function<void(bool)> fn)
+{
     llassert(on_main_thread());
     if (mPublishesPending == 0)
     {
-        fn();
+        fn(true);
         return;
     }
     mOnPublished.push_back(std::move(fn));
@@ -3264,9 +3369,18 @@ void LLImageGL::finishUploads()
     const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(1);
     while (publishUploads() > 0 && std::chrono::steady_clock::now() < give_up)
     {
-        // The oldest is the first to signal, its context's fences signalling in order.
-        constexpr GLuint64 WAIT_NS = 10'000'000;
-        glClientWaitSync(sPendingPublishes.front().mFence, 0, WAIT_NS);
+        // The oldest is the first to become publishable. GL uploads can wait on their
+        // fence; a native-only worker upload has no GL object and yields until its shared
+        // Metal batch has committed.
+        if (sPendingPublishes.front().mFence)
+        {
+            constexpr GLuint64 WAIT_NS = 10'000'000;
+            glClientWaitSync(sPendingPublishes.front().mFence, 0, WAIT_NS);
+        }
+        else
+        {
+            std::this_thread::yield();
+        }
     }
 }
 
@@ -3284,7 +3398,7 @@ void LLImageGL::pollUploads()
     // Oldest first, up to the first not yet signalled, as publishUploads walks them.
     for (PendingPublish& pending : sPendingPublishes)
     {
-        if (pending.mFence && !poll_signalled(pending))
+        if (!publication_ready(pending, true))
         {
             break;
         }
@@ -3309,7 +3423,7 @@ U32 LLImageGL::publishUploads(bool poll)
     std::vector<PendingPublish> ready;
     for (PendingPublish& pending : sPendingPublishes)
     {
-        if (pending.mFence && !(poll && poll_signalled(pending)))
+        if (!publication_ready(pending, poll))
         {
             break;
         }
@@ -3398,13 +3512,20 @@ void LLImageGL::checkUploadBegun() const
 
 void LLImageGL::syncTexName(LLGLuint texname)
 {
-    if (texname != 0)
+    bool publish = texname != 0;
+#if LL_DARWIN
+    publish = publish || mPendingMetalTexture != nullptr;
+#endif
+    if (publish)
     {
-        if (mTexName != 0 && mTexName != texname)
+        if (texname != 0 && mTexName != 0 && mTexName != texname)
         {
             LLImageGL::deleteTextures(1, &mTexName);
         }
-        mTexName = texname;
+        if (texname != 0)
+        {
+            mTexName = texname;
+        }
 
         // Marked bound as it publishes, so it is not thrown out before anything draws it.
         mLastBindTime = sLastFrameTime;

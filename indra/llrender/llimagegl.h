@@ -83,11 +83,11 @@ public:
     // call once per frame
     static void updateClass();
 
-    // Main thread: publish every off-thread upload whose fence has signalled (syncTexName,
-    // then its afterPublish callbacks). Returns how many are still waiting on the GPU. With
-    // `poll` it polls the fences no frame's end has seen signalled; without, it asks GL
-    // nothing and publishes what pollUploads saw. updateClass publishes without polling; a
-    // loop waiting on texture creation polls.
+    // Main thread: publish every off-thread upload whose GL fence has signalled or whose
+    // native-only Metal batch has committed (syncTexName/native mirror, then afterPublish
+    // callbacks). Returns how many still wait. With `poll` it polls GL fences no frame's
+    // end has seen signalled; without, it asks GL nothing and publishes what pollUploads
+    // saw plus committed native-only uploads. updateClass publishes without polling.
     static U32 publishUploads(bool poll = true);
 
     // Main thread, at the frame's end (LLRender::endFrame): poll the fences of the uploads
@@ -279,6 +279,10 @@ public:
     // what it does next -- ending the snapshot, letting another upload start -- follows the
     // texture onto the screen rather than racing it.
     void afterPublish(std::function<void()> fn);
+    // As above, with whether every queued native mirror committed successfully. A GL
+    // upload can still publish when its companion native batch fails; native-only callers
+    // use this result to keep their prior frame authoritative.
+    void afterPublish(std::function<void(bool)> fn);
 
     // Read back a raw image for this discard level, if it exists
     bool readBackRaw(S32 discard_level, LLImageRaw* imageraw, bool compressed_ok) const;
@@ -492,7 +496,8 @@ private:
     void queuePublish(LLGLuint name, GLsync fence, UploadCompletion metal_completion = {});
     void finishPublish(LLGLuint name, bool metal_upload_succeeded = true);
     U32 mPublishesPending = 0;
-    std::vector<std::function<void()>> mOnPublished;
+    bool mPublishesSucceeded = true;
+    std::vector<std::function<void(bool)>> mOnPublished;
 
     // Geometry of the texture mTexName currently names, captured when an off-thread
     // upload begins overwriting the members with the *next* texture's geometry.
@@ -619,6 +624,19 @@ public:
 #if LL_DARWIN
     static void setMetalDevice(ALMetalDevice* device);
     static ALMetalDevice* getMetalDevice() noexcept;
+
+    // Upload one complete, non-mipmapped source image into the top-left of native storage
+    // without creating or modifying a GL texture. The source may be smaller than the
+    // allocation (media plugins expose an unpadded frame inside a power-of-two texture).
+    // On the image worker this builds mPendingMetalTexture; call syncMetalToMainThread()
+    // after success so it publishes only after the shared Metal batch commits. On the
+    // main thread the committed write updates the live mirror.
+    bool uploadMetalImage(const LLImageRaw* image);
+
+    // Off the main thread: hand a successful uploadMetalImage() to the main thread. This
+    // has no GL fence or texture name; the shared Metal batch's commit token is its ordered
+    // publication boundary. Returns whether that handoff reached the main queue.
+    bool syncMetalToMainThread();
 #endif
 
 private:
