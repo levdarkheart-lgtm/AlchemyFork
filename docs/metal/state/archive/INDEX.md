@@ -80,6 +80,7 @@ reload the chronological history.
 | Native-only Darwin CAS plus elimination of retained post-AA GLSL program lifecycle and source-exact build 68161, 2026-11-03 | [CURRENT-native-cas-and-post-aa-shader-checkpoint-2026-11-03.md](CURRENT-native-cas-and-post-aa-shader-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin Depth of Field with no retained DoF GLSL lifecycle or execution and source-exact build 68163, 2026-11-03 | [CURRENT-native-dof-owner-checkpoint-2026-11-03.md](CURRENT-native-dof-owner-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin world HDR bloom/halation/cross-filter with retained material-preview boundary and source-exact build 68165, 2026-11-03 | [CURRENT-native-world-bloom-owner-checkpoint-2026-11-03.md](CURRENT-native-world-bloom-owner-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Native-eligible Darwin PBR material-preview post/publication ownership with explicit unsupported-mode fallback and source-exact build 68167, 2026-11-03 | [CURRENT-native-material-preview-post-checkpoint-2026-11-03.md](CURRENT-native-material-preview-post-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
