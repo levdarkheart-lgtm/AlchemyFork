@@ -97,6 +97,7 @@ reload the chronological history.
 | Unreferenced GL restore-method deletion with only three live initialization symbols retained, source-exact build 68197, 2026-11-03 | [CURRENT-unreferenced-gl-restore-method-removal-checkpoint-2026-11-03.md](CURRENT-unreferenced-gl-restore-method-removal-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Dead and redundant GL shutdown cleanup-chain deletion, source-exact build 68200, 2026-11-03 | [CURRENT-dead-gl-shutdown-cleanup-chain-removal-checkpoint-2026-11-03.md](CURRENT-dead-gl-shutdown-cleanup-chain-removal-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Metal edit-grid authored mip publication and source-exact build 68202, 2026-11-03 | [CURRENT-manipulator-grid-metal-authored-mip-checkpoint-2026-11-03.md](CURRENT-manipulator-grid-metal-authored-mip-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Native-only legacy standard/brightness/darkness bump ownership and source-exact build 68205, 2026-11-03 | [CURRENT-native-legacy-bump-checkpoint-2026-11-03.md](CURRENT-native-legacy-bump-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
