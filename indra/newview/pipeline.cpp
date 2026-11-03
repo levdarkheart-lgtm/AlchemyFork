@@ -9572,16 +9572,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         }
                     }
 
-                    // Scope capture forces the GL CAS implementation into
-                    // its standalone one-to-one pass. Reproduce that exact
-                    // boundary here before publishing the native display
-                    // source; a demanded CAS failure makes the native scope
-                    // transaction incomplete.
+                    // Darwin's display sharpening is native-only. Demand CAS
+                    // whenever the configured sharpness is positive; a
+                    // pipeline or execution failure makes the complete native
+                    // display transaction ineligible for publication.
                     static LLCachedControl<F32> cas_sharpness(
                         gSavedSettings, "RenderCASSharpness", 0.4f);
                     const bool wants_native_cas =
-                        !cutout_snapshot && cas_sharpness() > 0.f &&
-                        gCASProgram.isComplete();
+                        !cutout_snapshot && cas_sharpness() > 0.f;
                     bool exact_cas = exact_antialiasing;
                     if (exact_antialiasing && wants_native_cas)
                     {
@@ -26535,6 +26533,13 @@ void LLPipeline::compositeBloomHDR(LLRenderTarget* scene, const Bloom& bloom)
 
 bool LLPipeline::applyCAS(LLRenderTarget* src, LLRenderTarget* dst)
 {
+#if LL_DARWIN
+    // Darwin's complete CAS transaction is native. Keep the retained GL
+    // implementation available only to the platforms that still own it.
+    (void)src;
+    (void)dst;
+    return false;
+#else
     static LLCachedControl<F32> cas_sharpness(gSavedSettings, "RenderCASSharpness", 0.4f);
     LL_PROFILE_GPU_ZONE("cas");
     if (cas_sharpness == 0.0f || !gCASProgram.isComplete())
@@ -26571,6 +26576,7 @@ bool LLPipeline::applyCAS(LLRenderTarget* src, LLRenderTarget* dst)
 
     dst->flush();
     return true;
+#endif
 }
 
 bool LLPipeline::applyFXAA(LLRenderTarget* src, LLRenderTarget* dst)
@@ -27487,22 +27493,17 @@ void LLPipeline::renderFinalize()
     // costs the blit more to sharpen than the pass does.
     static LLCachedControl<F32> cas_sharpness(gSavedSettings, "RenderCASSharpness", 0.4f);
     static LLCachedControl<S32> ref_wipe_mode(gSavedSettings, "RenderReferenceWipeMode", 0);
-    const LLRect& world_view    = gViewerWindow->getWorldViewRectRaw();
     const bool    rlv_sphere    = chain && RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE);
     const bool    visualize     = RenderBufferVisualization > -1 && !cutout;
-    const bool    side_by_side  = hasReferenceStill() && ref_wipe_mode == 2 && !suppress_effects;
 #if LL_DARWIN
-    const bool    native_ui_probe_pending = mMetalWorldSimpleCapture &&
-        mMetalWorldSimpleCapture->presentation_target &&
-        mMetalWorldSimpleCapture->presentation_frame == gFrameCount &&
-        (mMetalWorldSimpleCapture->world_ui_chain_snapshot ||
-         !mMetalWorldSimpleCapture->world_ui_probe_attempted);
+    // Native CAS has already sharpened the exact Metal display source. Never
+    // select either retained GL sharpening path on Darwin.
+    const bool    blit_sharpens = false;
 #else
-    const bool    native_ui_probe_pending = false;
-#endif
+    const LLRect& world_view   = gViewerWindow->getWorldViewRectRaw();
+    const bool    side_by_side = hasReferenceStill() && ref_wipe_mode == 2 && !suppress_effects;
     const bool    blit_sharpens = cas_sharpness > 0.f && !cutout && chain && gBlitWithEffectsSharpenProgram.isComplete() &&
                                   !glow && !rlv_sphere && !visualize && !sScopeCapture && !mReferenceStillWanted &&
-                                  !native_ui_probe_pending &&
                                   distort <= 0.f && !side_by_side && (S32)sourceBuffer->getWidth() == world_view.getWidth() &&
                                   (S32)sourceBuffer->getHeight() == world_view.getHeight();
     if (!blit_sharpens && cas_sharpness > 0.f && gCASProgram.isComplete() && !cutout && other_target() &&
@@ -27510,6 +27511,7 @@ void LLPipeline::renderFinalize()
     {
         std::swap(sourceBuffer, targetBuffer);
     }
+#endif
 
     // The other target is the pool's, its contents undefined until a pass writes it: a pass whose program did not build
     // draws nothing into it, and the frame stays where it is rather than going out as that target holds it.
