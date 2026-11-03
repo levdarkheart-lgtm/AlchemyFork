@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `218b60d8b6`.
+**Renderer checkpoint:** Commit `b3f6124664`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,68 +13,73 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,408 files and 3,244 findings; strict exits 1. No rule or suppression changed. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,408 files and 3,247 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Exact Metal publication exists; dead restore authority/methods and redundant shutdown hooks are deleted. Live GL context creation/shutdown remains. |
-| M-004 | Metal resources, transfers, readback and synchronization | doing | Core paths are physical-GPU covered; animation/image previews, visual hints and avatar composites publish authoritatively, including compatible linear storage for sRGB preview output. |
-| M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
+| M-004 | Metal resources, transfers, readback and synchronization | doing | All known Darwin dynamic textures now schedule targetlessly; model/animation/image previews, visual hints and avatar composites publish authoritatively. |
+| M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and font atlases are native-only; owner-attended text/emoji and moving-media parity remain open. |
 | M-007 | World scene and material correctness | doing | World capture consumes native legacy bumps; opaque fullbright is corrected. Legacy BLEND/stained glass and broad material parity remain open. |
-| M-008 | Advanced views/effects and compute | doing | Animation/image previews, visual hints, avatar composites and established advanced owners, material previews, FXAA/SMAA/CAS, DoF and HDR bloom/cross-filter are Metal-owned. |
+| M-008 | Advanced views/effects and compute | doing | Model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF and HDR bloom/cross-filter are Metal-owned. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL, linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | Animation/image-upload previews, visual hints, avatar composites, legacy bumps, material previews and edit grid have native authority; live GL initialization, traversal, model-upload preview and shutdown remain. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Darwin dynamic preview producers are native-authoritative; delete the now-replaced model-preview GL source next, then continue producer-by-producer. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — native animation-upload preview
+## Active checkpoint — native model-upload preview
 
-Commit `218b60d8b6` moves Darwin `LLPreviewAnimation` to targetless Metal
-production and authoritative native publication. CPU camera matrices retain
-framing, rotation, pan and zoom. The native scene advances the preview avatar,
-prepares current mesh/LOD data and retains the former visible rigid and
-scalar-skinned mesh set, default avatar texture, one-light preview shading,
-alpha cutoff and logical-RGB opacity.
+Commit `b3f6124664` moves Darwin `LLModelPreview` to targetless Metal production
+and authoritative publication. It preserves static textured/material-colored
+faces, optional edges, physics meshes, convex hulls and explode transforms;
+rigged/skinned faces; joint overrides, collision volumes, bones, joint bounds
+and ground plane; and the red wide-line/point degenerate diagnostics.
 
-The shared lit-preview renderer now implements the lit avatar-cloth path, so
-this cutover preserves the source shader's wind/sine/gravity/depth deformation
-instead of omitting cloth. Complete output replaces the texture backing;
-incomplete attempts preserve the previous image and retry. The former Darwin
-background/avatar GL draws, retained camera/matrix transaction and
-framebuffer-copy producer are deleted.
-[Exact evidence](../../state/archive/CURRENT-native-animation-preview-checkpoint-2026-11-03.md).
+CPU camera state replaces the retained matrix transaction. Rigged previews
+continue continuously while static/physics previews remain demand-driven.
+Complete output becomes sole authoritative backing; an incomplete attempt
+preserves the prior image and retries. A scoped native upload mode fills exact
+Metal vertex/index stores without creating GL names. The shared lit-preview
+renderer adds clear-only transactions, always-write depth and screen-pixel wide
+lines/points for the preserved diagnostics.
+
+The Darwin GL producer and framebuffer-copy publication are bypassed only after
+the native implementation owns these behaviors. Source census confirms that
+all known `LLViewerDynamicTexture` subclasses now have targetless Darwin paths.
+[Exact evidence](../../state/archive/CURRENT-native-model-preview-checkpoint-2026-11-03.md).
 
 ## Validation checkpoint
 
-- Source-exact warnings-as-errors Xcode Release build `26.4.0d68213` passed at
-  `218b60d8b6`; the exact Ninja tree configured and linked at 68213.
+- Source-exact warnings-as-errors Xcode Release build `26.4.0d68215` passed at
+  `b3f6124664`; the exact Ninja tree configured and linked at 68215.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices; deep strict
   signing passes.
 - Viewer executable SHA-256:
-  `0b8c099db9044e89df69bb713872f558ad7e0d49fbfb5c8ccd312c762a54ef6f`.
+  `f2286f343e6dae25e090dbe18519ebec0fffecc4014dfffc82df0dddb09395f5`.
   Source/packaged MSL:
-  `516ef84aa7123130e6d72cd22e07c52e0f57758085be9c265f50f4fdd89623fb`.
+  `6fcd3271ea0fed0a7dde4fec6e66ce71a8ec3fd1b43d4637f850ac8717af8110`.
   Metallib:
-  `1a85d0dcb0c05ea07001f668ae9cf1b4ddb2aa9ea8a8187d27daed825485e149`.
+  `024aba5a70e01ce501c884535ad53f438d626d756c7c2148ee08a1a7a2aacc2d`.
 - With Metal API/GPU, shader and load-action validation,
-  `almetal_tests` passes 52,454 assertions/55 cases; the focused lit-preview
-  case passes 264 assertions/1 case and proves lit cloth deformation,
+  `almetal_tests` passes 52,468 assertions/55 cases,
   `llappearance_gl_tests` passes 13,207/3, and
   `llrender_gl_fresh_tests` passes 2,612/96.
+- The focused Metal-only upload case passes 17/17 assertions in the shared
+  binary. The complete shared diagnostic suite remains non-green at
+  8,352/8,357 assertions (182 pass, 4 fail, 39 skip): four legacy/headless
+  frame-fence timing assertions and one depth-format expectation fail; the new
+  case passes in that same environment.
 - `alrender_tests` passes 557,312 assertions/137 cases.
-  `newview_tests` self-reports build 68213 and passes 98,973 assertions/743
+  `newview_tests` self-reports build 68215 and passes 98,973 assertions/743
   cases; one established platform CRT case skips.
-- Harness structure validation and all 27 harness/tool tests pass.
-- Strict inventory is 2,408 files / 3,244 findings, expected exit 1. Its 2,933
-  unique path/kinds/snippet record count is unchanged; no audit rule or
-  suppression changed. Exact report SHA-256:
-  `8b2a1c99316a632f58ce177ac5281bc0f8eade85144e8d51a49790feb4597079`.
+- Harness structure validation, all 27 harness/tool tests and diff checks pass.
+- Strict inventory is 2,408 files / 3,247 findings / 2,934 unique
+  path/kinds/snippet records, expected exit 1. Exact report SHA-256:
+  `4a4a348cce830a532e5f8ea3bccecb5a8c162c72747322e59366cdae815f433b`.
   Both OpenGL and Metal remain linked.
-- Exact symbol inspection finds targetless animation-preview rendering, native
-  camera preparation and authoritative Metal publication.
-- No viewer executable was launched, driven or compared for this checkpoint.
+- No viewer executable was launched, driven, photographed or compared.
 
 ## Owner-attended visual review cadence
 
@@ -86,26 +91,24 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—the live animation-upload preview retains
-   playback, camera controls, rigid/skinned avatar meshes, cloth, texture,
-   lighting, alpha, background, publication and recovery with Metal authority.
-2. **Replacement boundary:** Darwin GL production was deleted only after the
-   native scene owned equivalent inputs and result publication.
+1. **Product advancement:** yes—the live model-upload preview retains geometry,
+   materials, textures, edges, physics/hulls, skinning, camera, diagnostics,
+   publication and recovery with Metal authority.
+2. **Replacement boundary:** Darwin GL production was bypassed only after the
+   native scene owned equivalent inputs, rendering and result publication.
 3. **Deferred critical work:** remaining GL context/traversal/resources,
-   model-upload preview, feature/stability matrices, visual queue, strict
-   binary/runtime audit, measured M1 Max performance and release proof.
+   feature/stability matrices, visual queue, strict binary/runtime audit,
+   measured M1 Max performance and release proof.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Replace Darwin `LLModelPreview` retained-target production with targetless
-authoritative Metal output. Preserve static and skinned model modes,
-textures/material colors, edges, physics overlays and convex hulls,
-joint/bone/collision diagnostics, camera, UI-state updates, publication and
-retry behavior. Implement any missing native feature before deleting its
-retained producer.
+Remove the now-replaced non-Darwin/retained `LLModelPreview` GL body and any
+helper reachable only from it, then rerun source-exact tests and strict audit.
+After that, census the next live Darwin GL producer and implement its complete
+Metal behavior before retiring it.
 
 ## Non-negotiable open gates
 

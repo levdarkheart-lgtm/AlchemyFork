@@ -102,6 +102,7 @@ reload the chronological history.
 | Targetless native appearance-editor visual-parameter hints with retained avatar/attachment/material behavior, source-exact build 68209, 2026-11-03 | [CURRENT-native-visual-param-hint-checkpoint-2026-11-03.md](CURRENT-native-visual-param-hint-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Targetless native avatar/sculpt image-upload previews with preserved geometry, lighting, alpha and interaction, source-exact build 68211, 2026-11-03 | [CURRENT-native-image-preview-checkpoint-2026-11-03.md](CURRENT-native-image-preview-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Targetless native animation-upload previews with preserved playback, skinning, lit cloth, alpha and interaction, source-exact build 68213, 2026-11-03 | [CURRENT-native-animation-preview-checkpoint-2026-11-03.md](CURRENT-native-animation-preview-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Targetless native model-upload previews with preserved static/physics/rigged modes, materials and diagnostics, source-exact build 68215, 2026-11-03 | [CURRENT-native-model-preview-checkpoint-2026-11-03.md](CURRENT-native-model-preview-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
