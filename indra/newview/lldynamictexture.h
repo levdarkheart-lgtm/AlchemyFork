@@ -62,12 +62,20 @@ public:
         PENDING
     };
 
+    enum class EInitialBacking
+    {
+        RETAINED_GL,
+        NATIVE_METAL
+    };
+
     // No address-mode parameter: sampling state belongs to the bind, so a draw site that
     // wants its preview clamped names a clamped sampler there (LLVisualParamHint::draw).
     LLViewerDynamicTexture(S32 width,
                      S32 height,
                      S32 components,        // = 4,
-                     EOrder order);         // = ORDER_MIDDLE
+                     EOrder order,          // = ORDER_MIDDLE
+                     EInitialBacking initial_backing =
+                         EInitialBacking::RETAINED_GL);
 
     /*virtual*/ S8 getType() const ;
 
@@ -109,6 +117,9 @@ protected:
 
     void generateGLTexture();
     void generateGLTexture(LLGLint internal_format, LLGLenum primary_format, LLGLenum type_format, bool swap_bytes = false);
+#if LL_DARWIN
+    void generateMetalTexture();
+#endif
 
 protected:
     LLCoordGL mOrigin;

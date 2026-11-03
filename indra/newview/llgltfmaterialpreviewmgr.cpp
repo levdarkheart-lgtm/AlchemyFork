@@ -273,7 +273,12 @@ U32 LLGLTFPreviewTexture::sLiveCount = 0;
 U32 LLGLTFPreviewTexture::sRetainedFallbackCount = 0;
 
 LLGLTFPreviewTexture::LLGLTFPreviewTexture(LLPointer<LLFetchedGLTFMaterial> material, S32 width)
+#if LL_DARWIN
+    : LLViewerDynamicTexture(width, width, 4, EOrder::ORDER_MIDDLE,
+                             EInitialBacking::NATIVE_METAL)
+#else
     : LLViewerDynamicTexture(width, width, 4, EOrder::ORDER_MIDDLE)
+#endif
     , mGLTFMaterial(material)
 {
     ++sLiveCount;
