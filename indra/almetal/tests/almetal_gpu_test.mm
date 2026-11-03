@@ -27324,6 +27324,73 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(rendered_srgb->descriptor().format ==
               ALMetalPixelFormat::rgba8_unorm_srgb);
 
+        // Image-upload previews keep the dynamic texture's sRGB sampling
+        // descriptor, but the retained producer wrote with FRAMEBUFFER_SRGB
+        // disabled. Exercise the exact solid-lit sculpt contract through a
+        // compatible linear storage view: the 0.9 green vertex result and
+        // encoded background bytes must survive without a second encoding.
+        ALMetalLitPreviewBatch srgb_sculpt_batch = batch;
+        srgb_sculpt_batch.index_offset = 0;
+        srgb_sculpt_batch.index_count = 3;
+        srgb_sculpt_batch.texture = nullptr;
+        srgb_sculpt_batch.show_edges = false;
+        ALMetalLitPreviewScene srgb_sculpt_scene;
+        srgb_sculpt_scene.batches = &srgb_sculpt_batch;
+        srgb_sculpt_scene.batch_count = 1;
+        srgb_sculpt_scene.destination_descriptor = &srgb_destination;
+        srgb_sculpt_scene.linear_storage_view = true;
+        error.clear();
+        auto rendered_srgb_sculpt = renderer->render(
+            srgb_sculpt_scene, &error);
+        INFO(error);
+        REQUIRE(rendered_srgb_sculpt);
+        std::array<std::uint8_t, 32 * 32 * 4> srgb_sculpt_pixels{};
+        REQUIRE(rendered_srgb_sculpt->readback(
+            *device, 0, 0, {}, srgb_sculpt_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(srgb_sculpt_pixels[center + 0] <= 1);
+        CHECK(std::abs(static_cast<int>(
+            srgb_sculpt_pixels[center + 1]) - 230) <= 1);
+        CHECK(srgb_sculpt_pixels[center + 2] <= 1);
+        CHECK(srgb_sculpt_pixels[center + 3] == 255);
+        CHECK(srgb_sculpt_pixels[corner + 0] == 38);
+        CHECK(srgb_sculpt_pixels[corner + 1] == 51);
+        CHECK(srgb_sculpt_pixels[corner + 2] == 77);
+        CHECK(srgb_sculpt_pixels[corner + 3] == 255);
+
+        // The clothing/body image preview uses the legacy 15-joint scalar
+        // avatar palette plus its uploaded texture. A raw encoded red byte of
+        // 128 would become about 188 if the sRGB target encoded it again. The
+        // half-alpha source survives the legacy 0.2 cut and must publish as
+        // opaque because the dynamic preview is logically RGB.
+        ALMetalLitPreviewBatch srgb_avatar_batch = avatar_skinned;
+        srgb_avatar_batch.skin_joint_count = 15;
+        srgb_avatar_batch.show_edges = false;
+        srgb_avatar_batch.texture = half_alpha_diffuse_texture.get();
+        ALMetalLitPreviewScene srgb_avatar_scene;
+        srgb_avatar_scene.batches = &srgb_avatar_batch;
+        srgb_avatar_scene.batch_count = 1;
+        srgb_avatar_scene.destination_descriptor = &srgb_destination;
+        srgb_avatar_scene.linear_storage_view = true;
+        error.clear();
+        auto rendered_srgb_avatar = renderer->render(
+            srgb_avatar_scene, &error);
+        INFO(error);
+        REQUIRE(rendered_srgb_avatar);
+        std::array<std::uint8_t, 32 * 32 * 4> srgb_avatar_pixels{};
+        REQUIRE(rendered_srgb_avatar->readback(
+            *device, 0, 0, {}, srgb_avatar_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+            srgb_avatar_pixels[avatar_translated_interior + 0]) - 128) <= 1);
+        CHECK(srgb_avatar_pixels[avatar_translated_interior + 1] <= 1);
+        CHECK(srgb_avatar_pixels[avatar_translated_interior + 2] <= 1);
+        CHECK(srgb_avatar_pixels[avatar_translated_interior + 3] == 255);
+        CHECK(srgb_avatar_pixels[corner + 0] == 38);
+        CHECK(srgb_avatar_pixels[corner + 1] == 51);
+        CHECK(srgb_avatar_pixels[corner + 2] == 77);
+        CHECK(srgb_avatar_pixels[corner + 3] == 255);
+
         // Appearance hints keep an sRGB sampling descriptor but reproduce a
         // legacy framebuffer-sRGB-disabled write. Rigged fragments already
         // produce encoded RGB, so the scene must render through the compatible

@@ -59,8 +59,9 @@ protected:
     S8 getType() const override;
 
     void setPreviewTarget(LLImageRaw *imagep, F32 distance);
-    void setTexture(U32 name) { mTextureName = name; }
 
+    bool canRenderWithoutTarget() const override;
+    ETargetlessRenderResult renderWithoutTarget() override;
     bool render() override;
     void postRender(bool success) override;
     void refresh();
@@ -71,7 +72,6 @@ protected:
 
  protected:
     bool        mNeedsUpdate;
-    U32         mTextureName;
     F32         mCameraDistance;
     F32         mCameraYaw;
     F32         mCameraPitch;
@@ -98,8 +98,9 @@ public:
 
     void setPreviewTarget(const std::string& joint_name, const std::string& mesh_name, LLImageRaw* imagep, F32 distance, bool male);
     void setTexture(LLViewerTexture* texture);
-    void clearPreviewTexture(const std::string& mesh_name);
 
+    bool canRenderWithoutTarget() const override;
+    ETargetlessRenderResult renderWithoutTarget() override;
     bool    render() override;
     void    postRender(bool success) override;
     void    refresh();
@@ -119,7 +120,6 @@ protected:
     LLVector3   mCameraOffset;
     LLPointer<LLVOAvatar> mDummyAvatar;
     LLPointer<LLViewerTexture> mPreviewTexture;
-    U32         mTextureName;
 #if LL_DARWIN
     std::unique_ptr<ALMetalTexture> mMetalPreview;
     std::unique_ptr<ALMetalTextureDescriptor> mMetalPreviewDescriptor;

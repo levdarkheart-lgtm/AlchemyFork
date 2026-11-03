@@ -16961,7 +16961,11 @@ fragment float4 almetal_lit_preview_avatar_fragment(
     {
         discard_fragment();
     }
-    return max(diffuse * input.color, float4(0.0));
+    // Avatar/image and animation previews publish into logical RGB dynamic
+    // textures. Their retained GL target discarded fragment alpha, so keep
+    // coverage only as the alpha-test decision and publish surviving pixels
+    // as opaque in the RGBA Metal allocation.
+    return float4(max(diffuse.rgb * input.color.rgb, float3(0.0)), 1.0);
 }
 
 fragment float4 almetal_lit_preview_avatar_unlit_fragment(

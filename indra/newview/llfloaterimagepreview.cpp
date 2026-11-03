@@ -40,7 +40,6 @@
 #include "llcheckboxctrl.h"
 #include "llcombobox.h"
 #include "lldrawable.h"
-#include "lldrawpoolavatar.h"
 #include "llrender.h"
 #include "llface.h"
 #include "llfocusmgr.h"
@@ -72,7 +71,56 @@
 #include "../almetal/almetalsculptpreview.h"
 #endif
 
+#include <algorithm>
 #include <array>
+
+namespace
+{
+LLViewerDynamicTexture::EInitialBacking imagePreviewInitialBacking()
+{
+#if LL_DARWIN
+    return LLViewerDynamicTexture::EInitialBacking::NATIVE_METAL;
+#else
+    return LLViewerDynamicTexture::EInitialBacking::RETAINED_GL;
+#endif
+}
+
+#if LL_DARWIN
+class LLScopedImagePreviewCameraState final
+{
+public:
+    LLScopedImagePreviewCameraState()
+    : mCamera(*LLViewerCamera::getInstance()),
+      mCurrent(LLViewerCamera::getCurrent()),
+      mViewport{{
+          gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3],
+      }}
+    {
+    }
+
+    ~LLScopedImagePreviewCameraState()
+    {
+        LLViewerCamera* camera = LLViewerCamera::getInstance();
+        camera->setOrigin(mCamera);
+        camera->setAxes(mCamera);
+        camera->setAspect(mCamera.getAspect());
+        camera->setViewNoBroadcast(mCamera.getView());
+        camera->setNear(mCamera.getNear());
+        camera->setFar(mCamera.getFar());
+        camera->setModelview(mCamera.getModelview());
+        camera->setProjection(mCamera.getProjection());
+        LLViewerCamera::updateFrustumPlanes(*camera);
+        LLViewerCamera::setCurrent(mCurrent);
+        std::copy(mViewport.begin(), mViewport.end(), gGLViewport);
+    }
+
+private:
+    LLCamera mCamera;
+    LLCamera mCurrent;
+    std::array<S32, 4> mViewport;
+};
+#endif
+}
 
 const S32 PREVIEW_BORDER_WIDTH = 2;
 const S32 PREVIEW_RESIZE_HANDLE_SIZE = S32(RESIZE_HANDLE_WIDTH * OO_SQRT2) + PREVIEW_BORDER_WIDTH;
@@ -245,13 +293,7 @@ void LLFloaterImagePreview::clearAllPreviewTextures()
 {
     if (mAvatarPreview)
     {
-        mAvatarPreview->clearPreviewTexture("mHairMesh0");
-        mAvatarPreview->clearPreviewTexture("mUpperBodyMesh0");
-        mAvatarPreview->clearPreviewTexture("mLowerBodyMesh0");
-        mAvatarPreview->clearPreviewTexture("mHeadMesh0");
-        mAvatarPreview->clearPreviewTexture("mUpperBodyMesh0");
-        mAvatarPreview->clearPreviewTexture("mLowerBodyMesh0");
-        mAvatarPreview->clearPreviewTexture("mSkirtMesh0");
+        mAvatarPreview->setTexture(nullptr);
     }
 }
 
@@ -354,7 +396,6 @@ void LLFloaterImagePreview::draw()
                 if (mAvatarPreview)
                 {
                     mAvatarPreview->setTexture(mImagep.get());
-                    mSculptedPreview->setTexture(mImagep->getTexName());
                 }
             }
 
@@ -703,7 +744,9 @@ void LLFloaterImagePreview::onMouseCaptureLostImagePreview(LLMouseHandler* handl
 //-----------------------------------------------------------------------------
 // LLImagePreviewAvatar
 //-----------------------------------------------------------------------------
-LLImagePreviewAvatar::LLImagePreviewAvatar(S32 width, S32 height) : LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE)
+LLImagePreviewAvatar::LLImagePreviewAvatar(S32 width, S32 height)
+: LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE,
+                         imagePreviewInitialBacking())
 {
     mNeedsUpdate = true;
     mTargetJoint = NULL;
@@ -716,7 +759,6 @@ LLImagePreviewAvatar::LLImagePreviewAvatar(S32 width, S32 height) : LLViewerDyna
     mDummyAvatar = (LLVOAvatar*)gObjectList.createObjectViewer(LL_PCODE_LEGACY_AVATAR, gAgent.getRegion(), LLViewerObject::CO_FLAG_UI_AVATAR);
     mDummyAvatar->mSpecialRenderMode = 2;
 
-    mTextureName = 0;
 }
 
 
@@ -734,22 +776,12 @@ S8 LLImagePreviewAvatar::getType() const
 void LLImagePreviewAvatar::setTexture(LLViewerTexture* texture)
 {
     mPreviewTexture = texture;
-    mTextureName = texture ? texture->getTexName() : 0;
-    if (mTargetMesh)
-    {
-        mTargetMesh->setTestTexture(mTextureName);
-    }
+    mNeedsUpdate = true;
 }
 
 void LLImagePreviewAvatar::setPreviewTarget(const std::string& joint_name, const std::string& mesh_name, LLImageRaw* imagep, F32 distance, bool male)
 {
     mTargetJoint = mDummyAvatar->mRoot->findJoint(joint_name);
-    // clear out existing test mesh
-    if (mTargetMesh)
-    {
-        mTargetMesh->setTestTexture(0);
-    }
-
     if (male)
     {
         mDummyAvatar->setVisualParamWeight( "male", 1.f );
@@ -765,29 +797,63 @@ void LLImagePreviewAvatar::setPreviewTarget(const std::string& joint_name, const
     mDummyAvatar->mRoot->setVisible(false, true);
 
     mTargetMesh = dynamic_cast<LLViewerJointMesh*>(mDummyAvatar->mRoot->findJoint(mesh_name));
-    mTargetMesh->setTestTexture(mTextureName);
     mTargetMesh->setVisible(true, false);
     mCameraDistance = distance;
     mCameraZoom = 1.f;
     mCameraPitch = 0.f;
     mCameraYaw = 0.f;
     mCameraOffset.clearVec();
+    mNeedsUpdate = true;
 }
 
-//-----------------------------------------------------------------------------
-// clearPreviewTexture()
-//-----------------------------------------------------------------------------
-void LLImagePreviewAvatar::clearPreviewTexture(const std::string& mesh_name)
+bool LLImagePreviewAvatar::canRenderWithoutTarget() const
 {
-    if (mDummyAvatar)
+#if LL_DARWIN
+    return true;
+#else
+    return false;
+#endif
+}
+
+LLViewerDynamicTexture::ETargetlessRenderResult
+LLImagePreviewAvatar::renderWithoutTarget()
+{
+#if LL_DARWIN
+    if (mGLTexturep.isNull() || !mGLTexturep->getMetalTexture())
     {
-        LLViewerJointMesh *mesh = dynamic_cast<LLViewerJointMesh*>(mDummyAvatar->mRoot->findJoint(mesh_name));
-        // clear out existing test mesh
-        if (mesh)
-        {
-            mesh->setTestTexture(0);
-        }
+        return ETargetlessRenderResult::PENDING;
     }
+
+    bool rendered = false;
+    {
+        LLScopedImagePreviewCameraState saved_state;
+        mOrigin.set(0, 0);
+        rendered = render();
+    }
+
+    const bool published = rendered && mMetalPreview &&
+        mGLTexturep->adoptMetalRenderTextureAuthoritative(
+            std::move(mMetalPreview), LLGLTexture::DYNAMIC_TEX);
+    mMetalPreview.reset();
+    mMetalPreviewDescriptor.reset();
+    if (!published)
+    {
+        mNeedsUpdate = true;
+        LL_DEBUGS("Metal")
+            << "Avatar image preview remains pending; its prior native "
+               "result is unchanged"
+            << LL_ENDL;
+        return ETargetlessRenderResult::PENDING;
+    }
+
+    mNeedsUpdate = false;
+    LL_INFOS_ONCE("Metal")
+        << "Avatar image previews are targetless native Metal producers"
+        << LL_ENDL;
+    return ETargetlessRenderResult::COMPLETED;
+#else
+    return ETargetlessRenderResult::RETAINED_FALLBACK;
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -795,8 +861,9 @@ void LLImagePreviewAvatar::clearPreviewTexture(const std::string& mesh_name)
 //-----------------------------------------------------------------------------
 bool LLImagePreviewAvatar::render()
 {
-    mNeedsUpdate = false;
-#if LL_DARWIN
+#if !LL_DARWIN
+    return false;
+#else
     mMetalPreview.reset();
     mMetalPreviewDescriptor.reset();
     if (mGLTexturep.notNull() && mGLTexturep->getMetalTexture())
@@ -804,205 +871,158 @@ bool LLImagePreviewAvatar::render()
         mMetalPreviewDescriptor = std::make_unique<ALMetalTextureDescriptor>(
             mGLTexturep->getMetalTexture()->descriptor());
     }
-#endif
-    LLVOAvatar* avatarp = mDummyAvatar;
 
-    gGL.pushUIMatrix();
-    gGL.loadUIIdentity();
-
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.pushMatrix();
-    gGL.loadIdentity();
-    gGL.ortho(0.0f, (F32)mFullWidth, 0.0f, (F32)mFullHeight, -1.0f, 1.0f);
-
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.pushMatrix();
-    gGL.loadIdentity();
-
-
-    LLGLSUIDefault def;
-    gGL.color4f(0.15f, 0.2f, 0.3f, 1.f);
-
-    gUIProgram.bind();
-
-    gl_rect_2d_simple( mFullWidth, mFullHeight );
-
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.popMatrix();
-
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.popMatrix();
-
-    gGL.flush();
-    LLVector3 target_pos = mTargetJoint->getWorldPosition();
-
-    LLQuaternion camera_rot = LLQuaternion(mCameraPitch, LLVector3::y_axis) *
-        LLQuaternion(mCameraYaw, LLVector3::z_axis);
-
-    LLQuaternion av_rot = avatarp->mPelvisp->getWorldRotation() * camera_rot;
-    LLViewerCamera::getInstance()->lookAt(
-        target_pos + ((LLVector3(mCameraDistance, 0.f, 0.f) + mCameraOffset) * av_rot),     // camera
-        target_pos + (mCameraOffset  * av_rot),                                             // point of interest
-        LLVector3::z_axis);                                                                 // up
-
-    stop_glerror();
-
-    LLViewerCamera::getInstance()->setAspect((F32)mFullWidth / mFullHeight);
-    LLViewerCamera::getInstance()->setView(LLViewerCamera::getInstance()->getDefaultFOV() / mCameraZoom);
-    LLViewerCamera::getInstance()->setPerspective(false, mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight, false);
-
-    LLVertexBuffer::unbind();
-    avatarp->updateLOD();
-
-    if (avatarp->mDrawable.notNull())
+    LLVOAvatar* avatar = mDummyAvatar.get();
+    if (!avatar || !mTargetJoint || !mTargetMesh ||
+        !mMetalPreviewDescriptor || mPreviewTexture.isNull())
     {
-        LLGLDepthTest gls_depth(GL_TRUE, GL_TRUE);
-        // make sure alpha=0 shows avatar material color
-        LLGLDisable no_blend(GL_BLEND);
-
-        LLFace* face = avatarp->mDrawable->getFace(0);
-        if (face)
-        {
-            LLDrawPoolAvatar *avatarPoolp = (LLDrawPoolAvatar *)face->getPool();
-            gPipeline.enableLightsPreview();
-            avatarPoolp->renderAvatars(avatarp);  // renders only one avatar
-
-#if LL_DARWIN
-            ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
-            LLVertexBuffer* buffer = face->getVertexBuffer();
-            LLPolyMesh* mesh = mTargetMesh ? mTargetMesh->getMesh() : nullptr;
-            LLImageGL* preview_image = mPreviewTexture.notNull()
-                ? mPreviewTexture->getGLTexture() : nullptr;
-            const ALMetalTexture* preview_texture = preview_image
-                ? preview_image->getMetalTexture() : nullptr;
-            if (metal_device && mMetalPreviewDescriptor && buffer && mesh &&
-                preview_texture &&
-                buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) &&
-                buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) &&
-                buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) &&
-                buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT) &&
-                buffer->getMetalVertexBuffer() &&
-                buffer->getMetalIndexBuffer())
-            {
-                static ALMetalDevice* renderer_device = nullptr;
-                static std::unique_ptr<ALMetalLitPreviewRenderer> renderer;
-                std::string error;
-                if (renderer_device != metal_device)
-                {
-                    renderer.reset();
-                    renderer_device = metal_device;
-                }
-                if (!renderer)
-                {
-                    renderer = ALMetalLitPreviewRenderer::create(
-                        *metal_device, &error);
-                }
-
-                constexpr std::size_t AVATAR_PALETTE_FLOATS =
-                    LL_CHARACTER_MAX_JOINTS_PER_MESH * 3 * 4;
-                std::array<F32, AVATAR_PALETTE_FLOATS> palette{};
-                if (renderer && mTargetMesh->buildJointMatrixPalette(
-                                    palette.data(), palette.size()))
-                {
-                    ALMetalLitPreviewBatch batch;
-                    batch.vertices = buffer->getMetalVertexBuffer();
-                    batch.position_offset = buffer->getOffset(
-                        LLVertexBuffer::TYPE_VERTEX);
-                    batch.normal_offset = buffer->getOffset(
-                        LLVertexBuffer::TYPE_NORMAL);
-                    batch.texcoord_offset = buffer->getOffset(
-                        LLVertexBuffer::TYPE_TEXCOORD0);
-                    batch.weight_offset = buffer->getOffset(
-                        LLVertexBuffer::TYPE_WEIGHT);
-                    batch.skin_palette = palette.data();
-                    batch.skin_palette_float_count = palette.size();
-                    batch.skin_joint_count =
-                        LL_CHARACTER_MAX_JOINTS_PER_MESH;
-                    batch.avatar_skinning = true;
-                    batch.vertex_count = buffer->getNumVerts();
-                    batch.indices = buffer->getMetalIndexBuffer();
-                    batch.index_type = buffer->getIndexStride() == 4
-                        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
-                    batch.index_offset = static_cast<std::size_t>(
-                        mesh->mFaceIndexOffset) * buffer->getIndexStride();
-                    batch.index_count = mesh->mFaceIndexCount;
-                    batch.texture = preview_texture;
-                    batch.destination_descriptor =
-                        mMetalPreviewDescriptor.get();
-                    std::memcpy(batch.modelview_projection,
-                                gGL.getProjectionMatrix().getF32ptr(),
-                                sizeof(batch.modelview_projection));
-                    for (U32 axis = 0; axis < 3; ++axis)
-                    {
-                        batch.normal_matrix[axis][axis] = 1.f;
-                    }
-
-                    LLVector4 light(LLPipeline::PreviewDirection0, 0.f);
-                    LLVector4a source;
-                    source.loadua(light.mV);
-                    LLVector4a transformed;
-                    gGL.getModelviewMatrix().transform4(source, transformed);
-                    LLVector3 direction(transformed.getF32ptr());
-                    direction.normVec();
-                    std::memcpy(batch.light_direction[0], direction.mV,
-                                sizeof(F32) * 3);
-                    std::memcpy(batch.light_diffuse[0],
-                                LLPipeline::PreviewDiffuse0.mV,
-                                sizeof(F32) * 3);
-                    const LLColor4 preview_color = mTargetMesh->isTransparent()
-                        ? LLColor4::white
-                        : LLColor4(0.7f, 0.6f, 0.3f, 1.f);
-                    std::memcpy(batch.diffuse_color, preview_color.mV,
-                                sizeof(batch.diffuse_color));
-                    mMetalPreview = renderer->render(batch, &error);
-                }
-                else if (error.empty())
-                {
-                    error = "avatar joint palette is unavailable";
-                }
-                if (!mMetalPreview)
-                {
-                    LL_WARNS("Metal")
-                        << "Could not mirror the avatar image preview: "
-                        << error << LL_ENDL;
-                }
-            }
-            else
-            {
-                LL_WARNS_ONCE("Metal")
-                    << "Avatar image preview retained GL because its native "
-                       "geometry, texture, device or destination is incomplete"
-                    << LL_ENDL;
-            }
-#endif
-        }
+        return false;
     }
 
-    gGL.popUIMatrix();
-    gGL.color4f(1,1,1,1);
-    return true;
+    const LLVector3 target_pos = mTargetJoint->getWorldPosition();
+    const LLQuaternion camera_rot =
+        LLQuaternion(mCameraPitch, LLVector3::y_axis) *
+        LLQuaternion(mCameraYaw, LLVector3::z_axis);
+    const LLQuaternion avatar_rot =
+        avatar->mPelvisp->getWorldRotation() * camera_rot;
+
+    LLViewerCamera* camera = LLViewerCamera::getInstance();
+    camera->lookAt(
+        target_pos + ((LLVector3(mCameraDistance, 0.f, 0.f) +
+                       mCameraOffset) * avatar_rot),
+        target_pos + (mCameraOffset * avatar_rot),
+        LLVector3::z_axis);
+    camera->setAspect(static_cast<F32>(mFullWidth) / mFullHeight);
+    camera->setView(camera->getDefaultFOV() / mCameraZoom);
+    camera->setPerspectiveWithoutRenderState(
+        mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
+
+    // updateLOD() also refreshes dirty/reallocated mesh data before native
+    // extraction, so no retained avatar draw is needed to populate the face.
+    avatar->updateLOD();
+
+    LLFace* face = nullptr;
+    LLPolyMesh* mesh = nullptr;
+    LLVertexBuffer* buffer = nullptr;
+    if (mTargetMesh->getPreviewGeometry(face, mesh) && face)
+    {
+        buffer = face->getVertexBuffer();
+    }
+    LLImageGL* preview_image = mPreviewTexture->getGLTexture();
+    const ALMetalTexture* preview_texture = preview_image
+        ? preview_image->getMetalTexture() : nullptr;
+    ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+    if (!metal_device || !buffer || !mesh || !preview_texture ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT) ||
+        !buffer->getMetalVertexBuffer() || !buffer->getMetalIndexBuffer())
+    {
+        LL_DEBUGS("Metal")
+            << "Avatar image preview is pending because its native geometry, "
+               "texture, device or destination is incomplete"
+            << LL_ENDL;
+        return false;
+    }
+
+    static ALMetalDevice* renderer_device = nullptr;
+    static std::unique_ptr<ALMetalLitPreviewRenderer> renderer;
+    std::string error;
+    if (renderer_device != metal_device)
+    {
+        renderer.reset();
+        renderer_device = metal_device;
+    }
+    if (!renderer)
+    {
+        renderer = ALMetalLitPreviewRenderer::create(*metal_device, &error);
+    }
+
+    constexpr std::size_t AVATAR_PALETTE_FLOATS =
+        LL_CHARACTER_MAX_JOINTS_PER_MESH * 3 * 4;
+    std::array<F32, AVATAR_PALETTE_FLOATS> palette{};
+    if (!renderer || !mTargetMesh->buildJointMatrixPalette(
+            palette.data(), palette.size()))
+    {
+        if (error.empty())
+        {
+            error = "avatar joint palette is unavailable";
+        }
+        LL_DEBUGS("Metal")
+            << "Avatar image preview native production is pending: "
+            << error << LL_ENDL;
+        return false;
+    }
+
+    ALMetalLitPreviewBatch batch;
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
+    batch.normal_offset = buffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
+    batch.texcoord_offset = buffer->getOffset(
+        LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.weight_offset = buffer->getOffset(LLVertexBuffer::TYPE_WEIGHT);
+    batch.skin_palette = palette.data();
+    batch.skin_palette_float_count = palette.size();
+    batch.skin_joint_count = LL_CHARACTER_MAX_JOINTS_PER_MESH;
+    batch.avatar_skinning = true;
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_offset = static_cast<std::size_t>(mesh->mFaceIndexOffset) *
+                         buffer->getIndexStride();
+    batch.index_count = mesh->mFaceIndexCount;
+    batch.texture = preview_texture;
+    std::memcpy(batch.modelview_projection,
+                camera->getProjection().getF32ptr(),
+                sizeof(batch.modelview_projection));
+    for (U32 axis = 0; axis < 3; ++axis)
+    {
+        batch.normal_matrix[axis][axis] = 1.f;
+    }
+
+    LLVector4 light(LLPipeline::PreviewDirection0, 0.f);
+    LLVector4a source;
+    source.loadua(light.mV);
+    LLVector4a transformed;
+    camera->getModelview().transform4(source, transformed);
+    LLVector3 direction(transformed.getF32ptr());
+    direction.normVec();
+    std::memcpy(batch.light_direction[0], direction.mV, sizeof(F32) * 3);
+    std::memcpy(batch.light_diffuse[0], LLPipeline::PreviewDiffuse0.mV,
+                sizeof(F32) * 3);
+    const LLColor4 preview_color = mTargetMesh->isTransparent()
+        ? LLColor4::white : LLColor4(0.7f, 0.6f, 0.3f, 1.f);
+    std::memcpy(batch.diffuse_color, preview_color.mV,
+                sizeof(batch.diffuse_color));
+
+    ALMetalLitPreviewScene scene;
+    scene.batches = &batch;
+    scene.batch_count = 1;
+    scene.destination_descriptor = mMetalPreviewDescriptor.get();
+    // The retained preview wrote encoded color with FRAMEBUFFER_SRGB off.
+    // Keep the sRGB sampling descriptor while preserving those exact bytes.
+    scene.linear_storage_view = true;
+    mMetalPreview = renderer->render(scene, &error);
+    if (!mMetalPreview)
+    {
+        LL_DEBUGS("Metal")
+            << "Avatar image preview native production is pending: "
+            << error << LL_ENDL;
+    }
+    return mMetalPreview != nullptr;
+#endif
 }
 
 void LLImagePreviewAvatar::postRender(bool success)
 {
+#if !LL_DARWIN
     LLViewerDynamicTexture::postRender(success);
-#if LL_DARWIN
-    if (lastPostRenderSucceeded() && mMetalPreview)
-    {
-        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
-        {
-            LL_INFOS_ONCE("Metal")
-                << "Avatar image previews own a native Metal render target"
-                << LL_ENDL;
-        }
-        else
-        {
-            LL_WARNS("Metal")
-                << "Could not publish the native avatar image preview mirror"
-                << LL_ENDL;
-        }
-    }
-    mMetalPreview.reset();
+#else
+    // Darwin publishes authoritatively from renderWithoutTarget(); there is
+    // no framebuffer transaction to copy.
+    (void)success;
 #endif
 }
 
@@ -1043,15 +1063,15 @@ void LLImagePreviewAvatar::pan(F32 right, F32 up)
 // LLImagePreviewSculpted
 //-----------------------------------------------------------------------------
 
-LLImagePreviewSculpted::LLImagePreviewSculpted(S32 width, S32 height) : LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE)
+LLImagePreviewSculpted::LLImagePreviewSculpted(S32 width, S32 height)
+: LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE,
+                         imagePreviewInitialBacking())
 {
     mNeedsUpdate = true;
     mCameraDistance = 0.f;
     mCameraYaw = 0.f;
     mCameraPitch = 0.f;
     mCameraZoom = 1.f;
-    mTextureName = 0;
-
     LLVolumeParams volume_params;
     volume_params.setType(LL_PCODE_PROFILE_CIRCLE, LL_PCODE_PATH_CIRCLE);
     volume_params.setSculptID(LLUUID::null, LL_SCULPT_TYPE_SPHERE);
@@ -1132,6 +1152,57 @@ void LLImagePreviewSculpted::setPreviewTarget(LLImageRaw* imagep, F32 distance)
     }
 
     mVertexBuffer->unmapBuffer();
+    mNeedsUpdate = true;
+}
+
+bool LLImagePreviewSculpted::canRenderWithoutTarget() const
+{
+#if LL_DARWIN
+    return true;
+#else
+    return false;
+#endif
+}
+
+LLViewerDynamicTexture::ETargetlessRenderResult
+LLImagePreviewSculpted::renderWithoutTarget()
+{
+#if LL_DARWIN
+    if (mGLTexturep.isNull() || !mGLTexturep->getMetalTexture())
+    {
+        return ETargetlessRenderResult::PENDING;
+    }
+
+    bool rendered = false;
+    {
+        LLScopedImagePreviewCameraState saved_state;
+        mOrigin.set(0, 0);
+        rendered = render();
+    }
+
+    const bool published = rendered && mMetalPreview &&
+        mGLTexturep->adoptMetalRenderTextureAuthoritative(
+            std::move(mMetalPreview), LLGLTexture::DYNAMIC_TEX);
+    mMetalPreview.reset();
+    mMetalPreviewDescriptor.reset();
+    if (!published)
+    {
+        mNeedsUpdate = true;
+        LL_DEBUGS("Metal")
+            << "Sculpt image preview remains pending; its prior native "
+               "result is unchanged"
+            << LL_ENDL;
+        return ETargetlessRenderResult::PENDING;
+    }
+
+    mNeedsUpdate = false;
+    LL_INFOS_ONCE("Metal")
+        << "Sculpt image previews are targetless native Metal producers"
+        << LL_ENDL;
+    return ETargetlessRenderResult::COMPLETED;
+#else
+    return ETargetlessRenderResult::RETAINED_FALLBACK;
+#endif
 }
 
 
@@ -1140,8 +1211,9 @@ void LLImagePreviewSculpted::setPreviewTarget(LLImageRaw* imagep, F32 distance)
 //-----------------------------------------------------------------------------
 bool LLImagePreviewSculpted::render()
 {
-    mNeedsUpdate = false;
-#if LL_DARWIN
+#if !LL_DARWIN
+    return false;
+#else
     mMetalPreview.reset();
     mMetalPreviewDescriptor.reset();
     if (mGLTexturep.notNull() && mGLTexturep->getMetalTexture())
@@ -1149,196 +1221,159 @@ bool LLImagePreviewSculpted::render()
         mMetalPreviewDescriptor = std::make_unique<ALMetalTextureDescriptor>(
             mGLTexturep->getMetalTexture()->descriptor());
     }
-#endif
-    LLGLSUIDefault def;
-    LLGLDisable no_blend(GL_BLEND);
-    LLGLEnable cull(GL_CULL_FACE);
-    LLGLDepthTest depth(GL_TRUE);
 
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.pushMatrix();
-    gGL.loadIdentity();
-    gGL.ortho(0.0f, (F32)mFullWidth, 0.0f, (F32)mFullHeight, -1.0f, 1.0f);
+    if (!mMetalPreviewDescriptor || mVertexBuffer.isNull() || mVolume.isNull())
+    {
+        return false;
+    }
 
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.pushMatrix();
-    gGL.loadIdentity();
+    const LLVector3 target_pos(0.f, 0.f, 0.f);
 
-    gGL.color4f(0.15f, 0.2f, 0.3f, 1.f);
-
-    gUIProgram.bind();
-
-    gl_rect_2d_simple( mFullWidth, mFullHeight );
-
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.popMatrix();
-
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.popMatrix();
-
-    gGL.clear(GL_DEPTH_BUFFER_BIT);
-
-    LLVector3 target_pos(0, 0, 0);
-
-    LLQuaternion camera_rot = LLQuaternion(mCameraPitch, LLVector3::y_axis) *
+    const LLQuaternion camera_rot =
+        LLQuaternion(mCameraPitch, LLVector3::y_axis) *
         LLQuaternion(mCameraYaw, LLVector3::z_axis);
 
-    LLQuaternion av_rot = camera_rot;
-    LLViewerCamera::getInstance()->lookAt(
-        target_pos + ((LLVector3(mCameraDistance, 0.f, 0.f) + mCameraOffset) * av_rot),     // camera
-        target_pos + (mCameraOffset  * av_rot),                                             // point of interest
-        LLVector3::z_axis);                                                                 // up
-
-    stop_glerror();
-
-    LLViewerCamera::getInstance()->setAspect((F32) mFullWidth / mFullHeight);
-    LLViewerCamera::getInstance()->setView(LLViewerCamera::getInstance()->getDefaultFOV() / mCameraZoom);
-    LLViewerCamera::getInstance()->setPerspective(false, mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight, false);
+    LLViewerCamera* camera = LLViewerCamera::getInstance();
+    camera->lookAt(
+        target_pos + ((LLVector3(mCameraDistance, 0.f, 0.f) +
+                       mCameraOffset) * camera_rot),
+        target_pos + (mCameraOffset * camera_rot),
+        LLVector3::z_axis);
+    camera->setAspect(static_cast<F32>(mFullWidth) / mFullHeight);
+    camera->setView(camera->getDefaultFOV() / mCameraZoom);
+    camera->setPerspectiveWithoutRenderState(
+        mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
 
     const LLVolumeFace &vf = mVolume->getVolumeFace(0);
-    U32 num_indices = vf.mNumIndices;
-
-    gPipeline.enableLightsAvatar();
-
-    gObjectPreviewProgram.bind();
-    gPipeline.enableLightsPreview();
-
-    gGL.pushMatrix();
+    const U32 num_indices = vf.mNumIndices;
     const F32 SCALE = 1.25f;
-    gGL.scalef(SCALE, SCALE, SCALE);
     const F32 BRIGHTNESS = 0.9f;
-    gGL.diffuseColor3f(BRIGHTNESS, BRIGHTNESS, BRIGHTNESS);
 
-#if LL_DARWIN
     ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
     ALMetalBuffer* metal_vertices = mVertexBuffer.notNull()
         ? mVertexBuffer->getMetalVertexBuffer() : nullptr;
     ALMetalBuffer* metal_indices = mVertexBuffer.notNull()
         ? mVertexBuffer->getMetalIndexBuffer() : nullptr;
-    if (metal_device && mMetalPreviewDescriptor && metal_vertices && metal_indices)
+    if (!metal_device || !metal_vertices || !metal_indices)
     {
-        static ALMetalDevice* renderer_device = nullptr;
-        static std::unique_ptr<ALMetalLitPreviewRenderer> renderer;
-        std::string error;
-        if (renderer_device != metal_device)
-        {
-            renderer.reset();
-            renderer_device = metal_device;
-        }
-        if (!renderer)
-        {
-            renderer = ALMetalLitPreviewRenderer::create(*metal_device, &error);
-        }
-
-        if (renderer)
-        {
-            const LLMatrix4a& modelview = gGL.getModelviewMatrix();
-            const LLMatrix4a& projection = gGL.getProjectionMatrix();
-            LLMatrix4a modelview_projection;
-            modelview_projection.setMul(modelview, projection);
-            LLMatrix4a inverse_modelview;
-            const bool inverse_ok = inverse_modelview.setAffineInverse(modelview);
-
-            ALMetalLitPreviewBatch batch;
-            batch.vertices = metal_vertices;
-            batch.position_offset = mVertexBuffer->getOffset(LLVertexBuffer::TYPE_VERTEX);
-            batch.normal_offset = mVertexBuffer->getOffset(LLVertexBuffer::TYPE_NORMAL);
-            batch.vertex_count = vf.mNumVertices;
-            batch.indices = metal_indices;
-            batch.index_type = mVertexBuffer->getIndexStride() == 4
-                ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
-            batch.index_count = num_indices;
-            batch.destination_descriptor = mMetalPreviewDescriptor.get();
-            memcpy(batch.modelview_projection, modelview_projection.getF32ptr(),
-                   sizeof(batch.modelview_projection));
-
-            if (inverse_ok)
-            {
-                const F32* inverse = inverse_modelview.getF32ptr();
-                for (U32 column = 0; column < 3; ++column)
-                {
-                    batch.normal_matrix[column][0] = inverse[0 * 4 + column];
-                    batch.normal_matrix[column][1] = inverse[1 * 4 + column];
-                    batch.normal_matrix[column][2] = inverse[2 * 4 + column];
-                }
-
-                const LLVector3 light_directions[3] = {
-                    LLPipeline::PreviewDirection0,
-                    LLPipeline::PreviewDirection1,
-                    LLPipeline::PreviewDirection2,
-                };
-                const LLColor4 light_diffuse[3] = {
-                    LLPipeline::PreviewDiffuse0,
-                    LLPipeline::PreviewDiffuse1,
-                    LLPipeline::PreviewDiffuse2,
-                };
-                for (U32 light = 0; light < 3; ++light)
-                {
-                    LLVector4 direction(light_directions[light], 0.f);
-                    LLVector4a source;
-                    source.loadua(direction.mV);
-                    LLVector4a transformed;
-                    modelview.transform4(source, transformed);
-                    LLVector3 normalized(transformed.getF32ptr());
-                    normalized.normVec();
-                    memcpy(batch.light_direction[light], normalized.mV,
-                           sizeof(F32) * 3);
-                    memcpy(batch.light_diffuse[light], light_diffuse[light].mV,
-                           sizeof(F32) * 3);
-                }
-                batch.diffuse_color[0] = BRIGHTNESS;
-                batch.diffuse_color[1] = BRIGHTNESS;
-                batch.diffuse_color[2] = BRIGHTNESS;
-                batch.diffuse_color[3] = 1.f;
-                mMetalPreview = renderer->render(batch, &error);
-            }
-            else
-            {
-                error = "sculpt preview modelview matrix is singular";
-            }
-        }
-
-        if (!mMetalPreview)
-        {
-            LL_WARNS("Metal") << "Could not mirror the sculpt image preview: "
-                               << error << LL_ENDL;
-        }
+        LL_DEBUGS("Metal")
+            << "Sculpt image preview is pending because its native geometry "
+               "or device is incomplete"
+            << LL_ENDL;
+        return false;
     }
+
+    static ALMetalDevice* renderer_device = nullptr;
+    static std::unique_ptr<ALMetalLitPreviewRenderer> renderer;
+    std::string error;
+    if (renderer_device != metal_device)
+    {
+        renderer.reset();
+        renderer_device = metal_device;
+    }
+    if (!renderer)
+    {
+        renderer = ALMetalLitPreviewRenderer::create(*metal_device, &error);
+    }
+    if (!renderer)
+    {
+        LL_DEBUGS("Metal")
+            << "Sculpt image preview native production is pending: "
+            << error << LL_ENDL;
+        return false;
+    }
+
+    LLMatrix4a modelview;
+    modelview.setMul(LLMatrix4a::scaling(SCALE, SCALE, SCALE),
+                     camera->getModelview());
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(modelview, camera->getProjection());
+    LLMatrix4a inverse_modelview;
+    if (!inverse_modelview.setAffineInverse(modelview))
+    {
+        LL_DEBUGS("Metal")
+            << "Sculpt image preview native production is pending: "
+               "modelview matrix is singular"
+            << LL_ENDL;
+        return false;
+    }
+
+    ALMetalLitPreviewBatch batch;
+    batch.vertices = metal_vertices;
+    batch.position_offset = mVertexBuffer->getOffset(
+        LLVertexBuffer::TYPE_VERTEX);
+    batch.normal_offset = mVertexBuffer->getOffset(
+        LLVertexBuffer::TYPE_NORMAL);
+    batch.vertex_count = vf.mNumVertices;
+    batch.indices = metal_indices;
+    batch.index_type = mVertexBuffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = num_indices;
+    std::memcpy(batch.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.modelview_projection));
+
+    const F32* inverse = inverse_modelview.getF32ptr();
+    for (U32 column = 0; column < 3; ++column)
+    {
+        batch.normal_matrix[column][0] = inverse[0 * 4 + column];
+        batch.normal_matrix[column][1] = inverse[1 * 4 + column];
+        batch.normal_matrix[column][2] = inverse[2 * 4 + column];
+    }
+
+    const LLVector3 light_directions[3] = {
+        LLPipeline::PreviewDirection0,
+        LLPipeline::PreviewDirection1,
+        LLPipeline::PreviewDirection2,
+    };
+    const LLColor4 light_diffuse[3] = {
+        LLPipeline::PreviewDiffuse0,
+        LLPipeline::PreviewDiffuse1,
+        LLPipeline::PreviewDiffuse2,
+    };
+    for (U32 light_index = 0; light_index < 3; ++light_index)
+    {
+        LLVector4 light(light_directions[light_index], 0.f);
+        LLVector4a source;
+        source.loadua(light.mV);
+        LLVector4a transformed;
+        modelview.transform4(source, transformed);
+        LLVector3 direction(transformed.getF32ptr());
+        direction.normVec();
+        std::memcpy(batch.light_direction[light_index], direction.mV,
+                    sizeof(F32) * 3);
+        std::memcpy(batch.light_diffuse[light_index],
+                    light_diffuse[light_index].mV, sizeof(F32) * 3);
+    }
+    batch.diffuse_color[0] = BRIGHTNESS;
+    batch.diffuse_color[1] = BRIGHTNESS;
+    batch.diffuse_color[2] = BRIGHTNESS;
+    batch.diffuse_color[3] = 1.f;
+
+    ALMetalLitPreviewScene scene;
+    scene.batches = &batch;
+    scene.batch_count = 1;
+    scene.destination_descriptor = mMetalPreviewDescriptor.get();
+    scene.linear_storage_view = true;
+    mMetalPreview = renderer->render(scene, &error);
+    if (!mMetalPreview)
+    {
+        LL_DEBUGS("Metal")
+            << "Sculpt image preview native production is pending: "
+            << error << LL_ENDL;
+    }
+    return mMetalPreview != nullptr;
 #endif
-
-    mVertexBuffer->setBuffer();
-    mVertexBuffer->draw(LLRender::TRIANGLES, num_indices, 0);
-
-    gGL.popMatrix();
-
-    gObjectPreviewProgram.unbind();
-
-    return true;
 }
 
 void LLImagePreviewSculpted::postRender(bool success)
 {
+#if !LL_DARWIN
     LLViewerDynamicTexture::postRender(success);
-#if LL_DARWIN
-    if (lastPostRenderSucceeded() && mMetalPreview)
-    {
-        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
-        {
-            static bool reported_native_preview = false;
-            if (!reported_native_preview)
-            {
-                LL_INFOS("Metal") << "Sculpt image previews own a native Metal render target"
-                                   << LL_ENDL;
-                reported_native_preview = true;
-            }
-        }
-        else
-        {
-            LL_WARNS("Metal") << "Could not publish the native sculpt image preview mirror"
-                               << LL_ENDL;
-        }
-    }
-    mMetalPreview.reset();
+#else
+    // Targetless native rendering publishes authoritatively in
+    // renderWithoutTarget(); there is no framebuffer transaction to copy.
+    (void)success;
 #endif
 }
 
