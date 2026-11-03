@@ -90,6 +90,7 @@ reload the chronological history.
 | Targetless Metal preview scheduling through the GL-disabled state without retained work or GL-depth side effects, source-exact build 68181, 2026-11-03 | [CURRENT-targetless-scheduler-cutover-checkpoint-2026-11-03.md](CURRENT-targetless-scheduler-cutover-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin material-preview destination backing with lazy retained recovery, source-exact build 68183, 2026-11-03 | [CURRENT-native-preview-backing-cutover-checkpoint-2026-11-03.md](CURRENT-native-preview-backing-cutover-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native modern non-HDR/post-suppressed material-preview post modes with legacy gamma and dithering, source-exact build 68185, 2026-11-03 | [CURRENT-native-preview-post-modes-cutover-checkpoint-2026-11-03.md](CURRENT-native-preview-post-modes-cutover-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Native classic material-preview lighting plus native-only producer readiness, source-exact build 68188, 2026-11-03 | [CURRENT-native-classic-preview-and-readiness-checkpoint-2026-11-03.md](CURRENT-native-classic-preview-and-readiness-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
