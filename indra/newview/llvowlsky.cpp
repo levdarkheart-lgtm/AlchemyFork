@@ -318,12 +318,6 @@ void LLVOWLSky::cleanupGL()
     LLDrawPoolWLSky::cleanupGL();
 }
 
-void LLVOWLSky::restoreGL()
-{
-    LLDrawPoolWLSky::restoreGL();
-    gPipeline.markRebuild(mDrawable, LLDrawable::REBUILD_ALL);
-}
-
 bool LLVOWLSky::updateGeometry(LLDrawable * drawable)
 {
     LL_PROFILE_ZONE_SCOPED;

@@ -83,12 +83,6 @@ S8 LLViewerTexLayerSetBuffer::getType() const
 }
 
 //virtual
-void LLViewerTexLayerSetBuffer::restoreGLTexture()
-{
-    LLViewerDynamicTexture::restoreGLTexture() ;
-}
-
-//virtual
 void LLViewerTexLayerSetBuffer::destroyGLTexture()
 {
 #if LL_DARWIN

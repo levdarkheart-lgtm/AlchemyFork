@@ -1257,19 +1257,6 @@ void LLVOAvatar::dumpBakedStatus()
 }
 
 //static
-void LLVOAvatar::restoreGL()
-{
-    if (!isAgentAvatarValid()) return;
-
-    gAgentAvatarp->setCompositeUpdatesEnabled(true);
-    for (U32 i = 0; i < gAgentAvatarp->mBakedTextureDatas.size(); i++)
-    {
-        gAgentAvatarp->invalidateComposite(gAgentAvatarp->getTexLayerSet(i));
-    }
-    gAgentAvatarp->updateMeshTextures();
-}
-
-//static
 void LLVOAvatar::destroyGL()
 {
     deleteCachedImages();

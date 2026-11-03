@@ -368,7 +368,6 @@ class LLGLState
 {
 public:
     static void initClass();
-    static void restoreGL();
 
     // Record a cap set with a raw glEnable/glDisable, so a scoped state does not take it for
     // GL's default. The map describes the main context; call on the main thread only.

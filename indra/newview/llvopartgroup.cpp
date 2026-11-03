@@ -50,12 +50,6 @@ void LLVOPartGroup::initClass()
 }
 
 //static
-void LLVOPartGroup::restoreGL()
-{
-
-}
-
-//static
 void LLVOPartGroup::destroyGL()
 {
 }

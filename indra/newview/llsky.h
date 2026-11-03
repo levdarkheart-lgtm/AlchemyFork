@@ -78,7 +78,6 @@ public:
     LLColor4U getFadeColor() const;
 
     void destroyGL();
-    void restoreGL();
     void resetVertexBuffers();
 
     void addSunMoonBeacons();

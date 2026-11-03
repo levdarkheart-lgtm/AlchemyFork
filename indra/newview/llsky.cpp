@@ -99,18 +99,6 @@ void LLSky::destroyGL()
     }
 }
 
-void LLSky::restoreGL()
-{
-    if (mVOSkyp)
-    {
-        mVOSkyp->restoreGL();
-    }
-    if (mVOWLSkyp)
-    {
-        mVOWLSkyp->restoreGL();
-    }
-}
-
 void LLSky::resetVertexBuffers()
 {
     if (gSky.mVOSkyp.notNull())

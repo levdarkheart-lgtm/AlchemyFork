@@ -574,7 +574,6 @@ public:
     virtual void renderJoints();
     static void deleteCachedImages(bool clearAll=true);
     static void destroyGL();
-    static void restoreGL();
     S32         mSpecialRenderMode; // special lighting
 
 private:

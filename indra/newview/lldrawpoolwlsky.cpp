@@ -867,8 +867,3 @@ void LLDrawPoolWLSky::resetDrawOrders()
 void LLDrawPoolWLSky::cleanupGL()
 {
 }
-
-//static
-void LLDrawPoolWLSky::restoreGL()
-{
-}

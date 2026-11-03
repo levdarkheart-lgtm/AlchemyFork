@@ -41,7 +41,6 @@ class LLVOPartGroup : public LLAlphaObject
 public:
 
     static void initClass();
-    static void restoreGL();
     static void destroyGL();
 
     enum

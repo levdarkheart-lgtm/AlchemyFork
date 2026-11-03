@@ -381,25 +381,3 @@ void LLViewerDynamicTexture::destroyGL()
         }
     }
 }
-
-//-----------------------------------------------------------------------------
-// static
-// restoreGL()
-//-----------------------------------------------------------------------------
-void LLViewerDynamicTexture::restoreGL()
-{
-    if (gGLManager.mIsDisabled)
-    {
-        return ;
-    }
-
-    for( S32 order = 0; order < ORDER_COUNT; order++ )
-    {
-        for (instance_list_t::iterator iter = LLViewerDynamicTexture::sInstances[order].begin();
-             iter != LLViewerDynamicTexture::sInstances[order].end(); ++iter)
-        {
-            LLViewerDynamicTexture *dynamicTexture = *iter;
-            dynamicTexture->restoreGLTexture() ;
-        }
-    }
-}

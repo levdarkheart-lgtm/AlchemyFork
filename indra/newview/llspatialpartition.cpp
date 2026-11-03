@@ -1374,10 +1374,6 @@ void drawBoxOutline(const LLVector4a& pos, const LLVector4a& size)
 }
 
 
-void LLSpatialPartition::restoreGL()
-{
-}
-
 bool LLSpatialPartition::getVisibleExtents(LLCamera& camera, LLVector3& visMin, LLVector3& visMax)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SPATIAL;

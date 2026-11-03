@@ -100,7 +100,6 @@ public:
     virtual bool render();
     virtual void postRender(bool success);
 
-    virtual void restoreGLTexture() {}
     virtual void destroyGLTexture() {}
 
     // Update each order. True means a retained last-order render succeeded and
@@ -108,7 +107,6 @@ public:
     // deliberately not a GL-depth-dirty result.
     static bool updateAllInstances();
     static void destroyGL() ;
-    static void restoreGL() ;
 
     void setBoundTarget(LLRenderTarget* target) { mBoundTarget = target; }
 

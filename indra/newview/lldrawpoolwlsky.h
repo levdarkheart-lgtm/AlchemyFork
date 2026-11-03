@@ -68,7 +68,6 @@ public:
     /*virtual*/ void resetDrawOrders();
 
     static void cleanupGL();
-    static void restoreGL();
 private:
     void renderDome(const LLVector3& camPosLocal, F32 camHeightLocal, LLGLSLShader * shader) const;
 

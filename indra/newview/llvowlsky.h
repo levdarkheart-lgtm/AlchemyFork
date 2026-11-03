@@ -66,7 +66,6 @@ public:
     void drawMeteors();
 
     void cleanupGL();
-    void restoreGL();
 
 private:
 

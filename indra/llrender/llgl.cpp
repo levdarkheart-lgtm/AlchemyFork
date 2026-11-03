@@ -3613,13 +3613,6 @@ void LLGLState::initClass()
 }
 
 //static
-void LLGLState::restoreGL()
-{
-    sStateMap.clear();
-    initClass();
-}
-
-//static
 bool LLGLState::isEnabled(LLGLenum state)
 {
     const auto found = sStateMap.find(state);

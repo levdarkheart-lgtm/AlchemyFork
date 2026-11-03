@@ -86,7 +86,6 @@ public:
     bool                    isInitialized(void) const;
     static void             dumpTotalByteCount();
     const std::string       dumpTextureInfo() const;
-    virtual void            restoreGLTexture();
     virtual void            destroyGLTexture();
 private:
     LLViewerTexLayerSet*    getViewerTexLayerSet()

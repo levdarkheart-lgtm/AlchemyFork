@@ -127,22 +127,6 @@ void LLSkyTex::cleanupGL()
 #endif
 }
 
-void LLSkyTex::restoreGL()
-{
-    for (S32 i = 0; i < 2; i++)
-    {
-        if (mTexture[i].isNull())
-        {
-            mTexture[i] = LLViewerTextureManager::getLocalTexture(false);
-        }
-#if LL_DARWIN
-        // Global renderer cleanup may have discarded native storage even
-        // though this logical texture survived the GL lifecycle event.
-        createImage(i);
-#endif
-    }
-}
-
 LLSkyTex::~LLSkyTex()
 {
     delete[] mSkyData;
@@ -589,38 +573,6 @@ void LLVOSky::cleanupGL()
     {
         getCubeMap()->destroyGL();
     }
-}
-
-void LLVOSky::restoreGL()
-{
-    S32 i;
-    for (i = 0; i < NUM_CUBEMAP_FACES; i++)
-    {
-        mSkyTex[i].restoreGL();
-    }
-
-    LLSettingsSky::ptr_t psky = LLEnvironment::instance().getCurrentSky();
-
-    if (psky)
-    {
-        setSunTextures(psky->getSunTextureId(), psky->getNextSunTextureId());
-        setMoonTextures(psky->getMoonTextureId(), psky->getNextMoonTextureId());
-    }
-
-    updateDirections(psky);
-
-    if (gSavedSettings.getBOOL("RenderWater"))
-    {
-        initCubeMap();
-    }
-
-    forceSkyUpdate();
-
-    if (mDrawable)
-    {
-        gPipeline.markRebuild(mDrawable, LLDrawable::REBUILD_VOLUME);
-    }
-
 }
 
 void LLVOSky::initSkyTextureDirs(const S32 side, const S32 tile)
