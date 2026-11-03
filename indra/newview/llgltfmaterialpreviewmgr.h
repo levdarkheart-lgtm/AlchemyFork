@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include "lldrawpool.h"
 #include "lldynamictexture.h"
 #include "llfetchedgltfmaterial.h"
 #include "llsingleton.h"
@@ -47,11 +46,6 @@ protected:
 public:
     // Width scales with size of material's textures
     static LLPointer<LLGLTFPreviewTexture> create(LLPointer<LLFetchedGLTFMaterial> material);
-
-    // How many previews are alive. Retained platforms keep the probe pack for
-    // this count. Darwin previews never demand it: every readiness and failure
-    // state remains on the targetless Metal scheduler.
-    static U32 liveCount() { return sLiveCount; }
 
     bool needsRender() override;
 #if LL_DARWIN
@@ -79,12 +73,6 @@ public:
     };
 
 private:
-    static U32 sLiveCount;
-
-#if !LL_DARWIN
-    bool retainedRenderReady() const;
-#endif
-
     LLPointer<LLFetchedGLTFMaterial> mGLTFMaterial;
     bool mShouldRender = true;
     // The material's load levels the preview was last drawn at, and those the render asked for draws at: a render that

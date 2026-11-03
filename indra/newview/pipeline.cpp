@@ -16844,13 +16844,8 @@ ALRenderResourceInputs LLPipeline::resourceInputsFromSettings(const ALShaderInpu
     in.mProbeSuperSample = ALRenderResourceInputs::probeSuperSample(gSavedSettings.getS32("ALProbeSuperSample"));
     in.mProbeAllCascades = gSavedSettings.getBOOL("AlchemyRenderProbeAllShadowCascades");
     in.mMirrors          = gSavedSettings.getBOOL("RenderMirrors");
-#if LL_DARWIN
-    // Darwin previews remain targetless through readiness and failure. They
-    // never plan the retained probe/post pack.
+    // This Apple Silicon fork has no retained material-preview renderer.
     in.mMaterialPreview  = false;
-#else
-    in.mMaterialPreview  = LLGLTFPreviewTexture::liveCount() > 0;
-#endif
     in.mHeroResolution   = (U32)llmax(gSavedSettings.getS32("RenderHeroProbeResolution"), 1);
 
     in.mFSAAType          = gSavedSettings.getU32("RenderFSAAType");

@@ -36,16 +36,14 @@
 #include <vector>
 
 #include "llavatarappearancedefines.h"
-#include "lldrawpoolalpha.h"
 #include "llenvironment.h"
 #include "llfloatertools.h"
 #include "llselectmgr.h"
 #include "llviewercamera.h"
 #include "llviewercontrol.h"
 #include "llviewerobject.h"
-#include "llviewershadermgr.h"
+#include "llviewershadermgr.h" // CROSS_FILTER_MAX_STRENGTH
 #include "llviewertexturelist.h"
-#include "llviewerwindow.h"
 #include "llvolumemgr.h"
 #include "pipeline.h"
 
@@ -269,8 +267,6 @@ namespace
 
 };  // namespace
 
-U32 LLGLTFPreviewTexture::sLiveCount = 0;
-
 LLGLTFPreviewTexture::LLGLTFPreviewTexture(LLPointer<LLFetchedGLTFMaterial> material, S32 width)
 #if LL_DARWIN
     : LLViewerDynamicTexture(width, width, 4, EOrder::ORDER_MIDDLE,
@@ -280,39 +276,18 @@ LLGLTFPreviewTexture::LLGLTFPreviewTexture(LLPointer<LLFetchedGLTFMaterial> mate
 #endif
     , mGLTFMaterial(material)
 {
-    ++sLiveCount;
 }
 
-LLGLTFPreviewTexture::~LLGLTFPreviewTexture()
-{
-#if LL_DARWIN
-    llassert(sLiveCount > 0);
-    --sLiveCount;
-#else
-    // The last preview gone, the probe pack's post targets and bloom, there for
-    // previews alone, are freed with the next frame's resources, and with them
-    // the pack where reflection probes are off.
-    if (--sLiveCount == 0)
-    {
-        gPipeline.markRenderInputsDirty();
-    }
-#endif
-}
+LLGLTFPreviewTexture::~LLGLTFPreviewTexture() = default;
 
 // static
 LLPointer<LLGLTFPreviewTexture> LLGLTFPreviewTexture::create(LLPointer<LLFetchedGLTFMaterial> material)
 {
-    // No larger than the retained probe pack the fallback renders through: the
-    // probe resolution times ALProbeSuperSample. Darwin uses the same setting-
-    // derived dimensions for its native destination without planning that pack.
+    // Preserve the established preview resolution: probe resolution times
+    // ALProbeSuperSample, capped for the UI. This sizes only the native
+    // destination and does not plan a probe/post pack.
     const ALRenderResourceInputs& inputs = gPipeline.resourceInputs();
     const U32 pack_width = inputs.mProbeResolution * inputs.mProbeSuperSample;
-#if !LL_DARWIN
-    if (!gPipeline.resourcePlan().wants(ALRenderResourcePlan::Id::ProbePostPing))
-    {
-        gPipeline.markRenderInputsDirty();
-    }
-#endif
     const U32 width = llmin(LLPipeline::MAX_PREVIEW_WIDTH, pack_width);
     return new LLGLTFPreviewTexture(material, (S32)width);
 }
@@ -320,15 +295,6 @@ LLPointer<LLGLTFPreviewTexture> LLGLTFPreviewTexture::create(LLPointer<LLFetched
 bool LLGLTFPreviewTexture::needsRender()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
-
-#if !LL_DARWIN
-    // Not before the probe pack it renders through is there, and planned with the post target the
-    // preview takes from the pool; asked again each frame until it is.
-    if (!retainedRenderReady())
-    {
-        return false;
-    }
-#endif
 
     if (!mShouldRender && mBestLoad.isFullyLoaded()) { return false; }
     MaterialLoadLevels current_load = get_material_load_levels(*mGLTFMaterial.get());
@@ -340,15 +306,6 @@ bool LLGLTFPreviewTexture::needsRender()
     }
     return false;
 }
-
-#if !LL_DARWIN
-bool LLGLTFPreviewTexture::retainedRenderReady() const
-{
-    return gPipeline.mAuxillaryRT.screen.isComplete() &&
-        gPipeline.resourcePlan().wants(
-            ALRenderResourcePlan::Id::ProbePostPing);
-}
-#endif
 
 LLViewerDynamicTexture::ETargetlessRenderResult
 LLGLTFPreviewTexture::renderWithoutTarget()
@@ -363,9 +320,8 @@ LLGLTFPreviewTexture::renderWithoutTarget()
         return ETargetlessRenderResult::PENDING;
     }
 
-    // Darwin previews have one rendering owner. Readiness and actual failures
-    // both stay targetless and retry Metal; neither may acquire the retained
-    // preview target or make GL a recovery renderer.
+    // Apple Silicon previews have one rendering owner. Readiness and actual
+    // failures both stay targetless and retry Metal.
     preRender();
     const bool rendered = render();
 
@@ -388,7 +344,7 @@ LLGLTFPreviewTexture::renderWithoutTarget()
     mBestLoad = mPendingLoad;
     return ETargetlessRenderResult::COMPLETED;
 #else
-    return ETargetlessRenderResult::RETAINED_FALLBACK;
+    return ETargetlessRenderResult::PENDING;
 #endif
 }
 
@@ -399,10 +355,9 @@ void LLGLTFPreviewTexture::preRender(bool clear_depth)
     llassert(mShouldRender);
     if (!mShouldRender) { return; }
 
-#if LL_DARWIN
     // Snapshot the base dynamic-texture camera contract without touching GL.
     // Native readiness and failure leave the preview pending for another
-    // targetless attempt; Darwin never enters the retained pre-render path.
+    // targetless attempt.
     (void)clear_depth;
     mOrigin.set(0, 0);
     LLViewerCamera* camera = LLViewerCamera::getInstance();
@@ -411,9 +366,6 @@ void LLGLTFPreviewTexture::preRender(bool clear_depth)
     mCamera.setAspect(camera->getAspect());
     mCamera.setView(camera->getView());
     mCamera.setNear(camera->getNear());
-#else
-    LLViewerDynamicTexture::preRender(clear_depth);
-#endif
 }
 
 
@@ -428,12 +380,7 @@ struct GLTFPreviewModel
         mDrawInfo->mModelMatrix = &mModelMatrix;
     }
     GLTFPreviewModel(GLTFPreviewModel&) = delete;
-    ~GLTFPreviewModel()
-    {
-        // No model matrix necromancy
-        llassert(gGLLastMatrix != &mModelMatrix);
-        gGLLastMatrix = nullptr;
-    }
+    ~GLTFPreviewModel() = default;
     LLPointer<LLDrawInfo> mDrawInfo;
     LLMatrix4a mModelMatrix; // Referenced by mDrawInfo
 };
@@ -575,28 +522,6 @@ PreviewSphere& get_preview_sphere(LLPointer<LLFetchedGLTFMaterial>& material, co
     return preview_sphere;
 }
 
-#if !LL_DARWIN
-// Final, direct modifications to shader constants, just before render
-void fixup_shader_constants(LLGLSLShader& shader)
-{
-    // Lit by the sun, with no haze. Its white light is the Environment block's
-    // (bindEnvironmentUBOLitBy, around the draw).
-    shader.uniform1i(LLShaderMgr::SUN_UP_FACTOR, 1);
-    shader.uniform1f(LLShaderMgr::DENSITY_MULTIPLIER, 0.0f);
-
-    // Ignore shadows (if enabled): the preview has none of the maps, the sun's four cascades and the spot pair, so each
-    // reads lit without a sample. Their units keep the depth maps bindShadowMaps put there, under the sampler the
-    // program declares them for, and the next bind through bindShadowMaps hands the program its real set again.
-    constexpr S32 every_shadow_map = (1 << 6) - 1;
-    shader.uniform1i(LLShaderMgr::UNBUILT_SHADOW_MAPS, every_shadow_map);
-
-    // Every alpha mode draws through the alpha pool's program here, and the material's bind sets a
-    // mask or opaque cutoff but leaves a blended one to the pass: without this a blended sphere
-    // would keep the cutoff of whichever preview drew before it.
-    LLDrawPoolAlpha::setCoverageCutoff(&shader);
-}
-#endif
-
 // Set a variable to a value temporarily, and restor the variable's old value
 // when this object leaves scope.
 template<typename T>
@@ -638,38 +563,11 @@ bool LLGLTFPreviewTexture::render()
     ALMetalPBRPreviewEnvironment metal_preview_environment;
 #endif
 
-#if !LL_DARWIN
-    std::unique_ptr<ALTransientTargets> post;
-    LLRenderTarget* post_ping = nullptr;
-    // Preserve the retained platforms' original fail-before-draw behavior.
-    post = std::make_unique<ALTransientTargets>(
-        gPipeline.mTransientTargets);
-    post_ping = gPipeline.acquireResource(
-        *post, ALRenderResourcePlan::Id::ProbePostPing);
-    if (!post_ping)
-    {
-        return false;
-    }
-    // These retained-state guards must outlive both the draw and its post
-    // chain.
-    std::unique_ptr<LLGLSColorMask> color_mask;
-    std::unique_ptr<LLGLDepthTest> depth;
-    std::unique_ptr<LLGLDisable> stencil;
-    std::unique_ptr<LLGLDisable> scissor;
-    std::unique_ptr<SetTemporarily<bool>> no_dof;
-    std::unique_ptr<SetTemporarily<bool>> no_glow;
-    std::unique_ptr<SetTemporarily<LLPipeline::RenderTargetPack*>>
-        use_auxiliary_render_target;
-    const S32 old_local_light_count =
-        gSavedSettings.get<S32>("RenderLocalLightCount");
-    bool retained_preview_rendered = false;
-#endif
-
     LLVector3 light_dir3(1.0f, 1.0f, 1.0f);
     light_dir3.normalize();
     const LLVector4 light_dir = LLVector4(light_dir3, 0);
-    // Make the preview camera current by value and restore the camera found
-    // here after either renderer completes.
+    // Make the preview camera current by value and restore the camera after
+    // native rendering completes.
     const LLCamera saved_camera = LLViewerCamera::getCurrent();
     LLViewerCamera camera;
 
@@ -686,15 +584,11 @@ bool LLGLTFPreviewTexture::render()
     object_transform.setIdentity();
     object_transform.setTranslation(object_position);
 
-    // Build the exact preview camera matrices on the CPU. Retained platforms
-    // also load them through setPerspective for their draw.
+    // Build the exact preview camera matrices on the CPU.
     const LLVector3 origin(0.0, 0.0, 0.0);
     camera.lookAt(origin, object_position);
     camera.setAspect(static_cast<F32>(mFullWidth) /
                      static_cast<F32>(mFullHeight));
-#if !LL_DARWIN
-    const LLRect texture_rect(0, mFullHeight, mFullWidth, 0);
-#endif
     const LLMatrix4a preview_modelview = camera.frameModelview();
     const LLMatrix4a preview_projection = al_perspective(
         camera.getView(), camera.getAspect(), camera.getNear(),
@@ -711,88 +605,6 @@ bool LLGLTFPreviewTexture::render()
     light_dir_in.loadua(light_dir.mV);
     preview_modelview.transform4(light_dir_in, transformed_light_dir);
     SetTemporarily<LLVector4> force_sun_direction_high_graphics(&gPipeline.mTransformedSunDir, LLVector4(transformed_light_dir.getF32ptr()));
-
-#if !LL_DARWIN
-    LLRenderTarget& screen = gPipeline.mAuxillaryRT.screen;
-    // The static sphere can render again with the same model object after
-    // another pass has changed GL's actual matrix.
-    gGLLastMatrix = nullptr;
-#endif
-
-#if 0
-    if (mGLTFMaterial->mAlphaMode == LLGLTFMaterial::ALPHA_MODE_OPAQUE || mGLTFMaterial->mAlphaMode == LLGLTFMaterial::ALPHA_MODE_MASK)
-    {
-        // *TODO: Opaque/alpha mask rendering
-    }
-#endif
-#if !LL_DARWIN
-    const auto render_retained_preview = [&]()
-    {
-        retained_preview_rendered = true;
-
-        // The swatch's alpha is its coverage over a checkerboard. Retain the
-        // original GL state through the complete fallback post chain.
-        color_mask = std::make_unique<LLGLSColorMask>(true, true);
-        gGL.setClearColor(LLColor4::transparent);
-        gGL.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        depth = std::make_unique<LLGLDepthTest>(GL_FALSE);
-        stencil = std::make_unique<LLGLDisable>(GL_STENCIL_TEST);
-        scissor = std::make_unique<LLGLDisable>(GL_SCISSOR_TEST);
-        no_dof = std::make_unique<SetTemporarily<bool>>(
-            &LLPipeline::RenderDepthOfField, false);
-        no_glow = std::make_unique<SetTemporarily<bool>>(
-            &LLPipeline::sRenderGlow, false);
-        use_auxiliary_render_target = std::make_unique<
-            SetTemporarily<LLPipeline::RenderTargetPack*>>(
-                &gPipeline.mRT, &gPipeline.mAuxillaryRT);
-
-        gSavedSettings.set<S32>("RenderLocalLightCount", 0);
-        gPipeline.mReflectionMapManager.forceDefaultProbeAndUpdateUniforms();
-        camera.setPerspective(
-            NOT_FOR_SELECTION, texture_rect.mLeft, texture_rect.mBottom,
-            texture_rect.getWidth(), texture_rect.getHeight(), false,
-            camera.getNear(), FINITE_PROJECTION_FAR);
-        gPipeline.setupHWLights();
-
-        // Override lights to ensure the sun is always shining from a certain
-        // direction (low graphics). The native batch carries the same light
-        // explicitly and does not need this retained state mutation.
-        LLLightState* light = gGL.getLight(0);
-        light->setPosition(light_dir);
-        constexpr bool sun_up = true;
-        light->setSunPrimary(sun_up);
-
-        // Alpha blend rendering
-
-        screen.bindTarget();
-        // Colour only: the sphere draws with the depth test off, and depth writes are off
-        // with it, so a depth clear here would do nothing.
-        gGL.clear(GL_COLOR_BUFFER_BIT);
-
-        LLGLSLShader& shader = *gDeferredPBRAlphaProgram.selectVariant();
-
-        gPipeline.bindDeferredShader(shader);
-        fixup_shader_constants(shader);
-
-        // A white sun through no atmosphere, whatever the sky's light is.
-        LLEnvironment::instance().bindEnvironmentUBOLitBy(LLColor3::white);
-
-        LLFetchedGLTFMaterial* lastMat = nullptr;
-        LLViewerTexture* lastTex = nullptr;
-        for (PreviewSpherePart& part : preview_sphere)
-        {
-            LLRenderPass::pushGLTFBatch(*part->mDrawInfo, lastMat, lastTex);
-        }
-
-        LLEnvironment::instance().bindEnvironmentUBO();
-
-        gPipeline.unbindDeferredShader(shader);
-
-        screen.flush();
-    };
-
-    render_retained_preview();
-#endif
 
 #if LL_DARWIN
     {
@@ -1013,7 +825,7 @@ bool LLGLTFPreviewTexture::render()
             // bindEnvironmentUBOLitBy(white) makes the selected atmosphere
             // sun white; calcAtmosphericVarsLinear then applies the packed
             // sky sunlight scale. Use the current environment snapshot so
-            // HDR and non-HDR previews follow the exact retained choice.
+            // HDR and non-HDR previews follow the established lighting choice.
             batch.sun_color[0] = metal_preview_sun_scale;
             batch.sun_color[1] = metal_preview_sun_scale;
             batch.sun_color[2] = metal_preview_sun_scale;
@@ -1224,74 +1036,8 @@ bool LLGLTFPreviewTexture::render()
     LLViewerCamera::setCurrent(saved_camera);
     return true;
 #else
-    bool post_succeeded = post_ping != nullptr;
-    if (post_succeeded)
-    {
-        llassert(post);
-        // *HACK: Hide mExposureMap from generateExposure
-        gPipeline.mExposureMap.swapFBORefs(gPipeline.mLastExposure);
-
-        const bool hdr = LLPipeline::hdrEnabled();
-        LLPipeline::Bloom bloom;
-        if (hdr)
-        {
-            gPipeline.generateLuminance(&screen, &gPipeline.mLuminanceMap);
-            gPipeline.generateExposure(&gPipeline.mLuminanceMap, &gPipeline.mExposureMap, /*use_history = */ false);
-
-            // Bloom composite is folded into colorCorrect's tonemap variants,
-            // so only generate the pyramid here.
-            bloom = gPipeline.generateBloomHDR(&screen, *post);
-        }
-
-        gPipeline.colorCorrect(&screen, post_ping, true, false, &bloom);
-        LLVertexBuffer::unbind();
-
-        if (!hdr)
-        {
-            if (LLRenderTarget* glow = gPipeline.generateGlow(post_ping, *post))
-            {
-                gPipeline.combineGlow(post_ping, &screen, glow);
-            }
-        }
-
-        // *HACK: Restore mExposureMap (it will be consumed by generateExposure
-        // next frame).
-        gPipeline.mExposureMap.swapFBORefs(gPipeline.mLastExposure);
-
-        // Final render. Nested post-processing targets restore the full
-        // preview target's viewport.
-        gGL.setViewport(mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
-        gDeferredPostNoDoFProgram.bind();
-
-        // Under HDR colorCorrect ends in post_ping; otherwise glow combine
-        // wrote the result back to screen.
-        LLRenderTarget* last_in_chain = hdr ? post_ping : &screen;
-        gDeferredPostNoDoFProgram.bindTexture(
-            LLShaderMgr::DEFERRED_DIFFUSE, last_in_chain);
-        gDeferredPostNoDoFProgram.bindDepthTexture(
-            LLShaderMgr::DEFERRED_DEPTH,
-            &gPipeline.mAuxillaryRT.deferredScreen);
-
-        {
-            LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
-            gPipeline.mScreenTriangleVB->setBuffer();
-            gPipeline.mScreenTriangleVB->drawArrays(
-                LLRender::TRIANGLES, 0, 3);
-        }
-
-        gDeferredPostNoDoFProgram.unbind();
-    }
-
-    // Restore only state that the retained callback actually changed.
-    if (retained_preview_rendered)
-    {
-        gPipeline.setupHWLights();
-        gPipeline.mReflectionMapManager.forceDefaultProbeAndUpdateUniforms(false);
-        gSavedSettings.set<S32>("RenderLocalLightCount", old_local_light_count);
-    }
     LLViewerCamera::setCurrent(saved_camera);
-
-    return post_succeeded;
+    return false;
 #endif
 }
 
@@ -1327,12 +1073,12 @@ void LLGLTFPreviewTexture::postRender(bool success)
 #if LL_DARWIN
     // Darwin's scheduler completes through renderWithoutTarget(). Keep this
     // override fail-closed if a direct caller ever invokes it: publish only a
-    // completed Metal result and never copy or generate retained GL backing.
+    // completed Metal result.
     mLastPostRenderSuccess =
         success && mMetalPreview && publishMetalPreview();
     mMetalPreview.reset();
 #else
-    LLViewerDynamicTexture::postRender(success);
+    mLastPostRenderSuccess = false;
 #endif
     mShouldRender = !lastPostRenderSucceeded();
     if (lastPostRenderSucceeded())
