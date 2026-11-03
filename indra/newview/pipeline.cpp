@@ -508,7 +508,6 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool world_ui_overlay_exact = false;
     std::unique_ptr<ALMetalRenderTarget> depth_of_field_target;
     U32 depth_of_field_frame = std::numeric_limits<U32>::max();
-    bool depth_of_field_applied = false;
     std::unique_ptr<ALMetalRenderTarget> bloom_target;
     U32 bloom_frame = std::numeric_limits<U32>::max();
     std::unique_ptr<ALMetalRenderTarget> exposure_target;
@@ -1515,7 +1514,6 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     capture.world_ui_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_target.reset();
     capture.depth_of_field_frame = std::numeric_limits<U32>::max();
-    capture.depth_of_field_applied = false;
     capture.bloom_target.reset();
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
@@ -1577,7 +1575,6 @@ bool LLPipeline::endMetalHeroProbeFaceCapture()
     capture.world_ui_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_target.reset();
     capture.depth_of_field_frame = std::numeric_limits<U32>::max();
-    capture.depth_of_field_applied = false;
     capture.bloom_target.reset();
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.target.reset();
@@ -1684,7 +1681,6 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     capture.world_ui_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_target.reset();
     capture.depth_of_field_frame = std::numeric_limits<U32>::max();
-    capture.depth_of_field_applied = false;
     capture.bloom_target.reset();
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.base_light_map_target.reset();
@@ -1752,7 +1748,6 @@ bool LLPipeline::endMetalReflectionProbeFaceCapture()
     capture.world_ui_frame = std::numeric_limits<U32>::max();
     capture.depth_of_field_target.reset();
     capture.depth_of_field_frame = std::numeric_limits<U32>::max();
-    capture.depth_of_field_applied = false;
     capture.bloom_target.reset();
     capture.bloom_frame = std::numeric_limits<U32>::max();
     capture.target.reset();
@@ -1860,7 +1855,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.world_ui_chain_exhausted_reported = false;
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
-        capture.depth_of_field_applied = false;
         capture.bloom_target.reset();
         capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.exposure_target.reset();
@@ -2167,7 +2161,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.world_ui_chain_debug_color = false;
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
-        capture.depth_of_field_applied = false;
         capture.bloom_target.reset();
         capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.base_light_map_target.reset();
@@ -3783,7 +3776,6 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.world_ui_chain_exhausted_reported = false;
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
-        capture.depth_of_field_applied = false;
         capture.bloom_target.reset();
         capture.bloom_frame = std::numeric_limits<U32>::max();
         capture.exposure_target.reset();
@@ -8740,7 +8732,6 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             capture.depth_of_field_target.reset();
             capture.depth_of_field_frame =
                 std::numeric_limits<U32>::max();
-            capture.depth_of_field_applied = false;
             capture.bloom_target.reset();
             capture.bloom_frame =
                 std::numeric_limits<U32>::max();
@@ -9014,9 +9005,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             const bool cutout_snapshot =
                 sCutoutRender && mMetalWorldSnapshotRequested;
             const bool wants_native_dof = capture.hdr && dof.enabled &&
-                !cutout_snapshot &&
-                depthOfFieldProgramsReady(dof) && isMainWorldPass() &&
-                mRT == &mMainRT;
+                !cutout_snapshot && isMainWorldPass() && mRT == &mMainRT;
             bool exact_dof = !wants_native_dof;
             const ALMetalRenderTarget* post_source = target.get();
             capture.depth_of_field_frame = gFrameCount;
@@ -9071,14 +9060,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 {
                     capture.depth_of_field_target =
                         std::move(dof_target);
-                    capture.depth_of_field_applied = true;
                     post_source = capture.depth_of_field_target.get();
                     exact_dof = true;
                 }
                 else
                 {
                     LL_WARNS("Metal")
-                        << "Native world depth of field retained GL: "
+                        << "Native world depth of field withheld native "
+                           "publication: "
                         << dof_error << LL_ENDL;
                 }
             }
@@ -10021,7 +10010,6 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         capture.depth_of_field_target.reset();
                         capture.depth_of_field_frame =
                             std::numeric_limits<U32>::max();
-                        capture.depth_of_field_applied = false;
                         capture.bloom_target.reset();
                         capture.bloom_frame =
                             std::numeric_limits<U32>::max();
@@ -10117,7 +10105,6 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 capture.depth_of_field_target.reset();
                 capture.depth_of_field_frame =
                     std::numeric_limits<U32>::max();
-                capture.depth_of_field_applied = false;
                 capture.bloom_target.reset();
                 capture.bloom_frame =
                     std::numeric_limits<U32>::max();
@@ -10204,7 +10191,6 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
         capture.world_ui_frame = std::numeric_limits<U32>::max();
         capture.depth_of_field_target.reset();
         capture.depth_of_field_frame = std::numeric_limits<U32>::max();
-        capture.depth_of_field_applied = false;
         capture.bloom_target.reset();
         capture.bloom_frame = std::numeric_limits<U32>::max();
     }
@@ -24545,19 +24531,15 @@ void LLPipeline::captureScopeSample(LLRenderTarget* src)
         mScopeData.blendToward(fresh, llclamp(smoothing(), 0.f, 1.f));
     }
 
-    // Accept the native display target only when every intervening post owner
-    // matches the retained GL scheduling state. The upstream color-correct
-    // census was already applied when display_post_target was produced; this
-    // second census covers the passes between colorCorrect and this boundary.
+    // Accept only a complete native display transaction from this frame. DoF
+    // is part of that transaction on Darwin; display_post_target is not
+    // published when a configured native DoF pass fails.
     MetalWorldSimpleCapture* metal_capture =
         mMetalWorldSimpleCapture.get();
     const bool native_exact = metal_capture && metal_capture->renderer &&
         metal_capture->device && metal_capture->display_post_target &&
         metal_capture->display_post_frame == gFrameCount &&
         metal_capture->depth_of_field_frame == gFrameCount &&
-        mMetalDepthOfFieldGLFrame == gFrameCount &&
-        metal_capture->depth_of_field_applied ==
-            mMetalDepthOfFieldGLApplied &&
         metal_capture->hdr && canCaptureMetalScopeSample(false) &&
         metal_capture->display_post_target->descriptor().width ==
             src->getWidth() &&
@@ -26977,6 +26959,7 @@ LLPipeline::DepthOfFieldConfig LLPipeline::depthOfFieldConfig() const
     return config;
 }
 
+#if !LL_DARWIN
 bool LLPipeline::depthOfFieldProgramsReady(
     const DepthOfFieldConfig& config) const
 {
@@ -26989,6 +26972,7 @@ bool LLPipeline::depthOfFieldProgramsReady(
         ? gDeferredDoFCombineProgram : gDeferredDoFCombineProgramNoNear;
     return gather.isComplete() && combine.isComplete();
 }
+#endif
 
 void LLPipeline::updateDepthOfFieldFocus()
 {
@@ -27101,6 +27085,7 @@ void LLPipeline::updateDepthOfFieldFocus()
     focus.tan_pixel_angle = tanf(1.f / LLDrawable::sCurPixelAngle);
 }
 
+#if !LL_DARWIN
 LLRenderTarget* LLPipeline::renderDoF(ALTransientTargets& scope)
 {
     LL_PROFILE_GPU_ZONE("dof");
@@ -27291,6 +27276,7 @@ LLRenderTarget* LLPipeline::renderDoF(ALTransientTargets& scope)
     }
     return nullptr;
 }
+#endif
 
 void LLPipeline::renderFinalize()
 {
@@ -27378,19 +27364,13 @@ void LLPipeline::renderFinalize()
     // chain's targets are all held until the frame is presented.
     ALTransientTargets post(mTransientTargets);
     LLRenderTarget*    scene = &mRT->screen;
+#if !LL_DARWIN
     const DepthOfFieldConfig dof = depthOfFieldConfig();
-#if LL_DARWIN
-    mMetalDepthOfFieldGLFrame = gFrameCount;
-    mMetalDepthOfFieldGLApplied = false;
-#endif
     if (dof.enabled && !cutout)
     {
         if (LLRenderTarget* defocused = renderDoF(post))
         {
             scene = defocused;
-#if LL_DARWIN
-            mMetalDepthOfFieldGLApplied = true;
-#endif
         }
 
         // renderDoF calls setup3DViewport and runs a reduced viewport
@@ -27401,6 +27381,7 @@ void LLPipeline::renderFinalize()
         gGLViewport[3] = gViewerWindow->getWorldViewRectRaw().getHeight();
         gGL.setViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
     }
+#endif
 
     Bloom bloom;
     if (hdr && !cutout)

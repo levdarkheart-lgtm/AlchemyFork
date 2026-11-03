@@ -312,8 +312,6 @@ private:
     U32 mMetalLensFlareGLFrame = std::numeric_limits<U32>::max();
     bool mMetalLensFlareLastWasZero = true;
     bool mMetalLensFlareHistoryReady = false;
-    U32 mMetalDepthOfFieldGLFrame = std::numeric_limits<U32>::max();
-    bool mMetalDepthOfFieldGLApplied = false;
     bool mMetalHeroWorldCaptureActive = false;
     bool mMetalReflectionWorldCaptureActive = false;
     // A synchronous snapshot may request one fresh exact world/UI
@@ -769,12 +767,16 @@ public:
         bool computed = false;
     };
     DepthOfFieldConfig depthOfFieldConfig() const;
+#if !LL_DARWIN
     bool depthOfFieldProgramsReady(
         const DepthOfFieldConfig& config) const;
+#endif
     void updateDepthOfFieldFocus();
+#if !LL_DARWIN
     LLRenderTarget* renderDoF(ALTransientTargets& scope);
     // The description depth of field's blur was last taken at, freed from the pool when its scale moves on.
     std::optional<ALRenderTargetDesc> mDoFBlurDesc;
+#endif
     DepthOfFieldFocus mDepthOfFieldFocus;
     void combineGlow(LLRenderTarget* src, LLRenderTarget* dst, LLRenderTarget* glow);
     void visualizeBuffers(LLRenderTarget* src, LLRenderTarget* dst, U32 bufferIndex);

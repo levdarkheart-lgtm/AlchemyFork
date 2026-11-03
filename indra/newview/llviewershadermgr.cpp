@@ -205,12 +205,14 @@ LLGLSLShader            gDeferredFullbrightAlphaMaskAlphaProgram;
 LLGLSLShader            gHUDFullbrightAlphaMaskAlphaProgram;
 LLGLSLShader            gDeferredEmissiveProgram;
 LLGLSLShader            gDeferredEmissiveIndexedProgram; // multi-material indexed legacy glow
+#if !LL_DARWIN
 LLGLSLShader            gDeferredPostProgram;
 LLGLSLShader            gDeferredPostProgramNoNear;
 LLGLSLShader            gDeferredPostProgramShaped;
 LLGLSLShader            gDeferredPostProgramNoNearShaped;
 LLGLSLShader            gDeferredDoFCombineProgram;
 LLGLSLShader            gDeferredDoFCombineProgramNoNear;
+#endif
 LLGLSLShader            gExposureProgram;
 LLGLSLShader            gExposureProgramNoFade;
 LLGLSLShader            gExposureHistogramProgram;
@@ -1382,12 +1384,14 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gHUDFullbrightAlphaMaskAlphaProgram.unload();
         gDeferredEmissiveProgram.unload();
         gDeferredEmissiveIndexedProgram.unload();
+#if !LL_DARWIN
         gDeferredPostProgram.unload();
         gDeferredPostProgramNoNear.unload();
         gDeferredPostProgramShaped.unload();
         gDeferredPostProgramNoNearShaped.unload();
         gDeferredDoFCombineProgram.unload();
         gDeferredDoFCombineProgramNoNear.unload();
+#endif
         gExposureProgram.unload();
         gExposureProgramNoFade.unload();
         gExposureHistogramProgram.unload();
@@ -3065,8 +3069,10 @@ void LLViewerShaderMgr::loadShadersDeferred()
     }
 #endif
 
-    // Without HDR, LLPipeline::renderDoF's blur is in the post chain's RGBA8, so the gather and combine programs keep it
-    // square-root encoded.
+#if !LL_DARWIN
+    // Without HDR, retained LLPipeline::renderDoF's blur is in the post
+    // chain's RGBA8, so the gather and combine programs keep it square-root
+    // encoded.
     const bool dof_sqrt_encoded = !mInputs.mLocal.mHDR;
 
     {
@@ -3144,6 +3150,7 @@ void LLViewerShaderMgr::loadShadersDeferred()
         }
         built(gDeferredDoFCombineProgramNoNear.createShader(), gDeferredDoFCombineProgramNoNear);
     }
+#endif
 
     {
         gDeferredPostNoDoFProgram.mName = "Deferred Post NoDoF Shader";

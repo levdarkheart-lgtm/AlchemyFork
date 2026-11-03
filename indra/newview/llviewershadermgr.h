@@ -248,17 +248,18 @@ extern LLGLSLShader         gDeferredShadowGLTFAlphaMaskIndexedProgram; // multi
 extern LLGLSLShader         gDeferredShadowMaterialIndexedProgram; // multi-material indexed legacy mask shadow
 extern LLGLSLShader         gDeferredShadowGLTFAlphaBlendProgram;
 extern LLGLSLShader         gDeferredShadowFullbrightAlphaMaskProgram;
-// DoF gather blur, four variants over two orthogonal compile-time axes:
-// FRONT_BLUR (RenderDepthOfFieldNearBlur) and DOF_SHAPED (any of the shaped
-// aperture, cat's-eye or defocus fringe being active). The shaped code sits in
-// the innermost sample loop, so it is compiled out rather than branched over.
+#if !LL_DARWIN
+// Retained non-Darwin DoF gather blur, four variants over two orthogonal
+// compile-time axes: FRONT_BLUR (RenderDepthOfFieldNearBlur) and DOF_SHAPED
+// (any shaped aperture, cat's-eye or defocus fringe being active). The shaped
+// code sits in the innermost sample loop, so it is compiled out rather than
+// branched over.
 extern LLGLSLShader         gDeferredPostProgram;
 extern LLGLSLShader         gDeferredPostProgramNoNear;
 extern LLGLSLShader         gDeferredPostProgramShaped;
 extern LLGLSLShader         gDeferredPostProgramNoNearShaped;
 extern LLGLSLShader         gDeferredDoFCombineProgram;
 extern LLGLSLShader         gDeferredDoFCombineProgramNoNear;
-#if !LL_DARWIN
 extern LLGLSLShader         gFXAAProgram[4];
 extern LLGLSLShader         gSMAAEdgeDetectProgram[4];
 extern LLGLSLShader         gSMAABlendWeightsProgram[4];
