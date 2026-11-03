@@ -99,6 +99,7 @@ reload the chronological history.
 | Metal edit-grid authored mip publication and source-exact build 68202, 2026-11-03 | [CURRENT-manipulator-grid-metal-authored-mip-checkpoint-2026-11-03.md](CURRENT-manipulator-grid-metal-authored-mip-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only legacy standard/brightness/darkness bump ownership and source-exact build 68205, 2026-11-03 | [CURRENT-native-legacy-bump-checkpoint-2026-11-03.md](CURRENT-native-legacy-bump-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-authoritative avatar composite/bake capture, morph readback and publication, source-exact build 68207, 2026-11-03 | [CURRENT-native-avatar-composite-checkpoint-2026-11-03.md](CURRENT-native-avatar-composite-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Targetless native appearance-editor visual-parameter hints with retained avatar/attachment/material behavior, source-exact build 68209, 2026-11-03 | [CURRENT-native-visual-param-hint-checkpoint-2026-11-03.md](CURRENT-native-visual-param-hint-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
