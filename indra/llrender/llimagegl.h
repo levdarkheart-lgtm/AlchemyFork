@@ -647,9 +647,6 @@ private:
     static U32 sScratchPBO;
     static U32 sScratchPBOSize;
 
-    //the flag to allow to call readBackRaw(...).
-    //can be removed if we do not use that function at all.
-    static bool sAllowReadBackRaw ;
 //
 //****************************************************************************************************
 //The below for texture auditing use only

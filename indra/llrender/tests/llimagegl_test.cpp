@@ -366,33 +366,56 @@ namespace
         CHECK((S32)mask[3] == (S32)GL_GREEN);
     }
 
-    // Round-trip: upload a known pattern, glGetTexImage it back, and
-    // verify byte-for-byte. Covers the createGLTexture upload path and
-    // readBackRaw together. RGBA chosen so no deprecated rewrite kicks
-    // in — that path is covered separately by the setExplicitFormat and
-    // component-count cases above.
+    // Round-trip each LLImageRaw byte layout through the native mirror and
+    // verify byte-for-byte. Three-component storage expands to RGBA in Metal
+    // and must collapse back without changing the host result.
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: readBackRaw returns the bytes createGLTexture uploaded", "[LLImageGL]")
     {
         constexpr U16 W = 8, H = 8;
-        constexpr S8  C = 4;
-        LLPointer<LLImageRaw> src = new LLImageRaw(W, H, C);
-        U8* sd = src->getData();
-        // Per-pixel pattern: each byte is its linear index (mod 256).
-        // Distinguishes any row/col/component swap on readback.
-        for (size_t i = 0; i < (size_t)W * H * C; ++i)
-            sd[i] = (U8)(i & 0xFF);
+        for (S8 components = 1; components <= 4; ++components)
+        {
+            DYNAMIC_SECTION(static_cast<S32>(components) << " components")
+            {
+                LLPointer<LLImageRaw> src = new LLImageRaw(W, H, components);
+                U8* sd = src->getData();
+                // Per-pixel pattern distinguishes row, column and component swaps.
+                for (size_t i = 0; i < (size_t)W * H * components; ++i)
+                {
+                    sd[i] = (U8)(i & 0xFF);
+                }
 
+                LLPointer<LLImageGL> img = new LLImageGL(/*usemipmaps=*/false);
+                REQUIRE(img->createGLTexture(0, src.get()));
+
+                LLPointer<LLImageRaw> dst = new LLImageRaw(W, H, components);
+                std::memset(dst->getData(), 0, (size_t)W * H * components);
+                CHECK(img->readBackRaw(0, dst.get(), /*compressed_ok=*/false));
+
+                CHECK(std::memcmp(src->getData(), dst->getData(),
+                                  (size_t)W * H * components) == 0);
+            }
+        }
+    }
+
+#if LL_DARWIN
+    TEST_CASE_METHOD(llimagegl_data,
+                     "LLImageGL: readBackRaw fails closed when its Metal mirror is missing",
+                     "[LLImageGL][almetal]")
+    {
+        LLPointer<LLImageRaw> src = makeRaw(8, 8, 4, /*fill=*/0x5a);
         LLPointer<LLImageGL> img = new LLImageGL(/*usemipmaps=*/false);
         REQUIRE(img->createGLTexture(0, src.get()));
+        REQUIRE(img->getTexName() != 0);
+        REQUIRE(img->getMetalTexture());
 
-        LLPointer<LLImageRaw> dst = new LLImageRaw(W, H, C);
-        std::memset(dst->getData(), 0, (size_t)W * H * C);
-        CHECK(img->readBackRaw(0, dst.get(), /*compressed_ok=*/false));
+        img->discardMetalTexture();
+        REQUIRE_FALSE(img->getMetalTexture());
 
-        CHECK(std::memcmp(src->getData(), dst->getData(),
-                                  (size_t)W * H * C) ==
-                      0);
+        LLPointer<LLImageRaw> dst = new LLImageRaw();
+        CHECK_FALSE(img->readBackRaw(0, dst.get(), /*compressed_ok=*/false));
+        CHECK(dst->isBufferInvalid());
     }
+#endif
 
     // A packed pixel type is one value a pixel, whatever the format's component
     // count. GStreamer hands its frames over as GL_BGRA /

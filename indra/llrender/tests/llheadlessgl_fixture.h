@@ -520,6 +520,19 @@ namespace ll_test
                 gGL.pushMatrix();
                 gGL.loadIdentity();
             }
+
+#if LL_DARWIN
+            if (needs_imagegl)
+            {
+                // Match the viewer's window-published native image backend.
+                // Keeping this ownership in the window fixture also makes a
+                // same-test context replacement publish its new device before
+                // the next image upload.
+                mPreviousImageMetalDevice = LLImageGL::getMetalDevice();
+                LLImageGL::setMetalDevice(mWindow->getMetalDevice());
+                mPublishedImageMetalDevice = true;
+            }
+#endif
         }
 
         ~HeadlessGL()
@@ -537,6 +550,12 @@ namespace ll_test
 
             LLFontManager::cleanupClass();
             LLImageGL::cleanupClass();
+#if LL_DARWIN
+            if (mPublishedImageMetalDevice)
+            {
+                LLImageGL::setMetalDevice(mPreviousImageMetalDevice);
+            }
+#endif
             gGL.shutdown();
             LLVertexBuffer::cleanupClass();
             // Drop ALUniformBuffer's process-lifetime statics (streaming rings, the
@@ -570,6 +589,10 @@ namespace ll_test
         LLWindowCallbacks mCallbacks;
         LLWindow* mWindow = nullptr;
         std::unique_ptr<TestShaderMgr> mShaderMgr;
+#if LL_DARWIN
+        ALMetalDevice* mPreviousImageMetalDevice = nullptr;
+        bool mPublishedImageMetalDevice = false;
+#endif
     };
 
     // The one context of the tests that share theirs: made by the first test
