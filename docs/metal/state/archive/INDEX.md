@@ -107,6 +107,7 @@ reload the chronological history.
 | Retained animation-preview target/copy routing deletion after complete Metal replacement, source-exact build 68219, 2026-11-03 | [CURRENT-retained-animation-preview-routing-removal-checkpoint-2026-11-03.md](CURRENT-retained-animation-preview-routing-removal-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only shared dynamic-texture framework after complete Metal replacement of every concrete producer, source-exact build 68221, 2026-11-03 | [CURRENT-native-only-dynamic-texture-framework-checkpoint-2026-11-03.md](CURRENT-native-only-dynamic-texture-framework-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Residual GL color-grading volume owner removal after validated Metal replacement, source-exact build 68223, 2026-11-03 | [CURRENT-native-color-lut-gl-owner-removal-checkpoint-2026-11-03.md](CURRENT-native-color-lut-gl-owner-removal-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Residual GL tone-curve owner removal after validated Metal replacement, source-exact build 68225, 2026-11-03 | [CURRENT-native-tone-curve-gl-owner-removal-checkpoint-2026-11-03.md](CURRENT-native-tone-curve-gl-owner-removal-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
