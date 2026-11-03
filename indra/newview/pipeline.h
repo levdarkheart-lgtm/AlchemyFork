@@ -2155,9 +2155,12 @@ protected:
 
     // Color grading lookup texture and size
     LLPointer<ALTexture3D> mCGLut;
+    // Backend-neutral publication state. Darwin owns only mMetalCGLut; other
+    // platforms own mCGLut until platform pruning removes that implementation.
+    bool mColorGradeLutLoaded = false;
     LLVector4 mCGLutSize{};
 #if LL_DARWIN
-    // Same volume represented as a square 2D array, one blue slice per layer.
+    // The volume represented as a square 2D array, one blue slice per layer.
     std::unique_ptr<ALMetalTexture> mMetalCGLut;
 #endif
 

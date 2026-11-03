@@ -36,9 +36,10 @@ class LutCube
 {
 public:
     /// RGBA at 16 bits per channel, size^3 entries, laid out so x varies
-    /// fastest -- which is the order glTexSubImage3D wants. Empty if the file
-    /// could not be understood; callers test this and fall back rather than
-    /// uploading a half-built cube.
+    /// fastest -- the order both the native slice uploader and the retained
+    /// non-Darwin 3D-texture uploader consume. Empty if the file could not be
+    /// understood; callers test this and fall back rather than uploading a
+    /// half-built cube.
     ///
     /// Sixteen bits rather than eight because a .cube carries floats, and
     /// quantising them to 256 levels before asking the hardware to interpolate

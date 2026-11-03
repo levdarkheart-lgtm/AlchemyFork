@@ -1401,6 +1401,88 @@ TEST_CASE("almetal: private texture transfer handles unaligned CPU row pitches",
     }
 }
 
+TEST_CASE("almetal: unorm volume-array upload preserves precision and expands RGB",
+          "[almetal][texture]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        constexpr std::uint32_t edge = 2;
+        std::array<std::uint8_t, edge * edge * edge * 3> rgb8{};
+        for (std::size_t index = 0; index < rgb8.size(); ++index)
+        {
+            rgb8[index] = static_cast<std::uint8_t>(index * 7u + 3u);
+        }
+        auto rgba8 = alMetalCreateUnormVolumeArray(
+            *device, edge, 3, 1, rgb8.data(), "Alchemy RGB8 volume test",
+            &error);
+        INFO(error);
+        REQUIRE(rgba8);
+        CHECK(rgba8->descriptor().type ==
+              ALMetalTextureType::texture_2d_array);
+        CHECK(rgba8->descriptor().format == ALMetalPixelFormat::rgba8_unorm);
+        CHECK(rgba8->descriptor().width == edge);
+        CHECK(rgba8->descriptor().height == edge);
+        CHECK(rgba8->descriptor().array_length == edge);
+        std::array<std::uint8_t, edge * edge * 4> slice8{};
+        for (std::uint32_t slice = 0; slice < edge; ++slice)
+        {
+            REQUIRE(rgba8->readback(*device, 0, slice, {}, slice8.data(),
+                                    edge * 4, &error));
+            INFO(error);
+            for (std::size_t texel = 0; texel < edge * edge; ++texel)
+            {
+                const std::size_t source =
+                    (static_cast<std::size_t>(slice) * edge * edge + texel) *
+                    3;
+                const std::size_t destination = texel * 4;
+                CHECK(slice8[destination] == rgb8[source]);
+                CHECK(slice8[destination + 1] == rgb8[source + 1]);
+                CHECK(slice8[destination + 2] == rgb8[source + 2]);
+                CHECK(slice8[destination + 3] == 0xffu);
+            }
+        }
+
+        std::array<std::uint16_t, edge * edge * edge * 4> rgba16_source{};
+        for (std::size_t index = 0; index < rgba16_source.size(); ++index)
+        {
+            rgba16_source[index] = static_cast<std::uint16_t>(
+                index * 1999u + 17u);
+        }
+        auto rgba16 = alMetalCreateUnormVolumeArray(
+            *device, edge, 4, 2, rgba16_source.data(),
+            "Alchemy RGBA16 volume test", &error);
+        INFO(error);
+        REQUIRE(rgba16);
+        CHECK(rgba16->descriptor().format ==
+              ALMetalPixelFormat::rgba16_unorm);
+        std::array<std::uint16_t, edge * edge * 4> slice16{};
+        for (std::uint32_t slice = 0; slice < edge; ++slice)
+        {
+            REQUIRE(rgba16->readback(
+                *device, 0, slice, {}, slice16.data(),
+                edge * 4 * sizeof(std::uint16_t), &error));
+            INFO(error);
+            const auto first = rgba16_source.begin() +
+                static_cast<std::ptrdiff_t>(slice * edge * edge * 4);
+            CHECK(std::equal(slice16.begin(), slice16.end(), first));
+        }
+
+        CHECK_FALSE(alMetalCreateUnormVolumeArray(
+            *device, 0, 4, 1, rgb8.data(), "invalid", &error));
+        CHECK_FALSE(alMetalCreateUnormVolumeArray(
+            *device, edge, 2, 1, rgb8.data(), "invalid", &error));
+        CHECK_FALSE(alMetalCreateUnormVolumeArray(
+            *device, edge, 4, 4, rgb8.data(), "invalid", &error));
+        CHECK_FALSE(alMetalCreateUnormVolumeArray(
+            *device, edge, 4, 1, nullptr, "invalid", &error));
+    }
+}
+
 TEST_CASE("almetal: texture readback ring stays bounded and preserves FIFO order", "[almetal]")
 {
     @autoreleasepool

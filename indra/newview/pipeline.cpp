@@ -78,6 +78,7 @@
 #include "llwindow.h"   // swapBuffers()
 #include "workqueue.h"
 #if LL_DARWIN
+#include "../almetal/almetaltextureops.h"
 #include "../almetal/almetaluirenderer.h"
 #include "../almetal/almetalworld.h"
 #include "alhexlattice.h"
@@ -17061,6 +17062,8 @@ void LLPipeline::releaseAllGLResources()
     mLensDirtParams = LensDirtPlateParams();
 
     mCGLut = nullptr;
+    mColorGradeLutLoaded = false;
+    mCGLutSize = LLVector4();
 #if LL_DARWIN
     mMetalCGLut.reset();
     mMetalToneCurveLut.reset();
@@ -17816,90 +17819,6 @@ void LLPipeline::generateLensDirt()
 #if LL_DARWIN
 namespace
 {
-    std::unique_ptr<ALMetalTexture> makeMetalColorGradeLut(
-        U32 edge, U32 components, bool sixteen_bit, const void* pixels)
-    {
-        ALMetalDevice* device = LLImageGL::getMetalDevice();
-        if (!device || !pixels || edge < 2 ||
-            (components != 3 && components != 4))
-        {
-            return nullptr;
-        }
-
-        const std::size_t voxel_count =
-            static_cast<std::size_t>(edge) * edge * edge;
-        const std::size_t component_bytes = sixteen_bit ? 2u : 1u;
-        const void* upload_pixels = pixels;
-        std::vector<U8> expanded;
-        if (components == 3)
-        {
-            expanded.resize(voxel_count * 4u * component_bytes);
-            if (sixteen_bit)
-            {
-                const U16* source = static_cast<const U16*>(pixels);
-                U16* destination = reinterpret_cast<U16*>(expanded.data());
-                for (std::size_t texel = 0; texel < voxel_count; ++texel)
-                {
-                    std::copy_n(source + texel * 3u, 3u,
-                                destination + texel * 4u);
-                    destination[texel * 4u + 3u] = 0xffffu;
-                }
-            }
-            else
-            {
-                const U8* source = static_cast<const U8*>(pixels);
-                U8* destination = expanded.data();
-                for (std::size_t texel = 0; texel < voxel_count; ++texel)
-                {
-                    std::copy_n(source + texel * 3u, 3u,
-                                destination + texel * 4u);
-                    destination[texel * 4u + 3u] = 0xffu;
-                }
-            }
-            upload_pixels = expanded.data();
-            components = 4;
-        }
-
-        ALMetalTextureDescriptor descriptor;
-        descriptor.type = ALMetalTextureType::texture_2d_array;
-        descriptor.format = sixteen_bit
-            ? ALMetalPixelFormat::rgba16_unorm
-            : ALMetalPixelFormat::rgba8_unorm;
-        descriptor.width = edge;
-        descriptor.height = edge;
-        descriptor.array_length = edge;
-        descriptor.storage = ALMetalStorageMode::private_gpu;
-        descriptor.usage = ALMetalTextureUsage::shader_read;
-        descriptor.label = "Alchemy color-grade LUT mirror";
-        std::string error;
-        auto texture = ALMetalTexture::create(*device, descriptor, &error);
-        auto command = texture
-            ? device->makeCommandBuffer(
-                  "Alchemy color-grade LUT mirror upload", &error)
-            : nullptr;
-        bool uploaded = command != nullptr;
-        const std::size_t bytes_per_texel =
-            static_cast<std::size_t>(components) * component_bytes;
-        const std::size_t bytes_per_row = edge * bytes_per_texel;
-        const std::size_t bytes_per_slice = edge * bytes_per_row;
-        const U8* source = static_cast<const U8*>(upload_pixels);
-        for (U32 slice = 0; uploaded && slice < edge; ++slice)
-        {
-            uploaded = texture->upload(
-                *command, 0, slice, {}, source + slice * bytes_per_slice,
-                bytes_per_row, &error);
-        }
-        uploaded = uploaded && command->commit(&error);
-        if (!uploaded)
-        {
-            LL_WARNS("Metal")
-                << "Could not publish the color-grade LUT mirror: "
-                << error << LL_ENDL;
-            return nullptr;
-        }
-        return texture;
-    }
-
     std::unique_ptr<ALMetalTexture> makeMetalToneCurveLut(
         const std::vector<U16>& texels)
     {
@@ -17941,8 +17860,11 @@ namespace
 void LLPipeline::setupGradingLUT()
 {
     mCGLut = nullptr;
+    mColorGradeLutLoaded = false;
+    mCGLutSize = LLVector4();
 #if LL_DARWIN
     mMetalCGLut.reset();
+    ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
 #endif
 
     std::string lut_name = gSavedSettings.getString("RenderColorGradeLUT");
@@ -17971,7 +17893,13 @@ void LLPipeline::setupGradingLUT()
                     return;
                 }
 
-                if (lutCube.size > gGLManager.mGLMaxTextureSize)
+#if LL_DARWIN
+                const U32 max_lut_dimension = metal_device
+                    ? metal_device->info().max_texture_2d_dimension : 0;
+#else
+                const U32 max_lut_dimension = gGLManager.mGLMaxTextureSize;
+#endif
+                if (static_cast<U32>(lutCube.size) > max_lut_dimension)
                 {
                     LL_WARNS() << "Color LUT of side " << lutCube.size << " exceeds the maximum texture size at path "
                                << lut_path << LL_ENDL;
@@ -17982,11 +17910,23 @@ void LLPipeline::setupGradingLUT()
                 // 8 bits per channel, and flattening a cube of floats to 256
                 // levels before the hardware interpolates between them is where
                 // LUT banding comes from. LutCube already lays its entries out
-                // with x varying fastest, which is the order glTexSubImage3D
-                // wants, and a cube needs neither of the axis fixups an image
-                // strip does -- hence the two zeroes below.
-                mCGLutSize = LLVector4((F32)lutCube.size, 0.f, 0.f);
-
+                // with x varying fastest, which is the order both volume
+                // backends consume, and a cube needs neither of the axis fixups
+                // an image strip does -- hence the two zeroes below.
+#if LL_DARWIN
+                std::string metal_error;
+                mMetalCGLut = alMetalCreateUnormVolumeArray(
+                    *metal_device, lutCube.size, 4, sizeof(U16),
+                    lutCube.colorCube.data(), "Alchemy color-grade LUT",
+                    &metal_error);
+                if (!mMetalCGLut)
+                {
+                    LL_WARNS("Metal")
+                        << "Failed to allocate native color grading LUT: "
+                        << metal_error << LL_ENDL;
+                    return;
+                }
+#else
                 mCGLut = new ALTexture3D();
                 if (!mCGLut->allocate(lutCube.size, lutCube.size, lutCube.size,
                                       GL_RGBA16, GL_RGBA, GL_UNSIGNED_SHORT,
@@ -17994,14 +17934,11 @@ void LLPipeline::setupGradingLUT()
                 {
                     LL_WARNS() << "Failed to allocate color grading LUT texture." << LL_ENDL;
                     mCGLut = nullptr;
-                }
-#if LL_DARWIN
-                else
-                {
-                    mMetalCGLut = makeMetalColorGradeLut(
-                        lutCube.size, 4, true, lutCube.colorCube.data());
+                    return;
                 }
 #endif
+                mCGLutSize = LLVector4((F32)lutCube.size, 0.f, 0.f);
+                mColorGradeLutLoaded = true;
                 return;
             }
             else
@@ -18094,20 +18031,26 @@ void LLPipeline::setupGradingLUT()
 
             if (decode_success && raw_image)
             {
+#if !LL_DARWIN
                 U32 primary_format = 0;
                 U32 int_format = 0;
+#endif
                 switch (raw_image->getComponents())
                 {
                     case 3:
                     {
+#if !LL_DARWIN
                         primary_format = GL_RGB;
                         int_format = GL_RGB8;
+#endif
                         break;
                     }
                     case 4:
                     {
+#if !LL_DARWIN
                         primary_format = GL_RGBA;
                         int_format = GL_RGBA8;
+#endif
                         break;
                     }
                     default:
@@ -18119,13 +18062,31 @@ void LLPipeline::setupGradingLUT()
 
                 S32 image_height = raw_image->getHeight();
                 S32 image_width  = raw_image->getWidth();
-                if ((image_height > 0 && image_height <= gGLManager.mGLMaxTextureSize) // within dimension limit
+#if LL_DARWIN
+                const U32 max_lut_dimension = metal_device
+                    ? metal_device->info().max_texture_2d_dimension : 0;
+#else
+                const U32 max_lut_dimension = gGLManager.mGLMaxTextureSize;
+#endif
+                if ((image_height > 0 && static_cast<U32>(image_height) <= max_lut_dimension) // within dimension limit
                     && ((image_height * image_height) == image_width))                 // width is height * height
                 {
-                    mCGLutSize = LLVector4((F32)image_height, (F32)flip_green, (F32)swap_bluegreen);
-
                     // The LUT is a cube of side image_height, stored in the raw image
                     // as image_height slices laid out horizontally.
+#if LL_DARWIN
+                    std::string metal_error;
+                    mMetalCGLut = alMetalCreateUnormVolumeArray(
+                        *metal_device, image_height, raw_image->getComponents(),
+                        sizeof(U8), raw_image->getData(),
+                        "Alchemy color-grade LUT", &metal_error);
+                    if (!mMetalCGLut)
+                    {
+                        LL_WARNS("Metal")
+                            << "Failed to allocate native color grading LUT: "
+                            << metal_error << LL_ENDL;
+                        return;
+                    }
+#else
                     mCGLut = new ALTexture3D();
                     if (!mCGLut->allocate(image_height, image_height, image_height,
                                           int_format, primary_format, GL_UNSIGNED_BYTE,
@@ -18133,15 +18094,13 @@ void LLPipeline::setupGradingLUT()
                     {
                         LL_WARNS() << "Failed to allocate color grading LUT texture." << LL_ENDL;
                         mCGLut = nullptr;
-                    }
-#if LL_DARWIN
-                    else
-                    {
-                        mMetalCGLut = makeMetalColorGradeLut(
-                            image_height, raw_image->getComponents(), false,
-                            raw_image->getData());
+                        return;
                     }
 #endif
+                    mCGLutSize = LLVector4(
+                        (F32)image_height, (F32)flip_green,
+                        (F32)swap_bluegreen);
+                    mColorGradeLutLoaded = true;
                 }
                 else
                 {
@@ -25077,7 +25036,7 @@ LLPipeline::ColorGradeConfig LLPipeline::colorGradeConfig(
 
     static LLCachedControl<F32> cglut_strength(
         gSavedSettings, "RenderColorGradeLUTStrength", 1.f);
-    config.color_lut_strength = skip_lut || mCGLut.isNull()
+    config.color_lut_strength = skip_lut || !mColorGradeLutLoaded
         ? 0.f : llclamp(cglut_strength(), 0.f, 1.f);
     config.color_lut_active = config.color_lut_strength > 0.f;
     if (config.color_lut_active)
@@ -25609,7 +25568,9 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
         S32 tone_curve_channel = -1;
         if (color_grade)
         {
-            if (grade.color_lut_active)
+            const bool gl_color_lut_active =
+                grade.color_lut_active && mCGLut.notNull();
+            if (gl_color_lut_active)
             {
                 cglut_channel = shader->getTextureChannel(LLShaderMgr::COLOR_GRADE_LUT);
                 if (cglut_channel > -1)

@@ -12,8 +12,22 @@
 
 #include "almetalresource.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
+
+// Build a filterable 2D-array representation of a tightly packed unorm
+// volume. Metal has no filterable 3D-texture path in the viewer backend; the
+// caller samples adjacent array slices explicitly. RGB input is expanded to
+// RGBA with an opaque alpha channel. component_bytes accepts 1 or 2 only.
+std::unique_ptr<ALMetalTexture> alMetalCreateUnormVolumeArray(
+    const ALMetalDevice& device,
+    std::uint32_t edge,
+    std::uint32_t components,
+    std::uint32_t component_bytes,
+    const void* pixels,
+    const std::string& label,
+    std::string* error = nullptr);
 
 class ALMetalTextureResampler final
 {

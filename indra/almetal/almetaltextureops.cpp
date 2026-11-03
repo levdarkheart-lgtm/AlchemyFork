@@ -12,7 +12,10 @@
 
 #include "almetalpipeline.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -25,6 +28,98 @@ namespace
             *destination = message;
         }
     }
+}
+
+std::unique_ptr<ALMetalTexture> alMetalCreateUnormVolumeArray(
+    const ALMetalDevice& device,
+    std::uint32_t edge,
+    std::uint32_t components,
+    std::uint32_t component_bytes,
+    const void* pixels,
+    const std::string& label,
+    std::string* error)
+{
+    if (!pixels || edge == 0 || (components != 3 && components != 4) ||
+        (component_bytes != 1 && component_bytes != 2))
+    {
+        setError(error,
+                 "Metal unorm volume upload requires non-empty 8/16-bit "
+                 "RGB or RGBA input");
+        return nullptr;
+    }
+
+    constexpr std::size_t max_size = std::numeric_limits<std::size_t>::max();
+    if (edge > max_size / edge ||
+        static_cast<std::size_t>(edge) * edge > max_size / edge)
+    {
+        setError(error, "Metal unorm volume dimensions overflow host size");
+        return nullptr;
+    }
+    const std::size_t voxel_count =
+        static_cast<std::size_t>(edge) * edge * edge;
+    if (voxel_count > max_size / (4u * component_bytes))
+    {
+        setError(error, "Metal unorm volume byte count overflows host size");
+        return nullptr;
+    }
+
+    const void* upload_pixels = pixels;
+    std::vector<std::uint8_t> expanded;
+    if (components == 3)
+    {
+        expanded.resize(voxel_count * 4u * component_bytes);
+        const auto* source = static_cast<const std::uint8_t*>(pixels);
+        for (std::size_t voxel = 0; voxel < voxel_count; ++voxel)
+        {
+            std::uint8_t* destination = expanded.data() +
+                voxel * 4u * component_bytes;
+            std::memcpy(destination,
+                        source + voxel * 3u * component_bytes,
+                        3u * component_bytes);
+            std::memset(destination + 3u * component_bytes, 0xff,
+                        component_bytes);
+        }
+        upload_pixels = expanded.data();
+    }
+
+    ALMetalTextureDescriptor descriptor;
+    descriptor.type = ALMetalTextureType::texture_2d_array;
+    descriptor.format = component_bytes == 2
+        ? ALMetalPixelFormat::rgba16_unorm
+        : ALMetalPixelFormat::rgba8_unorm;
+    descriptor.width = edge;
+    descriptor.height = edge;
+    descriptor.array_length = edge;
+    descriptor.storage = ALMetalStorageMode::private_gpu;
+    descriptor.usage = ALMetalTextureUsage::shader_read;
+    descriptor.label = label;
+    auto texture = ALMetalTexture::create(device, descriptor, error);
+    auto command = texture
+        ? device.makeCommandBuffer(label + " upload", error)
+        : nullptr;
+    if (!command)
+    {
+        return nullptr;
+    }
+
+    const std::size_t bytes_per_texel = 4u * component_bytes;
+    const std::size_t bytes_per_row = edge * bytes_per_texel;
+    const std::size_t bytes_per_slice = edge * bytes_per_row;
+    const auto* source = static_cast<const std::uint8_t*>(upload_pixels);
+    for (std::uint32_t slice = 0; slice < edge; ++slice)
+    {
+        if (!texture->upload(*command, 0, slice, {},
+                             source + slice * bytes_per_slice,
+                             bytes_per_row, error))
+        {
+            return nullptr;
+        }
+    }
+    if (!command->commit(error))
+    {
+        return nullptr;
+    }
+    return texture;
 }
 
 struct ALMetalTextureResampler::Impl
