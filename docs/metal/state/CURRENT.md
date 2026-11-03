@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `7b7d772256`
+**Renderer code checkpoint:** `31eb491c27`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -14,24 +14,22 @@ append-only archives.
 ## Active implementation checkpoint
 
 M-003, M-004, M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit
-`7b7d772256` retires the residual GL-only tone-curve owner after the supported
-Darwin product already had validated Metal RGBA16 LUT publication and native
-display-post sampling.
+`31eb491c27` retires the residual GL-only PBR BRDF lookup owner after native
+world rendering and native PBR material previews already generated and
+consumed validated Metal RG16F tables.
 
-The curve editor/model, master/red/green/blue controls, settings, CPU bake,
-identity/bypass logic and failure behavior remain. `LLPipeline` still publishes
-the baked 512x1 RGBA16 curve through `alMetalCreateUnormTexture2D` as
-`mMetalToneCurveLut`; native display post still configures and samples that
-resource. Only the duplicate GL resource-plan entry, raw texture name,
-allocation/upload/binding route, GLSL sampler/function and reserved uniform
-slots were deleted.
+The GGX split-sum integration, 512x512 RG16F precision, bilinear-clamp
+sampling, world base/local/projector/pre-water consumers, PBR-preview consumer
+and command-batch readiness/retry behavior remain. Only the duplicate GL
+resource-plan entry/target, fullscreen generator program and GLSL sources,
+shader reload lifecycle, sampler binding and reserved uniform were deleted.
 
 This is replacement-first source retirement, not feature deletion. The
-11-file change adds 35 lines and deletes 163. Deterministic Metal tests retain
-production-sized upload/readback, exact per-channel display-post sampling and
-invalid-configuration rejection. Source inspection finds no residual
-`mToneCurveLut`, `Id::ToneCurve`, `uToneCurve*`, `COLOR_GRADE_CURVE*`,
-`applyChannelCurves` or `tone.curve` owner.
+12-file change adds 8 lines and deletes 370. Physical Metal validation checks
+the generated table against an independent six-point GGX oracle and the full
+suite exercises real world and PBR-preview consumers. Source inspection finds
+no residual `gDeferredGenBrdfLutProgram`, `mPbrBrdfLut`, `Id::BrdfLut`,
+`DEFERRED_BRDF_LUT`, `brdfLut` sampler or `genbrdflut` GLSL owner.
 
 Prior native animation/image-upload previews, visual hints, avatar composites,
 legacy bumps, material previews, dynamic resources, post effects, world/UI and
@@ -53,17 +51,17 @@ until the owner-attended review records that result.
   unified memory, arm64 macOS 26.5.2, Xcode 26.6, Apple7 support and the Metal
   compiler present.
 - The exact `tools/metal/build.sh` invocation exited 0 at committed source
-  `7b7d772256`; the warnings-as-errors Xcode Release build reported `BUILD
-  SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68225`
-  (`26.4.0.68225`).
+  `31eb491c27`; the warnings-as-errors Xcode Release build reported `BUILD
+  SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68227`
+  (`26.4.0.68227`).
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64;
   deep strict code-sign verification passed. Viewer executable SHA-256 is
-  `67858ab25cf0d283e125689ecd0cb72658b55152b0ada32b1318f3424fea3ac9`.
+  `1d55cd4654a54209b6f3fd56ea3c647d007f6091aaa9633f0b8edbc82119973e`.
 - Source and packaged MSL are byte-identical at
   `6fcd3271ea0fed0a7dde4fec6e66ce71a8ec3fd1b43d4637f850ac8717af8110`;
   metallib SHA-256 is
   `024aba5a70e01ce501c884535ad53f438d626d756c7c2148ee08a1a7a2aacc2d`.
-- The exact Ninja warnings-as-errors tree reconfigured at build 68225 and linked
+- The exact Ninja warnings-as-errors tree reconfigured at build 68227 and linked
   `llappearance_gl_tests`, `almetal_tests`, `llrender_gl_fresh_tests`,
   `llrender_gl_shared_tests`, `alrender_tests`, `newview_tests` and
   `alchemy-bin`.
@@ -79,17 +77,17 @@ until the owner-attended review records that result.
   across 225 cases. Four failures are legacy/headless frame-fence timing
   assertions and one is a depth-format expectation; the new upload case passes
   under the same validator environment.
-- `alrender_tests` passed 557,308 assertions across 137 cases.
-  `newview_tests` self-reported build 68225 and passed 98,973 assertions across
+- `alrender_tests` passed 557,301 assertions across 136 cases.
+  `newview_tests` self-reported build 68227 and passed 98,973 assertions across
   743 cases: 742 passed and the established CRT case skipped.
 - Harness structure validation passes for 32 required files; all 27 harness/tool
   tests and `git diff --check` pass.
-- Strict inventory is 2,406 files / 3,224 findings / 2,913 unique
+- Strict inventory is 2,406 files / 3,217 findings / 2,906 unique
   path/kinds/snippet records, expected exit 1. This is seven findings
   and seven unique records below the prior checkpoint; no audit rule or
   suppression changed. Report SHA-256:
-  `5380797ccdd22f938b2969bb6b5d6c74dcfa49c78373e2a472b26f820e81fad4`.
-- Exact source inspection finds no residual GL tone-curve owner. Both OpenGL
+  `cb28d7ae17d4ee6555cf86c9132f189c3bfb221bba03c1fdf1e8cf26705e2938`.
+- Exact source inspection finds no residual GL BRDF lookup owner. Both OpenGL
   and Metal remain linked.
 - No viewer executable was launched, driven, photographed or compared.
 
@@ -97,21 +95,21 @@ until the owner-attended review records that result.
 
 | Area | State | Current fact |
 | --- | --- | --- |
-| M-003..M-006 platform/resources/UI | doing | The dynamic-texture framework and all concrete producers are native-only on Darwin; previews, visual hints, avatar composites, color-grade volume/tone-curve LUTs, legacy bumps and established media/terrain/water/parcel/sky/minimap/font/edit-grid resources have native owners. Live GL context creation/shutdown remains. |
+| M-003..M-006 platform/resources/UI | doing | The dynamic-texture framework and all concrete producers are native-only on Darwin; previews, visual hints, avatar composites, color-grade volume/tone-curve and PBR BRDF LUTs, legacy bumps and established media/terrain/water/parcel/sky/minimap/font/edit-grid resources have native owners. Live GL context creation/shutdown remains. |
 | M-007 world/material | doing | Metal world capture consumes native bump backing; opaque fullbright is corrected. Legacy BLEND/stained glass and broad material parity remain open. |
-| M-008 advanced views/effects | doing | Color grading, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF and HDR bloom/cross-filter are Metal-owned at their documented boundaries. |
-| M-009 parity/stability/no-GL | doing | Strict inventory is 3,224 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
+| M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF and HDR bloom/cross-filter are Metal-owned at their documented boundaries. |
+| M-009 parity/stability/no-GL | doing | Strict inventory is 3,217 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | The color-grade GL volume and tone-curve owners and the dynamic-preview/avatar-composite framework are retired after native replacement. Live initialization, broad traversal/resources and shutdown GL paths remain. |
+| M-011 GL authority removal | doing | The color-grade volume/tone-curve and PBR BRDF GL owners and the dynamic-preview/avatar-composite framework are retired after native replacement. Live initialization, broad traversal/resources and shutdown GL paths remain. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Tone curves retain their editor/model,
-controls, CPU bake, Metal RGBA16 upload and native display-post sampling while
-the duplicate GL texture and shader consumer are gone. This is not
-OpenGL-count-only deletion.
+**Advances the complete product:** yes. PBR retains native Metal GGX lookup
+generation and its world/preview consumers while the duplicate GL target,
+generator and sampler lifecycle are gone. This is not OpenGL-count-only
+deletion.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
