@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-03 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `0464f5466e`
+**Renderer code checkpoint:** `afda818d2d`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -10,23 +10,26 @@ append-only archives.
 
 ## Active implementation checkpoint
 
-M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit `0464f5466e`
-removes Darwin OpenGL ownership from the CPU-generated sky and shiny face pairs.
-Their explicit linear RGBA8 storage now creates and refreshes through Metal,
-preserves current/next double buffering and survives GL cleanup; restore
-republishes both native buffers.
+M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit `afda818d2d`
+removes Darwin OpenGL ownership from the `LLNetMap` CPU-painted object and
+parcel layers. Dynamically sized logical textures now begin without GL storage,
+publish complete linear RGBA8 images through Metal and refresh the native image
+in place. Existing scale, redraw cadence and native UI sampled-texture consumers
+are preserved.
 
-Physical regressions distinguish explicit linear `rgba8_unorm` sky storage from
-sRGB parcel storage, retain exact all-channel/outside-region RGBA update proof
-and confirm no GL name exists. Failed in-place sky/parcel updates retain the
-prior complete native texture for retry.
+Publication failure is non-destructive: the prior complete native texture and
+its matching global center remain visible, while the freshly painted CPU layer
+is retried on the next draw. Resize still replaces the logical texture exactly
+where the prior implementation did. Existing physical RGBA creation/update and
+no-GL-name regressions remain green.
 
 There are zero direct production framebuffer or texture-image readback calls.
 Strict inventory is 2,408 files / 3,259 findings and exits 1. The one-finding
 delta is the native `LLImageGL*` handle line classified heuristically as a
 shader symbol, not a GL call. The packaged viewer has no
-`CGLTexImageIOSurface2D` dependency. Exact evidence is
-[archived](archive/CURRENT-native-sky-faces-checkpoint-2026-11-03.md).
+`CGLTexImageIOSurface2D` dependency. The minimap owner adds no strict finding.
+Exact evidence is
+[archived](archive/CURRENT-native-minimap-layers-checkpoint-2026-11-03.md).
 
 Prior advanced-output, world/material, shadow, UI and presentation owners remain
 as recorded in the archive. Opaque fullbright and the six-face cube convention
@@ -48,12 +51,12 @@ case is a parity pass until the owner-attended review records that result.
 - `tools/metal/doctor.sh` passed on the M1 Max host with 64 GiB unified memory,
   Apple7-family support and the required Metal capabilities.
 - The required default warnings-as-errors Release wrapper completed at exact
-  source `0464f5466ec53c94fb9b9e736e26420afe363020`, producing Development
-  build `26.4.0d68139` (`26.4.0.68139`). The separate warnings-as-errors
+  source `afda818d2d428c3b8372a53837bb74a85a3917da`, producing Development
+  build `26.4.0d68141` (`26.4.0.68141`). The separate warnings-as-errors
   RelWithDebInfo appearance-utility build also completed at that source.
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64.
   Viewer executable SHA-256 is
-  `02401ca36b16f8ee4622cf50c8414906b69c1e38be77edca628672c6db0ca20a`.
+  `96187c4eb4f7969ff64b917839064dbacdad5ab9d116841db0e1632a475d6d1c`.
   Appearance-utility SHA-256 is
   `5769d937be848ee0b6edf9c153eefb0b0107898f90bc42fb377399e2ff7b337e`.
 - Source and packaged MSL are byte-identical at
@@ -78,21 +81,21 @@ case is a parity pass until the owner-attended review records that result.
 
 | Area | State | Current fact |
 | --- | --- | --- |
-| M-003..M-006 platform/resources/UI | doing | Darwin media, terrain, water, parcel and CPU sky resources are native-only; queued parity and GL context removal remain open. |
+| M-003..M-006 platform/resources/UI | doing | Darwin media, terrain, water, parcel, CPU sky and minimap layers are native-only; queued parity and GL context removal remain open. |
 | M-007 world/material | doing | Opaque fullbright is corrected; legacy BLEND/stained glass and broad material parity remain open. |
 | M-008 advanced views/effects | doing | Established advanced-output owners are native; visual-only validation is batched in the daily queue. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,259 and exits 1; full parity/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Media, terrain, water, parcel and generated sky faces own no GL texture on Darwin; live resource/traversal owners remain. |
+| M-011 GL authority removal | doing | Media, terrain, water, parcel, generated sky faces and minimap layers own no GL texture on Darwin; live resource/traversal owners remain. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. CPU-generated sky/shiny faces now own
-only linear Metal storage on Darwin, preserve double-buffer/cubemap consumers
-and no longer disappear during GL cleanup. Restore deterministically
-republishes both buffers.
+**Advances the complete product:** yes. The live minimap object and parcel
+layers now own only linear Metal storage on Darwin and retain their established
+dynamic sizing, update cadence and UI sampling behavior. Failed publication
+cannot pair stale pixels with a newly advanced map center.
 
 **Still incomplete:** the executable links OpenGL; application-owned GL context,
 traversal and resources remain; complete feature/stability, strict audit,
@@ -101,14 +104,14 @@ Prolonged stability remains open; independent build/review evidence remains
 open; strict no-GL is not satisfied.
 Visual parity cases remain queued, not waived.
 
-**Evidence-based priority:** continue M-011 at `LLNetMap`. Its CPU-painted
-object and parcel layers allocate from raw images and refresh through GL even
-though native UI capture consumes the same logical textures.
+**Evidence-based priority:** continue M-006/M-011 at `LLFontBitmapCache` and
+`LLFontFreetype`. Native UI already consumes the atlas `LLImageGL` identity,
+but each sheet still allocates from a raw image through GL and every new glyph
+uses GL `setSubImage`.
 
 ## Exact next actions
 
-1. Convert `LLNetMap` object/parcel image creation and refresh to native-only
-   RGBA while preserving dynamic sizing, scale and update cadence.
-2. Keep both logical textures stable for native UI capture and retry failed
-   publication without publishing incomplete CPU layers. Queue visual review
-   only after deterministic implementation evidence exists.
+1. Convert Darwin grayscale and color font-atlas sheet creation to native-only
+   storage while preserving luminance-alpha swizzle and BGRA semantics.
+2. Convert dirty glyph-rectangle publication to native subimage upload while
+   preserving page reuse/eviction, retry behavior and CPU-only test mode.
