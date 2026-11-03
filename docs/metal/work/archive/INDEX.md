@@ -57,6 +57,7 @@ chronological transcript.
 | Native-only ordinary/depth/cutout/tiled Snapshot readback and dead GL wrapper removal, 2026-11-02 | [metal-port-native-snapshot-readback-cutover-checkpoint-2026-11-02.md](metal-port-native-snapshot-readback-cutover-checkpoint-2026-11-02.md) | `docs/metal/work/active/metal-port.md` |
 | Native-authoritative avatar composite/bake capture, morph readback and publication, source-exact build 68207, 2026-11-03 | [metal-port-native-avatar-composite-checkpoint-2026-11-03.md](metal-port-native-avatar-composite-checkpoint-2026-11-03.md) | `docs/metal/work/active/metal-port.md` |
 | Targetless native model-upload preview implementation with preserved static/physics/rigged modes, materials and diagnostics, source-exact build 68215, 2026-11-03 | [metal-port-native-model-preview-checkpoint-2026-11-03.md](metal-port-native-model-preview-checkpoint-2026-11-03.md) | `docs/metal/work/active/metal-port.md` |
+| Retained model-preview renderer deletion after validated Metal replacement, source-exact build 68217, 2026-11-03 | [metal-port-retained-model-preview-source-removal-checkpoint-2026-11-03.md](metal-port-retained-model-preview-source-removal-checkpoint-2026-11-03.md) | `docs/metal/work/active/metal-port.md` |
 
 Archives are evidence records. Add a new archive segment when the active ledger
 again accumulates history; do not delete or silently rewrite prior evidence.

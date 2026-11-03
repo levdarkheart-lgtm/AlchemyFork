@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `b3f6124664`
+**Renderer code checkpoint:** `1830ac9d0b`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -18,6 +18,13 @@ M-003, M-004, M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit
 making Darwin `LLModelPreview` targetless and Metal-authoritative. This is a
 replacement-first cutover, not removal of preview functionality to reduce the
 OpenGL inventory.
+
+After that feature checkpoint passed, commit `1830ac9d0b` deleted the 1,019-line
+retained/non-Darwin model-preview draw and five additional orphaned helper,
+declaration and constant lines. The remaining `render()` route can only call
+the Metal producer on Darwin; targetless scheduling and publication are the
+only supported model-preview path. No feature behavior was removed by this
+cleanup.
 
 The Metal producer covers static textured/material-colored faces, optional
 edges, physics meshes, convex-decomposition hulls and explode transforms. It
@@ -54,17 +61,17 @@ until the owner-attended review records that result.
 - `tools/metal/doctor.sh` passed on MacBookPro18,2: Apple M1 Max, 64 GiB
   unified memory, arm64 macOS 26.5.2, Xcode 26.6, Apple7 support and the Metal
   compiler present.
-- `tools/metal/build.sh` exited 0 at exact source `b3f6124664`. The default
+- `tools/metal/build.sh` exited 0 at exact source `1830ac9d0b`. The default
   warnings-as-errors Xcode Release build linked, signed, validated and staged
-  Alchemy Metal Development `26.4.0d68215` (`26.4.0.68215`).
+  Alchemy Metal Development `26.4.0d68217` (`26.4.0.68217`).
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64;
   deep strict code-sign verification passed. Viewer executable SHA-256 is
-  `f2286f343e6dae25e090dbe18519ebec0fffecc4014dfffc82df0dddb09395f5`.
+  `c7e0c724c0dfeb55136a1e623fe14216bdb74b827795e1f76842aa1e57d21513`.
 - Source and packaged MSL are byte-identical at
   `6fcd3271ea0fed0a7dde4fec6e66ce71a8ec3fd1b43d4637f850ac8717af8110`;
   metallib SHA-256 is
   `024aba5a70e01ce501c884535ad53f438d626d756c7c2148ee08a1a7a2aacc2d`.
-- The exact Ninja warnings-as-errors tree reconfigured at build 68215 and linked
+- The exact Ninja warnings-as-errors tree reconfigured at build 68217 and linked
   `llappearance_gl_tests`, `almetal_tests`, `llrender_gl_fresh_tests`,
   `llrender_gl_shared_tests`, `alrender_tests`, `newview_tests` and
   `alchemy-bin`.
@@ -81,15 +88,15 @@ until the owner-attended review records that result.
   assertions and one is a depth-format expectation; the new upload case passes
   under the same validator environment.
 - `alrender_tests` passed 557,312 assertions across 137 cases.
-  `newview_tests` self-reported build 68215 and passed 98,973 assertions across
+  `newview_tests` self-reported build 68217 and passed 98,973 assertions across
   743 cases: 742 passed and the established CRT case skipped.
 - Harness structure validation passes for 32 required files; all 27 harness/tool
   tests and `git diff --check` pass.
-- Strict inventory is 2,408 files / 3,247 findings, expected exit 1. It contains
-  2,934 unique path/kinds/snippet records; the increase from 3,244/2,933 is from
-  the new source/test vocabulary, not an audit-rule or suppression change.
-  Report SHA-256:
-  `4a4a348cce830a532e5f8ea3bccecb5a8c162c72747322e59366cdae815f433b`.
+- Strict inventory is 2,408 files / 3,242 findings / 2,931 unique
+  path/kinds/snippet records, expected exit 1. Retained model-preview source
+  removal accounts for the five-finding/three-unique reduction; no audit rule
+  or suppression changed. Report SHA-256:
+  `82107e21c11b1654fc74517ae29df7cfafb5869d2dec8e8dde7c54665348e010`.
 - Exact binary inspection finds `LLModelPreview::renderMetal()`, targetless
   scheduling and no-target post handling. Both OpenGL and Metal remain linked.
 - No viewer executable was launched, driven, photographed or compared.
@@ -101,9 +108,9 @@ until the owner-attended review records that result.
 | M-003..M-006 platform/resources/UI | doing | All known dynamic-texture subclasses are targetless on Darwin; model/animation/image previews, visual hints, avatar composites, legacy bumps and established media/terrain/water/parcel/sky/minimap/font/edit-grid resources have native owners. Live GL context creation/shutdown remains. |
 | M-007 world/material | doing | Metal world capture consumes native bump backing; opaque fullbright is corrected. Legacy BLEND/stained glass and broad material parity remain open. |
 | M-008 advanced views/effects | doing | Model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF and HDR bloom/cross-filter are Metal-owned at their documented boundaries. |
-| M-009 parity/stability/no-GL | doing | Strict inventory is 3,247 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
+| M-009 parity/stability/no-GL | doing | Strict inventory is 3,242 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Dynamic preview producers are Metal-authoritative on Darwin; retained model-preview GL source is now eligible for deletion, while live initialization, broad traversal/resources and shutdown GL paths remain. |
+| M-011 GL authority removal | doing | Dynamic preview producers are Metal-authoritative on Darwin and retained model-preview source is deleted; live initialization, broad traversal/resources and shutdown GL paths remain. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
@@ -122,8 +129,7 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Delete the now-replaced non-Darwin/retained `LLModelPreview` GL producer and
-   any helper reachable only from it; retain the Metal implementation and rerun
-   the strict inventory and source-exact validation.
-2. Census the next application-owned Darwin GL producer and implement its full
-   feature behavior in Metal before retiring that producer.
+1. Census the next application-owned Darwin GL producer and its user-visible
+   responsibilities.
+2. Implement and validate its full feature behavior in Metal before retiring
+   that producer; do not trade functionality for a lower GL count.
