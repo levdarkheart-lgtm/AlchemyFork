@@ -105,6 +105,7 @@ reload the chronological history.
 | Targetless native model-upload previews with preserved static/physics/rigged modes, materials and diagnostics, source-exact build 68215, 2026-11-03 | [CURRENT-native-model-preview-checkpoint-2026-11-03.md](CURRENT-native-model-preview-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Retained model-preview renderer deletion after complete Metal replacement, source-exact build 68217, 2026-11-03 | [CURRENT-retained-model-preview-source-removal-checkpoint-2026-11-03.md](CURRENT-retained-model-preview-source-removal-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Retained animation-preview target/copy routing deletion after complete Metal replacement, source-exact build 68219, 2026-11-03 | [CURRENT-retained-animation-preview-routing-removal-checkpoint-2026-11-03.md](CURRENT-retained-animation-preview-routing-removal-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Native-only shared dynamic-texture framework after complete Metal replacement of every concrete producer, source-exact build 68221, 2026-11-03 | [CURRENT-native-only-dynamic-texture-framework-checkpoint-2026-11-03.md](CURRENT-native-only-dynamic-texture-framework-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
