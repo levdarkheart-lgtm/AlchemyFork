@@ -60,6 +60,7 @@ reload the chronological history.
 | Native-only ordinary/depth/cutout/tiled Snapshot readback and dead GL wrapper removal, 2026-11-02 | [CURRENT-native-snapshot-readback-cutover-checkpoint-2026-11-02.md](CURRENT-native-snapshot-readback-cutover-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native-only avatar morph-mask and appearance-utility ordered readback, 2026-11-02 | [CURRENT-native-appearance-readback-cutover-checkpoint-2026-11-02.md](CURRENT-native-appearance-readback-cutover-checkpoint-2026-11-02.md) | `docs/metal/state/CURRENT.md` |
 | Native-only `LLImageGL::readBackRaw` and source-exact build 68123, 2026-11-03 | [CURRENT-native-image-readback-cutover-checkpoint-2026-11-03.md](CURRENT-native-image-readback-cutover-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Elimination of production texture-image readback and source-exact build 68125, 2026-11-03 | [CURRENT-texture-image-readback-elimination-checkpoint-2026-11-03.md](CURRENT-texture-image-readback-elimination-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
