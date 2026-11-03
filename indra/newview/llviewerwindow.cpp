@@ -6819,8 +6819,6 @@ void LLViewerWindow::stopGL()
         LLVOAvatar::destroyGL();
         stop_glerror();
 
-        LLVOPartGroup::destroyGL();
-
         LLViewerDynamicTexture::destroyGL();
         stop_glerror();
 

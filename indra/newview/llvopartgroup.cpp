@@ -49,11 +49,6 @@ void LLVOPartGroup::initClass()
 {
 }
 
-//static
-void LLVOPartGroup::destroyGL()
-{
-}
-
 bool ll_is_part_idx_allocated(S32 idx, S32* start, S32* end)
 {
     /*while (start < end)
