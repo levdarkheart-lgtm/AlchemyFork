@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `fa3c1454b7`.
+**Renderer checkpoint:** Commit `ed90d8b6a0`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -19,32 +19,32 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and grayscale/color font-atlas pages are native-only; owner-attended text/emoji and moving-media parity remain open. |
 | M-007 | World scene and material correctness | doing | Opaque fullbright is corrected; legacy BLEND/stained glass and broad material parity remain open. |
-| M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners, color grading, tone curve, BRDF, post FXAA/SMAA/CAS, DoF and world HDR bloom/cross-filter are native-only; native-eligible PBR previews own post/publish. |
+| M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners, color grading, tone curve, BRDF, post FXAA/SMAA/CAS, DoF and world HDR bloom/cross-filter are native-only; native-eligible PBR previews own geometry/post/publish. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL, linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | The established resources plus pipeline BRDF, post-AA/CAS, DoF and world bloom own no GL path; eligible PBR previews skip GL post/publish, while their GL geometry and unsupported-mode fallback remain. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | The established resources plus pipeline BRDF, post-AA/CAS, DoF and world bloom own no GL path; eligible PBR previews skip GL shader/geometry/post/publish, while unsupported-mode fallback and shared GL setup remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — native-eligible material-preview post ownership
+## Active checkpoint — native-eligible material-preview geometry ownership
 
-Commit `fa3c1454b7` makes a complete Darwin native PBR preview independently
-authoritative for post processing and publication. Such a preview takes no GL
-post target, runs no retained luminance/exposure/bloom/color-correct/glow/final
-blit, performs no framebuffer copy, and succeeds only if the Metal target is
-adopted. The retained sphere draw and classic/non-HDR/post-suppressed or
-incomplete-native fallback remain explicitly live. Non-Darwin behavior is
-unchanged. No viewer was launched or compared; the bounded preview-post question
-is in the owner-attended queue.
-[Exact evidence](../../state/archive/CURRENT-native-material-preview-post-checkpoint-2026-11-03.md).
+Commit `ed90d8b6a0` makes a complete Darwin native PBR preview authoritative
+before retained GL geometry. Such a preview binds no auxiliary GL screen or GL
+PBR shader, issues no `pushGLTFBatch`, takes no GL post target, runs no retained
+post/final blit and performs no framebuffer copy. The GL draw/post callback
+remains live only for classic/non-HDR/post-suppressed, incomplete or failed
+native configurations; shared GL camera/state/light preparation remains.
+Non-Darwin behavior is unchanged. No viewer was launched or compared; the
+single material-preview question was advanced in the owner-attended queue.
+[Exact evidence](../../state/archive/CURRENT-native-material-preview-geometry-checkpoint-2026-11-03.md).
 
 ## Validation checkpoint
 
-- Source-exact warnings-as-errors Release build `26.4.0d68167` passed at
-  `fa3c1454b7144354943f36a3192dcf700599bb6d`; the RelWithDebInfo appearance
+- Source-exact warnings-as-errors Release build `26.4.0d68169` passed at
+  `ed90d8b6a0b81fa349ed6cf5062ef03068384cb9`; the RelWithDebInfo appearance
   utility also builds at that source.
 - The full native Metal binary passes 52,381 assertions across 55 cases with
   API and shader validation enabled. Focused complete PBR material-preview
@@ -58,7 +58,7 @@ is in the owner-attended queue.
   one platform CRT case skips as expected.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices.
 - Viewer executable SHA-256:
-  `0bff446e430ddd1698b463ef1c73088dfb0a1409788e9155d7447eb942a18f7e`.
+  `963903f13474c4f6848acf85dcf63d23b9a9f2f0eab2d2f1a45c5ca97342613c`.
   Appearance utility:
   `c3e87e6a8f87c09c44e61aee502f6afd22e5f4bd1b82dd8c952c2fa05fba89a5`.
   Source/packaged MSL:
@@ -69,7 +69,7 @@ is in the owner-attended queue.
   cases, with its four established failures and 39 skips.
 - Strict inventory is 2,408 files / 3,262 findings, expected exit 1. Exact
   report SHA-256:
-  `3ed21a476ca138afd494f1200b644fd10891e6361c21fd4f9168c0737be5a8d8`.
+  `8cea2f2a7d299d91b7a5ed09a09c06a59a8de213848cccf726e7c66d82163f19`.
   Both OpenGL and Metal remain linked.
 - Static symbol inspection finds none of the retained FXAA/SMAA/CAS/sharpen or
   DoF program globals or retained DoF methods in the exact Darwin objects.
@@ -88,25 +88,24 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—a complete native PBR preview owns its entire
-   post and publication result without redundant GL post work or framebuffer
-   copy.
+1. **Product advancement:** yes—a complete native PBR preview owns its shader
+   geometry, post and publication result without redundant GL draw/post work or
+   framebuffer copy.
 2. **Deferred critical work:** remaining GL context/traversal/resources;
    feature/stability matrices; visual queue; strict binary/runtime audit;
    measured M1 Max performance; independent review and release proof.
-3. **Priority reassessment:** move native batch assembly before the retained
-   sphere draw and skip that GL geometry whenever native eligibility is exact.
+3. **Priority reassessment:** derive native preview camera/matrix/light state
+   without the remaining retained GL setup, then widen exact native eligibility.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Split native preview batch assembly from the retained
-`gDeferredPBRAlphaProgram` draw. Skip auxiliary-screen binding, shader setup and
-sphere drawing when native eligibility is complete, while preserving explicit
-fallback for unported classic/non-HDR/post-suppressed configurations. Then
-extend those variants and retire preview-only GL post resources when unreachable.
+Split native preview camera/matrix/light derivation from retained GL setup so an
+eligible preview does not clear or mutate the GL context before submission.
+Then extend exact native ownership to classic/non-HDR/post-suppressed variants
+and retire preview-only GL draw/post resources only when unreachable.
 
 ## Non-negotiable open gates
 
