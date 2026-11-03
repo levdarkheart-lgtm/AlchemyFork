@@ -125,9 +125,18 @@ namespace
 #endif
     }
 
+    IdSet smaa_intermediates()
+    {
+#if LL_DARWIN
+        return {};
+#else
+        return of({ Id::SMAAEdges, Id::SMAABlend });
+#endif
+    }
+
     IdSet smaa_resources(bool sample)
     {
-        return of({ Id::SMAAEdges, Id::SMAABlend }) | smaa_lookups(sample);
+        return smaa_intermediates() | smaa_lookups(sample);
     }
 
     IdSet bloom(std::initializer_list<Pack> packs)
@@ -205,7 +214,7 @@ namespace
               [](const Plan&) { return smaa_resources(false); } },
             { "RenderSMAAUseStencil under SMAA", [](Inputs& in) { in.mFSAAType = 2; },
               [](Inputs& in) { in.mSMAAStencil = false; },
-              [](const Plan&) { return of({ Id::SMAAEdges, Id::SMAABlend }); } },
+              [](const Plan&) { return smaa_intermediates(); } },
             { "RenderSMAAUseStencil without SMAA", no_change, [](Inputs& in) { in.mSMAAStencil = false; }, nothing },
             { "RenderSMAAUseSample under SMAA", [](Inputs& in) { in.mFSAAType = 2; },
               [](Inputs& in) { in.mSMAAUseSample = true; },
@@ -1074,7 +1083,8 @@ namespace
         }
     }
 
-    TEST_CASE("alrenderresourceplan: the SMAA tables exist only while SMAA is the antialiasing", "[alrenderresourceplan]")
+    TEST_CASE("alrenderresourceplan: retained GL SMAA resources exist only where that transaction owns them",
+              "[alrenderresourceplan]")
     {
         for (U32 fsaa : { 0u, 1u, 2u })
         {
@@ -1090,8 +1100,10 @@ namespace
                     in.mSMAAUseSample = sample;
                     const Plan plan   = Plan::make(in);
 
-                    CHECK(plan.wants(Id::SMAAEdges) == (fsaa == 2));
-                    CHECK(plan.wants(Id::SMAABlend) == (fsaa == 2));
+                    const bool wants_intermediates = fsaa == 2 &&
+                        smaa_intermediates().test((size_t)Id::SMAAEdges);
+                    CHECK(plan.wants(Id::SMAAEdges) == wants_intermediates);
+                    CHECK(plan.wants(Id::SMAABlend) == wants_intermediates);
                     const bool wants_lookup =
                         fsaa == 2 && smaa_lookups(sample).test((size_t)Id::SMAAArea);
                     for (Id table : { Id::SMAAArea, Id::SMAASearch, Id::SMAASample })

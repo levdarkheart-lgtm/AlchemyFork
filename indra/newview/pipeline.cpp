@@ -1010,14 +1010,14 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
          mMetalWorldSimpleCapture->lens_dirt_params == dirt.plate);
     const ColorGradeConfig grade = colorGradeConfig(true);
     const U32 quality = std::clamp(aa_quality(), 0U, 3U);
+    // Darwin's SMAA programs and intermediates are wholly native. Metal
+    // pipeline creation and renderSMAA execution remain fail-closed authority;
+    // legacy GLSL program completeness must not gate the native transaction.
     const bool exact_antialiasing = snapshot_cutout ||
         mResourceInputs.mFSAAType == 0 ||
         (mResourceInputs.mFSAAType == 1 &&
          gFXAAProgram[quality].isComplete()) ||
-        (mResourceInputs.mFSAAType == 2 && native_smaa_sample &&
-         gSMAAEdgeDetectProgram[quality].isComplete() &&
-         gSMAABlendWeightsProgram[quality].isComplete() &&
-         gSMAANeighborhoodBlendProgram[quality].isComplete());
+        (mResourceInputs.mFSAAType == 2 && native_smaa_sample);
     // Startup renders a partially ordered world while region state, water,
     // and alpha environment ownership are still settling. Do not consume the
     // bounded presentation probe on those transitional frames: its exact

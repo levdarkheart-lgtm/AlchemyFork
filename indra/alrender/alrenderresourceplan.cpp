@@ -273,9 +273,14 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         }
     }
 
-    // SMAA's edges and blend weights. RGBA8 whatever the post format: the neighbourhood blend reads the right edge's
-    // weight from the blend buffer's alpha, which RGB10_A2 would leave four levels. The stencil the blend-weights pass
-    // skips non-edges by is a pure stencil carrier, never scene depth, so DEPTH24 even under reverse-Z.
+    // SMAA's retained GL edges and blend weights. Darwin's complete transaction
+    // owns private Metal intermediates and never acquires these transient GL
+    // targets. Elsewhere RGBA8 is required whatever the post format: the
+    // neighbourhood blend reads the right edge's weight from alpha, which
+    // RGB10_A2 would leave four levels. The stencil the blend-weights pass skips
+    // non-edges by is a pure stencil carrier, never scene depth, so DEPTH24 even
+    // under reverse-Z.
+#if !LL_DARWIN
     if (in.mFSAAType == 2)
     {
         plan.at(Id::SMAAEdges).mDesc = ALRenderTargetDesc{ .width   = width,
@@ -286,6 +291,7 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         plan.at(Id::SMAABlend) = { ALRenderTargetDesc{ .width = width, .height = height, .color = { GL_RGBA8 } },
                                    in.mSMAAStencil ? std::optional<Id>(Id::SMAAEdges) : std::nullopt };
     }
+#endif
 
     // Where the session computes, and SSAO's kernel reaches no further than a dispatch holds, SSAO's blur writes the
     // sun's shadow and the blurred occlusion here, which the soften pass reads in place of the light map
