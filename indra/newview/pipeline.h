@@ -194,9 +194,10 @@ public:
     void resetExposureHistory();
     void setupGradingLUT();
     void generateLensDirt();
-    /// Re-bake the tone curve lookup row from the four RenderColorGradeCurve*
-    /// settings. Runs before native world capture when possible, with
-    /// colorCorrect as the fallback: once per change, never per frame.
+    /// Re-bake the native tone-curve lookup row from the four
+    /// RenderColorGradeCurve* settings. Runs before native world capture when
+    /// possible, with colorCorrect ensuring publication on other frames: once
+    /// per change, never per frame.
     void bakeToneCurveLut();
 
     /// The size the main view renders a view of @a resX by @a resY at: RenderResolutionDivisor applied, or else
@@ -2000,11 +2001,9 @@ public:
     // machine, which is backwards. Holding off means the rebuild lands once, on
     // release, which is also where the user expects to see the result.
     bool                mLensDirtSliderHeld = false;
-    // Tone curve LUT: a 512x1 RGBA16 row (ALToneCurveSet::LUT_SIZE) whose R, G
-    // and B texels hold master(channel(x)) for each channel. Non-Darwin owns a
-    // raw GL name like the SMAA maps above; Darwin publishes only the native
-    // texture below. Loaded/dirty/identity describe either backend.
-    U32                 mToneCurveLut = 0;
+    // Native tone-curve LUT: a 512x1 RGBA16 row (ALToneCurveSet::LUT_SIZE)
+    // whose R, G and B texels hold master(channel(x)) for each channel.
+    // Loaded/dirty/identity describe the Metal publication transaction.
     bool                mToneCurveLutDirty = true;   // settings changed, or the texture was recreated, since the last bake
     bool                mToneCurveIdentity = true;   // the last bake found all four curves on the diagonal
     bool                mToneCurveLutLoaded = false;

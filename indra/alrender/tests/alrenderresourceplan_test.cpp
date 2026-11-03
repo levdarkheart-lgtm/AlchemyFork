@@ -1508,7 +1508,7 @@ namespace
         CHECK(Plan::name(Id::SpotShadow0) == "shadow.spot0");
         CHECK(Plan::name(Id::SMAAEdges) == "smaa.edges");
         CHECK(Plan::name(Id::LensFlareB) == "lens.flare.b");
-        CHECK(Plan::name(Id::ToneCurve) == "tone.curve");
+        CHECK(Plan::name(Id::SMAASample) == "smaa.sample");
 
         std::set<std::string_view> seen;
         for (size_t i = 0; i < Plan::ID_COUNT; ++i)

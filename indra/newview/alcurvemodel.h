@@ -46,10 +46,10 @@
  * tangents so that can never happen, at the cost of a little smoothness.
  *
  * The renderer never evaluates this itself. @ref ALToneCurveSet bakes it into
- * the 1D lookup texture that @c applyChannelCurves in
- * @c class1/alchemy/colorGradeUtilF.glsl samples, so a graph of the model is a
- * picture of what the shader will do to within the texture's resolution --
- * and @c alcurvemodel_test is where that bound is checked.
+ * the 1D lookup texture sampled by the native Metal display-post shader, so a
+ * graph of the model is a picture of what the shader will do to within the
+ * texture's resolution -- and @c alcurvemodel_test is where that bound is
+ * checked.
  */
 class ALCurveModel
 {

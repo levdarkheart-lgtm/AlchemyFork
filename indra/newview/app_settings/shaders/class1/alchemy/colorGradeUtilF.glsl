@@ -25,7 +25,6 @@
  *     vec3 applyVibrance             (vec3 col)   // step 9
  *     vec3 applyHueShift             (vec3 col)   // step 10
  *     vec3 applyLUTGrading           (vec3 col)   // step 11
- *     vec3 applyChannelCurves        (vec3 col)   // step 12 (baked 1D LUT)
  *
  * Optimisation notes:
  *   - Every uniform here is fed a PRECOMPUTED value from pipeline.cpp. The
@@ -35,10 +34,9 @@
  *   - Fast-path identity checks still live shader-side because this file is
  *     attached to multiple programs with different defaults; doing them on
  *     the CPU would require shader-variant plumbing we don't have.
- *   - The two samplers (`uColorGradeLut`, `uToneCurveLut`) are only read
- *     behind a uniform branch on their strength/amount, so the CPU can leave
- *     them unbound whenever it uploads 0 and nothing is ever sampled from a
- *     unit that happens to hold something else.
+ *   - The artist LUT sampler is only read behind a uniform branch on its
+ *     strength, so the CPU can leave it unbound whenever it uploads 0 and
+ *     nothing is ever sampled from a unit that happens to hold something else.
  *   - Shared helpers (`CG_LUMA`, `cg_rgb2hsv`/`cg_hsv2rgb`, `cg_ramp`) are
  *     prefixed `cg_`/`CG_` to avoid colliding with `LUMA` in
  *     postEffectUtilsF, which can be linked into the same program.
@@ -328,42 +326,4 @@ vec3 applyLUTGrading(vec3 col)
     col = textureLod(uColorGradeLut, col.rgb * scale + offset, 0).rgb;
 
     return mix(original, col, uColorGradeLutStrength);
-}
-
-
-// =============================================================================
-// Step 12 — Tone curve  (DISPLAY space)
-// =============================================================================
-//
-// Master + per-channel monotone splines, composited as master(channel(x)) and
-// baked by LLPipeline::bakeToneCurveLut into a 512x1 RGBA16 row whose R, G and
-// B texels are the three composite curves. `uToneCurveLutScale` is the
-// half-texel mapping (1 - 1/N, 0.5/N) -- the same convention applyLUTGrading
-// uses above -- so x = 0 and x = 1 read texel 0 and texel N-1 exactly and the
-// hardware's linear filter interpolates between the baked samples. That
-// reconstruction is good to well under 1/1024 for any curve the editor can
-// make; a segment narrower than a few texels is the accepted limit of a LUT
-// of any size, and the editor's minimum point spacing sits well inside it.
-//
-// `uToneCurveAmount` is 0 whenever the section is bypassed, every curve is
-// identity, or the texture does not exist. That is the fast path, and it
-// leaves the sampler unread, so nothing needs to be bound there.
-
-uniform sampler2D uToneCurveLut;
-uniform vec2      uToneCurveLutScale;   // (1 - 1/N, 0.5/N); unused on the fast path.
-uniform float     uToneCurveAmount;     // [0, 1] default 0 — blend toward the curved value.
-
-vec3 applyChannelCurves(vec3 col)
-{
-    if (uToneCurveAmount <= 0.0)
-        return col;
-
-    // No input clamp: the sampler is clamp-to-edge, so an over-range channel
-    // saturates to the end texel, and the caller clamps the result anyway.
-    vec3 u = col * uToneCurveLutScale.x + uToneCurveLutScale.y;
-    vec3 curved = vec3(
-        textureLod(uToneCurveLut, vec2(u.r, 0.5), 0.0).r,
-        textureLod(uToneCurveLut, vec2(u.g, 0.5), 0.0).g,
-        textureLod(uToneCurveLut, vec2(u.b, 0.5), 0.0).b);
-    return mix(col, curved, uToneCurveAmount);
 }

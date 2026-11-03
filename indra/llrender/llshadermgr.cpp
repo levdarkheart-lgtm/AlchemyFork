@@ -2098,11 +2098,6 @@ void LLShaderMgr::initAttribsAndUniforms()
     mReservedUniforms.push_back("uVibrance");
     mReservedUniforms.push_back("uHueShiftNorm");
 
-    // Tone curve LUT
-    mReservedUniforms.push_back("uToneCurveLut");
-    mReservedUniforms.push_back("uToneCurveLutScale");
-    mReservedUniforms.push_back("uToneCurveAmount");
-
     // Vignette
     mReservedUniforms.push_back("uVignetteAmount");
     mReservedUniforms.push_back("uVignetteRadius");

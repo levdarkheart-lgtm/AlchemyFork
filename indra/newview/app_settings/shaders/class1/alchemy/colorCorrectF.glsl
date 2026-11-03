@@ -84,7 +84,6 @@ vec3 applyShadowHighlightRecovery(vec3 diff);
 vec3 applySaturation(vec3 diff);
 vec3 applyVibrance(vec3 diff);
 vec3 applyHueShift(vec3 diff);
-vec3 applyChannelCurves(vec3 diff);
 #endif
 
 #ifdef HAS_POST_EFFECTS
@@ -222,7 +221,8 @@ void main()
 
 #ifdef COLOR_GRADE
     // 6.5 black/white point → 7 brightness+contrast → 7.5 hi/shadow recovery
-    // → 8 saturation → 9 vibrance → 10 hue shift → 11 LUT → 12 curves.
+    // → 8 saturation → 9 vibrance → 10 hue shift → 11 LUT. Native display
+    // post owns the subsequent baked channel-curve stage.
     diff.rgb = applyBlackWhitePoint(diff.rgb);
     diff.rgb = applyBrightnessContrast(diff.rgb);
     diff.rgb = applyShadowHighlightRecovery(diff.rgb);
@@ -230,7 +230,6 @@ void main()
     diff.rgb = applyVibrance(diff.rgb);
     diff.rgb = applyHueShift(diff.rgb);
     diff.rgb = applyLUTGrading(diff.rgb);
-    diff.rgb = applyChannelCurves(diff.rgb);
 #endif
 
     diff.rgb = clamp(diff.rgb, vec3(0.0), vec3(1.0)); // We should always be 0-1 past this point

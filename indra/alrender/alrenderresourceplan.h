@@ -129,7 +129,6 @@ public:
         SMAAArea,
         SMAASearch,
         SMAASample,
-        ToneCurve,
 
         COUNT
     };

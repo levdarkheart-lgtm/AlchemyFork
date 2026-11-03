@@ -508,11 +508,6 @@ public:
         COLOR_GRADE_VIBRANCE,               //  "uVibrance"
         COLOR_GRADE_HUE_SHIFT_NORM,         //  "uHueShiftNorm"     (degrees / 360)
 
-        // Tone curve, baked to a 1D LUT by LLPipeline::bakeToneCurveLut
-        COLOR_GRADE_CURVE_LUT,              //  "uToneCurveLut"
-        COLOR_GRADE_CURVE_LUT_SCALE,        //  "uToneCurveLutScale"      (1 - 1/N, 0.5/N)
-        COLOR_GRADE_CURVE_AMOUNT,           //  "uToneCurveAmount"
-
         // Vignette
         VIGNETTE_AMOUNT,                    //  "uVignetteAmount"
         VIGNETTE_RADIUS,                    //  "uVignetteRadius"

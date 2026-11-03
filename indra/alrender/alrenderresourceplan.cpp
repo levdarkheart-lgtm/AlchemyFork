@@ -69,10 +69,10 @@ namespace
         "shadow.spot0", "shadow.spot1", "smaa.edges", "smaa.blend", "sky.behind", "ssr.scene", "main.light.blurred",
         "glow0", "glow1", "glow2", "downres", "preview", "bake", "brdf.lut", "exposure.meter", "exposure.histogram",
         "exposure", "exposure.last", "lens.flare.a", "lens.flare.b", "noise", "noise.true", "smaa.area", "smaa.search",
-        "smaa.sample", "tone.curve",
+        "smaa.sample",
     };
 
-    static_assert(OWN_NAMES[(size_t)Id::ToneCurve - PACK_IDS] == "tone.curve", "a name for every id after the packs");
+    static_assert(OWN_NAMES[(size_t)Id::SMAASample - PACK_IDS] == "smaa.sample", "a name for every id after the packs");
 }
 
 // static
@@ -364,7 +364,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
 
     plan.at(Id::Noise).mDesc     = ALRenderTargetDesc{ .color = { GL_RGB16F } };
     plan.at(Id::TrueNoise).mDesc = ALRenderTargetDesc{ .color = { GL_RGB16F } };
-    plan.at(Id::ToneCurve).mDesc = ALRenderTargetDesc{ .color = { GL_RGBA16 } };
 
     // SMAA's area and search tables, and the debug image it can blend. Darwin's
     // native transaction owns private Metal area/search tables and publishes

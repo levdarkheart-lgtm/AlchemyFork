@@ -65,8 +65,8 @@ namespace
             md = std::max(1.0f - hi - lo, 0.0f);
         }
 
-        /// applyChannelCurves' fetch: the half-texel mapping the shader applies,
-        /// then GL's CLAMP_TO_EDGE + LINEAR filter over a row of n RGBA16
+        /// The native display-post fetch: the half-texel mapping the shader
+        /// applies, then clamp-to-edge linear filtering over a row of n RGBA16
         /// texels, with the blend weight snapped to the 8 sub-texel bits the
         /// hardware is allowed to use.
         static F32 shaderLutFetch(const std::vector<U16>& texels, S32 n, S32 channel, F32 x)
