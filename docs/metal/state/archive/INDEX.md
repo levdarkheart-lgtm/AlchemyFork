@@ -83,6 +83,7 @@ reload the chronological history.
 | Native-eligible Darwin PBR material-preview post/publication ownership with explicit unsupported-mode fallback and source-exact build 68167, 2026-11-03 | [CURRENT-native-material-preview-post-checkpoint-2026-11-03.md](CURRENT-native-material-preview-post-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-eligible Darwin PBR material-preview geometry/post/publication ownership with recoverable unsupported-mode fallback and source-exact build 68169, 2026-11-03 | [CURRENT-native-material-preview-geometry-checkpoint-2026-11-03.md](CURRENT-native-material-preview-geometry-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-eligible PBR material-preview retained light/probe state confined to fallback and source-exact build 68171, 2026-11-03 | [CURRENT-native-material-preview-light-state-checkpoint-2026-11-03.md](CURRENT-native-material-preview-light-state-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Native material-preview CPU matrices and preview-owned GL setup confined to fallback, source-exact build 68173, 2026-11-03 | [CURRENT-native-material-preview-cpu-matrices-checkpoint-2026-11-03.md](CURRENT-native-material-preview-cpu-matrices-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.

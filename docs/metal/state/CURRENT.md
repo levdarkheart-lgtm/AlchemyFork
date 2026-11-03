@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-03 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `88f1677884`
+**Renderer code checkpoint:** `e55ea15076`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -10,23 +10,23 @@ append-only archives.
 
 ## Active implementation checkpoint
 
-M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit `88f1677884`
-cuts the complete native-eligible Darwin PBR material preview off retained GL
-geometry, post processing and framebuffer publication. Darwin attempts the
-native scene first; once it produces an exact target, the preview does not bind
-the auxiliary GL screen, select the GL PBR shader, issue the sphere draw,
-acquire a GL post target, run retained post work or copy the retained
-framebuffer. Non-Darwin behavior is unchanged.
+M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit `e55ea15076`
+derives the native-eligible Darwin PBR preview's modelview/projection on the CPU
+and confines preview-owned GL pre-render, clear/mask/state, retained camera
+loads, auxiliary target-pack selection and post-target scope to the recoverable
+fallback. Earlier cuts keep the successful native path off the GL
+shader/geometry, light/probe mutation, post chain and framebuffer copy.
 
-The eligible path also skips global local-light changes, retained default-probe
-uniform updates, hardware-light setup and GL light-zero mutation; the fallback
-callback alone performs and restores them.
+The generic dynamic-texture scheduler is still a GL owner: it unbinds GL state,
+and `ALOnDemandTarget` acquires, binds and clears the shared Preview target
+before invoking the preview. It also flushes after the callback, while native
+success still uses the base false-post viewport restore. The next cut must add
+a native-first scheduler attempt with same-frame retained fallback.
 
-This eligibility-bounded cut requires HDR PBR mode, active post, complete
-geometry/textures, default-probe state and a compatible destination. Classic,
-non-HDR, post-suppressed or incomplete/failed-native cases invoke the GL
-draw/post callback. Shared pre-render/camera/matrix/clear setup still precedes
-native submission, so retained bloom remains live and must not yet be removed.
+Eligibility still requires HDR PBR mode, active post, complete geometry and
+textures, default-probe state and a compatible destination. Classic, non-HDR,
+post-suppressed or incomplete/failed-native cases retain the full GL callback.
+Non-Darwin behavior is unchanged; retained bloom remains live.
 
 The prior native-only FXAA/SMAA/CAS checkpoint remains in force. Darwin
 constructs, executes and exports no retained post-AA/CAS/sharpen program, owns
@@ -56,7 +56,7 @@ Strict inventory is 2,408 files / 3,262 findings: the preprocessor-unaware
 scanner now counts both the Darwin ordinary-blit line and the non-Darwin
 conditional-blit line, so the one-finding increase does not represent a new
 live GL owner. Exact evidence is
-[archived](archive/CURRENT-native-material-preview-light-state-checkpoint-2026-11-03.md).
+[archived](archive/CURRENT-native-material-preview-cpu-matrices-checkpoint-2026-11-03.md).
 
 Prior advanced-output, world/material, shadow, UI and presentation owners remain
 as recorded in the archive. Opaque fullbright and the six-face cube convention
@@ -78,12 +78,12 @@ case is a parity pass until the owner-attended review records that result.
 - `tools/metal/doctor.sh` passed on the M1 Max host with 64 GiB unified memory,
   Apple7-family support and the required Metal capabilities.
 - The required default warnings-as-errors Release wrapper completed at exact
-  source `88f1677884181e0b8b3524175dab76c545cb2183`, producing Development
-  build `26.4.0d68171` (`26.4.0.68171`). The separate warnings-as-errors
+  source `e55ea15076c88caab5c409b7becc9de7fa7f8770`, producing Development
+  build `26.4.0d68173` (`26.4.0.68173`). The separate warnings-as-errors
   RelWithDebInfo appearance-utility build also completed at that source.
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64.
   Viewer executable SHA-256 is
-  `fd10040bf4fc8c110f9cbbfc8b45d8f569256da5ba8f3c126baa9ddf8435ab5c`.
+  `8c0fa87660d9f8e4209f3f3ff3615316108bb0668aff639dcc6a9b3705e4524e`.
   Appearance-utility SHA-256 is
   `c3e87e6a8f87c09c44e61aee502f6afd22e5f4bd1b82dd8c952c2fa05fba89a5`.
 - Source and packaged MSL are byte-identical at
@@ -106,7 +106,7 @@ case is a parity pass until the owner-attended review records that result.
   The run is recorded as failed, not promoted to green.
 - Strict inventory is 2,408 files / 3,262 findings, expected exit 1. The exact
   report SHA-256 is
-  `589b98fbc15cee351f34a264f75341e80b762d9bdd071958f469bdfc67967019`.
+  `18eb1ab8a12306e3263672506bf5a3ced248b89e298245a2edc5d67eb46e1c15`.
   Both OpenGL and Metal remain linked in the viewer and appearance utility;
   neither has an undefined `CGLTexImageIOSurface2D` dependency.
 - `nm` finds no packaged-viewer symbol for the six retained
@@ -126,35 +126,34 @@ case is a parity pass until the owner-attended review records that result.
 | M-008 advanced views/effects | doing | Established advanced-output owners, color grading, tone curve, BRDF, post FXAA/SMAA/CAS, DoF and world-view HDR bloom/cross-filter are native-only; complete native-eligible PBR previews own geometry/post/publish. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,262 and exits 1; full parity/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | The established resources plus pipeline BRDF, post-AA/CAS, DoF and world bloom own no GL path; eligible PBR previews skip GL shader/geometry/light/probe/post/publish, while unsupported-mode fallback and shared GL viewport/matrix/clear setup remain. |
+| M-011 GL authority removal | doing | The established resources plus pipeline BRDF, post-AA/CAS, DoF and world bloom own no GL path; eligible PBR previews also skip their GL setup/draw/post, but the generic scheduler still takes and clears a shared GL target before their native attempt. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. A complete native PBR preview now runs
-before and instead of the retained GL shader/sphere draw, and no longer waits
-for retained GL post success or performs a redundant framebuffer copy. Metal
-owns its material shading, exposure, HDR bloom, halation, cross filter, tone
-mapping and publication, with those semantics physically regressed.
+**Advances the complete product:** yes. A complete native PBR preview now builds
+its camera matrices without reading or loading GL matrices, and its own GL
+pre-render/clear/state setup runs only after a native failure. Metal owns the
+eligible preview's material shading, exposure, HDR bloom, halation, cross
+filter, tone mapping and publication, with those semantics physically regressed.
 
 **Still incomplete:** the executable links OpenGL; unsupported native preview
-eligibility modes retain the GL sphere/post fallback, shared preview
-pre-render/viewport/matrix/clear setup still mutates GL state, and
-application-owned GL context, traversal and resources remain.
+eligibility modes retain the GL sphere/post fallback, and the generic scheduler
+still acquires/binds/clears a GL target before native eligibility resolves.
+Application-owned GL context, traversal and resources remain.
 Complete feature/stability, profiling/performance and release gates are not met.
 Prolonged stability and independent build/review evidence remain open; strict no-GL
 is not satisfied. Visual parity cases remain queued, not waived.
 
-**Evidence-based priority:** derive the native preview camera and matrices on
-the CPU and defer dynamic-texture GL pre-render/clear/state setup into the
-fallback, then extend native coverage toward classic/non-HDR/post-suppressed
-configurations. Preserve unsupported-mode behavior until physically covered.
+**Evidence-based priority:** let an eligible dynamic texture attempt native
+publication before shared GL target acquisition, while preserving same-frame
+fallback. Then extend coverage toward classic/non-HDR/post-suppressed modes.
 
 ## Exact next actions
 
-1. Derive native camera/modelview/projection on the CPU without changing preview framing or material semantics.
-2. Defer dynamic-texture GL pre-render, clear/mask/state setup and matrix loads
-   into the retained callback; keep it for unported or failed-native modes.
-3. Extend the native scene contract to classic/non-HDR/post-suppressed modes,
+1. Add a fail-closed native-first dynamic-texture scheduler contract.
+2. Acquire/bind/clear the shared Preview GL target only when that attempt fails;
+   preserve existing ordering and bake behavior.
+3. Extend the native preview contract to classic/non-HDR/post-suppressed modes,
    then remove GL preview resources/programs once reachability proves dead.
