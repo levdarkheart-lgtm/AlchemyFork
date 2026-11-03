@@ -54,18 +54,6 @@
 #include "../almetal/almetalresource.h"
 #endif
 
-    ALTransientTargets post(gPipeline.mTransientTargets);
-    LLRenderTarget* post_ping = nullptr;
-#if !LL_DARWIN
-    // Preserve the retained platforms' original fail-before-draw behavior.
-    post_ping = gPipeline.acquireResource(
-        post, ALRenderResourcePlan::Id::ProbePostPing);
-    if (!post_ping)
-    {
-        return false;
-    }
-#endif
-
 LLGLTFMaterialPreviewMgr gGLTFMaterialPreviewMgr;
 
 namespace
@@ -570,6 +558,18 @@ bool LLGLTFPreviewTexture::render()
     ALMetalPBRPreviewEnvironment metal_preview_environment;
 #endif
 
+    ALTransientTargets post(gPipeline.mTransientTargets);
+    LLRenderTarget* post_ping = nullptr;
+#if !LL_DARWIN
+    // Preserve the retained platforms' original fail-before-draw behavior.
+    post_ping = gPipeline.acquireResource(
+        post, ALRenderResourcePlan::Id::ProbePostPing);
+    if (!post_ping)
+    {
+        return false;
+    }
+#endif
+
     // The swatch's alpha is its coverage, drawn over a checkerboard. Without this the
     // preview takes whatever mask the last frame ended on, and after a HUD pass that leaves
     // alpha unwritten from the clears through the final blit.
@@ -646,8 +646,10 @@ bool LLGLTFPreviewTexture::render()
     {
         // *TODO: Opaque/alpha mask rendering
     }
-    else
 #endif
+    // Keep the retained draw recoverable while Darwin tries the native scene
+    // first. This callback must not run on a successful native preview.
+    const auto render_retained_preview = [&]()
     {
         // Alpha blend rendering
 
@@ -670,6 +672,17 @@ bool LLGLTFPreviewTexture::render()
         {
             LLRenderPass::pushGLTFBatch(*part->mDrawInfo, lastMat, lastTex);
         }
+
+        LLEnvironment::instance().bindEnvironmentUBO();
+
+        gPipeline.unbindDeferredShader(shader);
+
+        screen.flush();
+    };
+
+#if !LL_DARWIN
+    render_retained_preview();
+#endif
 
 #if LL_DARWIN
         ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
@@ -1037,12 +1050,14 @@ bool LLGLTFPreviewTexture::render()
         }
 #endif
 
-        LLEnvironment::instance().bindEnvironmentUBO();
-
-        gPipeline.unbindDeferredShader(shader);
-
-        screen.flush();
+#if LL_DARWIN
+    if (!mMetalPreview)
+    {
+        // Unsupported configurations and native failures retain the original
+        // render path until their Metal variants are implemented.
+        render_retained_preview();
     }
+#endif
 
     bool post_succeeded = true;
 #if LL_DARWIN
