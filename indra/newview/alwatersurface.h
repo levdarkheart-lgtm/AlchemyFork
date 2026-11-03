@@ -54,7 +54,8 @@ struct ALMetalWorldWaterSurface;
 /// height that empty cells take, or the square under the camera -- which a key of those, compared each frame, finds
 /// without a trigger at each place they change.
 ///
-/// Owned by LLPipeline. Its texture goes with the pipeline's other GL objects and is made again on the next update.
+/// Owned by LLPipeline. Its native texture goes with the pipeline's other renderer resources and is made again on the
+/// next update after release.
 class ALWaterSurface
 {
 public:
@@ -66,7 +67,7 @@ public:
     /// Whether there is a field to draw.
     bool exists() const { return mCellMap.notNull(); }
 
-    /// Releases the GL textures: the cell map and the maps' heights. What the maps' pixels gave is kept, and their
+    /// Releases the renderer textures: the cell map and the maps' heights. What the maps' pixels gave is kept, and their
     /// heights are uploaded again when next wanted.
     void release();
 
@@ -193,7 +194,7 @@ private:
         bool operator==(const Key&) const = default;
     };
 
-    /// What a wave normal map's pixels gave, by asset id. The heights' texels outlive a release of the GL textures, which
+    /// What a wave normal map's pixels gave, by asset id. The heights' texels outlive a release of renderer textures, which
     /// are uploaded from them again.
     struct MapStats
     {

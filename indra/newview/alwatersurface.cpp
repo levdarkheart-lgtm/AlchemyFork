@@ -184,26 +184,66 @@ void ALWaterSurface::update()
     mScratch.mCentreY = mLayout.mCentreY;
     mScratch.mCells = mLayout.mCells;
     mScratch.mDefaultHeight = mDefaultHeight;
-    if (mCellMap.notNull() && mScratch == mKey)
+#if LL_DARWIN
+    const bool cell_map_ready = mCellMap.notNull() &&
+        !mCellMap->getHasGLTexture() && mCellMap->getMetalTexture();
+#else
+    const bool cell_map_ready = mCellMap.notNull();
+#endif
+    if (cell_map_ready && mScratch == mKey)
     {
         return;
     }
-    std::swap(mKey, mScratch);
 
-    ALWaterField::fillCells(mLayout, mKey.mRegions, mKey.mDefaultHeight, mTexels);
+    ALWaterField::fillCells(mLayout, mScratch.mRegions,
+                            mScratch.mDefaultHeight, mTexels);
     const U8* bytes = reinterpret_cast<const U8*>(mTexels.data());
-    if (mCellMap.isNull())
+#if LL_DARWIN
+    bool uploaded = false;
+    if (!cell_map_ready)
     {
-        mCellMap = new LLImageGL(ALWaterField::MAP_SIZE, ALWaterField::MAP_SIZE, 2, /*usemipmaps=*/false);
-        mCellMap->setNeedsAlphaAndPickMask(false);
-        mCellMap->setExplicitFormat(GL_RG32F, GL_RG, GL_FLOAT);
-        mCellMap->createGLTexture(0, bytes);
+        LLPointer<LLImageGL> cell_map = new LLImageGL(
+            ALWaterField::MAP_SIZE, ALWaterField::MAP_SIZE, 2,
+            /*usemipmaps=*/false);
+        cell_map->setNeedsAlphaAndPickMask(false);
+        cell_map->setExplicitFormat(GL_RG32F, GL_RG, GL_FLOAT);
+        uploaded = cell_map->createMetalTexture(0, bytes);
+        if (uploaded)
+        {
+            mCellMap = cell_map;
+        }
     }
     else
     {
-        mCellMap->setImage(bytes);
+        uploaded = mCellMap->uploadMetalSubImage(
+            bytes, ALWaterField::MAP_SIZE, ALWaterField::MAP_SIZE,
+            0, 0, ALWaterField::MAP_SIZE, ALWaterField::MAP_SIZE);
+    }
+#else
+    bool uploaded = false;
+    if (mCellMap.isNull())
+    {
+        mCellMap = new LLImageGL(ALWaterField::MAP_SIZE,
+                                 ALWaterField::MAP_SIZE, 2,
+                                 /*usemipmaps=*/false);
+        mCellMap->setNeedsAlphaAndPickMask(false);
+        mCellMap->setExplicitFormat(GL_RG32F, GL_RG, GL_FLOAT);
+        uploaded = mCellMap->createGLTexture(0, bytes);
+    }
+    else
+    {
+        uploaded = mCellMap->setImage(bytes);
         gGL.getTextureSlot(0)->unbind();
     }
+#endif
+    if (!uploaded)
+    {
+        LL_WARNS("Water") << "The procedural water cell map did not upload"
+                           << LL_ENDL;
+        mCellMap = nullptr;
+        return;
+    }
+    std::swap(mKey, mScratch);
 }
 
 void ALWaterSurface::release()
@@ -212,8 +252,8 @@ void ALWaterSurface::release()
     mKey = Key();
     mWavesDrawn = false;
     mMaxDisplacement = 0.f;
-    // The maps' heights are GL textures; their texels stay, and are uploaded again when next wanted. A bake still
-    // running lands on its map as before.
+    // The maps' height textures keep their texels and upload again when next
+    // wanted. A bake still running lands on its map as before.
     for (MapStats& stats : mMaps)
     {
         stats.mHeights = nullptr;
@@ -970,16 +1010,24 @@ void ALWaterSurface::uploadHeights(MapStats& stats)
     {
         return;
     }
-    // The two fields side by side in a texel, and every mip, box-averaged as GL generates them: a layer seen far off
-    // reads its heights averaged toward the plane.
+    // The two fields side by side in a texel, and every mip, box-averaged by
+    // the active renderer backend: a layer seen far off reads its heights
+    // averaged toward the plane.
     LLPointer<LLImageGL> texture = new LLImageGL(stats.mTexelsWidth, stats.mTexelsHeight, 2, true);
     texture->setNeedsAlphaAndPickMask(false);
     texture->setExplicitFormat(GL_RG16F, GL_RG, GL_HALF_FLOAT);
-    if (!texture->createGLTexture(0, reinterpret_cast<const U8*>(stats.mTexels->data())))
+#if LL_DARWIN
+    const bool uploaded = texture->createMetalTexture(
+        0, reinterpret_cast<const U8*>(stats.mTexels->data()));
+#else
+    const bool uploaded = texture->createGLTexture(
+        0, reinterpret_cast<const U8*>(stats.mTexels->data()));
+#endif
+    if (!uploaded)
     {
-        // Not tried again: the map's waves stay flat.
         LL_WARNS("Water") << "The wave heights of " << stats.mID << " did not upload" << LL_ENDL;
-        stats.mTexels.reset();
+        // Keep the baked texels so trackMaps retries rather than silently making
+        // this map permanently flat after a transient allocation/command failure.
         return;
     }
     stats.mHeights = texture;

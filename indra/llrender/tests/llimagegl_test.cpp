@@ -1562,6 +1562,65 @@ namespace
         }
     }
 
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: typed native creation generates an exact float mip chain", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        constexpr S32 W = 4;
+        constexpr S32 H = 4;
+        std::array<U16, W * H * 2> texels{};
+        for (S32 y = 0; y < H; ++y)
+        {
+            for (S32 x = 0; x < W; ++x)
+            {
+                const bool one = ((x + y) & 1) != 0;
+                const std::size_t offset =
+                    (static_cast<std::size_t>(y) * W + x) * 2;
+                texels[offset] = one ? 0x3c00u : 0x0000u;
+                texels[offset + 1] = one ? 0x0000u : 0x3c00u;
+            }
+        }
+
+        LLPointer<LLImageGL> image =
+            new LLImageGL(W, H, 2, /*usemipmaps=*/true);
+        image->setNeedsAlphaAndPickMask(false);
+        image->setExplicitFormat(GL_RG16F, GL_RG, GL_HALF_FLOAT);
+        REQUIRE(image->createMetalTexture(
+            0, reinterpret_cast<const U8*>(texels.data())));
+        CHECK_FALSE(image->getHasGLTexture());
+        REQUIRE(image->getMetalTexture());
+        CHECK(image->getMetalTexture()->descriptor().mipmap_level_count == 3);
+
+        std::array<U16, W * H * 2> base{};
+        REQUIRE(image->getMetalTexture()->readback(
+            *device, 0, 0, {}, base.data(), W * 2 * sizeof(U16), &error));
+        INFO(error);
+        CHECK(base == texels);
+
+        std::array<U16, 2 * 2 * 2> middle{};
+        REQUIRE(image->getMetalTexture()->readback(
+            *device, 1, 0, {}, middle.data(), 2 * 2 * sizeof(U16), &error));
+        INFO(error);
+        CHECK(std::all_of(middle.begin(), middle.end(),
+                          [](U16 value) { return value == 0x3800u; }));
+
+        std::array<U16, 2> final{};
+        REQUIRE(image->getMetalTexture()->readback(
+            *device, 2, 0, {}, final.data(), 2 * sizeof(U16), &error));
+        INFO(error);
+        CHECK(final[0] == 0x3800u);
+        CHECK(final[1] == 0x3800u);
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "ALTextureSlot: native-only sampling preserves the Metal image identity", "[LLImageGL][almetal]")
     {
         std::string error;

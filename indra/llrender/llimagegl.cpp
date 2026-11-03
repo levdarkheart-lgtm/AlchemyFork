@@ -1616,7 +1616,7 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const LLImageRaw* image,
     checkUploadBegun();
 
     if (!on_main_thread() || !image || image->isBufferInvalid() || !sImageMetalDevice ||
-        mExternalTexture || mTarget != GL_TEXTURE_2D || mUseMipMaps)
+        mExternalTexture || mTarget != GL_TEXTURE_2D)
     {
         return false;
     }
@@ -1651,7 +1651,7 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
     checkUploadBegun();
 
     if (!on_main_thread() || !data || !sImageMetalDevice || mExternalTexture ||
-        mTarget != GL_TEXTURE_2D || mUseMipMaps || mWidth <= 0 || mHeight <= 0 ||
+        mTarget != GL_TEXTURE_2D || mWidth <= 0 || mHeight <= 0 ||
         mComponents <= 0)
     {
         return false;
@@ -1688,18 +1688,21 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
     mStorageAllocated = false;
     mStorage = StorageDesc();
     mCurrentDiscardLevel = discard_level;
-    mHasMipMaps = false;
-    mMipLevels = 1;
+    mHasMipMaps = mUseMipMaps;
+    const U32 width = static_cast<U32>(liveWidth(mCurrentDiscardLevel));
+    const U32 height = static_cast<U32>(liveHeight(mCurrentDiscardLevel));
+    mMipLevels = mUseMipMaps
+        ? calcMipLevelCount(static_cast<S32>(width), static_cast<S32>(height))
+        : 1;
     setCategory(category);
 
     std::unique_ptr<ALMetalCommandBuffer> command_owner;
     ALMetalCommandBuffer* command = nullptr;
-    const U32 width = static_cast<U32>(liveWidth(mCurrentDiscardLevel));
-    const U32 height = static_cast<U32>(liveHeight(mCurrentDiscardLevel));
     if (!prepareMetalTexture(command_owner, command, true) || !command ||
         !metalTextureForUpload() ||
         !uploadMetalTextureRegion(*command, 0, 0, 0, width, height,
                                   data, metalSourceBytesPerRow(width)) ||
+        (mUseMipMaps && !generateMetalMipmaps(*command)) ||
         !commitMetalUpload(command_owner, command))
     {
         mMetalTexture.reset();
