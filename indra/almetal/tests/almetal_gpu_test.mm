@@ -28798,11 +28798,75 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         CHECK(std::abs(static_cast<int>(direct[1]) - 132) <= 2);
         CHECK(std::abs(static_cast<int>(direct[2]) - 132) <= 2);
         CHECK(direct[3] == 255);
-        batch.base_color_texture = base.get();
-        batch.emissive_texture = emissive.get();
+
+        // The retained CLASSIC_MODE path reconstructs its white preview sun
+        // in encoded space: 1.35 sky boost, 0.7 legacy scale, PI Lambert
+        // compensation, 1.1 sun recombination and the final 1.1 base-light
+        // scale. At normal incidence with roughness one, the independent GGX
+        // split-sum oracle above gives an encoded reference of 68.48 for this
+        // 0.25 sunlight scale (including half-float LUT quantization).
+        scene.classic_mode = true;
+        auto classic_direct_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(classic_direct_output);
+        const auto classic_direct = read_center(*classic_direct_output);
+        CHECK(std::abs(static_cast<int>(classic_direct[0]) - 68) <= 2);
+        CHECK(std::abs(static_cast<int>(classic_direct[1]) - 68) <= 2);
+        CHECK(std::abs(static_cast<int>(classic_direct[2]) - 68) <= 2);
+        CHECK(classic_direct[3] == 255);
+
+        // Classic probe taps deliberately omit diffuse SH irradiance. Feed a
+        // strong green L0 coefficient and prove the result remains the
+        // atmosphere-authored RGB ambient. Its normal-facing factor is 0.75;
+        // pbrBaseLight decodes ambient*0.9, and pbralphaF applies 1.1 after
+        // the classic recombination.
         batch.sun_color[0] = 0.f;
         batch.sun_color[1] = 0.f;
         batch.sun_color[2] = 0.f;
+        batch.orm_texture = rough_metal.get();
+        environment.ambient[0] = 0.4f;
+        environment.ambient[1] = 0.2f;
+        environment.ambient[2] = 0.1f;
+        environment.ambient[3] = 0.5f;
+        environment.sh_coefficients[0][0] = 0x3c000000u;
+        auto classic_ambient_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(classic_ambient_output);
+        const auto classic_ambient = read_center(*classic_ambient_output);
+        const auto decode_srgb = [](float encoded)
+        {
+            return encoded <= 0.04045f
+                ? encoded / 12.92f
+                : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
+        };
+        const auto encode_srgb = [](float linear)
+        {
+            return linear <= 0.0031308f
+                ? linear * 12.92f
+                : 1.055f * std::pow(linear, 1.f / 2.4f) - 0.055f;
+        };
+        const std::array<float, 3> classic_ambient_source{{
+            0.4f, 0.2f, 0.1f,
+        }};
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            const float retained_linear = decode_srgb(
+                classic_ambient_source[channel] * 0.75f * 0.5f * 0.9f) *
+                1.1f;
+            const int expected = static_cast<int>(std::lround(
+                encode_srgb(retained_linear) * 255.f));
+            CAPTURE(channel, expected);
+            CHECK(std::abs(static_cast<int>(
+                      classic_ambient[channel]) - expected) <= 1);
+        }
+        CHECK(classic_ambient[3] == 255);
+
+        scene.classic_mode = false;
+        std::fill(std::begin(environment.ambient),
+                  std::end(environment.ambient), 0.f);
+        environment.sh_coefficients[0][0] = 0;
+        batch.base_color_texture = base.get();
+        batch.emissive_texture = emissive.get();
 
         // A coherent environment carries the cube's face orientation and
         // roughness-filtered mip chain. The centre reflection points at +Z:

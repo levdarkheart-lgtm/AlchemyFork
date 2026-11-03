@@ -10535,7 +10535,7 @@ struct ALMetalPBRPreviewEnvironmentConstants
     float4 env_matrix[3];
     // atmos_amblit.rgb, sky ambient scale
     float4 ambient;
-    // irradiance scale, radiance scale, max LOD, reserved
+    // irradiance scale, radiance scale, max LOD, classic mode
     float4 probe;
     uint4 sh_coefficients[4];
 };
@@ -11179,22 +11179,34 @@ static float3 almetal_pbr_sh_irradiance(
 static float3 almetal_pbr_ambient(
     float3 normal,
     float3 light,
-    constant ALMetalPBRPreviewEnvironmentConstants& environment)
+    constant ALMetalPBRPreviewEnvironmentConstants& environment,
+    bool classic_mode)
 {
     float ambient_lighting = min(abs(dot(normal, light)), 1.0) * 0.5;
     ambient_lighting = 1.0 - ambient_lighting * ambient_lighting;
-    const float3 linear = almetal_srgb_to_linear(
-        environment.ambient.rgb * ambient_lighting);
-    return float3(dot(linear, float3(0.2126, 0.7152, 0.0722))) *
-           environment.ambient.w;
+    float3 ambient = environment.ambient.rgb * ambient_lighting;
+    if (!classic_mode)
+    {
+        ambient = almetal_srgb_to_linear(ambient);
+        ambient = float3(dot(
+            ambient, float3(0.2126, 0.7152, 0.0722)));
+    }
+    return ambient * environment.ambient.w;
 }
 
 static float3 almetal_pbr_probe_irradiance(
     float3 position,
     float3 normal,
     float3 ambient,
-    constant ALMetalPBRPreviewEnvironmentConstants& environment)
+    constant ALMetalPBRPreviewEnvironmentConstants& environment,
+    bool classic_mode)
 {
+    // reflectionProbeF.glsl::pbrProbeTaps disables the diffuse probe tap in
+    // CLASSIC_MODE. The caller still samples radiance for the specular IBL.
+    if (classic_mode)
+    {
+        return ambient;
+    }
     const float3 probe_direction = almetal_pbr_probe_direction(
         position, normal, environment);
     const float length_squared = dot(probe_direction, probe_direction);
@@ -16181,13 +16193,11 @@ fragment float4 almetal_pbr_preview_fragment(
         normal, view, light);
     punctual.specular *= almetal_pbr_energy_compensation(
         brdf_lut, brdf_sampler, specular_color, max(roughness, 0.045), nv);
-    const float3 direct = almetal_pbr_clamp_radiance(
-        punctual.nl * (punctual.diffuse + punctual.specular)) *
-        constants.sun_color.rgb * 3.0;
-
-    const float3 ambient = almetal_pbr_ambient(normal, light, environment);
+    const bool classic_mode = environment.probe.w != 0.0;
+    const float3 ambient = almetal_pbr_ambient(
+        normal, light, environment, classic_mode);
     const float3 irradiance = almetal_pbr_probe_irradiance(
-        input.eye_position, normal, ambient, environment);
+        input.eye_position, normal, ambient, environment, classic_mode);
     const float3 mirror_direction = normalize(reflect(-view, normal));
     const float3 dominant_direction = almetal_pbr_dominant_direction(
         normal, mirror_direction, roughness);
@@ -16203,7 +16213,41 @@ fragment float4 almetal_pbr_preview_fragment(
         radiance, irradiance, ao, nv, max(roughness, 0.045));
     const float3 emissive = constants.emissive_color.rgb *
         emissive_map.sample(emissive_sampler, input.emissive_texcoord).rgb;
-    const float3 color = direct + ibl.diffuse + ibl.specular + emissive;
+    float3 color;
+    if (classic_mode)
+    {
+        // This is pbrBaseLight's CLASSIC_MODE branch. The preview binds the
+        // environment lit by white, so sun_color is the sky sunlight scale;
+        // the retained pbralphaF path applies the classic 1.35 boost before
+        // this legacy sRGB recombination.
+        const float3 classic_irradiance = almetal_srgb_to_linear(
+            irradiance * 0.9);
+        const float directional = pow(punctual.nl, 1.2);
+        float3 sun_contribution = float3(min(directional, 1.0));
+        sun_contribution = almetal_srgb_to_linear(
+            almetal_linear_to_srgb(sun_contribution) *
+            constants.sun_color.rgb * 1.35 * 0.7) * M_PI_F;
+        const float3 final_ambient = classic_irradiance *
+            diffuse_color *
+            almetal_pbr_gtao_multibounce(ao, diffuse_color);
+        const float3 final_sun = almetal_pbr_clamp_radiance(
+            sun_contribution *
+            (punctual.diffuse + punctual.specular));
+        color = almetal_srgb_to_linear(
+            almetal_linear_to_srgb(final_ambient) +
+            almetal_linear_to_srgb(final_sun) * 1.1);
+        color += ibl.specular + emissive;
+        // pbralphaF applies this only to the base term, before its local
+        // lights and fog. The preview has neither, so it closes the scene.
+        color *= 1.1;
+    }
+    else
+    {
+        const float3 direct = almetal_pbr_clamp_radiance(
+            punctual.nl * (punctual.diffuse + punctual.specular)) *
+            constants.sun_color.rgb * 3.0;
+        color = direct + ibl.diffuse + ibl.specular + emissive;
+    }
 
     // Match the GL preview's ordering: alpha-composite the complete linear HDR
     // sphere first. Exposure and tone mapping are a later full-target pass.

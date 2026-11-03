@@ -84,6 +84,12 @@ struct ALMetalPBRPreviewScene
     const ALMetalTextureDescriptor* destination_descriptor = nullptr;
     const ALMetalPBRPreviewEnvironment* environment = nullptr;
 
+    // The retained preview selects the CLASSIC_MODE PBR-alpha variant from
+    // the active sky. Keep that lighting contract explicit here: it changes
+    // atmospheric color space, probe diffuse participation and the direct
+    // light recombination, not just the later color-correction pass.
+    bool classic_mode = false;
+
     // colorCorrect applies these after the complete linear scene has been
     // composited, rather than independently to each material batch. HDR
     // previews apply exposure/tonemapping unless their clean-plate/legacy

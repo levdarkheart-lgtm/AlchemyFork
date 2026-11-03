@@ -939,10 +939,11 @@ bool LLGLTFPreviewTexture::render()
                 : 0.f;
         const bool metal_preview_cross_filter =
             metal_preview_cross_filter_strength > 0.f;
+        F32 metal_preview_sun_scale = 0.f;
 
         bool metal_preview_eligible = metal_device &&
             mMetalPreviewDescriptor && base_color_texture && normal_texture &&
-            orm_texture && emissive_texture && !LLRender::sClassicMode;
+            orm_texture && emissive_texture;
         if (metal_preview_eligible)
         {
             metal_preview_eligible =
@@ -966,12 +967,13 @@ bool LLGLTFPreviewTexture::render()
             metal_preview_environment.env_matrix[2][2] = matrix[10];
 
             const LLEnvironment::EnvironmentUBOData& environment =
-                LLEnvironment::instance().mEnvUBOData;
+                LLEnvironment::instance().getEnvironmentUBOData();
             std::memcpy(metal_preview_environment.ambient,
                         environment.atmos_amblit,
                         sizeof(environment.atmos_amblit));
             metal_preview_environment.ambient[3] =
                 environment.sky_ambient_scale;
+            metal_preview_sun_scale = environment.sky_sunlight_scale;
         }
         const LLMatrix4a& modelview = preview_modelview;
         LLMatrix4a inverse_modelview;
@@ -1053,14 +1055,13 @@ bool LLGLTFPreviewTexture::render()
             std::memcpy(batch.sun_direction,
                         gPipeline.mTransformedSunDir.mV,
                         sizeof(F32) * 3);
-            // bindEnvironmentUBOLitBy(white) makes atmos_sunlit_linear one;
-            // calcAtmosphericVarsLinear then applies the HDR sunlight scale.
-            // Carry the same scalar explicitly into the native pass.
-            const F32 preview_sun_scale =
-                gSavedSettings.get<F32>("RenderHDRSkySunlightScale");
-            batch.sun_color[0] = preview_sun_scale;
-            batch.sun_color[1] = preview_sun_scale;
-            batch.sun_color[2] = preview_sun_scale;
+            // bindEnvironmentUBOLitBy(white) makes the selected atmosphere
+            // sun white; calcAtmosphericVarsLinear then applies the packed
+            // sky sunlight scale. Use the current environment snapshot so
+            // HDR and non-HDR previews follow the exact retained choice.
+            batch.sun_color[0] = metal_preview_sun_scale;
+            batch.sun_color[1] = metal_preview_sun_scale;
+            batch.sun_color[2] = metal_preview_sun_scale;
             batch.metallic_factor = mGLTFMaterial->mMetallicFactor;
             batch.roughness_factor = mGLTFMaterial->mRoughnessFactor;
             batch.alpha_cutoff =
@@ -1097,6 +1098,7 @@ bool LLGLTFPreviewTexture::render()
                 metal_scene.destination_descriptor =
                     mMetalPreviewDescriptor.get();
                 metal_scene.environment = &metal_preview_environment;
+                metal_scene.classic_mode = LLRender::sClassicMode;
                 metal_scene.tonemap_enabled =
                     metal_preview_hdr && !metal_preview_no_post;
                 metal_scene.exposure = metal_preview_exposure;

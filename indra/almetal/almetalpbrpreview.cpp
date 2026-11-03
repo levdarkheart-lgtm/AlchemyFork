@@ -50,7 +50,7 @@ namespace
         float env_matrix[3][4];
         // atmos_amblit.rgb, sky ambient scale
         float ambient[4];
-        // irradiance scale, radiance scale, max LOD, reserved
+        // irradiance scale, radiance scale, max LOD, classic mode
         float probe[4];
         std::uint32_t sh_coefficients[4][4];
     };
@@ -851,6 +851,7 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
     environment_constants.probe[0] = environment.irradiance_scale;
     environment_constants.probe[1] = environment.radiance_scale;
     environment_constants.probe[2] = environment.max_lod;
+    environment_constants.probe[3] = scene.classic_mode ? 1.f : 0.f;
     std::memcpy(environment_constants.sh_coefficients,
                 environment.sh_coefficients,
                 sizeof(environment_constants.sh_coefficients));
