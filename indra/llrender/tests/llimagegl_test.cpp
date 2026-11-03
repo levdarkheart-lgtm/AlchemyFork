@@ -853,6 +853,58 @@ namespace
         CHECK(std::all_of(pixels.begin(), pixels.end(), [](U8 value) { return value == 0x80; }));
     }
 
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: scaleDown keeps a native-authoritative texture Metal-only", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        constexpr U16 W = 16;
+        constexpr U16 H = 16;
+        LLPointer<LLImageGL> img = new LLImageGL(W, H, 4, /*usemipmaps=*/true);
+        REQUIRE(img->createMetalTexture(
+            0, makeRaw(W, H, 4, 0x6c).get(), LLGLTexture::LOCAL));
+        REQUIRE(img->getMetalTexture());
+        CHECK_FALSE(img->getHasGLTexture());
+        CHECK(img->getTexName() == 0);
+
+        const U64 tracked_gl_bytes = LLImageGL::getTextureBytesAllocated();
+        const S64Bytes original_memory = img->getTextureMemory();
+        REQUIRE(original_memory > S64Bytes(0));
+
+        REQUIRE(img->scaleDown(1));
+
+        REQUIRE(img->getMetalTexture());
+        CHECK_FALSE(img->getHasGLTexture());
+        CHECK(img->getTexName() == 0);
+        CHECK(LLImageGL::getTextureBytesAllocated() == tracked_gl_bytes);
+        CHECK(img->getDiscardLevel() == 1);
+        CHECK(img->getMetalTexture()->descriptor().width == W / 2);
+        CHECK(img->getMetalTexture()->descriptor().height == H / 2);
+        CHECK(img->getMetalTexture()->descriptor().mipmap_level_count == 4);
+        CHECK(img->getTextureMemory() == S64Bytes(img->getMipBytes(1)));
+        CHECK(img->getTextureMemory() < original_memory);
+
+        std::vector<U8> base((W / 2) * (H / 2) * 4, 0);
+        REQUIRE(img->getMetalTexture()->readback(
+            *device, 0, 0, {}, base.data(), (W / 2) * 4, &error));
+        INFO(error);
+        CHECK(std::all_of(base.begin(), base.end(), [](U8 value) { return value == 0x6c; }));
+
+        std::array<U8, 4> tail{};
+        REQUIRE(img->getMetalTexture()->readback(
+            *device, 3, 0, {}, tail.data(), tail.size(), &error));
+        INFO(error);
+        CHECK(std::all_of(tail.begin(), tail.end(), [](U8 value) { return value == 0x6c; }));
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: no-mip scaleDown resamples its Metal mirror on the GPU", "[LLImageGL][almetal]")
     {
         std::string error;
@@ -937,6 +989,49 @@ namespace
             *device, 0, 0, {}, pixels.data(), (W / 2) * 4, &error));
         INFO(error);
         CHECK(std::all_of(pixels.begin(), pixels.end(), [](U8 value) { return value == 0x80; }));
+    }
+
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: no-mip native-authoritative scaleDown never creates GL backing", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        constexpr U16 W = 16;
+        constexpr U16 H = 16;
+        LLPointer<LLImageGL> img = new LLImageGL(W, H, 4, /*usemipmaps=*/false);
+        REQUIRE(img->createMetalTexture(
+            0, makeRaw(W, H, 4, 0x93).get(), LLGLTexture::LOCAL));
+        REQUIRE(img->getMetalTexture());
+        CHECK_FALSE(img->getHasGLTexture());
+
+        const U64 tracked_gl_bytes = LLImageGL::getTextureBytesAllocated();
+        REQUIRE(img->scaleDown(1));
+
+        REQUIRE(img->getMetalTexture());
+        CHECK_FALSE(img->getHasGLTexture());
+        CHECK(img->getTexName() == 0);
+        CHECK(LLImageGL::getTextureBytesAllocated() == tracked_gl_bytes);
+        CHECK(img->getDiscardLevel() == 1);
+        CHECK(img->getMetalTexture()->descriptor().width == W / 2);
+        CHECK(img->getMetalTexture()->descriptor().height == H / 2);
+        CHECK(img->getMetalTexture()->descriptor().mipmap_level_count == 1);
+        CHECK(alMetalHasUsage(img->getMetalTexture()->descriptor().usage,
+                              ALMetalTextureUsage::render_target));
+        CHECK(img->getTextureMemory() == S64Bytes(img->getBytes(1)));
+
+        std::vector<U8> pixels((W / 2) * (H / 2) * 4, 0);
+        REQUIRE(img->getMetalTexture()->readback(
+            *device, 0, 0, {}, pixels.data(), (W / 2) * 4, &error));
+        INFO(error);
+        CHECK(std::all_of(pixels.begin(), pixels.end(), [](U8 value) { return value == 0x93; }));
     }
 #endif
 

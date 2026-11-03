@@ -5030,6 +5030,34 @@ bool LLImageGL::scaleDown(S32 desired_discard)
     S32 desired_width = getWidth(desired_discard);
     S32 desired_height = getHeight(desired_discard);
 
+#if LL_DARWIN
+    // A native-authoritative image has deliberately retired its GL name. Keep
+    // that ownership boundary intact: scale the existing Metal resource
+    // directly instead of manufacturing a temporary GL texture merely to
+    // satisfy the legacy lifecycle. preserveMetalScaleDown() is transactional
+    // -- it publishes the destination only after allocation, encoding and
+    // command-buffer submission have all succeeded, so a failure leaves the
+    // current resource and discard metadata untouched.
+    if (mTexName == 0 && mMetalTexture)
+    {
+        if (!preserveMetalScaleDown(static_cast<U32>(mip),
+                                    static_cast<U32>(desired_width),
+                                    static_cast<U32>(desired_height)))
+        {
+            return false;
+        }
+
+        mPendingMetalTexture.reset();
+        mCurrentDiscardLevel = desired_discard;
+        mMipLevels = static_cast<S32>(
+            mMetalTexture->descriptor().mipmap_level_count);
+        mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+        mLastBindTime = sLastFrameTime;
+        llassert(!getHasGLTexture());
+        return true;
+    }
+#endif
+
     // A deprecated source format is held under a swizzle, and the filtering path cannot carry
     // one: it samples the old texture THROUGH the swizzle and copies the result back by
     // position, so luminance-alpha's alpha comes back as luminance and alpha-only loses
