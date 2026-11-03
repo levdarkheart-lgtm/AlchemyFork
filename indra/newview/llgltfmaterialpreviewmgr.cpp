@@ -268,12 +268,7 @@ namespace
 };  // namespace
 
 LLGLTFPreviewTexture::LLGLTFPreviewTexture(LLPointer<LLFetchedGLTFMaterial> material, S32 width)
-#if LL_DARWIN
-    : LLViewerDynamicTexture(width, width, 4, EOrder::ORDER_MIDDLE,
-                             EInitialBacking::NATIVE_METAL)
-#else
     : LLViewerDynamicTexture(width, width, 4, EOrder::ORDER_MIDDLE)
-#endif
     , mGLTFMaterial(material)
 {
 }
@@ -314,8 +309,7 @@ LLGLTFPreviewTexture::renderWithoutTarget()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
 
     llassert(mShouldRender);
-    llassert(!mBoundTarget);
-    if (!mShouldRender || mBoundTarget)
+    if (!mShouldRender)
     {
         return ETargetlessRenderResult::PENDING;
     }
@@ -329,7 +323,6 @@ LLGLTFPreviewTexture::renderWithoutTarget()
     if (!published)
     {
         mMetalPreview.reset();
-        mLastPostRenderSuccess = false;
         // A completed native render whose logical texture refuses adoption is
         // a publication failure. Keep it observable and retry natively.
         if (mNativeAttemptResult == ENativeAttemptResult::READY)
@@ -1060,32 +1053,9 @@ bool LLGLTFPreviewTexture::publishMetalPreview()
             << LL_ENDL;
     }
     mMetalPreview.reset();
-    mLastPostRenderSuccess = published;
     return published;
 }
 #endif
-
-void LLGLTFPreviewTexture::postRender(bool success)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
-
-    if (!mShouldRender) { return; }
-#if LL_DARWIN
-    // Darwin's scheduler completes through renderWithoutTarget(). Keep this
-    // override fail-closed if a direct caller ever invokes it: publish only a
-    // completed Metal result.
-    mLastPostRenderSuccess =
-        success && mMetalPreview && publishMetalPreview();
-    mMetalPreview.reset();
-#else
-    mLastPostRenderSuccess = false;
-#endif
-    mShouldRender = !lastPostRenderSucceeded();
-    if (lastPostRenderSucceeded())
-    {
-        mBestLoad = mPendingLoad;
-    }
-}
 
 LLPointer<LLViewerTexture> LLGLTFMaterialPreviewMgr::getPreview(LLPointer<LLFetchedGLTFMaterial> &material)
 {

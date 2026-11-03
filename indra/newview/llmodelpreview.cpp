@@ -99,14 +99,6 @@ static const std::string DEFAULT_PHYSICS_MESH_NAME = "default_physics_shape";
 
 const F32 SKIN_WEIGHT_CAMERA_DISTANCE = 16.f;
 
-namespace
-{
-LLViewerDynamicTexture::EInitialBacking modelPreviewInitialBacking()
-{
-    return LLViewerDynamicTexture::EInitialBacking::NATIVE_METAL;
-}
-}
-
 #if LL_DARWIN
 namespace
 {
@@ -921,8 +913,7 @@ static bool FindModel(const LLModelLoader::scene& scene, const std::string& name
 //-----------------------------------------------------------------------------
 
 LLModelPreview::LLModelPreview(S32 width, S32 height, LLFloater* fmp)
-    : LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE,
-                             modelPreviewInitialBacking()),
+    : LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE),
       LLMutex()
     , mLodsQuery()
     , mLodsWithParsingError()
@@ -4047,11 +4038,6 @@ void LLModelPreview::addEmptyFace(LLModel* pTarget)
 
 }
 
-bool LLModelPreview::canRenderWithoutTarget() const
-{
-    return true;
-}
-
 LLViewerDynamicTexture::ETargetlessRenderResult
 LLModelPreview::renderWithoutTarget()
 {
@@ -4743,13 +4729,6 @@ bool LLModelPreview::render()
 #else
     return false;
 #endif
-}
-
-void LLModelPreview::postRender(bool success)
-{
-    (void)success;
-    // Targetless native publication owns completion; copying a framebuffer
-    // here would recreate the removed retained producer.
 }
 
 

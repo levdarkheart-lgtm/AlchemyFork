@@ -51,10 +51,8 @@ public:
 
     S8 getType() const override;
 
-    bool    canRenderWithoutTarget() const override;
     ETargetlessRenderResult renderWithoutTarget() override;
     bool    render() override;
-    void    postRender(bool success) override;
     bool    needsRender() override { return mNeedsUpdate; }
     void    requestUpdate();
     void    rotate(F32 yaw_radians, F32 pitch_radians);

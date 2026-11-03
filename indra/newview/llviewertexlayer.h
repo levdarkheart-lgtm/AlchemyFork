@@ -109,20 +109,9 @@ private:
     //--------------------------------------------------------------------
 public:
     bool                    needsRender() override;
-    bool                    canRenderWithoutTarget() const override
-    {
-#if LL_DARWIN
-        return true;
-#else
-        return false;
-#endif
-    }
     ETargetlessRenderResult renderWithoutTarget() override;
 protected:
-    // Pass these along for tex layer rendering.
-    void                    preRender(bool clear_depth) override { preRenderTexLayerSet(); }
-    void                    postRender(bool success) override { postRenderTexLayerSet(success); }
-    bool                    render() override { return renderTexLayerSet(mBoundTarget); }
+    bool                    render() override { return renderTexLayerSet(nullptr); }
 
     //--------------------------------------------------------------------
     // Updates

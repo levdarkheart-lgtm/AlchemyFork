@@ -48,13 +48,9 @@ public:
     static LLPointer<LLGLTFPreviewTexture> create(LLPointer<LLFetchedGLTFMaterial> material);
 
     bool needsRender() override;
-#if LL_DARWIN
-    bool canRenderWithoutTarget() const override { return true; }
-#endif
     ETargetlessRenderResult renderWithoutTarget() override;
-    void preRender(bool clear_depth = true) override;
+    void preRender(bool clear_depth = true);
     bool render() override;
-    void postRender(bool success) override;
 
     struct MaterialLoadLevels
     {

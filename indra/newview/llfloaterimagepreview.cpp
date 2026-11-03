@@ -76,15 +76,6 @@
 
 namespace
 {
-LLViewerDynamicTexture::EInitialBacking imagePreviewInitialBacking()
-{
-#if LL_DARWIN
-    return LLViewerDynamicTexture::EInitialBacking::NATIVE_METAL;
-#else
-    return LLViewerDynamicTexture::EInitialBacking::RETAINED_GL;
-#endif
-}
-
 #if LL_DARWIN
 class LLScopedImagePreviewCameraState final
 {
@@ -745,8 +736,7 @@ void LLFloaterImagePreview::onMouseCaptureLostImagePreview(LLMouseHandler* handl
 // LLImagePreviewAvatar
 //-----------------------------------------------------------------------------
 LLImagePreviewAvatar::LLImagePreviewAvatar(S32 width, S32 height)
-: LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE,
-                         imagePreviewInitialBacking())
+: LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE)
 {
     mNeedsUpdate = true;
     mTargetJoint = NULL;
@@ -806,15 +796,6 @@ void LLImagePreviewAvatar::setPreviewTarget(const std::string& joint_name, const
     mNeedsUpdate = true;
 }
 
-bool LLImagePreviewAvatar::canRenderWithoutTarget() const
-{
-#if LL_DARWIN
-    return true;
-#else
-    return false;
-#endif
-}
-
 LLViewerDynamicTexture::ETargetlessRenderResult
 LLImagePreviewAvatar::renderWithoutTarget()
 {
@@ -852,7 +833,7 @@ LLImagePreviewAvatar::renderWithoutTarget()
         << LL_ENDL;
     return ETargetlessRenderResult::COMPLETED;
 #else
-    return ETargetlessRenderResult::RETAINED_FALLBACK;
+    return ETargetlessRenderResult::PENDING;
 #endif
 }
 
@@ -1015,17 +996,6 @@ bool LLImagePreviewAvatar::render()
 #endif
 }
 
-void LLImagePreviewAvatar::postRender(bool success)
-{
-#if !LL_DARWIN
-    LLViewerDynamicTexture::postRender(success);
-#else
-    // Darwin publishes authoritatively from renderWithoutTarget(); there is
-    // no framebuffer transaction to copy.
-    (void)success;
-#endif
-}
-
 //-----------------------------------------------------------------------------
 // refresh()
 //-----------------------------------------------------------------------------
@@ -1064,8 +1034,7 @@ void LLImagePreviewAvatar::pan(F32 right, F32 up)
 //-----------------------------------------------------------------------------
 
 LLImagePreviewSculpted::LLImagePreviewSculpted(S32 width, S32 height)
-: LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE,
-                         imagePreviewInitialBacking())
+: LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE)
 {
     mNeedsUpdate = true;
     mCameraDistance = 0.f;
@@ -1155,15 +1124,6 @@ void LLImagePreviewSculpted::setPreviewTarget(LLImageRaw* imagep, F32 distance)
     mNeedsUpdate = true;
 }
 
-bool LLImagePreviewSculpted::canRenderWithoutTarget() const
-{
-#if LL_DARWIN
-    return true;
-#else
-    return false;
-#endif
-}
-
 LLViewerDynamicTexture::ETargetlessRenderResult
 LLImagePreviewSculpted::renderWithoutTarget()
 {
@@ -1201,7 +1161,7 @@ LLImagePreviewSculpted::renderWithoutTarget()
         << LL_ENDL;
     return ETargetlessRenderResult::COMPLETED;
 #else
-    return ETargetlessRenderResult::RETAINED_FALLBACK;
+    return ETargetlessRenderResult::PENDING;
 #endif
 }
 
@@ -1363,17 +1323,6 @@ bool LLImagePreviewSculpted::render()
             << error << LL_ENDL;
     }
     return mMetalPreview != nullptr;
-#endif
-}
-
-void LLImagePreviewSculpted::postRender(bool success)
-{
-#if !LL_DARWIN
-    LLViewerDynamicTexture::postRender(success);
-#else
-    // Targetless native rendering publishes authoritatively in
-    // renderWithoutTarget(); there is no framebuffer transaction to copy.
-    (void)success;
 #endif
 }
 

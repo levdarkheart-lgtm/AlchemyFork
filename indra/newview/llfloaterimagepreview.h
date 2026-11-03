@@ -60,10 +60,8 @@ protected:
 
     void setPreviewTarget(LLImageRaw *imagep, F32 distance);
 
-    bool canRenderWithoutTarget() const override;
     ETargetlessRenderResult renderWithoutTarget() override;
     bool render() override;
-    void postRender(bool success) override;
     void refresh();
     void rotate(F32 yaw_radians, F32 pitch_radians);
     void zoom(F32 zoom_amt);
@@ -99,10 +97,8 @@ public:
     void setPreviewTarget(const std::string& joint_name, const std::string& mesh_name, LLImageRaw* imagep, F32 distance, bool male);
     void setTexture(LLViewerTexture* texture);
 
-    bool canRenderWithoutTarget() const override;
     ETargetlessRenderResult renderWithoutTarget() override;
     bool    render() override;
-    void    postRender(bool success) override;
     void    refresh();
     void    rotate(F32 yaw_radians, F32 pitch_radians);
     void    zoom(F32 zoom_amt);

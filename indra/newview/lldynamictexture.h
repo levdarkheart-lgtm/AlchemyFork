@@ -57,15 +57,8 @@ public:
 
     enum class ETargetlessRenderResult
     {
-        RETAINED_FALLBACK,
         COMPLETED,
         PENDING
-    };
-
-    enum class EInitialBacking
-    {
-        RETAINED_GL,
-        NATIVE_METAL
     };
 
     // No address-mode parameter: sampling state belongs to the bind, so a draw site that
@@ -73,9 +66,7 @@ public:
     LLViewerDynamicTexture(S32 width,
                      S32 height,
                      S32 components,        // = 4,
-                     EOrder order,          // = ORDER_MIDDLE
-                     EInitialBacking initial_backing =
-                         EInitialBacking::RETAINED_GL);
+                     EOrder order);         // = ORDER_MIDDLE
 
     /*virtual*/ S8 getType() const ;
 
@@ -85,36 +76,17 @@ public:
     S32         getSize()       { return mFullWidth * mFullHeight * mComponents; }
 
     virtual bool needsRender() { return true; }
-    // Whether the scheduler may ask this texture to render when no retained GL
-    // transaction is available. The targetless attempt may still report
-    // RETAINED_FALLBACK, which remains pending until retained rendering exists.
-    virtual bool canRenderWithoutTarget() const { return false; }
-    // Try to complete and publish without the shared GL target. The result
-    // distinguishes an ordinary retained callback from an item that must stay
-    // pending because that fallback is not ready this frame.
-    virtual ETargetlessRenderResult renderWithoutTarget()
-    {
-        return ETargetlessRenderResult::RETAINED_FALLBACK;
-    }
-    virtual void preRender(bool clear_depth = true);
-    virtual bool render();
-    virtual void postRender(bool success);
+    // Every product-owned dynamic texture is a targetless native producer.
+    // Incomplete resources preserve the prior authoritative result and retry.
+    virtual ETargetlessRenderResult renderWithoutTarget() = 0;
+    virtual bool render() = 0;
 
     virtual void destroyGLTexture() {}
 
-    // Update each order. True means a retained last-order render succeeded and
-    // the world caller must clear GL depth; targetless completion alone is
-    // deliberately not a GL-depth-dirty result.
+    // Native completion does not dirty retained GL depth, so this compatibility
+    // return remains false.
     static bool updateAllInstances();
     static void destroyGL() ;
-
-    void setBoundTarget(LLRenderTarget* target) { mBoundTarget = target; }
-
-protected:
-    bool lastPostRenderSucceeded() const { return mLastPostRenderSuccess; }
-
-    void generateGLTexture();
-    void generateGLTexture(LLGLint internal_format, LLGLenum primary_format, LLGLenum type_format, bool swap_bytes = false);
 #if LL_DARWIN
     void generateMetalTexture();
 #endif
@@ -122,9 +94,6 @@ protected:
 protected:
     LLCoordGL mOrigin;
     LLCamera mCamera;
-
-    LLRenderTarget* mBoundTarget;
-    bool mLastPostRenderSuccess;
 
     typedef std::set<LLViewerDynamicTexture*> instance_list_t;
     static instance_list_t sInstances[ LLViewerDynamicTexture::ORDER_COUNT ];

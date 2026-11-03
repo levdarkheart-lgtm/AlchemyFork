@@ -68,11 +68,9 @@ public:
     S8                     getType() const override;
 
     bool                    needsRender() override;
-    bool                    canRenderWithoutTarget() const override;
     ETargetlessRenderResult renderWithoutTarget() override;
-    void                    preRender(bool clear_depth) override;
+    void                    preRender(bool clear_depth);
     bool                    render() override;
-    void                    postRender(bool success) override;
     void                    requestUpdate( S32 delay_frames ) {mNeedsUpdate = true; mDelayFrames = delay_frames; }
     void                    setUpdateDelayFrames( S32 delay_frames ) { mDelayFrames = delay_frames; }
     void                    draw(F32 alpha);
@@ -121,7 +119,6 @@ protected:
 public:
     LLVisualParamReset();
     bool needsRender() override { return sDirty; }
-    bool canRenderWithoutTarget() const override;
     ETargetlessRenderResult renderWithoutTarget() override;
     bool render() override;
     S8 getType() const override;

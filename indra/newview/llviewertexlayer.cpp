@@ -57,12 +57,7 @@ LLViewerTexLayerSetBuffer::LLViewerTexLayerSetBuffer(LLTexLayerSet* const owner,
     // ORDER_LAST => must render these after the hints are created.
     LLTexLayerSetBuffer(owner),
     LLViewerDynamicTexture(
-        width, height, 4, LLViewerDynamicTexture::ORDER_LAST,
-#if LL_DARWIN
-        LLViewerDynamicTexture::EInitialBacking::NATIVE_METAL),
-#else
-        LLViewerDynamicTexture::EInitialBacking::RETAINED_GL),
-#endif
+        width, height, 4, LLViewerDynamicTexture::ORDER_LAST),
     mNeedsUpdate(true),
     mNumLowresUpdates(0)
 {
@@ -188,9 +183,7 @@ void LLViewerTexLayerSetBuffer::preRenderTexLayerSet()
     gGL.setViewport(mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
 #else
     LLTexLayerSetBuffer::preRenderTexLayerSet();
-
-    // keep depth buffer, we don't need to clear it
-    LLViewerDynamicTexture::preRender(false);
+    mOrigin.set(0, 0);
 #endif
 }
 
@@ -200,7 +193,7 @@ void LLViewerTexLayerSetBuffer::postRenderTexLayerSet(bool success)
 #if LL_DARWIN
     if (!mMetalCaptureActive)
     {
-        mLastPostRenderSuccess = false;
+        mLastNativeRenderSucceeded = false;
         return;
     }
 
@@ -216,7 +209,6 @@ void LLViewerTexLayerSetBuffer::postRenderTexLayerSet(bool success)
     const bool published = success && mMetalComposite && mGLTexturep.notNull() &&
         mGLTexturep->adoptMetalRenderTextureAuthoritative(
             std::move(mMetalComposite), LLGLTexture::DYNAMIC_TEX);
-    mLastPostRenderSuccess = published;
     mLastNativeRenderSucceeded = published;
     if (published)
     {
@@ -239,7 +231,6 @@ void LLViewerTexLayerSetBuffer::postRenderTexLayerSet(bool success)
     mMetalComposite.reset();
 #else
     LLTexLayerSetBuffer::postRenderTexLayerSet(success);
-    LLViewerDynamicTexture::postRender(success);
 #endif
 }
 
@@ -288,7 +279,7 @@ LLViewerTexLayerSetBuffer::renderWithoutTarget()
         ? ETargetlessRenderResult::COMPLETED
         : ETargetlessRenderResult::PENDING;
 #else
-    return ETargetlessRenderResult::RETAINED_FALLBACK;
+    return ETargetlessRenderResult::PENDING;
 #endif
 }
 
@@ -321,14 +312,8 @@ bool LLViewerTexLayerSetBuffer::requestUpdateImmediate()
 
     if (needsRender())
     {
-#if LL_DARWIN
         result = renderWithoutTarget() ==
             ETargetlessRenderResult::COMPLETED;
-#else
-        preRender(false);
-        result = render();
-        postRender(result);
-#endif
     }
 
     return result;

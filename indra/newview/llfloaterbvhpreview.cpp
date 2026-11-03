@@ -78,11 +78,6 @@
 
 namespace
 {
-LLViewerDynamicTexture::EInitialBacking animationPreviewInitialBacking()
-{
-    return LLViewerDynamicTexture::EInitialBacking::NATIVE_METAL;
-}
-
 #if LL_DARWIN
 class LLScopedAnimationPreviewCameraState final
 {
@@ -1073,8 +1068,7 @@ void LLFloaterBvhPreview::onBtnOK(void* userdata)
 // LLPreviewAnimation
 //-----------------------------------------------------------------------------
 LLPreviewAnimation::LLPreviewAnimation(S32 width, S32 height)
-: LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE,
-                         animationPreviewInitialBacking())
+: LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE)
 {
     mNeedsUpdate = true;
     mCameraDistance = PREVIEW_CAMERA_DISTANCE;
@@ -1111,11 +1105,6 @@ LLPreviewAnimation::~LLPreviewAnimation()
 S8 LLPreviewAnimation::getType() const
 {
     return LLViewerDynamicTexture::LL_PREVIEW_ANIMATION ;
-}
-
-bool LLPreviewAnimation::canRenderWithoutTarget() const
-{
-    return true;
 }
 
 LLViewerDynamicTexture::ETargetlessRenderResult
@@ -1503,13 +1492,6 @@ bool    LLPreviewAnimation::render()
 
     return mMetalPreview != nullptr;
 #endif
-}
-
-void LLPreviewAnimation::postRender(bool success)
-{
-    (void)success;
-    // Targetless native publication owns completion; copying a framebuffer
-    // here would recreate the removed retained producer.
 }
 
 //-----------------------------------------------------------------------------

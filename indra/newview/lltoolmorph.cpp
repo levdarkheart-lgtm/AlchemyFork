@@ -74,18 +74,6 @@
 #include <unordered_map>
 #include <vector>
 
-namespace
-{
-LLViewerDynamicTexture::EInitialBacking dynamicTextureInitialBacking()
-{
-#if LL_DARWIN
-    return LLViewerDynamicTexture::EInitialBacking::NATIVE_METAL;
-#else
-    return LLViewerDynamicTexture::EInitialBacking::RETAINED_GL;
-#endif
-}
-}
-
 //static
 LLVisualParamHint::instance_list_t LLVisualParamHint::sInstances;
 bool LLVisualParamReset::sDirty = false;
@@ -105,8 +93,7 @@ LLVisualParamHint::LLVisualParamHint(
     LLJoint* jointp)
     :
     LLViewerDynamicTexture(width, height, 3,
-                           LLViewerDynamicTexture::ORDER_MIDDLE,
-                           dynamicTextureInitialBacking()),
+                           LLViewerDynamicTexture::ORDER_MIDDLE),
     mNeedsUpdate( true ),
     mIsVisible( false ),
     mJointMesh( mesh ),
@@ -191,15 +178,6 @@ bool LLVisualParamHint::needsRender()
     return mNeedsUpdate && mDelayFrames-- <= 0 && !gAgentAvatarp->getIsAppearanceAnimating() && mAllowsUpdates;
 }
 
-bool LLVisualParamHint::canRenderWithoutTarget() const
-{
-#if LL_DARWIN
-    return true;
-#else
-    return false;
-#endif
-}
-
 LLViewerDynamicTexture::ETargetlessRenderResult
 LLVisualParamHint::renderWithoutTarget()
 {
@@ -253,7 +231,7 @@ LLVisualParamHint::renderWithoutTarget()
         << LL_ENDL;
     return ETargetlessRenderResult::COMPLETED;
 #else
-    return ETargetlessRenderResult::RETAINED_FALLBACK;
+    return ETargetlessRenderResult::PENDING;
 #endif
 }
 
@@ -307,14 +285,10 @@ void LLVisualParamHint::preRender(bool clear_depth)
         LL_WARNS() << "Attempting to update avatar's geometry, but drawable doesn't exist yet" << LL_ENDL;
     }
 
-#if LL_DARWIN
     // Targetless native production has no retained viewport or depth buffer.
     // Keep the origin contract used for preview camera metadata only.
     (void)clear_depth;
     mOrigin.set(0, 0);
-#else
-    LLViewerDynamicTexture::preRender(clear_depth);
-#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -1132,14 +1106,6 @@ bool LLVisualParamHint::render()
 #endif
 }
 
-void LLVisualParamHint::postRender(bool success)
-{
-    // Targetless native rendering publishes authoritatively in
-    // renderWithoutTarget(); there is no framebuffer transaction to copy.
-    (void)success;
-}
-
-
 //-----------------------------------------------------------------------------
 // draw()
 //-----------------------------------------------------------------------------
@@ -1180,8 +1146,7 @@ void LLVisualParamHint::draw(F32 alpha)
 // LLVisualParamReset()
 //-----------------------------------------------------------------------------
 LLVisualParamReset::LLVisualParamReset()
-: LLViewerDynamicTexture(1, 1, 1, ORDER_RESET,
-                         dynamicTextureInitialBacking())
+: LLViewerDynamicTexture(1, 1, 1, ORDER_RESET)
 {
 }
 
@@ -1191,15 +1156,6 @@ S8 LLVisualParamReset::getType() const
     return LLViewerDynamicTexture::LL_VISUAL_PARAM_RESET ;
 }
 
-bool LLVisualParamReset::canRenderWithoutTarget() const
-{
-#if LL_DARWIN
-    return true;
-#else
-    return false;
-#endif
-}
-
 LLViewerDynamicTexture::ETargetlessRenderResult
 LLVisualParamReset::renderWithoutTarget()
 {
@@ -1207,7 +1163,7 @@ LLVisualParamReset::renderWithoutTarget()
     render();
     return ETargetlessRenderResult::COMPLETED;
 #else
-    return ETargetlessRenderResult::RETAINED_FALLBACK;
+    return ETargetlessRenderResult::PENDING;
 #endif
 }
 
