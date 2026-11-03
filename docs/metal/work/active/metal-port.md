@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `641076dd48`.
+**Renderer checkpoint:** Commit `9bac86a3e4`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -19,35 +19,36 @@ checkpoint detail belongs in the indexed archive.
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and grayscale/color font-atlas pages are native-only; owner-attended text/emoji and moving-media parity remain open. |
 | M-007 | World scene and material correctness | doing | Opaque fullbright is corrected; legacy BLEND/stained glass and broad material parity remain open. |
-| M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners, color grading, tone curve, BRDF and post FXAA/SMAA/CAS are native-only on Darwin; visual-only validation is batched in the daily queue. |
+| M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners, color grading, tone curve, BRDF, post FXAA/SMAA/CAS and DoF are native-only on Darwin; visual-only validation is batched in the daily queue. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL, linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | The established resources plus pipeline BRDF and complete post-AA/CAS transaction own no GL name or execution path on Darwin; DoF is next. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | The established resources plus pipeline BRDF, complete post-AA/CAS and DoF transactions own no GL name or execution path on Darwin; HDR bloom/cross-filter are next. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — native-only Darwin post AA and CAS
+## Active checkpoint — native-only Darwin Depth of Field
 
-Commits `3400172d70` and `641076dd48` remove Darwin's last CAS dependency on
-legacy GLSL completeness, compile out standalone and inline GL sharpening and
-remove the retained FXAA/SMAA/CAS/sharpen program objects from the Darwin
-shader-manager lifecycle. The Darwin final-post branch executes neither
-parallel GL AA nor CAS and always uses the ordinary blit. Native pipeline
-creation and transaction execution remain fail closed. No viewer was launched
-or compared; the combined appearance question remains in the owner-attended
-queue. [Exact evidence](../../state/archive/CURRENT-native-cas-and-post-aa-shader-checkpoint-2026-11-03.md).
+Commit `9bac86a3e4` removes Darwin's last DoF dependency on retained GLSL
+readiness and outcome. The retained gather/combine call, body, transient blur
+state and six shader programs compile out on Darwin; the exact packaged viewer
+exports none of their globals or methods. Native pipeline creation and complete
+display-transaction execution remain fail closed, with every production
+optical variant physically regressed. Non-Darwin DoF is unchanged. No viewer
+was launched or compared; the bounded DoF appearance question is in the
+owner-attended queue.
+[Exact evidence](../../state/archive/CURRENT-native-dof-owner-checkpoint-2026-11-03.md).
 
 ## Validation checkpoint
 
-- Source-exact warnings-as-errors Release build `26.4.0d68161` passed at
-  `641076dd483ae3c76307c02d21b95508568e5d7c`; the RelWithDebInfo appearance
+- Source-exact warnings-as-errors Release build `26.4.0d68163` passed at
+  `9bac86a3e47ae2aaf272df6bc4a98fe254efb667`; the RelWithDebInfo appearance
   utility also builds at that source.
 - The full native Metal binary passes 52,381 assertions across 55 cases with
-  API and shader validation enabled. Focused production CAS passes 117
-  assertions and the complete final-presentation chain passes 1,850.
+  API and shader validation enabled. Focused all-variant DoF passes 2,493
+  assertions.
 - The full `alrender_tests` suite passes 557,312 assertions across 137 cases;
   its focused resource-plan matrix passes 3,376 assertions across 37 cases.
 - Physical fresh-context renderer validation passes 2,243 assertions across 94
@@ -57,7 +58,7 @@ queue. [Exact evidence](../../state/archive/CURRENT-native-cas-and-post-aa-shade
   one platform CRT case skips as expected.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices.
 - Viewer executable SHA-256:
-  `9207ac558015e6c2df61a17041fc7ee5d086a6e32181b04aeabe3652db52fa67`.
+  `2ff05074d265a2d17717513b38f4657616b9564e09cfc1a87f50ca32388b0b9a`.
   Appearance utility:
   `c3e87e6a8f87c09c44e61aee502f6afd22e5f4bd1b82dd8c952c2fa05fba89a5`.
   Source/packaged MSL:
@@ -68,10 +69,10 @@ queue. [Exact evidence](../../state/archive/CURRENT-native-cas-and-post-aa-shade
   cases, with its four established failures and 39 skips.
 - Strict inventory is 2,408 files / 3,262 findings, expected exit 1. Exact
   report SHA-256:
-  `b258e96fccba33f01a3d729b86aa04c99bccacb039fe3f5221f117970aa73d49`.
+  `d17b875fcc3daa97f616b06d455d22c6c2760eb703310909acb33ef5db085db1`.
   Both OpenGL and Metal remain linked.
-- Static symbol inspection finds none of the retained FXAA, three SMAA, CAS or
-  sharpened-blit program globals in the final packaged viewer.
+- Static symbol inspection finds none of the retained FXAA/SMAA/CAS/sharpen or
+  DoF program globals, nor the retained DoF methods, in the packaged viewer.
 - No viewer executable was launched, driven or compared for this checkpoint.
 
 ## Owner-attended visual review cadence
@@ -84,24 +85,25 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—Darwin FXAA, normal/sample SMAA and CAS own no
-   GL resources, legacy eligibility dependency or retained GL transaction;
-   their unused GLSL program objects are absent from the packaged viewer.
+1. **Product advancement:** yes—Darwin DoF owns no legacy eligibility/outcome
+   dependency or retained GL transaction; its six unused GLSL programs and GL
+   methods are absent from the packaged viewer.
 2. **Deferred critical work:** remaining GL context/traversal/resources;
    feature/stability matrices; visual queue; strict binary/runtime audit;
    measured M1 Max performance; independent review and release proof.
-3. **Priority reassessment:** cut adjacent Depth of Field off its retained GLSL
-   readiness and outcome dependencies.
+3. **Priority reassessment:** cut adjacent HDR bloom/cross-filter off retained
+   GLSL readiness and execution.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Trace the DoF resource plan and `mMetalDepthOfFieldGL*` gate, then make
-configured Darwin DoF demand the native transaction directly. Compile out its
-retained GL call/body and unused Darwin program lifecycle while preserving all
-optical variants, fail-closed native execution and non-Darwin behavior.
+Trace `bloomHDRReady`, `generateBloomHDR`, cross-filter target ownership and the
+color-correct composite. Then make Darwin native bloom/cross demand independent
+of retained program completeness, compile out the GL pyramid/streak transaction
+and remove only the unused Darwin programs. Preserve halation/streak variants,
+fail-closed native execution and non-Darwin behavior.
 
 ## Non-negotiable open gates
 

@@ -78,6 +78,7 @@ reload the chronological history.
 | Native normal/sample SMAA ownership with split-source SamplePath ingress and source-exact build 68155, 2026-11-03 | [CURRENT-native-smaa-sample-checkpoint-2026-11-03.md](CURRENT-native-smaa-sample-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin FXAA/SMAA post owner with no retained AA resources or execution and source-exact build 68158, 2026-11-03 | [CURRENT-native-antialiasing-owner-checkpoint-2026-11-03.md](CURRENT-native-antialiasing-owner-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin CAS plus elimination of retained post-AA GLSL program lifecycle and source-exact build 68161, 2026-11-03 | [CURRENT-native-cas-and-post-aa-shader-checkpoint-2026-11-03.md](CURRENT-native-cas-and-post-aa-shader-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Native-only Darwin Depth of Field with no retained DoF GLSL lifecycle or execution and source-exact build 68163, 2026-11-03 | [CURRENT-native-dof-owner-checkpoint-2026-11-03.md](CURRENT-native-dof-owner-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
