@@ -337,7 +337,21 @@ void LLGLTFPreviewTexture::preRender(bool clear_depth)
     llassert(mShouldRender);
     if (!mShouldRender) { return; }
 
+#if LL_DARWIN
+    // Snapshot the base dynamic-texture camera contract without touching GL.
+    // If native submission cannot own the result, render() performs the base
+    // pre-render immediately before the retained callback instead.
+    mRetainedClearDepth = clear_depth;
+    mOrigin.set(0, 0);
+    LLViewerCamera* camera = LLViewerCamera::getInstance();
+    mCamera.setOrigin(*camera);
+    mCamera.setAxes(*camera);
+    mCamera.setAspect(camera->getAspect());
+    mCamera.setView(camera->getView());
+    mCamera.setNear(camera->getNear());
+#else
     LLViewerDynamicTexture::preRender(clear_depth);
+#endif
 }
 
 
@@ -558,32 +572,30 @@ bool LLGLTFPreviewTexture::render()
     ALMetalPBRPreviewEnvironment metal_preview_environment;
 #endif
 
-    ALTransientTargets post(gPipeline.mTransientTargets);
+    std::unique_ptr<ALTransientTargets> post;
     LLRenderTarget* post_ping = nullptr;
 #if !LL_DARWIN
     // Preserve the retained platforms' original fail-before-draw behavior.
+    post = std::make_unique<ALTransientTargets>(
+        gPipeline.mTransientTargets);
     post_ping = gPipeline.acquireResource(
-        post, ALRenderResourcePlan::Id::ProbePostPing);
+        *post, ALRenderResourcePlan::Id::ProbePostPing);
     if (!post_ping)
     {
         return false;
     }
 #endif
 
-    // The swatch's alpha is its coverage, drawn over a checkerboard. Without this the
-    // preview takes whatever mask the last frame ended on, and after a HUD pass that leaves
-    // alpha unwritten from the clears through the final blit.
-    LLGLSColorMask color_mask(true, true);
-
-    gGL.setClearColor(LLColor4::transparent);
-    gGL.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    LLGLDepthTest depth(GL_FALSE);
-    LLGLDisable stencil(GL_STENCIL_TEST);
-    LLGLDisable scissor(GL_SCISSOR_TEST);
-    SetTemporarily<bool> no_dof(&LLPipeline::RenderDepthOfField, false);
-    SetTemporarily<bool> no_glow(&LLPipeline::sRenderGlow, false);
-    SetTemporarily<LLPipeline::RenderTargetPack*> use_auxiliary_render_target(&gPipeline.mRT, &gPipeline.mAuxillaryRT);
+    // These retained-state guards must outlive both the draw and its post
+    // chain, but they are constructed only if native submission falls back.
+    std::unique_ptr<LLGLSColorMask> color_mask;
+    std::unique_ptr<LLGLDepthTest> depth;
+    std::unique_ptr<LLGLDisable> stencil;
+    std::unique_ptr<LLGLDisable> scissor;
+    std::unique_ptr<SetTemporarily<bool>> no_dof;
+    std::unique_ptr<SetTemporarily<bool>> no_glow;
+    std::unique_ptr<SetTemporarily<LLPipeline::RenderTargetPack*>>
+        use_auxiliary_render_target;
 
     LLVector3 light_dir3(1.0f, 1.0f, 1.0f);
     light_dir3.normalize();
@@ -591,8 +603,8 @@ bool LLGLTFPreviewTexture::render()
     const S32 old_local_light_count = gSavedSettings.get<S32>("RenderLocalLightCount");
     bool retained_preview_rendered = false;
 
-    // setPerspective makes the preview camera current; the UI draw this
-    // returns into wants the one it was using
+    // The native path makes the preview camera current by value; the retained
+    // path's setPerspective does the same. Restore the camera found here.
     const LLCamera saved_camera = LLViewerCamera::getCurrent();
     LLViewerCamera camera;
 
@@ -609,12 +621,21 @@ bool LLGLTFPreviewTexture::render()
     object_transform.setIdentity();
     object_transform.setTranslation(object_position);
 
-    // Set up camera and viewport
+    // Build the exact preview camera matrices on the CPU. The retained
+    // callback loads these through setPerspective only if native submission
+    // cannot own the result.
     const LLVector3 origin(0.0, 0.0, 0.0);
     camera.lookAt(origin, object_position);
-    camera.setAspect((F32)(mFullWidth / mFullHeight));
+    camera.setAspect(static_cast<F32>(mFullWidth) /
+                     static_cast<F32>(mFullHeight));
     const LLRect texture_rect(0, mFullHeight, mFullWidth, 0);
-    camera.setPerspective(NOT_FOR_SELECTION, texture_rect.mLeft, texture_rect.mBottom, texture_rect.getWidth(), texture_rect.getHeight(), false, camera.getNear(), FINITE_PROJECTION_FAR);
+    const LLMatrix4a preview_modelview = camera.frameModelview();
+    const LLMatrix4a preview_projection = al_perspective(
+        camera.getView(), camera.getAspect(), camera.getNear(),
+        FINITE_PROJECTION_FAR);
+    camera.setModelview(preview_modelview);
+    camera.setProjection(preview_projection);
+    LLViewerCamera::setCurrent(camera);
 
     // Generate sphere object on-the-fly. Discard afterwards. (Vertex buffer is
     // discarded, but the sphere should be cached in LLVolumeMgr.)
@@ -622,12 +643,14 @@ bool LLGLTFPreviewTexture::render()
 
     LLVector4a light_dir_in, transformed_light_dir;
     light_dir_in.loadua(light_dir.mV);
-    LLViewerCamera::getCurrent().getModelview().transform4(light_dir_in, transformed_light_dir);
+    preview_modelview.transform4(light_dir_in, transformed_light_dir);
     SetTemporarily<LLVector4> force_sun_direction_high_graphics(&gPipeline.mTransformedSunDir, LLVector4(transformed_light_dir.getF32ptr()));
 
     LLRenderTarget& screen = gPipeline.mAuxillaryRT.screen;
 
-    // *HACK: Force reset of the model matrix
+    // Invalidate the retained matrix cache even when this draw stays native:
+    // the static sphere can fall back later with the same model object after
+    // another pass has changed GL's actual matrix.
     gGLLastMatrix = nullptr;
 
 #if 0
@@ -641,8 +664,34 @@ bool LLGLTFPreviewTexture::render()
     const auto render_retained_preview = [&]()
     {
         retained_preview_rendered = true;
+#if LL_DARWIN
+        LLViewerDynamicTexture::preRender(mRetainedClearDepth);
+        post = std::make_unique<ALTransientTargets>(
+            gPipeline.mTransientTargets);
+#endif
+
+        // The swatch's alpha is its coverage over a checkerboard. Retain the
+        // original GL state through the complete fallback post chain.
+        color_mask = std::make_unique<LLGLSColorMask>(true, true);
+        gGL.setClearColor(LLColor4::transparent);
+        gGL.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        depth = std::make_unique<LLGLDepthTest>(GL_FALSE);
+        stencil = std::make_unique<LLGLDisable>(GL_STENCIL_TEST);
+        scissor = std::make_unique<LLGLDisable>(GL_SCISSOR_TEST);
+        no_dof = std::make_unique<SetTemporarily<bool>>(
+            &LLPipeline::RenderDepthOfField, false);
+        no_glow = std::make_unique<SetTemporarily<bool>>(
+            &LLPipeline::sRenderGlow, false);
+        use_auxiliary_render_target = std::make_unique<
+            SetTemporarily<LLPipeline::RenderTargetPack*>>(
+                &gPipeline.mRT, &gPipeline.mAuxillaryRT);
+
         gSavedSettings.set<S32>("RenderLocalLightCount", 0);
         gPipeline.mReflectionMapManager.forceDefaultProbeAndUpdateUniforms();
+        camera.setPerspective(
+            NOT_FOR_SELECTION, texture_rect.mLeft, texture_rect.mBottom,
+            texture_rect.getWidth(), texture_rect.getHeight(), false,
+            camera.getNear(), FINITE_PROJECTION_FAR);
         gPipeline.setupHWLights();
 
         // Override lights to ensure the sun is always shining from a certain
@@ -780,8 +829,7 @@ bool LLGLTFPreviewTexture::render()
             // setEnvMat uploads this 3x3 with transpose=true. Store the
             // resulting columns explicitly for MSL's column-major matrix
             // multiply rather than inheriting GL's upload convention.
-            const F32* matrix =
-                LLViewerCamera::getCurrent().getModelview().getF32ptr();
+            const F32* matrix = preview_modelview.getF32ptr();
             metal_preview_environment.env_matrix[0][0] = matrix[0];
             metal_preview_environment.env_matrix[0][1] = matrix[4];
             metal_preview_environment.env_matrix[0][2] = matrix[8];
@@ -800,7 +848,7 @@ bool LLGLTFPreviewTexture::render()
             metal_preview_environment.ambient[3] =
                 environment.sky_ambient_scale;
         }
-        const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+        const LLMatrix4a& modelview = preview_modelview;
         LLMatrix4a inverse_modelview;
         LLMatrix4a modelview_projection;
         if (metal_preview_eligible &&
@@ -811,7 +859,7 @@ bool LLGLTFPreviewTexture::render()
         if (metal_preview_eligible)
         {
             modelview_projection.setMul(
-                modelview, gGL.getProjectionMatrix());
+                modelview, preview_projection);
         }
 
         for (PreviewSpherePart& part : preview_sphere)
@@ -1074,11 +1122,12 @@ bool LLGLTFPreviewTexture::render()
 #endif
     if (!native_post)
     {
+        llassert(post);
         // The probe pack's post target is acquired only for the retained path;
         // a native preview no longer takes or clears this GL resource.
 #if LL_DARWIN
         post_ping = gPipeline.acquireResource(
-            post, ALRenderResourcePlan::Id::ProbePostPing);
+            *post, ALRenderResourcePlan::Id::ProbePostPing);
 #endif
         post_succeeded = post_ping != nullptr;
         if (post_succeeded)
@@ -1095,7 +1144,7 @@ bool LLGLTFPreviewTexture::render()
 
                 // Bloom composite is folded into colorCorrect's tonemap variants, so we
                 // only generate the pyramid here.
-                bloom = gPipeline.generateBloomHDR(&screen, post);
+                bloom = gPipeline.generateBloomHDR(&screen, *post);
             }
 
             gPipeline.colorCorrect(&screen, post_ping, true, false, &bloom);
@@ -1103,7 +1152,7 @@ bool LLGLTFPreviewTexture::render()
 
             if (!hdr)
             {
-                if (LLRenderTarget* glow = gPipeline.generateGlow(post_ping, post))
+                if (LLRenderTarget* glow = gPipeline.generateGlow(post_ping, *post))
                 {
                     gPipeline.combineGlow(post_ping, &screen, glow);
                 }

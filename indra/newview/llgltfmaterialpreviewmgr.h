@@ -85,6 +85,7 @@ private:
 #if LL_DARWIN
     std::unique_ptr<ALMetalTexture> mMetalPreview;
     std::unique_ptr<ALMetalTextureDescriptor> mMetalPreviewDescriptor;
+    bool mRetainedClearDepth = true;
 #endif
 };
 
