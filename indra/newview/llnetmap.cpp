@@ -35,6 +35,7 @@
 #include "llmath.h"
 #include "llfloaterreg.h"
 #include "llfocusmgr.h"
+#include "llimagegl.h"
 #include "lllocalcliprect.h"
 #include "llrender.h"
 #include "llresmgr.h"
@@ -91,6 +92,36 @@ constexpr F32 MIN_PICK_SCALE = 2.f;
 constexpr S32 MOUSE_DRAG_SLOP = 2;      // How far the mouse needs to move before we think it's a drag
 
 constexpr F64 COARSEUPDATE_MAX_Z = 1020.0f;
+
+#if LL_DARWIN
+namespace
+{
+bool publish_minimap_image(LLViewerTexture* texture, const LLImageRaw* raw,
+                           const char* layer)
+{
+    if (!texture || !raw)
+    {
+        return false;
+    }
+
+    texture->setExplicitFormat(GL_RGBA8, GL_RGBA);
+    auto* native_image = texture->getGLTexture();
+    const bool uploaded = native_image->getMetalTexture() &&
+                          !native_image->getHasGLTexture()
+        ? native_image->uploadMetalSubImage(
+            raw->getData(), raw->getWidth(), raw->getHeight(),
+            0, 0, raw->getWidth(), raw->getHeight())
+        : texture->createMetalTexture(0, raw, LLGLTexture::LOCAL);
+    if (!uploaded)
+    {
+        LL_WARNS("NetMap") << "Could not publish the CPU-generated "
+                            << layer << " layer to native texture storage"
+                            << LL_ENDL;
+    }
+    return uploaded;
+}
+}
+#endif
 
 LLNetMap::LLNetMap (const Params & p)
 :   LLUICtrl (p),
@@ -381,8 +412,9 @@ void LLNetMap::draw()
                 F32 object_layer_update_time = llclamp(object_layer_update_time_setting(), 0.01f, 60.f);
                 if (mUpdateObjectImage || (map_timer.getElapsedTimeF32() > object_layer_update_time))
                 {
-                    mUpdateObjectImage = false;
-
+#if LL_DARWIN
+                    const LLVector3d previous_center = mObjectImageCenterGlobal;
+#endif
                     mObjectImageCenterGlobal = pos_center_global;
 
                     // Create the base texture.
@@ -393,9 +425,25 @@ void LLNetMap::draw()
                     // Draw objects
                     gObjectList.renderObjectsForMap(*this);
 
+#if LL_DARWIN
+                    if (publish_minimap_image(
+                            mObjectImagep, mObjectRawImagep, "object-map"))
+                    {
+                        mUpdateObjectImage = false;
+                        map_timer.reset();
+                    }
+                    else
+                    {
+                        // The old native image is still the sampled image. Keep
+                        // its matching center until a complete repaint uploads.
+                        mObjectImageCenterGlobal = previous_center;
+                        mUpdateObjectImage = true;
+                    }
+#else
                     mObjectImagep->setSubImage(mObjectRawImagep, 0, 0, mObjectImagep->getWidth(), mObjectImagep->getHeight());
-
+                    mUpdateObjectImage = false;
                     map_timer.reset();
+#endif
                 }
 
                 LLVector3 map_center_agent = gAgent.getPosAgentFromGlobal(mObjectImageCenterGlobal);
@@ -428,7 +476,9 @@ void LLNetMap::draw()
             {
                 if (mUpdateParcelImage || dist_vec_squared2D(mParcelImageCenterGlobal, pos_center_global) > 9.0f)
                 {
-                    mUpdateParcelImage = false;
+#if LL_DARWIN
+                    const LLVector3d previous_center = mParcelImageCenterGlobal;
+#endif
                     mParcelImageCenterGlobal = pos_center_global;
 
                     // Create the base texture.
@@ -445,7 +495,23 @@ void LLNetMap::draw()
                         renderPropertyLinesForRegion(region, overlay_color);
                     }
 
+#if LL_DARWIN
+                    if (publish_minimap_image(
+                            mParcelImagep, mParcelRawImagep, "parcel-map"))
+                    {
+                        mUpdateParcelImage = false;
+                    }
+                    else
+                    {
+                        // Preserve the origin of the last complete native
+                        // image while this freshly painted CPU copy retries.
+                        mParcelImageCenterGlobal = previous_center;
+                        mUpdateParcelImage = true;
+                    }
+#else
                     mParcelImagep->setSubImage(mParcelRawImagep, 0, 0, mParcelImagep->getWidth(), mParcelImagep->getHeight());
+                    mUpdateParcelImage = false;
+#endif
                 }
 
                 LLVector3 map_center_agent = gAgent.getPosAgentFromGlobal(mParcelImageCenterGlobal);
@@ -1284,7 +1350,16 @@ bool LLNetMap::createImage(LLPointer<LLImageRaw>& rawimagep) const
 void LLNetMap::createObjectImage()
 {
     if (createImage(mObjectRawImagep))
+#if LL_DARWIN
+        // The raw-image overload creates GL storage immediately. Keep only
+        // the logical texture until draw() publishes a complete CPU layer.
+        mObjectImagep = LLViewerTextureManager::getLocalTexture(
+            mObjectRawImagep->getWidth(), mObjectRawImagep->getHeight(),
+            mObjectRawImagep->getComponents(), /*usemipmaps=*/false,
+            /*generate_gl_tex=*/false);
+#else
         mObjectImagep = LLViewerTextureManager::getLocalTexture( mObjectRawImagep.get(), false);
+#endif
     setScale(mScale);
     mUpdateObjectImage = true;
 }
@@ -1292,7 +1367,14 @@ void LLNetMap::createObjectImage()
 void LLNetMap::createParcelImage()
 {
     if (createImage(mParcelRawImagep))
+#if LL_DARWIN
+        mParcelImagep = LLViewerTextureManager::getLocalTexture(
+            mParcelRawImagep->getWidth(), mParcelRawImagep->getHeight(),
+            mParcelRawImagep->getComponents(), /*usemipmaps=*/false,
+            /*generate_gl_tex=*/false);
+#else
         mParcelImagep = LLViewerTextureManager::getLocalTexture( mParcelRawImagep.get(), false);
+#endif
     mUpdateParcelImage = true;
 }
 
