@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `7d3af86e6c`.
+**Renderer checkpoint:** Commit `a33f57df9c`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,11 +13,11 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,408 files and 3,249 findings; strict exits 1. Reflection manager and `pipeline.cpp` have zero direct `gl_function` findings. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,408 files and 3,244 findings; strict exits 1. Reflection manager and `pipeline.cpp` have zero direct `gl_function` findings. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Exact Metal publication exists; SSR warm-up is explicitly barred from presentation. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Core paths are physical-GPU covered; direct owned framebuffer and texture-image reads are native-only. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
-| M-006 | UI, fonts, HUD and media ingress | doing | Native world/UI and CEF IOSurface paths exist; moving media parity is queued for owner review. |
+| M-006 | UI, fonts, HUD and media ingress | doing | Darwin accelerated CEF IOSurface ingress is native-only; ordinary media upload and owner-attended moving-media parity remain open. |
 | M-007 | World scene and material correctness | doing | Opaque fullbright is corrected; legacy BLEND/stained glass and broad material parity remain open. |
 | M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners are native; visual-only validation is batched in the daily queue. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL, linked/runtime no-GL and visual review remain open. |
@@ -29,39 +29,38 @@ checkpoint detail belongs in the indexed archive.
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — texture-image readback elimination
+## Active checkpoint — native accelerated CEF ingress
 
-Commit `7d3af86e6c` removes every direct production `glGetTexImage` and
-`glGetCompressedTexImage` call. `LLImageGL::scaleDown` now performs its retained
-GL exact-mip copy GPU-to-GPU while preserving the existing authoritative native
-mip-copy/no-mip-resample paths. Its scratch pack/unpack PBO is gone.
+Commit `a33f57df9c` removes the Darwin accelerated-CEF path's GL rectangle
+texture, CGL IOSurface binding and framebuffer blit. IOSurfaces now import
+directly into Metal and copy into the native media mirror; playing state is
+published only after native import/copy/adoption succeeds.
 
-The removed cube-array copy constructor was unreachable; the live resize path
-already recreates storage and invalidates every probe. Texture-size diagnostics
-now use immutable allocation metadata. Two debug internal-format queries remain
-outside `LLImageGL`. No viewer launch or comparison was performed.
-[Exact evidence](../../state/archive/CURRENT-texture-image-readback-elimination-checkpoint-2026-11-03.md).
+Missing native capability rejects accelerated paint so the CPU path remains
+available. Windows/Linux interop is unchanged. The packaged viewer has no
+`CGLTexImageIOSurface2D` dependency. No viewer launch or comparison was
+performed.
+[Exact evidence](../../state/archive/CURRENT-native-cef-ingress-cutover-checkpoint-2026-11-03.md).
 
 ## Validation checkpoint
 
-- Source-exact warnings-as-errors RelWithDebInfo build `26.4.0d68125` passed at
-  `7d3af86e6c88b6b4003b2c0ba52f30ccbe0e9ef3`.
-- Physical renderer validation passes 1,216 assertions across 85 cases with API
-  validation enabled, including exact source-mip and native scale-down paths.
+- Source-exact warnings-as-errors RelWithDebInfo build `26.4.0d68127` passed at
+  `a33f57df9c70ce4cff5434f622437f78b54a801f`.
+- The full native Metal binary passes 52,221 assertions across 52 cases with
+  API validation enabled; the focused IOSurface import/flip case passes 16.
+- Physical renderer validation passes 1,216 assertions across 85 cases with
+  API validation enabled.
 - The full `newview_tests` binary passes 98,973 assertions across 743 cases;
   one platform CRT case skips as expected.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices.
 - Viewer executable SHA-256:
-  `3226822da171f02d69b496bd4e628012635053fcb0bb1471666fb0963eb481fd`.
+  `970a08af785d28f1ca111188c2a41beca3aedc9adc1ebcb93cc6aafc5c04decb`.
   Source/packaged MSL:
   `fa6821703a980b570305fc2384fcb11a1980fccad43d35e4626e40cc4b323324`.
   Metallib:
   `ebd7034235c4f35b13c9874029eff6bbcb61cc3f56c7f3907fd581c112eb96ab`.
-- Strict inventory is 2,408 files / 3,249 findings, expected exit 1, down 16
+- Strict inventory is 2,408 files / 3,244 findings, expected exit 1, down five
   from the prior exact checkpoint. Both OpenGL and Metal remain linked.
-- Source-exact broad `llrender_gl_shared_tests` retains the documented
-  baseline of four frame-fence/depth-format failures and 39 skips; it is not
-  promoted to green.
 - No viewer executable was launched, driven or compared for this checkpoint.
 
 ## Owner-attended visual review cadence
@@ -74,25 +73,25 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—direct production framebuffer and texture-image
-   readbacks no longer use GL, and scale-down no longer round-trips via CPU/PBO.
+1. **Product advancement:** yes—Darwin accelerated moving-media ingress now
+   owns no GL object or GL copy and publishes only its exact native result.
 2. **Deferred critical work:** remaining GL context/traversal/resources;
    feature/stability matrices; visual queue; strict
    binary/runtime audit; measured M1 Max performance; independent review and
    release proof.
-3. **Priority reassessment:** accelerated Darwin CEF ingress still imports and
-   copies each IOSurface through GL before separately updating the existing
-   Metal mirror. This is the next source-proven duplicate resource owner.
+3. **Priority reassessment:** ordinary CPU-painted CEF/VLC frames still allocate
+   and upload both GL and Metal storage on Darwin. This is the next live duplicate
+   owner in the same well-understood media boundary.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Cut over the Darwin accelerated CEF media path to its existing native IOSurface
-import and Metal resample alone. Publish the playing frame only after the Metal
-copy succeeds, preserve Windows/Linux behavior and keep moving-media visual
-parity in the owner-attended daily queue.
+Add a native-only Darwin media allocation/partial-update/publication boundary to
+`LLImageGL`, route ordinary CPU-painted CEF/VLC frames through it, and physically
+prove byte formats, dirty rectangles and async ordering. Keep visual parity in
+the owner-attended daily queue.
 
 ## Non-negotiable open gates
 
