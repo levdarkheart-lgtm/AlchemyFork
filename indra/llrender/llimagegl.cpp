@@ -34,6 +34,7 @@
 
 #include "llimagegl.h"
 
+#include "altextureblit.h"
 #include "llerror.h"
 #include "llimage.h"
 
@@ -335,8 +336,6 @@ S32 LLImageGL::sMaxCategories = 1 ;
 
 //optimization for when we don't need to calculate mIsMask
 bool LLImageGL::sSkipAnalyzeAlpha;
-U32  LLImageGL::sScratchPBO = 0;
-U32  LLImageGL::sScratchPBOSize = 0;
 
 
 //------------------------
@@ -376,12 +375,12 @@ void LLImageGL::checkTexSize(bool forced) const
             }
         }
         stop_glerror() ;
-        LLGLint x = 0, y = 0 ;
-        glGetTexLevelParameteriv(mTarget, 0, GL_TEXTURE_WIDTH, (GLint*)&x);
-        glGetTexLevelParameteriv(mTarget, 0, GL_TEXTURE_HEIGHT, (GLint*)&y) ;
-        stop_glerror() ;
+        // Immutable allocation records the dimensions at the only point they
+        // can change. Use that owner instead of querying the GL object back.
+        const LLGLint x = mStorage.mWidth;
+        const LLGLint y = mStorage.mHeight;
 
-        if(!x || !y)
+        if(!mStorageAllocated || !x || !y)
         {
             return ;
         }
@@ -443,11 +442,6 @@ void LLImageGL::initClass(LLWindow* window, S32 num_catagories, bool skip_analyz
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     sSkipAnalyzeAlpha = skip_analyze_alpha;
 
-    if (sScratchPBO == 0)
-    {
-        glGenBuffers(1, &sScratchPBO);
-    }
-
     if (thread_texture_loads || thread_media_updates)
     {
         LLImageGLThread::sEnabledTextures = thread_texture_loads;
@@ -492,13 +486,6 @@ void LLImageGL::cleanupClass()
         }
     }
     sPendingPublishes.clear();
-
-    if (sScratchPBO != 0)
-    {
-        glDeleteBuffers(1, &sScratchPBO);
-        sScratchPBO = 0;
-        sScratchPBOSize = 0;
-    }
 
     // Drain the deferred-delete ring so leftover texture names don't dangle
     // in sTextureAllocs across re-init (the test fixture calls cleanupClass
@@ -4573,12 +4560,11 @@ bool LLImageGL::scaleDown(S32 desired_discard)
 
     if (mTarget != GL_TEXTURE_2D
         || mFormatInternal == -1 // not initialized
-        || isCompressed()        // neither path can work on block-compressed data:
-                                 // the FBO path cannot render into it and the PBO path
-                                 // cannot re-upload it as loose pixels
-        || isIntegerFormat(mFormatInternal) // nor on integers: the FBO path filters, which
-                                            // GL does not do to them, and the PBO path reads
-                                            // a mip level GL never built
+        || isCompressed()        // neither path can attach block-compressed storage
+                                 // to a framebuffer
+        || isIntegerFormat(mFormatInternal) // nor on integers: the filtering path cannot
+                                            // filter them, and the exact-copy path has no
+                                            // mip level because GL never built one
         )
     {
         return false;
@@ -4605,16 +4591,16 @@ bool LLImageGL::scaleDown(S32 desired_discard)
     S32 desired_width = getWidth(desired_discard);
     S32 desired_height = getHeight(desired_discard);
 
-    // A deprecated source format is held under a swizzle, and the FBO path cannot carry
+    // A deprecated source format is held under a swizzle, and the filtering path cannot carry
     // one: it samples the old texture THROUGH the swizzle and copies the result back by
     // position, so luminance-alpha's alpha comes back as luminance and alpha-only loses
-    // its alpha entirely. The PBO path copies the stored channels as they are.
+    // its alpha entirely. The exact framebuffer blit copies the stored channels as they are.
     //
     // The FBO path also draws into the target the caller bound -- the texture list's
     // 1024x1024 scratch -- and copies back out of it, so a result larger than that target
-    // copies undefined pixels from outside the framebuffer. Such a texture takes the PBO
-    // path, which reads the level out of the texture's own mip chain; without one there
-    // is nothing it can read, however it came to that path, so the downscale is refused.
+    // copies undefined pixels from outside the framebuffer. Such a texture takes the exact
+    // blit path, which copies a level of the texture's own mip chain; without one there is
+    // nothing it can copy, however it came to that path, so the downscale is refused.
     const bool fits_target = desired_width <= (S32)LLRenderTarget::sCurResX
                           && desired_height <= (S32)LLRenderTarget::sCurResY;
     const bool use_fbo = gGLManager.mDownScaleMethod == 0 && mDeprecatedSourceFormat == 0 && fits_target;
@@ -4677,51 +4663,27 @@ bool LLImageGL::scaleDown(S32 desired_discard)
         }
     }
     else
-    { // use a PBO to downscale the texture
-        U64 size = getBytes(desired_discard);
-        // At most a level below the largest texture the viewer keeps (a larger one is set
-        // missing on load), at four bytes a texel. The scratch buffer grows to whatever it is
-        // asked for; this bounds how far.
-        llassert(size <= (U64)(MAX_IMAGE_SIZE / 2) * (MAX_IMAGE_SIZE / 2) * 4);
-        gGL.getTextureSlot(0)->bind(this, false, true);
-
-        if (sScratchPBO == 0)
-        {
-            glGenBuffers(1, &sScratchPBO);
-            sScratchPBOSize = 0;
-        }
-
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, sScratchPBO);
-
-        if (size > sScratchPBOSize)
-        {
-            glBufferData(GL_PIXEL_PACK_BUFFER, size, NULL, GL_STREAM_COPY);
-            sScratchPBOSize = (U32)size;
-        }
-
-        // read the desired mip out of the old texture into the PBO
-        glGetTexImage(mTarget, mip, mFormatPrimary, mFormatType, nullptr);
-
-        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-
-        // ...and back out of the PBO into the new one. Sampler 0, NOT mHasMipMaps -- the
-        // third parameter selects a sampler object now, and glGenerateMipmap below must
-        // run under the texture's own SKIP_DECODE state, not a leftover sampler's.
+    { // copy an existing source mip into the smaller texture entirely on the GPU
+        // Sampler 0, NOT mHasMipMaps -- the third parameter selects a sampler object now,
+        // and glGenerateMipmap below must run under the texture's own SKIP_DECODE state,
+        // not a leftover sampler's.
         gGL.getTextureSlot(0)->bindManual(mBindTarget, new_texname);
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sScratchPBO);
         allocateTextureStorage(desired_width, desired_height, mHasMipMaps);
         // Texture-object state, so the new name starts without it.
         applySwizzleForDeprecatedFormat(mBindTarget, mDeprecatedSourceFormat);
-        glTexSubImage2D(mTarget, 0, 0, 0, desired_width, desired_height, mFormatPrimary, mFormatType, nullptr);
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        gGL.getTextureSlot(0)->unbind();
+
+        ALTextureBlit blit;
+        blit.blit(mTarget, old_texname, new_texname, desired_width,
+                  desired_height, false, mip);
 
         if (mHasMipMaps)
         {
+            gGL.getTextureSlot(0)->bindManual(mBindTarget, new_texname);
             LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("scaleDown - glGenerateMipmap");
             generateMipmaps(mTarget);
+            gGL.getTextureSlot(0)->unbind();
         }
-
-        gGL.getTextureSlot(0)->unbind();
     }
 
     // Retire the old texture and publish the new one. Accounting for the new allocation

@@ -467,9 +467,9 @@ namespace
 
     // scaleDown builds a new texture object, and texture-object state does not
     // come with it: a deprecated-format texture lost its swizzle, so luminance read
-    // back red and luminance-alpha opaque. The FBO method -- the default -- could
+    // back red and luminance-alpha opaque. The filtered method -- the default -- could
     // not have kept the channels either, since it samples THROUGH the swizzle and
-    // copies back by position, so these take the PBO copy whatever the setting.
+    // copies back by position, so these take the exact source-mip blit whatever the setting.
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: scaleDown keeps a deprecated-format texture's swizzle and channels", "[LLImageGL]")
     {
         constexpr U16 W = 16, H = 16;
@@ -887,7 +887,7 @@ namespace
         REQUIRE(img->createGLTexture(0, makeRaw(16, 16, 4, 0x80).get()));
         const U32 name = img->getTexName();
 
-        // The PBO copy needs no framebuffer of its own.
+        // The exact source-mip blit needs no caller-provided framebuffer.
         const U32 method = gGLManager.mDownScaleMethod;
         gGLManager.mDownScaleMethod = 1;
 

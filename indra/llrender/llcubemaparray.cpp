@@ -25,8 +25,6 @@
  */
 #include "linden_common.h"
 
-#include "llworkerthread.h"
-
 #include "llcubemaparray.h"
 
 #include "v4coloru.h"
@@ -103,40 +101,6 @@ LLCubeMapArray::LLCubeMapArray()
     : mTextureStage(0)
 {
 
-}
-
-LLCubeMapArray::LLCubeMapArray(LLCubeMapArray& lhs, U32 width, U32 count) : mTextureStage(0)
-{
-    mWidth = width;
-    mCount = count;
-
-    // Allocate a new cubemap array with the same criteria as the incoming cubemap array
-    allocate(mWidth, lhs.mImage->getComponents(), count, lhs.mImage->getUseMipMaps(), lhs.mHDR);
-
-    U32 min_count = std::min(count, lhs.mCount);
-    if (min_count == 0)
-        return;
-
-    const S32 components = lhs.mImage->getComponents();
-    const GLenum format = (components == 4) ? GL_RGBA : GL_RGB;
-
-    // glGetTexImage on a cube-map array returns ALL layers in a single call (spec §8.11);
-    // sizing the destination for a single face would write past the end of the buffer.
-    const size_t face_bytes = (size_t)lhs.mWidth * lhs.mWidth * components;
-    std::vector<U8> src_layers(face_bytes * 6 * min_count);
-
-    gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_CUBE_MAP_ARRAY, lhs.getGLName());
-    glGetTexImage(GL_TEXTURE_CUBE_MAP_ARRAY, 0, format, GL_UNSIGNED_BYTE, src_layers.data());
-
-    bind(0);
-    for (U32 i = 0; i < min_count * 6; ++i)
-    {
-        LLPointer<LLImageRaw> face_image = new LLImageRaw(lhs.mWidth, lhs.mWidth, components);
-        memcpy(face_image->getData(), src_layers.data() + i * face_bytes, face_bytes);
-        LLPointer<LLImageRaw> scaled_image = face_image->scaled(mWidth, mWidth);
-        glTexSubImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, 0, 0, 0, i, mWidth, mWidth, 1, format, GL_UNSIGNED_BYTE, scaled_image->getData());
-    }
-    unbind();
 }
 
 LLCubeMapArray::~LLCubeMapArray()

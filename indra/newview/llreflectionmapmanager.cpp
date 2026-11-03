@@ -2731,21 +2731,15 @@ void LLReflectionMapManager::initReflectionMaps()
             mTexture->getWidth() != mProbeResolution ||
             mReflectionProbeCount + 2 != mTexture->getCount())
         {
-#if 0 // Cubemap copy critically flawed and overflows
-            if (mTexture)
-            {
-                mTexture = new LLCubeMapArray(*mTexture, mProbeResolution, mReflectionProbeCount + 2);
-            }
-            else
-#endif
-            {
-                mTexture = new LLCubeMapArray();
+            mTexture = new LLCubeMapArray();
 
-                // store mReflectionProbeCount+2 cube maps, final two cube maps are used for render target and radiance map generation
-                // source)
-                mTexture->allocate(mProbeResolution, 3, mReflectionProbeCount + 2, true, mHDR);
-                new_texture = true;
-            }
+            // Store mReflectionProbeCount+2 cube maps. The final two are scratch
+            // space for capture and radiance generation. A resize deliberately
+            // invalidates every probe below, so there is no old array content to
+            // preserve.
+            mTexture->allocate(mProbeResolution, 3,
+                               mReflectionProbeCount + 2, true, mHDR);
+            new_texture = true;
         }
 
 #if LL_DARWIN

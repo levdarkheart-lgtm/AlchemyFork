@@ -35,9 +35,12 @@ ALTextureBlit::~ALTextureBlit()
     release();
 }
 
-void ALTextureBlit::blit(U32 src_target, U32 src, U32 dst, S32 width, S32 height, bool flip_y)
+void ALTextureBlit::blit(U32 src_target, U32 src, U32 dst, S32 width,
+                         S32 height, bool flip_y, S32 src_level)
 {
     llassert(src_target == GL_TEXTURE_2D || src_target == GL_TEXTURE_RECTANGLE);
+    llassert(src_level >= 0 &&
+             (src_target == GL_TEXTURE_2D || src_level == 0));
     gGL.flush();
 
     if (!mReadFBO)
@@ -50,7 +53,8 @@ void ALTextureBlit::blit(U32 src_target, U32 src, U32 dst, S32 width, S32 height
     }
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, mReadFBO);
-    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, src_target, src, 0);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           src_target, src, src_level);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, mDrawFBO);
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst, 0);
 

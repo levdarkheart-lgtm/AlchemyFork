@@ -42,10 +42,12 @@ public:
     ALTextureBlit& operator=(const ALTextureBlit&) = delete;
 
     // Copy the `width` x `height` rectangle at the origin of `src`, a texture of `src_target` (GL_TEXTURE_2D or
-    // GL_TEXTURE_RECTANGLE), into the same rectangle of `dst`, a GL_TEXTURE_2D, texel for texel, its rows in the
-    // opposite order where `flip_y`. What gGL has batched is drawn first, and the scissor does not clip the copy.
-    // Neither texture stays attached, and the framebuffer bound before (LLRenderTarget::sCurFBO) is bound again.
-    void blit(U32 src_target, U32 src, U32 dst, S32 width, S32 height, bool flip_y);
+    // GL_TEXTURE_RECTANGLE), into level zero of `dst`, a GL_TEXTURE_2D, texel for texel, its rows in the opposite
+    // order where `flip_y`. `src_level` selects an allocated source mip; rectangle textures accept level zero only.
+    // What gGL has batched is drawn first, and the scissor does not clip the copy. Neither texture stays attached,
+    // and the framebuffer bound before (LLRenderTarget::sCurFBO) is bound again.
+    void blit(U32 src_target, U32 src, U32 dst, S32 width, S32 height,
+              bool flip_y, S32 src_level = 0);
 
     // Delete the framebuffers, if any. Call from a teardown that still has the context; the destructor calls it as a
     // backstop, and issues no GL once the context is gone.

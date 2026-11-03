@@ -28,15 +28,12 @@
 
 #include "llgl.h"
 
-#include <vector>
-
 class LLVector3;
 
 class LLCubeMapArray : public LLRefCount
 {
 public:
     LLCubeMapArray();
-    LLCubeMapArray(LLCubeMapArray& lhs, U32 width, U32 count);
 
     static GLenum sTargets[6];
 

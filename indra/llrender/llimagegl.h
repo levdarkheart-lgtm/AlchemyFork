@@ -644,8 +644,6 @@ private:
 
     static S32 sMaxCategories;
     static bool sSkipAnalyzeAlpha;
-    static U32 sScratchPBO;
-    static U32 sScratchPBOSize;
 
 //
 //****************************************************************************************************
