@@ -257,7 +257,7 @@ namespace
                          wanted(before, bloom({ Pack::Main, Pack::Probe })) |
                          of({ Id::SkyBehind, Id::Glow0, Id::Glow1, Id::Glow2 });
               } },
-            { "a material preview made", no_change, previewed,
+            { "a retained material preview demanded", no_change, previewed,
               [](const Plan&)
               {
                   return in_packs({ Pack::Probe }, { Slot::PostPing, Slot::PostPong }) |
@@ -362,8 +362,8 @@ namespace
     }
 
     // The changes plan section 2.3a says must leave the probe and hero packs alone, other than the screen-only ones the
-    // rows already cover. The probe pack's post targets and bloom are the material preview's, there only while one is
-    // alive, so with none bloom's settings leave the pack alone too.
+    // rows already cover. The probe pack's post targets and bloom are the retained material preview's, there only while
+    // one is demanded, so with none bloom's settings leave the pack alone too.
     std::vector<std::pair<const char*, std::function<void(Inputs&)>>> not_the_probes()
     {
         return {
@@ -1149,7 +1149,8 @@ namespace
         {
             for (bool previewed : { false, true })
             {
-                INFO((hdr ? "under HDR" : "without HDR") << (previewed ? ", a material preview alive" : ", none"));
+                INFO((hdr ? "under HDR" : "without HDR") <<
+                     (previewed ? ", a retained material preview demanded" : ", none"));
                 Inputs in           = defaults();
                 in.mHDR             = hdr;
                 in.mGBufferNormHDR  = hdr;

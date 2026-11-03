@@ -227,8 +227,9 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
     // and its shadow maps at the size the full supersample of four gave them: a coarser capture is no reason for coarser
     // shadows in it. A capture renders two sun cascades, or a probe's all four where AlchemyRenderProbeAllShadowCascades
     // asks (generateSunShadow), and has maps for those alone. Its post targets and bloom are the GLTF material preview's,
-    // which the probes' captures never read, so they are there only while a preview is alive. The pack is there while
-    // probes are on or a preview is alive, and the manager's own resources while probes are. Its sun shadows, light
+    // which the probes' captures never read, so they are there only while a retained preview fallback needs them. The
+    // pack is there while probes are on or a retained preview is demanded, and the manager's own resources while probes
+    // are. Its sun shadows, light
     // map and depth copy are the captures' alone: a preview draws without the sun's shadows and draws no water
     // (LLGLTFPreviewTexture::render). A capture's water does not refract (refractsWater), so the copy is the haze's,
     // without a texture barrier, and the pack has no copy of the screen.

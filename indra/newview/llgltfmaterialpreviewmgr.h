@@ -48,9 +48,11 @@ public:
     // Width scales with size of material's textures
     static LLPointer<LLGLTFPreviewTexture> create(LLPointer<LLFetchedGLTFMaterial> material);
 
-    // How many previews are alive: each renders through the probe pack, which is kept for them while reflection probes
-    // are off (ALRenderResourceInputs::mMaterialPreview).
+    // How many previews are alive. Retained platforms keep the probe pack for
+    // this count; Darwin plans it only for previews whose native attempt has
+    // explicitly requested fallback.
     static U32 liveCount() { return sLiveCount; }
+    static U32 retainedFallbackCount() { return sRetainedFallbackCount; }
 
     bool needsRender() override;
     ETargetlessRenderResult renderWithoutTarget() override;
@@ -76,6 +78,7 @@ public:
 
 private:
     static U32 sLiveCount;
+    static U32 sRetainedFallbackCount;
 
     bool retainedRenderReady() const;
 
@@ -86,11 +89,13 @@ private:
     MaterialLoadLevels mBestLoad;
     MaterialLoadLevels mPendingLoad;
 #if LL_DARWIN
+    void setRetainedFallbackRequested(bool requested);
     bool publishMetalPreview();
 
     std::unique_ptr<ALMetalTexture> mMetalPreview;
     std::unique_ptr<ALMetalTextureDescriptor> mMetalPreviewDescriptor;
     bool mRetainedClearDepth = true;
+    bool mRetainedFallbackRequested = false;
     bool mTargetlessAttempt = false;
     bool mSkipNativeAttemptOnce = false;
 #endif

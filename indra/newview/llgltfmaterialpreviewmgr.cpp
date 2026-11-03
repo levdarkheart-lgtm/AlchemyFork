@@ -270,6 +270,7 @@ namespace
 };  // namespace
 
 U32 LLGLTFPreviewTexture::sLiveCount = 0;
+U32 LLGLTFPreviewTexture::sRetainedFallbackCount = 0;
 
 LLGLTFPreviewTexture::LLGLTFPreviewTexture(LLPointer<LLFetchedGLTFMaterial> material, S32 width)
     : LLViewerDynamicTexture(width, width, 4, EOrder::ORDER_MIDDLE)
@@ -280,29 +281,35 @@ LLGLTFPreviewTexture::LLGLTFPreviewTexture(LLPointer<LLFetchedGLTFMaterial> mate
 
 LLGLTFPreviewTexture::~LLGLTFPreviewTexture()
 {
-    // The last preview gone, the probe pack's post targets and bloom, there for previews alone, are freed with the next
-    // frame's resources, and with them the pack where reflection probes are off.
+#if LL_DARWIN
+    setRetainedFallbackRequested(false);
+    llassert(sLiveCount > 0);
+    --sLiveCount;
+#else
+    // The last preview gone, the probe pack's post targets and bloom, there for
+    // previews alone, are freed with the next frame's resources, and with them
+    // the pack where reflection probes are off.
     if (--sLiveCount == 0)
     {
         gPipeline.markRenderInputsDirty();
     }
+#endif
 }
 
 // static
 LLPointer<LLGLTFPreviewTexture> LLGLTFPreviewTexture::create(LLPointer<LLFetchedGLTFMaterial> material)
 {
-    // No larger than the probe pack the preview renders through (render()): the probe resolution
-    // times ALProbeSuperSample, which is below MAX_PREVIEW_WIDTH at a supersample under 4, and a
-    // larger viewport would render only the corner of the sphere that fits. That is the size the
-    // pack is planned at whether or not it is built. Its post targets and bloom are planned only
-    // while a preview is alive, and with reflection probes off the rest of it too: they are built
-    // for the previews with the next frame's resources, and needsRender waits for them.
+    // No larger than the retained probe pack the fallback renders through: the
+    // probe resolution times ALProbeSuperSample. Darwin uses the same setting-
+    // derived dimensions for its native destination without planning that pack.
     const ALRenderResourceInputs& inputs = gPipeline.resourceInputs();
     const U32 pack_width = inputs.mProbeResolution * inputs.mProbeSuperSample;
+#if !LL_DARWIN
     if (!gPipeline.resourcePlan().wants(ALRenderResourcePlan::Id::ProbePostPing))
     {
         gPipeline.markRenderInputsDirty();
     }
+#endif
     const U32 width = llmin(LLPipeline::MAX_PREVIEW_WIDTH, pack_width);
     return new LLGLTFPreviewTexture(material, (S32)width);
 }
@@ -322,6 +329,16 @@ bool LLGLTFPreviewTexture::needsRender()
 
     if (!mShouldRender && mBestLoad.isFullyLoaded()) { return false; }
     MaterialLoadLevels current_load = get_material_load_levels(*mGLTFMaterial.get());
+#if LL_DARWIN
+    if (mRetainedFallbackRequested)
+    {
+        // Finish the already-selected fallback even if texture residency moved
+        // while its resources were being reconciled.
+        mShouldRender = true;
+        mPendingLoad = current_load;
+        return true;
+    }
+#endif
     if (current_load < mBestLoad)
     {
         mShouldRender = true;
@@ -338,6 +355,28 @@ bool LLGLTFPreviewTexture::retainedRenderReady() const
             ALRenderResourcePlan::Id::ProbePostPing);
 }
 
+#if LL_DARWIN
+void LLGLTFPreviewTexture::setRetainedFallbackRequested(bool requested)
+{
+    if (mRetainedFallbackRequested == requested)
+    {
+        return;
+    }
+
+    mRetainedFallbackRequested = requested;
+    if (requested)
+    {
+        ++sRetainedFallbackCount;
+    }
+    else
+    {
+        llassert(sRetainedFallbackCount > 0);
+        --sRetainedFallbackCount;
+    }
+    gPipeline.markRenderInputsDirty();
+}
+#endif
+
 LLViewerDynamicTexture::ETargetlessRenderResult
 LLGLTFPreviewTexture::renderWithoutTarget()
 {
@@ -348,6 +387,19 @@ LLGLTFPreviewTexture::renderWithoutTarget()
     llassert(!mBoundTarget);
     if (!mShouldRender || mBoundTarget)
     {
+        return ETargetlessRenderResult::RETAINED_FALLBACK;
+    }
+
+    // A failed native attempt requested the retained pack. Do not spend every
+    // waiting frame repeating that attempt: once the reconciler has built the
+    // pack, execute the preserved fallback exactly once.
+    if (mRetainedFallbackRequested)
+    {
+        if (!retainedRenderReady())
+        {
+            return ETargetlessRenderResult::PENDING;
+        }
+        mSkipNativeAttemptOnce = true;
         return ETargetlessRenderResult::RETAINED_FALLBACK;
     }
 
@@ -366,8 +418,9 @@ LLGLTFPreviewTexture::renderWithoutTarget()
         mLastPostRenderSuccess = false;
         // If retained resources are ready, the target-backed retry must be the
         // retained callback, not a second identical Metal attempt in this
-        // frame. Otherwise retry native next frame while those resources are
-        // still unavailable.
+        // frame. Otherwise ask the next frame's resource reconcile for them
+        // and leave this item pending until they exist.
+        setRetainedFallbackRequested(true);
         mSkipNativeAttemptOnce = retainedRenderReady();
     }
 
@@ -1322,6 +1375,9 @@ void LLGLTFPreviewTexture::postRender(bool success)
     if (lastPostRenderSucceeded())
     {
         mBestLoad = mPendingLoad;
+#if LL_DARWIN
+        setRetainedFallbackRequested(false);
+#endif
     }
 }
 

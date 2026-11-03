@@ -64,7 +64,7 @@ struct ALRenderResourceInputs
     U32  mProbeSuperSample = 2;   ///< how much larger a probe face renders each way, as probeSuperSample() takes it
     bool mProbeAllCascades = false; ///< AlchemyRenderProbeAllShadowCascades: a probe's face renders four sun cascades
     bool mMirrors = false;        ///< RenderMirrors
-    bool mMaterialPreview = false; ///< a GLTF material preview is alive, which renders through the probe pack
+    bool mMaterialPreview = false; ///< a retained GLTF material-preview fallback needs the probe pack
     U32  mHeroResolution = 1024;  ///< RenderHeroProbeResolution
 
     U32  mFSAAType = 0;          ///< RenderFSAAType: 0 none, 1 FXAA, 2 SMAA

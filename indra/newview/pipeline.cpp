@@ -16844,7 +16844,11 @@ ALRenderResourceInputs LLPipeline::resourceInputsFromSettings(const ALShaderInpu
     in.mProbeSuperSample = ALRenderResourceInputs::probeSuperSample(gSavedSettings.getS32("ALProbeSuperSample"));
     in.mProbeAllCascades = gSavedSettings.getBOOL("AlchemyRenderProbeAllShadowCascades");
     in.mMirrors          = gSavedSettings.getBOOL("RenderMirrors");
+#if LL_DARWIN
+    in.mMaterialPreview  = LLGLTFPreviewTexture::retainedFallbackCount() > 0;
+#else
     in.mMaterialPreview  = LLGLTFPreviewTexture::liveCount() > 0;
+#endif
     in.mHeroResolution   = (U32)llmax(gSavedSettings.getS32("RenderHeroProbeResolution"), 1);
 
     in.mFSAAType          = gSavedSettings.getU32("RenderFSAAType");
