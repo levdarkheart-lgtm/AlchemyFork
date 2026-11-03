@@ -925,6 +925,7 @@ bool LLGLTFPreviewTexture::render()
         const F32 metal_preview_halation_strength = llmax(
             gSavedSettings.get<F32>("RenderBloomHalationStrength"), 0.f);
         const bool metal_preview_bloom = metal_preview_hdr &&
+            !metal_preview_no_post &&
             (metal_preview_bloom_strength > 0.f ||
              (metal_preview_halation &&
               metal_preview_halation_strength > 0.f));
@@ -941,8 +942,7 @@ bool LLGLTFPreviewTexture::render()
 
         bool metal_preview_eligible = metal_device &&
             mMetalPreviewDescriptor && base_color_texture && normal_texture &&
-            orm_texture && emissive_texture && metal_preview_hdr &&
-            !metal_preview_no_post && !LLRender::sClassicMode;
+            orm_texture && emissive_texture && !LLRender::sClassicMode;
         if (metal_preview_eligible)
         {
             metal_preview_eligible =
@@ -1097,6 +1097,8 @@ bool LLGLTFPreviewTexture::render()
                 metal_scene.destination_descriptor =
                     mMetalPreviewDescriptor.get();
                 metal_scene.environment = &metal_preview_environment;
+                metal_scene.tonemap_enabled =
+                    metal_preview_hdr && !metal_preview_no_post;
                 metal_scene.exposure = metal_preview_exposure;
                 metal_scene.tonemap_mix = metal_preview_tonemap_mix;
                 metal_scene.tonemap_type = static_cast<U32>(
@@ -1104,7 +1106,19 @@ bool LLGLTFPreviewTexture::render()
                 std::memcpy(metal_scene.tonemap_params,
                             metal_preview_tonemap_params.data(),
                             sizeof(metal_scene.tonemap_params));
+                metal_scene.legacy_gamma = metal_preview_legacy_gamma;
+                metal_scene.legacy_gamma_exponent =
+                    metal_preview_legacy_gamma && metal_preview_sky
+                        ? metal_preview_sky->getGamma() : 1.f;
+                metal_scene.dither_amount =
+                    !metal_preview_hdr &&
+                    gSavedSettings.get<bool>("RenderDitherEnabled")
+                        ? 1.f : 0.f;
+                metal_scene.dither_animated =
+                    gSavedSettings.get<bool>("RenderDitherAnimated");
+                metal_scene.frame_id = LLFrameTimer::getFrameCount();
                 metal_scene.meter_exposure = metal_preview_hdr &&
+                    !metal_preview_no_post &&
                     gSavedSettings.get<bool>(
                         "RenderDynamicExposureEnabled") &&
                     !LLRender::sClassicMode;
@@ -1174,10 +1188,11 @@ bool LLGLTFPreviewTexture::render()
                 metal_scene.cross_filter_chromatic = llclamp(
                     gSavedSettings.get<F32>("RenderCrossFilterChromatic"),
                     0.f, 1.f);
-                metal_scene.chromatic_aberration_strength = llclamp(
-                    gSavedSettings.get<F32>(
-                        "RenderChromaticAberrationStrength"),
-                    0.f, 1.f);
+                metal_scene.chromatic_aberration_strength =
+                    metal_preview_no_post ? 0.f : llclamp(
+                        gSavedSettings.get<F32>(
+                            "RenderChromaticAberrationStrength"),
+                        0.f, 1.f);
                 metal_scene.chromatic_aberration_falloff = llclamp(
                     gSavedSettings.get<F32>(
                         "RenderChromaticAberrationFalloff"),

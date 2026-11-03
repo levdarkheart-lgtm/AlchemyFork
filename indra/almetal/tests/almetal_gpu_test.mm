@@ -28982,6 +28982,75 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         REQUIRE(quarter_red_output);
         const auto quarter_red = read_center(*quarter_red_output);
         CHECK(std::abs(static_cast<int>(quarter_red[0]) - 137) <= 1);
+
+        // Non-HDR and clean-plate material previews still encode the complete
+        // linear scene, but they do not apply exposure or tone mapping. The
+        // same post owner also reproduces legacy gamma and non-HDR dithering
+        // in encoded display space.
+        scene.tonemap_enabled = false;
+        scene.exposure = 0.25f;
+        auto bypassed_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(bypassed_output);
+        const auto bypassed = read_center(*bypassed_output);
+        CHECK(std::abs(static_cast<int>(bypassed[0]) - 137) <= 1);
+        scene.tonemap_enabled = true;
+        auto exposed_quarter_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(exposed_quarter_output);
+        const auto exposed_quarter = read_center(*exposed_quarter_output);
+        CHECK(exposed_quarter[0] + 40 < bypassed[0]);
+        scene.exposure = 1.f;
+        scene.tonemap_enabled = false;
+        scene.legacy_gamma = true;
+        scene.legacy_gamma_exponent = 2.f;
+        auto legacy_gamma_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(legacy_gamma_output);
+        const auto legacy_gamma = read_center(*legacy_gamma_output);
+        const float quarter_encoded =
+            1.055f * std::pow(0.25f, 1.f / 2.4f) - 0.055f;
+        const int expected_legacy_gamma = static_cast<int>(std::lround(
+            (1.f - std::pow(1.f - quarter_encoded, 2.f)) * 255.f));
+        CHECK(std::abs(static_cast<int>(legacy_gamma[0]) -
+                       expected_legacy_gamma) <= 1);
+        scene.legacy_gamma = false;
+        scene.legacy_gamma_exponent = 1.f;
+        scene.dither_amount = 1.f;
+        scene.dither_animated = false;
+        scene.frame_id = 0;
+        auto dithered_output = renderer->render(scene, &error);
+        INFO(error);
+        REQUIRE(dithered_output);
+        std::array<std::uint8_t, 32 * 32 * 4> dithered_pixels{};
+        REQUIRE(dithered_output->readback(
+            *device, 0, 0, {}, dithered_pixels.data(), 32 * 4, &error));
+        std::uint8_t dithered_min = 255;
+        std::uint8_t dithered_max = 0;
+        bool dithered_green_zero = true;
+        bool dithered_blue_zero = true;
+        bool dithered_alpha_opaque = true;
+        for (std::size_t pixel = 0; pixel < 32 * 32; ++pixel)
+        {
+            dithered_min = std::min(
+                dithered_min, dithered_pixels[pixel * 4]);
+            dithered_max = std::max(
+                dithered_max, dithered_pixels[pixel * 4]);
+            dithered_green_zero = dithered_green_zero &&
+                dithered_pixels[pixel * 4 + 1] == 0;
+            dithered_blue_zero = dithered_blue_zero &&
+                dithered_pixels[pixel * 4 + 2] == 0;
+            dithered_alpha_opaque = dithered_alpha_opaque &&
+                dithered_pixels[pixel * 4 + 3] == 255;
+        }
+        CHECK(dithered_min < dithered_max);
+        CHECK(dithered_min >= 136);
+        CHECK(dithered_max <= 138);
+        CHECK(dithered_green_zero);
+        CHECK(dithered_blue_zero);
+        CHECK(dithered_alpha_opaque);
+        scene.dither_amount = 0.f;
+        scene.tonemap_enabled = true;
         scene.bloom_enabled = true;
         scene.bloom_mip_count = 3;
         scene.bloom_threshold = 100.f;
@@ -29114,6 +29183,16 @@ TEST_CASE("almetal: PBR material preview preserves glTF texture semantics", "[al
         CHECK_FALSE(renderer->render(scene, &error));
         CHECK(error == "Metal PBR preview post state is invalid");
         scene.chromatic_aberration_falloff = 1.f;
+        scene.legacy_gamma_exponent = 0.f;
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal PBR preview post state is invalid");
+        scene.legacy_gamma_exponent = 1.f;
+        scene.dither_amount = 2.f;
+        error.clear();
+        CHECK_FALSE(renderer->render(scene, &error));
+        CHECK(error == "Metal PBR preview post state is invalid");
+        scene.dither_amount = 0.f;
         scene.environment = nullptr;
         error.clear();
         CHECK_FALSE(renderer->render(scene, &error));

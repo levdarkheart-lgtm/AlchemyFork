@@ -16361,6 +16361,10 @@ struct ALMetalPBRPreviewPostConstants
     float4 chromatic_angle_offset_r;
     // blue radial/tangential offset
     float4 chromatic_offset_b;
+    // legacy-gamma exponent, non-HDR dither amount, reserved
+    float4 display;
+    // tonemap enabled, legacy gamma, animated dither, frame id
+    uint4 config;
 };
 
 static float4 almetal_pbr_preview_chromatic_aberration(
@@ -16692,20 +16696,36 @@ fragment float4 almetal_pbr_preview_post_fragment(
                 constants.bloom.w * constants.bloom.x;
         }
     }
-    color *= constants.post.x * exposure.read(uint2(0)).r;
-    const float3 clamped = clamp(color, float3(0.0), float3(1.0));
-    const uint tonemap_type = uint(round(constants.post.z));
-    color = mix(clamped,
-                clamp(almetal_pbr_tonemap(
-                          color, tonemap_type, constants.tonemap_params),
-                      float3(0.0), float3(1.0)),
-                constants.post.y);
-    // An sRGB attachment performs the final transfer itself. The ordinary
-    // RGBA8 dynamic texture stores the same encoded bytes explicitly.
-    if (constants.post.w < 0.5)
+    if (constants.config.x != 0u)
     {
-        color = almetal_linear_to_srgb(color);
+        color *= constants.post.x * exposure.read(uint2(0)).r;
+        const float3 clamped = clamp(color, float3(0.0), float3(1.0));
+        const uint tonemap_type = uint(round(constants.post.z));
+        color = mix(clamped,
+                    clamp(almetal_pbr_tonemap(
+                              color, tonemap_type,
+                              constants.tonemap_params),
+                          float3(0.0), float3(1.0)),
+                    constants.post.y);
     }
+    // Work in encoded display space for the legacy-gamma and non-HDR dither
+    // stages, like colorCorrectF.glsl. For an sRGB attachment, convert the
+    // finished encoded value back to linear and let the attachment reproduce
+    // those bytes; an ordinary RGBA8 destination stores them directly.
+    float3 encoded = almetal_linear_to_srgb(max(color, float3(0.0)));
+    if (constants.config.y != 0u)
+    {
+        const float3 inverse = float3(1.0) - clamp(
+            encoded, float3(0.0), float3(1.0));
+        encoded = float3(1.0) - pow(
+            inverse, float3(constants.display.x));
+    }
+    encoded = clamp(encoded, float3(0.0), float3(1.0));
+    encoded = almetal_world_display_dither(
+        encoded, input.position.xy, constants.display.y,
+        constants.config.w, constants.config.z != 0u);
+    color = constants.post.w < 0.5
+        ? encoded : almetal_srgb_to_linear(encoded);
     return float4(max(color, float3(0.0)), scene_color.a);
 }
 

@@ -85,9 +85,13 @@ namespace
         float chromatic_angle_offset_r[4];
         // blue radial/tangential offset
         float chromatic_offset_b[4];
+        // legacy-gamma exponent, non-HDR dither amount, reserved
+        float display[4];
+        // tonemap enabled, legacy gamma, animated dither, frame id
+        std::uint32_t config[4];
     };
 
-    static_assert(sizeof(PBRPreviewPostConstants) == 112);
+    static_assert(sizeof(PBRPreviewPostConstants) == 144);
 
     struct alignas(16) PBRPreviewBloomExtractConstants
     {
@@ -515,6 +519,10 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         !std::isfinite(scene.tonemap_mix) || scene.tonemap_mix < 0.f ||
         scene.tonemap_mix > 1.f || scene.tonemap_type > 6 ||
         !finiteValues(scene.tonemap_params, 4) ||
+        !std::isfinite(scene.legacy_gamma_exponent) ||
+        scene.legacy_gamma_exponent <= 0.f ||
+        !std::isfinite(scene.dither_amount) ||
+        scene.dither_amount < 0.f || scene.dither_amount > 1.f ||
         !std::isfinite(scene.exposure_compensation) ||
         !std::isfinite(scene.exposure_min_ev) ||
         !std::isfinite(scene.exposure_max_ev) ||
@@ -680,7 +688,8 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         return nullptr;
     }
 
-    const bool bloom_requested = scene.bloom_enabled &&
+    const bool bloom_requested = scene.tonemap_enabled &&
+        scene.bloom_enabled &&
         (scene.bloom_strength > 0.f ||
          (scene.bloom_halation &&
           scene.bloom_halation_strength > 0.f));
@@ -934,7 +943,8 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
     exposure_constants.low_fraction = scene.exposure_low_fraction;
     exposure_constants.high_fraction = scene.exposure_high_fraction;
     exposure_constants.metering_mode = scene.exposure_metering_mode;
-    exposure_constants.enabled = scene.meter_exposure ? 1u : 0u;
+    exposure_constants.enabled =
+        scene.tonemap_enabled && scene.meter_exposure ? 1u : 0u;
     auto exposure_encoder = ALMetalComputeEncoder::begin(
         *command, "Alchemy PBR preview exposure encoder", error);
     encoded = exposure_encoder &&
@@ -1147,9 +1157,10 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
     std::memcpy(post_constants.halation_tint,
                 scene.bloom_halation_tint,
                 sizeof(scene.bloom_halation_tint));
-    const float chromatic_amount =
-        scene.chromatic_aberration_strength *
-        scene.chromatic_aberration_strength * 0.02f;
+    const float chromatic_amount = scene.tonemap_enabled
+        ? scene.chromatic_aberration_strength *
+              scene.chromatic_aberration_strength * 0.02f
+        : 0.f;
     const float chromatic_angle =
         scene.chromatic_aberration_angle * 0.01745329252f;
     post_constants.chromatic[0] = chromatic_amount;
@@ -1169,6 +1180,12 @@ std::unique_ptr<ALMetalTexture> ALMetalPBRPreviewRenderer::render(
         scene.chromatic_aberration_offset_b[0];
     post_constants.chromatic_offset_b[1] =
         scene.chromatic_aberration_offset_b[1];
+    post_constants.display[0] = scene.legacy_gamma_exponent;
+    post_constants.display[1] = scene.dither_amount;
+    post_constants.config[0] = scene.tonemap_enabled ? 1u : 0u;
+    post_constants.config[1] = scene.legacy_gamma ? 1u : 0u;
+    post_constants.config[2] = scene.dither_animated ? 1u : 0u;
+    post_constants.config[3] = scene.frame_id;
     encoded = post_encoder &&
         post_encoder->setPipeline(
             *mImpl->post_pipelines[pipeline_index], error) &&

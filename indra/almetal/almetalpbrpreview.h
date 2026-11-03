@@ -84,12 +84,22 @@ struct ALMetalPBRPreviewScene
     const ALMetalTextureDescriptor* destination_descriptor = nullptr;
     const ALMetalPBRPreviewEnvironment* environment = nullptr;
 
-    // colorCorrect applies these after the complete linear HDR scene has
-    // been composited, rather than independently to each material batch.
+    // colorCorrect applies these after the complete linear scene has been
+    // composited, rather than independently to each material batch. HDR
+    // previews apply exposure/tonemapping unless their clean-plate/legacy
+    // configuration explicitly disables it. Non-HDR previews encode the
+    // same scene without exposure or tone mapping and may dither the 8-bit
+    // destination.
+    bool tonemap_enabled = true;
     float exposure = 1.f;
     float tonemap_mix = 1.f;
     std::uint32_t tonemap_type = 1;
     float tonemap_params[4]{};
+    bool legacy_gamma = false;
+    float legacy_gamma_exponent = 1.f;
+    float dither_amount = 0.f;
+    bool dither_animated = false;
+    std::uint32_t frame_id = 0;
 
     // The material preview deliberately requests an unadapted exposure
     // (generateExposure(..., use_history=false)). Fractions are normalized
