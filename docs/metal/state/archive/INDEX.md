@@ -75,6 +75,7 @@ reload the chronological history.
 | Native-only Darwin tone-curve LUT and source-exact build 68149, 2026-11-03 | [CURRENT-native-tone-curve-checkpoint-2026-11-03.md](CURRENT-native-tone-curve-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin pipeline BRDF LUT and source-exact build 68151, 2026-11-03 | [CURRENT-native-brdf-lut-checkpoint-2026-11-03.md](CURRENT-native-brdf-lut-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native ordinary-SMAA lookup ownership with exact sample-mode retention and source-exact build 68153, 2026-11-03 | [CURRENT-native-smaa-lookups-checkpoint-2026-11-03.md](CURRENT-native-smaa-lookups-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Native normal/sample SMAA ownership with split-source SamplePath ingress and source-exact build 68155, 2026-11-03 | [CURRENT-native-smaa-sample-checkpoint-2026-11-03.md](CURRENT-native-smaa-sample-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
