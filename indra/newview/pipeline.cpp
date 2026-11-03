@@ -27491,7 +27491,6 @@ void LLPipeline::renderFinalize()
     // draws over it before the blit -- the glow, RLVa's sphere, a buffer shown in its place, a scope sample or a
     // reference still taken this frame -- and where the blit resamples it, at another size or through the lens, which
     // costs the blit more to sharpen than the pass does.
-    static LLCachedControl<F32> cas_sharpness(gSavedSettings, "RenderCASSharpness", 0.4f);
     static LLCachedControl<S32> ref_wipe_mode(gSavedSettings, "RenderReferenceWipeMode", 0);
     const bool    rlv_sphere    = chain && RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE);
     const bool    visualize     = RenderBufferVisualization > -1 && !cutout;
@@ -27500,6 +27499,7 @@ void LLPipeline::renderFinalize()
     // select either retained GL sharpening path on Darwin.
     const bool    blit_sharpens = false;
 #else
+    static LLCachedControl<F32> cas_sharpness(gSavedSettings, "RenderCASSharpness", 0.4f);
     const LLRect& world_view   = gViewerWindow->getWorldViewRectRaw();
     const bool    side_by_side = hasReferenceStill() && ref_wipe_mode == 2 && !suppress_effects;
     const bool    blit_sharpens = cas_sharpness > 0.f && !cutout && chain && gBlitWithEffectsSharpenProgram.isComplete() &&
@@ -27593,7 +27593,12 @@ void LLPipeline::renderFinalize()
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("renderFinalize - final blit");
         LL_PROFILE_GPU_ZONE("renderFinalize - final blit");
 
-        LLGLSLShader& blit = blit_sharpens ? gBlitWithEffectsSharpenProgram : gBlitWithEffectsProgram;
+#if LL_DARWIN
+        LLGLSLShader& blit = gBlitWithEffectsProgram;
+#else
+        LLGLSLShader& blit = blit_sharpens ?
+            gBlitWithEffectsSharpenProgram : gBlitWithEffectsProgram;
+#endif
         blit.bind();
 
         // Whatever is last in the above post processing chain should _always_ be rendered directly here.  If not, expect problems.
@@ -27605,6 +27610,7 @@ void LLPipeline::renderFinalize()
         blit.uniform2f(LLShaderMgr::SCREEN_RESOLUTION, (F32)gViewerWindow->getWorldViewRectRaw().getWidth(),
                        (F32)gViewerWindow->getWorldViewRectRaw().getHeight());
 
+#if !LL_DARWIN
         // CAS, sharpening the frame at its own size as its pass does.
         if (blit_sharpens)
         {
@@ -27615,6 +27621,7 @@ void LLPipeline::renderFinalize()
             blit.uniform4uiv(LLShaderMgr::CAS_PARAM_0, 1, const0);
             blit.uniform4uiv(LLShaderMgr::CAS_PARAM_1, 1, const1);
         }
+#endif
 
         // Lens distortion
         //

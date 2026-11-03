@@ -258,11 +258,13 @@ extern LLGLSLShader         gDeferredPostProgramShaped;
 extern LLGLSLShader         gDeferredPostProgramNoNearShaped;
 extern LLGLSLShader         gDeferredDoFCombineProgram;
 extern LLGLSLShader         gDeferredDoFCombineProgramNoNear;
+#if !LL_DARWIN
 extern LLGLSLShader         gFXAAProgram[4];
 extern LLGLSLShader         gSMAAEdgeDetectProgram[4];
 extern LLGLSLShader         gSMAABlendWeightsProgram[4];
 extern LLGLSLShader         gSMAANeighborhoodBlendProgram[4];
 extern LLGLSLShader         gCASProgram;
+#endif
 extern LLGLSLShader         gDeferredPostNoDoFProgram;
 extern LLGLSLShader         gExposureProgram;
 extern LLGLSLShader         gExposureProgramNoFade;
@@ -299,7 +301,9 @@ extern LLGLSLShader         gNormalMapGenProgram;
 extern LLGLSLShader         gDeferredGenBrdfLutProgram;
 extern LLGLSLShader         gDeferredBufferVisualProgram;
 extern LLGLSLShader         gBlitWithEffectsProgram;
+#if !LL_DARWIN
 extern LLGLSLShader         gBlitWithEffectsSharpenProgram;
+#endif
 extern LLGLSLShader         gCGGammaProgram;
 extern LLGLSLShader         gCGLegacyGammaProgram;
 extern LLGLSLShader         gCGTonemapProgram;

@@ -68,8 +68,10 @@ LLFloaterPreferenceGraphicsAdvanced::~LLFloaterPreferenceGraphicsAdvanced()
 
 bool LLFloaterPreferenceGraphicsAdvanced::postBuild()
 {
-    // Disable FSAA combo when shaders are not loaded
-    //
+    // Darwin's FXAA/SMAA implementations are native Metal pipelines and do
+    // not depend on retained GLSL program objects. Other platforms still use
+    // shader completeness as their availability signal.
+#if !LL_DARWIN
     {
         LLComboBox* combo = getChild<LLComboBox>("fsaa");
         if (!gFXAAProgram[0].isComplete())
@@ -84,6 +86,7 @@ bool LLFloaterPreferenceGraphicsAdvanced::postBuild()
             getChild<LLComboBox>("fsaa quality")->setEnabled(false);
         }
     }
+#endif
 
 #if !LL_DARWIN && !LL_SDL_WINDOW
     LLCheckBoxCtrl *use_HiDPI = getChild<LLCheckBoxCtrl>("use HiDPI");

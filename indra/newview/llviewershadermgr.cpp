@@ -216,11 +216,13 @@ LLGLSLShader            gExposureProgramNoFade;
 LLGLSLShader            gExposureHistogramProgram;
 LLGLSLShader            gLuminanceProgram;
 LLGLSLShader            gLensFlareStateProgram;
+#if !LL_DARWIN
 LLGLSLShader            gFXAAProgram[4];
 LLGLSLShader            gSMAAEdgeDetectProgram[4];
 LLGLSLShader            gSMAABlendWeightsProgram[4];
 LLGLSLShader            gSMAANeighborhoodBlendProgram[4];
 LLGLSLShader            gCASProgram;
+#endif
 LLGLSLShader            gDeferredPostNoDoFProgram;
 LLGLSLShader            gDeferredWLSkyProgram;
 LLGLSLShader            gEnvironmentMapProgram;
@@ -236,7 +238,9 @@ LLGLSLShader            gNormalMapGenProgram;
 LLGLSLShader            gDeferredGenBrdfLutProgram;
 LLGLSLShader            gDeferredBufferVisualProgram;
 LLGLSLShader            gBlitWithEffectsProgram;
+#if !LL_DARWIN
 LLGLSLShader            gBlitWithEffectsSharpenProgram;
+#endif
 LLGLSLShader            gCGGammaProgram;
 LLGLSLShader            gCGLegacyGammaProgram;
 LLGLSLShader            gCGTonemapProgram;
@@ -1390,6 +1394,7 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gLuminanceProgram.unload();
         gLensFlareStateProgram.unload();
 
+#if !LL_DARWIN
         for (auto i = 0; i < 4; ++i)
         {
             gFXAAProgram[i].unload();
@@ -1398,6 +1403,7 @@ void LLViewerShaderMgr::loadShadersDeferred()
             gSMAANeighborhoodBlendProgram[i].unload();
         }
         gCASProgram.unload();
+#endif
         gEnvironmentMapProgram.unload();
         gDeferredWLSkyProgram.unload();
         gDeferredWLCloudProgram.unload();
@@ -2913,6 +2919,7 @@ void LLViewerShaderMgr::loadShadersDeferred()
         built(gLuminanceProgram.createShader(), gLuminanceProgram);
     }
 
+#if !LL_DARWIN
     {
         std::vector<std::pair<std::string, std::string>> quality_levels = { {"12", "Low"},
                                                                              {"23", "Medium"},
@@ -3056,6 +3063,7 @@ void LLViewerShaderMgr::loadShadersDeferred()
             LL_WARNS() << "Failed to create shader '" << gCASProgram.mName << "', disabling!" << LL_ENDL;
         }
     }
+#endif
 
     // Without HDR, LLPipeline::renderDoF's blur is in the post chain's RGBA8, so the gather and combine programs keep it
     // square-root encoded.
@@ -3346,6 +3354,7 @@ void LLViewerShaderMgr::loadShadersDeferred()
         built(gBlitWithEffectsProgram.createShader(), gBlitWithEffectsProgram);
     }
 
+#if !LL_DARWIN
     {
         // The same blit sharpening the frame as it samples it, CASF.glsl's filter linked in. While it is incomplete
         // the frame is sharpened by CAS's own pass.
@@ -3365,6 +3374,7 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gBlitWithEffectsSharpenProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         built(gBlitWithEffectsSharpenProgram.createShader(), gBlitWithEffectsSharpenProgram);
     }
+#endif
 
     // HDR-only: the bloom pyramid is allocated in the HDR path, so the tonemap
     // shader variants fold the bloom composite inline. Halation rides in the
