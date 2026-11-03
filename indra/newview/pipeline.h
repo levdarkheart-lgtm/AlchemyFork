@@ -1979,12 +1979,13 @@ public:
     // release, which is also where the user expects to see the result.
     bool                mLensDirtSliderHeld = false;
     // Tone curve LUT: a 512x1 RGBA16 row (ALToneCurveSet::LUT_SIZE) whose R, G
-    // and B texels hold master(channel(x)) for each channel. A raw GL name
-    // like the SMAA maps above: created empty by reconcileResources, filled by
-    // bakeToneCurveLut, released in releaseAllGLResources.
+    // and B texels hold master(channel(x)) for each channel. Non-Darwin owns a
+    // raw GL name like the SMAA maps above; Darwin publishes only the native
+    // texture below. Loaded/dirty/identity describe either backend.
     U32                 mToneCurveLut = 0;
     bool                mToneCurveLutDirty = true;   // settings changed, or the texture was recreated, since the last bake
     bool                mToneCurveIdentity = true;   // the last bake found all four curves on the diagonal
+    bool                mToneCurveLutLoaded = false;
 #if LL_DARWIN
     std::unique_ptr<ALMetalTexture> mMetalToneCurveLut;
 #endif

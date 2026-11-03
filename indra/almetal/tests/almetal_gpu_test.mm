@@ -1483,6 +1483,66 @@ TEST_CASE("almetal: unorm volume-array upload preserves precision and expands RG
     }
 }
 
+TEST_CASE("almetal: unorm 2D upload preserves tone-curve precision",
+          "[almetal][texture]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        // Production ALToneCurveSet::LUT_SIZE without coupling almetal to
+        // newview's curve model.
+        constexpr std::uint32_t width = 512;
+        std::array<std::uint16_t, width * 4> source{};
+        for (std::size_t index = 0; index < source.size(); ++index)
+        {
+            source[index] = static_cast<std::uint16_t>(
+                index * 2341u + 29u);
+        }
+        auto texture = alMetalCreateUnormTexture2D(
+            *device, width, 1, 4, 2, source.data(),
+            "Alchemy RGBA16 tone-curve test", &error);
+        INFO(error);
+        REQUIRE(texture);
+        CHECK(texture->descriptor().type == ALMetalTextureType::texture_2d);
+        CHECK(texture->descriptor().format ==
+              ALMetalPixelFormat::rgba16_unorm);
+        CHECK(texture->descriptor().width == width);
+        CHECK(texture->descriptor().height == 1);
+        CHECK(texture->descriptor().array_length == 1);
+        CHECK(texture->descriptor().storage ==
+              ALMetalStorageMode::private_gpu);
+        CHECK(texture->descriptor().usage ==
+              ALMetalTextureUsage::shader_read);
+
+        std::array<std::uint16_t, width * 4> readback{};
+        REQUIRE(texture->readback(
+            *device, 0, 0, {}, readback.data(),
+            width * 4 * sizeof(std::uint16_t),
+            &error));
+        INFO(error);
+        CHECK(readback == source);
+
+        CHECK_FALSE(alMetalCreateUnormTexture2D(
+            *device, 0, 1, 4, 2, source.data(), "invalid", &error));
+        CHECK_FALSE(alMetalCreateUnormTexture2D(
+            *device, width, 0, 4, 2, source.data(), "invalid", &error));
+        CHECK_FALSE(alMetalCreateUnormTexture2D(
+            *device, width, 1, 2, 2, source.data(), "invalid", &error));
+        CHECK_FALSE(alMetalCreateUnormTexture2D(
+            *device, width, 1, 4, 4, source.data(), "invalid", &error));
+        CHECK_FALSE(alMetalCreateUnormTexture2D(
+            *device, width, 1, 4, 2, nullptr, "invalid", &error));
+        CHECK_FALSE(alMetalCreateUnormTexture2D(
+            *device, std::numeric_limits<std::uint32_t>::max(),
+            std::numeric_limits<std::uint32_t>::max(), 4, 2,
+            source.data(), "invalid", &error));
+    }
+}
+
 TEST_CASE("almetal: texture readback ring stays bounded and preserves FIFO order", "[almetal]")
 {
     @autoreleasepool

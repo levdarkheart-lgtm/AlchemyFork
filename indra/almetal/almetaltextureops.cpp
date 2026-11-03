@@ -30,6 +30,84 @@ namespace
     }
 }
 
+std::unique_ptr<ALMetalTexture> alMetalCreateUnormTexture2D(
+    const ALMetalDevice& device,
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t components,
+    std::uint32_t component_bytes,
+    const void* pixels,
+    const std::string& label,
+    std::string* error)
+{
+    if (!pixels || width == 0 || height == 0 ||
+        (components != 3 && components != 4) ||
+        (component_bytes != 1 && component_bytes != 2))
+    {
+        setError(error,
+                 "Metal unorm 2D upload requires non-empty 8/16-bit RGB or "
+                 "RGBA input");
+        return nullptr;
+    }
+
+    constexpr std::size_t max_size = std::numeric_limits<std::size_t>::max();
+    if (width > max_size / height)
+    {
+        setError(error, "Metal unorm 2D dimensions overflow host size");
+        return nullptr;
+    }
+    const std::size_t pixel_count =
+        static_cast<std::size_t>(width) * height;
+    if (pixel_count > max_size / (4u * component_bytes))
+    {
+        setError(error, "Metal unorm 2D byte count overflows host size");
+        return nullptr;
+    }
+
+    const void* upload_pixels = pixels;
+    std::vector<std::uint8_t> expanded;
+    if (components == 3)
+    {
+        expanded.resize(pixel_count * 4u * component_bytes);
+        const auto* source = static_cast<const std::uint8_t*>(pixels);
+        for (std::size_t pixel = 0; pixel < pixel_count; ++pixel)
+        {
+            std::uint8_t* destination = expanded.data() +
+                pixel * 4u * component_bytes;
+            std::memcpy(destination,
+                        source + pixel * 3u * component_bytes,
+                        3u * component_bytes);
+            std::memset(destination + 3u * component_bytes, 0xff,
+                        component_bytes);
+        }
+        upload_pixels = expanded.data();
+    }
+
+    ALMetalTextureDescriptor descriptor;
+    descriptor.format = component_bytes == 2
+        ? ALMetalPixelFormat::rgba16_unorm
+        : ALMetalPixelFormat::rgba8_unorm;
+    descriptor.width = width;
+    descriptor.height = height;
+    descriptor.storage = ALMetalStorageMode::private_gpu;
+    descriptor.usage = ALMetalTextureUsage::shader_read;
+    descriptor.label = label;
+    auto texture = ALMetalTexture::create(device, descriptor, error);
+    auto command = texture
+        ? device.makeCommandBuffer(label + " upload", error)
+        : nullptr;
+    const std::size_t bytes_per_row =
+        static_cast<std::size_t>(width) * 4u * component_bytes;
+    if (!command ||
+        !texture->upload(*command, 0, 0, {}, upload_pixels, bytes_per_row,
+                         error) ||
+        !command->commit(error))
+    {
+        return nullptr;
+    }
+    return texture;
+}
+
 std::unique_ptr<ALMetalTexture> alMetalCreateUnormVolumeArray(
     const ALMetalDevice& device,
     std::uint32_t edge,

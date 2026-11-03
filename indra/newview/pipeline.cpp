@@ -16440,7 +16440,12 @@ U32* LLPipeline::resourceTexture(ALRenderResourcePlan::Id id)
         case Id::SMAAArea:   return &mSMAAAreaMap;
         case Id::SMAASearch: return &mSMAASearchMap;
         case Id::SMAASample: return &mSMAASampleMap;
-        case Id::ToneCurve:  return &mToneCurveLut;
+        case Id::ToneCurve:
+#if LL_DARWIN
+            return nullptr;
+#else
+            return &mToneCurveLut;
+#endif
         default:
             return nullptr;
     }
@@ -16465,6 +16470,15 @@ void LLPipeline::ensureResources(const ALRenderResourcePlan& plan, const ALRende
                 continue;
             }
 
+#if LL_DARWIN
+            // The render plan still describes the retained GL LUT for other
+            // platforms. Darwin bakes its native texture lazily, so this entry
+            // deliberately has neither a GL texture nor an LLRenderTarget.
+            if (id == Id::ToneCurve)
+            {
+                continue;
+            }
+#endif
             if (U32* texture = resourceTexture(id))
             {
                 if (resource.mDesc && !*texture)
@@ -17118,6 +17132,7 @@ void LLPipeline::releaseRenderTargets()
     mLensFlareStateValid = false;
     mLensFlareStateClearPending = false;
     mToneCurveLutDirty   = true;
+    mToneCurveLutLoaded  = false;
 #if LL_DARWIN
     mMetalToneCurveLut.reset();
     mMetalNoiseMapRG16.clear();
@@ -17526,6 +17541,7 @@ void LLPipeline::createResourceTexture(ALRenderResourcePlan::Id id)
 
         case Id::ToneCurve:
         {
+#if !LL_DARWIN
             // Allocated empty; bakeToneCurveLut fills it on the next colorCorrect,
             // and nothing samples it before then because uToneCurveAmount stays 0
             // until a bake reports a non-identity curve. RGBA16 rather than RGBA8
@@ -17538,6 +17554,7 @@ void LLPipeline::createResourceTexture(ALRenderResourcePlan::Id id)
                                          ALToneCurveSet::LUT_SIZE, 1, GL_RGBA, GL_UNSIGNED_SHORT, nullptr);
             stop_glerror();
             mToneCurveLutDirty = true;   // fresh storage holds nothing
+#endif
             break;
         }
 
@@ -17828,29 +17845,15 @@ namespace
             return nullptr;
         }
 
-        ALMetalTextureDescriptor descriptor;
-        descriptor.format = ALMetalPixelFormat::rgba16_unorm;
-        descriptor.width = ALToneCurveSet::LUT_SIZE;
-        descriptor.height = 1;
-        descriptor.storage = ALMetalStorageMode::private_gpu;
-        descriptor.usage = ALMetalTextureUsage::shader_read;
-        descriptor.label = "Alchemy baked tone-curve mirror";
         std::string error;
-        auto texture = ALMetalTexture::create(*device, descriptor, &error);
-        auto command = texture
-            ? device->makeCommandBuffer(
-                  "Alchemy baked tone-curve mirror upload", &error)
-            : nullptr;
-        const bool uploaded = command && texture->upload(
-            *command, 0, 0, {}, texels.data(),
-            ALToneCurveSet::LUT_SIZE * 4u * sizeof(U16), &error) &&
-            command->commit(&error);
-        if (!uploaded)
+        auto texture = alMetalCreateUnormTexture2D(
+            *device, ALToneCurveSet::LUT_SIZE, 1, 4, sizeof(U16),
+            texels.data(), "Alchemy baked tone curve", &error);
+        if (!texture)
         {
             LL_WARNS("Metal")
-                << "Could not publish the baked tone-curve mirror: "
+                << "Could not publish the baked tone curve: "
                 << error << LL_ENDL;
-            return nullptr;
         }
         return texture;
     }
@@ -18118,16 +18121,15 @@ void LLPipeline::setupGradingLUT()
 
 
 // Runs lazily on the way to native world capture, with colorCorrect as the
-// fallback, rather than from the settings signal. A new context's reconcile
-// recreates the texture behind the settings' back, and only a bake on a draw
-// path can refill it. A Look apply or an undo writes four curve settings in a
-// row and a graph drag commits per mouse move, so one bake per rendered frame
-// is the natural rate and the dirty flag coalesces the rest. Both call sites
-// have a current context and run before their owner binds texture slot 0.
+// fallback, rather than from the settings signal. Backend restoration drops
+// the published texture and only a bake on a draw path can refill it. A Look
+// apply or an undo writes four curve settings in a row and a graph drag commits
+// per mouse move, so one bake per rendered frame is the natural rate and the
+// dirty flag coalesces the rest. The retained non-Darwin upload borrows texture
+// slot 0 before colorCorrect binds its inputs; Darwin performs no GL work.
 void LLPipeline::bakeToneCurveLut()
 {
     LL_PROFILE_ZONE_SCOPED;
-    mToneCurveLutDirty = false;
 
     // Once per change, so a name lookup is fine and no cached control is
     // needed. controlExists keeps a build whose settings lag behind from
@@ -18144,15 +18146,15 @@ void LLPipeline::bakeToneCurveLut()
     }
 
     mToneCurveIdentity = curves.isIdentity();
-    if (mToneCurveIdentity || !mToneCurveLut)
+    if (mToneCurveIdentity)
     {
+        mToneCurveLutLoaded = false;
+        mToneCurveLutDirty = false;
 #if LL_DARWIN
         mMetalToneCurveLut.reset();
 #endif
-        // Identity never reaches the shader (colorCorrect uploads amount 0), so
-        // stale texels are harmless; and with no texture there is nowhere to
-        // bake. The flag stays clear either way: a recreated texture sets it
-        // again itself.
+        // Identity never reaches either shader, so stale non-Darwin texels are
+        // harmless and Darwin can release its native texture immediately.
         return;
     }
 
@@ -18160,7 +18162,17 @@ void LLPipeline::bakeToneCurveLut()
     curves.bake(texels, ALToneCurveSet::LUT_SIZE);
 #if LL_DARWIN
     mMetalToneCurveLut = makeMetalToneCurveLut(texels);
-#endif
+    mToneCurveLutLoaded = mMetalToneCurveLut != nullptr;
+    // A failed publication is unavailable and remains dirty so a later frame
+    // can retry after a transient device or allocation failure.
+    mToneCurveLutDirty = !mToneCurveLutLoaded;
+#else
+    if (!mToneCurveLut)
+    {
+        mToneCurveLutLoaded = false;
+        mToneCurveLutDirty = false;
+        return;
+    }
 
     // setManualSubImage writes whatever is bound on the active unit. Slot 0 is
     // the convention every raw-name upload in this file uses.
@@ -18169,6 +18181,9 @@ void LLPipeline::bakeToneCurveLut()
                                  ALToneCurveSet::LUT_SIZE, 1, GL_RGBA, GL_UNSIGNED_SHORT, texels.data());
     gGL.getTextureSlot(0)->unbind();
     stop_glerror();
+    mToneCurveLutLoaded = true;
+    mToneCurveLutDirty = false;
+#endif
 }
 
 void LLPipeline::restoreGL()
@@ -25181,7 +25196,7 @@ LLPipeline::ColorGradeConfig LLPipeline::colorGradeConfig(
     const bool curve_requested = requested_curve_amount > 0.f;
     const bool curve_state_ready = !curve_requested || !mToneCurveLutDirty;
     config.tone_curve_active = curve_state_ready && curve_requested &&
-        !mToneCurveIdentity && mToneCurveLut != 0;
+        !mToneCurveIdentity && mToneCurveLutLoaded;
     if (config.tone_curve_active)
     {
         ALToneCurveSet::lutScaleBias(
@@ -25651,7 +25666,9 @@ void LLPipeline::colorCorrect(LLRenderTarget* src, LLRenderTarget* dst, bool app
                 LLShaderMgr::COLOR_GRADE_HUE_SHIFT_NORM,
                 grade.hue_shift);
 
-            if (grade.tone_curve_active)
+            const bool gl_tone_curve_active =
+                grade.tone_curve_active && mToneCurveLut != 0;
+            if (gl_tone_curve_active)
             {
                 tone_curve_channel = shader->enableTexture(LLShaderMgr::COLOR_GRADE_CURVE_LUT);
                 if (tone_curve_channel > -1)

@@ -16,6 +16,19 @@
 #include <memory>
 #include <string>
 
+// Build a private, filterable 2D texture from tightly packed unorm pixels.
+// RGB input is expanded to RGBA with an opaque alpha channel.
+// component_bytes accepts 1 or 2 only.
+std::unique_ptr<ALMetalTexture> alMetalCreateUnormTexture2D(
+    const ALMetalDevice& device,
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t components,
+    std::uint32_t component_bytes,
+    const void* pixels,
+    const std::string& label,
+    std::string* error = nullptr);
+
 // Build a filterable 2D-array representation of a tightly packed unorm
 // volume. Metal has no filterable 3D-texture path in the viewer backend; the
 // caller samples adjacent array slices explicitly. RGB input is expanded to
