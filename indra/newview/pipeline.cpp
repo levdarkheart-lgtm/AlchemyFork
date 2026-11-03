@@ -981,8 +981,6 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
         gSavedSettings, "RenderDynamicExposureEnabled", true);
     static LLCachedControl<bool> build_no_post(
         gSavedSettings, "RenderDisablePostProcessing", false);
-    static LLCachedControl<U32> aa_quality(
-        gSavedSettings, "RenderFSAASamples", 0U);
     static LLCachedControl<std::string> sample_path(
         gSavedSettings, "SamplePath", "");
     const bool use_smaa_sample = mResourceInputs.mSMAAUseSample;
@@ -1009,14 +1007,12 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
          mMetalWorldSimpleCapture->lens_dirt_target &&
          mMetalWorldSimpleCapture->lens_dirt_params == dirt.plate);
     const ColorGradeConfig grade = colorGradeConfig(true);
-    const U32 quality = std::clamp(aa_quality(), 0U, 3U);
-    // Darwin's SMAA programs and intermediates are wholly native. Metal
-    // pipeline creation and renderSMAA execution remain fail-closed authority;
-    // legacy GLSL program completeness must not gate the native transaction.
+    // Darwin's FXAA/SMAA programs and intermediates are wholly native. Metal
+    // pipeline creation and renderFXAA/renderSMAA execution remain fail-closed
+    // authority; legacy GLSL completeness must not gate either transaction.
     const bool exact_antialiasing = snapshot_cutout ||
         mResourceInputs.mFSAAType == 0 ||
-        (mResourceInputs.mFSAAType == 1 &&
-         gFXAAProgram[quality].isComplete()) ||
+        mResourceInputs.mFSAAType == 1 ||
         (mResourceInputs.mFSAAType == 2 && native_smaa_sample);
     // Startup renders a partially ordered world while region state, water,
     // and alpha environment ownership are still settling. Do not consume the
@@ -9497,8 +9493,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         std::clamp(aa_quality(), 0U, 3U);
                     const bool wants_native_fxaa =
                         !cutout_snapshot &&
-                        mResourceInputs.mFSAAType == 1 &&
-                        gFXAAProgram[native_aa_quality].isComplete();
+                        mResourceInputs.mFSAAType == 1;
                     const bool wants_native_smaa =
                         !cutout_snapshot &&
                         mResourceInputs.mFSAAType == 2;
@@ -26581,6 +26576,13 @@ bool LLPipeline::applyCAS(LLRenderTarget* src, LLRenderTarget* dst)
 bool LLPipeline::applyFXAA(LLRenderTarget* src, LLRenderTarget* dst)
 {
     LL_PROFILE_GPU_ZONE("FXAA");
+#if LL_DARWIN
+    // Darwin's complete FXAA transaction is native. Keep the retained GL
+    // implementation available only to the platforms that still own it.
+    (void)src;
+    (void)dst;
+    return false;
+#else
     {
         llassert(!gCubeSnapshot);
         bool multisample = mResourceInputs.mFSAAType == 1 && gFXAAProgram[0].isComplete();
@@ -26638,24 +26640,26 @@ bool LLPipeline::applyFXAA(LLRenderTarget* src, LLRenderTarget* dst)
         }
     }
     return true;
+#endif
 }
 
 LLPipeline::SMAATargets LLPipeline::generateSMAABuffers(LLRenderTarget* src, ALTransientTargets& scope)
 {
     llassert(!gCubeSnapshot);
     SMAATargets smaa;
+#if LL_DARWIN
+    // Darwin's complete normal and SamplePath SMAA transactions are native.
+    // Compile out every retained GLSL, target and texture dependency.
+    (void)src;
+    (void)scope;
+    return smaa;
+#else
     if (mResourceInputs.mFSAAType != 2 || !gSMAAEdgeDetectProgram[0].isComplete())
     {
         return smaa;
     }
 
     const bool use_sample = mResourceInputs.mSMAAUseSample;
-#if LL_DARWIN
-    // Darwin's complete normal and SamplePath SMAA transactions are native.
-    // Do not acquire GL intermediates or bind any of the retired lookup names.
-    (void)use_sample;
-    return smaa;
-#endif
 
     // Both from the caller's scope until the neighbourhood blend has read the weights, the weights over the edges'
     // stencil where the plan shares it. Each is cleared below before it is drawn.
@@ -26796,12 +26800,19 @@ LLPipeline::SMAATargets LLPipeline::generateSMAABuffers(LLRenderTarget* src, ALT
         }
     }
     return multisample ? smaa : SMAATargets{};
+#endif
 }
 
 bool LLPipeline::applySMAA(LLRenderTarget* src, LLRenderTarget* dst, const SMAATargets& smaa)
 {
     LL_PROFILE_GPU_ZONE("SMAA");
     llassert(!gCubeSnapshot);
+#if LL_DARWIN
+    (void)src;
+    (void)dst;
+    (void)smaa;
+    return false;
+#else
     if (!smaa.mBlend)
     {
         return false;
@@ -26851,6 +26862,7 @@ bool LLPipeline::applySMAA(LLRenderTarget* src, LLRenderTarget* dst, const SMAAT
         }
     }
     return true;
+#endif
 }
 
 void LLPipeline::combineGlow(LLRenderTarget* src, LLRenderTarget* dst, LLRenderTarget* glow)
@@ -27435,6 +27447,7 @@ void LLPipeline::renderFinalize()
     // Anti-aliasing and sharpening both spread past a pixel, so a cutout
     // frame skips them (see above). A pass that draws nothing leaves the frame
     // where it was, and the next reads it there.
+#if !LL_DARWIN
     if (mResourceInputs.mFSAAType == 1 && !cutout && other_target())
     {
         if (applyFXAA(sourceBuffer, targetBuffer))
@@ -27450,6 +27463,7 @@ void LLPipeline::renderFinalize()
             std::swap(sourceBuffer, targetBuffer);
         }
     }
+#endif
 
     // The print effects had no snapshot gate at all, so "No post-processing"
     // produced an image that was still vignetted, still grainy, still
