@@ -589,9 +589,7 @@ bool LLGLTFPreviewTexture::render()
     light_dir3.normalize();
     const LLVector4 light_dir = LLVector4(light_dir3, 0);
     const S32 old_local_light_count = gSavedSettings.get<S32>("RenderLocalLightCount");
-    gSavedSettings.set<S32>("RenderLocalLightCount", 0);
-
-    gPipeline.mReflectionMapManager.forceDefaultProbeAndUpdateUniforms();
+    bool retained_preview_rendered = false;
 
     // setPerspective makes the preview camera current; the UI draw this
     // returns into wants the one it was using
@@ -622,19 +620,10 @@ bool LLGLTFPreviewTexture::render()
     // discarded, but the sphere should be cached in LLVolumeMgr.)
     PreviewSphere& preview_sphere = get_preview_sphere(mGLTFMaterial, object_transform);
 
-    gPipeline.setupHWLights();
     LLVector4a light_dir_in, transformed_light_dir;
     light_dir_in.loadua(light_dir.mV);
     LLViewerCamera::getCurrent().getModelview().transform4(light_dir_in, transformed_light_dir);
     SetTemporarily<LLVector4> force_sun_direction_high_graphics(&gPipeline.mTransformedSunDir, LLVector4(transformed_light_dir.getF32ptr()));
-    // Override lights to ensure the sun is always shining from a certain direction (low graphics)
-    // See also force_sun_direction_high_graphics and fixup_shader_constants
-    {
-        LLLightState* light = gGL.getLight(0);
-        light->setPosition(light_dir);
-        constexpr bool sun_up = true;
-        light->setSunPrimary(sun_up);
-    }
 
     LLRenderTarget& screen = gPipeline.mAuxillaryRT.screen;
 
@@ -651,6 +640,19 @@ bool LLGLTFPreviewTexture::render()
     // first. This callback must not run on a successful native preview.
     const auto render_retained_preview = [&]()
     {
+        retained_preview_rendered = true;
+        gSavedSettings.set<S32>("RenderLocalLightCount", 0);
+        gPipeline.mReflectionMapManager.forceDefaultProbeAndUpdateUniforms();
+        gPipeline.setupHWLights();
+
+        // Override lights to ensure the sun is always shining from a certain
+        // direction (low graphics). The native batch carries the same light
+        // explicitly and does not need this retained state mutation.
+        LLLightState* light = gGL.getLight(0);
+        light->setPosition(light_dir);
+        constexpr bool sun_up = true;
+        light->setSunPrimary(sun_up);
+
         // Alpha blend rendering
 
         screen.bindTarget();
@@ -1132,10 +1134,13 @@ bool LLGLTFPreviewTexture::render()
         }
     }
 
-    // Clean up
-    gPipeline.setupHWLights();
-    gPipeline.mReflectionMapManager.forceDefaultProbeAndUpdateUniforms(false);
-    gSavedSettings.set<S32>("RenderLocalLightCount", old_local_light_count);
+    // Restore only state that the retained callback actually changed.
+    if (retained_preview_rendered)
+    {
+        gPipeline.setupHWLights();
+        gPipeline.mReflectionMapManager.forceDefaultProbeAndUpdateUniforms(false);
+        gSavedSettings.set<S32>("RenderLocalLightCount", old_local_light_count);
+    }
     LLViewerCamera::setCurrent(saved_camera);
 
     return post_succeeded;
