@@ -523,8 +523,18 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
         setError(error, "Metal lit preview destination must be a private shader-readable RGBA8 or sRGB RGBA8 texture");
         return nullptr;
     }
+    if (scene.linear_storage_view &&
+        template_descriptor.format != ALMetalPixelFormat::rgba8_unorm_srgb)
+    {
+        setError(error,
+                 "Metal lit preview linear storage requires an sRGB RGBA8 destination");
+        return nullptr;
+    }
+    const ALMetalPixelFormat render_format = scene.linear_storage_view
+        ? alMetalLinearFormat(template_descriptor.format)
+        : template_descriptor.format;
     const Impl::PipelineSet& pipelines = mImpl->pipelines[
-        template_descriptor.format == ALMetalPixelFormat::rgba8_unorm_srgb ? 1 : 0];
+        render_format == ALMetalPixelFormat::rgba8_unorm_srgb ? 1 : 0];
 
     constexpr std::size_t vector_stride = sizeof(float) * 4;
     const auto range_fits = [](std::size_t offset, std::size_t count,
@@ -666,7 +676,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
              batch.fullbright_rigged || batch.legacy_material_rigged ||
              batch.pbr_rigged ||
              batch.show_edges || batch.alpha_blending ||
-             template_descriptor.format !=
+             render_format !=
                  ALMetalPixelFormat::rgba8_unorm ||
              !std::isfinite(batch.alpha_cutoff) || batch.alpha_cutoff < 0.f ||
              batch.alpha_cutoff > 1.f ||
@@ -685,7 +695,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
              batch.fullbright_rigged || batch.legacy_material_rigged ||
              batch.pbr_rigged ||
              batch.show_edges || batch.alpha_blending ||
-             template_descriptor.format !=
+             render_format !=
                  ALMetalPixelFormat::rgba8_unorm ||
              !std::isfinite(batch.alpha_cutoff) || batch.alpha_cutoff < 0.f ||
              batch.alpha_cutoff > 1.f ||
@@ -706,7 +716,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
              batch.pbr_rigged ||
              batch.show_edges ||
              batch.alpha_blending ||
-             template_descriptor.format !=
+             render_format !=
                  ALMetalPixelFormat::rgba8_unorm ||
              batch.color_offset % (sizeof(std::uint8_t) * 4) != 0 ||
              !range_fits(batch.color_offset, batch.vertex_count,
@@ -724,7 +734,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
              batch.fullbright_mask_rigged || batch.fullbright_rigged ||
              batch.pbr_rigged ||
              batch.show_edges || batch.alpha_blending ||
-             template_descriptor.format !=
+             render_format !=
                  ALMetalPixelFormat::rgba8_unorm ||
              !std::isfinite(batch.alpha_cutoff) || batch.alpha_cutoff < 0.f ||
              batch.alpha_cutoff > 1.f ||
@@ -744,7 +754,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
              batch.fullbright_mask_rigged || batch.fullbright_rigged ||
              batch.legacy_material_rigged || batch.show_edges ||
              batch.alpha_blending ||
-             template_descriptor.format !=
+             render_format !=
                  ALMetalPixelFormat::rgba8_unorm ||
              !std::isfinite(batch.alpha_cutoff) || batch.alpha_cutoff < 0.f ||
              batch.alpha_cutoff > 1.f ||
@@ -923,6 +933,8 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             scene.clear_color[0], scene.clear_color[1],
             scene.clear_color[2], scene.clear_color[3],
         };
+        pass_config.colors[0].linear_storage_view =
+            scene.linear_storage_view;
         // Each segment begins at the initial scene or an explicit legacy
         // depth-clear boundary. The target intentionally uses memoryless
         // depth, so retaining color and clearing depth is tile-local.

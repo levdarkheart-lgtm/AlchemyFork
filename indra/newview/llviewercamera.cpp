@@ -414,6 +414,53 @@ void LLViewerCamera::setPerspective(bool for_selection,
     setCurrent(*this);
 }
 
+void LLViewerCamera::setPerspectiveWithoutRenderState(
+    S32 x, S32 y_from_bot, S32 width, S32 height, F32 z_near, F32 z_far)
+{
+    if (z_far <= 0.f)
+    {
+        constexpr F32 PREVIEW_FAR = 512.f;
+        z_far = PREVIEW_FAR;
+    }
+    if (z_near <= 0.f)
+    {
+        z_near = getNear();
+    }
+
+    gGLViewport[0] = x;
+    gGLViewport[1] = y_from_bot;
+    gGLViewport[2] = width;
+    gGLViewport[3] = height;
+
+    LLMatrix4a projection = LLMatrix4a::identity();
+    if (mZoomFactor > 1.f)
+    {
+        const F32 offset = mZoomFactor - 1.f;
+        const S32 regions = llceil(mZoomFactor);
+        const S32 pos_y = mZoomSubregion / regions;
+        const S32 pos_x = mZoomSubregion - pos_y * regions;
+        projection.setMul(
+            projection,
+            LLMatrix4a::scaling(mZoomFactor, mZoomFactor, 1.f));
+        projection.setMul(
+            projection,
+            LLMatrix4a::translation(offset - static_cast<F32>(pos_x) * 2.f,
+                                    offset - static_cast<F32>(pos_y) * 2.f,
+                                    0.f));
+    }
+    projection.setMul(
+        al_perspective(getView(), getAspect(), z_near, z_far), projection);
+    setProjection(projection);
+
+    const LLMatrix4a modelview = frameModelview();
+    if (mZoomFactor == 1.f)
+    {
+        setModelview(modelview);
+    }
+    updateFrustumPlanes(*this);
+    setCurrent(*this);
+}
+
 // Uses the current camera's matrices to project a point from screen
 // coordinates to the agent's region.
 void LLViewerCamera::projectScreenToPosAgent(const S32 screen_x, const S32 screen_y, LLVector3* pos_agent) const

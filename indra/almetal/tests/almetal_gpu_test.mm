@@ -27323,6 +27323,45 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         REQUIRE(rendered_srgb);
         CHECK(rendered_srgb->descriptor().format ==
               ALMetalPixelFormat::rgba8_unorm_srgb);
+
+        // Appearance hints keep an sRGB sampling descriptor but reproduce a
+        // legacy framebuffer-sRGB-disabled write. Rigged fragments already
+        // produce encoded RGB, so the scene must render through the compatible
+        // linear storage view and preserve those bytes in the returned sRGB
+        // texture.
+        ALMetalLitPreviewBatch srgb_rigged_batch = deferred_rigged;
+        srgb_rigged_batch.alpha_cutoff = 0.f;
+        srgb_rigged_batch.color_offset = rigged_color_offset;
+        ALMetalLitPreviewScene srgb_rigged_scene;
+        srgb_rigged_scene.batches = &srgb_rigged_batch;
+        srgb_rigged_scene.batch_count = 1;
+        srgb_rigged_scene.background_texture = diffuse_texture.get();
+        srgb_rigged_scene.destination_descriptor = &srgb_destination;
+        error.clear();
+        CHECK_FALSE(renderer->render(srgb_rigged_scene, &error));
+        CHECK(error == "Metal deferred rigged preview data is invalid");
+
+        srgb_rigged_scene.linear_storage_view = true;
+        error.clear();
+        auto rendered_srgb_rigged = renderer->render(
+            srgb_rigged_scene, &error);
+        INFO(error);
+        REQUIRE(rendered_srgb_rigged);
+        CHECK(rendered_srgb_rigged->descriptor().format ==
+              ALMetalPixelFormat::rgba8_unorm_srgb);
+        std::array<std::uint8_t, 32 * 32 * 4> srgb_rigged_pixels{};
+        REQUIRE(rendered_srgb_rigged->readback(
+            *device, 0, 0, {}, srgb_rigged_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(
+            srgb_rigged_pixels[translated_interior + 0]) - 61) <= 1);
+        CHECK(srgb_rigged_pixels[translated_interior + 1] == 64);
+        CHECK(srgb_rigged_pixels[translated_interior + 2] == 32);
+        CHECK(srgb_rigged_pixels[translated_interior + 3] == 255);
+        CHECK(srgb_rigged_pixels[corner + 0] == 128);
+        CHECK(srgb_rigged_pixels[corner + 1] == 64);
+        CHECK(srgb_rigged_pixels[corner + 2] == 32);
+        CHECK(srgb_rigged_pixels[corner + 3] == 255);
     }
 }
 

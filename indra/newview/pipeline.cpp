@@ -31582,6 +31582,109 @@ void LLPipeline::readAttachmentTimes()
     });
 }
 
+#if LL_DARWIN
+bool LLPipeline::prepareMetalAvatarPreview(LLVOAvatar* avatar, LLCamera& camera)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
+
+    if (!avatar || avatar->isDead() || !avatar->mDrawable)
+    {
+        LL_WARNS_ONCE("AvatarRenderPipeline")
+            << "Avatar preview is " << (avatar ? "not drawable" : "null")
+            << LL_ENDL;
+        return false;
+    }
+
+    assertInitialized();
+    static LLCullResult result;
+    result.clear();
+    grabReferences(result);
+
+    // This is the state-sort half of generateImpostor(preview_avatar=true).
+    // Native appearance hints need the resulting draw maps, face draw-info
+    // pointers and rigged-alpha ordering, but do not need the retained draws.
+    pushRenderTypeMask();
+    clearRenderTypeMask(
+        RENDER_TYPE_SKY,
+        RENDER_TYPE_WL_SKY,
+        RENDER_TYPE_TERRAIN,
+        RENDER_TYPE_GRASS,
+        RENDER_TYPE_CONTROL_AV,
+        RENDER_TYPE_TREE,
+        RENDER_TYPE_VOIDWATER,
+        RENDER_TYPE_WATER,
+        RENDER_TYPE_ALPHA_PRE_WATER,
+        RENDER_TYPE_PASS_GRASS,
+        RENDER_TYPE_HUD,
+        RENDER_TYPE_PARTICLES,
+        RENDER_TYPE_CLOUDS,
+        RENDER_TYPE_HUD_PARTICLES,
+        END_RENDER_TYPES);
+
+    const S32 saved_occlusion = sUseOcclusion;
+    const bool saved_shadow_render = sShadowRender;
+    const bool saved_impostor_render = sImpostorRender;
+    sUseOcclusion = 0;
+    sShadowRender = true;
+    sImpostorRender = true;
+
+    bool complete = true;
+    markVisible(avatar->mDrawable, camera);
+    for (const auto& attachment_entry : avatar->mAttachmentPoints)
+    {
+        LLViewerJointAttachment* attachment = attachment_entry.second;
+        if (!attachment)
+        {
+            continue;
+        }
+        for (const auto& attached : attachment->mAttachedObjects)
+        {
+            LLViewerObject* object = attached.get();
+            if (!object)
+            {
+                continue;
+            }
+
+            bool has_rigged_mesh = object->isRiggedMesh();
+            if (!has_rigged_mesh)
+            {
+                for (LLViewerObject* child : object->getChildren())
+                {
+                    if (child && child->isRiggedMesh())
+                    {
+                        has_rigged_mesh = true;
+                        break;
+                    }
+                }
+            }
+            if (!has_rigged_mesh)
+            {
+                continue;
+            }
+
+            LLSpatialBridge* bridge = object->mDrawable.notNull()
+                ? object->mDrawable->getSpatialBridge() : nullptr;
+            if (bridge)
+            {
+                markVisible(bridge, camera);
+            }
+            else
+            {
+                complete = false;
+            }
+        }
+    }
+
+    stateSort(camera, result);
+
+    sUseOcclusion = saved_occlusion;
+    sImpostorRender = saved_impostor_render;
+    sShadowRender = saved_shadow_render;
+    popRenderTypeMask();
+    return complete;
+}
+#endif
+
 void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool for_profile, LLViewerObject* specific_attachment)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;

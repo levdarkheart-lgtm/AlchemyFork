@@ -344,6 +344,12 @@ public:
     //  for_profile - if true, a profile is being performed, do not update actual impostor
     //  specific_attachment - specific attachment to profile, or nullptr to profile entire avatar
     void generateImpostor(LLVOAvatar* avatar, bool preview_avatar = false, bool for_profile = false, LLViewerObject* specific_attachment = nullptr);
+#if LL_DARWIN
+    // Rebuild the avatar and rigged-attachment draw metadata consumed by the
+    // native appearance-hint renderer without issuing the retained impostor
+    // draw. This is the state-preparation half of preview generateImpostor().
+    bool prepareMetalAvatarPreview(LLVOAvatar* avatar, LLCamera& camera);
+#endif
 
     // A full-screen quad at the far plane, depth-tested against the bound
     // target's depth and never writing it: GL_GREATER reaches every texel that

@@ -73,6 +73,12 @@ public:
     // Derives the camera's frustum from its modelview and projection
     static void updateFrustumPlanes(LLCamera& camera, bool ortho = false, bool zflip = false, bool no_hacks = false);
     void setPerspective(bool for_selection, S32 x, S32 y_from_bot, S32 width, S32 height, bool limit_select_distance, F32 z_near = 0, F32 z_far = 0);
+    // Establish the ordinary non-selection camera matrices, viewport metadata
+    // and current-camera value without touching retained renderer state. Native
+    // offscreen producers use this when no GL transaction exists.
+    void setPerspectiveWithoutRenderState(S32 x, S32 y_from_bot,
+                                          S32 width, S32 height,
+                                          F32 z_near = 0, F32 z_far = 0);
 
     // A forward [-1,1] perspective of this view, aspect, near and far whatever
     // the render convention, for screen-xy hit-testing and nearest-first

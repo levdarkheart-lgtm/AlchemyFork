@@ -183,6 +183,13 @@ struct ALMetalLitPreviewScene
     // framebuffer copy. Keep only its validated allocation descriptor so a
     // later native preview frame can allocate a fresh, non-stale target.
     const ALMetalTextureDescriptor* destination_descriptor = nullptr;
+    // Preserve encoded display bytes in an sRGB destination while rendering
+    // through a compatible linear UNORM attachment view. Avatar appearance
+    // hints mirror the legacy framebuffer-sRGB-disabled target: their native
+    // fragments already emit encoded RGB and must not be encoded again by the
+    // attachment. The returned texture keeps the original sRGB descriptor for
+    // ordinary sampling.
+    bool linear_storage_view = false;
     float clear_color[4] = {0.15f, 0.20f, 0.30f, 1.0f};
 };
 

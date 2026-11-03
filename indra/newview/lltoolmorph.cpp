@@ -74,6 +74,18 @@
 #include <unordered_map>
 #include <vector>
 
+namespace
+{
+LLViewerDynamicTexture::EInitialBacking dynamicTextureInitialBacking()
+{
+#if LL_DARWIN
+    return LLViewerDynamicTexture::EInitialBacking::NATIVE_METAL;
+#else
+    return LLViewerDynamicTexture::EInitialBacking::RETAINED_GL;
+#endif
+}
+}
+
 //static
 LLVisualParamHint::instance_list_t LLVisualParamHint::sInstances;
 bool LLVisualParamReset::sDirty = false;
@@ -92,7 +104,9 @@ LLVisualParamHint::LLVisualParamHint(
     F32 param_weight,
     LLJoint* jointp)
     :
-    LLViewerDynamicTexture(width, height, 3, LLViewerDynamicTexture::ORDER_MIDDLE),
+    LLViewerDynamicTexture(width, height, 3,
+                           LLViewerDynamicTexture::ORDER_MIDDLE,
+                           dynamicTextureInitialBacking()),
     mNeedsUpdate( true ),
     mIsVisible( false ),
     mJointMesh( mesh ),
@@ -177,6 +191,72 @@ bool LLVisualParamHint::needsRender()
     return mNeedsUpdate && mDelayFrames-- <= 0 && !gAgentAvatarp->getIsAppearanceAnimating() && mAllowsUpdates;
 }
 
+bool LLVisualParamHint::canRenderWithoutTarget() const
+{
+#if LL_DARWIN
+    return true;
+#else
+    return false;
+#endif
+}
+
+LLViewerDynamicTexture::ETargetlessRenderResult
+LLVisualParamHint::renderWithoutTarget()
+{
+#if LL_DARWIN
+    if (mGLTexturep.isNull() || !mGLTexturep->getMetalTexture())
+    {
+        return ETargetlessRenderResult::PENDING;
+    }
+
+    LLViewerCamera* camera = LLViewerCamera::getInstance();
+    const LLCamera saved_camera = *camera;
+    const LLCamera saved_current = LLViewerCamera::getCurrent();
+    const std::array<S32, 4> saved_viewport{{
+        gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3],
+    }};
+
+    preRender(false);
+    const bool rendered = render();
+
+    camera->setOrigin(saved_camera);
+    camera->setAxes(saved_camera);
+    camera->setAspect(saved_camera.getAspect());
+    camera->setViewNoBroadcast(saved_camera.getView());
+    camera->setNear(saved_camera.getNear());
+    camera->setFar(saved_camera.getFar());
+    camera->setModelview(saved_camera.getModelview());
+    camera->setProjection(saved_camera.getProjection());
+    LLViewerCamera::updateFrustumPlanes(*camera);
+    LLViewerCamera::setCurrent(saved_current);
+    std::copy(saved_viewport.begin(), saved_viewport.end(), gGLViewport);
+
+    const bool published = rendered && mMetalPreview &&
+        mGLTexturep->adoptMetalRenderTextureAuthoritative(
+            std::move(mMetalPreview), LLGLTexture::DYNAMIC_TEX);
+    mMetalPreview.reset();
+    mMetalPreviewDescriptor.reset();
+    if (!published)
+    {
+        mNeedsUpdate = true;
+        LL_DEBUGS("Metal")
+            << "Visual-parameter hint remains pending; prior native result "
+               "is unchanged"
+            << LL_ENDL;
+        return ETargetlessRenderResult::PENDING;
+    }
+
+    mNeedsUpdate = false;
+    mIsVisible = true;
+    LL_INFOS_ONCE("Metal")
+        << "Visual-parameter hints are targetless native Metal producers"
+        << LL_ENDL;
+    return ETargetlessRenderResult::COMPLETED;
+#else
+    return ETargetlessRenderResult::RETAINED_FALLBACK;
+#endif
+}
+
 void LLVisualParamHint::preRender(bool clear_depth)
 {
     LL_DEBUGS("ParamHint") << "preRender: param=" << mVisualParam->getName()
@@ -215,10 +295,10 @@ void LLVisualParamHint::preRender(bool clear_depth)
                 << " dirtyMesh=" << gAgentAvatarp->mDirtyMesh
                 << " rebuildGeom=" << gAgentAvatarp->mDrawable->isState(LLDrawable::REBUILD_GEOMETRY)
                 << LL_ENDL;
-            // Clear states and force update so that renderSkinned inside generateImpostor
-            // does not re-run updateMeshData() with a partially consistent mesh state,
-            // which would reassign mFace pointers on some meshes while others are
-            // mid-draw with stale vertex offsets.
+            // Clear states and force the update before native scene extraction.
+            // Re-entering updateMeshData() from later state sorting would
+            // reassign mFace pointers on some meshes while others still carry
+            // stale vertex offsets.
             gAgentAvatarp->updateMeshData();
         }
     }
@@ -227,7 +307,14 @@ void LLVisualParamHint::preRender(bool clear_depth)
         LL_WARNS() << "Attempting to update avatar's geometry, but drawable doesn't exist yet" << LL_ENDL;
     }
 
+#if LL_DARWIN
+    // Targetless native production has no retained viewport or depth buffer.
+    // Keep the origin contract used for preview camera metadata only.
+    (void)clear_depth;
+    mOrigin.set(0, 0);
+#else
     LLViewerDynamicTexture::preRender(clear_depth);
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -235,8 +322,12 @@ void LLVisualParamHint::preRender(bool clear_depth)
 //-----------------------------------------------------------------------------
 bool LLVisualParamHint::render()
 {
+#if !LL_DARWIN
+    // The product renderer is Metal-only and macOS-only. There is no retained
+    // visual-hint producer on unsupported platforms.
+    return false;
+#else
     LLVisualParamReset::sDirty = true;
-#if LL_DARWIN
     mMetalPreview.reset();
     mMetalPreviewDescriptor.reset();
     if (mGLTexturep.notNull() && mGLTexturep->getMetalTexture())
@@ -244,34 +335,6 @@ bool LLVisualParamHint::render()
         mMetalPreviewDescriptor = std::make_unique<ALMetalTextureDescriptor>(
             mGLTexturep->getMetalTexture()->descriptor());
     }
-#endif
-
-    gGL.pushUIMatrix();
-    gGL.loadUIIdentity();
-
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.pushMatrix();
-    gGL.loadIdentity();
-    gGL.ortho(0.0f, (F32)mFullWidth, 0.0f, (F32)mFullHeight, -1.0f, 1.0f);
-
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.pushMatrix();
-    gGL.loadIdentity();
-
-    gUIProgram.bind();
-
-    LLGLSUIDefault gls_ui;
-    //LLGLState::verify(true);
-    mBackgroundp->draw(0, 0, mFullWidth, mFullHeight);
-
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.popMatrix();
-
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.popMatrix();
-
-    mNeedsUpdate = false;
-    mIsVisible = true;
 
     LLQuaternion avatar_rotation;
     LLJoint* root_joint = gAgentAvatarp->getRootJoint();
@@ -299,39 +362,34 @@ bool LLVisualParamHint::render()
         mVisualParam->getCameraElevation() );
     LLVector3 camera_pos = target_joint_pos + (camera_snapshot_offset * avatar_rotation);
 
-    gGL.flush();
-
     LLViewerCamera::getInstance()->setAspect((F32)mFullWidth / (F32)mFullHeight);
     LLViewerCamera::getInstance()->lookAt(
         camera_pos,         // camera
         target_pos,         // point of interest
         LLVector3::z_axis); // up
 
-    LLViewerCamera::getInstance()->setPerspective(false, mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight, false);
+    LLViewerCamera::getInstance()->setPerspectiveWithoutRenderState(
+        mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
 
     llassert(!LLPipeline::sImpostorRender); // We are rendering this from UI, shouldn't be set
     if (gAgentAvatarp->mDrawable.notNull() && !LLPipeline::sImpostorRender)
     {
-        LL_DEBUGS("ParamHint") << "render: generating impostor"
+        LL_DEBUGS("ParamHint") << "render: preparing native avatar preview"
             << " param=" << mVisualParam->getName()
             << " drawableState=0x" << std::hex << gAgentAvatarp->mDrawable->getState() << std::dec
             << " dirtyMesh=" << gAgentAvatarp->mDirtyMesh
             << " mMeshValid=" << gAgentAvatarp->mMeshValid
             << LL_ENDL;
-        LLGLDepthTest gls_depth(GL_TRUE, GL_TRUE);
-        gGL.flush();
-        gGL.setSceneBlendType(LLRender::BT_REPLACE);
-        gPipeline.generateImpostor(gAgentAvatarp, true);
-        gGL.setSceneBlendType(LLRender::BT_ALPHA);
-        gGL.flush();
-
-#if LL_DARWIN
+        const bool preview_metadata_ready =
+            gPipeline.prepareMetalAvatarPreview(
+                gAgentAvatarp, *LLViewerCamera::getInstance());
         ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
         LLImageGL* background_image = mBackgroundp && mBackgroundp->getImage()
             ? mBackgroundp->getImage()->getGLTexture() : nullptr;
         const ALMetalTexture* background_texture = background_image
             ? background_image->getMetalTexture() : nullptr;
-        if (metal_device && mMetalPreviewDescriptor && background_texture)
+        if (preview_metadata_ready && metal_device &&
+            mMetalPreviewDescriptor && background_texture)
         {
             static ALMetalDevice* renderer_device = nullptr;
             static std::unique_ptr<ALMetalLitPreviewRenderer> renderer;
@@ -554,8 +612,9 @@ bool LLVisualParamHint::render()
             batches.reserve(preview_meshes.size() + rigged_faces.size());
             post_avatar_rigged_batches.reserve(rigged_faces.size());
             alpha_rigged_batches.reserve(rigged_alpha_faces.size());
-            const LLMatrix4a modelview = gGL.getModelviewMatrix();
-            const LLMatrix4a projection = gGL.getProjectionMatrix();
+            const LLCamera& preview_camera = LLViewerCamera::getCurrent();
+            const LLMatrix4a modelview = preview_camera.getModelview();
+            const LLMatrix4a projection = preview_camera.getProjection();
             LLMatrix4a rigged_modelview_projection;
             rigged_modelview_projection.setMul(modelview, projection);
             const bool avatar_cloth =
@@ -1026,6 +1085,7 @@ bool LLVisualParamHint::render()
                 scene.background_texture = background_texture;
                 scene.destination_descriptor =
                     mMetalPreviewDescriptor.get();
+                scene.linear_storage_view = true;
                 scene.clear_color[0] = 0.f;
                 scene.clear_color[1] = 0.f;
                 scene.clear_color[2] = 0.f;
@@ -1039,18 +1099,24 @@ bool LLVisualParamHint::render()
             if (!mMetalPreview)
             {
                 LL_DEBUGS("Metal")
-                    << "Visual-parameter hint retained GL: "
+                    << "Visual-parameter hint native production is pending: "
                     << error << LL_ENDL;
             }
+        }
+        else if (!preview_metadata_ready)
+        {
+            LL_DEBUGS("Metal")
+                << "Visual-parameter hint is pending because avatar draw "
+                   "metadata is incomplete"
+                << LL_ENDL;
         }
         else
         {
             LL_DEBUGS("Metal")
-                << "Visual-parameter hint retained GL because its native "
+                << "Visual-parameter hint is pending because its native "
                    "background, device or destination is incomplete"
                 << LL_ENDL;
         }
-#endif
     }
 
     gAgentAvatarp->setVisualParamWeight(mVisualParam->getID(), mLastParamWeight);
@@ -1062,34 +1128,15 @@ bool LLVisualParamHint::render()
     }
 
     gAgentAvatarp->updateVisualParams();
-    gGL.color4f(1,1,1,1);
-    mGLTexturep->setGLTextureCreated(true);
-    gGL.popUIMatrix();
-
-    return true;
+    return mMetalPreview != nullptr;
+#endif
 }
 
 void LLVisualParamHint::postRender(bool success)
 {
-    LLViewerDynamicTexture::postRender(success);
-#if LL_DARWIN
-    if (lastPostRenderSucceeded() && mMetalPreview)
-    {
-        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
-        {
-            LL_INFOS_ONCE("Metal")
-                << "Visual-parameter hints own a native Metal render target"
-                << LL_ENDL;
-        }
-        else
-        {
-            LL_WARNS("Metal")
-                << "Could not publish the native visual-parameter hint"
-                << LL_ENDL;
-        }
-    }
-    mMetalPreview.reset();
-#endif
+    // Targetless native rendering publishes authoritatively in
+    // renderWithoutTarget(); there is no framebuffer transaction to copy.
+    (void)success;
 }
 
 
@@ -1132,7 +1179,9 @@ void LLVisualParamHint::draw(F32 alpha)
 //-----------------------------------------------------------------------------
 // LLVisualParamReset()
 //-----------------------------------------------------------------------------
-LLVisualParamReset::LLVisualParamReset() : LLViewerDynamicTexture(1, 1, 1, ORDER_RESET)
+LLVisualParamReset::LLVisualParamReset()
+: LLViewerDynamicTexture(1, 1, 1, ORDER_RESET,
+                         dynamicTextureInitialBacking())
 {
 }
 
@@ -1140,6 +1189,26 @@ LLVisualParamReset::LLVisualParamReset() : LLViewerDynamicTexture(1, 1, 1, ORDER
 S8 LLVisualParamReset::getType() const
 {
     return LLViewerDynamicTexture::LL_VISUAL_PARAM_RESET ;
+}
+
+bool LLVisualParamReset::canRenderWithoutTarget() const
+{
+#if LL_DARWIN
+    return true;
+#else
+    return false;
+#endif
+}
+
+LLViewerDynamicTexture::ETargetlessRenderResult
+LLVisualParamReset::renderWithoutTarget()
+{
+#if LL_DARWIN
+    render();
+    return ETargetlessRenderResult::COMPLETED;
+#else
+    return ETargetlessRenderResult::RETAINED_FALLBACK;
+#endif
 }
 
 //-----------------------------------------------------------------------------

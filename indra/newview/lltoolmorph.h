@@ -68,6 +68,8 @@ public:
     S8                     getType() const override;
 
     bool                    needsRender() override;
+    bool                    canRenderWithoutTarget() const override;
+    ETargetlessRenderResult renderWithoutTarget() override;
     void                    preRender(bool clear_depth) override;
     bool                    render() override;
     void                    postRender(bool success) override;
@@ -118,8 +120,11 @@ protected:
     /*virtual */ ~LLVisualParamReset(){}
 public:
     LLVisualParamReset();
-    /*virtual */ bool render();
-    /*virtual*/ S8 getType() const ;
+    bool needsRender() override { return sDirty; }
+    bool canRenderWithoutTarget() const override;
+    ETargetlessRenderResult renderWithoutTarget() override;
+    bool render() override;
+    S8 getType() const override;
 
     static bool sDirty;
 };
