@@ -62,6 +62,7 @@ reload the chronological history.
 | Native-only `LLImageGL::readBackRaw` and source-exact build 68123, 2026-11-03 | [CURRENT-native-image-readback-cutover-checkpoint-2026-11-03.md](CURRENT-native-image-readback-cutover-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Elimination of production texture-image readback and source-exact build 68125, 2026-11-03 | [CURRENT-texture-image-readback-elimination-checkpoint-2026-11-03.md](CURRENT-texture-image-readback-elimination-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin accelerated CEF IOSurface ingress and source-exact build 68127, 2026-11-03 | [CURRENT-native-cef-ingress-cutover-checkpoint-2026-11-03.md](CURRENT-native-cef-ingress-cutover-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Native-only Darwin CPU-painted CEF/VLC upload and source-exact build 68129, 2026-11-03 | [CURRENT-native-cpu-media-upload-checkpoint-2026-11-03.md](CURRENT-native-cpu-media-upload-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
