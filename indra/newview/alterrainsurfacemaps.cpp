@@ -59,9 +59,11 @@ void ALTerrainSurfaceMaps::ensureUploaded()
     {
         return;
     }
-    refresh();
-    mDirtyWhole = false;
-    mDirtyRect = Rect();
+    if (refresh())
+    {
+        mDirtyWhole = false;
+        mDirtyRect = Rect();
+    }
 }
 
 void ALTerrainSurfaceMaps::bind(S32 height_slot, S32 composition_slot)
@@ -90,7 +92,7 @@ const ALMetalTexture* ALTerrainSurfaceMaps::getMetalCompositionTexture() const
 }
 #endif
 
-void ALTerrainSurfaceMaps::refresh()
+bool ALTerrainSurfaceMaps::refresh()
 {
     LL_PROFILE_ZONE_SCOPED;
     const S32 grids_per_edge = mSurface.getGridsPerEdge();
@@ -138,8 +140,9 @@ void ALTerrainSurfaceMaps::refresh()
     }
     mNoiseReady = true;
 
-    upload(mHeight, GL_R32F, GL_RED, 1, mHeightStaging, rect, whole);
-    upload(mComposition, GL_RG16F, GL_RG, 2, mCompositionStaging, rect, whole);
+    const bool height_ok = upload(mHeight, GL_R32F, GL_RED, 1, mHeightStaging, rect, whole);
+    const bool composition_ok = upload(mComposition, GL_RG16F, GL_RG, 2, mCompositionStaging, rect, whole);
+    return height_ok && composition_ok;
 }
 
 F32 ALTerrainSurfaceMaps::compositionAt(S32 gx, S32 gy) const
@@ -163,24 +166,48 @@ F32 ALTerrainSurfaceMaps::noiseAt(S32 gx, S32 gy) const
     return terrain_composition_noise(origin.mdV[VX] + gx * meters_per_grid, origin.mdV[VY] + gy * meters_per_grid);
 }
 
-void ALTerrainSurfaceMaps::upload(LLPointer<LLImageGL>& image, S32 internal_format, U32 primary_format, U8 components, const std::vector<F32>& data, const Rect& rect, bool whole)
+bool ALTerrainSurfaceMaps::upload(LLPointer<LLImageGL>& image, S32 internal_format, U32 primary_format, U8 components, const std::vector<F32>& data, const Rect& rect, bool whole)
 {
     const U8* bytes = reinterpret_cast<const U8*>(data.data());
-    if (image.isNull() || image->getWidth() != mSize)
+    bool needs_image = image.isNull() || image->getWidth() != mSize;
+#if LL_DARWIN
+    needs_image = needs_image || (image.notNull() &&
+        (image->getHasGLTexture() || !image->getMetalTexture()));
+#else
+    needs_image = needs_image || (image.notNull() && !image->getHasGLTexture());
+#endif
+    if (needs_image)
     {
         image = new LLImageGL(mSize, mSize, components, /*usemipmaps=*/false);
         image->setExplicitFormat(internal_format, primary_format, GL_FLOAT);
-        image->createGLTexture(0, bytes);
+#if LL_DARWIN
+        return image->createMetalTexture(0, bytes);
+#else
+        return image->createGLTexture(0, bytes);
+#endif
     }
     else if (whole)
     {
-        image->setImage(bytes);
+#if LL_DARWIN
+        return image->uploadMetalSubImage(bytes, mSize, mSize, 0, 0, mSize, mSize);
+#else
+        const bool uploaded = image->setImage(bytes);
         gGL.getTextureSlot(0)->unbind();
+        return uploaded;
+#endif
     }
     else
     {
         // Texel (u, v) holds grid (u - APRON, v - APRON); the staging buffer is the whole map.
-        image->setSubImage(bytes, mSize, mSize, rect.x0 + APRON, rect.y0 + APRON, rect.x1 - rect.x0 + 1, rect.y1 - rect.y0 + 1,
-                           /*force_fast_update=*/true);
+        const S32 x = rect.x0 + APRON;
+        const S32 y = rect.y0 + APRON;
+        const S32 width = rect.x1 - rect.x0 + 1;
+        const S32 height = rect.y1 - rect.y0 + 1;
+#if LL_DARWIN
+        return image->uploadMetalSubImage(bytes, mSize, mSize, x, y, width, height);
+#else
+        return image->setSubImage(bytes, mSize, mSize, x, y, width, height,
+                                  /*force_fast_update=*/true);
+#endif
     }
 }

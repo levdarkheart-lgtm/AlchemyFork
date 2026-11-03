@@ -74,8 +74,9 @@ public:
     // `rect` that lie on them, to be rebuilt.
     void markDirty();
     void markDirty(const Rect& rect);
-    // Rebuild and upload what was marked dirty since the last call. Needs the
-    // GL context; the terrain pool calls it before its first draw of the frame.
+    // Rebuild and upload what was marked dirty since the last call. The terrain
+    // pool calls it before its first draw of the frame; Darwin writes only the
+    // native texture, while retained platforms still use GL.
     void ensureUploaded();
     void bind(S32 height_slot, S32 composition_slot);
 #if LL_DARWIN
@@ -189,10 +190,10 @@ public:
 private:
     static U32 direction(S32 dx, S32 dy);
 
-    void refresh();
+    bool refresh();
     F32  compositionAt(S32 gx, S32 gy) const;
     F32  noiseAt(S32 gx, S32 gy) const;
-    void upload(LLPointer<LLImageGL>& image, S32 internal_format, U32 primary_format, U8 components, const std::vector<F32>& data, const Rect& rect, bool whole);
+    bool upload(LLPointer<LLImageGL>& image, S32 internal_format, U32 primary_format, U8 components, const std::vector<F32>& data, const Rect& rect, bool whole);
 
     LLSurface&           mSurface;
     LLPointer<LLImageGL> mHeight;

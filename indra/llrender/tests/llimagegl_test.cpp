@@ -1437,6 +1437,131 @@ namespace
                           [](U8 byte) { return byte == 0x6d; }));
     }
 
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: typed native creation and region updates preserve float terrain texels", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        constexpr S32 W = 6;
+        constexpr S32 H = 5;
+        std::vector<F32> heights(static_cast<std::size_t>(W) * H);
+        for (S32 y = 0; y < H; ++y)
+        {
+            for (S32 x = 0; x < W; ++x)
+            {
+                heights[static_cast<std::size_t>(y) * W + x] =
+                    static_cast<F32>(y * W + x);
+            }
+        }
+
+        LLPointer<LLImageGL> height =
+            new LLImageGL(W, H, 1, /*usemipmaps=*/false);
+        height->setExplicitFormat(GL_R32F, GL_RED, GL_FLOAT);
+        REQUIRE(height->createMetalTexture(
+            0, reinterpret_cast<const U8*>(heights.data())));
+        CHECK_FALSE(height->getHasGLTexture());
+        REQUIRE(height->getMetalTexture());
+
+        std::vector<F32> height_readback(heights.size(), -1.f);
+        REQUIRE(height->getMetalTexture()->readback(
+            *device, 0, 0, {}, height_readback.data(), W * sizeof(F32),
+            &error));
+        INFO(error);
+        CHECK(height_readback == heights);
+
+        const U64 height_stamp = height->getContentStamp();
+        std::vector<F32> updated = heights;
+        for (S32 y = 1; y < 4; ++y)
+        {
+            for (S32 x = 2; x < 5; ++x)
+            {
+                updated[static_cast<std::size_t>(y) * W + x] = -42.f;
+            }
+        }
+        REQUIRE(height->uploadMetalSubImage(
+            reinterpret_cast<const U8*>(updated.data()), W, H,
+            2, 1, 3, 3));
+        CHECK(height->getContentStamp() != height_stamp);
+        REQUIRE(height->getMetalTexture()->readback(
+            *device, 0, 0, {}, height_readback.data(), W * sizeof(F32),
+            &error));
+        for (S32 y = 0; y < H; ++y)
+        {
+            for (S32 x = 0; x < W; ++x)
+            {
+                const F32 expected =
+                    x >= 2 && x < 5 && y >= 1 && y < 4
+                        ? -42.f
+                        : heights[static_cast<std::size_t>(y) * W + x];
+                CHECK(height_readback[static_cast<std::size_t>(y) * W + x]
+                      == expected);
+            }
+        }
+
+        std::vector<F32> composition(
+            static_cast<std::size_t>(W) * H * 2);
+        for (std::size_t texel = 0; texel < composition.size() / 2; ++texel)
+        {
+            composition[texel * 2] = 0.f;
+            composition[texel * 2 + 1] = 1.f;
+        }
+        LLPointer<LLImageGL> composed =
+            new LLImageGL(W, H, 2, /*usemipmaps=*/false);
+        composed->setExplicitFormat(GL_RG16F, GL_RG, GL_FLOAT);
+        REQUIRE(composed->createMetalTexture(
+            0, reinterpret_cast<const U8*>(composition.data())));
+        CHECK_FALSE(composed->getHasGLTexture());
+        REQUIRE(composed->getMetalTexture());
+
+        std::vector<U16> half_readback(composition.size(), 0xffffu);
+        REQUIRE(composed->getMetalTexture()->readback(
+            *device, 0, 0, {}, half_readback.data(),
+            W * 2 * sizeof(U16), &error));
+        for (std::size_t texel = 0; texel < composition.size() / 2; ++texel)
+        {
+            CHECK(half_readback[texel * 2] == 0x0000u);
+            CHECK(half_readback[texel * 2 + 1] == 0x3c00u);
+        }
+
+        for (S32 y = 2; y < 4; ++y)
+        {
+            for (S32 x = 1; x < 4; ++x)
+            {
+                const std::size_t texel =
+                    static_cast<std::size_t>(y) * W + x;
+                composition[texel * 2] = 1.f;
+                composition[texel * 2 + 1] = 0.f;
+            }
+        }
+        REQUIRE(composed->uploadMetalSubImage(
+            reinterpret_cast<const U8*>(composition.data()), W, H,
+            1, 2, 3, 2));
+        REQUIRE(composed->getMetalTexture()->readback(
+            *device, 0, 0, {}, half_readback.data(),
+            W * 2 * sizeof(U16), &error));
+        for (S32 y = 0; y < H; ++y)
+        {
+            for (S32 x = 0; x < W; ++x)
+            {
+                const bool changed = x >= 1 && x < 4 && y >= 2 && y < 4;
+                const std::size_t texel =
+                    static_cast<std::size_t>(y) * W + x;
+                CHECK(half_readback[texel * 2]
+                      == (changed ? 0x3c00u : 0x0000u));
+                CHECK(half_readback[texel * 2 + 1]
+                      == (changed ? 0x0000u : 0x3c00u));
+            }
+        }
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "ALTextureSlot: native-only sampling preserves the Metal image identity", "[LLImageGL][almetal]")
     {
         std::string error;

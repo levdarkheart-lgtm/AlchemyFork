@@ -1605,6 +1605,8 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
     return true;
 }
 
+static U32 pixel_bytes(U32 pixformat, U32 pixtype);
+
 #if LL_DARWIN
 bool LLImageGL::createMetalTexture(S32 discard_level, const LLImageRaw* image,
                                    S32 category)
@@ -1638,6 +1640,34 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const LLImageRaw* image,
         return false;
     }
 
+    return createMetalTexture(discard_level, image->getData(), category);
+}
+
+bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
+                                   S32 category)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    checkActiveThread();
+    checkUploadBegun();
+
+    if (!on_main_thread() || !data || !sImageMetalDevice || mExternalTexture ||
+        mTarget != GL_TEXTURE_2D || mUseMipMaps || mWidth <= 0 || mHeight <= 0 ||
+        mComponents <= 0)
+    {
+        return false;
+    }
+
+    if (discard_level < 0)
+    {
+        if (mCurrentDiscardLevel < 0)
+        {
+            return false;
+        }
+        discard_level = mCurrentDiscardLevel;
+    }
+    discard_level = llclamp(discard_level, 0, (S32)mMaxDiscardLevel);
+    discard_level = llmin(discard_level, MAX_DISCARD_LEVEL);
+
     if (mHasExplicitFormat &&
         ((mFormatPrimary == GL_RGBA && mComponents < 4) ||
          (mFormatPrimary == GL_RGB && mComponents < 3)))
@@ -1662,7 +1692,15 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const LLImageRaw* image,
     mMipLevels = 1;
     setCategory(category);
 
-    if (!uploadMetalImage(image) || !mMetalTexture)
+    std::unique_ptr<ALMetalCommandBuffer> command_owner;
+    ALMetalCommandBuffer* command = nullptr;
+    const U32 width = static_cast<U32>(liveWidth(mCurrentDiscardLevel));
+    const U32 height = static_cast<U32>(liveHeight(mCurrentDiscardLevel));
+    if (!prepareMetalTexture(command_owner, command, true) || !command ||
+        !metalTextureForUpload() ||
+        !uploadMetalTextureRegion(*command, 0, 0, 0, width, height,
+                                  data, metalSourceBytesPerRow(width)) ||
+        !commitMetalUpload(command_owner, command))
     {
         mMetalTexture.reset();
         mPendingMetalTexture.reset();
@@ -1670,10 +1708,66 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const LLImageRaw* image,
         return false;
     }
 
+    analyzeAlpha(data, width, height);
+    updatePickMask(width, height, data);
+    touchContents();
     mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
     mLastBindTime = sLastFrameTime;
     mGLTextureCreated = false;
     llassert(mTexName == 0);
+    return true;
+}
+
+bool LLImageGL::uploadMetalSubImage(const U8* data, S32 data_width,
+                                    S32 data_height, S32 x, S32 y,
+                                    S32 width, S32 height)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    checkActiveThread();
+    checkUploadBegun();
+
+    if (width == 0 || height == 0)
+    {
+        return true;
+    }
+    if (!on_main_thread() || !data || !sImageMetalDevice ||
+        !metalTextureForUpload() || mExternalTexture ||
+        mTarget != GL_TEXTURE_2D || mUseMipMaps ||
+        mCurrentDiscardLevel < 0 || data_width <= 0 || data_height <= 0 ||
+        x < 0 || y < 0 || width < 0 || height < 0 ||
+        x + width > data_width || y + height > data_height ||
+        x + width > liveWidth(mCurrentDiscardLevel) ||
+        y + height > liveHeight(mCurrentDiscardLevel))
+    {
+        return false;
+    }
+
+    const std::size_t source_pixel_bytes =
+        pixel_bytes(mFormatPrimary, mFormatType);
+    const U8* source = data +
+        (static_cast<std::size_t>(y) * data_width + x) * source_pixel_bytes;
+    std::string error;
+    std::unique_ptr<ALMetalCommandBuffer> command =
+        sImageMetalDevice->makeCommandBuffer(
+            "Alchemy native image subimage upload", &error);
+    if (!command)
+    {
+        LL_WARNS("Metal") << "Could not create LLImageGL native subimage command: "
+                           << error << LL_ENDL;
+        return false;
+    }
+    ALMetalCommandBuffer* borrowed = command.get();
+    if (!uploadMetalTextureRegion(
+            *borrowed, 0, static_cast<U32>(x), static_cast<U32>(y),
+            static_cast<U32>(width), static_cast<U32>(height), source,
+            metalSourceBytesPerRow(static_cast<U32>(data_width))) ||
+        !commitMetalUpload(command, borrowed))
+    {
+        return false;
+    }
+
+    touchContents();
+    mLastBindTime = sLastFrameTime;
     return true;
 }
 

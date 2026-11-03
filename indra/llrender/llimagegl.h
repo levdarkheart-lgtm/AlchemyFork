@@ -631,6 +631,12 @@ public:
     // parallel GL resource.
     bool createMetalTexture(S32 discard_level, const LLImageRaw* image,
                             S32 category = sMaxCategories - 1);
+    // As above, for typed source data whose byte size is described by the
+    // image's explicit primary/type format rather than LLImageRaw's one byte
+    // per component. The constructor/setSize and setExplicitFormat establish
+    // the allocation geometry before this call.
+    bool createMetalTexture(S32 discard_level, const U8* data,
+                            S32 category = sMaxCategories - 1);
 
     // Upload one complete, non-mipmapped source image into the top-left of native storage
     // without creating or modifying a GL texture. The source may be smaller than the
@@ -639,6 +645,13 @@ public:
     // after success so it publishes only after the shared Metal batch commits. On the
     // main thread the committed write updates the live mirror.
     bool uploadMetalImage(const LLImageRaw* image);
+
+    // Main-thread, native-only counterpart of the same-coordinate setSubImage
+    // contract: (x, y, width, height) selects both the source rectangle in the
+    // full data_width x data_height image and its destination in this image.
+    // No GL name is required or modified.
+    bool uploadMetalSubImage(const U8* data, S32 data_width, S32 data_height,
+                             S32 x, S32 y, S32 width, S32 height);
 
     // Off the main thread: hand a successful uploadMetalImage() to the main thread. This
     // has no GL fence or texture name; the shared Metal batch's commit token is its ordered
