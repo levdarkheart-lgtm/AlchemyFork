@@ -236,7 +236,6 @@ LLGLSLShader            gDeferredMeteorProgram;
 LLGLSLShader            gDeferredAuroraProgram;
 LLGLSLShader            gDeferredFullbrightShinyProgram;
 LLGLSLShader            gHUDFullbrightShinyProgram;
-LLGLSLShader            gDeferredGenBrdfLutProgram;
 LLGLSLShader            gDeferredBufferVisualProgram;
 LLGLSLShader            gBlitWithEffectsProgram;
 #if !LL_DARWIN
@@ -918,13 +917,6 @@ std::string LLViewerShaderMgr::loadBasicShaders()
     // The water's wave layers that hex-tile, read in waterSurface.glsl, a shared object.
     attribs["WATER_HEXTILE"] = std::to_string(in.mWaterHextile);
 
-#if LL_DARWIN
-    // Retained GLSL traversal has no legacy BRDF table on Darwin. Compile its
-    // shared helper without the sampler so no draw can observe an arbitrary
-    // texture unit while native world and preview rendering own the real LUT.
-    attribs["AL_METAL_NATIVE_BRDF"] = "1";
-#endif
-
     LLGLSLShader::sGlobalDefines = attribs;
     // What the objects below compile from, which every program's hash follows.
     LLGLSLShader::sSharedObjectsKey = in.digest();
@@ -1420,9 +1412,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
         gDeferredHighlightProgram.unload();
 
-#if !LL_DARWIN
-        gDeferredGenBrdfLutProgram.unload();
-#endif
         gDepthPyramidProgram.unload();
         gDeferredBufferVisualProgram.unload();
 
@@ -3293,17 +3282,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
         built(gDeferredAuroraProgram.createShader(), gDeferredAuroraProgram);
     }
-
-#if !LL_DARWIN
-    {
-        gDeferredGenBrdfLutProgram.mName = "Brdf Gen Shader";
-        gDeferredGenBrdfLutProgram.mShaderFiles.clear();
-        gDeferredGenBrdfLutProgram.mShaderFiles.push_back(make_pair("deferred/genbrdflutV.glsl", GL_VERTEX_SHADER));
-        gDeferredGenBrdfLutProgram.mShaderFiles.push_back(make_pair("deferred/genbrdflutF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredGenBrdfLutProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(gDeferredGenBrdfLutProgram.createShader(), gDeferredGenBrdfLutProgram);
-    }
-#endif
 
     // The depth pyramid's levels, where the session computes and the water's waves, its reader, are wanted. Optional,
     // like them: its failing leaves the cull off (ALDepthPyramid::build), not the shaders after it.

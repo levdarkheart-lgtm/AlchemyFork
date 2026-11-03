@@ -16526,7 +16526,6 @@ LLRenderTarget* LLPipeline::resourceTarget(ALRenderResourcePlan::Id id)
         case Id::SpotShadow1:       return &mSpotShadow[1];
         case Id::SSRScene:          return &mSceneMap;
         case Id::DownRes:           return &mDownResMap;
-        case Id::BrdfLut:           return &mPbrBrdfLut;
         case Id::ExposureMeter:     return &mLuminanceMap;
         case Id::ExposureHistogram: return &mExposureHistogram;
         case Id::Exposure:          return &mExposureMap;
@@ -16985,11 +16984,6 @@ LLPipeline::ResourceChanges LLPipeline::reconcileResources(const ALRenderResourc
     {
         resetExposureHistory();
     }
-    if (changes.mBuilt.test((size_t)Id::BrdfLut))
-    {
-        createBrdfLut();
-    }
-
     // The probe managers' own resources, planned beside their packs. They are freed here once nothing renders through
     // them, and built by initReflectionMaps: the reflection probes' below, once this plan is the pipeline's, and the
     // mirrors' by the hero manager's update, which runs in the frame before the world is drawn.
@@ -17384,14 +17378,6 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
             add(changed, "hero pack");
         }
 
-        // The table is what gDeferredGenBrdfLutProgram draws, so it is drawn again whenever that is relinked; a table
-        // built just now was drawn as it was built.
-        if (cause == RebuildCause::ShaderReload && brdfLutStale())
-        {
-            createBrdfLut();
-            add(invalidated, "BRDF LUT");
-        }
-
         // The exposure adapts in the HDR scene's units, and the flare's history is measured in them.
         if (changes.mHDR)
         {
@@ -17502,24 +17488,8 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
 
 void LLPipeline::programsReloaded()
 {
-    // The table is what gDeferredGenBrdfLutProgram draws, so it is drawn again whenever that is relinked.
-    const bool brdf_lut = brdfLutStale();
-    if (brdf_lut)
-    {
-        createBrdfLut();
-    }
     LL_INFOS("RenderResources") << "Programs reloaded" << applyingChanges(mApplyingChanges)
-                                << "; render resources kept; invalidated: "
-                                << (brdf_lut ? std::string_view("BRDF LUT") : std::string_view("nothing")) << LL_ENDL;
-}
-
-bool LLPipeline::brdfLutStale() const
-{
-#if LL_DARWIN
-    return false;
-#else
-    return mPbrBrdfLut.isComplete() && gDeferredGenBrdfLutProgram.linkCount() != mBrdfLutLinks;
-#endif
+                                << "; render resources kept; invalidated: nothing" << LL_ENDL;
 }
 
 void LLPipeline::createResourceTexture(ALRenderResourcePlan::Id id)
@@ -17663,54 +17633,6 @@ void LLPipeline::createResourceTexture(ALRenderResourcePlan::Id id)
 F32 lerpf(F32 a, F32 b, F32 w)
 {
     return a + w * (b - a);
-}
-
-void LLPipeline::createBrdfLut()
-{
-#if LL_DARWIN
-    // The Darwin plan owns no legacy BRDF target. Native world rendering and
-    // native PBR preview generate their tables with
-    // almetal_pbr_preview_brdf_lut at the point each owner first needs one.
-    return;
-#else
-    if (!mPbrBrdfLut.isComplete())
-    {
-        return;
-    }
-    mBrdfLutLinks = gDeferredGenBrdfLutProgram.linkCount();
-    mPbrBrdfLut.bindTarget();
-
-    if (gDeferredGenBrdfLutProgram.isComplete())
-    {
-        gDeferredGenBrdfLutProgram.bind();
-        llassert_always(LLGLSLShader::sCurBoundShaderPtr != nullptr);
-
-        // State this draw needs, rather than inheriting whatever the caller left live. It
-        // runs outside any render pass, so nothing upstream has established it, and the
-        // failure is silent in both directions: culling would drop the quad and leave the
-        // table as whatever the allocation happened to contain, and a blend function would
-        // fold that same garbage into the integral. Every PBR surface reads this texture.
-        LLGLDisable cull_face(GL_CULL_FACE);
-        LLGLDisable blend(GL_BLEND);
-
-        // Counter-clockwise, so the quad is front-facing under the default winding. The
-        // guard above already covers it -- this is so the draw does not depend on the guard.
-        gGL.begin(LLRender::TRIANGLE_STRIP);
-        gGL.vertex2f(-1, -1);
-        gGL.vertex2f(1, -1);
-        gGL.vertex2f(-1, 1);
-        gGL.vertex2f(1, 1);
-        gGL.end();
-        gGL.flush();
-    }
-    else
-    {
-        LL_WARNS("Brad") << gDeferredGenBrdfLutProgram.mName << " failed to load, cannot be used!" << LL_ENDL;
-    }
-
-    gDeferredGenBrdfLutProgram.unbind();
-    mPbrBrdfLut.flush();
-#endif
 }
 
 void LLPipeline::resetExposureHistory()
@@ -27754,27 +27676,6 @@ void LLPipeline::renderFinalize()
     recordTrianglesDrawn();
 }
 
-void LLPipeline::bindBrdfLut(LLGLSLShader& shader)
-{
-#if LL_DARWIN
-    // AL_METAL_NATIVE_BRDF compiles this sampler out of retained GLSL. Native
-    // world and preview rendering bind their own Metal RG16F tables.
-    (void)shader;
-#else
-    S32 channel = shader.enableTexture(LLShaderMgr::DEFERRED_BRDF_LUT);
-    if (channel > -1)
-    {
-        // Clamp, not the render target's default mirrored repeat. This is a lookup table over
-        // (NdotV, roughness), and both axes are only meaningful on [0,1]; inside that range
-        // mirroring and clamping agree, so the distinction is invisible until a coordinate
-        // leaves it. Then they disagree in the worst direction -- a roughness past 1 mirrors
-        // back to a SMALLER roughness and the surface reads glossier the rougher it gets,
-        // where clamping saturates at the roughest entry the table holds.
-        mPbrBrdfLut.bindTexture(0, channel, ALSamplers::BilinearClamp);
-    }
-#endif
-}
-
 void LLPipeline::bindShadowMaps(LLGLSLShader& shader)
 {
     // Depth comparison is a sampler property, not a texture one. Every shader samples these
@@ -27968,7 +27869,6 @@ void LLPipeline::bindDeferredShaderFast(LLGLSLShader& shader)
         // wrong tier, or reading maps its pack never rendered, rather than a missing update.
         shader.uniform1i(LLShaderMgr::CUBE_SNAPSHOT, gCubeSnapshot ? 1 : 0);
         shader.uniform1i(LLShaderMgr::SUN_SHADOW_CASCADES, (S32)sunCascades());
-        bindBrdfLut(shader);
         bindShadowMaps(shader);
         bindReflectionProbes(shader);
         bindDeferredUBO();
@@ -28058,7 +27958,6 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
                                             gGL.getSampler(ALSamplers::PointWrap));
     }
 
-    bindBrdfLut(shader);
 
     stop_glerror();
 
@@ -29267,7 +29166,6 @@ void LLPipeline::unbindDeferredShader(LLGLSLShader &shader)
     shader.disableTexture(LLShaderMgr::DEFERRED_DIFFUSE, deferred_target->getUsage());
     shader.disableTexture(LLShaderMgr::DEFERRED_SPECULAR, deferred_target->getUsage());
     shader.disableTexture(LLShaderMgr::DEFERRED_EMISSIVE, deferred_target->getUsage());
-    shader.disableTexture(LLShaderMgr::DEFERRED_BRDF_LUT);
     //shader.disableTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_depth_target->getUsage());
     shader.disableTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target->getUsage());
     shader.disableTexture(LLShaderMgr::DEFERRED_LIGHT, ALTextureSlot::TT_TEXTURE);

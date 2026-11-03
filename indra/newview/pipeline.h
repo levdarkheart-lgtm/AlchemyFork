@@ -187,9 +187,6 @@ public:
     const ALRenderResourceInputs& resourceInputs() const { return mResourceInputs; }
     const ALRenderResourcePlan& resourcePlan() const { return mResourcePlan; }
 
-    /// Draws the non-Darwin GL BRDF LUT with gDeferredGenBrdfLutProgram into
-    /// its target. Darwin's native world and preview owners generate their own.
-    void createBrdfLut();
     /// The auto-exposure's adapted state and the lens flare's history, as a first frame finds them.
     void resetExposureHistory();
     void setupGradingLUT();
@@ -218,10 +215,6 @@ private:
     bool rebuildGLBuffers(const ALRenderResourceInputs& requested, RebuildCause cause);
     // What the programs' reload alone invalidates, where no reconcile follows it, and its log line.
     void programsReloaded();
-    // Whether the non-Darwin BRDF LUT was drawn with a
-    // gDeferredGenBrdfLutProgram that has since linked again.
-    bool brdfLutStale() const;
-
     // What the settings say the programs' and the resources' inputs are now, read by latchRenderInputs alone, so every
     // program, resource and pass is planned from the same reading of the settings. The resources take the G-buffer's
     // normal layout and the depth convention from the programs' inputs, which compile for them.
@@ -273,9 +266,6 @@ private:
     bool                   mPacingSlackWork = false;
     // Whether the last reconcile built the render size in full, which a snapshot at the size it was built for finds.
     bool                   mResourcesFullSize = true;
-    // The link of gDeferredGenBrdfLutProgram (LLGLSLShader::linkCount) the BRDF LUT was last drawn with.
-    U32                    mBrdfLutLinks = 0;
-
 #if LL_DARWIN
     struct MetalWorldSimpleCapture;
     std::unique_ptr<MetalWorldSimpleCapture> mMetalWorldSimpleCapture;
@@ -995,8 +985,6 @@ public:
     void renderGeomDeferred(LLCamera& camera, bool do_occlusion = false);
     void renderGeomPostDeferred(LLCamera& camera);
     void renderGeomShadow(LLCamera& camera);
-    void bindBrdfLut(LLGLSLShader& shader);
-
 #if LL_DARWIN
     // One bounded fail-closed production probe of the first native world
     // slices. renderGeomDeferred owns the frame capture; eligible draw pools
@@ -1769,8 +1757,6 @@ public:
     LLRenderTarget          mSpotShadow[2];
     // What each spot map holds, so that one whose light and casters are as they were is not drawn again.
     ALSpotShadowCache       mSpotShadowCache;
-
-    LLRenderTarget          mPbrBrdfLut;
 
     // copy of the color/depth buffer just before gamma correction
     // for use by SSR

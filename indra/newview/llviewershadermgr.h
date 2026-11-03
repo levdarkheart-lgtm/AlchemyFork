@@ -298,7 +298,6 @@ extern LLGLSLShader         gDeferredMeteorProgram;
 extern LLGLSLShader         gDeferredAuroraProgram;
 extern LLGLSLShader         gDeferredFullbrightShinyProgram;
 extern LLGLSLShader         gHUDFullbrightShinyProgram;
-extern LLGLSLShader         gDeferredGenBrdfLutProgram;
 extern LLGLSLShader         gDeferredBufferVisualProgram;
 extern LLGLSLShader         gBlitWithEffectsProgram;
 #if !LL_DARWIN

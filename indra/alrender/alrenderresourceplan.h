@@ -85,7 +85,6 @@ public:
     // The fixed sizes, which the pipeline's passes read from here.
     static constexpr U32 DOWNRES_SIZE = 1024;
     static constexpr U32 PREVIEW_SIZE = 512;
-    static constexpr U32 BRDF_LUT_SIZE = 512;
     static constexpr U32 GLOW_WIDTH = 512;
     static constexpr U32 EXPOSURE_METER_WIDTH = 128;
     static constexpr U32 EXPOSURE_METER_HEIGHT = 72;
@@ -119,7 +118,6 @@ public:
         DownRes,
         Preview,
         Bake,
-        BrdfLut,
         ExposureMeter, ExposureHistogram, Exposure, ExposureLast,
         LensFlareA, LensFlareB,
 

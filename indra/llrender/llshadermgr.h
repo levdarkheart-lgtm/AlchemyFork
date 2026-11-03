@@ -238,7 +238,6 @@ public:
         DEFERRED_SPECULAR,                  //  "specularRect"
         DEFERRED_EMISSIVE,                  //  "emissiveRect"
         EXPOSURE_MAP,                       //  "exposureMap"
-        DEFERRED_BRDF_LUT,                  //  "brdfLut"
         DEFERRED_NOISE,                     //  "noiseMap"
         DEFERRED_LIGHT,                     //  "lightMap"
         DEFERRED_PROJECTION,                //  "projectionMap"

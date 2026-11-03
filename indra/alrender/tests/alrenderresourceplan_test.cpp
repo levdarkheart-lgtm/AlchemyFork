@@ -413,21 +413,6 @@ namespace
         CHECK(names(Plan::refilled(from, from)) == "nothing");
     }
 
-    TEST_CASE("alrenderresourceplan: Darwin leaves the legacy BRDF table to native owners",
-              "[alrenderresourceplan]")
-    {
-        const Plan plan = Plan::make(defaults());
-#if LL_DARWIN
-        CHECK_FALSE(plan.wants(Id::BrdfLut));
-#else
-        REQUIRE(plan.wants(Id::BrdfLut));
-        const ALRenderTargetDesc& desc = *plan.desc(Id::BrdfLut);
-        CHECK(desc.width == Plan::BRDF_LUT_SIZE);
-        CHECK(desc.height == Plan::BRDF_LUT_SIZE);
-        CHECK(desc.color[0] != 0);
-#endif
-    }
-
     TEST_CASE("alrenderresourceplan: no other setting fills anything again", "[alrenderresourceplan]")
     {
         for (const Row& row : setting_rows())
@@ -1224,7 +1209,7 @@ namespace
 
         // The fixed-size targets, the capture packs and the textures never do, nor do the shadow maps: halving the
         // view would not make room for a square spot map sized from its width, nor for one with no size.
-        for (Id id : { Id::Preview, Id::DownRes, Id::Bake, Id::BrdfLut, Id::Exposure, Id::Glow0, Id::ProbeGBuffer,
+        for (Id id : { Id::Preview, Id::DownRes, Id::Bake, Id::Exposure, Id::Glow0, Id::ProbeGBuffer,
                        Id::ProbeSun0, Id::HeroGBuffer, Id::HeroLight, Id::Noise, Id::SMAAArea, Id::MainSun0, Id::MainSun3,
                        Id::SpotShadow0, Id::SpotShadow1 })
         {
@@ -1261,7 +1246,7 @@ namespace
 
         // What holds anything across frames, or between the phases of one, is built to keep.
         for (Id id : { Id::MainGBuffer, Id::MainScreen, Id::SSRScene, Id::Exposure, Id::ExposureLast, Id::LensFlareA,
-                       Id::MainSun0, Id::SpotShadow0, Id::BrdfLut, Id::DownRes, Id::Noise })
+                       Id::MainSun0, Id::SpotShadow0, Id::DownRes, Id::Noise })
         {
             INFO(Plan::name(id));
             CHECK_FALSE(Plan::isTransient(id));
