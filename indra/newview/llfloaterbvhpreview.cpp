@@ -80,11 +80,7 @@ namespace
 {
 LLViewerDynamicTexture::EInitialBacking animationPreviewInitialBacking()
 {
-#if LL_DARWIN
     return LLViewerDynamicTexture::EInitialBacking::NATIVE_METAL;
-#else
-    return LLViewerDynamicTexture::EInitialBacking::RETAINED_GL;
-#endif
 }
 
 #if LL_DARWIN
@@ -1119,11 +1115,7 @@ S8 LLPreviewAnimation::getType() const
 
 bool LLPreviewAnimation::canRenderWithoutTarget() const
 {
-#if LL_DARWIN
     return true;
-#else
-    return false;
-#endif
 }
 
 LLViewerDynamicTexture::ETargetlessRenderResult
@@ -1163,7 +1155,7 @@ LLPreviewAnimation::renderWithoutTarget()
         << LL_ENDL;
     return ETargetlessRenderResult::COMPLETED;
 #else
-    return ETargetlessRenderResult::RETAINED_FALLBACK;
+    return ETargetlessRenderResult::PENDING;
 #endif
 }
 
@@ -1515,13 +1507,9 @@ bool    LLPreviewAnimation::render()
 
 void LLPreviewAnimation::postRender(bool success)
 {
-#if !LL_DARWIN
-    LLViewerDynamicTexture::postRender(success);
-#else
-    // Darwin publishes authoritatively from renderWithoutTarget(); there is
-    // no retained framebuffer transaction to copy or mirror.
     (void)success;
-#endif
+    // Targetless native publication owns completion; copying a framebuffer
+    // here would recreate the removed retained producer.
 }
 
 //-----------------------------------------------------------------------------
