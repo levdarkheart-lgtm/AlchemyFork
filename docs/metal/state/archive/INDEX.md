@@ -73,6 +73,7 @@ reload the chronological history.
 | Native-only Darwin legacy sky cube and source-exact build 68145, 2026-11-03 | [CURRENT-native-legacy-sky-cube-checkpoint-2026-11-03.md](CURRENT-native-legacy-sky-cube-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin color-grading LUT and source-exact build 68147, 2026-11-03 | [CURRENT-native-color-lut-checkpoint-2026-11-03.md](CURRENT-native-color-lut-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-only Darwin tone-curve LUT and source-exact build 68149, 2026-11-03 | [CURRENT-native-tone-curve-checkpoint-2026-11-03.md](CURRENT-native-tone-curve-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Native-only Darwin pipeline BRDF LUT and source-exact build 68151, 2026-11-03 | [CURRENT-native-brdf-lut-checkpoint-2026-11-03.md](CURRENT-native-brdf-lut-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
