@@ -53,6 +53,7 @@ public:
     static U32 liveCount() { return sLiveCount; }
 
     bool needsRender() override;
+    bool renderWithoutTarget() override;
     void preRender(bool clear_depth = true) override;
     bool render() override;
     void postRender(bool success) override;
@@ -83,9 +84,13 @@ private:
     MaterialLoadLevels mBestLoad;
     MaterialLoadLevels mPendingLoad;
 #if LL_DARWIN
+    bool publishMetalPreview();
+
     std::unique_ptr<ALMetalTexture> mMetalPreview;
     std::unique_ptr<ALMetalTextureDescriptor> mMetalPreviewDescriptor;
     bool mRetainedClearDepth = true;
+    bool mTargetlessAttempt = false;
+    bool mSkipNativeAttemptOnce = false;
 #endif
 };
 

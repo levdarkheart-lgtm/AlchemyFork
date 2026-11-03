@@ -70,6 +70,10 @@ public:
     S32         getSize()       { return mFullWidth * mFullHeight * mComponents; }
 
     virtual bool needsRender() { return true; }
+    // Complete a render without the shared GL target, including publication.
+    // Return false without changing the item's need to render when the
+    // ordinary preRender/render/postRender transaction must run instead.
+    virtual bool renderWithoutTarget() { return false; }
     virtual void preRender(bool clear_depth = true);
     virtual bool render();
     virtual void postRender(bool success);

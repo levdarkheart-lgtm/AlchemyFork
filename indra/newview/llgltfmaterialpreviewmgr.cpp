@@ -330,6 +330,48 @@ bool LLGLTFPreviewTexture::needsRender()
     return false;
 }
 
+bool LLGLTFPreviewTexture::renderWithoutTarget()
+{
+#if LL_DARWIN
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
+
+    llassert(mShouldRender);
+    llassert(!mBoundTarget);
+    if (!mShouldRender || mBoundTarget)
+    {
+        return false;
+    }
+
+    // This pre-render snapshots only camera state on Darwin. render() must not
+    // invoke the retained callback when the native attempt fails: the scheduler
+    // will then acquire its shared target and run that callback in this frame.
+    preRender();
+    mTargetlessAttempt = true;
+    const bool rendered = render();
+    mTargetlessAttempt = false;
+
+    const bool published = rendered && mMetalPreview && publishMetalPreview();
+    if (!published)
+    {
+        mMetalPreview.reset();
+        mLastPostRenderSuccess = false;
+        // The target-backed retry must be the retained callback, not a second
+        // identical Metal attempt in the same frame.
+        mSkipNativeAttemptOnce = true;
+    }
+
+    mShouldRender = !published;
+    if (published)
+    {
+        mSkipNativeAttemptOnce = false;
+        mBestLoad = mPendingLoad;
+    }
+    return published;
+#else
+    return false;
+#endif
+}
+
 void LLGLTFPreviewTexture::preRender(bool clear_depth)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
@@ -561,7 +603,13 @@ bool LLGLTFPreviewTexture::render()
     if (!mShouldRender) { return false; }
 
 #if LL_DARWIN
+    const bool skip_native_attempt = mBoundTarget && mSkipNativeAttemptOnce;
+    if (mBoundTarget)
+    {
+        mSkipNativeAttemptOnce = false;
+    }
     mMetalPreview.reset();
+    mMetalPreviewDescriptor.reset();
     if (mGLTexturep.notNull() && mGLTexturep->getMetalTexture())
     {
         mMetalPreviewDescriptor =
@@ -736,6 +784,8 @@ bool LLGLTFPreviewTexture::render()
 #endif
 
 #if LL_DARWIN
+    if (!skip_native_attempt)
+    {
         ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
         LLViewerTexture* base_color_image = mGLTFMaterial->mBaseColorTexture
             ? mGLTFMaterial->mBaseColorTexture.get()
@@ -1098,9 +1148,18 @@ bool LLGLTFPreviewTexture::render()
                    "destination is incomplete"
                 << LL_ENDL;
         }
+    }
 #endif
 
 #if LL_DARWIN
+    if (!mMetalPreview && mTargetlessAttempt)
+    {
+        // Nothing in this attempt changed the GL viewport or singleton camera.
+        // Leave the item pending so the scheduler can take the shared target
+        // and execute the retained callback immediately.
+        LLViewerCamera::setCurrent(saved_camera);
+        return false;
+    }
     if (!mMetalPreview)
     {
         // Unsupported configurations and native failures retain the original
@@ -1195,6 +1254,30 @@ bool LLGLTFPreviewTexture::render()
     return post_succeeded;
 }
 
+#if LL_DARWIN
+bool LLGLTFPreviewTexture::publishMetalPreview()
+{
+    bool published = false;
+    if (mGLTexturep.notNull() && mMetalPreview &&
+        mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
+    {
+        published = true;
+        LL_INFOS_ONCE("Metal")
+            << "PBR material previews own a native Metal render target"
+            << LL_ENDL;
+    }
+    else
+    {
+        LL_WARNS("Metal")
+            << "Could not publish the native PBR material preview"
+            << LL_ENDL;
+    }
+    mMetalPreview.reset();
+    mLastPostRenderSuccess = published;
+    return published;
+}
+#endif
+
 void LLGLTFPreviewTexture::postRender(bool success)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
@@ -1208,19 +1291,7 @@ void LLGLTFPreviewTexture::postRender(bool success)
         // retained GL framebuffer. Publication of the complete native target
         // is the success condition for this path.
         LLViewerDynamicTexture::postRender(false);
-        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
-        {
-            mLastPostRenderSuccess = true;
-            LL_INFOS_ONCE("Metal")
-                << "PBR material previews own a native Metal render target"
-                << LL_ENDL;
-        }
-        else
-        {
-            LL_WARNS("Metal")
-                << "Could not publish the native PBR material preview"
-                << LL_ENDL;
-        }
+        publishMetalPreview();
     }
     else
     {

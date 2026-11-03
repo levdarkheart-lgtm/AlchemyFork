@@ -194,11 +194,18 @@ bool LLViewerDynamicTexture::updateAllInstances()
         return true;
     }
 
-    LLGLSLShader::unbind();
-    LLVertexBuffer::unbind();
-
     bool result = false;
     bool ret = false ;
+    bool retained_rendering = false;
+    const auto prepare_retained_rendering = [&]()
+        {
+            if (!retained_rendering)
+            {
+                LLGLSLShader::unbind();
+                LLVertexBuffer::unbind();
+                retained_rendering = true;
+            }
+        };
     auto update_func = [&](LLViewerDynamicTexture* dynamicTexture, LLRenderTarget& renderTarget)
         {
             llassert(dynamicTexture->getFullWidth() <= (S32)renderTarget.getWidth());
@@ -221,11 +228,9 @@ bool LLViewerDynamicTexture::updateAllInstances()
             dynamicTexture->setBoundTarget(nullptr);
             dynamicTexture->postRender(result);
         };
-    const auto needs_render = [](LLViewerDynamicTexture* dynamicTexture) { return dynamicTexture->needsRender(); };
-
     // Each range of orders draws into a target of its own from the pool, acquired, bound and cleared for the first of
-    // its instances that needs a render, and given back once they are drawn: a frame with nothing to draw takes, binds
-    // and clears neither. Where one cannot be had, the range's instances wait for a later frame. A preview or a bake
+    // its instances that cannot complete without one, and given back once they are drawn. A run of native-only items
+    // takes, binds, clears and flushes no GL target. Where one cannot be had, the remaining instances wait. A preview or a bake
     // can go seconds between draws, as a slider waits on the hand dragging it, and building its target again costs
     // the frame that draws next around half a millisecond of CPU and more of the GPU's: the pool keeps each through
     // 1800 frames unacquired, 30 seconds at 60 fps, and with it whatever a draw takes for itself, as a GLTF material
@@ -240,7 +245,30 @@ bool LLViewerDynamicTexture::updateAllInstances()
             bool drawn = true;
             for (S32 order = first; drawn && order < last; ++order)
             {
-                drawn = target.drawEach(LLViewerDynamicTexture::sInstances[order], needs_render, update_func);
+                for (LLViewerDynamicTexture* dynamic_texture :
+                     LLViewerDynamicTexture::sInstances[order])
+                {
+                    if (!dynamic_texture->needsRender())
+                    {
+                        continue;
+                    }
+                    if (dynamic_texture->renderWithoutTarget())
+                    {
+                        ret = true;
+                        result = true;
+                        ++sNumRenders;
+                        continue;
+                    }
+
+                    prepare_retained_rendering();
+                    LLRenderTarget* render_target = target.bind();
+                    if (!render_target)
+                    {
+                        drawn = false;
+                        break;
+                    }
+                    update_func(dynamic_texture, *render_target);
+                }
             }
             if (!drawn)
             {
@@ -257,7 +285,10 @@ bool LLViewerDynamicTexture::updateAllInstances()
     ret = false;
     update_orders(ORDER_LAST, ORDER_COUNT, Plan::Id::Bake);
 
-    gGL.flush();
+    if (retained_rendering)
+    {
+        gGL.flush();
+    }
 
     return ret;
 }
