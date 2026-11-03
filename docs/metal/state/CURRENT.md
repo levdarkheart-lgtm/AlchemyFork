@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-03 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `e089268893`
+**Renderer code checkpoint:** `8ba316c6de`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -10,12 +10,12 @@ append-only archives.
 
 ## Active implementation checkpoint
 
-M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit `e089268893`
-removes Darwin material-preview GL failure recovery. The targetless scheduler
-now keeps texture/probe readiness, device/geometry/encode failure and native
-publication failure on the Metal retry path. Darwin never requests the retained
-preview probe/post pack, and its compiled preview object contains no retained
-preview draw or framebuffer-post transaction.
+M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit `8ba316c6de`
+deletes the retained material-preview renderer from the Apple-only fork. The
+targetless scheduler keeps texture/probe readiness, device/geometry/encode
+failure and native publication failure on the Metal retry path. Resource
+planning never requests the preview probe/post pack, and the preview manager no
+longer contains a retained draw, framebuffer-post or fallback implementation.
 
 Native preview destination backing remains Metal-only with a zero GL texture
 name. Every supported HDR, non-HDR, post-suppressed, legacy-gamma and classic
@@ -51,9 +51,10 @@ post-AA/sharpen and six DoF program objects, `LLPipeline::renderDoF` and its
 GLSL-readiness helper remain absent from the Darwin objects. Physical bloom
 coverage checks the production extract/downsample/upsample pyramid, strength,
 halation, cross-filter composition and malformed resource handling.
-Strict inventory remains 2,408 files / 3,262 findings. Exact
-preview-recovery-removal evidence is
-[archived](archive/CURRENT-native-preview-gl-recovery-removal-checkpoint-2026-11-03.md).
+Strict inventory is now 2,408 files / 3,255 findings, seven fewer than the prior
+checkpoint without an audit-rule or suppression change. Exact retained-preview
+source-removal evidence is
+[archived](archive/CURRENT-retained-preview-source-removal-checkpoint-2026-11-03.md).
 
 Prior advanced-output, world/material, shadow, UI and presentation owners remain
 as recorded in the archive. Opaque fullbright and the six-face cube convention
@@ -75,13 +76,12 @@ case is a parity pass until the owner-attended review records that result.
 - `tools/metal/doctor.sh` passed on the M1 Max host with 64 GiB unified memory,
   Apple7-family support and the required Metal capabilities.
 - The required default warnings-as-errors Release wrapper completed at exact
-  source `e08926889393999c82a5751ec703e3b7d2041a7c`, producing Development
-  build `26.4.0d68190` (`26.4.0.68190`). Exact Release and RelWithDebInfo
-  preview-manager, dynamic-texture and pipeline objects compile
-  warnings-as-errors.
+  source `8ba316c6de`, producing Development build `26.4.0d68192`
+  (`26.4.0.68192`). Exact Release and RelWithDebInfo preview-manager and
+  pipeline objects compile warnings-as-errors.
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64.
   Viewer executable SHA-256 is
-  `2ad4fb7ceb0929cfa634e6a8c89a53ae19f1633ad0734e22034459ee8aae45b3`.
+  `d5f8fb634b0570e67e7b7ccf3a05eccf3fda6b7db7ba7ffb790806f59ff79f66`.
   Appearance-utility SHA-256 is
   `c3e87e6a8f87c09c44e61aee502f6afd22e5f4bd1b82dd8c952c2fa05fba89a5`.
 - Source and packaged MSL are byte-identical at
@@ -102,9 +102,9 @@ case is a parity pass until the owner-attended review records that result.
 - The broad retained-GL suite passed 8,335/8,340 assertions and 181/224 cases;
   its four established frame-fence/depth-format cases failed and 39 skipped.
   The run is recorded as failed, not promoted to green.
-- Strict inventory is 2,408 files / 3,262 findings, expected exit 1. The exact
+- Strict inventory is 2,408 files / 3,255 findings, expected exit 1. The exact
   report SHA-256 is
-  `8bc964c6635d54db8d77a2a82a83e1d7ba99a99605b63f366fc3228c48413968`.
+  `6d277de0e174e9df2a2c3d05c0254a69d4077e295557083ddc4ba5c98397be73`.
   Both OpenGL and Metal remain linked in the viewer and appearance utility;
   neither has an undefined `CGLTexImageIOSurface2D` dependency.
 - `nm` finds no packaged-viewer symbol for the six retained
@@ -112,10 +112,9 @@ case is a parity pass until the owner-attended review records that result.
   `LLPipeline::renderDoF` or `depthOfFieldProgramsReady`.
 - Exact Release-object inspection finds no retained preview shader/post globals,
   bloom/exposure/color-correction calls, GL batch submission, transient target
-  acquisition or retained-readiness/fallback symbols in the Darwin preview
-  object. It does find the Metal preview renderer, native target adoption and
-  Metal default-probe publication. Retained-platform code remains source-guarded
-  for non-Darwin builds.
+  acquisition, framebuffer copy, GL-matrix or retained-readiness/fallback
+  symbols. Those implementations are deleted rather than source-guarded; the
+  Apple-only preview transaction remains Metal-native.
 - No viewer executable was launched, driven, photographed or compared.
 
 ## Milestone snapshot
@@ -125,18 +124,18 @@ case is a parity pass until the owner-attended review records that result.
 | M-003..M-006 platform/resources/UI | doing | Darwin media, terrain, water, parcel, CPU sky faces, legacy sky cube, minimap and font-atlas resources are native-only; queued parity and GL context removal remain open. |
 | M-007 world/material | doing | Opaque fullbright is corrected; legacy BLEND/stained glass and broad material parity remain open. |
 | M-008 advanced views/effects | doing | Established advanced-output owners, color grading, tone curve, BRDF, post FXAA/SMAA/CAS, DoF and world-view HDR bloom/cross-filter are native-only; all supported PBR preview modes own geometry/post/publish. |
-| M-009 parity/stability/no-GL | doing | Strict inventory is 3,262 and exits 1; full parity/stability and linked/runtime no-GL gates remain open. |
+| M-009 parity/stability/no-GL | doing | Strict inventory is 3,255 and exits 1; full parity/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Darwin material previews are Metal-only through readiness and failure, with no retained resource demand or compiled GL recovery transaction. Other dynamic textures and wider traversal still own GL paths. |
+| M-011 GL authority removal | doing | Material previews are Metal-only through readiness and failure; the retained renderer and its resource demand are deleted from the Apple-only fork. Other dynamic textures and wider traversal still own GL paths. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Darwin material previews now have one
-renderer for supported modes, readiness and failure: Metal. The scheduler cannot
-allocate or execute the retained probe/post pack for this owner, and exact object
-inspection proves the GL recovery transaction is absent from the Darwin build.
+**Advances the complete product:** yes. Material previews now have one renderer
+for supported modes, readiness and failure: Metal. The scheduler cannot allocate
+the retained probe/post pack for this owner, and the dead retained renderer has
+been removed from source, lowering the strict inventory by seven findings.
 
 **Still incomplete:** the executable links OpenGL; global GL teardown also
 destroys pipeline state, so this is not a runtime no-context viewer claim.
