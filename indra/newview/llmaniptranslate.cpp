@@ -131,65 +131,29 @@ LLManipTranslate::LLManipTranslate( LLToolComposite* composite )
     mPlaneScales(1.f, 1.f, 1.f),
     mPlaneManipPositions(1.f, 1.f, 1.f, 1.f)
 {
-    if (sGridTex.isNull())
-    {
-        restoreGL();
-    }
+    getGridTexture();
 }
 
 //static
-U32 LLManipTranslate::getGridTexName()
+LLViewerTexture* LLManipTranslate::getGridTexture()
 {
-    if(sGridTex.isNull())
+    if (sGridTex.notNull())
     {
-        restoreGL() ;
+        return sGridTex.get();
     }
 
-    return sGridTex.isNull() ? 0 : sGridTex->getTexName() ;
-}
+    constexpr U32 GRID_RESOLUTION = 512;
+    const U32 mip_count = static_cast<U32>(
+        LLImageGL::calcMipLevelCount(GRID_RESOLUTION, GRID_RESOLUTION));
+    std::vector<std::vector<U32>> mip_pixels;
+    mip_pixels.reserve(mip_count);
 
-//static
-void LLManipTranslate::destroyGL()
-{
-    if (sGridTex)
-    {
-        sGridTex = NULL ;
-    }
-}
-
-//static
-void LLManipTranslate::restoreGL()
-{
-    //generate grid texture
-    U32 rez = 512;
-    U32 mip = 0;
-
-    destroyGL() ;
-    sGridTex = LLViewerTextureManager::getLocalTexture() ;
-    if(!sGridTex->createGLTexture())
-    {
-        sGridTex = NULL ;
-        return ;
-    }
-
-    GLuint* d = new GLuint[rez*rez];
-
-    // Trilinear + mips: the grid recedes to the horizon, so it needs the mip chain. Sampler
-    // rather than texture state, matching the render-time binds in renderGrid's callers.
-    gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, sGridTex->getTexName(),
-                                  gGL.getSampler(ALSamplers::TrilinearWrap));
-
-    // Allocate the whole mip chain up front: immutable storage is allocated once for the
-    // texture, before any level is written, so it cannot happen inside the loop below.
-    LLImageGL::allocateTexture2D(GL_TEXTURE_2D, GL_RGBA8, rez, rez, GL_RGBA, GL_UNSIGNED_BYTE,
-                                 nullptr, LLImageGL::calcMipLevelCount(rez, rez));
-
+    U32 rez = GRID_RESOLUTION;
     while (rez >= 1)
     {
-        for (U32 i = 0; i < rez*rez; i++)
-        {
-            d[i] = 0x00FFFFFF;
-        }
+        mip_pixels.emplace_back(
+            static_cast<std::size_t>(rez) * rez, 0x00FFFFFFu);
+        U32* d = mip_pixels.back().data();
 
         U32 subcol = 0xFFFFFFFF;
         if (rez >= 4)
@@ -277,13 +241,40 @@ void LLManipTranslate::restoreGL()
                 }
             }
         }
-        LLImageGL::setManualSubImage(GL_TEXTURE_2D, mip, rez, rez, GL_RGBA, GL_UNSIGNED_BYTE, d);
         rez = rez >> 1;
-        mip++;
     }
-    delete [] d;
+
+    std::vector<LLImageGL::MetalMipLevel> mip_levels;
+    mip_levels.reserve(mip_count);
+    rez = GRID_RESOLUTION;
+    for (const std::vector<U32>& pixels : mip_pixels)
+    {
+        mip_levels.push_back({
+            reinterpret_cast<const U8*>(pixels.data()), rez, rez});
+        rez = rez >> 1;
+    }
+
+    // This resource belongs to the native renderer. generateGLTexture only constructs
+    // the LLImageGL wrapper; createMetalTexture allocates and populates Metal storage and
+    // deliberately leaves the GL name at zero.
+    sGridTex = LLViewerTextureManager::getLocalTexture(
+        GRID_RESOLUTION, GRID_RESOLUTION, 4, true, false);
+    sGridTex->generateGLTexture();
+    LLImageGL* grid_image = sGridTex->getGLTexture();
+    grid_image->setNeedsAlphaAndPickMask(false);
+    if (!grid_image->createMetalTexture(
+            0, mip_levels, LLGLTexture::LOCAL))
+    {
+        sGridTex = nullptr;
+    }
+    return sGridTex.get();
 }
 
+//static
+void LLManipTranslate::releaseGridTexture()
+{
+    sGridTex = nullptr;
+}
 
 LLManipTranslate::~LLManipTranslate()
 {
@@ -1536,6 +1527,7 @@ void LLManipTranslate::renderSnapGuides()
         gGL.translatef(u, v, 0);
 
         float a = line_alpha;
+        LLViewerTexture* grid_texture = getGridTexture();
 
         {
             //draw grid behind objects
@@ -1545,8 +1537,15 @@ void LLManipTranslate::renderSnapGuides()
                 //LLGLDisable stencil(GL_STENCIL_TEST);
                 {
                     LLGLDepthTest gls_depth(GL_TRUE, GL_FALSE, GL_GREATER);
-                    gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, getGridTexName(),
-                                                  gGL.getSampler(ALSamplers::TrilinearWrap));
+                    if (grid_texture)
+                    {
+                        gGL.getTextureSlot(0)->bindSampled(
+                            grid_texture, ALSamplers::TrilinearWrap);
+                    }
+                    else
+                    {
+                        gGL.getTextureSlot(0)->unbind();
+                    }
                     gGL.flush();
                     gGL.blendFunc(LLRender::BF_ZERO, LLRender::BF_ONE_MINUS_SOURCE_ALPHA);
                     renderGrid(u,v,tiles,0.9f, 0.9f, 0.9f,a*0.15f);
@@ -1560,8 +1559,15 @@ void LLManipTranslate::renderSnapGuides()
                     renderGrid(u,v,tiles,0.0f, 0.0f, 0.0f,a*0.16f);
 
                     //draw grid top
-                    gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, getGridTexName(),
-                                                  gGL.getSampler(ALSamplers::TrilinearWrap));
+                    if (grid_texture)
+                    {
+                        gGL.getTextureSlot(0)->bindSampled(
+                            grid_texture, ALSamplers::TrilinearWrap);
+                    }
+                    else
+                    {
+                        gGL.getTextureSlot(0)->unbind();
+                    }
                     renderGrid(u,v,tiles,1,1,1,a);
 
                     gGL.popMatrix();

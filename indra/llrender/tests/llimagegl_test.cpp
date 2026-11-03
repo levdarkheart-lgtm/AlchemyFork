@@ -1771,6 +1771,92 @@ namespace
         CHECK(final[1] == 0x3800u);
     }
 
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: native authored mip chain preserves every level after source release", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        LLPointer<LLImageGL> incomplete =
+            new LLImageGL(8, 8, 4, /*usemipmaps=*/true);
+        std::array<U8, 8 * 8 * 4> incomplete_base{};
+        const std::array<LLImageGL::MetalMipLevel, 1> incomplete_levels{{
+            {incomplete_base.data(), 8, 8}
+        }};
+        CHECK_FALSE(incomplete->createMetalTexture(0, incomplete_levels));
+        CHECK(incomplete->getMetalTexture() == nullptr);
+        CHECK_FALSE(incomplete->getHasGLTexture());
+
+        constexpr U32 WIDTH = 8;
+        constexpr U32 HEIGHT = 8;
+        constexpr U32 COMPONENTS = 4;
+        const U32 level_count = static_cast<U32>(
+            LLImageGL::calcMipLevelCount(WIDTH, HEIGHT));
+        std::vector<std::vector<U8>> sources;
+        std::vector<LLImageGL::MetalMipLevel> levels;
+        sources.reserve(level_count);
+        levels.reserve(level_count);
+
+        U32 width = WIDTH;
+        U32 height = HEIGHT;
+        for (U32 mip = 0; mip < level_count; ++mip)
+        {
+            sources.emplace_back(
+                static_cast<std::size_t>(width) * height * COMPONENTS);
+            for (std::size_t byte = 0; byte < sources.back().size(); ++byte)
+            {
+                sources.back()[byte] = static_cast<U8>(
+                    (mip * 0x31u + byte * 0x07u) & 0xffu);
+            }
+            levels.push_back({sources.back().data(), width, height});
+            width = llmax<U32>(1, width >> 1);
+            height = llmax<U32>(1, height >> 1);
+        }
+
+        LLPointer<LLImageGL> image =
+            new LLImageGL(WIDTH, HEIGHT, COMPONENTS, /*usemipmaps=*/true);
+        image->setNeedsAlphaAndPickMask(false);
+        REQUIRE(image->createMetalTexture(0, levels));
+        CHECK_FALSE(image->getHasGLTexture());
+        REQUIRE(image->getMetalTexture());
+        CHECK(image->getMetalTexture()->descriptor().mipmap_level_count ==
+              level_count);
+
+        // The upload owns the bytes once createMetalTexture returns; no mip may depend on
+        // the caller retaining its CPU storage through a later command-buffer completion.
+        sources.clear();
+        sources.shrink_to_fit();
+        levels.clear();
+        levels.shrink_to_fit();
+
+        width = WIDTH;
+        height = HEIGHT;
+        for (U32 mip = 0; mip < level_count; ++mip)
+        {
+            std::vector<U8> actual(
+                static_cast<std::size_t>(width) * height * COMPONENTS);
+            REQUIRE(image->getMetalTexture()->readback(
+                *device, mip, 0, {}, actual.data(), width * COMPONENTS,
+                &error));
+            INFO(error);
+            for (std::size_t byte = 0; byte < actual.size(); ++byte)
+            {
+                CAPTURE(mip, byte);
+                CHECK(actual[byte] == static_cast<U8>(
+                    (mip * 0x31u + byte * 0x07u) & 0xffu));
+            }
+            width = llmax<U32>(1, width >> 1);
+            height = llmax<U32>(1, height >> 1);
+        }
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "ALTextureSlot: native-only sampling preserves the Metal image identity", "[LLImageGL][almetal]")
     {
         std::string error;

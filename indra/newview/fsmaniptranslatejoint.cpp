@@ -50,8 +50,6 @@ constexpr F32 MANIPULATOR_HOTSPOT_END = 1.2f;
 constexpr F32 MIN_PLANE_MANIP_DOT_PRODUCT = 0.25f;
 constexpr F32 PLANE_TICK_SIZE = 0.4f;
 
-static LLPointer<LLViewerTexture> sGridTex = nullptr;
-
 constexpr LLManip::EManipPart MANIPULATOR_IDS[9] =
 {
     LLManip::LL_X_ARROW,
@@ -86,10 +84,6 @@ struct ClosestToCamera
 FSManipTranslateJoint::FSManipTranslateJoint(LLToolComposite* composite) :
     LLManipTranslate(composite)
 {
-    if (sGridTex.isNull())
-    {
-        restoreGL();
-    }
 }
 
 void FSManipTranslateJoint::setAvatar(LLVOAvatar* avatar)
@@ -100,151 +94,6 @@ void FSManipTranslateJoint::setAvatar(LLVOAvatar* avatar)
 void FSManipTranslateJoint::setJoint(LLJoint* joint)
 {
     mJoint = joint;
-}
-
-//static
-U32 FSManipTranslateJoint::getGridTexName()
-{
-    if (sGridTex.isNull())
-    {
-        restoreGL();
-    }
-
-    return sGridTex.isNull() ? 0 : sGridTex->getTexName();
-}
-
-//static
-void FSManipTranslateJoint::destroyGL()
-{
-    if (sGridTex)
-    {
-        sGridTex = nullptr;
-    }
-}
-
-//static
-void FSManipTranslateJoint::restoreGL()
-{
-    //generate grid texture
-    U32 rez = 512;
-    U32 mip = 0;
-
-    destroyGL();
-    sGridTex = LLViewerTextureManager::getLocalTexture();
-    if (!sGridTex->createGLTexture())
-    {
-        sGridTex = nullptr;
-        return;
-    }
-
-    GLuint* d = new GLuint[rez * rez];
-
-    // Trilinear + mips: the grid recedes to the horizon, so it needs the mip chain. Sampler
-    // rather than texture state, matching the render-time binds in renderGrid's callers.
-    gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, sGridTex->getTexName(),
-                                  gGL.getSampler(ALSamplers::TrilinearWrap));
-
-    // Allocate the whole mip chain up front: immutable storage is allocated once for the
-    // texture, before any level is written, so it cannot happen inside the loop below.
-    LLImageGL::allocateTexture2D(GL_TEXTURE_2D, GL_RGBA8, rez, rez, GL_RGBA, GL_UNSIGNED_BYTE,
-                                 nullptr, LLImageGL::calcMipLevelCount(rez, rez));
-
-    while (rez >= 1)
-    {
-        for (U32 i = 0; i < rez * rez; i++)
-        {
-            d[i] = 0x00FFFFFF;
-        }
-
-        U32 subcol = 0xFFFFFFFF;
-        if (rez >= 4)
-        {   //large grain grid
-            for (U32 i = 0; i < rez; i++)
-            {
-                if (rez == 16)
-                {
-                    subcol = 0xA0FFFFFF;
-                }
-                else if (rez == 8)
-                {
-                    subcol = 0x80FFFFFF;
-                }
-                else if (rez < 16)
-                {
-                    subcol = 0x40FFFFFF;
-                }
-                else
-                {
-                    subcol = 0xFFFFFFFF;
-                }
-
-                d[i         *rez+ 0      ] = subcol;
-                d[0         *rez+ i      ] = subcol;
-                if (rez >= 32)
-                {
-                    d[i         *rez+ (rez-1)] = subcol;
-                    d[(rez-1)   *rez+ i      ] = subcol;
-                }
-
-                if (rez >= 64)
-                {
-                    subcol = 0xFFFFFFFF;
-
-                    if (i > 0 && i < (rez-1))
-                    {
-                        d[i         *rez+ 1      ] = subcol;
-                        d[i         *rez+ (rez-2)] = subcol;
-                        d[1         *rez+ i      ] = subcol;
-                        d[(rez-2)   *rez+ i      ] = subcol;
-                    }
-                }
-            }
-        }
-
-        subcol = 0x50A0A0A0;
-        if (rez >= 128)
-        { //small grain grid
-            for (U32 i = 8; i < rez; i+=8)
-            {
-                for (U32 j = 2; j < rez-2; j++)
-                {
-                    d[i *rez+ j] = subcol;
-                    d[j *rez+ i] = subcol;
-                }
-            }
-        }
-        if (rez >= 64)
-        { //medium grain grid
-            if (rez == 64)
-            {
-                subcol = 0x50A0A0A0;
-            }
-            else
-            {
-                subcol = 0xA0D0D0D0;
-            }
-
-            for (U32 i = 32; i < rez; i+=32)
-            {
-                U32 pi = i-1;
-                for (U32 j = 2; j < rez-2; j++)
-                {
-                    d[i     *rez+ j] = subcol;
-                    d[j     *rez+ i] = subcol;
-
-                    if (rez > 128)
-                    {
-                        d[pi    *rez+ j] = subcol;
-                        d[j     *rez+ pi] = subcol;
-                    }
-                }
-            }
-        }
-        LLImageGL::setManualSubImage(GL_TEXTURE_2D, mip, rez, rez, GL_RGBA, GL_UNSIGNED_BYTE, d);
-        rez = rez >> 1;
-        mip++;
-    }
-    delete[] d;
 }
 
 void FSManipTranslateJoint::handleSelect()

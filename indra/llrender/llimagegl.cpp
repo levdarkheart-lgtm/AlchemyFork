@@ -1721,6 +1721,127 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
     return true;
 }
 
+bool LLImageGL::createMetalTexture(
+    S32 discard_level,
+    std::span<const MetalMipLevel> mip_levels,
+    S32 category)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    checkActiveThread();
+    checkUploadBegun();
+
+    if (!on_main_thread() || !sImageMetalDevice || mExternalTexture ||
+        mTarget != GL_TEXTURE_2D || !mUseMipMaps || mWidth <= 0 ||
+        mHeight <= 0 || mComponents <= 0 || mip_levels.empty())
+    {
+        return false;
+    }
+
+    if (discard_level < 0)
+    {
+        if (mCurrentDiscardLevel < 0)
+        {
+            return false;
+        }
+        discard_level = mCurrentDiscardLevel;
+    }
+    discard_level = llclamp(discard_level, 0, (S32)mMaxDiscardLevel);
+    discard_level = llmin(discard_level, MAX_DISCARD_LEVEL);
+
+    if (mHasExplicitFormat &&
+        ((mFormatPrimary == GL_RGBA && mComponents < 4) ||
+         (mFormatPrimary == GL_RGB && mComponents < 3)))
+    {
+        LL_WARNS("Metal") << "Incorrect native texture format: " << std::hex
+                           << mFormatPrimary << ", components: " << std::dec
+                           << static_cast<U32>(mComponents) << LL_ENDL;
+        mHasExplicitFormat = false;
+    }
+    if (!mHasExplicitFormat)
+    {
+        resolveComponentFormat(mComponents);
+    }
+
+    const U32 width = static_cast<U32>(liveWidth(discard_level));
+    const U32 height = static_cast<U32>(liveHeight(discard_level));
+    const S32 expected_levels = calcMipLevelCount(
+        static_cast<S32>(width), static_cast<S32>(height));
+    if (mip_levels.size() != static_cast<std::size_t>(expected_levels))
+    {
+        LL_WARNS("Metal") << "Native authored mip chain has "
+                           << mip_levels.size() << " level(s), expected "
+                           << expected_levels << LL_ENDL;
+        return false;
+    }
+
+    U32 level_width = width;
+    U32 level_height = height;
+    for (const MetalMipLevel& level : mip_levels)
+    {
+        if (!level.mData || level.mWidth != level_width ||
+            level.mHeight != level_height)
+        {
+            LL_WARNS("Metal") << "Native authored mip has invalid geometry; expected "
+                               << level_width << 'x' << level_height << LL_ENDL;
+            return false;
+        }
+        level_width = llmax<U32>(1, level_width >> 1);
+        level_height = llmax<U32>(1, level_height >> 1);
+    }
+
+    // Publish only a complete native generation: stale GL/native storage is retired before
+    // the replacement allocation, and any encode/commit failure clears the partial result.
+    destroyGLTexture();
+    mStorageAllocated = false;
+    mStorage = StorageDesc();
+    mCurrentDiscardLevel = discard_level;
+    mHasMipMaps = true;
+    mMipLevels = expected_levels;
+    setCategory(category);
+
+    std::unique_ptr<ALMetalCommandBuffer> command_owner;
+    ALMetalCommandBuffer* command = nullptr;
+    if (!prepareMetalTexture(command_owner, command, true) || !command ||
+        !metalTextureForUpload())
+    {
+        mMetalTexture.reset();
+        mPendingMetalTexture.reset();
+        mTextureMemory = S64Bytes(0);
+        return false;
+    }
+
+    for (U32 mip = 0; mip < static_cast<U32>(mip_levels.size()); ++mip)
+    {
+        const MetalMipLevel& level = mip_levels[mip];
+        if (!uploadMetalTextureRegion(
+                *command, mip, 0, 0, level.mWidth, level.mHeight,
+                level.mData, metalSourceBytesPerRow(level.mWidth)))
+        {
+            mMetalTexture.reset();
+            mPendingMetalTexture.reset();
+            mTextureMemory = S64Bytes(0);
+            return false;
+        }
+    }
+    if (!commitMetalUpload(command_owner, command))
+    {
+        mMetalTexture.reset();
+        mPendingMetalTexture.reset();
+        mTextureMemory = S64Bytes(0);
+        return false;
+    }
+
+    const MetalMipLevel& base = mip_levels.front();
+    analyzeAlpha(base.mData, base.mWidth, base.mHeight);
+    updatePickMask(base.mWidth, base.mHeight, base.mData);
+    touchContents();
+    mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+    mLastBindTime = sLastFrameTime;
+    mGLTextureCreated = false;
+    llassert(mTexName == 0);
+    return true;
+}
+
 bool LLImageGL::uploadMetalSubImage(const U8* data, S32 data_width,
                                     S32 data_height, S32 x, S32 y,
                                     S32 width, S32 height)

@@ -43,6 +43,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <span>
 #include <vector>
 
 #define LL_IMAGEGL_THREAD_CHECK 0 //set to 1 to enable thread debugging for ImageGL
@@ -625,6 +626,13 @@ public:
     static void setMetalDevice(ALMetalDevice* device);
     static ALMetalDevice* getMetalDevice() noexcept;
 
+    struct MetalMipLevel
+    {
+        const U8* mData = nullptr;
+        U32 mWidth = 0;
+        U32 mHeight = 0;
+    };
+
     // On the main thread, create and populate a native-only 2D image. This establishes the
     // same geometry/format/accounting metadata as createGLTexture, generates a complete
     // native mip chain when this image was constructed with usemipmaps, and deliberately
@@ -637,6 +645,14 @@ public:
     // per component. The constructor/setSize and setExplicitFormat establish
     // the allocation geometry before this call.
     bool createMetalTexture(S32 discard_level, const U8* data,
+                            S32 category = sMaxCategories - 1);
+
+    // Create a native-only texture from a complete caller-authored mip pyramid. Unlike
+    // the single-image overload this preserves every supplied level verbatim instead of
+    // asking Metal to derive lower levels. The image geometry/format must already be
+    // established, and the span must contain the exact full pyramid down to 1x1.
+    bool createMetalTexture(S32 discard_level,
+                            std::span<const MetalMipLevel> mip_levels,
                             S32 category = sMaxCategories - 1);
 
     // Upload one complete, non-mipmapped source image into the top-left of native storage

@@ -32,6 +32,8 @@
 #include "v4math.h"
 #include "llquaternion.h"
 
+class LLViewerTexture;
+
 class LLManipTranslate : public LLManip
 {
 public:
@@ -50,9 +52,8 @@ public:
     LLManipTranslate( LLToolComposite* composite );
     virtual ~LLManipTranslate();
 
-    static  U32     getGridTexName() ;
-    static  void    destroyGL();
-    static  void    restoreGL();
+    static LLViewerTexture* getGridTexture();
+    static void releaseGridTexture();
     virtual bool    handleMouseDown(S32 x, S32 y, MASK mask);
     virtual bool    handleMouseUp(S32 x, S32 y, MASK mask);
     virtual bool    handleHover(S32 x, S32 y, MASK mask);

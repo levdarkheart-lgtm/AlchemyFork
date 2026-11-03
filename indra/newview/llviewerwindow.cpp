@@ -6804,7 +6804,7 @@ void LLViewerWindow::stopGL()
         LLAppViewer::getTextureCache()->pause();
         LLAppViewer::getTextureFetch()->pause();
 
-        LLManipTranslate::destroyGL() ;
+        LLManipTranslate::releaseGridTexture();
         stop_glerror();
 
         LLFontGL::destroyAllGL();
