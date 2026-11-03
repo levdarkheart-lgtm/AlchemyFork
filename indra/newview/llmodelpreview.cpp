@@ -75,8 +75,10 @@
 #include "lltabcontainer.h"
 #include "lltextbox.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <array>
+#include <cmath>
 #include <limits>
 
 #include <boost/algorithm/string.hpp>
@@ -102,14 +104,63 @@ static const std::string DEFAULT_PHYSICS_MESH_NAME = "default_physics_shape";
 
 const F32 SKIN_WEIGHT_CAMERA_DISTANCE = 16.f;
 
+namespace
+{
+LLViewerDynamicTexture::EInitialBacking modelPreviewInitialBacking()
+{
+#if LL_DARWIN
+    return LLViewerDynamicTexture::EInitialBacking::NATIVE_METAL;
+#else
+    return LLViewerDynamicTexture::EInitialBacking::RETAINED_GL;
+#endif
+}
+}
+
 #if LL_DARWIN
 namespace
 {
+    class LLScopedModelPreviewCameraState final
+    {
+    public:
+        LLScopedModelPreviewCameraState()
+        : mCamera(*LLViewerCamera::getInstance()),
+          mCurrent(LLViewerCamera::getCurrent()),
+          mViewport{{
+              gGLViewport[0], gGLViewport[1],
+              gGLViewport[2], gGLViewport[3],
+          }}
+        {
+        }
+
+        ~LLScopedModelPreviewCameraState()
+        {
+            LLViewerCamera* camera = LLViewerCamera::getInstance();
+            camera->setOrigin(mCamera);
+            camera->setAxes(mCamera);
+            camera->setAspect(mCamera.getAspect());
+            camera->setViewNoBroadcast(mCamera.getView());
+            camera->setNear(mCamera.getNear());
+            camera->setFar(mCamera.getFar());
+            camera->setModelview(mCamera.getModelview());
+            camera->setProjection(mCamera.getProjection());
+            LLViewerCamera::updateFrustumPlanes(*camera);
+            LLViewerCamera::setCurrent(mCurrent);
+            std::copy(mViewport.begin(), mViewport.end(), gGLViewport);
+        }
+
+    private:
+        LLCamera mCamera;
+        LLCamera mCurrent;
+        std::array<S32, 4> mViewport;
+    };
+
     bool appendMetalModelPreviewBatch(
         LLVertexBuffer& buffer,
         const ALMetalTexture* texture,
         const LLColor4& diffuse_color,
         bool show_edges,
+        const LLMatrix4a& modelview,
+        const LLMatrix4a& projection,
         std::vector<ALMetalLitPreviewBatch>& batches,
         const float* skin_palette = nullptr,
         std::size_t skin_palette_float_count = 0,
@@ -118,7 +169,7 @@ namespace
         if (!buffer.hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
             !buffer.hasDataType(LLVertexBuffer::TYPE_NORMAL))
         {
-            LL_WARNS_ONCE("Metal") << "Static model preview retained GL because a "
+            LL_WARNS_ONCE("Metal") << "Model preview remains pending because a "
                                       "batch has no native position/normal layout"
                                    << LL_ENDL;
             return false;
@@ -128,7 +179,7 @@ namespace
              skin_palette_float_count !=
                  4 + static_cast<std::size_t>(skin_joint_count) * 12))
         {
-            LL_WARNS_ONCE("Metal") << "Skinned model preview retained GL because a "
+            LL_WARNS_ONCE("Metal") << "Skinned model preview remains pending because a "
                                       "batch has incomplete weights or palette data"
                                    << LL_ENDL;
             return false;
@@ -138,23 +189,22 @@ namespace
         ALMetalBuffer* indices = buffer.getMetalIndexBuffer();
         if (!vertices || !indices)
         {
-            LL_WARNS_ONCE("Metal") << "Static model preview retained GL because a "
+            LL_WARNS_ONCE("Metal") << "Model preview remains pending because a "
                                       "vertex or index buffer has no Metal mirror"
                                    << LL_ENDL;
             return false;
         }
 
-        const LLMatrix4a& modelview = gGL.getModelviewMatrix();
         LLMatrix4a inverse_modelview;
         if (!inverse_modelview.setAffineInverse(modelview))
         {
-            LL_WARNS_ONCE("Metal") << "Static model preview retained GL because its "
+            LL_WARNS_ONCE("Metal") << "Model preview remains pending because its "
                                       "model-view transform is singular"
                                    << LL_ENDL;
             return false;
         }
         LLMatrix4a modelview_projection;
-        modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+        modelview_projection.setMul(modelview, projection);
 
         ALMetalLitPreviewBatch batch;
         batch.vertices = vertices;
@@ -172,7 +222,7 @@ namespace
         {
             if (!buffer.hasDataType(LLVertexBuffer::TYPE_TEXCOORD0))
             {
-                LL_WARNS_ONCE("Metal") << "Static model preview retained GL because a "
+                LL_WARNS_ONCE("Metal") << "Model preview remains pending because a "
                                           "textured batch has no texture coordinates"
                                        << LL_ENDL;
                 return false;
@@ -241,6 +291,8 @@ namespace
         const std::vector<LLVector3>& positions,
         const LLColor4U& color,
         bool clear_depth_before,
+        const LLMatrix4a& modelview,
+        const LLMatrix4a& projection,
         std::vector<std::unique_ptr<ALMetalBuffer>>& owned_buffers,
         std::vector<ALMetalLitPreviewBatch>& batches)
     {
@@ -250,7 +302,7 @@ namespace
             positions.size() > std::numeric_limits<U32>::max())
         {
             LL_WARNS_ONCE("Metal")
-                << "Convex-hull preview retained GL because its generated "
+                << "Convex-hull preview remains pending because its generated "
                    "triangle list is incomplete"
                 << LL_ENDL;
             return false;
@@ -260,7 +312,7 @@ namespace
         if (!device)
         {
             LL_WARNS_ONCE("Metal")
-                << "Convex-hull preview retained GL because the Metal device "
+                << "Convex-hull preview remains pending because the Metal device "
                    "is unavailable"
                 << LL_ENDL;
             return false;
@@ -277,14 +329,13 @@ namespace
                 0, positions.data(), descriptor.length, &error))
         {
             LL_WARNS_ONCE("Metal")
-                << "Convex-hull preview retained GL because its Metal vertex "
+                << "Convex-hull preview remains pending because its Metal vertex "
                    "upload failed: " << error << LL_ENDL;
             return false;
         }
 
-        const LLMatrix4a& modelview = gGL.getModelviewMatrix();
         LLMatrix4a modelview_projection;
-        modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+        modelview_projection.setMul(modelview, projection);
 
         ALMetalLitPreviewBatch batch;
         batch.vertices = vertices.get();
@@ -309,11 +360,12 @@ namespace
 
     using MetalDebugVertex = std::array<F32, 3>;
 
-    void captureMetalPreviewTransform(ALMetalLitPreviewBatch& batch)
+    void captureMetalPreviewTransform(ALMetalLitPreviewBatch& batch,
+                                      const LLMatrix4a& modelview,
+                                      const LLMatrix4a& projection)
     {
         LLMatrix4a modelview_projection;
-        modelview_projection.setMul(
-            gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+        modelview_projection.setMul(modelview, projection);
         std::memcpy(batch.modelview_projection,
                     modelview_projection.getF32ptr(),
                     sizeof(batch.modelview_projection));
@@ -333,6 +385,8 @@ namespace
         std::size_t position_count,
         const LLVector3& color,
         ALMetalLitPreviewDepthMode depth_mode,
+        const LLMatrix4a& modelview,
+        const LLMatrix4a& projection,
         std::vector<MetalDebugVertex>& flat_vertices,
         std::vector<std::size_t>& flat_batch_indices,
         std::vector<ALMetalLitPreviewBatch>& batches)
@@ -350,7 +404,7 @@ namespace
         batch.vertex_count = static_cast<U32>(position_count);
         batch.geometry = ALMetalLitPreviewGeometry::unindexed_flat_lines;
         batch.depth_mode = depth_mode;
-        captureMetalPreviewTransform(batch);
+        captureMetalPreviewTransform(batch, modelview, projection);
         setMetalPreviewColor(batch, color);
         for (std::size_t index = 0; index < position_count; ++index)
         {
@@ -365,21 +419,151 @@ namespace
         return true;
     }
 
+    bool appendMetalFlatDiagnosticBatch(
+        const LLVector3* positions,
+        std::size_t position_count,
+        ALMetalLitPreviewGeometry geometry,
+        F32 raster_size,
+        const LLVector3& color,
+        const LLMatrix4a& modelview,
+        const LLMatrix4a& projection,
+        std::vector<MetalDebugVertex>& flat_vertices,
+        std::vector<std::size_t>& flat_batch_indices,
+        std::vector<ALMetalLitPreviewBatch>& batches)
+    {
+        const bool wide_lines = geometry ==
+            ALMetalLitPreviewGeometry::unindexed_flat_wide_lines;
+        const bool points = geometry ==
+            ALMetalLitPreviewGeometry::unindexed_flat_points;
+        if (!positions || position_count == 0 ||
+            (!wide_lines && !points) ||
+            (wide_lines && position_count % 2 != 0) ||
+            !std::isfinite(raster_size) || raster_size <= 0.f ||
+            position_count > std::numeric_limits<U32>::max() ||
+            flat_vertices.size() >
+                std::numeric_limits<std::size_t>::max() - position_count)
+        {
+            return false;
+        }
+
+        ALMetalLitPreviewBatch batch;
+        batch.position_offset = flat_vertices.size() * sizeof(MetalDebugVertex);
+        batch.vertex_count = static_cast<U32>(position_count);
+        batch.geometry = geometry;
+        batch.depth_mode = ALMetalLitPreviewDepthMode::always_write;
+        batch.line_width = wide_lines ? raster_size : 1.f;
+        batch.point_size = points ? raster_size : 1.f;
+        captureMetalPreviewTransform(batch, modelview, projection);
+        setMetalPreviewColor(batch, color);
+        for (std::size_t index = 0; index < position_count; ++index)
+        {
+            flat_vertices.push_back({
+                positions[index].mV[0],
+                positions[index].mV[1],
+                positions[index].mV[2],
+            });
+        }
+        flat_batch_indices.push_back(batches.size());
+        batches.push_back(batch);
+        return true;
+    }
+
+    bool appendMetalDegeneratePreviewBatches(
+        const LLVertexBuffer& buffer,
+        const LLMatrix4a& modelview,
+        const LLMatrix4a& projection,
+        std::vector<MetalDebugVertex>& flat_vertices,
+        std::vector<std::size_t>& flat_batch_indices,
+        std::vector<ALMetalLitPreviewBatch>& batches)
+    {
+        const U8* vertex_bytes = buffer.getMappedData();
+        const U8* index_bytes = buffer.getMappedIndices();
+        if (!vertex_bytes || !index_bytes ||
+            !buffer.hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+            (buffer.getIndexStride() != sizeof(U16) &&
+             buffer.getIndexStride() != sizeof(U32)) ||
+            buffer.getNumIndices() % 3 != 0)
+        {
+            return false;
+        }
+
+        const auto* positions = reinterpret_cast<const LLVector4a*>(
+            vertex_bytes + buffer.getOffset(LLVertexBuffer::TYPE_VERTEX));
+        const auto source_index = [&](U32 offset) -> U32
+        {
+            return buffer.getIndexStride() == sizeof(U32)
+                ? reinterpret_cast<const U32*>(index_bytes)[offset]
+                : reinterpret_cast<const U16*>(index_bytes)[offset];
+        };
+        const LLVector4a half_scale(0.5f);
+        std::vector<LLVector3> line_vertices;
+        std::vector<LLVector3> point_vertices;
+        for (U32 offset = 0; offset < buffer.getNumIndices(); offset += 3)
+        {
+            const U32 i0 = source_index(offset + 0);
+            const U32 i1 = source_index(offset + 1);
+            const U32 i2 = source_index(offset + 2);
+            if (i0 >= buffer.getNumVerts() || i1 >= buffer.getNumVerts() ||
+                i2 >= buffer.getNumVerts())
+            {
+                return false;
+            }
+            LLVector4a v0;
+            LLVector4a v1;
+            LLVector4a v2;
+            v0.setMul(positions[i0], half_scale);
+            v1.setMul(positions[i1], half_scale);
+            v2.setMul(positions[i2], half_scale);
+            if (!ll_is_degenerate(v0, v1, v2))
+            {
+                continue;
+            }
+            // The legacy half-scale values are only the numerical
+            // degeneracy probe. GL draws the original indexed positions, so
+            // retain their authored size for the native diagnostic overlay.
+            const LLVector3 p0(positions[i0]);
+            const LLVector3 p1(positions[i1]);
+            const LLVector3 p2(positions[i2]);
+            line_vertices.insert(line_vertices.end(), {
+                p0, p1, p1, p2, p2, p0,
+            });
+            point_vertices.insert(point_vertices.end(), {p0, p1, p2});
+        }
+        if (line_vertices.empty())
+        {
+            return true;
+        }
+
+        static const LLVector3 red(1.f, 0.f, 0.f);
+        return appendMetalFlatDiagnosticBatch(
+                   line_vertices.data(), line_vertices.size(),
+                   ALMetalLitPreviewGeometry::unindexed_flat_wide_lines,
+                   PREVIEW_DEG_EDGE_WIDTH, red, modelview, projection,
+                   flat_vertices, flat_batch_indices, batches) &&
+               appendMetalFlatDiagnosticBatch(
+                   point_vertices.data(), point_vertices.size(),
+                   ALMetalLitPreviewGeometry::unindexed_flat_points,
+                   PREVIEW_DEG_POINT_SIZE, red, modelview, projection,
+                   flat_vertices, flat_batch_indices, batches);
+    }
+
     void appendMetalUnitSphereBatch(
         F32 scale,
         const LLVector3& color,
         ALMetalLitPreviewDepthMode depth_mode,
+        const LLMatrix4a& modelview,
+        const LLMatrix4a& projection,
         std::vector<ALMetalLitPreviewBatch>& batches)
     {
-        gGL.pushMatrix();
-        gGL.scalef(scale, scale, scale);
+        LLMatrix4a scaled_modelview;
+        scaled_modelview.setMul(
+            LLMatrix4a::scaling(scale, scale, scale), modelview);
         ALMetalLitPreviewBatch batch;
         batch.geometry = ALMetalLitPreviewGeometry::unit_sphere;
         batch.depth_mode = depth_mode;
-        captureMetalPreviewTransform(batch);
+        captureMetalPreviewTransform(batch, scaled_modelview, projection);
         setMetalPreviewColor(batch, color);
         batches.push_back(batch);
-        gGL.popMatrix();
     }
 
     bool appendMetalSphereAndLine(
@@ -388,6 +572,8 @@ namespace
         F32 sphere_scale,
         const LLVector3& occluded_color,
         const LLVector3& visible_color,
+        const LLMatrix4a& modelview,
+        const LLMatrix4a& projection,
         std::vector<MetalDebugVertex>& flat_vertices,
         std::vector<std::size_t>& flat_batch_indices,
         std::vector<ALMetalLitPreviewBatch>& batches)
@@ -396,23 +582,27 @@ namespace
         if (!appendMetalFlatLineBatch(
                 line, std::size(line), visible_color,
                 ALMetalLitPreviewDepthMode::less_equal_write,
+                modelview, projection,
                 flat_vertices, flat_batch_indices, batches))
         {
             return false;
         }
         appendMetalUnitSphereBatch(
             sphere_scale, visible_color,
-            ALMetalLitPreviewDepthMode::less_equal_write, batches);
+            ALMetalLitPreviewDepthMode::less_equal_write,
+            modelview, projection, batches);
         if (!appendMetalFlatLineBatch(
                 line, std::size(line), occluded_color,
                 ALMetalLitPreviewDepthMode::greater_read_only,
+                modelview, projection,
                 flat_vertices, flat_batch_indices, batches))
         {
             return false;
         }
         appendMetalUnitSphereBatch(
             sphere_scale, occluded_color,
-            ALMetalLitPreviewDepthMode::greater_read_only, batches);
+            ALMetalLitPreviewDepthMode::greater_read_only,
+            modelview, projection, batches);
         return true;
     }
 
@@ -420,6 +610,8 @@ namespace
         const LLVector3& position,
         const LLVector3& size,
         const LLVector3& color,
+        const LLMatrix4a& modelview,
+        const LLMatrix4a& projection,
         std::vector<MetalDebugVertex>& flat_vertices,
         std::vector<std::size_t>& flat_batch_indices,
         std::vector<ALMetalLitPreviewBatch>& batches)
@@ -449,12 +641,15 @@ namespace
         return appendMetalFlatLineBatch(
             lines.data(), lines.size(), color,
             ALMetalLitPreviewDepthMode::less_equal_write,
+            modelview, projection,
             flat_vertices, flat_batch_indices, batches);
     }
 
     bool appendMetalAvatarDebugBatches(
         LLVOAvatar& avatar,
         const std::string& selected_joint,
+        const LLMatrix4a& modelview,
+        const LLMatrix4a& projection,
         std::vector<MetalDebugVertex>& flat_vertices,
         std::vector<std::size_t>& flat_batch_indices,
         std::vector<ALMetalLitPreviewBatch>& batches)
@@ -473,19 +668,20 @@ namespace
         {
             LLAvatarJointCollisionVolume& volume =
                 avatar.mCollisionVolumes[index];
-            gGL.pushMatrix();
-            gGL.multMatrix(volume.getWorldMatrix().getF32ptr());
+            LLMatrix4a volume_modelview;
+            volume_modelview.setMul(volume.getWorldMatrix(), modelview);
             const LLVector3 begin(0.f, 0.f, 0.f);
             const LLVector3 end(volume.getEnd());
             const bool appended =
                 appendMetalSphereAndLine(
                     begin, end, 1.f, collision_occluded,
-                    collision_visible, flat_vertices,
+                    collision_visible, volume_modelview, projection,
+                    flat_vertices,
                     flat_batch_indices, batches) &&
                 appendMetalSphereAndLine(
                     begin, end, 0.05f, white, white,
+                    volume_modelview, projection,
                     flat_vertices, flat_batch_indices, batches);
-            gGL.popMatrix();
             if (!appended)
             {
                 return false;
@@ -531,14 +727,14 @@ namespace
                 visible = &rigged_visible;
             }
 
-            gGL.pushMatrix();
-            gGL.multMatrix(joint->getWorldMatrix().getF32ptr());
+            LLMatrix4a joint_modelview;
+            joint_modelview.setMul(joint->getWorldMatrix(), modelview);
             const LLVector3 begin(0.f, 0.f, 0.f);
             const LLVector3 end(joint->getEnd());
             const bool appended = appendMetalSphereAndLine(
                 begin, end, sphere_scale, *occluded, *visible,
+                joint_modelview, projection,
                 flat_vertices, flat_batch_indices, batches);
-            gGL.popMatrix();
             if (!appended)
             {
                 return false;
@@ -571,12 +767,12 @@ namespace
             center.mul(0.5f);
             half_size.setSub(extents[1], extents[0]);
             half_size.mul(0.5f);
-            gGL.pushMatrix();
-            gGL.multMatrix(joint->getWorldMatrix().getF32ptr());
+            LLMatrix4a joint_modelview;
+            joint_modelview.setMul(joint->getWorldMatrix(), modelview);
             const bool appended = appendMetalBoxOutline(
                 LLVector3(center), LLVector3(half_size), yellow,
+                joint_modelview, projection,
                 flat_vertices, flat_batch_indices, batches);
-            gGL.popMatrix();
             if (!appended)
             {
                 return false;
@@ -623,6 +819,7 @@ namespace
                     half_size.mul(0.5f);
                     if (!appendMetalBoxOutline(
                             LLVector3(center), LLVector3(half_size), cyan,
+                            modelview, projection,
                             flat_vertices, flat_batch_indices, batches))
                     {
                         return false;
@@ -677,20 +874,27 @@ namespace
 }
 #endif
 
-LLViewerFetchedTexture* bindMaterialDiffuseTexture(const LLImportMaterial& material)
+LLViewerFetchedTexture* findMaterialDiffuseTexture(
+    const LLImportMaterial& material)
 {
-    LLViewerFetchedTexture *texture = LLViewerTextureManager::getFetchedTexture(material.getDiffuseMap(), FTT_DEFAULT, true, LLGLTexture::BOOST_PREVIEW);
+    LLViewerFetchedTexture* texture =
+        LLViewerTextureManager::getFetchedTexture(
+            material.getDiffuseMap(), FTT_DEFAULT, true,
+            LLGLTexture::BOOST_PREVIEW);
 
+    return texture && texture->getDiscardLevel() > -1 ? texture : nullptr;
+}
+
+LLViewerFetchedTexture* bindMaterialDiffuseTexture(
+    const LLImportMaterial& material)
+{
+    LLViewerFetchedTexture* texture = findMaterialDiffuseTexture(material);
     if (texture)
     {
-        if (texture->getDiscardLevel() > -1)
-        {
-            gGL.getTextureSlot(0)->bindSampled(texture, ALSamplers::AnisoWrap, true);
-            return texture;
-        }
+        gGL.getTextureSlot(0)->bindSampled(
+            texture, ALSamplers::AnisoWrap, true);
     }
-
-    return NULL;
+    return texture;
 }
 
 std::string stripSuffix(std::string name)
@@ -738,7 +942,9 @@ static bool FindModel(const LLModelLoader::scene& scene, const std::string& name
 //-----------------------------------------------------------------------------
 
 LLModelPreview::LLModelPreview(S32 width, S32 height, LLFloater* fmp)
-    : LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE), LLMutex()
+    : LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE,
+                             modelPreviewInitialBacking()),
+      LLMutex()
     , mLodsQuery()
     , mLodsWithParsingError()
     , mPelvisZOffset(0.0f)
@@ -3862,6 +4068,694 @@ void LLModelPreview::addEmptyFace(LLModel* pTarget)
 
 }
 
+bool LLModelPreview::canRenderWithoutTarget() const
+{
+#if LL_DARWIN
+    return true;
+#else
+    return false;
+#endif
+}
+
+LLViewerDynamicTexture::ETargetlessRenderResult
+LLModelPreview::renderWithoutTarget()
+{
+#if LL_DARWIN
+    if (mGLTexturep.isNull() || !mGLTexturep->getMetalTexture())
+    {
+        return ETargetlessRenderResult::PENDING;
+    }
+
+    bool rendered = false;
+    {
+        LLScopedModelPreviewCameraState saved_state;
+        mOrigin.set(0, 0);
+        rendered = render();
+    }
+
+    const bool published = rendered && mMetalPreview &&
+        mGLTexturep->adoptMetalRenderTextureAuthoritative(
+            std::move(mMetalPreview), LLGLTexture::DYNAMIC_TEX);
+    mMetalPreview.reset();
+    mMetalPreviewDescriptor.reset();
+    if (!published)
+    {
+        mNeedsUpdate = true;
+        LL_DEBUGS("Metal")
+            << "Model upload preview remains pending; its prior native result "
+               "is unchanged"
+            << LL_ENDL;
+        return ETargetlessRenderResult::PENDING;
+    }
+
+    // Rigged previews continuously reflect joint overrides and avatar motion;
+    // static/physics previews remain demand-driven by refresh().
+    mNeedsUpdate = mViewOption["show_skin_weight"];
+    LL_INFOS_ONCE("Metal")
+        << "Model upload previews are targetless native Metal producers"
+        << LL_ENDL;
+    return ETargetlessRenderResult::COMPLETED;
+#else
+    return ETargetlessRenderResult::RETAINED_FALLBACK;
+#endif
+}
+
+#if LL_DARWIN
+bool LLModelPreview::renderMetal()
+{
+    assert_main_thread();
+    LLMutexLock lock(this);
+    LLVertexBuffer::ScopedMetalOnlyUpload metal_upload;
+
+    mMetalPreview.reset();
+    mMetalPreviewDescriptor.reset();
+    if (mGLTexturep.notNull() && mGLTexturep->getMetalTexture())
+    {
+        mMetalPreviewDescriptor = std::make_unique<ALMetalTextureDescriptor>(
+            mGLTexturep->getMetalTexture()->descriptor());
+    }
+    if (!mMetalPreviewDescriptor)
+    {
+        return false;
+    }
+
+    bool show_edges = mViewOption["show_edges"];
+    bool show_joint_overrides = mViewOption["show_joint_overrides"];
+    bool show_joint_positions = mViewOption["show_joint_positions"];
+    bool show_skin_weight = mViewOption["show_skin_weight"];
+    bool show_textures = mViewOption["show_textures"];
+    bool show_physics = mViewOption["show_physics"];
+    LLFloaterModelPreview* fmp = LLFloaterModelPreview::sInstance;
+
+    bool has_skin_weights = false;
+    bool upload_skin = mFMP->childGetValue("upload_skin").asBoolean();
+    bool upload_joints = mFMP->childGetValue("upload_joints").asBoolean();
+    if (upload_joints != mLastJointUpdate)
+    {
+        mLastJointUpdate = upload_joints;
+        if (fmp)
+        {
+            fmp->clearAvatarTab();
+        }
+    }
+
+    for (auto& scene_entry : mScene[mPreviewLOD])
+    {
+        for (LLModelInstance& instance : scene_entry.second)
+        {
+            LLModel* model = instance.mModel;
+            if (!model)
+            {
+                continue;
+            }
+            model->mPelvisOffset = mPelvisZOffset;
+            has_skin_weights = has_skin_weights ||
+                !model->mSkinWeights.empty();
+        }
+    }
+
+    if (has_skin_weights && lodsReady())
+    {
+        const U32 flags = getLegacyRigFlags();
+        if (fmp)
+        {
+            if (flags == LEGACY_RIG_OK)
+            {
+                if (mFirstSkinUpdate)
+                {
+                    fmp->childSetValue("upload_skin", true);
+                    mFirstSkinUpdate = false;
+                    upload_skin = true;
+                    show_skin_weight = true;
+                    mViewOption["show_skin_weight"] = true;
+                }
+                fmp->enableViewOption("show_skin_weight");
+                fmp->setViewOptionEnabled(
+                    "show_joint_overrides", show_skin_weight);
+                fmp->setViewOptionEnabled(
+                    "show_joint_positions", show_skin_weight);
+                mFMP->childEnable("upload_skin");
+                mFMP->childSetValue(
+                    "show_skin_weight", show_skin_weight);
+            }
+            else if ((flags & LEGACY_RIG_FLAG_TOO_MANY_JOINTS) != 0)
+            {
+                mFMP->childSetVisible("skin_too_many_joints", true);
+            }
+            else if ((flags & LEGACY_RIG_FLAG_UNKNOWN_JOINT) != 0)
+            {
+                mFMP->childSetVisible("skin_unknown_joint", true);
+            }
+        }
+    }
+    else
+    {
+        mFMP->childDisable("upload_skin");
+        if (fmp)
+        {
+            mViewOption["show_skin_weight"] = false;
+            fmp->disableViewOption("show_skin_weight");
+            fmp->disableViewOption("show_joint_overrides");
+            fmp->disableViewOption("show_joint_positions");
+            show_skin_weight = false;
+            mFMP->childSetValue("show_skin_weight", false);
+            fmp->setViewOptionEnabled(
+                "show_skin_weight", show_skin_weight);
+        }
+    }
+
+    if (upload_skin && !has_skin_weights)
+    {
+        mFMP->childSetValue("upload_skin", false);
+        upload_skin = false;
+    }
+    if (!upload_skin && upload_joints)
+    {
+        mFMP->childSetValue("upload_joints", false);
+        upload_joints = false;
+    }
+    if (fmp)
+    {
+        if (upload_skin)
+        {
+            fmp->updateAvatarTab(upload_joints);
+        }
+        else
+        {
+            fmp->clearAvatarTab();
+        }
+    }
+    if (upload_skin && upload_joints)
+    {
+        mFMP->childEnable("lock_scale_if_joint_position");
+    }
+    else
+    {
+        mFMP->childDisable("lock_scale_if_joint_position");
+        mFMP->childSetValue("lock_scale_if_joint_position", false);
+    }
+    if (isRigValidForJointPositionUpload())
+    {
+        mFMP->childSetEnabled("upload_joints", upload_skin);
+    }
+
+    const F32 physics_explode =
+        static_cast<F32>(mFMP->childGetValue("physics_explode").asReal());
+    const LLRect preview_rect =
+        mFMP->getChildView("preview_panel")->getRect();
+    if (preview_rect.getHeight() <= 0 || getWidth() <= 0 || getHeight() <= 0)
+    {
+        return false;
+    }
+
+    LLViewerCamera* camera = LLViewerCamera::getInstance();
+    camera->setAspect(
+        static_cast<F32>(preview_rect.getWidth()) /
+        static_cast<F32>(preview_rect.getHeight()));
+    camera->setViewNoBroadcast(camera->getDefaultFOV() / mCameraZoom);
+
+    const LLVector3 offset = mCameraOffset;
+    LLVector3 target_pos = mPreviewTarget + offset;
+    F32 z_far = mCameraDistance * 10.f + mPreviewScale.magVec() +
+                mCameraOffset.magVec();
+    if (show_skin_weight)
+    {
+        LLVOAvatar* avatar = getPreviewAvatar();
+        if (!avatar)
+        {
+            return false;
+        }
+        target_pos = avatar->getPositionAgent() + offset;
+        z_far = 1024.f;
+    }
+
+    const LLQuaternion camera_rot =
+        LLQuaternion(mCameraPitch, LLVector3::y_axis) *
+        LLQuaternion(mCameraYaw, LLVector3::z_axis);
+    const F32 camera_distance = show_skin_weight
+        ? SKIN_WEIGHT_CAMERA_DISTANCE : mCameraDistance;
+    camera->lookAt(
+        target_pos +
+            ((LLVector3(camera_distance, 0.f, 0.f) + offset) * camera_rot),
+        target_pos, LLVector3::z_axis);
+    const F32 z_near = llclamp(z_far * 0.001f, 0.001f, 0.1f);
+    camera->setPerspectiveWithoutRenderState(
+        mOrigin.mX, mOrigin.mY, getWidth(), getHeight(), z_near, z_far);
+    const LLMatrix4a base_modelview = camera->getModelview();
+    const LLMatrix4a projection = camera->getProjection();
+
+    if (!mBaseModel.empty() &&
+        mVertexBuffer[LLModel::NUM_LODS].empty())
+    {
+        genBuffers(-1, show_skin_weight);
+    }
+
+    std::vector<ALMetalLitPreviewBatch> batches;
+    std::vector<std::unique_ptr<ALMetalBuffer>> owned_buffers;
+    std::vector<MetalDebugVertex> flat_vertices;
+    std::vector<std::size_t> flat_batch_indices;
+    bool complete = true;
+
+    if (mModel[mPreviewLOD].empty())
+    {
+        if (mLoading)
+        {
+            return false;
+        }
+        ALMetalLitPreviewBatch clear;
+        clear.geometry = ALMetalLitPreviewGeometry::clear_only;
+        batches.push_back(clear);
+    }
+    else
+    {
+        mFMP->childEnable("reset_btn");
+        bool regenerate = mVertexBuffer[mPreviewLOD].empty();
+        if (!regenerate)
+        {
+            const auto& first_buffers =
+                mVertexBuffer[mPreviewLOD].begin()->second;
+            regenerate = first_buffers.empty() ||
+                first_buffers.front()->hasDataType(
+                    LLVertexBuffer::TYPE_WEIGHT4) != show_skin_weight;
+        }
+        if (regenerate)
+        {
+            genBuffers(mPreviewLOD, show_skin_weight);
+        }
+        if (show_physics &&
+            mVertexBuffer[LLModel::LOD_PHYSICS].empty())
+        {
+            genBuffers(LLModel::LOD_PHYSICS, false);
+        }
+
+        const auto make_modelview = [&](const LLMatrix4& transform)
+        {
+            LLMatrix4a local;
+            local.loadu(&transform.mMatrix[0][0]);
+            LLMatrix4a modelview;
+            modelview.setMul(local, base_modelview);
+            return modelview;
+        };
+
+        if (!show_skin_weight)
+        {
+            for (LLModelInstance& instance : mUploadData)
+            {
+                LLModel* model = instance.mLOD[mPreviewLOD];
+                if (!model)
+                {
+                    continue;
+                }
+                auto found = mVertexBuffer[mPreviewLOD].find(model);
+                if (found == mVertexBuffer[mPreviewLOD].end())
+                {
+                    complete = false;
+                    break;
+                }
+                const LLMatrix4a modelview =
+                    make_modelview(instance.mTransform);
+                for (std::size_t face = 0;
+                     face < found->second.size(); ++face)
+                {
+                    LLVertexBuffer* buffer = found->second[face];
+                    const ALMetalTexture* texture = nullptr;
+                    LLColor4 diffuse = PREVIEW_BASE_COL;
+                    if (show_textures &&
+                        face < instance.mModel->mMaterialList.size())
+                    {
+                        const std::string& binding =
+                            instance.mModel->mMaterialList[face];
+                        const LLImportMaterial& material =
+                            instance.mMaterial[binding];
+                        diffuse = material.mDiffuseColor;
+                        const bool has_map =
+                            !material.mDiffuseMapFilename.empty() ||
+                            material.getDiffuseMap().notNull();
+                        LLViewerFetchedTexture* fetched = has_map
+                            ? findMaterialDiffuseTexture(material) : nullptr;
+                        if (fetched)
+                        {
+                            mTextureSet.insert(fetched);
+                            LLImageGL* image = fetched->getGLTexture();
+                            texture = image ? image->getMetalTexture() : nullptr;
+                        }
+                        if (has_map && !texture)
+                        {
+                            complete = false;
+                            break;
+                        }
+                    }
+                    if (!buffer || !appendMetalModelPreviewBatch(
+                            *buffer, texture, diffuse, show_edges,
+                            modelview, projection, batches))
+                    {
+                        complete = false;
+                        break;
+                    }
+                }
+                if (!complete)
+                {
+                    break;
+                }
+            }
+
+            if (complete && show_physics)
+            {
+                bool clear_physics_depth = true;
+                for (LLModelInstance& instance : mUploadData)
+                {
+                    LLModel* model = instance.mLOD[LLModel::LOD_PHYSICS];
+                    if (!model)
+                    {
+                        continue;
+                    }
+                    const LLMatrix4a modelview =
+                        make_modelview(instance.mTransform);
+                    bool render_mesh = true;
+                    bool scan_degenerate = false;
+                    LLPhysicsDecomp* decomp = gMeshRepo.mDecompThread;
+                    if (decomp)
+                    {
+                        LLMutexLock decomp_lock(decomp->mMutex);
+                        LLModel::Decomposition& physics = model->mPhysics;
+                        if (!physics.mHull.empty())
+                        {
+                            render_mesh = false;
+                            if (physics.mMesh.empty())
+                            {
+                                gMeshRepo.buildPhysicsMesh(physics);
+                            }
+                            if (physics.mMesh.empty() ||
+                                physics.mMesh.size() > model->mHullCenter.size())
+                            {
+                                complete = false;
+                                break;
+                            }
+                            for (U32 hull = 0;
+                                 hull < physics.mMesh.size(); ++hull)
+                            {
+                                LLMatrix4a hull_modelview = modelview;
+                                if (physics_explode > 0.f)
+                                {
+                                    LLVector3 hull_offset =
+                                        model->mHullCenter[hull] -
+                                        model->mCenterOfHullCenters;
+                                    hull_offset *= physics_explode;
+                                    hull_modelview.setMul(
+                                        LLMatrix4a::translation(
+                                            hull_offset.mV[0],
+                                            hull_offset.mV[1],
+                                            hull_offset.mV[2]),
+                                        modelview);
+                                }
+                                if (!appendMetalPhysicsHullPreviewBatch(
+                                        physics.mMesh[hull].mPositions,
+                                        previewPhysicsHullColor(hull),
+                                        clear_physics_depth,
+                                        hull_modelview, projection,
+                                        owned_buffers, batches))
+                                {
+                                    complete = false;
+                                    break;
+                                }
+                                clear_physics_depth = false;
+                            }
+                        }
+                        else
+                        {
+                            scan_degenerate = mHasDegenerate;
+                        }
+                    }
+                    if (!complete)
+                    {
+                        break;
+                    }
+                    if (render_mesh)
+                    {
+                        auto found =
+                            mVertexBuffer[LLModel::LOD_PHYSICS].find(model);
+                        if (found ==
+                            mVertexBuffer[LLModel::LOD_PHYSICS].end())
+                        {
+                            complete = false;
+                            break;
+                        }
+                        for (LLVertexBuffer* buffer : found->second)
+                        {
+                            if (!buffer || !appendMetalModelPreviewBatch(
+                                    *buffer, nullptr,
+                                    PREVIEW_PSYH_FILL_COL, true,
+                                    modelview, projection, batches))
+                            {
+                                complete = false;
+                                break;
+                            }
+                            ALMetalLitPreviewBatch& physics_batch =
+                                batches.back();
+                            physics_batch.clear_depth_before =
+                                clear_physics_depth;
+                            physics_batch.alpha_blending = true;
+                            std::memcpy(
+                                physics_batch.edge_color,
+                                PREVIEW_PSYH_EDGE_COL.mV,
+                                sizeof(physics_batch.edge_color));
+                            clear_physics_depth = false;
+                            if (scan_degenerate &&
+                                !appendMetalDegeneratePreviewBatches(
+                                    *buffer, modelview, projection,
+                                    flat_vertices, flat_batch_indices,
+                                    batches))
+                            {
+                                complete = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (!complete)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+        else
+        {
+            LLVOAvatar* avatar = getPreviewAvatar();
+            if (!avatar)
+            {
+                return false;
+            }
+            avatar->clearAttachmentOverrides();
+            LLUUID pelvis_mesh_id;
+            pelvis_mesh_id.generate();
+            avatar->addPelvisFixup(mPelvisZOffset, pelvis_mesh_id);
+            bool pelvis_recalc = false;
+
+            for (auto& scene_entry : mScene[mPreviewLOD])
+            {
+                for (LLModelInstance& instance : scene_entry.second)
+                {
+                    LLModel* model = instance.mModel;
+                    if (!model || model->mSkinWeights.empty())
+                    {
+                        continue;
+                    }
+                    LLMeshSkinInfo* skin = &model->mSkinInfo;
+                    LLSkinningUtil::initJointNums(skin, avatar);
+                    const U32 joint_count =
+                        LLSkinningUtil::getMeshJointCount(skin);
+                    const std::size_t bind_count =
+                        skin->mAlternateBindMatrix.size();
+                    if (show_joint_overrides && bind_count > 0 &&
+                        joint_count == bind_count)
+                    {
+                        LLUUID override_mesh_id;
+                        override_mesh_id.generate();
+                        for (U32 joint_index = 0;
+                             joint_index < joint_count; ++joint_index)
+                        {
+                            LLJoint* joint =
+                                avatar->getJoint(skin->mJointNums[joint_index]);
+                            if (!joint)
+                            {
+                                continue;
+                            }
+                            const LLVector3 joint_position(
+                                skin->mAlternateBindMatrix[joint_index]
+                                    .getTranslation());
+                            if (!joint->aboveJointPosThreshold(joint_position))
+                            {
+                                continue;
+                            }
+                            bool changed = false;
+                            joint->addAttachmentPosOverride(
+                                joint_position, override_mesh_id,
+                                "model", changed);
+                            pelvis_recalc = pelvis_recalc ||
+                                (changed && joint->getName() == "mPelvis");
+                            if (skin->mLockScaleIfJointPosition)
+                            {
+                                joint->addAttachmentScaleOverride(
+                                    joint->getDefaultScale(),
+                                    override_mesh_id, "model");
+                            }
+                        }
+                    }
+
+                    auto found = mVertexBuffer[mPreviewLOD].find(model);
+                    if (found == mVertexBuffer[mPreviewLOD].end())
+                    {
+                        complete = false;
+                        break;
+                    }
+                    model->mSkinInfo.updateHash();
+                    const LLVOAvatar::MatrixPaletteCache& palette =
+                        avatar->updateSkinInfoMatrixPalette(skin);
+                    const std::size_t palette_joints =
+                        palette.mMatrixPalette.size();
+                    if (palette_joints == 0 ||
+                        palette.mGLMp.size() != 4 + palette_joints * 12)
+                    {
+                        complete = false;
+                        break;
+                    }
+
+                    for (std::size_t face = 0;
+                         face < found->second.size(); ++face)
+                    {
+                        LLVertexBuffer* buffer = found->second[face];
+                        const ALMetalTexture* texture = nullptr;
+                        LLColor4 diffuse = PREVIEW_BASE_COL;
+                        if (show_textures &&
+                            face < instance.mModel->mMaterialList.size())
+                        {
+                            const std::string& binding =
+                                instance.mModel->mMaterialList[face];
+                            const LLImportMaterial& material =
+                                instance.mMaterial[binding];
+                            diffuse = material.mDiffuseColor;
+                            const bool has_map =
+                                !material.mDiffuseMapFilename.empty() ||
+                                material.getDiffuseMap().notNull();
+                            LLViewerFetchedTexture* fetched = has_map
+                                ? findMaterialDiffuseTexture(material) : nullptr;
+                            if (fetched)
+                            {
+                                mTextureSet.insert(fetched);
+                                LLImageGL* image = fetched->getGLTexture();
+                                texture = image
+                                    ? image->getMetalTexture() : nullptr;
+                            }
+                            if (has_map && !texture)
+                            {
+                                complete = false;
+                                break;
+                            }
+                        }
+                        if (!buffer || !appendMetalModelPreviewBatch(
+                                *buffer, texture, diffuse, show_edges,
+                                base_modelview, projection, batches,
+                                palette.mGLMp.data(), palette.mGLMp.size(),
+                                static_cast<U32>(palette_joints)))
+                        {
+                            complete = false;
+                            break;
+                        }
+                    }
+                    if (!complete)
+                    {
+                        break;
+                    }
+                }
+                if (!complete)
+                {
+                    break;
+                }
+            }
+
+            if (complete && show_joint_positions && fmp)
+            {
+                const std::string selected_joint =
+                    fmp->mTabContainer->getCurrentPanelIndex() ==
+                        fmp->mAvatarTabIndex
+                    ? fmp->mSelectedJointName : std::string();
+                const std::array<LLVector3, 8> ground_lines{{
+                    mGroundPlane[0], mGroundPlane[1],
+                    mGroundPlane[1], mGroundPlane[2],
+                    mGroundPlane[2], mGroundPlane[3],
+                    mGroundPlane[3], mGroundPlane[0],
+                }};
+                static const LLVector3 magenta(1.f, 0.f, 1.f);
+                complete = appendMetalAvatarDebugBatches(
+                               *avatar, selected_joint,
+                               base_modelview, projection,
+                               flat_vertices, flat_batch_indices, batches) &&
+                           appendMetalFlatLineBatch(
+                               ground_lines.data(), ground_lines.size(),
+                               magenta,
+                               ALMetalLitPreviewDepthMode::less_equal_write,
+                               base_modelview, projection,
+                               flat_vertices, flat_batch_indices, batches);
+            }
+            if (pelvis_recalc)
+            {
+                avatar->postPelvisSetRecalc();
+            }
+        }
+    }
+
+    if (complete && !flat_batch_indices.empty())
+    {
+        complete = uploadMetalDebugVertices(
+            flat_vertices, flat_batch_indices, owned_buffers, batches);
+    }
+    if (!complete || batches.empty())
+    {
+        return false;
+    }
+
+    ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+    if (!metal_device)
+    {
+        return false;
+    }
+    static ALMetalDevice* renderer_device = nullptr;
+    static std::unique_ptr<ALMetalLitPreviewRenderer> renderer;
+    std::string error;
+    if (renderer_device != metal_device)
+    {
+        renderer.reset();
+        renderer_device = metal_device;
+    }
+    if (!renderer)
+    {
+        renderer = ALMetalLitPreviewRenderer::create(*metal_device, &error);
+    }
+    if (!renderer)
+    {
+        LL_WARNS("Metal") << "Could not create model preview renderer: "
+                           << error << LL_ENDL;
+        return false;
+    }
+
+    ALMetalLitPreviewScene scene;
+    scene.batches = batches.data();
+    scene.batch_count = batches.size();
+    scene.destination_descriptor = mMetalPreviewDescriptor.get();
+    std::memcpy(scene.clear_color, PREVIEW_CANVAS_COL.mV,
+                sizeof(scene.clear_color));
+    scene.linear_storage_view = mMetalPreviewDescriptor->format ==
+        ALMetalPixelFormat::rgba8_unorm_srgb;
+    mMetalPreview = renderer->render(scene, &error);
+    if (!mMetalPreview)
+    {
+        LL_WARNS("Metal") << "Could not render model upload preview: "
+                           << error << LL_ENDL;
+    }
+    return mMetalPreview != nullptr;
+}
+#endif
+
 //-----------------------------------------------------------------------------
 // render()
 //-----------------------------------------------------------------------------
@@ -3869,6 +4763,9 @@ void LLModelPreview::addEmptyFace(LLModel* pTarget)
 // Note: Render happens each frame with skinned avatars
 bool LLModelPreview::render()
 {
+#if LL_DARWIN
+    return renderMetal();
+#else
     assert_main_thread();
 
     LLMutexLock lock(this);
@@ -4839,31 +5736,17 @@ bool LLModelPreview::render()
     gGL.popMatrix();
 
     return true;
+#endif
 }
 
 void LLModelPreview::postRender(bool success)
 {
-    LLViewerDynamicTexture::postRender(success);
 #if LL_DARWIN
-    if (lastPostRenderSucceeded() && mMetalPreview)
-    {
-        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
-        {
-            static bool reported_native_preview = false;
-            if (!reported_native_preview)
-            {
-                LL_INFOS("Metal") << "Static model previews own a native Metal render target"
-                                   << LL_ENDL;
-                reported_native_preview = true;
-            }
-        }
-        else
-        {
-            LL_WARNS("Metal") << "Could not publish the native model preview mirror"
-                               << LL_ENDL;
-        }
-    }
-    mMetalPreview.reset();
+    (void)success;
+    // Targetless native publication owns Darwin completion; copying a
+    // framebuffer here would recreate the removed retained producer.
+#else
+    LLViewerDynamicTexture::postRender(success);
 #endif
 }
 

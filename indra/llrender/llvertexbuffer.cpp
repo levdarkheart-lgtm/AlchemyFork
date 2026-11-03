@@ -399,12 +399,14 @@ public:
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
 #if LL_DARWIN
-        const bool native_capture =
-            gGL.isMetalUITextureCaptureAuthoritative();
+        const bool native_upload =
+            LLVertexBuffer::metalOnlyUploadActive() ||
+            gGL.isMetalUITextureCaptureAuthoritative() ||
+            gGLManager.mIsDisabled;
 #else
-        constexpr bool native_capture = false;
+        constexpr bool native_upload = false;
 #endif
-        if (!native_capture)
+        if (!native_upload)
         {
             STOP_GLERROR;
         }
@@ -419,7 +421,7 @@ public:
             // ON OS X, we don't allocate a VBO until the last possible moment
             // in unmapBuffer
             data = (U8*) ll_aligned_malloc_16(size);
-            if (!native_capture)
+            if (!native_upload)
             {
                 STOP_GLERROR;
             }
@@ -430,10 +432,12 @@ public:
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
 #if LL_DARWIN
-        const bool native_capture =
-            gGL.isMetalUITextureCaptureAuthoritative();
+        const bool native_upload =
+            LLVertexBuffer::metalOnlyUploadActive() ||
+            gGL.isMetalUITextureCaptureAuthoritative() ||
+            gGLManager.mIsDisabled;
 #else
-        constexpr bool native_capture = false;
+        constexpr bool native_upload = false;
 #endif
         llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
         llassert(size >= 2);
@@ -444,7 +448,7 @@ public:
         }
 
         mAllocated -= size;
-        if (!native_capture)
+        if (!native_upload)
         {
             STOP_GLERROR;
         }
@@ -452,7 +456,7 @@ public:
         {
             delete_buffers(1, &name);
         }
-        if (!native_capture)
+        if (!native_upload)
         {
             STOP_GLERROR;
         }
@@ -811,6 +815,29 @@ U32 LLVertexBuffer::sGLRenderBuffer = 0;
 U32 LLVertexBuffer::sGLRenderIndices = 0;
 U32 LLVertexBuffer::sLastMask = 0;
 U32 LLVertexBuffer::sVertexCount = 0;
+#if LL_DARWIN
+thread_local U32 LLVertexBuffer::sMetalOnlyUploadDepth = 0;
+
+LLVertexBuffer::ScopedMetalOnlyUpload::ScopedMetalOnlyUpload()
+{
+    ++sMetalOnlyUploadDepth;
+}
+
+LLVertexBuffer::ScopedMetalOnlyUpload::~ScopedMetalOnlyUpload()
+{
+    llassert(sMetalOnlyUploadDepth > 0);
+    if (sMetalOnlyUploadDepth > 0)
+    {
+        --sMetalOnlyUploadDepth;
+    }
+}
+
+//static
+bool LLVertexBuffer::metalOnlyUploadActive() noexcept
+{
+    return sMetalOnlyUploadDepth != 0;
+}
+#endif
 
 // What the attribute pointers were last set up from: the buffer, the GL name it had, and the
 // attributes the program read. Being bound is not the same thing. An upload binds the buffer it
@@ -1686,12 +1713,14 @@ void LLVertexBuffer::_mapBuffer()
 void LLVertexBuffer::_unmapBuffer()
 {
 #if LL_DARWIN
-    const bool native_capture =
-        gGL.isMetalUITextureCaptureAuthoritative();
+    const bool native_upload =
+        metalOnlyUploadActive() ||
+        gGL.isMetalUITextureCaptureAuthoritative() ||
+        gGLManager.mIsDisabled;
 #else
-    constexpr bool native_capture = false;
+    constexpr bool native_upload = false;
 #endif
-    if (!native_capture)
+    if (!native_upload)
     {
         STOP_GLERROR;
     }
@@ -1722,7 +1751,7 @@ void LLVertexBuffer::_unmapBuffer()
         // Only the stores the map wrote are sent, and any GL has no buffer for yet, which it is
         // given whatever they hold: a rebuild of the vertices alone leaves the indices as GL has
         // them. Like the other path, a store not sent is not bound either.
-        if (!native_capture)
+        if (!native_upload)
         {
             STOP_GLERROR;
         }
@@ -1738,7 +1767,7 @@ void LLVertexBuffer::_unmapBuffer()
                 }
             }
 #endif
-            if (!native_capture)
+            if (!native_upload)
             {
                 if (!mGLBuffer)
                 {
@@ -1753,7 +1782,7 @@ void LLVertexBuffer::_unmapBuffer()
             }
         }
         mVerticesWritten = false;
-        if (!native_capture)
+        if (!native_upload)
         {
             STOP_GLERROR;
         }
@@ -1770,7 +1799,7 @@ void LLVertexBuffer::_unmapBuffer()
                 }
             }
 #endif
-            if (!native_capture)
+            if (!native_upload)
             {
                 if (!mGLIndices)
                 {
@@ -1785,7 +1814,7 @@ void LLVertexBuffer::_unmapBuffer()
             }
         }
         mIndicesWritten = false;
-        if (!native_capture)
+        if (!native_upload)
         {
             STOP_GLERROR;
         }

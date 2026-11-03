@@ -30,6 +30,9 @@
 #include "../llrender.h"
 #include "../llrendertarget.h"
 #include "../llvertexbuffer.h"
+#if LL_DARWIN
+#include "../../almetal/almetalresource.h"
+#endif
 
 #include "llheadlessgl_fixture.h"
 
@@ -396,4 +399,85 @@ namespace
             latest = other->getContentStamp();
         }
     }
+
+#if LL_DARWIN
+    TEST_CASE_METHOD(
+        llvertexbuffer_gl_data,
+        "llvertexbuffer_gl: a Metal-only upload fills native stores without creating GL names",
+        "[llvertexbuffer_gl][almetal]")
+    {
+        ALMetalDevice* device =
+            ll_test::sharedHeadlessGL().window()->getMetalDevice();
+        REQUIRE(device);
+        LLVertexBuffer::setMetalDevice(device);
+        struct ResetMetalDevice
+        {
+            ~ResetMetalDevice()
+            {
+                LLVertexBuffer::setMetalDevice(nullptr);
+            }
+        } reset_metal_device;
+
+        CHECK_FALSE(LLVertexBuffer::metalOnlyUploadActive());
+        LLVertexBuffer::unbind();
+
+        {
+            LLPointer<LLVertexBuffer> buffer =
+                new LLVertexBuffer(LLVertexBuffer::MAP_VERTEX);
+            {
+                LLVertexBuffer::ScopedMetalOnlyUpload native_upload;
+                CHECK(LLVertexBuffer::metalOnlyUploadActive());
+                {
+                    LLVertexBuffer::ScopedMetalOnlyUpload nested_upload;
+                    CHECK(LLVertexBuffer::metalOnlyUploadActive());
+                }
+                CHECK(LLVertexBuffer::metalOnlyUploadActive());
+
+                REQUIRE(buffer->allocateBuffer(3, 3));
+                std::memset(buffer->getMappedData(), 0, buffer->getSize());
+                std::memset(
+                    buffer->getMappedIndices(), 0, buffer->getIndicesSize());
+
+                LLStrider<LLVector3> positions;
+                REQUIRE(buffer->getVertexStrider(positions));
+                positions[0].set(-1.f, 0.f, 0.f);
+                positions[1].set(1.f, 0.f, 0.f);
+                positions[2].set(0.f, 1.f, 0.f);
+                LLStrider<U16> indices;
+                REQUIRE(buffer->getIndexStrider(indices));
+                indices[0] = 0;
+                indices[1] = 1;
+                indices[2] = 2;
+                buffer->unmapBuffer();
+
+                GLint vertex_binding = -1;
+                GLint index_binding = -1;
+                glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &vertex_binding);
+                glGetIntegerv(
+                    GL_ELEMENT_ARRAY_BUFFER_BINDING, &index_binding);
+                CHECK(vertex_binding == 0);
+                CHECK(index_binding == 0);
+            }
+            CHECK_FALSE(LLVertexBuffer::metalOnlyUploadActive());
+
+            ALMetalBuffer* metal_vertices = buffer->getMetalVertexBuffer();
+            ALMetalBuffer* metal_indices = buffer->getMetalIndexBuffer();
+            REQUIRE(metal_vertices);
+            REQUIRE(metal_indices);
+            std::vector<U8> vertex_copy(buffer->getSize());
+            std::vector<U8> index_copy(buffer->getIndicesSize());
+            std::string error;
+            REQUIRE(metal_vertices->read(
+                0, vertex_copy.data(), vertex_copy.size(), &error));
+            REQUIRE(metal_indices->read(
+                0, index_copy.data(), index_copy.size(), &error));
+            CHECK(std::memcmp(
+                      vertex_copy.data(), buffer->getMappedData(),
+                      vertex_copy.size()) == 0);
+            CHECK(std::memcmp(
+                      index_copy.data(), buffer->getMappedIndices(),
+                      index_copy.size()) == 0);
+        }
+    }
+#endif
 }

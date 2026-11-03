@@ -145,6 +145,8 @@ public:
     void setTexture(U32 name) { mTextureName = name; }
 
     void setPhysicsFromLOD(S32 lod);
+    bool canRenderWithoutTarget() const override;
+    ETargetlessRenderResult renderWithoutTarget() override;
     bool render() override;
     void postRender(bool success) override;
     void update();
@@ -217,6 +219,9 @@ protected:
     void lookupLODModelFiles(S32 lod);
 
 private:
+#if LL_DARWIN
+    bool renderMetal();
+#endif
     //Utility function for controller vertex compare
     bool verifyCount(int expected, int result);
     //Creates the dummy avatar for the preview window

@@ -42,9 +42,10 @@ namespace
         float pbr_emissive_transform[8];
         float pbr_emissive_color[4];
         float texture_matrix[16];
+        float flat_parameters[4];
     };
 
-    static_assert(sizeof(LitPreviewConstants) == 432);
+    static_assert(sizeof(LitPreviewConstants) == 448);
 }
 
 struct ALMetalLitPreviewRenderer::Impl
@@ -55,6 +56,8 @@ struct ALMetalLitPreviewRenderer::Impl
         std::unique_ptr<ALMetalRenderPipeline> solid;
         std::unique_ptr<ALMetalRenderPipeline> textured;
         std::unique_ptr<ALMetalRenderPipeline> flat;
+        std::unique_ptr<ALMetalRenderPipeline> flat_wide_line;
+        std::unique_ptr<ALMetalRenderPipeline> flat_point;
         std::unique_ptr<ALMetalRenderPipeline> edge_u16;
         std::unique_ptr<ALMetalRenderPipeline> edge_u32;
         std::unique_ptr<ALMetalRenderPipeline> solid_blended;
@@ -97,6 +100,7 @@ struct ALMetalLitPreviewRenderer::Impl
     std::array<PipelineSet, 2> pipelines;
     std::unique_ptr<ALMetalDepthStencilState> depth_state;
     std::unique_ptr<ALMetalDepthStencilState> occluded_depth_state;
+    std::unique_ptr<ALMetalDepthStencilState> always_depth_state;
     std::unique_ptr<ALMetalDepthStencilState> no_depth_state;
     std::unique_ptr<ALMetalSamplerState> texture_sampler;
     std::unique_ptr<ALMetalSamplerState> background_sampler;
@@ -125,6 +129,9 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
         !impl->library->hasFunction("almetal_resample_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_flat_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_wide_line_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_point_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_point_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_fragment") ||
         !impl->library->hasFunction("almetal_lit_preview_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_textured_fragment") ||
@@ -205,6 +212,14 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
                              "almetal_lit_preview_flat_vertex",
                              "almetal_lit_preview_fragment",
                              "Alchemy flat preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.flat_wide_line,
+                             "almetal_lit_preview_wide_line_vertex",
+                             "almetal_lit_preview_fragment",
+                             "Alchemy wide-line preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.flat_point,
+                             "almetal_lit_preview_point_vertex",
+                             "almetal_lit_preview_point_fragment",
+                             "Alchemy point preview" + suffix + " pipeline") ||
             !create_pipeline(pipelines.edge_u16,
                              "almetal_lit_preview_edge_u16_vertex",
                              "almetal_lit_preview_fragment",
@@ -381,6 +396,16 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
     impl->occluded_depth_state = ALMetalDepthStencilState::create(
         device, depth_descriptor, error);
     if (!impl->occluded_depth_state)
+    {
+        return nullptr;
+    }
+
+    depth_descriptor.depth_compare = ALMetalCompareFunction::always;
+    depth_descriptor.depth_write_enabled = true;
+    depth_descriptor.label = "Alchemy lit preview unconditional depth";
+    impl->always_depth_state = ALMetalDepthStencilState::create(
+        device, depth_descriptor, error);
+    if (!impl->always_depth_state)
     {
         return nullptr;
     }
@@ -570,6 +595,25 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
         const ALMetalLitPreviewBatch& batch = scene.batches[batch_index];
         const std::size_t index_stride =
             batch.index_type == ALMetalIndexType::uint32 ? 4 : 2;
+        if (batch.geometry == ALMetalLitPreviewGeometry::clear_only)
+        {
+            if (batch.vertices || batch.vertex_count != 0 || batch.indices ||
+                batch.index_count != 0 || batch.texture || batch.show_edges ||
+                batch.skin_palette || batch.skin_palette_float_count != 0 ||
+                batch.skin_joint_count != 0 || batch.avatar_lighting ||
+                batch.avatar_unlit || batch.avatar_skinning ||
+                batch.avatar_cloth || batch.deferred_rigged ||
+                batch.fullbright_mask_rigged || batch.fullbright_rigged ||
+                batch.legacy_material_rigged || batch.pbr_rigged ||
+                batch.pbr_glow || batch.pbr_blend ||
+                batch.pbr_double_sided || batch.depth_prepass ||
+                batch.alpha_blending)
+            {
+                setError(error, "Metal clear-only preview batch has geometry");
+                return nullptr;
+            }
+            continue;
+        }
         if (batch.geometry == ALMetalLitPreviewGeometry::unit_sphere)
         {
             if (batch.vertices || batch.vertex_count != 0 || batch.indices ||
@@ -592,10 +636,20 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
         if (batch.geometry ==
                 ALMetalLitPreviewGeometry::unindexed_flat_triangles ||
             batch.geometry ==
-                ALMetalLitPreviewGeometry::unindexed_flat_lines)
+                ALMetalLitPreviewGeometry::unindexed_flat_lines ||
+            batch.geometry ==
+                ALMetalLitPreviewGeometry::unindexed_flat_wide_lines ||
+            batch.geometry ==
+                ALMetalLitPreviewGeometry::unindexed_flat_points)
         {
             const bool triangles = batch.geometry ==
                 ALMetalLitPreviewGeometry::unindexed_flat_triangles;
+            const bool ordinary_lines = batch.geometry ==
+                ALMetalLitPreviewGeometry::unindexed_flat_lines;
+            const bool wide_lines = batch.geometry ==
+                ALMetalLitPreviewGeometry::unindexed_flat_wide_lines;
+            const bool points = batch.geometry ==
+                ALMetalLitPreviewGeometry::unindexed_flat_points;
             if (!batch.vertices || batch.vertex_count == 0 ||
                 batch.indices || batch.index_count != 0 || batch.texture ||
                 batch.show_edges || batch.skin_palette ||
@@ -607,11 +661,31 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 batch.legacy_material_rigged || batch.pbr_rigged ||
                 batch.pbr_glow || batch.pbr_blend ||
                 batch.pbr_double_sided ||
-                batch.vertex_count % (triangles ? 3 : 2) != 0)
+                (triangles && batch.vertex_count % 3 != 0) ||
+                ((ordinary_lines || wide_lines) &&
+                 batch.vertex_count % 2 != 0) ||
+                (wide_lines && batch.vertex_count >
+                    std::numeric_limits<std::uint32_t>::max() / 3) ||
+                ((wide_lines || points) && batch.alpha_blending) ||
+                (wide_lines && (!std::isfinite(batch.line_width) ||
+                                batch.line_width <= 0.f)) ||
+                (points && (!std::isfinite(batch.point_size) ||
+                            batch.point_size <= 0.f)))
             {
-                setError(error, triangles
-                    ? "Metal flat preview requires an unindexed triangle list"
-                    : "Metal flat-line preview requires complete line segments");
+                if (triangles)
+                {
+                    setError(error,
+                             "Metal flat preview requires an unindexed triangle list");
+                }
+                else if (points)
+                {
+                    setError(error, "Metal flat-point preview is invalid");
+                }
+                else
+                {
+                    setError(error,
+                             "Metal flat-line preview requires complete line segments");
+                }
                 return nullptr;
             }
             if (batch.depth_prepass &&
@@ -1038,25 +1112,53 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                         sizeof(constants.pbr_emissive_color));
             std::memcpy(constants.texture_matrix, batch.texture_matrix,
                         sizeof(constants.texture_matrix));
+            constants.flat_parameters[0] = batch.point_size;
+            constants.flat_parameters[1] = batch.line_width;
+            constants.flat_parameters[2] =
+                static_cast<float>(template_descriptor.width);
+            constants.flat_parameters[3] =
+                static_cast<float>(template_descriptor.height);
 
-            const ALMetalDepthStencilState* batch_depth_state =
-                batch.depth_mode ==
-                    ALMetalLitPreviewDepthMode::greater_read_only
-                ? mImpl->occluded_depth_state.get()
-                : mImpl->depth_state.get();
+            const ALMetalDepthStencilState* batch_depth_state = nullptr;
+            switch (batch.depth_mode)
+            {
+            case ALMetalLitPreviewDepthMode::greater_read_only:
+                batch_depth_state = mImpl->occluded_depth_state.get();
+                break;
+            case ALMetalLitPreviewDepthMode::always_write:
+                batch_depth_state = mImpl->always_depth_state.get();
+                break;
+            case ALMetalLitPreviewDepthMode::less_equal_write:
+                batch_depth_state = mImpl->depth_state.get();
+                break;
+            }
             const bool flat_lines = batch.geometry ==
                 ALMetalLitPreviewGeometry::unindexed_flat_lines;
+            const bool wide_lines = batch.geometry ==
+                ALMetalLitPreviewGeometry::unindexed_flat_wide_lines;
+            const bool flat_points = batch.geometry ==
+                ALMetalLitPreviewGeometry::unindexed_flat_points;
             encoded =
                 encoder->setDepthStencilState(batch_depth_state, error) &&
-                encoder->setCullMode(flat_lines || batch.pbr_double_sided
+                encoder->setCullMode(flat_lines || wide_lines || flat_points ||
+                                     batch.pbr_double_sided
                     ? ALMetalCullMode::none : ALMetalCullMode::back, error);
 
             if (encoded &&
+                batch.geometry == ALMetalLitPreviewGeometry::clear_only)
+            {
+                continue;
+            }
+            if (encoded &&
                 batch.geometry != ALMetalLitPreviewGeometry::indexed_lit)
             {
-                const ALMetalRenderPipeline* flat_pipeline =
-                    batch.alpha_blending
-                        ? pipelines.flat_blended.get() : pipelines.flat.get();
+                const ALMetalRenderPipeline* flat_pipeline = flat_points
+                    ? pipelines.flat_point.get()
+                    : wide_lines
+                        ? pipelines.flat_wide_line.get()
+                        : batch.alpha_blending
+                            ? pipelines.flat_blended.get()
+                            : pipelines.flat.get();
                 const bool unit_sphere = batch.geometry ==
                     ALMetalLitPreviewGeometry::unit_sphere;
                 const ALMetalBuffer* flat_vertices = unit_sphere
@@ -1077,10 +1179,16 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 }
                 else if (encoded)
                 {
+                    const std::uint32_t draw_count = wide_lines
+                        ? batch.vertex_count / 2 * 6
+                        : batch.vertex_count;
                     encoded = encoder->draw(
-                        flat_lines ? ALMetalPrimitiveType::line
-                                   : ALMetalPrimitiveType::triangle,
-                        0, batch.vertex_count, 1, error);
+                        flat_points
+                            ? ALMetalPrimitiveType::point
+                            : flat_lines
+                                ? ALMetalPrimitiveType::line
+                                : ALMetalPrimitiveType::triangle,
+                        0, draw_count, 1, error);
                 }
                 continue;
             }

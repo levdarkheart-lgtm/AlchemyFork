@@ -108,6 +108,18 @@ public:
     static void cleanupClass();
 #if LL_DARWIN
     static void setMetalDevice(ALMetalDevice* device);
+    // CPU-authored preview meshes can publish directly to their Metal buffers
+    // without manufacturing duplicate OpenGL names. The scope is nestable and
+    // main-thread local to the producer that owns the upload.
+    class ScopedMetalOnlyUpload final
+    {
+    public:
+        ScopedMetalOnlyUpload();
+        ~ScopedMetalOnlyUpload();
+        ScopedMetalOnlyUpload(const ScopedMetalOnlyUpload&) = delete;
+        ScopedMetalOnlyUpload& operator=(const ScopedMetalOnlyUpload&) = delete;
+    };
+    static bool metalOnlyUploadActive() noexcept;
 #endif
     static void setupClientArrays(U32 data_mask);
     static void drawArrays(U32 mode, const std::vector<LLVector3>& pos);
@@ -319,6 +331,9 @@ protected:
     std::vector<MappedRegion> mMappedIndexRegions;   // list of mMappedIndexData byte ranges that must be sent to GL
 
 private:
+#if LL_DARWIN
+    static thread_local U32 sMetalOnlyUploadDepth;
+#endif
     // DEPRECATED
     // These function signatures are deprecated, but for some reason
     // there are classes in an external package that depend on LLVertexBuffer

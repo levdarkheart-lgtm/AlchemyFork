@@ -847,6 +847,9 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_terrain_paint_fragment",
             "almetal_lit_preview_vertex",
             "almetal_lit_preview_flat_vertex",
+            "almetal_lit_preview_wide_line_vertex",
+            "almetal_lit_preview_point_vertex",
+            "almetal_lit_preview_point_fragment",
             "almetal_lit_preview_skinned_vertex",
             "almetal_lit_preview_fragment",
             "almetal_lit_preview_textured_vertex",
@@ -26628,8 +26631,9 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         // Joint diagnostics use a compact shared float3 stream for lines and
         // one renderer-owned unit sphere. Exercise both geometry modes and
         // the legacy read-only GL_GREATER pass used for occluded bones.
-        const std::array<std::array<float, 3>, 2> line_positions{{
+        const std::array<std::array<float, 3>, 3> line_positions{{
             {{-0.75f, 0.f, 0.f}}, {{0.75f, 0.f, 0.f}},
+            {{0.f, 0.f, 0.f}},
         }};
         ALMetalBufferDescriptor line_descriptor;
         line_descriptor.length = sizeof(line_positions);
@@ -26644,7 +26648,7 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
 
         ALMetalLitPreviewBatch line_batch;
         line_batch.vertices = line_vertices.get();
-        line_batch.vertex_count = line_positions.size();
+        line_batch.vertex_count = 2;
         line_batch.geometry =
             ALMetalLitPreviewGeometry::unindexed_flat_lines;
         line_batch.destination_template = destination_template.get();
@@ -26659,7 +26663,7 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         line_batch.vertex_count = 1;
         CHECK_FALSE(renderer->render(line_batch, &error));
         CHECK(error == "Metal flat-line preview requires complete line segments");
-        line_batch.vertex_count = line_positions.size();
+        line_batch.vertex_count = 2;
         error.clear();
         auto rendered_line = renderer->render(line_batch, &error);
         INFO(error);
@@ -26680,6 +26684,84 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
             }
         }
         CHECK(blue_line_pixels >= 20);
+
+        // Degenerate upload geometry keeps the retained preview's wide red
+        // line loops and eight-pixel points. Prove both explicit raster modes
+        // rather than accepting Metal's one-pixel primitive defaults.
+        ALMetalLitPreviewBatch wide_line_batch = line_batch;
+        wide_line_batch.geometry =
+            ALMetalLitPreviewGeometry::unindexed_flat_wide_lines;
+        wide_line_batch.line_width = 5.f;
+        wide_line_batch.diffuse_color[0] = 0.f;
+        wide_line_batch.diffuse_color[1] = 1.f;
+        wide_line_batch.diffuse_color[2] = 0.f;
+        auto rendered_wide_line = renderer->render(wide_line_batch, &error);
+        INFO(error);
+        REQUIRE(rendered_wide_line);
+        std::array<std::uint8_t, 32 * 32 * 4> wide_line_pixels{};
+        REQUIRE(rendered_wide_line->readback(
+            *device, 0, 0, {}, wide_line_pixels.data(), 32 * 4, &error));
+        std::size_t green_wide_line_pixels = 0;
+        for (std::size_t offset = 0; offset < wide_line_pixels.size();
+             offset += 4)
+        {
+            if (wide_line_pixels[offset + 0] <= 1 &&
+                wide_line_pixels[offset + 1] >= 254 &&
+                wide_line_pixels[offset + 2] <= 1 &&
+                wide_line_pixels[offset + 3] == 255)
+            {
+                ++green_wide_line_pixels;
+            }
+        }
+        CHECK(green_wide_line_pixels >= blue_line_pixels * 3);
+
+        wide_line_batch.vertex_count = 1;
+        CHECK_FALSE(renderer->render(wide_line_batch, &error));
+        CHECK(error ==
+              "Metal flat-line preview requires complete line segments");
+        wide_line_batch.vertex_count = 2;
+        error.clear();
+
+        ALMetalLitPreviewBatch point_batch = line_batch;
+        point_batch.position_offset = sizeof(float) * 3 * 2;
+        point_batch.vertex_count = 1;
+        point_batch.geometry =
+            ALMetalLitPreviewGeometry::unindexed_flat_points;
+        point_batch.point_size = 8.f;
+        point_batch.depth_mode = ALMetalLitPreviewDepthMode::always_write;
+        point_batch.diffuse_color[0] = 1.f;
+        point_batch.diffuse_color[1] = 0.f;
+        point_batch.diffuse_color[2] = 0.f;
+        auto rendered_point = renderer->render(point_batch, &error);
+        INFO(error);
+        REQUIRE(rendered_point);
+        std::array<std::uint8_t, 32 * 32 * 4> point_pixels{};
+        REQUIRE(rendered_point->readback(
+            *device, 0, 0, {}, point_pixels.data(), 32 * 4, &error));
+        std::size_t red_point_pixels = 0;
+        for (std::size_t offset = 0; offset < point_pixels.size(); offset += 4)
+        {
+            if (point_pixels[offset + 0] >= 254 &&
+                point_pixels[offset + 1] <= 1 &&
+                point_pixels[offset + 2] <= 1 &&
+                point_pixels[offset + 3] == 255)
+            {
+                ++red_point_pixels;
+            }
+        }
+        CHECK(red_point_pixels >= 48);
+
+        point_batch.point_size = 0.f;
+        CHECK_FALSE(renderer->render(point_batch, &error));
+        CHECK(error == "Metal flat-point preview is invalid");
+        error.clear();
+
+        ALMetalLitPreviewBatch clear_batch;
+        clear_batch.geometry = ALMetalLitPreviewGeometry::clear_only;
+        clear_batch.destination_template = destination_template.get();
+        auto rendered_clear = renderer->render(clear_batch, &error);
+        INFO(error);
+        REQUIRE(rendered_clear);
 
         ALMetalLitPreviewBatch sphere_batch;
         sphere_batch.geometry = ALMetalLitPreviewGeometry::unit_sphere;

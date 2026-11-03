@@ -19,9 +19,12 @@
 
 enum class ALMetalLitPreviewGeometry
 {
+    clear_only,
     indexed_lit,
     unindexed_flat_triangles,
     unindexed_flat_lines,
+    unindexed_flat_wide_lines,
+    unindexed_flat_points,
     unit_sphere,
 };
 
@@ -29,6 +32,7 @@ enum class ALMetalLitPreviewDepthMode
 {
     less_equal_write,
     greater_read_only,
+    always_write,
 };
 
 struct ALMetalLitPreviewBatch
@@ -132,6 +136,12 @@ struct ALMetalLitPreviewBatch
     // read-only GL_GREATER pass so hidden portions remain visible.
     ALMetalLitPreviewDepthMode depth_mode =
         ALMetalLitPreviewDepthMode::less_equal_write;
+    // Native line primitives are one pixel wide. Degenerate-model diagnostics
+    // retain their authored three-pixel line loops through the explicit
+    // screen-space wide-line geometry mode; their point markers similarly use
+    // the point-size output rather than silently collapsing to one pixel.
+    float line_width = 1.f;
+    float point_size = 1.f;
     // The legacy hull path first writes every hull to depth with color writes
     // disabled, then blends the colored hulls against that completed depth.
     // This is distinct from the ordinary physics-mesh overlay, which has no

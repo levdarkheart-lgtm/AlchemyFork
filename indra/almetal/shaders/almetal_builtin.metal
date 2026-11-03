@@ -9756,6 +9756,9 @@ struct ALMetalLitPreviewConstants
     float4 pbr_emissive_transform[2];
     float4 pbr_emissive_color;
     float4x4 texture_matrix;
+    // x = point size in pixels, y = wide-line width in pixels,
+    // zw = destination size in pixels.
+    float4 flat_parameters;
 };
 
 struct ALMetalLitPreviewVaryings
@@ -10206,6 +10209,63 @@ vertex ALMetalLitPreviewVaryings almetal_lit_preview_flat_vertex(
         float4(float3(positions[vertex_id]), 1.0), constants);
     output.color = constants.diffuse_color;
     return output;
+}
+
+vertex ALMetalLitPreviewVaryings almetal_lit_preview_wide_line_vertex(
+    const device packed_float3* positions [[buffer(0)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    uint vertex_id [[vertex_id]])
+{
+    const uint line_index = vertex_id / 6u;
+    const uint corner = vertex_id % 6u;
+    constexpr uint endpoints[6] = {0u, 0u, 1u, 0u, 1u, 1u};
+    constexpr float sides[6] = {-1.0, 1.0, -1.0, 1.0, 1.0, -1.0};
+    const float4 begin = almetal_lit_preview_clip_position(
+        float4(float3(positions[line_index * 2u]), 1.0), constants);
+    const float4 end = almetal_lit_preview_clip_position(
+        float4(float3(positions[line_index * 2u + 1u]), 1.0), constants);
+    const float2 destination = max(constants.flat_parameters.zw, float2(1.0));
+    const float2 pixel_delta =
+        (end.xy / end.w - begin.xy / begin.w) * destination * 0.5;
+    const float pixel_length = length(pixel_delta);
+    const float2 perpendicular = pixel_length > 0.0001
+        ? float2(-pixel_delta.y, pixel_delta.x) / pixel_length
+        : float2(0.0, 1.0);
+    float4 clip_position = endpoints[corner] == 0u ? begin : end;
+    const float2 ndc_offset = perpendicular *
+        (constants.flat_parameters.y / destination);
+    clip_position.xy += ndc_offset * sides[corner] * clip_position.w;
+
+    ALMetalLitPreviewVaryings output;
+    output.position = clip_position;
+    output.color = constants.diffuse_color;
+    return output;
+}
+
+struct ALMetalLitPreviewPointVaryings
+{
+    float4 position [[position]];
+    float point_size [[point_size]];
+    float4 color;
+};
+
+vertex ALMetalLitPreviewPointVaryings almetal_lit_preview_point_vertex(
+    const device packed_float3* positions [[buffer(0)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    uint vertex_id [[vertex_id]])
+{
+    ALMetalLitPreviewPointVaryings output;
+    output.position = almetal_lit_preview_clip_position(
+        float4(float3(positions[vertex_id]), 1.0), constants);
+    output.point_size = constants.flat_parameters.x;
+    output.color = constants.diffuse_color;
+    return output;
+}
+
+fragment float4 almetal_lit_preview_point_fragment(
+    ALMetalLitPreviewPointVaryings input [[stage_in]])
+{
+    return input.color;
 }
 
 vertex ALMetalLitPreviewVaryings almetal_lit_preview_skinned_vertex(
