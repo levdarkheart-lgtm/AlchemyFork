@@ -2280,6 +2280,35 @@ bool LLImageGL::adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture)
     return true;
 }
 
+bool LLImageGL::adoptMetalRenderTextureAuthoritative(
+    std::unique_ptr<ALMetalTexture> texture, S32 category)
+{
+    if (mCurrentDiscardLevel < 0 ||
+        !adoptMetalRenderTexture(std::move(texture)))
+    {
+        return false;
+    }
+
+    const ALMetalTextureDescriptor descriptor = mMetalTexture->descriptor();
+    if (mTexName != 0)
+    {
+        LLImageGL::deleteTextures(1, &mTexName);
+        mTexName = 0;
+    }
+
+    mGLTextureCreated = false;
+    mStorageAllocated = false;
+    mStorage = StorageDesc();
+    mHasMipMaps = descriptor.mipmap_level_count > 1;
+    mMipLevels = static_cast<S32>(descriptor.mipmap_level_count);
+    mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+    mLastBindTime = sLastFrameTime;
+    setCategory(category);
+    clearAlphaAnalysis();
+    llassert(!getHasGLTexture());
+    return true;
+}
+
 std::unique_ptr<ALMetalTexture> LLImageGL::createMetalRenderTexture(
     std::string* error) const
 {

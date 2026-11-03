@@ -113,7 +113,7 @@ public:
     static void clear();
     static void addstandard();
 
-    static void restoreGL();
+    static void restoreResources();
 };
 
 extern LLStandardBumpmap gStandardBumpmapList[TEM_BUMPMAP_COUNT];
@@ -132,7 +132,7 @@ public:
     void        init();
     void        shutdown();
     void            clear();
-    void        restoreGL();
+    void        restoreResources();
     void        updateImages();
 
 
@@ -151,7 +151,6 @@ private:
     typedef boost::unordered_map<LLUUID, LLPointer<LLViewerTexture>> bump_image_map_t;
     bump_image_map_t mBrightnessEntries;
     bump_image_map_t mDarknessEntries;
-    static LLRenderTarget sRenderTarget;
 };
 
 extern LLBumpImageList gBumpImageList;

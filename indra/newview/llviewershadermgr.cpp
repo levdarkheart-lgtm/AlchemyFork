@@ -236,7 +236,6 @@ LLGLSLShader            gDeferredMeteorProgram;
 LLGLSLShader            gDeferredAuroraProgram;
 LLGLSLShader            gDeferredFullbrightShinyProgram;
 LLGLSLShader            gHUDFullbrightShinyProgram;
-LLGLSLShader            gNormalMapGenProgram;
 LLGLSLShader            gDeferredGenBrdfLutProgram;
 LLGLSLShader            gDeferredBufferVisualProgram;
 LLGLSLShader            gBlitWithEffectsProgram;
@@ -1421,7 +1420,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
         gDeferredHighlightProgram.unload();
 
-        gNormalMapGenProgram.unload();
 #if !LL_DARWIN
         gDeferredGenBrdfLutProgram.unload();
 #endif
@@ -3294,16 +3292,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         add_common_permutations(&gDeferredAuroraProgram);
 
         built(gDeferredAuroraProgram.createShader(), gDeferredAuroraProgram);
-    }
-
-    {
-        gNormalMapGenProgram.mName = "Normal Map Generation Program";
-        gNormalMapGenProgram.mShaderFiles.clear();
-        gNormalMapGenProgram.mShaderFiles.push_back(make_pair("deferred/normgenV.glsl", GL_VERTEX_SHADER));
-        gNormalMapGenProgram.mShaderFiles.push_back(make_pair("deferred/normgenF.glsl", GL_FRAGMENT_SHADER));
-        gNormalMapGenProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gNormalMapGenProgram.mShaderGroup = LLGLSLShader::SG_SKY;
-        built(gNormalMapGenProgram.createShader(), gNormalMapGenProgram);
     }
 
 #if !LL_DARWIN

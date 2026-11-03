@@ -11492,16 +11492,16 @@ void LLPipeline::captureMetalWorldBumpBatch(
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
     LLImageGL* normal_image = normal_texture
         ? normal_texture->getGLTexture() : nullptr;
-    if (normal_image && !normal_image->getTexName())
+    if (normal_image && !normal_image->getMetalTexture())
     {
         LLViewerTexture* fallback =
             LLViewerFetchedTexture::sDefaultImagep.get();
         LLImageGL* fallback_image = fallback
             ? fallback->getGLTexture() : nullptr;
-        if (fallback_image && fallback_image->getTexName())
+        if (fallback_image && fallback_image->getMetalTexture())
         {
-            // bindFast() substitutes this same image when a generated or
-            // streamed bump map has no published GL object yet.
+            // A fetched/generated bump still waiting for native publication
+            // uses the same default image as the retained bind path.
             normal_image = fallback_image;
         }
     }
@@ -17370,7 +17370,7 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
         // everything derived from them. Native owners build lazily where they
         // are first wanted.
         add(changed, "initial resources");
-        gBumpImageList.restoreGL();
+        gBumpImageList.restoreResources();
         // Read again otherwise only when RenderColorGrade or RenderColorGradeLUT changes (LLPipeline::init).
         setupGradingLUT();
     }

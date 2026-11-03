@@ -340,6 +340,12 @@ public:
     // native result here. The descriptor is checked against this image before
     // ownership changes.
     bool adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture);
+    // A native producer publishes the rendered texture as the sole backing.
+    // Descriptor validation is identical to adoptMetalRenderTexture(), but an
+    // earlier GL name is retired and native memory/category metadata becomes
+    // authoritative.
+    bool adoptMetalRenderTextureAuthoritative(
+        std::unique_ptr<ALMetalTexture> texture, S32 category);
     // A producer that updates an already-adopted render-target mirror in place
     // advances the same content generation as an ordinary upload.
     void markMetalRenderTextureUpdated() noexcept;

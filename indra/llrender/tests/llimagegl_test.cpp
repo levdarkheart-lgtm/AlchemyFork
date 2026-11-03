@@ -755,6 +755,65 @@ namespace
         CHECK(img->getContentStamp() != uploaded_stamp);
     }
 
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: authoritative Metal render publication retires GL backing", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        constexpr U16 W = 8;
+        constexpr U16 H = 8;
+        LLPointer<LLImageGL> img = new LLImageGL(/*usemipmaps=*/true);
+        img->setExplicitFormat(GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
+        REQUIRE(img->createGLTexture(0, makeRaw(W, H, 4, 0x20).get()));
+        REQUIRE(img->getHasGLTexture());
+
+        auto rendered = img->createMetalRenderTexture(&error);
+        INFO(error);
+        REQUIRE(rendered);
+        REQUIRE(rendered->descriptor().mipmap_level_count == 4);
+
+        std::array<U8, W * H * 4> rgba{};
+        for (std::size_t pixel = 0; pixel < W * H; ++pixel)
+        {
+            rgba[pixel * 4 + 0] = static_cast<U8>(pixel);
+            rgba[pixel * 4 + 1] = static_cast<U8>(pixel + 1);
+            rgba[pixel * 4 + 2] = 0x80;
+            rgba[pixel * 4 + 3] = 0xff;
+        }
+        auto command = device->makeCommandBuffer(
+            "Alchemy authoritative Metal texture publication", &error);
+        INFO(error);
+        REQUIRE(command);
+        REQUIRE(rendered->upload(
+            *command, 0, 0, {}, rgba.data(), W * 4, &error));
+        REQUIRE(rendered->generateMipmaps(*command, &error));
+        REQUIRE(command->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalTexture* rendered_pointer = rendered.get();
+        REQUIRE(img->adoptMetalRenderTextureAuthoritative(
+            std::move(rendered), LLGLTexture::LOCAL));
+        CHECK_FALSE(img->getHasGLTexture());
+        CHECK(img->getTexName() == 0);
+        CHECK(img->getMetalTexture() == rendered_pointer);
+        CHECK(img->getCategory() == LLGLTexture::LOCAL);
+        CHECK(img->getTextureMemory() > S64Bytes(0));
+
+        std::array<U8, W * H * 4> result{};
+        REQUIRE(img->getMetalTexture()->readback(
+            *device, 0, 0, {}, result.data(), W * 4, &error));
+        INFO(error);
+        CHECK(result == rgba);
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: scaleDown preserves its Metal mirror with a GPU blit", "[LLImageGL][almetal]")
     {
         std::string error;
