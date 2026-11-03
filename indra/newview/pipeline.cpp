@@ -816,7 +816,7 @@ struct LLPipeline::MetalWorldSimpleCapture
 static bool metalWorldPresentationRequested()
 {
     static LLCachedControl<bool> publish_world(
-        gSavedSettings, "ALMetalWorldPresentation", false);
+        gSavedSettings, "ALMetalWorldPresentation", true);
     return publish_world;
 }
 
@@ -10815,11 +10815,12 @@ void LLPipeline::endMetalWorldUICompositionCapture()
                "texture was retained after its command submission"
             << LL_ENDL;
 
-        // This development-only switch first publishes one bounded exact
-        // probe. That committed transaction unlocks continuous publication,
-        // but every later frame still starts transparent and earns opacity
-        // independently. Only a committed current-frame drawable suppresses
-        // its matching GL swap.
+        // The Metal-first path publishes one bounded exact probe before it
+        // unlocks continuous publication. Every later frame still starts
+        // transparent and earns opacity independently. Only a committed
+        // current-frame drawable suppresses its matching GL swap, so the
+        // transitional GL owner remains fail-closed rather than becoming a
+        // second visible backend.
         if (presentation_requested)
         {
             if (surface_submitted)

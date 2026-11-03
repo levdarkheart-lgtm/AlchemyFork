@@ -5,7 +5,7 @@
         <key>ALMetalWorldPresentation</key>
         <map>
             <key>Comment</key>
-            <string>Development-only: after one complete native Metal world/UI probe reaches the drawable, continuously publish exact frames with per-frame GL fallback and a bounded failure cooldown. Requires restart and remains off outside controlled authenticated validation.</string>
+            <string>Transitional Metal-first world/UI presentation: after one complete native transaction reaches the drawable, continuously publish exact frames with per-frame GL fallback and a bounded failure cooldown. Requires restart; disable only for controlled fallback diagnosis while application-owned GL remains.</string>
             <key>Persist</key>
             <integer>0</integer>
             <key>HideFromEditor</key>
@@ -13,7 +13,7 @@
             <key>Type</key>
             <string>Boolean</string>
             <key>Value</key>
-            <integer>0</integer>
+            <integer>1</integer>
         </map>
         <key>ALMetalHeroMirrorSnapshotValidation</key>
         <map>
