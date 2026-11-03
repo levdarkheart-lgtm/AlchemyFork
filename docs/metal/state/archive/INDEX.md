@@ -93,6 +93,7 @@ reload the chronological history.
 | Native classic material-preview lighting plus native-only producer readiness, source-exact build 68188, 2026-11-03 | [CURRENT-native-classic-preview-and-readiness-checkpoint-2026-11-03.md](CURRENT-native-classic-preview-and-readiness-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Darwin material-preview GL recovery and retained resource-demand removal, source-exact build 68190, 2026-11-03 | [CURRENT-native-preview-gl-recovery-removal-checkpoint-2026-11-03.md](CURRENT-native-preview-gl-recovery-removal-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Retained material-preview renderer deletion and strict-inventory reduction, source-exact build 68192, 2026-11-03 | [CURRENT-retained-preview-source-removal-checkpoint-2026-11-03.md](CURRENT-retained-preview-source-removal-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Dead same-process GL context-restore lifecycle and permanent-false restore-state deletion, source-exact build 68195, 2026-11-03 | [CURRENT-dead-gl-restore-lifecycle-removal-checkpoint-2026-11-03.md](CURRENT-dead-gl-restore-lifecycle-removal-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
