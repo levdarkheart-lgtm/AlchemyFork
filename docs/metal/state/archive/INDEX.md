@@ -109,6 +109,7 @@ reload the chronological history.
 | Residual GL color-grading volume owner removal after validated Metal replacement, source-exact build 68223, 2026-11-03 | [CURRENT-native-color-lut-gl-owner-removal-checkpoint-2026-11-03.md](CURRENT-native-color-lut-gl-owner-removal-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Residual GL tone-curve owner removal after validated Metal replacement, source-exact build 68225, 2026-11-03 | [CURRENT-native-tone-curve-gl-owner-removal-checkpoint-2026-11-03.md](CURRENT-native-tone-curve-gl-owner-removal-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Residual GL PBR BRDF lookup owner removal after validated Metal replacement, source-exact build 68227, 2026-11-03 | [CURRENT-native-brdf-gl-owner-removal-checkpoint-2026-11-03.md](CURRENT-native-brdf-gl-owner-removal-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
+| Native non-HDR legacy glow and complete RGBA8 presentation transaction, source-exact build 68229, 2026-11-03 | [CURRENT-native-non-hdr-legacy-glow-checkpoint-2026-11-03.md](CURRENT-native-non-hdr-legacy-glow-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
