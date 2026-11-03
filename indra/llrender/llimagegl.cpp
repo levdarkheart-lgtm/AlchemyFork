@@ -241,6 +241,46 @@ static LLMutex sTexMemMutex;
 static boost::unordered_map<U32, U64> sTextureAllocs;
 // Changed under sTexMemMutex, and read by getTextureBytesAllocated without it.
 static std::atomic<U64> sTextureBytes{0};
+#if LL_DARWIN
+// Native-authoritative LLImageGL storage is not represented by a GL name, so it
+// has a separate process-wide contribution. A dual-backed migration resource is
+// deliberately represented only by sTextureBytes until Metal becomes authoritative.
+static std::atomic<U64> sMetalTextureBytes{0};
+
+static U64 metal_texture_bytes(const ALMetalTexture& texture) noexcept
+{
+    const ALMetalTextureDescriptor& descriptor = texture.descriptor();
+    U64 slices = 1;
+    switch (descriptor.type)
+    {
+        case ALMetalTextureType::texture_2d_array:
+            slices = descriptor.array_length;
+            break;
+        case ALMetalTextureType::texture_cube:
+            slices = 6;
+            break;
+        case ALMetalTextureType::texture_cube_array:
+            slices = static_cast<U64>(descriptor.array_length) * 6;
+            break;
+        default:
+            break;
+    }
+
+    const U64 block_width = llmax<U64>(texture.blockWidth(), 1);
+    const U64 block_height = llmax<U64>(texture.blockHeight(), 1);
+    const U64 bytes_per_block = texture.bytesPerBlock();
+    U64 bytes = 0;
+    for (U32 mip = 0; mip < descriptor.mipmap_level_count; ++mip)
+    {
+        const U64 blocks_wide =
+            (static_cast<U64>(texture.width(mip)) + block_width - 1) / block_width;
+        const U64 blocks_high =
+            (static_cast<U64>(texture.height(mip)) + block_height - 1) / block_height;
+        bytes += blocks_wide * blocks_high * bytes_per_block;
+    }
+    return bytes * slices * llmax<U64>(descriptor.sample_count, 1);
+}
+#endif
 
 // track a texture alloc on the currently bound texture.
 // asserts that no currently tracked alloc exists
@@ -319,7 +359,11 @@ using namespace LLImageGLMemory;
 // static
 U64 LLImageGL::getTextureBytesAllocated()
 {
-    return sTextureBytes;
+    U64 bytes = sTextureBytes.load(std::memory_order_relaxed);
+#if LL_DARWIN
+    bytes += sMetalTextureBytes.load(std::memory_order_relaxed);
+#endif
+    return bytes;
 }
 
 //statics
@@ -1042,6 +1086,7 @@ void LLImageGL::init(bool usemipmaps)
 #if LL_DARWIN
     mMetalTexture.reset();
     mPendingMetalTexture.reset();
+    mAccountedMetalTextureBytes = 0;
 #endif
     mWidth = 0;
     mHeight = 0;
@@ -1081,6 +1126,7 @@ void LLImageGL::cleanup()
         destroyGLTexture();
     }
 #if LL_DARWIN
+    clearMetalTextureAccounting();
     mMetalTexture.reset();
     mPendingMetalTexture.reset();
 #endif
@@ -1684,6 +1730,12 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
 
     // Retire an earlier GL fallback, if this image had one, and any prior native storage.
     // The replacement below is authoritative and must never coexist with stale pixels.
+    // Remove the old logical GL budget entry now; deferred object deletion must not
+    // make the authority handoff look like two resident viewer textures.
+    if (mTexName != 0)
+    {
+        free_tex_image(mTexName);
+    }
     destroyGLTexture();
     mStorageAllocated = false;
     mStorage = StorageDesc();
@@ -1707,6 +1759,7 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
     {
         mMetalTexture.reset();
         mPendingMetalTexture.reset();
+        clearMetalTextureAccounting();
         mTextureMemory = S64Bytes(0);
         return false;
     }
@@ -1715,6 +1768,7 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
     updatePickMask(width, height, data);
     touchContents();
     mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+    updateMetalTextureAccounting();
     mLastBindTime = sLastFrameTime;
     mGLTextureCreated = false;
     llassert(mTexName == 0);
@@ -1791,6 +1845,10 @@ bool LLImageGL::createMetalTexture(
 
     // Publish only a complete native generation: stale GL/native storage is retired before
     // the replacement allocation, and any encode/commit failure clears the partial result.
+    if (mTexName != 0)
+    {
+        free_tex_image(mTexName);
+    }
     destroyGLTexture();
     mStorageAllocated = false;
     mStorage = StorageDesc();
@@ -1806,6 +1864,7 @@ bool LLImageGL::createMetalTexture(
     {
         mMetalTexture.reset();
         mPendingMetalTexture.reset();
+        clearMetalTextureAccounting();
         mTextureMemory = S64Bytes(0);
         return false;
     }
@@ -1819,6 +1878,7 @@ bool LLImageGL::createMetalTexture(
         {
             mMetalTexture.reset();
             mPendingMetalTexture.reset();
+            clearMetalTextureAccounting();
             mTextureMemory = S64Bytes(0);
             return false;
         }
@@ -1827,6 +1887,7 @@ bool LLImageGL::createMetalTexture(
     {
         mMetalTexture.reset();
         mPendingMetalTexture.reset();
+        clearMetalTextureAccounting();
         mTextureMemory = S64Bytes(0);
         return false;
     }
@@ -1836,6 +1897,7 @@ bool LLImageGL::createMetalTexture(
     updatePickMask(base.mWidth, base.mHeight, base.mData);
     touchContents();
     mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+    updateMetalTextureAccounting();
     mLastBindTime = sLastFrameTime;
     mGLTextureCreated = false;
     llassert(mTexName == 0);
@@ -2276,6 +2338,11 @@ bool LLImageGL::adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture)
 
     mPendingMetalTexture.reset();
     mMetalTexture = std::move(texture);
+    if (mTexName == 0)
+    {
+        mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+    }
+    updateMetalTextureAccounting();
     touchContents();
     return true;
 }
@@ -2292,6 +2359,7 @@ bool LLImageGL::adoptMetalRenderTextureAuthoritative(
     const ALMetalTextureDescriptor descriptor = mMetalTexture->descriptor();
     if (mTexName != 0)
     {
+        free_tex_image(mTexName);
         LLImageGL::deleteTextures(1, &mTexName);
         mTexName = 0;
     }
@@ -2302,6 +2370,7 @@ bool LLImageGL::adoptMetalRenderTextureAuthoritative(
     mHasMipMaps = descriptor.mipmap_level_count > 1;
     mMipLevels = static_cast<S32>(descriptor.mipmap_level_count);
     mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+    updateMetalTextureAccounting();
     mLastBindTime = sLastFrameTime;
     setCategory(category);
     clearAlphaAnalysis();
@@ -2382,9 +2451,42 @@ void LLImageGL::discardMetalTexture() noexcept
 {
     if (!mUploadInFlight)
     {
+        clearMetalTextureAccounting();
         mMetalTexture.reset();
         mPendingMetalTexture.reset();
+        if (mTexName == 0)
+        {
+            mTextureMemory = S64Bytes(0);
+        }
         touchContents();
+    }
+}
+
+void LLImageGL::updateMetalTextureAccounting() noexcept
+{
+    const U64 desired = mTexName == 0 && mMetalTexture
+        ? metal_texture_bytes(*mMetalTexture)
+        : 0;
+    if (desired > mAccountedMetalTextureBytes)
+    {
+        sMetalTextureBytes.fetch_add(
+            desired - mAccountedMetalTextureBytes, std::memory_order_relaxed);
+    }
+    else if (desired < mAccountedMetalTextureBytes)
+    {
+        sMetalTextureBytes.fetch_sub(
+            mAccountedMetalTextureBytes - desired, std::memory_order_relaxed);
+    }
+    mAccountedMetalTextureBytes = desired;
+}
+
+void LLImageGL::clearMetalTextureAccounting() noexcept
+{
+    if (mAccountedMetalTextureBytes != 0)
+    {
+        sMetalTextureBytes.fetch_sub(
+            mAccountedMetalTextureBytes, std::memory_order_relaxed);
+        mAccountedMetalTextureBytes = 0;
     }
 }
 
@@ -2430,6 +2532,14 @@ bool LLImageGL::prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& comma
     if (upload_format.format == ALMetalPixelFormat::invalid)
     {
         destination.reset();
+        if (&destination == &mMetalTexture)
+        {
+            if (mTexName == 0)
+            {
+                mTextureMemory = S64Bytes(0);
+            }
+            updateMetalTextureAccounting();
+        }
         report_unsupported_metal_texture(getStorageInternalFormat(), mFormatPrimary, mFormatType);
         return true;
     }
@@ -3855,6 +3965,11 @@ void LLImageGL::syncTexName(LLGLuint texname)
         {
             mMetalTexture = std::move(mPendingMetalTexture);
         }
+        if (mTexName == 0 && mMetalTexture)
+        {
+            mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+        }
+        updateMetalTextureAccounting();
 #endif
     }
 
@@ -4120,8 +4235,12 @@ void LLImageGL::destroyGLTexture()
     checkActiveThread();
 
 #if LL_DARWIN
+    const bool had_native_texture = mMetalTexture || mPendingMetalTexture;
+    clearMetalTextureAccounting();
     mMetalTexture.reset();
     mPendingMetalTexture.reset();
+#else
+    const bool had_native_texture = false;
 #endif
 
     if (mTexName != 0)
@@ -4147,6 +4266,12 @@ void LLImageGL::destroyGLTexture()
         mCurrentDiscardLevel = -1 ; //invalidate mCurrentDiscardLevel.
         mTexName = 0;
         mGLTextureCreated = false ;
+    }
+    else if (had_native_texture)
+    {
+        mTextureMemory = S64Bytes(0);
+        mCurrentDiscardLevel = -1;
+        mGLTextureCreated = false;
     }
 
     // Invalidate pending jobs
@@ -4965,6 +5090,11 @@ void LLImageGL::allocateTextureStorage(S32 width, S32 height, bool has_mips)
     }
 
     alloc_tex_image(width, height, mFormatInternal, 1, has_mips);
+#if LL_DARWIN
+    // While both resources exist during migration, the GL allocation is the
+    // image's one logical budget entry.
+    clearMetalTextureAccounting();
+#endif
 }
 
 bool LLImageGL::storageFits(S32 width, S32 height) const
@@ -5052,6 +5182,7 @@ bool LLImageGL::scaleDown(S32 desired_discard)
         mMipLevels = static_cast<S32>(
             mMetalTexture->descriptor().mipmap_level_count);
         mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+        updateMetalTextureAccounting();
         mLastBindTime = sLastFrameTime;
         llassert(!getHasGLTexture());
         return true;

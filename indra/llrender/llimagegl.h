@@ -554,6 +554,7 @@ private:
 #if LL_DARWIN
     std::unique_ptr<ALMetalTexture> mMetalTexture;
     std::unique_ptr<ALMetalTexture> mPendingMetalTexture;
+    U64 mAccountedMetalTextureBytes = 0;
 #endif
     // Whether mTexName has had its storage allocated yet. Storage is always immutable
     // (glTexStorage2D), so it can be allocated exactly once: every upload afterwards is a
@@ -687,6 +688,10 @@ private:
     bool prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& command_owner,
                              ALMetalCommandBuffer*& command_buffer,
                              bool will_upload_pixels);
+    // Process-wide texture budgeting counts a transitional GL+Metal image once.
+    // These helpers account native storage only while it is authoritative.
+    void updateMetalTextureAccounting() noexcept;
+    void clearMetalTextureAccounting() noexcept;
     bool uploadMetalTextureRegion(ALMetalCommandBuffer& command_buffer,
                                   U32 mip_level,
                                   U32 x,

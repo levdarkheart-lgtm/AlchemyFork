@@ -770,10 +770,15 @@ namespace
 
         constexpr U16 W = 8;
         constexpr U16 H = 8;
+        const U64 baseline_bytes = LLImageGL::getTextureBytesAllocated();
         LLPointer<LLImageGL> img = new LLImageGL(/*usemipmaps=*/true);
         img->setExplicitFormat(GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
         REQUIRE(img->createGLTexture(0, makeRaw(W, H, 4, 0x20).get()));
         REQUIRE(img->getHasGLTexture());
+        const U64 logical_bytes = static_cast<U64>(
+            static_cast<S64>(img->getMipBytes(0)));
+        CHECK(LLImageGL::getTextureBytesAllocated() ==
+              baseline_bytes + logical_bytes);
 
         auto rendered = img->createMetalRenderTexture(&error);
         INFO(error);
@@ -806,12 +811,17 @@ namespace
         CHECK(img->getMetalTexture() == rendered_pointer);
         CHECK(img->getCategory() == LLGLTexture::LOCAL);
         CHECK(img->getTextureMemory() > S64Bytes(0));
+        CHECK(LLImageGL::getTextureBytesAllocated() ==
+              baseline_bytes + logical_bytes);
 
         std::array<U8, W * H * 4> result{};
         REQUIRE(img->getMetalTexture()->readback(
             *device, 0, 0, {}, result.data(), W * 4, &error));
         INFO(error);
         CHECK(result == rgba);
+
+        img->destroyGLTexture();
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
     }
 
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: scaleDown preserves its Metal mirror with a GPU blit", "[LLImageGL][almetal]")
@@ -868,6 +878,7 @@ namespace
 
         constexpr U16 W = 16;
         constexpr U16 H = 16;
+        const U64 baseline_bytes = LLImageGL::getTextureBytesAllocated();
         LLPointer<LLImageGL> img = new LLImageGL(W, H, 4, /*usemipmaps=*/true);
         REQUIRE(img->createMetalTexture(
             0, makeRaw(W, H, 4, 0x6c).get(), LLGLTexture::LOCAL));
@@ -875,22 +886,25 @@ namespace
         CHECK_FALSE(img->getHasGLTexture());
         CHECK(img->getTexName() == 0);
 
-        const U64 tracked_gl_bytes = LLImageGL::getTextureBytesAllocated();
         const S64Bytes original_memory = img->getTextureMemory();
         REQUIRE(original_memory > S64Bytes(0));
+        CHECK(LLImageGL::getTextureBytesAllocated() ==
+              baseline_bytes + static_cast<U64>(static_cast<S64>(original_memory)));
 
         REQUIRE(img->scaleDown(1));
 
         REQUIRE(img->getMetalTexture());
         CHECK_FALSE(img->getHasGLTexture());
         CHECK(img->getTexName() == 0);
-        CHECK(LLImageGL::getTextureBytesAllocated() == tracked_gl_bytes);
         CHECK(img->getDiscardLevel() == 1);
         CHECK(img->getMetalTexture()->descriptor().width == W / 2);
         CHECK(img->getMetalTexture()->descriptor().height == H / 2);
         CHECK(img->getMetalTexture()->descriptor().mipmap_level_count == 4);
         CHECK(img->getTextureMemory() == S64Bytes(img->getMipBytes(1)));
         CHECK(img->getTextureMemory() < original_memory);
+        CHECK(LLImageGL::getTextureBytesAllocated() ==
+              baseline_bytes + static_cast<U64>(
+                  static_cast<S64>(img->getTextureMemory())));
 
         std::vector<U8> base((W / 2) * (H / 2) * 4, 0);
         REQUIRE(img->getMetalTexture()->readback(
@@ -903,6 +917,9 @@ namespace
             *device, 3, 0, {}, tail.data(), tail.size(), &error));
         INFO(error);
         CHECK(std::all_of(tail.begin(), tail.end(), [](U8 value) { return value == 0x6c; }));
+
+        img->destroyGLTexture();
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
     }
 
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: no-mip scaleDown resamples its Metal mirror on the GPU", "[LLImageGL][almetal]")
@@ -1006,19 +1023,20 @@ namespace
 
         constexpr U16 W = 16;
         constexpr U16 H = 16;
+        const U64 baseline_bytes = LLImageGL::getTextureBytesAllocated();
         LLPointer<LLImageGL> img = new LLImageGL(W, H, 4, /*usemipmaps=*/false);
         REQUIRE(img->createMetalTexture(
             0, makeRaw(W, H, 4, 0x93).get(), LLGLTexture::LOCAL));
         REQUIRE(img->getMetalTexture());
         CHECK_FALSE(img->getHasGLTexture());
 
-        const U64 tracked_gl_bytes = LLImageGL::getTextureBytesAllocated();
+        CHECK(LLImageGL::getTextureBytesAllocated() ==
+              baseline_bytes + static_cast<U64>(W) * H * 4);
         REQUIRE(img->scaleDown(1));
 
         REQUIRE(img->getMetalTexture());
         CHECK_FALSE(img->getHasGLTexture());
         CHECK(img->getTexName() == 0);
-        CHECK(LLImageGL::getTextureBytesAllocated() == tracked_gl_bytes);
         CHECK(img->getDiscardLevel() == 1);
         CHECK(img->getMetalTexture()->descriptor().width == W / 2);
         CHECK(img->getMetalTexture()->descriptor().height == H / 2);
@@ -1026,12 +1044,17 @@ namespace
         CHECK(alMetalHasUsage(img->getMetalTexture()->descriptor().usage,
                               ALMetalTextureUsage::render_target));
         CHECK(img->getTextureMemory() == S64Bytes(img->getBytes(1)));
+        CHECK(LLImageGL::getTextureBytesAllocated() ==
+              baseline_bytes + static_cast<U64>(W / 2) * (H / 2) * 4);
 
         std::vector<U8> pixels((W / 2) * (H / 2) * 4, 0);
         REQUIRE(img->getMetalTexture()->readback(
             *device, 0, 0, {}, pixels.data(), (W / 2) * 4, &error));
         INFO(error);
         CHECK(std::all_of(pixels.begin(), pixels.end(), [](U8 value) { return value == 0x93; }));
+
+        img->destroyGLTexture();
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
     }
 #endif
 
@@ -1739,6 +1762,46 @@ namespace
         CHECK(linear->getMetalTexture()->descriptor().format ==
               ALMetalPixelFormat::rgba8_unorm);
         CHECK_FALSE(linear->getHasGLTexture());
+    }
+
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: native-only residency follows actual Metal storage through discard and teardown", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        constexpr U16 W = 12;
+        constexpr U16 H = 10;
+        const U64 baseline_bytes = LLImageGL::getTextureBytesAllocated();
+        LLPointer<LLImageGL> image = new LLImageGL(/*usemipmaps=*/false);
+
+        // RGB8 source pixels expand to RGBA8 native storage. The residency
+        // budget must describe the resource Metal allocated, not the smaller
+        // host upload layout.
+        REQUIRE(image->createMetalTexture(0, makeRaw(W, H, 3, 0x5a).get()));
+        REQUIRE(image->getMetalTexture());
+        CHECK(image->getMetalTexture()->bytesPerPixel() == 4);
+        CHECK_FALSE(image->getHasGLTexture());
+        CHECK(LLImageGL::getTextureBytesAllocated() ==
+              baseline_bytes + static_cast<U64>(W) * H * 4);
+
+        image->discardMetalTexture();
+        CHECK(image->getMetalTexture() == nullptr);
+        CHECK(image->getTextureMemory() == S64Bytes(0));
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
+
+        REQUIRE(image->createMetalTexture(0, makeRaw(W, H, 3, 0x3c).get()));
+        CHECK(LLImageGL::getTextureBytesAllocated() ==
+              baseline_bytes + static_cast<U64>(W) * H * 4);
+        image = nullptr;
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
     }
 
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: typed native creation and region updates preserve float terrain texels", "[LLImageGL][almetal]")
