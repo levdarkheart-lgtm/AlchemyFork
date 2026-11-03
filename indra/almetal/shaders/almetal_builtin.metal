@@ -16518,6 +16518,89 @@ struct ALMetalPBRPreviewBloomExtractConstants
     float4 halation_weights;
 };
 
+struct ALMetalWorldLegacyGlowExtractConstants
+{
+    // minimum luminance, maximum extracted alpha, warmth mix, noise flag
+    float4 settings;
+    float4 luminance_weights;
+    float4 warmth_weights;
+    // xy = reduced glow target dimensions
+    float4 screen;
+};
+
+struct ALMetalWorldLegacyGlowBlurConstants
+{
+    // xy = sample delta, z = RGB strength
+    float4 params;
+};
+
+fragment float4 almetal_world_legacy_glow_extract_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    texture2d<float> noise_map [[texture(1)]],
+    sampler source_sampler [[sampler(0)]],
+    sampler noise_sampler [[sampler(1)]],
+    constant ALMetalWorldLegacyGlowExtractConstants& constants [[buffer(0)]])
+{
+    float4 color = source.sample(source_sampler, input.texcoord);
+    const float luminance = smoothstep(
+        constants.settings.x, constants.settings.x + 1.0,
+        dot(color.rgb, constants.luminance_weights.rgb));
+    const float warmth = smoothstep(
+        constants.settings.x, constants.settings.x + 1.0,
+        max(color.r * constants.warmth_weights.r,
+            max(color.g * constants.warmth_weights.g,
+                color.b * constants.warmth_weights.b)));
+    if (constants.settings.w > 0.5)
+    {
+        constexpr float noise_resolution = 128.0;
+        constexpr float noise_depth = 64.0;
+        const float2 noise_coordinate = input.texcoord *
+            (constants.screen.xy / noise_resolution);
+        color.rgb = max(
+            color.rgb + noise_map.sample(
+                noise_sampler, noise_coordinate).rgb / noise_depth,
+            float3(0.0));
+    }
+    color.a = max(
+        color.a,
+        mix(luminance, warmth, constants.settings.z) *
+            constants.settings.y);
+    return color;
+}
+
+fragment float4 almetal_world_legacy_glow_blur_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler source_sampler [[sampler(0)]],
+    constant ALMetalWorldLegacyGlowBlurConstants& constants [[buffer(0)]])
+{
+    constexpr float weights[8] = {
+        0.25, 0.5, 0.8, 1.0, 1.0, 0.8, 0.5, 0.25,
+    };
+    float4 color = float4(0.0);
+    for (uint tap = 0; tap < 8; ++tap)
+    {
+        const float offset = float(tap) - 3.5;
+        color += weights[tap] * source.sample(
+            source_sampler,
+            input.texcoord + constants.params.xy * offset);
+    }
+    return max(float4(
+        color.rgb * constants.params.z, color.a), float4(0.0));
+}
+
+fragment float4 almetal_world_legacy_glow_combine_fragment(
+    ALMetalResampleVaryings input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    texture2d<float> glow [[texture(1)]],
+    sampler source_sampler [[sampler(0)]],
+    sampler glow_sampler [[sampler(1)]])
+{
+    return source.sample(source_sampler, input.texcoord) +
+        glow.sample(glow_sampler, input.texcoord);
+}
+
 struct ALMetalPBRPreviewBloomFilterConstants
 {
     // inverse source width/height, scatter or first-downsample flag

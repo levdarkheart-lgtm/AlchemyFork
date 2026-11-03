@@ -21216,6 +21216,214 @@ TEST_CASE("almetal: world bloom matches the production HDR pyramid", "[almetal]"
     }
 }
 
+TEST_CASE("almetal: world legacy glow owns non-HDR extract blur and combine", "[almetal]")
+{
+    @autoreleasepool
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+        auto renderer = ALMetalWorldGBufferRenderer::create(
+            *device, &error);
+        INFO(error);
+        REQUIRE(renderer);
+
+        constexpr std::uint32_t width = 16;
+        constexpr std::uint32_t height = 8;
+        std::array<std::uint8_t, width * height * 4> source_pixels{};
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const std::size_t offset = (y * width + x) * 4u;
+                source_pixels[offset] = static_cast<std::uint8_t>(
+                    32u + x * 5u);
+                source_pixels[offset + 1] = static_cast<std::uint8_t>(
+                    16u + y * 7u);
+                source_pixels[offset + 2] = 24u;
+                source_pixels[offset + 3] =
+                    x >= 6u && x <= 9u ? 96u : 0u;
+            }
+        }
+        ALMetalRenderTargetDescriptor source_descriptor;
+        source_descriptor.width = width;
+        source_descriptor.height = height;
+        source_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        source_descriptor.label = "Alchemy legacy glow test source";
+        auto source = ALMetalRenderTarget::create(
+            *device, source_descriptor, &error);
+        INFO(error);
+        REQUIRE(source);
+
+        ALMetalTextureDescriptor noise_descriptor;
+        noise_descriptor.format = ALMetalPixelFormat::rgba16_float;
+        noise_descriptor.width = 128;
+        noise_descriptor.height = 128;
+        noise_descriptor.storage = ALMetalStorageMode::private_gpu;
+        noise_descriptor.usage = ALMetalTextureUsage::shader_read;
+        noise_descriptor.label = "Alchemy legacy glow test noise";
+        auto noise = ALMetalTexture::create(
+            *device, noise_descriptor, &error);
+        INFO(error);
+        REQUIRE(noise);
+        std::array<std::uint16_t, 128 * 128 * 4> noise_pixels{};
+        for (std::size_t texel = 0; texel < 128u * 128u; ++texel)
+        {
+            const std::uint16_t value = (texel & 1u) != 0
+                ? 0x3800u : 0xb800u; // +/- 0.5
+            noise_pixels[texel * 4] = value;
+            noise_pixels[texel * 4 + 1] = value;
+            noise_pixels[texel * 4 + 2] = value;
+        }
+
+        auto upload = device->makeCommandBuffer(
+            "Alchemy legacy glow test upload", &error);
+        INFO(error);
+        REQUIRE(upload);
+        id<MTLBuffer> source_staging = [nativeDevice(*device)
+            newBufferWithBytes:source_pixels.data()
+                      length:source_pixels.size()
+                     options:MTLResourceStorageModeShared];
+        REQUIRE(source_staging);
+        id<MTLBlitCommandEncoder> source_blit =
+            [nativeCommand(*upload) blitCommandEncoder];
+        REQUIRE(source_blit);
+        [source_blit
+            copyFromBuffer:source_staging
+               sourceOffset:0
+          sourceBytesPerRow:width * 4
+        sourceBytesPerImage:source_pixels.size()
+                 sourceSize:MTLSizeMake(width, height, 1)
+                  toTexture:(__bridge id<MTLTexture>)
+                      source->colorTexture(0)->nativeHandle()
+           destinationSlice:0
+           destinationLevel:0
+          destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [source_blit endEncoding];
+        REQUIRE(noise->upload(
+            *upload, 0, 0, {}, noise_pixels.data(),
+            128 * 4 * sizeof(std::uint16_t), &error));
+        REQUIRE(upload->commitAndWait(&error));
+        INFO(error);
+
+        ALMetalWorldLegacyGlowScene scene;
+        scene.source = source.get();
+        scene.noise_texture = noise.get();
+        scene.resolution_pow = 3;
+        scene.iterations = 1;
+        scene.width = 1.3f;
+        scene.strength = 0.1f;
+        scene.minimum_luminance = 9999.f;
+        scene.noise = false;
+        auto clean_glow = renderer->renderLegacyGlow(scene, &error);
+        INFO(error);
+        REQUIRE(clean_glow);
+        CHECK(clean_glow->descriptor().width == 512u);
+        CHECK(clean_glow->descriptor().height == 8u);
+        CHECK(clean_glow->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba8_unorm);
+        std::array<std::uint8_t, 512 * 8 * 4> clean_pixels{};
+        REQUIRE(clean_glow->colorTexture(0)->readback(
+            *device, 0, 0, {}, clean_pixels.data(), 512 * 4, &error));
+        INFO(error);
+
+        scene.noise = true;
+        auto noisy_glow = renderer->renderLegacyGlow(scene, &error);
+        INFO(error);
+        REQUIRE(noisy_glow);
+        std::array<std::uint8_t, 512 * 8 * 4> noisy_pixels{};
+        REQUIRE(noisy_glow->colorTexture(0)->readback(
+            *device, 0, 0, {}, noisy_pixels.data(), 512 * 4, &error));
+        INFO(error);
+        CHECK(noisy_pixels != clean_pixels);
+
+        auto combined = renderer->combineLegacyGlow(
+            *source, *noisy_glow, &error);
+        INFO(error);
+        REQUIRE(combined);
+        CHECK(combined->descriptor().width == width);
+        CHECK(combined->descriptor().height == height);
+        CHECK(combined->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba8_unorm);
+        std::array<std::uint8_t, width * height * 4> combined_pixels{};
+        REQUIRE(combined->colorTexture(0)->readback(
+            *device, 0, 0, {}, combined_pixels.data(), width * 4,
+            &error));
+        INFO(error);
+        CHECK(combined_pixels != source_pixels);
+        bool increased = false;
+        for (std::size_t channel = 0; channel < combined_pixels.size();
+             ++channel)
+        {
+            increased = increased ||
+                combined_pixels[channel] > source_pixels[channel];
+        }
+        CHECK(increased);
+
+        scene.high_precision = true;
+        auto precise_glow = renderer->renderLegacyGlow(scene, &error);
+        INFO(error);
+        REQUIRE(precise_glow);
+        CHECK(precise_glow->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba16_float);
+        auto precise_combined = renderer->combineLegacyGlow(
+            *source, *precise_glow, &error);
+        INFO(error);
+        REQUIRE(precise_combined);
+
+        // Production keeps display mapping, glow, AA/CAS and the additive
+        // combine in one command buffer. Prove the new glow target can be
+        // consumed before that enclosing transaction is committed.
+        scene.high_precision = false;
+        REQUIRE(renderer->beginCommandBatch(
+            "Alchemy legacy glow test command batch", &error));
+        auto batched_glow = renderer->renderLegacyGlow(scene, &error);
+        INFO(error);
+        REQUIRE(batched_glow);
+        auto batched_combined = renderer->combineLegacyGlow(
+            *source, *batched_glow, &error);
+        INFO(error);
+        REQUIRE(batched_combined);
+        REQUIRE(renderer->commitCommandBatch(&error));
+        INFO(error);
+        std::array<std::uint8_t, width * height * 4> batched_pixels{};
+        REQUIRE(batched_combined->colorTexture(0)->readback(
+            *device, 0, 0, {}, batched_pixels.data(), width * 4,
+            &error));
+        INFO(error);
+        CHECK(batched_pixels == combined_pixels);
+
+        ALMetalWorldLegacyGlowScene invalid;
+        error.clear();
+        CHECK_FALSE(renderer->renderLegacyGlow(invalid, &error));
+        CHECK(error == "Metal world legacy glow scene is incomplete");
+        invalid = scene;
+        invalid.iterations = 0;
+        error.clear();
+        CHECK_FALSE(renderer->renderLegacyGlow(invalid, &error));
+        CHECK(error == "Metal world legacy glow state is invalid");
+        invalid = scene;
+        invalid.noise_texture = nullptr;
+        error.clear();
+        CHECK_FALSE(renderer->renderLegacyGlow(invalid, &error));
+        CHECK(error == "Metal world legacy glow noise is missing");
+
+        ALMetalRenderTargetDescriptor wrong_descriptor = source_descriptor;
+        wrong_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba16_float;
+        auto wrong_source = ALMetalRenderTarget::create(
+            *device, wrong_descriptor, &error);
+        INFO(error);
+        REQUIRE(wrong_source);
+        error.clear();
+        CHECK_FALSE(renderer->combineLegacyGlow(
+            *wrong_source, *noisy_glow, &error));
+        CHECK(error == "Metal world legacy glow combine is incompatible");
+    }
+}
+
 TEST_CASE("almetal: RLVa vision sphere owns every post mode", "[almetal]")
 {
     @autoreleasepool
@@ -21582,8 +21790,23 @@ TEST_CASE("almetal: world CAS matches the standalone production kernel", "[almet
         CHECK_FALSE(renderer->renderCAS(*source, 0.f, &error));
         CHECK(error == "Metal world CAS state is invalid");
 
+        ALMetalRenderTargetDescriptor non_hdr_descriptor = descriptor;
+        non_hdr_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        auto non_hdr_source = ALMetalRenderTarget::create(
+            *device, non_hdr_descriptor, &error);
+        INFO(error);
+        REQUIRE(non_hdr_source);
+        auto non_hdr_output = renderer->renderCAS(
+            *non_hdr_source, sharpness, &error);
+        INFO(error);
+        REQUIRE(non_hdr_output);
+        CHECK(non_hdr_output->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba8_unorm);
+
         ALMetalRenderTargetDescriptor wrong_descriptor = descriptor;
-        wrong_descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+        wrong_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba16_float;
         auto wrong_source = ALMetalRenderTarget::create(
             *device, wrong_descriptor, &error);
         INFO(error);
@@ -21954,9 +22177,23 @@ TEST_CASE("almetal: world FXAA matches every production quality preset", "[almet
         CHECK_FALSE(renderer->renderFXAA(*source, 4, &error));
         CHECK(error == "Metal world FXAA state is invalid");
 
+        ALMetalRenderTargetDescriptor non_hdr_descriptor = descriptor;
+        non_hdr_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        auto non_hdr_source = ALMetalRenderTarget::create(
+            *device, non_hdr_descriptor, &error);
+        INFO(error);
+        REQUIRE(non_hdr_source);
+        auto non_hdr_output = renderer->renderFXAA(
+            *non_hdr_source, 0, &error);
+        INFO(error);
+        REQUIRE(non_hdr_output);
+        CHECK(non_hdr_output->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba8_unorm);
+
         ALMetalRenderTargetDescriptor wrong_descriptor = descriptor;
         wrong_descriptor.colors[0].format =
-            ALMetalPixelFormat::rgba8_unorm;
+            ALMetalPixelFormat::rgba16_float;
         auto wrong_source = ALMetalRenderTarget::create(
             *device, wrong_descriptor, &error);
         INFO(error);
@@ -22291,6 +22528,58 @@ TEST_CASE("almetal: world SMAA edge and complete transaction match reference", "
             width * sizeof(std::uint32_t), &error));
         INFO(error);
         CHECK(complete_bytes != ordinary_bytes);
+
+        // The non-HDR display chain carries the same SMAA transaction through
+        // an RGBA8 boundary.  Exercise the real edge/weight/neighborhood
+        // sequence rather than treating the format as an API-only allowance.
+        ALMetalRenderTargetDescriptor non_hdr_descriptor = descriptor;
+        non_hdr_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba8_unorm;
+        non_hdr_descriptor.label =
+            "Alchemy non-HDR world SMAA test source";
+        auto non_hdr_source = ALMetalRenderTarget::create(
+            *device, non_hdr_descriptor, &error);
+        INFO(error);
+        REQUIRE(non_hdr_source);
+        auto non_hdr_upload = device->makeCommandBuffer(
+            "Alchemy non-HDR world SMAA test upload", &error);
+        INFO(error);
+        REQUIRE(non_hdr_upload);
+        id<MTLBuffer> non_hdr_staging = [nativeDevice(*device)
+            newBufferWithBytes:sample_input.data()
+                      length:sample_input.size()
+                     options:MTLResourceStorageModeShared];
+        REQUIRE(non_hdr_staging);
+        id<MTLBlitCommandEncoder> non_hdr_blit =
+            [nativeCommand(*non_hdr_upload) blitCommandEncoder];
+        REQUIRE(non_hdr_blit);
+        [non_hdr_blit
+            copyFromBuffer:non_hdr_staging
+               sourceOffset:0
+          sourceBytesPerRow:width * 4
+        sourceBytesPerImage:sample_input.size()
+                 sourceSize:MTLSizeMake(width, height, 1)
+                  toTexture:(__bridge id<MTLTexture>)
+                      non_hdr_source->colorTexture(0)->nativeHandle()
+           destinationSlice:0
+           destinationLevel:0
+          destinationOrigin:MTLOriginMake(0, 0, 0)];
+        [non_hdr_blit endEncoding];
+        REQUIRE(non_hdr_upload->commitAndWait(&error));
+        INFO(error);
+        ALMetalWorldSMAAScene non_hdr_scene = complete_scene;
+        non_hdr_scene.source = non_hdr_source.get();
+        auto non_hdr_output = renderer->renderSMAA(
+            non_hdr_scene, &error);
+        INFO(error);
+        REQUIRE(non_hdr_output);
+        CHECK(non_hdr_output->descriptor().colors[0].format ==
+              ALMetalPixelFormat::rgba8_unorm);
+        std::array<std::uint8_t, width * height * 4> non_hdr_bytes{};
+        REQUIRE(non_hdr_output->colorTexture(0)->readback(
+            *device, 0, 0, {}, non_hdr_bytes.data(), width * 4, &error));
+        INFO(error);
+        CHECK(non_hdr_bytes != sample_input);
 
         ALMetalWorldSMAAScene invalid_complete;
         error.clear();
@@ -22817,7 +23106,15 @@ TEST_CASE("almetal: world SMAA neighborhood blend matches linear-light reference
         error.clear();
         CHECK_FALSE(renderer->renderSMAANeighborhood(invalid, &error));
         CHECK(error == "Metal world SMAA weight target is incompatible");
-        invalid.source = weights.get();
+        ALMetalRenderTargetDescriptor wrong_source_descriptor =
+            source_descriptor;
+        wrong_source_descriptor.colors[0].format =
+            ALMetalPixelFormat::rgba16_float;
+        auto wrong_source = ALMetalRenderTarget::create(
+            *device, wrong_source_descriptor, &error);
+        INFO(error);
+        REQUIRE(wrong_source);
+        invalid.source = wrong_source.get();
         invalid.weights = weights.get();
         error.clear();
         CHECK_FALSE(renderer->renderSMAANeighborhood(invalid, &error));

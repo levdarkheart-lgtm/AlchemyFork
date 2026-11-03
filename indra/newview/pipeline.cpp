@@ -545,6 +545,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     F32 spot_shadow_avatar_cloth_depth[4]{};
     std::unique_ptr<ALMetalRenderTarget> base_light_map_target;
     std::unique_ptr<ALMetalTexture> base_noise_texture;
+    std::unique_ptr<ALMetalTexture> legacy_glow_noise_texture;
     std::unique_ptr<ALMetalRenderTarget> base_light_target;
     std::unique_ptr<ALMetalRenderTarget> impostor_bake_target;
     std::vector<ALMetalWorldSimpleBatch> batches;
@@ -991,20 +992,30 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
 
     LLSettingsSky::ptr_t sky =
         LLEnvironment::instance().getCurrentSky();
+    const bool hdr = hdrEnabled();
     const bool classic = LLRender::sClassicMode;
-    const bool native_dynamic_exposure = classic || !dynamic_exposure ||
+    const bool native_dynamic_exposure = !hdr || classic || !dynamic_exposure ||
         mMetalExposureHistoryReady || mMetalExposureLastWasFixed;
     const LensFlareConfig flare = lensFlareConfig(true);
     const bool snapshot_cutout =
         sCutoutRender && mMetalWorldSnapshotRequested;
-    const bool native_lens_flare = snapshot_cutout || !flare.enabled ||
+    const bool native_lens_flare = !hdr || snapshot_cutout || !flare.enabled ||
         mMetalLensFlareHistoryReady || mMetalLensFlareLastWasZero;
     const LensDirtConfig dirt = lensDirtConfig(true);
-    const bool native_lens_dirt = snapshot_cutout || !dirt.enabled ||
+    const bool native_lens_dirt = !hdr || snapshot_cutout || !dirt.enabled ||
         (mLensDirtMap.isComplete() && mLensDirtParams == dirt.plate &&
          mMetalWorldSimpleCapture &&
          mMetalWorldSimpleCapture->lens_dirt_target &&
          mMetalWorldSimpleCapture->lens_dirt_params == dirt.plate);
+    const bool wants_legacy_glow = !hdr && !snapshot_cutout &&
+        sRenderGlow && RenderGlowIterations > 0;
+    constexpr std::size_t true_noise_values =
+        static_cast<std::size_t>(ALRenderResourcePlan::NOISE_SIZE) *
+        ALRenderResourcePlan::NOISE_SIZE * 4;
+    const bool native_legacy_glow = !wants_legacy_glow ||
+        (RenderGlowIterations <= 64 &&
+         (!shaderInputs().mLocal.mGlowNoise ||
+          mMetalTrueNoiseMapRGBA16.size() == true_noise_values));
     const ColorGradeConfig grade = colorGradeConfig(true);
     // Darwin's FXAA/SMAA programs and intermediates are wholly native. Metal
     // pipeline creation and renderFXAA/renderSMAA execution remain fail-closed
@@ -1018,7 +1029,6 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
     // bounded presentation probe on those transitional frames: its exact
     // post-deferred ordering contract only applies to the started world.
     const bool started = LLStartUp::getStartupState() >= STATE_STARTED;
-    const bool hdr = hdrEnabled();
     const bool main_world = isMainWorldPass() && mRT == &mMainRT;
     const bool ordinary_world = !mMetalHeroWorldCaptureActive &&
         !mMetalReflectionWorldCaptureActive &&
@@ -1049,8 +1059,9 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
         metalHeroMirrorSnapshotValidationRequested();
     const bool hero_mirror_exact = !hero_mirror_active ||
         hero_mirror_snapshot_validation;
-    const bool eligible = started && hdr && main_world && ordinary_world &&
+    const bool eligible = started && main_world && ordinary_world &&
         native_dynamic_exposure && native_lens_flare && native_lens_dirt &&
+        native_legacy_glow &&
         grade.native_resources_ready && post_enabled && sky &&
         exact_antialiasing && sphere_supported && final_buffer &&
         hero_mirror_exact;
@@ -1059,11 +1070,12 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
         *error = fmt::format(
             "Metal world presentation is ineligible: started={}, hdr={}, "
             "main_world={}, ordinary_world={}, dynamic_exposure={}, "
-            "lens_flare={}, lens_dirt={}, color_grade={}, post={}, sky={}, "
+            "lens_flare={}, lens_dirt={}, legacy_glow={}, color_grade={}, post={}, sky={}, "
             "antialiasing={}, smaa_sample={}, sphere={}, final_buffer={}, hero_mirror={}, "
             "hero_mirror_snapshot_validation={}",
             started, hdr, main_world, ordinary_world,
             native_dynamic_exposure, native_lens_flare, native_lens_dirt,
+            native_legacy_glow,
             grade.native_resources_ready, post_enabled,
             static_cast<bool>(sky), exact_antialiasing,
             native_smaa_sample, sphere_supported, final_buffer, hero_mirror_exact,
@@ -1881,6 +1893,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.direct_directional_shadow_valid = {};
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
+        capture.legacy_glow_noise_texture.reset();
         capture.base_light_target.reset();
         capture.hdri_sky_batches.clear();
         capture.hdri_sky_environment = nullptr;
@@ -3795,6 +3808,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.direct_directional_shadow_valid = {};
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
+        capture.legacy_glow_noise_texture.reset();
         capture.base_light_target.reset();
         capture.hdri_sky_batches.clear();
         capture.hdri_sky_environment = nullptr;
@@ -9182,8 +9196,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             LLSettingsSky::ptr_t sky =
                 LLEnvironment::instance().getCurrentSky();
             const bool legacy_gamma = LLRender::sClassicMode;
-            const bool exact_dynamic_exposure = clean_plate || legacy_gamma ||
-                !dynamic_exposure ||
+            const bool exact_dynamic_exposure = !capture.hdr || clean_plate ||
+                legacy_gamma || !dynamic_exposure ||
                 (mMetalExposureHistoryReady &&
                  capture.exposure_target &&
                  capture.exposure_epoch == mMetalExposureHistoryEpoch &&
@@ -9193,36 +9207,92 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
             const bool exact_bloom = !wants_native_bloom ||
                 (capture.bloom_target &&
                  capture.bloom_frame == gFrameCount);
-            const bool exact_cross_filter =
+            const bool exact_cross_filter = !capture.hdr ||
                 native_cross_filter_strength <= 0.f ||
                 cross_filter_target;
+            const bool wants_native_legacy_glow = !capture.hdr &&
+                !cutout_snapshot && sRenderGlow &&
+                RenderGlowIterations > 0;
+            bool exact_legacy_glow_noise = true;
+            if (wants_native_legacy_glow &&
+                shaderInputs().mLocal.mGlowNoise &&
+                !capture.legacy_glow_noise_texture)
+            {
+                constexpr U32 noise_size =
+                    ALRenderResourcePlan::NOISE_SIZE;
+                constexpr std::size_t value_count =
+                    static_cast<std::size_t>(noise_size) * noise_size * 4;
+                if (mMetalTrueNoiseMapRGBA16.size() != value_count)
+                {
+                    exact_legacy_glow_noise = false;
+                }
+                else
+                {
+                    ALMetalTextureDescriptor descriptor;
+                    descriptor.format = ALMetalPixelFormat::rgba16_float;
+                    descriptor.width = noise_size;
+                    descriptor.height = noise_size;
+                    descriptor.storage = ALMetalStorageMode::private_gpu;
+                    descriptor.usage = ALMetalTextureUsage::shader_read;
+                    descriptor.label =
+                        "Alchemy static legacy glow noise publication";
+                    std::string noise_error;
+                    capture.legacy_glow_noise_texture =
+                        ALMetalTexture::create(
+                            *capture.device, descriptor, &noise_error);
+                    auto upload = capture.legacy_glow_noise_texture
+                        ? capture.device->makeCommandBuffer(
+                              "Alchemy static legacy glow noise upload",
+                              &noise_error)
+                        : nullptr;
+                    const bool uploaded = upload &&
+                        capture.legacy_glow_noise_texture->upload(
+                            *upload, 0, 0, {},
+                            mMetalTrueNoiseMapRGBA16.data(),
+                            static_cast<std::size_t>(noise_size) * 4 *
+                                sizeof(U16),
+                            &noise_error) &&
+                        upload->commit(&noise_error);
+                    if (!uploaded)
+                    {
+                        capture.legacy_glow_noise_texture.reset();
+                        exact_legacy_glow_noise = false;
+                        LL_WARNS("Metal")
+                            << "Could not upload static legacy glow noise: "
+                            << noise_error << LL_ENDL;
+                    }
+                }
+            }
             const ColorGradeConfig grade = colorGradeConfig(true);
             const ChromaticAberrationConfig chromatic =
                 chromaticAberrationConfig();
             const LensFlareConfig flare = lensFlareConfig(true);
-            const bool exact_lens_flare = cutout_snapshot || !flare.enabled ||
+            const bool exact_lens_flare = !capture.hdr ||
+                cutout_snapshot || !flare.enabled ||
                 (capture.lens_flare_state_target &&
                  capture.lens_flare_state_epoch ==
                      mMetalLensFlareHistoryEpoch &&
                  capture.lens_flare_state_frame == gFrameCount);
             const LensDirtConfig dirt = lensDirtConfig(true);
-            const bool exact_lens_dirt = cutout_snapshot || !dirt.enabled ||
+            const bool exact_lens_dirt = !capture.hdr ||
+                cutout_snapshot || !dirt.enabled ||
                 (mLensDirtMap.isComplete() &&
                  mLensDirtParams == dirt.plate &&
                  capture.lens_dirt_target &&
                  capture.lens_dirt_params == dirt.plate);
-            const bool exact_base = capture.hdr &&
+            const bool exact_base =
                 canCaptureMetalWorldPresentation() && sky &&
                 exact_dynamic_exposure && exact_dof && exact_bloom &&
                 exact_cross_filter && exact_lens_flare &&
-                exact_lens_dirt &&
+                exact_lens_dirt && exact_legacy_glow_noise &&
                 grade.native_resources_ready;
             if (exact_base)
             {
                 ALMetalWorldDisplayPostScene display;
                 display.source = post_source;
                 display.adapted_exposure_texture =
-                    dynamic_exposure && !legacy_gamma && !clean_plate
+                    capture.hdr && dynamic_exposure && !legacy_gamma &&
+                        !clean_plate
                     ? capture.exposure_target->colorTexture(0) : nullptr;
                 display.bloom_texture = capture.bloom_target
                     ? capture.bloom_target->colorTexture(0) : nullptr;
@@ -9238,10 +9308,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     ? cross_filter_target->colorTexture(0) : nullptr;
                 display.cross_filter_strength = cross_filter_target
                     ? native_cross_filter_strength : 0.f;
-                display.hdr = true;
-                display.bypass_tonemap = clean_plate;
+                display.hdr = capture.hdr;
+                display.bypass_tonemap = capture.hdr && clean_plate;
                 display.cutout_premultiplied = cutout_snapshot;
-                display.preserve_alpha = cutout_snapshot;
+                display.preserve_alpha = capture.hdr && cutout_snapshot;
                 display.legacy_gamma = legacy_gamma;
                 display.legacy_gamma_exponent = sky->getGamma();
                 static LLCachedControl<F32> exposure(
@@ -9269,7 +9339,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 std::copy(chromatic.offset_b.begin(),
                           chromatic.offset_b.end(),
                           display.chromatic_aberration_offset_b);
-                if (flare.enabled)
+                if (capture.hdr && flare.enabled)
                 {
                     display.lens_flare_state_texture =
                         capture.lens_flare_state_target->colorTexture(0);
@@ -9311,7 +9381,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     display.lens_flare_starburst_falloff =
                         flare.starburst_falloff;
                 }
-                if (dirt.enabled)
+                if (capture.hdr && dirt.enabled)
                 {
                     display.lens_dirt_texture =
                         capture.lens_dirt_target->colorTexture(0);
@@ -9381,6 +9451,15 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     native_grade.tone_curve_bias = grade.tone_curve_bias;
                     native_grade.tone_curve_amount = grade.tone_curve_amount;
                 }
+
+                static LLCachedControl<bool> dither_enabled(
+                    gSavedSettings, "RenderDitherEnabled", true);
+                static LLCachedControl<bool> dither_animated(
+                    gSavedSettings, "RenderDitherAnimated", true);
+                display.dither_amount = !capture.hdr && dither_enabled()
+                    ? 1.f : 0.f;
+                display.dither_animated = dither_animated();
+                display.frame_id = LLFrameTimer::getFrameCount();
 
                 constexpr F32 max_screen_brightness = 1.f;
                 switch (tonemap_type())
@@ -9470,6 +9549,58 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         display, &display_error);
                 if (display_target)
                 {
+                    // Legacy non-HDR glow extracts from the first RGBA8
+                    // display boundary, then waits while AA/CAS modify the
+                    // base image. Its additive combine happens after those
+                    // filters, exactly where renderFinalize combines it.
+                    std::unique_ptr<ALMetalRenderTarget>
+                        legacy_glow_target;
+                    bool exact_legacy_glow = true;
+                    if (wants_native_legacy_glow)
+                    {
+                        static LLCachedControl<F32> glow_min_luminance(
+                            gSavedSettings, "RenderGlowMinLuminance",
+                            9999.f);
+                        ALMetalWorldLegacyGlowScene glow_scene;
+                        glow_scene.source = display_target.get();
+                        glow_scene.noise_texture =
+                            capture.legacy_glow_noise_texture.get();
+                        glow_scene.resolution_pow = static_cast<U32>(
+                            llclamp(
+                                mResourceInputs.mGlowResolutionPow, 0, 9));
+                        glow_scene.iterations = static_cast<U32>(
+                            RenderGlowIterations);
+                        glow_scene.width = RenderGlowWidth;
+                        glow_scene.strength = RenderGlowStrength;
+                        glow_scene.minimum_luminance =
+                            glow_min_luminance();
+                        glow_scene.maximum_extract_alpha =
+                            RenderGlowMaxExtractAlpha;
+                        std::copy_n(
+                            RenderGlowLumWeights.mV, 3,
+                            glow_scene.luminance_weights);
+                        std::copy_n(
+                            RenderGlowWarmthWeights.mV, 3,
+                            glow_scene.warmth_weights);
+                        glow_scene.warmth_amount =
+                            RenderGlowWarmthAmount;
+                        glow_scene.noise =
+                            shaderInputs().mLocal.mGlowNoise;
+                        glow_scene.high_precision =
+                            mResourceInputs.mGlowHDR;
+                        std::string glow_error;
+                        legacy_glow_target =
+                            capture.renderer->renderLegacyGlow(
+                                glow_scene, &glow_error);
+                        if (!legacy_glow_target)
+                        {
+                            exact_legacy_glow = false;
+                            LL_WARNS("Metal")
+                                << "Native legacy glow retained GL: "
+                                << glow_error << LL_ENDL;
+                        }
+                    }
+
                     // Antialiasing is the first post-colorCorrect owner.
                     // Publish only a completed demanded transaction before
                     // CAS; any failure leaves native-only scopes without a
@@ -9484,8 +9615,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                     const bool wants_native_smaa =
                         !cutout_snapshot &&
                         mResourceInputs.mFSAAType == 2;
-                    bool exact_antialiasing = true;
-                    if (wants_native_fxaa)
+                    bool exact_antialiasing = exact_legacy_glow;
+                    if (exact_legacy_glow && wants_native_fxaa)
                     {
                         std::string fxaa_error;
                         auto fxaa_target = capture.renderer->renderFXAA(
@@ -9503,7 +9634,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                                 << fxaa_error << LL_ENDL;
                         }
                     }
-                    else if (wants_native_smaa)
+                    else if (exact_legacy_glow && wants_native_smaa)
                     {
                         static LLCachedControl<F32> pred_threshold(
                             gSavedSettings,
@@ -9585,16 +9716,36 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                                 << cas_error << LL_ENDL;
                         }
                     }
+                    bool exact_glow_combine = exact_cas;
+                    if (exact_cas && legacy_glow_target)
+                    {
+                        std::string glow_error;
+                        auto combined =
+                            capture.renderer->combineLegacyGlow(
+                                *display_target, *legacy_glow_target,
+                                &glow_error);
+                        if (combined)
+                        {
+                            display_target = std::move(combined);
+                        }
+                        else
+                        {
+                            exact_glow_combine = false;
+                            LL_WARNS("Metal")
+                                << "Native legacy glow combine retained GL: "
+                                << glow_error << LL_ENDL;
+                        }
+                    }
                     // RLVa's vision sphere is the last display-space owner
                     // before scopes and reference capture. Feed the native
                     // pass from the exact same tween/policy objects and in
                     // LLVfxManager priority order; a missing effect, invalid
                     // state or failed pass keeps the complete GL chain
                     // authoritative for this frame.
-                    bool exact_rlv_sphere = exact_cas;
+                    bool exact_rlv_sphere = exact_glow_combine;
                     const bool wants_rlv_sphere =
                         RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE);
-                    if (exact_cas && wants_rlv_sphere)
+                    if (exact_glow_combine && wants_rlv_sphere)
                     {
                         exact_rlv_sphere = false;
                         std::list<RlvSphereEffect*> effects;
@@ -9725,13 +9876,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             }
                         }
 
-                        // The display-post target is the same RGB10_A2 source
-                        // measured by the scopes. The window/UI transaction,
-                        // however, needs the final linear-storage BGRA8 image
-                        // after the lens, print, dither, preview and reference
-                        // boundary. The renderer for that boundary already
-                        // exists; retain its result separately so scope
-                        // semantics do not silently move past print effects.
+                        // The display-post target is the same RGB10_A2 (HDR)
+                        // or RGBA8 (non-HDR) source measured by the scopes.
+                        // The window/UI transaction, however, needs the final
+                        // linear-storage BGRA8 image after the lens, print,
+                        // dither, preview and reference boundary. The renderer
+                        // for that boundary already exists; retain its result
+                        // separately so scope semantics do not silently move
+                        // past print effects.
                         ALMetalWorldPresentationScene presentation;
                         presentation.source =
                             capture.display_post_target.get();
@@ -9915,8 +10067,12 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             gSavedSettings, "RenderDitherEnabled", true);
                         static LLCachedControl<bool> dither_animated(
                             gSavedSettings, "RenderDitherAnimated", true);
+                        // Match the GL permutations: non-HDR was already
+                        // dithered by colorCorrect before its first RGBA8
+                        // quantization, while HDR dithers only at the final
+                        // presentation boundary.
                         presentation.dither_amount =
-                            dither_enabled ? 1.f : 0.f;
+                            capture.hdr && dither_enabled ? 1.f : 0.f;
                         presentation.dither_bits =
                             LLRender::s10bitBackBuffer ? 10u : 8u;
                         presentation.dither_animated = dither_animated;
@@ -16592,6 +16748,15 @@ void LLPipeline::ensureResources(const ALRenderResourcePlan& plan, const ALRende
                     {
                         mMetalNoiseMapRG16.clear();
                     }
+                    else if (id == Id::TrueNoise)
+                    {
+                        mMetalTrueNoiseMapRGBA16.clear();
+                        if (mMetalWorldSimpleCapture)
+                        {
+                            mMetalWorldSimpleCapture->
+                                legacy_glow_noise_texture.reset();
+                        }
+                    }
 #endif
                     changes.mFreed.set(i);
                 }
@@ -17235,6 +17400,11 @@ void LLPipeline::releaseRenderTargets()
 #if LL_DARWIN
     mMetalToneCurveLut.reset();
     mMetalNoiseMapRG16.clear();
+    mMetalTrueNoiseMapRGBA16.clear();
+    if (mMetalWorldSimpleCapture)
+    {
+        mMetalWorldSimpleCapture->legacy_glow_noise_texture.reset();
+    }
     ++mMetalLensFlareHistoryEpoch;
     if (mMetalLensFlareHistoryEpoch == 0)
     {
@@ -17543,6 +17713,26 @@ void LLPipeline::createResourceTexture(ALRenderResourcePlan::Id id)
             {
                 value = ll_frand() * 2.0f - 1.0f;
             }
+#if LL_DARWIN
+            mMetalTrueNoiseMapRGBA16.resize(
+                static_cast<std::size_t>(noise_res) * noise_res * 4);
+            for (std::size_t texel = 0;
+                 texel < static_cast<std::size_t>(noise_res) * noise_res;
+                 ++texel)
+            {
+                for (std::size_t channel = 0; channel < 3; ++channel)
+                {
+                    mMetalTrueNoiseMapRGBA16[texel * 4 + channel] =
+                        ALWaterHeightBake::halfOf(
+                            noise[texel * 3 + channel]);
+                }
+                mMetalTrueNoiseMapRGBA16[texel * 4 + 3] = 0;
+            }
+            if (mMetalWorldSimpleCapture)
+            {
+                mMetalWorldSimpleCapture->legacy_glow_noise_texture.reset();
+            }
+#endif
 
             LLImageGL::generateTextures(1, &mTrueNoiseMap);
             gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mTrueNoiseMap);

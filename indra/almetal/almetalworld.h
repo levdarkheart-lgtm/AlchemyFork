@@ -1598,6 +1598,28 @@ struct ALMetalWorldBloomScene
     float cross_filter_chromatic = 0.f;
 };
 
+// The production non-HDR glow owner. It preserves glowExtractF/glowF's
+// reduced 512-wide target, alpha/luminance/warmth extraction, optional
+// 128-square static noise, alternating eight-tap blur and RGBA8/RGBA16F
+// storage choice. The reduced result is intentionally separate so callers can
+// run AA/CAS against the display source before the legacy additive combine.
+struct ALMetalWorldLegacyGlowScene
+{
+    const ALMetalRenderTarget* source = nullptr;
+    const ALMetalTexture* noise_texture = nullptr;
+    std::uint32_t resolution_pow = 9;
+    std::uint32_t iterations = 2;
+    float width = 1.3f;
+    float strength = 0.325f;
+    float minimum_luminance = 9999.f;
+    float maximum_extract_alpha = 0.25f;
+    float luminance_weights[3] = {1.f, 0.f, 0.f};
+    float warmth_weights[3] = {1.f, 0.5f, 0.7f};
+    float warmth_amount = 0.f;
+    bool noise = true;
+    bool high_precision = false;
+};
+
 // The production HDR exposure owner. The first compute pass reproduces the
 // fixed 128x72 luminance grid, including the G-buffer sky split; the second
 // constructs and trims the 64-bin log-luminance histogram and adapts from the
@@ -2113,19 +2135,34 @@ public:
         std::string* error = nullptr,
         std::unique_ptr<ALMetalRenderTarget>* cross_filter = nullptr);
 
+    // Extract and blur legacy non-HDR glow without crossing CPU memory. The
+    // returned reduced target is combined only after AA/CAS, matching
+    // renderFinalize's established ordering.
+    std::unique_ptr<ALMetalRenderTarget> renderLegacyGlow(
+        const ALMetalWorldLegacyGlowScene& scene,
+        std::string* error = nullptr);
+
+    // Add one completed reduced legacy-glow target to the post-AA/CAS RGBA8
+    // source and retain an RGBA8 result for scopes and final presentation.
+    std::unique_ptr<ALMetalRenderTarget> combineLegacyGlow(
+        const ALMetalRenderTarget& source,
+        const ALMetalRenderTarget& glow,
+        std::string* error = nullptr);
+
     // Apply the standalone, one-to-one FidelityFX CAS pass used whenever a
     // scope or another post owner prevents sharpening from being folded into
-    // the final GL blit. The RGB10_A2 output intentionally carries alpha zero,
-    // matching CASF.glsl's vec4-zero initialization.
+    // final presentation. RGB10_A2 and RGBA8 inputs retain their format; alpha
+    // intentionally becomes zero, matching CASF.glsl's vec4-zero
+    // initialization.
     std::unique_ptr<ALMetalRenderTarget> renderCAS(
         const ALMetalRenderTarget& source,
         float sharpness,
         std::string* error = nullptr);
 
     // Apply the post-tonemap one-pass FXAA 3.11 quality path used by the
-    // viewer. Quality 0..3 maps to the legacy presets 12/23/28/39; the
-    // RGB10_A2 result carries the center-pixel luminance in alpha exactly as
-    // fxaaF.glsl does when FXAA_LUMA_FROM_RGB is enabled.
+    // viewer. Quality 0..3 maps to the legacy presets 12/23/28/39; the retained
+    // RGB10_A2 or RGBA8 result carries center-pixel luminance in alpha exactly
+    // as fxaaF.glsl does when FXAA_LUMA_FROM_RGB is enabled.
     std::unique_ptr<ALMetalRenderTarget> renderFXAA(
         const ALMetalRenderTarget& source,
         std::uint32_t quality,

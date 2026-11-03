@@ -277,6 +277,10 @@ private:
     // createResourceTexture fills this beside the GL authority so the native
     // light-map owner never has to read the static noise back from GL.
     std::vector<U16> mMetalNoiseMapRG16;
+    // The four-channel half-float publication of mTrueNoiseMap. Metal has no
+    // RGB16F texture format, so alpha remains zero while RGB preserves the
+    // exact CPU-generated legacy glow-noise values.
+    std::vector<U16> mMetalTrueNoiseMapRGBA16;
     std::unique_ptr<ALMetalTexture> mMetalSMAASampleTexture;
     const ALMetalDevice* mMetalSMAASampleDevice = nullptr;
     std::string mMetalSMAASamplePath;

@@ -344,6 +344,24 @@ namespace
     };
     static_assert(sizeof(WorldBloomFilterConstants) == 16);
 
+    struct alignas(16) WorldLegacyGlowExtractConstants
+    {
+        // minimum luminance, maximum extracted alpha, warmth mix, noise flag.
+        float settings[4]{};
+        float luminance_weights[4]{};
+        float warmth_weights[4]{};
+        // xy = reduced glow target dimensions.
+        float screen[4]{};
+    };
+    static_assert(sizeof(WorldLegacyGlowExtractConstants) == 64);
+
+    struct alignas(16) WorldLegacyGlowBlurConstants
+    {
+        // xy = sample delta, z = RGB strength.
+        float params[4]{};
+    };
+    static_assert(sizeof(WorldLegacyGlowBlurConstants) == 16);
+
     struct alignas(16) WorldCrossFilterConstants
     {
         // target texel x/y, authored length, chromatic dispersion
@@ -1315,14 +1333,23 @@ struct ALMetalWorldGBufferRenderer::Impl
         bloom_downsample_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         bloom_upsample_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        legacy_glow_extract_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        legacy_glow_blur_pipelines;
+    std::unique_ptr<ALMetalRenderPipeline> legacy_glow_combine_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> cross_filter_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> cross_filter_add_pipeline;
-    std::unique_ptr<ALMetalRenderPipeline> cas_pipeline;
-    std::unique_ptr<ALMetalRenderPipeline> fxaa_pipeline;
+    // Display filters operate on either the HDR path's RGB10_A2 boundary or
+    // the non-HDR path's RGBA8 boundary.  Keep distinct PSOs because Metal
+    // render-pipeline attachment formats are immutable.
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2> cas_pipelines;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2> fxaa_pipelines;
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
         smaa_edge_pipelines;
     std::unique_ptr<ALMetalRenderPipeline> smaa_weight_pipeline;
-    std::unique_ptr<ALMetalRenderPipeline> smaa_neighborhood_pipeline;
+    std::array<std::unique_ptr<ALMetalRenderPipeline>, 2>
+        smaa_neighborhood_pipelines;
     // format (R11G11B10F/RGBA16F) x shaped x near-blur.
     std::array<std::unique_ptr<ALMetalRenderPipeline>, 8>
         depth_of_field_gather_pipelines;
@@ -1841,6 +1868,12 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         !impl->library->hasFunction(
             "almetal_world_bloom_upsample_fragment") ||
         !impl->library->hasFunction(
+            "almetal_world_legacy_glow_extract_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_legacy_glow_blur_fragment") ||
+        !impl->library->hasFunction(
+            "almetal_world_legacy_glow_combine_fragment") ||
+        !impl->library->hasFunction(
             "almetal_world_cross_filter_fragment") ||
         !impl->library->hasFunction("almetal_world_cas_fragment") ||
         !impl->library->hasFunction("almetal_world_fxaa_fragment") ||
@@ -2111,6 +2144,42 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         }
     }
 
+    constexpr std::array<ALMetalPixelFormat, 2> legacy_glow_formats{{
+        ALMetalPixelFormat::rgba8_unorm,
+        ALMetalPixelFormat::rgba16_float,
+    }};
+    for (std::size_t precision = 0;
+         precision < legacy_glow_formats.size(); ++precision)
+    {
+        impl->legacy_glow_extract_pipelines[precision] =
+            make_bloom_pipeline(
+                "almetal_world_legacy_glow_extract_fragment",
+                precision
+                    ? "Alchemy high-precision legacy glow extract pipeline"
+                    : "Alchemy legacy glow extract pipeline",
+                false, legacy_glow_formats[precision]);
+        impl->legacy_glow_blur_pipelines[precision] =
+            make_bloom_pipeline(
+                "almetal_world_legacy_glow_blur_fragment",
+                precision
+                    ? "Alchemy high-precision legacy glow blur pipeline"
+                    : "Alchemy legacy glow blur pipeline",
+                false, legacy_glow_formats[precision]);
+        if (!impl->legacy_glow_extract_pipelines[precision] ||
+            !impl->legacy_glow_blur_pipelines[precision])
+        {
+            return nullptr;
+        }
+    }
+    impl->legacy_glow_combine_pipeline = make_bloom_pipeline(
+        "almetal_world_legacy_glow_combine_fragment",
+        "Alchemy legacy glow additive-combine pipeline", false,
+        ALMetalPixelFormat::rgba8_unorm);
+    if (!impl->legacy_glow_combine_pipeline)
+    {
+        return nullptr;
+    }
+
     const auto make_cross_filter_pipeline = [&](bool additive)
     {
         ALMetalRenderPipelineDescriptor descriptor;
@@ -2141,31 +2210,37 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         return nullptr;
     }
 
-    ALMetalRenderPipelineDescriptor cas_descriptor;
-    cas_descriptor.library = impl->library.get();
-    cas_descriptor.vertex_function = "almetal_resample_vertex";
-    cas_descriptor.fragment_function = "almetal_world_cas_fragment";
-    cas_descriptor.colors[0].format = ALMetalPixelFormat::rgb10a2_unorm;
-    cas_descriptor.label = "Alchemy world standalone CAS pipeline";
-    impl->cas_pipeline = ALMetalRenderPipeline::create(
-        device, cas_descriptor, error);
-    if (!impl->cas_pipeline)
+    constexpr std::array<ALMetalPixelFormat, 2> display_formats{{
+        ALMetalPixelFormat::rgba8_unorm,
+        ALMetalPixelFormat::rgb10a2_unorm,
+    }};
+    for (std::size_t format = 0; format < display_formats.size(); ++format)
     {
-        return nullptr;
-    }
+        ALMetalRenderPipelineDescriptor cas_descriptor;
+        cas_descriptor.library = impl->library.get();
+        cas_descriptor.vertex_function = "almetal_resample_vertex";
+        cas_descriptor.fragment_function = "almetal_world_cas_fragment";
+        cas_descriptor.colors[0].format = display_formats[format];
+        cas_descriptor.label = format
+            ? "Alchemy HDR world standalone CAS pipeline"
+            : "Alchemy non-HDR world standalone CAS pipeline";
+        impl->cas_pipelines[format] = ALMetalRenderPipeline::create(
+            device, cas_descriptor, error);
 
-    ALMetalRenderPipelineDescriptor fxaa_descriptor;
-    fxaa_descriptor.library = impl->library.get();
-    fxaa_descriptor.vertex_function = "almetal_resample_vertex";
-    fxaa_descriptor.fragment_function = "almetal_world_fxaa_fragment";
-    fxaa_descriptor.colors[0].format =
-        ALMetalPixelFormat::rgb10a2_unorm;
-    fxaa_descriptor.label = "Alchemy world one-pass FXAA pipeline";
-    impl->fxaa_pipeline = ALMetalRenderPipeline::create(
-        device, fxaa_descriptor, error);
-    if (!impl->fxaa_pipeline)
-    {
-        return nullptr;
+        ALMetalRenderPipelineDescriptor fxaa_descriptor;
+        fxaa_descriptor.library = impl->library.get();
+        fxaa_descriptor.vertex_function = "almetal_resample_vertex";
+        fxaa_descriptor.fragment_function = "almetal_world_fxaa_fragment";
+        fxaa_descriptor.colors[0].format = display_formats[format];
+        fxaa_descriptor.label = format
+            ? "Alchemy HDR world one-pass FXAA pipeline"
+            : "Alchemy non-HDR world one-pass FXAA pipeline";
+        impl->fxaa_pipelines[format] = ALMetalRenderPipeline::create(
+            device, fxaa_descriptor, error);
+        if (!impl->cas_pipelines[format] || !impl->fxaa_pipelines[format])
+        {
+            return nullptr;
+        }
     }
 
     constexpr std::array<const char*, 2> smaa_edge_functions{{
@@ -2210,21 +2285,26 @@ ALMetalWorldGBufferRenderer::create(const ALMetalDevice& device,
         return nullptr;
     }
 
-    ALMetalRenderPipelineDescriptor smaa_neighborhood_descriptor;
-    smaa_neighborhood_descriptor.library = impl->library.get();
-    smaa_neighborhood_descriptor.vertex_function =
-        "almetal_resample_vertex";
-    smaa_neighborhood_descriptor.fragment_function =
-        "almetal_world_smaa_neighborhood_fragment";
-    smaa_neighborhood_descriptor.colors[0].format =
-        ALMetalPixelFormat::rgb10a2_unorm;
-    smaa_neighborhood_descriptor.label =
-        "Alchemy world SMAA neighborhood pipeline";
-    impl->smaa_neighborhood_pipeline = ALMetalRenderPipeline::create(
-        device, smaa_neighborhood_descriptor, error);
-    if (!impl->smaa_neighborhood_pipeline)
+    for (std::size_t format = 0; format < display_formats.size(); ++format)
     {
-        return nullptr;
+        ALMetalRenderPipelineDescriptor smaa_neighborhood_descriptor;
+        smaa_neighborhood_descriptor.library = impl->library.get();
+        smaa_neighborhood_descriptor.vertex_function =
+            "almetal_resample_vertex";
+        smaa_neighborhood_descriptor.fragment_function =
+            "almetal_world_smaa_neighborhood_fragment";
+        smaa_neighborhood_descriptor.colors[0].format =
+            display_formats[format];
+        smaa_neighborhood_descriptor.label = format
+            ? "Alchemy HDR world SMAA neighborhood pipeline"
+            : "Alchemy non-HDR world SMAA neighborhood pipeline";
+        impl->smaa_neighborhood_pipelines[format] =
+            ALMetalRenderPipeline::create(
+                device, smaa_neighborhood_descriptor, error);
+        if (!impl->smaa_neighborhood_pipelines[format])
+        {
+            return nullptr;
+        }
     }
 
     constexpr std::array<const char*, 4> dof_gather_functions{{
@@ -7892,6 +7972,278 @@ ALMetalWorldGBufferRenderer::renderBloom(
 }
 
 std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::renderLegacyGlow(
+    const ALMetalWorldLegacyGlowScene& scene,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device || !scene.source)
+    {
+        setError(error, "Metal world legacy glow scene is incomplete");
+        return nullptr;
+    }
+
+    const ALMetalRenderTargetDescriptor& source =
+        scene.source->descriptor();
+    if (source.width == 0 || source.height == 0 ||
+        source.sample_count != 1 || source.color_attachment_count != 1 ||
+        source.colors[0].format != ALMetalPixelFormat::rgba8_unorm ||
+        !sampleableTexture(scene.source->colorTexture(0)))
+    {
+        setError(error, "Metal world legacy glow source is incompatible");
+        return nullptr;
+    }
+    if (scene.resolution_pow > 9 || scene.iterations == 0 ||
+        scene.iterations > 64 || !std::isfinite(scene.width) ||
+        !std::isfinite(scene.strength) ||
+        !std::isfinite(scene.minimum_luminance) ||
+        !std::isfinite(scene.maximum_extract_alpha) ||
+        !finiteValues(scene.luminance_weights, 3) ||
+        !finiteValues(scene.warmth_weights, 3) ||
+        !std::isfinite(scene.warmth_amount))
+    {
+        setError(error, "Metal world legacy glow state is invalid");
+        return nullptr;
+    }
+    if (scene.noise)
+    {
+        if (!scene.noise_texture)
+        {
+            setError(error, "Metal world legacy glow noise is missing");
+            return nullptr;
+        }
+        const ALMetalTextureDescriptor& noise =
+            scene.noise_texture->descriptor();
+        if (noise.type != ALMetalTextureType::texture_2d ||
+            noise.width != 128 || noise.height != 128 ||
+            noise.format != ALMetalPixelFormat::rgba16_float ||
+            noise.array_length != 1 || noise.mipmap_level_count != 1 ||
+            noise.sample_count != 1 ||
+            !sampleableTexture(scene.noise_texture))
+        {
+            setError(error,
+                     "Metal world legacy glow noise is incompatible");
+            return nullptr;
+        }
+    }
+
+    constexpr std::uint32_t glow_width = 512;
+    const std::uint32_t glow_height = 1u << scene.resolution_pow;
+    const ALMetalPixelFormat glow_format = scene.high_precision
+        ? ALMetalPixelFormat::rgba16_float
+        : ALMetalPixelFormat::rgba8_unorm;
+    const auto make_target = [&](const char* label)
+    {
+        ALMetalRenderTargetDescriptor descriptor;
+        descriptor.width = glow_width;
+        descriptor.height = glow_height;
+        descriptor.colors[0].format = glow_format;
+        descriptor.colors[0].shader_read = true;
+        descriptor.colors[0].label = label;
+        descriptor.label = label;
+        return ALMetalRenderTarget::create(
+            *mImpl->device, descriptor, error);
+    };
+    auto extract = make_target("Alchemy native legacy glow extract");
+    std::array<std::unique_ptr<ALMetalRenderTarget>, 2> buffers{{
+        make_target("Alchemy native legacy glow blur ping"),
+        make_target("Alchemy native legacy glow blur pong"),
+    }};
+    if (!extract || !buffers[0] || !buffers[1])
+    {
+        return nullptr;
+    }
+
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native legacy glow", owned_command, error);
+    if (!command)
+    {
+        return nullptr;
+    }
+
+    WorldLegacyGlowExtractConstants extract_constants;
+    extract_constants.settings[0] = scene.minimum_luminance;
+    extract_constants.settings[1] = scene.maximum_extract_alpha;
+    extract_constants.settings[2] = scene.warmth_amount;
+    extract_constants.settings[3] = scene.noise ? 1.f : 0.f;
+    std::memcpy(extract_constants.luminance_weights,
+                scene.luminance_weights,
+                sizeof(scene.luminance_weights));
+    std::memcpy(extract_constants.warmth_weights,
+                scene.warmth_weights,
+                sizeof(scene.warmth_weights));
+    extract_constants.screen[0] = static_cast<float>(glow_width);
+    extract_constants.screen[1] = static_cast<float>(glow_height);
+
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::clear;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    pass_config.colors[0].clear = {0.f, 0.f, 0.f, 0.f};
+    auto extract_pass = extract->makeRenderPass(pass_config, error);
+    auto extract_encoder = extract_pass ? ALMetalRenderEncoder::begin(
+        *command, *extract_pass,
+        "Alchemy world legacy glow extract encoder", error) : nullptr;
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(glow_width),
+        static_cast<double>(glow_height), 0.0, 1.0};
+    const ALMetalScissorRect scissor{
+        0, 0, glow_width, glow_height};
+    const std::size_t precision = scene.high_precision ? 1u : 0u;
+    const ALMetalTexture* noise = scene.noise
+        ? scene.noise_texture : mImpl->identity_tone_curve.get();
+    bool encoded = extract_encoder &&
+        extract_encoder->setViewport(viewport, error) &&
+        extract_encoder->setScissor(scissor, error) &&
+        extract_encoder->setCullMode(ALMetalCullMode::none, error) &&
+        extract_encoder->setPipeline(
+            *mImpl->legacy_glow_extract_pipelines[precision], error) &&
+        extract_encoder->setFragmentTexture(
+            0, scene.source->colorTexture(0), error) &&
+        extract_encoder->setFragmentTexture(1, noise, error) &&
+        extract_encoder->setFragmentSampler(
+            0, mImpl->linear_clamp_sampler.get(), error) &&
+        extract_encoder->setFragmentSampler(
+            1, mImpl->point_repeat_sampler.get(), error) &&
+        extract_encoder->setFragmentBytes(
+            0, &extract_constants, sizeof(extract_constants), error) &&
+        extract_encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+        extract_encoder->end(error);
+
+    const std::uint32_t pass_count = scene.iterations * 2u;
+    float delta = scene.width / static_cast<float>(glow_height);
+    if (scene.resolution_pow < 9)
+    {
+        delta *= 0.5f;
+    }
+    const ALMetalRenderTarget* blur_source = extract.get();
+    for (std::uint32_t pass = 0; encoded && pass < pass_count; ++pass)
+    {
+        ALMetalRenderTarget& destination = *buffers[pass & 1u];
+        auto blur_pass = destination.makeRenderPass(pass_config, error);
+        auto blur_encoder = blur_pass ? ALMetalRenderEncoder::begin(
+            *command, *blur_pass,
+            "Alchemy world legacy glow blur encoder", error) : nullptr;
+        WorldLegacyGlowBlurConstants blur_constants;
+        blur_constants.params[pass & 1u] = delta;
+        blur_constants.params[2] = scene.strength;
+        encoded = blur_encoder &&
+            blur_encoder->setViewport(viewport, error) &&
+            blur_encoder->setScissor(scissor, error) &&
+            blur_encoder->setCullMode(ALMetalCullMode::none, error) &&
+            blur_encoder->setPipeline(
+                *mImpl->legacy_glow_blur_pipelines[precision], error) &&
+            blur_encoder->setFragmentTexture(
+                0, blur_source->colorTexture(0), error) &&
+            blur_encoder->setFragmentSampler(
+                0, mImpl->linear_clamp_sampler.get(), error) &&
+            blur_encoder->setFragmentBytes(
+                0, &blur_constants, sizeof(blur_constants), error) &&
+            blur_encoder->draw(
+                ALMetalPrimitiveType::triangle, 0, 3, 1, error) &&
+            blur_encoder->end(error);
+        blur_source = &destination;
+    }
+    if (!mImpl->finishCommandBuffer(owned_command, encoded, error))
+    {
+        return nullptr;
+    }
+    return std::move(buffers[(pass_count - 1u) & 1u]);
+}
+
+std::unique_ptr<ALMetalRenderTarget>
+ALMetalWorldGBufferRenderer::combineLegacyGlow(
+    const ALMetalRenderTarget& source,
+    const ALMetalRenderTarget& glow,
+    std::string* error)
+{
+    if (!mImpl || !mImpl->device)
+    {
+        setError(error, "Metal world legacy glow combine is incomplete");
+        return nullptr;
+    }
+    const ALMetalRenderTargetDescriptor& source_descriptor =
+        source.descriptor();
+    const ALMetalRenderTargetDescriptor& glow_descriptor =
+        glow.descriptor();
+    const bool glow_format =
+        glow_descriptor.colors[0].format ==
+            ALMetalPixelFormat::rgba8_unorm ||
+        glow_descriptor.colors[0].format ==
+            ALMetalPixelFormat::rgba16_float;
+    if (source_descriptor.width == 0 || source_descriptor.height == 0 ||
+        source_descriptor.sample_count != 1 ||
+        source_descriptor.color_attachment_count != 1 ||
+        source_descriptor.colors[0].format !=
+            ALMetalPixelFormat::rgba8_unorm ||
+        !sampleableTexture(source.colorTexture(0)) ||
+        glow_descriptor.width == 0 || glow_descriptor.height == 0 ||
+        glow_descriptor.sample_count != 1 ||
+        glow_descriptor.color_attachment_count != 1 || !glow_format ||
+        !sampleableTexture(glow.colorTexture(0)))
+    {
+        setError(error, "Metal world legacy glow combine is incompatible");
+        return nullptr;
+    }
+
+    ALMetalRenderTargetDescriptor output_descriptor;
+    output_descriptor.width = source_descriptor.width;
+    output_descriptor.height = source_descriptor.height;
+    output_descriptor.colors[0].format = ALMetalPixelFormat::rgba8_unorm;
+    output_descriptor.colors[0].label =
+        "Alchemy non-HDR world combined glow color";
+    output_descriptor.label =
+        "Alchemy native non-HDR world combined glow target";
+    auto output = ALMetalRenderTarget::create(
+        *mImpl->device, output_descriptor, error);
+    if (!output)
+    {
+        return nullptr;
+    }
+
+    std::unique_ptr<ALMetalCommandBuffer> owned_command;
+    ALMetalCommandBuffer* command = mImpl->acquireCommandBuffer(
+        "Alchemy native legacy glow combine", owned_command, error);
+    if (!command)
+    {
+        return nullptr;
+    }
+    ALMetalRenderPassConfig pass_config;
+    pass_config.colors[0].load = ALMetalLoadAction::dont_care;
+    pass_config.colors[0].store = ALMetalStoreAction::store;
+    auto pass = output->makeRenderPass(pass_config, error);
+    auto encoder = pass ? ALMetalRenderEncoder::begin(
+        *command, *pass, "Alchemy world legacy glow combine encoder",
+        error) : nullptr;
+    const ALMetalViewport viewport{
+        0.0, 0.0, static_cast<double>(source_descriptor.width),
+        static_cast<double>(source_descriptor.height), 0.0, 1.0};
+    const ALMetalScissorRect scissor{
+        0, 0, source_descriptor.width, source_descriptor.height};
+    const bool encoded = encoder &&
+        encoder->setViewport(viewport, error) &&
+        encoder->setScissor(scissor, error) &&
+        encoder->setCullMode(ALMetalCullMode::none, error) &&
+        encoder->setPipeline(
+            *mImpl->legacy_glow_combine_pipeline, error) &&
+        encoder->setFragmentTexture(0, source.colorTexture(0), error) &&
+        encoder->setFragmentTexture(1, glow.colorTexture(0), error) &&
+        encoder->setFragmentSampler(
+            0, mImpl->point_clamp_sampler.get(), error) &&
+        encoder->setFragmentSampler(
+            1, mImpl->linear_clamp_sampler.get(), error) &&
+        encoder->draw(
+            ALMetalPrimitiveType::triangle, 0, 3, 1, error);
+    const bool ended = encoder && encoder->end(error);
+    if (!mImpl->finishCommandBuffer(
+            owned_command, encoded && ended, error))
+    {
+        return nullptr;
+    }
+    return output;
+}
+
+std::unique_ptr<ALMetalRenderTarget>
 ALMetalWorldGBufferRenderer::renderExposure(
     const ALMetalWorldExposureScene& scene,
     std::string* error)
@@ -9472,9 +9824,13 @@ ALMetalWorldGBufferRenderer::renderCAS(
     }
 
     const ALMetalRenderTargetDescriptor& input = source.descriptor();
+    const ALMetalPixelFormat format = input.colors[0].format;
+    const bool display_format =
+        format == ALMetalPixelFormat::rgba8_unorm ||
+        format == ALMetalPixelFormat::rgb10a2_unorm;
     if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
         input.color_attachment_count != 1 ||
-        input.colors[0].format != ALMetalPixelFormat::rgb10a2_unorm ||
+        !display_format ||
         !sampleableTexture(source.colorTexture(0)))
     {
         setError(error, "Metal world CAS source is incompatible");
@@ -9489,11 +9845,14 @@ ALMetalWorldGBufferRenderer::renderCAS(
     ALMetalRenderTargetDescriptor output_descriptor;
     output_descriptor.width = input.width;
     output_descriptor.height = input.height;
-    output_descriptor.colors[0].format =
-        ALMetalPixelFormat::rgb10a2_unorm;
+    output_descriptor.colors[0].format = format;
     output_descriptor.colors[0].label =
-        "Alchemy world CAS RGB10_A2 color";
-    output_descriptor.label = "Alchemy native world CAS target";
+        format == ALMetalPixelFormat::rgb10a2_unorm
+        ? "Alchemy HDR world CAS RGB10_A2 color"
+        : "Alchemy non-HDR world CAS RGBA8 color";
+    output_descriptor.label = format == ALMetalPixelFormat::rgb10a2_unorm
+        ? "Alchemy native HDR world CAS target"
+        : "Alchemy native non-HDR world CAS target";
     auto output = ALMetalRenderTarget::create(
         *mImpl->device, output_descriptor, error);
     if (!output)
@@ -9533,7 +9892,10 @@ ALMetalWorldGBufferRenderer::renderCAS(
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
-        encoder->setPipeline(*mImpl->cas_pipeline, error) &&
+        encoder->setPipeline(
+            *mImpl->cas_pipelines[
+                format == ALMetalPixelFormat::rgb10a2_unorm ? 1u : 0u],
+            error) &&
         encoder->setFragmentTexture(0, source.colorTexture(0), error) &&
         encoder->setFragmentBytes(
             0, &constants, sizeof(constants), error) &&
@@ -9560,9 +9922,13 @@ ALMetalWorldGBufferRenderer::renderFXAA(
     }
 
     const ALMetalRenderTargetDescriptor& input = source.descriptor();
+    const ALMetalPixelFormat format = input.colors[0].format;
+    const bool display_format =
+        format == ALMetalPixelFormat::rgba8_unorm ||
+        format == ALMetalPixelFormat::rgb10a2_unorm;
     if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
         input.color_attachment_count != 1 ||
-        input.colors[0].format != ALMetalPixelFormat::rgb10a2_unorm ||
+        !display_format ||
         !sampleableTexture(source.colorTexture(0)))
     {
         setError(error, "Metal world FXAA source is incompatible");
@@ -9577,11 +9943,14 @@ ALMetalWorldGBufferRenderer::renderFXAA(
     ALMetalRenderTargetDescriptor output_descriptor;
     output_descriptor.width = input.width;
     output_descriptor.height = input.height;
-    output_descriptor.colors[0].format =
-        ALMetalPixelFormat::rgb10a2_unorm;
+    output_descriptor.colors[0].format = format;
     output_descriptor.colors[0].label =
-        "Alchemy world FXAA RGB10_A2 color";
-    output_descriptor.label = "Alchemy native world FXAA target";
+        format == ALMetalPixelFormat::rgb10a2_unorm
+        ? "Alchemy HDR world FXAA RGB10_A2 color"
+        : "Alchemy non-HDR world FXAA RGBA8 color";
+    output_descriptor.label = format == ALMetalPixelFormat::rgb10a2_unorm
+        ? "Alchemy native HDR world FXAA target"
+        : "Alchemy native non-HDR world FXAA target";
     auto output = ALMetalRenderTarget::create(
         *mImpl->device, output_descriptor, error);
     if (!output)
@@ -9618,7 +9987,10 @@ ALMetalWorldGBufferRenderer::renderFXAA(
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
-        encoder->setPipeline(*mImpl->fxaa_pipeline, error) &&
+        encoder->setPipeline(
+            *mImpl->fxaa_pipelines[
+                format == ALMetalPixelFormat::rgb10a2_unorm ? 1u : 0u],
+            error) &&
         encoder->setFragmentTexture(0, source.colorTexture(0), error) &&
         encoder->setFragmentSampler(
             0, mImpl->linear_mirror_sampler.get(), error) &&
@@ -9647,9 +10019,13 @@ ALMetalWorldGBufferRenderer::renderSMAAEdges(
 
     const ALMetalRenderTargetDescriptor& input =
         scene.source->descriptor();
+    const ALMetalPixelFormat source_format = input.colors[0].format;
+    const bool display_format =
+        source_format == ALMetalPixelFormat::rgba8_unorm ||
+        source_format == ALMetalPixelFormat::rgb10a2_unorm;
     if (input.width == 0 || input.height == 0 || input.sample_count != 1 ||
         input.color_attachment_count != 1 ||
-        input.colors[0].format != ALMetalPixelFormat::rgb10a2_unorm ||
+        !display_format ||
         !sampleableTexture(scene.source->colorTexture(0)))
     {
         setError(error, "Metal world SMAA edge source is incompatible");
@@ -9891,9 +10267,13 @@ ALMetalWorldGBufferRenderer::renderSMAANeighborhood(
         scene.source->descriptor();
     const ALMetalRenderTargetDescriptor& weights =
         scene.weights->descriptor();
+    const ALMetalPixelFormat source_format = source.colors[0].format;
+    const bool display_format =
+        source_format == ALMetalPixelFormat::rgba8_unorm ||
+        source_format == ALMetalPixelFormat::rgb10a2_unorm;
     if (source.width == 0 || source.height == 0 ||
         source.sample_count != 1 || source.color_attachment_count != 1 ||
-        source.colors[0].format != ALMetalPixelFormat::rgb10a2_unorm ||
+        !display_format ||
         !sampleableTexture(scene.source->colorTexture(0)))
     {
         setError(error, "Metal world SMAA neighborhood source is incompatible");
@@ -9911,12 +10291,15 @@ ALMetalWorldGBufferRenderer::renderSMAANeighborhood(
     ALMetalRenderTargetDescriptor output_descriptor;
     output_descriptor.width = source.width;
     output_descriptor.height = source.height;
-    output_descriptor.colors[0].format =
-        ALMetalPixelFormat::rgb10a2_unorm;
+    output_descriptor.colors[0].format = source_format;
     output_descriptor.colors[0].label =
-        "Alchemy world SMAA RGB10_A2 neighborhood output";
+        source_format == ALMetalPixelFormat::rgb10a2_unorm
+        ? "Alchemy HDR world SMAA RGB10_A2 neighborhood output"
+        : "Alchemy non-HDR world SMAA RGBA8 neighborhood output";
     output_descriptor.label =
-        "Alchemy native world SMAA neighborhood target";
+        source_format == ALMetalPixelFormat::rgb10a2_unorm
+        ? "Alchemy native HDR world SMAA neighborhood target"
+        : "Alchemy native non-HDR world SMAA neighborhood target";
     auto output = ALMetalRenderTarget::create(
         *mImpl->device, output_descriptor, error);
     if (!output)
@@ -9954,7 +10337,11 @@ ALMetalWorldGBufferRenderer::renderSMAANeighborhood(
         encoder->setViewport(viewport, error) &&
         encoder->setScissor(scissor, error) &&
         encoder->setCullMode(ALMetalCullMode::none, error) &&
-        encoder->setPipeline(*mImpl->smaa_neighborhood_pipeline, error) &&
+        encoder->setPipeline(
+            *mImpl->smaa_neighborhood_pipelines[
+                source_format == ALMetalPixelFormat::rgb10a2_unorm
+                    ? 1u : 0u],
+            error) &&
         encoder->setFragmentTexture(
             0, scene.source->colorTexture(0), error) &&
         encoder->setFragmentTexture(
