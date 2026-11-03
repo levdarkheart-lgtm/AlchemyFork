@@ -32,6 +32,7 @@
 #include "llparcel.h"
 #include "llfloaterreg.h"
 #include "llgl.h"
+#include "llimagegl.h"
 #include "llrender.h"
 #include "lluicolor.h"
 #include "v4color.h"
@@ -85,20 +86,24 @@ LLViewerParcelOverlay::LLViewerParcelOverlay(LLViewerRegion* region, F32 region_
     // 4 components
     // Use mipmaps = false, clamped, NEAREST filter, for sharp edges
     mImageRaw = new LLImageRaw(mParcelGridsPerEdge, mParcelGridsPerEdge, OVERLAY_IMG_COMPONENTS);
+#if LL_DARWIN
+    // The raw-image overload creates a GL texture in its LLImageGL constructor.
+    // Keep only the logical LLViewerTexture identity until the completed CPU map
+    // is published to native storage.
+    mTexture = LLViewerTextureManager::getLocalTexture(
+        mParcelGridsPerEdge, mParcelGridsPerEdge, OVERLAY_IMG_COMPONENTS,
+        /*usemipmaps=*/false, /*generate_gl_tex=*/false);
+#else
     mTexture = LLViewerTextureManager::getLocalTexture(mImageRaw.get(), false);
+#endif
 
-    //
-    // Initialize the GL texture with empty data.
-    //
-    // Create the base texture.
+    // Initialize the CPU image with empty data.
     U8* raw = mImageRaw->getData();
     const S32 COUNT = mParcelGridsPerEdge * mParcelGridsPerEdge * OVERLAY_IMG_COMPONENTS;
     for (S32 i = 0; i < COUNT; i++)
     {
         raw[i] = 0;
     }
-    //mTexture->setSubImage(mImageRaw, 0, 0, mParcelGridsPerEdge, mParcelGridsPerEdge);
-
     // Create storage for ownership information from simulator
     // and initialize it.
     mOwnership = new U8[ mParcelGridsPerEdge * mParcelGridsPerEdge ];
@@ -107,7 +112,9 @@ LLViewerParcelOverlay::LLViewerParcelOverlay(LLViewerRegion* region, F32 region_
         mOwnership[i] = PARCEL_PUBLIC;
     }
 
+#if !LL_DARWIN
     gPipeline.markGLRebuild(this);
+#endif
 }
 
 
@@ -429,15 +436,46 @@ void LLViewerParcelOverlay::updateOverlayTexture()
         pixel_index += OVERLAY_IMG_COMPONENTS;
     }
 
-    // Copy data into GL texture from raw data
+    // Publish the completed CPU image to renderer-owned texture storage.
     if (i >= COUNT)
     {
+#if LL_DARWIN
+        bool uploaded = false;
+        if (!mOverlayTextureNative || mTexture->hasGLTexture())
+        {
+            uploaded = mTexture->createMetalTexture(
+                0, mImageRaw.get(), LLGLTexture::LOCAL);
+        }
+        else
+        {
+            uploaded = mTexture->getGLTexture()->uploadMetalSubImage(
+                raw, mParcelGridsPerEdge, mParcelGridsPerEdge,
+                0, 0, mParcelGridsPerEdge, mParcelGridsPerEdge);
+        }
+
+        if (uploaded)
+        {
+            mOverlayTextureNative = true;
+            mOverlayTextureIdx = -1;
+        }
+        else
+        {
+            // Rebuild all CPU rows before retrying. If the native image was
+            // discarded, the next attempt creates it rather than repeatedly
+            // trying to update missing storage.
+            mOverlayTextureNative = false;
+            mOverlayTextureIdx = 0;
+            LL_WARNS("Parcel") << "Could not publish the parcel overlay to native texture storage"
+                               << LL_ENDL;
+        }
+#else
         if (!mTexture->hasGLTexture())
         {
             mTexture->createGLTexture(0, mImageRaw);
         }
         mTexture->setSubImage(mImageRaw, 0, 0, mParcelGridsPerEdge, mParcelGridsPerEdge);
         mOverlayTextureIdx = -1;
+#endif
     }
     else
     {
@@ -649,14 +687,21 @@ void LLViewerParcelOverlay::updateGL()
 
 void LLViewerParcelOverlay::idleUpdate(bool force_update)
 {
+#if !LL_DARWIN
     if (gGLManager.mIsDisabled)
     {
         return;
     }
+#endif
     if (mOverlayTextureIdx >= 0 && (!(mDirty && force_update)))
     {
-        // We are in the middle of updating the overlay texture
+        // We are in the middle of updating the overlay texture. The native
+        // owner progresses directly and does not require a GL rebuild queue.
+#if LL_DARWIN
+        updateOverlayTexture();
+#else
         gPipeline.markGLRebuild(this);
+#endif
         return;
     }
     // Only if we're dirty and it's been a while since the last update.

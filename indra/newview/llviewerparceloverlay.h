@@ -117,10 +117,15 @@ private:
     // and other flags in the upper bits.
     U8              *mOwnership;
 
-    // Update propery lines and overlay texture
+    // Update property lines and renderer-owned overlay texture.
     bool            mDirty;
     LLFrameTimer    mTimeSinceLastUpdate;
     S32             mOverlayTextureIdx;
+#if LL_DARWIN
+    // True only after this logical texture successfully published native
+    // storage. A failed update clears it so the next retry recreates storage.
+    bool            mOverlayTextureNative = false;
+#endif
 
     struct Edge
     {

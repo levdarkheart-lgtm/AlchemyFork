@@ -1435,6 +1435,39 @@ namespace
         INFO(error);
         CHECK(std::all_of(pixels.begin(), pixels.end(),
                           [](U8 byte) { return byte == 0x6d; }));
+
+        LLPointer<LLImageRaw> updated = makeRaw(12, 10, 4, 0x6d);
+        for (S32 y = 3; y < 7; ++y)
+        {
+            for (S32 x = 2; x < 8; ++x)
+            {
+                const std::size_t pixel =
+                    (static_cast<std::size_t>(y) * 12 + x) * 4;
+                updated->getData()[pixel + 0] = 0x10;
+                updated->getData()[pixel + 1] = 0x20;
+                updated->getData()[pixel + 2] = 0x30;
+                updated->getData()[pixel + 3] = 0x40;
+            }
+        }
+        REQUIRE(image->uploadMetalSubImage(
+            updated->getData(), 12, 10, 2, 3, 6, 4));
+        REQUIRE(image->getMetalTexture()->readback(
+            *device, 0, 0, {}, pixels.data(), 12 * 4, &error));
+        INFO(error);
+        for (S32 y = 0; y < 10; ++y)
+        {
+            for (S32 x = 0; x < 12; ++x)
+            {
+                const std::size_t pixel =
+                    (static_cast<std::size_t>(y) * 12 + x) * 4;
+                const bool changed = x >= 2 && x < 8 && y >= 3 && y < 7;
+                CHECK(pixels[pixel + 0] == (changed ? 0x10 : 0x6d));
+                CHECK(pixels[pixel + 1] == (changed ? 0x20 : 0x6d));
+                CHECK(pixels[pixel + 2] == (changed ? 0x30 : 0x6d));
+                CHECK(pixels[pixel + 3] == (changed ? 0x40 : 0x6d));
+            }
+        }
+        CHECK_FALSE(image->getHasGLTexture());
     }
 
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: typed native creation and region updates preserve float terrain texels", "[LLImageGL][almetal]")
