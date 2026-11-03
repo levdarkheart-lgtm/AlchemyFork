@@ -110,9 +110,6 @@ public:
     LLPipeline();
     ~LLPipeline();
 
-    void destroyGL();
-    void restoreGL();
-
     /// Marks a change to the render inputs for the next application (applyRenderInputs), and does nothing else.
     void markRenderInputsDirty(ALRenderInputRequests::Change change = ALRenderInputRequests::Change::Inputs);
     /// Whether the window has been resized since the inputs were last applied: display() draws nothing that frame.
@@ -122,8 +119,8 @@ public:
     /// where they moved (LLViewerShaderMgr::setShaders), the resources reconciled where theirs moved
     /// (rebuildGLBuffers), and what derives from either invalidated. Nothing while a snapshot holds the render size.
     void applyRenderInputs();
-    /// The same application for the pipeline's first load and a restored context: every program built and every
-    /// resource reconciled, with whatever was marked until then.
+    /// The same application for the pipeline's first load: every program built
+    /// and every resource reconciled, with whatever was marked until then.
     void loadRenderInputs();
 
     /// A snapshot's render size, before the resolution scale, until endSizeOverride (ALRenderSizeOverride): the
@@ -147,8 +144,9 @@ public:
     /// reads rather than the settings.
     const ALShaderInputs& shaderInputs() const;
 
-    /// Every GL resource the pipeline holds, and the state derived from them: on context teardown and at shutdown.
-    void releaseAllGLResources();
+    /// Every retained and native render resource the pipeline holds, plus the
+    /// state derived from them, at pipeline shutdown.
+    void releaseAllRenderResources();
 
     /// What a rebuildGLBuffers runs for, as its log line says.
     enum class RebuildCause : U8
@@ -259,7 +257,8 @@ private:
     // surface's maps, the selection outline and the far-plane overlay.
     void releaseDepthDependents();
 
-    // What the resources were last reconciled to, and whether they have been since releaseAllGLResources last ran.
+    // What the resources were last reconciled to, and whether they have been
+    // since releaseAllRenderResources last ran.
     ALRenderResourceInputs mResourceInputs;
     ALRenderResourcePlan   mResourcePlan;
     bool                   mGLResourcesLive = false;

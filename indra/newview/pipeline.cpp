@@ -16350,7 +16350,7 @@ void LLPipeline::cleanup()
     delete mWaterExclusionPool;
     mWaterExclusionPool = nullptr;
 
-    releaseAllGLResources();
+    releaseAllRenderResources();
 
     mFaceSelectImagep = NULL;
 
@@ -16371,17 +16371,6 @@ void LLPipeline::cleanup()
 }
 
 //============================================================================
-
-void LLPipeline::destroyGL()
-{
-    stop_glerror();
-    unloadShaders();
-    mHighlightFaces.clear();
-
-    resetDrawOrders();
-
-    releaseAllGLResources();
-}
 
 void LLPipeline::markRenderInputsDirty(ALRenderInputRequests::Change change)
 {
@@ -17160,14 +17149,14 @@ void LLPipeline::refreshCachedSettings()
     LLUIImage::enableDisplayListsCollection(enable_buffers);
 }
 
-void LLPipeline::releaseAllGLResources()
+void LLPipeline::releaseAllRenderResources()
 {
     assertInitialized();
 
 #if LL_DARWIN
-    // Drop all retained native-world resources before rebuilding the legacy
-    // context; a restored device/context pairing starts a fresh bounded
-    // native-world probe.
+    // Pipeline shutdown drops the native world and its histories with the
+    // retained resources. There is no context-loss recovery path in this
+    // Apple-only product: a later process starts with a fresh Metal device.
     if (mMetalHeroWorldCaptureActive ||
         mMetalReflectionWorldCaptureActive)
     {
@@ -17354,7 +17343,7 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
     };
     std::string invalidated;
 
-    const bool new_context = !mGLResourcesLive;
+    const bool first_resources = !mGLResourcesLive;
     const ResourceChanges changes = reconcileResources(requested);
     mGLResourcesLive   = true;
     mResourcesFullSize = changes.mFullSize;
@@ -17362,7 +17351,7 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
     // A spot map built again, or not there, holds nothing its last draw left in it.
     ALRenderResourcePlan::IdSet spot_maps;
     spot_maps.set((size_t)ALRenderResourcePlan::Id::SpotShadow0).set((size_t)ALRenderResourcePlan::Id::SpotShadow1);
-    const bool spot_maps_lost = new_context || ((changes.mBuilt | changes.mFreed | changes.mFailed) & spot_maps).any();
+    const bool spot_maps_lost = first_resources || ((changes.mBuilt | changes.mFreed | changes.mFailed) & spot_maps).any();
     if (spot_maps_lost)
     {
         mSpotShadowCache.invalidate();
@@ -17375,11 +17364,12 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
     }
 
     std::string changed;
-    if (new_context)
+    if (first_resources)
     {
-        // releaseAllGLResources dropped everything derived with the context's resources; what is not restored here
-        // is rebuilt where it is next wanted.
-        add(changed, "new context");
+        // The pipeline's first resource load builds retained resources and
+        // everything derived from them. Native owners build lazily where they
+        // are first wanted.
+        add(changed, "initial resources");
         gBumpImageList.restoreGL();
         // Read again otherwise only when RenderColorGrade or RenderColorGradeLUT changes (LLPipeline::init).
         setupGradingLUT();
@@ -17480,7 +17470,7 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
     }
 
     // A new context builds everything, which its count says better than sixty names.
-    const std::string built = new_context ? fmt::format("{} resources", changes.mBuilt.count())
+    const std::string built = first_resources ? fmt::format("{} resources", changes.mBuilt.count())
                                           : resource_names(changes.mBuilt);
     std::string freed = changes.mFreed.any() ? resource_names(changes.mFreed) : std::string();
     if (changes.mReflectionProbesFreed)
@@ -18334,28 +18324,6 @@ void LLPipeline::bakeToneCurveLut()
     mToneCurveLutLoaded = true;
     mToneCurveLutDirty = false;
 #endif
-}
-
-void LLPipeline::restoreGL()
-{
-    assertInitialized();
-
-    // The new context's programs and resources, from the inputs as they are now.
-    loadRenderInputs();
-
-    for (LLWorld::region_list_t::const_iterator iter = LLWorld::getInstance()->getRegionList().begin();
-            iter != LLWorld::getInstance()->getRegionList().end(); ++iter)
-    {
-        LLViewerRegion* region = *iter;
-        for (U32 i = 0; i < LLViewerRegion::NUM_PARTITIONS; i++)
-        {
-            LLSpatialPartition* part = region->getSpatialPartition(i);
-            if (part)
-            {
-                part->restoreGL();
-        }
-        }
-    }
 }
 
 bool LLPipeline::shadersLoaded()

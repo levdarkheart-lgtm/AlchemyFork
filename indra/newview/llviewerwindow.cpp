@@ -6824,11 +6824,6 @@ void LLViewerWindow::stopGL()
         LLViewerDynamicTexture::destroyGL();
         stop_glerror();
 
-        if (gPipeline.isInit())
-        {
-            gPipeline.destroyGL();
-        }
-
         gBox.cleanupGL();
 
         gTextureList.destroyGL();
@@ -6843,64 +6838,6 @@ void LLViewerWindow::stopGL()
             LLGLSLShader* shader = *(LLGLSLShader::sInstances.begin());
             shader->unload();
         }
-    }
-}
-
-void LLViewerWindow::restoreGL(const std::string& progress_message)
-{
-    llassert(false);
-    // DEPRECATED -- this is left over from when we would completely destroy and restore a GL context
-    // when switching from windowed to fullscreen.  None of this machinery has been exercised in years
-    // and is unreliable.  If we ever *do* have another use case where completely unloading and reloading
-    // everthing is necessary, requiring a viewer restart for that operation is a fine thing to do.
-    // -- davep
-
-
-    //Note: --bao
-    //if not necessary, do not change the order of the function calls in this function.
-    //if change something, make sure it will not break anything.
-    //especially, be careful to put something before gTextureList.restoreGL();
-    if (gGLManager.mIsDisabled)
-    {
-        LL_INFOS("Window") << "Restoring GL..." << LL_ENDL;
-        gGLManager.mIsDisabled = false;
-
-        initGLDefaults();
-        LLGLState::restoreGL();
-
-        // for future support of non-square pixels, and fonts that are properly stretched
-        //LLFontGL::destroyDefaultFonts();
-        initFonts();
-
-        gSky.restoreGL();
-        gPipeline.restoreGL();
-        LLManipTranslate::restoreGL();
-
-        gBumpImageList.restoreGL();
-        LLViewerDynamicTexture::restoreGL();
-        LLVOAvatar::restoreGL();
-        LLVOPartGroup::restoreGL();
-
-        gPipeline.markRenderInputsDirty(ALRenderInputRequests::Change::Window);
-
-        if (isAgentAvatarValid() && gAgentAvatarp->isEditingAppearance())
-        {
-            LLVisualParamHint::requestHintUpdates();
-        }
-
-        if (!progress_message.empty())
-        {
-            gRestoreGLTimer.reset();
-            gRestoreGL = true;
-            setShowProgress(true);
-            setProgressString(progress_message);
-        }
-        LL_INFOS("Window") << "...Restoring GL done" << LL_ENDL;
-        if(!LLAppViewer::instance()->restoreErrorTrap())
-        {
-            LL_WARNS() << " Someone took over my signal/exception handler (post restoreGL)!" << LL_ENDL;
-        }
-
     }
 }
 
