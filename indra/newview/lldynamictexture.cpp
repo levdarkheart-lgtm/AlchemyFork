@@ -189,11 +189,7 @@ bool LLViewerDynamicTexture::updateAllInstances()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
 
     sNumRenders = 0;
-    if (gGLManager.mIsDisabled)
-    {
-        return true;
-    }
-
+    const bool retained_rendering_available = !gGLManager.mIsDisabled;
     bool result = false;
     bool ret = false ;
     bool retained_rendering = false;
@@ -240,14 +236,25 @@ bool LLViewerDynamicTexture::updateAllInstances()
     const auto update_orders = [&](S32 first, S32 last, Plan::Id id)
         {
             const ALTransientTargetPool::Keep keep(gPipeline.mTransientTargets, KEEP_FRAMES);
-            ALOnDemandTarget target(gPipeline.mTransientTargets, gPipeline.resourcePlan().desc(id), Plan::name(id),
-                                    KEEP_FRAMES);
+            const std::optional<ALRenderTargetDesc> target_desc = retained_rendering_available
+                ? gPipeline.resourcePlan().desc(id)
+                : std::nullopt;
+            ALOnDemandTarget target(gPipeline.mTransientTargets, target_desc, Plan::name(id), KEEP_FRAMES);
             bool drawn = true;
             for (S32 order = first; drawn && order < last; ++order)
             {
                 for (LLViewerDynamicTexture* dynamic_texture :
                      LLViewerDynamicTexture::sInstances[order])
                 {
+                    // Retained textures can do nothing safely without GL. Do
+                    // not even ask their needsRender implementations, which
+                    // may inspect retained renderer state. Explicitly
+                    // targetless-capable textures still get their Metal turn.
+                    if (!retained_rendering_available &&
+                        !dynamic_texture->canRenderWithoutTarget())
+                    {
+                        continue;
+                    }
                     if (!dynamic_texture->needsRender())
                     {
                         continue;
@@ -257,8 +264,6 @@ bool LLViewerDynamicTexture::updateAllInstances()
                     if (targetless_result ==
                         ETargetlessRenderResult::COMPLETED)
                     {
-                        ret = true;
-                        result = true;
                         ++sNumRenders;
                         continue;
                     }
@@ -268,6 +273,13 @@ bool LLViewerDynamicTexture::updateAllInstances()
                         continue;
                     }
 
+                    // A targetless attempt that needs retained fallback stays
+                    // pending while GL is unavailable. In particular, do not
+                    // unbind, acquire, clear or flush any retained state.
+                    if (!retained_rendering_available)
+                    {
+                        continue;
+                    }
                     prepare_retained_rendering();
                     LLRenderTarget* render_target = target.bind();
                     if (!render_target)

@@ -55,6 +55,9 @@ public:
     static U32 retainedFallbackCount() { return sRetainedFallbackCount; }
 
     bool needsRender() override;
+#if LL_DARWIN
+    bool canRenderWithoutTarget() const override { return true; }
+#endif
     ETargetlessRenderResult renderWithoutTarget() override;
     void preRender(bool clear_depth = true) override;
     bool render() override;

@@ -77,6 +77,10 @@ public:
     S32         getSize()       { return mFullWidth * mFullHeight * mComponents; }
 
     virtual bool needsRender() { return true; }
+    // Whether the scheduler may ask this texture to render when no retained GL
+    // transaction is available. The targetless attempt may still report
+    // RETAINED_FALLBACK, which remains pending until retained rendering exists.
+    virtual bool canRenderWithoutTarget() const { return false; }
     // Try to complete and publish without the shared GL target. The result
     // distinguishes an ordinary retained callback from an item that must stay
     // pending because that fallback is not ready this frame.
@@ -91,6 +95,9 @@ public:
     virtual void restoreGLTexture() {}
     virtual void destroyGLTexture() {}
 
+    // Update each order. True means a retained last-order render succeeded and
+    // the world caller must clear GL depth; targetless completion alone is
+    // deliberately not a GL-depth-dirty result.
     static bool updateAllInstances();
     static void destroyGL() ;
     static void restoreGL() ;
