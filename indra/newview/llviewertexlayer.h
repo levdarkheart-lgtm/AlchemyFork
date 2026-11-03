@@ -35,7 +35,6 @@ class LLVOAvatarSelf;
 class LLViewerTexLayerSetBuffer;
 #if LL_DARWIN
 class ALMetalTexture;
-struct ALMetalTextureDescriptor;
 #endif
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -79,42 +78,51 @@ class LLViewerTexLayerSetBuffer : public LLTexLayerSetBuffer, public LLViewerDyn
 
 public:
     LLViewerTexLayerSetBuffer(LLTexLayerSet* const owner, S32 width, S32 height);
-    virtual ~LLViewerTexLayerSetBuffer();
+    ~LLViewerTexLayerSetBuffer() override;
 
 public:
-    /*virtual*/ S8          getType() const;
+    S8                      getType() const override;
     bool                    isInitialized(void) const;
     static void             dumpTotalByteCount();
     const std::string       dumpTextureInfo() const;
-    virtual void            destroyGLTexture();
+    void                    destroyGLTexture() override;
 private:
     LLViewerTexLayerSet*    getViewerTexLayerSet()
         { return dynamic_cast<LLViewerTexLayerSet*> (mTexLayerSet); }
     const LLViewerTexLayerSet*  getViewerTexLayerSet() const
         { return dynamic_cast<const LLViewerTexLayerSet*> (mTexLayerSet); }
-    static S32              sGLByteCount;
+    static S32              sBufferByteCount;
 
     //--------------------------------------------------------------------
     // Tex Layer Render
     //--------------------------------------------------------------------
-    virtual void            preRenderTexLayerSet();
-    virtual void            midRenderTexLayerSet(bool success);
-    virtual void            postRenderTexLayerSet(bool success);
-    virtual S32             getCompositeOriginX() const { return getOriginX(); }
-    virtual S32             getCompositeOriginY() const { return getOriginY(); }
-    virtual S32             getCompositeWidth() const { return getFullWidth(); }
-    virtual S32             getCompositeHeight() const { return getFullHeight(); }
+    void                    preRenderTexLayerSet() override;
+    void                    midRenderTexLayerSet(bool success) override;
+    void                    postRenderTexLayerSet(bool success) override;
+    S32                     getCompositeOriginX() const override { return getOriginX(); }
+    S32                     getCompositeOriginY() const override { return getOriginY(); }
+    S32                     getCompositeWidth() const override { return getFullWidth(); }
+    S32                     getCompositeHeight() const override { return getFullHeight(); }
 
     //--------------------------------------------------------------------
     // Dynamic Texture Interface
     //--------------------------------------------------------------------
 public:
-    /*virtual*/ bool        needsRender();
+    bool                    needsRender() override;
+    bool                    canRenderWithoutTarget() const override
+    {
+#if LL_DARWIN
+        return true;
+#else
+        return false;
+#endif
+    }
+    ETargetlessRenderResult renderWithoutTarget() override;
 protected:
     // Pass these along for tex layer rendering.
-    virtual void            preRender(bool clear_depth) { preRenderTexLayerSet(); }
-    virtual void            postRender(bool success) { postRenderTexLayerSet(success); }
-    virtual bool            render() { return renderTexLayerSet(mBoundTarget); }
+    void                    preRender(bool clear_depth) override { preRenderTexLayerSet(); }
+    void                    postRender(bool success) override { postRenderTexLayerSet(success); }
+    bool                    render() override { return renderTexLayerSet(mBoundTarget); }
 
     //--------------------------------------------------------------------
     // Updates
@@ -132,7 +140,8 @@ private:
     LLFrameTimer            mNeedsUpdateTimer;              // Tracks time since update was requested and performed.
 #if LL_DARWIN
     std::unique_ptr<ALMetalTexture> mMetalComposite;
-    std::unique_ptr<ALMetalTextureDescriptor> mMetalCompositeDescriptor;
+    bool                    mMetalCaptureActive = false;
+    bool                    mLastNativeRenderSucceeded = false;
 #endif
 };
 

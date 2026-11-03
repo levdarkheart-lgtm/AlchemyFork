@@ -3711,13 +3711,23 @@ void LLGLState::setEnabled(S32 enabled)
     else if (enabled == ENABLED_STATE && sStateMap[mState] != GL_TRUE)
     {
         gGL.flush();
-        glEnable(mState);
+#if LL_DARWIN
+        if (!gGL.isMetalUITextureCaptureAuthoritative())
+#endif
+        {
+            glEnable(mState);
+        }
         sStateMap[mState] = GL_TRUE;
     }
     else if (enabled == DISABLED_STATE && sStateMap[mState] != GL_FALSE)
     {
         gGL.flush();
-        glDisable(mState);
+#if LL_DARWIN
+        if (!gGL.isMetalUITextureCaptureAuthoritative())
+#endif
+        {
+            glDisable(mState);
+        }
         sStateMap[mState] = GL_FALSE;
     }
     mIsEnabled = enabled;
@@ -3728,7 +3738,11 @@ LLGLState::~LLGLState()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     if (mState)
     {
-        if (gDebugGL)
+        if (gDebugGL
+#if LL_DARWIN
+            && !gGL.isMetalUITextureCaptureAuthoritative()
+#endif
+            )
         {
             if (!gDebugSession)
             {
@@ -3748,12 +3762,22 @@ LLGLState::~LLGLState()
             gGL.flush();
             if (mWasEnabled)
             {
-                glEnable(mState);
+#if LL_DARWIN
+                if (!gGL.isMetalUITextureCaptureAuthoritative())
+#endif
+                {
+                    glEnable(mState);
+                }
                 sStateMap[mState] = GL_TRUE;
             }
             else
             {
-                glDisable(mState);
+#if LL_DARWIN
+                if (!gGL.isMetalUITextureCaptureAuthoritative())
+#endif
+                {
+                    glDisable(mState);
+                }
                 sStateMap[mState] = GL_FALSE;
             }
         }
@@ -4006,9 +4030,20 @@ void LLGLDepthTest::rebase()
 LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, GLenum depth_func)
 : mPrevDepthEnabled(sDepthEnabled), mPrevDepthFunc(sDepthFunc), mPrevWriteEnabled(sWriteEnabled)
 {
-    stop_glerror();
+#if LL_DARWIN
+    const bool native_capture = gGL.isMetalUITextureCaptureAuthoritative();
+#else
+    constexpr bool native_capture = false;
+#endif
+    if (!native_capture)
+    {
+        stop_glerror();
+    }
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-    checkState();
+    if (!native_capture)
+    {
+        checkState();
+    }
 
     if (!depth_enabled)
     { // always disable depth writes if depth testing is disabled
@@ -4020,20 +4055,29 @@ LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, G
     if (depth_enabled != sDepthEnabled)
     {
         gGL.flush();
-        if (depth_enabled) glEnable(GL_DEPTH_TEST);
-        else glDisable(GL_DEPTH_TEST);
+        if (!native_capture)
+        {
+            if (depth_enabled) glEnable(GL_DEPTH_TEST);
+            else glDisable(GL_DEPTH_TEST);
+        }
         sDepthEnabled = depth_enabled;
     }
     if (depth_func != sDepthFunc)
     {
         gGL.flush();
-        glDepthFunc(remap(depth_func));
+        if (!native_capture)
+        {
+            glDepthFunc(remap(depth_func));
+        }
         sDepthFunc = depth_func;
     }
     if (write_enabled != sWriteEnabled)
     {
         gGL.flush();
-        glDepthMask(write_enabled);
+        if (!native_capture)
+        {
+            glDepthMask(write_enabled);
+        }
         sWriteEnabled = write_enabled;
     }
 }
@@ -4041,24 +4085,41 @@ LLGLDepthTest::LLGLDepthTest(GLboolean depth_enabled, GLboolean write_enabled, G
 LLGLDepthTest::~LLGLDepthTest()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-    checkState();
+#if LL_DARWIN
+    const bool native_capture = gGL.isMetalUITextureCaptureAuthoritative();
+#else
+    constexpr bool native_capture = false;
+#endif
+    if (!native_capture)
+    {
+        checkState();
+    }
     if (sDepthEnabled != mPrevDepthEnabled )
     {
         gGL.flush();
-        if (mPrevDepthEnabled) glEnable(GL_DEPTH_TEST);
-        else glDisable(GL_DEPTH_TEST);
+        if (!native_capture)
+        {
+            if (mPrevDepthEnabled) glEnable(GL_DEPTH_TEST);
+            else glDisable(GL_DEPTH_TEST);
+        }
         sDepthEnabled = mPrevDepthEnabled;
     }
     if (sDepthFunc != mPrevDepthFunc)
     {
         gGL.flush();
-        glDepthFunc(remap(mPrevDepthFunc));
+        if (!native_capture)
+        {
+            glDepthFunc(remap(mPrevDepthFunc));
+        }
         sDepthFunc = mPrevDepthFunc;
     }
     if (sWriteEnabled != mPrevWriteEnabled )
     {
         gGL.flush();
-        glDepthMask(mPrevWriteEnabled);
+        if (!native_capture)
+        {
+            glDepthMask(mPrevWriteEnabled);
+        }
         sWriteEnabled = mPrevWriteEnabled;
     }
 }

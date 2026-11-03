@@ -185,6 +185,18 @@ void ALTextureSlot::bindFast(LLTexture* texture, ALSampler key)
     // getGLTexture() is virtual and this is the per-draw path, so it is resolved once and the
     // sampler is chosen from the result rather than re-fetching.
     LLImageGL* gl_tex = texture->getGLTexture();
+#if LL_DARWIN
+    if (gGL.isMetalUITextureCaptureAuthoritative())
+    {
+        texture->setActive();
+        gGL.bindMetalUITextureCapture(mIndex, gl_tex, key);
+        if (gl_tex)
+        {
+            gl_tex->forceUpdateBindStats();
+        }
+        return;
+    }
+#endif
     bindFastImpl(texture, gl_tex, gGL.getSampler(key));
 }
 
@@ -262,6 +274,17 @@ bool ALTextureSlot::bindSampled(LLTexture* texture, ALSampler key, bool forceBin
 bool ALTextureSlot::bindSampled(LLImageGL* texture, ALSampler key, bool forceBind)
 {
 #if LL_DARWIN
+    if (gGL.isMetalUITextureCaptureAuthoritative())
+    {
+        (void)forceBind;
+        const bool complete =
+            gGL.bindMetalUITextureCapture(mIndex, texture, key);
+        if (texture)
+        {
+            texture->forceUpdateBindStats();
+        }
+        return complete;
+    }
     if (texture && !texture->getTexName() && texture->getMetalTexture())
     {
         return bindNativeSampled(texture, gGL.getSampler(key), forceBind);
@@ -281,6 +304,21 @@ bool ALTextureSlot::bindSampled(LLImageGL* texture, ALSampler key, bool forceBin
 bool ALTextureSlot::bindImpl(LLTexture* texture, bool forceBind, ALSampler key)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
+#if LL_DARWIN
+    if (gGL.isMetalUITextureCaptureAuthoritative())
+    {
+        (void)forceBind;
+        LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
+        const bool complete =
+            gGL.bindMetalUITextureCapture(mIndex, image, key);
+        if (texture && image)
+        {
+            texture->setActive();
+            image->forceUpdateBindStats();
+        }
+        return complete;
+    }
+#endif
     stop_glerror();
     if (mIndex >= 0)
     {
@@ -594,6 +632,13 @@ bool ALTextureSlot::bindManual(eTextureType type, U32 texture, U32 sampler)
 
 void ALTextureSlot::unbind()
 {
+#if LL_DARWIN
+    if (gGL.isMetalUITextureCaptureAuthoritative())
+    {
+        gGL.unbindMetalUITextureCapture(mIndex);
+        return;
+    }
+#endif
     stop_glerror();
 
     if (mIndex < 0) return;
@@ -643,6 +688,13 @@ void ALTextureSlot::unbind()
 
 void ALTextureSlot::unbindFast()
 {
+#if LL_DARWIN
+    if (gGL.isMetalUITextureCaptureAuthoritative())
+    {
+        gGL.unbindMetalUITextureCapture(mIndex);
+        return;
+    }
+#endif
     activate();
 
     if (mCurrTexType != TT_NONE)

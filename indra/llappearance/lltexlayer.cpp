@@ -313,7 +313,12 @@ bool LLTexLayerSet::setInfo(const LLTexLayerSetInfo *info)
 
     requestUpdate();
 
-    stop_glerror();
+#if LL_DARWIN
+    if (!gGL.isMetalUITextureCaptureAuthoritative())
+#endif
+    {
+        stop_glerror();
+    }
 
     return true;
 }
@@ -402,7 +407,12 @@ bool LLTexLayerSet::render( S32 x, S32 y, S32 width, S32 height, LLRenderTarget*
 
         renderAlphaMaskTextures(x, y, width, height, bound_target, false);
 
-        stop_glerror();
+#if LL_DARWIN
+        if (!gGL.isMetalUITextureCaptureAuthoritative())
+#endif
+        {
+            stop_glerror();
+        }
     }
     else
     {
@@ -1053,7 +1063,12 @@ bool LLTexLayer::render(S32 x, S32 y, S32 width, S32 height, LLRenderTarget* bou
 {
     // *TODO: Is this correct?
     //gPipeline.disableLights();
-    stop_glerror();
+#if LL_DARWIN
+    if (!gGL.isMetalUITextureCaptureAuthoritative())
+#endif
+    {
+        stop_glerror();
+    }
 
     LLColor4 net_color;
     bool color_specified = findNetColor(&net_color);
@@ -1198,7 +1213,12 @@ bool LLTexLayer::render(S32 x, S32 y, S32 width, S32 height, LLRenderTarget* bou
         // Restore standard blend func value
         gGL.flush();
         gGL.setSceneBlendType(LLRender::BT_ALPHA);
-        stop_glerror();
+#if LL_DARWIN
+        if (!gGL.isMetalUITextureCaptureAuthoritative())
+#endif
+        {
+            stop_glerror();
+        }
     }
 
     if( !success )
@@ -1948,9 +1968,18 @@ LLGLTexture* LLTexLayerStaticImageList::getTexture(const std::string& file_name,
 
                 image_raw->copyUnscaledAlphaMask(alpha_image_raw, LLColor4U::black);
             }
-            if (!tex->createGLTexture(0, image_raw, 0, true, LLGLTexture::LOCAL))
+#if LL_DARWIN
+            const bool created =
+                tex->createMetalTexture(0, image_raw, LLGLTexture::LOCAL);
+#else
+            const bool created =
+                tex->createGLTexture(
+                    0, image_raw, 0, true, LLGLTexture::LOCAL);
+#endif
+            if (!created)
             {
-                LL_WARNS() << "Failed to create GL texture for image: " << file_name << LL_ENDL;
+                LL_WARNS() << "Failed to create appearance texture for image: "
+                           << file_name << LL_ENDL;
             }
 
             // Clamp is named at every bind of these images (ALSamplers::AnisoClamp), not

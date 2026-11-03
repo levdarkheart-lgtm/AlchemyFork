@@ -202,6 +202,8 @@ struct ALMetalUIRenderer::Impl
     ALMetalFrameScheduler* scheduler = nullptr;
     ALMetalSurface* surface = nullptr;
     ALMetalPixelFormat output_format = ALMetalPixelFormat::bgra8_unorm;
+    ALMetalPixelFormat render_format = ALMetalPixelFormat::bgra8_unorm;
+    bool linear_storage_view = false;
     std::unique_ptr<ALMetalShaderLibrary> library;
     std::unique_ptr<ALMetalRenderPipeline> background_pipeline;
     std::unique_ptr<ALMetalRenderPipeline> drawable_presentation_pipeline;
@@ -295,7 +297,7 @@ struct ALMetalUIRenderer::Impl
         descriptor.fragment_function = surface
             ? "almetal_present_gl_rows_fragment"
             : "almetal_resample_fragment";
-        descriptor.colors[0].format = output_format;
+        descriptor.colors[0].format = render_format;
         descriptor.depth_stencil_format = depth_format;
         descriptor.label = surface
             ? "Alchemy GL-row world/UI drawable presentation pipeline"
@@ -449,7 +451,7 @@ struct ALMetalUIRenderer::Impl
         descriptor.library = library.get();
         descriptor.vertex_function = "almetal_resample_vertex";
         descriptor.fragment_function = "almetal_ui_depth_clear_fragment";
-        descriptor.colors[0].format = output_format;
+        descriptor.colors[0].format = render_format;
         descriptor.colors[0].write_mask = ALMetalColorWriteMask::none;
         descriptor.depth_stencil_format = depth_format;
         descriptor.label = "Alchemy localized HUD depth clear pipeline";
@@ -625,7 +627,7 @@ struct ALMetalUIRenderer::Impl
         descriptor.vertex_function = vertexFunction(shader);
         descriptor.fragment_function = fragmentFunction(shader);
         descriptor.color_attachment_count = 1;
-        descriptor.colors[0].format = output_format;
+        descriptor.colors[0].format = render_format;
         descriptor.colors[0].blending_enabled = target_blend.enabled;
         descriptor.colors[0].source_rgb = target_blend.source_rgb;
         descriptor.colors[0].destination_rgb = target_blend.destination_rgb;
@@ -695,7 +697,7 @@ struct ALMetalUIRenderer::Impl
             : highlight ? "almetal_hud_highlight_fragment"
                         : "almetal_hud_fullbright_fragment";
         descriptor.color_attachment_count = 1;
-        descriptor.colors[0].format = output_format;
+        descriptor.colors[0].format = render_format;
         descriptor.colors[0].blending_enabled = target_blend.enabled;
         descriptor.colors[0].source_rgb = target_blend.source_rgb;
         descriptor.colors[0].destination_rgb = target_blend.destination_rgb;
@@ -928,7 +930,7 @@ struct ALMetalUIRenderer::Impl
             descriptor.vertex_function = vertex_functions[index];
             descriptor.fragment_function =
                 "almetal_selection_wire_fragment";
-            descriptor.colors[0].format = output_format;
+            descriptor.colors[0].format = render_format;
             descriptor.colors[0].blending_enabled = true;
             descriptor.colors[0].source_rgb =
                 ALMetalBlendFactor::source_alpha;
@@ -1005,7 +1007,7 @@ struct ALMetalUIRenderer::Impl
         descriptor.fragment_function = "almetal_selection_contour_fragment";
         descriptor.color_attachment_count = 1;
         descriptor.colors[0] = {};
-        descriptor.colors[0].format = output_format;
+        descriptor.colors[0].format = render_format;
         descriptor.colors[0].blending_enabled = true;
         descriptor.colors[0].source_rgb =
             ALMetalBlendFactor::source_alpha;
@@ -1243,6 +1245,7 @@ struct ALMetalUIRenderer::Impl
         ALMetalRenderPassConfig config;
         config.colors[0].load = ALMetalLoadAction::load;
         config.colors[0].store = ALMetalStoreAction::store;
+        config.colors[0].linear_storage_view = linear_storage_view;
         if (frame_depth)
         {
             config.depth_load = ALMetalLoadAction::load;
@@ -1374,6 +1377,7 @@ struct ALMetalUIRenderer::Impl
         {
             ALMetalRenderPassConfig config;
             config.colors[0] = color_config;
+            config.colors[0].linear_storage_view = linear_storage_view;
             if (frame_depth)
             {
                 config.depth_load = ALMetalLoadAction::load;
@@ -1413,7 +1417,11 @@ struct ALMetalUIRenderer::Impl
                 static_cast<double>(height), 0.0, 1.0};
             const ALMetalScissorRect scissor{0, 0, width, height};
             if (!encoder->setPipeline(*background_pipeline, error) ||
-                !encoder->setFragmentTexture(0, frame_background, error) ||
+                !(linear_storage_view
+                      ? encoder->setFragmentTextureLinear(
+                            0, frame_background, error)
+                      : encoder->setFragmentTexture(
+                            0, frame_background, error)) ||
                 !encoder->setFragmentSampler(
                     0, background_sampler.get(), error) ||
                 !encoder->setViewport(viewport, error) ||
@@ -1452,7 +1460,8 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
     const ALMetalDevice& device,
     ALMetalFrameScheduler& scheduler,
     ALMetalPixelFormat format,
-    std::string* error)
+    std::string* error,
+    bool linear_storage_view)
 {
     if (format != ALMetalPixelFormat::rgba8_unorm &&
         format != ALMetalPixelFormat::rgba8_unorm_srgb &&
@@ -1501,6 +1510,10 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
     impl->device = &device;
     impl->scheduler = &scheduler;
     impl->output_format = format;
+    impl->linear_storage_view = linear_storage_view &&
+        alMetalLinearFormat(format) != format;
+    impl->render_format = impl->linear_storage_view
+        ? alMetalLinearFormat(format) : format;
     impl->library = std::move(library);
     return std::unique_ptr<ALMetalUIRenderer>(new ALMetalUIRenderer(std::move(impl)));
 }
@@ -1737,12 +1750,14 @@ bool ALMetalUIRenderer::readFrameColorRGBA8(
     std::size_t bytes_per_row,
     std::string* error)
 {
+    const bool rgba8 = mImpl &&
+        (mImpl->output_format == ALMetalPixelFormat::rgba8_unorm ||
+         mImpl->output_format == ALMetalPixelFormat::rgba8_unorm_srgb);
     if (!mImpl || mImpl->surface || !bytes || region.width == 0 ||
-        region.height == 0 ||
-        mImpl->output_format != ALMetalPixelFormat::rgba8_unorm)
+        region.height == 0 || !rgba8)
     {
         setError(error,
-                 "Metal UI RGBA readback requires an offscreen RGBA8 frame and destination");
+                 "Metal UI RGBA readback requires an offscreen RGBA8/sRGB frame and destination");
         return false;
     }
 
@@ -1868,9 +1883,12 @@ bool ALMetalUIRenderer::draw(const ALMetalUIBatch& batch, std::string* error)
     {
         return false;
     }
-    if (uses_texture &&
-        (!encoder.setFragmentTexture(0, batch.texture, error) ||
-         !encoder.setFragmentSampler(0, sampler, error)))
+    const bool texture_bound = !uses_texture ||
+        ((batch.sample_linear_storage
+              ? encoder.setFragmentTextureLinear(0, batch.texture, error)
+              : encoder.setFragmentTexture(0, batch.texture, error)) &&
+         encoder.setFragmentSampler(0, sampler, error));
+    if (!texture_bound)
     {
         return false;
     }

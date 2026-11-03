@@ -334,21 +334,40 @@ bool LLTexLayerParamAlpha::render(S32 x, S32 y, S32 width, S32 height)
         if (mCachedProcessedTexture)
         {
             {
-                // Create the GL texture, and then hang onto it for future use.
+                // Materialize the processed alpha once and retain it for later
+                // composites. Darwin publishes native-only Metal backing;
+                // other platforms retain the established GL upload.
                 if (mNeedsCreateTexture)
                 {
-                    if (!mCachedProcessedTexture->createGLTexture(0, mStaticImageRaw))
+#if LL_DARWIN
+                    const bool created =
+                        mCachedProcessedTexture->createMetalTexture(
+                            0, mStaticImageRaw, LLGLTexture::LOCAL);
+#else
+                    const bool created =
+                        mCachedProcessedTexture->createGLTexture(
+                            0, mStaticImageRaw);
+#endif
+                    if (!created)
                     {
-                        LL_WARNS() << "Failed to create GL texture for image: " << mCachedProcessedTexture->getID() << LL_ENDL;
+                        LL_WARNS() << "Failed to create appearance alpha texture for image: "
+                                   << mCachedProcessedTexture->getID() << LL_ENDL;
                     }
-                    mNeedsCreateTexture = false;
-                    gGL.getTextureSlot(0)->bindSampled(mCachedProcessedTexture, ALSamplers::AnisoClamp);
+                    else
+                    {
+                        mNeedsCreateTexture = false;
+                    }
                 }
 
                 gGL.getTextureSlot(0)->bindSampled(mCachedProcessedTexture, ALSamplers::AnisoClamp);
                 gl_rect_2d_simple_tex(width, height);
                 gGL.getTextureSlot(0)->unbind();
-                stop_glerror();
+#if LL_DARWIN
+                if (!gGL.isMetalUITextureCaptureAuthoritative())
+#endif
+                {
+                    stop_glerror();
+                }
             }
         }
 

@@ -98,6 +98,9 @@ struct ALMetalUIBatch
     ALMetalIndexType index_type = ALMetalIndexType::uint16;
     std::uint32_t index_count = 0;
     const ALMetalTexture* texture = nullptr;
+    // Sample a view-compatible non-sRGB view so legacy callers that selected
+    // GL_SKIP_DECODE_EXT keep filtering and multiplying encoded storage bytes.
+    bool sample_linear_storage = false;
     ALMetalSamplerDescriptor sampler{};
     ALMetalUIMatrices matrices{};
     ALMetalUIBlendState blend{};
@@ -294,7 +297,8 @@ public:
         const ALMetalDevice& device,
         ALMetalFrameScheduler& scheduler,
         ALMetalPixelFormat format,
-        std::string* error = nullptr);
+        std::string* error = nullptr,
+        bool linear_storage_view = false);
 
     // Production path: encode the same batches directly into the window's
     // CAMetalLayer drawable and schedule presentation with the frame command
@@ -351,11 +355,11 @@ public:
         std::string* error = nullptr);
     // Exceptional synchronous consumer for appearance morph-mask and bake
     // generation. Finish and submit every draw ordered before this boundary,
-    // read the selected RGBA8 rectangle with row zero in the retained GL-row
-    // convention, then retain that complete output as the next frame's
-    // background so later draws resume rather than clear it. This deliberately
-    // splits the transaction and waits; recurring diagnostics use the
-    // asynchronous readback ring instead.
+    // read the selected RGBA8 or RGBA8-sRGB storage bytes with row zero in the
+    // retained GL-row convention, then retain that complete output as the next
+    // frame's background so later draws resume rather than clear it. This
+    // deliberately splits the transaction and waits; recurring diagnostics
+    // use the asynchronous readback ring instead.
     bool readFrameColorRGBA8(
         ALMetalRegion2D region,
         void* bytes,

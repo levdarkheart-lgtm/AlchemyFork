@@ -398,7 +398,16 @@ public:
     void allocateVBO(GLenum type, U32 size, GLuint& name, U8*& data) override
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
-        STOP_GLERROR;
+#if LL_DARWIN
+        const bool native_capture =
+            gGL.isMetalUITextureCaptureAuthoritative();
+#else
+        constexpr bool native_capture = false;
+#endif
+        if (!native_capture)
+        {
+            STOP_GLERROR;
+        }
         llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
         llassert(name == 0); // non zero name indicates a gl name that wasn't freed
         llassert(data == nullptr);  // non null data indicates a buffer that wasn't freed
@@ -407,17 +416,25 @@ public:
         mAllocated += size;
 
         { //allocate a new buffer
-            LL_PROFILE_GPU_ZONE("vbo alloc");
             // ON OS X, we don't allocate a VBO until the last possible moment
             // in unmapBuffer
             data = (U8*) ll_aligned_malloc_16(size);
-            STOP_GLERROR;
+            if (!native_capture)
+            {
+                STOP_GLERROR;
+            }
         }
     }
 
     void freeVBO(GLenum type, U32 size, GLuint name, U8* data) override
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
+#if LL_DARWIN
+        const bool native_capture =
+            gGL.isMetalUITextureCaptureAuthoritative();
+#else
+        constexpr bool native_capture = false;
+#endif
         llassert(type == GL_ARRAY_BUFFER || type == GL_ELEMENT_ARRAY_BUFFER);
         llassert(size >= 2);
 
@@ -427,12 +444,18 @@ public:
         }
 
         mAllocated -= size;
-        STOP_GLERROR;
+        if (!native_capture)
+        {
+            STOP_GLERROR;
+        }
         if (name)
         {
             delete_buffers(1, &name);
         }
-        STOP_GLERROR;
+        if (!native_capture)
+        {
+            STOP_GLERROR;
+        }
     }
 };
 
@@ -1092,6 +1115,14 @@ void LLVertexBuffer::initClass(LLWindow* window)
 //static
 void LLVertexBuffer::unbind()
 {
+#if LL_DARWIN
+    if (gGL.isMetalUITextureCaptureAuthoritative())
+    {
+        // The authoritative capture never changed the physical GL bindings,
+        // so neither change nor invalidate the caches that describe them.
+        return;
+    }
+#endif
     STOP_GLERROR;
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -1654,7 +1685,16 @@ void LLVertexBuffer::_mapBuffer()
 
 void LLVertexBuffer::_unmapBuffer()
 {
-    STOP_GLERROR;
+#if LL_DARWIN
+    const bool native_capture =
+        gGL.isMetalUITextureCaptureAuthoritative();
+#else
+    constexpr bool native_capture = false;
+#endif
+    if (!native_capture)
+    {
+        STOP_GLERROR;
+    }
     if (!mMapped)
     {
         return;
@@ -1682,7 +1722,10 @@ void LLVertexBuffer::_unmapBuffer()
         // Only the stores the map wrote are sent, and any GL has no buffer for yet, which it is
         // given whatever they hold: a rebuild of the vertices alone leaves the indices as GL has
         // them. Like the other path, a store not sent is not bound either.
-        STOP_GLERROR;
+        if (!native_capture)
+        {
+            STOP_GLERROR;
+        }
         if (mMappedData && (mVerticesWritten || !mGLBuffer))
         {
 #if LL_DARWIN
@@ -1695,19 +1738,25 @@ void LLVertexBuffer::_unmapBuffer()
                 }
             }
 #endif
-            if (!mGLBuffer)
+            if (!native_capture)
             {
-                mGLBuffer = gen_buffer();
+                if (!mGLBuffer)
+                {
+                    mGLBuffer = gen_buffer();
+                }
+                if (mGLBuffer != sGLRenderBuffer)
+                {
+                    glBindBuffer(GL_ARRAY_BUFFER, mGLBuffer);
+                    sGLRenderBuffer = mGLBuffer;
+                }
+                glBufferData(GL_ARRAY_BUFFER, mSize, mMappedData, GL_STATIC_DRAW);
             }
-            if (mGLBuffer != sGLRenderBuffer)
-            {
-                glBindBuffer(GL_ARRAY_BUFFER, mGLBuffer);
-                sGLRenderBuffer = mGLBuffer;
-            }
-            glBufferData(GL_ARRAY_BUFFER, mSize, mMappedData, GL_STATIC_DRAW);
         }
         mVerticesWritten = false;
-        STOP_GLERROR;
+        if (!native_capture)
+        {
+            STOP_GLERROR;
+        }
 
         if (mMappedIndexData && (mIndicesWritten || !mGLIndices))
         {
@@ -1721,19 +1770,25 @@ void LLVertexBuffer::_unmapBuffer()
                 }
             }
 #endif
-            if (!mGLIndices)
+            if (!native_capture)
             {
-                mGLIndices = gen_buffer();
+                if (!mGLIndices)
+                {
+                    mGLIndices = gen_buffer();
+                }
+                if (mGLIndices != sGLRenderIndices)
+                {
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mGLIndices);
+                    sGLRenderIndices = mGLIndices;
+                }
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mMappedIndexData, GL_STATIC_DRAW);
             }
-            if (mGLIndices != sGLRenderIndices)
-            {
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mGLIndices);
-                sGLRenderIndices = mGLIndices;
-            }
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, mIndicesSize, mMappedIndexData, GL_STATIC_DRAW);
         }
         mIndicesWritten = false;
-        STOP_GLERROR;
+        if (!native_capture)
+        {
+            STOP_GLERROR;
+        }
     }
     else
 #endif // LL_DARWIN || LL_ARM64

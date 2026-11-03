@@ -1880,6 +1880,16 @@ void LLGLSLShader::bind()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
 
+#if LL_DARWIN
+    if (gGL.isMetalUITextureCaptureAuthoritative())
+    {
+        gGL.flush();
+        sCurBoundShader = mProgramObject;
+        sCurBoundShaderPtr = this;
+        return;
+    }
+#endif
+
     // A program that did not build draws nothing, and its uniform and texture calls set nothing.
     if (mProgramObject == 0)
     {
@@ -1978,6 +1988,15 @@ void LLGLSLShader::bind(bool rigged)
 void LLGLSLShader::unbind(void)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+#if LL_DARWIN
+    if (gGL.isMetalUITextureCaptureAuthoritative())
+    {
+        gGL.flush();
+        sCurBoundShader = 0;
+        sCurBoundShaderPtr = nullptr;
+        return;
+    }
+#endif
     gGL.flush();
     LLVertexBuffer::unbind();
 
@@ -2943,6 +2962,13 @@ void LLGLSLShader::vertexAttrib4fv(U32 index, GLfloat* v)
 void LLGLSLShader::setMinimumAlpha(F32 minimum)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
+#if LL_DARWIN
+    if (gGL.isMetalUITextureCaptureAuthoritative())
+    {
+        gGL.setMetalUITextureCaptureMinimumAlpha(this, minimum);
+        return;
+    }
+#endif
     if (mMinimumAlpha == minimum)
     {
         // Unchanged: skip the immediate-mode flush (which would pointlessly split any

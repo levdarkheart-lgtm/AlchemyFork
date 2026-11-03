@@ -95,21 +95,28 @@ LLRender::MetalCommandTiming LLRender::metalCommandTiming()
 #if LL_DARWIN
 namespace
 {
-    U32 metal_ui_capture_cache_index(ALMetalPixelFormat format)
+    U32 metal_ui_capture_cache_index(
+        ALMetalPixelFormat format, bool linear_storage)
     {
+        U32 index = 8;
         switch (format)
         {
             case ALMetalPixelFormat::rgba8_unorm:
-                return 0;
+                index = 0;
+                break;
             case ALMetalPixelFormat::rgba8_unorm_srgb:
-                return 1;
+                index = 1;
+                break;
             case ALMetalPixelFormat::bgra8_unorm:
-                return 2;
+                index = 2;
+                break;
             case ALMetalPixelFormat::bgra8_unorm_srgb:
-                return 3;
+                index = 3;
+                break;
             default:
-                return 4;
+                break;
         }
+        return index < 4 && linear_storage ? index + 4 : index;
     }
 }
 #endif
@@ -927,8 +934,18 @@ bool LLRender::beginMetalUITextureCapture(
     LLGLSLShader* alpha_mask_shader,
     const ALMetalTexture* background,
     const ALMetalTexture* depth,
-    LLGLSLShader* uniform_color_shader)
+    LLGLSLShader* uniform_color_shader,
+    EMetalUICaptureMode mode,
+    EMetalUICaptureStorage storage)
 {
+    const bool authoritative =
+        mode == EMetalUICaptureMode::NATIVE_AUTHORITATIVE;
+    if (authoritative && !mMetalUICaptureRenderer)
+    {
+        // Do not let geometry queued for the live framebuffer cross into the
+        // native-only transaction when the caller changes logical state.
+        flush();
+    }
     if (!mMetalDevice || !mMetalFrames || !alpha_mask_shader ||
         mMetalUICaptureRenderer)
     {
@@ -938,7 +955,11 @@ bool LLRender::beginMetalUITextureCapture(
     mMetalUICaptureUsesDepth = false;
     mMetalUICaptureDepthWidth = 0;
     mMetalUICaptureDepthHeight = 0;
-    const U32 cache_index = metal_ui_capture_cache_index(format);
+    const bool linear_storage =
+        storage == EMetalUICaptureStorage::LINEAR_STORAGE &&
+        alMetalLinearFormat(format) != format;
+    const U32 cache_index =
+        metal_ui_capture_cache_index(format, linear_storage);
     if (cache_index >= mMetalUICaptureCache.size())
     {
         return false;
@@ -953,7 +974,7 @@ bool LLRender::beginMetalUITextureCapture(
     else
     {
         mMetalUICaptureRenderer = ALMetalUIRenderer::createForTexture(
-            *mMetalDevice, *mMetalFrames, format, &error);
+            *mMetalDevice, *mMetalFrames, format, &error, linear_storage);
         if (mMetalUICaptureRenderer)
         {
             ++mMetalUICaptureRendererCreations;
@@ -980,6 +1001,7 @@ bool LLRender::beginMetalUITextureCapture(
     mMetalUICaptureBatches = 0;
     mMetalUICaptureAlphaShader = alpha_mask_shader;
     mMetalUICaptureUniformColorShader = uniform_color_shader;
+    mMetalUICaptureMinimumAlpha = alpha_mask_shader->getMinimumAlpha();
     mMetalUICaptureFirstFailure.clear();
     mMetalUICaptureComplete = true;
     mMetalUICaptureUsesDepth = depth != nullptr;
@@ -988,7 +1010,105 @@ bool LLRender::beginMetalUITextureCapture(
         mMetalUICaptureDepthWidth = depth->descriptor().width;
         mMetalUICaptureDepthHeight = depth->descriptor().height;
     }
+    if (authoritative)
+    {
+        MetalUICaptureSavedState& saved = mMetalUICaptureSavedState;
+        saved.shader = LLGLSLShader::sCurBoundShader;
+        saved.shader_ptr = LLGLSLShader::sCurBoundShaderPtr;
+        const ALTextureSlot& slot = mTextureSlots[0];
+        saved.texture = slot.mCurrTexture;
+        saved.texture_type = slot.mCurrTexType;
+        saved.image = slot.mCurrImage;
+        saved.sampler = slot.mCurrSampler;
+        saved.blend_color_source = mCurrBlendColorSFactor;
+        saved.blend_color_destination = mCurrBlendColorDFactor;
+        saved.blend_alpha_source = mCurrBlendAlphaSFactor;
+        saved.blend_alpha_destination = mCurrBlendAlphaDFactor;
+        std::copy(std::begin(mCurrColorMask), std::end(mCurrColorMask),
+                  std::begin(saved.color_mask));
+        std::copy(std::begin(mViewport), std::end(mViewport),
+                  std::begin(saved.viewport));
+        if (mBuffer.notNull())
+        {
+            saved.color = mColorsp[0];
+            saved.texcoord = mTexcoordsp[0];
+        }
+        saved.matrix_mode = mMatrixMode;
+        saved.primitive_mode = mMode;
+        saved.valid = true;
+
+        mMetalUICaptureSampler =
+            ALSamplerCache::makeDesc(ALSamplers::BilinearClamp);
+        mMetalUICaptureTextureBound = false;
+        mMetalUICaptureAuthoritative = true;
+    }
     return true;
+}
+
+bool LLRender::bindMetalUITextureCapture(
+    S32 slot_index, LLImageGL* image, ALSampler sampler)
+{
+    if (!mMetalUICaptureAuthoritative || !mMetalUICaptureRenderer)
+    {
+        return false;
+    }
+    if (slot_index != 0 || !image)
+    {
+        invalidateMetalUITextureCapture(
+            "authoritative texture bind had no supported slot-zero image");
+        return false;
+    }
+
+    // Drain the preceding batch under its old image/sampler before replacing
+    // the logical binding consumed by drawMetalUIBuffer().
+    flush();
+    ALTextureSlot& slot = mTextureSlots[0];
+    slot.mCurrTexture = 1; // logical native binding; never handed to GL
+    slot.mCurrTexType = ALTextureSlot::TT_TEXTURE;
+    slot.mCurrImage = image;
+    mMetalUICaptureSampler = ALSamplerCache::makeDesc(sampler);
+    mMetalUICaptureTextureBound = true;
+    return image->getMetalTexture() != nullptr;
+}
+
+bool LLRender::unbindMetalUITextureCapture(S32 slot_index)
+{
+    if (!mMetalUICaptureAuthoritative || !mMetalUICaptureRenderer ||
+        slot_index != 0)
+    {
+        return false;
+    }
+
+    flush();
+    ALTextureSlot& slot = mTextureSlots[0];
+    slot.mCurrTexture = 0;
+    slot.mCurrTexType = ALTextureSlot::TT_NONE;
+    slot.mCurrImage = nullptr;
+    mMetalUICaptureTextureBound = false;
+    return true;
+}
+
+void LLRender::setMetalUITextureCaptureMinimumAlpha(
+    const LLGLSLShader* shader, F32 minimum)
+{
+    if (!mMetalUICaptureAuthoritative || !mMetalUICaptureRenderer)
+    {
+        return;
+    }
+    if (shader != mMetalUICaptureAlphaShader)
+    {
+        invalidateMetalUITextureCapture(
+            "minimum-alpha state targeted an unsupported shader");
+        return;
+    }
+    if (mMetalUICaptureMinimumAlpha == minimum)
+    {
+        return;
+    }
+    // Complete preceding geometry under the old threshold before changing
+    // the capture-local state used by the next batch.
+    flush();
+    mMetalUICaptureMinimumAlpha = minimum;
 }
 
 bool LLRender::updateMetalUITextureCaptureDepth(
@@ -1567,6 +1687,36 @@ std::unique_ptr<ALMetalTexture> LLRender::endMetalUITextureCapture(
     mMetalUICaptureDepthWidth = 0;
     mMetalUICaptureDepthHeight = 0;
     mMetalUICapturePixel.reset();
+    if (mMetalUICaptureAuthoritative)
+    {
+        MetalUICaptureSavedState& saved = mMetalUICaptureSavedState;
+        llassert(saved.valid);
+        LLGLSLShader::sCurBoundShader = saved.shader;
+        LLGLSLShader::sCurBoundShaderPtr = saved.shader_ptr;
+        ALTextureSlot& slot = mTextureSlots[0];
+        slot.mCurrTexture = saved.texture;
+        slot.mCurrTexType = saved.texture_type;
+        slot.mCurrImage = saved.image;
+        slot.mCurrSampler = saved.sampler;
+        mCurrBlendColorSFactor = saved.blend_color_source;
+        mCurrBlendColorDFactor = saved.blend_color_destination;
+        mCurrBlendAlphaSFactor = saved.blend_alpha_source;
+        mCurrBlendAlphaDFactor = saved.blend_alpha_destination;
+        std::copy(std::begin(saved.color_mask), std::end(saved.color_mask),
+                  std::begin(mCurrColorMask));
+        std::copy(std::begin(saved.viewport), std::end(saved.viewport),
+                  std::begin(mViewport));
+        if (mBuffer.notNull())
+        {
+            mColorsp[0] = saved.color;
+            mTexcoordsp[0] = saved.texcoord;
+        }
+        mMatrixMode = saved.matrix_mode;
+        mMode = saved.primitive_mode;
+        saved.valid = false;
+    }
+    mMetalUICaptureTextureBound = false;
+    mMetalUICaptureAuthoritative = false;
     return output;
 }
 
@@ -2211,10 +2361,15 @@ void LLRender::setColorMask(bool writeColorR, bool writeColorG, bool writeColorB
         mCurrColorMask[2] = writeColorB;
         mCurrColorMask[3] = writeAlpha;
 
-        glColorMask(writeColorR ? GL_TRUE : GL_FALSE,
-                    writeColorG ? GL_TRUE : GL_FALSE,
-                    writeColorB ? GL_TRUE : GL_FALSE,
-                    writeAlpha ? GL_TRUE : GL_FALSE);
+#if LL_DARWIN
+        if (!mMetalUICaptureAuthoritative)
+#endif
+        {
+            glColorMask(writeColorR ? GL_TRUE : GL_FALSE,
+                        writeColorG ? GL_TRUE : GL_FALSE,
+                        writeColorB ? GL_TRUE : GL_FALSE,
+                        writeAlpha ? GL_TRUE : GL_FALSE);
+        }
     }
 }
 
@@ -2261,7 +2416,12 @@ void LLRender::blendFunc(eBlendFactor sfactor, eBlendFactor dfactor)
         mCurrBlendColorDFactor = dfactor;
         mCurrBlendAlphaDFactor = dfactor;
         flush();
-        glBlendFunc(sGLBlendFactor[sfactor], sGLBlendFactor[dfactor]);
+#if LL_DARWIN
+        if (!mMetalUICaptureAuthoritative)
+#endif
+        {
+            glBlendFunc(sGLBlendFactor[sfactor], sGLBlendFactor[dfactor]);
+        }
     }
 }
 
@@ -2282,8 +2442,13 @@ void LLRender::blendFunc(eBlendFactor color_sfactor, eBlendFactor color_dfactor,
         mCurrBlendAlphaDFactor = alpha_dfactor;
         flush();
 
-        glBlendFuncSeparate(sGLBlendFactor[color_sfactor], sGLBlendFactor[color_dfactor],
-                           sGLBlendFactor[alpha_sfactor], sGLBlendFactor[alpha_dfactor]);
+#if LL_DARWIN
+        if (!mMetalUICaptureAuthoritative)
+#endif
+        {
+            glBlendFuncSeparate(sGLBlendFactor[color_sfactor], sGLBlendFactor[color_dfactor],
+                               sGLBlendFactor[alpha_sfactor], sGLBlendFactor[alpha_dfactor]);
+        }
     }
 }
 
@@ -2534,7 +2699,15 @@ void LLRender::end()
 
 void LLRender::flush()
 {
-    STOP_GLERROR;
+#if LL_DARWIN
+    const bool native_capture = mMetalUICaptureAuthoritative;
+#else
+    constexpr bool native_capture = false;
+#endif
+    if (!native_capture)
+    {
+        STOP_GLERROR;
+    }
     if (mCount > 0)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
@@ -2571,36 +2744,46 @@ void LLRender::flush()
 
         if (mBuffer)
         {
-
-            LLVertexBuffer *vb;
-
             U32 attribute_mask = LLGLSLShader::sCurBoundShaderPtr->mAttributeMask;
 
-            if (mBufferDataList)
+            if (native_capture)
             {
-                vb = genBuffer(attribute_mask, count);
-                ALTextureSlot* texture_slot = gGL.getTextureSlot(0);
-                ALSamplerDesc sampler_desc = ALSamplerCache::makeDesc(ALSamplers::BilinearClamp);
-                mSamplerCache.describe(texture_slot->mCurrSampler, sampler_desc);
-                mBufferDataList->emplace_back(
-                    vb,
-                    mMode,
-                    count,
-                    texture_slot->mCurrTexture,
-                    texture_slot->mCurrSampler,
-                    texture_slot->mCurrImage,
-                    sampler_desc,
-                    mMatrix[MM_MODELVIEW][mMatIdx[MM_MODELVIEW]],
-                    mMatrix[MM_PROJECTION][mMatIdx[MM_PROJECTION]],
-                    mMatrix[MM_TEXTURE0][mMatIdx[MM_TEXTURE0]]
-                    );
+                // Authoritative captures must not seed the retained VBO cache
+                // with a buffer that deliberately has no GL name. Keep it
+                // alive exactly through the native encoder call instead.
+                LLPointer<LLVertexBuffer> native_buffer =
+                    genBuffer(attribute_mask, count);
+                drawBuffer(native_buffer, mMode, count);
             }
             else
             {
-                vb = bufferfromCache(attribute_mask, count);
-            }
+                LLVertexBuffer* vb = nullptr;
+                if (mBufferDataList)
+                {
+                    vb = genBuffer(attribute_mask, count);
+                    ALTextureSlot* texture_slot = gGL.getTextureSlot(0);
+                    ALSamplerDesc sampler_desc = ALSamplerCache::makeDesc(ALSamplers::BilinearClamp);
+                    mSamplerCache.describe(texture_slot->mCurrSampler, sampler_desc);
+                    mBufferDataList->emplace_back(
+                        vb,
+                        mMode,
+                        count,
+                        texture_slot->mCurrTexture,
+                        texture_slot->mCurrSampler,
+                        texture_slot->mCurrImage,
+                        sampler_desc,
+                        mMatrix[MM_MODELVIEW][mMatIdx[MM_MODELVIEW]],
+                        mMatrix[MM_PROJECTION][mMatIdx[MM_PROJECTION]],
+                        mMatrix[MM_TEXTURE0][mMatIdx[MM_TEXTURE0]]
+                        );
+                }
+                else
+                {
+                    vb = bufferfromCache(attribute_mask, count);
+                }
 
-            drawBuffer(vb, mMode, count);
+                drawBuffer(vb, mMode, count);
+            }
         }
         else
         {
@@ -2729,15 +2912,19 @@ void LLRender::drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count)
 {
 #if LL_DARWIN
     ALTextureSlot* texture_slot = getTextureSlot(0);
-    ALSamplerDesc sampler = ALSamplerCache::makeDesc(ALSamplers::BilinearClamp);
-    if (texture_slot)
+    ALSamplerDesc sampler = mMetalUICaptureAuthoritative
+        ? mMetalUICaptureSampler
+        : ALSamplerCache::makeDesc(ALSamplers::BilinearClamp);
+    if (texture_slot && !mMetalUICaptureAuthoritative)
     {
         mSamplerCache.describe(texture_slot->mCurrSampler, sampler);
     }
     if (drawMetalUIBuffer(vb, mode, count,
                           texture_slot ? texture_slot->mCurrImage : nullptr,
                           sampler,
-                          texture_slot && texture_slot->mCurrTexture != 0))
+                          mMetalUICaptureAuthoritative
+                              ? mMetalUICaptureTextureBound
+                              : texture_slot && texture_slot->mCurrTexture != 0))
     {
         return;
     }
@@ -2753,18 +2940,19 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                                  U32 index_count, U32 indices_offset)
 {
     const bool capture = mMetalUICaptureRenderer != nullptr;
+    const bool authoritative = capture && mMetalUICaptureAuthoritative;
     const bool replace = mMetalUIRenderer && mMetalUIReplacementEnabled &&
                          !mUIOffset.empty();
     if (!capture && !replace)
     {
-        return false;
+        return authoritative;
     }
     if (replace)
     {
         ++mMetalUIAttemptedBatches;
         ++mMetalUIFrameAttemptedBatches;
     }
-    const auto fallback = [this, capture, replace](
+    const auto fallback = [this, capture, replace, authoritative](
         MetalUIFallbackReason reason,
         const std::string& detail = std::string())
     {
@@ -2786,7 +2974,9 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
             ++mMetalUIFrameFallbackBatches;
             ++sMetalUIFallbackReasons[static_cast<std::size_t>(reason)];
         }
-        return false;
+        // Native-authoritative work fails closed: suppress the GL draw even
+        // when this batch invalidated the Metal transaction.
+        return authoritative;
     };
     if (!buffer || count == 0)
     {
@@ -2905,13 +3095,17 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         }
     }
     batch.texture = metal_texture;
+    batch.sample_linear_storage =
+        sampler.mSRGBDecode == GL_SKIP_DECODE_EXT;
     batch.sampler = metal_sampler_descriptor(sampler);
     batch.shader = metal_shader;
     batch.primitive = primitive;
     batch.vertex_count = count;
     batch.text_shadow_mode = mUITextShadowMode;
     batch.minimum_alpha = shader == mMetalUICaptureAlphaShader
-        ? shader->getMinimumAlpha() : 0.004f;
+        ? (authoritative ? mMetalUICaptureMinimumAlpha
+                         : shader->getMinimumAlpha())
+        : 0.004f;
     memcpy(batch.solid_color, mMetalSolidColor.mV, sizeof(batch.solid_color));
     batch.target_width = target_width;
     batch.target_height = target_height;
@@ -3003,8 +3197,11 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
                     "immediate-mode encoder: " + error;
             }
             mMetalUICaptureComplete = false;
-            LL_DEBUGS("Metal") << "Offscreen immediate-mode capture retained GL: "
-                                << error << LL_ENDL;
+            LL_DEBUGS("Metal")
+                << (authoritative
+                        ? "Authoritative native immediate-mode capture failed: "
+                        : "Offscreen immediate-mode capture retained GL: ")
+                << error << LL_ENDL;
         }
         else
         {
@@ -3013,7 +3210,7 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
     }
     if (!replace)
     {
-        return false;
+        return authoritative;
     }
 
     std::string error;
@@ -3457,7 +3654,12 @@ void LLRender::setViewport(S32 x, S32 y, S32 width, S32 height)
         mViewport[1] = y;
         mViewport[2] = width;
         mViewport[3] = height;
-        glViewport(x, y, width, height);
+#if LL_DARWIN
+        if (!mMetalUICaptureAuthoritative)
+#endif
+        {
+            glViewport(x, y, width, height);
+        }
     }
 }
 

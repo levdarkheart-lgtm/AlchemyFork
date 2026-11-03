@@ -270,6 +270,23 @@ public:
     void shutdown();
 
 #if LL_DARWIN
+    enum class EMetalUICaptureMode
+    {
+        // Retain the existing GL producer and mirror every supported batch.
+        GL_MIRROR,
+        // The Metal transaction is the sole producer. Unsupported work fails
+        // the transaction closed and never falls through to a GL draw.
+        NATIVE_AUTHORITATIVE
+    };
+    enum class EMetalUICaptureStorage
+    {
+        FORMAT_NATIVE,
+        // Render and blend through a view-compatible UNORM attachment while
+        // retaining the sRGB texture's storage descriptor. This matches GL
+        // with GL_FRAMEBUFFER_SRGB disabled.
+        LINEAR_STORAGE
+    };
+
     // Install the window-owned native device and bounded frame scheduler on
     // the main renderer. The renderer borrows both; the window outlives gGL's
     // explicit shutdown.
@@ -288,8 +305,10 @@ public:
                                      U32 index_count, U32 indices_offset);
 
     // Parallel offscreen capture for GL-owned immediate-mode render-texture
-    // producers. Captured draws never suppress GL. A single unsupported batch
-    // fails the complete target closed and end returns no texture.
+    // producers by default. A single unsupported batch fails the complete
+    // target closed and end returns no texture. NATIVE_AUTHORITATIVE is the
+    // cutover form: supported calls update only the logical state consumed by
+    // Metal, captured draws suppress GL, and failure never invokes a fallback.
     // Optional retained color/depth inputs turn this into a world/UI
     // composition capture. They are borrowed until end capture returns. The
     // live surface is never affected and existing texture producers pass no
@@ -299,7 +318,23 @@ public:
         LLGLSLShader* alpha_mask_shader,
         const ALMetalTexture* background = nullptr,
         const ALMetalTexture* depth = nullptr,
-        LLGLSLShader* uniform_color_shader = nullptr);
+        LLGLSLShader* uniform_color_shader = nullptr,
+        EMetalUICaptureMode mode = EMetalUICaptureMode::GL_MIRROR,
+        EMetalUICaptureStorage storage =
+            EMetalUICaptureStorage::FORMAT_NATIVE);
+    bool isMetalUITextureCaptureAuthoritative() const noexcept
+    {
+        return mMetalUICaptureAuthoritative;
+    }
+    // Record slot-zero sampled-image state without allocating or binding a GL
+    // texture/sampler. Used only while an authoritative capture is active.
+    bool bindMetalUITextureCapture(S32 slot, LLImageGL* image, ALSampler sampler);
+    bool unbindMetalUITextureCapture(S32 slot);
+    // Keep capture-only alpha-test state out of LLGLSLShader's retained GL
+    // uniform cache so the native transaction cannot desynchronize it from
+    // the physical program.
+    void setMetalUITextureCaptureMinimumAlpha(
+        const LLGLSLShader* shader, F32 minimum);
     // Mirror GL's localized HUD depth bracket into an active retained-depth
     // capture. Coordinates are GL lower-left target pixels and are clipped to
     // the retained target before conversion to Metal's upper-left scissor.
@@ -940,7 +975,7 @@ private:
     LLColor4 mMetalSolidColor = LLColor4(1.f, 1.f, 1.f, 1.f);
 
 #if LL_DARWIN
-    static constexpr U32 METAL_UI_CAPTURE_CACHE_SIZE = 4;
+    static constexpr U32 METAL_UI_CAPTURE_CACHE_SIZE = 8;
     std::unique_ptr<ALMetalUIRenderer> mMetalUIRenderer;
     std::unique_ptr<ALMetalUIRenderer> mMetalUICaptureRenderer;
     std::unique_ptr<ALMetalTexture> mMetalUICapturePixel;
@@ -950,8 +985,8 @@ private:
     // Offscreen capture output textures are transferred to their callers, but
     // the format-specific renderer owns reusable shader libraries, pipeline
     // states, samplers and intermediate selection targets. Keep one idle
-    // renderer per supported output format so continuous world/UI capture
-    // does not rebuild that state every frame.
+    // renderer per supported output-format/storage-view pair so continuous
+    // world/UI capture does not rebuild that state every frame.
     std::array<std::unique_ptr<ALMetalUIRenderer>,
                METAL_UI_CAPTURE_CACHE_SIZE> mMetalUICaptureCache;
     ALMetalDevice* mMetalDevice = nullptr;
@@ -970,12 +1005,39 @@ private:
     U32 mMetalUICaptureDepthHeight = 0;
     LLGLSLShader* mMetalUICaptureAlphaShader = nullptr;
     LLGLSLShader* mMetalUICaptureUniformColorShader = nullptr;
+    F32 mMetalUICaptureMinimumAlpha = 0.004f;
+    ALSamplerDesc mMetalUICaptureSampler =
+        ALSamplerCache::makeDesc(ALSamplers::BilinearClamp);
+    bool mMetalUICaptureTextureBound = false;
+
+    struct MetalUICaptureSavedState
+    {
+        GLuint shader = 0;
+        LLGLSLShader* shader_ptr = nullptr;
+        U32 texture = 0;
+        ALTextureSlot::eTextureType texture_type = ALTextureSlot::TT_NONE;
+        LLImageGL* image = nullptr;
+        U32 sampler = 0;
+        eBlendFactor blend_color_source = BF_UNDEF;
+        eBlendFactor blend_color_destination = BF_UNDEF;
+        eBlendFactor blend_alpha_source = BF_UNDEF;
+        eBlendFactor blend_alpha_destination = BF_UNDEF;
+        bool color_mask[4] = {true, true, true, true};
+        S32 viewport[4] = {0, 0, -1, -1};
+        LLColor4U color{};
+        LLVector2 texcoord{};
+        eMatrixMode matrix_mode = MM_MODELVIEW;
+        U32 primitive_mode = TRIANGLES;
+        bool valid = false;
+    };
+    MetalUICaptureSavedState mMetalUICaptureSavedState;
     // First exactness failure in the current offscreen transaction. Keeping
     // only the first owner makes a discarded snapshot or drawable probe
     // diagnosable without producing per-batch log noise.
     std::string mMetalUICaptureFirstFailure;
     bool mMetalUICaptureComplete = false;
     bool mMetalUICaptureUsesDepth = false;
+    bool mMetalUICaptureAuthoritative = false;
     bool mMetalUIReplacementEnabled = true;
     bool mMetalUISurfaceFrameSubmitted = false;
 #endif

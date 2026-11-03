@@ -50,25 +50,31 @@ extern std::string self_av_string();
 //-----------------------------------------------------------------------------
 
 // static
-S32 LLViewerTexLayerSetBuffer::sGLByteCount = 0;
+S32 LLViewerTexLayerSetBuffer::sBufferByteCount = 0;
 
 LLViewerTexLayerSetBuffer::LLViewerTexLayerSetBuffer(LLTexLayerSet* const owner,
                                          S32 width, S32 height) :
     // ORDER_LAST => must render these after the hints are created.
     LLTexLayerSetBuffer(owner),
-    LLViewerDynamicTexture(width, height, 4, LLViewerDynamicTexture::ORDER_LAST),
+    LLViewerDynamicTexture(
+        width, height, 4, LLViewerDynamicTexture::ORDER_LAST,
+#if LL_DARWIN
+        LLViewerDynamicTexture::EInitialBacking::NATIVE_METAL),
+#else
+        LLViewerDynamicTexture::EInitialBacking::RETAINED_GL),
+#endif
     mNeedsUpdate(true),
     mNumLowresUpdates(0)
 {
     mGLTexturep->setNeedsAlphaAndPickMask(false);
 
-    LLViewerTexLayerSetBuffer::sGLByteCount += getSize();
+    LLViewerTexLayerSetBuffer::sBufferByteCount += getSize();
     mNeedsUpdateTimer.start();
 }
 
 LLViewerTexLayerSetBuffer::~LLViewerTexLayerSetBuffer()
 {
-    LLViewerTexLayerSetBuffer::sGLByteCount -= getSize();
+    LLViewerTexLayerSetBuffer::sBufferByteCount -= getSize();
     destroyGLTexture();
     for( S32 order = 0; order < ORDER_COUNT; order++ )
     {
@@ -86,8 +92,13 @@ S8 LLViewerTexLayerSetBuffer::getType() const
 void LLViewerTexLayerSetBuffer::destroyGLTexture()
 {
 #if LL_DARWIN
+    if (mMetalCaptureActive)
+    {
+        LLTexLayerSetBuffer::postRenderTexLayerSet(false);
+        gGL.endMetalUITextureCapture(false);
+        mMetalCaptureActive = false;
+    }
     mMetalComposite.reset();
-    mMetalCompositeDescriptor.reset();
 #endif
     LLViewerDynamicTexture::destroyGLTexture() ;
 }
@@ -95,7 +106,9 @@ void LLViewerTexLayerSetBuffer::destroyGLTexture()
 // static
 void LLViewerTexLayerSetBuffer::dumpTotalByteCount()
 {
-    LL_INFOS() << "Composite System GL Buffers: " << (LLViewerTexLayerSetBuffer::sGLByteCount/1024) << "KB" << LL_ENDL;
+    LL_INFOS() << "Composite System Buffers: "
+               << (LLViewerTexLayerSetBuffer::sBufferByteCount / 1024)
+               << "KB" << LL_ENDL;
 }
 
 void LLViewerTexLayerSetBuffer::requestUpdate()
@@ -145,66 +158,95 @@ bool LLViewerTexLayerSetBuffer::needsRender()
 // virtual
 void LLViewerTexLayerSetBuffer::preRenderTexLayerSet()
 {
-    LLTexLayerSetBuffer::preRenderTexLayerSet();
-
-    // keep depth buffer, we don't need to clear it
-    LLViewerDynamicTexture::preRender(false);
-
 #if LL_DARWIN
     mMetalComposite.reset();
     ALMetalTexture* destination = mGLTexturep.notNull()
         ? mGLTexturep->getMetalTexture() : nullptr;
-    if (destination)
+    const ALMetalPixelFormat format = destination
+        ? destination->descriptor().format
+        : ALMetalPixelFormat::rgba8_unorm_srgb;
+    mMetalCaptureActive =
+        (!destination || destination->descriptor().mipmap_level_count == 1) &&
+        gGL.beginMetalUITextureCapture(
+            format,
+            &gAlphaMaskProgram, nullptr, nullptr, nullptr,
+            LLRender::EMetalUICaptureMode::NATIVE_AUTHORITATIVE,
+            LLRender::EMetalUICaptureStorage::LINEAR_STORAGE);
+    if (!mMetalCaptureActive)
     {
-        mMetalCompositeDescriptor =
-            std::make_unique<ALMetalTextureDescriptor>(destination->descriptor());
+        LL_DEBUGS("Metal")
+            << "Native appearance composite is not ready; update remains pending"
+            << LL_ENDL;
+        return;
     }
-    if (mMetalCompositeDescriptor &&
-        mMetalCompositeDescriptor->mipmap_level_count == 1)
-    {
-        if (!gGL.beginMetalUITextureCapture(mMetalCompositeDescriptor->format,
-                                            &gAlphaMaskProgram))
-        {
-            LL_DEBUGS("Metal")
-                << "Appearance bake retained its authoritative GL path"
-                << LL_ENDL;
-        }
-    }
+
+    // The native transaction owns the complete target. These calls update
+    // only the logical matrix/viewport/texture state that its encoder reads.
+    LLTexLayerSetBuffer::preRenderTexLayerSet();
+    mOrigin.set(0, 0);
+    gGL.getTextureSlot(0)->unbind();
+    gGL.setViewport(mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
+#else
+    LLTexLayerSetBuffer::preRenderTexLayerSet();
+
+    // keep depth buffer, we don't need to clear it
+    LLViewerDynamicTexture::preRender(false);
 #endif
 }
 
 // virtual
 void LLViewerTexLayerSetBuffer::postRenderTexLayerSet(bool success)
 {
-
-    LLTexLayerSetBuffer::postRenderTexLayerSet(success);
-    LLViewerDynamicTexture::postRender(success);
 #if LL_DARWIN
-    if (lastPostRenderSucceeded() && mMetalComposite)
+    if (!mMetalCaptureActive)
     {
-        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalComposite)))
+        mLastPostRenderSuccess = false;
+        return;
+    }
+
+    // Restore the balanced matrix stack while the capture is still native-
+    // authoritative, then submit and restore the pre-transaction renderer
+    // caches without issuing any corresponding GL state calls.
+    LLTexLayerSetBuffer::postRenderTexLayerSet(success);
+    std::string failure;
+    mMetalComposite = gGL.endMetalUITextureCapture(
+        success, false, nullptr, &failure);
+    mMetalCaptureActive = false;
+
+    const bool published = success && mMetalComposite && mGLTexturep.notNull() &&
+        mGLTexturep->adoptMetalRenderTextureAuthoritative(
+            std::move(mMetalComposite), LLGLTexture::DYNAMIC_TEX);
+    mLastPostRenderSuccess = published;
+    mLastNativeRenderSucceeded = published;
+    if (published)
+    {
+        const bool update_now = mNeedsUpdate && isReadyToUpdate();
+        if (update_now)
         {
-            LL_INFOS_ONCE("Metal")
-                << "Appearance bakes own native Metal render targets"
-                << LL_ENDL;
+            doUpdate();
         }
-        else
-        {
-            LL_WARNS("Metal")
-                << "Could not publish a native appearance bake"
-                << LL_ENDL;
-        }
+        LL_INFOS_ONCE("Metal")
+            << "Appearance composites publish authoritative native Metal textures"
+            << LL_ENDL;
+    }
+    else
+    {
+        LL_WARNS("Metal")
+            << "Native appearance composite remained pending"
+            << (failure.empty() ? std::string() : ": " + failure)
+            << LL_ENDL;
     }
     mMetalComposite.reset();
+#else
+    LLTexLayerSetBuffer::postRenderTexLayerSet(success);
+    LLViewerDynamicTexture::postRender(success);
 #endif
 }
 
 // virtual
 void LLViewerTexLayerSetBuffer::midRenderTexLayerSet(bool success)
 {
-#if LL_DARWIN
-    mMetalComposite = gGL.endMetalUITextureCapture(success);
-#endif
+#if !LL_DARWIN
     const bool update_now = mNeedsUpdate && isReadyToUpdate();
     if (update_now)
     {
@@ -214,11 +256,40 @@ void LLViewerTexLayerSetBuffer::midRenderTexLayerSet(bool success)
     // *TODO: Old logic does not check success before setGLTextureCreated
     // we have valid texture data now
     mGLTexturep->setGLTextureCreated(true);
+#else
+    (void)success;
+#endif
 }
 
 bool LLViewerTexLayerSetBuffer::isInitialized(void) const
 {
+#if LL_DARWIN
+    return mGLTexturep.notNull() && mGLTexturep->getMetalTexture() &&
+           !mGLTexturep->getHasGLTexture();
+#else
     return mGLTexturep.notNull() && mGLTexturep->isGLTextureCreated();
+#endif
+}
+
+LLViewerDynamicTexture::ETargetlessRenderResult
+LLViewerTexLayerSetBuffer::renderWithoutTarget()
+{
+#if LL_DARWIN
+    mLastNativeRenderSucceeded = false;
+    preRenderTexLayerSet();
+    if (!mMetalCaptureActive)
+    {
+        return ETargetlessRenderResult::PENDING;
+    }
+
+    const bool rendered = renderTexLayerSet(nullptr);
+    postRenderTexLayerSet(rendered);
+    return mLastNativeRenderSucceeded
+        ? ETargetlessRenderResult::COMPLETED
+        : ETargetlessRenderResult::PENDING;
+#else
+    return ETargetlessRenderResult::RETAINED_FALLBACK;
+#endif
 }
 
 bool LLViewerTexLayerSetBuffer::isReadyToUpdate() const
@@ -250,9 +321,14 @@ bool LLViewerTexLayerSetBuffer::requestUpdateImmediate()
 
     if (needsRender())
     {
+#if LL_DARWIN
+        result = renderWithoutTarget() ==
+            ETargetlessRenderResult::COMPLETED;
+#else
         preRender(false);
         result = render();
         postRender(result);
+#endif
     }
 
     return result;
