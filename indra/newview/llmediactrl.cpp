@@ -65,8 +65,6 @@
 #include "lleventapi.h"
 #include "llui.h"
 
-extern bool gRestoreGL;
-
 const std::string PAGE_TEXT_EXTRACT_MARKER = "PAGE_TEXT_EXTRACT:";
 
 class LLMediaCtrlListener;
@@ -851,7 +849,7 @@ void LLMediaCtrl::draw()
 {
     F32 alpha = getDrawContext().mAlpha;
 
-    if ( gRestoreGL == 1 || mUpdateScrolls)
+    if (mUpdateScrolls)
     {
         LLRect r = getRect();
         reshape( r.getWidth(), r.getHeight(), false );

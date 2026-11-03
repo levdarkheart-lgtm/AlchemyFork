@@ -369,9 +369,6 @@ F32 gLogoutMaxTime = LOGOUT_REQUEST_TIME;
 
 S32 gPendingMetricsUploads = 0;
 
-// Used to restore texture state after a mode switch
-LLFrameTimer gRestoreGLTimer;
-bool gRestoreGL = false;
 bool gUseWireframe = false;
 
 U64Bytes gMemoryAllocated(0); // updated in display_stats() in llviewerdisplay.cpp

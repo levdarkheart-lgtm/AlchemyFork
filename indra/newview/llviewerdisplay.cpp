@@ -110,8 +110,6 @@ LLPointer<LLViewerTexture> gDisconnectedImagep = nullptr;
 bool         gTeleportDisplay = false;
 LLFrameTimer gTeleportDisplayTimer;
 LLFrameTimer gTeleportArrivalTimer;
-constexpr F32 RESTORE_GL_TIME = 5.f;  // Wait this long while reloading textures before we raise the curtain
-
 bool gForceRenderLandFence = false;
 bool gDisplaySwapBuffers = false;
 bool gDepthDirty = false;
@@ -837,29 +835,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         gViewerWindow->setProgressPercent( percent_done );
         gViewerWindow->setProgressMessage(std::string());
     }
-    else
-    if (gRestoreGL)
-    {
-        LLAppViewer::instance()->pingMainloopTimeout("Display:RestoreGL");
-        F32 percent_done = gRestoreGLTimer.getElapsedTimeF32() * 100.f / RESTORE_GL_TIME;
-        if( percent_done > 100.f )
-        {
-            gViewerWindow->setShowProgress(false);
-            gRestoreGL = false;
-        }
-        else
-        {
-
-            if( LLApp::isExiting() )
-            {
-                percent_done = 100.f;
-            }
-
-            gViewerWindow->setProgressPercent( percent_done );
-        }
-        gViewerWindow->setProgressMessage(std::string());
-    }
-
     //////////////////////////
     //
     // Prepare for the next frame
@@ -1210,8 +1185,8 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         LLAppViewer::instance()->pingMainloopTimeout("Display:RenderGeom");
 
-        if (!(LLAppViewer::instance()->logoutRequestSent() && LLAppViewer::instance()->hasSavedFinalSnapshot())
-                && !gRestoreGL)
+        if (!(LLAppViewer::instance()->logoutRequestSent() &&
+              LLAppViewer::instance()->hasSavedFinalSnapshot()))
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("display - 5")
             LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
@@ -1409,8 +1384,6 @@ void display_cube_face()
     llassert(!gTeleportDisplay);
     llassert(LLStartUp::getStartupState() >= STATE_PRECACHE);
     llassert(!LLAppViewer::instance()->logoutRequestSent());
-    llassert(!gRestoreGL);
-
     bool rebuild = false;
 
     LLGLSDefault gls_default;
