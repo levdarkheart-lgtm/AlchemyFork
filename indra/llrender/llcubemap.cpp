@@ -379,17 +379,3 @@ void LLCubeMap::restoreMatrix()
     gGL.popMatrix();
     gGL.matrixMode(LLRender::MM_MODELVIEW);
 }
-
-
-void LLCubeMap::destroyGL()
-{
-    for (S32 i = 0; i < 6; i++)
-    {
-        mImages[i] = NULL;
-    }
-#if LL_DARWIN
-    mMetalTexture.reset();
-    mMetalDevice = nullptr;
-    mMetalDirty = true;
-#endif
-}

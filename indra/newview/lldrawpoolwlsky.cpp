@@ -862,8 +862,3 @@ LLViewerTexture* LLDrawPoolWLSky::getTexture()
 void LLDrawPoolWLSky::resetDrawOrders()
 {
 }
-
-//static
-void LLDrawPoolWLSky::cleanupGL()
-{
-}

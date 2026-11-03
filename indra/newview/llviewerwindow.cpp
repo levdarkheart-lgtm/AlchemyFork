@@ -6804,13 +6804,7 @@ void LLViewerWindow::stopGL()
         LLAppViewer::getTextureCache()->pause();
         LLAppViewer::getTextureFetch()->pause();
 
-        gSky.destroyGL();
-        stop_glerror();
-
         LLManipTranslate::destroyGL() ;
-        stop_glerror();
-
-        gBumpImageList.destroyGL();
         stop_glerror();
 
         LLFontGL::destroyAllGL();
@@ -6821,8 +6815,6 @@ void LLViewerWindow::stopGL()
 
         LLViewerDynamicTexture::destroyGL();
         stop_glerror();
-
-        gBox.cleanupGL();
 
         gTextureList.destroyGL();
         stop_glerror();

@@ -113,9 +113,7 @@ public:
     static void clear();
     static void addstandard();
 
-    static void shutdown();
     static void restoreGL();
-    static void destroyGL();
 };
 
 extern LLStandardBumpmap gStandardBumpmapList[TEM_BUMPMAP_COUNT];
@@ -134,7 +132,6 @@ public:
     void        init();
     void        shutdown();
     void            clear();
-    void        destroyGL();
     void        restoreGL();
     void        updateImages();
 

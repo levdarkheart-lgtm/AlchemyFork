@@ -67,7 +67,6 @@ public:
     /*virtual*/ bool isFacePool() { return false; }
     /*virtual*/ void resetDrawOrders();
 
-    static void cleanupGL();
 private:
     void renderDome(const LLVector3& camPosLocal, F32 camHeightLocal, LLGLSLShader * shader) const;
 

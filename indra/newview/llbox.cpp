@@ -49,12 +49,6 @@ void LLBox::prerender()
     mVertex[1][2] = mVertex[2][2] = mVertex[5][2] = mVertex[6][2] =  size / 2;
 }
 
-// These routines support multiple textures on a box
-void LLBox::cleanupGL()
-{
-    // No GL state, a noop.
-}
-
 void LLBox::renderface(S32 which_face)
 {
     /*static F32 normals[6][3] =

@@ -65,8 +65,6 @@ public:
 protected:
     LLSkyTex();
     void init(bool isShiny);
-    void cleanupGL();
-
     ~LLSkyTex();
 
 
@@ -215,8 +213,6 @@ public:
     // Initialize/delete data that's only inited once per class.
     void init();
     void initCubeMap();
-
-    void cleanupGL();
 
     void calc();
     void cacheEnvironment(LLSettingsSky::ptr_t psky, AtmosphericsVars& atmosphericsVars);

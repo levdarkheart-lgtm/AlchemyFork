@@ -65,8 +65,6 @@ public:
     void updateMeteorGeometry();
     void drawMeteors();
 
-    void cleanupGL();
-
 private:
 
     // helper function for initializing the stars.

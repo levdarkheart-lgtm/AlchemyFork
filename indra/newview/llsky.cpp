@@ -87,18 +87,6 @@ void LLSky::cleanup()
     mVOWLSkyp = NULL;
 }
 
-void LLSky::destroyGL()
-{
-    if (!mVOSkyp.isNull() && mVOSkyp->getCubeMap())
-    {
-        mVOSkyp->cleanupGL();
-    }
-    if (mVOWLSkyp.notNull())
-    {
-        mVOWLSkyp->cleanupGL();
-    }
-}
-
 void LLSky::resetVertexBuffers()
 {
     if (gSky.mVOSkyp.notNull())

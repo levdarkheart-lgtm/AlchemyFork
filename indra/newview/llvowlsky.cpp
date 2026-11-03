@@ -308,16 +308,6 @@ void LLVOWLSky::resetVertexBuffers()
     gPipeline.markRebuild(mDrawable, LLDrawable::REBUILD_ALL);
 }
 
-void LLVOWLSky::cleanupGL()
-{
-    mStripsVerts.clear();
-    mStarsVerts = nullptr;
-    mFsSkyVerts = nullptr;
-    mMeteorVerts = nullptr;
-
-    LLDrawPoolWLSky::cleanupGL();
-}
-
 bool LLVOWLSky::updateGeometry(LLDrawable * drawable)
 {
     LL_PROFILE_ZONE_SCOPED;

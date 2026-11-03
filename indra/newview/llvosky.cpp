@@ -119,14 +119,6 @@ void LLSkyTex::init(bool isShiny)
     }
 }
 
-void LLSkyTex::cleanupGL()
-{
-#if !LL_DARWIN
-    mTexture[0] = NULL;
-    mTexture[1] = NULL;
-#endif
-}
-
 LLSkyTex::~LLSkyTex()
 {
     delete[] mSkyData;
@@ -561,19 +553,6 @@ void LLVOSky::initCubeMap()
     gGL.getTextureSlot(0)->unbind();
 }
 
-
-void LLVOSky::cleanupGL()
-{
-    S32 i;
-    for (i = 0; i < NUM_CUBEMAP_FACES; i++)
-    {
-        mSkyTex[i].cleanupGL();
-    }
-    if (getCubeMap())
-    {
-        getCubeMap()->destroyGL();
-    }
-}
 
 void LLVOSky::initSkyTextureDirs(const S32 side, const S32 tile)
 {

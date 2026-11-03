@@ -85,8 +85,6 @@ public:
     ALMetalTexture* getMetalTexture(std::string* error = nullptr);
 #endif
 
-    void destroyGL();
-
 protected:
     friend class ALTextureSlot;
     ~LLCubeMap();

@@ -92,12 +92,6 @@ namespace
 #endif
 
 // static
-void LLStandardBumpmap::shutdown()
-{
-    LLStandardBumpmap::destroyGL();
-}
-
-// static
 void LLStandardBumpmap::restoreGL()
 {
     addstandard();
@@ -191,14 +185,6 @@ void LLStandardBumpmap::clear()
     }
     sStandardBumpmapCount = 0;
 }
-
-// static
-void LLStandardBumpmap::destroyGL()
-{
-    clear();
-}
-
-
 
 ////////////////////////////////////////////////////////////////
 
@@ -757,13 +743,6 @@ void LLBumpImageList::clear()
 void LLBumpImageList::shutdown()
 {
     clear();
-    LLStandardBumpmap::shutdown();
-}
-
-void LLBumpImageList::destroyGL()
-{
-    clear();
-    LLStandardBumpmap::destroyGL();
 }
 
 void LLBumpImageList::restoreGL()
