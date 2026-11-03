@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `4a005b8ef9`.
+**Renderer checkpoint:** Commit `e213e9ac01`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,63 +13,64 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,408 files and 3,259 findings; strict exits 1. Legacy sky-cube cutover changes no cross-platform static count. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,408 files and 3,259 findings; strict exits 1. Color-LUT cutover changes no cross-platform static count. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Exact Metal publication exists; SSR warm-up is explicitly barred from presentation. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Core paths are physical-GPU covered; direct owned reads, RGBA/typed uploads and production native mip generation are native-only. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; add only source/evidence-driven variants. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and grayscale/color font-atlas pages are native-only; owner-attended text/emoji and moving-media parity remain open. |
 | M-007 | World scene and material correctness | doing | Opaque fullbright is corrected; legacy BLEND/stained glass and broad material parity remain open. |
-| M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners are native; visual-only validation is batched in the daily queue. |
+| M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners and color-grading LUT are native; visual-only validation is batched in the daily queue. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL, linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | Media, terrain, water, parcel, generated sky faces, legacy sky cube, minimap layers and font atlases own no GL texture on Darwin; color-grading LUT is next. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Media, terrain, water, parcel, generated sky faces, legacy sky cube, minimap layers, font atlases and color-grading LUT own no GL texture on Darwin; baked tone curve is next. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — native legacy sky cube
+## Active checkpoint — native color-grading LUT
 
-Commit `4a005b8ef9` makes the Darwin legacy sky `LLCubeMap` a native-only
-resource. CPU face preparation remains independent of GPU allocation; the
-historical transforms publish directly to one linear RGBA8 Metal cube, while
-`initGL()` cannot recreate duplicate ownership. Missing-device publication is
-fail-closed and retryable, and retained GL traversal clears stale cube state.
-Non-Darwin GL behavior is retained for later platform pruning. No viewer launch
-or comparison was performed; legacy sky-cube appearance is queued for
-owner-attended review.
-[Exact evidence](../../state/archive/CURRENT-native-legacy-sky-cube-checkpoint-2026-11-03.md).
+Commit `e213e9ac01` makes the Darwin color-grading LUT a native-only resource.
+Backend-neutral loaded state covers both 16-bit `.cube` and 8-bit image-strip
+inputs. A shared uploader preserves RGB/RGBA and 8/16-bit unorm semantics,
+expands RGB to opaque RGBA and maps volume slices to Metal array layers. The
+retained GL post safely disables its absent sampler; non-Darwin retains the GL
+3D texture. No viewer launch or comparison was performed; color-LUT appearance
+is queued for owner-attended review.
+[Exact evidence](../../state/archive/CURRENT-native-color-lut-checkpoint-2026-11-03.md).
 
 ## Validation checkpoint
 
-- Source-exact warnings-as-errors Release build `26.4.0d68145` passed at
-  `4a005b8ef950f1872c0ad9a86cfdc575dff2030c`; the RelWithDebInfo appearance
+- Source-exact warnings-as-errors Release build `26.4.0d68147` passed at
+  `e213e9ac01d24efbdb5b587e818b24b845a456cb`; the RelWithDebInfo appearance
   utility also builds at that source.
-- The full native Metal binary passes 52,221 assertions across 52 cases with
-  API validation enabled.
+- The full native Metal binary passes 52,272 assertions across 53 cases with
+  API validation enabled. The added 51-assertion physical case proves exact
+  RGB8 expansion, RGBA16 precision/layer order and invalid-input rejection.
 - Physical fresh-context renderer validation passes 2,243 assertions across 94
-  cases with API validation enabled, including all-six-slice legacy-cube
-  descriptor, transform/mapping, retry and exact-byte readback.
+  cases with API validation enabled.
 - CPU-only renderer validation passes 1,513 assertions across 203 cases; 202
   pass and one established font-palette case skips.
 - The full `newview_tests` binary passes 98,973 assertions across 743 cases;
   one platform CRT case skips as expected.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices.
 - Viewer executable SHA-256:
-  `9277b87848d3723b04baa3c90dd123a23cd6faca1c991122dfb4bd35bc0870c6`.
+  `72bb699014c3e2b8eaf8dd882ccdd2a41ce5d9deb7cdcb83b6f93aa308704727`.
   Appearance utility:
-  `bf70df75140711cd0d034d5562d3ec567d9814b252f617d1202e4f3833e0cf10`.
+  `3449cb8fb684d944cfb7f813f6379b6280b2060635ee6715ef452e01a1d951cd`.
   Source/packaged MSL:
   `fa6821703a980b570305fc2384fcb11a1980fccad43d35e4626e40cc4b323324`.
   Metallib:
   `ebd7034235c4f35b13c9874029eff6bbcb61cc3f56c7f3907fd581c112eb96ab`.
 - The broad retained-GL suite remains at 8,335/8,340 assertions and 181/224
   cases, with its four established failures and 39 skips.
-- Strict inventory is 2,408 files / 3,259 findings, expected exit 1. The legacy
-  sky-cube precommit/exact reports are byte-identical at
-  `a8e681c2607c41595dc41da1329020ca29514676c8140daed419d3b73c6d9df9`.
-  Both OpenGL and Metal remain linked.
+- Strict inventory is 2,408 files / 3,259 findings, expected exit 1. Precommit
+  and exact report hashes are respectively
+  `a8e681c2607c41595dc41da1329020ca29514676c8140daed419d3b73c6d9df9`
+  and `26f65a0e9a325d87dbf44ecac5b12d12cef4fc0ec3e5a475b1d204538adc0ab6`;
+  counts are neutral but source snippets differ. Both OpenGL and Metal remain
+  linked.
 - No viewer executable was launched, driven or compared for this checkpoint.
 
 ## Owner-attended visual review cadence
@@ -82,27 +83,27 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—the Darwin legacy sky cube now owns only Metal
-   storage while retaining exact historical face transforms and retrying failed
-   publication without exposing a stale generation.
+1. **Product advancement:** yes—Darwin color grading now publishes one native
+   Metal LUT authority for both supported source encodings, with exact physical
+   precision/layer proof and fail-closed loaded state.
 2. **Deferred critical work:** remaining GL context/traversal/resources;
    feature/stability matrices; visual queue; strict
    binary/runtime audit; measured M1 Max performance; independent review and
    release proof.
-3. **Priority reassessment:** the color-grading LUT is the next bounded owner.
-   `mCGLut` is the only live production `ALTexture3D` user; Darwin already
-   publishes an equivalent native 2D-array resource consumed by Metal, but
-   still allocates and uploads the parallel GL 3D texture.
+3. **Priority reassessment:** the baked tone-curve LUT is the next bounded
+   owner. Darwin already creates `mMetalToneCurveLut` for native grading but
+   still allocates, updates, gates activation on and samples the parallel GL
+   `mToneCurveLut`.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Make color-LUT loaded state independent of the GL object. On Darwin, publish
-only `mMetalCGLut` for both 16-bit `.cube` files and 8-bit image strips; retain
-the non-Darwin `ALTexture3D` path. Prove exact native format, slice ordering,
-component expansion, precision and failed-publication behavior physically.
+Make tone-curve state independent of the GL texture name. On Darwin, allocate
+and update only `mMetalToneCurveLut`; retain non-Darwin RGBA16 GL behavior and
+make the retained Darwin GL post bypass the unavailable LUT safely. Prove exact
+RGBA16 samples, state transitions, identity handling and failure behavior.
 
 ## Non-negotiable open gates
 
