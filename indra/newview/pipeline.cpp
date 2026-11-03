@@ -860,8 +860,7 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
         gSavedSettings, "RenderDisablePostProcessing", false);
     static LLCachedControl<U32> aa_quality(
         gSavedSettings, "RenderFSAASamples", 0U);
-    static LLCachedControl<bool> use_smaa_sample(
-        gSavedSettings, "RenderSMAAUseSample", false);
+    const bool use_smaa_sample = mResourceInputs.mSMAAUseSample;
 
     LLSettingsSky::ptr_t sky =
         LLEnvironment::instance().getCurrentSky();
@@ -16729,6 +16728,7 @@ ALRenderResourceInputs LLPipeline::resourceInputsFromSettings(const ALShaderInpu
 
     in.mFSAAType          = gSavedSettings.getU32("RenderFSAAType");
     in.mSMAAStencil       = gSavedSettings.getBOOL("RenderSMAAUseStencil");
+    in.mSMAAUseSample     = gSavedSettings.getBOOL("RenderSMAAUseSample");
     in.mBloomMips         = gSavedSettings.getS32("RenderBloomMipCount");
     in.mBloomScale        = gSavedSettings.getS32("RenderBloomResolutionScale");
     in.mBloomHalation     = gSavedSettings.getBOOL("RenderBloomHalation");
@@ -26489,6 +26489,20 @@ LLPipeline::SMAATargets LLPipeline::generateSMAABuffers(LLRenderTarget* src, ALT
         return smaa;
     }
 
+    const bool use_sample = mResourceInputs.mSMAAUseSample;
+#if LL_DARWIN
+    // Ordinary Darwin SMAA is the native display transaction's responsibility;
+    // do not build a parallel GL result or bind lookup names the Darwin plan no
+    // longer owns. The optional sample-image feature is deliberately retained
+    // in GL: canCaptureMetalWorldPresentation rejects it, so that exact retained
+    // result remains presentation authority instead of being overwritten by a
+    // native transaction that does not consume SamplePath.
+    if (!use_sample)
+    {
+        return smaa;
+    }
+#endif
+
     // Both from the caller's scope until the neighbourhood blend has read the weights, the weights over the edges'
     // stencil where the plan shares it. Each is cleared below before it is drawn.
     smaa.mEdges = acquireResource(scope, ALRenderResourcePlan::Id::SMAAEdges);
@@ -26509,7 +26523,6 @@ LLPipeline::SMAATargets LLPipeline::generateSMAABuffers(LLRenderTarget* src, ALT
 
         LLGLDepthTest depth(GL_FALSE, GL_FALSE);
 
-        static LLCachedControl<bool> use_sample(gSavedSettings, "RenderSMAAUseSample", false);
         const bool use_predication = shaderInputs().mLocal.mSMAAPredication;
         // Stencil optimization requires all three passes to share the same stencil attachment.
         bool use_stencil = mResourceInputs.mSMAAStencil && smaa.mEdges->hasStencil() && smaa.mBlend->hasStencil();
@@ -26650,8 +26663,6 @@ bool LLPipeline::applySMAA(LLRenderTarget* src, LLRenderTarget* dst, const SMAAT
         float rt_metrics[] = { 1.f / width, 1.f / height, (float)width, (float)height };
 
         LLGLDepthTest    depth(GL_FALSE, GL_FALSE);
-
-        static LLCachedControl<bool> use_sample(gSavedSettings, "RenderSMAAUseSample", false);
 
         {
             // Bind setup:

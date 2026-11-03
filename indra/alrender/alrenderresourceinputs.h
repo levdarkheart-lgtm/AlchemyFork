@@ -67,8 +67,9 @@ struct ALRenderResourceInputs
     bool mMaterialPreview = false; ///< a GLTF material preview is alive, which renders through the probe pack
     U32  mHeroResolution = 1024;  ///< RenderHeroProbeResolution
 
-    U32  mFSAAType = 0;        ///< RenderFSAAType: 0 none, 1 FXAA, 2 SMAA
-    bool mSMAAStencil = true;  ///< RenderSMAAUseStencil
+    U32  mFSAAType = 0;          ///< RenderFSAAType: 0 none, 1 FXAA, 2 SMAA
+    bool mSMAAStencil = true;    ///< RenderSMAAUseStencil
+    bool mSMAAUseSample = false; ///< RenderSMAAUseSample: retained GL sample-image mode
     S32  mBloomMips = 5;       ///< RenderBloomMipCount
     S32  mBloomScale = 0;      ///< RenderBloomResolutionScale: full, 3/4, 1/2, 1/4 or 1/8 of the render size
     bool mBloomHalation = false;

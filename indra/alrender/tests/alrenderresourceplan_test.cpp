@@ -114,6 +114,24 @@ namespace
         return of({ Id::SpotShadow0, Id::SpotShadow1 });
     }
 
+    IdSet smaa_lookups(bool sample)
+    {
+#if LL_DARWIN
+        if (!sample)
+        {
+            return {};
+        }
+#else
+        (void)sample;
+#endif
+        return of({ Id::SMAAArea, Id::SMAASearch, Id::SMAASample });
+    }
+
+    IdSet smaa_resources(bool sample)
+    {
+        return of({ Id::SMAAEdges, Id::SMAABlend }) | smaa_lookups(sample);
+    }
+
     IdSet bloom(std::initializer_list<Pack> packs)
     {
         return in_packs(packs, { Slot::Bloom0, Slot::Bloom1, Slot::Bloom2, Slot::Bloom3, Slot::Bloom4, Slot::Bloom5,
@@ -183,16 +201,19 @@ namespace
               [](const Plan&) { return in_packs({ Pack::Main, Pack::Probe, Pack::Hero }, { Slot::DepthCopy }); } },
             { "RenderFSAAType to FXAA", no_change, [](Inputs& in) { in.mFSAAType = 1; }, nothing },
             { "RenderFSAAType to SMAA", no_change, [](Inputs& in) { in.mFSAAType = 2; },
-              [](const Plan&)
-              { return of({ Id::SMAAEdges, Id::SMAABlend, Id::SMAAArea, Id::SMAASearch, Id::SMAASample }); } },
+              [](const Plan&) { return smaa_resources(false); } },
             { "RenderFSAAType from SMAA to FXAA", [](Inputs& in) { in.mFSAAType = 2; },
               [](Inputs& in) { in.mFSAAType = 1; },
-              [](const Plan&)
-              { return of({ Id::SMAAEdges, Id::SMAABlend, Id::SMAAArea, Id::SMAASearch, Id::SMAASample }); } },
+              [](const Plan&) { return smaa_resources(false); } },
             { "RenderSMAAUseStencil under SMAA", [](Inputs& in) { in.mFSAAType = 2; },
               [](Inputs& in) { in.mSMAAStencil = false; },
               [](const Plan&) { return of({ Id::SMAAEdges, Id::SMAABlend }); } },
             { "RenderSMAAUseStencil without SMAA", no_change, [](Inputs& in) { in.mSMAAStencil = false; }, nothing },
+            { "RenderSMAAUseSample under SMAA", [](Inputs& in) { in.mFSAAType = 2; },
+              [](Inputs& in) { in.mSMAAUseSample = true; },
+              [](const Plan&) { return smaa_lookups(true) & ~smaa_lookups(false); } },
+            { "RenderSMAAUseSample without SMAA", no_change,
+              [](Inputs& in) { in.mSMAAUseSample = true; }, nothing },
             { "RenderGlowResolutionPow under HDR", no_change, [](Inputs& in) { in.mGlowResolutionPow = 8; }, nothing },
             { "RenderGlowResolutionPow without HDR", hdr_off, [](Inputs& in) { in.mGlowResolutionPow = 8; },
               [](const Plan&) { return of({ Id::Glow0, Id::Glow1, Id::Glow2 }); } },
@@ -1061,17 +1082,25 @@ namespace
         {
             for (bool stencil : { false, true })
             {
-                INFO("RenderFSAAType " << fsaa << ", stencil " << stencil);
-                Inputs in       = defaults();
-                in.mFSAAType    = fsaa;
-                in.mSMAAStencil = stencil;
-                const Plan plan = Plan::make(in);
-
-                for (Id table : { Id::SMAAArea, Id::SMAASearch, Id::SMAASample })
+                for (bool sample : { false, true })
                 {
-                    INFO(Plan::name(table));
-                    CHECK(plan.wants(table) == (fsaa == 2));
-                    CHECK(plan.wants(table) == plan.wants(Id::SMAAEdges));
+                    INFO("RenderFSAAType " << fsaa << ", stencil " << stencil
+                         << ", sample " << sample);
+                    Inputs in         = defaults();
+                    in.mFSAAType      = fsaa;
+                    in.mSMAAStencil   = stencil;
+                    in.mSMAAUseSample = sample;
+                    const Plan plan   = Plan::make(in);
+
+                    CHECK(plan.wants(Id::SMAAEdges) == (fsaa == 2));
+                    CHECK(plan.wants(Id::SMAABlend) == (fsaa == 2));
+                    const bool wants_lookup =
+                        fsaa == 2 && smaa_lookups(sample).test((size_t)Id::SMAAArea);
+                    for (Id table : { Id::SMAAArea, Id::SMAASearch, Id::SMAASample })
+                    {
+                        INFO(Plan::name(table));
+                        CHECK(plan.wants(table) == wants_lookup);
+                    }
                 }
             }
         }
