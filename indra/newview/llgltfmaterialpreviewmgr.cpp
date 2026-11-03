@@ -270,7 +270,6 @@ namespace
 };  // namespace
 
 U32 LLGLTFPreviewTexture::sLiveCount = 0;
-U32 LLGLTFPreviewTexture::sRetainedFallbackCount = 0;
 
 LLGLTFPreviewTexture::LLGLTFPreviewTexture(LLPointer<LLFetchedGLTFMaterial> material, S32 width)
 #if LL_DARWIN
@@ -287,7 +286,6 @@ LLGLTFPreviewTexture::LLGLTFPreviewTexture(LLPointer<LLFetchedGLTFMaterial> mate
 LLGLTFPreviewTexture::~LLGLTFPreviewTexture()
 {
 #if LL_DARWIN
-    setRetainedFallbackRequested(false);
     llassert(sLiveCount > 0);
     --sLiveCount;
 #else
@@ -334,16 +332,6 @@ bool LLGLTFPreviewTexture::needsRender()
 
     if (!mShouldRender && mBestLoad.isFullyLoaded()) { return false; }
     MaterialLoadLevels current_load = get_material_load_levels(*mGLTFMaterial.get());
-#if LL_DARWIN
-    if (mRetainedFallbackRequested)
-    {
-        // Finish the already-selected fallback even if texture residency moved
-        // while its resources were being reconciled.
-        mShouldRender = true;
-        mPendingLoad = current_load;
-        return true;
-    }
-#endif
     if (current_load < mBestLoad)
     {
         mShouldRender = true;
@@ -353,32 +341,12 @@ bool LLGLTFPreviewTexture::needsRender()
     return false;
 }
 
+#if !LL_DARWIN
 bool LLGLTFPreviewTexture::retainedRenderReady() const
 {
     return gPipeline.mAuxillaryRT.screen.isComplete() &&
         gPipeline.resourcePlan().wants(
             ALRenderResourcePlan::Id::ProbePostPing);
-}
-
-#if LL_DARWIN
-void LLGLTFPreviewTexture::setRetainedFallbackRequested(bool requested)
-{
-    if (mRetainedFallbackRequested == requested)
-    {
-        return;
-    }
-
-    mRetainedFallbackRequested = requested;
-    if (requested)
-    {
-        ++sRetainedFallbackCount;
-    }
-    else
-    {
-        llassert(sRetainedFallbackCount > 0);
-        --sRetainedFallbackCount;
-    }
-    gPipeline.markRenderInputsDirty();
 }
 #endif
 
@@ -392,70 +360,33 @@ LLGLTFPreviewTexture::renderWithoutTarget()
     llassert(!mBoundTarget);
     if (!mShouldRender || mBoundTarget)
     {
-        return ETargetlessRenderResult::RETAINED_FALLBACK;
+        return ETargetlessRenderResult::PENDING;
     }
 
-    // A failed native attempt requested the retained pack. Do not spend every
-    // waiting frame repeating that attempt: once the reconciler has built the
-    // pack, execute the preserved fallback exactly once.
-    if (mRetainedFallbackRequested)
-    {
-        if (!retainedRenderReady())
-        {
-            return ETargetlessRenderResult::PENDING;
-        }
-        mSkipNativeAttemptOnce = true;
-        return ETargetlessRenderResult::RETAINED_FALLBACK;
-    }
-
-    // This pre-render snapshots only camera state on Darwin. render() must not
-    // invoke the retained callback when the native attempt fails: the scheduler
-    // will then acquire its shared target and run that callback in this frame.
+    // Darwin previews have one rendering owner. Readiness and actual failures
+    // both stay targetless and retry Metal; neither may acquire the retained
+    // preview target or make GL a recovery renderer.
     preRender();
-    mTargetlessAttempt = true;
     const bool rendered = render();
-    mTargetlessAttempt = false;
 
     const bool published = rendered && mMetalPreview && publishMetalPreview();
     if (!published)
     {
         mMetalPreview.reset();
         mLastPostRenderSuccess = false;
-        if (mNativeAttemptResult == ENativeAttemptResult::PENDING)
-        {
-            // Texture uploads and the coherent default-probe publication are
-            // ordinary producer readiness, not a renderer failure. Retry the
-            // native transaction without making the retained GL pack part of
-            // the production path.
-            mShouldRender = true;
-            mSkipNativeAttemptOnce = false;
-            return ETargetlessRenderResult::PENDING;
-        }
         // A completed native render whose logical texture refuses adoption is
-        // a publication failure and therefore eligible for recovery.
-        mNativeAttemptResult = ENativeAttemptResult::FAILED;
-        // If retained resources are ready, the target-backed retry must be the
-        // retained callback after a real native failure, not a second
-        // identical Metal attempt in this frame. Otherwise ask the next
-        // frame's resource reconcile for them and leave this item pending
-        // until they exist.
-        setRetainedFallbackRequested(true);
-        mSkipNativeAttemptOnce = retainedRenderReady();
+        // a publication failure. Keep it observable and retry natively.
+        if (mNativeAttemptResult == ENativeAttemptResult::READY)
+        {
+            mNativeAttemptResult = ENativeAttemptResult::FAILED;
+        }
+        mShouldRender = true;
+        return ETargetlessRenderResult::PENDING;
     }
 
-    mShouldRender = !published;
-    if (published)
-    {
-        mSkipNativeAttemptOnce = false;
-        mBestLoad = mPendingLoad;
-    }
-    if (published)
-    {
-        return ETargetlessRenderResult::COMPLETED;
-    }
-    return mSkipNativeAttemptOnce
-        ? ETargetlessRenderResult::RETAINED_FALLBACK
-        : ETargetlessRenderResult::PENDING;
+    mShouldRender = false;
+    mBestLoad = mPendingLoad;
+    return ETargetlessRenderResult::COMPLETED;
 #else
     return ETargetlessRenderResult::RETAINED_FALLBACK;
 #endif
@@ -470,9 +401,9 @@ void LLGLTFPreviewTexture::preRender(bool clear_depth)
 
 #if LL_DARWIN
     // Snapshot the base dynamic-texture camera contract without touching GL.
-    // If native submission cannot own the result, render() performs the base
-    // pre-render immediately before the retained callback instead.
-    mRetainedClearDepth = clear_depth;
+    // Native readiness and failure leave the preview pending for another
+    // targetless attempt; Darwin never enters the retained pre-render path.
+    (void)clear_depth;
     mOrigin.set(0, 0);
     LLViewerCamera* camera = LLViewerCamera::getInstance();
     mCamera.setOrigin(*camera);
@@ -644,6 +575,7 @@ PreviewSphere& get_preview_sphere(LLPointer<LLFetchedGLTFMaterial>& material, co
     return preview_sphere;
 }
 
+#if !LL_DARWIN
 // Final, direct modifications to shader constants, just before render
 void fixup_shader_constants(LLGLSLShader& shader)
 {
@@ -663,6 +595,7 @@ void fixup_shader_constants(LLGLSLShader& shader)
     // would keep the cutoff of whichever preview drew before it.
     LLDrawPoolAlpha::setCoverageCutoff(&shader);
 }
+#endif
 
 // Set a variable to a value temporarily, and restor the variable's old value
 // when this object leaves scope.
@@ -692,12 +625,7 @@ bool LLGLTFPreviewTexture::render()
     if (!mShouldRender) { return false; }
 
 #if LL_DARWIN
-    const bool skip_native_attempt = mBoundTarget && mSkipNativeAttemptOnce;
     mNativeAttemptResult = ENativeAttemptResult::NOT_ATTEMPTED;
-    if (mBoundTarget)
-    {
-        mSkipNativeAttemptOnce = false;
-    }
     mMetalPreview.reset();
     mMetalPreviewDescriptor.reset();
     if (mGLTexturep.notNull() && mGLTexturep->getMetalTexture())
@@ -710,9 +638,9 @@ bool LLGLTFPreviewTexture::render()
     ALMetalPBRPreviewEnvironment metal_preview_environment;
 #endif
 
+#if !LL_DARWIN
     std::unique_ptr<ALTransientTargets> post;
     LLRenderTarget* post_ping = nullptr;
-#if !LL_DARWIN
     // Preserve the retained platforms' original fail-before-draw behavior.
     post = std::make_unique<ALTransientTargets>(
         gPipeline.mTransientTargets);
@@ -722,10 +650,8 @@ bool LLGLTFPreviewTexture::render()
     {
         return false;
     }
-#endif
-
     // These retained-state guards must outlive both the draw and its post
-    // chain, but they are constructed only if native submission falls back.
+    // chain.
     std::unique_ptr<LLGLSColorMask> color_mask;
     std::unique_ptr<LLGLDepthTest> depth;
     std::unique_ptr<LLGLDisable> stencil;
@@ -734,15 +660,16 @@ bool LLGLTFPreviewTexture::render()
     std::unique_ptr<SetTemporarily<bool>> no_glow;
     std::unique_ptr<SetTemporarily<LLPipeline::RenderTargetPack*>>
         use_auxiliary_render_target;
+    const S32 old_local_light_count =
+        gSavedSettings.get<S32>("RenderLocalLightCount");
+    bool retained_preview_rendered = false;
+#endif
 
     LLVector3 light_dir3(1.0f, 1.0f, 1.0f);
     light_dir3.normalize();
     const LLVector4 light_dir = LLVector4(light_dir3, 0);
-    const S32 old_local_light_count = gSavedSettings.get<S32>("RenderLocalLightCount");
-    bool retained_preview_rendered = false;
-
-    // The native path makes the preview camera current by value; the retained
-    // path's setPerspective does the same. Restore the camera found here.
+    // Make the preview camera current by value and restore the camera found
+    // here after either renderer completes.
     const LLCamera saved_camera = LLViewerCamera::getCurrent();
     LLViewerCamera camera;
 
@@ -759,14 +686,15 @@ bool LLGLTFPreviewTexture::render()
     object_transform.setIdentity();
     object_transform.setTranslation(object_position);
 
-    // Build the exact preview camera matrices on the CPU. The retained
-    // callback loads these through setPerspective only if native submission
-    // cannot own the result.
+    // Build the exact preview camera matrices on the CPU. Retained platforms
+    // also load them through setPerspective for their draw.
     const LLVector3 origin(0.0, 0.0, 0.0);
     camera.lookAt(origin, object_position);
     camera.setAspect(static_cast<F32>(mFullWidth) /
                      static_cast<F32>(mFullHeight));
+#if !LL_DARWIN
     const LLRect texture_rect(0, mFullHeight, mFullWidth, 0);
+#endif
     const LLMatrix4a preview_modelview = camera.frameModelview();
     const LLMatrix4a preview_projection = al_perspective(
         camera.getView(), camera.getAspect(), camera.getNear(),
@@ -784,12 +712,12 @@ bool LLGLTFPreviewTexture::render()
     preview_modelview.transform4(light_dir_in, transformed_light_dir);
     SetTemporarily<LLVector4> force_sun_direction_high_graphics(&gPipeline.mTransformedSunDir, LLVector4(transformed_light_dir.getF32ptr()));
 
+#if !LL_DARWIN
     LLRenderTarget& screen = gPipeline.mAuxillaryRT.screen;
-
-    // Invalidate the retained matrix cache even when this draw stays native:
-    // the static sphere can fall back later with the same model object after
+    // The static sphere can render again with the same model object after
     // another pass has changed GL's actual matrix.
     gGLLastMatrix = nullptr;
+#endif
 
 #if 0
     if (mGLTFMaterial->mAlphaMode == LLGLTFMaterial::ALPHA_MODE_OPAQUE || mGLTFMaterial->mAlphaMode == LLGLTFMaterial::ALPHA_MODE_MASK)
@@ -797,16 +725,10 @@ bool LLGLTFPreviewTexture::render()
         // *TODO: Opaque/alpha mask rendering
     }
 #endif
-    // Keep the retained draw recoverable while Darwin tries the native scene
-    // first. This callback must not run on a successful native preview.
+#if !LL_DARWIN
     const auto render_retained_preview = [&]()
     {
         retained_preview_rendered = true;
-#if LL_DARWIN
-        LLViewerDynamicTexture::preRender(mRetainedClearDepth);
-        post = std::make_unique<ALTransientTargets>(
-            gPipeline.mTransientTargets);
-#endif
 
         // The swatch's alpha is its coverage over a checkerboard. Retain the
         // original GL state through the complete fallback post chain.
@@ -869,12 +791,10 @@ bool LLGLTFPreviewTexture::render()
         screen.flush();
     };
 
-#if !LL_DARWIN
     render_retained_preview();
 #endif
 
 #if LL_DARWIN
-    if (!skip_native_attempt)
     {
         mNativeAttemptResult = ENativeAttemptResult::PENDING;
         std::string native_error;
@@ -1277,7 +1197,7 @@ bool LLGLTFPreviewTexture::render()
 
         if (mNativeAttemptResult == ENativeAttemptResult::FAILED)
         {
-            LL_WARNS("Metal")
+            LL_WARNS_ONCE("Metal")
                 << "Could not render the native PBR material preview: "
                 << native_error << LL_ENDL;
         }
@@ -1292,104 +1212,74 @@ bool LLGLTFPreviewTexture::render()
 #endif
 
 #if LL_DARWIN
-    if (!mMetalPreview && mTargetlessAttempt)
-    {
-        // Nothing in this attempt changed the GL viewport or singleton camera.
-        // Leave the item pending so the scheduler can take the shared target
-        // and execute the retained callback immediately.
-        LLViewerCamera::setCurrent(saved_camera);
-        return false;
-    }
-    if (!mMetalPreview &&
-        mNativeAttemptResult == ENativeAttemptResult::PENDING)
-    {
-        // A target-backed caller can arrive while a producer is still
-        // publishing. Do not turn that normal readiness window into a GL
-        // rendering path; leave the preview pending for the native retry.
-        LLViewerCamera::setCurrent(saved_camera);
-        return false;
-    }
     if (!mMetalPreview)
     {
-        // Only an explicitly selected recovery attempt or a real native
-        // failure reaches the retained renderer. No supported configuration
-        // chooses GL as its production owner.
-        render_retained_preview();
+        // Readiness and submission failures both remain on the native
+        // scheduler. Nothing in this attempt changed a GL target.
+        LLViewerCamera::setCurrent(saved_camera);
+        return false;
     }
-#endif
-
-    bool post_succeeded = true;
-#if LL_DARWIN
-    // The native renderer already owns the complete exposure, HDR bloom,
-    // halation, cross-filter and tone-mapped preview. Do not run an
-    // authoritative GL post transaction or copy its framebuffer when that
-    // exact target exists. Configurations not yet represented natively retain
-    // their established path below until their feature variants are ported.
-    const bool native_post = mMetalPreview != nullptr;
+    // The Metal result already includes preview post-processing. Publication
+    // in postRender/renderWithoutTarget is the remaining success condition.
+    LLViewerCamera::setCurrent(saved_camera);
+    return true;
 #else
-    constexpr bool native_post = false;
-#endif
-    if (!native_post)
+    bool post_succeeded = post_ping != nullptr;
+    if (post_succeeded)
     {
         llassert(post);
-        // The probe pack's post target is acquired only for the retained path;
-        // a native preview no longer takes or clears this GL resource.
-#if LL_DARWIN
-        post_ping = gPipeline.acquireResource(
-            *post, ALRenderResourcePlan::Id::ProbePostPing);
-#endif
-        post_succeeded = post_ping != nullptr;
-        if (post_succeeded)
+        // *HACK: Hide mExposureMap from generateExposure
+        gPipeline.mExposureMap.swapFBORefs(gPipeline.mLastExposure);
+
+        const bool hdr = LLPipeline::hdrEnabled();
+        LLPipeline::Bloom bloom;
+        if (hdr)
         {
-            // *HACK: Hide mExposureMap from generateExposure
-            gPipeline.mExposureMap.swapFBORefs(gPipeline.mLastExposure);
+            gPipeline.generateLuminance(&screen, &gPipeline.mLuminanceMap);
+            gPipeline.generateExposure(&gPipeline.mLuminanceMap, &gPipeline.mExposureMap, /*use_history = */ false);
 
-            const bool hdr = LLPipeline::hdrEnabled();
-            LLPipeline::Bloom bloom;
-            if (hdr)
-            {
-                gPipeline.generateLuminance(&screen, &gPipeline.mLuminanceMap);
-                gPipeline.generateExposure(&gPipeline.mLuminanceMap, &gPipeline.mExposureMap, /*use_history = */ false);
-
-                // Bloom composite is folded into colorCorrect's tonemap variants, so we
-                // only generate the pyramid here.
-                bloom = gPipeline.generateBloomHDR(&screen, *post);
-            }
-
-            gPipeline.colorCorrect(&screen, post_ping, true, false, &bloom);
-            LLVertexBuffer::unbind();
-
-            if (!hdr)
-            {
-                if (LLRenderTarget* glow = gPipeline.generateGlow(post_ping, *post))
-                {
-                    gPipeline.combineGlow(post_ping, &screen, glow);
-                }
-            }
-
-            // *HACK: Restore mExposureMap (it will be consumed by generateExposure next frame)
-            gPipeline.mExposureMap.swapFBORefs(gPipeline.mLastExposure);
-
-            // Final render
-            // Nested post-processing targets restore the full preview target's viewport.
-            gGL.setViewport(mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
-            gDeferredPostNoDoFProgram.bind();
-
-            // From LLPipeline::renderFinalize: "Whatever is last in the above post processing chain should _always_ be rendered directly here.  If not, expect problems."
-            // Under HDR that is colorCorrect's output in post_ping; otherwise the glow combine has
-            // written the result back to the screen.
-            LLRenderTarget* last_in_chain = hdr ? post_ping : &screen;
-            gDeferredPostNoDoFProgram.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, last_in_chain);
-            gDeferredPostNoDoFProgram.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, &gPipeline.mAuxillaryRT.deferredScreen);
-
-            {
-                LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
-                gPipeline.mScreenTriangleVB->setBuffer();
-                gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            }
-
-            gDeferredPostNoDoFProgram.unbind();
+            // Bloom composite is folded into colorCorrect's tonemap variants,
+            // so only generate the pyramid here.
+            bloom = gPipeline.generateBloomHDR(&screen, *post);
         }
+
+        gPipeline.colorCorrect(&screen, post_ping, true, false, &bloom);
+        LLVertexBuffer::unbind();
+
+        if (!hdr)
+        {
+            if (LLRenderTarget* glow = gPipeline.generateGlow(post_ping, *post))
+            {
+                gPipeline.combineGlow(post_ping, &screen, glow);
+            }
+        }
+
+        // *HACK: Restore mExposureMap (it will be consumed by generateExposure
+        // next frame).
+        gPipeline.mExposureMap.swapFBORefs(gPipeline.mLastExposure);
+
+        // Final render. Nested post-processing targets restore the full
+        // preview target's viewport.
+        gGL.setViewport(mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
+        gDeferredPostNoDoFProgram.bind();
+
+        // Under HDR colorCorrect ends in post_ping; otherwise glow combine
+        // wrote the result back to screen.
+        LLRenderTarget* last_in_chain = hdr ? post_ping : &screen;
+        gDeferredPostNoDoFProgram.bindTexture(
+            LLShaderMgr::DEFERRED_DIFFUSE, last_in_chain);
+        gDeferredPostNoDoFProgram.bindDepthTexture(
+            LLShaderMgr::DEFERRED_DEPTH,
+            &gPipeline.mAuxillaryRT.deferredScreen);
+
+        {
+            LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
+            gPipeline.mScreenTriangleVB->setBuffer();
+            gPipeline.mScreenTriangleVB->drawArrays(
+                LLRender::TRIANGLES, 0, 3);
+        }
+
+        gDeferredPostNoDoFProgram.unbind();
     }
 
     // Restore only state that the retained callback actually changed.
@@ -1402,6 +1292,7 @@ bool LLGLTFPreviewTexture::render()
     LLViewerCamera::setCurrent(saved_camera);
 
     return post_succeeded;
+#endif
 }
 
 #if LL_DARWIN
@@ -1434,19 +1325,11 @@ void LLGLTFPreviewTexture::postRender(bool success)
 
     if (!mShouldRender) { return; }
 #if LL_DARWIN
-    const bool native_post = success && mMetalPreview != nullptr;
-    if (native_post)
-    {
-        // Restore the dynamic-texture viewport/camera without copying the
-        // retained GL framebuffer. Publication of the complete native target
-        // is the success condition for this path.
-        LLViewerDynamicTexture::postRender(false);
-        publishMetalPreview();
-    }
-    else
-    {
-        LLViewerDynamicTexture::postRender(success);
-    }
+    // Darwin's scheduler completes through renderWithoutTarget(). Keep this
+    // override fail-closed if a direct caller ever invokes it: publish only a
+    // completed Metal result and never copy or generate retained GL backing.
+    mLastPostRenderSuccess =
+        success && mMetalPreview && publishMetalPreview();
     mMetalPreview.reset();
 #else
     LLViewerDynamicTexture::postRender(success);
@@ -1455,9 +1338,6 @@ void LLGLTFPreviewTexture::postRender(bool success)
     if (lastPostRenderSucceeded())
     {
         mBestLoad = mPendingLoad;
-#if LL_DARWIN
-        setRetainedFallbackRequested(false);
-#endif
     }
 }
 

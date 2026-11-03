@@ -138,9 +138,9 @@ void LLViewerDynamicTexture::generateMetalTexture()
     // Keep the established logical image wrapper: UI sampling and native
     // publication consume its Metal object. The native creation path leaves
     // LLImageGL::mTexName at zero, so a successful targetless render never
-    // allocates an OpenGL texture. If native rendering later requests the
-    // retained fallback, postRender() regenerates GL storage at that explicit
-    // boundary before copying the fallback framebuffer.
+    // allocates an OpenGL texture. Native-backed subclasses remain pending if
+    // that Metal storage cannot be created; they do not manufacture retained
+    // backing as a recovery renderer.
     LLViewerTexture::generateGLTexture();
     LLPointer<LLImageRaw> raw_image =
         new LLImageRaw(mFullWidth, mFullHeight, mComponents);
@@ -151,8 +151,8 @@ void LLViewerDynamicTexture::generateMetalTexture()
     if (!created)
     {
         LL_WARNS("Metal")
-            << "Could not create native dynamic-texture backing; retained "
-               "fallback remains available on demand"
+            << "Could not create native dynamic-texture backing; native "
+               "publication will remain pending"
             << LL_ENDL;
     }
 }
@@ -280,8 +280,9 @@ bool LLViewerDynamicTexture::updateAllInstances()
     // takes, binds, clears and flushes no GL target. Where one cannot be had, the remaining instances wait. A preview or a bake
     // can go seconds between draws, as a slider waits on the hand dragging it, and building its target again costs
     // the frame that draws next around half a millisecond of CPU and more of the GPU's: the pool keeps each through
-    // 1800 frames unacquired, 30 seconds at 60 fps, and with it whatever a draw takes for itself, as a GLTF material
-    // preview takes the probe pack's post target and bloom.
+    // 1800 frames unacquired, 30 seconds at 60 fps, and with it whatever a
+    // retained-platform draw takes for itself, as a GLTF material preview
+    // takes the probe pack's post target and bloom there.
     using Plan = ALRenderResourcePlan;
     constexpr U32 KEEP_FRAMES = 1800;
     const auto update_orders = [&](S32 first, S32 last, Plan::Id id)

@@ -49,11 +49,9 @@ public:
     static LLPointer<LLGLTFPreviewTexture> create(LLPointer<LLFetchedGLTFMaterial> material);
 
     // How many previews are alive. Retained platforms keep the probe pack for
-    // this count; Darwin plans it only for previews whose native attempt has
-    // actually failed. Ordinary texture/probe publication waits do not make
-    // the retained renderer production-reachable.
+    // this count. Darwin previews never demand it: every readiness and failure
+    // state remains on the targetless Metal scheduler.
     static U32 liveCount() { return sLiveCount; }
-    static U32 retainedFallbackCount() { return sRetainedFallbackCount; }
 
     bool needsRender() override;
 #if LL_DARWIN
@@ -82,9 +80,10 @@ public:
 
 private:
     static U32 sLiveCount;
-    static U32 sRetainedFallbackCount;
 
+#if !LL_DARWIN
     bool retainedRenderReady() const;
+#endif
 
     LLPointer<LLFetchedGLTFMaterial> mGLTFMaterial;
     bool mShouldRender = true;
@@ -101,15 +100,10 @@ private:
         READY,
     };
 
-    void setRetainedFallbackRequested(bool requested);
     bool publishMetalPreview();
 
     std::unique_ptr<ALMetalTexture> mMetalPreview;
     std::unique_ptr<ALMetalTextureDescriptor> mMetalPreviewDescriptor;
-    bool mRetainedClearDepth = true;
-    bool mRetainedFallbackRequested = false;
-    bool mTargetlessAttempt = false;
-    bool mSkipNativeAttemptOnce = false;
     ENativeAttemptResult mNativeAttemptResult =
         ENativeAttemptResult::NOT_ATTEMPTED;
 #endif
