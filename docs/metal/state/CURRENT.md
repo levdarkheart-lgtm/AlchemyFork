@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `1830ac9d0b`
+**Renderer code checkpoint:** `38ff186e4f`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -25,6 +25,14 @@ declaration and constant lines. The remaining `render()` route can only call
 the Metal producer on Darwin; targetless scheduling and publication are the
 only supported model-preview path. No feature behavior was removed by this
 cleanup.
+
+Commit `38ff186e4f` then removed the last retained-target routing from the
+already-validated animation-upload preview. Native backing and targetless
+scheduling are unconditional, the non-Darwin stub can only remain pending and
+`postRender()` can no longer restore framebuffer-copy publication. Playback,
+camera interaction, rigid/scalar skinning, lighting, alpha and cloth remain in
+the existing Metal renderer; this is source-authority cleanup, not feature
+removal.
 
 The Metal producer covers static textured/material-colored faces, optional
 edges, physics meshes, convex-decomposition hulls and explode transforms. It
@@ -61,17 +69,17 @@ until the owner-attended review records that result.
 - `tools/metal/doctor.sh` passed on MacBookPro18,2: Apple M1 Max, 64 GiB
   unified memory, arm64 macOS 26.5.2, Xcode 26.6, Apple7 support and the Metal
   compiler present.
-- `tools/metal/build.sh` exited 0 at exact source `1830ac9d0b`. The default
+- `tools/metal/build.sh` exited 0 at exact source `38ff186e4f`. The default
   warnings-as-errors Xcode Release build linked, signed, validated and staged
-  Alchemy Metal Development `26.4.0d68217` (`26.4.0.68217`).
+  Alchemy Metal Development `26.4.0d68219` (`26.4.0.68219`).
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64;
   deep strict code-sign verification passed. Viewer executable SHA-256 is
-  `c7e0c724c0dfeb55136a1e623fe14216bdb74b827795e1f76842aa1e57d21513`.
+  `242a84184a705d78adb73533c0342e31c92ec978feb1efade4b406945903e8c9`.
 - Source and packaged MSL are byte-identical at
   `6fcd3271ea0fed0a7dde4fec6e66ce71a8ec3fd1b43d4637f850ac8717af8110`;
   metallib SHA-256 is
   `024aba5a70e01ce501c884535ad53f438d626d756c7c2148ee08a1a7a2aacc2d`.
-- The exact Ninja warnings-as-errors tree reconfigured at build 68217 and linked
+- The exact Ninja warnings-as-errors tree reconfigured at build 68219 and linked
   `llappearance_gl_tests`, `almetal_tests`, `llrender_gl_fresh_tests`,
   `llrender_gl_shared_tests`, `alrender_tests`, `newview_tests` and
   `alchemy-bin`.
@@ -88,17 +96,18 @@ until the owner-attended review records that result.
   assertions and one is a depth-format expectation; the new upload case passes
   under the same validator environment.
 - `alrender_tests` passed 557,312 assertions across 137 cases.
-  `newview_tests` self-reported build 68217 and passed 98,973 assertions across
+  `newview_tests` self-reported build 68219 and passed 98,973 assertions across
   743 cases: 742 passed and the established CRT case skipped.
 - Harness structure validation passes for 32 required files; all 27 harness/tool
   tests and `git diff --check` pass.
 - Strict inventory is 2,408 files / 3,242 findings / 2,931 unique
-  path/kinds/snippet records, expected exit 1. Retained model-preview source
-  removal accounts for the five-finding/three-unique reduction; no audit rule
-  or suppression changed. Report SHA-256:
-  `82107e21c11b1654fc74517ae29df7cfafb5869d2dec8e8dde7c54665348e010`.
-- Exact binary inspection finds `LLModelPreview::renderMetal()`, targetless
-  scheduling and no-target post handling. Both OpenGL and Metal remain linked.
+  path/kinds/snippet records, expected exit 1. Animation routing removal does
+  not change the count because those enumerators and virtual calls were not
+  audit findings; no audit rule or suppression changed. Report SHA-256:
+  `8a2a55adadfa99fa32b007a2d154c463a56766d393e9e82cda450e25194fc9e3`.
+- Exact source/binary inspection finds Metal-only animation production,
+  targetless scheduling and no retained post-copy route. Both OpenGL and Metal
+  remain linked.
 - No viewer executable was launched, driven, photographed or compared.
 
 ## Milestone snapshot
@@ -110,16 +119,16 @@ until the owner-attended review records that result.
 | M-008 advanced views/effects | doing | Model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF and HDR bloom/cross-filter are Metal-owned at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,242 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Dynamic preview producers are Metal-authoritative on Darwin and retained model-preview source is deleted; live initialization, broad traversal/resources and shutdown GL paths remain. |
+| M-011 GL authority removal | doing | Dynamic preview producers are Metal-authoritative on Darwin; retained model-preview source and animation-preview fallback routing are deleted. Live initialization, broad traversal/resources and shutdown GL paths remain. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. The model-upload floater keeps its
-static, physics and rigged modes, materials/textures, edges/hulls/explode,
-skinning and joint/bone/collision/degenerate diagnostics through native Metal.
-This is not OpenGL-count-only deletion.
+**Advances the complete product:** yes. The animation-upload preview now has no
+route back to retained target allocation or framebuffer-copy publication, only
+after its Metal implementation preserved playback, interaction, skinning,
+lighting, alpha and cloth. This is not OpenGL-count-only deletion.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
