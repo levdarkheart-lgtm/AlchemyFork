@@ -3522,8 +3522,12 @@ LLViewerMediaTexture* LLViewerMediaImpl::updateMediaImage()
         int texture_height = mMediaSource->getTextureHeight();
         int texture_depth = mMediaSource->getTextureDepth();
 
-        // MEDIAOPT: check to see if size actually changed before doing work
+        // MEDIAOPT: check to see if size actually changed before doing work. Darwin's
+        // native creation retires any prior fallback itself; other platforms retain the
+        // explicit GL recreation behavior.
+#if !LL_DARWIN
         media_tex->destroyGLTexture();
+#endif
 
         // MEDIAOPT: seems insane that we actually have to make an imageraw then
         // immediately discard it
@@ -3539,10 +3543,17 @@ LLViewerMediaTexture* LLViewerMediaImpl::updateMediaImage()
             mMediaSource->getTextureFormatSwapBytes());
 
         int discard_level = 0;
+#if LL_DARWIN
+        if (!media_tex->createMetalTexture(discard_level, raw, LLGLTexture::MEDIA))
+        {
+            LL_WARNS("Media") << "Failed to create native media texture" << LL_ENDL;
+        }
+#else
         if (!media_tex->createGLTexture(discard_level, raw))
         {
             LL_WARNS("Media") << "Failed to create media texture" << LL_ENDL;
         }
+#endif
 
         // MEDIAOPT: set this dynamically on play/stop
         // FIXME

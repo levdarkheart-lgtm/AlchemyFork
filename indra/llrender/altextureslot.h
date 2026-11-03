@@ -149,7 +149,7 @@ public:
     // makes the following assumptions:
     //  - No need for gGL.flush()
     //  - texture is not null
-    //  - gl_tex->getTexName() is not zero
+    //  - the image has either a GL name or a native Metal texture
     //  - This texture is not being bound redundantly
     // The CALLER names how it wants to sample; the resource contributes nothing.
     void bindFast(LLTexture* texture, ALSampler key);
@@ -245,4 +245,9 @@ protected:
     void bindFastImpl(LLTexture* texture, LLImageGL* gl_tex, U32 sampler);
 
     bool bindImpl(LLTexture* texture, bool forceBind, ALSampler key);
+#if LL_DARWIN
+    // Retained GL traversal samples the white placeholder while native capture retains the
+    // real Metal-only image identity.
+    bool bindNativeSampled(LLImageGL* image, U32 sampler, bool forceBind);
+#endif
 };

@@ -625,6 +625,13 @@ public:
     static void setMetalDevice(ALMetalDevice* device);
     static ALMetalDevice* getMetalDevice() noexcept;
 
+    // On the main thread, create and populate a native-only, non-mipmapped 2D image. This
+    // establishes the same geometry/format/accounting metadata as createGLTexture, but
+    // deliberately leaves mTexName at zero so a Metal-owned producer does not allocate a
+    // parallel GL resource.
+    bool createMetalTexture(S32 discard_level, const LLImageRaw* image,
+                            S32 category = sMaxCategories - 1);
+
     // Upload one complete, non-mipmapped source image into the top-left of native storage
     // without creating or modifying a GL texture. The source may be smaller than the
     // allocation (media plugins expose an unpadded frame inside a power-of-two texture).

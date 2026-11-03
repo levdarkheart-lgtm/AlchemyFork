@@ -33,6 +33,7 @@
 
 #include "../llimagegl.h"
 #include "../llgl.h"
+#include "../llgltexture.h"
 #include "../llrender.h"
 #include "../llrendertarget.h"
 #include "../llglheaders.h"
@@ -1406,6 +1407,109 @@ namespace
     }
 
 #if LL_DARWIN
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: native creation owns no GL texture", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        LLPointer<LLImageRaw> raw = makeRaw(12, 10, 4, 0x6d);
+        LLPointer<LLImageGL> image = new LLImageGL(/*usemipmaps=*/false);
+        REQUIRE(image->createMetalTexture(0, raw.get()));
+        CHECK(image->getTexName() == 0);
+        CHECK_FALSE(image->getHasGLTexture());
+        CHECK(image->getWidth() == 12);
+        CHECK(image->getHeight() == 10);
+        REQUIRE(image->getMetalTexture());
+
+        std::array<U8, 12 * 10 * 4> pixels{};
+        REQUIRE(image->getMetalTexture()->readback(
+            *device, 0, 0, {}, pixels.data(), 12 * 4, &error));
+        INFO(error);
+        CHECK(std::all_of(pixels.begin(), pixels.end(),
+                          [](U8 byte) { return byte == 0x6d; }));
+    }
+
+    TEST_CASE_METHOD(llimagegl_data, "ALTextureSlot: native-only sampling preserves the Metal image identity", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct StateReset
+        {
+            ~StateReset()
+            {
+                ALTextureSlot::setWhiteImage(nullptr);
+                LLImageGL::setMetalDevice(nullptr);
+            }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        LLPointer<LLImageGL> white = new LLImageGL(/*usemipmaps=*/false);
+        REQUIRE(white->createGLTexture(0, makeRaw(1, 1, 4, 0xff).get()));
+        ALTextureSlot::setWhiteImage(white.get());
+
+        LLPointer<LLImageGL> native = new LLImageGL(/*usemipmaps=*/false);
+        REQUIRE(native->createMetalTexture(0, makeRaw(8, 8, 4, 0x33).get()));
+        REQUIRE(native->getTexName() == 0);
+
+        ALTextureSlot* slot = gGL.getTextureSlot(0);
+        REQUIRE(slot->bindSampled(native.get(), ALSamplers::BilinearClamp));
+        CHECK(slot->getCurrImage() == native.get());
+        CHECK(slot->getCurrTexture() == white->getTexName());
+        CHECK(slot->getCurrType() == ALTextureSlot::TT_TEXTURE);
+
+        GLint bound = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound);
+        CHECK(static_cast<U32>(bound) == white->getTexName());
+    }
+
+    TEST_CASE_METHOD(llimagegl_data, "ALTextureSlot: wrapped native-only images cross slow and fast sampled binds", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct StateReset
+        {
+            ~StateReset()
+            {
+                ALTextureSlot::setWhiteImage(nullptr);
+                LLImageGL::setMetalDevice(nullptr);
+            }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        LLPointer<LLImageGL> white = new LLImageGL(/*usemipmaps=*/false);
+        REQUIRE(white->createGLTexture(0, makeRaw(1, 1, 4, 0xff).get()));
+        ALTextureSlot::setWhiteImage(white.get());
+
+        LLPointer<LLGLTexture> texture = new LLGLTexture(/*usemipmaps=*/false);
+        REQUIRE(texture->createMetalTexture(0, makeRaw(8, 8, 4, 0x44).get()));
+        LLImageGL* native = texture->getGLTexture();
+        REQUIRE(native->getTexName() == 0);
+
+        ALTextureSlot* slot = gGL.getTextureSlot(0);
+        REQUIRE(slot->bindSampled(texture.get(), ALSamplers::BilinearClamp));
+        CHECK(slot->getCurrImage() == native);
+        CHECK(slot->getCurrTexture() == white->getTexName());
+
+        slot->bindFast(texture.get(), ALSamplers::PointClamp);
+        CHECK(slot->getCurrImage() == native);
+        CHECK(slot->getCurrTexture() == white->getTexName());
+        CHECK(slot->getCurrType() == ALTextureSlot::TT_TEXTURE);
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: native image upload updates Metal without touching GL", "[LLImageGL][almetal]")
     {
         std::string error;

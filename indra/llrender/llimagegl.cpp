@@ -1606,6 +1606,77 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */, S32
 }
 
 #if LL_DARWIN
+bool LLImageGL::createMetalTexture(S32 discard_level, const LLImageRaw* image,
+                                   S32 category)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    checkActiveThread();
+    checkUploadBegun();
+
+    if (!on_main_thread() || !image || image->isBufferInvalid() || !sImageMetalDevice ||
+        mExternalTexture || mTarget != GL_TEXTURE_2D || mUseMipMaps)
+    {
+        return false;
+    }
+
+    if (discard_level < 0)
+    {
+        if (mCurrentDiscardLevel < 0)
+        {
+            return false;
+        }
+        discard_level = mCurrentDiscardLevel;
+    }
+    discard_level = llclamp(discard_level, 0, MAX_DISCARD_LEVEL);
+
+    const S32 width = image->getWidth() << discard_level;
+    const S32 height = image->getHeight() << discard_level;
+    if (!setSize(width, height, image->getComponents(), discard_level))
+    {
+        LL_WARNS("Metal") << "Trying to create a native texture with incorrect dimensions"
+                           << LL_ENDL;
+        return false;
+    }
+
+    if (mHasExplicitFormat &&
+        ((mFormatPrimary == GL_RGBA && mComponents < 4) ||
+         (mFormatPrimary == GL_RGB && mComponents < 3)))
+    {
+        LL_WARNS("Metal") << "Incorrect native texture format: " << std::hex
+                           << mFormatPrimary << ", components: " << std::dec
+                           << static_cast<U32>(mComponents) << LL_ENDL;
+        mHasExplicitFormat = false;
+    }
+    if (!mHasExplicitFormat)
+    {
+        resolveComponentFormat(mComponents);
+    }
+
+    // Retire an earlier GL fallback, if this image had one, and any prior native storage.
+    // The replacement below is authoritative and must never coexist with stale pixels.
+    destroyGLTexture();
+    mStorageAllocated = false;
+    mStorage = StorageDesc();
+    mCurrentDiscardLevel = discard_level;
+    mHasMipMaps = false;
+    mMipLevels = 1;
+    setCategory(category);
+
+    if (!uploadMetalImage(image) || !mMetalTexture)
+    {
+        mMetalTexture.reset();
+        mPendingMetalTexture.reset();
+        mTextureMemory = S64Bytes(0);
+        return false;
+    }
+
+    mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+    mLastBindTime = sLastFrameTime;
+    mGLTextureCreated = false;
+    llassert(mTexName == 0);
+    return true;
+}
+
 bool LLImageGL::uploadMetalImage(const LLImageRaw* image)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;

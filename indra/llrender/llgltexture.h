@@ -127,6 +127,11 @@ public:
     // defer_copy - set to true to allocate GL texture but NOT initialize with imageraw data
     // tex_name - if not null, will be set to the GL name of the texture created
     bool       createGLTexture(S32 discard_level, const LLImageRaw* imageraw, S32 usename = 0, bool to_create = true, S32 category = LLGLTexture::OTHER, bool defer_copy = false, LLGLuint* tex_name = nullptr);
+#if LL_DARWIN
+    // Create a Metal-owned image without allocating a parallel GL texture name.
+    bool       createMetalTexture(S32 discard_level, const LLImageRaw* imageraw,
+                                  S32 category = LLGLTexture::OTHER);
+#endif
 
     void       setExplicitFormat(LLGLint internal_format, LLGLenum primary_format, LLGLenum type_format = 0, bool swap_bytes = false);
     bool       setSubImage(const LLImageRaw* imageraw, S32 x_pos, S32 y_pos, S32 width, S32 height, LLGLuint use_name = 0);
