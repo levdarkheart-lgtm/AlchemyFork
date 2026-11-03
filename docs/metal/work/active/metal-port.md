@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `ab90edefd0`.
+**Renderer checkpoint:** Commit `e089268893`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -22,28 +22,29 @@ checkpoint detail belongs in the indexed archive.
 | M-008 | Advanced views/effects and compute | doing | Established debug/advanced owners, color grading, tone curve, BRDF, post FXAA/SMAA/CAS, DoF and world HDR bloom/cross-filter are native-only; every supported PBR preview mode owns geometry/post/publish. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL, linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | All supported preview modes own Metal storage/post; producer readiness stays native and GL is explicit failure-only recovery. Other dynamic textures and wider traversal remain. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Darwin previews remain Metal-only through readiness and every failure class; no retained pack, target, draw or post recovery is reachable. Other dynamic textures and wider traversal remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — classic preview and readiness cutover
+## Active checkpoint — Darwin preview GL recovery removal
 
-Commit `24b50cc382` ports classic atmospheric, direct-light and probe conventions
-into the complete Metal preview transaction. Commit `ab90edefd0` makes texture
-and coherent default-probe publication ordinary native pending states rather
-than reasons to schedule GL. Only actual native failures request the retained
-recovery pack. No viewer was launched or compared; visual row 17 advanced only
-to build 68188.
-[Exact evidence](../../state/archive/CURRENT-native-classic-preview-and-readiness-checkpoint-2026-11-03.md).
+Commit `e089268893` removes the Darwin retained preview recovery transaction.
+Readiness, device/geometry/encode failure and publication failure all remain
+pending on the targetless Metal scheduler; Darwin resource planning never asks
+for the preview probe/post pack. Exact Darwin object inspection excludes the
+retained preview shader, draw, framebuffer post and transient-target symbols.
+No viewer was launched or compared; visual row 17 advanced only to build 68190.
+[Exact evidence](../../state/archive/CURRENT-native-preview-gl-recovery-removal-checkpoint-2026-11-03.md).
 
 ## Validation checkpoint
 
-- Source-exact warnings-as-errors Release build `26.4.0d68188` passed at
-  `ab90edefd033abc24d6d535740f422ee4589ed0a`; exact RelWithDebInfo preview
-  manager and pipeline objects also compile warnings-as-errors.
+- Source-exact warnings-as-errors Release build `26.4.0d68190` passed at
+  `e08926889393999c82a5751ec703e3b7d2041a7c`; exact Release and RelWithDebInfo
+  preview-manager, dynamic-texture and pipeline objects compile
+  warnings-as-errors.
 - The full native Metal binary passes 52,414 assertions across 55 cases with
   API and shader validation enabled. Focused complete PBR material-preview
   coverage passes 459 assertions across two cases.
@@ -56,7 +57,7 @@ to build 68188.
   one platform CRT case skips as expected.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices.
 - Viewer executable SHA-256:
-  `e23aed414f4433469260bb024c230ff9d0badc1081800738c336e0d2a4d7ea8d`.
+  `2ad4fb7ceb0929cfa634e6a8c89a53ae19f1633ad0734e22034459ee8aae45b3`.
   Appearance utility:
   `c3e87e6a8f87c09c44e61aee502f6afd22e5f4bd1b82dd8c952c2fa05fba89a5`.
   Source/packaged MSL:
@@ -67,13 +68,13 @@ to build 68188.
   cases, with its four established failures and 39 skips.
 - Strict inventory is 2,408 files / 3,262 findings, expected exit 1. Exact
   report SHA-256:
-  `462ca6658bdddfa0a760200742e3ac75b22166b7a1ea12cd5a8096c3764b9c07`.
+  `8bc964c6635d54db8d77a2a82a83e1d7ba99a99605b63f366fc3228c48413968`.
   Both OpenGL and Metal remain linked.
 - Static symbol inspection finds none of the retained FXAA/SMAA/CAS/sharpen or
-  DoF program globals or retained DoF methods in the exact Darwin objects.
-  The retained bloom programs and generator remain present only for actual
-  preview failure recovery; supported configurations and producer waits do not
-  select that transaction.
+  DoF program globals or retained DoF methods in the exact Darwin objects. The
+  exact preview object additionally contains no retained preview shader/post,
+  bloom/exposure/color-correction, GL batch, transient-target or fallback
+  symbols; native renderer/adoption/probe symbols remain.
 - No viewer executable was launched, driven or compared for this checkpoint.
 
 ## Owner-attended visual review cadence
@@ -86,23 +87,22 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—classic and modern preview modes now stay
-   inside the native geometry/post/publication owner, including readiness waits.
+1. **Product advancement:** yes—Darwin preview rendering now has no GL recovery
+   authority or retained resource demand, including every failure path.
 2. **Deferred critical work:** remaining GL context/traversal/resources;
    feature/stability matrices; visual queue; strict binary/runtime audit;
    measured M1 Max performance; independent review and release proof.
-3. **Priority reassessment:** remove the now-isolated Darwin preview failure
-   recovery and its retained resource/program reachability.
+3. **Priority reassessment:** separate broader native pipeline lifetime from GL
+   teardown, then remove the next retained owner with source-exact evidence.
 
 Checkpoint count, elapsed time, commit volume and test volume are supporting
 signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Remove the Darwin preview failure-recovery sphere/post transaction and its
-resource demand while preserving fail-closed native retries and diagnostics.
-Then treat broader pipeline lifetime under full GL teardown as a separate
-unmet boundary.
+Separate broader native pipeline lifetime from full GL teardown. Inventory the
+teardown dependencies first, preserve fail-closed native owners and remove only
+the next source-proven retained lifetime dependency.
 
 ## Non-negotiable open gates
 

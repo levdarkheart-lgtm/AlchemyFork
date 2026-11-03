@@ -2,7 +2,7 @@
 
 **Observed:** 2026-11-03 on the physical Apple Silicon acceptance host.
 **Branch:** `codex/apple-silicon-metal`
-**Renderer code checkpoint:** `ab90edefd0`
+**Renderer code checkpoint:** `e089268893`
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 This is the concise recovery snapshot. Superseded detail remains in the indexed,
@@ -10,22 +10,22 @@ append-only archives.
 
 ## Active implementation checkpoint
 
-M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit `24b50cc382`
-extends the native material-preview transaction across classic skies with the
-retained atmospheric color-space, white-sun 1.35 boost, direct-light
-recombination and classic probe-diffuse suppression. Commit `ab90edefd0`
-separates ordinary Metal texture/default-probe publication waits from actual
-device, geometry, encode or publication failures.
+M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit `e089268893`
+removes Darwin material-preview GL failure recovery. The targetless scheduler
+now keeps texture/probe readiness, device/geometry/encode failure and native
+publication failure on the Metal retry path. Darwin never requests the retained
+preview probe/post pack, and its compiled preview object contains no retained
+preview draw or framebuffer-post transaction.
 
 Native preview destination backing remains Metal-only with a zero GL texture
 name. Every supported HDR, non-HDR, post-suppressed, legacy-gamma and classic
-lighting configuration now selects the native owner. Ordinary producer
-readiness retries targetlessly and does not schedule the GL probe/post pack.
-Only a real native failure requests the one-shot lazy retained recovery path.
+lighting configuration selects the native owner. Readiness and all failure
+classes retry targetlessly; none can acquire a shared GL target, generate GL
+backing or run the retained sphere/post chain on Darwin.
 
 This is a broader production-mode cut, not full no-context execution proof.
-Other dynamic textures retain GL backing, preview failure recovery remains,
-and global GL teardown also destroys wider pipeline state.
+Other dynamic textures retain GL backing, and global GL teardown also destroys
+wider pipeline state.
 
 The prior native-only FXAA/SMAA/CAS checkpoint remains in force. Darwin
 constructs, executes and exports no retained post-AA/CAS/sharpen program, owns
@@ -51,9 +51,9 @@ post-AA/sharpen and six DoF program objects, `LLPipeline::renderDoF` and its
 GLSL-readiness helper remain absent from the Darwin objects. Physical bloom
 coverage checks the production extract/downsample/upsample pyramid, strength,
 halation, cross-filter composition and malformed resource handling.
-Strict inventory remains 2,408 files / 3,262 findings. Exact classic-lighting
-and readiness evidence is
-[archived](archive/CURRENT-native-classic-preview-and-readiness-checkpoint-2026-11-03.md).
+Strict inventory remains 2,408 files / 3,262 findings. Exact
+preview-recovery-removal evidence is
+[archived](archive/CURRENT-native-preview-gl-recovery-removal-checkpoint-2026-11-03.md).
 
 Prior advanced-output, world/material, shadow, UI and presentation owners remain
 as recorded in the archive. Opaque fullbright and the six-face cube convention
@@ -75,12 +75,13 @@ case is a parity pass until the owner-attended review records that result.
 - `tools/metal/doctor.sh` passed on the M1 Max host with 64 GiB unified memory,
   Apple7-family support and the required Metal capabilities.
 - The required default warnings-as-errors Release wrapper completed at exact
-  source `ab90edefd033abc24d6d535740f422ee4589ed0a`, producing Development
-  build `26.4.0d68188` (`26.4.0.68188`). Exact RelWithDebInfo objects for the
-  preview manager and pipeline also compile warnings-as-errors.
+  source `e08926889393999c82a5751ec703e3b7d2041a7c`, producing Development
+  build `26.4.0d68190` (`26.4.0.68190`). Exact Release and RelWithDebInfo
+  preview-manager, dynamic-texture and pipeline objects compile
+  warnings-as-errors.
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64.
   Viewer executable SHA-256 is
-  `e23aed414f4433469260bb024c230ff9d0badc1081800738c336e0d2a4d7ea8d`.
+  `2ad4fb7ceb0929cfa634e6a8c89a53ae19f1633ad0734e22034459ee8aae45b3`.
   Appearance-utility SHA-256 is
   `c3e87e6a8f87c09c44e61aee502f6afd22e5f4bd1b82dd8c952c2fa05fba89a5`.
 - Source and packaged MSL are byte-identical at
@@ -103,15 +104,18 @@ case is a parity pass until the owner-attended review records that result.
   The run is recorded as failed, not promoted to green.
 - Strict inventory is 2,408 files / 3,262 findings, expected exit 1. The exact
   report SHA-256 is
-  `462ca6658bdddfa0a760200742e3ac75b22166b7a1ea12cd5a8096c3764b9c07`.
+  `8bc964c6635d54db8d77a2a82a83e1d7ba99a99605b63f366fc3228c48413968`.
   Both OpenGL and Metal remain linked in the viewer and appearance utility;
   neither has an undefined `CGLTexImageIOSurface2D` dependency.
 - `nm` finds no packaged-viewer symbol for the six retained
   FXAA/SMAA/CAS/sharpen globals, the six retained DoF globals,
   `LLPipeline::renderDoF` or `depthOfFieldProgramsReady`.
-- Exact source inspection finds the retained bloom program objects and
-  `generateBloomHDR` still present only for explicit native-failure recovery;
-  no supported preview configuration or ordinary producer wait selects them.
+- Exact Release-object inspection finds no retained preview shader/post globals,
+  bloom/exposure/color-correction calls, GL batch submission, transient target
+  acquisition or retained-readiness/fallback symbols in the Darwin preview
+  object. It does find the Metal preview renderer, native target adoption and
+  Metal default-probe publication. Retained-platform code remains source-guarded
+  for non-Darwin builds.
 - No viewer executable was launched, driven, photographed or compared.
 
 ## Milestone snapshot
@@ -123,34 +127,31 @@ case is a parity pass until the owner-attended review records that result.
 | M-008 advanced views/effects | doing | Established advanced-output owners, color grading, tone curve, BRDF, post FXAA/SMAA/CAS, DoF and world-view HDR bloom/cross-filter are native-only; all supported PBR preview modes own geometry/post/publish. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,262 and exits 1; full parity/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | All supported preview modes own Metal storage/post; readiness stays native and GL is failure-only recovery. Other dynamic textures and wider traversal still own GL paths. |
+| M-011 GL authority removal | doing | Darwin material previews are Metal-only through readiness and failure, with no retained resource demand or compiled GL recovery transaction. Other dynamic textures and wider traversal still own GL paths. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Classic and modern preview lighting now
-share the native geometry/post/publication owner. Producer readiness no longer
-allocates or executes the retained probe/post pack, so all supported modes stay
-Metal-only while waiting for coherent inputs.
+**Advances the complete product:** yes. Darwin material previews now have one
+renderer for supported modes, readiness and failure: Metal. The scheduler cannot
+allocate or execute the retained probe/post pack for this owner, and exact object
+inspection proves the GL recovery transaction is absent from the Darwin build.
 
 **Still incomplete:** the executable links OpenGL; global GL teardown also
 destroys pipeline state, so this is not a runtime no-context viewer claim.
-Actual native failures still retain the GL sphere/post recovery transaction.
 Application-owned GL context, traversal and resources remain.
 Complete feature/stability, profiling/performance and release gates are not met.
 Prolonged stability and independent build/review evidence remain open; strict no-GL
 is not satisfied. Visual parity cases remain queued, not waived.
 
-**Evidence-based priority:** replace the now-isolated preview failure recovery
-with native retry/failure reporting and remove its retained resource/program
-reachability, then address broader pipeline lifetime under GL teardown.
+**Evidence-based priority:** separate broader native pipeline lifetime from GL
+teardown, then continue owner-by-owner removal of retained dynamic-texture and
+scene traversal authority.
 
 ## Exact next actions
 
-1. Remove Darwin preview failure recovery's retained sphere/post transaction
-   and its resource demand while keeping native retry fail-closed.
-2. Separate broader native pipeline lifetime from GL teardown before claiming
+1. Separate broader native pipeline lifetime from GL teardown before claiming
    complete no-context execution.
-3. Continue owner-by-owner OpenGL inventory reduction with exact tests and
+2. Continue owner-by-owner OpenGL inventory reduction with exact tests and
    package evidence; keep visual questions queued for the daily owner session.
