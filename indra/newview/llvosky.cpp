@@ -39,6 +39,7 @@
 #include "llcubemap.h"
 #include "lldrawpoolsky.h"
 #include "llglheaders.h"
+#include "llimagegl.h"
 #include "llsky.h"
 #include "llviewercamera.h"
 #include "llviewertexturelist.h"
@@ -120,15 +121,25 @@ void LLSkyTex::init(bool isShiny)
 
 void LLSkyTex::cleanupGL()
 {
+#if !LL_DARWIN
     mTexture[0] = NULL;
     mTexture[1] = NULL;
+#endif
 }
 
 void LLSkyTex::restoreGL()
 {
     for (S32 i = 0; i < 2; i++)
     {
-        mTexture[i] = LLViewerTextureManager::getLocalTexture(false);
+        if (mTexture[i].isNull())
+        {
+            mTexture[i] = LLViewerTextureManager::getLocalTexture(false);
+        }
+#if LL_DARWIN
+        // Global renderer cleanup may have discarded native storage even
+        // though this logical texture survived the GL lifecycle event.
+        createImage(i);
+#endif
     }
 }
 
@@ -187,7 +198,7 @@ void LLSkyTex::initEmpty(const S32 tex)
         }
     }
 
-    createGLImage(tex);
+    createImage(tex);
 }
 
 void LLSkyTex::create()
@@ -205,13 +216,31 @@ void LLSkyTex::create()
             *pix = temp.asRGBA();
         }
     }
-    createGLImage(sCurrent);
+    createImage(sCurrent);
 }
 
-void LLSkyTex::createGLImage(S32 which)
+bool LLSkyTex::createImage(S32 which)
 {
     mTexture[which]->setExplicitFormat(GL_RGBA8, GL_RGBA);
-    mTexture[which]->createGLTexture(0, mImageRaw[which], 0, true, LLGLTexture::LOCAL);
+#if LL_DARWIN
+    LLImageGL* image = mTexture[which]->getGLTexture();
+    const bool uploaded = image->getMetalTexture() && !image->getHasGLTexture()
+        ? image->uploadMetalSubImage(
+            mImageRaw[which]->getData(), SKYTEX_RESOLUTION,
+            SKYTEX_RESOLUTION, 0, 0, SKYTEX_RESOLUTION,
+            SKYTEX_RESOLUTION)
+        : mTexture[which]->createMetalTexture(
+            0, mImageRaw[which].get(), LLGLTexture::LOCAL);
+#else
+    const bool uploaded = mTexture[which]->createGLTexture(
+        0, mImageRaw[which], 0, true, LLGLTexture::LOCAL);
+#endif
+    if (!uploaded)
+    {
+        LL_WARNS("Sky") << "Could not publish CPU-generated sky face "
+                         << which << LL_ENDL;
+    }
+    return uploaded;
 }
 
 void LLSkyTex::bindTexture(bool curr)
@@ -738,13 +767,13 @@ bool LLVOSky::updateSky()
                 raw1 = mSkyTex[side].getImageRaw(true);
                 raw2 = mSkyTex[side].getImageRaw(false);
                 raw2->copy(raw1);
-                mSkyTex[side].createGLImage(tex);
+                mSkyTex[side].createImage(tex);
             }
 
             raw1 = mShinyTex[side].getImageRaw(true);
             raw2 = mShinyTex[side].getImageRaw(false);
             raw2->copy(raw1);
-            mShinyTex[side].createGLImage(tex);
+            mShinyTex[side].createImage(tex);
         }
         next_frame = 0;
 

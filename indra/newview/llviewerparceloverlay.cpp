@@ -463,7 +463,8 @@ void LLViewerParcelOverlay::updateOverlayTexture()
             // Rebuild all CPU rows before retrying. If the native image was
             // discarded, the next attempt creates it rather than repeatedly
             // trying to update missing storage.
-            mOverlayTextureNative = false;
+            mOverlayTextureNative =
+                mTexture->getGLTexture()->getMetalTexture() != nullptr;
             mOverlayTextureIdx = 0;
             LL_WARNS("Parcel") << "Could not publish the parcel overlay to native texture storage"
                                << LL_ENDL;

@@ -118,7 +118,7 @@ protected:
     }
 
     LLImageRaw* getImageRaw(bool curr=true);
-    void createGLImage(S32 which);
+    bool createImage(S32 which);
 
     bool mIsShiny;
 };

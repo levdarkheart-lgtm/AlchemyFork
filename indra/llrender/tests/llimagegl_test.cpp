@@ -1468,6 +1468,15 @@ namespace
             }
         }
         CHECK_FALSE(image->getHasGLTexture());
+
+        LLPointer<LLImageRaw> linear_raw = makeRaw(4, 3, 4, 0x42);
+        LLPointer<LLImageGL> linear = new LLImageGL(/*usemipmaps=*/false);
+        linear->setExplicitFormat(GL_RGBA8, GL_RGBA);
+        REQUIRE(linear->createMetalTexture(0, linear_raw.get()));
+        REQUIRE(linear->getMetalTexture());
+        CHECK(linear->getMetalTexture()->descriptor().format ==
+              ALMetalPixelFormat::rgba8_unorm);
+        CHECK_FALSE(linear->getHasGLTexture());
     }
 
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: typed native creation and region updates preserve float terrain texels", "[LLImageGL][almetal]")

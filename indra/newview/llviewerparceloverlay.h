@@ -122,8 +122,8 @@ private:
     LLFrameTimer    mTimeSinceLastUpdate;
     S32             mOverlayTextureIdx;
 #if LL_DARWIN
-    // True only after this logical texture successfully published native
-    // storage. A failed update clears it so the next retry recreates storage.
+    // True while this logical texture retains complete native storage. A
+    // failed update preserves the old texture; missing storage forces recreate.
     bool            mOverlayTextureNative = false;
 #endif
 
