@@ -63,6 +63,7 @@
 #include "llviewerwindow.h"
 #include "llviewermenufile.h"   // upload_new_resource()
 #include "llvoavatar.h"
+#include "noise.h"
 #include "pipeline.h"
 #include "lluictrlfactory.h"
 #include "lltrans.h"
@@ -71,8 +72,57 @@
 #include "../almetal/almetalsculptpreview.h"
 #endif
 
+#include <algorithm>
 #include <array>
 #include <vector>
+
+namespace
+{
+LLViewerDynamicTexture::EInitialBacking animationPreviewInitialBacking()
+{
+#if LL_DARWIN
+    return LLViewerDynamicTexture::EInitialBacking::NATIVE_METAL;
+#else
+    return LLViewerDynamicTexture::EInitialBacking::RETAINED_GL;
+#endif
+}
+
+#if LL_DARWIN
+class LLScopedAnimationPreviewCameraState final
+{
+public:
+    LLScopedAnimationPreviewCameraState()
+    : mCamera(*LLViewerCamera::getInstance()),
+      mCurrent(LLViewerCamera::getCurrent()),
+      mViewport{{
+          gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3],
+      }}
+    {
+    }
+
+    ~LLScopedAnimationPreviewCameraState()
+    {
+        LLViewerCamera* camera = LLViewerCamera::getInstance();
+        camera->setOrigin(mCamera);
+        camera->setAxes(mCamera);
+        camera->setAspect(mCamera.getAspect());
+        camera->setViewNoBroadcast(mCamera.getView());
+        camera->setNear(mCamera.getNear());
+        camera->setFar(mCamera.getFar());
+        camera->setModelview(mCamera.getModelview());
+        camera->setProjection(mCamera.getProjection());
+        LLViewerCamera::updateFrustumPlanes(*camera);
+        LLViewerCamera::setCurrent(mCurrent);
+        std::copy(mViewport.begin(), mViewport.end(), gGLViewport);
+    }
+
+private:
+    LLCamera mCamera;
+    LLCamera mCurrent;
+    std::array<S32, 4> mViewport;
+};
+#endif
+}
 
 const S32 PREVIEW_BORDER_WIDTH = 2;
 const S32 PREVIEW_RESIZE_HANDLE_SIZE = S32(RESIZE_HANDLE_WIDTH * OO_SQRT2) + PREVIEW_BORDER_WIDTH;
@@ -1026,7 +1076,9 @@ void LLFloaterBvhPreview::onBtnOK(void* userdata)
 //-----------------------------------------------------------------------------
 // LLPreviewAnimation
 //-----------------------------------------------------------------------------
-LLPreviewAnimation::LLPreviewAnimation(S32 width, S32 height) : LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE)
+LLPreviewAnimation::LLPreviewAnimation(S32 width, S32 height)
+: LLViewerDynamicTexture(width, height, 3, ORDER_MIDDLE,
+                         animationPreviewInitialBacking())
 {
     mNeedsUpdate = true;
     mCameraDistance = PREVIEW_CAMERA_DISTANCE;
@@ -1065,13 +1117,64 @@ S8 LLPreviewAnimation::getType() const
     return LLViewerDynamicTexture::LL_PREVIEW_ANIMATION ;
 }
 
+bool LLPreviewAnimation::canRenderWithoutTarget() const
+{
+#if LL_DARWIN
+    return true;
+#else
+    return false;
+#endif
+}
+
+LLViewerDynamicTexture::ETargetlessRenderResult
+LLPreviewAnimation::renderWithoutTarget()
+{
+#if LL_DARWIN
+    if (mGLTexturep.isNull() || !mGLTexturep->getMetalTexture())
+    {
+        return ETargetlessRenderResult::PENDING;
+    }
+
+    bool rendered = false;
+    {
+        LLScopedAnimationPreviewCameraState saved_state;
+        mOrigin.set(0, 0);
+        rendered = render();
+    }
+
+    const bool published = rendered && mMetalPreview &&
+        mGLTexturep->adoptMetalRenderTextureAuthoritative(
+            std::move(mMetalPreview), LLGLTexture::DYNAMIC_TEX);
+    mMetalPreview.reset();
+    mMetalPreviewDescriptor.reset();
+    if (!published)
+    {
+        mNeedsUpdate = true;
+        LL_DEBUGS("Metal")
+            << "Animation preview remains pending; its prior native result "
+               "is unchanged"
+            << LL_ENDL;
+        return ETargetlessRenderResult::PENDING;
+    }
+
+    mNeedsUpdate = false;
+    LL_INFOS_ONCE("Metal")
+        << "Animation previews are targetless native Metal producers"
+        << LL_ENDL;
+    return ETargetlessRenderResult::COMPLETED;
+#else
+    return ETargetlessRenderResult::RETAINED_FALLBACK;
+#endif
+}
+
 //-----------------------------------------------------------------------------
 // update()
 //-----------------------------------------------------------------------------
 bool    LLPreviewAnimation::render()
 {
-    mNeedsUpdate = false;
-#if LL_DARWIN
+#if !LL_DARWIN
+    return false;
+#else
     mMetalPreview.reset();
     mMetalPreviewDescriptor.reset();
     if (mGLTexturep.notNull() && mGLTexturep->getMetalTexture())
@@ -1079,33 +1182,11 @@ bool    LLPreviewAnimation::render()
         mMetalPreviewDescriptor = std::make_unique<ALMetalTextureDescriptor>(
             mGLTexturep->getMetalTexture()->descriptor());
     }
-#endif
     LLVOAvatar* avatarp = mDummyAvatar;
-
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.pushMatrix();
-    gGL.loadIdentity();
-    gGL.ortho(0.0f, (F32)mFullWidth, 0.0f, (F32)mFullHeight, -1.0f, 1.0f);
-
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.pushMatrix();
-    gGL.loadIdentity();
-
-    gUIProgram.bind();
-
-    LLGLSUIDefault def;
-    gGL.getTextureSlot(0)->unbind();
-    gGL.color4f(0.15f, 0.2f, 0.3f, 1.f);
-
-    gl_rect_2d_simple( mFullWidth, mFullHeight );
-
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.popMatrix();
-
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.popMatrix();
-
-    gGL.flush();
+    if (!avatarp || !mMetalPreviewDescriptor)
+    {
+        return false;
+    }
 
     LLVector3 target_pos = avatarp->mRoot->getWorldPosition();
 
@@ -1122,26 +1203,27 @@ bool    LLPreviewAnimation::render()
 
     camera->setViewNoBroadcast(LLViewerCamera::getInstance()->getDefaultFOV() / mCameraZoom);
     camera->setAspect((F32) mFullWidth / (F32) mFullHeight);
-    camera->setPerspective(false, mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight, false);
+    camera->setPerspectiveWithoutRenderState(
+        mOrigin.mX, mOrigin.mY, mFullWidth, mFullHeight);
 
     //SJB: Animation is updated in LLVOAvatar::updateCharacter
 
     if (avatarp->mDrawable.notNull())
     {
+        // Animation advances in LLVOAvatar::updateCharacter. Rebuild the
+        // corresponding dynamic mesh data before native extraction, matching
+        // the work the former renderAvatars() call performed every frame.
         avatarp->updateLOD();
-
-        LLVertexBuffer::unbind();
-        LLGLDepthTest gls_depth(GL_TRUE);
+        if (!avatarp->isBuilt())
+        {
+            return false;
+        }
+        avatarp->dirtyMesh();
+        avatarp->updateMeshData();
 
         LLFace* face = avatarp->mDrawable->getFace(0);
         if (face)
         {
-            LLDrawPoolAvatar *avatarPoolp = (LLDrawPoolAvatar *)face->getPool();
-            avatarp->dirtyMesh();
-            gPipeline.enableLightsPreview();
-            avatarPoolp->renderAvatars(avatarp);  // renders only one avatar
-
-#if LL_DARWIN
             ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
             LLPointer<LLViewerFetchedTexture> default_texture =
                 LLViewerTextureManager::getFetchedTexture(IMG_DEFAULT);
@@ -1217,8 +1299,8 @@ bool    LLPreviewAnimation::render()
                 palettes.reserve(preview_meshes.size());
                 batches.reserve(preview_meshes.size());
 
-                const LLMatrix4a modelview = gGL.getModelviewMatrix();
-                const LLMatrix4a projection = gGL.getProjectionMatrix();
+                const LLMatrix4a modelview = camera->getModelview();
+                const LLMatrix4a projection = camera->getProjection();
                 LLVector4 light(LLPipeline::PreviewDirection0, 0.f);
                 LLVector4a source;
                 source.loadua(light.mV);
@@ -1227,6 +1309,46 @@ bool    LLPreviewAnimation::render()
                 LLVector3 light_direction(transformed.getF32ptr());
                 light_direction.normVec();
                 const LLColor4 dummy_color = LLVOAvatar::getDummyColor();
+                const bool avatar_cloth =
+                    gPipeline.shaderInputs().mLocal.mAvatarCloth;
+                LLVector4 cloth_wind;
+                LLVector4 cloth_sin_wave;
+                LLVector4 cloth_gravity;
+                LLVector4 cloth_depth(0.f, 0.f, 1.f, 0.f);
+                if (avatar_cloth)
+                {
+                    // Match LLDrawPoolAvatar::avatar_cloth_uniforms(), which
+                    // supplied the retained animation-preview draw.
+                    const LLMatrix4& cloth_view =
+                        LLDrawPoolAvatar::getModelView();
+                    cloth_wind.setVec(avatarp->mWindVec);
+                    cloth_wind.mV[VW] = 0.f;
+                    cloth_wind = cloth_wind * cloth_view;
+                    cloth_wind.mV[VW] = avatarp->mWindVec.mV[VW];
+
+                    const F32 phase = -avatarp->mRipplePhase;
+                    const F32 frequency =
+                        7.f + noise1(avatarp->mRipplePhase) * 2.f;
+                    cloth_sin_wave.set(
+                        frequency, frequency, frequency, phase);
+
+                    cloth_gravity.set(0.f, 0.f, -0.7f, 0.f);
+                    cloth_gravity = cloth_gravity * cloth_view;
+
+                    LLViewerCamera* main_camera =
+                        LLViewerCamera::getInstance();
+                    if (&LLViewerCamera::getCurrent() != main_camera)
+                    {
+                        LLMatrix4 main_view;
+                        main_camera->getModelview().store(main_view);
+                        LLMatrix4 to_main = cloth_view;
+                        to_main.invert();
+                        to_main *= main_view;
+                        cloth_depth.set(
+                            to_main.mMatrix[0][2], to_main.mMatrix[1][2],
+                            to_main.mMatrix[2][2], to_main.mMatrix[3][2]);
+                    }
+                }
 
                 for (LLViewerJointMesh* viewer_mesh : preview_meshes)
                 {
@@ -1277,7 +1399,9 @@ bool    LLPreviewAnimation::render()
                     if (preview_mesh->hasWeights())
                     {
                         complete = buffer->hasDataType(
-                            LLVertexBuffer::TYPE_WEIGHT);
+                            LLVertexBuffer::TYPE_WEIGHT) &&
+                            (!avatar_cloth || buffer->hasDataType(
+                                LLVertexBuffer::TYPE_CLOTHWEIGHT));
                         if (!complete)
                         {
                             break;
@@ -1297,6 +1421,23 @@ bool    LLPreviewAnimation::render()
                         batch.skin_joint_count =
                             LL_CHARACTER_MAX_JOINTS_PER_MESH;
                         batch.avatar_skinning = true;
+                        if (avatar_cloth)
+                        {
+                            batch.cloth_offset = buffer->getOffset(
+                                LLVertexBuffer::TYPE_CLOTHWEIGHT);
+                            batch.avatar_cloth = true;
+                            std::memcpy(batch.avatar_wind, cloth_wind.mV,
+                                        sizeof(batch.avatar_wind));
+                            std::memcpy(batch.avatar_sin_wave,
+                                        cloth_sin_wave.mV,
+                                        sizeof(batch.avatar_sin_wave));
+                            std::memcpy(batch.avatar_gravity,
+                                        cloth_gravity.mV,
+                                        sizeof(batch.avatar_gravity));
+                            std::memcpy(batch.avatar_cloth_depth,
+                                        cloth_depth.mV,
+                                        sizeof(batch.avatar_cloth_depth));
+                        }
                         std::memcpy(batch.modelview_projection,
                                     projection.getF32ptr(),
                                     sizeof(batch.modelview_projection));
@@ -1342,6 +1483,9 @@ bool    LLPreviewAnimation::render()
                     scene.batch_count = batches.size();
                     scene.destination_descriptor =
                         mMetalPreviewDescriptor.get();
+                    // The retained preview wrote encoded bytes with
+                    // FRAMEBUFFER_SRGB disabled into a logical RGB target.
+                    scene.linear_storage_view = true;
                     mMetalPreview = renderer->render(scene, &error);
                 }
                 else if (error.empty())
@@ -1350,46 +1494,33 @@ bool    LLPreviewAnimation::render()
                 }
                 if (!mMetalPreview)
                 {
-                    LL_WARNS("Metal")
-                        << "Could not mirror the animation preview: "
+                    LL_DEBUGS("Metal")
+                        << "Animation preview native production is pending: "
                         << error << LL_ENDL;
                 }
             }
             else
             {
-                LL_WARNS_ONCE("Metal")
-                    << "Animation preview retained GL because its native "
+                LL_DEBUGS("Metal")
+                    << "Animation preview is pending because its native "
                        "texture, device or destination is incomplete"
                     << LL_ENDL;
             }
-#endif
         }
     }
 
-    gGL.color4f(1,1,1,1);
-    return true;
+    return mMetalPreview != nullptr;
+#endif
 }
 
 void LLPreviewAnimation::postRender(bool success)
 {
+#if !LL_DARWIN
     LLViewerDynamicTexture::postRender(success);
-#if LL_DARWIN
-    if (lastPostRenderSucceeded() && mMetalPreview)
-    {
-        if (mGLTexturep->adoptMetalRenderTexture(std::move(mMetalPreview)))
-        {
-            LL_INFOS_ONCE("Metal")
-                << "Animation previews own a native Metal render target"
-                << LL_ENDL;
-        }
-        else
-        {
-            LL_WARNS("Metal")
-                << "Could not publish the native animation preview mirror"
-                << LL_ENDL;
-        }
-    }
-    mMetalPreview.reset();
+#else
+    // Darwin publishes authoritatively from renderWithoutTarget(); there is
+    // no retained framebuffer transaction to copy or mirror.
+    (void)success;
 #endif
 }
 

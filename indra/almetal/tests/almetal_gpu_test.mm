@@ -857,6 +857,7 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_lit_preview_avatar_unlit_textured_vertex",
             "almetal_lit_preview_avatar_skinned_vertex",
             "almetal_lit_preview_avatar_skinned_textured_vertex",
+            "almetal_lit_preview_avatar_skinned_cloth_textured_vertex",
             "almetal_lit_preview_avatar_skinned_unlit_textured_vertex",
             "almetal_lit_preview_avatar_skinned_unlit_cloth_textured_vertex",
             "almetal_lit_preview_deferred_rigged_textured_vertex",
@@ -27208,6 +27209,24 @@ TEST_CASE("almetal: lit preview renders multiple indexed depth-tested batches", 
         CHECK(avatar_cloth_pixels[avatar_cloth_interior + 1] == 64);
         CHECK(avatar_cloth_pixels[avatar_cloth_interior + 2] == 32);
         CHECK(avatar_cloth_pixels[avatar_cloth_interior + 3] == 255);
+
+        // Animation upload previews use the same clothing deformation but
+        // retain the legacy one-light/wrapped-back avatar response.
+        ALMetalLitPreviewBatch avatar_lit_cloth = avatar_cloth;
+        avatar_lit_cloth.avatar_unlit = false;
+        auto rendered_avatar_lit_cloth = renderer->render(
+            avatar_lit_cloth, &error);
+        INFO(error);
+        REQUIRE(rendered_avatar_lit_cloth);
+        std::array<std::uint8_t, 32 * 32 * 4> avatar_lit_cloth_pixels{};
+        REQUIRE(rendered_avatar_lit_cloth->readback(
+            *device, 0, 0, {}, avatar_lit_cloth_pixels.data(), 32 * 4,
+            &error));
+        INFO(error);
+        CHECK(avatar_lit_cloth_pixels[avatar_cloth_interior + 0] > 38);
+        CHECK(avatar_lit_cloth_pixels[avatar_cloth_interior + 1] <= 1);
+        CHECK(avatar_lit_cloth_pixels[avatar_cloth_interior + 2] <= 1);
+        CHECK(avatar_lit_cloth_pixels[avatar_cloth_interior + 3] == 255);
 
         avatar_cloth.cloth_offset = vertex_bytes.size();
         error.clear();

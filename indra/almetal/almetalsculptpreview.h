@@ -44,8 +44,8 @@ struct ALMetalLitPreviewBatch
     // per joint, matching LLVOAvatar::MatrixPaletteCache::mGLMp.
     std::size_t weight_offset = 0;
     // Optional legacy clothing displacement stream and constants, matching
-    // avatarSkinV.glsl's AVATAR_CLOTH path. It is valid only for an unlit,
-    // scalar-weighted system-avatar batch.
+    // avatarSkinV.glsl's AVATAR_CLOTH path. It is valid for lit animation or
+    // unlit appearance-preview scalar-weighted system-avatar batches.
     std::size_t cloth_offset = 0;
     const float* skin_palette = nullptr;
     std::size_t skin_palette_float_count = 0;

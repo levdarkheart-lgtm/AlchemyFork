@@ -10355,6 +10355,32 @@ vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_avatar_skinned_text
     return output;
 }
 
+vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_avatar_skinned_cloth_textured_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float4* normals [[buffer(1)]],
+    constant ALMetalLitPreviewConstants& constants [[buffer(2)]],
+    const device float2* texcoords [[buffer(3)]],
+    const device float* encoded_weights [[buffer(6)]],
+    const device float4* skin_palette [[buffer(7)]],
+    const device float4* clothing [[buffer(9)]],
+    uint vertex_id [[vertex_id]])
+{
+    const ALMetalLitPreviewSkinnedVertex skinned =
+        almetal_avatar_cloth_vertex(
+            positions[vertex_id], normals[vertex_id], clothing[vertex_id],
+            encoded_weights[vertex_id], skin_palette,
+            constants.avatar_wind, constants.avatar_sin_wave,
+            constants.avatar_gravity, constants.avatar_cloth_depth);
+    const ALMetalLitPreviewVaryings lit =
+        almetal_lit_preview_avatar_vertex_common(
+            skinned.position, skinned.normal, constants);
+    ALMetalLitPreviewTexturedVaryings output;
+    output.position = lit.position;
+    output.color = lit.color;
+    output.texcoord = texcoords[vertex_id];
+    return output;
+}
+
 vertex ALMetalLitPreviewTexturedVaryings almetal_lit_preview_avatar_skinned_unlit_textured_vertex(
     const device float4* positions [[buffer(0)]],
     const device float4* normals [[buffer(1)]],

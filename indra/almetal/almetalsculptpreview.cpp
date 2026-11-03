@@ -76,6 +76,8 @@ struct ALMetalLitPreviewRenderer::Impl
         std::unique_ptr<ALMetalRenderPipeline> avatar_unlit_textured;
         std::unique_ptr<ALMetalRenderPipeline> avatar_skinned_solid;
         std::unique_ptr<ALMetalRenderPipeline> avatar_skinned_textured;
+        std::unique_ptr<ALMetalRenderPipeline>
+            avatar_skinned_cloth_textured;
         std::unique_ptr<ALMetalRenderPipeline> avatar_skinned_unlit_textured;
         std::unique_ptr<ALMetalRenderPipeline>
             avatar_skinned_unlit_cloth_textured;
@@ -135,6 +137,7 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
         !impl->library->hasFunction("almetal_lit_preview_avatar_unlit_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_textured_vertex") ||
+        !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_cloth_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_unlit_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_avatar_skinned_unlit_cloth_textured_vertex") ||
         !impl->library->hasFunction("almetal_lit_preview_deferred_rigged_textured_vertex") ||
@@ -246,6 +249,10 @@ std::unique_ptr<ALMetalLitPreviewRenderer> ALMetalLitPreviewRenderer::create(
                              "almetal_lit_preview_avatar_skinned_textured_vertex",
                              "almetal_lit_preview_avatar_fragment",
                              "Alchemy textured avatar-skinned lit preview" + suffix + " pipeline") ||
+            !create_pipeline(pipelines.avatar_skinned_cloth_textured,
+                             "almetal_lit_preview_avatar_skinned_cloth_textured_vertex",
+                             "almetal_lit_preview_avatar_fragment",
+                             "Alchemy textured avatar-skinned lit cloth preview" + suffix + " pipeline") ||
             !create_pipeline(pipelines.avatar_skinned_unlit_textured,
                              "almetal_lit_preview_avatar_skinned_unlit_textured_vertex",
                              "almetal_lit_preview_avatar_unlit_fragment",
@@ -660,7 +667,7 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
             return nullptr;
         }
         if (batch.avatar_cloth &&
-            (!batch.avatar_unlit || !batch.avatar_skinning ||
+            (!batch.avatar_skinning ||
              !batch.skin_palette ||
              batch.cloth_offset % vector_stride != 0 ||
              !range_fits(batch.cloth_offset, batch.vertex_count,
@@ -1112,8 +1119,9 @@ std::unique_ptr<ALMetalTexture> ALMetalLitPreviewRenderer::render(
                 }
                 else if (batch.avatar_cloth)
                 {
-                    fill_pipeline =
-                        pipelines.avatar_skinned_unlit_cloth_textured.get();
+                    fill_pipeline = batch.avatar_unlit
+                        ? pipelines.avatar_skinned_unlit_cloth_textured.get()
+                        : pipelines.avatar_skinned_cloth_textured.get();
                 }
                 else if (batch.avatar_unlit && avatar_skinned)
                 {
