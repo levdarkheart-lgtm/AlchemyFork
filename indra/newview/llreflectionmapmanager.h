@@ -235,34 +235,9 @@ private:
     // update the neighbors of the given probe
     void updateNeighbors(LLReflectionMap* probe);
 
-    // update UBO used for rendering (call only once per render pipe flush)
+    // Refresh reflection-probe constants once per render-pipe flush. Metal
+    // consumes the CPU-side block directly.
     void updateUniforms();
-
-    // bind UBO used for rendering
-    void setUniforms();
-
-    // render target for cube snapshots
-    // used to generate mipmaps without doing a copy-to-texture
-    LLRenderTarget mRenderTarget;
-
-    std::vector<LLRenderTarget> mMipChain;
-
-    // storage for reflection probe radiance maps (plus two scratch space cubemaps)
-    LLPointer<LLCubeMapArray> mTexture;
-
-    // vertex buffer for pushing verts to filter shaders
-    LLPointer<LLVertexBuffer> mVertexBuffer;
-
-    // storage for reflection probe irradiance maps
-    // Nine RGB SH coefficients per probe as signed halves, packed into LL_SH_PACKED_TEXELS
-    // RGBA32UI texels with one row per cubemap layer, so a pixel reads a probe's set in four
-    // fetches (shPackUtilF.glsl).
-    LLRenderTarget mSHCoeffs;
-
-    // Scratch for the row-parallel form of the SH projection: the same nine columns, one row of
-    // partial sums per face row of the mip being integrated (6 x ALProbeSHProjectionRes rows).
-    // Sized in update(), consumed by the reduce pass, never kept between probes.
-    LLRenderTarget mSHPartial;
 
     // list of free cubemap indices
     std::list<S32> mCubeFree;
@@ -275,8 +250,8 @@ private:
         LLReflectionMap* probe, U32 face,
         bool realtime_capture = false);
 
-    // face edge length of the probe mip the SH irradiance projection integrates over, from
-    // ALProbeSHProjectionRes, and in `mip` the level of mTexture that holds it
+    // Face edge length of the native probe mip the SH irradiance projection
+    // integrates over, and its mip level.
     U32 shProjectionRes(S32& mip) const;
 
 #if LL_DARWIN
@@ -309,9 +284,6 @@ private:
 
     // list of reflection maps to create
     std::vector<LLPointer<LLReflectionMap> > mCreateList;
-
-    // reflection-probe constant block (bound to LLGLSLShader::UB_REFLECTION_PROBES)
-    ALUniformBuffer mUBO;
 
     // list of maps being used for rendering
     std::vector<LLReflectionMap*> mReflectionMaps;

@@ -291,9 +291,6 @@ LLReflectionMapManager::LLReflectionMapManager()
     mDynamicProbeCount = LL_MAX_REFLECTION_PROBE_COUNT;
     initCubeFree();
 
-    mRenderTarget.setLabel("probe.snapshot");
-    mSHCoeffs.setLabel("probe.sh");
-    mSHPartial.setLabel("probe.sh.partial");
 #if LL_DARWIN
     mMetalDefaultProbe = std::make_unique<MetalDefaultProbeMirror>();
     mMetalProbeArray = std::make_unique<MetalProbeArrayMirror>();
@@ -762,7 +759,8 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
     const ALMetalPixelFormat format = mHDR
         ? ALMetalPixelFormat::rgba16_float
         : ALMetalPixelFormat::rgba8_unorm;
-    const U32 mip_count = static_cast<U32>(mMipChain.size());
+    const U32 mip_count =
+        static_cast<U32>(std::lround(mMaxProbeLOD)) + 1u;
     const ALMetalTextureDescriptor* current = mirror.mPublishedRadiance
         ? &mirror.mPublishedRadiance->descriptor() : nullptr;
     const bool recreate = !current ||
@@ -1210,46 +1208,6 @@ void LLReflectionMapManager::update()
     }
 
     initReflectionMaps();
-
-    if (!mRenderTarget.isComplete())
-    {
-        U32 color_fmt = mHDR ? GL_R11F_G11F_B10F : GL_RGB8;
-        U32 targetRes = mProbeResolution * mSuperSample; // super sample
-        mRenderTarget.allocate(targetRes, targetRes, color_fmt, true);
-    }
-
-    if (mMipChain.empty())
-    {
-        U32 res = mProbeResolution;
-        U32 count = (U32)(log2((F32)res) + 0.5f);
-
-        mMipChain.resize(count);
-        for (U32 i = 0; i < count; ++i)
-        {
-            char label[32];
-            const auto result = fmt::format_to_n(label, sizeof(label), "probe.mip{}", i);
-            mMipChain[i].setLabel(std::string_view(label, (size_t)(result.out - label)));
-            mMipChain[i].allocate(res, res, mHDR ? GL_R11F_G11F_B10F : GL_RGB8);
-            res /= 2;
-        }
-    }
-
-    {
-        // Scratch for the row-parallel SH projection in updateProbeFace: nine coefficients wide,
-        // one row per face row of the mip it integrates. Sized here, outside the reset guard in
-        // initReflectionMaps, so a change of ALProbeSHProjectionRes resizes this and nothing else.
-        static LLCachedControl<bool> two_pass(gSavedSettings, "ALProbeSHProjectionTwoPass", true);
-        S32 sh_mip = 0;
-        const U32 sh_rows = two_pass ? 6 * shProjectionRes(sh_mip) : 0;
-        if (mSHPartial.isComplete() && mSHPartial.getHeight() != sh_rows)
-        {
-            mSHPartial.release();
-        }
-        if (sh_rows > 0 && !mSHPartial.isComplete())
-        {
-            mSHPartial.allocate(LL_SH_COEFF_COUNT, sh_rows, GL_RGBA16F);
-        }
-    }
 
     llassert(mProbes[0] == mDefaultProbe);
 
@@ -1888,14 +1846,9 @@ void LLReflectionMapManager::doProbeUpdate()
     }
 }
 
-// Do the reflection map update render passes.
-// For every 12 calls of this function, one complete reflection probe radiance map and irradiance map is generated
-// First six passes render the scene with direct lighting only into a scratch space cube map at the end of the cube map array and generate
-// a simple mip chain (not convolution filter).
-// At the end of these passes, an irradiance map is generated for this probe and placed into the irradiance cube map array at the index for this probe
-// The next six passes render the scene with both radiance and irradiance into the same scratch space cube map and generate a simple mip chain.
-// At the end of these passes, a radiance map is generated for this probe and placed into the radiance cube map array at the index for this probe.
-// In effect this simulates single-bounce lighting.
+// Publish one face of the native reflection-probe transaction. The first six
+// faces project irradiance SH; the next six filter and publish radiance with
+// that matching SH generation, preserving the original single-bounce order.
 bool LLReflectionMapManager::updateProbeFace(
     LLReflectionMap* probe, U32 face, bool realtime_capture)
 {
@@ -1928,14 +1881,14 @@ bool LLReflectionMapManager::updateProbeFace(
         gPipeline.andRenderTypeMask(LLPipeline::RENDER_TYPE_SKY, LLPipeline::RENDER_TYPE_WL_SKY,
             LLPipeline::RENDER_TYPE_WATER, LLPipeline::RENDER_TYPE_VOIDWATER, LLPipeline::RENDER_TYPE_CLOUDS, LLPipeline::RENDER_TYPE_TERRAIN, LLPipeline::END_RENDER_TYPES);
 
-        probe->update(mRenderTarget.getWidth(), face);
+        probe->update(mProbeResolution * mSuperSample, face);
 
         gPipeline.popRenderTypeMask();
     }
     else
     {
         llassert(mRenderReflectionProbeLevel > 0); // should never update a probe that's not the default probe if reflection coverage is none
-        probe->update(mRenderTarget.getWidth(), face);
+        probe->update(mProbeResolution * mSuperSample, face);
     }
 
 #if LL_DARWIN
@@ -1954,246 +1907,9 @@ bool LLReflectionMapManager::updateProbeFace(
     // the retained GL post-processing path after it: an incomplete native
     // transaction keeps the preceding coherent Metal generation.
     return native_face_published;
-#endif
-
-    S32 sourceIdx = mReflectionProbeCount;
-
-    if (probe != mUpdatingProbe)
-    { // this is the "realtime" probe that's updating every frame, use the secondary scratch space channel
-        sourceIdx += 1;
-    }
-
-    gGL.setColorMask(true, true);
-    LLGLDepthTest depth(GL_FALSE, GL_FALSE);
-    LLGLDisable cull(GL_CULL_FACE);
-    LLGLDisable blend(GL_BLEND);
-
-    // downsample to placeholder map
-    {
-        gGL.matrixMode(gGL.MM_MODELVIEW);
-        gGL.pushMatrix();
-        gGL.loadIdentity();
-
-        gGL.matrixMode(gGL.MM_PROJECTION);
-        gGL.pushMatrix();
-        gGL.loadIdentity();
-
-        gGL.flush();
-        U32 res = mProbeResolution * 2;
-
-        LLRenderTarget* screen_rt = &gPipeline.mAuxillaryRT.screen;
-
-        // perform a gaussian blur on the super sampled render before downsampling. A capture the
-        // size of mip 0 (ALProbeSuperSample 1) has nothing to downsample, and the blur would only
-        // soften it.
-        if (screen_rt->getWidth() != mMipChain[0].getWidth())
-        {
-            gGaussianProgram.bind();
-            gGaussianProgram.uniform1f(LLShaderMgr::RES_SCALE, 1.f / (mProbeResolution * 2));
-            S32 diffuseChannel = gGaussianProgram.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE);
-
-            // horizontal
-            gGaussianProgram.uniform2f(LLShaderMgr::DIRECTION, 1.f, 0.f);
-            gGL.getTextureSlot(diffuseChannel)->bind(screen_rt);
-            mRenderTarget.bindTarget();
-            gPipeline.mScreenTriangleVB->setBuffer();
-            gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            mRenderTarget.flush();
-
-            // vertical
-            gGaussianProgram.uniform2f(LLShaderMgr::DIRECTION, 0.f, 1.f);
-            gGL.getTextureSlot(diffuseChannel)->bind(&mRenderTarget);
-            screen_rt->bindTarget();
-            gPipeline.mScreenTriangleVB->setBuffer();
-            gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            screen_rt->flush();
-        }
-
-
-        S32 mips = (S32)(log2((F32)mProbeResolution) + 0.5f);
-
-        gReflectionMipProgram.bind();
-        S32 diffuseChannel = gReflectionMipProgram.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE);
-
-        for (int i = 0; i < mMipChain.size(); ++i)
-        {
-            LL_PROFILE_GPU_ZONE("probe mip");
-            mMipChain[i].bindTarget();
-            if (i == 0)
-            {
-                gGL.getTextureSlot(diffuseChannel)->bind(screen_rt);
-            }
-            else
-            {
-                gGL.getTextureSlot(diffuseChannel)->bind(&(mMipChain[i - 1]));
-            }
-
-
-            gReflectionMipProgram.uniform1f(LLShaderMgr::RES_SCALE, 1.f/(mProbeResolution*2));
-
-            gPipeline.mScreenTriangleVB->setBuffer();
-            gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-
-            res /= 2;
-
-            GLint mip = i - (static_cast<GLint>(mMipChain.size()) - mips);
-
-            if (mip >= 0)
-            {
-                LL_PROFILE_GPU_ZONE("probe mip copy");
-                mTexture->bind(0);
-                //glCopyTexSubImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, mip, 0, 0, probe->mCubeIndex * 6 + face, 0, 0, res, res);
-                mTexture->copyFaceFromFramebuffer(mip, sourceIdx, face, res);
-                //if (i == 0)
-                //{
-                    //glCopyTexSubImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, mip, 0, 0, probe->mCubeIndex * 6 + face, 0, 0, res, res);
-                //}
-                mTexture->unbind();
-            }
-            mMipChain[i].flush();
-        }
-
-        gGL.popMatrix();
-        gGL.matrixMode(gGL.MM_MODELVIEW);
-        gGL.popMatrix();
-
-        gGL.getTextureSlot(diffuseChannel)->unbind();
-        gReflectionMipProgram.unbind();
-    }
-
-    if (face == 5)
-    {
-        if (isRadiancePass())
-        {
-            mMipChain[0].bindTarget();
-
-            //generate radiance map (even if this is not the irradiance map, we need the mip chain for the irradiance map)
-            gRadianceGenProgram.bind();
-            mVertexBuffer->setBuffer();
-
-            S32 channel = gRadianceGenProgram.enableTexture(LLShaderMgr::REFLECTION_PROBES);
-            mTexture->bind(channel);
-            gRadianceGenProgram.uniform1i(LLShaderMgr::SOURCE_IDX, sourceIdx);
-            gRadianceGenProgram.uniform1f(LLShaderMgr::REFLECTION_PROBE_MAX_LOD, mMaxProbeLOD);
-            gRadianceGenProgram.uniform1f(LLShaderMgr::REFLECTION_PROBE_STRENGTH, 1.f);
-
-            U32 res = mMipChain[0].getWidth();
-
-            for (int i = 0; i < mMipChain.size(); ++i)
-            {
-                LL_PROFILE_GPU_ZONE("probe radiance gen");
-
-                gRadianceGenProgram.uniform1f(LLShaderMgr::ROUGHNESS, (F32)i / (F32)(mMipChain.size() - 1));
-                gRadianceGenProgram.uniform1f(LLShaderMgr::MIP_LEVEL, (GLfloat)i);
-                gRadianceGenProgram.uniform1i(LLShaderMgr::U_WIDTH, mProbeResolution);
-
-                for (int cf = 0; cf < 6; ++cf)
-                { // for each cube face
-                    LLCoordFrame frame;
-                    frame.lookAt(LLVector3(0, 0, 0), LLCubeMapArray::sClipToCubeLookVecs[cf], LLCubeMapArray::sClipToCubeUpVecs[cf]);
-
-                    F32 mat[16];
-                    frame.getOpenGLRotation(mat);
-                    gGL.loadMatrix(mat);
-
-                    mVertexBuffer->drawArrays(gGL.TRIANGLE_STRIP, 0, 4);
-                    mTexture->copyFaceFromFramebuffer(i, probe->mCubeIndex, cf, res);
-                }
-
-                if (i != mMipChain.size() - 1)
-                {
-                    res /= 2;
-                    gGL.setViewport(0, 0, res, res);
-                }
-            }
-
-            gRadianceGenProgram.unbind();
-            mMipChain[0].flush();
-        }
-        else
-        {
-            LL_PROFILE_GPU_ZONE("probe sh project");
-
-            // Nine coefficients replace the 16x16x6 irradiance cubemap this used to convolve.
-            // The old pass re-integrated the environment once per output texel; this integrates
-            // it once, into the only nine numbers irradiance actually has.
-            //
-            // Integrate the mip ALProbeSHProjectionRes asks for, not mip 0. Averaging texels
-            // before an integral does not change the integral, and the target basis cannot
-            // represent anything the finer mip would add.
-            S32 sh_mip = 0;
-            const U32 sh_res = shProjectionRes(sh_mip);
-
-            // The last draw is the same for both forms below: four fragments write this probe's
-            // packed row of mSHCoeffs. This probe owns one row and must not disturb any other, so
-            // the viewport is the write mask -- the target is never cleared.
-            auto draw_coefficients = [&](LLGLSLShader& program)
-            {
-                program.uniform1i(LLShaderMgr::U_WIDTH, (S32)sh_res);
-
-                mSHCoeffs.bindTarget();
-                gGL.setViewport(0, probe->mCubeIndex, LL_SH_PACKED_TEXELS, 1);
-
-                mVertexBuffer->setBuffer();
-                mVertexBuffer->drawArrays(gGL.TRIANGLE_STRIP, 0, 4);
-
-                mSHCoeffs.flush();
-                program.unbind();
-            };
-
-            static LLCachedControl<bool> two_pass(gSavedSettings, "ALProbeSHProjectionTwoPass", true);
-            const U32 sh_rows = 6 * sh_res;
-            if (two_pass && mSHPartial.isComplete() && mSHPartial.getHeight() == sh_rows)
-            {
-                // Row-parallel form: 9 x 6R fragments each integrate one face row into
-                // mSHPartial, then four fragments add the rows and pack them. The single-pass form
-                // below serialises the whole cube inside each of four fragments, which is what made
-                // it a multi-millisecond stall however few texels it read.
-                {
-                    LL_PROFILE_GPU_ZONE("probe sh rows");
-                    gSHProjectionRowsProgram.bind();
-                    S32 channel = gSHProjectionRowsProgram.enableTexture(LLShaderMgr::REFLECTION_PROBES);
-                    mTexture->bind(channel);
-
-                    gSHProjectionRowsProgram.uniform1i(LLShaderMgr::SOURCE_IDX, sourceIdx);
-                    gSHProjectionRowsProgram.uniform1f(LLShaderMgr::MIP_LEVEL, (GLfloat)sh_mip);
-                    gSHProjectionRowsProgram.uniform1i(LLShaderMgr::U_WIDTH, (S32)sh_res);
-
-                    mSHPartial.bindTarget();
-                    // bindTarget sets the viewport to the whole target, which is exactly this
-                    // strip; restated because the draw depends on it.
-                    gGL.setViewport(0, 0, LL_SH_COEFF_COUNT, sh_rows);
-
-                    mVertexBuffer->setBuffer();
-                    mVertexBuffer->drawArrays(gGL.TRIANGLE_STRIP, 0, 4);
-
-                    mSHPartial.flush();
-                    gSHProjectionRowsProgram.unbind();
-                }
-                {
-                    LL_PROFILE_GPU_ZONE("probe sh reduce");
-                    gSHProjectionReduceProgram.bind();
-                    // texelFetch source: point sampled, so nothing is filtered across rows
-                    gSHProjectionReduceProgram.bindTexture(LLShaderMgr::SH_PARTIAL, &mSHPartial, ALSamplers::PointClamp);
-                    draw_coefficients(gSHProjectionReduceProgram);
-                }
-            }
-            else
-            {
-                // Single pass: four fragments each walk the whole cube. Kept for A/B captures
-                // and as the fallback when the partial target is not there.
-                gSHProjectionProgram.bind();
-                S32 channel = gSHProjectionProgram.enableTexture(LLShaderMgr::REFLECTION_PROBES);
-                mTexture->bind(channel);
-
-                gSHProjectionProgram.uniform1i(LLShaderMgr::SOURCE_IDX, sourceIdx);
-                gSHProjectionProgram.uniform1f(LLShaderMgr::MIP_LEVEL, (GLfloat)sh_mip);
-                draw_coefficients(gSHProjectionProgram);
-            }
-        }
-    }
-
+#else
     return false;
+#endif
 }
 
 U32 LLReflectionMapManager::shProjectionRes(S32& mip) const
@@ -2207,10 +1923,11 @@ U32 LLReflectionMapManager::shProjectionRes(S32& mip) const
     static LLCachedControl<S32> projection_res(gSavedSettings, "ALProbeSHProjectionRes", 8);
     const U32 target = llmin((U32)llmax((S32)projection_res, 4), mProbeResolution);
 
-    // Every probe resolution writes mips down to 2x2, so the walk always reaches the target.
+    // The native radiance chain writes mips down to 2x2, so the walk always
+    // reaches the requested target (which is clamped to at least 4x4).
     mip = 0;
     U32 res = mProbeResolution;
-    while (res > target && (size_t)(mip + 1) < mMipChain.size())
+    while (res > target)
     {
         res >>= 1;
         ++mip;
@@ -2519,9 +2236,6 @@ void LLReflectionMapManager::updateUniforms()
     mProbeData.glossySampleCount      = (F32)LLPipeline::RenderScreenSpaceReflectionGlossySamples;
     mProbeData.adaptiveStepMultiplier = LLPipeline::RenderScreenSpaceReflectionAdaptiveStepMultiplier;
 
-    //copy mProbeData into uniform buffer object
-    mUBO.update(&mProbeData, sizeof(ReflectionProbeData));
-
 #if 0
     if (!gCubeSnapshot)
     {
@@ -2537,21 +2251,6 @@ void LLReflectionMapManager::updateUniforms()
     }
 #endif
 }
-
-void LLReflectionMapManager::setUniforms()
-{
-    if (!LLPipeline::sReflectionProbesEnabled)
-    {
-        return;
-    }
-
-    if (!mUBO.allocated())
-    {
-        updateUniforms();
-    }
-    mUBO.bind(LLGLSLShader::UB_REFLECTION_PROBES);
-}
-
 
 void renderReflectionProbe(LLReflectionMap* probe)
 {
@@ -2693,75 +2392,37 @@ void LLReflectionMapManager::initReflectionMaps()
     }
     const U32 probe_resolution = planned->mResolution;
 
-    // The supersample sizes the scratch target as it sizes the pack. 1, 2 or 4: the blur and
-    // downsample below assume a power of two.
+    // The supersample sizes the native face capture. It remains part of the
+    // resource plan even though the retired GL downsample target is gone.
     if (planned->mSuperSample != mSuperSample)
     {
         mSuperSample = planned->mSuperSample;
-        mRenderTarget.release();
     }
 
-    // HDR picks the colour format of the cube array, the scratch target and the mip chain, so a
-    // change rebuilds all three, and with the cube array every probe's contents.
+    // HDR picks the colour format of the authoritative native radiance array.
     const bool hdr = planned->mHDR;
     const bool hdr_changed = hdr != mHDR;
     if (hdr_changed)
     {
         mHDR = hdr;
-        mRenderTarget.release();
-        mMipChain.clear();
     }
 
-    // No irradiance resolution to size any more: irradiance is nine SH coefficients whatever
-    // the environment looks like, so the setting that used to pick a cubemap edge length is gone.
-    if (mTexture.isNull() || mReflectionProbeCount != mDynamicProbeCount || mProbeResolution != probe_resolution ||
-        !mSHCoeffs.isComplete() || mReset || hdr_changed)
+    const bool layout_changed =
+        mReflectionProbeCount != mDynamicProbeCount ||
+        mProbeResolution != probe_resolution || hdr_changed;
+    if (layout_changed || mReset)
     {
-        if(mProbeResolution != probe_resolution)
-        {
-            mRenderTarget.release();
-            mMipChain.clear();
-        }
-
         gEXRImage = nullptr;
         mReset = false;
         mReflectionProbeCount = mDynamicProbeCount;
         mProbeResolution = probe_resolution;
         mMaxProbeLOD = log2f((F32)mProbeResolution) - 1.f; // number of mips - 1
 
-        // Signed storage: the linear and quadratic bands are negative over half the sphere, so
-        // none of the unsigned float formats the radiance chain uses can hold these. Halves
-        // packed in integer texels (shPackUtilF.glsl), so a pixel reads a probe in four fetches. A
-        // row a probe, kept with what each row holds wherever the probe count leaves the size alone.
-        const ALRenderTargetDesc sh_desc{ .width  = LL_SH_PACKED_TEXELS,
-                                          .height = mReflectionProbeCount + 2,
-                                          .color  = { GL_RGBA32UI } };
-        const bool sh_kept = mSHCoeffs.ensure(sh_desc) == LLRenderTarget::EnsureResult::Kept;
-
-        bool new_texture = false;
-        if (mTexture.isNull() || hdr_changed ||
-            mTexture->getWidth() != mProbeResolution ||
-            mReflectionProbeCount + 2 != mTexture->getCount())
-        {
-            mTexture = new LLCubeMapArray();
-
-            // Store mReflectionProbeCount+2 cube maps. The final two are scratch
-            // space for capture and radiance generation. A resize deliberately
-            // invalidates every probe below, so there is no old array content to
-            // preserve.
-            mTexture->allocate(mProbeResolution, 3,
-                               mReflectionProbeCount + 2, true, mHDR);
-            new_texture = true;
-        }
-
 #if LL_DARWIN
-        if (new_texture || !sh_kept)
-        {
-            // A native environment is useful only as a coherent pair. Drop
-            // both halves if either GL owner was recreated.
-            releaseMetalDefaultProbe();
-            releaseMetalProbeArray();
-        }
+        // A native environment is useful only as a coherent pair. A layout
+        // change or explicit reset invalidates both halves together.
+        releaseMetalDefaultProbe();
+        releaseMetalProbeArray();
 #endif
 
         // reset probe state
@@ -2769,11 +2430,6 @@ void LLReflectionMapManager::initReflectionMaps()
         mUpdatingProbe = nullptr;
         mRadiancePass = false;
         mRealtimeRadiancePass = false;
-
-        // if default probe already exists, remember whether or not it's complete (SL-20498). Not over
-        // a new cube array or new coefficients, whose storage holds nothing until the default probe
-        // renders into it again.
-        bool default_complete = !new_texture && sh_kept && mDefaultProbe.notNull() && mDefaultProbe->mComplete;
 
         for (auto& probe : mProbes)
         {
@@ -2808,46 +2464,20 @@ void LLReflectionMapManager::initReflectionMaps()
         mDefaultProbe->mDistance = 64.f;
         mDefaultProbe->mRadius = 4096.f;
         mDefaultProbe->mProbeIndex = 0;
-        mDefaultProbe->mComplete = default_complete;
+        mDefaultProbe->mComplete = false;
 
         touch_default_probe(mDefaultProbe);
     }
 
-    if (mVertexBuffer.isNull())
-    {
-        U32 mask = LLVertexBuffer::MAP_VERTEX;
-        LLPointer<LLVertexBuffer> buff = new LLVertexBuffer(mask);
-        buff->allocateBuffer(4, 0);
-
-        LLStrider<LLVector3> v;
-
-        buff->getVertexStrider(v);
-
-        // NOTE: z=-1 is load-bearing. radianceGenV/irradianceGenV use this position for BOTH
-        // the clip-space gl_Position AND (rotated by modelview) the cubemap SAMPLE DIRECTION,
-        // so z is the forward axis of the convolution -- do NOT flatten it. The clip-volume
-        // conflict under reverse-Z (z=-1 is outside ZERO_TO_ONE) is resolved in the shaders,
-        // which remap only the output clip z while keeping the direction from this raw z=-1.
-        v[0] = LLVector3(-1, -1, -1);
-        v[1] = LLVector3(1, -1, -1);
-        v[2] = LLVector3(-1, 1, -1);
-        v[3] = LLVector3(1, 1, -1);
-
-        buff->unmapBuffer();
-
-        mVertexBuffer = buff;
-    }
 }
 
 bool LLReflectionMapManager::freeResources()
 {
-    const bool held = mTexture.notNull() || mRenderTarget.isComplete() || !mMipChain.empty() || mSHCoeffs.isComplete() ||
-                      mSHPartial.isComplete() || mUBO.allocated() || mVertexBuffer.notNull()
+    bool held = false;
 #if LL_DARWIN
-                      || (mMetalDefaultProbe && mMetalDefaultProbe->hasResources())
-                      || (mMetalProbeArray && mMetalProbeArray->hasResources())
+    held = (mMetalDefaultProbe && mMetalDefaultProbe->hasResources()) ||
+           (mMetalProbeArray && mMetalProbeArray->hasResources());
 #endif
-                      ;
 
     abandonProbeUpdate();
 
@@ -2861,13 +2491,6 @@ bool LLReflectionMapManager::freeResources()
     mCubeFree.clear();
     initCubeFree();
 
-    mTexture = nullptr;
-    mSHCoeffs.release();
-    mSHPartial.release();
-    mRenderTarget.release();
-    mMipChain.clear();
-    mUBO.release();
-    mVertexBuffer = nullptr;
 #if LL_DARWIN
     releaseMetalDefaultProbe();
     releaseMetalProbeArray();
@@ -2882,14 +2505,6 @@ void LLReflectionMapManager::cleanup()
     releaseMetalDefaultProbe();
     releaseMetalProbeArray();
 #endif
-    mVertexBuffer = nullptr;
-    mRenderTarget.release();
-
-    mMipChain.clear();
-
-    mTexture = nullptr;
-    mSHCoeffs.release();
-    mSHPartial.release();
 
     mProbes.clear();
     mKillList.clear();
@@ -2899,8 +2514,6 @@ void LLReflectionMapManager::cleanup()
     abandonProbeUpdate();
 
     mDefaultProbe = nullptr;
-
-    mUBO.release();
 
     // note: also called on teleport (not just shutdown), so make sure we're in a good "starting" state
     initCubeFree();

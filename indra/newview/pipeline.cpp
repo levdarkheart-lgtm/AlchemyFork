@@ -30186,21 +30186,8 @@ void LLPipeline::bindReflectionProbes(LLGLSLShader& shader)
         return;
     }
 
-    S32 channel = shader.enableTexture(LLShaderMgr::REFLECTION_PROBES);
     bool bound = false;
-    if (channel > -1 && mReflectionMapManager.mTexture.notNull())
-    {
-        mReflectionMapManager.mTexture->bind(channel);
-        bound = true;
-    }
-
-    channel = shader.enableTexture(LLShaderMgr::SH_COEFFS);
-    if (channel > -1 && mReflectionMapManager.mSHCoeffs.isComplete())
-    {
-        // Point sampled: these are coefficients indexed by texelFetch, not a filterable image.
-        mReflectionMapManager.mSHCoeffs.bindTexture(0, channel, ALSamplers::PointClamp);
-        bound = true;
-    }
+    S32 channel = -1;
 
     if (mResourcePlan.heroProbes())
     {
@@ -30215,8 +30202,6 @@ void LLPipeline::bindReflectionProbes(LLGLSLShader& shader)
 
     if (bound)
     {
-        mReflectionMapManager.setUniforms();
-
         setEnvMat(shader);
     }
 
@@ -30249,13 +30234,9 @@ void LLPipeline::bindReflectionProbes(LLGLSLShader& shader)
 
 void LLPipeline::unbindReflectionProbes(LLGLSLShader& shader)
 {
-    S32 channel = shader.disableTexture(LLShaderMgr::REFLECTION_PROBES, ALTextureSlot::TT_CUBE_MAP_ARRAY);
-    if (channel > -1 && mReflectionMapManager.mTexture.notNull())
-    {
-        // Followed by re-enabling channel 0 for TT_TEXTURE when the probe array had been on
-        // it, which restored a target nothing consulted.
-        mReflectionMapManager.mTexture->unbind();
-    }
+    shader.disableTexture(
+        LLShaderMgr::REFLECTION_PROBES,
+        ALTextureSlot::TT_CUBE_MAP_ARRAY);
 }
 
 
