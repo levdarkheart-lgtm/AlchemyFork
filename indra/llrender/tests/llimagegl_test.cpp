@@ -55,6 +55,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <thread>
 #include <utility>
@@ -76,6 +77,24 @@ namespace
                         static_cast<size_t>(w) * h * components);
             return raw;
         }
+
+#if LL_DARWIN
+        static LLPointer<LLImageRaw> loadViewerTexture(const char* filename)
+        {
+            const std::filesystem::path path =
+                std::filesystem::path(AL_TEST_VIEWER_TEXTURE_DIR) / filename;
+            LLPointer<LLImageFormatted> formatted =
+                LLImageFormatted::createFromExtension(path.string());
+            INFO(path.string());
+            REQUIRE(formatted.notNull());
+            REQUIRE(formatted->load(path.string()));
+
+            LLPointer<LLImageRaw> raw = new LLImageRaw();
+            REQUIRE(formatted->decode(raw, 0.f));
+            REQUIRE_FALSE(raw->isBufferInvalid());
+            return raw;
+        }
+#endif
 
         // Bind img's texture on unit 0 through the slot, so gGL's bind cache stays
         // truthful for what the test does next. The unbind is what makes unit 0 the
@@ -2532,6 +2551,117 @@ namespace
             CHECK(actual == expected);
 
             texture->destroyGPUTexture();
+            CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
+        }
+    }
+
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: shipped startup textures publish exact native pixels without GL", "[LLImageGL][almetal][startup-textures]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct StateReset
+        {
+            bool mDisabled = gGLManager.mIsDisabled;
+            ~StateReset()
+            {
+                gGLManager.mIsDisabled = mDisabled;
+                LLImageGL::setMetalDevice(nullptr);
+            }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+        gGLManager.mIsDisabled = true;
+
+        struct StartupTexture
+        {
+            const char* mFilename;
+            U32 mWidth;
+            U32 mHeight;
+            S8 mComponents;
+            bool mUseMipmaps;
+            S32 mCategory;
+            U32 mMipLevels;
+            bool mAlphaOnly;
+        };
+        constexpr std::array<StartupTexture, 5> textures{{
+            {"missing_asset.tga", 64, 64, 3, false, LLGLTexture::BOOST_UI, 1, false},
+            {"white.tga", 32, 32, 3, false, LLGLTexture::BOOST_UI, 1, false},
+            {"flatnormal.tga", 4, 4, 3, false, LLGLTexture::BOOST_BUMP, 1, false},
+            {"default_irradiance.png", 1024, 512, 3, true, LLGLTexture::BOOST_UI, 11, false},
+            {"alpha_gradient.tga", 256, 1, 1, true, LLGLTexture::BOOST_UI, 9, true},
+        }};
+
+        const U64 baseline_bytes = LLImageGL::getTextureBytesAllocated();
+        for (const StartupTexture& startup : textures)
+        {
+            INFO(startup.mFilename);
+            LLPointer<LLImageRaw> raw = loadViewerTexture(startup.mFilename);
+            REQUIRE(raw->getWidth() == static_cast<S32>(startup.mWidth));
+            REQUIRE(raw->getHeight() == static_cast<S32>(startup.mHeight));
+            REQUIRE(raw->getComponents() == startup.mComponents);
+
+            LLPointer<LLGLTexture> texture =
+                new LLGLTexture(startup.mUseMipmaps);
+            texture->generateGLTexture();
+            if (startup.mAlphaOnly)
+            {
+                texture->setExplicitFormat(GL_ALPHA8, GL_ALPHA);
+            }
+            REQUIRE(texture->createMetalTexture(
+                0, raw.get(), startup.mCategory));
+            REQUIRE(texture->getGLTexture()->getMetalTexture());
+            CHECK(texture->getTexName() == 0);
+            CHECK_FALSE(texture->hasGLTexture());
+            CHECK_FALSE(texture->isGLTextureCreated());
+            CHECK(texture->hasGPUTexture());
+
+            const ALMetalTextureDescriptor& descriptor =
+                texture->getGLTexture()->getMetalTexture()->descriptor();
+            CHECK(descriptor.width == startup.mWidth);
+            CHECK(descriptor.height == startup.mHeight);
+            CHECK(descriptor.mipmap_level_count == startup.mMipLevels);
+            CHECK(texture->getGLTexture()->getCategory() == startup.mCategory);
+
+            if (startup.mAlphaOnly)
+            {
+                CHECK(descriptor.format == ALMetalPixelFormat::r8_unorm);
+                CHECK(descriptor.swizzle ==
+                      std::array<ALMetalTextureSwizzle, 4>{
+                          ALMetalTextureSwizzle::zero,
+                          ALMetalTextureSwizzle::zero,
+                          ALMetalTextureSwizzle::zero,
+                          ALMetalTextureSwizzle::red});
+                std::vector<U8> actual(
+                    static_cast<std::size_t>(startup.mWidth) * startup.mHeight);
+                REQUIRE(texture->getGLTexture()->getMetalTexture()->readback(
+                    *device, 0, 0, {}, actual.data(), startup.mWidth, &error));
+                INFO(error);
+                CHECK(std::equal(actual.begin(), actual.end(), raw->getData()));
+            }
+            else
+            {
+                CHECK(descriptor.format == ALMetalPixelFormat::rgba8_unorm_srgb);
+                std::vector<U8> actual(
+                    static_cast<std::size_t>(startup.mWidth) * startup.mHeight * 4);
+                REQUIRE(texture->getGLTexture()->getMetalTexture()->readback(
+                    *device, 0, 0, {}, actual.data(), startup.mWidth * 4, &error));
+                INFO(error);
+
+                std::vector<U8> expected(actual.size(), 0xff);
+                for (std::size_t pixel = 0;
+                     pixel < static_cast<std::size_t>(startup.mWidth) * startup.mHeight;
+                     ++pixel)
+                {
+                    std::memcpy(expected.data() + pixel * 4,
+                                raw->getData() + pixel * startup.mComponents,
+                                startup.mComponents);
+                }
+                CHECK(actual == expected);
+            }
+
+            texture = nullptr;
             CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
         }
     }

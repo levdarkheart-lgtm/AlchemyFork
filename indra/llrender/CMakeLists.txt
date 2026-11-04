@@ -138,6 +138,7 @@ if(AL_BUILD_TESTS)
   get_filename_component(font_test_app_dir "${ALCHEMY_FONTS_DIR}" DIRECTORY)
   set(font_test_data_dir "${ALCHEMY_FONTS_DIR}/")
   set(font_test_fonts_xml "${INDRA_SOURCE_DIR}/newview/skins/default/xui/en/fonts.xml")
+  set(startup_texture_test_dir "${INDRA_SOURCE_DIR}/newview/skins/default/textures")
 
   # The font directory reaches a test as a string literal. Tests that need a
   # real font file (Noto-COLRv1.ttf, InterVariable.woff2) locate it relative
@@ -149,6 +150,8 @@ if(AL_BUILD_TESTS)
     "LLFONT_TEST_DATA_DIR=\"${font_test_data_dir}\""
     "LLFONT_TEST_FONTS_XML=\"${font_test_fonts_xml}\""
   )
+  set(startup_texture_defines
+      "AL_TEST_VIEWER_TEXTURE_DIR=\"${startup_texture_test_dir}\"")
 
   # The state guard's checks on what llrender keeps for the process, for
   # each of its test binaries.
@@ -197,7 +200,7 @@ if(AL_BUILD_TESTS)
       tests/llimagegl_test.cpp
     LIBRARIES llrender ll::icu
     SUPPORT llrender_test_checks llcommon_test_checks
-    DEFINES ${font_defines}
+    DEFINES ${font_defines} ${startup_texture_defines}
     GL
   )
 

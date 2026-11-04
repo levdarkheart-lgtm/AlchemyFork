@@ -436,6 +436,24 @@ LLViewerFetchedTexture* LLViewerTextureList::getImageFromFile(std::string_view f
     return getImageFromUrl(url, f_type, usemipmaps, boost_priority, texture_type, internal_format, primary_format, force_id);
 }
 
+namespace
+{
+void preserve_active_gl_texture_request(LLViewerFetchedTexture* image)
+{
+#if LL_DARWIN
+    // This legacy bit describes GL restoration state, not whether the logical
+    // fetched image exists. Native-only startup must leave it false until the
+    // decoded pixels publish through the Metal create queue. The active
+    // transition renderer retains the old marker for fail-closed GL recovery.
+    if (!gGLManager.mInited || gGLManager.mIsDisabled)
+    {
+        return;
+    }
+#endif
+    image->setGLTextureCreated(true);
+}
+}
+
 LLViewerFetchedTexture* LLViewerTextureList::getImageFromUrl(const std::string& url,
                                                    FTType f_type,
                                                    bool usemipmaps,
@@ -528,7 +546,7 @@ LLViewerFetchedTexture* LLViewerTextureList::getImageFromUrl(const std::string& 
         }
     }
 
-    imagep->setGLTextureCreated(true);
+    preserve_active_gl_texture_request(imagep);
 
     return imagep;
 }
@@ -626,7 +644,7 @@ LLViewerFetchedTexture* LLViewerTextureList::getImage(const LLUUID &image_id,
         }
     }
 
-    imagep->setGLTextureCreated(true);
+    preserve_active_gl_texture_request(imagep);
 
     return imagep;
 }
