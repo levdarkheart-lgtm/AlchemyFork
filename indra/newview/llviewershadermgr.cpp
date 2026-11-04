@@ -85,10 +85,7 @@ static const ALShaderInputs& load_inputs()
 LLGLSLShader    gOcclusionProgram;
 LLGLSLShader    gOcclusionCubeProgram;
 LLGLSLShader    gGlowCombineProgram;
-LLGLSLShader    gReflectionMipProgram;
-LLGLSLShader    gGaussianProgram;
 LLGLSLShader    gRadianceGenProgram;
-LLGLSLShader    gHeroRadianceGenProgram;
 LLGLSLShader    gSHProjectionProgram;
 LLGLSLShader    gSHProjectionRowsProgram;
 LLGLSLShader    gSHProjectionReduceProgram;
@@ -4034,33 +4031,6 @@ void LLViewerShaderMgr::loadShadersInterface()
     }
 
     {
-        gReflectionMipProgram.mName = "Reflection Mip Shader";
-        gReflectionMipProgram.mFeatures.isDeferred = true;
-        gReflectionMipProgram.mFeatures.hasGamma = true;
-        gReflectionMipProgram.mFeatures.hasAtmospherics = true;
-        gReflectionMipProgram.mFeatures.calculatesAtmospherics = true;
-        gReflectionMipProgram.mShaderFiles.clear();
-        gReflectionMipProgram.mShaderFiles.push_back(make_pair("interface/splattexturerectV.glsl", GL_VERTEX_SHADER));
-        gReflectionMipProgram.mShaderFiles.push_back(make_pair("interface/reflectionmipF.glsl", GL_FRAGMENT_SHADER));
-        gReflectionMipProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gReflectionMipProgram.createShader(), gReflectionMipProgram);
-    }
-
-    {
-        // Program names must be unique; finalizeShaderList() asserts over every live program.
-        gGaussianProgram.mName = "Gaussian Blur Shader";
-        gGaussianProgram.mFeatures.isDeferred = true;
-        gGaussianProgram.mFeatures.hasGamma = true;
-        gGaussianProgram.mFeatures.hasAtmospherics = true;
-        gGaussianProgram.mFeatures.calculatesAtmospherics = true;
-        gGaussianProgram.mShaderFiles.clear();
-        gGaussianProgram.mShaderFiles.push_back(make_pair("interface/splattexturerectV.glsl", GL_VERTEX_SHADER));
-        gGaussianProgram.mShaderFiles.push_back(make_pair("interface/gaussianF.glsl", GL_FRAGMENT_SHADER));
-        gGaussianProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gGaussianProgram.createShader(), gGaussianProgram);
-    }
-
-    {
         gRadianceGenProgram.mName = "Radiance Gen Shader";
         gRadianceGenProgram.mShaderFiles.clear();
         gRadianceGenProgram.mShaderFiles.push_back(make_pair("interface/radianceGenV.glsl", GL_VERTEX_SHADER));
@@ -4068,17 +4038,6 @@ void LLViewerShaderMgr::loadShadersInterface()
         gRadianceGenProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         gRadianceGenProgram.addPermutation("PROBE_FILTER_SAMPLES", "32");
         built(gRadianceGenProgram.createShader(), gRadianceGenProgram);
-    }
-
-    {
-        gHeroRadianceGenProgram.mName = "Hero Radiance Gen Shader";
-        gHeroRadianceGenProgram.mShaderFiles.clear();
-        gHeroRadianceGenProgram.mShaderFiles.push_back(make_pair("interface/radianceGenV.glsl", GL_VERTEX_SHADER));
-        gHeroRadianceGenProgram.mShaderFiles.push_back(make_pair("interface/radianceGenF.glsl", GL_FRAGMENT_SHADER));
-        gHeroRadianceGenProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        gHeroRadianceGenProgram.addPermutation("HERO_PROBES", "1");
-        gHeroRadianceGenProgram.addPermutation("PROBE_FILTER_SAMPLES", "4");
-        built(gHeroRadianceGenProgram.createShader(), gHeroRadianceGenProgram);
     }
 
     {

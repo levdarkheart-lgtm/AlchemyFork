@@ -42,8 +42,6 @@
 #include "llviewerjoystick.h"
 #include "llviewermediafocus.h"
 
-#include <fmt/format.h>
-
 extern bool gCubeSnapshot;
 extern bool gTeleportDisplay;
 
@@ -62,10 +60,7 @@ static void touch_default_probe(LLReflectionMap* probe)
     }
 }
 
-LLHeroProbeManager::LLHeroProbeManager()
-{
-    mRenderTarget.setLabel("hero.snapshot");
-}
+LLHeroProbeManager::LLHeroProbeManager() = default;
 
 LLHeroProbeManager::~LLHeroProbeManager()
 {
@@ -107,28 +102,6 @@ void LLHeroProbeManager::update()
     }
 
     initReflectionMaps();
-
-    if (!mRenderTarget.isComplete())
-    {
-        U32 color_fmt = mHDR ? GL_RGBA16F : GL_RGBA8;
-        mRenderTarget.allocate(mProbeResolution, mProbeResolution, color_fmt, true);
-    }
-
-    if (mMipChain.empty())
-    {
-        U32 res = mProbeResolution;
-        U32 count = (U32)(log2((F32)res) + 0.5f);
-
-        mMipChain.resize(count);
-        for (U32 i = 0; i < count; ++i)
-        {
-            char label[32];
-            const auto result = fmt::format_to_n(label, sizeof(label), "hero.mip{}", i);
-            mMipChain[i].setLabel(std::string_view(label, (size_t)(result.out - label)));
-            mMipChain[i].allocate(res, res, mHDR ? GL_RGBA16F : GL_RGBA8);
-            res /= 2;
-        }
-    }
 
     llassert(mProbes[0] == mDefaultProbe);
 
@@ -315,7 +288,6 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
     // hacky hot-swap of camera specific render targets
     gPipeline.mRT = &gPipeline.mHeroProbeRT;
 
-#if LL_DARWIN
     const bool native_face_capture = mNearestHero.notNull() &&
         !mNearestHero->isDead() &&
         gPipeline.beginMetalHeroProbeFaceCapture(
@@ -340,137 +312,20 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
         return;
     }
     const U32 face_resolution = planned->mResolution;
-#else
-    const U32 face_resolution = mRenderTarget.getWidth();
-#endif
     probe->update(face_resolution, face, is_dynamic, near_clip);
-#if LL_DARWIN
     mMetalRadianceCaptureComplete =
         gPipeline.endMetalHeroProbeFaceCapture() &&
         mMetalRadianceCaptureComplete;
-#endif
 
     gPipeline.mRT = &gPipeline.mMainRT;
-
-#if LL_DARWIN
-    // endMetalHeroProbeFaceCapture retained the exact native face in the
-    // Metal source cube. The GL gaussian/downsample/mip-copy chain below is a
-    // superseded second producer and must not run on the native-only viewer.
-    return;
-#endif
-
-    S32 sourceIdx = mReflectionProbeCount;
-
-    // Unlike the reflectionmap manager, all probes are considered "realtime" for hero probes.
-    sourceIdx += 1;
-
-    gGL.setColorMask(true, true);
-    LLGLDepthTest depth(GL_FALSE, GL_FALSE);
-    LLGLDisable cull(GL_CULL_FACE);
-    LLGLDisable blend(GL_BLEND);
-
-    // downsample to placeholder map
-    {
-        gGL.matrixMode(gGL.MM_MODELVIEW);
-        gGL.pushMatrix();
-        gGL.loadIdentity();
-
-        gGL.matrixMode(gGL.MM_PROJECTION);
-        gGL.pushMatrix();
-        gGL.loadIdentity();
-
-        gGL.flush();
-        U32 res = mProbeResolution * 2;
-
-        LLRenderTarget *screen_rt = &gPipeline.mHeroProbeRT.screen;
-        LLRenderTarget *depth_rt  = &gPipeline.mHeroProbeRT.deferredScreen;
-
-        // perform a gaussian blur on the super sampled render before downsampling. A capture the
-        // size of mip 0, which the hero pack is, has nothing to downsample, and the blur would
-        // only soften it.
-        if (screen_rt->getWidth() != mMipChain[0].getWidth())
-        {
-            gGaussianProgram.bind();
-            gGaussianProgram.uniform1f(LLShaderMgr::RES_SCALE, 1.f / (mProbeResolution * 2));
-            S32 diffuseChannel = gGaussianProgram.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE);
-
-            // horizontal
-            gGaussianProgram.uniform2f(LLShaderMgr::DIRECTION, 1.f, 0.f);
-            gGL.getTextureSlot(diffuseChannel)->bind(screen_rt);
-            mRenderTarget.bindTarget();
-            gPipeline.mScreenTriangleVB->setBuffer();
-            gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            mRenderTarget.flush();
-
-            // vertical
-            gGaussianProgram.uniform2f(LLShaderMgr::DIRECTION, 0.f, 1.f);
-            gGL.getTextureSlot(diffuseChannel)->bind(&mRenderTarget);
-            screen_rt->bindTarget();
-            gPipeline.mScreenTriangleVB->setBuffer();
-            gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            screen_rt->flush();
-            gGaussianProgram.unbind();
-        }
-
-        S32 mips = (S32)(log2((F32)mProbeResolution) + 0.5f);
-
-        gReflectionMipProgram.bind();
-        S32 diffuseChannel = gReflectionMipProgram.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE);
-        S32 depthChannel   = gReflectionMipProgram.enableTexture(LLShaderMgr::DEFERRED_DEPTH);
-
-        for (int i = 0; i < mMipChain.size(); ++i)
-        {
-            LL_PROFILE_GPU_ZONE("hero probe mip");
-            mMipChain[i].bindTarget();
-            if (i == 0)
-            {
-                gGL.getTextureSlot(diffuseChannel)->bind(screen_rt);
-            }
-            else
-            {
-                gGL.getTextureSlot(diffuseChannel)->bind(&(mMipChain[i - 1]));
-            }
-
-            gGL.getTextureSlot(depthChannel)->bind(depth_rt, true);
-
-            gReflectionMipProgram.uniform1f(LLShaderMgr::RES_SCALE, 1.f / (mProbeResolution * 2));
-
-            gPipeline.mScreenTriangleVB->setBuffer();
-            gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-
-            res /= 2;
-
-            llassert(mMipChain.size() <= size_t(S32_MAX));
-            GLint mip = i - (S32(mMipChain.size()) - mips);
-
-            if (mip >= 0)
-            {
-                LL_PROFILE_GPU_ZONE("hero probe mip copy");
-                mTexture->bind(0);
-
-                mTexture->copyFaceFromFramebuffer(mip, sourceIdx, face, res);
-
-                mTexture->unbind();
-            }
-            mMipChain[i].flush();
-        }
-
-        gGL.popMatrix();
-        gGL.matrixMode(gGL.MM_MODELVIEW);
-        gGL.popMatrix();
-
-        gGL.getTextureSlot(diffuseChannel)->unbind();
-        gReflectionMipProgram.unbind();
-    }
 }
 
 // Separate out radiance generation as a separate stage.
 // This is to better enable independent control over how we generate radiance vs. having it coupled with processing the final face of the probe.
 // Useful when we may not always be rendering a full set of faces of the probe.
-void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
+void LLHeroProbeManager::generateRadiance(LLReflectionMap*)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
-#if LL_DARWIN
     ++mMetalRadianceGeneration;
     if (mMetalRadianceGeneration == 0)
     {
@@ -481,74 +336,6 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
         gPipeline.publishMetalHeroProbeRadiance(
             mNearestHero->getID(), mMetalRadianceGeneration,
             mHeroProbeStrength);
-    return;
-#else
-    S32 sourceIdx = mReflectionProbeCount;
-
-    // Unlike the reflectionmap manager, all probes are considered "realtime" for hero probes.
-    sourceIdx += 1;
-    {
-        mMipChain[0].bindTarget();
-
-        {
-            // generate radiance map (even if this is not the irradiance map, we need the mip chain for the irradiance map)
-            gHeroRadianceGenProgram.bind();
-            mVertexBuffer->setBuffer();
-
-            S32 channel = gHeroRadianceGenProgram.enableTexture(LLShaderMgr::REFLECTION_PROBES);
-            mTexture->bind(channel);
-            gHeroRadianceGenProgram.uniform1i(LLShaderMgr::SOURCE_IDX, sourceIdx);
-            gHeroRadianceGenProgram.uniform1f(LLShaderMgr::REFLECTION_PROBE_MAX_LOD, mMaxProbeLOD);
-            gHeroRadianceGenProgram.uniform1f(LLShaderMgr::REFLECTION_PROBE_STRENGTH, mHeroProbeStrength);
-
-            U32 res = mMipChain[0].getWidth();
-
-            // tapHeroProbe weighs the hero probe in only above glossiness 0.75, so it reads LODs
-            // up to a quarter of heroMaxLod (mMaxProbeLOD, the LOD radianceGenF maps to roughness
-            // 1); those mips and the next one up, for the trilinear blend, are what is generated.
-            const S32 radiance_mips = llmin(S32(mMipChain.size()), S32(ceilf(0.25f * mMaxProbeLOD)) + 1);
-
-            for (int i = 0; i < radiance_mips; ++i)
-            {
-                LL_PROFILE_GPU_ZONE("hero probe radiance gen");
-                gHeroRadianceGenProgram.uniform1f(LLShaderMgr::ROUGHNESS, (F32) i / (F32) (mMipChain.size() - 1));
-                gHeroRadianceGenProgram.uniform1f(LLShaderMgr::MIP_LEVEL, (GLfloat)i);
-                gHeroRadianceGenProgram.uniform1i(LLShaderMgr::U_WIDTH, mProbeResolution);
-
-                for (int cf = 0; cf < 6; ++cf)
-                {  // for each cube face
-                    LLCoordFrame frame;
-                    frame.lookAt(LLVector3(0, 0, 0), LLCubeMapArray::sClipToCubeLookVecs[cf], LLCubeMapArray::sClipToCubeUpVecs[cf]);
-
-                    F32 mat[16];
-                    frame.getOpenGLRotation(mat);
-                    gGL.loadMatrix(mat);
-
-                    mVertexBuffer->drawArrays(gGL.TRIANGLE_STRIP, 0, 4);
-
-                    mTexture->copyFaceFromFramebuffer(i, probe->mCubeIndex, cf, res);
-                }
-
-                if (i != mMipChain.size() - 1)
-                {
-                    res /= 2;
-                    gGL.setViewport(0, 0, res, res);
-                }
-            }
-
-            gHeroRadianceGenProgram.unbind();
-        }
-
-        mMipChain[0].flush();
-    }
-
-    ++mMetalRadianceGeneration;
-    if (mMetalRadianceGeneration == 0)
-    {
-        ++mMetalRadianceGeneration;
-    }
-    mMetalRadianceReady = true;
-#endif
 }
 
 void LLHeroProbeManager::updateUniforms()
@@ -613,21 +400,22 @@ void LLHeroProbeManager::initReflectionMaps()
 {
     U32 count = LL_MAX_HERO_PROBE_COUNT;
 
-    // What the hero pack was planned for (ALRenderResourcePlan::heroProbes): a mirror's face
-    // resolution, and HDR, which picks the colour format of the cube array, the scratch target and
-    // the mip chain. A change of either rebuilds all three as a reset does. Nothing while mirrors
-    // or probes are off.
+    // Reconcile the logical owner with the native hero resource plan. Native
+    // cube/radiance storage lives in the Metal renderer; this manager retains
+    // only probe scheduling and publication identity.
     const std::optional<ALRenderResourcePlan::ProbeManager>& planned = gPipeline.resourcePlan().heroProbes();
     if (!planned)
     {
         return;
     }
-    if (mTexture.notNull() && (planned->mHDR != mHDR || planned->mResolution != mProbeResolution))
+    if (mResourcesInitialized &&
+        (planned->mHDR != mHDR ||
+         planned->mResolution != mProbeResolution))
     {
         mReset = true;
     }
 
-    if (mTexture.isNull() || mReflectionProbeCount != count || mReset)
+    if (!mResourcesInitialized || mReflectionProbeCount != count || mReset)
     {
 
         if (mReset)
@@ -640,11 +428,8 @@ void LLHeroProbeManager::initReflectionMaps()
         mProbeResolution      = planned->mResolution;
         mMaxProbeLOD = log2f((F32)mProbeResolution) - 1.f; // number of mips - 1
 
-        mTexture = new LLCubeMapArray();
         mHDR = planned->mHDR;
-
-        // store mReflectionProbeCount+2 cube maps, final two cube maps are used for render target and radiance map generation source)
-        mTexture->allocate(mProbeResolution, 3, mReflectionProbeCount + 2, true, mHDR);
+        mResourcesInitialized = true;
 
         if (mDefaultProbe.isNull())
         {
@@ -663,30 +448,6 @@ void LLHeroProbeManager::initReflectionMaps()
         mDefaultProbe->mProbeIndex = 0;
         touch_default_probe(mDefaultProbe);
     }
-
-    if (mVertexBuffer.isNull())
-    {
-        U32 mask = LLVertexBuffer::MAP_VERTEX;
-        LLPointer<LLVertexBuffer> buff = new LLVertexBuffer(mask);
-        buff->allocateBuffer(4, 0);
-
-        LLStrider<LLVector3> v;
-
-        buff->getVertexStrider(v);
-
-        // NOTE: z=-1 is load-bearing -- radianceGenV uses this position as BOTH clip-space
-        // gl_Position AND (rotated) the cubemap sample direction. The reverse-Z clip-volume
-        // conflict is resolved in the shader (remaps only the output clip z), not here.
-        // Mirrors LLReflectionMapManager::initReflectionMaps.
-        v[0] = LLVector3(-1, -1, -1);
-        v[1] = LLVector3(1, -1, -1);
-        v[2] = LLVector3(-1, 1, -1);
-        v[3] = LLVector3(1, 1, -1);
-
-        buff->unmapBuffer();
-
-        mVertexBuffer = buff;
-    }
 }
 
 void LLHeroProbeManager::cleanup()
@@ -703,13 +464,7 @@ void LLHeroProbeManager::cleanup()
     }
     mMetalRadianceReady = false;
     mMetalRadianceCaptureComplete = false;
-
-    mVertexBuffer = nullptr;
-    mRenderTarget.release();
-
-    mMipChain.clear();
-
-    mTexture = nullptr;
+    mResourcesInitialized = false;
 
     mProbes.clear();
 

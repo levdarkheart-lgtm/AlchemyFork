@@ -30826,24 +30826,9 @@ void LLPipeline::bindReflectionProbes(LLGLSLShader& shader)
         return;
     }
 
-    bool bound = false;
+    // Hero radiance is owned and consumed by the Metal world renderer. The
+    // retained GL traversal must not allocate or bind a second hero cube.
     S32 channel = -1;
-
-    if (mResourcePlan.heroProbes())
-    {
-        channel = shader.enableTexture(LLShaderMgr::HERO_PROBE);
-        if (channel > -1 && mHeroProbeManager.mTexture.notNull())
-        {
-            mHeroProbeManager.mTexture->bind(channel);
-            bound = true;
-        }
-    }
-
-
-    if (bound)
-    {
-        setEnvMat(shader);
-    }
 
     // reflection probe shaders generally sample the scene map as well for SSR
     channel = shader.enableTexture(LLShaderMgr::SCENE_MAP);

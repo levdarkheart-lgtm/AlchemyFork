@@ -27,9 +27,6 @@
 #pragma once
 
 #include "llreflectionmap.h"
-#include "llrendertarget.h"
-#include "llcubemaparray.h"
-#include "llcubemap.h"
 #include "lldrawable.h"
 
 class LLSpatialGroup;
@@ -61,11 +58,12 @@ public:
     LLHeroProbeManager();
     ~LLHeroProbeManager();
 
-    // release any GL state
+    // release native hero-probe ownership and logical probe state
     void cleanup();
 
-    // Whether initReflectionMaps has built the cube array that cleanup frees.
-    bool holdsResources() const { return mTexture.notNull(); }
+    // Whether initReflectionMaps has built logical/native ownership that
+    // cleanup invalidates.
+    bool holdsResources() const { return mResourcesInitialized; }
 
     // maintain reflection probes
     void update();
@@ -100,20 +98,6 @@ private:
     // update UBO used for rendering (call only once per render pipe flush)
     void updateUniforms();
 
-    // bind UBO used for rendering
-
-    // render target for cube snapshots
-    // used to generate mipmaps without doing a copy-to-texture
-    LLRenderTarget mRenderTarget;
-
-    std::vector<LLRenderTarget> mMipChain;
-
-    // storage for reflection probe radiance maps (plus two scratch space cubemaps)
-    LLPointer<LLCubeMapArray> mTexture;
-
-    // vertex buffer for pushing verts to filter shaders
-    LLPointer<LLVertexBuffer> mVertexBuffer;
-
     LLPlane mCurrentClipPlane;
 
 
@@ -127,25 +111,25 @@ private:
     LLPointer<LLReflectionMap> mDefaultProbe;  // default reflection probe to fall back to for pixels with no probe influences (should always be at cube index 0)
 
     // number of reflection probes to use for rendering
-    U32 mReflectionProbeCount;
+    U32 mReflectionProbeCount = 0;
 
     // resolution of reflection probes
     U32 mProbeResolution = 1024;
 
-    // RenderHDREnabled as the cube array, the scratch target and the mip chain were allocated
-    // under: float colour or 8-bit. initReflectionMaps rebuilds all three when it changes.
+    // HDR mode reconciled into the native hero resource plan.
     bool mHDR = true;
 
     // maximum LoD of reflection probes (mip levels - 1)
     F32 mMaxProbeLOD = 6.f;
 
-    // Monotonic content identity for the generated hero-radiance mip family
-    // mirrored by transitional Metal consumers. Readiness is separate because
-    // a recreated GL array has an identity but no generated radiance yet.
+    // Monotonic content identity for the native hero-radiance mip family.
+    // Readiness is separate because reconciled storage has no generated
+    // radiance until a complete face transaction publishes.
     U64 mMetalRadianceGeneration = 0;
     U64 mMetalRadianceEpoch = 1;
     bool mMetalRadianceReady = false;
     bool mMetalRadianceCaptureComplete = false;
+    bool mResourcesInitialized = false;
 
     F32 mHeroProbeStrength = 1.f;
     bool mIsInTransition = false;
