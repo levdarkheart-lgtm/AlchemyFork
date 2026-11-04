@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `95619cb3e5`
+**Renderer code checkpoint:** `ac0e8cff4b`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -93,8 +93,7 @@ two shaders while retaining the tested native bake and live precision input.
 `210380eb74` makes native selection ID/depth, alpha cuts, rigging, wireframe,
 contour, hover glow, contrast and HUD authoritative and deletes 13 GLSL files.
 `ffe4e79dc3` deletes six GL targets, their palette texture, eight GL programs, helpers and the obsolete 3,892-line GL test.
-`95619cb3e5` removes the far-plane developer overlay's duplicate GL target,
-draw and composite; its existing Metal target now owns the feature directly.
+`95619cb3e5` removes the far-plane overlay's GL target/draw/composite; `ac0e8cff4b` removes immediate-mode GL wind vectors. Their tested Metal draws remain authoritative.
 
 Earlier native terrain, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -125,8 +124,8 @@ until the owner-attended review records that result.
 - At `ffe4e79dc3`, Ninja/Xcode, selection GPU 4,732/1, benchmark 49/8, renderer
   557,301/136, tools 31/31, 349/349 ARM64 and signing pass; executable SHA-256
   is `9d8f6b1313ef0c1bf7cae936a30152b3b1c5ab60728d126809fa3ea0bb8f284f`.
-- At `95619cb3e5`, Ninja, far-plane oracle 334/9 and physical Metal 8,022/1
-  pass; strict inventory is 3,005. Linked/runtime no-GL gates remain open.
+- At `ac0e8cff4b`, Ninja, far-plane oracle 334/9 and physical far-plane/wind
+  Metal 8,022/1 pass; strict inventory is 3,005. Runtime gates remain open.
 
 ## Milestone snapshot
 
@@ -134,10 +133,10 @@ until the owner-attended review records that result.
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | Native producers use the window-owned Metal device rather than the GL image registry. Converted resources/previews retain truthful native state. Metal solely presents; Snapshot has no GL capture target; selection effects use native targets only. Live GL traversal/context remain. |
 | M-007 world/material | doing | Reflection-probe G-buffer and post-deferred families are enumerated directly from CPU scene state, including sorted alpha, avatar transparency, atmosphere, water haze/exclusion/surface and emissive replay. Broad parity remains open. |
-| M-008 advanced views/effects | doing | Color grading, PBR BRDF integration, previews, visual hints, avatar composites, selection effects, far-plane overlay, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation have Metal implementations. |
+| M-008 advanced views/effects | doing | Color grading, PBR integration, previews, visual hints, avatar composites, selection, far-plane/wind-vector debug effects, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation have Metal implementations. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,005 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Reflection/hero publication, terrain bake, selection effects and the far-plane overlay have direct Metal owners. Their obsolete GL storage, targets, programs and shaders are deleted. |
+| M-011 GL authority removal | doing | Probe publication, terrain bake, selection, far-plane and wind-vector effects have direct Metal owners. Their obsolete GL storage, targets, programs, shaders and draws are deleted. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
