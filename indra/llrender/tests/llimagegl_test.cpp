@@ -2273,12 +2273,18 @@ namespace
         REQUIRE(white->createGLTexture(0, makeRaw(1, 1, 4, 0xff).get()));
         ALTextureSlot::setWhiteImage(white.get());
 
-        LLPointer<LLGLTexture> texture = new LLGLTexture(/*usemipmaps=*/false);
-        REQUIRE(texture->createMetalTexture(0, makeRaw(8, 8, 4, 0x44).get()));
+        LLPointer<LLGLTexture> texture = new LLGLTexture(/*usemipmaps=*/true);
+        LLPointer<LLImageRaw> clear = makeRaw(8, 8, 4, 0x00);
+        REQUIRE(texture->createMetalTexture(0, clear.get()));
         CHECK(texture->hasGPUTexture());
         CHECK_FALSE(texture->hasGLTexture());
+        CHECK(texture->getFullWidth() == 8);
+        CHECK(texture->getFullHeight() == 8);
+        CHECK_FALSE(texture->getMask(LLVector2(0.5f, 0.5f)));
         LLImageGL* native = texture->getGLTexture();
         REQUIRE(native->getTexName() == 0);
+        REQUIRE(native->getMetalTexture());
+        CHECK(native->getMetalTexture()->descriptor().mipmap_level_count == 4);
 
         ALTextureSlot* slot = gGL.getTextureSlot(0);
         REQUIRE(slot->bindSampled(texture.get(), ALSamplers::BilinearClamp));

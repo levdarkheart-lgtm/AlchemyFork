@@ -1497,7 +1497,8 @@ bool LLFace::getGeometryVolume(const LLVolume& volume,
                     break;
                     case BE_BRIGHTNESS:
                     case BE_DARKNESS:
-                    if( mTexture[LLRender::DIFFUSE_MAP].notNull() && mTexture[LLRender::DIFFUSE_MAP]->hasGLTexture())
+                    if (mTexture[LLRender::DIFFUSE_MAP].notNull() &&
+                        mTexture[LLRender::DIFFUSE_MAP]->hasGPUTexture())
                     {
                         // Offset by approximately one texel
                         S32 cur_discard = mTexture[LLRender::DIFFUSE_MAP]->getDiscardLevel();

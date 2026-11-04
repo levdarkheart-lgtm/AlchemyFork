@@ -4932,7 +4932,11 @@ bool LLVOVolume::lineSegmentIntersect(const LLVector4a& start, const LLVector4a&
                     }
                 }
 
-                bool no_texture = !face->getTexture() || !face->getTexture()->hasGLTexture();
+                // Alpha picking reads LLImageGL's CPU mask. Native-only Metal
+                // textures build that mask at publication just like GL-backed
+                // textures, so residency rather than a GL name is the gate.
+                bool no_texture = !face->getTexture() ||
+                                  !face->getTexture()->hasGPUTexture();
                 bool mask       = no_texture ? false : face->getTexture()->getMask(face->surfaceToTexture(tc, p, n));
                 if (face &&
                     (ignore_alpha || pick_transparent || no_texture || mask))

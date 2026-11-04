@@ -215,9 +215,15 @@ bool LLLocalBitmap::updateSelf(EUpdateType optional_firstupdate)
                     LLPointer<LLViewerFetchedTexture> texture = new LLViewerFetchedTexture
                         ("file://"+mFilename, FTT_LOCAL_FILE, mWorldID, LL_LOCAL_USE_MIPMAPS);
 
-                    if (!texture->createGLTexture(LL_LOCAL_DISCARD_LEVEL, raw_image))
+                    // Local previews are authoritative viewer textures, not a
+                    // compatibility copy. Publish them directly to Metal so
+                    // material, object, and avatar refreshes all retain the
+                    // existing UUID/rebake behavior without allocating GL.
+                    if (!texture->createMetalTexture(LL_LOCAL_DISCARD_LEVEL, raw_image))
                     {
-                        LL_WARNS() << "Failed to create GL texture for local bitmap: " << mFilename << " " << mWorldID << LL_ENDL;
+                        LL_WARNS("Metal")
+                            << "Failed to create Metal texture for local bitmap: "
+                            << mFilename << " " << mWorldID << LL_ENDL;
                     }
                     texture->ref();
 
