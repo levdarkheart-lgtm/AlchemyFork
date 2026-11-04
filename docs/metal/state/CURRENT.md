@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `f86d87a100`
+**Renderer code checkpoint:** `eadfbc3e4f`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -13,13 +13,12 @@ This concise recovery snapshot delegates superseded detail to the indexed archiv
 ## Active implementation checkpoint
 
 M-003, M-004, M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit
-`f86d87a100` removes `LLCubeMap`'s superseded GL cube allocation, upload,
-storage and name API only after its native Metal cube replacement was already
-authoritative on Darwin. World consumers fetch `getMetalTexture()` directly;
-physical six-face coverage proves transformed bytes, descriptor, readback,
-device-loss invalidation and retry. The old Darwin `initGL()` and texture-slot
-route were already inert, so target behavior is preserved. This is replacement
-completion, not feature deletion or audit-count-driven removal.
+`eadfbc3e4f` makes each reflection map's cube index a backend-neutral logical
+slot and removes the unused `LLCubeMapArray*` argument from the capture API.
+`LLReflectionMapManager` remains the sole owner of backend resources. Native
+radiance and SH publication already target the logical slot; the complete GL
+cube array and its fallback producer/consumer path intentionally remain live.
+This is preparation for replacement, not feature deletion or audit gaming.
 
 The preceding startup-texture checkpoint remains active. System/default/local
 raw, decoded-memory and all eleven explicit local preloads publish truthfully
@@ -95,12 +94,12 @@ until the owner-attended review records that result.
   unified memory, arm64 macOS 26.5.2, Xcode 26.6, Apple7 support and the Metal
   compiler present.
 - The exact `tools/metal/build.sh` invocation exited 0 at committed renderer
-  source `f86d87a100`; the warnings-as-errors Xcode Release build reported
-  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68264`
-  (`26.4.0.68264`).
+  source `eadfbc3e4f`; the warnings-as-errors Xcode Release build reported
+  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68266`
+  (`26.4.0.68266`).
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64;
   deep strict code-sign verification passed. Viewer executable SHA-256 is
-  `b9393f820e7dfa25a27f09094a06e4e41ba5fb983c035a254773a6b600fe36db`.
+  `f939a3578617ee287bcc2fd33d067d726f4d99e590f4efcaf1d06ac3291c37d1`.
 - Source and packaged MSL are byte-identical at
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`;
   metallib SHA-256 is
@@ -117,9 +116,10 @@ until the owner-attended review records that result.
   Xcode both linked and packaged the complete viewer warnings-as-errors.
 - Harness structure validation passes for 32 required files; all 30 harness/tool
   tests and `git diff --check` pass. The documented strict-audit alias works.
-- Strict inventory is 2,407 files / 3,214 findings / 2,903 unique records,
-  expected exit 1; no rule or suppression changed. Report SHA-256:
-  `e431bee7369b77e9bc3ed693d0a5cf1133a93870761651f11307d5382723706b`.
+- Strict inventory is 2,407 files / 3,214 findings, expected exit 1; no rule or
+  suppression changed. Exact report `artifacts/metal/audit-gl-eadfbc3e4f.json`
+  has SHA-256
+  `34006085589d7e409582047bf55cc3f3dc3efdd98068e59e759653b5a464d201`.
 - Both OpenGL and Metal remain linked. The static, linked and runtime no-GL
   release gates remain open.
 - No viewer executable was launched, driven, photographed or compared.
@@ -133,15 +133,15 @@ until the owner-attended review records that result.
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,214 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | `LLCubeMap`'s inactive GL storage/name owner is retired after physical native replacement proof. `LLCubeMapArray` and other live owners remain until their Metal producers/consumers and failure paths are complete. |
+| M-011 GL authority removal | doing | Logical reflection probes no longer own/pass a GL array; the manager owns backend resources. `LLCubeMapArray` remains live until native scene capture, producers, consumers and failure paths are complete. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. A complete native cubemap resource now
-has no retained GL storage or name owner, while face transforms, sampling,
-readback and retry behavior remain. No feature was deleted for the cutover.
+**Advances the complete product:** yes. Reflection-map scheduling now addresses
+a backend-neutral probe slot and capture no longer accepts a false GL-resource
+dependency. Native publication remains intact and no feature was deleted.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -151,9 +151,9 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Trace `LLCubeMapArray` reflection/hero-probe allocation, write/copy and
-   consumer ownership, including existing Metal mirror/fill paths.
-2. Implement native authoritative cube-array lifecycle only when every live
-   producer, consumer and failure path is covered; remove its GL owner only
-   after that proof. Queue visual questions for owner-attended review; do not
-   drive comparisons.
+1. Make reflection-probe face capture independent of GL resource liveness;
+   `LLPipeline::beginMetalReflectionProbeFaceCapture` currently requires
+   `mGLResourcesLive` and shares `display_cube_face` scene traversal.
+2. Implement and prove native scene capture before removing that gate or any
+   live cube-array owner. Queue visual questions for owner-attended review;
+   do not drive comparisons.
