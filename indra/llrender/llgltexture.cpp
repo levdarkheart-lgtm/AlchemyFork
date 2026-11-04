@@ -214,15 +214,37 @@ void LLGLTexture::setExplicitFormat(LLGLint internal_format, LLGLenum primary_fo
 //virtual
 S32 LLGLTexture::getWidth(S32 discard_level) const
 {
-    llassert(mGLTexturep.notNull()) ;
-    return mGLTexturep->getWidth(discard_level) ;
+    if (mGLTexturep.notNull())
+    {
+        return mGLTexturep->getWidth(discard_level) ;
+    }
+
+    // Native producers can create a logical texture first and publish its
+    // Metal backing after the initial CPU image is complete.  Its constructor
+    // has already recorded the dimensions, so callers such as LLNetMap must be
+    // able to size their CPU layer before that first publication.
+    S32 width = static_cast<S32>(mFullWidth);
+    if (discard_level > 0)
+    {
+        width >>= discard_level;
+    }
+    return llmax(width, 1);
 }
 
 //virtual
 S32 LLGLTexture::getHeight(S32 discard_level) const
 {
-    llassert(mGLTexturep.notNull()) ;
-    return mGLTexturep->getHeight(discard_level) ;
+    if (mGLTexturep.notNull())
+    {
+        return mGLTexturep->getHeight(discard_level) ;
+    }
+
+    S32 height = static_cast<S32>(mFullHeight);
+    if (discard_level > 0)
+    {
+        height >>= discard_level;
+    }
+    return llmax(height, 1);
 }
 
 S32 LLGLTexture::getMaxDiscardLevel() const
@@ -237,9 +259,7 @@ S32 LLGLTexture::getDiscardLevel() const
 }
 S8  LLGLTexture::getComponents() const
 {
-    llassert(mGLTexturep.notNull()) ;
-
-    return mGLTexturep->getComponents() ;
+    return mGLTexturep.notNull() ? mGLTexturep->getComponents() : mComponents;
 }
 
 LLGLuint LLGLTexture::getTexName() const

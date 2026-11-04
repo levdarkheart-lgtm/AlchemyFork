@@ -442,15 +442,15 @@ void LLFontTextCache::genBuffers(
         // wrappers — head primary, each fallback's face. Walk all of them
         // to gather the set of color atlas textures this batch might have
         // sampled from.
-        std::vector<LLGLuint> color_texnames;
-        auto collect_from_cache = [&color_texnames](const LLFontBitmapCache* cache) {
+        std::vector<LLImageGL*> color_images;
+        auto collect_from_cache = [&color_images](const LLFontBitmapCache* cache) {
             if (!cache)
                 return;
             const U32 color_atlas_count = cache->getNumBitmaps(EFontGlyphType::Color);
             for (U32 i = 0; i < color_atlas_count; ++i)
             {
                 if (LLImageGL* img = cache->getImageGL(EFontGlyphType::Color, i))
-                    color_texnames.push_back(img->getTexName());
+                    color_images.push_back(img);
             }
         };
         collect_from_cache(face->getBitmapCache());
@@ -459,12 +459,12 @@ void LLFontTextCache::genBuffers(
             if (fb.first)
                 collect_from_cache(fb.first->getBitmapCache());
         }
-        if (!color_texnames.empty())
+        if (!color_images.empty())
         {
-            auto entry_uses_color = [&color_texnames](const LLVertexBufferData& entry) {
-                for (LLGLuint name : color_texnames)
+            auto entry_uses_color = [&color_images](const LLVertexBufferData& entry) {
+                for (LLImageGL* image : color_images)
                 {
-                    if (name && entry.mTexName == name)
+                    if (entry.mTexImage == image)
                         return true;
                 }
                 return false;

@@ -2344,6 +2344,20 @@ namespace
         CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
     }
 
+    TEST_CASE_METHOD(llimagegl_data, "LLGLTexture: logical metadata is queryable before native publication", "[LLImageGL][almetal]")
+    {
+        LLPointer<LLGLTexture> texture =
+            new LLGLTexture(/*width=*/256, /*height=*/128, /*components=*/4,
+                            /*usemipmaps=*/false);
+
+        REQUIRE_FALSE(texture->hasGPUTexture());
+        CHECK(texture->getWidth() == 256);
+        CHECK(texture->getHeight() == 128);
+        CHECK(texture->getWidth(/*discard_level=*/1) == 128);
+        CHECK(texture->getHeight(/*discard_level=*/1) == 64);
+        CHECK(texture->getComponents() == 4);
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLGLTexture: native RGB screenshot preview expands and mipmaps without GL", "[LLImageGL][almetal]")
     {
         std::string error;

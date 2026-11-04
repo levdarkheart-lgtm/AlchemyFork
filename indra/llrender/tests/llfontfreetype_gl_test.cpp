@@ -30,6 +30,13 @@
 #include "../llfontbitmapcache.h"
 #include "../llfontregistry.h"  // EFontHinting full definition
 #include "../llfontgl.h"        // sUseDarkEmojiPalette static for palette test
+#include "../llfonttextcache.h"
+#include "../llimagegl.h"
+
+#if LL_DARWIN
+#include "../../almetal/almetaldevice.h"
+#include "../../almetal/almetalresource.h"
+#endif
 
 #include "llfonttest_helpers.h"
 #include "llheadlessgl_fixture.h"
@@ -38,7 +45,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
+#include <cstring>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -55,6 +66,17 @@ namespace
         std::unique_ptr<ll_test::HeadlessGL> gl = std::make_unique<ll_test::HeadlessGL>();
         ll_test::FontStateScope font_scope;
     };
+
+#if LL_DARWIN
+    struct llfontmetal_render_data
+    {
+        std::unique_ptr<ll_test::HeadlessGL> gl =
+            std::make_unique<ll_test::HeadlessGL>(
+                /*needs_vbos=*/true, /*needs_imagegl=*/true,
+                /*needs_llrender=*/true, /*needs_render=*/true);
+        ll_test::FontStateScope font_scope;
+    };
+#endif
 
     // The frame clock, which the atlas stamps a sheet's use with and the
     // glyph sweep reads, set by a case that needs time to have passed.
@@ -91,6 +113,220 @@ namespace
         REQUIRE(cache != nullptr);
         CHECK(cache->getNumBitmaps(EFontGlyphType::Grayscale) >= 1u);
     }
+
+#if LL_DARWIN
+    TEST_CASE_METHOD(llfontfreetype_render_data, "LLFontFreetypeRender: a rasterized ASCII glyph preserves grayscale coverage in native atlas storage", "[LLFontFreetypeRender][almetal]")
+    {
+        const std::string path = std::string(kFontDir) + "DejaVuSans.woff2";
+        if (!fileExists(path))
+            SKIP("DejaVuSans.woff2 not present");
+
+        ALMetalDevice* device = LLImageGL::getMetalDevice();
+        REQUIRE(device);
+        const bool previous_gl = LLFontBitmapCache::usesGL();
+        const bool previous_metal = LLFontBitmapCache::usesMetal();
+        struct BackendReset
+        {
+            bool gl;
+            bool metal;
+            ~BackendReset()
+            {
+                LLFontBitmapCache::setTextureBackend(gl, metal);
+            }
+        } reset{previous_gl, previous_metal};
+        LLFontBitmapCache::setTextureBackend(false, true);
+
+        LLPointer<LLFontFreetype> ft = loadFtHead(path);
+        REQUIRE(ft.notNull());
+        LLFontGlyphInfo* glyph = ft->getGlyphInfo(
+            L'A', EFontGlyphType::Grayscale);
+        REQUIRE(glyph);
+        REQUIRE(glyph->mPhaseCount > 0);
+        const LLFontGlyphInfo::PhaseSlot& slot = glyph->mPhaseSlots[0];
+        REQUIRE(slot.mBitmapEntry.first == EFontGlyphType::Grayscale);
+        REQUIRE(slot.mBitmapEntry.second >= 0);
+        REQUIRE(slot.mWidth > 0);
+        REQUIRE(slot.mHeight > 0);
+
+        const LLFontBitmapCache* cache = glyph->mSourceFace
+            ? glyph->mSourceFace->getBitmapCache() : nullptr;
+        REQUIRE(cache);
+        LLImageRaw* raw = cache->getImageRaw(
+            EFontGlyphType::Grayscale,
+            static_cast<U32>(slot.mBitmapEntry.second));
+        LLImageGL* page = cache->getImageGL(
+            EFontGlyphType::Grayscale,
+            static_cast<U32>(slot.mBitmapEntry.second));
+        REQUIRE(raw);
+        REQUIRE(page);
+        REQUIRE(page->getMetalTexture());
+        CHECK_FALSE(page->getHasGLTexture());
+
+        std::vector<U8> expected(
+            static_cast<std::size_t>(slot.mWidth) * slot.mHeight * 2);
+        U8 minimum_coverage = 255;
+        U8 maximum_coverage = 0;
+        for (S32 row = 0; row < slot.mHeight; ++row)
+        {
+            const U8* source = raw->getData() +
+                (static_cast<std::size_t>(slot.mYBitmapOffset + row) *
+                     raw->getWidth() + slot.mXBitmapOffset) * 2;
+            U8* destination = expected.data() +
+                static_cast<std::size_t>(row) * slot.mWidth * 2;
+            std::memcpy(destination, source,
+                        static_cast<std::size_t>(slot.mWidth) * 2);
+            for (S32 column = 0; column < slot.mWidth; ++column)
+            {
+                minimum_coverage = std::min(
+                    minimum_coverage, destination[column * 2 + 1]);
+                maximum_coverage = std::max(
+                    maximum_coverage, destination[column * 2 + 1]);
+            }
+        }
+        CHECK(minimum_coverage == 0);
+        CHECK(maximum_coverage > 0);
+
+        std::vector<U8> actual(expected.size());
+        std::string error;
+        REQUIRE(page->getMetalTexture()->readback(
+            *device, 0, 0,
+            {static_cast<U32>(slot.mXBitmapOffset),
+             static_cast<U32>(slot.mYBitmapOffset),
+             static_cast<U32>(slot.mWidth),
+             static_cast<U32>(slot.mHeight)},
+            actual.data(), static_cast<std::size_t>(slot.mWidth) * 2,
+            &error));
+        INFO(error);
+        CHECK(actual == expected);
+    }
+
+    TEST_CASE_METHOD(llfontmetal_render_data, "LLFontFreetypeRender: a real grayscale glyph remains shaped through the complete native UI path", "[LLFontFreetypeRender][almetal][native_ui]")
+    {
+        const std::string path = std::string(kFontDir) + "DejaVuSans.woff2";
+        if (!fileExists(path))
+            SKIP("DejaVuSans.woff2 not present");
+
+        ALMetalDevice* device = gl->window()->getMetalDevice();
+        ALMetalFrameScheduler* frames =
+            gl->window()->getMetalFrameScheduler();
+        REQUIRE(device);
+        REQUIRE(frames);
+
+        const bool previous_gl = LLFontBitmapCache::usesGL();
+        const bool previous_metal = LLFontBitmapCache::usesMetal();
+        struct NativeStateReset
+        {
+            bool gl_backend;
+            bool metal_backend;
+            ~NativeStateReset()
+            {
+                if (gGL.hasMetalUITextureCapture())
+                {
+                    gGL.endMetalUITextureCapture(false);
+                }
+                gGL.setMetalBackend(nullptr, nullptr, nullptr);
+                LLVertexBuffer::setMetalDevice(nullptr);
+                LLFontBitmapCache::setTextureBackend(
+                    gl_backend, metal_backend);
+            }
+        } reset{previous_gl, previous_metal};
+
+        LLFontBitmapCache::setTextureBackend(false, true);
+        LLVertexBuffer::setMetalDevice(device);
+        gGL.setMetalBackend(device, frames, nullptr);
+        gGL.setViewport(0, 0, ll_test::HeadlessGL::WIDTH,
+                        ll_test::HeadlessGL::HEIGHT);
+
+        LLFontGL font;
+        REQUIRE(font.loadFace(
+            path, 24.f, 96.f, 96.f, /*is_fallback=*/false,
+            /*face_n=*/0, EFontHinting::DEFAULT, /*flags=*/0));
+
+        // World/UI composition mirrors the still-authoritative GL draw. Its
+        // native-only font atlas is represented in GL by the white image, but
+        // mCurrImage must remain the atlas so Metal samples glyph coverage.
+        // Exercise that path as well as native-authoritative appearance/UI
+        // producers: the two modes have deliberately different bind owners.
+        LLPointer<LLImageRaw> white_raw = new LLImageRaw(1, 1, 4);
+        std::memset(white_raw->getData(), 0xff, 4);
+        LLPointer<LLImageGL> white = new LLImageGL(white_raw, false);
+        REQUIRE(white->getTexName() != 0);
+        ALTextureSlot::setWhiteImage(white);
+        struct WhiteImageReset
+        {
+            ~WhiteImageReset() { ALTextureSlot::setWhiteImage(nullptr); }
+        } white_reset;
+
+        const std::array modes{
+            LLRender::EMetalUICaptureMode::NATIVE_AUTHORITATIVE,
+            LLRender::EMetalUICaptureMode::GL_MIRROR,
+        };
+        for (LLRender::EMetalUICaptureMode mode : modes)
+        {
+            LLFontTextCache cache;
+            const char source_identity = 'A';
+            cache.setSource(&source_identity, 1);
+            std::vector<U8> previous_pixels;
+            for (S32 frame = 0; frame < 3; ++frame)
+            {
+                REQUIRE(gGL.beginMetalUITextureCapture(
+                    ALMetalPixelFormat::rgba8_unorm, &gUIProgram,
+                    nullptr, nullptr, nullptr, mode));
+                const S32 rendered = cache.renderBytes(
+                    &font, "A", 0, 96.f, 96.f, LLColor4::white,
+                    LLFontGL::LEFT, LLFontGL::BASELINE,
+                    LLFontGL::NORMAL, LLFontGL::NO_SHADOW, 1);
+                CHECK(rendered == 1);
+
+                std::string failure;
+                LLRender::EMetalUICaptureEndState end_state =
+                    LLRender::EMetalUICaptureEndState::INACTIVE;
+                std::unique_ptr<ALMetalTexture> output =
+                    gGL.endMetalUITextureCapture(
+                        true, false, nullptr, &failure, &end_state);
+                INFO("mode=" << static_cast<S32>(mode)
+                     << ", frame=" << frame << ": " << failure);
+                REQUIRE(end_state ==
+                        LLRender::EMetalUICaptureEndState::COMPLETE);
+                REQUIRE(output);
+
+                std::vector<U8> pixels(
+                    static_cast<std::size_t>(ll_test::HeadlessGL::WIDTH) *
+                    ll_test::HeadlessGL::HEIGHT * 4);
+                std::string error;
+                REQUIRE(output->readback(
+                    *device, 0, 0, {}, pixels.data(),
+                    ll_test::HeadlessGL::WIDTH * 4, &error));
+                INFO(error);
+
+                std::size_t transparent = 0;
+                std::size_t covered = 0;
+                std::size_t partial = 0;
+                for (std::size_t offset = 0;
+                     offset + 3 < pixels.size(); offset += 4)
+                {
+                    const U8 alpha = pixels[offset + 3];
+                    transparent += alpha == 0;
+                    covered += alpha != 0;
+                    partial += alpha != 0 && alpha != 255;
+                }
+                INFO("mode=" << static_cast<S32>(mode)
+                     << ", frame=" << frame
+                     << ", transparent=" << transparent
+                     << ", covered=" << covered
+                     << ", partial=" << partial);
+                CHECK(transparent > 0);
+                CHECK(covered > 0);
+                CHECK(partial > 0);
+                if (!previous_pixels.empty())
+                {
+                    CHECK(pixels == previous_pixels);
+                }
+                previous_pixels = std::move(pixels);
+            }
+        }
+    }
+#endif
 
     // collectGarbage is throttled — a call within the interval of the
     // last sweep (GC_INTERVAL_SEC, 5 s, in ALFontFace::collectGarbage)

@@ -126,10 +126,32 @@ bool LLFontBitmapCache::publishGlyph(EFontGlyphType bitmap_type,
     }
 
 #if LL_DARWIN
+    if (usesGL())
+    {
+        // createGLTexture/setSubImage publish the GL texture and its Metal
+        // mirror in one transaction on Darwin. If the initial mirror
+        // allocation failed, retry with the complete CPU page so transparent
+        // borders and every previously rasterized glyph become authoritative
+        // together; a dirty-rectangle retry would leave the rest undefined.
+        const bool retry_complete_page = usesMetal() && !image->getMetalTexture();
+        const bool uploaded = retry_complete_page
+            ? image->createGLTexture(0, image_raw)
+            : image->setSubImage(image_raw, x, y, width, height,
+                                 /*force_fast_update=*/true, 0,
+                                 /*skip_unbind=*/true);
+        const bool complete = uploaded &&
+                              (!usesMetal() || image->getMetalTexture());
+        if (!complete)
+        {
+            LL_WARNS("Font") << "Could not publish a synchronized font-atlas glyph"
+                              << LL_ENDL;
+        }
+        return complete;
+    }
+
     if (usesMetal())
     {
-        const bool uploaded = image->getMetalTexture() &&
-                              !image->getHasGLTexture()
+        const bool uploaded = image->getMetalTexture()
             ? image->uploadMetalSubImage(
                 image_raw->getData(), image_raw->getWidth(),
                 image_raw->getHeight(), x, y, width, height)
@@ -143,6 +165,7 @@ bool LLFontBitmapCache::publishGlyph(EFontGlyphType bitmap_type,
     }
 #endif
 
+    llassert(usesGL());
     return image->setSubImage(image_raw, x, y, width, height,
                               /*force_fast_update=*/true, 0,
                               /*skip_unbind=*/true);
@@ -266,13 +289,22 @@ bool LLFontBitmapCache::nextOpenPos(S32 width, S32 height, S32& pos_x, S32& pos_
             image_raw->clear(0, 0, 0, 0);
         }
 
-        // Publish the zero-cleared page through the selected renderer. Keep
-        // an LLImageGL identity after a transient native allocation failure:
-        // publishGlyph() retries by uploading the complete CPU page before it
-        // exposes a newly rasterized glyph.
+        // Publish the zero-cleared page through the selected renderer(s).
+        // On Darwin, LLImageGL's GL upload also creates and fills its Metal
+        // mirror, so the dual transition backend has one identity and one
+        // ordered publication. Keep that identity after a transient native
+        // allocation failure: publishGlyph() retries with the complete CPU
+        // page before it exposes a newly rasterized glyph.
         if (sUsesGL)
         {
             mImageGLVec[bitmap_idx][slot] = new LLImageGL(image_raw, false);
+#if LL_DARWIN
+            if (sUsesMetal && !mImageGLVec[bitmap_idx][slot]->getMetalTexture())
+            {
+                LL_WARNS("Font") << "Could not create the initial synchronized native font-atlas storage; the first glyph will retry"
+                                  << LL_ENDL;
+            }
+#endif
         }
 #if LL_DARWIN
         else if (sUsesMetal)

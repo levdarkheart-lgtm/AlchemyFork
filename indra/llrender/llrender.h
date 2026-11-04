@@ -398,9 +398,10 @@ public:
     // eligible UI batch was encoded. The surface stays transparent for any
     // incomplete frame so the GL fallback remains visible underneath it.
     bool metalUIFrameHasCompleteCoverage() const noexcept;
-    // Native UI replacement is currently safe only while the Metal surface
-    // owns presentation (startup/login). World frames still swap the GL
-    // backing and keep their UI draws there until world presentation moves.
+    // Enable direct native UI replacement on the presentation surface. During
+    // world fallback this is a transparent Metal overlay above the GL scene;
+    // an active ordered offscreen capture suspends direct replacement so that
+    // exactly one renderer owns the surface submission for that frame.
     void setMetalUIReplacementEnabled(bool enabled) noexcept;
     // Submit one already-complete BGRA8 world/UI texture to the native surface.
     // Success means the drawable command was committed, so the caller may

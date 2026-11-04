@@ -2784,10 +2784,28 @@ void LLRender::flush()
             if (native_capture)
             {
                 // Authoritative captures must not seed the retained VBO cache
-                // with a buffer that deliberately has no GL name. Keep it
-                // alive exactly through the native encoder call instead.
+                // with a buffer that deliberately has no GL name. A font
+                // display list is different from that global hash cache: it
+                // owns the Metal mirror and must retain it, or the text cache
+                // marks an empty list valid and every later replay vanishes.
                 LLPointer<LLVertexBuffer> native_buffer =
                     genBuffer(attribute_mask, count);
+                if (mBufferDataList)
+                {
+                    ALTextureSlot* texture_slot = gGL.getTextureSlot(0);
+                    mBufferDataList->emplace_back(
+                        native_buffer,
+                        mMode,
+                        count,
+                        texture_slot->mCurrTexture,
+                        texture_slot->mCurrSampler,
+                        texture_slot->mCurrImage,
+                        mMetalUICaptureTextureBound,
+                        mMetalUICaptureSampler,
+                        mMatrix[MM_MODELVIEW][mMatIdx[MM_MODELVIEW]],
+                        mMatrix[MM_PROJECTION][mMatIdx[MM_PROJECTION]],
+                        mMatrix[MM_TEXTURE0][mMatIdx[MM_TEXTURE0]]);
+                }
                 drawBuffer(native_buffer, mMode, count);
             }
             else
@@ -2806,6 +2824,7 @@ void LLRender::flush()
                         texture_slot->mCurrTexture,
                         texture_slot->mCurrSampler,
                         texture_slot->mCurrImage,
+                        texture_slot->mCurrTexture != 0,
                         sampler_desc,
                         mMatrix[MM_MODELVIEW][mMatIdx[MM_MODELVIEW]],
                         mMatrix[MM_PROJECTION][mMatIdx[MM_PROJECTION]],
@@ -2976,8 +2995,14 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
 {
     const bool capture = mMetalUICaptureRenderer != nullptr;
     const bool authoritative = capture && mMetalUICaptureAuthoritative;
-    const bool replace = mMetalUIRenderer && mMetalUIReplacementEnabled &&
-                         !mUIOffset.empty();
+    // An ordered offscreen capture owns the complete world/UI transaction.
+    // Do not also open the direct surface renderer for the same UI batches:
+    // the capture may publish its fused drawable at end-of-frame, while a
+    // second direct frame would either contend for the surface or cover that
+    // result. Outside a capture, the direct renderer is a transparent native
+    // UI overlay and may replace each successfully encoded GL batch.
+    const bool replace = !capture && mMetalUIRenderer &&
+                         mMetalUIReplacementEnabled && !mUIOffset.empty();
     if (!capture && !replace)
     {
         return authoritative;

@@ -6856,7 +6856,11 @@ void LLViewerWindow::initFonts(F32 zoom_factor)
                                 mDisplayScale.mV[VY] * zoom_factor,
                                 gDirUtilp->getAppRODataDir(),
                                 gSavedSettings.getLLSD("AlchemyUIFontOverrides"),
-                                /*create_gl_textures=*/!LL_DARWIN,
+                                // Until a complete Metal world/UI transaction
+                                // owns presentation, the GL fallback must keep
+                                // readable UI while the same atlas is mirrored
+                                // for native UI capture.
+                                /*create_gl_textures=*/true,
                                 /*create_metal_textures=*/LL_DARWIN);
 }
 

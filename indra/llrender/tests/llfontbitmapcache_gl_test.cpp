@@ -85,6 +85,73 @@ namespace
     }
 
 #if LL_DARWIN
+    TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: transition pages keep GL and Metal atlas bytes synchronized", "[LLFontBitmapCacheGL][almetal]")
+    {
+        REQUIRE(LLImageGL::getMetalDevice() != nullptr);
+        ALMetalDevice* device = LLImageGL::getMetalDevice();
+
+        const bool previous_gl = LLFontBitmapCache::usesGL();
+        const bool previous_metal = LLFontBitmapCache::usesMetal();
+        struct BackendReset
+        {
+            bool gl;
+            bool metal;
+            ~BackendReset()
+            {
+                LLFontBitmapCache::setTextureBackend(gl, metal);
+            }
+        } reset{previous_gl, previous_metal};
+        LLFontBitmapCache::setTextureBackend(true, true);
+
+        LLFontBitmapCache cache;
+        cache.init(2, 2);
+
+        S32 glyph_x = 0;
+        S32 glyph_y = 0;
+        U32 sheet = 0;
+        REQUIRE(cache.nextOpenPos(
+            3, 2, glyph_x, glyph_y, EFontGlyphType::Grayscale, sheet));
+        LLImageRaw* raw = cache.getImageRaw(EFontGlyphType::Grayscale, sheet);
+        LLImageGL* page = cache.getImageGL(EFontGlyphType::Grayscale, sheet);
+        REQUIRE(raw);
+        REQUIRE(page);
+        REQUIRE(page->getHasGLTexture());
+        REQUIRE(page->getMetalTexture());
+
+        for (S32 y = glyph_y; y < glyph_y + 2; ++y)
+        {
+            for (S32 x = glyph_x; x < glyph_x + 3; ++x)
+            {
+                const std::size_t offset =
+                    (static_cast<std::size_t>(y) * raw->getWidth() + x) * 2;
+                raw->getData()[offset] = 0x90;
+                raw->getData()[offset + 1] = 0x60;
+            }
+        }
+        REQUIRE(cache.publishGlyph(
+            EFontGlyphType::Grayscale, sheet,
+            glyph_x, glyph_y, 3, 2));
+
+        const std::size_t byte_count =
+            static_cast<std::size_t>(raw->getWidth()) * raw->getHeight() * 2;
+        const std::vector<U8> expected(
+            raw->getData(), raw->getData() + byte_count);
+
+        std::vector<U8> gl_pixels(byte_count);
+        ll_test::readTexture(page->getTexName(), GL_RG, GL_UNSIGNED_BYTE,
+                             gl_pixels.data());
+        CHECK(gl_pixels == expected);
+
+        std::vector<U8> metal_pixels(byte_count);
+        std::string error;
+        REQUIRE(page->getMetalTexture()->readback(
+            *device, 0, 0, {}, metal_pixels.data(),
+            raw->getWidth() * 2, &error));
+        INFO(error);
+        CHECK(metal_pixels == expected);
+        CHECK(page->getHasGLTexture());
+    }
+
     TEST_CASE_METHOD(llfontbitmapcache_gl_data, "LLFontBitmapCacheGL: native grayscale and color pages publish exact dirty rectangles without GL", "[LLFontBitmapCacheGL][almetal]")
     {
         REQUIRE(LLImageGL::getMetalDevice() != nullptr);

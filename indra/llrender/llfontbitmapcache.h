@@ -118,13 +118,14 @@ public:
     // for index stability but holds no images.
     bool isSheetReleased(EFontGlyphType bitmap_type, U32 bitmap_num) const;
 
-    // Select the atlas publication backend for the process's one font
-    // registry. GL-specific tests name GL explicitly, the Darwin viewer names
-    // Metal explicitly, and headless layout tests name neither so glyphs stay
-    // CPU-only. The two GPU backends are mutually exclusive.
+    // Select the atlas publication backends for the process's one font
+    // registry. During the world-renderer transition Darwin deliberately uses
+    // both: GL remains the visible fail-closed owner until a complete fused
+    // Metal world/UI frame can publish, while the synchronized Metal mirror is
+    // consumed by native UI capture. Native-only tests can still name Metal
+    // alone, and headless layout tests name neither so glyphs stay CPU-only.
     static void setTextureBackend(bool uses_gl, bool uses_metal)
     {
-        llassert(!(uses_gl && uses_metal));
         sUsesGL = uses_gl;
         sUsesMetal = uses_metal;
     }

@@ -669,8 +669,10 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     // A startup or preceding exact world frame may have made the Metal layer
     // opaque. Restore transparent composition before every world frame,
     // including resize-only frames, so an incomplete current native
-    // transaction always reveals the authoritative GL fallback. An exact
-    // native frame earns opacity again only when its drawable is committed.
+    // transaction always reveals the authoritative GL fallback, including its
+    // complete UI. A native frame earns opacity only when the exact ordered
+    // world/UI capture commits a fused drawable; a transparent Metal child
+    // layer cannot reliably replace UI above SDL's OpenGL drawable.
     if (LLStartUp::getStartupState() >= STATE_PRECACHE)
     {
         gGL.setMetalUIReplacementEnabled(false);
@@ -679,9 +681,9 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         if (!logged_world_gl_ui)
         {
             logged_world_gl_ui = true;
-            LL_INFOS("Metal") << "World frames begin with transparent native "
-                                 "composition so incomplete frames retain their "
-                                 "visible GL fallback"
+            LL_INFOS("Metal") << "Incomplete world frames retain their complete "
+                                 "visible GL fallback; exact fused Metal world/UI "
+                                 "captures alone may take opaque surface ownership"
                                << LL_ENDL;
         }
     }

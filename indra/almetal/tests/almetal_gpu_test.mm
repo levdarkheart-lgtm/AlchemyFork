@@ -29896,6 +29896,60 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         CHECK(pixels[2] == 0);
         CHECK(pixels[3] == 0);
 
+        // Grayscale font pages are RG8 luminance/coverage storage sampled
+        // through an RRRG texture view. Exercise that exact format through
+        // the production UI fragment pipeline: reading the storage texture
+        // directly would leave alpha at Metal's implicit one and turn every
+        // glyph quad into a solid rectangle.
+        ALMetalTextureDescriptor font_descriptor;
+        font_descriptor.format = ALMetalPixelFormat::rg8_unorm;
+        font_descriptor.width = 1;
+        font_descriptor.height = 1;
+        font_descriptor.mipmap_level_count = 1;
+        font_descriptor.storage = ALMetalStorageMode::private_gpu;
+        font_descriptor.usage = ALMetalTextureUsage::shader_read;
+        font_descriptor.swizzle = {
+            ALMetalTextureSwizzle::red,
+            ALMetalTextureSwizzle::red,
+            ALMetalTextureSwizzle::red,
+            ALMetalTextureSwizzle::green,
+        };
+        font_descriptor.label = "Alchemy production UI font atlas sample";
+        auto font_texture = ALMetalTexture::create(
+            *device, font_descriptor, &error);
+        INFO(error);
+        REQUIRE(font_texture);
+        const std::array<std::uint8_t, 2> font_texel = {255, 64};
+        auto font_upload = device->makeCommandBuffer(
+            "Alchemy production UI font atlas upload", &error);
+        REQUIRE(font_upload);
+        REQUIRE(font_texture->upload(
+            *font_upload, 0, 0, {}, font_texel.data(), 2, &error));
+        REQUIRE(font_upload->commitAndWait(&error));
+        INFO(error);
+
+        auto font_renderer = ALMetalUIRenderer::create(
+            *device, *scheduler, &error);
+        INFO(error);
+        REQUIRE(font_renderer);
+        batch.texture = font_texture.get();
+        batch.sample_linear_storage = true;
+        REQUIRE(font_renderer->draw(batch, &error));
+        REQUIRE(font_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        pixels.fill(0);
+        REQUIRE(font_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(pixels[center + 0] == 16);
+        CHECK(pixels[center + 1] == 32);
+        CHECK(pixels[center + 2] == 255);
+        CHECK(std::abs(static_cast<int>(pixels[center + 3]) - 64) <= 1);
+        batch.texture = texture.get();
+        batch.sample_linear_storage = false;
+
         // Offscreen UI flips vertex Y so its output retains GL's lower-left
         // row convention. A GL top-half clip therefore follows that geometry
         // into the texture's lower half; converting the scissor a second time

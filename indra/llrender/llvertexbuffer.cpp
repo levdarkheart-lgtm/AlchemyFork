@@ -702,6 +702,7 @@ LLVertexBufferData::LLVertexBufferData()
       mTexSampler(0),
       mTexImageOwner(nullptr),
       mTexImage(nullptr),
+      mTextureBound(false),
       mProjection(LLMatrix4a::identity()),
       mModelView(LLMatrix4a::identity()),
       mTexture0(LLMatrix4a::identity())
@@ -711,6 +712,7 @@ LLVertexBufferData::LLVertexBufferData()
 LLVertexBufferData::LLVertexBufferData(
     LLVertexBuffer* buffer, U8 mode, U32 count,
     U32 tex_name, U32 tex_sampler, LLImageGL* tex_image,
+    bool texture_bound,
     const ALSamplerDesc& sampler_desc,
     const LLMatrix4a& model_view, const LLMatrix4a& projection,
     const LLMatrix4a& texture0)
@@ -721,6 +723,7 @@ LLVertexBufferData::LLVertexBufferData(
       mTexSampler(tex_sampler),
       mTexImageOwner(static_cast<LLThreadSafeRefCount*>(tex_image)),
       mTexImage(tex_image),
+      mTextureBound(texture_bound),
       mSamplerDesc(sampler_desc),
       mProjection(projection),
       mModelView(model_view),
@@ -737,11 +740,18 @@ void LLVertexBufferData::drawWithMatrix()
         return;
     }
 
-    if (mTexName)
+    const bool native_only_image =
+#if LL_DARWIN
+        mTexImage && mTexImage->getMetalTexture() &&
+        !mTexImage->getHasGLTexture();
+#else
+        false;
+#endif
+    if (!native_only_image && mTexName)
     {
         gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mTexName, mTexSampler);
     }
-    else
+    else if (!native_only_image)
     {
         gGL.getTextureSlot(0)->unbind();
     }
@@ -758,9 +768,23 @@ void LLVertexBufferData::drawWithMatrix()
 
 #if LL_DARWIN
     if (!gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc,
-                               mTexName != 0))
+                               mTextureBound))
 #endif
     {
+#if LL_DARWIN
+        if (native_only_image)
+        {
+            // A Metal-only atlas has no valid GL sampling fallback. Failure
+            // is already counted by drawMetalUIBuffer; do not paint a white
+            // placeholder quad over the requested glyph.
+            gGL.popMatrix();
+            gGL.matrixMode(LLRender::MM_PROJECTION);
+            gGL.popMatrix();
+            gGL.matrixMode(LLRender::MM_MODELVIEW);
+            gGL.popMatrix();
+            return;
+        }
+#endif
         mVB->setBuffer();
         mVB->drawArrays(mMode, 0, mCount);
     }
@@ -781,20 +805,33 @@ void LLVertexBufferData::draw()
         return;
     }
 
-    if (mTexName)
+    const bool native_only_image =
+#if LL_DARWIN
+        mTexImage && mTexImage->getMetalTexture() &&
+        !mTexImage->getHasGLTexture();
+#else
+        false;
+#endif
+    if (!native_only_image && mTexName)
     {
         gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, mTexName, mTexSampler);
     }
-    else
+    else if (!native_only_image)
     {
         gGL.getTextureSlot(0)->unbind();
     }
 
 #if LL_DARWIN
     if (!gGL.drawMetalUIBuffer(mVB.get(), mMode, mCount, mTexImage, mSamplerDesc,
-                               mTexName != 0))
+                               mTextureBound))
 #endif
     {
+#if LL_DARWIN
+        if (native_only_image)
+        {
+            return;
+        }
+#endif
         mVB->setBuffer();
         mVB->drawArrays(mMode, 0, mCount);
     }

@@ -67,6 +67,7 @@ public:
     LLVertexBufferData();
     LLVertexBufferData(LLVertexBuffer* buffer, U8 mode, U32 count,
                        U32 tex_name, U32 tex_sampler, LLImageGL* tex_image,
+                       bool texture_bound,
                        const ALSamplerDesc& sampler_desc,
                        const LLMatrix4a& model_view, const LLMatrix4a& projection,
                        const LLMatrix4a& texture0);
@@ -85,6 +86,10 @@ public:
     // sampler-cache lifetime changes without reverse-looking up API handles.
     LLPointer<LLThreadSafeRefCount> mTexImageOwner;
     LLImageGL* mTexImage = nullptr;
+    // Native-only images have no physical GL name. Keep the logical sampled
+    // state separately so a retained font batch still selects the textured
+    // Metal shader instead of replaying as a solid vertex-colour rectangle.
+    bool mTextureBound = false;
     ALSamplerDesc mSamplerDesc;
     LLMatrix4a mProjection;
     LLMatrix4a mModelView;
