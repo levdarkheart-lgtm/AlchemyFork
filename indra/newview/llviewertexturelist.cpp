@@ -30,6 +30,8 @@
 
 #include "llviewertexturelist.h"
 
+#include "altexturepressurequeue.h"
+
 #include "llagent.h"
 #include "llgl.h" // fot gathering stats from GL
 #include "llimagegl.h"
@@ -1135,14 +1137,52 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
 F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-    if (gGLManager.mIsDisabled) return 0.0f;
+
+    LLTimer create_timer;
+
+#if LL_DARWIN
+    // Already-native pressure work must not depend on a live GL manager. Scan
+    // it before the GL-disabled guard, retaining GL/dual-backed work in stable
+    // order for the fail-closed legacy path.
+    if (!mDownScaleQueue.empty())
+    {
+        const std::size_t minimum_scans =
+            static_cast<std::size_t>(mCreateTextureList.size() / 20 + 5);
+        const auto result = ALTexturePressureQueue::drainNative(
+            mDownScaleQueue,
+            minimum_scans,
+            [](const LLPointer<LLViewerFetchedTexture>& image)
+            {
+                LLImageGL* img = image ? image->getGLTexture() : nullptr;
+                return img && !img->getHasGLTexture() && img->getMetalTexture();
+            },
+            [](const LLPointer<LLViewerFetchedTexture>& image)
+            {
+                llassert(image->mDownScalePending);
+                image->getGLTexture()->scaleDown(image->getDesiredDiscardLevel());
+                image->mDownScalePending = false;
+            },
+            [&create_timer, max_time]
+            {
+                return create_timer.getElapsedTimeF32() > max_time;
+            });
+
+        if (result == ALTexturePressureQueue::DrainResult::BudgetExhausted)
+        {
+            return create_timer.getElapsedTimeF32();
+        }
+    }
+#endif
+
+    if (gGLManager.mIsDisabled)
+    {
+        return create_timer.getElapsedTimeF32();
+    }
 
     //
     // Create GL textures for all textures that need them (images which have been
     // decoded, but haven't been pushed into GL).
     //
-
-    LLTimer create_timer;
 
     while (!mCreateTextureList.empty())
     {
@@ -1187,53 +1227,6 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             break;
         }
     }
-
-#if LL_DARWIN
-    // Native-authoritative images do not need the retained GL scratch target,
-    // copy shader, framebuffer state or even a GL name. Drain them first so
-    // memory pressure can reduce real Metal residency while the legacy target
-    // is unavailable. Keep GL/dual-backed entries queued for the established
-    // fail-closed path below.
-    if (!mDownScaleQueue.empty())
-    {
-        const std::size_t initial_count = mDownScaleQueue.size();
-        S32 min_count = (S32)mCreateTextureList.size() / 20 + 5;
-        bool time_exhausted = false;
-
-        create_timer.reset();
-        for (std::size_t index = 0; index < initial_count; ++index)
-        {
-            LLPointer<LLViewerFetchedTexture> image = mDownScaleQueue.front();
-            mDownScaleQueue.pop();
-
-            LLImageGL* img = image ? image->getGLTexture() : nullptr;
-            if (img && !img->getHasGLTexture() && img->getMetalTexture())
-            {
-                llassert(image->mDownScalePending);
-                img->scaleDown(image->getDesiredDiscardLevel());
-                image->mDownScalePending = false;
-            }
-            else
-            {
-                mDownScaleQueue.push(image);
-            }
-
-            if (create_timer.getElapsedTimeF32() > max_time && --min_count <= 0)
-            {
-                time_exhausted = true;
-                break;
-            }
-        }
-
-        // Do not enter the GL path with unexamined native entries still in the
-        // queue. They remain pending and resume ahead of retained work next
-        // frame.
-        if (time_exhausted)
-        {
-            return create_timer.getElapsedTimeF32();
-        }
-    }
-#endif
 
     if (!mDownScaleQueue.empty() && gPipeline.mDownResMap.isComplete())
     {

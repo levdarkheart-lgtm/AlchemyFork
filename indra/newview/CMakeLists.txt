@@ -2626,6 +2626,7 @@ if(AL_BUILD_TESTS)
       tests/alscripttypes_test.cpp
       tests/alscriptweightspane_test.cpp
       tests/alterrainsurfacemaps_test.cpp
+      tests/altexturepressurequeue_test.cpp
       tests/altexturetable_test.cpp
       tests/alwhitebalancesolver_test.cpp
       tests/cppfeatures_test.cpp
