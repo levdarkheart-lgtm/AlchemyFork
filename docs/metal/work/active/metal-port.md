@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `437d8a584e`.
+**Renderer checkpoint:** Commit `04d52899ae`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -18,11 +18,11 @@ checkpoint detail belongs in the indexed archive.
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Native producers use the window-owned Metal device. Reflection probes use backend-neutral logical slots and Metal-only cube/radiance/SH publication; converted startup/local/HDRI/fetched resources retain native scale-down and eviction. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while retained GL consumers are removed; owner accepted readable UI text. Snapshot no longer allocates/binds/clears a GL scratch target or reconciles GL targets for capture size, and retries one exact-size Metal render after temporal-resource resize; preview/Refresh/Save-to-Disk await owner revalidation. |
-| M-007 | World scene and material correctness | doing | Probe simple/material/PBR/bump opaque batches plus tree, terrain, complete ordinary avatar/impostor, HDRI/WindLight sky and water are enumerated directly from CPU scene state with GL-independent transforms/state. Remaining pass families plus broad parity remain open. |
+| M-007 | World scene and material correctness | doing | Probe G-buffer and post-deferred families are enumerated directly from CPU scene state, including sorted alpha, transparent avatars, atmosphere, water haze/exclusion/surface and emissive replay. Broad parity remains open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,165 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation nor reflection-probe publication. Probe updates fail closed; GL filtering, cube/SH storage and reflection UBO are removed. Retained GL scene traversal/context and remaining producer side effects remain. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation nor reflection-probe publication. Probe updates fail closed; GL processing/storage and post-deferred pool draws are removed from probe faces. Retained GL face clear/deferred-lighting drivers, context and resource side effects remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
@@ -79,6 +79,14 @@ transactions fail closed. `437d8a584e` deletes the GL probe post-chain,
 scratch resources, cube/SH publication storage and reflection UBO. Direct Metal
 radiance and matching SH are now the only published probe generation.
 
+Commits `51282740b5` through `04d52899ae` replace retained reflection scene
+triggers with direct CPU enumeration. The native probe transaction now owns the
+opaque G-buffer and complete ordered post-deferred scene: water exclusion,
+fullbright/shiny/bump/glow, transparent avatars, water haze, sorted pre/post
+water alpha, atmosphere and water. Probe faces return before GL pool, stencil,
+fullscreen haze and water draws. Remaining GL face clear/deferred-lighting
+drivers and resource/context ownership are the next cut, not a fallback.
+
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
 resources avoid GL names; dual backing remains only where retained GL consumers
@@ -94,9 +102,10 @@ swap. Exact prior evidence remains in the
 - `verify_app.sh`: 349/349 ARM64 Mach-O slices; deep strict signing passes.
 - Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
   UI 56/1. Shared baseline retains 5 known Apple GL failures/4 cases.
-- `437d8a584e`: warnings-as-errors RelWithDebInfo build passes; focused
+- `04d52899ae`: warnings-as-errors RelWithDebInfo build passes; focused
   benchmark tests pass 49/8, `alrender_tests` 557,301/136, harness 31/31 and
-  app verification 349/349 ARM64 slices.
+  app verification 349/349 ARM64 slices. Deep strict signing passes; executable
+  SHA-256 is `8d9cfb66f49de3efd6320f3b3531323f757789ccc5f1c5699ab86f57c7f3593d`.
 - Strict inventory is 3,165 findings and exits 1; both APIs remain linked.
 
 ## Owner-attended visual review cadence
@@ -123,12 +132,12 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Continue indexed/masked and remaining pass-family enumeration, then remove the
-retained GL probe/world traversal and its side effects. Do not wait for
-Snapshot, exposure or mirror visual review: the native paths intentionally
-expose failures instead of reverting to GL. Continue owner-by-owner GL resource
-and context removal without restoring probe publication or presentation
-fallbacks.
+Remove the retained GL face clear and deferred-lighting/fullscreen traversal now
+that reflection G-buffer and post-deferred scene enumeration is native. Do not
+wait for Snapshot, exposure, mirror or direct-probe visual review: native paths
+intentionally expose failures instead of reverting to GL. Continue owner-by-
+owner GL resource and context removal without restoring publication or
+presentation fallbacks.
 Keep visual cases queued and do not launch viewers autonomously.
 
 ## Non-negotiable open gates

@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `437d8a584e`
+**Renderer code checkpoint:** `04d52899ae`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -88,11 +88,13 @@ preview, Refresh has no effect and Save to Disk performs no action: NOT OK.
 Both viewers are closed; no autonomous screenshots were taken.
 
 M-003, M-004, M-007, M-008, M-009 and M-011 are `doing`; M-012 is complete.
-Commits `7a9878949d` and `51425778e1` move native producers off the GL image registry
-and make the window the Metal-device authority. Commits `10e08508eb` and
-`437d8a584e` make probes fail closed and delete GL blur/mip/radiance/SH
-processing, cube/SH storage and reflection UBO. Metal radiance plus matching SH
-are the only probe publication; GL scene traversal remains during cutover.
+Commits through `69b210a4f2` make probes fail closed, delete GL probe
+processing/storage and suppress duplicate GL G-buffer draws. `04d52899ae`
+directly enumerates every post-deferred family: water exclusion, fullbright,
+shiny/bump, glow, avatar transparency, atmosphere, water haze/surface and
+sorted alpha. Faces no longer execute post-deferred GL pool, stencil, haze or
+water draws. Metal radiance/SH alone publish; GL face clear/deferred-lighting
+drivers and the live context remain during cutover.
 
 Earlier native terrain, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -120,9 +122,9 @@ until the owner-attended review records that result.
   Viewer SHA-256: `c9bf95b8a8d6c9f36c437c16b913feb5d3f1e9bcd77e9b5c69965992af2527a8`.
 - Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
   UI 56/1. Shared-context baseline retains 5 known Apple GL failures/4 cases.
-- At `437d8a584e`, the warnings-as-errors RelWithDebInfo app builds; focused
-  benchmark tests pass 49/8, `alrender_tests` pass 557,301/136, harness tests
-  pass 31/31 and `verify_app.sh` accepts 349/349 ARM64 slices.
+- At `04d52899ae`, RelWithDebInfo builds; focused benchmark tests pass 49/8,
+  `alrender_tests` 557,301/136, harness 31/31 and app verification 349/349
+  ARM64 slices. Deep signing passes; executable SHA-256 is `8d9cfb66f49de3efd6320f3b3531323f757789ccc5f1c5699ab86f57c7f3593d`.
 - Strict GL inventory is 3,165 findings and exits 1. Both APIs remain
   linked; static, linked and runtime no-GL release gates remain open.
 
@@ -131,11 +133,11 @@ until the owner-attended review records that result.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | Native producers use the window-owned Metal device rather than the GL image registry. Converted resources/previews retain truthful native state. Metal solely presents; Snapshot has no GL capture target. Live GL traversal/context remain. |
-| M-007 world/material | doing | Reflection-probe simple/material/PBR/bump opaque batches, tree, terrain, complete ordinary avatar/impostor, HDRI/WindLight sky and water are enumerated directly from CPU scene state; transforms/state are GL-independent. Remaining pass enumeration and broad parity remain open. |
+| M-007 world/material | doing | Reflection-probe G-buffer and post-deferred families are enumerated directly from CPU scene state, including sorted alpha, avatar transparency, atmosphere, water haze/exclusion/surface and emissive replay. Broad parity remains open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,165 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Probe updates advance only after native face publication. GL probe blur/mips/filter/SH, cube storage and reflection UBO are removed; Metal owns coherent radiance/SH. Retained GL scene traversal and remaining family/side-effect ownership are next. |
+| M-011 GL authority removal | doing | Probe updates advance only after native face publication. GL probe processing/storage and post-deferred pool draws are removed from faces; Metal owns coherent scene/radiance/SH. Retained GL face clear/deferred-lighting drivers, context and resource owners are next. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
@@ -153,8 +155,6 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Remove retained GL probe/world traversal after deterministic native enumeration; never restore GL fallback.
-2. Continue deleting GL resource/context consumers owner by owner; probe
-   publication and Snapshot size/readback have no GL storage authority.
-3. Keep Snapshot, exposure and authored-mirror revalidation queued for the next
-   owner-attended visual session; do not launch either viewer autonomously.
+1. Remove retained GL face clear/deferred-lighting traversal; never restore fallback.
+2. Continue deleting GL resource/context consumers owner by owner.
+3. Keep visual failures queued; do not launch either viewer autonomously.
