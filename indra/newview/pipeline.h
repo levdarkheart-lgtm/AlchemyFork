@@ -1104,7 +1104,7 @@ public:
         ALMetalWorldLegacyAlphaLighting& lighting);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
-    void captureMetalReflectionProbeDrawMaps();
+    void captureMetalReflectionProbeScene();
     void captureMetalWorldMaterialBatch(const LLDrawInfo& params,
                                         bool indexed_materials);
     void captureMetalWorldPBRBatch(const LLDrawInfo& params,
@@ -1124,7 +1124,7 @@ public:
     void captureMetalDebugAlphaBatch(
         const LLDrawInfo& params, LLViewerTexture* texture,
         const LLColor4& color);
-    void captureMetalWorldTreeBatch(LLVertexBuffer* buffer,
+    void captureMetalWorldTreeBatch(LLFace* face,
                                     LLViewerTexture* texture);
     void captureMetalWorldTerrainBatch(
         LLFace* face, LLViewerTexture* const* detail_textures,
