@@ -381,12 +381,15 @@ bool LLGLTexture::isGLTextureCreated() const
     return mGLTexturep->isGLTextureCreated() ;
 }
 
-void LLGLTexture::destroyGLTexture()
+void LLGLTexture::destroyGPUTexture()
 {
-    if(mGLTexturep.notNull() && mGLTexturep->getHasGLTexture())
+    if (mGLTexturep.notNull() && mGLTexturep->getHasGPUTexture())
     {
-        mGLTexturep->destroyGLTexture() ;
-        mTextureState = DELETED ;
+        // LLImageGL owns both transitional GL storage and authoritative Metal
+        // storage; its legacy-named destruction primitive releases whichever
+        // resources are present and reconciles their accounting.
+        mGLTexturep->destroyGLTexture();
+        mTextureState = DELETED;
     }
 }
 

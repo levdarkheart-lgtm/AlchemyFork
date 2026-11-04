@@ -106,7 +106,9 @@ public:
     S32 getFullHeight() const { return mFullHeight; }
 
     void generateGLTexture() ;
-    void destroyGLTexture() ;
+    // Drop the image's owned GPU residency regardless of whether GL or Metal
+    // is currently authoritative.
+    void destroyGPUTexture() ;
 
     //---------------------------------------------------------------------------------------------
     //functions to access LLImageGL

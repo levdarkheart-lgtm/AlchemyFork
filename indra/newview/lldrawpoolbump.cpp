@@ -801,7 +801,7 @@ void LLBumpImageList::updateImages()
                 }
                 else
                 {
-                    image->destroyGLTexture();
+                    image->destroyGPUTexture();
                 }
             }
 
@@ -830,7 +830,7 @@ void LLBumpImageList::updateImages()
                 }
                 else
                 {
-                    image->destroyGLTexture();
+                    image->destroyGPUTexture();
                 }
             }
 

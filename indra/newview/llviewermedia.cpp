@@ -3526,7 +3526,7 @@ LLViewerMediaTexture* LLViewerMediaImpl::updateMediaImage()
         // native creation retires any prior fallback itself; other platforms retain the
         // explicit GL recreation behavior.
 #if !LL_DARWIN
-        media_tex->destroyGLTexture();
+        media_tex->destroyGPUTexture();
 #endif
 
         // MEDIAOPT: seems insane that we actually have to make an imageraw then

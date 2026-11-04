@@ -2149,6 +2149,37 @@ namespace
         CHECK(slot->getCurrType() == ALTextureSlot::TT_TEXTURE);
     }
 
+    TEST_CASE_METHOD(llimagegl_data, "LLGLTexture: native-only destruction releases Metal residency", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        const U64 baseline_bytes = LLImageGL::getTextureBytesAllocated();
+        LLPointer<LLGLTexture> texture = new LLGLTexture(/*usemipmaps=*/false);
+        REQUIRE(texture->createMetalTexture(0, makeRaw(8, 8, 4, 0x55).get()));
+        REQUIRE(texture->getGLTexture()->getMetalTexture());
+        CHECK(texture->hasGPUTexture());
+        CHECK_FALSE(texture->hasGLTexture());
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes + 8 * 8 * 4);
+
+        texture->destroyGPUTexture();
+
+        CHECK_FALSE(texture->hasGPUTexture());
+        CHECK_FALSE(texture->hasGLTexture());
+        CHECK(texture->getGLTexture()->getMetalTexture() == nullptr);
+        CHECK(texture->getDiscardLevel() == -1);
+        CHECK(texture->getTextureState() == LLGLTexture::DELETED);
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: native image upload updates Metal without touching GL", "[LLImageGL][almetal]")
     {
         std::string error;

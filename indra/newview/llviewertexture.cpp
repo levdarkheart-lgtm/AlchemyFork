@@ -1289,9 +1289,9 @@ void LLViewerFetchedTexture::setForSculpt()
     mForSculpt = true;
     // Not while a texture is being created for it: on the LLImageGL thread that would
     // publish its texture after this destroyed the old one. destroyTexture holds off too.
-    if(isForSculptOnly() && hasGLTexture() && !getBoundRecently() && !mNeedsCreateTexture)
+    if(isForSculptOnly() && hasGPUTexture() && !getBoundRecently() && !mNeedsCreateTexture)
     {
-        destroyGLTexture(); //sculpt image does not need gl texture.
+        destroyGPUTexture(); // Sculpt-only images do not need GPU residency.
         mTextureState = ACTIVE;
     }
     setMaxVirtualSizeResetInterval(MAX_INTERVAL);
@@ -1354,7 +1354,7 @@ void LLViewerFetchedTexture::destroyTexture()
     }
 
     //LL_DEBUGS("Avatar") << mID << LL_ENDL;
-    destroyGLTexture();
+    destroyGPUTexture();
     mFullyLoaded = false;
 }
 
@@ -2282,7 +2282,7 @@ void LLViewerFetchedTexture::clearFetchedResults()
     }
 
     cleanup();
-    destroyGLTexture();
+    destroyGPUTexture();
 
     if(getDiscardLevel() >= 0) //sculpty texture, force to invalidate
     {
