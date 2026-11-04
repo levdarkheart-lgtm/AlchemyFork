@@ -59,15 +59,19 @@ location, toolbar and FPS text. Metal evidence
 `418b56cfdd491ca2d7259a9907018597217147dfd7655c961dcb2f9418bdad92`.
 The owner explicitly excluded the temporarily absent Metal avatar from review.
 
-Reference run `reference-midday-lightbox-20261104-01` used pinned executable
-SHA-256 `fac5225435df2c096d10b856f6e0f186b37e41446576398ee8f4842b884ef28d`;
-its image SHA-256 is
-`be955aea1f385d000b660ff07812c71a49f32b40ec780052632588232167adbc`.
-The gross brightness comparison is blocked as settings-inequivalent: live LEAP
-showed Metal had drifted to dynamic exposure on / exposure 1.0, while reference
-remained off / 1.1. That candidate state drift is itself open. Separately, the
-Metal mirror was black while the reference showed reflected scene geometry, an
-owner-attended NOT OK result. No autonomous screenshots were taken.
+The first brightness pair was settings-inequivalent and is superseded. Clean
+owner-attended runs `metal-midday-lightbox-rerun-20261104-01` and
+`reference-midday-lightbox-rerun-20261104-01` forced dynamic exposure off and
+exposure 1.1, matched all other asserted controls and ended at identical global
+position `[261482.3005, 241431.3658, 24.5637]`. Metal image SHA-256 is
+`4aa3fb673ca3c0e650288cf36daf41d78e7fa0d3c08aaf94b175e097c501fc9e`;
+reference is `9330a018b41a00cf55b9056c7c6a8716129db3d34cf6f30765ccea533b6d79e1`.
+Window dimensions were close (2042x1538 versus 2054x1544). Metal remains much
+brighter with clipped pavement/foliage highlights and reduced tonal range:
+NOT OK. Its mirror is black while reference reflects sky, scene and avatar:
+NOT OK. The owner also reports the Metal Snapshot floater opens without a
+preview, Refresh has no effect and Save to Disk performs no action: NOT OK.
+Both viewers are closed; no autonomous screenshots were taken.
 
 M-003, M-004, M-007, M-008, M-009 and M-011 are `doing`; M-012 is complete.
 Commit `b27df920fc` completes direct ordinary/control-avatar probe enumeration,
@@ -132,8 +136,7 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Pause at the requested visual-validation checkpoint; the reference viewer
-   remains owner-controlled.
-2. After explicit resume, reproduce and repair exposure-setting drift, then
-   repair black-mirror parity under exact matched settings.
-3. Revalidate before continuing indexed pass removal or GL-gate cleanup.
+1. Pause at the requested visual-validation checkpoint; both viewers are closed.
+2. After explicit resume, repair Snapshot preview/save, matched-settings
+   lighting/tonemap parity and the black mirror.
+3. Revalidate the clean pair before indexed pass removal or GL-gate cleanup.

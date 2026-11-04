@@ -17,7 +17,7 @@ checkpoint detail belongs in the indexed archive.
 | M-003 | Native drawable, presentation and lifecycle | doing | Exact HDR/non-HDR world, presentation and ordered-UI Metal publication is default-on, fail-closed and machine-censused by current-frame failure boundary; dead restore authority/methods and redundant shutdown hooks are deleted. Live GL context creation/shutdown remains. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Reflection maps use backend-neutral logical slots and the manager owns backend resources; native cube/radiance/SH plus startup/local/HDRI/fetched publication, scale-down and eviction work at converted sites. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
-| M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while incomplete GL world frames own visible recovery UI; ordered native capture samples the Metal copy and complete fused Metal world/UI publication remains the cutover boundary. Deterministic coverage is green; owner validation and broader text/emoji/moving-media parity remain open. |
+| M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while incomplete GL world frames own visible recovery UI; owner accepted readable UI text. The Metal Snapshot floater currently has no preview, Refresh effect or Save-to-Disk action. Ordered native capture samples the Metal copy and complete fused Metal world/UI publication remains the cutover boundary. |
 | M-007 | World scene and material correctness | doing | Probe simple/material/PBR/bump opaque batches plus tree, terrain, complete ordinary avatar/impostor, HDRI/WindLight sky and water are enumerated directly from CPU scene state with GL-independent transforms/state. Remaining pass families plus broad parity remain open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,214 findings), linked/runtime no-GL and visual review remain open. |
@@ -108,11 +108,14 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Font/UI recovery is owner-accepted. The Midday/Lightbox comparison is not
-settings-equivalent because Metal drifted to dynamic exposure on / exposure
-1.0 while reference remained off / 1.1; record that state defect and the black
-Metal mirror, then pause. After explicit resume, reproduce the drift and repair
-exposure/tonemap and mirror parity before continuing indexed pass removal.
+Font/UI recovery is owner-accepted. The clean Midday/Lightbox pair forced and
+verified identical exposure/graphics controls and final position. Metal image
+`4aa3fb673ca3c0e650288cf36daf41d78e7fa0d3c08aaf94b175e097c501fc9e`
+remains washed out with clipped highlights and a black mirror; reference image
+`9330a018b41a00cf55b9056c7c6a8716129db3d34cf6f30765ccea533b6d79e1`
+has retained tonal range and a live reflection. The owner also found Snapshot
+preview, Refresh and Save to Disk nonfunctional in Metal. Pause; after explicit
+resume repair these three paths before continuing indexed pass removal.
 
 ## Non-negotiable open gates
 
