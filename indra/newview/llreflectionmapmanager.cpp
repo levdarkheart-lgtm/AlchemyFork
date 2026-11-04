@@ -1557,14 +1557,20 @@ void LLReflectionMapManager::update()
                 updateProbeFace(closestDynamic, i, true) &&
                 native_realtime_pass_complete;
         }
-        mRealtimeRadiancePass = !mRealtimeRadiancePass;
+        // A native probe pass is transactional. Keep the same half selected
+        // when any face fails so the next frame retries it instead of
+        // treating the retained GL work as a usable fallback generation.
+        if (native_realtime_pass_complete)
+        {
+            mRealtimeRadiancePass = !mRealtimeRadiancePass;
+        }
 
         // Reserve the following frame for the dependent radiance half when
         // an otherwise-idle realtime irradiance pass has queued native SH.
         // Starting a scheduled face zero below would replace the shared
         // scratch owner before the coherent pair could publish.
-        if (!realtime_radiance_pass &&
-            native_realtime_pass_complete)
+        if (!native_realtime_pass_complete ||
+            !realtime_radiance_pass)
         {
             did_update = true;
         }
@@ -1847,7 +1853,13 @@ void LLReflectionMapManager::doProbeUpdate()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
     llassert(mUpdatingProbe != nullptr);
 
-    updateProbeFace(mUpdatingProbe, mUpdatingFace);
+    // Do not advance the logical transaction unless the native face was
+    // published. The GL traversal still enumerates retained scene families
+    // during the cutover, but it is no longer completion authority.
+    if (!updateProbeFace(mUpdatingProbe, mUpdatingFace))
+    {
+        return;
+    }
 
     bool debug_updates = gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_PROBE_UPDATES) && mUpdatingProbe->mViewerObject;
 
@@ -1935,6 +1947,14 @@ bool LLReflectionMapManager::updateProbeFace(
 #endif
 
     gPipeline.mRT = &gPipeline.mMainRT;
+
+#if LL_DARWIN
+    // The native face producer performs its own mip generation, SH
+    // projection, radiance filtering and coherent publication. Do not run
+    // the retained GL post-processing path after it: an incomplete native
+    // transaction keeps the preceding coherent Metal generation.
+    return native_face_published;
+#endif
 
     S32 sourceIdx = mReflectionProbeCount;
 
@@ -2173,11 +2193,7 @@ bool LLReflectionMapManager::updateProbeFace(
         }
     }
 
-#if LL_DARWIN
-    return native_face_published;
-#else
     return false;
-#endif
 }
 
 U32 LLReflectionMapManager::shProjectionRes(S32& mip) const
