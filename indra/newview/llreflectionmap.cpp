@@ -56,11 +56,29 @@ void LLReflectionMap::update(U32 resolution, U32 face, bool force_dynamic, F32 n
     mLastUpdateTime = gFrameTimeSeconds;
     //llassert(LLPipeline::sRenderDeferred);
 
-    // make sure we don't walk off the edge of the render target
-    while (resolution > gPipeline.mRT->deferredScreen.getWidth() ||
-        resolution > gPipeline.mRT->deferredScreen.getHeight())
+    // Make sure we do not walk off the active backend's planned face. Native
+    // probe capture has no dependency on the retained GL G-buffer allocation.
+#if LL_DARWIN
+    if (gPipeline.isMetalProbeFaceCaptureActive())
     {
-        resolution /= 2;
+        const std::optional<ALRenderTargetDesc>& planned =
+            gPipeline.resourcePlan().desc(ALRenderResourcePlan::inPack(
+                gPipeline.renderPack(), ALRenderResourcePlan::Slot::GBuffer));
+        if (!planned || planned->width == 0 ||
+            planned->height != planned->width)
+        {
+            return;
+        }
+        resolution = planned->width;
+    }
+    else
+#endif
+    {
+        while (resolution > gPipeline.mRT->deferredScreen.getWidth() ||
+            resolution > gPipeline.mRT->deferredScreen.getHeight())
+        {
+            resolution /= 2;
+        }
     }
 
     F32 clip = (near_clip > 0) ? near_clip : getNearClip();

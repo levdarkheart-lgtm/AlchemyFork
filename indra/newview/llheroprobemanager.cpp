@@ -321,22 +321,43 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
         gPipeline.beginMetalHeroProbeFaceCapture(
             mNearestHero->getID(), mMetalRadianceEpoch, face,
             static_cast<U32>(std::lround(mMaxProbeLOD)));
-#endif
-    probe->update(mRenderTarget.getWidth(), face, is_dynamic, near_clip);
-#if LL_DARWIN
-    if (native_face_capture)
+    if (!native_face_capture)
     {
-        mMetalRadianceCaptureComplete =
-            gPipeline.endMetalHeroProbeFaceCapture() &&
-            mMetalRadianceCaptureComplete;
+        // Native mirror authority fails closed while its renderer/resources
+        // warm or are unavailable. Do not render a hidden GL face that cannot
+        // become the published Metal hero probe.
+        mMetalRadianceCaptureComplete = false;
+        gPipeline.mRT = &gPipeline.mMainRT;
+        return;
     }
-    else
+    const std::optional<ALRenderResourcePlan::ProbeManager>& planned =
+        gPipeline.resourcePlan().heroProbes();
+    if (!planned || planned->mResolution == 0)
     {
         mMetalRadianceCaptureComplete = false;
+        gPipeline.endMetalHeroProbeFaceCapture();
+        gPipeline.mRT = &gPipeline.mMainRT;
+        return;
     }
+    const U32 face_resolution = planned->mResolution;
+#else
+    const U32 face_resolution = mRenderTarget.getWidth();
+#endif
+    probe->update(face_resolution, face, is_dynamic, near_clip);
+#if LL_DARWIN
+    mMetalRadianceCaptureComplete =
+        gPipeline.endMetalHeroProbeFaceCapture() &&
+        mMetalRadianceCaptureComplete;
 #endif
 
     gPipeline.mRT = &gPipeline.mMainRT;
+
+#if LL_DARWIN
+    // endMetalHeroProbeFaceCapture retained the exact native face in the
+    // Metal source cube. The GL gaussian/downsample/mip-copy chain below is a
+    // superseded second producer and must not run on the native-only viewer.
+    return;
+#endif
 
     S32 sourceIdx = mReflectionProbeCount;
 
@@ -449,6 +470,19 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
 void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
+#if LL_DARWIN
+    ++mMetalRadianceGeneration;
+    if (mMetalRadianceGeneration == 0)
+    {
+        ++mMetalRadianceGeneration;
+    }
+    mMetalRadianceReady = mMetalRadianceCaptureComplete &&
+        mNearestHero.notNull() && !mNearestHero->isDead() &&
+        gPipeline.publishMetalHeroProbeRadiance(
+            mNearestHero->getID(), mMetalRadianceGeneration,
+            mHeroProbeStrength);
+    return;
+#else
     S32 sourceIdx = mReflectionProbeCount;
 
     // Unlike the reflectionmap manager, all probes are considered "realtime" for hero probes.
@@ -514,14 +548,6 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
         ++mMetalRadianceGeneration;
     }
     mMetalRadianceReady = true;
-#if LL_DARWIN
-    if (mMetalRadianceCaptureComplete && mNearestHero.notNull() &&
-        !mNearestHero->isDead())
-    {
-        gPipeline.publishMetalHeroProbeRadiance(
-            mNearestHero->getID(), mMetalRadianceGeneration,
-            mHeroProbeStrength);
-    }
 #endif
 }
 

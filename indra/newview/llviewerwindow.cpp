@@ -6392,7 +6392,29 @@ bool LLViewerWindow::cubeSnapshot(const LLVector3& origin, S32 face,
     llassert(LLPipeline::sRenderDeferred);
     llassert(!gCubeSnapshot); //assert a snapshot isn't already in progress
 
-    U32 res = gPipeline.mRT->deferredScreen.getWidth();
+#if LL_DARWIN
+    const bool native_probe_face =
+        gPipeline.isMetalProbeFaceCaptureActive();
+#else
+    constexpr bool native_probe_face = false;
+#endif
+    U32 res = 0;
+    if (native_probe_face)
+    {
+        const std::optional<ALRenderTargetDesc>& planned =
+            gPipeline.resourcePlan().desc(ALRenderResourcePlan::inPack(
+                gPipeline.renderPack(), ALRenderResourcePlan::Slot::GBuffer));
+        if (!planned || planned->width == 0 ||
+            planned->height != planned->width)
+        {
+            return false;
+        }
+        res = planned->width;
+    }
+    else
+    {
+        res = gPipeline.mRT->deferredScreen.getWidth();
+    }
 
     //llassert(res <= gPipeline.mRT->deferredScreen.getWidth());
     //llassert(res <= gPipeline.mRT->deferredScreen.getHeight());
@@ -6424,7 +6446,10 @@ bool LLViewerWindow::cubeSnapshot(const LLVector3& origin, S32 face,
 
     gPipeline.pushRenderTypeMask();
 
-    gGL.clear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // stencil buffer is deprecated | GL_STENCIL_BUFFER_BIT);
+    if (!native_probe_face)
+    {
+        gGL.clear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // stencil buffer is deprecated | GL_STENCIL_BUFFER_BIT);
+    }
 
     U32 dynamic_render_types[] = {
         LLPipeline::RENDER_TYPE_AVATAR,
@@ -6530,7 +6555,10 @@ bool LLViewerWindow::cubeSnapshot(const LLVector3& origin, S32 face,
     // restore original view/camera/avatar settings settings
     *camera = saved_camera;
     LLViewerCamera::setCurrent(saved_current);
-    setup3DViewport();
+    if (!native_probe_face)
+    {
+        setup3DViewport();
+    }
     LLPipeline::sUseOcclusion = old_occlusion;
 
     // ====================================================

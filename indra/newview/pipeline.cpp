@@ -1834,19 +1834,16 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         return;
     }
     const std::optional<ALRenderTargetDesc>& descriptor =
-        mResourcePlan.desc(ALRenderResourcePlan::Id::MainGBuffer);
+        mResourcePlan.desc(ALRenderResourcePlan::inPack(
+            renderPack(), ALRenderResourcePlan::Slot::GBuffer));
     const bool native_size_override = snapshot_request &&
         main_world_capture && mMetalSizeOverrideActive;
     const U32 capture_width = native_size_override
         ? mMetalSizeOverrideWidth
-        : probe_face && mRT
-            ? mRT->deferredScreen.getWidth()
-            : descriptor ? descriptor->width : 0;
+        : descriptor ? descriptor->width : 0;
     const U32 capture_height = native_size_override
         ? mMetalSizeOverrideHeight
-        : probe_face && mRT
-            ? mRT->deferredScreen.getHeight()
-            : descriptor ? descriptor->height : 0;
+        : descriptor ? descriptor->height : 0;
     if (!device || capture_width == 0 || capture_height == 0)
     {
         // Startup can reach the draw-pool owner before the durable Metal
@@ -11505,7 +11502,7 @@ void LLPipeline::invalidateMetalReflectionProbeScene()
 
 void LLPipeline::captureMetalReflectionProbeScene()
 {
-    if (!mMetalReflectionWorldCaptureActive ||
+    if (!isMetalProbeFaceCaptureActive() ||
         !mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->frame_active)
     {
@@ -11855,7 +11852,7 @@ void LLPipeline::captureMetalReflectionProbeScene()
 
 void LLPipeline::captureMetalReflectionProbeAvatarAlpha(U32 pool_type)
 {
-    if (!mMetalReflectionWorldCaptureActive ||
+    if (!isMetalProbeFaceCaptureActive() ||
         !mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->frame_active ||
         !mMetalWorldSimpleCapture->world_post_deferred_active ||
@@ -11891,7 +11888,7 @@ void LLPipeline::captureMetalReflectionProbeAvatarAlpha(U32 pool_type)
 
 void LLPipeline::captureMetalReflectionProbePostDeferred()
 {
-    if (!mMetalReflectionWorldCaptureActive ||
+    if (!isMetalProbeFaceCaptureActive() ||
         !mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->frame_active ||
         !mMetalWorldSimpleCapture->world_post_deferred_active ||
@@ -13634,10 +13631,8 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
                     sizeof(constants.shadow_clip));
         constants.resolution[0] = mDeferredUBOData.shadow_res[0];
         constants.resolution[1] = mDeferredUBOData.shadow_res[1];
-        constants.resolution[2] =
-            static_cast<F32>(mRT->deferredScreen.getWidth());
-        constants.resolution[3] =
-            static_cast<F32>(mRT->deferredScreen.getHeight());
+        constants.resolution[2] = static_cast<F32>(capture.width);
+        constants.resolution[3] = static_cast<F32>(capture.height);
         constants.parameters[0] = mDeferredUBOData.shadow_bias;
         constants.parameters[1] = mDeferredUBOData.shadow_offset;
         constants.parameters[2] = mDeferredUBOData.shadow_pcss_scale;
@@ -13672,10 +13667,8 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
                     sizeof(constants.shadow_clip));
         constants.resolution[0] = mDeferredUBOData.shadow_res[0];
         constants.resolution[1] = mDeferredUBOData.shadow_res[1];
-        constants.resolution[2] =
-            static_cast<F32>(mRT->deferredScreen.getWidth());
-        constants.resolution[3] =
-            static_cast<F32>(mRT->deferredScreen.getHeight());
+        constants.resolution[2] = static_cast<F32>(capture.width);
+        constants.resolution[3] = static_cast<F32>(capture.height);
         constants.parameters[0] = mDeferredUBOData.shadow_bias;
         constants.parameters[1] = mDeferredUBOData.shadow_offset;
         constants.parameters[2] = mDeferredUBOData.shadow_pcss_scale;
@@ -14857,6 +14850,7 @@ void LLPipeline::endMetalSpotShadowCapture()
     const bool directional = capture.spot_shadow_capture_directional;
     capture.spot_shadow_capture_directional = false;
     const bool complete = capture.spot_shadow_capture_complete &&
+        capture.renderer && capture.device &&
         capture.spot_shadow_batches.size() ==
             capture.spot_shadow_expected_batches;
     capture.spot_shadow_capture_complete = false;
@@ -15020,10 +15014,8 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
                     sizeof(constants.shadow_clip));
         constants.resolution[0] = static_cast<F32>(width);
         constants.resolution[1] = static_cast<F32>(height);
-        constants.resolution[2] =
-            static_cast<F32>(mRT->deferredScreen.getWidth());
-        constants.resolution[3] =
-            static_cast<F32>(mRT->deferredScreen.getHeight());
+        constants.resolution[2] = static_cast<F32>(capture.width);
+        constants.resolution[3] = static_cast<F32>(capture.height);
         constants.parameters[0] = mDeferredUBOData.spot_shadow_bias;
         constants.parameters[1] = mDeferredUBOData.spot_shadow_offset;
         constants.parameters[2] = mDeferredUBOData.shadow_pcss_scale;
@@ -22216,9 +22208,9 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
     }
 
 #if LL_DARWIN
-    if (mMetalReflectionWorldCaptureActive)
+    if (isMetalProbeFaceCaptureActive())
     {
-        // The reflection face owns its complete G-buffer scene directly.
+        // The native probe face owns its complete G-buffer scene directly.
         // Return before legacy light setup, pool prerender, shader/UBO binds,
         // GL state checks and matrix/color-mask mutation.
         beginMetalWorldGBufferCapture();
@@ -22410,9 +22402,9 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
     calcNearbyLights(camera);
 
 #if LL_DARWIN
-    if (mMetalReflectionWorldCaptureActive)
+    if (isMetalProbeFaceCaptureActive())
     {
-        // Reflection faces enumerate the complete ordered post-deferred
+        // Native reflection and hero faces enumerate the complete ordered post-deferred
         // scene from CPU render maps. No GL pool draw, stencil pass or
         // fullscreen haze draw is needed to produce the native face.
         captureMetalReflectionProbePostDeferred();
@@ -29282,20 +29274,46 @@ void LLPipeline::packDeferredUBO()
     // A pack's cascades share one size, and the spot pair another. Each is read from a map that was built: one that was
     // not has no size, and the filters over the maps that were divide by it.
     const U32 unbuilt = unbuiltShadowMaps();
-    const LLRenderTarget* sun_map  = &mRT->shadow[0];
-    const LLRenderTarget* spot_map = &mSpotShadow[(unbuilt & (1u << 4)) ? 1 : 0];
-    for (U32 i = 0; i < 4; ++i)
+#if LL_DARWIN
+    if (isMetalProbeFaceCaptureActive())
     {
-        if (!(unbuilt & (1u << i)))
-        {
-            sun_map = &mRT->shadow[i];
-            break;
-        }
+        // Native reflection lighting consumes only native shadow packs. The
+        // resource plan is their size contract even when no retained GL
+        // shadow target was built; the unbuilt mask prevents missing slices
+        // from being sampled.
+        const std::optional<ALRenderTargetDesc>& sun_desc =
+            mResourcePlan.desc(ALRenderResourcePlan::sunShadow(
+                renderPack(), 0));
+        const std::optional<ALRenderTargetDesc>& spot_desc =
+            mResourcePlan.desc(ALRenderResourcePlan::Id::SpotShadow0);
+        d.shadow_res[0] = static_cast<F32>(
+            sun_desc ? std::max(sun_desc->width, 1u) : 1u);
+        d.shadow_res[1] = static_cast<F32>(
+            sun_desc ? std::max(sun_desc->height, 1u) : 1u);
+        d.proj_shadow_res[0] = static_cast<F32>(
+            spot_desc ? std::max(spot_desc->width, 1u) : 1u);
+        d.proj_shadow_res[1] = static_cast<F32>(
+            spot_desc ? std::max(spot_desc->height, 1u) : 1u);
     }
-    d.shadow_res[0]      = (F32)sun_map->getWidth();
-    d.shadow_res[1]      = (F32)sun_map->getHeight();
-    d.proj_shadow_res[0] = (F32)spot_map->getWidth();
-    d.proj_shadow_res[1] = (F32)spot_map->getHeight();
+    else
+#endif
+    {
+        const LLRenderTarget* sun_map  = &mRT->shadow[0];
+        const LLRenderTarget* spot_map =
+            &mSpotShadow[(unbuilt & (1u << 4)) ? 1 : 0];
+        for (U32 i = 0; i < 4; ++i)
+        {
+            if (!(unbuilt & (1u << i)))
+            {
+                sun_map = &mRT->shadow[i];
+                break;
+            }
+        }
+        d.shadow_res[0]      = (F32)sun_map->getWidth();
+        d.shadow_res[1]      = (F32)sun_map->getHeight();
+        d.proj_shadow_res[0] = (F32)spot_map->getWidth();
+        d.proj_shadow_res[1] = (F32)spot_map->getHeight();
+    }
 
     // Reverse-Z shadow maps store reversed depth and sample with GEQUAL, so the receiver
     // reference is pushed the other way: negate the bias at this single assembly site.
@@ -29580,9 +29598,9 @@ void LLPipeline::renderDeferredLighting()
     }
 
 #if LL_DARWIN
-    if (mMetalReflectionWorldCaptureActive)
+    if (isMetalProbeFaceCaptureActive())
     {
-        // A native reflection face does not need a GL light map, accumulation
+        // A native probe face does not need a GL light map, accumulation
         // target or fullscreen pass. Publish the CPU lighting inputs directly
         // and run the established Metal owners in their dependency order.
         LLViewerCamera* camera = LLViewerCamera::getInstance();
@@ -31501,6 +31519,36 @@ U32 LLPipeline::unbuiltShadowMaps() const
 {
     const U32 cascades = sunCascades();
     U32 unbuilt = 0;
+#if LL_DARWIN
+    if (isMetalProbeFaceCaptureActive())
+    {
+        const MetalWorldSimpleCapture* capture =
+            mMetalWorldSimpleCapture.get();
+        for (U32 i = 0; i < 4; ++i)
+        {
+            const std::optional<ALRenderTargetDesc>& planned =
+                mResourcePlan.desc(ALRenderResourcePlan::sunShadow(
+                    renderPack(), i));
+            if (i >= cascades || !planned || planned->width == 0 ||
+                planned->height == 0 || !capture ||
+                !capture->direct_directional_shadow_valid[i])
+            {
+                unbuilt |= 1u << i;
+            }
+        }
+        for (U32 i = 0; i < 2; ++i)
+        {
+            if (!mResourcePlan.wants(
+                    i == 0 ? ALRenderResourcePlan::Id::SpotShadow0
+                           : ALRenderResourcePlan::Id::SpotShadow1) ||
+                !capture || !capture->direct_projector_shadow_valid[i])
+            {
+                unbuilt |= 1u << (4 + i);
+            }
+        }
+        return unbuilt;
+    }
+#endif
     for (U32 i = 0; i < 4; ++i)
     {
         if (i >= cascades || !mRT->shadow[i].isComplete())
@@ -31585,10 +31633,10 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
     LLDisableOcclusionCulling no_occlusion;
 #if LL_DARWIN
-    const bool native_reflection_shadow =
-        isMetalReflectionProbeCaptureActive();
+    const bool native_probe_shadow =
+        isMetalProbeFaceCaptureActive();
 #else
-    constexpr bool native_reflection_shadow = false;
+    constexpr bool native_probe_shadow = false;
 #endif
 
     bool skip_avatar_update = false;
@@ -31675,7 +31723,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     // The caller's mask comes back on every exit, the early one for an empty point cloud
     // included.
     std::unique_ptr<LLGLSColorMask> color_mask;
-    if (!native_reflection_shadow)
+    if (!native_probe_shadow)
     {
         color_mask = std::make_unique<LLGLSColorMask>(false, false);
     }
@@ -31701,6 +31749,44 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
     LLMatrix4a view[6];
     LLMatrix4a proj[6];
+
+    const auto shadow_dimensions =
+        [this, native_probe_shadow](U32 cascade,
+                                         U32& width, U32& height)
+    {
+#if LL_DARWIN
+        if (native_probe_shadow)
+        {
+            const std::optional<ALRenderTargetDesc>& planned =
+                mResourcePlan.desc(ALRenderResourcePlan::sunShadow(
+                    renderPack(), cascade));
+            if (!planned || planned->width == 0 ||
+                planned->height == 0 || !mMetalWorldSimpleCapture ||
+                !mMetalWorldSimpleCapture->renderer ||
+                !mMetalWorldSimpleCapture->device)
+            {
+                return false;
+            }
+            const U32 max_dimension = mMetalWorldSimpleCapture->device->info()
+                .max_texture_2d_dimension;
+            if (planned->width > max_dimension ||
+                planned->height > max_dimension)
+            {
+                return false;
+            }
+            width = planned->width;
+            height = planned->height;
+            return true;
+        }
+#endif
+        if (!mRT->shadow[cascade].isComplete())
+        {
+            return false;
+        }
+        width = mRT->shadow[cascade].getWidth();
+        height = mRT->shadow[cascade].getHeight();
+        return width != 0 && height != 0;
+    };
 
     LLVector3 caster_dir(environment.getIsSunUp() ? mSunDir : mMoonDir);
 
@@ -32041,9 +32127,11 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     mShadowCamera[j+4] = shadow_cam;
                 }
 
-                if (mRT->shadow[j].isComplete())
+                U32 shadow_width = 0;
+                U32 shadow_height = 0;
+                if (shadow_dimensions(j, shadow_width, shadow_height))
                 {
-                    if (!isMetalReflectionProbeCaptureActive())
+                    if (!native_probe_shadow)
                     {
                         mRT->shadow[j].bindTarget();
                         {
@@ -32056,8 +32144,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     // Retain the same explicit far-depth slice instead of
                     // leaving an older native cascade eligible for reuse.
                     beginMetalDirectionalShadowCapture(
-                        j, mRT->shadow[j].getWidth(),
-                        mRT->shadow[j].getHeight(), 0, true);
+                        j, shadow_width, shadow_height, 0, true);
                     endMetalSpotShadowCapture();
 #endif
                 }
@@ -32382,16 +32469,17 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             mSunShadowMatrix[j].setMul(mSunShadowMatrix[j], proj[j]);
             mSunShadowMatrix[j].setMul(mSunShadowMatrix[j], trans);
 
-            if (!native_reflection_shadow)
+            if (!native_probe_shadow)
             {
                 stop_glerror();
             }
 
             // A cascade whose map could not be built is not drawn, and its shadows are read lit (unbuiltShadowMaps).
-            if (mRT->shadow[j].isComplete())
+            U32 shadow_width = 0;
+            U32 shadow_height = 0;
+            if (shadow_dimensions(j, shadow_width, shadow_height))
             {
-                const bool direct_metal_shadow =
-                    isMetalReflectionProbeCaptureActive();
+                const bool direct_metal_shadow = native_probe_shadow;
                 if (!direct_metal_shadow)
                 {
                     mRT->shadow[j].bindTarget();
@@ -32414,8 +32502,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     countMetalShadowBatches(
                         native_batches, native_complete);
                     beginMetalDirectionalShadowCapture(
-                        j, mRT->shadow[j].getWidth(),
-                        mRT->shadow[j].getHeight(), native_batches,
+                        j, shadow_width, shadow_height, native_batches,
                         native_complete, &view[j], &proj[j]);
 #endif
                     if (direct_metal_shadow)
@@ -32658,7 +32745,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
         offset_cam.setModelview(view[1]);
         offset_cam.setProjection(proj[1]);
         LLViewerCamera::setCurrent(offset_cam);
-        if (!native_reflection_shadow)
+        if (!native_probe_shadow)
         {
             gGL.loadMatrix(view[1]);
             gGL.matrixMode(LLRender::MM_PROJECTION);
@@ -33817,6 +33904,36 @@ void LLPipeline::restoreHiddenObject( const LLUUID& id )
 
 void LLPipeline::skipRenderingShadows()
 {
+#if LL_DARWIN
+    if (isMetalProbeFaceCaptureActive())
+    {
+        if (!mMetalWorldSimpleCapture ||
+            !mMetalWorldSimpleCapture->renderer ||
+            !mMetalWorldSimpleCapture->device)
+        {
+            return;
+        }
+        const U32 max_dimension = mMetalWorldSimpleCapture->device->info()
+            .max_texture_2d_dimension;
+        for (U32 j = 0, cascades = sunCascades(); j < cascades; ++j)
+        {
+            const std::optional<ALRenderTargetDesc>& planned =
+                mResourcePlan.desc(ALRenderResourcePlan::sunShadow(
+                    renderPack(), j));
+            if (!planned || planned->width == 0 || planned->height == 0 ||
+                planned->width > max_dimension ||
+                planned->height > max_dimension)
+            {
+                continue;
+            }
+            beginMetalDirectionalShadowCapture(
+                j, planned->width, planned->height, 0, true);
+            endMetalSpotShadowCapture();
+        }
+        return;
+    }
+#endif
+
     LLGLDepthTest depth(GL_TRUE);
 
     for (U32 j = 0, cascades = sunCascades(); j < cascades; j++)

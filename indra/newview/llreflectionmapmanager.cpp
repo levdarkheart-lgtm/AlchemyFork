@@ -1861,6 +1861,14 @@ bool LLReflectionMapManager::updateProbeFace(
     const bool native_face_capture =
         gPipeline.beginMetalReflectionProbeFaceCapture(
             probe, face, isRadiancePass(), realtime_capture);
+    if (!native_face_capture)
+    {
+        // Native publication is the only probe authority. Warming or missing
+        // Metal resources defer this logical face; they do not trigger a
+        // hidden GL scene render whose result cannot be published.
+        gPipeline.mRT = &gPipeline.mMainRT;
+        return false;
+    }
     bool native_face_published = false;
 #endif
 

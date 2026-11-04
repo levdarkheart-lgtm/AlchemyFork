@@ -1434,15 +1434,15 @@ void display_cube_face()
     llassert(!LLAppViewer::instance()->logoutRequestSent());
     bool rebuild = false;
 #if LL_DARWIN
-    const bool native_reflection_face =
-        gPipeline.isMetalReflectionProbeCaptureActive();
+    const bool native_probe_face =
+        gPipeline.isMetalProbeFaceCaptureActive();
 #else
-    constexpr bool native_reflection_face = false;
+    constexpr bool native_probe_face = false;
 #endif
 
     std::unique_ptr<LLGLSDefault> gls_default;
     std::unique_ptr<LLGLDepthTest> gls_depth;
-    if (!native_reflection_face)
+    if (!native_probe_face)
     {
         gls_default = std::make_unique<LLGLSDefault>();
         gls_depth = std::make_unique<LLGLDepthTest>(
@@ -1453,7 +1453,7 @@ void display_cube_face()
 
     gPipeline.mBackfaceCull = true;
 
-    if (!native_reflection_face)
+    if (!native_probe_face)
     {
         gViewerWindow->setup3DViewport();
     }
@@ -1468,7 +1468,7 @@ void display_cube_face()
         gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_HUD_PARTICLES);
     }
 
-    display_update_camera(native_reflection_face);
+    display_update_camera(native_probe_face);
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Env Update");
@@ -1487,14 +1487,23 @@ void display_cube_face()
     LLPipeline::sUnderWaterRender = LLViewerCamera::getInstance()->cameraUnderWater();
     gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
 
-    if (!native_reflection_face)
+    if (!native_probe_face)
     {
         gGL.setColorMask(true, true);
         gGL.setClearColor(LLColor4::transparent);
     }
+#if LL_DARWIN
+    if (native_probe_face)
+    {
+        // Establish the native transaction before its directional shadows.
+        // This also resolves the Metal renderer/device and planned capture
+        // dimensions without consulting the retained GL G-buffer target.
+        gPipeline.beginMetalWorldGBufferCapture();
+    }
+#endif
     gPipeline.generateSunShadow(*LLViewerCamera::getInstance());
 
-    if (!native_reflection_face)
+    if (!native_probe_face)
     {
         gGL.clear(GL_DEPTH_BUFFER_BIT); // | GL_STENCIL_BUFFER_BIT);
     }
@@ -1521,7 +1530,7 @@ void display_cube_face()
 
     LLPipeline::sUnderWaterRender = LLViewerCamera::getInstance()->cameraUnderWater();
 
-    if (!native_reflection_face)
+    if (!native_probe_face)
     {
         gGL.setColorMask(true, true);
         gPipeline.mRT->deferredScreen.bindTarget();
@@ -1540,7 +1549,7 @@ void display_cube_face()
 
     gPipeline.renderGeomDeferred(*LLViewerCamera::getInstance());
 
-    if (!native_reflection_face)
+    if (!native_probe_face)
     {
         gPipeline.mRT->deferredScreen.flush();
     }

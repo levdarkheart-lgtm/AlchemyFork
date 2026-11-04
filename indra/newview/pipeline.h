@@ -1072,6 +1072,11 @@ public:
     {
         return mMetalReflectionWorldCaptureActive;
     }
+    bool isMetalProbeFaceCaptureActive() const
+    {
+        return mMetalHeroWorldCaptureActive ||
+            mMetalReflectionWorldCaptureActive;
+    }
     bool fillMetalImpostorScreenSpaceReflections();
     bool fillMetalImpostorDirectionalShadows();
     bool fillMetalWorldProjectorShadows();
