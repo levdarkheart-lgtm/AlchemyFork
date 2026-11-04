@@ -122,6 +122,7 @@ reload the chronological history.
 | Native-only HDRI RGBA16F publication and descriptor-exact per-texture accounting, source-exact build 68249, 2026-11-04 | [CURRENT-native-hdri-publication-checkpoint-2026-11-04.md](CURRENT-native-hdri-publication-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Native-only local-bitmap preview publication with retained material/avatar propagation, source-exact build 68251, 2026-11-04 | [CURRENT-native-local-bitmap-publication-checkpoint-2026-11-04.md](CURRENT-native-local-bitmap-publication-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Native abuse-report screenshot preview publication with retained capture/upload/UI behavior, source-exact build 68253, 2026-11-04 | [CURRENT-native-report-screenshot-preview-checkpoint-2026-11-04.md](CURRENT-native-report-screenshot-preview-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
+| Metal-authoritative local terrain-paint baking with retained geometry/weights/mips, source-exact build 68255, 2026-11-04 | [CURRENT-native-terrain-paint-bake-checkpoint-2026-11-04.md](CURRENT-native-terrain-paint-bake-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.

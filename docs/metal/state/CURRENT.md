@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `85036920be`
+**Renderer code checkpoint:** `aaf3bbcd2a`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -14,10 +14,10 @@ append-only archives.
 ## Active implementation checkpoint
 
 M-003, M-004, M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit
-`85036920be` publishes abuse-report screenshot previews directly to native
-Metal while retaining native capture, prior-screenshot PNG save, JPEG2000
-upload/cache data, asset identity, texture-picker display and upload callbacks.
-Preceding local-bitmap, HDRI, fetched and sculpt work remains active.
+`aaf3bbcd2a` makes local terrain-paint baking Metal-authoritative, retaining
+full-resolution region geometry, alpha-ramp composition, 1–8-bit weight
+precision, mips and local material behavior without its GL bake/copy pass.
+Preceding report-preview, local-bitmap, HDRI and fetched work remains active.
 The preceding pressure checkpoint remains active. Metal-only queue entries
 retain native scale-down behavior without a GL name, scratch target, copy
 shader or live GL manager; timeout/resume preserves retained work order.
@@ -91,12 +91,12 @@ until the owner-attended review records that result.
   unified memory, arm64 macOS 26.5.2, Xcode 26.6, Apple7 support and the Metal
   compiler present.
 - The exact `tools/metal/build.sh` invocation exited 0 at committed renderer
-  source `85036920be`; the warnings-as-errors Xcode Release build reported
-  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68253`
-  (`26.4.0.68253`).
+  source `aaf3bbcd2a`; the warnings-as-errors Xcode Release build reported
+  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68255`
+  (`26.4.0.68255`).
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64;
   deep strict code-sign verification passed. Viewer executable SHA-256 is
-  `d4946b03c64941ab7ffba22c6b36be248e3dd9a1d3f3de503fb53067b7d20811`.
+  `3090d9ea9eff67d705a30826c2f78ef5603b4b6d5537b5a7ba21998f241a8ef9`.
 - Source and packaged MSL are byte-identical at
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`;
   metallib SHA-256 is
@@ -104,20 +104,19 @@ until the owner-attended review records that result.
 - Source and packaged `settings_alchemy.xml` are byte-identical at
   `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
   an XML query confirms the packaged Metal-presentation default is `1`.
-- The changed production/test targets compiled warnings-as-errors. Native RGB
-  screenshot-preview expansion and mips passed 529 assertions/1 focused case;
-  full `newview_tests` passed 98,990/747 with the established CRT skip.
-  Physical Metal coverage passed 3,310 assertions/104 cases.
+- The changed production targets compiled and linked warnings-as-errors. The
+  physical terrain-bake pixel/orientation/mip case passed 289 assertions;
+  `almetal_tests` passed 52,526/56 and `newview_tests` passed 98,990/747 with
+  the established CRT skip.
 - Ninja Release linked and packaged the complete viewer warnings-as-errors.
 - The preceding source-exact physical baselines remain `almetal_tests` at
   52,526/56, `llappearance_gl_tests` at 13,208/3 and `alrender_tests` at
   557,301/136.
 - Harness structure validation passes for 32 required files; all 30 harness/tool
   tests and `git diff --check` pass. The documented strict-audit alias works.
-- Strict inventory remains 2,407 files / 3,224 findings / 2,912 unique records,
-  expected exit 1; this member-call cutover is outside its current patterns.
-  Report SHA-256:
-  `735d09412d60378f472f686024133b62968a87d163623434a9173c2d905ebf68`.
+- Strict inventory is 2,407 files / 3,220 findings / 2,909 unique records,
+  expected exit 1; no rule or suppression changed. Report SHA-256:
+  `36dd346df62e10ec6d19eeecee4b2e31f56e01b2cc59fd27ae23ac952dad2f9a`.
 - Both OpenGL and Metal remain linked. The static, linked and runtime no-GL
   release gates remain open.
 - No viewer executable was launched, driven, photographed or compared.
@@ -127,7 +126,7 @@ until the owner-attended review records that result.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | Report screenshots, local previews, HDRI, fetched publication, sculpt metadata, pressure scale-down and eviction are backend-correct at converted sites; native per-texture memory matches Metal storage. Exact presentation remains Metal-first/fail-closed. Live GL context creation/shutdown remains. |
-| M-007 world/material | doing | Metal world capture consumes native bump backing; opaque fullbright is corrected. Native legacy BLEND/stained-glass implementation and deterministic coverage exist; owner-attended visual and broad material parity remain open. |
+| M-007 world/material | doing | Local terrain-paint baking is Metal-authoritative with full geometry/weights/mips. Metal world capture consumes native bump backing; native legacy BLEND exists, while owner-attended visual and broad material parity remain open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,224 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
@@ -137,9 +136,9 @@ until the owner-attended review records that result.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Abuse reports retain capture, optional
-PNG save, JPEG2000 asset upload/cache and picker preview through native
-publication. No feature was deleted to remove its GL allocation.
+**Advances the complete product:** yes. Local terrain paint retains full region
+geometry, composition weights, selected precision, mips and material behavior
+through an authoritative Metal bake. No feature was deleted for the cutover.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -149,9 +148,8 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Make the existing native terrain-paint bake authoritative, preserving full
-   region geometry, alpha-ramp weights, bit-depth quantization, mips and local
-   terrain-material behavior before retiring its duplicate GL bake.
+1. Convert the next live Darwin texture producer only after tracing its full
+   consumers; the default/fetched bootstrap boundary is the current candidate.
 2. In the next owner-attended session, collect the default-path publication
    census without adding an independent viewer-comparison run. Use measured
    failure states to repair blockers, then retire GL recovery only when complete
