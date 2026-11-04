@@ -4,13 +4,13 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `945f071acf`
+**Renderer code checkpoint:** `ffe4e79dc3`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
 
-### Metal-only presentation authority; exposure/mirror parity failed
+### Metal-only presentation and selection authority; visual failures queued
 
 Two owner-attended candidates are explicitly rejected. Run
 `font-cache-replay-fix-20261104-01` (executable SHA-256
@@ -54,16 +54,11 @@ capture size and restores no GL target. Unsupported platforms decline rather
 than enter a legacy fallback. This is source/build evidence; case 30 remains
 open for owner-attended preview, Refresh and Save-to-Disk revalidation.
 
-The rebuilt Release package remains `26.4.0.68285`; its viewer executable
+The current Release package remains `26.4.0.68285`; its viewer executable
 SHA-256 is
-`c9bf95b8a8d6c9f36c437c16b913feb5d3f1e9bcd77e9b5c69965992af2527a8`.
+`9d8f6b1313ef0c1bf7cae936a30152b3b1c5ab60728d126809fa3ea0bb8f284f`.
 `tools/metal/verify_app.sh` accepted all 349 inspected Mach-O slices as ARM64
-and deep strict code-sign verification passed. Under Metal API/GPU validation,
-`llrender_gl_fresh_tests` passes 3,684 assertions in 110 cases; the focused
-dual-atlas cases pass 36 assertions in two cases and the real-FreeType native
-UI path passes 56 assertions. The older shared-context suite still reports its
-known Apple GL fence/depth-format failures (5 assertions across 4 cases), none
-in the changed font/UI ownership paths. `git diff --check` passes.
+and deep strict code-sign verification passed. `git diff --check` passes.
 
 Owner-attended run `font-dual-recovery-20261104-01` accepted readable menu,
 location, toolbar and FPS text. Metal evidence
@@ -96,6 +91,10 @@ missing resources fail closed. `2cea68f5de` deletes the hero GL storage/filter
 stack; `21562a1991` deletes four obsolete ordinary-probe GL programs and their
 six shaders. `945f071acf` deletes the dead GL terrain-paint bake program and its
 two shaders while retaining the tested native bake and live precision input.
+`210380eb74` makes native selection ID/depth, alpha cuts, rigging, wireframe,
+contour, hover glow, backdrop contrast and HUD output authoritative and deletes
+13 exclusive GLSL files. `ffe4e79dc3` deletes the six dead GL targets, palette
+texture, eight GL program objects, helpers and obsolete 3,892-line GL test.
 
 Earlier native terrain, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -123,29 +122,30 @@ until the owner-attended review records that result.
   Viewer SHA-256: `c9bf95b8a8d6c9f36c437c16b913feb5d3f1e9bcd77e9b5c69965992af2527a8`.
 - Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
   UI 56/1. Shared-context baseline retains 5 known Apple GL failures/4 cases.
-- At `945f071acf`, Ninja/Xcode, terrain GPU 289/1, benchmark 49/8, renderer
-  557,301/136, tools 31/31, 349/349 ARM64 and signing pass; executable SHA-256 is `32f13656fdae67c3af3374a5c9833cfc43d020d727b4b79bb3822ea59a979a20`.
-- Strict GL inventory is 3,133 findings and exits 1. Both APIs remain
+- At `ffe4e79dc3`, Ninja/Xcode, selection GPU 4,732/1, benchmark 49/8, renderer
+  557,301/136, tools 31/31, 349/349 ARM64 and signing pass; executable SHA-256
+  is `9d8f6b1313ef0c1bf7cae936a30152b3b1c5ab60728d126809fa3ea0bb8f284f`.
+- Strict GL inventory is 3,006 findings and exits 1. Both APIs remain
   linked; static, linked and runtime no-GL release gates remain open.
 
 ## Milestone snapshot
 
 | Area | State | Current fact |
 | --- | --- | --- |
-| M-003..M-006 platform/resources/UI | doing | Native producers use the window-owned Metal device rather than the GL image registry. Converted resources/previews retain truthful native state. Metal solely presents; Snapshot has no GL capture target. Live GL traversal/context remain. |
+| M-003..M-006 platform/resources/UI | doing | Native producers use the window-owned Metal device rather than the GL image registry. Converted resources/previews retain truthful native state. Metal solely presents; Snapshot has no GL capture target; selection effects use native targets only. Live GL traversal/context remain. |
 | M-007 world/material | doing | Reflection-probe G-buffer and post-deferred families are enumerated directly from CPU scene state, including sorted alpha, avatar transparency, atmosphere, water haze/exclusion/surface and emissive replay. Broad parity remains open. |
-| M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
-| M-009 parity/stability/no-GL | doing | Strict inventory is 3,133 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
+| M-008 advanced views/effects | doing | Color grading, PBR BRDF integration, previews, visual hints, avatar composites, selection contour/wireframe/glow, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation have Metal implementations. |
+| M-009 parity/stability/no-GL | doing | Strict inventory is 3,006 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Reflection and hero faces advance only after native publication. Their obsolete GL storage/generation shaders and the superseded terrain-bake GL program are deleted; direct Metal owners remain. |
+| M-011 GL authority removal | doing | Reflection/hero publication, terrain bake and selection effects have direct Metal owners. Their obsolete GL storage, programs, shaders and selection targets are deleted. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
 **Advances the complete product:** yes. Metal owns every visible viewer frame;
-Snapshot has no GL framebuffer or target-resize dependency, probe projector
-shadows render directly in Metal, and failed native work fails closed.
+Snapshot has no GL framebuffer, probe shadows and selection effects render
+directly in Metal, and failed native work fails closed.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -155,6 +155,6 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Continue through retained non-probe GL resource/draw owners.
+1. Continue through the next retained GL resource/draw owner.
 2. Re-run strict source/link/runtime gates after each owner cut.
 3. Keep visual failures queued; do not launch either viewer autonomously.
