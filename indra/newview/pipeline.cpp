@@ -867,22 +867,6 @@ static bool metalDebugColorRequested()
             LLPipeline::RENDER_DEBUG_FEATURE_UI);
 }
 
-static bool metalHeroMirrorSnapshotValidationRequested()
-{
-    static LLCachedControl<bool> validate_snapshot(
-        gSavedSettings, "ALMetalHeroMirrorSnapshotValidation", false);
-    // The wrapper deliberately builds its signed Development application with
-    // the optimized Release configuration, so LL_RELEASE_FOR_DOWNLOAD cannot
-    // distinguish that validation artifact from the public Release channel.
-    // Gate on the immutable compiled channel instead: CmdLineChannel cannot
-    // turn a public Alchemy Release binary into a mirror-validation build.
-    static constexpr std::string_view compiled_channel(
-        LL_TO_STRING(LL_VIEWER_CHANNEL));
-    static constexpr bool public_release_channel =
-        compiled_channel.starts_with("Alchemy Release");
-    return !public_release_channel && validate_snapshot;
-}
-
 bool LLPipeline::metalWorldPresentationCurrent() const
 {
     return mMetalWorldSimpleCapture &&
@@ -1099,41 +1083,28 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
         !RlvActions::hasBehaviour(RLV_BHVR_SETSPHERE) ||
         gRlvSphereProgram.isComplete();
     const bool final_buffer = RenderBufferVisualization < 0;
-    // A coherent native hero cube is necessary but not sufficient evidence
-    // that the authored mirror transaction is exact. Runtime comparison at
-    // an authored vanity mirror proved that the retained native frame can
-    // omit the visible hero reflection (and neighbouring forward content)
-    // while every resource-generation check still passes. Keep both live
-    // publication and saved snapshots on the authoritative GL path whenever
-    // a hero mirror is active until that complete route has parity evidence.
-    const bool hero_mirror_active = sReflectionProbesEnabled &&
-        mHeroProbeManager.mHeroData.heroProbeCount != 0;
-    const bool hero_mirror_snapshot_validation =
-        hero_mirror_active && mMetalWorldSnapshotRequested &&
-        metalHeroMirrorSnapshotValidationRequested();
-    const bool hero_mirror_exact = !hero_mirror_active ||
-        hero_mirror_snapshot_validation;
+    // Hero mirrors are native-owned even while their authored-scene parity
+    // defect remains in the owner-attended visual queue. Falling back to GL at
+    // this boundary hid that missing Metal implementation and mixed backend
+    // authority inside otherwise complete native frames.
     const bool eligible = started && main_world && ordinary_world &&
         native_dynamic_exposure && native_lens_flare && native_lens_dirt &&
         native_legacy_glow &&
         grade.native_resources_ready && post_enabled && sky &&
-        exact_antialiasing && sphere_supported && final_buffer &&
-        hero_mirror_exact;
+        exact_antialiasing && sphere_supported && final_buffer;
     if (!eligible && error)
     {
         *error = fmt::format(
             "Metal world presentation is ineligible: started={}, hdr={}, "
             "main_world={}, ordinary_world={}, dynamic_exposure={}, "
             "lens_flare={}, lens_dirt={}, legacy_glow={}, color_grade={}, post={}, sky={}, "
-            "antialiasing={}, smaa_sample={}, sphere={}, final_buffer={}, hero_mirror={}, "
-            "hero_mirror_snapshot_validation={}",
+            "antialiasing={}, smaa_sample={}, sphere={}, final_buffer={}",
             started, hdr, main_world, ordinary_world,
             native_dynamic_exposure, native_lens_flare, native_lens_dirt,
             native_legacy_glow,
             grade.native_resources_ready, post_enabled,
             static_cast<bool>(sky), exact_antialiasing,
-            native_smaa_sample, sphere_supported, final_buffer, hero_mirror_exact,
-            hero_mirror_snapshot_validation);
+            native_smaa_sample, sphere_supported, final_buffer);
     }
     return eligible;
 }
@@ -1833,7 +1804,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     const bool snapshot_request =
         gSnapshot && mMetalWorldSnapshotRequested;
     if (!isMetalWorldCapturePass() ||
-        (gSnapshot && !snapshot_request) || !mGLResourcesLive)
+        (gSnapshot && !snapshot_request))
     {
         return;
     }
@@ -10755,10 +10726,6 @@ bool LLPipeline::requestMetalWorldSnapshotCapture(std::string* error)
     {
         return fail("Metal world snapshot capture is already requested");
     }
-    if (!mGLResourcesLive)
-    {
-        return fail("Metal world snapshot GL resources are unavailable");
-    }
     if (!sRenderDeferred)
     {
         return fail("Metal world snapshot requires deferred rendering");
@@ -10772,15 +10739,6 @@ bool LLPipeline::requestMetalWorldSnapshotCapture(std::string* error)
     {
         mMetalWorldSnapshotRequested = false;
         return false;
-    }
-    if (sReflectionProbesEnabled &&
-        mHeroProbeManager.mHeroData.heroProbeCount != 0 &&
-        metalHeroMirrorSnapshotValidationRequested())
-    {
-        LL_INFOS("Metal")
-            << "Development-only native authored-mirror Snapshot validation "
-               "is active; continuous live presentation remains guarded"
-            << LL_ENDL;
     }
     return true;
 }

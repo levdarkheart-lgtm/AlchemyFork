@@ -59,6 +59,7 @@
 #include "aluniformbuffer.h"
 
 #if LL_DARWIN
+#include "almetaldevice.h"
 #include "llwindowsdl.h"
 #endif
 
@@ -5560,6 +5561,21 @@ namespace
     private:
         F mF;
     };
+
+    S64 snapshot_max_render_side()
+    {
+#if LL_DARWIN
+        const LLWindow* window = gViewerWindow
+            ? gViewerWindow->getWindow() : nullptr;
+        const ALMetalDevice* device = window
+            ? window->getMetalDevice() : nullptr;
+        return device
+            ? static_cast<S64>(device->info().max_texture_2d_dimension)
+            : 0;
+#else
+        return 0;
+#endif
+    }
 }
 
 // Saves the image from the screen to a raw image
@@ -5603,11 +5619,11 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
         // read-back is the render's size, and the screen targets are that with
         // RenderResolutionDivisor or RenderResolutionMultiplier applied, so a
         // multiplier of 2 is already twice the render each way. Neither may have
-        // a side past what the GL can target, nor more pixels than the largest
+        // a side past what the native renderer can target, nor more pixels than the largest
         // snapshot the floater offers anyway (MAX_SNAPSHOT_IMAGE_SIZE by 4320):
         // every screen pixel carries the whole G-buffer, and the read-back has
         // to fit LLImageBase's 256 MB allocation cap besides.
-        const S64 max_side = (S64)gGLManager.mGLMaxTextureSize;
+        const S64 max_side = snapshot_max_render_side();
         constexpr S64 MAX_CUTOUT_RENDER_PIXELS = (S64)MAX_SNAPSHOT_IMAGE_SIZE * 4320;
         const auto fits = [&](S32 supersample)
         {
@@ -5627,7 +5643,7 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
         if (image_width > max_side || image_height > max_side)
         {
             LL_WARNS("Snapshot") << "A cutout at " << image_width << "x" << image_height
-                                 << " is larger than the GL can render in one pass." << LL_ENDL;
+                                 << " is larger than the native renderer can render in one pass." << LL_ENDL;
             return false;
         }
         image_width *= supersample;
@@ -5647,8 +5663,6 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
 
     // What the single-pass path below changes, recorded so the restore can undo it.
     std::optional<ALRenderSizeOverride> render_size;
-    LLRenderTarget scratch_space;
-    scratch_space.setLabel("snapshot.scratch");
     bool reset_deferred = false;
     LLRect window_rect;
 
@@ -5656,7 +5670,6 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     gSnapshotNoPost = no_post;
     gDisplaySwapBuffers = false;
 
-    gGL.clear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // stencil buffer is deprecated | GL_STENCIL_BUFFER_BIT);
     setCursor(UI_CURSOR_WAIT);
 
     // Hide all the UI widgets first and draw a frame
@@ -5709,8 +5722,6 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
             mWorldViewRectRaw = window_rect;
             LLViewerCamera::getInstance()->setViewHeightInPixels( mWorldViewRectRaw.getHeight() );
             LLViewerCamera::getInstance()->setAspect( getWorldViewAspectRatio() );
-            scratch_space.flush();
-            scratch_space.release();
             render_size.reset();
         }
 
@@ -5744,45 +5755,32 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
     F32 scale_factor = 1.0f ;
     if (cutout || !keep_window_aspect || (image_width > window_width) || (image_height > window_height))
     {
-        if ((image_width <= gGLManager.mGLMaxTextureSize && image_height <= gGLManager.mGLMaxTextureSize) &&
+        const S64 max_render_side = snapshot_max_render_side();
+        if ((image_width <= max_render_side && image_height <= max_render_side) &&
             (cutout || image_width > window_width || image_height > window_height) && LLPipeline::sRenderDeferred && !show_ui)
         {
-            // GL_RGBA8, not GL_RGBA, and not GL_DEPTH_COMPONENT for the depth layers.
-            //
-            // Storage is immutable, so this format reaches glTexStorage2D, which only accepts
-            // sized ones -- an unsized format comes back GL_INVALID_ENUM and the target fails to
-            // allocate. That failure is silent here: the block below is simply skipped, the
-            // screen buffers are never widened to the requested size, and the snapshot drops to
-            // the tiled path underneath, where the whole post chain runs once per window-sized
-            // tile. Bloom, chromatic aberration, vignette and DoF are then computed against a
-            // tile rather than the frame, which is visible as each effect restarting at the tile
-            // seams past the first.
-            //
-            // The depth layers ask for depth through the `true` below, which allocates the real
-            // (sized) depth attachment that the GL_DEPTH_COMPONENT readback further down reads.
-            // This is the colour attachment, and it needs a colour format whatever the layer is.
-            if (scratch_space.allocate(image_width, image_height, GL_RGBA8, true))
+            // The native snapshot transaction renders into its own Metal
+            // G-buffer, post chain and ordered world/UI target. Resize those
+            // durable resources directly; allocating a GL scratch framebuffer
+            // here made a supposedly native-only feature depend on a live GL
+            // context and served no producer or readback owner.
+            render_size.emplace(image_width, image_height);
+            if (render_size->applied())
             {
-                // The main view at the snapshot's size, before the resolution scale, until the
-                // restore ends the override and the world view's size is back.
-                render_size.emplace(image_width, image_height);
-                if (render_size->applied())
-                {
-                    window_width = image_width;
-                    window_height = image_height;
-                    snapshot_width = image_width;
-                    snapshot_height = image_height;
-                    reset_deferred = true;
-                    mWorldViewRectRaw.set(0, image_height, image_width, 0);
-                    LLViewerCamera::getInstance()->setViewHeightInPixels( mWorldViewRectRaw.getHeight() );
-                    LLViewerCamera::getInstance()->setAspect( getWorldViewAspectRatio() );
-                    scratch_space.bindTarget();
-                }
-                else
-                {
-                    scratch_space.release();
-                    render_size.reset();
-                }
+                window_width = image_width;
+                window_height = image_height;
+                snapshot_width = image_width;
+                snapshot_height = image_height;
+                reset_deferred = true;
+                mWorldViewRectRaw.set(0, image_height, image_width, 0);
+                LLViewerCamera::getInstance()->setViewHeightInPixels(
+                    mWorldViewRectRaw.getHeight());
+                LLViewerCamera::getInstance()->setAspect(
+                    getWorldViewAspectRatio());
+            }
+            else
+            {
+                render_size.reset();
             }
         }
 
@@ -6026,24 +6024,6 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
             {
                 const U32 subfield = subimage_x +
                     (subimage_y * llceil(scale_factor));
-                display(do_rebuild, scale_factor, subfield, true);
-
-                if (cutout)
-                {
-                    // The colour is the subject premultiplied by its
-                    // coverage; the coverage itself goes into alpha here.
-                    gPipeline.copyCutoutCoverageToAlpha();
-                }
-
-                if (!LLPipeline::sRenderDeferred)
-                {
-                    // Required for showing the GUI in snapshots and
-                    // performing bloom composite overlay. Call even if
-                    // show_ui is false.
-                    render_ui(scale_factor, subfield);
-                    swap();
-                }
-
                 const S64 tile_output_pixel =
                     (S64)window_width * subimage_x +
                     (S64)raw->getWidth() * window_height * subimage_y -
@@ -6058,58 +6038,88 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                 bool metal_snapshot_read = false;
                 std::string error;
 #if LL_DARWIN
-                if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR)
+                // Resizing the native snapshot targets invalidates temporal
+                // resources used by lighting, SSR and post processing. Give
+                // the exact same camera subfield one bounded settling frame
+                // instead of dropping back to GL or bouncing between the
+                // window and snapshot sizes on every preview refresh.
+                constexpr U32 MAX_NATIVE_SNAPSHOT_ATTEMPTS = 2;
+                for (U32 attempt = 0;
+                     attempt < MAX_NATIVE_SNAPSHOT_ATTEMPTS &&
+                         !metal_snapshot_read;
+                     ++attempt)
                 {
-                    metal_snapshot_read = cutout
-                        ? gPipeline.readMetalWorldSnapshotRGBA(
-                            subimage_x_offset, subimage_y_offset,
-                            read_width, read_height, tile_output,
-                            output_row_bytes, &error)
-                        : gPipeline.readMetalWorldSnapshot(
-                            subimage_x_offset, subimage_y_offset,
-                            read_width, read_height, tile_output,
-                            output_row_bytes, &error);
-                }
-                else
-                {
-                    std::vector<F32> depth;
-                    try
+                    display(do_rebuild, scale_factor, subfield, true);
+
+                    if (cutout)
                     {
-                        depth.resize(
-                            static_cast<std::size_t>(read_width) *
-                            read_height);
+                        // The colour is the subject premultiplied by its
+                        // coverage; the coverage itself goes into alpha here.
+                        gPipeline.copyCutoutCoverageToAlpha();
                     }
-                    catch (const std::bad_alloc&)
+
+                    if (type == LLSnapshotModel::SNAPSHOT_TYPE_COLOR)
                     {
-                        error = "could not allocate native snapshot depth staging";
-                    }
-                    if (!depth.empty())
-                    {
-                        metal_snapshot_read =
-                            gPipeline.readMetalWorldSnapshotDepth(
+                        metal_snapshot_read = cutout
+                            ? gPipeline.readMetalWorldSnapshotRGBA(
                                 subimage_x_offset, subimage_y_offset,
-                                read_width, read_height, depth.data(),
-                                static_cast<std::size_t>(read_width) *
-                                    sizeof(F32),
-                                &error);
+                                read_width, read_height, tile_output,
+                                output_row_bytes, &error)
+                            : gPipeline.readMetalWorldSnapshot(
+                                subimage_x_offset, subimage_y_offset,
+                                read_width, read_height, tile_output,
+                                output_row_bytes, &error);
                     }
-                    if (metal_snapshot_read)
+                    else
                     {
-                        for (U32 row = 0; row < read_height; ++row)
+                        std::vector<F32> depth;
+                        try
                         {
-                            if (row % 100 == 0)
-                            {
-                                LLAppViewer::instance()
-                                    ->pingMainloopTimeout(
-                                        "LLViewerWindow::rawSnapshot");
-                            }
-                            write_snapshot_depth(
-                                depth.data() + row * read_width,
-                                tile_output +
-                                    static_cast<std::size_t>(row) *
-                                        output_row_bytes,
-                                read_width);
+                            depth.resize(
+                                static_cast<std::size_t>(read_width) *
+                                read_height);
                         }
+                        catch (const std::bad_alloc&)
+                        {
+                            error = "could not allocate native snapshot depth staging";
+                        }
+                        if (!depth.empty())
+                        {
+                            metal_snapshot_read =
+                                gPipeline.readMetalWorldSnapshotDepth(
+                                    subimage_x_offset, subimage_y_offset,
+                                    read_width, read_height, depth.data(),
+                                    static_cast<std::size_t>(read_width) *
+                                        sizeof(F32),
+                                    &error);
+                        }
+                        if (metal_snapshot_read)
+                        {
+                            for (U32 row = 0; row < read_height; ++row)
+                            {
+                                if (row % 100 == 0)
+                                {
+                                    LLAppViewer::instance()
+                                        ->pingMainloopTimeout(
+                                            "LLViewerWindow::rawSnapshot");
+                                }
+                                write_snapshot_depth(
+                                    depth.data() + row * read_width,
+                                    tile_output +
+                                        static_cast<std::size_t>(row) *
+                                            output_row_bytes,
+                                    read_width);
+                            }
+                        }
+                    }
+
+                    if (!metal_snapshot_read &&
+                        attempt + 1 < MAX_NATIVE_SNAPSHOT_ATTEMPTS)
+                    {
+                        LL_DEBUGS("Snapshot")
+                            << "Native snapshot frame was not exact; "
+                               "retrying once at the same size and subfield: "
+                            << error << LL_ENDL;
                     }
                 }
 #endif
@@ -6139,7 +6149,6 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                 }
             }
             output_buffer_offset_x += subimage_x_offset;
-            stop_glerror();
         }
         output_buffer_offset_y += subimage_y_offset;
     }
@@ -6223,7 +6232,6 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width,
 
     gDisplaySwapBuffers = false;
 
-    gGL.clear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // stencil buffer is deprecated | GL_STENCIL_BUFFER_BIT);
     setCursor(UI_CURSOR_WAIT);
 
     bool prev_draw_ui = gPipeline.hasRenderDebugFeatureMask(LLPipeline::RENDER_DEBUG_FEATURE_UI);
@@ -6241,26 +6249,27 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width,
     LLRect window_rect = getWorldViewRectRaw();
 
     std::optional<ALRenderSizeOverride> render_size;
-    LLRenderTarget scratch_space;
-    scratch_space.setLabel("snapshot.simple");
-    // Sized format, for the reason spelled out in rawSnapshot: immutable storage means
-    // glTexStorage2D sees this, and it rejects unsized formats. There is no tiled fallback on
-    // this path -- a failure here means the screen buffers are never resized and the readback
-    // below pulls image_width x image_height out of window-sized ones.
-    if (scratch_space.allocate(image_width, image_height, GL_RGBA8, true))
+    const S64 max_render_side = snapshot_max_render_side();
+    const bool supported_size = image_width > 0 && image_height > 0 &&
+        image_width <= max_render_side && image_height <= max_render_side;
+    if (supported_size)
     {
         render_size.emplace(image_width, image_height);
-        if (render_size->applied())
-        {
-            mWorldViewRectRaw.set(0, image_height, image_width, 0);
-
-            scratch_space.bindTarget();
-        }
-        else
-        {
-            scratch_space.release();
-            render_size.reset();
-        }
+    }
+    const bool snapshot_size_ready =
+        render_size && render_size->applied();
+    if (snapshot_size_ready)
+    {
+        mWorldViewRectRaw.set(0, image_height, image_width, 0);
+    }
+    else
+    {
+        LL_WARNS("360Capture")
+            << "Native 360 face capture rejected unsupported or unavailable "
+               "render size "
+            << image_width << 'x' << image_height
+            << " (native maximum side " << max_render_side << ')'
+            << LL_ENDL;
     }
 
     // we render the scene more than once since this helps
@@ -6273,9 +6282,9 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width,
     // lags by a frame or two so rendering more than once
     // appears to help a lot.
     // The faces look away from the main view, whose probes' occlusion says nothing of them.
-    gSnapshotOffMainView = true;
+    gSnapshotOffMainView = snapshot_size_ready;
     const int render_passes = llmax(num_render_passes, 1);
-    for (int i = 0; i < render_passes; ++i)
+    for (int i = 0; snapshot_size_ready && i < render_passes; ++i)
     {
         // turning this flag off here prohibits the screen swap
         // to present the new page to the viewer - this stops
@@ -6336,7 +6345,6 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width,
         }
     }
 #endif
-    stop_glerror();
 
     gDisplaySwapBuffers = false;
     gDepthDirty = true;
@@ -6358,8 +6366,6 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width,
 
     gPipeline.resetDrawOrders();
     mWorldViewRectRaw = window_rect;
-    scratch_space.flush();
-    scratch_space.release();
     render_size.reset();
 
     return metal_snapshot_read;
