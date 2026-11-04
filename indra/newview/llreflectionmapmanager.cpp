@@ -43,7 +43,6 @@
 #include "llviewershadermgr.h"
 #include "llviewercontrol.h"
 #include "llviewerwindow.h"
-#include "llwindow.h"
 #include "llenvironment.h"
 #include "llstartup.h"
 #include "llviewermenufile.h"
@@ -139,15 +138,6 @@ extern bool gSnapshotOffMainView;
 extern bool gTeleportDisplay;
 
 static U32 sUpdateCount = 0;
-
-#if LL_DARWIN
-static ALMetalDevice* viewerMetalDevice() noexcept
-{
-    const LLWindow* window = gViewerWindow
-        ? gViewerWindow->getWindow() : nullptr;
-    return window ? window->getMetalDevice() : nullptr;
-}
-#endif
 
 #if !LL_RELEASE_FOR_DOWNLOAD
 namespace
@@ -345,7 +335,7 @@ void LLReflectionMapManager::invalidateMetalProbeSlot(U32 cube_index)
 bool LLReflectionMapManager::reconcileMetalProbeArray()
 {
     MetalProbeArrayMirror& mirror = *mMetalProbeArray;
-    ALMetalDevice* device = viewerMetalDevice();
+    ALMetalDevice* device = getViewerMetalDevice();
     if (!device)
     {
         return false;
@@ -643,7 +633,7 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
         return false;
     }
 
-    ALMetalDevice* device = viewerMetalDevice();
+    ALMetalDevice* device = getViewerMetalDevice();
     if (!device || device != mirror.mDevice)
     {
         if (error)

@@ -846,13 +846,6 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unordered_map<LLUUID, ImpostorTextures> impostor_textures;
 };
 
-static ALMetalDevice* viewerMetalDevice() noexcept
-{
-    const LLWindow* window = gViewerWindow
-        ? gViewerWindow->getWindow() : nullptr;
-    return window ? window->getMetalDevice() : nullptr;
-}
-
 static bool metalWorldPresentationRequested()
 {
     return true;
@@ -894,7 +887,7 @@ void LLPipeline::refreshMetalSMAASampleTexture()
 {
     static LLCachedControl<std::string> sample_path(
         gSavedSettings, "SamplePath", "");
-    ALMetalDevice* device = viewerMetalDevice();
+    ALMetalDevice* device = getViewerMetalDevice();
     const std::string path = sample_path();
     const bool wanted = mResourceInputs.mFSAAType == 2 &&
         mResourceInputs.mSMAAUseSample;
@@ -1024,7 +1017,7 @@ bool LLPipeline::canCaptureMetalWorldPresentation(std::string* error) const
     const bool use_smaa_sample = mResourceInputs.mSMAAUseSample;
     const bool native_smaa_sample = !use_smaa_sample ||
         (mMetalSMAASampleTexture &&
-         mMetalSMAASampleDevice == viewerMetalDevice() &&
+         mMetalSMAASampleDevice == getViewerMetalDevice() &&
          !mMetalSMAASamplePath.empty() &&
          mMetalSMAASamplePath == sample_path());
 
@@ -1814,7 +1807,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
             std::make_unique<MetalWorldSimpleCapture>();
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    ALMetalDevice* device = viewerMetalDevice();
+    ALMetalDevice* device = getViewerMetalDevice();
     const bool probe_face = mMetalHeroWorldCaptureActive ||
         mMetalReflectionWorldCaptureActive;
     const bool main_world_capture = !probe_face && isMainWorldPass() &&
@@ -2217,7 +2210,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                     MetalWorldSimpleCapture& owner = **capture_owner;
                     owner.renderer_build.reset();
                     if (completed->device ==
-                            viewerMetalDevice() &&
+                            getViewerMetalDevice() &&
                         completed->renderer)
                     {
                         owner.renderer = std::move(completed->renderer);
@@ -2287,7 +2280,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
                             << LL_ENDL;
                     }
                     else if (completed->device ==
-                                 viewerMetalDevice())
+                                 getViewerMetalDevice())
                     {
                         if (owner.world_ui_chain_active &&
                             !owner.world_ui_chain_snapshot &&
@@ -3897,7 +3890,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         return;
     }
 
-    ALMetalDevice* device = viewerMetalDevice();
+    ALMetalDevice* device = getViewerMetalDevice();
     if (!device)
     {
         return;
@@ -10660,7 +10653,7 @@ bool LLPipeline::requestMetalWorldSnapshotCapture(std::string* error)
     {
         return fail("Metal world snapshot requires deferred rendering");
     }
-    if (!viewerMetalDevice())
+    if (!getViewerMetalDevice())
     {
         return fail("Metal world snapshot device is unavailable");
     }
@@ -10693,7 +10686,7 @@ bool LLPipeline::readMetalWorldSnapshot(
     const MetalWorldSimpleCapture& capture =
         *mMetalWorldSimpleCapture;
     const ALMetalTexture* texture = capture.world_ui_target.get();
-    ALMetalDevice* device = viewerMetalDevice();
+    ALMetalDevice* device = getViewerMetalDevice();
     if (!capture.world_ui_chain_snapshot ||
         capture.world_ui_capture_active || !texture || !device ||
         capture.device != device || capture.world_ui_frame != gFrameCount)
@@ -10764,7 +10757,7 @@ bool LLPipeline::readMetalWorldSnapshotRGBA(
         *mMetalWorldSimpleCapture;
     const ALMetalTexture* texture = capture.presentation_target
         ? capture.presentation_target->colorTexture(0) : nullptr;
-    ALMetalDevice* device = viewerMetalDevice();
+    ALMetalDevice* device = getViewerMetalDevice();
     if (!capture.world_ui_chain_snapshot ||
         capture.world_ui_capture_active || !texture || !device ||
         capture.device != device || capture.presentation_frame != gFrameCount)
@@ -10836,7 +10829,7 @@ bool LLPipeline::readMetalWorldSnapshotDepth(
         *mMetalWorldSimpleCapture;
     const ALMetalTexture* texture = capture.target
         ? capture.target->depthStencilTexture() : nullptr;
-    ALMetalDevice* device = viewerMetalDevice();
+    ALMetalDevice* device = getViewerMetalDevice();
     if (!capture.world_ui_chain_snapshot ||
         capture.world_ui_capture_active || !texture || !device ||
         capture.device != device || capture.world_ui_frame != gFrameCount)
@@ -18807,7 +18800,7 @@ namespace
     std::unique_ptr<ALMetalTexture> makeMetalToneCurveLut(
         const std::vector<U16>& texels)
     {
-        ALMetalDevice* device = viewerMetalDevice();
+        ALMetalDevice* device = getViewerMetalDevice();
         if (!device || texels.size() != ALToneCurveSet::LUT_SIZE * 4u)
         {
             return nullptr;
@@ -18834,7 +18827,7 @@ void LLPipeline::setupGradingLUT()
     mCGLutSize = LLVector4();
 #if LL_DARWIN
     mMetalCGLut.reset();
-    ALMetalDevice* metal_device = viewerMetalDevice();
+    ALMetalDevice* metal_device = getViewerMetalDevice();
 #endif
 
     std::string lut_name = gSavedSettings.getString("RenderColorGradeLUT");

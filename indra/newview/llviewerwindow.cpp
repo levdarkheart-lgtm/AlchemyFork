@@ -253,6 +253,15 @@ extern bool gSnapshotNoPost;
 
 LLViewerWindow  *gViewerWindow = NULL;
 
+#if LL_DARWIN
+ALMetalDevice* getViewerMetalDevice() noexcept
+{
+    const LLWindow* window = gViewerWindow
+        ? gViewerWindow->getWindow() : nullptr;
+    return window ? window->getMetalDevice() : nullptr;
+}
+#endif
+
 LLFrameTimer    gAwayTimer;
 LLFrameTimer    gAwayTriggerTimer;
 

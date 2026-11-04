@@ -1205,7 +1205,7 @@ bool    LLPreviewAnimation::render()
         LLFace* face = avatarp->mDrawable->getFace(0);
         if (face)
         {
-            ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+            ALMetalDevice* metal_device = getViewerMetalDevice();
             LLPointer<LLViewerFetchedTexture> default_texture =
                 LLViewerTextureManager::getFetchedTexture(IMG_DEFAULT);
             LLImageGL* default_image = default_texture.notNull()

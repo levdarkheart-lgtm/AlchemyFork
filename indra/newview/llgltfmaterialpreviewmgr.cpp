@@ -42,6 +42,7 @@
 #include "llviewercamera.h"
 #include "llviewercontrol.h"
 #include "llviewerobject.h"
+#include "llviewerwindow.h"
 #include "llviewershadermgr.h" // CROSS_FILTER_MAX_STRENGTH
 #include "llviewertexturelist.h"
 #include "llvolumemgr.h"
@@ -603,7 +604,7 @@ bool LLGLTFPreviewTexture::render()
     {
         mNativeAttemptResult = ENativeAttemptResult::PENDING;
         std::string native_error;
-        ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+        ALMetalDevice* metal_device = getViewerMetalDevice();
         LLViewerTexture* base_color_image = mGLTFMaterial->mBaseColorTexture
             ? mGLTFMaterial->mBaseColorTexture.get()
             : LLViewerFetchedTexture::sWhiteImagep.get();

@@ -44,6 +44,7 @@
 #include "llstartup.h"
 #include "lltextureentry.h"
 #include "llviewercamera.h"
+#include "llviewerwindow.h"
 #include "llviewertexturelist.h"
 #include "pipeline.h"
 #include "llspatialpartition.h"
@@ -1022,7 +1023,7 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
         dst_img->setDiscardLevel(0);
 
 #if LL_DARWIN
-        ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+        ALMetalDevice* metal_device = getViewerMetalDevice();
         LLImageGL* source_image = src->getGLTexture();
         ALMetalTexture* metal_source = source_image
             ? source_image->getMetalTexture() : nullptr;

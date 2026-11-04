@@ -58,6 +58,7 @@
 #include "llviewerjointattachment.h"
 #include "llviewerobjectlist.h"
 #include "llviewernetwork.h"
+#include "llviewerwindow.h"
 #include "llviewershadermgr.h"
 #include "llviewertexteditor.h"
 #include "llviewertexturelist.h"
@@ -291,7 +292,7 @@ namespace
             return false;
         }
 
-        ALMetalDevice* device = LLImageGL::getMetalDevice();
+        ALMetalDevice* device = getViewerMetalDevice();
         if (!device)
         {
             LL_WARNS_ONCE("Metal")
@@ -823,7 +824,7 @@ namespace
         {
             return flat_batch_indices.empty();
         }
-        ALMetalDevice* device = LLImageGL::getMetalDevice();
+        ALMetalDevice* device = getViewerMetalDevice();
         if (!device)
         {
             return false;
@@ -4675,7 +4676,7 @@ bool LLModelPreview::renderMetal()
         return false;
     }
 
-    ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+    ALMetalDevice* metal_device = getViewerMetalDevice();
     if (!metal_device)
     {
         return false;

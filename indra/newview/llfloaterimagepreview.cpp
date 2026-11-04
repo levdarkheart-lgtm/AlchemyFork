@@ -892,7 +892,7 @@ bool LLImagePreviewAvatar::render()
     LLImageGL* preview_image = mPreviewTexture->getGLTexture();
     const ALMetalTexture* preview_texture = preview_image
         ? preview_image->getMetalTexture() : nullptr;
-    ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+    ALMetalDevice* metal_device = getViewerMetalDevice();
     if (!metal_device || !buffer || !mesh || !preview_texture ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_NORMAL) ||
@@ -1209,7 +1209,7 @@ bool LLImagePreviewSculpted::render()
     const F32 SCALE = 1.25f;
     const F32 BRIGHTNESS = 0.9f;
 
-    ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+    ALMetalDevice* metal_device = getViewerMetalDevice();
     ALMetalBuffer* metal_vertices = mVertexBuffer.notNull()
         ? mVertexBuffer->getMetalVertexBuffer() : nullptr;
     ALMetalBuffer* metal_indices = mVertexBuffer.notNull()

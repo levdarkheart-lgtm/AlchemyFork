@@ -74,6 +74,9 @@ class LLStatsListener;
 class LLVOPartGroup;
 class LLPopupView;
 class LLCubeMap;
+#if LL_DARWIN
+class ALMetalDevice;
+#endif
 
 #define PICK_HALF_WIDTH 5
 #define PICK_DIAMETER (2 * PICK_HALF_WIDTH + 1)
@@ -596,6 +599,13 @@ private:
 //
 
 extern LLViewerWindow*  gViewerWindow;
+
+#if LL_DARWIN
+// The native renderer's device is owned by the application window. Metal
+// producers use this boundary rather than treating the GL image subsystem as
+// a device registry.
+ALMetalDevice* getViewerMetalDevice() noexcept;
+#endif
 
 extern LLFrameTimer     gAwayTimer;             // tracks time before setting the avatar away state to true
 extern LLFrameTimer     gAwayTriggerTimer;      // how long the avatar has been away

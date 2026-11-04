@@ -357,7 +357,7 @@ bool LLVisualParamHint::render()
         const bool preview_metadata_ready =
             gPipeline.prepareMetalAvatarPreview(
                 gAgentAvatarp, *LLViewerCamera::getInstance());
-        ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+        ALMetalDevice* metal_device = getViewerMetalDevice();
         LLImageGL* background_image = mBackgroundp && mBackgroundp->getImage()
             ? mBackgroundp->getImage()->getGLTexture() : nullptr;
         const ALMetalTexture* background_texture = background_image

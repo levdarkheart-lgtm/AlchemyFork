@@ -38,6 +38,7 @@
 #include "llsurfacepatch.h"
 #include "llviewercamera.h"
 #include "llviewerregion.h"
+#include "llviewerwindow.h"
 #include "llviewershadermgr.h"
 #include "llviewertexture.h"
 
@@ -55,7 +56,7 @@ bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(
     llassert(tex.getPrimaryFormat() == GL_RGB);
     llassert(tex.getGLTexture());
 
-    ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+    ALMetalDevice* metal_device = getViewerMetalDevice();
     LLImageGL* destination_image = tex.getGLTexture();
     ALMetalTexture* destination_template = destination_image
         ? destination_image->getMetalTexture() : nullptr;

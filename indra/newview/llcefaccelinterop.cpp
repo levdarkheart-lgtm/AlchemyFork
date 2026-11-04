@@ -25,6 +25,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "llcefaccelinterop.h"
+#include "llviewerwindow.h"
 
 #if LL_WINDOWS
 
@@ -260,7 +261,7 @@ LLCEFAccelInterop::~LLCEFAccelInterop()
 bool LLCEFAccelInterop::init()
 {
     MacAccel* m = new MacAccel();
-    m->metal_device = LLImageGL::getMetalDevice();
+    m->metal_device = getViewerMetalDevice();
     if (!m->metal_device)
     {
         LL_WARNS("Media")
