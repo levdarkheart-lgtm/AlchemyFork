@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `f04b0b6306`.
+**Renderer checkpoint:** Commit `23da75f187`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -22,7 +22,7 @@ checkpoint detail belongs in the indexed archive.
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,165 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation nor reflection-probe publication. Active probe faces bypass GL targets, scene/deferred traversal, directional-shadow drawing and GL face-state setup. Retained context and non-probe resource/draw side effects remain. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation nor reflection/hero publication. Native faces bypass GL targets, scene/deferred traversal, directional-shadow drawing, hero post-chain and GL face-state setup. Projector shadows and retained non-probe owners remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
@@ -80,12 +80,13 @@ scratch resources, cube/SH publication storage and reflection UBO. Direct Metal
 radiance and matching SH are now the only published probe generation.
 
 Commits `51282740b5` through `f04b0b6306` replace retained reflection scene,
-lighting and directional-shadow triggers with direct CPU/Metal ownership. The
-native shadow pass enumerates opaque, legacy/PBR mask and blend, tree, terrain
-and avatar casters with explicit view/projection/model matrices. Active probe
-faces no longer bind/clear/flush GL shadow targets or install GL default, depth,
-light, viewport or camera matrix state. GL shadow-target completeness and size
-metadata plus remaining non-probe resource/context owners are the next cut.
+lighting and directional-shadow triggers with direct CPU/Metal ownership.
+`23da75f187` extends that direct path to hero/mirror faces, removes their GL
+gaussian/downsample/mip/radiance producer, takes all native face/G-buffer/shadow
+dimensions from the backend resource plan and defers a face when its native
+transaction cannot start. No hidden GL face can publish or mask the failure.
+Cube-capture projector shadows currently remain explicitly unbuilt; direct
+Metal projector production and obsolete GL allocations are the next cuts.
 
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -107,6 +108,11 @@ swap. Exact prior evidence remains in the
   tools tests 31/31 and harness validation passes. App verification accepts
   349/349 ARM64 slices; deep signing passes; executable SHA-256 is
   `32dd668a3ddedce05300372a4a1f94ede3b8fa88c8c3f059cad5fb98372c518d`.
+- `23da75f187`: warnings-as-errors RelWithDebInfo Ninja and full Xcode app builds
+  pass; focused benchmark tests pass 49/8, `alrender_tests` 557,301/136, tools
+  tests 31/31 and the 32-file harness validates. App verification accepts
+  349/349 ARM64 slices; deep signing passes; executable SHA-256 is
+  `079eff26f8d8772d492b125642487c48553d8927655e9f154a9a55fd914efdc3`.
 - Strict inventory is 3,165 findings and exits 1; both APIs remain linked.
 
 ## Owner-attended visual review cadence
@@ -122,7 +128,7 @@ summarized, but no row closes without explicit owner-attended evidence.
 1. **Product advancement:** yes—Metal is the only visible presentation owner,
    Snapshot has no GL framebuffer, and ordinary avatar/impostor scene families
    feed direct native producers.
-2. **Replacement boundary:** probe-shadow GL target metadata and remaining
+2. **Replacement boundary:** direct cube-capture projector shadows and remaining
    application resource/draw owners still require native cutover.
 3. **Deferred critical work:** remaining GL context/traversal/resources,
    feature/stability matrices, visual queue, strict binary/runtime audit,
