@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `2cea68f5de`
+**Renderer code checkpoint:** `21562a1991`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -94,8 +94,8 @@ complete G-buffer/post-deferred scene, lighting and directional-shadow casters.
 GL gaussian/mip/radiance producer and makes both probe families use planned
 Metal G-buffer/shadow dimensions. `d80a941a60` renders projector-shadow casters
 into planned Metal slices. Probe faces never use retained GL projector targets;
-missing resources fail closed. `2cea68f5de` deletes the hero GL cube, scratch
-target, mip chain, filter vertex buffer, three GLSL programs and GL binding.
+missing resources fail closed. `2cea68f5de` deletes the hero GL storage/filter
+stack; `21562a1991` deletes four obsolete ordinary-probe GL programs, their six exclusive shaders and stale setting.
 
 Earlier native terrain, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -123,9 +123,9 @@ until the owner-attended review records that result.
   Viewer SHA-256: `c9bf95b8a8d6c9f36c437c16b913feb5d3f1e9bcd77e9b5c69965992af2527a8`.
 - Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
   UI 56/1. Shared-context baseline retains 5 known Apple GL failures/4 cases.
-- At `2cea68f5de`, Ninja/Xcode builds, benchmark 49/8, renderer 557,301/136,
-  tools 31/31, 349/349 ARM64 and signing pass; executable SHA-256 is `1f4ecda43e8dc7b82ab3cf205289ae524a712bc8db5d6340e805078f96af0909`.
-- Strict GL inventory is 3,144 findings and exits 1. Both APIs remain
+- At `21562a1991`, Ninja/Xcode builds, SH oracle, benchmark 49/8, renderer 557,301/136,
+  tools 31/31, 349/349 ARM64 and signing pass; executable SHA-256 is `569b38ec1133b687c7408b9e8fd8f95e1dc13a36a8f3f4ba63c001f30f92ab79`.
+- Strict GL inventory is 3,136 findings and exits 1. Both APIs remain
   linked; static, linked and runtime no-GL release gates remain open.
 
 ## Milestone snapshot
@@ -135,9 +135,9 @@ until the owner-attended review records that result.
 | M-003..M-006 platform/resources/UI | doing | Native producers use the window-owned Metal device rather than the GL image registry. Converted resources/previews retain truthful native state. Metal solely presents; Snapshot has no GL capture target. Live GL traversal/context remain. |
 | M-007 world/material | doing | Reflection-probe G-buffer and post-deferred families are enumerated directly from CPU scene state, including sorted alpha, avatar transparency, atmosphere, water haze/exclusion/surface and emissive replay. Broad parity remains open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
-| M-009 parity/stability/no-GL | doing | Strict inventory is 3,144 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
+| M-009 parity/stability/no-GL | doing | Strict inventory is 3,136 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Reflection and hero faces advance only after native publication. Hero GL cube/scratch/mips/filter shaders are deleted; scene/lighting/shadows/post are direct Metal. Reflection and non-probe GL owners remain. |
+| M-011 GL authority removal | doing | Reflection and hero faces advance only after native publication. Their obsolete GL storage and generation/filter shaders are deleted; scene/lighting/shadows/post are direct Metal. Non-probe GL owners remain. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
@@ -155,6 +155,6 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Remove obsolete Darwin reflection-probe GL allocations and shaders.
-2. Continue through retained non-probe GL resource/draw owners.
+1. Continue through retained non-probe GL resource/draw owners.
+2. Re-run strict source/link/runtime gates after each owner cut.
 3. Keep visual failures queued; do not launch either viewer autonomously.

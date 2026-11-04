@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `2cea68f5de`.
+**Renderer checkpoint:** Commit `21562a1991`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,16 +13,16 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 3,144 findings; strict exits 1. No rule or suppression changed. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 3,136 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Metal is the mandatory visible presentation owner. Startup/world GL swaps are suppressed; an incomplete native frame retains the previous Metal drawable and is machine-censused without claiming GL fallback. Live GL traversal/context creation/shutdown remain. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Native producers use the window-owned Metal device. Reflection probes use backend-neutral logical slots and Metal-only cube/radiance/SH publication; converted startup/local/HDRI/fetched resources retain native scale-down and eviction. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while retained GL consumers are removed; owner accepted readable UI text. Snapshot no longer allocates/binds/clears a GL scratch target or reconciles GL targets for capture size, and retries one exact-size Metal render after temporal-resource resize; preview/Refresh/Save-to-Disk await owner revalidation. |
 | M-007 | World scene and material correctness | doing | Probe G-buffer and post-deferred families are enumerated directly from CPU scene state, including sorted alpha, transparent avatars, atmosphere, water haze/exclusion/surface and emissive replay. Broad parity remains open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,144 findings), linked/runtime no-GL and visual review remain open. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,136 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation nor reflection/hero publication. Hero GL cube/scratch/mips/filter shaders are deleted; native faces own scene, lighting, shadows and post. Reflection and non-probe GL owners remain. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation nor reflection/hero publication. Obsolete GL probe storage and generation/filter shaders are deleted; native faces own scene, lighting, shadows and post. Non-probe GL owners remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
@@ -94,6 +94,11 @@ filter vertex buffer, gaussian/mip/hero-radiance programs and retained GL hero
 binding. Logical scheduling and publication identity now reconcile directly
 with the native resource plan.
 
+`21562a1991` deletes the ordinary-probe radiance and SH projection GL programs,
+their six exclusive GLSL files and the obsolete two-pass projection setting.
+The native Metal cube/radiance/SH path remains authoritative; the analytical
+SH oracle now documents and verifies the native packed-coefficient contract.
+
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
 resources avoid GL names; dual backing remains only where retained GL consumers
@@ -123,11 +128,11 @@ swap. Exact prior evidence remains in the
   tools 31/31 and harness gates pass. App verification accepts 349/349 ARM64
   slices; deep signing passes; executable SHA-256 is
   `2017d042524d4ac4f75eb628bbe5f9fdf4ba411274497626fceacc16fab3d1da`.
-- `2cea68f5de`: Ninja/Xcode, benchmark 49/8, renderer 557,301/136 and tools
-  31/31 pass. App verification accepts 349/349 ARM64 slices; deep signing
-  passes; executable SHA-256 is
-  `1f4ecda43e8dc7b82ab3cf205289ae524a712bc8db5d6340e805078f96af0909`.
-- Strict inventory is 3,144 findings and exits 1; both APIs remain linked.
+- `21562a1991`: Ninja/Xcode, SH oracle, benchmark 49/8, renderer 557,301/136,
+  tools 31/31 and harness pass. App verification accepts 349/349 ARM64 slices;
+  deep signing passes; executable SHA-256 is
+  `569b38ec1133b687c7408b9e8fd8f95e1dc13a36a8f3f4ba63c001f30f92ab79`.
+- Strict inventory is 3,136 findings and exits 1; both APIs remain linked.
 
 ## Owner-attended visual review cadence
 
@@ -153,8 +158,7 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Remove obsolete reflection-probe GL allocations and shaders, then continue
-through non-probe GL resource/draw owners. Do not wait for
+Continue through non-probe GL resource/draw owners. Do not wait for
 Snapshot, exposure, mirror or direct-probe visual review: native paths
 intentionally expose failures instead of reverting to GL. Never restore
 publication or presentation fallbacks.
