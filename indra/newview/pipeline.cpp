@@ -526,6 +526,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     ALMetalWorldDirectionalShadows projector_shadows;
     U32 projector_shadow_frame = std::numeric_limits<U32>::max();
     std::array<bool, 2> direct_projector_shadow_valid{};
+    ALSpotShadowCache direct_projector_shadow_cache;
     std::array<bool, 4> direct_directional_shadow_valid{};
     std::vector<ALMetalWorldSpotShadowBatch> spot_shadow_batches;
     std::vector<std::unique_ptr<std::array<F32, 45 * 4>>>
@@ -1917,6 +1918,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.projector_shadows = {};
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
         capture.direct_projector_shadow_valid = {};
+        capture.direct_projector_shadow_cache.invalidate();
         capture.direct_directional_shadow_valid = {};
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
@@ -3948,6 +3950,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.projector_shadows = {};
         capture.projector_shadow_frame = std::numeric_limits<U32>::max();
         capture.direct_projector_shadow_valid = {};
+        capture.direct_projector_shadow_cache.invalidate();
         capture.direct_directional_shadow_valid = {};
         capture.base_light_map_target.reset();
         capture.base_noise_texture.reset();
@@ -13786,11 +13789,10 @@ void LLPipeline::countMetalShadowBatches(
     }
 }
 
-void LLPipeline::captureMetalDirectionalShadowScene()
+void LLPipeline::captureMetalShadowScene()
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->spot_shadow_capture_active ||
-        !mMetalWorldSimpleCapture->spot_shadow_capture_directional ||
         !mMetalWorldSimpleCapture->spot_shadow_explicit_matrices)
     {
         return;
@@ -13924,7 +13926,8 @@ void LLPipeline::captureMetalDirectionalShadowScene()
 
 void LLPipeline::beginMetalSpotShadowCapture(
     U32 map, U32 width, U32 height, std::size_t expected_batches,
-    bool complete)
+    bool complete, const LLMatrix4a* view,
+    const LLMatrix4a* projection)
 {
     if (!mMetalWorldSimpleCapture || map >= 2 || width == 0 || height == 0)
     {
@@ -13943,7 +13946,12 @@ void LLPipeline::beginMetalSpotShadowCapture(
     capture.spot_shadow_width = width;
     capture.spot_shadow_height = height;
     capture.spot_shadow_expected_batches = expected_batches;
-    capture.spot_shadow_explicit_matrices = false;
+    capture.spot_shadow_explicit_matrices = view && projection;
+    if (capture.spot_shadow_explicit_matrices)
+    {
+        capture.spot_shadow_view = *view;
+        capture.spot_shadow_projection = *projection;
+    }
     capture.spot_shadow_coverage =
         ALMetalWorldSpotShadowCoverage::opaque;
     capture.spot_shadow_capture_complete = complete;
@@ -32508,7 +32516,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     if (direct_metal_shadow)
                     {
 #if LL_DARWIN
-                        captureMetalDirectionalShadowScene();
+                        captureMetalShadowScene();
 #endif
                     }
                     else
@@ -32582,10 +32590,14 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
         // this should never happen
         llassert(mShadowSpotLight[0] != mShadowSpotLight[1] || mShadowSpotLight[0].isNull());
 
-        // What the spot maps' casters are drawn with besides themselves: the programs as loaded, and the settings and
-        // state drawShadow reads.
-        const U64 spot_state = ALSpotShadowCache::Hash()
-                                   .add((U64)LLGLSLShader::sLoadGeneration)
+        // What the spot maps' casters are drawn with besides themselves. A
+        // native probe face has no GLSL program dependency; its cache key is
+        // tied to the Metal path and the same material/settings inputs.
+        ALSpotShadowCache::Hash spot_state_hash;
+        spot_state_hash.add(native_probe_shadow
+            ? 0x4d4554414c535054ull
+            : static_cast<U64>(LLGLSLShader::sLoadGeneration));
+        const U64 spot_state = spot_state_hash
                                    .add((U64)mResourceInputs.mShadowDetail)
                                    .add((U64)LLEnvironment::instance().getIsSunUp())
                                    .add((U64)sRenderTextures)
@@ -32659,9 +32671,46 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             mShadowModelview[i + 4] = view[i + 4];
             mShadowProjection[i + 4] = proj[i + 4];
 
-            // Skipped during cubemap updates, and for a map that could not be built, whose shadows are read lit
-            // (unbuiltShadowMaps).
-            if (!gCubeSnapshot && mSpotShadow[i].isComplete())
+            bool direct_metal_shadow = false;
+            U32 shadow_width = 0;
+            U32 shadow_height = 0;
+#if LL_DARWIN
+            direct_metal_shadow = native_probe_shadow;
+            if (direct_metal_shadow)
+            {
+                const std::optional<ALRenderTargetDesc>& planned =
+                    mResourcePlan.desc(
+                        i == 0 ? ALRenderResourcePlan::Id::SpotShadow0
+                               : ALRenderResourcePlan::Id::SpotShadow1);
+                if (planned && planned->width != 0 &&
+                    planned->height != 0 && mMetalWorldSimpleCapture &&
+                    mMetalWorldSimpleCapture->device &&
+                    mMetalWorldSimpleCapture->renderer)
+                {
+                    const U32 max_dimension =
+                        mMetalWorldSimpleCapture->device->info()
+                            .max_texture_2d_dimension;
+                    if (planned->width <= max_dimension &&
+                        planned->height <= max_dimension)
+                    {
+                        shadow_width = planned->width;
+                        shadow_height = planned->height;
+                    }
+                }
+            }
+#endif
+            if (!direct_metal_shadow && !gCubeSnapshot &&
+                mSpotShadow[i].isComplete())
+            {
+                shadow_width = mSpotShadow[i].getWidth();
+                shadow_height = mSpotShadow[i].getHeight();
+            }
+
+            // Native cube faces render their projector casters directly into
+            // the probe capture owner's Metal shadow pack. A missing planned
+            // resource leaves the slice explicitly unbuilt; it never selects
+            // the retained GL target.
+            if (shadow_width != 0 && shadow_height != 0)
             {
                 LLCamera shadow_cam = camera;
                 shadow_cam.setFar(far_clip);
@@ -32689,7 +32738,24 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 key.mState      = spot_state;
                 addShadowCasters(key.mCasters);
 
-                if (!keep_spot_shadows || mSpotShadowCache.needsDraw(i, key))
+                bool needs_draw = !keep_spot_shadows;
+#if LL_DARWIN
+                if (direct_metal_shadow)
+                {
+                    needs_draw = needs_draw ||
+                        !mMetalWorldSimpleCapture->
+                            direct_projector_shadow_valid[i] ||
+                        mMetalWorldSimpleCapture->
+                            direct_projector_shadow_cache.needsDraw(i, key);
+                }
+                else
+#endif
+                {
+                    needs_draw = needs_draw ||
+                        mSpotShadowCache.needsDraw(i, key);
+                }
+
+                if (needs_draw)
                 {
                     LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("spot shadow");
                     LL_PROFILE_GPU_ZONE("spot shadow");
@@ -32700,23 +32766,48 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     countMetalShadowBatches(
                         native_batches, native_complete);
                     beginMetalSpotShadowCapture(
-                        i, mSpotShadow[i].getWidth(),
-                        mSpotShadow[i].getHeight(), native_batches,
-                        native_complete);
+                        i, shadow_width, shadow_height, native_batches,
+                        native_complete,
+                        direct_metal_shadow ? &view[i + 4] : nullptr,
+                        direct_metal_shadow ? &proj[i + 4] : nullptr);
 #endif
 
-                    mSpotShadow[i].bindTarget();
-                    mSpotShadow[i].getViewport(gGLViewport);
-                    mSpotShadow[i].clear();
-
-                    drawShadow(view[i + 4], proj[i + 4], shadow_cam, false, 0);
+                    if (direct_metal_shadow)
+                    {
+#if LL_DARWIN
+                        captureMetalShadowScene();
+#endif
+                    }
+                    else
+                    {
+                        mSpotShadow[i].bindTarget();
+                        mSpotShadow[i].getViewport(gGLViewport);
+                        mSpotShadow[i].clear();
+                        drawShadow(
+                            view[i + 4], proj[i + 4], shadow_cam,
+                            false, 0);
+                    }
 
 #if LL_DARWIN
                     endMetalSpotShadowCapture();
 #endif
 
-                    mSpotShadow[i].flush();
-                    mSpotShadowCache.drawn(i, key);
+                    if (direct_metal_shadow)
+                    {
+#if LL_DARWIN
+                        if (mMetalWorldSimpleCapture->
+                                direct_projector_shadow_valid[i])
+                        {
+                            mMetalWorldSimpleCapture->
+                                direct_projector_shadow_cache.drawn(i, key);
+                        }
+#endif
+                    }
+                    else
+                    {
+                        mSpotShadow[i].flush();
+                        mSpotShadowCache.drawn(i, key);
+                    }
                     ++spot_draws;
                 }
 

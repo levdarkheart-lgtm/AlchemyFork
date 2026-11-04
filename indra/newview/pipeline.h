@@ -1084,13 +1084,15 @@ public:
                                  bool& complete);
     void beginMetalSpotShadowCapture(U32 map, U32 width, U32 height,
                                      std::size_t expected_batches,
-                                     bool complete);
+                                     bool complete,
+                                     const LLMatrix4a* view = nullptr,
+                                     const LLMatrix4a* projection = nullptr);
     void beginMetalDirectionalShadowCapture(
         U32 map, U32 width, U32 height,
         std::size_t expected_batches, bool complete,
         const LLMatrix4a* view = nullptr,
         const LLMatrix4a* projection = nullptr);
-    void captureMetalDirectionalShadowScene();
+    void captureMetalShadowScene();
     void endMetalSpotShadowCapture();
     void setMetalSpotShadowCoverage(
         ALMetalWorldSpotShadowCoverage coverage);
