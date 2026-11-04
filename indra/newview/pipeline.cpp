@@ -11812,6 +11812,7 @@ void LLPipeline::captureMetalReflectionProbeAvatarAlpha(U32 pool_type)
     }
 
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const bool prior_direct_scene = capture.direct_probe_scene_active;
     capture.direct_probe_scene_active = true;
     capture.direct_probe_avatar_alpha_state_active = false;
     for (LLDrawPool* pool : mPools)
@@ -11828,6 +11829,261 @@ void LLPipeline::captureMetalReflectionProbeAvatarAlpha(U32 pool_type)
         }
     }
     capture.direct_probe_avatar_alpha_state_active = false;
+    capture.direct_probe_scene_active = prior_direct_scene;
+    capture.pass_active = false;
+}
+
+void LLPipeline::captureMetalReflectionProbePostDeferred()
+{
+    if (!mMetalReflectionWorldCaptureActive ||
+        !mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.direct_probe_scene_active = true;
+
+    const auto fail_null_draw = [&]()
+    {
+        capture.markIncomplete(__LINE__);
+        capture.batches.clear();
+    };
+    const auto for_each_draw = [&](U32 type, const auto& visitor)
+    {
+        auto* at = beginRenderMap(type);
+        auto* end = endRenderMap(type);
+        for (; at != end && capture.complete; )
+        {
+            LLDrawInfo* info = *at;
+            LLCullResult::increment_iterator(at, end);
+            if (!info)
+            {
+                fail_null_draw();
+                break;
+            }
+            visitor(*info);
+        }
+    };
+    const auto capture_flat_pass = [&](U32 type, bool rigged,
+                                       bool alpha_mask,
+                                       bool batch_textures,
+                                       bool skip_indexed_materials)
+    {
+        if (!capture.complete)
+        {
+            return;
+        }
+        beginMetalImpostorFullbrightPass(rigged, alpha_mask);
+        for_each_draw(type, [&](LLDrawInfo& info)
+        {
+            if (!skip_indexed_materials ||
+                info.mMaterialSlotList.size() <= 1)
+            {
+                captureMetalWorldGBufferBatch(info, batch_textures);
+            }
+        });
+        endMetalWorldGBufferPass();
+    };
+
+    const bool water_drawn = mWaterPool &&
+        hasRenderType(LLPipeline::RENDER_TYPE_WATER) &&
+        mWaterPool->getNumPostDeferredPasses() > 0;
+    const bool low_detail_probe =
+        shaderInputs().mGlobal.mProbeLevel == 0 && gCubeSnapshot;
+
+    // The exclusion pass was formerly reached through pushUntexturedBatch,
+    // whose world-capture hook does not exist. Direct enumeration both
+    // removes the GL stencil draw and finally gives the native water owner
+    // the actual exclusion geometry paired with its field description.
+    if (capture.complete && water_drawn && mWaterExclusionPool &&
+        hasRenderType(LLPipeline::RENDER_TYPE_WATEREXCLUSION))
+    {
+        beginMetalWorldWaterExclusionPass();
+        for_each_draw(LLRenderPass::PASS_INVISIBLE,
+                      [&](LLDrawInfo& info)
+        {
+            captureMetalWorldGBufferBatch(info, false);
+        });
+        endMetalWorldGBufferPass();
+    }
+
+    // Pool order: fullbright, shiny/emboss, PBR glow, masked
+    // fullbright, transparent avatars, legacy glow, pre-water alpha,
+    // water, then post-water alpha.
+    if (capture.complete &&
+        hasRenderType(LLPipeline::RENDER_TYPE_FULLBRIGHT))
+    {
+        capture_flat_pass(LLRenderPass::PASS_FULLBRIGHT,
+                          false, false, true, false);
+        capture_flat_pass(LLRenderPass::PASS_FULLBRIGHT_RIGGED,
+                          true, false, true, false);
+    }
+
+    if (capture.complete && hasRenderType(LLPipeline::RENDER_TYPE_BUMP))
+    {
+        for (bool rigged : { false, true })
+        {
+            const U32 shiny_type = rigged
+                ? LLRenderPass::PASS_FULLBRIGHT_SHINY_RIGGED
+                : LLRenderPass::PASS_FULLBRIGHT_SHINY;
+            beginMetalImpostorShinyPass(rigged);
+            for_each_draw(shiny_type, [&](LLDrawInfo& info)
+            {
+                captureMetalWorldGBufferBatch(info, true);
+            });
+            endMetalWorldGBufferPass();
+            if (!capture.complete)
+            {
+                break;
+            }
+
+            const U32 emboss_type = rigged
+                ? LLRenderPass::PASS_POST_BUMP_RIGGED
+                : LLRenderPass::PASS_POST_BUMP;
+            beginMetalImpostorEmbossPass(rigged);
+            for_each_draw(emboss_type, [&](LLDrawInfo& info)
+            {
+                captureMetalWorldBumpBatch(
+                    info, LLDrawPoolBump::resolveBumpMap(info));
+            });
+            endMetalWorldGBufferPass();
+            if (!capture.complete)
+            {
+                break;
+            }
+        }
+    }
+
+    if (capture.complete && sRenderGlow &&
+        hasRenderType(LLPipeline::RENDER_TYPE_GLTF_PBR))
+    {
+        for (bool rigged : { false, true })
+        {
+            beginMetalWorldPBRGlowPass(rigged);
+            for_each_draw(
+                rigged ? LLRenderPass::PASS_GLTF_GLOW_RIGGED
+                       : LLRenderPass::PASS_GLTF_GLOW,
+                [&](LLDrawInfo& info)
+            {
+                captureMetalWorldPBRBatch(
+                    info, info.mGLTFMaterialList.size() > 1);
+            });
+            endMetalWorldGBufferPass();
+            if (!capture.complete)
+            {
+                break;
+            }
+        }
+    }
+
+    if (capture.complete &&
+        hasRenderType(LLPipeline::RENDER_TYPE_FULLBRIGHT_ALPHA_MASK))
+    {
+        capture_flat_pass(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK,
+                          false, true, true, true);
+        capture_flat_pass(
+            LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED,
+            true, true, true, true);
+    }
+
+    for (U32 pool_type : { LLDrawPool::POOL_AVATAR,
+                           LLDrawPool::POOL_CONTROL_AV })
+    {
+        if (!capture.complete)
+        {
+            break;
+        }
+        if (hasRenderType(pool_type))
+        {
+            captureMetalReflectionProbeAvatarAlpha(pool_type);
+            capture.direct_probe_scene_active = true;
+        }
+    }
+
+    if (capture.complete && sRenderGlow &&
+        hasRenderType(LLPipeline::RENDER_TYPE_GLOW))
+    {
+        for (bool rigged : { false, true })
+        {
+            beginMetalWorldLegacyGlowPass(rigged);
+            for_each_draw(
+                rigged ? LLRenderPass::PASS_GLOW_RIGGED
+                       : LLRenderPass::PASS_GLOW,
+                [&](LLDrawInfo& info)
+            {
+                captureMetalWorldLegacyGlowBatch(
+                    info, info.mMaterialSlotList.size() > 1);
+            });
+            endMetalWorldGBufferPass();
+            if (!capture.complete)
+            {
+                break;
+            }
+        }
+    }
+
+    const bool water_haze = capture.complete && !low_detail_probe &&
+        !sImpostorRender && RenderDeferredAtmospheric &&
+        (sUnderWaterRender || water_drawn) &&
+        (sUnderWaterRender ||
+         mWaterSurface.drawnFrom(*LLViewerCamera::getInstance())) &&
+        (sUnderWaterRender || ALRenderResourcePlan::refractsWater(
+             renderPack(), sRenderTransparentWater));
+    if (water_haze)
+    {
+        captureMetalWorldWaterHaze();
+    }
+
+    if (capture.complete &&
+        hasRenderType(LLPipeline::RENDER_TYPE_ALPHA_PRE_WATER))
+    {
+        for (LLDrawPool* pool : mPools)
+        {
+            if (pool->getType() == LLDrawPool::POOL_ALPHA_PRE_WATER &&
+                !pool->getSkipRenderFlag())
+            {
+                static_cast<LLDrawPoolAlpha*>(pool)
+                    ->captureMetalReflectionProbe();
+            }
+        }
+    }
+
+    const bool atmospherics = capture.complete && !low_detail_probe &&
+        !sImpostorRender && RenderDeferredAtmospheric;
+    if (atmospherics && sUnderWaterRender)
+    {
+        captureMetalWorldAtmospherics();
+    }
+
+    if (capture.complete && water_drawn)
+    {
+        static_cast<LLDrawPoolWater*>(mWaterPool)
+            ->captureMetalReflectionProbe();
+    }
+
+    if (atmospherics && !sUnderWaterRender)
+    {
+        captureMetalWorldAtmospherics();
+    }
+
+    if (capture.complete &&
+        hasRenderType(LLPipeline::RENDER_TYPE_ALPHA_POST_WATER))
+    {
+        for (LLDrawPool* pool : mPools)
+        {
+            if (pool->getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
+                !pool->getSkipRenderFlag())
+            {
+                static_cast<LLDrawPoolAlpha*>(pool)
+                    ->captureMetalReflectionProbe();
+            }
+        }
+    }
+
     capture.direct_probe_scene_active = false;
     capture.pass_active = false;
 }
@@ -21872,8 +22128,6 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
 
     U32 cur_type = 0;
 
-    LLGLEnable cull(GL_CULL_FACE);
-
     bool done_atmospherics = LLPipeline::sRenderingHUDs; //skip atmospherics on huds
 
     // The water haze and the exclusion serve the water this view draws: from above, the haze fogs what lies under the
@@ -21908,6 +22162,19 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
 
     calcNearbyLights(camera);
     setupHWLights();
+
+#if LL_DARWIN
+    if (mMetalReflectionWorldCaptureActive)
+    {
+        // Reflection faces enumerate the complete ordered post-deferred
+        // scene from CPU render maps. No GL pool draw, stencil pass or
+        // fullscreen haze draw is needed to produce the native face.
+        captureMetalReflectionProbePostDeferred();
+        return;
+    }
+#endif
+
+    LLGLEnable cull(GL_CULL_FACE);
 
     gGL.setSceneBlendType(LLRender::BT_ALPHA);
     gGL.setColorMask(true, false);

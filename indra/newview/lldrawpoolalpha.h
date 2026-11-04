@@ -63,6 +63,12 @@ public:
     /*virtual*/ void renderPostDeferred(S32 pass);
     /*virtual*/ S32  getNumPasses() { return 1; }
 
+    // Enumerate the sorted transparent draw lists directly into the native
+    // reflection-probe transaction. This preserves the pool's water split
+    // and group-local emissive ordering without executing a GL draw merely
+    // to trigger Metal capture hooks.
+    void captureMetalReflectionProbe();
+
     void forwardRender(bool write_depth = false);
     /*virtual*/ void prerender();
 

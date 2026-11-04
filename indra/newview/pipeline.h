@@ -1113,6 +1113,7 @@ public:
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
     void captureMetalReflectionProbeScene();
+    void captureMetalReflectionProbePostDeferred();
     void captureMetalReflectionProbeAvatarAlpha(U32 pool_type);
     void invalidateMetalReflectionProbeScene();
     void captureMetalWorldMaterialBatch(const LLDrawInfo& params,

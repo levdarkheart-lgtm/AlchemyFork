@@ -282,6 +282,152 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
 #endif
 }
 
+void LLDrawPoolAlpha::captureMetalReflectionProbe()
+{
+#if LL_DARWIN
+    const bool pre_water =
+        getType() == LLDrawPool::POOL_ALPHA_PRE_WATER;
+    const bool post_water =
+        getType() == LLDrawPool::POOL_ALPHA_POST_WATER;
+    if ((!pre_water && !post_water) ||
+        (pre_water && LLPipeline::isWaterClip()))
+    {
+        return;
+    }
+
+    if (pre_water)
+    {
+        gPipeline.beginMetalWorldPreWaterAlphaPhase();
+    }
+    else
+    {
+        gPipeline.beginMetalWorldPostWaterAlphaPhase();
+    }
+
+    LLEnvironment& environment = LLEnvironment::instance();
+    const F32 water_height = environment.getWaterHeight();
+    bool above_water = post_water;
+    if (LLPipeline::sUnderWaterRender)
+    {
+        above_water = !above_water;
+    }
+
+    const auto capture_pass = [&](bool rigged)
+    {
+        LLCullResult::sg_iterator at = rigged
+            ? gPipeline.beginRiggedAlphaGroups()
+            : gPipeline.beginAlphaGroups();
+        LLCullResult::sg_iterator end = rigged
+            ? gPipeline.endRiggedAlphaGroups()
+            : gPipeline.endAlphaGroups();
+
+        for (; at != end; ++at)
+        {
+            LLSpatialGroup* group = *at;
+            if (!group || !group->getSpatialPartition() ||
+                !group->getSpatialPartition()->mRenderByGroup ||
+                group->isDead())
+            {
+                continue;
+            }
+
+            LLSpatialBridge* bridge =
+                group->getSpatialPartition()->asBridge();
+            const LLVector4a* extents = bridge
+                ? bridge->getSpatialExtents() : group->getExtents();
+            if (above_water)
+            {
+                if (extents[1].getF32ptr()[2] < water_height)
+                {
+                    continue;
+                }
+            }
+            else if (extents[0].getF32ptr()[2] > water_height)
+            {
+                continue;
+            }
+
+            const S32 partition_type =
+                group->getSpatialPartition()->mPartitionType;
+            const bool particle =
+                partition_type == LLViewerRegion::PARTITION_PARTICLE ||
+                partition_type == LLViewerRegion::PARTITION_HUD_PARTICLE;
+            const U32 draw_type = rigged
+                ? LLRenderPass::PASS_ALPHA_RIGGED
+                : LLRenderPass::PASS_ALPHA;
+            LLSpatialGroup::drawmap_elem_t& draws =
+                group->mDrawMap[draw_type];
+
+            std::vector<LLDrawInfo*> legacy_emissive;
+            std::vector<LLDrawInfo*> pbr_emissive;
+            for (LLDrawInfo* info : draws)
+            {
+                if (!info || static_cast<bool>(info->mAvatar) != rigged)
+                {
+                    continue;
+                }
+
+                LLGLTFMaterial* gltf = info->mGLTFMaterial.get();
+                if (gltf && gltf->mAlphaMode ==
+                                LLGLTFMaterial::ALPHA_MODE_BLEND)
+                {
+                    gPipeline.captureMetalImpostorPBRAlphaBatch(
+                        *info, particle, false);
+                }
+                else if (info->mMaterial)
+                {
+                    gPipeline.captureMetalImpostorLegacyMaterialAlphaBatch(
+                        *info, particle, false);
+                }
+                else
+                {
+                    gPipeline.captureMetalImpostorFlatAlphaBatch(
+                        *info, particle, false);
+                }
+
+                if (post_water && !LLPipeline::alphaWritesCoverage() &&
+                    info->mVertexBuffer &&
+                    info->mVertexBuffer->hasDataType(
+                        LLVertexBuffer::TYPE_EMISSIVE))
+                {
+                    (info->mGLTFMaterial.notNull()
+                         ? pbr_emissive : legacy_emissive).push_back(info);
+                }
+            }
+
+            // The retained pool replays emissive geometry after the sorted
+            // colour draws for each spatial group. Keep that exact boundary
+            // in the native transaction; unlike GL, no shader excursion is
+            // required to do it.
+            for (LLDrawInfo* info : legacy_emissive)
+            {
+                gPipeline.captureMetalWorldPostWaterLegacyGlowBatch(
+                    *info, particle);
+            }
+            for (LLDrawInfo* info : pbr_emissive)
+            {
+                gPipeline.captureMetalWorldPostWaterPBRGlowBatch(
+                    *info, particle);
+            }
+        }
+    };
+
+    // Match renderPostDeferred: rigged transparent geometry writes depth
+    // first, followed by the ordinary sorted transparent sweep.
+    capture_pass(true);
+    capture_pass(false);
+
+    if (pre_water)
+    {
+        gPipeline.endMetalWorldPreWaterAlphaPhase();
+    }
+    else
+    {
+        gPipeline.endMetalWorldPostWaterAlphaPhase();
+    }
+#endif
+}
+
 void LLDrawPoolAlpha::forwardRender(bool rigged)
 {
     gPipeline.enableLightsDynamic();
