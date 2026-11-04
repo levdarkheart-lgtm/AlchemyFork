@@ -301,16 +301,16 @@ void LLWind::renderVectors()
 
     F32 region_width_meters = LLWorld::getInstance()->getRegionWidthInMeters();
 
-    gGL.getTextureSlot(0)->unbind();
+    // Keep the CPU matrix stack only long enough to capture the translated
+    // model-view-projection for the native transaction. Metal owns the point
+    // and line draws below; there is no duplicate GL submission.
     gGL.pushMatrix();
     LLVector3 origin_agent;
     origin_agent = gAgent.getPosAgentFromGlobal(mOriginGlobal);
     gGL.translatef(origin_agent.mV[VX], origin_agent.mV[VY], gAgent.getPositionAgent().mV[VZ] + WIND_RELATIVE_ALTITUDE);
-#if LL_DARWIN
     const std::size_t vector_count = static_cast<std::size_t>(mSize) *
                                      static_cast<std::size_t>(mSize);
     gPipeline.beginMetalWindVectorCapture(vector_count);
-#endif
     for (j = 0; j < mSize; j++)
     {
         for (i = 0; i < mSize; i++)
@@ -319,29 +319,13 @@ void LLWind::renderVectors()
             y = mVelY[i + j*mSize] * WIND_SCALE_HACK;
             const F32 cell_x = (F32)i * region_width_meters/mSize;
             const F32 cell_y = (F32)j * region_width_meters/mSize;
-#if LL_DARWIN
             gPipeline.captureMetalWindVector(
                 LLVector3(cell_x, cell_y, 0.f),
                 LLVector3(cell_x + x * 0.1f, cell_y + y * 0.1f, 0.f),
                 LLVector3(cell_x + x, cell_y + y, 0.f));
-#endif
-            gGL.pushMatrix();
-            gGL.translatef(cell_x, cell_y, 0.f);
-            gGL.color3f(0.f, 1.f, 0.f);
-            gGL.begin(LLRender::POINTS);
-                gGL.vertex3f(0.f, 0.f, 0.f);
-            gGL.end();
-            gGL.color3f(1.f, 0.f, 0.f);
-            gGL.begin(LLRender::LINES);
-                gGL.vertex3f(x * 0.1f, y * 0.1f, 0.f);
-                gGL.vertex3f(x, y, 0.f);
-            gGL.end();
-            gGL.popMatrix();
         }
     }
-#if LL_DARWIN
     gPipeline.endMetalWindVectorCapture(vector_count);
-#endif
     gGL.popMatrix();
 }
 
