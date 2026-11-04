@@ -39,6 +39,7 @@ class LLSpatialGroup;
 class LLDrawInfo;
 class LLGLSLShader;
 class LLViewerFetchedTexture;
+class LLViewerTexture;
 
 class LLDrawPoolBump : public LLRenderPass
 {
@@ -79,8 +80,15 @@ public:
     static bool bindBumpMap(LLDrawInfo& params, S32 channel = -2,
                             LLViewerTexture** resolved = nullptr);
     static bool bindBumpMap(LLFace* face, S32 channel = -2);
+    // Resolve the legacy bump selection without touching GL state. Direct
+    // Metal scene enumeration and the retained GL bind path share this exact
+    // brightness/darkness/standard-map decision.
+    static LLViewerTexture* resolveBumpMap(const LLDrawInfo& params);
+    static bool bumpCanDiscard(const LLDrawInfo& params);
 
 private:
+    static LLViewerTexture* resolveBumpMap(U8 bump_code,
+                                           LLViewerTexture* texture);
     static bool bindBumpMap(U8 bump_code, LLViewerTexture* tex, S32 channel,
                             LLViewerTexture** resolved = nullptr);
     bool mRigged = false; // if true, doing a rigged pass

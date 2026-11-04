@@ -11433,6 +11433,90 @@ void LLPipeline::captureMetalReflectionProbeDrawMaps()
         }
     }
 
+    // Legacy bump geometry uses the same CPU render maps as its GL pool, but
+    // resolves the normal image without binding a texture unit. Preserve the
+    // pool's two-pass alpha classification so the Metal depth/cutout result
+    // remains identical while GL continues to render the fallback face.
+    for (bool rigged : { false, true })
+    {
+        if (!capture.complete)
+        {
+            break;
+        }
+        const U32 type = rigged
+            ? LLRenderPass::PASS_BUMP_RIGGED
+            : LLRenderPass::PASS_BUMP;
+        std::vector<LLDrawInfo*> masked;
+        beginMetalWorldGBufferPass(rigged, false);
+        auto* at = beginRenderMap(type);
+        auto* end = endRenderMap(type);
+        U8 last_bump = 255;
+        LLViewerTexture* last_source = nullptr;
+        LLViewerTexture* last_normal = nullptr;
+        for (; at != end; )
+        {
+            LLDrawInfo* info = *at;
+            LLCullResult::increment_iterator(at, end);
+            if (!info)
+            {
+                capture.markIncomplete(__LINE__);
+                capture.batches.clear();
+                break;
+            }
+            if (LLDrawPoolBump::bumpCanDiscard(*info))
+            {
+                masked.push_back(info);
+                continue;
+            }
+            if (info->mBump != last_bump ||
+                info->mTexture.get() != last_source)
+            {
+                last_bump = info->mBump;
+                last_source = info->mTexture.get();
+                last_normal = LLDrawPoolBump::resolveBumpMap(*info);
+            }
+            capture.direct_probe_draw_infos.insert(info);
+            captureMetalWorldBumpBatch(*info, last_normal);
+            if (!capture.complete)
+            {
+                break;
+            }
+        }
+        endMetalWorldGBufferPass();
+        if (!capture.complete)
+        {
+            break;
+        }
+
+        beginMetalWorldGBufferPass(rigged, true);
+        last_bump = 255;
+        last_source = nullptr;
+        last_normal = nullptr;
+        for (LLDrawInfo* info : masked)
+        {
+            if (!info)
+            {
+                capture.markIncomplete(__LINE__);
+                capture.batches.clear();
+                break;
+            }
+            if (info->mBump != last_bump ||
+                info->mTexture.get() != last_source)
+            {
+                last_bump = info->mBump;
+                last_source = info->mTexture.get();
+                last_normal = LLDrawPoolBump::resolveBumpMap(*info);
+            }
+            capture.direct_probe_draw_infos.insert(info);
+            captureMetalWorldBumpBatch(*info, last_normal);
+            if (!capture.complete)
+            {
+                break;
+            }
+        }
+        endMetalWorldGBufferPass();
+    }
+
     struct PBRPass
     {
         U32 type;

@@ -413,9 +413,8 @@ void LLDrawPoolBump::renderGroup(LLSpatialGroup* group, U32 type, bool texture =
 bool LLDrawPoolBump::bindBumpMap(LLDrawInfo& params, S32 channel,
                                  LLViewerTexture** resolved)
 {
-    U8 bump_code = params.mBump;
-
-    return bindBumpMap(bump_code, params.mTexture, channel, resolved);
+    return bindBumpMap(
+        params.mBump, params.mTexture, channel, resolved);
 }
 
 //static
@@ -436,44 +435,14 @@ bool LLDrawPoolBump::bindBumpMap(U8 bump_code, LLViewerTexture* texture,
                                  S32 channel, LLViewerTexture** resolved)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    LLViewerTexture* bump = resolveBumpMap(bump_code, texture);
     if (resolved)
     {
-        *resolved = nullptr;
-    }
-    //Note: texture atlas does not support bump texture now.
-    LLViewerFetchedTexture* tex = LLViewerTextureManager::staticCastToFetchedTexture(texture) ;
-    if(!tex)
-    {
-        //if the texture is not a fetched texture
-        return false;
-    }
-
-    LLViewerTexture* bump = NULL;
-
-    switch( bump_code )
-    {
-    case BE_NO_BUMP:
-        break;
-    case BE_BRIGHTNESS:
-    case BE_DARKNESS:
-        bump = gBumpImageList.getBrightnessDarknessImage( tex, bump_code );
-        break;
-
-    default:
-        if( bump_code < LLStandardBumpmap::sStandardBumpmapCount )
-        {
-            bump = gStandardBumpmapList[bump_code].mImage;
-            gBumpImageList.addTextureStats(bump_code, tex->getID(), tex->getMaxVirtualSize());
-        }
-        break;
+        *resolved = bump;
     }
 
     if (bump)
     {
-        if (resolved)
-        {
-            *resolved = bump;
-        }
         if (channel == -2)
         {
             gGL.getTextureSlot(1)->bindFast(bump, ALSamplers::AnisoWrap);
@@ -489,6 +458,47 @@ bool LLDrawPoolBump::bindBumpMap(U8 bump_code, LLViewerTexture* texture,
     }
 
     return false;
+}
+
+// static
+LLViewerTexture* LLDrawPoolBump::resolveBumpMap(
+    const LLDrawInfo& params)
+{
+    return resolveBumpMap(params.mBump, params.mTexture);
+}
+
+// static
+LLViewerTexture* LLDrawPoolBump::resolveBumpMap(
+    U8 bump_code, LLViewerTexture* texture)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    // Texture atlases do not support legacy bump textures. This lookup owns
+    // no GL state: generated brightness/darkness images publish through the
+    // native texture path on Darwin, while the retained binder below merely
+    // consumes the resolved image.
+    LLViewerFetchedTexture* tex =
+        LLViewerTextureManager::staticCastToFetchedTexture(texture);
+    if (!tex)
+    {
+        return nullptr;
+    }
+
+    switch (bump_code)
+    {
+    case BE_NO_BUMP:
+        return nullptr;
+    case BE_BRIGHTNESS:
+    case BE_DARKNESS:
+        return gBumpImageList.getBrightnessDarknessImage(tex, bump_code);
+    default:
+        if (bump_code < LLStandardBumpmap::sStandardBumpmapCount)
+        {
+            gBumpImageList.addTextureStats(
+                bump_code, tex->getID(), tex->getMaxVirtualSize());
+            return gStandardBumpmapList[bump_code].mImage;
+        }
+        return nullptr;
+    }
 }
 
 //static
@@ -541,14 +551,14 @@ S32 LLDrawPoolBump::getNumDeferredPasses()
 
 // Whether a bump face's texture can fall below its cutoff. Without an alpha channel the texture reads 1 and the face
 // is never discarded; a texture whose channels are not yet known is taken to have one.
-static bool bump_can_discard(const LLDrawInfo& params)
+bool LLDrawPoolBump::bumpCanDiscard(const LLDrawInfo& params)
 {
     if (params.mAlphaMaskCutoff <= 0.f)
     {
         return false;
     }
     const LLViewerTexture* tex = params.mTexture.get();
-    return !(tex && tex->hasGLTexture() && tex->getComponents() == 3);
+    return !(tex && tex->hasGPUTexture() && tex->getComponents() == 3);
 }
 
 void LLDrawPoolBump::renderDeferred(S32 pass)
@@ -645,7 +655,7 @@ void LLDrawPoolBump::renderDeferred(S32 pass)
 
                     LLCullResult::increment_iterator(i, end);
 
-                    if (bump_can_discard(params))
+                    if (bumpCanDiscard(params))
                     {
                         masked.push_back(&params);
                         continue;
