@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `0789086de1`
+**Renderer code checkpoint:** `66581835e8`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -14,17 +14,17 @@ append-only archives.
 ## Active implementation checkpoint
 
 M-003, M-004, M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit
-`0789086de1` replaces the viewer-facing GL-name-gated destruction wrapper with
-an explicit GPU-residency lifecycle. Native-only sculpt, fetched-result and
-ordinary fetched eviction now release their Metal texture, reset discard/state
-metadata and reconcile budget accounting. Brightness/darkness bump eviction
-uses the same contract; the non-Darwin media recreation call retains equivalent
-GL behavior. The low-level explicit GL detach primitive remains at its owner.
+`66581835e8` moves already-native fetched-texture pressure work before the
+global GL-disabled return. Metal-only queue entries therefore retain native
+scale-down behavior without a GL name, scratch target, copy shader or live GL
+manager. Upload and GL/dual-backed branches remain guarded and fail closed
+until their native replacements are complete. Timeout/resume preserves the
+original relative order of retained and unexamined work.
 
-The preceding scheduler checkpoint remains active. Native-authoritative Metal
-images participate in redundant-load, post-create, shutdown-precache and queued
-scale-down decisions without a GL name or GL scratch state. Transitional
-GL/dual-backed entries retain their fail-closed path and queue order.
+The preceding eviction checkpoint remains active. The viewer-facing
+GPU-residency lifecycle releases native-only sculpt, fetched-result, ordinary
+fetched and brightness/darkness bump Metal storage, resets metadata and
+reconciles budget accounting. Explicit low-level GL detach remains at its owner.
 
 The preceding accounting checkpoint remains active. Native Metal allocation,
 replacement, scale-down, discard and teardown update the same process-wide
@@ -90,12 +90,12 @@ until the owner-attended review records that result.
   unified memory, arm64 macOS 26.5.2, Xcode 26.6, Apple7 support and the Metal
   compiler present.
 - The exact `tools/metal/build.sh` invocation exited 0 at committed source
-  `0789086de1`; the cold warnings-as-errors Xcode Release build reported
-  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68241`
-  (`26.4.0.68241`).
+  `66581835e8`; the warnings-as-errors Xcode Release build reported
+  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68243`
+  (`26.4.0.68243`).
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64;
   deep strict code-sign verification passed. Viewer executable SHA-256 is
-  `ce2bf076c43f68e5ad0218602ba775d921652d3aea4f8a701e88ee6a37a4a28a`.
+  `893e130a20a8117243c34373b2cb16aa09f393ad1f2b836d3fc647bbe5ba26a3`.
 - Source and packaged MSL are byte-identical at
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`;
   metallib SHA-256 is
@@ -103,21 +103,20 @@ until the owner-attended review records that result.
 - Source and packaged `settings_alchemy.xml` are byte-identical at
   `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
   an XML query confirms the packaged Metal-presentation default is `1`.
-- The changed `llrender_gl_fresh_tests` target compiled warnings-as-errors.
-  Its focused physical Metal slice passed 1,972 assertions across 20 cases;
-  the complete binary passed 2,683 assertions across 100 cases. The new case
-  proves native wrapper destruction releases Metal storage, metadata and bytes.
-- A cold Ninja Release `llrender_gl_fresh_tests alchemy-bin` build also passed
-  warnings-as-errors and linked/packaged the complete viewer.
+- The changed production/test targets compiled warnings-as-errors. The focused
+  queue suite passed 12 assertions/3 cases and full `newview_tests` passed
+  98,990/747 with the established CRT skip. Physical Metal renderer coverage
+  passed 1,972/20 focused and 2,683/100 complete.
+- Ninja Release linked and packaged the complete viewer warnings-as-errors.
 - The preceding source-exact physical baselines remain `almetal_tests` at
-  52,526/56, `llappearance_gl_tests` at 13,208/3, `alrender_tests` at
-  557,301/136 and `newview_tests` at 98,978/744 with the established CRT skip.
+  52,526/56, `llappearance_gl_tests` at 13,208/3 and `alrender_tests` at
+  557,301/136.
 - Harness structure validation passes for 32 required files; all 29 harness/tool
   tests and `git diff --check` pass.
-- Strict inventory is 2,406 files / 3,220 findings / 2,909 unique
+- Strict inventory is 2,407 files / 3,220 findings / 2,909 unique
   path/kinds/snippet records, expected exit 1. No rule or suppression changed;
   this informational count is not used as feature evidence. Report SHA-256:
-  `0fd3f423a7552de947b09fcad4685f9e6ac650a2715c1965c96675e97af3d9b5`.
+  `1f0f70ac302c12f62f75c1cc66bc1e8450ad202a5203f8a1bf7b21c630053104`.
 - Both OpenGL and Metal remain linked. The static, linked and runtime no-GL
   release gates remain open.
 - No viewer executable was launched, driven, photographed or compared.
@@ -126,7 +125,7 @@ until the owner-attended review records that result.
 
 | Area | State | Current fact |
 | --- | --- | --- |
-| M-003..M-006 platform/resources/UI | doing | Native-authoritative allocation, pressure scale-down and eviction are Metal-aware, process-wide budgeted and no longer require GL scratch state or a GL name at converted lifecycle sites. Exact world/UI presentation remains Metal-first and fail-closed. Live GL context creation/shutdown remains. |
+| M-003..M-006 platform/resources/UI | doing | Native-authoritative allocation, pressure scale-down and eviction are Metal-aware, process-wide budgeted and remain operational without a GL manager at converted lifecycle sites. Exact world/UI presentation remains Metal-first and fail-closed. Live GL context creation/shutdown remains. |
 | M-007 world/material | doing | Metal world capture consumes native bump backing; opaque fullbright is corrected. Native legacy BLEND/stained-glass implementation and deterministic coverage exist; owner-attended visual and broad material parity remain open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,220 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
@@ -138,9 +137,9 @@ until the owner-attended review records that result.
 ## Complete-product advancement assessment
 
 **Advances the complete product:** yes. Native-authoritative images now retain
-eviction and pressure-management behavior through Metal allocation, scaling
-and destruction. Converted owners release real Metal storage and accounting;
-this is retained lifecycle behavior, not OpenGL-count-only deletion.
+pressure-management behavior through the GL-disabled state. Converted work
+scales real Metal storage and keeps the existing scheduling contract; no
+feature was deleted to reduce an OpenGL count.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -150,10 +149,10 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Move native downscale draining ahead of the global GL-disabled return so
-   already-Metal work remains pressure-manageable without a live GL manager.
-   Keep upload and GL/dual-backed branches fail-closed until fetched upload and
-   their remaining consumers have native replacements; add deterministic tests.
+1. Give ordinary fetched-image creation a native Metal publication path that
+   does not generate or require a GL name. Preserve format/swizzle, mip,
+   alpha/pick, threaded publication and accounting behavior; retain explicit
+   fail-closed recovery for unsupported texture kinds and residual GL consumers.
 2. In the next owner-attended session, collect the default-path publication
    census without adding an independent viewer-comparison run. Use measured
    failure states to repair blockers, then retire GL recovery only when complete
