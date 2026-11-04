@@ -11289,6 +11289,32 @@ void LLPipeline::endMetalImpostorAlphaCapture()
     capture.avatar_palettes.clear();
 }
 
+static void buildMetalWorldDrawMatrices(
+    const LLDrawInfo& params, LLMatrix4a& modelview,
+    LLMatrix4a& modelview_projection)
+{
+    // The native batch contract owns its transforms. Reconstruct the same
+    // object-to-eye matrix as LLRenderPass::applyModelMatrix instead of
+    // reading it back from gGL's mutable matrix stack. This is required for a
+    // direct Metal scene traversal that never binds a GL program or target.
+    modelview = LLViewerCamera::getCurrent().getModelview();
+    if (params.mModelMatrix)
+    {
+        modelview.setMul(*params.mModelMatrix, modelview);
+    }
+    modelview_projection.setMul(
+        modelview, LLViewerCamera::getCurrent().getProjection());
+}
+
+static bool buildMetalWorldDrawMatrices(
+    const LLDrawInfo& params, LLMatrix4a& modelview,
+    LLMatrix4a& inverse_modelview, LLMatrix4a& modelview_projection)
+{
+    buildMetalWorldDrawMatrices(
+        params, modelview, modelview_projection);
+    return inverse_modelview.setAffineInverse(modelview);
+}
+
 void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                                bool batch_textures)
 {
@@ -11322,10 +11348,10 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
             capture.batches.clear();
             return;
         }
-        const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+        LLMatrix4a modelview;
         LLMatrix4a modelview_projection;
-        modelview_projection.setMul(
-            modelview, gGL.getProjectionMatrix());
+        buildMetalWorldDrawMatrices(
+            params, modelview, modelview_projection);
         ALMetalWorldSimpleBatch batch;
         batch.vertices = buffer->getMetalVertexBuffer();
         batch.position_offset = buffer->getOffset(
@@ -11366,16 +11392,17 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
         return;
     }
 
-    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    LLMatrix4a modelview;
     LLMatrix4a inverse_modelview;
-    if (!inverse_modelview.setAffineInverse(modelview))
+    LLMatrix4a modelview_projection;
+    if (!buildMetalWorldDrawMatrices(
+            params, modelview, inverse_modelview,
+            modelview_projection))
     {
         capture.markIncomplete(__LINE__);
         capture.batches.clear();
         return;
     }
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
 
     ALMetalWorldSimpleBatch batch;
     batch.vertices = buffer->getMetalVertexBuffer();
@@ -11747,10 +11774,10 @@ void LLPipeline::captureMetalWorldBumpBatch(
             return;
         }
 
-        const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+        LLMatrix4a modelview;
         LLMatrix4a modelview_projection;
-        modelview_projection.setMul(
-            modelview, gGL.getProjectionMatrix());
+        buildMetalWorldDrawMatrices(
+            params, modelview, modelview_projection);
 
         ALMetalWorldSimpleBatch batch;
         batch.vertices = buffer->getMetalVertexBuffer();
@@ -12040,9 +12067,10 @@ void LLPipeline::captureMetalWorldLegacyGlowBatch(
         return;
     }
 
-    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    LLMatrix4a modelview;
     LLMatrix4a modelview_projection;
-    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+    buildMetalWorldDrawMatrices(
+        params, modelview, modelview_projection);
 
     ALMetalWorldSimpleBatch batch;
     batch.vertices = buffer->getMetalVertexBuffer();
