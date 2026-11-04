@@ -408,6 +408,198 @@ void LLDrawPoolTerrain::renderFullShader()
     unbindSurface(sShader);
 }
 
+void LLDrawPoolTerrain::captureMetalReflectionProbe()
+{
+#if !LL_DARWIN
+    return;
+#else
+    if (mDrawFace.empty())
+    {
+        return;
+    }
+
+    LLFace* first_face = mDrawFace.front();
+    LLDrawable* drawable = first_face ? first_face->getDrawable() : nullptr;
+    LLViewerObject* object = drawable ? drawable->getVObj().get() : nullptr;
+    LLViewerRegion* region = object ? object->getRegion() : nullptr;
+    LLVLComposition* composition = region ? region->getComposition() : nullptr;
+    if (!region || !composition)
+    {
+        // Enter the real terrain contract so the native face fails closed;
+        // the following GL pool traversal remains complete fallback output.
+        gPipeline.beginMetalWorldTerrainPass();
+        gPipeline.captureMetalWorldTerrainBatch(
+            first_face, nullptr, nullptr, nullptr, 0.f, nullptr, 0.f,
+            false, false, false, 0.f, false);
+        gPipeline.endMetalWorldGBufferPass();
+        return;
+    }
+
+    // The direct producer runs before bindSurface, so it owns the same native
+    // refresh that the retained GL pass would otherwise trigger first.
+    region->getLand().getSurfaceMaps().ensureUploaded();
+
+    LLViewerTexture* parcel_overlay = nullptr;
+    static const LLCachedControl<bool> show_parcel_owners(
+        gSavedSettings, "ShowParcelOwners");
+    if (show_parcel_owners)
+    {
+        LLViewerParcelOverlay* overlay = region->getParcelOverlay();
+        parcel_overlay = overlay ? overlay->getTexture() : nullptr;
+    }
+
+    const TessLevels levels = tess_levels();
+    const bool smoothing = LLSurface::isSmoothing();
+    const bool triplanar =
+        gPipeline.shaderInputs().mGlobal.mTerrainPlanarSampleCount == 3;
+    const bool hex =
+        gPipeline.shaderInputs().mGlobal.mTerrainHexTiling;
+    const bool tessellation_pinned =
+        gPipeline.shaderInputs().mLocal.mTerrainTessPinned;
+    static LLCachedControl<F32> triplanar_blend(
+        gSavedSettings, "RenderTerrainPBRTriplanarBlendFactor", 8.f);
+
+    const bool use_local_materials =
+        gLocalTerrainMaterials.makeMaterialsReady(true, false);
+    const bool use_textures = !use_local_materials &&
+        composition->getMaterialType() == LLTerrainMaterials::Type::TEXTURE;
+    gPipeline.beginMetalWorldTerrainPass();
+    if (use_textures)
+    {
+        LLViewerTexture* detail_textures[LLVLComposition::ASSET_COUNT];
+        for (U32 i = 0; i < LLVLComposition::ASSET_COUNT; ++i)
+        {
+            detail_textures[i] = LLPipeline::sRenderTextures
+                ? composition->mDetailTextures[i].get()
+                : LLViewerFetchedTexture::sDefaultDiffuseImagep.get();
+        }
+        const LLVector3d& global_origin = region->getOriginGlobal();
+        const F32 phase[2] = {
+            static_cast<F32>(fmod(
+                global_origin.mdV[VX], 1.0 / static_cast<F64>(sDetailScale))) *
+                sDetailScale,
+            static_cast<F32>(fmod(
+                global_origin.mdV[VY], 1.0 / static_cast<F64>(sDetailScale))) *
+                sDetailScale,
+        };
+        for (LLFace* face : mDrawFace)
+        {
+            gPipeline.captureMetalWorldTerrainBatch(
+                face, detail_textures, m2DAlphaRampImagep.get(),
+                parcel_overlay, sDetailScale, phase, levels.mDensity,
+                smoothing, triplanar, hex, triplanar_blend,
+                tessellation_pinned);
+        }
+        gPipeline.endMetalWorldGBufferPass();
+        return;
+    }
+
+    constexpr U32 material_count = LLVLComposition::ASSET_COUNT;
+    const LLPointer<LLFetchedGLTFMaterial> (*fetched_materials)
+        [material_count] = use_local_materials
+            ? &gLocalTerrainMaterials.mDetailRenderMaterials
+            : &composition->mDetailRenderMaterials;
+    LLViewerTexture* base_color_textures[material_count];
+    LLViewerTexture* normal_textures[material_count];
+    LLViewerTexture* orm_textures[material_count];
+    LLViewerTexture* emissive_textures[material_count];
+    F32 uv_transform[material_count][4];
+    F32 uv_offset[material_count][2];
+    F32 normal_axes[material_count][4];
+    LLColor4 base_color_factors[material_count];
+    F32 metallic_factors[material_count];
+    F32 roughness_factors[material_count];
+    LLColor3 emissive_colors[material_count];
+    F32 minimum_alphas[material_count];
+
+    for (U32 i = 0; i < material_count; ++i)
+    {
+        const LLFetchedGLTFMaterial* fetched = (*fetched_materials)[i].get();
+        const LLGLTFMaterial* material = fetched
+            ? static_cast<const LLGLTFMaterial*>(fetched)
+            : &LLGLTFMaterial::sDefault;
+        base_color_textures[i] = fetched && fetched->mBaseColorTexture
+            ? fetched->mBaseColorTexture.get()
+            : LLViewerFetchedTexture::sWhiteImagep.get();
+        normal_textures[i] = fetched && fetched->mNormalTexture
+            ? fetched->mNormalTexture.get()
+            : LLViewerFetchedTexture::sFlatNormalImagep.get();
+        orm_textures[i] = fetched && fetched->mMetallicRoughnessTexture
+            ? fetched->mMetallicRoughnessTexture.get()
+            : LLViewerFetchedTexture::sWhiteImagep.get();
+        emissive_textures[i] = fetched && fetched->mEmissiveTexture
+            ? fetched->mEmissiveTexture.get()
+            : LLViewerFetchedTexture::sWhiteImagep.get();
+
+        LLGLTFMaterial::TextureTransform transform;
+        if (fetched)
+        {
+            transform = fetched->mTextureTransform[
+                LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR];
+        }
+        const F32 scale_u = transform.mScale.mV[VX] * sPBRDetailScale;
+        const F32 scale_v = transform.mScale.mV[VY] * sPBRDetailScale;
+        const F32 c = cosf(transform.mRotation);
+        const F32 s = sinf(transform.mRotation);
+        uv_transform[i][0] = c * scale_u;
+        uv_transform[i][1] = s * scale_u;
+        uv_transform[i][2] = -s * scale_v;
+        uv_transform[i][3] = c * scale_v;
+        uv_offset[i][0] = transform.mOffset.mV[VX];
+        uv_offset[i][1] = -transform.mOffset.mV[VY];
+        const F32 sign_u = scale_u < 0.f ? -1.f : 1.f;
+        const F32 sign_v = scale_v < 0.f ? -1.f : 1.f;
+        normal_axes[i][0] = sign_u * c;
+        normal_axes[i][1] = -sign_v * s;
+        normal_axes[i][2] = sign_u * s;
+        normal_axes[i][3] = sign_v * c;
+
+        base_color_factors[i] = material->mBaseColor;
+        metallic_factors[i] = material->mMetallicFactor;
+        roughness_factors[i] = material->mRoughnessFactor;
+        emissive_colors[i] = material->mEmissiveColor;
+        minimum_alphas[i] =
+            material->mAlphaMode == LLGLTFMaterial::ALPHA_MODE_MASK
+                ? material->mAlphaCutoff : -1.f;
+    }
+
+    U32 paint_type = use_local_materials
+        ? gLocalTerrainMaterials.getPaintType()
+        : composition->getPaintType();
+    paint_type = llclamp(paint_type, 0, TERRAIN_PAINT_TYPE_COUNT - 1);
+    LLViewerTexture* blend_texture = nullptr;
+    if (paint_type == TERRAIN_PAINT_TYPE_HEIGHTMAP_WITH_NOISE)
+    {
+        blend_texture = m2DAlphaRampImagep.get();
+    }
+    else if (paint_type == TERRAIN_PAINT_TYPE_PBR_PAINTMAP)
+    {
+        blend_texture = use_local_materials
+            ? gLocalTerrainMaterials.getPaintMap()
+            : composition->getPaintMap();
+        if (!blend_texture)
+        {
+            blend_texture = LLViewerTexture::sBlackImagep.get();
+        }
+    }
+
+    for (LLFace* face : mDrawFace)
+    {
+        gPipeline.captureMetalWorldPBRTerrainBatch(
+            face, base_color_textures, normal_textures, orm_textures,
+            emissive_textures, blend_texture, parcel_overlay,
+            uv_transform, uv_offset, normal_axes, base_color_factors,
+            metallic_factors, roughness_factors, emissive_colors,
+            minimum_alphas, paint_type,
+            gPipeline.shaderInputs().mGlobal.mTerrainPBRDetail,
+            levels.mDensity, smoothing, triplanar, hex,
+            gPipeline.shaderInputs().mLocal.mTerrainPBRNormals,
+            triplanar_blend, tessellation_pinned);
+    }
+    gPipeline.endMetalWorldGBufferPass();
+#endif
+}
+
 // static
 void LLDrawPoolTerrain::uploadHexPlaces(LLGLSLShader* shader, const F64 (*delta)[2], U32 materials)
 {

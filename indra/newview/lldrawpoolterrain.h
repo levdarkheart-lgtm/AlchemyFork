@@ -57,6 +57,9 @@ public:
     /*virtual*/ void addShadowCasters(ALSpotShadowCache::Casters& casters);
 
     /*virtual*/ void prerender();
+    // Enumerate this pool's region patches into the active native probe face
+    // without binding or drawing its retained GL pass.
+    void captureMetalReflectionProbe();
     /*virtual*/ void dirtyTextures(const std::set<LLViewerFetchedTexture*>& textures);
     /*virtual*/ LLViewerTexture *getTexture();
     /*virtual*/ LLViewerTexture *getDebugTexture();

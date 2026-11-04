@@ -102,6 +102,7 @@
 #include "lldrawpoolavatar.h"
 #include "llviewerjointmesh.h"
 #include "lldrawpoolbump.h"
+#include "lldrawpoolterrain.h"
 #include "lldrawpooltree.h"
 #include "lldrawpoolwater.h"
 #include "llface.h"
@@ -559,6 +560,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     // does not mirror those same batches into Metal a second time.
     std::unordered_set<const LLDrawInfo*> direct_probe_draw_infos;
     std::unordered_set<const LLFace*> direct_probe_tree_faces;
+    std::unordered_set<const LLFace*> direct_probe_terrain_faces;
     bool direct_probe_scene_active = false;
     std::vector<ALMetalWorldHighlightBatch> highlight_batches;
     std::vector<ALMetalWorldDebugBlip> debug_blips;
@@ -2429,6 +2431,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.batches.clear();
     capture.direct_probe_draw_infos.clear();
     capture.direct_probe_tree_faces.clear();
+    capture.direct_probe_terrain_faces.clear();
     capture.direct_probe_scene_active = false;
     capture.sky_behind_target.reset();
     capture.hdri_sky_batches.clear();
@@ -11629,6 +11632,22 @@ void LLPipeline::captureMetalReflectionProbeScene()
         }
         endMetalWorldGBufferPass();
     }
+    if (capture.complete && hasRenderType(LLDrawPool::POOL_TERRAIN))
+    {
+        for (LLDrawPool* pool : mPools)
+        {
+            if (pool->getType() != LLDrawPool::POOL_TERRAIN)
+            {
+                continue;
+            }
+            static_cast<LLDrawPoolTerrain*>(pool)
+                ->captureMetalReflectionProbe();
+            if (!capture.complete)
+            {
+                break;
+            }
+        }
+    }
     capture.direct_probe_scene_active = false;
     capture.pass_active = false;
 }
@@ -15012,6 +15031,17 @@ void LLPipeline::captureMetalWorldTerrainBatch(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.direct_probe_scene_active &&
+        capture.direct_probe_terrain_faces.contains(face))
+    {
+        // Direct pool enumeration already captured this patch. The GL draw
+        // remains complete fallback output without duplicating its Metal batch.
+        return;
+    }
+    if (capture.direct_probe_scene_active && face)
+    {
+        capture.direct_probe_terrain_faces.insert(face);
+    }
     if (!capture.complete || !capture.terrain)
     {
         return;
@@ -15083,16 +15113,17 @@ void LLPipeline::captureMetalWorldTerrainBatch(
         return;
     }
 
-    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    LLMatrix4a modelview;
     LLMatrix4a inverse_modelview;
-    if (!inverse_modelview.setAffineInverse(modelview))
+    LLMatrix4a modelview_projection;
+    if (!buildMetalWorldDrawMatrices(
+            &region->mRenderMatrix, modelview, inverse_modelview,
+            modelview_projection))
     {
         capture.markIncomplete(__LINE__);
         capture.batches.clear();
         return;
     }
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
     std::memcpy(batch.modelview_projection,
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
@@ -15222,6 +15253,17 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.direct_probe_scene_active &&
+        capture.direct_probe_terrain_faces.contains(face))
+    {
+        // Direct pool enumeration already captured this patch. The GL draw
+        // remains complete fallback output without duplicating its Metal batch.
+        return;
+    }
+    if (capture.direct_probe_scene_active && face)
+    {
+        capture.direct_probe_terrain_faces.insert(face);
+    }
     if (!capture.complete || !capture.terrain)
     {
         return;
@@ -15333,15 +15375,16 @@ void LLPipeline::captureMetalWorldPBRTerrainBatch(
         return;
     }
 
-    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    LLMatrix4a modelview;
     LLMatrix4a inverse_modelview;
-    if (!inverse_modelview.setAffineInverse(modelview))
+    LLMatrix4a modelview_projection;
+    if (!buildMetalWorldDrawMatrices(
+            &region->mRenderMatrix, modelview, inverse_modelview,
+            modelview_projection))
     {
         fail();
         return;
     }
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
     std::memcpy(batch.modelview_projection,
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
