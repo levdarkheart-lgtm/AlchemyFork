@@ -2585,12 +2585,21 @@ namespace
             U32 mMipLevels;
             bool mAlphaOnly;
         };
-        constexpr std::array<StartupTexture, 5> textures{{
+        // Every shipped local asset requested explicitly by
+        // LLViewerTextureList::doPreloadImages(). UI textures declared by
+        // textures.xml share this publication path but form a separate list.
+        constexpr std::array<StartupTexture, 11> textures{{
             {"missing_asset.tga", 64, 64, 3, false, LLGLTexture::BOOST_UI, 1, false},
             {"white.tga", 32, 32, 3, false, LLGLTexture::BOOST_UI, 1, false},
+            {"pixiesmall.j2c", 128, 128, 4, true, LLGLTexture::BOOST_NONE, 8, false},
             {"flatnormal.tga", 4, 4, 3, false, LLGLTexture::BOOST_BUMP, 1, false},
             {"default_irradiance.png", 1024, 512, 3, true, LLGLTexture::BOOST_UI, 11, false},
+            {"world/NoEntryLines.png", 256, 256, 4, true, LLGLTexture::BOOST_UI, 9, false},
+            {"world/NoEntryPassLines.png", 256, 256, 4, true, LLGLTexture::BOOST_UI, 9, false},
+            {"transparent.j2c", 32, 32, 4, true, LLGLTexture::BOOST_UI, 6, false},
             {"alpha_gradient.tga", 256, 1, 1, true, LLGLTexture::BOOST_UI, 9, true},
+            {"alpha_gradient_2d.j2c", 256, 256, 1, true, LLGLTexture::BOOST_UI, 9, true},
+            {"SoftDotNoBack.png", 1024, 1024, 4, true, LLGLTexture::BOOST_UI, 11, false},
         }};
 
         const U64 baseline_bytes = LLImageGL::getTextureBytesAllocated();
