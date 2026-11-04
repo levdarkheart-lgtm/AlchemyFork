@@ -438,6 +438,14 @@ void LLViewerJointMesh::captureMetalWorldAvatarShape(bool is_dummy)
     gPipeline.captureMetalWorldAvatarBatch(
         *this, mFace->getVertexBuffer(), diffuse, start, end,
         mMesh->mFaceIndexCount, mMesh->mFaceIndexOffset);
+    const F32 draw_alpha = mTestImageName
+        ? 1.f
+        : (is_dummy ? LLVOAvatar::getDummyColor().mV[VW]
+                    : mColor.mV[VW]);
+    gPipeline.captureMetalSpotShadowAvatarBatch(
+        *this, mFace->getVertexBuffer(), diffuse, start, end,
+        mMesh->mFaceIndexCount, mMesh->mFaceIndexOffset,
+        mMesh->hasWeights(), draw_alpha);
 #else
     (void)is_dummy;
 #endif

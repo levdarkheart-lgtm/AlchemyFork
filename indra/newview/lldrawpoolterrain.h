@@ -55,6 +55,7 @@ public:
     /*virtual*/ void endShadowPass(S32 pass);
     /*virtual*/ void renderShadow(S32 pass);
     /*virtual*/ void addShadowCasters(ALSpotShadowCache::Casters& casters);
+    void captureMetalDirectionalShadow();
 
     /*virtual*/ void prerender();
     // Enumerate this pool's region patches into the active native probe face

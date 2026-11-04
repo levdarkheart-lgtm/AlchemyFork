@@ -101,6 +101,7 @@ typedef enum
     /*virtual*/ void beginShadowPass(S32 pass);
     /*virtual*/ void endShadowPass(S32 pass);
     /*virtual*/ void renderShadow(S32 pass);
+    void captureMetalDirectionalShadow();
 
     void beginRigid();
     void beginImpostor();

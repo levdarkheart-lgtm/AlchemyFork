@@ -295,6 +295,24 @@ void LLDrawPoolTerrain::renderShadow(S32 pass)
     unbindSurface(&gDeferredTerrainShadowProgram);
 }
 
+void LLDrawPoolTerrain::captureMetalDirectionalShadow()
+{
+#if LL_DARWIN
+    const TessLevels levels = tess_levels();
+    for (LLFace* face : mDrawFace)
+    {
+        if (!face)
+        {
+            continue;
+        }
+        gPipeline.captureMetalSpotShadowTerrainBatch(
+            face, levels.mDensity, levels.mSegment,
+            LLSurface::isSmoothing(),
+            gPipeline.shaderInputs().mLocal.mTerrainTessPinned);
+    }
+#endif
+}
+
 
 // virtual
 void LLDrawPoolTerrain::addShadowCasters(ALSpotShadowCache::Casters& casters)

@@ -308,7 +308,7 @@ U32 nhpo2(U32 v);
 LLVertexBuffer* ll_create_cube_vb(U32 type_mask);
 static F32 light_fade_brightness(F32 fade);
 
-void display_update_camera();
+void display_update_camera(bool without_render_state = false);
 //----------------------------------------
 
 S32     LLPipeline::sCompiles = 0;
@@ -534,6 +534,9 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 spot_shadow_width = 0;
     U32 spot_shadow_height = 0;
     std::size_t spot_shadow_expected_batches = 0;
+    LLMatrix4a spot_shadow_view;
+    LLMatrix4a spot_shadow_projection;
+    bool spot_shadow_explicit_matrices = false;
     ALMetalWorldSpotShadowCoverage spot_shadow_coverage =
         ALMetalWorldSpotShadowCoverage::opaque;
     bool spot_shadow_capture_active = false;
@@ -13790,6 +13793,142 @@ void LLPipeline::countMetalShadowBatches(
     }
 }
 
+void LLPipeline::captureMetalDirectionalShadowScene()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_active ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_directional ||
+        !mMetalWorldSimpleCapture->spot_shadow_explicit_matrices)
+    {
+        return;
+    }
+
+    const bool saved_shadow_render = sShadowRender;
+    sShadowRender = true;
+    const auto for_each_batch = [this](U32 type, const auto& capture)
+    {
+        auto* at = beginRenderMap(type);
+        auto* end = endRenderMap(type);
+        while (at != end)
+        {
+            LLDrawInfo* info = *at;
+            LLCullResult::increment_iterator(at, end);
+            if (info && info->mCount)
+            {
+                capture(*info);
+            }
+        }
+    };
+    const auto capture_opaque = [this](const LLDrawInfo& info)
+    {
+        bool double_sided = info.mGLTFMaterial.notNull() &&
+            info.mGLTFMaterial->mDoubleSided;
+        for (const LLPointer<LLFetchedGLTFMaterial>& material :
+             info.mGLTFMaterialList)
+        {
+            double_sided = double_sided ||
+                (material.notNull() && material->mDoubleSided);
+        }
+        captureMetalSpotShadowOpaqueBatch(info, double_sided);
+    };
+
+    setMetalSpotShadowCoverage(ALMetalWorldSpotShadowCoverage::opaque);
+    for (U32 type : SHADOW_GEOMETRY_PASSES)
+    {
+        for_each_batch(type, capture_opaque);
+        for_each_batch(type + 1, capture_opaque);
+    }
+    for_each_batch(LLRenderPass::PASS_GLTF_PBR, capture_opaque);
+    for_each_batch(LLRenderPass::PASS_GLTF_PBR_RIGGED, capture_opaque);
+
+    const auto capture_legacy = [this](const LLDrawInfo& info)
+    {
+        captureMetalSpotShadowTexturedBatch(
+            info, true, info.mMaterialSlotList.size() > 1);
+    };
+    setMetalSpotShadowCoverage(
+        ALMetalWorldSpotShadowCoverage::legacy_mask);
+    for_each_batch(LLRenderPass::PASS_ALPHA_MASK, capture_legacy);
+    for_each_batch(LLRenderPass::PASS_ALPHA_MASK_RIGGED, capture_legacy);
+
+    setMetalSpotShadowCoverage(
+        ALMetalWorldSpotShadowCoverage::legacy_fullbright_mask);
+    for_each_batch(
+        LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, capture_legacy);
+    for_each_batch(
+        LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED, capture_legacy);
+
+    setMetalSpotShadowCoverage(
+        ALMetalWorldSpotShadowCoverage::legacy_blend);
+    for_each_batch(LLRenderPass::PASS_ALPHA,
+        [this](const LLDrawInfo& info)
+        {
+            if (info.mGLTFMaterial.notNull() ||
+                !info.mGLTFMaterialList.empty())
+            {
+                captureMetalSpotShadowPBRBatch(
+                    info, info.mGLTFMaterialList.size() > 1);
+            }
+            else
+            {
+                captureMetalSpotShadowTexturedBatch(info, true);
+            }
+        });
+
+    setMetalSpotShadowCoverage(
+        ALMetalWorldSpotShadowCoverage::texture_mask);
+    for_each_batch(LLRenderPass::PASS_GRASS, capture_legacy);
+    for (U32 type : {
+             LLRenderPass::PASS_NORMSPEC_MASK,
+             LLRenderPass::PASS_MATERIAL_ALPHA_MASK,
+             LLRenderPass::PASS_SPECMAP_MASK,
+             LLRenderPass::PASS_NORMMAP_MASK })
+    {
+        for_each_batch(type, capture_legacy);
+        for_each_batch(type + 1, capture_legacy);
+    }
+
+    setMetalSpotShadowCoverage(
+        ALMetalWorldSpotShadowCoverage::pbr_mask);
+    const auto capture_pbr = [this](const LLDrawInfo& info)
+    {
+        captureMetalSpotShadowPBRBatch(
+            info, info.mGLTFMaterialList.size() > 1);
+    };
+    for_each_batch(LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK, capture_pbr);
+    for_each_batch(
+        LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK_RIGGED, capture_pbr);
+
+    setMetalSpotShadowCoverage(ALMetalWorldSpotShadowCoverage::opaque);
+    for (LLDrawPool* pool : mPools)
+    {
+        if (!pool || !hasRenderType(pool->getType()) ||
+            pool->getNumShadowPasses() == 0)
+        {
+            continue;
+        }
+        switch (pool->getType())
+        {
+            case LLDrawPool::POOL_TREE:
+                static_cast<LLDrawPoolTree*>(pool)
+                    ->captureMetalDirectionalShadow();
+                break;
+            case LLDrawPool::POOL_TERRAIN:
+                static_cast<LLDrawPoolTerrain*>(pool)
+                    ->captureMetalDirectionalShadow();
+                break;
+            case LLDrawPool::POOL_AVATAR:
+            case LLDrawPool::POOL_CONTROL_AV:
+                static_cast<LLDrawPoolAvatar*>(pool)
+                    ->captureMetalDirectionalShadow();
+                break;
+            default:
+                break;
+        }
+    }
+    sShadowRender = saved_shadow_render;
+}
+
 void LLPipeline::beginMetalSpotShadowCapture(
     U32 map, U32 width, U32 height, std::size_t expected_batches,
     bool complete)
@@ -13811,6 +13950,7 @@ void LLPipeline::beginMetalSpotShadowCapture(
     capture.spot_shadow_width = width;
     capture.spot_shadow_height = height;
     capture.spot_shadow_expected_batches = expected_batches;
+    capture.spot_shadow_explicit_matrices = false;
     capture.spot_shadow_coverage =
         ALMetalWorldSpotShadowCoverage::opaque;
     capture.spot_shadow_capture_complete = complete;
@@ -13823,7 +13963,8 @@ void LLPipeline::beginMetalSpotShadowCapture(
 
 void LLPipeline::beginMetalDirectionalShadowCapture(
     U32 map, U32 width, U32 height, std::size_t expected_batches,
-    bool complete)
+    bool complete, const LLMatrix4a* view,
+    const LLMatrix4a* projection)
 {
     if (!mMetalWorldSimpleCapture || map >= 4 || width == 0 || height == 0)
     {
@@ -13842,6 +13983,12 @@ void LLPipeline::beginMetalDirectionalShadowCapture(
     capture.spot_shadow_width = width;
     capture.spot_shadow_height = height;
     capture.spot_shadow_expected_batches = expected_batches;
+    capture.spot_shadow_explicit_matrices = view && projection;
+    if (capture.spot_shadow_explicit_matrices)
+    {
+        capture.spot_shadow_view = *view;
+        capture.spot_shadow_projection = *projection;
+    }
     capture.spot_shadow_coverage =
         ALMetalWorldSpotShadowCoverage::opaque;
     capture.spot_shadow_capture_complete = complete;
@@ -13850,6 +13997,35 @@ void LLPipeline::beginMetalDirectionalShadowCapture(
     capture.spot_shadow_avatar_cloth = false;
     capture.reverse_z = LLRender::sReverseZ;
     capture.spot_shadow_capture_active = true;
+}
+
+bool LLPipeline::getMetalSpotShadowModelviewProjection(
+    const LLMatrix4a* model_matrix,
+    LLMatrix4a& modelview_projection) const
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->spot_shadow_capture_active)
+    {
+        return false;
+    }
+
+    const MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (capture.spot_shadow_explicit_matrices)
+    {
+        LLMatrix4a modelview = capture.spot_shadow_view;
+        if (model_matrix)
+        {
+            modelview.setMul(*model_matrix, capture.spot_shadow_view);
+        }
+        modelview_projection.setMul(
+            modelview, capture.spot_shadow_projection);
+    }
+    else
+    {
+        modelview_projection.setMul(
+            gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    }
+    return true;
 }
 
 void LLPipeline::beginMetalSpotShadowAvatarPass(
@@ -13949,9 +14125,9 @@ void LLPipeline::captureMetalSpotShadowOpaqueBatch(
     batch.index_count = params.mCount;
     batch.double_sided = double_sided;
 
-    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
     LLMatrix4a modelview_projection;
-    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+    getMetalSpotShadowModelviewProjection(
+        params.mModelMatrix, modelview_projection);
     std::memcpy(batch.modelview_projection,
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
@@ -14035,9 +14211,9 @@ void LLPipeline::captureMetalSpotShadowTexturedBatch(
     batch.texture_count = static_cast<U32>(texture_count);
     batch.coverage = capture.spot_shadow_coverage;
 
-    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
     LLMatrix4a modelview_projection;
-    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+    getMetalSpotShadowModelviewProjection(
+        params.mModelMatrix, modelview_projection);
     std::memcpy(batch.modelview_projection,
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
@@ -14179,9 +14355,9 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
     batch.texture_count = static_cast<U32>(texture_count);
     batch.coverage = coverage;
 
-    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
     LLMatrix4a modelview_projection;
-    modelview_projection.setMul(modelview, gGL.getProjectionMatrix());
+    getMetalSpotShadowModelviewProjection(
+        params.mModelMatrix, modelview_projection);
     std::memcpy(batch.modelview_projection,
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
@@ -14265,7 +14441,8 @@ void LLPipeline::captureMetalSpotShadowPBRBatch(
 }
 
 void LLPipeline::captureMetalSpotShadowTreeBatch(
-    LLVertexBuffer* buffer, LLViewerTexture* texture)
+    LLVertexBuffer* buffer, LLViewerTexture* texture,
+    const LLMatrix4a* model_matrix)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->spot_shadow_capture_active ||
@@ -14307,8 +14484,8 @@ void LLPipeline::captureMetalSpotShadowTreeBatch(
     batch.coverage = ALMetalWorldSpotShadowCoverage::texture_mask;
 
     LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    getMetalSpotShadowModelviewProjection(
+        model_matrix, modelview_projection);
     std::memcpy(batch.modelview_projection,
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
@@ -14371,8 +14548,11 @@ void LLPipeline::captureMetalSpotShadowTerrainBatch(
     batch.terrain_tessellation_pinned = tessellation_pinned;
 
     LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    LLMatrix4a* model_matrix = face->getDrawable() &&
+            face->getDrawable()->getRegion()
+        ? &face->getDrawable()->getRegion()->mRenderMatrix : nullptr;
+    getMetalSpotShadowModelviewProjection(
+        model_matrix, modelview_projection);
     std::memcpy(batch.modelview_projection,
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
@@ -14495,7 +14675,7 @@ void LLPipeline::captureMetalSpotShadowTerrainBatch(
 }
 
 void LLPipeline::captureMetalSpotShadowAvatarBatch(
-    const LLViewerJointMesh& mesh, LLVertexBuffer* buffer,
+    LLViewerJointMesh& mesh, LLVertexBuffer* buffer,
     LLGLTexture* texture, U32 start, U32 end, U32 count,
     U32 offset, bool skinned, F32 draw_alpha)
 {
@@ -14616,8 +14796,12 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
         batch.skin_joint_count = 15;
         capture.spot_shadow_avatar_palettes.push_back(
             std::move(palette));
+        const LLMatrix4a& projection =
+            capture.spot_shadow_explicit_matrices
+            ? capture.spot_shadow_projection
+            : gGL.getProjectionMatrix();
         std::memcpy(batch.modelview_projection,
-                    gGL.getProjectionMatrix().getF32ptr(),
+                    projection.getF32ptr(),
                     sizeof(batch.modelview_projection));
         if (batch.avatar_cloth)
         {
@@ -14642,8 +14826,11 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
     else
     {
         LLMatrix4a modelview_projection;
-        modelview_projection.setMul(
-            gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+        const LLMatrix4a* model_matrix =
+            capture.spot_shadow_explicit_matrices
+            ? &mesh.getWorldMatrix() : nullptr;
+        getMetalSpotShadowModelviewProjection(
+            model_matrix, modelview_projection);
         std::memcpy(batch.modelview_projection,
                     modelview_projection.getF32ptr(),
                     sizeof(batch.modelview_projection));
@@ -31397,6 +31584,12 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     LL_PROFILE_GPU_ZONE("generateSunShadow");
 
     LLDisableOcclusionCulling no_occlusion;
+#if LL_DARWIN
+    const bool native_reflection_shadow =
+        isMetalReflectionProbeCaptureActive();
+#else
+    constexpr bool native_reflection_shadow = false;
+#endif
 
     bool skip_avatar_update = false;
     if (!isAgentAvatarValid() || gAgentCamera.getCameraAnimating() || gAgentCamera.getCameraMode() != CAMERA_MODE_MOUSELOOK || !LLVOAvatar::sVisibleInFirstPerson)
@@ -31481,7 +31674,11 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
     // The caller's mask comes back on every exit, the early one for an empty point cloud
     // included.
-    LLGLSColorMask color_mask(false, false);
+    std::unique_ptr<LLGLSColorMask> color_mask;
+    if (!native_reflection_shadow)
+    {
+        color_mask = std::make_unique<LLGLSColorMask>(false, false);
+    }
 
     LLEnvironment& environment = LLEnvironment::instance();
 
@@ -31846,12 +32043,15 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
                 if (mRT->shadow[j].isComplete())
                 {
-                    mRT->shadow[j].bindTarget();
+                    if (!isMetalReflectionProbeCaptureActive())
                     {
-                        LLGLDepthTest depth(GL_TRUE);
-                        mRT->shadow[j].clear();
+                        mRT->shadow[j].bindTarget();
+                        {
+                            LLGLDepthTest depth(GL_TRUE);
+                            mRT->shadow[j].clear();
+                        }
+                        mRT->shadow[j].flush();
                     }
-                    mRT->shadow[j].flush();
 #if LL_DARWIN
                     // Retain the same explicit far-depth slice instead of
                     // leaving an older native cascade eligible for reuse.
@@ -32182,14 +32382,22 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             mSunShadowMatrix[j].setMul(mSunShadowMatrix[j], proj[j]);
             mSunShadowMatrix[j].setMul(mSunShadowMatrix[j], trans);
 
-            stop_glerror();
+            if (!native_reflection_shadow)
+            {
+                stop_glerror();
+            }
 
             // A cascade whose map could not be built is not drawn, and its shadows are read lit (unbuiltShadowMaps).
             if (mRT->shadow[j].isComplete())
             {
-                mRT->shadow[j].bindTarget();
-                mRT->shadow[j].getViewport(gGLViewport);
-                mRT->shadow[j].clear();
+                const bool direct_metal_shadow =
+                    isMetalReflectionProbeCaptureActive();
+                if (!direct_metal_shadow)
+                {
+                    mRT->shadow[j].bindTarget();
+                    mRT->shadow[j].getViewport(gGLViewport);
+                    mRT->shadow[j].clear();
+                }
 
                 {
                     static LLCullResult result[4];
@@ -32208,17 +32416,29 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     beginMetalDirectionalShadowCapture(
                         j, mRT->shadow[j].getWidth(),
                         mRT->shadow[j].getHeight(), native_batches,
-                        native_complete);
+                        native_complete, &view[j], &proj[j]);
 #endif
-                    drawShadow(
-                        view[j], proj[j], shadow_cam, true,
-                        sun_occlusion);
+                    if (direct_metal_shadow)
+                    {
+#if LL_DARWIN
+                        captureMetalDirectionalShadowScene();
+#endif
+                    }
+                    else
+                    {
+                        drawShadow(
+                            view[j], proj[j], shadow_cam, true,
+                            sun_occlusion);
+                    }
 #if LL_DARWIN
                     endMetalSpotShadowCapture();
 #endif
                 }
 
-                mRT->shadow[j].flush();
+                if (!direct_metal_shadow)
+                {
+                    mRT->shadow[j].flush();
+                }
             }
 
             if (!gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_SHADOW_FRUSTA) && !gCubeSnapshot)
@@ -32438,10 +32658,13 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
         offset_cam.setModelview(view[1]);
         offset_cam.setProjection(proj[1]);
         LLViewerCamera::setCurrent(offset_cam);
-        gGL.loadMatrix(view[1]);
-        gGL.matrixMode(LLRender::MM_PROJECTION);
-        gGL.loadMatrix(proj[1]);
-        gGL.matrixMode(LLRender::MM_MODELVIEW);
+        if (!native_reflection_shadow)
+        {
+            gGL.loadMatrix(view[1]);
+            gGL.matrixMode(LLRender::MM_PROJECTION);
+            gGL.loadMatrix(proj[1]);
+            gGL.matrixMode(LLRender::MM_MODELVIEW);
+        }
     }
 
     gGLViewport[0] = saved_gl_viewport[0];

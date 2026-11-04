@@ -232,7 +232,7 @@ void display_startup()
     }
 }
 
-void display_update_camera()
+void display_update_camera(bool without_render_state = false)
 {
     LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Update Camera");
     // TODO: cut draw distance down if customizing avatar?
@@ -273,7 +273,18 @@ void display_update_camera()
     LLViewerCamera* camera = LLViewerCamera::getInstance();
     camera->setProjectionFar(ALFarPlane::projectionFar(reverse_z, gCubeSnapshot, force_projection(), gAgentCamera.mDrawDistance));
     LLVOAvatar::sRenderDistance = llclamp(final_far, 16.f, 256.f);
-    gViewerWindow->setup3DRender();
+    if (without_render_state)
+    {
+        const LLRect& world = gViewerWindow->getWorldViewRectRaw();
+        camera->setPerspectiveWithoutRenderState(
+            world.mLeft, world.mBottom, world.getWidth(),
+            world.getHeight(), camera->getNear(),
+            camera->getProjectionFar());
+    }
+    else
+    {
+        gViewerWindow->setup3DRender();
+    }
 
     if (!gCubeSnapshot)
     {
@@ -1429,16 +1440,23 @@ void display_cube_face()
     constexpr bool native_reflection_face = false;
 #endif
 
-    LLGLSDefault gls_default;
-    LLGLDepthTest gls_depth(GL_TRUE, GL_TRUE, GL_LEQUAL);
-
-    LLVertexBuffer::unbind();
-
-    gPipeline.disableLights();
+    std::unique_ptr<LLGLSDefault> gls_default;
+    std::unique_ptr<LLGLDepthTest> gls_depth;
+    if (!native_reflection_face)
+    {
+        gls_default = std::make_unique<LLGLSDefault>();
+        gls_depth = std::make_unique<LLGLDepthTest>(
+            GL_TRUE, GL_TRUE, GL_LEQUAL);
+        LLVertexBuffer::unbind();
+        gPipeline.disableLights();
+    }
 
     gPipeline.mBackfaceCull = true;
 
-    gViewerWindow->setup3DViewport();
+    if (!native_reflection_face)
+    {
+        gViewerWindow->setup3DViewport();
+    }
 
     if (gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_HUD))
     { //don't draw hud objects in this frame
@@ -1450,7 +1468,7 @@ void display_cube_face()
         gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_HUD_PARTICLES);
     }
 
-    display_update_camera();
+    display_update_camera(native_reflection_face);
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Env Update");

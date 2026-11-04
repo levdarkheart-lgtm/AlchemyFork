@@ -105,7 +105,8 @@ void LLDrawPoolTree::renderDeferred(S32 pass)
             // This call is inert during the ordinary deferred pass. While a
             // direct spotlight slice is being captured, retain the exact
             // pool-owned indexed draw and its texture-only 0.5 alpha test.
-            gPipeline.captureMetalSpotShadowTreeBatch(buff, pTexture);
+            gPipeline.captureMetalSpotShadowTreeBatch(
+                buff, pTexture, model_matrix);
 #endif
             buff->setBuffer();
             buff->drawRange(LLRender::TRIANGLES, 0, buff->getNumVerts() - 1, buff->getNumIndices(), 0);
@@ -141,6 +142,31 @@ void LLDrawPoolTree::beginShadowPass(S32 pass)
 void LLDrawPoolTree::renderShadow(S32 pass)
 {
     renderDeferred(pass);
+}
+
+void LLDrawPoolTree::captureMetalDirectionalShadow()
+{
+#if LL_DARWIN
+    LLViewerTexture* texture = LLPipeline::sRenderTextures
+        ? mTexturep.get()
+        : LLViewerFetchedTexture::sDefaultDiffuseImagep.get();
+    for (LLFace* face : mDrawFace)
+    {
+        if (!face || !face->getDrawable() ||
+            !face->getDrawable()->getRegion())
+        {
+            continue;
+        }
+        LLVertexBuffer* buffer = face->getVertexBuffer();
+        if (!buffer)
+        {
+            continue;
+        }
+        gPipeline.captureMetalSpotShadowTreeBatch(
+            buffer, texture,
+            &face->getDrawable()->getRegion()->mRenderMatrix);
+    }
+#endif
 }
 
 // virtual

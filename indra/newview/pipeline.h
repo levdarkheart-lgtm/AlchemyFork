@@ -1082,7 +1082,10 @@ public:
                                      bool complete);
     void beginMetalDirectionalShadowCapture(
         U32 map, U32 width, U32 height,
-        std::size_t expected_batches, bool complete);
+        std::size_t expected_batches, bool complete,
+        const LLMatrix4a* view = nullptr,
+        const LLMatrix4a* projection = nullptr);
+    void captureMetalDirectionalShadowScene();
     void endMetalSpotShadowCapture();
     void setMetalSpotShadowCoverage(
         ALMetalWorldSpotShadowCoverage coverage);
@@ -1094,7 +1097,8 @@ public:
     void captureMetalSpotShadowPBRBatch(
         const LLDrawInfo& params, bool indexed_materials);
     void captureMetalSpotShadowTreeBatch(
-        LLVertexBuffer* buffer, LLViewerTexture* texture);
+        LLVertexBuffer* buffer, LLViewerTexture* texture,
+        const LLMatrix4a* model_matrix = nullptr);
     void captureMetalSpotShadowTerrainBatch(
         LLFace* face, F32 tess_density, F32 raster_segment,
         bool smoothing, bool tessellation_pinned);
@@ -1104,9 +1108,12 @@ public:
         const F32* cloth_depth = nullptr);
     void endMetalSpotShadowAvatarPass();
     void captureMetalSpotShadowAvatarBatch(
-        const LLViewerJointMesh& mesh, LLVertexBuffer* buffer,
+        LLViewerJointMesh& mesh, LLVertexBuffer* buffer,
         LLGLTexture* texture, U32 start, U32 end, U32 count,
         U32 offset, bool skinned, F32 draw_alpha);
+    bool getMetalSpotShadowModelviewProjection(
+        const LLMatrix4a* model_matrix,
+        LLMatrix4a& modelview_projection) const;
     void captureMetalImpostorPBRAlphaBatch(
         const LLDrawInfo& params, bool particle_or_hud_particle,
         bool depth_only = false);

@@ -715,6 +715,107 @@ void LLDrawPoolAvatar::renderShadow(S32 pass)
     }
 }
 
+void LLDrawPoolAvatar::captureMetalDirectionalShadow()
+{
+#if LL_DARWIN
+    if (mDrawFace.empty())
+    {
+        return;
+    }
+    const LLFace* face = mDrawFace[0];
+    if (!face || !face->getDrawable())
+    {
+        return;
+    }
+    LLVOAvatar* avatar = static_cast<LLVOAvatar*>(
+        face->getDrawable()->getVObj().get());
+    if (!avatar || avatar->isDead() || avatar->isUIAvatar() ||
+        avatar->mDrawable.isNull())
+    {
+        return;
+    }
+
+    static LLCachedControl<bool> friends_only(
+        gSavedSettings, "RenderAvatarFriendsOnly", false);
+    if (friends_only() && !avatar->isControlAvatar() &&
+        !avatar->isSelf() && !avatar->isBuddy())
+    {
+        return;
+    }
+    const bool impostor = !LLPipeline::sImpostorRender &&
+        avatar->isImpostor();
+    if (avatar->isTooSlow() || impostor ||
+        avatar->getOverallAppearance() == LLVOAvatar::AOA_INVISIBLE)
+    {
+        return;
+    }
+
+    static LLCachedControl<S32> avatar_shadow_detail(
+        gSavedSettings, "RenderAvatarShadowDetail", 2);
+    for (S32 pass = SHADOW_PASS_AVATAR_OPAQUE;
+         pass < NUM_SHADOW_PASSES; ++pass)
+    {
+        if ((pass == SHADOW_PASS_AVATAR_ALPHA_BLEND &&
+             avatar_shadow_detail() < 2) ||
+            (pass == SHADOW_PASS_AVATAR_ALPHA_MASK &&
+             avatar_shadow_detail() != 1))
+        {
+            continue;
+        }
+
+        sShadowPass = pass;
+        sShadowBakes = pass == SHADOW_PASS_AVATAR_OPAQUE
+            ? SHADOW_BAKES_SOLID
+            : pass == SHADOW_PASS_AVATAR_OPAQUE_CUT
+            ? SHADOW_BAKES_CUT : SHADOW_BAKES_ALL;
+        const bool avatar_cloth =
+            gPipeline.shaderInputs().mLocal.mAvatarCloth &&
+            (pass == SHADOW_PASS_AVATAR_OPAQUE ||
+             (pass == SHADOW_PASS_AVATAR_OPAQUE_CUT &&
+              mShadowCutBakes));
+        AvatarClothUniforms cloth_uniforms;
+        if (avatar_cloth)
+        {
+            cloth_uniforms = avatar_cloth_uniforms(avatar);
+        }
+        gPipeline.beginMetalSpotShadowAvatarPass(
+            avatar_cloth,
+            avatar_cloth ? cloth_uniforms.wind.mV : nullptr,
+            avatar_cloth ? cloth_uniforms.sin_wave.mV : nullptr,
+            avatar_cloth ? cloth_uniforms.gravity.mV : nullptr,
+            avatar_cloth ? cloth_uniforms.depth.mV : nullptr);
+
+        if (pass == SHADOW_PASS_AVATAR_OPAQUE)
+        {
+            sSkipTransparent = true;
+            sShadowCutBakeLeft = false;
+            avatar->captureMetalReflectionProbeOpaque();
+            mShadowCutBakes = sShadowCutBakeLeft;
+            sSkipTransparent = false;
+        }
+        else if (pass == SHADOW_PASS_AVATAR_OPAQUE_CUT)
+        {
+            if (mShadowCutBakes)
+            {
+                sSkipTransparent = true;
+                avatar->captureMetalReflectionProbeOpaque();
+                avatar->captureMetalReflectionProbeOpaque();
+                sSkipTransparent = false;
+            }
+        }
+        else
+        {
+            sSkipOpaque = true;
+            avatar->captureMetalReflectionProbeTransparent();
+            sSkipOpaque = false;
+        }
+        gPipeline.endMetalSpotShadowAvatarPass();
+    }
+    sShadowBakes = SHADOW_BAKES_ALL;
+    sShadowPass = -1;
+#endif
+}
+
 // static
 bool LLDrawPoolAvatar::shadowDrawsBake(const LLGLTexture* bake)
 {
