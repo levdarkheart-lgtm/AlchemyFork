@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `68d8792028`.
+**Renderer checkpoint:** Commit `cf6a821548`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -17,7 +17,7 @@ checkpoint detail belongs in the indexed archive.
 | M-003 | Native drawable, presentation and lifecycle | doing | Metal is the mandatory visible presentation owner. Startup/world GL swaps are suppressed; an incomplete native frame retains the previous Metal drawable and is machine-censused without claiming GL fallback. Live GL traversal/context creation/shutdown remain. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Reflection maps use backend-neutral logical slots and the manager owns backend resources; native cube/radiance/SH plus startup/local/HDRI/fetched publication, scale-down and eviction work at converted sites. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
-| M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while retained GL consumers are removed; owner accepted readable UI text. Snapshot no longer allocates/binds/clears a GL scratch target and retries one exact-size Metal render after temporal-resource resize, but preview/Refresh/Save-to-Disk await owner revalidation. |
+| M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while retained GL consumers are removed; owner accepted readable UI text. Snapshot no longer allocates/binds/clears a GL scratch target or reconciles GL targets for capture size, and retries one exact-size Metal render after temporal-resource resize; preview/Refresh/Save-to-Disk await owner revalidation. |
 | M-007 | World scene and material correctness | doing | Probe simple/material/PBR/bump opaque batches plus tree, terrain, complete ordinary avatar/impostor, HDRI/WindLight sky and water are enumerated directly from CPU scene state with GL-independent transforms/state. Remaining pass families plus broad parity remain open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,216 findings), linked/runtime no-GL and visual review remain open. |
@@ -58,6 +58,12 @@ for resized temporal resources. Hero mirrors participate in normal native
 presentation without a hidden validation setting. Owner revalidation of
 Snapshot and mirrors remains queued.
 
+Commit `cf6a821548` removes the remaining Snapshot-size call into
+`rebuildGLBuffers`. The Darwin override validates both requested and scaled
+dimensions against the native device and feeds the exact Metal capture size
+directly; unsupported platforms decline rather than fall back. The visual row
+stays open because source/build success does not establish floater behavior.
+
 The rebuilt `26.4.0.68285` Release viewer is pinned at
 `c9bf95b8a8d6c9f36c437c16b913feb5d3f1e9bcd77e9b5c69965992af2527a8`;
 349/349 inspected Mach-O slices are ARM64 and deep strict code-sign verification
@@ -86,6 +92,9 @@ swap. Exact prior evidence remains in the
 - `verify_app.sh`: 349/349 ARM64 Mach-O slices; deep strict signing passes.
 - Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
   UI 56/1. Shared baseline retains 5 known Apple GL failures/4 cases.
+- `cf6a821548`: warnings-as-errors RelWithDebInfo build passes; focused
+  benchmark tests pass 49/8, `alrender_tests` 557,301/136, harness 31/31 and
+  app verification 349/349 ARM64 slices.
 - Strict inventory remains 3,216 findings and exits 1; both APIs remain linked.
 
 ## Owner-attended visual review cadence
@@ -115,9 +124,10 @@ signals only; none substitutes for movement toward a release criterion.
 Continue indexed/masked probe and remaining pass-family enumeration, removing
 matching GL traversal and resource ownership as native contracts become
 deterministically complete. Do not wait for Snapshot, exposure or mirror visual
-review: commits `2836849036` and `68d8792028` intentionally expose native
-failures instead of reverting to GL. Keep those cases queued for the next
-owner-attended visual session and do not launch viewers autonomously.
+review: commits `2836849036`, `68d8792028` and `cf6a821548` intentionally
+expose native failures instead of reverting to GL. Next remove the remaining
+reflection/world GL resource gates after confirming their direct native owners.
+Keep visual cases queued and do not launch viewers autonomously.
 
 ## Non-negotiable open gates
 

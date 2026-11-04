@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `68d8792028`
+**Renderer code checkpoint:** `cf6a821548`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -48,6 +48,13 @@ limit and may render the same requested size twice so resized temporal targets
 can stabilize before fail-closed readback. Hero mirrors are no longer excluded
 from native presentation and no hidden validation setting remains. Snapshot and
 mirror fixes are queued for owner revalidation, not claimed from source alone.
+
+Commit `cf6a821548` removes Snapshot's remaining GL render-target reconcile.
+On Darwin the scoped override now validates the requested and resolution-scaled
+dimensions against the selected Metal device, records only the exact native
+capture size and restores no GL target. Unsupported platforms decline rather
+than enter a legacy fallback. This is source/build evidence; case 30 remains
+open for owner-attended preview, Refresh and Save-to-Disk revalidation.
 
 The rebuilt Release package remains `26.4.0.68285`; its viewer executable
 SHA-256 is
@@ -112,6 +119,9 @@ until the owner-attended review records that result.
   Viewer SHA-256: `c9bf95b8a8d6c9f36c437c16b913feb5d3f1e9bcd77e9b5c69965992af2527a8`.
 - Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
   UI 56/1. Shared-context baseline retains 5 known Apple GL failures/4 cases.
+- At `cf6a821548`, the warnings-as-errors RelWithDebInfo app builds; focused
+  benchmark tests pass 49/8, `alrender_tests` pass 557,301/136, harness tests
+  pass 31/31 and `verify_app.sh` accepts 349/349 ARM64 slices.
 - Strict GL inventory remains 3,216 findings and exits 1. Both APIs remain
   linked; static, linked and runtime no-GL release gates remain open.
 
@@ -119,7 +129,7 @@ until the owner-attended review records that result.
 
 | Area | State | Current fact |
 | --- | --- | --- |
-| M-003..M-006 platform/resources/UI | doing | System/default/local raw, decoded-memory and all eleven explicit local preloads publish natively with truthful state when GL is disabled; report screenshots, local previews, HDRI, fetched publication, sculpt metadata, pressure scale-down and eviction are backend-correct at converted sites. Metal is the sole visible presentation owner; Snapshot no longer allocates a GL scratch framebuffer. Live GL traversal/context creation/shutdown remain. |
+| M-003..M-006 platform/resources/UI | doing | System/default/local raw, decoded-memory and all eleven explicit local preloads publish natively with truthful state when GL is disabled; report screenshots, local previews, HDRI, fetched publication, sculpt metadata, pressure scale-down and eviction are backend-correct at converted sites. Metal is the sole visible presentation owner; Snapshot neither allocates a GL scratch framebuffer nor reconciles GL targets for capture size. Live GL traversal/context creation/shutdown remain. |
 | M-007 world/material | doing | Reflection-probe simple/material/PBR/bump opaque batches, tree, terrain, complete ordinary avatar/impostor, HDRI/WindLight sky and water are enumerated directly from CPU scene state; transforms/state are GL-independent. Remaining pass enumeration and broad parity remain open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,216 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
@@ -130,11 +140,9 @@ until the owner-attended review records that result.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Metal now owns every visible viewer
-frame and Snapshot no longer depends on a GL framebuffer. Existing native scene
-and UI producers remain intact; a failed native transaction is visible as a
-retained Metal frame rather than silently switching renderers. No feature was
-deleted.
+**Advances the complete product:** yes. Metal owns every visible viewer frame;
+Snapshot has no GL framebuffer or target-resize dependency, and failed native
+transactions retain the preceding Metal frame. No feature was deleted.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -144,10 +152,9 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Continue direct native enumeration of indexed/masked probe and remaining
-   pass-owned scene families; retire each matching GL authority and resource
-   dependency without waiting for queued visual comparison.
-2. Remove GL-only traversal/resource gates from native snapshot, reflection and
-   world paths as their Metal owners become source- and test-complete.
+1. Continue native enumeration of indexed/masked probe and remaining pass-owned
+   families; retire matching GL dependencies without waiting for visual review.
+2. Remove remaining GL traversal/resource gates from source- and test-complete
+   reflection/world paths; Snapshot size/readback has no such gate.
 3. Keep Snapshot, exposure and authored-mirror revalidation queued for the next
    owner-attended visual session; do not launch either viewer autonomously.
