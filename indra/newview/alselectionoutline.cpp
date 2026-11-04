@@ -258,10 +258,8 @@ void ALSelectionOutline::releaseStale(U32 frame, F64 now)
 
 void ALSelectionOutline::render(const View& view)
 {
-    const Use use = { LLFrameTimer::getFrameCount(), LLFrameTimer::getTotalSeconds() };
     if (mEntries.empty())
     {
-        releaseStale(use.mFrame, use.mTime);
         return;
     }
 
@@ -269,8 +267,6 @@ void ALSelectionOutline::render(const View& view)
 
     // The window's viewport: the final blit filled it from the scene, the HUD is drawn over it, and the outlines
     // are laid over both.
-    const S32 vp_x = gGLViewport[0];
-    const S32 vp_y = gGLViewport[1];
     const S32 width = gGLViewport[2];
     const S32 height = gGLViewport[3];
 
@@ -281,14 +277,9 @@ void ALSelectionOutline::render(const View& view)
         wants.mWireframe = wants.mWireframe || (entry.mParts & PART_WIREFRAME);
         wants.mGlow = wants.mGlow || entry.mPriority == PRIORITY_HOVER;
     }
-    const Passes passes = passesFor(wants, view.mHUD, gSelectionWireframeProgram.isComplete() &&
-                                                         gSelectionWireframeProgram.mRiggedVariant != nullptr);
-    if (!passes.any() || width <= 0 || height <= 0 || !gPipeline.mRT || !gPipeline.mScreenTriangleVB ||
-        (passes.mIds && (!gSelectionIdProgram.isComplete() || !gSelectionIdProgram.mRiggedVariant)) ||
-        (passes.mEdges && (!gSelectionJumpProgram.isComplete() || !gSelectionTileProgram.isComplete() ||
-                           !gSelectionOutlineProgram.isComplete())))
+    const Passes passes = passesFor(wants, view.mHUD, true);
+    if (!passes.any() || width <= 0 || height <= 0 || !gPipeline.mRT)
     {
-        releaseStale(use.mFrame, use.mTime);
         clearEntries();
         return;
     }
@@ -312,68 +303,10 @@ void ALSelectionOutline::render(const View& view)
     const bool edges = passes.mEdges && ids;
     const bool contour = edges && wants.mContour;
     const bool wireframe = passes.mWireframe && !mLineRects.empty() && (!view.mHUD || ids);
-    const bool backdrop = readsBackdrop(view, contour, wireframe) && gSelectionBackdropMaskProgram.isComplete();
+    const bool glow = edges && wants.mGlow;
+    const bool backdrop = readsBackdrop(view, contour, wireframe);
     if (!ids && !wireframe)
     {
-        releaseStale(use.mFrame, use.mTime);
-        clearEntries();
-        return;
-    }
-
-    // The targets the passes that run read are made at the window's size; the others are given up once they are
-    // stale.
-    bool allocated = true;
-    if (ids)
-    {
-        if (!mIdMap.isComplete() || mIdMap.getWidth() != (U32)width || mIdMap.getHeight() != (U32)height)
-        {
-            allocated = mIdMap.allocate(width, height, GL_RGBA8, true, false, ALTextureSlot::TT_TEXTURE,
-                                        LLRenderTarget::MIPS_NONE, LLPipeline::mainDepthFormat());
-        }
-        mIdUse = use;
-    }
-    if (edges)
-    {
-        if (!mJumpMap.isComplete() || !mTileMap.isComplete() || mJumpMap.getWidth() != (U32)width ||
-            mJumpMap.getHeight() != (U32)height)
-        {
-            allocated = allocated && mJumpMap.allocate(width, height, GL_R8) &&
-                        mTileMap.allocate(tileCount((U32)width), tileCount((U32)height), GL_RGBA16) &&
-                        mTileMap.addColorAttachment(GL_R32F);
-        }
-        mEdgeUse = use;
-    }
-    // The glow is drawn where its passes' programs loaded; without them what glows is drawn with nothing.
-    const bool glow = edges && wants.mGlow && gSelectionGlowReachProgram.isComplete() &&
-                      gSelectionGlowRowProgram.isComplete();
-    if (glow)
-    {
-        if (!mGlowReachMap.isComplete() || !mGlowRowMap.isComplete() || mGlowRowMap.getWidth() != (U32)width ||
-            mGlowRowMap.getHeight() != (U32)height)
-        {
-            allocated = allocated && mGlowReachMap.allocate(tileCount((U32)width), tileCount((U32)height), GL_RGBA16) &&
-                        mGlowRowMap.allocate(width, height, GL_R8);
-        }
-        mGlowUse = use;
-    }
-    if (backdrop)
-    {
-        // Whole squares of BACKDROP_SCALE pixels: an odd window's last column and row take the texels beside them.
-        const U32 backdrop_width = (U32)llmax(width / BACKDROP_SCALE, 1);
-        const U32 backdrop_height = (U32)llmax(height / BACKDROP_SCALE, 1);
-        if (!mBackdropMap.isComplete() || mBackdropMap.getWidth() != backdrop_width ||
-            mBackdropMap.getHeight() != backdrop_height)
-        {
-            allocated = allocated && mBackdropMap.allocate(backdrop_width, backdrop_height, GL_RGBA8);
-        }
-        mBackdropUse = use;
-    }
-    mPaletteUse = use;
-    releaseStale(use.mFrame, use.mTime);
-    if (!allocated)
-    {
-        LL_WARNS_ONCE("Pipeline") << "Could not allocate the selection outline's targets" << LL_ENDL;
-        release();
         clearEntries();
         return;
     }
@@ -387,9 +320,6 @@ void ALSelectionOutline::render(const View& view)
         const Entry& entry = mEntries[mOrder[i]];
         writePalette(mPaletteTexels, i + 1, entry.mColour, entry.mShowHidden);
     }
-
-    LLGLSLShader* previous = LLGLSLShader::sCurBoundShaderPtr;
-    gGL.flush();
 
 #if LL_DARWIN
     const bool native_edges      = edges;
@@ -410,104 +340,6 @@ void ALSelectionOutline::render(const View& view)
         gGL.invalidateMetalUITextureCapture("an incomplete native selection edge transaction");
     }
 #endif
-
-    if (ids)
-    {
-        drawIds(view, width, height);
-    }
-
-    // The same colours as the frame before upload nothing.
-    if (!mPalette || mUploadedTexels != mPaletteTexels)
-    {
-        uploadPalette(mPalette, mPaletteRows, mPaletteTexels, rows);
-        mUploadedTexels = mPaletteTexels;
-    }
-
-    // What the lines are drawn over, copied before either draws, around where they are drawn; under the contour's
-    // the texels showing a selected surface are marked, which it does not read.
-    LLRenderTarget* backdrop_map = nullptr;
-    if (backdrop)
-    {
-        std::vector<LLRect> copied;
-        copied.reserve(mLineRects.size());
-        for (const LLRect& rect : mLineRects)
-        {
-            const LLRect from = backdropRect(rect, width, height);
-            if (from.notEmpty())
-            {
-                copied.push_back(from);
-            }
-        }
-        mergeRects(copied);
-        for (const LLRect& from : copied)
-        {
-            mBackdropMap.copyFromBound(vp_x + from.mLeft, vp_y + from.mBottom, vp_x + from.mRight, vp_y + from.mTop,
-                                       from.mLeft / BACKDROP_SCALE, from.mBottom / BACKDROP_SCALE,
-                                       from.mRight / BACKDROP_SCALE, from.mTop / BACKDROP_SCALE, GL_LINEAR);
-        }
-        if (!copied.empty())
-        {
-            if (contour)
-            {
-                gSelectionBackdropMaskProgram.bind();
-                drawBackdropMask(gSelectionBackdropMaskProgram, mIdMap, mBackdropMap, copied,
-                                 *gPipeline.mScreenTriangleVB);
-            }
-            backdrop_map = &mBackdropMap;
-        }
-    }
-
-    // The wireframe first, the outline over it.
-    if (wireframe)
-    {
-        drawWireframes(view, width, height, backdrop_map);
-    }
-
-    if (edges)
-    {
-        // The rects hold every texel drawn and the reach of its line or glow around them; the edge pass reads no
-        // further, and what it reads past the jump and tile passes' work they clear to nothing, as it is. A frame
-        // with no contour reads no jump, but the tile pass reads them all.
-        gSelectionJumpProgram.bind();
-        if (contour)
-        {
-            drawJumps(gSelectionJumpProgram, mIdMap, mJumpMap, mRects, view, *gPipeline.mScreenTriangleVB);
-        }
-        else
-        {
-            clearJumps(mJumpMap);
-        }
-        gSelectionTileProgram.bind();
-        drawTiles(gSelectionTileProgram, mIdMap, mJumpMap, mTileMap, mRects, view, *gPipeline.mScreenTriangleVB);
-        if (glow)
-        {
-            gSelectionGlowReachProgram.bind();
-            drawGlowReach(gSelectionGlowReachProgram, mTileMap, mGlowReachMap, mRects, view,
-                          *gPipeline.mScreenTriangleVB);
-            gSelectionGlowRowProgram.bind();
-            drawGlowRows(gSelectionGlowRowProgram, mIdMap, mGlowReachMap, mGlowRowMap, mRects, view,
-                         *gPipeline.mScreenTriangleVB);
-        }
-
-        LLGLSColorMask mask(true, false);
-        LLGLDepthTest depth(GL_FALSE);
-        LLGLEnable blend(GL_BLEND);
-        gGL.setSceneBlendType(LLRender::BT_ALPHA);
-
-        gSelectionOutlineProgram.bind();
-        drawEdges(gSelectionOutlineProgram, mIdMap, mJumpMap, mTileMap, glow ? &mGlowReachMap : nullptr,
-                  glow ? &mGlowRowMap : nullptr, contour ? backdrop_map : nullptr, mPalette, view,
-                  *gPipeline.mScreenTriangleVB, &mRects, vp_x, vp_y);
-    }
-
-    if (previous)
-    {
-        previous->bind();
-    }
-    else
-    {
-        LLGLSLShader::unbind();
-    }
 
     clearEntries();
 }
