@@ -1639,7 +1639,6 @@ namespace
         LLPointer<LLCubeMap> cube = new LLCubeMap();
         cube->init(sources);
         CHECK(cube->getResolution() == resolution);
-        CHECK(cube->getGLName() == 0);
 
         ALMetalTexture* texture = cube->getMetalTexture();
         REQUIRE(texture);
@@ -1696,7 +1695,6 @@ namespace
         sources[0]->getData()[0] ^= 0x5a;
         cube->init(sources);
         CHECK(cube->getMetalTexture() == nullptr);
-        CHECK(cube->getGLName() == 0);
         LLImageGL::setMetalDevice(device);
         ALMetalTexture* retried = cube->getMetalTexture(&error);
         REQUIRE(retried);
@@ -1708,7 +1706,6 @@ namespace
         const std::size_t changed_pixel =
             static_cast<std::size_t>(resolution - 1) * resolution * components;
         CHECK(actual[changed_pixel] == sources[0]->getData()[0]);
-        CHECK(cube->getGLName() == 0);
     }
 
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: native creation owns no GL texture", "[LLImageGL][almetal]")

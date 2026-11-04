@@ -25,8 +25,6 @@
  */
 #include "linden_common.h"
 
-#include "llworkerthread.h"
-
 #include "llcubemap.h"
 
 #include "v4coloru.h"
@@ -36,9 +34,7 @@
 #include "m4math.h"
 
 #include "llrender.h"
-#include "llglslshader.h"
-
-#include "llglheaders.h"
+#include "llimagegl.h"
 
 #if LL_DARWIN
 #include "almetaldevice.h"
@@ -53,75 +49,10 @@ LLCubeMap::LLCubeMap()
     : mTextureStage(0),
       mMatrixStage(0)
 {
-    mTargets[0] = GL_TEXTURE_CUBE_MAP_NEGATIVE_X;
-    mTargets[1] = GL_TEXTURE_CUBE_MAP_POSITIVE_X;
-    mTargets[2] = GL_TEXTURE_CUBE_MAP_NEGATIVE_Y;
-    mTargets[3] = GL_TEXTURE_CUBE_MAP_POSITIVE_Y;
-    mTargets[4] = GL_TEXTURE_CUBE_MAP_NEGATIVE_Z;
-    mTargets[5] = GL_TEXTURE_CUBE_MAP_POSITIVE_Z;
 }
 
 LLCubeMap::~LLCubeMap()
 {
-}
-
-void LLCubeMap::initGL()
-{
-#if LL_DARWIN
-    // Darwin's authoritative cube is the native resource built from the same
-    // transformed CPU faces in getMetalTexture(). Keep this entry point inert
-    // so a retained traversal caller cannot recreate duplicate GL ownership.
-    return;
-#else
-    llassert(gGLManager.mInited);
-
-    // Not initialized, do stuff.
-    if (mImages[0].isNull())
-    {
-        U32 texname = 0;
-
-        LLImageGL::generateTextures(1, &texname);
-
-        // Linear RGBA8, not sRGB: the faces are copies of the sky textures, whose
-        // pixels have always been stored and sampled raw. Were a decode ever wanted,
-        // it is a sampler decision now (ALSampler::SRGBDecode), not a storage one.
-        const S32 internal_format = GL_RGBA8;
-
-        // Allocate the whole cube up front. glTexStorage2D on GL_TEXTURE_CUBE_MAP
-        // allocates all six faces in a single call, and may only be called once for
-        // the object -- so it has to happen here rather than inside the per-face
-        // loop. The faces are then told storage exists, which makes their uploads
-        // sub-image writes instead of allocations.
-        gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_CUBE_MAP, texname);
-        glTexStorage2D(GL_TEXTURE_CUBE_MAP, 1, internal_format, RESOLUTION, RESOLUTION);
-        // count of 6: alloc_tex_image's count covers cube faces. The per-face
-        // path used to account one face at a time onto the same texture name,
-        // each call releasing the last, so only one face's worth was ever
-        // recorded for the whole cube.
-        LLImageGLMemory::alloc_tex_image(RESOLUTION, RESOLUTION, internal_format, 6, false);
-        stop_glerror();
-
-        for (int i = 0; i < 6; i++)
-        {
-            mImages[i] = new LLImageGL(RESOLUTION, RESOLUTION, 4, false);
-            // Explicit, so each face's format matches the storage exactly rather than
-            // relying on the auto-format switch agreeing with it.
-            mImages[i]->setExplicitFormat(internal_format, GL_RGBA);
-            mImages[i]->setTarget(mTargets[i], ALTextureSlot::TT_CUBE_MAP);
-            mImages[i]->markStorageAllocated();
-            mRawImages[i] = new LLImageRaw(RESOLUTION, RESOLUTION, 4);
-            if (!mImages[i]->createGLTexture(0, mRawImages[i], texname))
-            {
-                LL_WARNS() << "Failed to create GL texture for environment cubemap face " << i << LL_ENDL;
-            }
-
-            gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_CUBE_MAP, texname);
-            stop_glerror();
-        }
-        gGL.getTextureSlot(0)->unbind();
-    }
-    disable();
-#endif
 }
 
 void LLCubeMap::initRawData(const std::vector<LLPointer<LLImageRaw> >& rawimages)
@@ -179,36 +110,10 @@ void LLCubeMap::initRawData(const std::vector<LLPointer<LLImageRaw> >& rawimages
 #endif
 }
 
-void LLCubeMap::initGLData()
-{
-    LL_PROFILE_ZONE_SCOPED;
-#if !LL_DARWIN
-    for (int i = 0; i < 6; i++)
-    {
-        mImages[i]->setSubImage(mRawImages[i], 0, 0, RESOLUTION, RESOLUTION);
-    }
-#else
-    // The viewer installs the window's Metal device before the sky is
-    // initialized. Publish the transformed CPU faces directly; a later
-    // consumer retries if startup ordering or a transient allocation prevented
-    // this publication.
-    if (LLImageGL::getMetalDevice())
-    {
-        std::string error;
-        if (!getMetalTexture(&error))
-        {
-            LL_WARNS("Metal")
-                << "Could not publish the legacy sky cube to Metal: "
-                << error << LL_ENDL;
-        }
-    }
-#endif
-}
-
 void LLCubeMap::init(const std::vector<LLPointer<LLImageRaw> >& rawimages)
 {
-#if LL_DARWIN
     initRawData(rawimages);
+#if LL_DARWIN
     std::string error;
     if (!getMetalTexture(&error))
     {
@@ -216,24 +121,7 @@ void LLCubeMap::init(const std::vector<LLPointer<LLImageRaw> >& rawimages)
             << "Could not publish the legacy sky cube to Metal: "
             << error << LL_ENDL;
     }
-#else
-    if (!gGLManager.mIsDisabled)
-    {
-        initGL();
-        initRawData(rawimages);
-        initGLData();
-    }
 #endif
-}
-
-// initReflectionMap and initEnvironmentMap were deleted here: no callers, and both
-// bodies had gone illegal under immutable storage -- their per-face createGLTexture
-// path would hand a cube FACE target to glTexStorage2D, which only accepts the
-// GL_TEXTURE_CUBE_MAP target (allocating all six faces at once; see initGL).
-
-GLuint LLCubeMap::getGLName()
-{
-    return mImages[0].notNull() ? mImages[0]->getTexName() : 0;
 }
 
 #if LL_DARWIN

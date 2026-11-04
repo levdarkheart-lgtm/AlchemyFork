@@ -518,7 +518,7 @@ bool ALTextureSlot::bind(LLImageGL* texture, bool for_rendering, bool forceBind,
     return true;
 }
 
-bool ALTextureSlot::bind(LLCubeMap* cubeMap, ALSampler key)
+bool ALTextureSlot::bind(LLCubeMap* cubeMap, ALSampler)
 {
     if (mIndex < 0) return false;
 
@@ -531,37 +531,11 @@ bool ALTextureSlot::bind(LLCubeMap* cubeMap, ALSampler key)
         return false;
     }
 
-    // mImages[0] is normally populated by LLCubeMap::initGL, but a
-    // partially-constructed cubemap could have a null face here.
-    if (cubeMap->mImages[0].isNull())
-    {
-#if LL_DARWIN
-        // The native-only legacy sky cube deliberately has no GL face. Clear
-        // any older cube binding so retained GL traversal cannot sample stale
-        // storage while the Metal world owner consumes getMetalTexture().
-        unbind();
-#else
-        LL_WARNS() << "ALTextureSlot::bind cubemap with null face 0" << LL_ENDL;
-#endif
-        return false;
-    }
-
-    if (mCurrTexture != cubeMap->mImages[0]->getTexName())
-    {
-        activate();
-        setTarget(ALTextureSlot::TT_CUBE_MAP);
-        mCurrTexture = cubeMap->mImages[0]->getTexName();
-        glBindTexture(GL_TEXTURE_CUBE_MAP, mCurrTexture);
-        cubeMap->mImages[0]->updateBindStats();
-    }
-
-    // Named by the caller, not read off face 0. A cube map is as much a shared
-    // resource as any other texture -- the environment map is sampled by every
-    // shiny surface in the scene -- so which sampler a pass wants is the pass's
-    // business. Outside the redundancy check, as in bindImpl: the same cube can be
-    // bound again after a pass that left a different sampler on this slot.
-    bindSampler(gGL.getSampler(key));
-    return true;
+    // LLCubeMap is native Metal storage now. A legacy texture slot cannot bind
+    // it; clear any older cube binding so retained traversal cannot sample
+    // stale storage while the native world owner consumes getMetalTexture().
+    unbind();
+    return false;
 }
 
 // LLRenderTarget is unavailible on the mapserver since it uses FBOs.
@@ -616,7 +590,7 @@ bool ALTextureSlot::bindManual(eTextureType type, U32 texture, U32 sampler)
         mCurrTexture = texture;
         // Classic bind rather than glBindTextureUnit even under DSA: several callers pass
         // a name straight out of glGenTextures and rely on this call to establish its
-        // target (LLRenderTarget::allocateColorTexture, LLCubeMap::initGL, the pipeline
+        // target (LLRenderTarget::allocateColorTexture and the pipeline
         // noise/SMAA LUTs). glBindTextureUnit rejects a target-less name.
         glBindTexture(sGLTextureType[type], texture);
     }

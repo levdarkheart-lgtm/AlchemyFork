@@ -27,13 +27,16 @@
 #ifndef LL_LLCUBEMAP_H
 #define LL_LLCUBEMAP_H
 
-#include "llgl.h"
+#include "llimage.h"
+#include "llpointer.h"
+#include "llrefcount.h"
 
 #include <memory>
 #include <string>
 #include <vector>
 
 class LLVector3;
+class LLMatrix4a;
 #if LL_DARWIN
 class ALMetalDevice;
 class ALMetalTexture;
@@ -46,9 +49,7 @@ public:
     LLCubeMap();
     void init(const std::vector<LLPointer<LLImageRaw> >& rawimages);
 
-    void initGL();
     void initRawData(const std::vector<LLPointer<LLImageRaw> >& rawimages);
-    void initGLData();
 
     void bind();
     void enable(S32 stage);
@@ -65,17 +66,8 @@ public:
 
     U32 getResolution()
     {
-        if (mImages[0].notNull())
-        {
-            return mImages[0]->getWidth(0);
-        }
         return mRawImages[0].notNull() ? mRawImages[0]->getWidth() : 0;
     }
-
-    // generate mip maps for this Cube Map using GL
-    // NOTE: Cube Map MUST already be resident in VRAM
-
-    GLuint getGLName();
 
 #if LL_DARWIN
     // Return the coherent native cube containing the six transformed legacy
@@ -86,10 +78,7 @@ public:
 #endif
 
 protected:
-    friend class ALTextureSlot;
     ~LLCubeMap();
-    LLGLenum mTargets[6];
-    LLPointer<LLImageGL> mImages[6];
     LLPointer<LLImageRaw> mRawImages[6];
     S32 mTextureStage;
     S32 mMatrixStage;

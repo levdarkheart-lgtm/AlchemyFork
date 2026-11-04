@@ -586,8 +586,8 @@ private:
     // (glTexStorage2D), so it can be allocated exactly once: every upload afterwards is a
     // sub-image write, and any size or format change has to build a new texture object.
     // Set either by allocateTextureStorage or by markStorageAllocated when the owner of a
-    // shared texture object allocated on this instance's behalf -- see LLCubeMap, where one
-    // glTexStorage2D call covers all six faces. Reset whenever a fresh name is bound.
+    // shared texture object allocated on this instance's behalf. Reset whenever a fresh
+    // name is bound.
     bool     mStorageAllocated = false;
     // What allocateTextureStorage gave it, so a later upload can tell whether it still
     // fits. All zero when the owner of a shared object allocated it.
@@ -755,10 +755,8 @@ public:
     void setTexName(GLuint texName) { mTexName = texName; }
 
     // Declare that this image's texture object already has immutable storage, allocated
-    // by whoever owns it. Needed where one GL texture is shared by several LLImageGL
-    // objects and no individual object is in a position to allocate: glTexStorage2D on
-    // GL_TEXTURE_CUBE_MAP allocates all six faces in one call, so LLCubeMap makes it and
-    // the six per-face objects only ever write sub-images.
+    // by whoever owns it. LLCubeMapArray uses one object for every cube face/layer and
+    // allocates all of that storage with one glTexStorage3D call before uploads.
     void markStorageAllocated()
     {
         mStorageAllocated = true;
