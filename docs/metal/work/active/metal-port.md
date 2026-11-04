@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `04d52899ae`.
+**Renderer checkpoint:** Commit `4aa3d15dfd`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -22,7 +22,7 @@ checkpoint detail belongs in the indexed archive.
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,165 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation nor reflection-probe publication. Probe updates fail closed; GL processing/storage and post-deferred pool draws are removed from probe faces. Retained GL face clear/deferred-lighting drivers, context and resource side effects remain. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation nor reflection-probe publication. Active probe faces bypass GL targets, scene pools and deferred lighting; native alpha lighting reads CPU state, not the GL UBO. Retained shadow generation, top-level GL scaffolding, context and resource side effects remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
@@ -79,13 +79,12 @@ transactions fail closed. `437d8a584e` deletes the GL probe post-chain,
 scratch resources, cube/SH publication storage and reflection UBO. Direct Metal
 radiance and matching SH are now the only published probe generation.
 
-Commits `51282740b5` through `04d52899ae` replace retained reflection scene
-triggers with direct CPU enumeration. The native probe transaction now owns the
-opaque G-buffer and complete ordered post-deferred scene: water exclusion,
-fullbright/shiny/bump/glow, transparent avatars, water haze, sorted pre/post
-water alpha, atmosphere and water. Probe faces return before GL pool, stencil,
-fullscreen haze and water draws. Remaining GL face clear/deferred-lighting
-drivers and resource/context ownership are the next cut, not a fallback.
+Commits `51282740b5` through `4aa3d15dfd` replace retained reflection scene and
+lighting triggers with direct CPU/Metal ownership. Active probe faces bypass GL
+target clear/flush, deferred pool setup, light-map/fullscreen lighting and final
+pool traversal. Native alpha lighting is packed from environment and nearby
+lights rather than the GL light UBO. Remaining shadow generation, top-level GL
+face scaffolding and resource/context ownership are the next cut, not fallback.
 
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -102,10 +101,10 @@ swap. Exact prior evidence remains in the
 - `verify_app.sh`: 349/349 ARM64 Mach-O slices; deep strict signing passes.
 - Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
   UI 56/1. Shared baseline retains 5 known Apple GL failures/4 cases.
-- `04d52899ae`: warnings-as-errors RelWithDebInfo build passes; focused
+- `4aa3d15dfd`: warnings-as-errors RelWithDebInfo build passes; focused
   benchmark tests pass 49/8, `alrender_tests` 557,301/136, harness 31/31 and
   app verification 349/349 ARM64 slices. Deep strict signing passes; executable
-  SHA-256 is `8d9cfb66f49de3efd6320f3b3531323f757789ccc5f1c5699ab86f57c7f3593d`.
+  SHA-256 is `443695ef8fe8b2196661828889a1b69a3fb9b7e158239074044aa285b34c75bd`.
 - Strict inventory is 3,165 findings and exits 1; both APIs remain linked.
 
 ## Owner-attended visual review cadence
@@ -121,8 +120,8 @@ summarized, but no row closes without explicit owner-attended evidence.
 1. **Product advancement:** yes—Metal is the only visible presentation owner,
    Snapshot has no GL framebuffer, and ordinary avatar/impostor scene families
    feed direct native producers.
-2. **Replacement boundary:** indexed masks and remaining pool/face-owned scene
-   families plus cube-array consumption remain until complete capture is proven.
+2. **Replacement boundary:** probe shadow generation, cube-face GL scaffolding
+   and remaining application resource owners still require native cutover.
 3. **Deferred critical work:** remaining GL context/traversal/resources,
    feature/stability matrices, visual queue, strict binary/runtime audit,
    measured M1 Max performance and release proof.
@@ -132,12 +131,11 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Remove the retained GL face clear and deferred-lighting/fullscreen traversal now
-that reflection G-buffer and post-deferred scene enumeration is native. Do not
-wait for Snapshot, exposure, mirror or direct-probe visual review: native paths
-intentionally expose failures instead of reverting to GL. Continue owner-by-
-owner GL resource and context removal without restoring publication or
-presentation fallbacks.
+Remove retained GL shadow generation and top-level cube-face state now that
+reflection scene and lighting are native. Do not wait for Snapshot, exposure,
+mirror or direct-probe visual review: native paths intentionally expose failures
+instead of reverting to GL. Continue owner-by-owner GL resource/context removal
+without restoring publication or presentation fallbacks.
 Keep visual cases queued and do not launch viewers autonomously.
 
 ## Non-negotiable open gates

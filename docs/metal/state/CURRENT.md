@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `04d52899ae`
+**Renderer code checkpoint:** `4aa3d15dfd`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -88,13 +88,13 @@ preview, Refresh has no effect and Save to Disk performs no action: NOT OK.
 Both viewers are closed; no autonomous screenshots were taken.
 
 M-003, M-004, M-007, M-008, M-009 and M-011 are `doing`; M-012 is complete.
-Commits through `69b210a4f2` make probes fail closed, delete GL probe
-processing/storage and suppress duplicate GL G-buffer draws. `04d52899ae`
-directly enumerates every post-deferred family: water exclusion, fullbright,
-shiny/bump, glow, avatar transparency, atmosphere, water haze/surface and
-sorted alpha. Faces no longer execute post-deferred GL pool, stencil, haze or
-water draws. Metal radiance/SH alone publish; GL face clear/deferred-lighting
-drivers and the live context remain during cutover.
+Commits through `04d52899ae` make probes fail closed and directly enumerate the
+complete G-buffer/post-deferred scene. `4aa3d15dfd` also removes probe-face GL
+target clear/flush, deferred pool setup, light-map, fullscreen base/local/
+projector lighting and final post traversal. Native alpha lighting now comes
+from CPU environment/nearby-light state rather than the GL light UBO. Metal
+scene/radiance/SH alone publish; shadow generation, top-level GL scaffolding
+and the live context remain during cutover.
 
 Earlier native terrain, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -122,9 +122,9 @@ until the owner-attended review records that result.
   Viewer SHA-256: `c9bf95b8a8d6c9f36c437c16b913feb5d3f1e9bcd77e9b5c69965992af2527a8`.
 - Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
   UI 56/1. Shared-context baseline retains 5 known Apple GL failures/4 cases.
-- At `04d52899ae`, RelWithDebInfo builds; focused benchmark tests pass 49/8,
+- At `4aa3d15dfd`, RelWithDebInfo builds; focused benchmark tests pass 49/8,
   `alrender_tests` 557,301/136, harness 31/31 and app verification 349/349
-  ARM64 slices. Deep signing passes; executable SHA-256 is `8d9cfb66f49de3efd6320f3b3531323f757789ccc5f1c5699ab86f57c7f3593d`.
+  ARM64 slices. Deep signing passes; executable SHA-256 is `443695ef8fe8b2196661828889a1b69a3fb9b7e158239074044aa285b34c75bd`.
 - Strict GL inventory is 3,165 findings and exits 1. Both APIs remain
   linked; static, linked and runtime no-GL release gates remain open.
 
@@ -137,7 +137,7 @@ until the owner-attended review records that result.
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,165 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Probe updates advance only after native face publication. GL probe processing/storage and post-deferred pool draws are removed from faces; Metal owns coherent scene/radiance/SH. Retained GL face clear/deferred-lighting drivers, context and resource owners are next. |
+| M-011 GL authority removal | doing | Probe updates advance only after native face publication. GL face target, scene pools and deferred-lighting drivers are bypassed; Metal owns scene/lighting/radiance/SH and CPU alpha-light inputs. Retained shadow generation, top-level GL scaffolding, context and resource owners are next. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
@@ -155,6 +155,6 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Remove retained GL face clear/deferred-lighting traversal; never restore fallback.
+1. Remove retained GL shadow-generation and cube-face scaffolding; never restore fallback.
 2. Continue deleting GL resource/context consumers owner by owner.
 3. Keep visual failures queued; do not launch either viewer autonomously.
