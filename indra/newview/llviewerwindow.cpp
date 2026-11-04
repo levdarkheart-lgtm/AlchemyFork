@@ -6367,7 +6367,9 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width,
 
 void display_cube_face();
 
-bool LLViewerWindow::cubeSnapshot(const LLVector3& origin, LLCubeMapArray* cubearray, S32 cubeIndex, S32 face, F32 near_clip, bool dynamic_render, bool useCustomClipPlane, LLPlane clipPlane)
+bool LLViewerWindow::cubeSnapshot(const LLVector3& origin, S32 face,
+                                  F32 near_clip, bool dynamic_render,
+                                  bool useCustomClipPlane, LLPlane clipPlane)
 {
     // NOTE: implementation derived from LLFloater360Capture::capture360Images() and simpleSnapshot
     LL_PROFILE_ZONE_SCOPED_CATEGORY_APP;

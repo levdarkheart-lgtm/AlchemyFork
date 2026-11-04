@@ -27,7 +27,6 @@
 #pragma once
 
 #include "alquerypool.h"
-#include "llcubemaparray.h"
 #include "llmemory.h"
 
 class LLSpatialGroup;
@@ -127,9 +126,9 @@ public:
     // last time this probe was updated (or when its update timer got reset)
     F64 mLastUpdateTime = 0.0;
 
-    // cube map used to sample this environment map
-    LLPointer<LLCubeMapArray> mCubeArray;
-    S32 mCubeIndex = -1; // index into cube map array or -1 if not currently stored in cube map array
+    // Logical slot in the active probe resource set. GL and Metal owners use
+    // the same stable index, but the probe itself owns neither backend.
+    S32 mCubeIndex = -1;
 
     // probe has had at least one full update and is ready to render
     bool mComplete = false;

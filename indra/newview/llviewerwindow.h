@@ -74,7 +74,6 @@ class LLStatsListener;
 class LLVOPartGroup;
 class LLPopupView;
 class LLCubeMap;
-class LLCubeMapArray;
 
 #define PICK_HALF_WIDTH 5
 #define PICK_DIAMETER (2 * PICK_HALF_WIDTH + 1)
@@ -406,11 +405,9 @@ public:
 
     // take a cubemap snapshot
     // origin - vantage point to take the snapshot from
-    // cubearray - cubemap array for storing the results
-    // index - cube index in the array to use (cube index, not face-layer)
     // face - which cube face to update
     // near_clip - near clip setting to use
-    bool cubeSnapshot(const LLVector3 &origin, LLCubeMapArray *cubearray, S32 index, S32 face, F32 near_clip, bool render_avatars,
+    bool cubeSnapshot(const LLVector3 &origin, S32 face, F32 near_clip, bool render_avatars,
                       bool customCullingPlane = false, LLPlane cullingPlane = LLPlane(LLVector3(0, 0, 0), LLVector3(0, 0, 1)));
 
 

@@ -48,12 +48,12 @@ LLReflectionMap::~LLReflectionMap()
 void LLReflectionMap::update(U32 resolution, U32 face, bool force_dynamic, F32 near_clip, bool useClipPlane, LLPlane clipPlane)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
-    if (!mCubeArray.notNull())
+    if (mCubeIndex < 0)
+    {
         return;
+    }
 
     mLastUpdateTime = gFrameTimeSeconds;
-    llassert(mCubeArray.notNull());
-    llassert(mCubeIndex != -1);
     //llassert(LLPipeline::sRenderDeferred);
 
     // make sure we don't walk off the edge of the render target
@@ -66,7 +66,8 @@ void LLReflectionMap::update(U32 resolution, U32 face, bool force_dynamic, F32 n
     F32 clip = (near_clip > 0) ? near_clip : getNearClip();
     bool dynamic = force_dynamic || getIsDynamic();
 
-    gViewerWindow->cubeSnapshot(LLVector3(mOrigin), mCubeArray, mCubeIndex, face, clip, dynamic, useClipPlane, clipPlane);
+    gViewerWindow->cubeSnapshot(LLVector3(mOrigin), face, clip, dynamic,
+                                useClipPlane, clipPlane);
 }
 
 void LLReflectionMap::autoAdjustOrigin()

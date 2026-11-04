@@ -1411,7 +1411,6 @@ void LLReflectionMapManager::update()
 
     std::sort(mProbes.begin()+1, mProbes.end(), CompareProbeDistance());
     llassert(mProbes[0] == mDefaultProbe);
-    llassert(mProbes[0]->mCubeArray == mTexture);
     llassert(mProbes[0]->mCubeIndex == 0);
 
     // make sure we're assigning cube slots to the closest probes
@@ -1434,7 +1433,6 @@ void LLReflectionMapManager::update()
 #endif
             mCubeFree.push_back(probe->mCubeIndex);
 
-            probe->mCubeArray = nullptr;
             probe->mCubeIndex = -1;
             probe->mComplete = false;
             probe->mFadeIn = 0;
@@ -1461,7 +1459,6 @@ void LLReflectionMapManager::update()
         {
             S32 idx = allocateCubeIndex();
             llassert(idx > 0); //if we're still in this loop, mCubeFree should not be empty and allocateCubeIndex should be returning good indices
-            probe->mCubeArray = mTexture;
             probe->mCubeIndex = idx;
         }
     }
@@ -2767,7 +2764,6 @@ void LLReflectionMapManager::initReflectionMaps()
             probe->mLastUpdateTime = 0.f;
             probe->mComplete = false;
             probe->mProbeIndex = -1;
-            probe->mCubeArray = nullptr;
             probe->mCubeIndex = -1;
             probe->mNeighbors.clear();
             probe->mNeighborRadius = -1.f; // list cleared, so it describes nothing
@@ -2793,7 +2789,6 @@ void LLReflectionMapManager::initReflectionMaps()
         llassert(mProbes[0] == mDefaultProbe);
 
         mDefaultProbe->mCubeIndex = 0;
-        mDefaultProbe->mCubeArray = mTexture;
         mDefaultProbe->mDistance = 64.f;
         mDefaultProbe->mRadius = 4096.f;
         mDefaultProbe->mProbeIndex = 0;
@@ -2840,10 +2835,9 @@ bool LLReflectionMapManager::freeResources()
 
     abandonProbeUpdate();
 
-    // A probe's own reference keeps the cube array alive, so each lets go of it.
+    // Probes own logical slots only; the manager owns both backend resources.
     for (auto& probe : mProbes)
     {
-        probe->mCubeArray  = nullptr;
         probe->mCubeIndex  = -1;
         probe->mProbeIndex = -1;
         probe->mComplete   = false;

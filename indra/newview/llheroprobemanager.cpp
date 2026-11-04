@@ -632,7 +632,6 @@ void LLHeroProbeManager::initReflectionMaps()
         // For hero probes, we treat this as the main mirror probe.
 
         mDefaultProbe->mCubeIndex = 0;
-        mDefaultProbe->mCubeArray = mTexture;
         mDefaultProbe->mDistance  = gSavedSettings.getF32("RenderHeroProbeDistance");
         mDefaultProbe->mRadius = 4096.f;
         mDefaultProbe->mProbeIndex = 0;
