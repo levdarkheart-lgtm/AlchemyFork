@@ -7322,7 +7322,7 @@ void LLPipeline::captureMetalLightDebugFace(
         !buffer->getMetalIndexBuffer() ||
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4) ||
-        !color_valid || !metalLightDebugStateIsExact(true, false))
+        !color_valid)
     {
         fail("Lights face geometry or render state is incomplete");
         return;
@@ -7415,8 +7415,7 @@ void LLPipeline::captureMetalLightDebugBox(
     if (!capture.complete ||
         capture.render_debug_order ==
             std::numeric_limits<U64>::max() ||
-        !color_valid ||
-        !metalLightDebugStateIsExact(radius_bounds, true))
+        !color_valid)
     {
         capture.markIncomplete(__LINE__);
         capture.light_debug_batches.clear();
