@@ -148,7 +148,6 @@ LLGLSLShader            gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
 LLGLSLShader            gDeferredBumpProgram;
 LLGLSLShader            gDeferredBumpAlphaMaskProgram;
 LLGLSLShader            gDeferredTerrainProgram;
-LLGLSLShader            gDeferredTreeProgram;
 LLGLSLShader            gDeferredTreeShadowProgram;
 LLGLSLShader            gDeferredAvatarProgram;
 LLGLSLShader            gDeferredAvatarAlphaProgram;
@@ -1313,7 +1312,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
     if (mShaderLevel[SHADER_DEFERRED] == 0)
     {
-        gDeferredTreeProgram.unload();
         gDeferredTreeShadowProgram.unload();
         gDeferredDiffuseProgram.unload();
         gDeferredDiffuseAlphaMaskProgram.unload();
@@ -1937,19 +1935,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
             built(shader->createShader(mirror_variant()), *shader);
         }
-    }
-
-    {
-        gDeferredTreeProgram.mName = "Deferred Tree Shader";
-        gDeferredTreeProgram.mShaderFiles.clear();
-        gDeferredTreeProgram.mShaderFiles.push_back(make_pair("deferred/treeV.glsl", GL_VERTEX_SHADER));
-        gDeferredTreeProgram.mShaderFiles.push_back(make_pair("deferred/treeF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredTreeProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        add_common_permutations(&gDeferredTreeProgram);
-
-        gDeferredTreeProgram.addPermutation("LINEAR_DIFFUSE", "1");
-        built(gDeferredTreeProgram.createShader(mirror_variant()), gDeferredTreeProgram);
     }
 
     {

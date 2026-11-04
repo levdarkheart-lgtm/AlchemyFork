@@ -15662,8 +15662,8 @@ void LLPipeline::captureMetalWorldTreeBatch(LLFace* face,
     if (!capture.direct_probe_scene_active &&
         capture.direct_probe_tree_faces.contains(face))
     {
-        // Direct pool enumeration already captured this face. Retain the GL
-        // draw as complete fallback output without duplicating its Metal batch.
+        // Direct probe enumeration is authoritative for this face; do not
+        // duplicate the native batch when the ordinary pool is visited later.
         return;
     }
     if (!capture.complete)

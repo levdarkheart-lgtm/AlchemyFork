@@ -204,7 +204,6 @@ extern LLGLSLShader         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
 extern LLGLSLShader         gDeferredBumpProgram;
 extern LLGLSLShader         gDeferredBumpAlphaMaskProgram; // the bump faces that can discard
 extern LLGLSLShader         gDeferredTerrainProgram;
-extern LLGLSLShader         gDeferredTreeProgram;
 extern LLGLSLShader         gDeferredTreeShadowProgram;
 extern LLGLSLShader         gDeferredLightProgram;
 extern LLGLSLShader         gDeferredMultiLightProgram[LL_DEFERRED_MULTI_LIGHT_COUNT];

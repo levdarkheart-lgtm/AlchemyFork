@@ -30,17 +30,8 @@
 
 #include "lldrawable.h"
 #include "llface.h"
-#include "llsky.h"
-#include "llvotree.h"
 #include "pipeline.h"
-#include "llviewercamera.h"
-#include "llviewershadermgr.h"
-#include "llrender.h"
 #include "llviewerregion.h"
-#include "llenvironment.h"
-
-S32 LLDrawPoolTree::sDiffTex = 0;
-static LLGLSLShader* shader = NULL;
 
 LLDrawPoolTree::LLDrawPoolTree(LLViewerTexture *texturep) :
     LLFacePool(POOL_TREE),
@@ -51,16 +42,12 @@ LLDrawPoolTree::LLDrawPoolTree(LLViewerTexture *texturep) :
 //============================================
 // deferred implementation
 //============================================
-void LLDrawPoolTree::beginDeferredPass(S32 pass)
+void LLDrawPoolTree::beginDeferredPass(S32)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-
-    shader = gDeferredTreeProgram.selectVariant();
-    shader->bind();
-    shader->setMinimumAlpha(0.5f);
 }
 
-void LLDrawPoolTree::renderDeferred(S32 pass)
+void LLDrawPoolTree::renderDeferred(S32)
 {
     LL_PROFILE_ZONE_SCOPED;
 
@@ -69,47 +56,22 @@ void LLDrawPoolTree::renderDeferred(S32 pass)
         return;
     }
 
-    // Decode on the sampler; the store re-encodes via the deferred pass's hoisted
-    // GL_FRAMEBUFFER_SRGB (renderGeomDeferred), so the tree writer shades in linear.
-    //
-    // renderShadow() calls this function too, with the shadow program bound. The decode is
-    // inert there: the shadow shader only alpha-tests, which sRGB decode never touches, and
-    // a shadow target has no colour attachment for FRAMEBUFFER_SRGB to act on anyway.
-
 // [SL:KB] - Patch: Render-TextureToggle (Catznip-4.0)
     LLViewerTexture* pTexture = (LLPipeline::sRenderTextures) ? mTexturep.get() : LLViewerFetchedTexture::sDefaultDiffuseImagep.get();
-    gGL.getTextureSlot(sDiffTex)->bindFast(pTexture, ALSamplers::AnisoWrapSRGB);
 // [/SL:KB]
-//  gGL.getTextureSlot(sDiffTex)->bindFast(mTexturep, ALSamplers::AnisoWrap);
     mTexturep->addTextureStats(1024.f * 1024.f); // <=== keep Linden tree textures at full res
 
 #if LL_DARWIN
     gPipeline.beginMetalWorldGBufferPass(false, true);
 #endif
 
-    for (std::vector<LLFace*>::iterator iter = mDrawFace.begin();
-        iter != mDrawFace.end(); iter++)
+    for (LLFace* face : mDrawFace)
     {
-        LLFace* face = *iter;
-        LLVertexBuffer* buff = face->getVertexBuffer();
-
-        if (buff)
+        if (face && face->getVertexBuffer())
         {
-            LLMatrix4a* model_matrix = &(face->getDrawable()->getRegion()->mRenderMatrix);
-
-            llassert(gGL.getMatrixMode() == LLRender::MM_MODELVIEW);
-            LLRenderPass::applyModelMatrix(model_matrix);
-
 #if LL_DARWIN
             gPipeline.captureMetalWorldTreeBatch(face, pTexture);
-            // This call is inert during the ordinary deferred pass. While a
-            // direct spotlight slice is being captured, retain the exact
-            // pool-owned indexed draw and its texture-only 0.5 alpha test.
-            gPipeline.captureMetalSpotShadowTreeBatch(
-                buff, pTexture, model_matrix);
 #endif
-            buff->setBuffer();
-            buff->drawRange(LLRender::TRIANGLES, 0, buff->getNumVerts() - 1, buff->getNumIndices(), 0);
         }
     }
 
@@ -118,30 +80,21 @@ void LLDrawPoolTree::renderDeferred(S32 pass)
 #endif
 }
 
-void LLDrawPoolTree::endDeferredPass(S32 pass)
+void LLDrawPoolTree::endDeferredPass(S32)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-
-    shader->unbind();
 }
 
 //============================================
 // shadow implementation
 //============================================
-void LLDrawPoolTree::beginShadowPass(S32 pass)
+void LLDrawPoolTree::beginShadowPass(S32)
 {
     LL_PROFILE_ZONE_SCOPED;
-
-    LLEnvironment& environment = LLEnvironment::instance();
-
-    gDeferredTreeShadowProgram.bind();
-    gDeferredTreeShadowProgram.uniform1i(LLShaderMgr::SUN_UP_FACTOR, environment.getIsSunUp() ? 1 : 0);
-    gDeferredTreeShadowProgram.setMinimumAlpha(0.5f);
 }
 
-void LLDrawPoolTree::renderShadow(S32 pass)
+void LLDrawPoolTree::renderShadow(S32)
 {
-    renderDeferred(pass);
 }
 
 void LLDrawPoolTree::captureMetalDirectionalShadow()
@@ -190,11 +143,9 @@ void LLDrawPoolTree::addShadowCasters(ALSpotShadowCache::Casters& casters)
     }
 }
 
-void LLDrawPoolTree::endShadowPass(S32 pass)
+void LLDrawPoolTree::endShadowPass(S32)
 {
     LL_PROFILE_ZONE_SCOPED;
-
-    gDeferredTreeShadowProgram.unbind();
 }
 
 bool LLDrawPoolTree::verify() const
