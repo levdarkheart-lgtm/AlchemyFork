@@ -34,6 +34,8 @@
 #include "llvertexbuffer.h"
 #include "lldrawpool.h"
 
+#include <array>
+
 class LLViewerTexture;
 class LLDrawInfo;
 class LLGLSLShader;
@@ -48,6 +50,47 @@ class LLDrawPoolMaterials : public LLRenderPass
     bool isPassEmpty(S32 pass);
 public:
     LLDrawPoolMaterials();
+
+    struct DeferredPassDescription
+    {
+        U32 render_type;
+        U32 shader_mask;
+
+        constexpr U32 alphaMode() const
+        {
+            return shader_mask & 0x3u;
+        }
+
+        constexpr bool hasNormalMap() const
+        {
+            return (shader_mask & 0x8u) != 0;
+        }
+
+        constexpr bool hasSpecularMap() const
+        {
+            return (shader_mask & 0x4u) != 0;
+        }
+    };
+
+    // One authoritative description of the legacy material render maps and
+    // shader feature masks. The GL draw pool and direct Metal scene traversal
+    // both consume this table so their alpha/normal/specular semantics cannot
+    // drift during the renderer cutover. Rigged maps use render_type + 1.
+    inline static constexpr std::array<DeferredPassDescription, 12>
+        DEFERRED_PASSES{{
+            { PASS_MATERIAL, 0 },
+            { PASS_MATERIAL_ALPHA_MASK, 2 },
+            { PASS_MATERIAL_ALPHA_EMISSIVE, 3 },
+            { PASS_SPECMAP, 4 },
+            { PASS_SPECMAP_MASK, 6 },
+            { PASS_SPECMAP_EMISSIVE, 7 },
+            { PASS_NORMMAP, 8 },
+            { PASS_NORMMAP_MASK, 10 },
+            { PASS_NORMMAP_EMISSIVE, 11 },
+            { PASS_NORMSPEC, 12 },
+            { PASS_NORMSPEC_MASK, 14 },
+            { PASS_NORMSPEC_EMISSIVE, 15 },
+        }};
 
     enum
     {

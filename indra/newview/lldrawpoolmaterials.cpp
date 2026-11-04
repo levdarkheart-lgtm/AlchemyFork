@@ -50,47 +50,9 @@ void LLDrawPoolMaterials::prerender()
 
 S32 LLDrawPoolMaterials::getNumDeferredPasses()
 {
-    // 12 render passes times 2 (one for each rigged and non rigged)
-    return 12*2;
+    // One pass per description for each of the non-rigged and rigged maps.
+    return static_cast<S32>(DEFERRED_PASSES.size() * 2);
 }
-
-// Render-map pass type for each non-rigged material pass; rigged passes use type + 1.
-// Kept in sync with the shader index table in beginDeferredPass and the type list in
-// renderDeferred (which now indexes this same array).
-static const U32 sMaterialPassType[] =
-{
-    LLRenderPass::PASS_MATERIAL,
-    LLRenderPass::PASS_MATERIAL_ALPHA_MASK,
-    LLRenderPass::PASS_MATERIAL_ALPHA_EMISSIVE,
-    LLRenderPass::PASS_SPECMAP,
-    LLRenderPass::PASS_SPECMAP_MASK,
-    LLRenderPass::PASS_SPECMAP_EMISSIVE,
-    LLRenderPass::PASS_NORMMAP,
-    LLRenderPass::PASS_NORMMAP_MASK,
-    LLRenderPass::PASS_NORMMAP_EMISSIVE,
-    LLRenderPass::PASS_NORMSPEC,
-    LLRenderPass::PASS_NORMSPEC_MASK,
-    LLRenderPass::PASS_NORMSPEC_EMISSIVE,
-};
-
-// gDeferredMaterialProgram / gDeferredMaterialIndexedProgram index (shader mask)
-// for each of the 12 non-rigged material passes; rigged uses the program's
-// mRiggedVariant. Kept in sync with sMaterialPassType above.
-static const U32 sMaterialShaderIdx[] =
-{
-    0,  // PASS_MATERIAL
-    2,  // PASS_MATERIAL_ALPHA_MASK
-    3,  // PASS_MATERIAL_ALPHA_EMISSIVE
-    4,  // PASS_SPECMAP
-    6,  // PASS_SPECMAP_MASK
-    7,  // PASS_SPECMAP_EMISSIVE
-    8,  // PASS_NORMMAP
-    10, // PASS_NORMMAP_MASK
-    11, // PASS_NORMMAP_EMISSIVE
-    12, // PASS_NORMSPEC
-    14, // PASS_NORMSPEC_MASK
-    15, // PASS_NORMSPEC_EMISSIVE
-};
 
 // Render the multi-material (indexed) draw infos for one material pass. The indexed
 // program is bound lazily on the first such batch (most passes have none). Each slot
@@ -192,12 +154,14 @@ static void pushMaterialBatchIndexed(LLGLSLShader& program, U32 type, bool rigge
 bool LLDrawPoolMaterials::isPassEmpty(S32 pass)
 {
     bool rigged = false;
-    if (pass >= 12)
+    const S32 pass_count = static_cast<S32>(DEFERRED_PASSES.size());
+    if (pass >= pass_count)
     {
         rigged = true;
-        pass -= 12;
+        pass -= pass_count;
     }
-    U32 type = sMaterialPassType[pass] + (rigged ? 1 : 0);
+    llassert(pass >= 0 && pass < pass_count);
+    U32 type = DEFERRED_PASSES[pass].render_type + (rigged ? 1 : 0);
     return gPipeline.beginRenderMap(type) == gPipeline.endRenderMap(type);
 }
 
@@ -211,12 +175,14 @@ void LLDrawPoolMaterials::beginDeferredPass(S32 pass)
     }
 
     bool rigged = false;
-    if (pass >= 12)
+    const S32 pass_count = static_cast<S32>(DEFERRED_PASSES.size());
+    if (pass >= pass_count)
     {
         rigged = true;
-        pass -= 12;
+        pass -= pass_count;
     }
-    U32 idx = sMaterialShaderIdx[pass];
+    llassert(pass >= 0 && pass < pass_count);
+    U32 idx = DEFERRED_PASSES[pass].shader_mask;
 
     mShader = gDeferredMaterialProgram[idx].selectVariant();
 
@@ -256,28 +222,28 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
     // linear albedo on store into the sRGB attachment 0.
 
     bool rigged = false;
-    if (pass >= 12)
+    const S32 pass_count = static_cast<S32>(DEFERRED_PASSES.size());
+    if (pass >= pass_count)
     {
         rigged = true;
-        pass -= 12;
+        pass -= pass_count;
     }
 
-    llassert(pass < sizeof(sMaterialPassType)/sizeof(U32));
+    llassert(pass >= 0 && pass < pass_count);
 
-    U32 type = sMaterialPassType[pass];
+    const DeferredPassDescription& pass_description =
+        DEFERRED_PASSES[pass];
+    U32 type = pass_description.render_type;
     if (rigged)
     {
         type += 1;
     }
 
 #if LL_DARWIN
-    static constexpr U32 alpha_modes[] = {0, 2, 3};
-    const U32 material_family = pass / 3;
-    const bool normal_map = material_family >= 2;
-    const bool specular_map = material_family == 1 ||
-                              material_family == 3;
     gPipeline.beginMetalWorldMaterialPass(
-        rigged, alpha_modes[pass % 3], normal_map, specular_map);
+        rigged, pass_description.alphaMode(),
+        pass_description.hasNormalMap(),
+        pass_description.hasSpecularMap());
 #endif
 
     LLCullResult::drawinfo_iterator begin = gPipeline.beginRenderMap(type);
@@ -441,7 +407,9 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
     // program (its rigged variant for the rigged passes).
     if (LLGLSLShader::sIndexedLegacyMaterials)
     {
-        LLGLSLShader* indexed = gDeferredMaterialIndexedProgram[sMaterialShaderIdx[pass]].selectVariant();
+        LLGLSLShader* indexed =
+            gDeferredMaterialIndexedProgram[
+                pass_description.shader_mask].selectVariant();
         LLGLSLShader* prog = rigged ? indexed->mRiggedVariant : indexed;
         if (prog && prog->isComplete())
         {

@@ -38,6 +38,7 @@
 #include <sstream>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <fmt/format.h>
 
@@ -553,6 +554,11 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> base_light_target;
     std::unique_ptr<ALMetalRenderTarget> impostor_bake_target;
     std::vector<ALMetalWorldSimpleBatch> batches;
+    // Reflection probes enumerate the CPU-owned opaque render maps directly.
+    // Retain the exact draw identities so the following GL fallback traversal
+    // does not mirror those same batches into Metal a second time.
+    std::unordered_set<const LLDrawInfo*> direct_probe_draw_infos;
+    bool direct_probe_draw_map_active = false;
     std::vector<ALMetalWorldHighlightBatch> highlight_batches;
     std::vector<ALMetalWorldDebugBlip> debug_blips;
     F32 debug_blip_modelview_projection[16]{};
@@ -2420,6 +2426,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     }
 
     capture.batches.clear();
+    capture.direct_probe_draw_infos.clear();
+    capture.direct_probe_draw_map_active = false;
     capture.sky_behind_target.reset();
     capture.hdri_sky_batches.clear();
     capture.hdri_sky_environment = nullptr;
@@ -11315,6 +11323,161 @@ static bool buildMetalWorldDrawMatrices(
     return inverse_modelview.setAffineInverse(modelview);
 }
 
+void LLPipeline::captureMetalReflectionProbeDrawMaps()
+{
+    if (!mMetalReflectionWorldCaptureActive ||
+        !mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active)
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    struct DirectPass
+    {
+        U32 type;
+        bool rigged;
+        bool alpha_mask;
+        bool batch_textures;
+        bool skip_indexed_materials;
+    };
+    static constexpr DirectPass passes[] = {
+        { LLRenderPass::PASS_SIMPLE, false, false, true, false },
+        { LLRenderPass::PASS_SIMPLE_RIGGED, true, false, true, false },
+        { LLRenderPass::PASS_ALPHA_MASK, false, true, true, true },
+        { LLRenderPass::PASS_ALPHA_MASK_RIGGED, true, true, true, true },
+        { LLRenderPass::PASS_GRASS, false, true, false, false },
+    };
+
+    capture.direct_probe_draw_map_active = true;
+    for (const DirectPass& pass : passes)
+    {
+        beginMetalWorldGBufferPass(pass.rigged, pass.alpha_mask);
+        auto* at = beginRenderMap(pass.type);
+        auto* end = endRenderMap(pass.type);
+        for (; at != end; )
+        {
+            LLDrawInfo* info = *at;
+            LLCullResult::increment_iterator(at, end);
+            if (!info)
+            {
+                capture.markIncomplete(__LINE__);
+                capture.batches.clear();
+                break;
+            }
+            if (pass.skip_indexed_materials &&
+                info->mMaterialSlotList.size() > 1)
+            {
+                // The GL alpha-mask pool excludes these from the scalar
+                // sweep as well; indexed legacy material masks have their
+                // own pass contract.
+                continue;
+            }
+
+            capture.direct_probe_draw_infos.insert(info);
+            captureMetalWorldGBufferBatch(*info, pass.batch_textures);
+            if (!capture.complete)
+            {
+                break;
+            }
+        }
+        endMetalWorldGBufferPass();
+        if (!capture.complete)
+        {
+            break;
+        }
+    }
+    for (bool rigged : { false, true })
+    {
+        if (!capture.complete)
+        {
+            break;
+        }
+        for (const LLDrawPoolMaterials::DeferredPassDescription& pass :
+             LLDrawPoolMaterials::DEFERRED_PASSES)
+        {
+            beginMetalWorldMaterialPass(
+                rigged, pass.alphaMode(), pass.hasNormalMap(),
+                pass.hasSpecularMap());
+            auto* at = beginRenderMap(
+                pass.render_type + (rigged ? 1 : 0));
+            auto* end = endRenderMap(
+                pass.render_type + (rigged ? 1 : 0));
+            for (; at != end; )
+            {
+                LLDrawInfo* info = *at;
+                LLCullResult::increment_iterator(at, end);
+                if (!info)
+                {
+                    capture.markIncomplete(__LINE__);
+                    capture.batches.clear();
+                    break;
+                }
+                capture.direct_probe_draw_infos.insert(info);
+                captureMetalWorldMaterialBatch(
+                    *info, info->mMaterialSlotList.size() > 1);
+                if (!capture.complete)
+                {
+                    break;
+                }
+            }
+            endMetalWorldGBufferPass();
+            if (!capture.complete)
+            {
+                break;
+            }
+        }
+        if (!capture.complete)
+        {
+            break;
+        }
+    }
+
+    struct PBRPass
+    {
+        U32 type;
+        bool rigged;
+        bool alpha_mask;
+    };
+    static constexpr PBRPass pbr_passes[] = {
+        { LLRenderPass::PASS_GLTF_PBR, false, false },
+        { LLRenderPass::PASS_GLTF_PBR_RIGGED, true, false },
+        { LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK, false, true },
+        { LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK_RIGGED, true, true },
+    };
+    for (const PBRPass& pass : pbr_passes)
+    {
+        if (!capture.complete)
+        {
+            break;
+        }
+        beginMetalWorldPBRPass(pass.rigged, pass.alpha_mask);
+        auto* at = beginRenderMap(pass.type);
+        auto* end = endRenderMap(pass.type);
+        for (; at != end; )
+        {
+            LLDrawInfo* info = *at;
+            LLCullResult::increment_iterator(at, end);
+            if (!info)
+            {
+                capture.markIncomplete(__LINE__);
+                capture.batches.clear();
+                break;
+            }
+            capture.direct_probe_draw_infos.insert(info);
+            captureMetalWorldPBRBatch(
+                *info, info->mGLTFMaterialList.size() > 1);
+            if (!capture.complete)
+            {
+                break;
+            }
+        }
+        endMetalWorldGBufferPass();
+    }
+    capture.direct_probe_draw_map_active = false;
+    capture.pass_active = false;
+}
+
 void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                                bool batch_textures)
 {
@@ -11325,6 +11488,14 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.direct_probe_draw_map_active &&
+        capture.direct_probe_draw_infos.contains(&params))
+    {
+        // The CPU render-map enumerator already captured this exact draw.
+        // The GL draw still executes as fail-closed output, but it is no
+        // longer the producer of this native probe batch.
+        return;
+    }
     if (!capture.complete || !params.mCount)
     {
         return;
@@ -21128,6 +21299,7 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
 
 #if LL_DARWIN
         beginMetalWorldGBufferCapture();
+        captureMetalReflectionProbeDrawMaps();
 #endif
 
         while ( iter1 != mPools.end() )

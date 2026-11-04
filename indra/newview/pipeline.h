@@ -1104,6 +1104,7 @@ public:
         ALMetalWorldLegacyAlphaLighting& lighting);
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
+    void captureMetalReflectionProbeDrawMaps();
     void captureMetalWorldMaterialBatch(const LLDrawInfo& params,
                                         bool indexed_materials);
     void captureMetalWorldPBRBatch(const LLDrawInfo& params,
