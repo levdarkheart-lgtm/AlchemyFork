@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `eadfbc3e4f`
+**Renderer code checkpoint:** `e618640417d3`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -12,13 +12,13 @@ This concise recovery snapshot delegates superseded detail to the indexed archiv
 
 ## Active implementation checkpoint
 
-M-003, M-004, M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit
-`eadfbc3e4f` makes each reflection map's cube index a backend-neutral logical
-slot and removes the unused `LLCubeMapArray*` argument from the capture API.
-`LLReflectionMapManager` remains the sole owner of backend resources. Native
-radiance and SH publication already target the logical slot; the complete GL
-cube array and its fallback producer/consumer path intentionally remain live.
-This is preparation for replacement, not feature deletion or audit gaming.
+M-003, M-004, M-007, M-008, M-009 and M-011 are `doing`; M-012 is complete.
+Commit `e618640417d3` makes generic, material, PBR, bump and legacy-glow Metal
+world batches reconstruct their transforms from `LLDrawInfo` and the current
+camera instead of reading the mutable GL matrix stack. This preserves output
+and fallback while establishing an explicit native batch contract needed by a
+direct reflection-probe scene enumerator. The preceding backend-neutral probe
+slot checkpoint remains active; the live GL cube array is not yet removable.
 
 The preceding startup-texture checkpoint remains active. System/default/local
 raw, decoded-memory and all eleven explicit local preloads publish truthfully
@@ -94,12 +94,12 @@ until the owner-attended review records that result.
   unified memory, arm64 macOS 26.5.2, Xcode 26.6, Apple7 support and the Metal
   compiler present.
 - The exact `tools/metal/build.sh` invocation exited 0 at committed renderer
-  source `eadfbc3e4f`; the warnings-as-errors Xcode Release build reported
-  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68266`
-  (`26.4.0.68266`).
+  source `e618640417d3`; the warnings-as-errors Xcode Release build reported
+  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68268`
+  (`26.4.0.68268`).
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64;
   deep strict code-sign verification passed. Viewer executable SHA-256 is
-  `f939a3578617ee287bcc2fd33d067d726f4d99e590f4efcaf1d06ac3291c37d1`.
+  `4360751dc9d9c938ab76b11bb5fdf16556db83d21460cdb87dd7107f54f1f137`.
 - Source and packaged MSL are byte-identical at
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`;
   metallib SHA-256 is
@@ -117,9 +117,9 @@ until the owner-attended review records that result.
 - Harness structure validation passes for 32 required files; all 30 harness/tool
   tests and `git diff --check` pass. The documented strict-audit alias works.
 - Strict inventory is 2,407 files / 3,214 findings, expected exit 1; no rule or
-  suppression changed. Exact report `artifacts/metal/audit-gl-eadfbc3e4f.json`
+  suppression changed. Exact report `artifacts/metal/audit-gl-e618640417d3.json`
   has SHA-256
-  `34006085589d7e409582047bf55cc3f3dc3efdd98068e59e759653b5a464d201`.
+  `7851308f708501627c5200a84e18cb9890768a6303bc38c5a3240e91ed7bb0a2`.
 - Both OpenGL and Metal remain linked. The static, linked and runtime no-GL
   release gates remain open.
 - No viewer executable was launched, driven, photographed or compared.
@@ -129,19 +129,20 @@ until the owner-attended review records that result.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | System/default/local raw, decoded-memory and all eleven explicit local preloads publish natively with truthful state when GL is disabled; report screenshots, local previews, HDRI, fetched publication, sculpt metadata, pressure scale-down and eviction are backend-correct at converted sites. Exact presentation remains Metal-first/fail-closed. Live GL context creation/shutdown remains. |
-| M-007 world/material | doing | Local terrain-paint baking is Metal-authoritative with full geometry/weights/mips. Metal world capture consumes native bump backing; native legacy BLEND exists, while owner-attended visual and broad material parity remain open. |
+| M-007 world/material | doing | Core native world batches now derive transforms without GL state. Local terrain-paint baking is Metal-authoritative; native bumps and legacy BLEND exist, while direct native enumeration and broad parity remain open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,214 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Logical reflection probes no longer own/pass a GL array; the manager owns backend resources. `LLCubeMapArray` remains live until native scene capture, producers, consumers and failure paths are complete. |
+| M-011 GL authority removal | doing | Logical probes are backend-neutral and core Metal batches no longer read GL matrices. `LLCubeMapArray` remains live until direct native scene capture, consumers and failure paths are complete. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Reflection-map scheduling now addresses
-a backend-neutral probe slot and capture no longer accepts a false GL-resource
-dependency. Native publication remains intact and no feature was deleted.
+**Advances the complete product:** yes. Native world batches now carry
+authoritative CPU-derived transforms and can be invoked by a future direct
+Metal scene enumerator. Native publication remains intact and no feature was
+deleted.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -151,9 +152,8 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Make reflection-probe face capture independent of GL resource liveness;
-   `LLPipeline::beginMetalReflectionProbeFaceCapture` currently requires
-   `mGLResourcesLive` and shares `display_cube_face` scene traversal.
-2. Implement and prove native scene capture before removing that gate or any
-   live cube-array owner. Queue visual questions for owner-attended review;
-   do not drive comparisons.
+1. Add direct native reflection-probe scene culling/enumeration that feeds the
+   now GL-independent generic/material/PBR/bump/glow batch contracts.
+2. Add the remaining sky/terrain/water/avatar pass contracts and deterministic
+   failure proof before removing `mGLResourcesLive` or a live cube-array owner.
+   Queue visual questions for owner-attended review; do not drive comparisons.

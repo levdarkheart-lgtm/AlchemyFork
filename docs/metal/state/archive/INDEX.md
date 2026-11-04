@@ -127,6 +127,7 @@ reload the chronological history.
 | Truthful native-only fetched startup state and exact shipped preload texture publication, source-exact build 68260, 2026-11-04 | [CURRENT-native-startup-texture-state-checkpoint-2026-11-04.md](CURRENT-native-startup-texture-state-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Superseded `LLCubeMap` GL storage/name owner removal after physical native replacement proof, source-exact build 68264, 2026-11-04 | [CURRENT-native-cubemap-gl-owner-removal-checkpoint-2026-11-04.md](CURRENT-native-cubemap-gl-owner-removal-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Backend-neutral reflection-probe slots with manager-owned resources and live fallback retained, source-exact build 68266, 2026-11-04 | [CURRENT-backend-neutral-probe-slot-checkpoint-2026-11-04.md](CURRENT-backend-neutral-probe-slot-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
+| GL-independent native world-batch transforms as a direct scene-enumerator prerequisite, source-exact build 68268, 2026-11-04 | [CURRENT-gl-independent-native-world-transforms-checkpoint-2026-11-04.md](CURRENT-gl-independent-native-world-transforms-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.

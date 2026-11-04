@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `eadfbc3e4f`.
+**Renderer checkpoint:** Commit `e618640417d3`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -18,31 +18,31 @@ checkpoint detail belongs in the indexed archive.
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Reflection maps use backend-neutral logical slots and the manager owns backend resources; native cube/radiance/SH plus startup/local/HDRI/fetched publication, scale-down and eviction work at converted sites. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and font atlases are native-only; owner-attended text/emoji and moving-media parity remain open. |
-| M-007 | World scene and material correctness | doing | Local terrain-paint baking owns full geometry/weight/mip production in Metal. World capture consumes native bumps; native legacy BLEND exists, while owner-attended visual and broad parity remain open. |
+| M-007 | World scene and material correctness | doing | Core native world batches derive authoritative transforms without GL state. Terrain paint, native bumps and legacy BLEND exist; direct native scene enumeration and broad parity remain open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,214 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | Reflection-map objects no longer own/pass a GL array. `LLCubeMapArray` remains live pending GL-independent native scene capture and complete reflection/hero production and consumption. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Reflection maps are backend-neutral and core Metal batches no longer read GL matrices. `LLCubeMapArray` remains pending direct native scene capture and complete reflection/hero production and consumption. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — backend-neutral reflection-probe slots
+## Active checkpoint — GL-independent native world transforms
 
-Commit `eadfbc3e4f` removes `LLReflectionMap::mCubeArray` and the unused cube-
-array pointer/index parameters from `cubeSnapshot`. A reflection map retains a
-backend-neutral logical `mCubeIndex`; `LLReflectionMapManager` alone owns the
-Metal mirror and the live GL fallback array. Native radiance/SH publication and
-GL metadata address the same slot without making the logical object a GL owner.
+Commit `e618640417d3` reconstructs generic, material, PBR, bump, water-
+exclusion and legacy-glow Metal batch transforms from each `LLDrawInfo` model
+matrix and the current viewer camera. These batches no longer read `gGL`'s
+mutable model-view/projection stack, and their inverse-normal input remains
+fail-closed for singular transforms. The exact multiplication order matches
+`LLRenderPass::applyModelMatrix` and `LLRender::multMatrix`.
 
-The GL cube array and its production, binding and fallback consumption are not
-removed. `beginMetalReflectionProbeFaceCapture` still requires live GL
-resources because native capture mirrors the `display_cube_face` traversal.
-That shared traversal must be replaced and proved before the gate or GL array
-can be retired. Audit count is unchanged, corroborating that this is ownership
-decoupling rather than metric-driven deletion.
+This is a prerequisite, not a traversal cutover. GL draw pools still enumerate
+the scene and retain complete fallback. The preceding backend-neutral probe
+slot checkpoint remains active: `beginMetalReflectionProbeFaceCapture` still
+requires live GL resources and `display_cube_face`; the manager-owned GL cube
+array remains until a direct native producer and all consumers are proven.
 
 The preceding startup checkpoint remains active: direct native publication and
 truthful GL-created state work after GL disable, while initialized active GL
@@ -99,11 +99,11 @@ the CSV.
 ## Validation checkpoint
 
 - The source-exact warnings-as-errors Xcode Release build
-  `26.4.0d68266` passed at renderer source `eadfbc3e4f`.
+  `26.4.0d68268` passed at renderer source `e618640417d3`.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices; deep strict
   signing passes.
 - Viewer executable SHA-256:
-  `f939a3578617ee287bcc2fd33d067d726f4d99e590f4efcaf1d06ac3291c37d1`.
+  `4360751dc9d9c938ab76b11bb5fdf16556db83d21460cdb87dd7107f54f1f137`.
   Source/packaged MSL:
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`.
   Metallib:
@@ -126,9 +126,9 @@ the CSV.
 - Harness structure validation, all 30 harness/tool tests and diff checks pass;
   the documented `audit_gl.py --strict` alias is tested.
 - Strict inventory is 2,407 files / 3,214 findings, expected exit 1; no rule or
-  suppression changed. Exact report `artifacts/metal/audit-gl-eadfbc3e4f.json`
+  suppression changed. Exact report `artifacts/metal/audit-gl-e618640417d3.json`
   has SHA-256
-  `34006085589d7e409582047bf55cc3f3dc3efdd98068e59e759653b5a464d201`.
+  `7851308f708501627c5200a84e18cb9890768a6303bc38c5a3240e91ed7bb0a2`.
   Both OpenGL and Metal remain linked.
 - No viewer executable was launched, driven, photographed or compared.
 
@@ -142,10 +142,10 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—probe scheduling and capture APIs no longer
-   encode a false GL-array dependency; native and fallback behavior remain.
-2. **Replacement boundary:** live GL cube-array capture/consumption remains
-   until native scene capture and its complete failure lifecycle are proven.
+1. **Product advancement:** yes—core native batches now own explicit CPU-
+   derived transforms suitable for direct Metal enumeration; fallback remains.
+2. **Replacement boundary:** GL scene enumeration and cube-array consumption
+   remain until direct native capture and its failure lifecycle are proven.
 3. **Deferred critical work:** remaining GL context/traversal/resources,
    feature/stability matrices, visual queue, strict binary/runtime audit,
    measured M1 Max performance and release proof.
@@ -155,10 +155,11 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Make reflection-probe face capture independent of GL resource liveness. Replace
-the shared `display_cube_face` scene traversal with a complete native producer,
-add deterministic failure/lifecycle proof, and only then remove a live cube-
-array owner. Visual evidence remains owner-attended.
+Implement direct reflection-probe culling/enumeration into the GL-independent
+native batch contracts. Add explicit sky, terrain, water, avatar and remaining
+pass inputs plus deterministic failure/lifecycle proof; only then remove the
+GL-resource gate or a live cube-array owner. Visual evidence remains owner-
+attended.
 
 ## Non-negotiable open gates
 
