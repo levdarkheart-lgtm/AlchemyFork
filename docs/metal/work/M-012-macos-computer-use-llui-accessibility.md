@@ -43,10 +43,10 @@ validation now uses this fail-closed sequence:
 3. Bind Computer Use by the same full `.app` path. If the preflight fails, stop
    the run; never reinterpret ordinary-profile rendering as evidence.
 4. Hidden development guards are not expected to appear in Debug Settings.
-   When a named guarded validation requires one, set it nonpersistently on the
-   exact direct launch, for example
-   `--set ALMetalHeroMirrorSnapshotValidation true`, and verify the setting in
-   the isolated log. Do not persist it or weaken its fail-closed default.
+   Use a named nonpersistent guard only when it still exists in the exact source
+   under test, and verify it in the isolated log. The former
+   `ALMetalHeroMirrorSnapshotValidation` guard was removed at `2836849036`;
+   current mirror validation must not pass that obsolete setting.
 
 The build-68012 guarded authored-mirror run followed this sequence, completed
 semantic login, Snapshot operation and logout, exited 0, logged `LogoutReply`,
@@ -131,4 +131,9 @@ For actual 3D world/camera interaction, prefer the plugin's screenshots, pointer
 
 ## Next executable action
 
-M-012 is complete at Gate C for the currently required common controls. Return to M-008: diagnose why opening Snapshot caused the ordered native world/UI transaction to fail closed in build 67955, recover exact native depth/depth24 provenance, save and compare same-source outputs, then continue the required advanced/media parity matrix. Add another LLUI role only when a named validation scenario is blocked; keep 3D-world interaction on Computer Use screenshots, pointer and keyboard paths.
+M-012 is complete at Gate C for the currently required common controls. Return
+to M-011 GL-authority removal. Snapshot no longer uses a GL scratch framebuffer
+at `2836849036`; its preview/refresh/save behavior remains in the owner-attended
+visual queue. Add another LLUI role only when a named validation scenario is
+blocked; keep 3D-world interaction on owner-attended screenshots, pointer and
+keyboard paths.

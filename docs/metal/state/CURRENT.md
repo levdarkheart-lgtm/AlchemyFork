@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `31fa27392e`
+**Renderer code checkpoint:** `68d8792028`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -12,7 +12,7 @@ This concise recovery snapshot delegates superseded detail to the indexed archiv
 
 ## Active implementation checkpoint
 
-### Owner-accepted transition UI; exposure/mirror parity failed
+### Metal-only presentation authority; exposure/mirror parity failed
 
 Two owner-attended candidates are explicitly rejected. Run
 `font-cache-replay-fix-20261104-01` (executable SHA-256
@@ -33,14 +33,21 @@ presentation composition, not missing glyph rasterization or Metal batch
 coverage: a transparent child `CAMetalLayer` does not reliably appear above
 SDL's OpenGL drawable after its swap.
 
-Commit `31fa27392e` follows the fail-closed cutover boundary. While the GL
-world is still authoritative, it retains its complete visible UI. The same
-font-atlas identity owns synchronized GL and Metal storage, and every glyph
-publication updates both; ordered native world/UI capture continues sampling
-the Metal copy. Only a complete fused Metal world/UI transaction may make the
-surface opaque and suppress the matching GL swap. This is transitional
-recovery, not feature deletion or a claim that the final native cutover is
-complete; the GL atlas copy is removed with the complete presentation owner.
+Commit `68d8792028` makes the opaque Metal surface the sole presentation owner
+after startup and removes the transitional presentation setting. The viewer no
+longer swaps the application OpenGL drawable after `STATE_PRECACHE`; an
+incomplete current native transaction retains the preceding Metal drawable and
+retries. Legacy GL traversal still runs for unconverted rendering and resource
+side effects, so this is presentation-authority removal, not a no-GL claim.
+Font pages still keep synchronized GL and Metal storage until the retained GL
+consumers are removed.
+
+Commit `2836849036` also removes the Snapshot path's GL scratch framebuffer,
+GL clears and GL size limit. Native snapshot readback now uses the Metal device
+limit and may render the same requested size twice so resized temporal targets
+can stabilize before fail-closed readback. Hero mirrors are no longer excluded
+from native presentation and no hidden validation setting remains. Snapshot and
+mirror fixes are queued for owner revalidation, not claimed from source alone.
 
 The rebuilt Release package remains `26.4.0.68285`; its viewer executable
 SHA-256 is
@@ -75,16 +82,16 @@ Both viewers are closed; no autonomous screenshots were taken.
 
 M-003, M-004, M-007, M-008, M-009 and M-011 are `doing`; M-012 is complete.
 Commit `b27df920fc` completes direct ordinary/control-avatar probe enumeration,
-including transparent skirt/eyelash/hair state, while full GL remains
-fail-closed fallback. Indexed masks and remaining pass owners still block
-removal of the GL resource gate, `display_cube_face` and cube array.
+including transparent skirt/eyelash/hair state. Indexed masks and remaining
+pass owners still block removal of the GL resource gate, `display_cube_face`
+and cube array; the legacy traversal is no longer a visible fallback.
 
 Earlier native terrain, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
-resources avoid GL names; dual backing remains only where complete per-frame GL
-recovery is still required. Commits `04edf7b27d` and `c2bcd90b04` keep exact
-ordered world/UI Metal presentation default-on, measurable and fail closed:
-only a committed current-frame fused drawable suppresses its GL swap.
+resources avoid GL names; dual backing remains only where retained GL consumers
+have not yet been removed. Commits `04edf7b27d`, `c2bcd90b04` and `68d8792028`
+make exact ordered world/UI Metal presentation measurable and fail closed. A
+failed native frame retains the preceding Metal drawable; no GL swap is shown.
 
 Prior preview, post-effect, world/UI and physical-coverage evidence remains in
 the [archive index](archive/INDEX.md). Broader mirrors, projector shadows,
@@ -105,17 +112,17 @@ until the owner-attended review records that result.
   Viewer SHA-256: `c9bf95b8a8d6c9f36c437c16b913feb5d3f1e9bcd77e9b5c69965992af2527a8`.
 - Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
   UI 56/1. Shared-context baseline retains 5 known Apple GL failures/4 cases.
-- Strict GL inventory remains 3,214 findings and exits 1. Both APIs remain
+- Strict GL inventory remains 3,216 findings and exits 1. Both APIs remain
   linked; static, linked and runtime no-GL release gates remain open.
 
 ## Milestone snapshot
 
 | Area | State | Current fact |
 | --- | --- | --- |
-| M-003..M-006 platform/resources/UI | doing | System/default/local raw, decoded-memory and all eleven explicit local preloads publish natively with truthful state when GL is disabled; report screenshots, local previews, HDRI, fetched publication, sculpt metadata, pressure scale-down and eviction are backend-correct at converted sites. Exact presentation remains Metal-first/fail-closed. Live GL context creation/shutdown remains. |
+| M-003..M-006 platform/resources/UI | doing | System/default/local raw, decoded-memory and all eleven explicit local preloads publish natively with truthful state when GL is disabled; report screenshots, local previews, HDRI, fetched publication, sculpt metadata, pressure scale-down and eviction are backend-correct at converted sites. Metal is the sole visible presentation owner; Snapshot no longer allocates a GL scratch framebuffer. Live GL traversal/context creation/shutdown remain. |
 | M-007 world/material | doing | Reflection-probe simple/material/PBR/bump opaque batches, tree, terrain, complete ordinary avatar/impostor, HDRI/WindLight sky and water are enumerated directly from CPU scene state; transforms/state are GL-independent. Remaining pass enumeration and broad parity remain open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
-| M-009 parity/stability/no-GL | doing | Strict inventory is 3,214 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
+| M-009 parity/stability/no-GL | doing | Strict inventory is 3,216 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
 | M-011 GL authority removal | doing | Logical probes are backend-neutral and core opaque/bump, tree, terrain, ordinary avatar/impostor including transparent multipass, sky and water have a direct native producer. `LLCubeMapArray` remains live until every probe family, consumer and failure path is complete. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
@@ -123,10 +130,11 @@ until the owner-attended review records that result.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Probe avatars now feed direct Metal
-producers for impostor, rigid, opaque skinned/cloth and transparent multipass
-geometry while preserving selection, LOD, texture, state, order and failure
-contracts. The complete fallback remains intact; no feature was deleted.
+**Advances the complete product:** yes. Metal now owns every visible viewer
+frame and Snapshot no longer depends on a GL framebuffer. Existing native scene
+and UI producers remain intact; a failed native transaction is visible as a
+retained Metal frame rather than silently switching renderers. No feature was
+deleted.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -136,7 +144,10 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Pause at the requested visual-validation checkpoint; both viewers are closed.
-2. After explicit resume, repair Snapshot preview/save, matched-settings
-   lighting/tonemap parity and the black mirror.
-3. Revalidate the clean pair before indexed pass removal or GL-gate cleanup.
+1. Continue direct native enumeration of indexed/masked probe and remaining
+   pass-owned scene families; retire each matching GL authority and resource
+   dependency without waiting for queued visual comparison.
+2. Remove GL-only traversal/resource gates from native snapshot, reflection and
+   world paths as their Metal owners become source- and test-complete.
+3. Keep Snapshot, exposure and authored-mirror revalidation queued for the next
+   owner-attended visual session; do not launch either viewer autonomously.
