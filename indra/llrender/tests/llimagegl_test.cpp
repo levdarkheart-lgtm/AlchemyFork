@@ -1764,6 +1764,72 @@ namespace
         CHECK_FALSE(linear->getHasGLTexture());
     }
 
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: HDRI-style native creation preserves float pixels and mipmaps without GL", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        constexpr U16 W = 8;
+        constexpr U16 H = 4;
+        std::array<F32, W * H * 4> source{};
+        for (std::size_t pixel = 0; pixel < W * H; ++pixel)
+        {
+            source[pixel * 4 + 0] = 0.25f;
+            source[pixel * 4 + 1] = 0.5f;
+            source[pixel * 4 + 2] = 1.f;
+            source[pixel * 4 + 3] = 2.f;
+        }
+
+        const U64 baseline_bytes = LLImageGL::getTextureBytesAllocated();
+        LLPointer<LLImageGL> image = new LLImageGL(W, H, 4, true);
+        image->setExplicitFormat(GL_RGBA16F, GL_RGBA, GL_FLOAT);
+        image->setHasMipMaps(true);
+        image->setUseMipMaps(true);
+        REQUIRE(image->createMetalTexture(
+            0, reinterpret_cast<const U8*>(source.data())));
+
+        CHECK(image->getTexName() == 0);
+        CHECK_FALSE(image->getHasGLTexture());
+        REQUIRE(image->getMetalTexture());
+        CHECK(image->getMetalTexture()->descriptor().format ==
+              ALMetalPixelFormat::rgba16_float);
+        CHECK(image->getMetalTexture()->descriptor().width == W);
+        CHECK(image->getMetalTexture()->descriptor().height == H);
+        CHECK(image->getMetalTexture()->descriptor().mipmap_level_count == 4);
+        CHECK(image->getTextureMemory() == S64Bytes(344));
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes + 344);
+
+        constexpr std::array<U16, 4> expected = {
+            0x3400u, 0x3800u, 0x3c00u, 0x4000u
+        };
+        std::array<U16, W * H * 4> base{};
+        REQUIRE(image->getMetalTexture()->readback(
+            *device, 0, 0, {}, base.data(), W * 4 * sizeof(U16), &error));
+        INFO(error);
+        for (std::size_t pixel = 0; pixel < W * H; ++pixel)
+        {
+            CHECK(std::equal(expected.begin(), expected.end(),
+                             base.begin() + pixel * 4));
+        }
+
+        std::array<U16, 4> tail{};
+        REQUIRE(image->getMetalTexture()->readback(
+            *device, 3, 0, {}, tail.data(), tail.size() * sizeof(U16), &error));
+        INFO(error);
+        CHECK(tail == expected);
+
+        image->destroyGLTexture();
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: staged native creation preserves then replaces its published generation", "[LLImageGL][almetal]")
     {
         std::string error;

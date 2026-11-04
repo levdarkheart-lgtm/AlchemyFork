@@ -1781,7 +1781,9 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
     analyzeAlpha(data, width, height);
     updatePickMask(width, height, data);
     touchContents();
-    mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+    ALMetalTexture* const created_texture = metalTextureForUpload();
+    llassert(created_texture);
+    mTextureMemory = S64Bytes(metal_texture_bytes(*created_texture));
     if (!staged_upload)
     {
         updateMetalTextureAccounting();
@@ -1913,7 +1915,8 @@ bool LLImageGL::createMetalTexture(
     analyzeAlpha(base.mData, base.mWidth, base.mHeight);
     updatePickMask(base.mWidth, base.mHeight, base.mData);
     touchContents();
-    mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+    llassert(mMetalTexture);
+    mTextureMemory = S64Bytes(metal_texture_bytes(*mMetalTexture));
     updateMetalTextureAccounting();
     mLastBindTime = sLastFrameTime;
     mGLTextureCreated = false;
@@ -2357,7 +2360,7 @@ bool LLImageGL::adoptMetalRenderTexture(std::unique_ptr<ALMetalTexture> texture)
     mMetalTexture = std::move(texture);
     if (mTexName == 0)
     {
-        mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+        mTextureMemory = S64Bytes(metal_texture_bytes(*mMetalTexture));
     }
     updateMetalTextureAccounting();
     touchContents();
@@ -2386,7 +2389,7 @@ bool LLImageGL::adoptMetalRenderTextureAuthoritative(
     mStorage = StorageDesc();
     mHasMipMaps = descriptor.mipmap_level_count > 1;
     mMipLevels = static_cast<S32>(descriptor.mipmap_level_count);
-    mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+    mTextureMemory = S64Bytes(metal_texture_bytes(*mMetalTexture));
     updateMetalTextureAccounting();
     mLastBindTime = sLastFrameTime;
     setCategory(category);
@@ -4103,7 +4106,7 @@ void LLImageGL::syncTexName(LLGLuint texname)
         }
         if (mTexName == 0 && mMetalTexture)
         {
-            mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+            mTextureMemory = S64Bytes(metal_texture_bytes(*mMetalTexture));
         }
         updateMetalTextureAccounting();
 #endif
@@ -5317,7 +5320,7 @@ bool LLImageGL::scaleDown(S32 desired_discard)
         mCurrentDiscardLevel = desired_discard;
         mMipLevels = static_cast<S32>(
             mMetalTexture->descriptor().mipmap_level_count);
-        mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
+        mTextureMemory = S64Bytes(metal_texture_bytes(*mMetalTexture));
         updateMetalTextureAccounting();
         mLastBindTime = sLastFrameTime;
         llassert(!getHasGLTexture());

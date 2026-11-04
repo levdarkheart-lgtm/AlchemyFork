@@ -81,23 +81,22 @@ void load_exr(const std::string& filename)
     int ret =  LoadEXRWithLayer(&out, &width, &height, filename.c_str(), /* layername */ nullptr, &err);
     if (ret == TINYEXR_SUCCESS)
     {
-        // Upload through LLImageGL rather than wrapping a raw GL name. On
-        // Darwin this publishes the same RGBA16F pixels and generated mip
-        // chain to the paired private Metal texture, so the native sky owner
-        // never needs a GL readback.
+        // The native HDRI sky owns this image directly. Convert the decoded
+        // RGBA32F values to the authored RGBA16F storage and generate the
+        // complete mip family without allocating a parallel GL texture.
         gEXRImage = new LLImageGL(width, height, 4, true);
         gEXRImage->setExplicitFormat(
             GL_RGBA16F, GL_RGBA, GL_FLOAT);
         gEXRImage->setHasMipMaps(true);
         gEXRImage->setUseMipMaps(true);
-        const bool uploaded = gEXRImage->createGLTexture(
+        const bool uploaded = gEXRImage->createMetalTexture(
             0, reinterpret_cast<const U8*>(out));
 
         free(out); // release memory of image data
         if (!uploaded)
         {
             LL_WARNS("HDRI")
-                << "Could not publish the loaded HDRI texture" << LL_ENDL;
+                << "Could not publish the loaded HDRI Metal texture" << LL_ENDL;
             gEXRImage = nullptr;
         }
 
