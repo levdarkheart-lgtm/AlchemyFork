@@ -145,7 +145,7 @@ std::unique_ptr<ALMetalTexture> ALMetalTerrainPaintRenderer::render(
     ALMetalTextureDescriptor destination_descriptor = source_descriptor;
     destination_descriptor.usage = destination_descriptor.usage |
                                    ALMetalTextureUsage::render_target;
-    destination_descriptor.label = "Alchemy terrain paintmap mirror";
+    destination_descriptor.label = "Alchemy terrain paintmap bake";
     auto destination = ALMetalTexture::create(
         *mImpl->device, destination_descriptor, error);
     if (!destination)

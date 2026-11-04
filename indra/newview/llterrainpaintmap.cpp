@@ -25,21 +25,14 @@
  */
 
 #include "llterrainpaintmap.h"
-#include "llspatialpartition.h"
 
 #include "llviewerprecompiledheaders.h"
-
-// library includes
-#include "llglslshader.h"
-#include "llrendertarget.h"
-#include "llvertexbuffer.h"
 
 #if LL_DARWIN
 #include "../almetal/almetalterrainpaint.h"
 #include "../almetal/almetalresource.h"
 #endif
 
-// newview includes
 #include "llrender.h"
 #include "llsurface.h"
 #include "llsurfacepatch.h"
@@ -49,13 +42,30 @@
 #include "llviewertexture.h"
 
 // static
-bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& region, LLViewerTexture& tex)
+bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(
+    const LLViewerRegion& region, LLViewerTexture& tex)
 {
+#if !LL_DARWIN
+    LL_WARNS() << "Native terrain paintmap baking requires Metal" << LL_ENDL;
+    return false;
+#else
     llassert(tex.getComponents() == 3);
     llassert(tex.getWidth() > 0 && tex.getHeight() > 0);
     llassert(tex.getWidth() == tex.getHeight());
     llassert(tex.getPrimaryFormat() == GL_RGB);
     llassert(tex.getGLTexture());
+
+    ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
+    LLImageGL* destination_image = tex.getGLTexture();
+    ALMetalTexture* destination_template = destination_image
+        ? destination_image->getMetalTexture() : nullptr;
+    if (!metal_device || !destination_template)
+    {
+        LL_WARNS("Metal")
+            << "Cannot bake terrain paintmap without a native destination"
+            << LL_ENDL;
+        return false;
+    }
 
     const LLSurface& surface = region.getLand();
     const U32 patch_count = surface.getPatchesPerEdge();
@@ -64,7 +74,6 @@ bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& 
     // loaded for now. Would be nice to fix the loading issue or find a better
     // heuristic to determine that the terrain is sufficiently loaded.
 #if 0
-    // Don't proceed if the region heightmap isn't loaded
     for (U32 rj = 0; rj < patch_count; ++rj)
     {
         for (U32 ri = 0; ri < patch_count; ++ri)
@@ -79,279 +88,204 @@ bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& 
     }
 #endif
 
-    // Bind the debug shader and render terrain to tex
-    // Use a scratch render target because its dimensions may exceed the standard bake target, and this is a one-off bake
-    LLRenderTarget scratch_target;
-    scratch_target.setLabel("terrain.paintmap.scratch");
-    const S32 dim = llmin(tex.getWidth(), tex.getHeight());
-    scratch_target.allocate(dim, dim, GL_RGB8, false, false, ALTextureSlot::eTextureType::TT_TEXTURE,
-                                   LLRenderTarget::MIPS_NONE);
-    if (!scratch_target.isComplete())
-    {
-        llassert(false);
-        LL_WARNS() << "Failed to allocate render target" << LL_ENDL;
-        return false;
-    }
-    gGL.getTextureSlot(0)->unbind();
-    stop_glerror();
-
-    scratch_target.bindTarget();
-    gGL.setClearColor(LLColor4::transparent);
-    scratch_target.clear();
-
-    // Render terrain heightmap to paint map via shader
-
-    // Set up viewport, camera, and orthographic projection matrix. Position
-    // the camera such that the camera points straight down, and the region
-    // completely covers the "screen". Since orthographic projection does not
-    // distort, we arbitrarily choose the near plane and far plane to cover the
-    // full span of region heights, plus a small amount of padding to account
-    // for rounding errors.
+    // Position the bake camera directly over the region. The direct matrix
+    // construction preserves the previous projection without touching shared
+    // GL matrix, viewport or target state.
     const F32 region_width = region.getWidth();
     const F32 region_half_width = region_width / 2.0f;
     const F32 region_camera_height = surface.getMaxZ() + DEFAULT_NEAR_PLANE;
     LLViewerCamera camera;
-    const LLVector3 region_center = LLVector3(region_half_width, region_half_width, 0.0) + region.getOriginAgent();
-    const LLVector3 camera_origin = LLVector3(0.0f, 0.0f, region_camera_height) + region_center;
+    const LLVector3 region_center =
+        LLVector3(region_half_width, region_half_width, 0.0f) +
+        region.getOriginAgent();
+    const LLVector3 camera_origin =
+        LLVector3(0.0f, 0.0f, region_camera_height) + region_center;
     camera.lookAt(camera_origin, region_center, LLVector3::y_axis);
-    camera.setAspect(F32(scratch_target.getWidth()) / F32(scratch_target.getHeight()));
-    const LLRect texture_rect(0, scratch_target.getHeight(), scratch_target.getWidth(), 0);
-    gGL.setViewport(texture_rect.mLeft, texture_rect.mBottom, texture_rect.getWidth(), texture_rect.getHeight());
+    camera.setAspect(1.f);
     const LLMatrix4a modelview = camera.frameModelview();
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.loadMatrix(modelview);
-    // Override the projection matrix from the camera
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.pushMatrix();
-    gGL.loadIdentity();
     llassert(camera_origin.mV[VZ] >= surface.getMaxZ());
-    const F32 region_high_near = camera_origin.mV[VZ] - surface.getMaxZ();
+    const F32 region_high_near =
+        camera_origin.mV[VZ] - surface.getMaxZ();
     constexpr F32 far_plane_delta = 0.25f;
-    const F32 region_low_far = camera_origin.mV[VZ] - surface.getMinZ() + far_plane_delta;
-    gGL.ortho(-region_half_width, region_half_width, -region_half_width, region_half_width, region_high_near, region_low_far);
-    // No need to call camera.setPerspective because we don't need the clip planes. It would be inaccurate due to the perspective rendering anyway.
+    const F32 region_low_far =
+        camera_origin.mV[VZ] - surface.getMinZ() + far_plane_delta;
+    const LLMatrix4a projection = al_ortho(
+        -region_half_width, region_half_width,
+        -region_half_width, region_half_width,
+        region_high_near, region_low_far);
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(modelview, projection);
 
-    // Need the full resolution vertices in order to get an accurate paintmap:
-    // the drawn terrain is tessellated on the GPU from the region's height
-    // map, so this builds its own grid mesh at one vertex per grid point. We
-    // don't care about normals because those don't contribute to the paintmap.
-    std::vector<LLPointer<LLDrawInfo>> infos;
-    // Vertex and index counts per patch, including the north and east edges.
+    // Build one vertex per terrain grid point so the native bake retains the
+    // full-resolution composition coordinates used by the original feature.
     const U32 patch_size = (U32)surface.getGridsPerPatchEdge();
     constexpr U32 stride = 1;
     const U32 vert_size = (patch_size / stride) + 1;
-    const U32 n = vert_size * vert_size;
-    const U32 ni = 6 * (vert_size - 1) * (vert_size - 1);
-    const U32 region_vertices = n * patch_count * patch_count;
-    const U32 region_indices = ni * patch_count * patch_count;
-    if (LLGLSLShader::sCurBoundShaderPtr == nullptr)
-    { // make sure a shader is bound to satisfy mVertexBuffer->setBuffer
-        gDebugProgram.bind();
-    }
-    LLPointer<LLVertexBuffer> buf = new LLVertexBuffer(LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_TEXCOORD1);
+    const U32 vertices_per_patch = vert_size * vert_size;
+    const U32 indices_per_patch =
+        6 * (vert_size - 1) * (vert_size - 1);
+    const U32 region_vertices =
+        vertices_per_patch * patch_count * patch_count;
+    const U32 region_indices =
+        indices_per_patch * patch_count * patch_count;
+    if (patch_count == 0 || patch_size == 0 ||
+        region_vertices == 0 || region_indices == 0)
     {
-        buf->allocateBuffer(region_vertices, region_indices*2); // hack double index count... TODO: find a better way to indicate 32-bit indices will be used
-        buf->setBuffer();
-        U32 vertex_total = 0;
-        std::vector<U32> index_array(region_indices);
-        std::vector<LLVector4a> positions(region_vertices);
-        std::vector<LLVector2> texcoords1(region_vertices);
-        auto idx = index_array.begin();
-        auto pos = positions.begin();
-        auto tex1 = texcoords1.begin();
-        for (U32 rj = 0; rj < patch_count; ++rj)
-        {
-            for (U32 ri = 0; ri < patch_count; ++ri)
-            {
-                const U32 index_offset = vertex_total;
-                for (U32 j = 0; j < (vert_size - 1); ++j)
-                {
-                    for (U32 i = 0; i < (vert_size - 1); ++i)
-                    {
-                        // y
-                        //    2....3
-                        // ^  .    .
-                        // |  0....1
-                        // |
-                        // ------->  x
-                        //
-                        // triangle 1: 0,1,2
-                        // triangle 2: 1,3,2
-                        // 0: vert0
-                        // 1: vert0 + 1
-                        // 2: vert0 + vert_size
-                        // 3: vert0 + vert_size + 1
-                        const U32 vert0 = index_offset + i + (j*vert_size);
-                        *idx++ = vert0;
-                        *idx++ = vert0 + 1;
-                        *idx++ = vert0 + vert_size;
-                        *idx++ = vert0 + 1;
-                        *idx++ = vert0 + vert_size + 1;
-                        *idx++ = vert0 + vert_size;
-                    }
-                }
+        LL_WARNS("Metal") << "Terrain paintmap geometry is empty" << LL_ENDL;
+        return false;
+    }
 
-                const LLSurfacePatch* patch = surface.getPatch(ri, rj);
-                for (U32 j = 0; j < vert_size; ++j)
+    std::vector<U32> index_array(region_indices);
+    static_assert(sizeof(LLVector4a) == sizeof(F32) * 4);
+    static_assert(sizeof(LLVector2) == sizeof(F32) * 2);
+    std::vector<LLVector4a> positions(region_vertices);
+    std::vector<LLVector2> texcoords(region_vertices);
+    U32 vertex_total = 0;
+    auto index_iterator = index_array.begin();
+    auto position_iterator = positions.begin();
+    auto texcoord_iterator = texcoords.begin();
+    for (U32 rj = 0; rj < patch_count; ++rj)
+    {
+        for (U32 ri = 0; ri < patch_count; ++ri)
+        {
+            const U32 index_offset = vertex_total;
+            for (U32 j = 0; j < vert_size - 1; ++j)
+            {
+                for (U32 i = 0; i < vert_size - 1; ++i)
                 {
-                    for (U32 i = 0; i < vert_size; ++i)
-                    {
-                        LLVector3 pos3;
-                        LLVector2 tex1_temp;
-                        patch->eval(i, j, &pos3, &tex1_temp);
-                        (*pos++).set(pos3.mV[VX], pos3.mV[VY], pos3.mV[VZ]);
-                        *tex1++ = tex1_temp;
-                        vertex_total++;
-                    }
+                    const U32 vert0 = index_offset + i + (j * vert_size);
+                    *index_iterator++ = vert0;
+                    *index_iterator++ = vert0 + 1;
+                    *index_iterator++ = vert0 + vert_size;
+                    *index_iterator++ = vert0 + 1;
+                    *index_iterator++ = vert0 + vert_size + 1;
+                    *index_iterator++ = vert0 + vert_size;
+                }
+            }
+
+            const LLSurfacePatch* patch = surface.getPatch(ri, rj);
+            for (U32 j = 0; j < vert_size; ++j)
+            {
+                for (U32 i = 0; i < vert_size; ++i)
+                {
+                    LLVector3 position;
+                    LLVector2 composition;
+                    patch->eval(i, j, &position, &composition);
+                    (*position_iterator++).set(
+                        position.mV[VX], position.mV[VY], position.mV[VZ]);
+                    *texcoord_iterator++ = composition;
+                    ++vertex_total;
                 }
             }
         }
-        buf->setIndexData(index_array.data(), 0, (U32)index_array.size());
-        buf->setPositionData(positions.data(), 0, (U32)positions.size());
-        buf->setTexCoord1Data(texcoords1.data(), 0, (U32)texcoords1.size());
-        buf->unmapBuffer();
-        buf->unbind();
     }
 
     LLPointer<LLViewerTexture> alpha_ramp_texture =
         LLViewerTextureManager::getFetchedTexture(IMG_ALPHA_GRAD_2D);
-
-    // Draw the region in agent space at full resolution
-    {
-
-        LLGLSLShader::unbind();
-        // *NOTE: A theoretical non-PBR terrain bake program would be
-        // *slightly* different, due the texture terrain shader not having an
-        // alpha ramp threshold (TERRAIN_RAMP_MIX_THRESHOLD)
-        LLGLSLShader& shader = gPBRTerrainBakeProgram;
-        shader.bind();
-
-        LLGLDisable stencil(GL_STENCIL_TEST);
-        LLGLDisable scissor(GL_SCISSOR_TEST);
-        LLGLEnable cull_face(GL_CULL_FACE);
-        LLGLDepthTest depth_test(GL_FALSE, GL_FALSE, GL_ALWAYS);
-
-        S32 alpha_ramp = shader.enableTexture(LLViewerShaderMgr::TERRAIN_ALPHARAMP);
-        gGL.getTextureSlot(alpha_ramp)->bindSampled(alpha_ramp_texture, ALSamplers::AnisoClamp);
-
-        buf->setBuffer();
-        for (U32 rj = 0; rj < patch_count; ++rj)
-        {
-            for (U32 ri = 0; ri < patch_count; ++ri)
-            {
-                const U32 patch_index = ri + (rj * patch_count);
-                const U32 index_offset = ni * patch_index;
-                const U32 vertex_offset = n * patch_index;
-                llassert(index_offset + ni <= region_indices);
-                llassert(vertex_offset + n <= region_vertices);
-                buf->drawRange(LLRender::TRIANGLES, vertex_offset, vertex_offset + n - 1, ni, index_offset);
-            }
-        }
-
-        shader.disableTexture(LLViewerShaderMgr::TERRAIN_ALPHARAMP);
-
-        gGL.getTextureSlot(alpha_ramp)->unbind();
-
-        shader.unbind();
-    }
-
-#if LL_DARWIN
-    // Reproduce the bake from the same production buffers and alpha-ramp
-    // mirror. The GL pass remains authoritative and runs unconditionally;
-    // this separate texture is published only after the framebuffer copy
-    // succeeds, so a missing native prerequisite degrades to the established
-    // GL path without exposing stale pixels.
-    std::unique_ptr<ALMetalTexture> metal_paintmap;
-    ALMetalDevice* metal_device = LLImageGL::getMetalDevice();
-    ALMetalTexture* destination_template = tex.getGLTexture()->getMetalTexture();
-    ALMetalTexture* alpha_ramp_metal = alpha_ramp_texture.notNull() &&
-                                      alpha_ramp_texture->getGLTexture()
-        ? alpha_ramp_texture->getGLTexture()->getMetalTexture() : nullptr;
-    ALMetalBuffer* metal_vertices = buf->getMetalVertexBuffer();
-    ALMetalBuffer* metal_indices = buf->getMetalIndexBuffer();
+    ALMetalTexture* alpha_ramp_metal =
+        alpha_ramp_texture.notNull() && alpha_ramp_texture->getGLTexture()
+            ? alpha_ramp_texture->getGLTexture()->getMetalTexture()
+            : nullptr;
     const U32 terrain_bit_depth =
         LLViewerShaderMgr::instance()->inputs().mLocal.mTerrainPaintBitDepth;
-    if (metal_device && destination_template && alpha_ramp_metal &&
-        metal_vertices && metal_indices && terrain_bit_depth >= 1 &&
-        terrain_bit_depth <= 8)
+    if (!alpha_ramp_metal || terrain_bit_depth < 1 || terrain_bit_depth > 8)
     {
-        static ALMetalDevice* renderer_device = nullptr;
-        static std::unique_ptr<ALMetalTerrainPaintRenderer> renderer;
-        std::string error;
-        if (renderer_device != metal_device)
-        {
-            renderer.reset();
-            renderer_device = metal_device;
-        }
-        if (!renderer)
-        {
-            renderer = ALMetalTerrainPaintRenderer::create(*metal_device, &error);
-        }
-
-        if (renderer)
-        {
-            LLMatrix4a modelview_projection;
-            modelview_projection.setMul(gGL.getModelviewMatrix(),
-                                        gGL.getProjectionMatrix());
-            ALMetalTerrainPaintBatch batch;
-            batch.vertices = metal_vertices;
-            batch.position_offset = buf->getOffset(LLVertexBuffer::TYPE_VERTEX);
-            batch.texcoord_offset = buf->getOffset(LLVertexBuffer::TYPE_TEXCOORD1);
-            batch.indices = metal_indices;
-            batch.index_type = buf->getIndexStride() == 4
-                ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
-            batch.index_count = region_indices;
-            batch.alpha_ramp = alpha_ramp_metal;
-            batch.destination_template = destination_template;
-            memcpy(batch.modelview_projection, modelview_projection.getF32ptr(),
-                   sizeof(batch.modelview_projection));
-            batch.precision = static_cast<F32>((1u << terrain_bit_depth) - 1u);
-            metal_paintmap = renderer->render(batch, &error);
-        }
-
-        if (!metal_paintmap)
-        {
-            LL_WARNS("Metal") << "Could not mirror the terrain paintmap bake: "
-                               << error << LL_ENDL;
-        }
+        LL_WARNS("Metal")
+            << "Cannot bake terrain paintmap: native alpha ramp or precision "
+               "is unavailable"
+            << LL_ENDL;
+        return false;
     }
+
+    // The production geometry is short-lived and created only on an explicit
+    // terrain-editor command, so shared buffers avoid a second staging pass.
+    std::string error;
+    const std::size_t position_bytes =
+        positions.size() * sizeof(LLVector4a);
+    const std::size_t texcoord_bytes =
+        texcoords.size() * sizeof(LLVector2);
+    ALMetalBufferDescriptor vertex_descriptor;
+    vertex_descriptor.length = position_bytes + texcoord_bytes;
+    vertex_descriptor.storage = ALMetalStorageMode::shared;
+    vertex_descriptor.label = "Alchemy terrain paintmap vertices";
+    auto metal_vertices = ALMetalBuffer::create(
+        *metal_device, vertex_descriptor, &error);
+    if (!metal_vertices ||
+        !metal_vertices->write(
+            0, positions.data(), position_bytes, &error) ||
+        !metal_vertices->write(
+            position_bytes, texcoords.data(), texcoord_bytes, &error))
+    {
+        LL_WARNS("Metal") << "Could not upload terrain paint vertices: "
+                           << error << LL_ENDL;
+        return false;
+    }
+
+    ALMetalBufferDescriptor index_descriptor;
+    index_descriptor.length = index_array.size() * sizeof(U32);
+    index_descriptor.storage = ALMetalStorageMode::shared;
+    index_descriptor.label = "Alchemy terrain paintmap indices";
+    auto metal_indices = ALMetalBuffer::create(
+        *metal_device, index_descriptor, &error);
+    if (!metal_indices ||
+        !metal_indices->write(
+            0, index_array.data(), index_descriptor.length, &error))
+    {
+        LL_WARNS("Metal") << "Could not upload terrain paint indices: "
+                           << error << LL_ENDL;
+        return false;
+    }
+
+    static ALMetalDevice* renderer_device = nullptr;
+    static std::unique_ptr<ALMetalTerrainPaintRenderer> renderer;
+    if (renderer_device != metal_device)
+    {
+        renderer.reset();
+        renderer_device = metal_device;
+    }
+    if (!renderer)
+    {
+        renderer = ALMetalTerrainPaintRenderer::create(*metal_device, &error);
+    }
+    if (!renderer)
+    {
+        LL_WARNS("Metal") << "Could not create terrain paint renderer: "
+                           << error << LL_ENDL;
+        return false;
+    }
+
+    ALMetalTerrainPaintBatch batch;
+    batch.vertices = metal_vertices.get();
+    batch.position_offset = 0;
+    batch.texcoord_offset = position_bytes;
+    batch.indices = metal_indices.get();
+    batch.index_type = ALMetalIndexType::uint32;
+    batch.index_count = region_indices;
+    batch.alpha_ramp = alpha_ramp_metal;
+    batch.destination_template = destination_template;
+    memcpy(batch.modelview_projection, modelview_projection.getF32ptr(),
+           sizeof(batch.modelview_projection));
+    batch.precision = static_cast<F32>((1u << terrain_bit_depth) - 1u);
+
+    std::unique_ptr<ALMetalTexture> metal_paintmap =
+        renderer->render(batch, &error);
+    if (!metal_paintmap)
+    {
+        LL_WARNS("Metal") << "Could not bake terrain paintmap: "
+                           << error << LL_ENDL;
+        return false;
+    }
+    if (!destination_image->adoptMetalRenderTextureAuthoritative(
+            std::move(metal_paintmap), LLGLTexture::LOCAL))
+    {
+        LL_WARNS("Metal") << "Could not publish native terrain paintmap"
+                           << LL_ENDL;
+        return false;
+    }
+
+    LL_INFOS_ONCE("Metal")
+        << "Production terrain paintmap bakes are native Metal-only"
+        << LL_ENDL;
+    return true;
 #endif
-
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.popMatrix();
-
-    gGL.flush();
-    LLVertexBuffer::unbind();
-    // Final step: Copy the output to the terrain paintmap
-    const bool success = tex.getGLTexture()->setSubImageFromFrameBuffer(0, 0, 0, 0, dim, dim);
-    if (!success)
-    {
-        LL_WARNS() << "Failed to copy framebuffer to paintmap" << LL_ENDL;
-    }
-    // setSubImageFromFrameBuffer left the paintmap bound on unit 0 under the last draw's
-    // sampler; generateMipmaps clears that so mip generation follows the texture's own state.
-    LLImageGL::generateMipmaps(GL_TEXTURE_2D);
-    stop_glerror();
-
-#if LL_DARWIN
-    if (success && metal_paintmap)
-    {
-        if (tex.getGLTexture()->adoptMetalRenderTexture(std::move(metal_paintmap)))
-        {
-            LL_INFOS_ONCE("Metal") << "Production terrain paintmap bakes are mirrored "
-                                    << "through native Metal" << LL_ENDL;
-        }
-        else
-        {
-            LL_WARNS("Metal") << "Could not publish the native terrain paintmap mirror"
-                               << LL_ENDL;
-        }
-    }
-#endif
-
-    scratch_target.flush();
-
-    LLGLSLShader::unbind();
-
-    return success;
 }

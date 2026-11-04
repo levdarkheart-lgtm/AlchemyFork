@@ -34,8 +34,8 @@ struct ALMetalTerrainPaintBatch
 
 // The terrain editor creates this bake only on demand, but the shader library,
 // pipeline and sampler remain cached across bakes. Each render produces a new
-// shader-readable texture so the GL fallback and Metal mirror never write the
-// same resource from different APIs.
+// shader-readable texture so production can publish the completed native bake
+// atomically while retaining the previous texture on failure.
 class ALMetalTerrainPaintRenderer final
 {
 public:

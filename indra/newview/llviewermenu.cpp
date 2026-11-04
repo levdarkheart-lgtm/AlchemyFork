@@ -1560,13 +1560,23 @@ class LLAdvancedTerrainCreateLocalPaintMap : public view_listener_t
         dim = 1 << U32(std::ceil(std::log2(dim)));
         LLPointer<LLImageRaw> image_raw = new LLImageRaw(dim,dim,3);
         LLPointer<LLViewerTexture> tex = LLViewerTextureManager::getLocalTexture(dim, dim, 3, true, false);
-        // Paint weights are data, not colour: pin GL_RGB8 before creating GL storage so
-        // the sRGB auto-format for 3-component textures never applies to them.
+        // Paint weights are data, not colour: pin linear RGB8 metadata before
+        // native publication so the sRGB auto-format never applies to them.
         tex->generateGLTexture();
         tex->setExplicitFormat(GL_RGB8, GL_RGB);
-        tex->createGLTexture(0, image_raw);
-        tex->setCategory(LLGLTexture::LOCAL);
-        const bool success = LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(*region, *tex);
+        bool prepared = false;
+#if LL_DARWIN
+        prepared = tex->createMetalTexture(
+            0, image_raw, LLGLTexture::LOCAL);
+#endif
+        if (!prepared)
+        {
+            LL_WARNS("Metal")
+                << "Failed to create native terrain paintmap destination"
+                << LL_ENDL;
+        }
+        const bool success = prepared &&
+            LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(*region, *tex);
         // This calls gLocalTerrainMaterials.setPaintType
         gSavedSettings.setBOOL("LocalTerrainPaintEnabled", true);
         // If baking the paintmap failed, set the paintmap to nullptr. This
