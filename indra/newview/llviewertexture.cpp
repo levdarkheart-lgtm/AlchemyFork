@@ -303,7 +303,29 @@ LLPointer<LLViewerTexture> LLViewerTextureManager::getLocalTexture(const U32 wid
 LLViewerFetchedTexture* LLViewerTextureManager::getFetchedTexture(const LLImageRaw* raw, FTType type, bool usemipmaps)
 {
     LLImageDataSharedLock lock(raw);
+#if LL_DARWIN
+    LLViewerFetchedTexture* ret = nullptr;
+    if (gGLManager.mIsDisabled)
+    {
+        LLUUID id;
+        id.generate();
+        ret = new LLViewerFetchedTexture(id, type, LLHost(), usemipmaps);
+        if (!ret->createMetalTexture(0, raw, LLGLTexture::OTHER))
+        {
+            LL_WARNS("Metal")
+                << "Failed to publish an in-memory fetched texture natively"
+                << LL_ENDL;
+        }
+    }
+    else
+    {
+        // The raw-image constructor retains exact GL recovery pixels while the
+        // transitional renderer is active and creates the paired Metal mirror.
+        ret = new LLViewerFetchedTexture(raw, type, usemipmaps);
+    }
+#else
     LLViewerFetchedTexture* ret = new LLViewerFetchedTexture(raw, type, usemipmaps);
+#endif
     gTextureList.addImage(ret, TEX_LIST_STANDARD);
     return ret;
 }

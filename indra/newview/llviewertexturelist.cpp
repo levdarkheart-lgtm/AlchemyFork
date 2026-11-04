@@ -554,8 +554,9 @@ LLViewerFetchedTexture* LLViewerTextureList::getImageFromMemory(const U8* data, 
     LLPointer<LLImageRaw> raw_image = getRawImageFromMemory(data, size, mimetype);
     if (raw_image.notNull())
     {
-        LLViewerFetchedTexture* imagep = new LLViewerFetchedTexture(raw_image, FTT_LOCAL_FILE, true);
-        addImage(imagep, TEX_LIST_STANDARD);
+        LLViewerFetchedTexture* imagep =
+            LLViewerTextureManager::getFetchedTexture(
+                raw_image, FTT_LOCAL_FILE, /*usemipmaps=*/true);
 
         imagep->dontDiscard();
         imagep->setBoostLevel(LLViewerFetchedTexture::BOOST_PREVIEW);
