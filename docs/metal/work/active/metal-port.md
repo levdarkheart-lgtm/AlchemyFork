@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `cf6a821548`.
+**Renderer checkpoint:** Commit `437d8a584e`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,16 +13,16 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,407 files and 3,216 findings; strict exits 1. No rule or suppression changed. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 3,165 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Metal is the mandatory visible presentation owner. Startup/world GL swaps are suppressed; an incomplete native frame retains the previous Metal drawable and is machine-censused without claiming GL fallback. Live GL traversal/context creation/shutdown remain. |
-| M-004 | Metal resources, transfers, readback and synchronization | doing | Reflection maps use backend-neutral logical slots and the manager owns backend resources; native cube/radiance/SH plus startup/local/HDRI/fetched publication, scale-down and eviction work at converted sites. |
+| M-004 | Metal resources, transfers, readback and synchronization | doing | Native producers use the window-owned Metal device. Reflection probes use backend-neutral logical slots and Metal-only cube/radiance/SH publication; converted startup/local/HDRI/fetched resources retain native scale-down and eviction. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while retained GL consumers are removed; owner accepted readable UI text. Snapshot no longer allocates/binds/clears a GL scratch target or reconciles GL targets for capture size, and retries one exact-size Metal render after temporal-resource resize; preview/Refresh/Save-to-Disk await owner revalidation. |
 | M-007 | World scene and material correctness | doing | Probe simple/material/PBR/bump opaque batches plus tree, terrain, complete ordinary avatar/impostor, HDRI/WindLight sky and water are enumerated directly from CPU scene state with GL-independent transforms/state. Remaining pass families plus broad parity remain open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,216 findings), linked/runtime no-GL and visual review remain open. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,165 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | GL no longer owns presentation. Reflection maps are backend-neutral and core opaque/bump, tree, terrain, ordinary avatar/impostor including transparent multipass, sky and water have direct native producers. Retained GL traversal/resources and `LLCubeMapArray` remain pending complete family production, consumption and failure proof. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation nor reflection-probe publication. Probe updates fail closed; GL filtering, cube/SH storage and reflection UBO are removed. Retained GL scene traversal/context and remaining producer side effects remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
@@ -73,9 +73,11 @@ real-FreeType native UI path. Owner-attended run
 `font-dual-recovery-20261104-01` accepted readable menu, location, toolbar and
 stable numeric FPS text. Broader font-atlas validation remains queued.
 
-Commit `b27df920fc` completes direct ordinary/control-avatar probe production,
-including transparent multipass state. Indexed masks and remaining pass owners
-still block removal of the GL resource gate, `display_cube_face` and cube array.
+Commits `7a9878949d` and `51425778e1` remove the GL image registry as the
+Metal-device authority. `10e08508eb` makes scheduled and realtime probe
+transactions fail closed. `437d8a584e` deletes the GL probe post-chain,
+scratch resources, cube/SH publication storage and reflection UBO. Direct Metal
+radiance and matching SH are now the only published probe generation.
 
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -92,10 +94,10 @@ swap. Exact prior evidence remains in the
 - `verify_app.sh`: 349/349 ARM64 Mach-O slices; deep strict signing passes.
 - Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
   UI 56/1. Shared baseline retains 5 known Apple GL failures/4 cases.
-- `cf6a821548`: warnings-as-errors RelWithDebInfo build passes; focused
+- `437d8a584e`: warnings-as-errors RelWithDebInfo build passes; focused
   benchmark tests pass 49/8, `alrender_tests` 557,301/136, harness 31/31 and
   app verification 349/349 ARM64 slices.
-- Strict inventory remains 3,216 findings and exits 1; both APIs remain linked.
+- Strict inventory is 3,165 findings and exits 1; both APIs remain linked.
 
 ## Owner-attended visual review cadence
 
@@ -121,12 +123,12 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Continue indexed/masked probe and remaining pass-family enumeration, removing
-matching GL traversal and resource ownership as native contracts become
-deterministically complete. Do not wait for Snapshot, exposure or mirror visual
-review: commits `2836849036`, `68d8792028` and `cf6a821548` intentionally
-expose native failures instead of reverting to GL. Next remove the remaining
-reflection/world GL resource gates after confirming their direct native owners.
+Continue indexed/masked and remaining pass-family enumeration, then remove the
+retained GL probe/world traversal and its side effects. Do not wait for
+Snapshot, exposure or mirror visual review: the native paths intentionally
+expose failures instead of reverting to GL. Continue owner-by-owner GL resource
+and context removal without restoring probe publication or presentation
+fallbacks.
 Keep visual cases queued and do not launch viewers autonomously.
 
 ## Non-negotiable open gates
