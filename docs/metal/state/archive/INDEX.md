@@ -130,6 +130,7 @@ reload the chronological history.
 | GL-independent native world-batch transforms as a direct scene-enumerator prerequisite, source-exact build 68268, 2026-11-04 | [CURRENT-gl-independent-native-world-transforms-checkpoint-2026-11-04.md](CURRENT-gl-independent-native-world-transforms-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Direct native reflection-probe simple/material/PBR opaque enumeration with complete GL fallback retained, source-exact build 68270, 2026-11-04 | [CURRENT-direct-probe-opaque-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-opaque-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Direct native reflection-probe legacy-bump enumeration with backend-neutral normal resolution, source-exact build 68272, 2026-11-04 | [CURRENT-direct-probe-bump-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-bump-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
+| Direct native reflection-probe tree-face enumeration with CPU-owned transforms and complete fallback retained, source-exact build 68274, 2026-11-04 | [CURRENT-direct-probe-tree-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-tree-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.

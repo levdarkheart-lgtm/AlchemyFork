@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `131f446829`.
+**Renderer checkpoint:** Commit `d4270ed56c`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -18,31 +18,31 @@ checkpoint detail belongs in the indexed archive.
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Reflection maps use backend-neutral logical slots and the manager owns backend resources; native cube/radiance/SH plus startup/local/HDRI/fetched publication, scale-down and eviction work at converted sites. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and font atlases are native-only; owner-attended text/emoji and moving-media parity remain open. |
-| M-007 | World scene and material correctness | doing | Probe simple/material/PBR/bump opaque batches are enumerated directly from CPU cull maps with GL-independent transforms and bump resolution. Pool/face-owned families plus broad parity remain open. |
+| M-007 | World scene and material correctness | doing | Probe simple/material/PBR/bump opaque batches and pool-owned tree faces are enumerated directly from CPU scene state with GL-independent transforms and bump resolution. Remaining pool/face-owned families plus broad parity remain open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,214 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | Reflection maps are backend-neutral and core opaque/bump batches have a direct native producer. `LLCubeMapArray` remains pending complete probe-family production, consumption and failure proof. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Reflection maps are backend-neutral and core opaque/bump plus tree batches have a direct native producer. `LLCubeMapArray` remains pending complete probe-family production, consumption and failure proof. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — direct native probe bump enumeration
+## Active checkpoint — direct native probe tree enumeration
 
-Commit `131f446829` extends the direct reflection-probe render-map traversal to
-static/rigged legacy bump batches. `LLDrawPoolBump::resolveBumpMap` selects
-brightness, darkness or standard normal images without GL state; the retained
-GL binder consumes the same result. Conservative cutout classification now
-uses backend-neutral GPU residency. The direct producer preserves the pool's
-masked/unmasked split and sorted-run lookup reuse.
+Commit `d4270ed56c` extends direct reflection-probe scene enumeration to
+pool-owned tree faces. Native capture resolves the face buffer, source/default
+texture, 0.5 alpha cutoff and region model transform from CPU-owned state and
+the current probe camera. It does not bind a GL shader/texture, read a GL
+matrix or issue a GL draw. The original texture-stat side effect and
+`sRenderTextures` default-texture behavior remain intact.
 
-Exact `LLDrawInfo` identities suppress duplicate Metal capture when the full GL
-face renders as transition fallback. Missing native normal images, tangents,
-buffers or skin palettes fail the whole native face closed. This is still not
-complete probe production: indexed generic masks and sky, terrain, water,
-tree, avatar and post-deferred owners remain. The GL-resource gate,
+Exact `LLFace` identities suppress duplicate Metal capture when the full GL
+face renders as transition fallback. Missing drawable region, vertex/index
+buffer, image or native resource fails the whole native face closed. This is
+still not complete probe production: indexed generic masks and terrain, sky,
+water, avatar and post-deferred owners remain. The GL-resource gate,
 `display_cube_face` and cube array remain until all are replaced.
 
 The preceding startup checkpoint remains active: direct native publication and
@@ -100,11 +100,11 @@ the CSV.
 ## Validation checkpoint
 
 - The source-exact warnings-as-errors Xcode Release build
-  `26.4.0d68272` passed at renderer source `131f446829`.
+  `26.4.0d68274` passed at renderer source `d4270ed56c`.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices; deep strict
   signing passes.
 - Viewer executable SHA-256:
-  `0a90914c658b180ea43f0b969261e5b8e9269b0f8aaec6aae90633b086e1348c`.
+  `c337436a8375ebb1f817d8cd8cb8cadde0ef40d4d6f022272efad495a835f9a3`.
   Source/packaged MSL:
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`.
   Metallib:
@@ -126,10 +126,10 @@ the CSV.
   passes 46 assertions/7 cases.
 - Harness structure validation, all 30 harness/tool tests and diff checks pass;
   the documented `audit_gl.py --strict` alias is tested.
-- Strict inventory is 2,407 files / 3,214 findings, expected exit 1; no rule or
-  suppression changed. Exact report `artifacts/metal/audit-gl-131f446829.json`
-  has SHA-256
-  `7f4462e368544c9a008f35972cbfe36150eb4be448434a05fcdfd8c362693815`.
+- Strict inventory is 2,407 files / 3,214 findings / 2,903 unique
+  path/rule/snippet records, expected exit 1; no rule or suppression changed.
+  Exact report `artifacts/metal/audit-gl-d4270ed56c.json` has SHA-256
+  `ecb14bc141bce116e81981bfd5ce4258f14869f79a4c87a49d85937c7ab0b8a0`.
   Both OpenGL and Metal remain linked.
 - No viewer executable was launched, driven, photographed or compared.
 
@@ -143,9 +143,9 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—legacy bump selection and cutout semantics now
-   feed direct Metal probe batches without GL binding; fallback remains.
-2. **Replacement boundary:** pool/face-owned scene families plus cube-array
+1. **Product advancement:** yes—tree texture/cutout, geometry and region
+   transforms now feed direct Metal probe batches without GL state; fallback remains.
+2. **Replacement boundary:** remaining pool/face-owned scene families plus cube-array
    consumption remain until complete native capture is proven.
 3. **Deferred critical work:** remaining GL context/traversal/resources,
    feature/stability matrices, visual queue, strict binary/runtime audit,
@@ -156,9 +156,9 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Add a direct tree-face producer at the pool boundary without GL binding/draw
+Add a direct terrain-face producer at the pool boundary without GL binding/draw
 execution, including exact duplicate suppression and failure proof. Then add
-sky, terrain, water, avatar and remaining pass inputs; only complete native
+sky, water, avatar and remaining pass inputs; only complete native
 face production permits removing the GL-resource gate or cube-array owner.
 Visual evidence remains owner-attended.
 
