@@ -11557,10 +11557,10 @@ void LLPipeline::captureMetalReflectionProbeScene()
         }
     }
 
-    // Legacy bump geometry uses the same CPU render maps as its GL pool, but
-    // resolves the normal image without binding a texture unit. Preserve the
-    // pool's two-pass alpha classification so the Metal depth/cutout result
-    // remains identical while GL continues to render the fallback face.
+    // Legacy bump geometry uses the same CPU render maps as its former GL
+    // producer, but resolves the normal image without binding a texture unit.
+    // Preserve that pool's two-pass alpha classification in the direct Metal
+    // transaction.
     for (bool rigged : { false, true })
     {
         if (!capture.complete)
@@ -21775,11 +21775,18 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
         pool_set_t::iterator iter1 = mPools.begin();
 
 #if LL_DARWIN
+        const bool direct_native_probe =
+            mMetalReflectionWorldCaptureActive;
         beginMetalWorldGBufferCapture();
         captureMetalReflectionProbeScene();
+#else
+        constexpr bool direct_native_probe = false;
 #endif
 
-        while ( iter1 != mPools.end() )
+        // Reflection probes enumerate their complete deferred scene directly
+        // from CPU render maps and pool-owned geometry. Do not execute the
+        // duplicate GL deferred draws after that transaction has begun.
+        while (!direct_native_probe && iter1 != mPools.end())
         {
             LLDrawPool *poolp = *iter1;
 
