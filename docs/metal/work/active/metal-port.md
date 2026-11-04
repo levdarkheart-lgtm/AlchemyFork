@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `63f8f0d528`.
+**Renderer checkpoint:** Commit `3b772a630f`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -15,7 +15,7 @@ checkpoint detail belongs in the indexed archive.
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
 | M-002 | GL/shader/pass/resource and binary inventory | doing | 2,406 files and 3,217 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Exact HDR/non-HDR world, presentation and ordered-UI Metal publication is default-on, fail-closed and machine-censused by current-frame failure boundary; dead restore authority/methods and redundant shutdown hooks are deleted. Live GL context creation/shutdown remains. |
-| M-004 | Metal resources, transfers, readback and synchronization | doing | Color-grade volume/tone-curve and world/preview PBR BRDF LUTs and the shared dynamic-texture framework are Metal-native on Darwin; previews, visual hints and avatar composites publish authoritatively. Native-authoritative mip and no-mip scale-down stays entirely in Metal without manufacturing GL backing. |
+| M-004 | Metal resources, transfers, readback and synchronization | doing | Color-grade volume/tone-curve and world/preview PBR BRDF LUTs and the shared dynamic-texture framework are Metal-native on Darwin; previews, visual hints and avatar composites publish authoritatively. Native-authoritative mip and no-mip scale-down stays entirely in Metal without manufacturing GL backing, and actual native storage is process-wide budgeted without double-counting a dual-backed image. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and font atlases are native-only; owner-attended text/emoji and moving-media parity remain open. |
 | M-007 | World scene and material correctness | doing | World capture consumes native legacy bumps; opaque fullbright is corrected. Native main-world/impostor legacy BLEND behavior and deterministic coverage exist; owner-attended stained-glass visual and broad material parity remain open. |
@@ -30,6 +30,22 @@ States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
 ## Active checkpoint — Metal-first presentation fallback census
+
+Commit `3b772a630f` adds backend-neutral process-wide texture residency
+accounting. Native-authoritative Metal create, replacement, scale-down,
+discard and teardown update the budget signal already consumed by pressure
+logic. The byte calculation follows the actual Metal descriptor, so expanded
+RGB8-to-RGBA8 storage, mip chains, compressed blocks, slices and samples are
+charged correctly. Dual-backed transition resources remain one logical
+allocation: the GL entry owns the charge until the authoritative handoff, then
+Metal takes over immediately even though GL deletion may be deferred.
+
+Physical regressions cover GL-to-Metal transfer, native-only mip and no-mip
+scale-down, RGB expansion, discard and destruction. They prove a native
+replacement changes the total by exactly the descriptor delta and every
+teardown returns to the baseline.
+
+### Preceding native scale-down checkpoint
 
 Commit `63f8f0d528` adds a native-authoritative `LLImageGL::scaleDown()`
 lifecycle before any GL allocation path. Mip-backed resources select and copy
@@ -67,13 +83,12 @@ the CSV.
 
 ## Validation checkpoint
 
-- The source-exact warnings-as-errors Xcode Release build `26.4.0d68235`
-  passed at `63f8f0d528`; the exact Ninja tree configured at 68235 and linked
-  all affected renderer, appearance, viewer and physical-test targets.
+- The source-exact warnings-as-errors Xcode Release build `26.4.0d68237`
+  passed at `3b772a630f`.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices; deep strict
   signing passes.
 - Viewer executable SHA-256:
-  `0bf2f79ec710324438e20a2db6370e174022127302699bbc9863e8c0a8411bec`.
+  `1121b39f30c1fae9e30dd88bb5922dfc4034adffe6d9801f0c7233554c5a92b1`.
   Source/packaged MSL:
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`.
   Metallib:
@@ -81,10 +96,12 @@ the CSV.
 - Source/packaged settings:
   `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
   packaged Metal-presentation default: `1`.
-- With Metal API/GPU, shader and load-action validation,
-  `llrender_gl_fresh_tests` passes 2,650/98 including both new native-only
-  scale-down cases, `almetal_tests` passes 52,526/56 and
-  `llappearance_gl_tests` passes 13,208/3.
+- The changed `llrender_gl_fresh_tests` target compiles warnings-as-errors. Its
+  focused residency-accounting slice passes 1,958 assertions/19 cases and the
+  complete binary passes 2,669/99. Preceding source-exact baselines remain
+  `almetal_tests` 52,526/56, `llappearance_gl_tests` 13,208/3,
+  `alrender_tests` 557,301/136 and `newview_tests` 98,978/744 with the
+  established CRT skip.
 - The focused Metal-only upload case passes 17/17 assertions in the shared
   binary. The complete shared diagnostic suite remains non-green at
   8,352/8,357 assertions (182 pass, 4 fail, 39 skip): four legacy/headless
@@ -111,12 +128,12 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—native-authoritative resources now keep their
-   scale-down lifecycle in Metal, preserving content and memory/discard
-   metadata without reacquiring GL storage.
-2. **Replacement boundary:** the native-only route applies only after a
-   producer has retired its GL name; dual-backed resources retain fail-closed
-   transition recovery.
+1. **Product advancement:** yes—native-authoritative resources now preserve the
+   process-wide pressure/eviction signal across Metal allocation, replacement,
+   scale-down and teardown without reacquiring GL storage.
+2. **Replacement boundary:** actual Metal storage is charged only after a
+   producer has retired its GL name; dual-backed resources remain represented
+   once by their GL allocation until authoritative handoff.
 3. **Deferred critical work:** remaining GL context/traversal/resources,
    feature/stability matrices, visual queue, strict binary/runtime audit,
    measured M1 Max performance and release proof.
@@ -126,10 +143,11 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Make process-wide texture residency accounting backend-neutral. Account native
-Metal create/replacement/scale-down/teardown without double-counting a
-transitional dual-backed image, and physically regress those transitions before
-changing eviction policy. During the next owner-attended session, collect the
+Cut the fetched-texture pressure scheduler over to recognize native Metal
+residency. Native-only images must queue and execute Metal scale-down without
+requiring or binding the legacy GL scratch target/program; GL/dual-backed
+images retain their current path until replacement. Physically regress this
+scheduler boundary. During the next owner-attended session, collect the
 default-path publication census without adding an independent comparison run.
 
 ## Non-negotiable open gates
