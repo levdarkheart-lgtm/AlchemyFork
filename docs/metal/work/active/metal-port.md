@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `b27df920fc`.
+**Renderer checkpoint:** Commit `31fa27392e`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -17,7 +17,7 @@ checkpoint detail belongs in the indexed archive.
 | M-003 | Native drawable, presentation and lifecycle | doing | Exact HDR/non-HDR world, presentation and ordered-UI Metal publication is default-on, fail-closed and machine-censused by current-frame failure boundary; dead restore authority/methods and redundant shutdown hooks are deleted. Live GL context creation/shutdown remains. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Reflection maps use backend-neutral logical slots and the manager owns backend resources; native cube/radiance/SH plus startup/local/HDRI/fetched publication, scale-down and eviction work at converted sites. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
-| M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and font atlases are native-only; owner-attended text/emoji and moving-media parity remain open. |
+| M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while incomplete GL world frames own visible recovery UI; ordered native capture samples the Metal copy and complete fused Metal world/UI publication remains the cutover boundary. Deterministic coverage is green; owner validation and broader text/emoji/moving-media parity remain open. |
 | M-007 | World scene and material correctness | doing | Probe simple/material/PBR/bump opaque batches plus tree, terrain, complete ordinary avatar/impostor, HDRI/WindLight sky and water are enumerated directly from CPU scene state with GL-independent transforms/state. Remaining pass families plus broad parity remain open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,214 findings), linked/runtime no-GL and visual review remain open. |
@@ -31,108 +31,58 @@ item and never implies product completion.
 
 ## Active checkpoint — complete direct native probe avatar enumeration
 
-Commit `b27df920fc` adds direct post-deferred skirt, eyelash and hair production
-to the deferred avatar/impostor work in `6183613ef0`. High-detail three-pass and
-low-detail two-pass culling, depth-write and color-write state are explicit and
-GL-independent. Pool selection, active joint LOD, baked/composite textures,
-fixed skin palettes and optional cloth remain aligned with retained rendering.
+### Owner-verified transition UI and native atlas ownership
 
-Successful production suppresses only later duplicate native hooks; the full GL
-face remains fallback. Missing native inputs, GL-only test textures, unexpected
-joints and the separate UI-dummy mode invalidate the whole native face. No
-feature was deleted. Indexed masks and remaining pass owners stay open, so the
-GL resource gate, `display_cube_face` and cube array remain.
+Owner-attended run `font-cache-replay-fix-20261104-01` logged in but was rejected:
+menu, location-bar and toolbar text were absent, and the changing FPS field
+flashed glyph rectangles. The rejected executable SHA-256 is
+`49d5cf47f17e9e740dab38aaee48ef76ec5dd540afb7b9bc83f26522b62695e6`;
+its owner-supplied rejection image is retained in the run directory.
 
-The preceding water checkpoint preserves normal-map blending, phases/lattice,
-environment, optics, scaling, exclusions, haze and probe flat-field semantics.
+The follow-up run `font-metal-overlay-20261104-01` is also rejected. It encoded
+509,986 production Metal UI batches with zero eligible fallback batches but no
+viewer UI appeared over the GL world. This isolates the failure to transparent
+child-layer composition above SDL's OpenGL drawable rather than Metal glyph or
+batch coverage. Its retained owner image SHA-256 is
+`423d3a34cb43ab9b1f264f04d176b96fa738a6cb5d46299e9b260650b7009c30`.
 
-The preceding startup checkpoint remains active: direct native publication and
-truthful GL-created state work after GL disable, while initialized active GL
-retains fail-closed recovery until its complete replacement is proven.
+Commit `31fa27392e` keeps complete GL UI visible while an incomplete GL world
+frame owns presentation, with the same font page synchronized into Metal for
+ordered native capture. Direct transparent replacement is disabled after world
+startup. A complete fused Metal world/UI frame remains the only boundary that
+may make the native surface opaque and suppress GL swap. No UI feature was
+deleted; the transition copy is removed only with complete native authority.
 
-### Preceding Metal-authoritative terrain-paint checkpoint
+The rebuilt `26.4.0.68285` Release viewer is pinned at
+`c9bf95b8a8d6c9f36c437c16b913feb5d3f1e9bcd77e9b5c69965992af2527a8`;
+349/349 inspected Mach-O slices are ARM64 and deep strict code-sign verification
+passes. Metal-validation runs pass 3,684/110 for
+`llrender_gl_fresh_tests`, 36/2 for the dual-atlas cases and 56/1 for the
+real-FreeType native UI path. Owner-attended run
+`font-dual-recovery-20261104-01` accepted readable menu, location, toolbar and
+stable numeric FPS text. Broader font-atlas validation remains queued.
 
-Commit `aaf3bbcd2a` builds full-resolution terrain geometry into direct Metal
-buffers, evaluates the existing alpha-ramp/precision shader, generates mips and
-atomically publishes the result. The duplicate GL shader, scratch target and
-framebuffer copy are gone; local terrain creation/deletion behavior remains.
-Preceding report-screenshot and local-bitmap publication remain native.
+Commit `b27df920fc` completes direct ordinary/control-avatar probe production,
+including transparent multipass state, while full GL remains fail-closed
+fallback. Indexed masks and remaining pass owners still block removal of the
+GL resource gate, `display_cube_face` and cube array.
 
-Preceding commit `5985911fab` retains full/split HDRI sky through native
-RGBA16F/mip publication with descriptor-exact accounting.
-
-Earlier resource-lifecycle checkpoints keep sculpt metadata, pressure
-scheduling, scale-down, eviction and actual-descriptor accounting functional
-after GL disable. Their exact commits and physical evidence remain in the
-[archive index](../../state/archive/INDEX.md); explicit low-level GL detach
-remains only at owners that still need fail-closed recovery.
-
-### Preceding native scale-down checkpoint
-
-Commit `63f8f0d528` adds a native-authoritative `LLImageGL::scaleDown()`
-lifecycle before any GL allocation path. Mip-backed resources select and copy
-an existing native mip, no-mip resources use the Metal bilinear resampler, and
-both replace the old resource only after successful GPU command submission.
-Physical regressions prove pixels, mip tails, discard/memory metadata and the
-no-GL-name/no-GL-allocation invariant. The dual-backed path remains only for
-textures still participating in complete per-frame GL recovery.
-
-### Preceding presentation checkpoint
-
-Commit `04edf7b27d` makes the exact native Metal
-world/presentation/ordered-UI transaction the default path. Commit
-`c2bcd90b04` exposes its actual current-frame outcome to the opt-in evidence
-collector: disabled, not attempted, capture started/failed, Metal surface
-unavailable, fused surface submission failed or submitted. Requested,
-attempted, exact-native and GL-fallback flags are cross-validated rather than
-inferred from the setting.
-
-The path first earns one complete native drawable submission, then unlocks
-continuous publication. Every frame independently starts transparent and only
-a committed current-frame drawable suppresses its GL swap; incomplete frames
-retain the complete GL result. The hidden nonpersistent override remains only
-for controlled fallback diagnosis during transition. The analyzer reports
-per-scenario state counts and exact/fallback rates without making them a
-performance gate. The
-[exact evidence](../../state/archive/CURRENT-metal-presentation-census-checkpoint-2026-11-03.md)
-is separate; no real census is claimed before an owner-attended run collects
-the CSV.
+Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
+accounting and scale-down checkpoints remain active. Native-authoritative
+resources avoid GL names; dual backing remains only where complete per-frame GL
+recovery is still required. Commits `04edf7b27d` and `c2bcd90b04` keep exact
+ordered world/UI Metal presentation default-on, measurable and fail closed:
+only a committed current-frame fused drawable suppresses its GL swap. Exact
+prior evidence remains in the [archive index](../../state/archive/INDEX.md).
 
 ## Validation checkpoint
 
-- The source-exact warnings-as-errors Xcode Release build
-  `26.4.0d68284` passed at renderer source `b27df920fc`.
-- `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices; deep strict
-  signing passes.
-- Viewer executable SHA-256:
-  `ed66dc697f5f0da16503418f7d5e5876c78f721cc3ceb22f0dd6c7c74a35aed5`.
-  Source/packaged MSL:
-  `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`.
-  Metallib:
-  `e6512d7623e35437d1e3b3dd78ffa726a186e89528d16a70292440b17792848c`.
-- Source/packaged settings:
-  `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
-  packaged Metal-presentation default: `1`.
-- Changed targets compile warnings-as-errors. `llrender_gl_fresh_tests` passes
-  3,594/106 and `almetal_tests` passes 52,526/56 with Metal API/GPU validation
-  enabled. `newview_tests` self-reports build 68284 and passes 98,990/747 with
-  the established skip. Ninja and Xcode both link/package `alchemy-bin`;
-  preceding broad baselines remain green.
-- The focused Metal-only upload case passes 17/17 assertions in the shared
-  binary. The complete shared diagnostic suite remains non-green at
-  8,352/8,357 assertions (182 pass, 4 fail, 39 skip): four legacy/headless
-  frame-fence timing assertions and one depth-format expectation fail; the new
-  case passes in that same environment.
-- `alrender_tests` passes 557,301 assertions/136 cases. The focused census slice
-  passes 46 assertions/7 cases.
-- Harness structure validation, all 30 harness/tool tests and diff checks pass;
-  the documented `audit_gl.py --strict` alias is tested.
-- Strict inventory is 2,407 files / 3,214 findings / 2,903 unique
-  path/rule/snippet records, expected exit 1; no rule or suppression changed.
-  Exact report `artifacts/metal/audit-gl-b27df920fc.json` has SHA-256
-  `f8e3c3ecd6883dadc934e686e312a5b11e6bb0167406e23e615831ae6a5a2d53`.
-  Both OpenGL and Metal remain linked.
-- No viewer executable was launched, driven, photographed or compared.
+- Release `26.4.0.68285` builds and packages warnings-as-errors. Viewer SHA-256
+  is `c9bf95b8a8d6c9f36c437c16b913feb5d3f1e9bcd77e9b5c69965992af2527a8`.
+- `verify_app.sh`: 349/349 ARM64 Mach-O slices; deep strict signing passes.
+- Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
+  UI 56/1. Shared baseline retains 5 known Apple GL failures/4 cases.
+- Strict inventory remains 3,214 findings and exits 1; both APIs remain linked.
 
 ## Owner-attended visual review cadence
 
@@ -158,10 +108,11 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Paused by owner at this coherent checkpoint for an owner-attended visual backlog
-review. Do not autonomously operate either viewer. After explicit resume, add
-indexed masks and remaining pass inputs; only complete native face production
-permits removing the GL-resource gate or cube-array owner.
+Font/UI recovery is owner-accepted. The Midday/Lightbox comparison is not
+settings-equivalent because Metal drifted to dynamic exposure on / exposure
+1.0 while reference remained off / 1.1; record that state defect and the black
+Metal mirror, then pause. After explicit resume, reproduce the drift and repair
+exposure/tonemap and mirror parity before continuing indexed pass removal.
 
 ## Non-negotiable open gates
 
