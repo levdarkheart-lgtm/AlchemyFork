@@ -1422,6 +1422,12 @@ void display_cube_face()
     llassert(LLStartUp::getStartupState() >= STATE_PRECACHE);
     llassert(!LLAppViewer::instance()->logoutRequestSent());
     bool rebuild = false;
+#if LL_DARWIN
+    const bool native_reflection_face =
+        gPipeline.isMetalReflectionProbeCaptureActive();
+#else
+    constexpr bool native_reflection_face = false;
+#endif
 
     LLGLSDefault gls_default;
     LLGLDepthTest gls_depth(GL_TRUE, GL_TRUE, GL_LEQUAL);
@@ -1463,12 +1469,17 @@ void display_cube_face()
     LLPipeline::sUnderWaterRender = LLViewerCamera::getInstance()->cameraUnderWater();
     gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
 
-    gGL.setColorMask(true, true);
-
-    gGL.setClearColor(LLColor4::transparent);
+    if (!native_reflection_face)
+    {
+        gGL.setColorMask(true, true);
+        gGL.setClearColor(LLColor4::transparent);
+    }
     gPipeline.generateSunShadow(*LLViewerCamera::getInstance());
 
-    gGL.clear(GL_DEPTH_BUFFER_BIT); // | GL_STENCIL_BUFFER_BIT);
+    if (!native_reflection_face)
+    {
+        gGL.clear(GL_DEPTH_BUFFER_BIT); // | GL_STENCIL_BUFFER_BIT);
+    }
 
     {
         LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
@@ -1492,24 +1503,29 @@ void display_cube_face()
 
     LLPipeline::sUnderWaterRender = LLViewerCamera::getInstance()->cameraUnderWater();
 
-    gGL.setColorMask(true, true);
-
-    gPipeline.mRT->deferredScreen.bindTarget();
-    if (gUseWireframe)
+    if (!native_reflection_face)
     {
-        gGL.setClearColor(LLColor4(0.5f, 0.5f, 0.5f, 1.f));
+        gGL.setColorMask(true, true);
+        gPipeline.mRT->deferredScreen.bindTarget();
+        if (gUseWireframe)
+        {
+            gGL.setClearColor(LLColor4(0.5f, 0.5f, 0.5f, 1.f));
+        }
+        else
+        {
+            gGL.setClearColor(LLColor4::magenta);
+        }
+        gPipeline.mRT->deferredScreen.clear();
     }
-    else
-    {
-        gGL.setClearColor(LLColor4::magenta);
-    }
-    gPipeline.mRT->deferredScreen.clear();
 
     LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
 
     gPipeline.renderGeomDeferred(*LLViewerCamera::getInstance());
 
-    gPipeline.mRT->deferredScreen.flush();
+    if (!native_reflection_face)
+    {
+        gPipeline.mRT->deferredScreen.flush();
+    }
 
     gPipeline.renderDeferredLighting();
 

@@ -1068,6 +1068,10 @@ public:
         LLReflectionMap* probe, U32 face, bool radiance_pass,
         bool realtime_capture);
     bool endMetalReflectionProbeFaceCapture();
+    bool isMetalReflectionProbeCaptureActive() const
+    {
+        return mMetalReflectionWorldCaptureActive;
+    }
     bool fillMetalImpostorScreenSpaceReflections();
     bool fillMetalImpostorDirectionalShadows();
     bool fillMetalWorldProjectorShadows();

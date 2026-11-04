@@ -8084,7 +8084,6 @@ bool LLPipeline::fillMetalWorldAlphaLighting(
     ALMetalWorldLegacyAlphaLighting& lighting)
 {
     lighting = {};
-    const LLRender::LightsUBOData& lights = gGL.getLightsUBOData();
     const LLEnvironment& environment = LLEnvironment::instance();
     const LLEnvironment::EnvironmentUBOData& data =
         environment.getEnvironmentUBOData();
@@ -8100,28 +8099,82 @@ bool LLPipeline::fillMetalWorldAlphaLighting(
             : data.atmos_sunlit_linear[channel] *
                   data.sky_sunlight_scale;
     }
-    for (U32 light_index = 1; light_index < LL_NUM_LIGHT_UNITS;
-         ++light_index)
+    // Build the forward-alpha light block from the authoritative CPU scene
+    // list. The old bridge snapshotted gGL's packed light UBO, which made a
+    // native probe face depend on setupHWLights mutating legacy GL state and
+    // could also import a stale avatar-backlight slot. Index zero is kept
+    // empty to preserve the historical slot-1 reservation; the next six
+    // entries match setupHWLights' slot-2..7 selection and ordering.
+    const LLMatrix4a& modelview =
+        LLViewerCamera::getCurrent().getModelview();
+    F32 light_scale = 1.f;
+    if (gCubeSnapshot)
     {
+        light_scale = mReflectionMapManager.mLightScale;
+    }
+    else
+    {
+        static LLCachedControl<F32> alchemy_light_scale(
+            gSavedSettings, "AlchemyGlobalLightScale", 1.f);
+        light_scale = alchemy_light_scale;
+    }
+
+    std::size_t destination_index = 1;
+    for (light_set_t::const_iterator iter = mNearbyLights.begin();
+         iter != mNearbyLights.end() &&
+         destination_index < lighting.local_lights.size(); ++iter)
+    {
+        LLDrawable* drawable = iter->drawable;
+        LLVOVolume* volume = drawable ? drawable->getVOVolume() : nullptr;
+        if (!volume || (volume->isAttachment() && !sRenderAttachedLights))
+        {
+            continue;
+        }
+
+        LLColor4 color = volume->getLightLinearColor() * light_scale;
+        color.mV[3] = 0.f;
+        color *= light_fade_brightness(iter->fade);
+        const F32 radius = volume->getLightRadius() * 1.5f;
+        if (color.magVecSquared() < 0.001f || radius <= 0.001f)
+        {
+            continue;
+        }
+
         ALMetalWorldLegacyAlphaLight& destination =
-            lighting.local_lights[light_index - 1];
-        std::memcpy(destination.position,
-                    lights.light_position[light_index],
+            lighting.local_lights[destination_index++];
+        const LLVector4 world_position_value(
+            volume->getRenderPosition(), 1.f);
+        LLVector4a world_position;
+        world_position.loadua(world_position_value.mV);
+        LLVector4a eye_position;
+        modelview.transform4(world_position, eye_position);
+        std::memcpy(destination.position, eye_position.getF32ptr(),
                     sizeof(destination.position));
-        std::memcpy(destination.direction,
-                    lights.light_direction[light_index],
-                    sizeof(destination.direction));
-        std::memcpy(destination.diffuse,
-                    lights.light_diffuse[light_index],
+        std::memcpy(destination.diffuse, color.mV,
                     sizeof(destination.diffuse));
-        destination.parameters[0] =
-            lights.light_deferred_attenuation[light_index][0];
+        destination.parameters[0] = radius;
         destination.parameters[1] =
-            lights.light_deferred_attenuation[light_index][1];
-        destination.parameters[2] =
-            lights.light_attenuation[light_index][2];
-        destination.parameters[3] =
-            lights.light_attenuation[light_index][3];
+            volume->getLightFalloff(DEFERRED_LIGHT_FALLOFF);
+
+        if (volume->isLightSpotlight())
+        {
+            LLVector3 direction(0.f, 0.f, -1.f);
+            direction *= volume->getRenderRotation();
+            LLVector4a world_direction;
+            world_direction.load3(direction.mV);
+            LLVector4a eye_direction;
+            modelview.rotate(world_direction, eye_direction);
+            std::memcpy(destination.direction,
+                        eye_direction.getF32ptr(),
+                        sizeof(F32) * 3);
+            destination.parameters[2] = 0.f;
+            destination.parameters[3] =
+                volume->getSpotLightParams().mV[2];
+        }
+        else
+        {
+            destination.parameters[2] = 1.f;
+        }
     }
     lighting.parameters[0] = mDeferredUBOData.specular_exponent;
     lighting.parameters[1] = 0.004f;
@@ -21950,11 +22003,6 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
 
     llassert(!sRenderingHUDs);
 
-    if (gUseWireframe)
-    {
-        gGL.setPolygonMode(GL_LINE);
-    }
-
     if (&camera == LLViewerCamera::getInstance())
     {   // the start of the main render frame: from the last frame's camera
         // space to this one's
@@ -21978,6 +22026,24 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
             LL_PROFILE_PLOT("transient target hits", (int64_t)mTransientTargets.lastFrame().mHits);
             LL_PROFILE_PLOT("transient target misses", (int64_t)mTransientTargets.lastFrame().mMisses);
         }
+    }
+
+#if LL_DARWIN
+    if (mMetalReflectionWorldCaptureActive)
+    {
+        // The reflection face owns its complete G-buffer scene directly.
+        // Return before legacy light setup, pool prerender, shader/UBO binds,
+        // GL state checks and matrix/color-mask mutation.
+        beginMetalWorldGBufferCapture();
+        captureMetalReflectionProbeScene();
+        endMetalWorldGBufferCapture();
+        return;
+    }
+#endif
+
+    if (gUseWireframe)
+    {
+        gGL.setPolygonMode(GL_LINE);
     }
 
     // doOcclusion() stands down itself while a shader profile holds the occlusion targets.
@@ -22031,18 +22097,12 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
         pool_set_t::iterator iter1 = mPools.begin();
 
 #if LL_DARWIN
-        const bool direct_native_probe =
-            mMetalReflectionWorldCaptureActive;
         beginMetalWorldGBufferCapture();
-        captureMetalReflectionProbeScene();
-#else
-        constexpr bool direct_native_probe = false;
 #endif
 
-        // Reflection probes enumerate their complete deferred scene directly
-        // from CPU render maps and pool-owned geometry. Do not execute the
-        // duplicate GL deferred draws after that transaction has begun.
-        while (!direct_native_probe && iter1 != mPools.end())
+        // Non-probe views retain their pool traversal until their remaining
+        // native owners are cut over. Active reflection faces returned above.
+        while (iter1 != mPools.end())
         {
             LLDrawPool *poolp = *iter1;
 
@@ -22161,7 +22221,6 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
     bool done_cutout_seed = !cullingToCutoutSubject();
 
     calcNearbyLights(camera);
-    setupHWLights();
 
 #if LL_DARWIN
     if (mMetalReflectionWorldCaptureActive)
@@ -22173,6 +22232,8 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
         return;
     }
 #endif
+
+    setupHWLights();
 
     LLGLEnable cull(GL_CULL_FACE);
 
@@ -29330,6 +29391,98 @@ void LLPipeline::renderDeferredLighting()
         static LLCachedControl<F32> alchemy_light_scale(gSavedSettings, "AlchemyGlobalLightScale", 1.f);
         light_scale = alchemy_light_scale;
     }
+
+#if LL_DARWIN
+    if (mMetalReflectionWorldCaptureActive)
+    {
+        // A native reflection face does not need a GL light map, accumulation
+        // target or fullscreen pass. Publish the CPU lighting inputs directly
+        // and run the established Metal owners in their dependency order.
+        LLViewerCamera* camera = LLViewerCamera::getInstance();
+        LLEnvironment& environment = LLEnvironment::instance();
+        mSunDir.setVec(LLVector4(environment.getSunDirection(), 0.f));
+        mMoonDir.setVec(LLVector4(environment.getMoonDirection(), 0.f));
+        if (!environment.getIsSunUp() && !environment.getIsMoonUp())
+        {
+            mSunDir.setVec(LLVector4(0.f, 1.f, 0.f, 0.f));
+            mMoonDir.setVec(LLVector4(0.f, 1.f, 0.f, 0.f));
+        }
+
+        const LLMatrix4a& modelview = camera->getModelview();
+        LLVector4a direction;
+        LLVector4a transformed;
+        direction.loadua(mSunDir.mV);
+        modelview.transform4(direction, transformed);
+        mTransformedSunDir.set(transformed.getF32ptr());
+        direction.loadua(mMoonDir.mV);
+        modelview.transform4(direction, transformed);
+        mTransformedMoonDir.set(transformed.getF32ptr());
+        packDeferredUBO();
+        calcNearbyLights(*camera);
+
+        static LLCachedControl<F32> ssao_scale(
+            gSavedSettings, "RenderSSAOIrradianceScale", 0.5f);
+        static LLCachedControl<F32> ssao_max(
+            gSavedSettings, "RenderSSAOIrradianceMax", 0.25f);
+        static LLCachedControl<S32> local_light_count(
+            gSavedSettings, "RenderLocalLightCount", 256);
+        const bool has_sun_shadow =
+            mResourceInputs.mShadowDetail > 0;
+        const bool has_ssao = mResourceInputs.mSSAO;
+        renderMetalWorldLightMap(*camera, has_sun_shadow, has_ssao);
+        if (RenderDeferredAtmospheric)
+        {
+            renderMetalWorldBaseLighting(
+                *camera, has_sun_shadow, has_ssao,
+                ssao_scale, ssao_max);
+        }
+        renderMetalWorldLocalLights(
+            *camera, modelview, light_scale,
+            std::max<S32>(local_light_count, 0));
+        renderMetalWorldProjectorLights(
+            *camera, modelview, light_scale,
+            std::max<S32>(local_light_count, 0));
+        renderMetalWorldLightingComposition();
+
+        pushRenderTypeMask();
+        andRenderTypeMask(
+            LLPipeline::RENDER_TYPE_ALPHA,
+            LLPipeline::RENDER_TYPE_ALPHA_PRE_WATER,
+            LLPipeline::RENDER_TYPE_ALPHA_POST_WATER,
+            LLPipeline::RENDER_TYPE_FULLBRIGHT,
+            LLPipeline::RENDER_TYPE_VOLUME,
+            LLPipeline::RENDER_TYPE_GLOW,
+            LLPipeline::RENDER_TYPE_BUMP,
+            LLPipeline::RENDER_TYPE_GLTF_PBR,
+            LLPipeline::RENDER_TYPE_PASS_SIMPLE,
+            LLPipeline::RENDER_TYPE_PASS_ALPHA,
+            LLPipeline::RENDER_TYPE_PASS_ALPHA_MASK,
+            LLPipeline::RENDER_TYPE_PASS_BUMP,
+            LLPipeline::RENDER_TYPE_PASS_POST_BUMP,
+            LLPipeline::RENDER_TYPE_PASS_FULLBRIGHT,
+            LLPipeline::RENDER_TYPE_PASS_FULLBRIGHT_ALPHA_MASK,
+            LLPipeline::RENDER_TYPE_PASS_FULLBRIGHT_SHINY,
+            LLPipeline::RENDER_TYPE_PASS_GLOW,
+            LLPipeline::RENDER_TYPE_PASS_GLTF_GLOW,
+            LLPipeline::RENDER_TYPE_PASS_GRASS,
+            LLPipeline::RENDER_TYPE_PASS_SHINY,
+            LLPipeline::RENDER_TYPE_PASS_INVISIBLE,
+            LLPipeline::RENDER_TYPE_PASS_INVISI_SHINY,
+            LLPipeline::RENDER_TYPE_AVATAR,
+            LLPipeline::RENDER_TYPE_CONTROL_AV,
+            LLPipeline::RENDER_TYPE_ALPHA_MASK,
+            LLPipeline::RENDER_TYPE_FULLBRIGHT_ALPHA_MASK,
+            LLPipeline::RENDER_TYPE_TERRAIN,
+            LLPipeline::RENDER_TYPE_WATER,
+            LLPipeline::RENDER_TYPE_WATEREXCLUSION,
+            END_RENDER_TYPES);
+        beginMetalWorldPostDeferredCapture();
+        renderGeomPostDeferred(*camera);
+        endMetalWorldPostDeferredCapture();
+        popRenderTypeMask();
+        return;
+    }
+#endif
 
     LLRenderTarget *screen_target         = &mRT->screen;
 
