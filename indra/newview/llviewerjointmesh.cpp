@@ -396,6 +396,53 @@ U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
     return triangle_count;
 }
 
+void LLViewerJointMesh::captureMetalWorldAvatarShape(bool is_dummy)
+{
+#if LL_DARWIN
+    if (!mValid || !mMesh || !mFace || !mVisible ||
+        !mFace->getVertexBuffer() || mMesh->getNumFaces() == 0 ||
+        mMesh->mFaceVertexCount == 0 || mMesh->mFaceIndexCount == 0)
+    {
+        return;
+    }
+
+    LLGLTexture* diffuse = nullptr;
+    if (!mTestImageName)
+    {
+        LLViewerTexLayerSet* layer_set =
+            dynamic_cast<LLViewerTexLayerSet*>(mLayerSet);
+        if (!is_dummy && layer_set)
+        {
+            diffuse = layer_set->hasComposite()
+                ? layer_set->getViewerComposite() : nullptr;
+        }
+        else if (!is_dummy)
+        {
+            diffuse = mTexture.get();
+        }
+        if (!diffuse)
+        {
+            diffuse = LLViewerTextureManager::getFetchedTexture(IMG_DEFAULT);
+        }
+        if (!LLDrawPoolAvatar::shadowDrawsBake(diffuse))
+        {
+            return;
+        }
+    }
+
+    // A manual test GL name has no native texture owner. Passing a null
+    // texture deliberately fails the native face closed while the complete GL
+    // fallback retains the upload-preview behavior.
+    const U32 start = mMesh->mFaceVertexOffset;
+    const U32 end = start + mMesh->mFaceVertexCount - 1;
+    gPipeline.captureMetalWorldAvatarBatch(
+        *this, mFace->getVertexBuffer(), diffuse, start, end,
+        mMesh->mFaceIndexCount, mMesh->mFaceIndexOffset);
+#else
+    (void)is_dummy;
+#endif
+}
+
 //-----------------------------------------------------------------------------
 // updateFaceSizes()
 //-----------------------------------------------------------------------------

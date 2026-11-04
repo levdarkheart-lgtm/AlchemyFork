@@ -72,6 +72,7 @@ public:
 
     // overloaded from base class
     U32 drawShape( F32 pixelArea, bool first_pass, bool is_dummy ) override;
+    void captureMetalWorldAvatarShape(bool is_dummy) override;
 
     // necessary because MS's compiler warns on function inheritance via dominance in the diamond inheritance here.
     // warns even though LLViewerJoint holds the only non virtual implementation.

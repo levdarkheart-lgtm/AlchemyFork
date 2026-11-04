@@ -85,6 +85,10 @@ typedef enum
     /*virtual*/ void endDeferredPass(S32 pass);
     /*virtual*/ void renderDeferred(S32 pass);
 
+    /// Publish one deferred reflection-probe avatar pass from CPU-owned
+    /// avatar/joint state before the retained GL pool executes.
+    void captureMetalReflectionProbe(S32 pass);
+
     /*virtual*/ S32 getNumPostDeferredPasses();
     /*virtual*/ void beginPostDeferredPass(S32 pass);
     /*virtual*/ void endPostDeferredPass(S32 pass);

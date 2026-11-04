@@ -296,6 +296,107 @@ void LLDrawPoolAvatar::renderDeferred(S32 pass)
     renderAvatars(NULL, pass); // render all avatars
 }
 
+void LLDrawPoolAvatar::captureMetalReflectionProbe(S32 pass)
+{
+#if LL_DARWIN
+    if (pass < 0 || pass >= getNumDeferredPasses() || mDrawFace.empty())
+    {
+        return;
+    }
+
+    const LLFace* face = mDrawFace[0];
+    if (!face || !face->getDrawable())
+    {
+        return;
+    }
+    LLVOAvatar* avatar = static_cast<LLVOAvatar*>(
+        face->getDrawable()->getVObj().get());
+    if (!avatar || avatar->isDead() || avatar->mDrawable.isNull())
+    {
+        return;
+    }
+    if (!avatar->isFullyLoaded())
+    {
+        // The retained pass can substitute an immediate-mode debug sphere.
+        // Until that diagnostic has a direct native producer, retain the full
+        // GL face instead of publishing a probe with the marker omitted.
+        gPipeline.invalidateMetalReflectionProbeScene();
+        return;
+    }
+
+    static LLCachedControl<bool> friends_only(
+        gSavedSettings, "RenderAvatarFriendsOnly", false);
+    if (friends_only() && !avatar->isUIAvatar() &&
+        !avatar->isControlAvatar() && !avatar->isSelf() &&
+        !avatar->isBuddy())
+    {
+        return;
+    }
+
+    const bool impostor = !LLPipeline::sImpostorRender &&
+        avatar->isImpostor();
+    const bool appearance_impostor =
+        LLVOAvatar::AOA_NORMAL != avatar->getOverallAppearance() &&
+        !avatar->needsImpostorUpdate();
+    if ((avatar->isInMuteList() || impostor || appearance_impostor) &&
+        pass != 0)
+    {
+        return;
+    }
+
+    LLVOAvatar* attached_avatar = avatar->getAttachedAvatar();
+    if (attached_avatar &&
+        (LLVOAvatar::AOA_NORMAL !=
+             attached_avatar->getOverallAppearance() ||
+         !gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_AVATAR)))
+    {
+        return;
+    }
+
+    if (pass == 0)
+    {
+        if (!impostor && LLPipeline::sUnderWaterRender)
+        {
+            return;
+        }
+        if ((impostor || appearance_impostor) &&
+            avatar->mImpostor.isComplete())
+        {
+            gPipeline.beginMetalWorldImpostorPass();
+            avatar->captureMetalReflectionProbeImpostor();
+            gPipeline.endMetalWorldGBufferPass();
+        }
+        return;
+    }
+
+    if (pass == 1)
+    {
+        gPipeline.beginMetalWorldAvatarPass(false, false);
+        avatar->captureMetalReflectionProbeRigid();
+        gPipeline.endMetalWorldGBufferPass();
+        return;
+    }
+
+    const bool avatar_cloth =
+        gPipeline.shaderInputs().mLocal.mAvatarCloth;
+    AvatarClothUniforms cloth_uniforms;
+    if (avatar_cloth)
+    {
+        cloth_uniforms = avatar_cloth_uniforms(avatar);
+    }
+    gPipeline.beginMetalWorldAvatarPass(
+        true, avatar_cloth,
+        avatar_cloth ? cloth_uniforms.wind.mV : nullptr,
+        avatar_cloth ? cloth_uniforms.sin_wave.mV : nullptr,
+        avatar_cloth ? cloth_uniforms.gravity.mV : nullptr,
+        avatar_cloth ? cloth_uniforms.depth.mV : nullptr);
+    avatar->captureMetalReflectionProbeOpaque();
+    gPipeline.endMetalWorldGBufferPass();
+#else
+    (void)pass;
+#endif
+}
+
 S32 LLDrawPoolAvatar::getNumPostDeferredPasses()
 {
     if (LLPipeline::sImpostorRender)

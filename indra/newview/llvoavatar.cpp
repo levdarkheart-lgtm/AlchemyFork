@@ -5902,6 +5902,111 @@ U32 LLVOAvatar::renderSkinned()
     return num_indices;
 }
 
+void LLVOAvatar::captureMetalReflectionProbeOpaque()
+{
+#if LL_DARWIN
+    if (!mIsBuilt || mDrawable.isNull())
+    {
+        return;
+    }
+
+    LLFace* face = mDrawable->getFace(0);
+    const bool needs_rebuild = !face || !face->getVertexBuffer() ||
+        mDrawable->isState(LLDrawable::REBUILD_GEOMETRY);
+    if (needs_rebuild || mDirtyMesh)
+    {
+        if (needs_rebuild || mDirtyMesh >= 2 || mVisibilityRank <= 4)
+        {
+            updateMeshData();
+        }
+    }
+
+    if (LLViewerShaderMgr::instance()->getShaderLevel(
+            LLViewerShaderMgr::SHADER_AVATAR) <= 0)
+    {
+        if (mNeedsSkin)
+        {
+            for (S32 mesh_id : { MESH_ID_LOWER_BODY, MESH_ID_UPPER_BODY,
+                                 MESH_ID_SKIRT, MESH_ID_EYELASH,
+                                 MESH_ID_HEAD, MESH_ID_HAIR })
+            {
+                if ((mesh_id == MESH_ID_SKIRT &&
+                     !isWearingWearableType(LLWearableType::WT_SKIRT)) ||
+                    ((mesh_id == MESH_ID_EYELASH ||
+                      mesh_id == MESH_ID_HEAD ||
+                      mesh_id == MESH_ID_HAIR) &&
+                     isSelf() && !gAgent.needsRenderHead() &&
+                     !LLPipeline::sShadowRender))
+                {
+                    continue;
+                }
+                if (LLViewerJoint* mesh = getViewerJoint(mesh_id))
+                {
+                    mesh->updateJointGeometry();
+                }
+            }
+            mNeedsSkin = false;
+            if (LLFace* updated_face = mDrawable->getFace(0))
+            {
+                if (LLVertexBuffer* buffer =
+                        updated_face->getVertexBuffer())
+                {
+                    buffer->unmapBuffer();
+                }
+            }
+        }
+    }
+    else
+    {
+        mNeedsSkin = false;
+    }
+
+    if (!mIsBuilt || (isSelf() && !gAgent.needsRenderAvatar()))
+    {
+        return;
+    }
+
+    if (isUIAvatar() && mIsDummy)
+    {
+        if (LLViewerJoint* hair = getViewerJoint(MESH_ID_HAIR))
+        {
+            hair->captureMetalWorldAvatar(mAdjustedPixelArea, true);
+        }
+    }
+    if (!isSelf() || gAgent.needsRenderHead() || LLPipeline::sShadowRender)
+    {
+        if (isTextureVisible(TEX_HEAD_BAKED) ||
+            (getOverallAppearance() == AOA_JELLYDOLL &&
+             !isControlAvatar()) || isUIAvatar())
+        {
+            if (LLViewerJoint* head = getViewerJoint(MESH_ID_HEAD))
+            {
+                head->captureMetalWorldAvatar(
+                    mAdjustedPixelArea, mIsDummy);
+            }
+        }
+    }
+    if (isTextureVisible(TEX_UPPER_BAKED) ||
+        (getOverallAppearance() == AOA_JELLYDOLL && !isControlAvatar()) ||
+        isUIAvatar())
+    {
+        if (LLViewerJoint* upper = getViewerJoint(MESH_ID_UPPER_BODY))
+        {
+            upper->captureMetalWorldAvatar(mAdjustedPixelArea, mIsDummy);
+        }
+    }
+    if (isTextureVisible(TEX_LOWER_BAKED) ||
+        (getOverallAppearance() == AOA_JELLYDOLL && !isControlAvatar()) ||
+        isUIAvatar())
+    {
+        if (LLViewerJoint* lower = getViewerJoint(MESH_ID_LOWER_BODY))
+        {
+            lower->captureMetalWorldAvatar(mAdjustedPixelArea, mIsDummy);
+        }
+    }
+#endif
+}
+
 U32 LLVOAvatar::renderTransparent(bool first_pass)
 {
     U32 num_indices = 0;
@@ -5985,6 +6090,71 @@ U32 LLVOAvatar::renderRigid()
     return num_indices;
 }
 
+void LLVOAvatar::captureMetalReflectionProbeRigid()
+{
+#if LL_DARWIN
+    if (!mIsBuilt ||
+        (isSelf() &&
+         (!gAgent.needsRenderAvatar() || !gAgent.needsRenderHead())))
+    {
+        return;
+    }
+
+    if (isTextureVisible(TEX_EYES_BAKED) ||
+        (getOverallAppearance() == AOA_JELLYDOLL && !isControlAvatar()) ||
+        isUIAvatar())
+    {
+        for (S32 mesh_id : { MESH_ID_EYEBALL_LEFT,
+                             MESH_ID_EYEBALL_RIGHT })
+        {
+            if (LLViewerJoint* eye = getViewerJoint(mesh_id))
+            {
+                eye->captureMetalWorldAvatar(
+                    mAdjustedPixelArea, mIsDummy);
+            }
+        }
+    }
+#endif
+}
+
+void LLVOAvatar::getImpostorRenderGeometry(
+    LLVector3& position, LLVector3& left, LLVector3& up,
+    LLMatrix3a& normal_rotation) const
+{
+    position = getRenderPosition() + mImpostorOffset;
+    LLVector3 at = position - LLViewerCamera::getInstance()->getOrigin();
+    at.normalize();
+    left = LLViewerCamera::getInstance()->getUpAxis() % at;
+    up = at % left;
+    left.normalize();
+    up.normalize();
+    left *= mImpostorDim.mV[0];
+    up *= mImpostorDim.mV[1];
+
+    const LLMatrix4a& modelview =
+        LLViewerCamera::getCurrent().getModelview();
+    LLMatrix3a main_view;
+    main_view.setRows(modelview.getRow<0>(), modelview.getRow<1>(),
+                      modelview.getRow<2>());
+    LLMatrix3a bake_view;
+    bake_view.loadu(getImpostorViewRotation());
+    normal_rotation.setMul(bake_view, main_view);
+}
+
+void LLVOAvatar::captureMetalReflectionProbeImpostor()
+{
+#if LL_DARWIN
+    LLVector3 position;
+    LLVector3 left;
+    LLVector3 up;
+    LLMatrix3a normal_rotation;
+    getImpostorRenderGeometry(
+        position, left, up, normal_rotation);
+    gPipeline.captureMetalWorldImpostorBatch(
+        *this, position, left, up, normal_rotation);
+#endif
+}
+
 U32 LLVOAvatar::renderImpostor(LLColor4U color, S32 diffuse_channel)
 {
     if (!mImpostor.isComplete())
@@ -5992,37 +6162,11 @@ U32 LLVOAvatar::renderImpostor(LLColor4U color, S32 diffuse_channel)
         return 0;
     }
 
-    LLVector3 pos(getRenderPosition()+mImpostorOffset);
-    LLVector3 at = (pos - LLViewerCamera::getInstance()->getOrigin());
-    at.normalize();
-    LLVector3 left = LLViewerCamera::getInstance()->getUpAxis() % at;
-    LLVector3 up = at%left;
-
-    // Both cross products carry the magnitude sin(angle between the camera up axis and the
-    // direction to the avatar), not 1: |camUp x at| = sin(theta), and |at x left| inherits it.
-    // mImpostorDim is a half-extent in world units, so scaling an unnormalized basis by it
-    // shrank the billboard by that factor -- exact at screen centre, ~13% small at 30 degrees
-    // of vertical offset, worse toward the top and bottom of the screen. The bake side builds
-    // an exact orthonormal frame (camera.lookAt) and sizes its projection so the half-extent
-    // exactly fills the image, so this was a pure mismatch: impostored avatars read as
-    // slightly too small, and popped in size as the camera pitched.
-    left.normalize();
-    up.normalize();
-
-    left *= mImpostorDim.mV[0];
-    up *= mImpostorDim.mV[1];
-
-    // Rebase the baked normals into the CURRENT view basis: inverse(bake_view), then main_view.
-    // Both are pure rotations sharing an origin, so the inverse is the transpose. Uploaded
-    // per avatar because each impostor was baked aiming at its own subject, and re-derived
-    // every frame because the impostor outlives the camera position that produced it.
-    const LLMatrix4a& mv = LLViewerCamera::getCurrent().getModelview();
-    LLMatrix3a main_view;
-    main_view.setRows(mv.getRow<0>(), mv.getRow<1>(), mv.getRow<2>());
-    LLMatrix3a bake_view;
-    bake_view.loadu(getImpostorViewRotation());
+    LLVector3 pos;
+    LLVector3 left;
+    LLVector3 up;
     LLMatrix3a rebase;
-    rebase.setMul(bake_view, main_view);
+    getImpostorRenderGeometry(pos, left, up, rebase);
 
     const bool debug_impostor =
         gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_IMPOSTORS);

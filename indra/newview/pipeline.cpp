@@ -574,6 +574,10 @@ struct LLPipeline::MetalWorldSimpleCapture
         direct_probe_aurora_buffers;
     std::unordered_set<const LLVertexBuffer*>
         direct_probe_cloud_buffers;
+    std::unordered_set<const LLViewerJointMesh*>
+        direct_probe_avatar_meshes;
+    std::unordered_set<const LLVOAvatar*>
+        direct_probe_impostors;
     bool direct_probe_water_surface = false;
     bool direct_probe_scene_active = false;
     std::vector<ALMetalWorldHighlightBatch> highlight_batches;
@@ -2452,6 +2456,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.direct_probe_heavenly_body_faces.clear();
     capture.direct_probe_aurora_buffers.clear();
     capture.direct_probe_cloud_buffers.clear();
+    capture.direct_probe_avatar_meshes.clear();
+    capture.direct_probe_impostors.clear();
     capture.direct_probe_water_surface = false;
     capture.direct_probe_scene_active = false;
     capture.sky_behind_target.reset();
@@ -11526,6 +11532,19 @@ static bool buildMetalWorldDrawMatrices(
         modelview_projection);
 }
 
+void LLPipeline::invalidateMetalReflectionProbeScene()
+{
+    if (!mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->direct_probe_scene_active)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.markIncomplete(__LINE__);
+    capture.batches.clear();
+    capture.avatar_palettes.clear();
+}
+
 void LLPipeline::captureMetalReflectionProbeScene()
 {
     if (!mMetalReflectionWorldCaptureActive ||
@@ -11826,6 +11845,36 @@ void LLPipeline::captureMetalReflectionProbeScene()
             if (!capture.complete)
             {
                 break;
+            }
+        }
+    }
+    for (U32 pool_type : { LLDrawPool::POOL_AVATAR,
+                           LLDrawPool::POOL_CONTROL_AV })
+    {
+        if (!capture.complete)
+        {
+            break;
+        }
+        if (!hasRenderType(pool_type))
+        {
+            continue;
+        }
+        for (S32 pass = 0;
+             capture.complete && pass < 3; ++pass)
+        {
+            for (LLDrawPool* pool : mPools)
+            {
+                if (pool->getType() != pool_type ||
+                    pool->getSkipRenderFlag())
+                {
+                    continue;
+                }
+                static_cast<LLDrawPoolAvatar*>(pool)
+                    ->captureMetalReflectionProbe(pass);
+                if (!capture.complete)
+                {
+                    break;
+                }
             }
         }
     }
@@ -14702,7 +14751,7 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
 }
 
 void LLPipeline::captureMetalWorldAvatarBatch(
-    const LLViewerJointMesh& mesh, LLVertexBuffer* buffer,
+    LLViewerJointMesh& mesh, LLVertexBuffer* buffer,
     LLGLTexture* texture, U32 start, U32 end, U32 count, U32 offset)
 {
     if (!mMetalWorldSimpleCapture ||
@@ -14713,6 +14762,13 @@ void LLPipeline::captureMetalWorldAvatarBatch(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    const bool avatar_alpha = capture.world_post_deferred_active &&
+        !capture.world_post_deferred_phase;
+    if (!capture.direct_probe_scene_active && !avatar_alpha &&
+        capture.direct_probe_avatar_meshes.contains(&mesh))
+    {
+        return;
+    }
     const auto fail = [&capture]()
     {
         capture.markIncomplete(__LINE__);
@@ -14766,8 +14822,6 @@ void LLPipeline::captureMetalWorldAvatarBatch(
     batch.index_count = count;
     batch.diffuse_textures[0] = image->getMetalTexture();
     batch.texture_count = 1;
-    const bool avatar_alpha = capture.world_post_deferred_active &&
-        !capture.world_post_deferred_phase;
     batch.alpha_mask = !avatar_alpha;
     batch.use_vertex_color = false;
     batch.alpha_cutoff_bias = false;
@@ -14839,7 +14893,7 @@ void LLPipeline::captureMetalWorldAvatarBatch(
         batch.skin_joint_count = 15;
         capture.avatar_palettes.push_back(std::move(palette));
         std::memcpy(batch.modelview_projection,
-                    gGL.getProjectionMatrix().getF32ptr(),
+                    LLViewerCamera::getCurrent().getProjection().getF32ptr(),
                     sizeof(batch.modelview_projection));
         if (capture.avatar_cloth)
         {
@@ -14858,16 +14912,16 @@ void LLPipeline::captureMetalWorldAvatarBatch(
     }
     else
     {
-        const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+        LLMatrix4a modelview;
         LLMatrix4a inverse_modelview;
-        if (!inverse_modelview.setAffineInverse(modelview))
+        LLMatrix4a modelview_projection;
+        if (!buildMetalWorldDrawMatrices(
+                &mesh.getWorldMatrix(), modelview, inverse_modelview,
+                modelview_projection))
         {
             fail();
             return;
         }
-        LLMatrix4a modelview_projection;
-        modelview_projection.setMul(
-            modelview, gGL.getProjectionMatrix());
         std::memcpy(batch.modelview_projection,
                     modelview_projection.getF32ptr(),
                     sizeof(batch.modelview_projection));
@@ -14882,6 +14936,10 @@ void LLPipeline::captureMetalWorldAvatarBatch(
         }
     }
     capture.batches.push_back(batch);
+    if (capture.direct_probe_scene_active)
+    {
+        capture.direct_probe_avatar_meshes.insert(&mesh);
+    }
 }
 
 void LLPipeline::captureMetalWorldImpostorBatch(
@@ -14897,6 +14955,11 @@ void LLPipeline::captureMetalWorldImpostorBatch(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.direct_probe_scene_active &&
+        capture.direct_probe_impostors.contains(&avatar))
+    {
+        return;
+    }
     const bool debug_requested =
         hasRenderDebugMask(RENDER_DEBUG_IMPOSTORS);
     const bool debug_outline = debug_outline_width > 0.f;
@@ -14968,10 +15031,11 @@ void LLPipeline::captureMetalWorldImpostorBatch(
 
     const MetalWorldSimpleCapture::ImpostorTextures& textures =
         textures_it->second;
-    const LLMatrix4a& modelview = gGL.getModelviewMatrix();
+    const LLMatrix4a& modelview =
+        LLViewerCamera::getCurrent().getModelview();
     LLMatrix4a modelview_projection;
     modelview_projection.setMul(
-        modelview, gGL.getProjectionMatrix());
+        modelview, LLViewerCamera::getCurrent().getProjection());
 
     ALMetalWorldSimpleBatch batch;
     batch.impostor = true;
@@ -15000,6 +15064,10 @@ void LLPipeline::captureMetalWorldImpostorBatch(
     try
     {
         capture.batches.push_back(batch);
+        if (capture.direct_probe_scene_active)
+        {
+            capture.direct_probe_impostors.insert(&avatar);
+        }
     }
     catch (const std::bad_alloc&)
     {

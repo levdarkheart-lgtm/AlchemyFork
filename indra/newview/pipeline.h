@@ -1106,6 +1106,7 @@ public:
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
     void captureMetalReflectionProbeScene();
+    void invalidateMetalReflectionProbeScene();
     void captureMetalWorldMaterialBatch(const LLDrawInfo& params,
                                         bool indexed_materials);
     void captureMetalWorldPBRBatch(const LLDrawInfo& params,
@@ -1146,7 +1147,7 @@ public:
         U32 paint_type, S32 pbr_detail, F32 tess_density,
         bool smoothing, bool triplanar, bool hex, bool flat_normals,
         F32 triplanar_blend, bool tessellation_pinned);
-    void captureMetalWorldAvatarBatch(const LLViewerJointMesh& mesh,
+    void captureMetalWorldAvatarBatch(LLViewerJointMesh& mesh,
                                       LLVertexBuffer* buffer,
                                       LLGLTexture* texture,
                                       U32 start, U32 end,

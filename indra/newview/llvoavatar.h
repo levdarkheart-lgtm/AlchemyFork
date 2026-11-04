@@ -569,6 +569,9 @@ public:
     U32         renderRigid();
     U32         renderSkinned();
     U32         renderTransparent(bool first_pass);
+    void        captureMetalReflectionProbeRigid();
+    void        captureMetalReflectionProbeOpaque();
+    void        captureMetalReflectionProbeImpostor();
     void        renderCollisionVolumes();
     void        renderBones(const std::string &selected_joint = std::string());
     virtual void renderJoints();
@@ -583,6 +586,10 @@ private:
     U32         mAttachmentVisibleTriangleCount;
     F32         mAttachmentEstTriangleCount;
     bool        shouldAlphaMask();
+    void        getImpostorRenderGeometry(LLVector3& position,
+                                          LLVector3& left,
+                                          LLVector3& up,
+                                          LLMatrix3a& normal_rotation) const;
 
     bool        mNeedsSkin; // avatar has been animated and verts have not been updated
 
