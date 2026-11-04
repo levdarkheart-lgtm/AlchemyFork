@@ -128,6 +128,7 @@ reload the chronological history.
 | Superseded `LLCubeMap` GL storage/name owner removal after physical native replacement proof, source-exact build 68264, 2026-11-04 | [CURRENT-native-cubemap-gl-owner-removal-checkpoint-2026-11-04.md](CURRENT-native-cubemap-gl-owner-removal-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Backend-neutral reflection-probe slots with manager-owned resources and live fallback retained, source-exact build 68266, 2026-11-04 | [CURRENT-backend-neutral-probe-slot-checkpoint-2026-11-04.md](CURRENT-backend-neutral-probe-slot-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | GL-independent native world-batch transforms as a direct scene-enumerator prerequisite, source-exact build 68268, 2026-11-04 | [CURRENT-gl-independent-native-world-transforms-checkpoint-2026-11-04.md](CURRENT-gl-independent-native-world-transforms-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
+| Direct native reflection-probe simple/material/PBR opaque enumeration with complete GL fallback retained, source-exact build 68270, 2026-11-04 | [CURRENT-direct-probe-opaque-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-opaque-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
