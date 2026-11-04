@@ -266,6 +266,25 @@ LLPointer<LLViewerTexture> LLViewerTextureManager::getLocalTexture(const LLUUID&
 }
 LLPointer<LLViewerTexture> LLViewerTextureManager::getLocalTexture(const LLImageRaw* raw, bool usemipmaps)
 {
+#if LL_DARWIN
+    // A native-only viewer still needs locally generated UI/debug textures after
+    // the GL manager is gone.  Constructing LLViewerTexture from LLImageRaw calls
+    // LLImageGL's legacy upload constructor immediately, so select the native
+    // producer before constructing the backing object.  Keep the established
+    // dual-backed path while GL is active: the transitional fail-closed frame
+    // still needs the exact local pixels if a Metal presentation cannot commit.
+    if (gGLManager.mIsDisabled)
+    {
+        LLPointer<LLViewerTexture> tex = new LLViewerTexture(
+            raw->getWidth(), raw->getHeight(), raw->getComponents(), usemipmaps);
+        if (!tex->createMetalTexture(0, raw, LLGLTexture::LOCAL))
+        {
+            LL_WARNS("Metal") << "Failed to publish a local texture natively"
+                              << LL_ENDL;
+        }
+        return tex;
+    }
+#endif
     LLPointer<LLViewerTexture> tex = new LLViewerTexture(raw, usemipmaps);
     tex->setCategory(LLGLTexture::LOCAL);
     return tex;
@@ -406,7 +425,14 @@ void LLViewerTextureManager::init()
             }
         }
     }
-    if (!imagep->createGLTexture(0, image_raw))
+#if LL_DARWIN
+    const bool default_created = gGLManager.mIsDisabled
+        ? imagep->createMetalTexture(0, image_raw, LLGLTexture::OTHER)
+        : imagep->createGLTexture(0, image_raw);
+#else
+    const bool default_created = imagep->createGLTexture(0, image_raw);
+#endif
+    if (!default_created)
     {
         LL_WARNS() << "Failed to create default texture " << IMG_DEFAULT << LL_ENDL;
     }

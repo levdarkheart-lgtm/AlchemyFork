@@ -2429,6 +2429,113 @@ namespace
         CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
     }
 
+    TEST_CASE_METHOD(llimagegl_data, "LLGLTexture: native system images preserve pixels and mips without GL", "[LLImageGL][almetal][system-textures]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct StateReset
+        {
+            bool mDisabled = gGLManager.mIsDisabled;
+            ~StateReset()
+            {
+                gGLManager.mIsDisabled = mDisabled;
+                LLImageGL::setMetalDevice(nullptr);
+            }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+        gGLManager.mIsDisabled = true;
+
+        struct SystemImage
+        {
+            U16 mWidth;
+            U16 mHeight;
+            U8 mUniform;
+            bool mChecker;
+            S32 mCategory;
+            U32 mMipLevels;
+        };
+        constexpr std::array<SystemImage, 4> images{{
+            {1, 1, 0x77, false, LLGLTexture::LOCAL, 1},
+            {128, 128, 0x00, false, LLGLTexture::LOCAL, 8},
+            {128, 128, 0x7f, false, LLGLTexture::OTHER, 8},
+            {32, 32, 0x00, true, LLGLTexture::LOCAL, 6},
+        }};
+
+        const U64 baseline_bytes = LLImageGL::getTextureBytesAllocated();
+        for (const SystemImage& system : images)
+        {
+            INFO(system.mWidth << "x" << system.mHeight
+                               << (system.mChecker ? " checker" : " uniform"));
+            LLPointer<LLImageRaw> raw =
+                new LLImageRaw(system.mWidth, system.mHeight, 3);
+            if (system.mChecker)
+            {
+                U8* pixels = raw->getData();
+                for (U32 y = 0; y < system.mHeight; ++y)
+                {
+                    for (U32 x = 0; x < system.mWidth; ++x)
+                    {
+                        const U8 value = static_cast<U8>(
+                            (((x / 16) + (y / 16)) % 2) * 255);
+                        const std::size_t offset =
+                            (static_cast<std::size_t>(y) * system.mWidth + x) * 3;
+                        pixels[offset + 0] = value;
+                        pixels[offset + 1] = value;
+                        pixels[offset + 2] = value;
+                    }
+                }
+            }
+            else
+            {
+                std::memset(raw->getData(), system.mUniform,
+                            static_cast<std::size_t>(system.mWidth) *
+                                system.mHeight * 3);
+            }
+
+            LLPointer<LLGLTexture> texture = new LLGLTexture(/*usemipmaps=*/true);
+            REQUIRE(texture->createMetalTexture(0, raw.get(), system.mCategory));
+            REQUIRE(texture->getGLTexture()->getMetalTexture());
+            CHECK_FALSE(texture->hasGLTexture());
+            CHECK(texture->hasGPUTexture());
+            CHECK(texture->getTexName() == 0);
+            CHECK(texture->getFullWidth() == system.mWidth);
+            CHECK(texture->getFullHeight() == system.mHeight);
+            CHECK(texture->getComponents() == 3);
+            CHECK(texture->getGLTexture()->getCategory() == system.mCategory);
+            CHECK(texture->getGLTexture()->getMetalTexture()
+                      ->descriptor().mipmap_level_count == system.mMipLevels);
+
+            std::vector<U8> actual(
+                static_cast<std::size_t>(system.mWidth) * system.mHeight * 4);
+            REQUIRE(texture->getGLTexture()->getMetalTexture()->readback(
+                *device, 0, 0, {}, actual.data(), system.mWidth * 4, &error));
+            INFO(error);
+            std::vector<U8> expected(actual.size());
+            for (U32 y = 0; y < system.mHeight; ++y)
+            {
+                for (U32 x = 0; x < system.mWidth; ++x)
+                {
+                    const U8 value = system.mChecker
+                        ? static_cast<U8>((((x / 16) + (y / 16)) % 2) * 255)
+                        : system.mUniform;
+                    const std::size_t offset =
+                        (static_cast<std::size_t>(y) * system.mWidth + x) * 4;
+                    expected[offset + 0] = value;
+                    expected[offset + 1] = value;
+                    expected[offset + 2] = value;
+                    expected[offset + 3] = 0xff;
+                }
+            }
+            CHECK(actual == expected);
+
+            texture->destroyGPUTexture();
+            CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
+        }
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: native image upload updates Metal without touching GL", "[LLImageGL][almetal]")
     {
         std::string error;
