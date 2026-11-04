@@ -157,6 +157,196 @@ static F32 windlight_sky_hdr_scale(const LLSettingsSky::ptr_t& sky)
     return 1.f;
 }
 
+#if LL_DARWIN
+static LLMatrix4a metal_sky_camera_modelview(
+    const LLVector3& cam_pos_local)
+{
+    LLMatrix4a modelview = LLViewerCamera::getCurrent().getModelview();
+    modelview.setMul(
+        LLMatrix4a::translation(
+            cam_pos_local.mV[VX], cam_pos_local.mV[VY],
+            cam_pos_local.mV[VZ]),
+        modelview);
+    return modelview;
+}
+
+static LLMatrix4a metal_sky_modelview_projection(
+    const LLVector3& cam_pos_local, F32 cam_height_local,
+    bool dome_transform)
+{
+    LLMatrix4a modelview = metal_sky_camera_modelview(cam_pos_local);
+    if (dome_transform)
+    {
+        // Mirror renderDome's row-vector transform order exactly without
+        // touching gGL's matrix stack: basis permutation, uniform dome
+        // scale, then the local-height offset.
+        modelview.setMul(
+            LLMatrix4a::rotation(
+                120.f * DEG_TO_RAD,
+                LLVector4a(
+                    1.f / F_SQRT3, 1.f / F_SQRT3,
+                    1.f / F_SQRT3)),
+            modelview);
+        modelview.setMul(
+            LLMatrix4a::scaling(0.333f, 0.333f, 0.333f),
+            modelview);
+        modelview.setMul(
+            LLMatrix4a::translation(0.f, -cam_height_local, 0.f),
+            modelview);
+    }
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        modelview, LLViewerCamera::getCurrent().getProjection());
+    return modelview_projection;
+}
+
+void LLDrawPoolWLSky::captureMetalReflectionProbe()
+{
+    if (!gCubeSnapshot || !gSky.mVOSkyp || !gSky.mVOWLSkyp ||
+        !gPipeline.canUseWindLightShaders() ||
+        !gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_SKY))
+    {
+        return;
+    }
+
+    // The retained pool normally refreshes this owner immediately before
+    // drawing. Direct native enumeration happens earlier, so it owns the
+    // same geometry refresh without binding a GL program or target.
+    gSky.mVOSkyp->updateGeometry(gSky.mVOSkyp->mDrawable);
+
+    const LLVector3& origin = LLViewerCamera::getInstance()->getOrigin();
+    const F32 cam_height_local = LLEnvironment::instance().getCamHeight();
+    const LLMatrix4a dome_mvp = metal_sky_modelview_projection(
+        origin, cam_height_local, true);
+
+    static LLCachedControl<F32> hdri_exposure(
+        gSavedSettings, "RenderHDRIExposure", 0.0f);
+    static LLCachedControl<F32> hdri_rotation(
+        gSavedSettings, "RenderHDRIRotation", 0.f);
+    if (use_hdri_sky())
+    {
+        LLMatrix3 hdri_rotation_matrix;
+        hdri_rotation_matrix.setRot(
+            0.f, static_cast<F32>(hdri_rotation) * DEG_TO_RAD, 0.f);
+        gPipeline.beginMetalWorldHDRISky(
+            gEXRImage.get(), powf(2.f, hdri_exposure),
+            hdri_rotation_matrix, cam_height_local);
+        gSky.mVOWLSkyp->captureMetalDome(dome_mvp);
+        gPipeline.endMetalWorldHDRISky();
+        return;
+    }
+
+    const LLSettingsSky::ptr_t psky =
+        LLEnvironment::instance().getCurrentSky();
+    if (!psky)
+    {
+        return;
+    }
+
+    LLViewerTexture* rainbow_tex = gSky.mVOSkyp->getRainbowTex();
+    LLViewerTexture* halo_tex = gSky.mVOSkyp->getHaloTex();
+    F32 moisture_level = static_cast<F32>(psky->getSkyMoistureLevel());
+    const F32 droplet_radius =
+        static_cast<F32>(psky->getSkyDropletRadius());
+    F32 ice_level = static_cast<F32>(psky->getSkyIceLevel());
+    if (!psky->getIsSunUp() && !psky->getIsMoonUp())
+    {
+        moisture_level = 0.f;
+        ice_level = 0.f;
+    }
+
+    gPipeline.beginMetalWorldWindLightSky(
+        rainbow_tex, halo_tex, cam_height_local,
+        moisture_level, droplet_radius, ice_level,
+        psky->getSunMoonGlowFactor(), psky->getDensityMultiplier(),
+        windlight_sky_hdr_scale(psky));
+    gSky.mVOWLSkyp->captureMetalDome(dome_mvp);
+    gPipeline.endMetalWorldWindLightSky();
+
+    const LLMatrix4a body_mvp = metal_sky_modelview_projection(
+        origin, cam_height_local, false);
+    gPipeline.beginMetalWorldWindLightHeavenlyBodies();
+    const bool can_render_bodies =
+        gPipeline.shadersLoaded() && gPipeline.canUseWindLightShaders();
+    const bool draw_sun = gPipeline.mHeroProbeManager.isMirrorPass();
+    LLFace* face = gSky.mVOSkyp->mFace[LLVOSky::FACE_SUN];
+    if (can_render_bodies && draw_sun &&
+        gSky.mVOSkyp->getSun().getDraw() && face &&
+        face->getGeomCount())
+    {
+        LLViewerTexture* texture_a =
+            face->getTexture(LLRender::DIFFUSE_MAP);
+        LLViewerTexture* texture_b =
+            face->getTexture(LLRender::ALTERNATE_DIFFUSE_MAP);
+        if (texture_a || texture_b)
+        {
+            gPipeline.captureMetalWorldWindLightHeavenlyBody(
+                face, texture_a, texture_b,
+                static_cast<F32>(psky->getBlendFactor()), 0.f, false,
+                body_mvp);
+        }
+    }
+
+    face = gSky.mVOSkyp->mFace[LLVOSky::FACE_MOON];
+    if (can_render_bodies && gSky.mVOSkyp->getMoon().getDraw() &&
+        face && face->getTexture(LLRender::DIFFUSE_MAP) &&
+        face->getGeomCount())
+    {
+        LLViewerTexture* texture_a =
+            face->getTexture(LLRender::DIFFUSE_MAP);
+        LLViewerTexture* texture_b =
+            face->getTexture(LLRender::ALTERNATE_DIFFUSE_MAP);
+        if (texture_a || texture_b)
+        {
+            gPipeline.captureMetalWorldWindLightHeavenlyBody(
+                face, texture_a, texture_b,
+                static_cast<F32>(psky->getMoonBrightness()),
+                psky->getMoonDirection().mV[VZ], true, body_mvp);
+        }
+    }
+    gPipeline.endMetalWorldWindLightHeavenlyBodies();
+
+    // Probe irradiance deliberately excludes clouds; the retained pool and
+    // this direct producer both include them only in the radiance face.
+    if (!gPipeline.mReflectionMapManager.isRadiancePass() ||
+        !gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_CLOUDS) ||
+        !gSky.mVOSkyp->getCloudNoiseTex())
+    {
+        return;
+    }
+
+    LLPointer<LLViewerTexture> cloud_noise =
+        gSky.mVOSkyp->getCloudNoiseTex();
+    LLPointer<LLViewerTexture> cloud_noise_next =
+        gSky.mVOSkyp->getCloudNoiseTexNext();
+    F32 cloud_variance = static_cast<F32>(psky->getCloudVariance());
+    F32 blend_factor = static_cast<F32>(psky->getBlendFactor());
+    if (psky->getCloudScrollRate().isExactlyZero())
+    {
+        blend_factor = 0.f;
+    }
+    if (cloud_noise &&
+        (!cloud_noise_next || cloud_noise == cloud_noise_next))
+    {
+        cloud_noise_next = cloud_noise;
+        blend_factor = 0.f;
+    }
+    else if (cloud_noise_next && !cloud_noise)
+    {
+        cloud_noise = cloud_noise_next;
+        blend_factor = 0.f;
+    }
+
+    gPipeline.beginMetalWorldWindLightClouds(
+        cloud_noise, cloud_noise_next, cam_height_local,
+        cloud_variance, blend_factor, psky->getSunMoonGlowFactor(),
+        psky->getDensityMultiplier());
+    gSky.mVOWLSkyp->captureMetalDome(dome_mvp);
+    gPipeline.endMetalWorldWindLightClouds();
+}
+#endif
+
 // Whether any of the water lies in front of the depth the world left, the sky drawing last: the frustum can hold the
 // sea (LLPipeline::skyBehindWanted) while land hides all of it. The field, counted by the pipeline's query,
 // writing nothing: flat, and with waves raised by A as well, which counts a crest over a wall the flat field misses.

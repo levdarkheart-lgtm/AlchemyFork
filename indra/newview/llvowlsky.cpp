@@ -453,6 +453,29 @@ bool LLVOWLSky::hasStars() const
 {
     return mStarsVerts.notNull();
 }
+
+void LLVOWLSky::captureMetalDome(
+    const LLMatrix4a& modelview_projection)
+{
+    if (mStripsVerts.empty())
+    {
+        updateGeometry(mDrawable);
+    }
+
+    for (const LLPointer<LLVertexBuffer>& strips_segment : mStripsVerts)
+    {
+        gPipeline.captureMetalWorldHDRISkyBatch(
+            strips_segment, modelview_projection);
+        gPipeline.captureMetalWorldSplitSkyBatch(
+            strips_segment, modelview_projection);
+        gPipeline.captureMetalWorldWindLightSkyBatch(
+            strips_segment, modelview_projection);
+        gPipeline.captureMetalWorldWindLightAuroraBatch(
+            strips_segment, modelview_projection);
+        gPipeline.captureMetalWorldWindLightCloudBatch(
+            strips_segment, modelview_projection);
+    }
+}
 #endif
 
 void LLVOWLSky::drawStars(void)

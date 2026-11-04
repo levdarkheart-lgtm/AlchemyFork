@@ -56,6 +56,13 @@ public:
     /*virtual*/ void endDeferredPass(S32 pass);
     /*virtual*/ void renderDeferred(S32 pass);
 
+#if LL_DARWIN
+    // Enumerate the reflection-probe sky directly into the native Metal
+    // owner. The retained GL pool still draws fail-closed output, but it is
+    // no longer the producer of the native sky batches.
+    void captureMetalReflectionProbe();
+#endif
+
     /*virtual*/ LLViewerTexture *getDebugTexture();
     /*virtual*/ U32 getVertexDataMask() { return SKY_VERTEX_DATA_MASK; }
     /*virtual*/ bool verify() const { return true; }        // Verify that all data in the draw pool is correct!

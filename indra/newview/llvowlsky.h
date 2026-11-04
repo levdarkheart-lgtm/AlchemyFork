@@ -52,6 +52,7 @@ public:
 
 #if LL_DARWIN
     bool hasStars() const;
+    void captureMetalDome(const LLMatrix4a& modelview_projection);
 #endif
     void drawStars(void);
     void drawDome(void);

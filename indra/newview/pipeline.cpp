@@ -105,6 +105,7 @@
 #include "lldrawpoolterrain.h"
 #include "lldrawpooltree.h"
 #include "lldrawpoolwater.h"
+#include "lldrawpoolwlsky.h"
 #include "llface.h"
 #include "llfeaturemanager.h"
 #include "llfetchedgltfmaterial.h"
@@ -561,6 +562,18 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unordered_set<const LLDrawInfo*> direct_probe_draw_infos;
     std::unordered_set<const LLFace*> direct_probe_tree_faces;
     std::unordered_set<const LLFace*> direct_probe_terrain_faces;
+    std::unordered_set<const LLVertexBuffer*>
+        direct_probe_hdri_sky_buffers;
+    std::unordered_set<const LLVertexBuffer*>
+        direct_probe_split_sky_buffers;
+    std::unordered_set<const LLVertexBuffer*>
+        direct_probe_windlight_sky_buffers;
+    std::unordered_set<const LLFace*>
+        direct_probe_heavenly_body_faces;
+    std::unordered_set<const LLVertexBuffer*>
+        direct_probe_aurora_buffers;
+    std::unordered_set<const LLVertexBuffer*>
+        direct_probe_cloud_buffers;
     bool direct_probe_scene_active = false;
     std::vector<ALMetalWorldHighlightBatch> highlight_batches;
     std::vector<ALMetalWorldDebugBlip> debug_blips;
@@ -2432,6 +2445,12 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.direct_probe_draw_infos.clear();
     capture.direct_probe_tree_faces.clear();
     capture.direct_probe_terrain_faces.clear();
+    capture.direct_probe_hdri_sky_buffers.clear();
+    capture.direct_probe_split_sky_buffers.clear();
+    capture.direct_probe_windlight_sky_buffers.clear();
+    capture.direct_probe_heavenly_body_faces.clear();
+    capture.direct_probe_aurora_buffers.clear();
+    capture.direct_probe_cloud_buffers.clear();
     capture.direct_probe_scene_active = false;
     capture.sky_behind_target.reset();
     capture.hdri_sky_batches.clear();
@@ -2528,6 +2547,11 @@ void LLPipeline::beginMetalWorldHDRISky(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.direct_probe_scene_active &&
+        !capture.direct_probe_hdri_sky_buffers.empty())
+    {
+        return;
+    }
     capture.hdri_sky_batches.clear();
     capture.hdri_sky_environment = nullptr;
     capture.hdri_sky_active = false;
@@ -2575,6 +2599,16 @@ void LLPipeline::beginMetalWorldHDRISky(
 
 void LLPipeline::captureMetalWorldHDRISkyBatch(LLVertexBuffer* buffer)
 {
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    captureMetalWorldHDRISkyBatch(buffer, modelview_projection);
+}
+
+void LLPipeline::captureMetalWorldHDRISkyBatch(
+    LLVertexBuffer* buffer,
+    const LLMatrix4a& modelview_projection)
+{
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->hdri_sky_active)
     {
@@ -2591,12 +2625,13 @@ void LLPipeline::captureMetalWorldHDRISkyBatch(LLVertexBuffer* buffer)
     {
         capture.hdri_sky_complete = false;
         capture.hdri_sky_batches.clear();
+        if (capture.direct_probe_scene_active)
+        {
+            capture.direct_probe_hdri_sky_buffers.clear();
+        }
         return;
     }
 
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
     ALMetalWorldHDRISkyBatch batch;
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset =
@@ -2610,6 +2645,10 @@ void LLPipeline::captureMetalWorldHDRISkyBatch(LLVertexBuffer* buffer)
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
     capture.hdri_sky_batches.push_back(batch);
+    if (capture.direct_probe_scene_active)
+    {
+        capture.direct_probe_hdri_sky_buffers.insert(buffer);
+    }
 }
 
 void LLPipeline::endMetalWorldHDRISky()
@@ -2624,6 +2663,10 @@ void LLPipeline::endMetalWorldHDRISky()
     if (capture.hdri_sky_batches.empty())
     {
         capture.hdri_sky_complete = false;
+        if (capture.direct_probe_scene_active)
+        {
+            capture.direct_probe_hdri_sky_buffers.clear();
+        }
     }
 }
 
@@ -2642,6 +2685,11 @@ void LLPipeline::beginMetalWorldSplitSky(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.direct_probe_scene_active &&
+        !capture.direct_probe_split_sky_buffers.empty())
+    {
+        return;
+    }
     capture.split_sky_batches.clear();
     capture.split_sky_environment = nullptr;
     capture.split_sky_rainbow = nullptr;
@@ -2752,6 +2800,16 @@ void LLPipeline::beginMetalWorldSplitSky(
 
 void LLPipeline::captureMetalWorldSplitSkyBatch(LLVertexBuffer* buffer)
 {
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    captureMetalWorldSplitSkyBatch(buffer, modelview_projection);
+}
+
+void LLPipeline::captureMetalWorldSplitSkyBatch(
+    LLVertexBuffer* buffer,
+    const LLMatrix4a& modelview_projection)
+{
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->split_sky_active)
     {
@@ -2768,12 +2826,13 @@ void LLPipeline::captureMetalWorldSplitSkyBatch(LLVertexBuffer* buffer)
     {
         capture.split_sky_complete = false;
         capture.split_sky_batches.clear();
+        if (capture.direct_probe_scene_active)
+        {
+            capture.direct_probe_split_sky_buffers.clear();
+        }
         return;
     }
 
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
     ALMetalWorldHDRISkyBatch batch;
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset =
@@ -2787,6 +2846,10 @@ void LLPipeline::captureMetalWorldSplitSkyBatch(LLVertexBuffer* buffer)
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
     capture.split_sky_batches.push_back(batch);
+    if (capture.direct_probe_scene_active)
+    {
+        capture.direct_probe_split_sky_buffers.insert(buffer);
+    }
 }
 
 void LLPipeline::endMetalWorldSplitSky()
@@ -2801,6 +2864,10 @@ void LLPipeline::endMetalWorldSplitSky()
     if (capture.split_sky_batches.empty())
     {
         capture.split_sky_complete = false;
+        if (capture.direct_probe_scene_active)
+        {
+            capture.direct_probe_split_sky_buffers.clear();
+        }
     }
 }
 
@@ -2817,6 +2884,11 @@ void LLPipeline::beginMetalWorldWindLightSky(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.direct_probe_scene_active &&
+        !capture.direct_probe_windlight_sky_buffers.empty())
+    {
+        return;
+    }
     capture.windlight_sky_batches.clear();
     capture.windlight_sky_rainbow = nullptr;
     capture.windlight_sky_halo = nullptr;
@@ -2894,6 +2966,16 @@ void LLPipeline::beginMetalWorldWindLightSky(
 void LLPipeline::captureMetalWorldWindLightSkyBatch(
     LLVertexBuffer* buffer)
 {
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    captureMetalWorldWindLightSkyBatch(buffer, modelview_projection);
+}
+
+void LLPipeline::captureMetalWorldWindLightSkyBatch(
+    LLVertexBuffer* buffer,
+    const LLMatrix4a& modelview_projection)
+{
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->windlight_sky_active)
     {
@@ -2910,12 +2992,13 @@ void LLPipeline::captureMetalWorldWindLightSkyBatch(
     {
         capture.windlight_sky_complete = false;
         capture.windlight_sky_batches.clear();
+        if (capture.direct_probe_scene_active)
+        {
+            capture.direct_probe_windlight_sky_buffers.clear();
+        }
         return;
     }
 
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
     ALMetalWorldHDRISkyBatch batch;
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset =
@@ -2929,6 +3012,10 @@ void LLPipeline::captureMetalWorldWindLightSkyBatch(
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
     capture.windlight_sky_batches.push_back(batch);
+    if (capture.direct_probe_scene_active)
+    {
+        capture.direct_probe_windlight_sky_buffers.insert(buffer);
+    }
 }
 
 void LLPipeline::endMetalWorldWindLightSky()
@@ -2943,6 +3030,10 @@ void LLPipeline::endMetalWorldWindLightSky()
     if (capture.windlight_sky_batches.empty())
     {
         capture.windlight_sky_complete = false;
+        if (capture.direct_probe_scene_active)
+        {
+            capture.direct_probe_windlight_sky_buffers.clear();
+        }
     }
 }
 
@@ -3081,6 +3172,11 @@ void LLPipeline::beginMetalWorldWindLightHeavenlyBodies()
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.direct_probe_scene_active &&
+        !capture.direct_probe_heavenly_body_faces.empty())
+    {
+        return;
+    }
     capture.windlight_heavenly_body_batches.clear();
     capture.windlight_heavenly_bodies_expected = false;
     capture.windlight_heavenly_bodies_active = true;
@@ -3098,6 +3194,20 @@ void LLPipeline::captureMetalWorldWindLightHeavenlyBody(
     LLFace* face, LLViewerTexture* texture_a,
     LLViewerTexture* texture_b, F32 parameter,
     F32 moon_direction_z, bool moon)
+{
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    captureMetalWorldWindLightHeavenlyBody(
+        face, texture_a, texture_b, parameter, moon_direction_z, moon,
+        modelview_projection);
+}
+
+void LLPipeline::captureMetalWorldWindLightHeavenlyBody(
+    LLFace* face, LLViewerTexture* texture_a,
+    LLViewerTexture* texture_b, F32 parameter,
+    F32 moon_direction_z, bool moon,
+    const LLMatrix4a& modelview_projection)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->windlight_heavenly_bodies_active)
@@ -3149,12 +3259,13 @@ void LLPipeline::captureMetalWorldWindLightHeavenlyBody(
     {
         capture.windlight_heavenly_bodies_complete = false;
         capture.windlight_heavenly_body_batches.clear();
+        if (capture.direct_probe_scene_active)
+        {
+            capture.direct_probe_heavenly_body_faces.clear();
+        }
         return;
     }
 
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
     ALMetalWorldHeavenlyBodyBatch batch;
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset =
@@ -3177,6 +3288,10 @@ void LLPipeline::captureMetalWorldWindLightHeavenlyBody(
     batch.parameters[1] = moon_direction_z;
     batch.moon = moon;
     capture.windlight_heavenly_body_batches.push_back(batch);
+    if (capture.direct_probe_scene_active)
+    {
+        capture.direct_probe_heavenly_body_faces.insert(face);
+    }
 }
 
 void LLPipeline::endMetalWorldWindLightHeavenlyBodies()
@@ -3192,6 +3307,10 @@ void LLPipeline::endMetalWorldWindLightHeavenlyBodies()
         capture.windlight_heavenly_body_batches.empty())
     {
         capture.windlight_heavenly_bodies_complete = false;
+        if (capture.direct_probe_scene_active)
+        {
+            capture.direct_probe_heavenly_body_faces.clear();
+        }
     }
 }
 
@@ -3289,6 +3408,11 @@ void LLPipeline::beginMetalWorldWindLightAurora(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.direct_probe_scene_active &&
+        !capture.direct_probe_aurora_buffers.empty())
+    {
+        return;
+    }
     capture.windlight_aurora_batches.clear();
     std::fill(std::begin(capture.windlight_aurora_camera_local),
               std::end(capture.windlight_aurora_camera_local), 0.f);
@@ -3318,6 +3442,16 @@ void LLPipeline::beginMetalWorldWindLightAurora(
 void LLPipeline::captureMetalWorldWindLightAuroraBatch(
     LLVertexBuffer* buffer)
 {
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    captureMetalWorldWindLightAuroraBatch(buffer, modelview_projection);
+}
+
+void LLPipeline::captureMetalWorldWindLightAuroraBatch(
+    LLVertexBuffer* buffer,
+    const LLMatrix4a& modelview_projection)
+{
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->windlight_aurora_active)
     {
@@ -3334,12 +3468,13 @@ void LLPipeline::captureMetalWorldWindLightAuroraBatch(
     {
         capture.windlight_aurora_complete = false;
         capture.windlight_aurora_batches.clear();
+        if (capture.direct_probe_scene_active)
+        {
+            capture.direct_probe_aurora_buffers.clear();
+        }
         return;
     }
 
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
     ALMetalWorldHDRISkyBatch batch;
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset =
@@ -3353,6 +3488,10 @@ void LLPipeline::captureMetalWorldWindLightAuroraBatch(
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
     capture.windlight_aurora_batches.push_back(batch);
+    if (capture.direct_probe_scene_active)
+    {
+        capture.direct_probe_aurora_buffers.insert(buffer);
+    }
 }
 
 void LLPipeline::endMetalWorldWindLightAurora()
@@ -3367,6 +3506,10 @@ void LLPipeline::endMetalWorldWindLightAurora()
     if (capture.windlight_aurora_batches.empty())
     {
         capture.windlight_aurora_complete = false;
+        if (capture.direct_probe_scene_active)
+        {
+            capture.direct_probe_aurora_buffers.clear();
+        }
     }
 }
 
@@ -3383,6 +3526,11 @@ void LLPipeline::beginMetalWorldWindLightClouds(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.direct_probe_scene_active &&
+        !capture.direct_probe_cloud_buffers.empty())
+    {
+        return;
+    }
     capture.windlight_cloud_batches.clear();
     capture.windlight_cloud_noise = nullptr;
     capture.windlight_cloud_noise_next = nullptr;
@@ -3476,6 +3624,16 @@ void LLPipeline::beginMetalWorldWindLightClouds(
 void LLPipeline::captureMetalWorldWindLightCloudBatch(
     LLVertexBuffer* buffer)
 {
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    captureMetalWorldWindLightCloudBatch(buffer, modelview_projection);
+}
+
+void LLPipeline::captureMetalWorldWindLightCloudBatch(
+    LLVertexBuffer* buffer,
+    const LLMatrix4a& modelview_projection)
+{
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->windlight_clouds_active)
     {
@@ -3493,12 +3651,13 @@ void LLPipeline::captureMetalWorldWindLightCloudBatch(
     {
         capture.windlight_clouds_complete = false;
         capture.windlight_cloud_batches.clear();
+        if (capture.direct_probe_scene_active)
+        {
+            capture.direct_probe_cloud_buffers.clear();
+        }
         return;
     }
 
-    LLMatrix4a modelview_projection;
-    modelview_projection.setMul(
-        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
     ALMetalWorldCloudBatch batch;
     batch.vertices = buffer->getMetalVertexBuffer();
     batch.position_offset =
@@ -3514,6 +3673,10 @@ void LLPipeline::captureMetalWorldWindLightCloudBatch(
                 modelview_projection.getF32ptr(),
                 sizeof(batch.modelview_projection));
     capture.windlight_cloud_batches.push_back(batch);
+    if (capture.direct_probe_scene_active)
+    {
+        capture.direct_probe_cloud_buffers.insert(buffer);
+    }
 }
 
 void LLPipeline::endMetalWorldWindLightClouds()
@@ -3528,6 +3691,10 @@ void LLPipeline::endMetalWorldWindLightClouds()
     if (capture.windlight_cloud_batches.empty())
     {
         capture.windlight_clouds_complete = false;
+        if (capture.direct_probe_scene_active)
+        {
+            capture.direct_probe_cloud_buffers.clear();
+        }
     }
 }
 
@@ -11646,6 +11813,19 @@ void LLPipeline::captureMetalReflectionProbeScene()
             {
                 break;
             }
+        }
+    }
+    if (capture.complete && hasRenderType(LLDrawPool::POOL_WL_SKY))
+    {
+        for (LLDrawPool* pool : mPools)
+        {
+            if (pool->getType() != LLDrawPool::POOL_WL_SKY)
+            {
+                continue;
+            }
+            static_cast<LLDrawPoolWLSky*>(pool)
+                ->captureMetalReflectionProbe();
+            break;
         }
     }
     capture.direct_probe_scene_active = false;
