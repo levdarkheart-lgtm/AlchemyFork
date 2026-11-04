@@ -1106,6 +1106,7 @@ public:
     void captureMetalWorldGBufferBatch(const LLDrawInfo& params,
                                        bool batch_textures);
     void captureMetalReflectionProbeScene();
+    void captureMetalReflectionProbeAvatarAlpha(U32 pool_type);
     void invalidateMetalReflectionProbeScene();
     void captureMetalWorldMaterialBatch(const LLDrawInfo& params,
                                         bool indexed_materials);
@@ -1152,6 +1153,9 @@ public:
                                       LLGLTexture* texture,
                                       U32 start, U32 end,
                                       U32 count, U32 offset);
+    void setMetalWorldAvatarAlphaState(bool cull, bool front,
+                                       bool depth_write,
+                                       bool color_write);
     void captureMetalWorldImpostorBatch(
         LLVOAvatar& avatar, const LLVector3& center,
         const LLVector3& left, const LLVector3& up,

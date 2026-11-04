@@ -296,24 +296,23 @@ void LLDrawPoolAvatar::renderDeferred(S32 pass)
     renderAvatars(NULL, pass); // render all avatars
 }
 
-void LLDrawPoolAvatar::captureMetalReflectionProbe(S32 pass)
+LLVOAvatar* LLDrawPoolAvatar::getMetalReflectionProbeAvatar(S32 pass) const
 {
-#if LL_DARWIN
-    if (pass < 0 || pass >= getNumDeferredPasses() || mDrawFace.empty())
+    if (mDrawFace.empty())
     {
-        return;
+        return nullptr;
     }
 
     const LLFace* face = mDrawFace[0];
     if (!face || !face->getDrawable())
     {
-        return;
+        return nullptr;
     }
     LLVOAvatar* avatar = static_cast<LLVOAvatar*>(
         face->getDrawable()->getVObj().get());
     if (!avatar || avatar->isDead() || avatar->mDrawable.isNull())
     {
-        return;
+        return nullptr;
     }
     if (!avatar->isFullyLoaded())
     {
@@ -321,7 +320,7 @@ void LLDrawPoolAvatar::captureMetalReflectionProbe(S32 pass)
         // Until that diagnostic has a direct native producer, retain the full
         // GL face instead of publishing a probe with the marker omitted.
         gPipeline.invalidateMetalReflectionProbeScene();
-        return;
+        return nullptr;
     }
 
     static LLCachedControl<bool> friends_only(
@@ -330,7 +329,7 @@ void LLDrawPoolAvatar::captureMetalReflectionProbe(S32 pass)
         !avatar->isControlAvatar() && !avatar->isSelf() &&
         !avatar->isBuddy())
     {
-        return;
+        return nullptr;
     }
 
     const bool impostor = !LLPipeline::sImpostorRender &&
@@ -341,7 +340,7 @@ void LLDrawPoolAvatar::captureMetalReflectionProbe(S32 pass)
     if ((avatar->isInMuteList() || impostor || appearance_impostor) &&
         pass != 0)
     {
-        return;
+        return nullptr;
     }
 
     LLVOAvatar* attached_avatar = avatar->getAttachedAvatar();
@@ -350,8 +349,28 @@ void LLDrawPoolAvatar::captureMetalReflectionProbe(S32 pass)
              attached_avatar->getOverallAppearance() ||
          !gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_AVATAR)))
     {
+        return nullptr;
+    }
+    return avatar;
+}
+
+void LLDrawPoolAvatar::captureMetalReflectionProbe(S32 pass)
+{
+#if LL_DARWIN
+    if (pass < 0 || pass >= getNumDeferredPasses())
+    {
         return;
     }
+    LLVOAvatar* avatar = getMetalReflectionProbeAvatar(pass);
+    if (!avatar)
+    {
+        return;
+    }
+    const bool impostor = !LLPipeline::sImpostorRender &&
+        avatar->isImpostor();
+    const bool appearance_impostor =
+        LLVOAvatar::AOA_NORMAL != avatar->getOverallAppearance() &&
+        !avatar->needsImpostorUpdate();
 
     if (pass == 0)
     {
@@ -394,6 +413,32 @@ void LLDrawPoolAvatar::captureMetalReflectionProbe(S32 pass)
     gPipeline.endMetalWorldGBufferPass();
 #else
     (void)pass;
+#endif
+}
+
+void LLDrawPoolAvatar::captureMetalReflectionProbeTransparent()
+{
+#if LL_DARWIN
+    LLVOAvatar* avatar = getMetalReflectionProbeAvatar(2);
+    if (!avatar)
+    {
+        return;
+    }
+    const bool avatar_cloth =
+        gPipeline.shaderInputs().mLocal.mAvatarCloth;
+    AvatarClothUniforms cloth_uniforms;
+    if (avatar_cloth)
+    {
+        cloth_uniforms = avatar_cloth_uniforms(avatar);
+    }
+    gPipeline.beginMetalWorldAvatarPass(
+        true, avatar_cloth,
+        avatar_cloth ? cloth_uniforms.wind.mV : nullptr,
+        avatar_cloth ? cloth_uniforms.sin_wave.mV : nullptr,
+        avatar_cloth ? cloth_uniforms.gravity.mV : nullptr,
+        avatar_cloth ? cloth_uniforms.depth.mV : nullptr);
+    avatar->captureMetalReflectionProbeTransparent();
+    gPipeline.endMetalWorldGBufferPass();
 #endif
 }
 

@@ -576,8 +576,15 @@ struct LLPipeline::MetalWorldSimpleCapture
         direct_probe_cloud_buffers;
     std::unordered_set<const LLViewerJointMesh*>
         direct_probe_avatar_meshes;
+    std::unordered_set<const LLViewerJointMesh*>
+        direct_probe_avatar_alpha_meshes;
     std::unordered_set<const LLVOAvatar*>
         direct_probe_impostors;
+    bool direct_probe_avatar_alpha_state_active = false;
+    ALMetalCullMode direct_probe_avatar_alpha_cull_mode =
+        ALMetalCullMode::back;
+    bool direct_probe_avatar_alpha_depth_write = true;
+    bool direct_probe_avatar_alpha_color_write = true;
     bool direct_probe_water_surface = false;
     bool direct_probe_scene_active = false;
     std::vector<ALMetalWorldHighlightBatch> highlight_batches;
@@ -2457,7 +2464,9 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.direct_probe_aurora_buffers.clear();
     capture.direct_probe_cloud_buffers.clear();
     capture.direct_probe_avatar_meshes.clear();
+    capture.direct_probe_avatar_alpha_meshes.clear();
     capture.direct_probe_impostors.clear();
+    capture.direct_probe_avatar_alpha_state_active = false;
     capture.direct_probe_water_surface = false;
     capture.direct_probe_scene_active = false;
     capture.sky_behind_target.reset();
@@ -3886,6 +3895,32 @@ void LLPipeline::beginMetalWorldAvatarPass(
     capture.pass_active = true;
 }
 
+void LLPipeline::setMetalWorldAvatarAlphaState(
+    bool cull, bool front, bool depth_write, bool color_write)
+{
+    if (!mMetalWorldSimpleCapture)
+    {
+        return;
+    }
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.frame_active || !capture.pass_active || !capture.avatar ||
+        !capture.direct_probe_scene_active ||
+        !capture.world_post_deferred_active ||
+        capture.world_post_deferred_phase)
+    {
+        capture.markIncomplete(__LINE__);
+        capture.batches.clear();
+        capture.avatar_palettes.clear();
+        return;
+    }
+    capture.direct_probe_avatar_alpha_cull_mode = !cull
+        ? ALMetalCullMode::none
+        : (front ? ALMetalCullMode::front : ALMetalCullMode::back);
+    capture.direct_probe_avatar_alpha_depth_write = depth_write;
+    capture.direct_probe_avatar_alpha_color_write = color_write;
+    capture.direct_probe_avatar_alpha_state_active = true;
+}
+
 void LLPipeline::beginMetalWorldTerrainPass()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -4318,6 +4353,8 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     capture.far_plane_overlay_near_count = 0;
     capture.reflection_probe_volume_valid = false;
     capture.avatar_palettes.clear();
+    capture.direct_probe_avatar_alpha_meshes.clear();
+    capture.direct_probe_avatar_alpha_state_active = false;
     capture.resetCompleteness();
     capture.frame_active = true;
     capture.pass_active = false;
@@ -11543,6 +11580,7 @@ void LLPipeline::invalidateMetalReflectionProbeScene()
     capture.markIncomplete(__LINE__);
     capture.batches.clear();
     capture.avatar_palettes.clear();
+    capture.direct_probe_avatar_alpha_state_active = false;
 }
 
 void LLPipeline::captureMetalReflectionProbeScene()
@@ -11891,6 +11929,41 @@ void LLPipeline::captureMetalReflectionProbeScene()
             break;
         }
     }
+    capture.direct_probe_scene_active = false;
+    capture.pass_active = false;
+}
+
+void LLPipeline::captureMetalReflectionProbeAvatarAlpha(U32 pool_type)
+{
+    if (!mMetalReflectionWorldCaptureActive ||
+        !mMetalWorldSimpleCapture ||
+        !mMetalWorldSimpleCapture->frame_active ||
+        !mMetalWorldSimpleCapture->world_post_deferred_active ||
+        mMetalWorldSimpleCapture->world_post_deferred_phase ||
+        !mMetalWorldSimpleCapture->complete ||
+        (pool_type != LLDrawPool::POOL_AVATAR &&
+         pool_type != LLDrawPool::POOL_CONTROL_AV))
+    {
+        return;
+    }
+
+    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    capture.direct_probe_scene_active = true;
+    capture.direct_probe_avatar_alpha_state_active = false;
+    for (LLDrawPool* pool : mPools)
+    {
+        if (pool->getType() != pool_type || pool->getSkipRenderFlag())
+        {
+            continue;
+        }
+        static_cast<LLDrawPoolAvatar*>(pool)
+            ->captureMetalReflectionProbeTransparent();
+        if (!capture.complete)
+        {
+            break;
+        }
+    }
+    capture.direct_probe_avatar_alpha_state_active = false;
     capture.direct_probe_scene_active = false;
     capture.pass_active = false;
 }
@@ -14769,12 +14842,25 @@ void LLPipeline::captureMetalWorldAvatarBatch(
     {
         return;
     }
+    if (!capture.direct_probe_scene_active && avatar_alpha &&
+        capture.direct_probe_avatar_alpha_meshes.contains(&mesh))
+    {
+        return;
+    }
     const auto fail = [&capture]()
     {
         capture.markIncomplete(__LINE__);
         capture.batches.clear();
         capture.avatar_palettes.clear();
     };
+    const bool direct_avatar_alpha = avatar_alpha &&
+        capture.direct_probe_scene_active;
+    if (direct_avatar_alpha &&
+        !capture.direct_probe_avatar_alpha_state_active)
+    {
+        fail();
+        return;
+    }
     LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
     if (!capture.complete || !buffer || !image || count == 0 ||
         start > end || end >= buffer->getNumVerts() ||
@@ -14833,36 +14919,48 @@ void LLPipeline::captureMetalWorldAvatarBatch(
     batch.avatar_alpha = avatar_alpha;
     if (avatar_alpha)
     {
-        if (!LLGLState::isEnabled(GL_CULL_FACE))
+        if (direct_avatar_alpha)
         {
-            batch.avatar_cull_mode = ALMetalCullMode::none;
-        }
-        else if (gGL.getCullFace() == GL_FRONT)
-        {
-            batch.avatar_cull_mode = ALMetalCullMode::front;
-        }
-        else if (gGL.getCullFace() == GL_BACK)
-        {
-            batch.avatar_cull_mode = ALMetalCullMode::back;
+            batch.avatar_cull_mode =
+                capture.direct_probe_avatar_alpha_cull_mode;
+            batch.avatar_depth_write =
+                capture.direct_probe_avatar_alpha_depth_write;
+            batch.avatar_color_write =
+                capture.direct_probe_avatar_alpha_color_write;
+            batch.pre_water_alpha_writes_coverage = false;
         }
         else
         {
-            fail();
-            return;
+            if (!LLGLState::isEnabled(GL_CULL_FACE))
+            {
+                batch.avatar_cull_mode = ALMetalCullMode::none;
+            }
+            else if (gGL.getCullFace() == GL_FRONT)
+            {
+                batch.avatar_cull_mode = ALMetalCullMode::front;
+            }
+            else if (gGL.getCullFace() == GL_BACK)
+            {
+                batch.avatar_cull_mode = ALMetalCullMode::back;
+            }
+            else
+            {
+                fail();
+                return;
+            }
+            batch.avatar_depth_write =
+                LLGLDepthTest::depthWriteEnabled();
+            bool color_mask[4]{};
+            gGL.getColorMask(color_mask);
+            if (color_mask[0] != color_mask[1] ||
+                color_mask[0] != color_mask[2])
+            {
+                fail();
+                return;
+            }
+            batch.avatar_color_write = color_mask[0];
+            batch.pre_water_alpha_writes_coverage = color_mask[3];
         }
-        batch.avatar_depth_write = LLGLDepthTest::depthWriteEnabled();
-        bool color_mask[4]{};
-        gGL.getColorMask(color_mask);
-        if (color_mask[0] != color_mask[1] ||
-            color_mask[0] != color_mask[2])
-        {
-            fail();
-            return;
-        }
-        // The post-deferred owner intentionally masks alpha independently;
-        // this state tracks the RGB on/off distinction used by the middle
-        // depth-only hair/skirt pass.
-        batch.avatar_color_write = color_mask[0];
         batch.pre_water_simple = true;
         batch.pre_water_shadows =
             capture.world_alpha_uses_shadows;
@@ -14872,8 +14970,6 @@ void LLPipeline::captureMetalWorldAvatarBatch(
             ALMetalBlendFactor::source_alpha;
         batch.pre_water_destination_rgb =
             ALMetalBlendFactor::one_minus_source_alpha;
-        batch.pre_water_alpha_writes_coverage =
-            color_mask[3];
     }
 
     if (capture.avatar_skinned)
@@ -14938,7 +15034,15 @@ void LLPipeline::captureMetalWorldAvatarBatch(
     capture.batches.push_back(batch);
     if (capture.direct_probe_scene_active)
     {
-        capture.direct_probe_avatar_meshes.insert(&mesh);
+        if (avatar_alpha)
+        {
+            capture.direct_probe_avatar_alpha_meshes.insert(&mesh);
+            capture.direct_probe_avatar_alpha_state_active = false;
+        }
+        else
+        {
+            capture.direct_probe_avatar_meshes.insert(&mesh);
+        }
     }
 }
 
@@ -15780,6 +15884,7 @@ void LLPipeline::endMetalWorldGBufferPass()
     mMetalWorldSimpleCapture->water_exclusion = false;
     mMetalWorldSimpleCapture->legacy_glow = false;
     mMetalWorldSimpleCapture->pbr_glow = false;
+    mMetalWorldSimpleCapture->direct_probe_avatar_alpha_state_active = false;
 }
 
 void LLPipeline::endMetalWorldGBufferCapture()
@@ -21953,6 +22058,15 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
             LL_PROFILE_ZONE_NAMED_CATEGORY_DRAWPOOL("deferred poolrender");
 
 #if LL_DARWIN
+            // Avatar hair/skirt is ordered at this post-deferred pool. Produce
+            // its explicit two/three-pass native batches before the retained
+            // pool changes GL state or draws them.
+            if (mMetalReflectionWorldCaptureActive &&
+                (cur_type == LLDrawPool::POOL_AVATAR ||
+                 cur_type == LLDrawPool::POOL_CONTROL_AV))
+            {
+                captureMetalReflectionProbeAvatarAlpha(cur_type);
+            }
             // Water is ordered after exclusion, haze and pre-water alpha.
             // Enumerate its native probe snapshot here, before the retained
             // GL pool executes, so those prerequisites stay in exact pass

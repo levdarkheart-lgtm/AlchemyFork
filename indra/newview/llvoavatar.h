@@ -571,6 +571,7 @@ public:
     U32         renderTransparent(bool first_pass);
     void        captureMetalReflectionProbeRigid();
     void        captureMetalReflectionProbeOpaque();
+    void        captureMetalReflectionProbeTransparent();
     void        captureMetalReflectionProbeImpostor();
     void        renderCollisionVolumes();
     void        renderBones(const std::string &selected_joint = std::string());

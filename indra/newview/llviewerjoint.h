@@ -60,11 +60,11 @@ public:
     // Called by render().
     virtual U32 drawShape( F32 pixelArea, bool first_pass = true, bool is_dummy = false );
 
-    // Traverse the same active LOD branch as render(), but publish opaque
-    // avatar geometry to the native world producer without binding or drawing
-    // through GL. Transparent hair/skirt ownership remains in the ordered
-    // post-deferred pass.
+    // Traverse the same active LOD branch as render(), but publish avatar
+    // geometry to the native world producer without binding or drawing GL.
     void captureMetalWorldAvatar(F32 pixel_area, bool is_dummy = false);
+    void captureMetalWorldAvatarTransparent(F32 pixel_area,
+                                            bool is_dummy = false);
     virtual void captureMetalWorldAvatarShape(bool is_dummy) {}
 
     virtual void drawNormals() {}

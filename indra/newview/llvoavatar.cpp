@@ -6007,6 +6007,48 @@ void LLVOAvatar::captureMetalReflectionProbeOpaque()
 #endif
 }
 
+void LLVOAvatar::captureMetalReflectionProbeTransparent()
+{
+#if LL_DARWIN
+    if (!mIsBuilt || (isSelf() && !gAgent.needsRenderAvatar()))
+    {
+        return;
+    }
+
+    if (isWearingWearableType(LLWearableType::WT_SKIRT) &&
+        (isUIAvatar() || isTextureVisible(TEX_SKIRT_BAKED)))
+    {
+        if (LLViewerJoint* skirt = getViewerJoint(MESH_ID_SKIRT))
+        {
+            skirt->captureMetalWorldAvatarTransparent(
+                mAdjustedPixelArea, mIsDummy);
+        }
+    }
+
+    if (!isSelf() || gAgent.needsRenderHead() || LLPipeline::sShadowRender)
+    {
+        if (isTextureVisible(TEX_HEAD_BAKED))
+        {
+            if (LLViewerJoint* eyelashes =
+                    getViewerJoint(MESH_ID_EYELASH))
+            {
+                eyelashes->captureMetalWorldAvatarTransparent(
+                    mAdjustedPixelArea, mIsDummy);
+            }
+        }
+        if (isTextureVisible(TEX_HAIR_BAKED) &&
+            getOverallAppearance() != AOA_JELLYDOLL)
+        {
+            if (LLViewerJoint* hair = getViewerJoint(MESH_ID_HAIR))
+            {
+                hair->captureMetalWorldAvatarTransparent(
+                    mAdjustedPixelArea, mIsDummy);
+            }
+        }
+    }
+#endif
+}
+
 U32 LLVOAvatar::renderTransparent(bool first_pass)
 {
     U32 num_indices = 0;
