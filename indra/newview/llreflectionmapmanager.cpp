@@ -42,13 +42,14 @@
 #include "pipeline.h"
 #include "llviewershadermgr.h"
 #include "llviewercontrol.h"
+#include "llviewerwindow.h"
+#include "llwindow.h"
 #include "llenvironment.h"
 #include "llstartup.h"
 #include "llviewermenufile.h"
 #include "llnotificationsutil.h"
 
 #if LL_DARWIN
-#include "llimagegl.h"
 #include "../almetal/almetalpbrpreview.h"
 #include "../almetal/almetalresource.h"
 #include "../almetal/almetalworld.h"
@@ -138,6 +139,15 @@ extern bool gSnapshotOffMainView;
 extern bool gTeleportDisplay;
 
 static U32 sUpdateCount = 0;
+
+#if LL_DARWIN
+static ALMetalDevice* viewerMetalDevice() noexcept
+{
+    const LLWindow* window = gViewerWindow
+        ? gViewerWindow->getWindow() : nullptr;
+    return window ? window->getMetalDevice() : nullptr;
+}
+#endif
 
 #if !LL_RELEASE_FOR_DOWNLOAD
 namespace
@@ -335,7 +345,7 @@ void LLReflectionMapManager::invalidateMetalProbeSlot(U32 cube_index)
 bool LLReflectionMapManager::reconcileMetalProbeArray()
 {
     MetalProbeArrayMirror& mirror = *mMetalProbeArray;
-    ALMetalDevice* device = LLImageGL::getMetalDevice();
+    ALMetalDevice* device = viewerMetalDevice();
     if (!device)
     {
         return false;
@@ -633,7 +643,7 @@ bool LLReflectionMapManager::captureNativeMetalProbeFace(
         return false;
     }
 
-    ALMetalDevice* device = LLImageGL::getMetalDevice();
+    ALMetalDevice* device = viewerMetalDevice();
     if (!device || device != mirror.mDevice)
     {
         if (error)
