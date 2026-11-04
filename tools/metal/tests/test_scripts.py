@@ -2,9 +2,11 @@ import csv
 import importlib.util
 import json
 import plistlib
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 TOOLS = Path(__file__).resolve().parents[1]
 ROOT = TOOLS.parents[1]
@@ -218,6 +220,19 @@ class AuditTests(unittest.TestCase):
             self.assertGreater(module.audit(root)["finding_count"], 0)
             p.write_text("void render(){ encodeMetalCommands(); }\n")
             self.assertEqual(module.audit(root)["finding_count"], 0)
+
+    def test_documented_strict_alias_fails_when_gl_remains(self):
+        module = load("audit_gl")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            src = root / "indra/llrender"
+            src.mkdir(parents=True)
+            (src / "renderer.cpp").write_text(
+                "void render(){ glBindFramebuffer(GL_FRAMEBUFFER, 0); }\n")
+            with mock.patch.object(
+                    sys, "argv",
+                    ["audit_gl.py", "--strict", "--root", str(root)]):
+                self.assertEqual(module.main(), 1)
 
 
 class TraceSubmissionTests(unittest.TestCase):

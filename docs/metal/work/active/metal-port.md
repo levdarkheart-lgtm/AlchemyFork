@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `66581835e8`.
+**Renderer checkpoint:** Commit `2477a6aa28`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,14 +13,14 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,407 files and 3,220 findings; strict exits 1. No rule or suppression changed. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,407 files and 3,223 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Exact HDR/non-HDR world, presentation and ordered-UI Metal publication is default-on, fail-closed and machine-censused by current-frame failure boundary; dead restore authority/methods and redundant shutdown hooks are deleted. Live GL context creation/shutdown remains. |
-| M-004 | Metal resources, transfers, readback and synchronization | doing | Native allocation, pressure scale-down and viewer-facing eviction are Metal-aware and budgeted once. Converted pressure work remains operational without a live GL manager; fetched upload still needs native publication ownership. |
+| M-004 | Metal resources, transfers, readback and synchronization | doing | Ordinary fetched upload/publication, native allocation, pressure scale-down and viewer-facing eviction are Metal-aware, transactional and budgeted once without a live GL manager. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and font atlases are native-only; owner-attended text/emoji and moving-media parity remain open. |
 | M-007 | World scene and material correctness | doing | World capture consumes native legacy bumps; opaque fullbright is corrected. Native main-world/impostor legacy BLEND behavior and deterministic coverage exist; owner-attended stained-glass visual and broad material parity remain open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL, linked/runtime no-GL and visual review remain open. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,223 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | doing | The residual GL color-volume, tone-curve and PBR BRDF lookup owners are deleted after Metal replacement; Darwin dynamic previews/avatar composites and their shared framework are native-only. Continue producer-by-producer. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
@@ -29,18 +29,25 @@ checkpoint detail belongs in the indexed archive.
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — native pressure through the GL-disabled state
+## Active checkpoint — native fetched publication without GL
+
+Commit `2477a6aa28` gives ordinary fetched images a native main-thread upload
+and publication path after the GL manager is disabled. Replacement is staged:
+the published GL/Metal generation and its geometry, format, alpha/pick, mip and
+accounting metadata remain authoritative until Metal submission succeeds.
+Failure restores the complete view and requeues decoded pixels; success
+publishes the new Metal generation and only then retires transitional GL.
+
+While GL remains active, the established dual-backed route is unchanged for
+complete per-frame recovery. Unsupported residual consumers remain explicit
+and fail closed; no feature was removed to lower the GL audit.
+
+### Preceding GL-disabled pressure checkpoint
 
 Commit `66581835e8` drains already-native downscale work before the global
-GL-disabled return. Metal-only fetched textures therefore keep their native
-scale-down and process-wide budget behavior without a GL name, retained scratch
-target, copy shader or live GL manager. The upload queue and GL/dual-backed
-branch remain guarded and fail closed until their native owners are complete.
-
-The extracted queue policy consumes only eligible native entries and preserves
-the original relative order of retained and unexamined work across a
-frame-budget timeout. Deterministic coverage proves native consumption,
-minimum-scan behavior and ordered resume.
+GL-disabled return. Metal-only fetched textures keep native scale-down and
+budget behavior without GL scratch state. The queue policy preserves retained
+and unexamined order across a frame-budget timeout.
 
 ### Preceding backend-neutral texture eviction checkpoint
 
@@ -74,11 +81,6 @@ Physical regressions prove pixels, mip tails, discard/memory metadata and the
 no-GL-name/no-GL-allocation invariant. The dual-backed path remains only for
 textures still participating in complete per-frame GL recovery.
 
-Source audit also corrects the former immediate action: legacy BLEND/stained
-glass is not missing. Its native main-world and impostor shaders, production
-capture and broad deterministic physical coverage exist; the owner-attended
-visual question remains queued.
-
 ### Preceding presentation checkpoint
 
 Commit `04edf7b27d` makes the exact native Metal
@@ -103,11 +105,11 @@ the CSV.
 ## Validation checkpoint
 
 - The source-exact warnings-as-errors Xcode Release build
-  `26.4.0d68243` passed at `66581835e8`.
+  `26.4.0d68245` passed at renderer source `2477a6aa28`.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices; deep strict
   signing passes.
 - Viewer executable SHA-256:
-  `893e130a20a8117243c34373b2cb16aa09f393ad1f2b836d3fc647bbe5ba26a3`.
+  `75f9555af46d2aed423120dfa21b2f73178358101cb80c08cdfde4e27baa1e46`.
   Source/packaged MSL:
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`.
   Metallib:
@@ -115,11 +117,11 @@ the CSV.
 - Source/packaged settings:
   `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
   packaged Metal-presentation default: `1`.
-- The changed production/test targets compile warnings-as-errors. The focused
-  queue slice passes 12 assertions/3 cases; full `newview_tests` passes
-  98,990/747 with the established CRT skip. Physical Metal coverage passes
-  1,972/20 focused and 2,683/100 complete. Ninja Release also links and
-  packages `alchemy-bin`. Preceding baselines remain `almetal_tests` 52,526/56,
+- The changed production/test targets compile warnings-as-errors. Staged
+  publication passes 31/1 focused; full `newview_tests` passes 98,990/747 with
+  the established CRT skip. Physical Metal coverage passes 2,003/21 focused
+  and 2,714/101 complete. Ninja Release also links and packages `alchemy-bin`.
+  Preceding baselines remain `almetal_tests` 52,526/56,
   `llappearance_gl_tests` 13,208/3 and `alrender_tests` 557,301/136.
 - The focused Metal-only upload case passes 17/17 assertions in the shared
   binary. The complete shared diagnostic suite remains non-green at
@@ -128,10 +130,12 @@ the CSV.
   case passes in that same environment.
 - `alrender_tests` passes 557,301 assertions/136 cases. The focused census slice
   passes 46 assertions/7 cases.
-- Harness structure validation, all 29 harness/tool tests and diff checks pass.
-- Strict inventory is 2,407 files / 3,220 findings / 2,909 unique
-  path/kinds/snippet records, expected exit 1. Exact report SHA-256:
-  `1f0f70ac302c12f62f75c1cc66bc1e8450ad202a5203f8a1bf7b21c630053104`.
+- Harness structure validation, all 30 harness/tool tests and diff checks pass;
+  the documented `audit_gl.py --strict` alias is tested.
+- Strict inventory is 2,407 files / 3,223 findings / 2,911 unique records,
+  expected exit 1. Its two new unique records are native-publication methods in
+  legacy-named `LLImageGL`, not GL API calls. Exact report SHA-256:
+  `c75a0f209d31b4d21651e49a9b585d7f99e8be84828a8878b9d4b298dcb7343c`.
   Both OpenGL and Metal remain linked.
 - No viewer executable was launched, driven, photographed or compared.
 
@@ -145,10 +149,10 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—native fetched textures retain pressure
-   scale-down through the GL-disabled state instead of losing behavior.
-2. **Replacement boundary:** Metal-only work runs first; upload and
-   GL/dual-backed branches remain guarded until they have native owners.
+1. **Product advancement:** yes—ordinary fetched textures retain upload,
+   retry, mip, alpha/pick, publication and accounting without a GL manager.
+2. **Replacement boundary:** publication is transactional; active-GL recovery
+   remains until residual consumers have complete native owners.
 3. **Deferred critical work:** remaining GL context/traversal/resources,
    feature/stability matrices, visual queue, strict binary/runtime audit,
    measured M1 Max performance and release proof.
@@ -158,11 +162,11 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Give ordinary fetched-image creation a native Metal publication path that does
-not generate or require a GL name. Preserve format/swizzle, mip, alpha/pick,
-threaded publication and accounting behavior; keep unsupported texture kinds
-and residual GL consumers on explicit fail-closed recovery. During the next
-owner-attended session, collect the publication census without a comparison run.
+Replace the sculpt-only fetched branch's metadata-only
+`createGLTexture(..., false)` call with an explicit backend-neutral operation.
+Preserve raw-image teardown, sculpt LOD invalidation and the no-GPU-allocation
+contract. During the next owner-attended session, collect the publication
+census without a comparison run.
 
 ## Non-negotiable open gates
 

@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `66581835e8`
+**Renderer code checkpoint:** `2477a6aa28`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -14,12 +14,14 @@ append-only archives.
 ## Active implementation checkpoint
 
 M-003, M-004, M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit
-`66581835e8` moves already-native fetched-texture pressure work before the
-global GL-disabled return. Metal-only queue entries therefore retain native
-scale-down behavior without a GL name, scratch target, copy shader or live GL
-manager. Upload and GL/dual-backed branches remain guarded and fail closed
-until their native replacements are complete. Timeout/resume preserves the
-original relative order of retained and unexamined work.
+`2477a6aa28` gives ordinary fetched images a transactional native publication
+path when the GL manager is disabled. The main-thread queue stages real Metal
+storage, preserves the published generation through failure, retries with raw
+pixels intact and retires transitional GL only after successful publication.
+Active-GL recovery remains unchanged during conversion.
+The preceding pressure checkpoint remains active. Metal-only queue entries
+retain native scale-down behavior without a GL name, scratch target, copy
+shader or live GL manager; timeout/resume preserves retained work order.
 
 The preceding eviction checkpoint remains active. The viewer-facing
 GPU-residency lifecycle releases native-only sculpt, fetched-result, ordinary
@@ -89,13 +91,13 @@ until the owner-attended review records that result.
 - `tools/metal/doctor.sh` passed on MacBookPro18,2: Apple M1 Max, 64 GiB
   unified memory, arm64 macOS 26.5.2, Xcode 26.6, Apple7 support and the Metal
   compiler present.
-- The exact `tools/metal/build.sh` invocation exited 0 at committed source
-  `66581835e8`; the warnings-as-errors Xcode Release build reported
-  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68243`
-  (`26.4.0.68243`).
+- The exact `tools/metal/build.sh` invocation exited 0 at committed renderer
+  source `2477a6aa28`; the warnings-as-errors Xcode Release build reported
+  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68245`
+  (`26.4.0.68245`).
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64;
   deep strict code-sign verification passed. Viewer executable SHA-256 is
-  `893e130a20a8117243c34373b2cb16aa09f393ad1f2b836d3fc647bbe5ba26a3`.
+  `75f9555af46d2aed423120dfa21b2f73178358101cb80c08cdfde4e27baa1e46`.
 - Source and packaged MSL are byte-identical at
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`;
   metallib SHA-256 is
@@ -103,20 +105,20 @@ until the owner-attended review records that result.
 - Source and packaged `settings_alchemy.xml` are byte-identical at
   `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
   an XML query confirms the packaged Metal-presentation default is `1`.
-- The changed production/test targets compiled warnings-as-errors. The focused
-  queue suite passed 12 assertions/3 cases and full `newview_tests` passed
-  98,990/747 with the established CRT skip. Physical Metal renderer coverage
-  passed 1,972/20 focused and 2,683/100 complete.
+- The changed production/test targets compiled warnings-as-errors. Staged
+  publication passed 31/1 focused; full `newview_tests` passed 98,990/747 with
+  the established CRT skip. Physical Metal renderer coverage passed 2,003/21
+  focused and 2,714/101 complete.
 - Ninja Release linked and packaged the complete viewer warnings-as-errors.
 - The preceding source-exact physical baselines remain `almetal_tests` at
   52,526/56, `llappearance_gl_tests` at 13,208/3 and `alrender_tests` at
   557,301/136.
-- Harness structure validation passes for 32 required files; all 29 harness/tool
-  tests and `git diff --check` pass.
-- Strict inventory is 2,407 files / 3,220 findings / 2,909 unique
-  path/kinds/snippet records, expected exit 1. No rule or suppression changed;
-  this informational count is not used as feature evidence. Report SHA-256:
-  `1f0f70ac302c12f62f75c1cc66bc1e8450ad202a5203f8a1bf7b21c630053104`.
+- Harness structure validation passes for 32 required files; all 30 harness/tool
+  tests and `git diff --check` pass. The documented strict-audit alias works.
+- Strict inventory is 2,407 files / 3,223 findings / 2,911 unique records,
+  expected exit 1. The increase is only two new legacy-class method signatures,
+  not GL API calls. Report SHA-256:
+  `c75a0f209d31b4d21651e49a9b585d7f99e8be84828a8878b9d4b298dcb7343c`.
 - Both OpenGL and Metal remain linked. The static, linked and runtime no-GL
   release gates remain open.
 - No viewer executable was launched, driven, photographed or compared.
@@ -125,10 +127,10 @@ until the owner-attended review records that result.
 
 | Area | State | Current fact |
 | --- | --- | --- |
-| M-003..M-006 platform/resources/UI | doing | Native-authoritative allocation, pressure scale-down and eviction are Metal-aware, process-wide budgeted and remain operational without a GL manager at converted lifecycle sites. Exact world/UI presentation remains Metal-first and fail-closed. Live GL context creation/shutdown remains. |
+| M-003..M-006 platform/resources/UI | doing | Ordinary fetched upload/publication, pressure scale-down and eviction are Metal-aware, budgeted and operational without a GL manager at converted lifecycle sites. Exact world/UI presentation remains Metal-first and fail-closed. Live GL context creation/shutdown remains. |
 | M-007 world/material | doing | Metal world capture consumes native bump backing; opaque fullbright is corrected. Native legacy BLEND/stained-glass implementation and deterministic coverage exist; owner-attended visual and broad material parity remain open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
-| M-009 parity/stability/no-GL | doing | Strict inventory is 3,220 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
+| M-009 parity/stability/no-GL | doing | Strict inventory is 3,223 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
 | M-011 GL authority removal | doing | The color-grade volume/tone-curve and PBR BRDF GL owners and the dynamic-preview/avatar-composite framework are retired after native replacement. Live initialization, broad traversal/resources and shutdown GL paths remain. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
@@ -136,10 +138,9 @@ until the owner-attended review records that result.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Native-authoritative images now retain
-pressure-management behavior through the GL-disabled state. Converted work
-scales real Metal storage and keeps the existing scheduling contract; no
-feature was deleted to reduce an OpenGL count.
+**Advances the complete product:** yes. Ordinary fetched images now retain
+upload, retry, mip, alpha/pick, publication and accounting behavior through the
+GL-disabled state. No feature was deleted to reduce an OpenGL count.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -149,10 +150,10 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Give ordinary fetched-image creation a native Metal publication path that
-   does not generate or require a GL name. Preserve format/swizzle, mip,
-   alpha/pick, threaded publication and accounting behavior; retain explicit
-   fail-closed recovery for unsupported texture kinds and residual GL consumers.
+1. Replace the sculpt-only fetched path's metadata-only
+   `createGLTexture(..., false)` call with an explicit backend-neutral
+   operation. Preserve raw-image teardown, sculpt LOD invalidation and the
+   invariant that this path does not allocate a GPU texture.
 2. In the next owner-attended session, collect the default-path publication
    census without adding an independent viewer-comparison run. Use measured
    failure states to repair blockers, then retire GL recovery only when complete

@@ -54,6 +54,8 @@ def audit(root: Path, include_tests: bool = False):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--mode", choices=["inventory", "strict"], default="inventory")
+    ap.add_argument("--strict", action="store_true",
+                    help="fail when findings remain (alias for --mode strict)")
     ap.add_argument("--root", type=Path, default=ROOT)
     ap.add_argument("--include-tests", action="store_true")
     ap.add_argument("--json", action="store_true", help="print machine-readable JSON")
@@ -72,7 +74,8 @@ def main():
         if data["finding_count"] > 50:
             print(f"... {data['finding_count'] - 50} additional findings (pass --output for full report)")
         print(data["limits"])
-    return 1 if args.mode == "strict" and data["finding_count"] else 0
+    mode = "strict" if args.strict else args.mode
+    return 1 if mode == "strict" and data["finding_count"] else 0
 
 
 if __name__ == "__main__":
