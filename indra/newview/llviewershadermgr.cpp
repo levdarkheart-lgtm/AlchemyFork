@@ -141,9 +141,6 @@ LLGLSLShader            gLensDirtGenProgram;
 
 // Deferred rendering shaders
 LLGLSLShader            gDeferredImpostorProgram;
-LLGLSLShader            gDeferredDiffuseProgram;
-LLGLSLShader            gDeferredDiffuseAlphaMaskProgram;
-LLGLSLShader            gDeferredNonIndexedDiffuseAlphaMaskProgram;
 LLGLSLShader            gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
 LLGLSLShader            gDeferredBumpProgram;
 LLGLSLShader            gDeferredBumpAlphaMaskProgram;
@@ -1313,9 +1310,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
     if (mShaderLevel[SHADER_DEFERRED] == 0)
     {
         gDeferredTreeShadowProgram.unload();
-        gDeferredDiffuseProgram.unload();
-        gDeferredDiffuseAlphaMaskProgram.unload();
-        gDeferredNonIndexedDiffuseAlphaMaskProgram.unload();
         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.unload();
         gDeferredBumpProgram.unload();
         gDeferredBumpAlphaMaskProgram.unload();
@@ -1434,42 +1428,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredHighlightProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         add_common_permutations(&gDeferredHighlightProgram);
         built(gDeferredHighlightProgram.createShader(), gDeferredHighlightProgram);
-    }
-
-    {
-        gDeferredDiffuseProgram.mName = "Deferred Diffuse Shader";
-        gDeferredDiffuseProgram.mFeatures.hasSrgb = true;
-        gDeferredDiffuseProgram.mShaderFiles.clear();
-        gDeferredDiffuseProgram.mShaderFiles.push_back(make_pair("deferred/diffuseV.glsl", GL_VERTEX_SHADER));
-        gDeferredDiffuseProgram.mShaderFiles.push_back(make_pair("deferred/diffuseIndexedF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredDiffuseProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-        gDeferredDiffuseProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        add_common_permutations(&gDeferredDiffuseProgram);
-        gDeferredDiffuseProgram.addPermutation("LINEAR_DIFFUSE", "1");
-        built(gDeferredDiffuseProgram.createShader(LLGLSLShader::VARIANT_RIGGED | mirror_variant()), gDeferredDiffuseProgram);
-    }
-
-    {
-        gDeferredDiffuseAlphaMaskProgram.mName = "Deferred Diffuse Alpha Mask Shader";
-        gDeferredDiffuseAlphaMaskProgram.mShaderFiles.clear();
-        gDeferredDiffuseAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/diffuseV.glsl", GL_VERTEX_SHADER));
-        gDeferredDiffuseAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/diffuseAlphaMaskIndexedF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredDiffuseAlphaMaskProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-        gDeferredDiffuseAlphaMaskProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        add_common_permutations(&gDeferredDiffuseAlphaMaskProgram);
-        gDeferredDiffuseAlphaMaskProgram.addPermutation("LINEAR_DIFFUSE", "1");
-        built(gDeferredDiffuseAlphaMaskProgram.createShader(LLGLSLShader::VARIANT_RIGGED | mirror_variant()), gDeferredDiffuseAlphaMaskProgram);
-    }
-
-    {
-        gDeferredNonIndexedDiffuseAlphaMaskProgram.mName = "Deferred Diffuse Non-Indexed Alpha Mask Shader";
-        gDeferredNonIndexedDiffuseAlphaMaskProgram.mShaderFiles.clear();
-        gDeferredNonIndexedDiffuseAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/diffuseV.glsl", GL_VERTEX_SHADER));
-        gDeferredNonIndexedDiffuseAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/diffuseAlphaMaskF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredNonIndexedDiffuseAlphaMaskProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        add_common_permutations(&gDeferredNonIndexedDiffuseAlphaMaskProgram);
-        gDeferredNonIndexedDiffuseAlphaMaskProgram.addPermutation("LINEAR_DIFFUSE", "1");
-        built(gDeferredNonIndexedDiffuseAlphaMaskProgram.createShader(mirror_variant()), gDeferredNonIndexedDiffuseAlphaMaskProgram);
     }
 
     {

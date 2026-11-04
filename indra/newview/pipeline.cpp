@@ -12156,9 +12156,8 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
     if (!capture.direct_probe_scene_active &&
         capture.direct_probe_draw_infos.contains(&params))
     {
-        // The CPU render-map enumerator already captured this exact draw.
-        // The GL draw still executes as fail-closed output, but it is no
-        // longer the producer of this native probe batch.
+        // The direct CPU render-map enumerator is authoritative for this
+        // exact draw; do not append it again when a pool is visited later.
         return;
     }
     if (!capture.complete || !params.mCount)
@@ -12270,24 +12269,20 @@ void LLPipeline::captureMetalWorldGBufferBatch(const LLDrawInfo& params,
             texture = LLViewerFetchedTexture::sWhiteImagep.get();
         }
         LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-        if (image && !image->getTexName())
+        ALMetalTexture* metal_texture = image
+            ? image->getMetalTexture() : nullptr;
+        if (!metal_texture)
         {
-            // ALTextureSlot::bindImpl/fastBind substitutes the default image
-            // when a streamed texture has no published GL object yet. Capture
-            // the texture GL actually sampled for this draw, rather than
-            // rejecting an otherwise exact native frame while the requested
-            // asset is still arriving.
+            // Preserve streamed-texture substitution without consulting a GL
+            // object name: native publication readiness is authoritative.
             LLViewerFetchedTexture* fallback =
                 LLViewerFetchedTexture::sDefaultImagep.get();
             LLImageGL* fallback_image = fallback
                 ? fallback->getGLTexture() : nullptr;
-            if (fallback_image && fallback_image->getTexName())
-            {
-                image = fallback_image;
-            }
+            metal_texture = fallback_image
+                ? fallback_image->getMetalTexture() : nullptr;
         }
-        batch.diffuse_textures[index] = image
-            ? image->getMetalTexture() : nullptr;
+        batch.diffuse_textures[index] = metal_texture;
         if (!batch.diffuse_textures[index])
         {
             capture.markIncomplete(__LINE__);

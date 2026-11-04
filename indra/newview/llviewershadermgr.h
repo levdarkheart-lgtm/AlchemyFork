@@ -197,9 +197,6 @@ extern LLGLSLShader         gImpostorProgram;
 
 // Deferred rendering shaders
 extern LLGLSLShader         gDeferredImpostorProgram;
-extern LLGLSLShader         gDeferredDiffuseProgram;
-extern LLGLSLShader         gDeferredDiffuseAlphaMaskProgram;
-extern LLGLSLShader         gDeferredNonIndexedDiffuseAlphaMaskProgram;
 extern LLGLSLShader         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
 extern LLGLSLShader         gDeferredBumpProgram;
 extern LLGLSLShader         gDeferredBumpAlphaMaskProgram; // the bump faces that can discard

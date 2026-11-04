@@ -149,6 +149,30 @@ LLDrawPoolFullbrightAlphaMask::LLDrawPoolFullbrightAlphaMask() :
 {
 }
 
+#if LL_DARWIN
+static void capture_metal_gbuffer_batches(
+    U32 type, bool rigged, bool alpha_mask, bool batch_textures,
+    bool skip_indexed_materials = false)
+{
+    gPipeline.beginMetalWorldGBufferPass(rigged, alpha_mask);
+    auto* at = gPipeline.beginRenderMap(type);
+    auto* end = gPipeline.endRenderMap(type);
+    while (at != end)
+    {
+        LLDrawInfo* info = *at;
+        LLCullResult::increment_iterator(at, end);
+        if (!info ||
+            (skip_indexed_materials &&
+             info->mMaterialSlotList.size() > 1))
+        {
+            continue;
+        }
+        gPipeline.captureMetalWorldGBufferBatch(*info, batch_textures);
+    }
+    gPipeline.endMetalWorldGBufferPass();
+}
+#endif
+
 //===============================
 //DEFERRED IMPLEMENTATION
 //===============================
@@ -158,61 +182,25 @@ S32 LLDrawPoolSimple::getNumDeferredPasses()
     return 1;
 }
 
-void LLDrawPoolSimple::renderDeferred(S32 pass)
+void LLDrawPoolSimple::renderDeferred(S32)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    LLGLDisable blend(GL_BLEND);
-
-    // The diffuse sampler decodes and the deferred pass's hoisted GL_FRAMEBUFFER_SRGB
-    // (renderGeomDeferred) re-encodes on store, so this pass shades in linear throughout
-    // while the G-buffer keeps its sRGB storage.
-    LLGLSLShader* shader = gDeferredDiffuseProgram.selectVariant();
-
-    //render static
-    shader->bind();
 #if LL_DARWIN
-    gPipeline.beginMetalWorldGBufferPass(false, false);
-#endif
-    pushBatches(LLRenderPass::PASS_SIMPLE, true, true);
-#if LL_DARWIN
-    gPipeline.endMetalWorldGBufferPass();
-#endif
-
-    //render rigged
-    shader->bind(true);
-#if LL_DARWIN
-    gPipeline.beginMetalWorldGBufferPass(true, false);
-#endif
-    pushRiggedBatches(LLRenderPass::PASS_SIMPLE_RIGGED, true, true);
-#if LL_DARWIN
-    gPipeline.endMetalWorldGBufferPass();
+    capture_metal_gbuffer_batches(
+        LLRenderPass::PASS_SIMPLE, false, false, true);
+    capture_metal_gbuffer_batches(
+        LLRenderPass::PASS_SIMPLE_RIGGED, true, false, true);
 #endif
 }
 
-void LLDrawPoolAlphaMask::renderDeferred(S32 pass)
+void LLDrawPoolAlphaMask::renderDeferred(S32)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    // Sampler decodes, the hoisted GL_FRAMEBUFFER_SRGB (renderGeomDeferred) re-encodes.
-    LLGLSLShader* shader = gDeferredDiffuseAlphaMaskProgram.selectVariant();
-
-    //render static
-    shader->bind();
 #if LL_DARWIN
-    gPipeline.beginMetalWorldGBufferPass(false, true);
-#endif
-    pushMaskBatches(LLRenderPass::PASS_ALPHA_MASK, true, true);
-#if LL_DARWIN
-    gPipeline.endMetalWorldGBufferPass();
-#endif
-
-    //render rigged
-    shader->bind(true);
-#if LL_DARWIN
-    gPipeline.beginMetalWorldGBufferPass(true, true);
-#endif
-    pushRiggedMaskBatches(LLRenderPass::PASS_ALPHA_MASK_RIGGED, true, true);
-#if LL_DARWIN
-    gPipeline.endMetalWorldGBufferPass();
+    capture_metal_gbuffer_batches(
+        LLRenderPass::PASS_ALPHA_MASK, false, true, true, true);
+    capture_metal_gbuffer_batches(
+        LLRenderPass::PASS_ALPHA_MASK_RIGGED, true, true, true, true);
 #endif
 }
 
@@ -223,26 +211,13 @@ LLDrawPoolGrass::LLDrawPoolGrass() :
 
 }
 
-void LLDrawPoolGrass::renderDeferred(S32 pass)
+void LLDrawPoolGrass::renderDeferred(S32)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    {
-        // Shades in linear like its diffusealphamask siblings: the program's mLinearDiffuse
-        // makes pushBatch decode the diffuse on the sampler, and the hoisted
-        // GL_FRAMEBUFFER_SRGB (renderGeomDeferred) re-encodes the store.
-        LLGLSLShader* shader = gDeferredNonIndexedDiffuseAlphaMaskProgram.selectVariant();
-        shader->bind();
-        shader->setMinimumAlpha(0.5f);
-
-        //render grass
 #if LL_DARWIN
-        gPipeline.beginMetalWorldGBufferPass(false, true);
+    capture_metal_gbuffer_batches(
+        LLRenderPass::PASS_GRASS, false, true, false);
 #endif
-        LLRenderPass::pushBatches(LLRenderPass::PASS_GRASS);
-#if LL_DARWIN
-        gPipeline.endMetalWorldGBufferPass();
-#endif
-    }
 }
 
 
