@@ -17,9 +17,10 @@ M-003, M-004, M-008, M-009 and M-011 are `doing`; M-012 is complete. Commits
 decoded-memory and local-file/UUID fetched startup textures publish truthfully
 through Metal when GL is disabled. Native-only requests no longer fake the
 legacy GL-created restoration bit; active initialized GL keeps it for
-fail-closed recovery. Exact shipped missing/white/flat-normal/irradiance/alpha
-assets retain pixels, formats, swizzles, mips, categories and accounting with
-zero GL backing. This is native replacement, not feature deletion.
+fail-closed recovery. Test checkpoint `6cee16c030` covers all eleven explicit
+local preloads, whose exact pixels, formats, swizzles, mips, categories and
+accounting survive with zero GL backing. This is native replacement, not
+feature deletion.
 
 The preceding terrain checkpoint remains active. Commit `aaf3bbcd2a` makes
 local terrain-paint baking Metal-authoritative while retaining full-resolution
@@ -104,10 +105,10 @@ until the owner-attended review records that result.
   `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
   an XML query confirms the packaged Metal-presentation default is `1`.
 - The changed production targets compiled and linked warnings-as-errors. The
-  focused physical startup-asset case passed 107 assertions and proves exact
+  focused physical complete-preload case passed 234 assertions and proves exact
   decoded pixels, formats/swizzle, mips, native residency, false GL-created
   state, zero GL backing and teardown. `llrender_gl_fresh_tests` passed
-  3,470/106 under Metal API validation.
+  3,597/106 under Metal API validation.
 - `almetal_tests` passed 52,526/56 under Metal API validation and
   `newview_tests` passed 98,990/747 with the established CRT skip. Ninja and
   Xcode both linked and packaged the complete viewer warnings-as-errors.
@@ -124,7 +125,7 @@ until the owner-attended review records that result.
 
 | Area | State | Current fact |
 | --- | --- | --- |
-| M-003..M-006 platform/resources/UI | doing | System/default/local raw, decoded-memory and shipped startup fetched textures publish natively with truthful state when GL is disabled; report screenshots, local previews, HDRI, fetched publication, sculpt metadata, pressure scale-down and eviction are backend-correct at converted sites. Exact presentation remains Metal-first/fail-closed. Live GL context creation/shutdown remains. |
+| M-003..M-006 platform/resources/UI | doing | System/default/local raw, decoded-memory and all eleven explicit local preloads publish natively with truthful state when GL is disabled; report screenshots, local previews, HDRI, fetched publication, sculpt metadata, pressure scale-down and eviction are backend-correct at converted sites. Exact presentation remains Metal-first/fail-closed. Live GL context creation/shutdown remains. |
 | M-007 world/material | doing | Local terrain-paint baking is Metal-authoritative with full geometry/weights/mips. Metal world capture consumes native bump backing; native legacy BLEND exists, while owner-attended visual and broad material parity remain open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,220 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
@@ -148,8 +149,8 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Trace the remaining preload assets and `LLUIImageList` callback/clip/scale
-   readiness through the GL-disabled main-thread fetched create queue.
+1. Trace `LLUIImageList` declarations and callback/clip/scale readiness through
+   the GL-disabled main-thread fetched create queue.
 2. Add deterministic lifecycle coverage, then convert the next bounded GL
    owner only after every consumer and failure path has a native replacement.
    Queue visual questions for owner-attended review; do not drive comparisons.

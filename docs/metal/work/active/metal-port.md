@@ -15,7 +15,7 @@ checkpoint detail belongs in the indexed archive.
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
 | M-002 | GL/shader/pass/resource and binary inventory | doing | 2,407 files and 3,220 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Exact HDR/non-HDR world, presentation and ordered-UI Metal publication is default-on, fail-closed and machine-censused by current-frame failure boundary; dead restore authority/methods and redundant shutdown hooks are deleted. Live GL context creation/shutdown remains. |
-| M-004 | Metal resources, transfers, readback and synchronization | doing | System/default/local raw, decoded-memory and shipped startup fetched textures publish natively with truthful state after GL disable; report-screenshot/local-bitmap/HDRI/fetched publication, sculpt metadata, pressure scale-down and eviction work natively at converted sites. |
+| M-004 | Metal resources, transfers, readback and synchronization | doing | System/default/local raw, decoded-memory and all eleven explicit local preloads publish natively with truthful state after GL disable; report-screenshot/local-bitmap/HDRI/fetched publication, sculpt metadata, pressure scale-down and eviction work natively at converted sites. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and font atlases are native-only; owner-attended text/emoji and moving-media parity remain open. |
 | M-007 | World scene and material correctness | doing | Local terrain-paint baking owns full geometry/weight/mip production in Metal. World capture consumes native bumps; native legacy BLEND exists, while owner-attended visual and broad parity remain open. |
@@ -35,9 +35,9 @@ Commits `8a4c9aee97`, `3984366670` and `9cd0f05401` select direct Metal
 publication for system/default/local raw, decoded-memory and local-file/UUID
 fetched startup textures when GL is disabled. Native-only requests no longer
 claim the legacy GL-created restoration bit; initialized active GL retains it
-for fail-closed recovery. Exact shipped missing/white/flat-normal/irradiance/
-alpha assets retain pixels, formats, swizzles, mips, categories and accounting
-with zero GL backing.
+for fail-closed recovery. Test checkpoint `6cee16c030` covers every explicit
+local preload: pixels, formats, swizzles, mips, categories and accounting
+survive with zero GL backing.
 
 While GL is active, both factories intentionally retain their established
 dual-backed construction. Fail-closed presentation still needs exact recovery
@@ -108,9 +108,9 @@ the CSV.
 - Source/packaged settings:
   `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
   packaged Metal-presentation default: `1`.
-- Changed targets compile warnings-as-errors. The focused physical shipped
-  startup-texture case passes 107 assertions; `llrender_gl_fresh_tests` passes
-  3,470/106 and `almetal_tests` passes 52,526/56 under Metal API validation.
+- Changed targets compile warnings-as-errors. The focused physical complete
+  startup-preload case passes 234 assertions; `llrender_gl_fresh_tests` passes
+  3,597/106 and `almetal_tests` passes 52,526/56 under Metal API validation.
   `newview_tests` passes 98,990/747 with the established skip. Ninja and Xcode
   both link/package `alchemy-bin`; preceding broad baselines remain green.
 - The focused Metal-only upload case passes 17/17 assertions in the shared
@@ -152,10 +152,10 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Trace the remaining preload assets and `LLUIImageList` callback/clip/scale
-readiness through the GL-disabled main-thread create queue. Add deterministic
-lifecycle coverage, then convert the next bounded owner without deleting
-user-visible or recovery behavior. Visual evidence remains owner-attended.
+Trace `LLUIImageList` declarations and callback/clip/scale readiness through
+the GL-disabled main-thread create queue. Add deterministic lifecycle coverage,
+then convert the next bounded owner without deleting user-visible or recovery
+behavior. Visual evidence remains owner-attended.
 
 ## Non-negotiable open gates
 
