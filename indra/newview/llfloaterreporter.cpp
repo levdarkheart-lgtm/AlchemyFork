@@ -942,7 +942,12 @@ void LLFloaterReporter::takeScreenshot(bool use_prev_screenshot)
     // store in the image list so it doesn't try to fetch from the server
     LLPointer<LLViewerFetchedTexture> image_in_list =
         LLViewerTextureManager::getFetchedTexture(mResourceDatap->mAssetInfo.mUuid);
-    image_in_list->createGLTexture(0, mImageRaw, 0, true, LLGLTexture::OTHER);
+    if (!image_in_list->createMetalTexture(0, mImageRaw, LLGLTexture::OTHER))
+    {
+        LL_WARNS("Metal")
+            << "Failed to publish the abuse-report screenshot preview to Metal: "
+            << mResourceDatap->mAssetInfo.mUuid << LL_ENDL;
+    }
 
     // the texture picker then uses that texture
     LLTextureCtrl* texture = getChild<LLTextureCtrl>("screenshot");

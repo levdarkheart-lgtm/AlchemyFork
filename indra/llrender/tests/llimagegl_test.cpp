@@ -2328,6 +2328,66 @@ namespace
         CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
     }
 
+    TEST_CASE_METHOD(llimagegl_data, "LLGLTexture: native RGB screenshot preview expands and mipmaps without GL", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        constexpr U16 W = 16;
+        constexpr U16 H = 8;
+        const U64 baseline_bytes = LLImageGL::getTextureBytesAllocated();
+        LLPointer<LLGLTexture> preview = new LLGLTexture(/*usemipmaps=*/true);
+        REQUIRE(preview->createMetalTexture(
+            0, makeRaw(W, H, 3, 0x5a).get(), LLGLTexture::OTHER));
+
+        CHECK(preview->hasGPUTexture());
+        CHECK_FALSE(preview->hasGLTexture());
+        CHECK(preview->getFullWidth() == W);
+        CHECK(preview->getFullHeight() == H);
+        CHECK(preview->getComponents() == 3);
+
+        LLImageGL* image = preview->getGLTexture();
+        REQUIRE(image);
+        CHECK(image->getTexName() == 0);
+        REQUIRE(image->getMetalTexture());
+        CHECK(image->getMetalTexture()->descriptor().format ==
+              ALMetalPixelFormat::rgba8_unorm_srgb);
+        CHECK(image->getMetalTexture()->descriptor().mipmap_level_count == 5);
+        CHECK(LLImageGL::getTextureBytesAllocated() ==
+              baseline_bytes + static_cast<U64>(
+                  static_cast<S64>(image->getTextureMemory())));
+
+        std::array<U8, W * H * 4> base{};
+        REQUIRE(image->getMetalTexture()->readback(
+            *device, 0, 0, {}, base.data(), W * 4, &error));
+        INFO(error);
+        for (std::size_t pixel = 0; pixel < W * H; ++pixel)
+        {
+            CHECK(base[pixel * 4 + 0] == 0x5a);
+            CHECK(base[pixel * 4 + 1] == 0x5a);
+            CHECK(base[pixel * 4 + 2] == 0x5a);
+            CHECK(base[pixel * 4 + 3] == 0xff);
+        }
+
+        constexpr std::array<U8, 4> expected_tail{{0x5a, 0x5a, 0x5a, 0xff}};
+        std::array<U8, 4> tail{};
+        REQUIRE(image->getMetalTexture()->readback(
+            *device, 4, 0, {}, tail.data(), tail.size(), &error));
+        INFO(error);
+        CHECK(tail == expected_tail);
+
+        preview->destroyGPUTexture();
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLGLTexture: metadata-only publication needs no live GL manager or GPU backing", "[LLImageGL][almetal]")
     {
         std::string error;
