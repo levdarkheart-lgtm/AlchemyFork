@@ -354,7 +354,8 @@ ALMetalBenchmarkRecorder::Result ALMetalBenchmarkRecorder::record(
             NativePresentationState::submitted;
     const bool valid_presentation_snapshot = presentation_state &&
         frame.native_exact == native_submitted &&
-        frame.gl_fallback == (native_requested && !native_submitted);
+        (!frame.gl_fallback ||
+         (native_requested && !native_submitted));
     if (!valid_presentation_snapshot)
     {
         if (mSamplesWritten != 0)

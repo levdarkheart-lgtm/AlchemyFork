@@ -30,11 +30,15 @@ env \
   not from the default setting. `native_requested` records enabled Metal
   authority, `native_attempted` distinguishes a transaction that reached the
   ordered UI capture, `native_exact` requires a committed drawable,
-  `gl_fallback` records a requested-but-unpublished frame whose GL swap
-  remained visible, and `native_presentation_state` identifies the boundary:
+  `gl_fallback` independently records whether a requested-but-unpublished
+  frame actually exposed a GL swap. It is zero for native-only authority that
+  retains the prior Metal drawable after a failed current-frame transaction.
+  `native_presentation_state` identifies the boundary:
   `disabled`, `not_attempted`, `capture_started`, `capture_failed`,
   `surface_unavailable`, `surface_submit_failed` or `submitted`. Contradictory
-  flags fail the run rather than producing ambiguous evidence.
+  flags fail the run rather than producing ambiguous evidence; a fallback may
+  only accompany a requested, unpublished native frame, but such a frame does
+  not imply that a fallback occurred.
 - The collector records wall/frame intervals, draw calls and `metal_submissions`: the delta of the process-wide count incremented after each successful `ALMetalCommandBuffer::commit()`. That delta includes all native-wrapper commits in the sample interval, including worker activity.
 - During an armed run only, each newly committed native-wrapper command installs a completion handler. Monotonic `metal_completed` and `metal_timed` deltas distinguish completed commands from commands with valid `GPUStartTime`/`GPUEndTime`; `metal_gpu_ms` is the sum of those completed app-owned Metal command durations observed between two CPU sampling points. A mutex makes each cumulative timing snapshot internally coherent. The M1 Max physical regression proves one real blit produces one submitted, completed and timed command plus a positive duration, normally and with Metal API validation.
 - Completion is asynchronous, so `metal_completed`, `metal_timed` and `metal_gpu_ms` can lag the frame that submitted the work. `metal_gpu_ms` excludes legacy-driver work and is neither whole-frame GPU duration nor pass attribution. Treat all four Metal columns as secondary diagnostics and average them only across a steady consecutive sequence. Use Instruments/Metal capture for per-label attribution and independent GPU evidence.

@@ -251,4 +251,29 @@ TEST_CASE("ALMetalBenchmark rejects inconsistent presentation telemetry",
     CHECK(error.find("presentation telemetry") != std::string::npos);
     CHECK(recorder.samplesWritten() == 1);
 }
+
+TEST_CASE("ALMetalBenchmark accepts an unpublished native-only frame without GL fallback",
+          "[ALMetalBenchmark]")
+{
+    benchmark_file output;
+    ALMetalBenchmarkRecorder recorder(output.config(0, 1, false));
+    auto native_only = frame(70, 700, false);
+    native_only.native_presentation_state =
+        ALMetalBenchmarkRecorder::NativePresentationState::capture_failed;
+    native_only.gl_fallback = false;
+    std::string error;
+    CHECK(recorder.record(native_only, &error) ==
+          ALMetalBenchmarkRecorder::Result::warming);
+    native_only.frame_index = 71;
+    native_only.timestamp = ALMetalBenchmarkRecorder::Clock::time_point(
+        std::chrono::milliseconds(710));
+    native_only.metal_command_buffers_committed += 2;
+    native_only.metal_timing_submitted += 2;
+    native_only.metal_timing_completed += 2;
+    native_only.metal_timing_valid += 2;
+    native_only.metal_gpu_time_nanoseconds += 6'000'000;
+    CHECK(recorder.record(native_only, &error) ==
+          ALMetalBenchmarkRecorder::Result::complete);
+    CHECK(error.empty());
+}
 }

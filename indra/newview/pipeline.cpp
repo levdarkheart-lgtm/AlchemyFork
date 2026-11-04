@@ -440,7 +440,6 @@ struct LLPipeline::MetalWorldSimpleCapture
 {
     static constexpr U32 max_failed_frames = 120;
     static constexpr U32 max_world_ui_probe_attempts = 3;
-    static constexpr U32 max_continuous_world_ui_failures = 3;
 
     struct ImpostorTextures
     {
@@ -476,21 +475,18 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> reference_still_target;
     std::unique_ptr<ALMetalRenderTarget> presentation_target;
     U32 presentation_frame = std::numeric_limits<U32>::max();
-    // Complete world + ordered UI output. This remains offscreen until the
-    // drawable publication owner is explicitly unlocked; retaining it here
-    // lets the integrated renderer prove the whole transaction without
-    // disturbing the authoritative GL surface.
+    // Complete world + ordered UI output. Retaining it here lets the
+    // integrated renderer prove and publish the whole transaction without
+    // involving the legacy drawable.
     std::unique_ptr<ALMetalTexture> world_ui_target;
     U32 world_ui_frame = std::numeric_limits<U32>::max();
     bool world_ui_capture_active = false;
     bool world_ui_probe_attempted = false;
     U32 world_ui_probe_attempts = 0;
-    // The hidden development publication setting may advance every exact
-    // frame only after one complete transaction has reached the drawable.
-    // A short failure streak pauses further presentation transactions for
-    // max_failed_frames so an unsupported runtime owner cannot create an
-    // unbounded duplicate-render loop while GL remains authoritative.
-    bool world_ui_continuous_unlocked = false;
+    // Native presentation is mandatory. An incomplete transaction leaves the
+    // previous Metal drawable visible and the next frame retries; it never
+    // exposes the legacy drawable as a per-frame fallback.
+    bool world_ui_continuous_unlocked = true;
     U32 world_ui_last_submitted_frame =
         std::numeric_limits<U32>::max();
     U32 world_ui_presentation_state_frame =
@@ -500,7 +496,6 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 world_ui_continuous_failure_streak = 0;
     U32 world_ui_continuous_last_failure_frame =
         std::numeric_limits<U32>::max();
-    bool world_ui_continuous_cooldown_reported = false;
     bool world_ui_chain_active = false;
     bool world_ui_chain_counted = false;
     // This transaction belongs to the synchronous snapshot consumer rather
@@ -557,8 +552,8 @@ struct LLPipeline::MetalWorldSimpleCapture
     std::unique_ptr<ALMetalRenderTarget> impostor_bake_target;
     std::vector<ALMetalWorldSimpleBatch> batches;
     // Reflection probes enumerate the CPU-owned opaque render maps directly.
-    // Retain exact draw/face identities so the following GL fallback traversal
-    // does not mirror those same batches into Metal a second time.
+    // Retain exact draw/face identities so the following legacy traversal does
+    // not mirror those same batches into Metal a second time.
     std::unordered_set<const LLDrawInfo*> direct_probe_draw_infos;
     std::unordered_set<const LLFace*> direct_probe_tree_faces;
     std::unordered_set<const LLFace*> direct_probe_terrain_faces;
@@ -853,9 +848,7 @@ struct LLPipeline::MetalWorldSimpleCapture
 
 static bool metalWorldPresentationRequested()
 {
-    static LLCachedControl<bool> publish_world(
-        gSavedSettings, "ALMetalWorldPresentation", true);
-    return publish_world;
+    return true;
 }
 
 static bool metalDebugColorRequested()
@@ -1875,7 +1868,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.world_ui_capture_active = false;
         capture.world_ui_probe_attempted = false;
         capture.world_ui_probe_attempts = 0;
-        capture.world_ui_continuous_unlocked = false;
+        capture.world_ui_continuous_unlocked = true;
         capture.world_ui_last_submitted_frame =
             std::numeric_limits<U32>::max();
         capture.world_ui_presentation_state_frame =
@@ -1885,7 +1878,6 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.world_ui_continuous_failure_streak = 0;
         capture.world_ui_continuous_last_failure_frame =
             std::numeric_limits<U32>::max();
-        capture.world_ui_continuous_cooldown_reported = false;
         capture.world_ui_chain_active = false;
         capture.world_ui_chain_counted = false;
         capture.world_ui_chain_snapshot = false;
@@ -2063,11 +2055,10 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.lens_dirt_params != native_dirt.plate &&
         isMainWorldPass() && mRT == &mMainRT;
 
-    // Charge a prior continuous publication transaction that did not reach
-    // the drawable. The world frame began with a transparent Metal surface,
-    // so the matching GL swap was already the visible fallback. Three such
-    // frames pause publication transactions for the normal readiness window;
-    // independent native refresh owners may continue without a retry storm.
+    // Count a prior mandatory native transaction that did not reach the
+    // drawable. This is telemetry only: native authority retains the previous
+    // drawable and retries every eligible frame instead of exposing or
+    // cooling down to a GL swap.
     if (main_world_capture &&
         capture.world_ui_continuous_unlocked &&
         capture.world_ui_chain_active &&
@@ -2083,94 +2074,19 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.world_ui_continuous_last_failure_frame =
             capture.continuous_world_frame;
     }
-    const bool continuous_cooldown_elapsed =
-        capture.world_ui_continuous_failure_streak >=
-            MetalWorldSimpleCapture::max_continuous_world_ui_failures &&
-        capture.world_ui_continuous_last_failure_frame !=
-            std::numeric_limits<U32>::max() &&
-        gFrameCount - capture.world_ui_continuous_last_failure_frame >=
-            MetalWorldSimpleCapture::max_failed_frames;
-    if (continuous_cooldown_elapsed)
-    {
-        capture.world_ui_continuous_failure_streak = 0;
-        capture.world_ui_continuous_cooldown_reported = false;
-    }
-    const bool continuous_world_ui_paused =
-        capture.world_ui_continuous_failure_streak >=
-            MetalWorldSimpleCapture::max_continuous_world_ui_failures;
-    if (continuous_world_ui_paused &&
-        !capture.world_ui_continuous_cooldown_reported)
-    {
-        capture.world_ui_continuous_cooldown_reported = true;
-        LL_INFOS("Metal")
-            << "Continuous native world/UI publication retained GL after "
-            << capture.world_ui_continuous_failure_streak
-            << " incomplete current-frame transactions; publication "
-               "transactions pause for "
-            << MetalWorldSimpleCapture::max_failed_frames
-            << " frames before one exact retry"
-            << LL_ENDL;
-    }
     const bool request_continuous_world_ui =
         capture.world_ui_continuous_unlocked &&
-        metalWorldPresentationRequested() &&
-        !continuous_world_ui_paused;
+        metalWorldPresentationRequested();
 
     // The final presentation can intentionally fail closed for one frame
-    // while renderFinalize refreshes the bounded lens-fit cache. Give that
-    // handoff a few independent world transactions, but never turn an
-    // incomplete UI census into permanent duplicate rendering.
+    // while renderFinalize refreshes the bounded lens-fit cache. Mandatory
+    // native authority retries the handoff on the next eligible frame.
     const bool presentation_requested = metalWorldPresentationRequested();
     const bool debug_color_requested =
         main_world_capture && metalDebugColorRequested();
-    if (!snapshot_request && main_world_capture && !capture.frame_active &&
-        capture.attempted &&
-        !capture.world_ui_continuous_unlocked &&
-        !capture.world_ui_probe_attempted &&
-        !capture.world_ui_chain_exhausted_reported &&
-        capture.world_ui_chain_attempts >=
-            MetalWorldSimpleCapture::max_world_ui_probe_attempts &&
-        capture.continuous_world_frame != gFrameCount &&
-        canCaptureMetalWorldPresentation())
-    {
-        capture.world_ui_chain_exhausted_reported = true;
-        if (presentation_requested)
-        {
-            LL_INFOS("Metal")
-                << "Opt-in native world/UI presentation retained GL after "
-                << capture.world_ui_chain_attempts
-                << " startup transactions; exact retries continue at the "
-                   "failure cooldown while GL remains authoritative"
-                << LL_ENDL;
-        }
-        else
-        {
-            LL_INFOS("Metal")
-                << "Native world/UI presentation retained GL after "
-                   "exhausting "
-                << capture.world_ui_chain_attempts
-                << " bounded end-to-end transactions; independent native "
-                   "refresh owners remain eligible"
-                << LL_ENDL;
-        }
-    }
-    const bool world_ui_retry_due =
-        capture.world_ui_chain_attempts == 0 ||
-        capture.world_ui_chain_last_attempt_frame ==
-            std::numeric_limits<U32>::max() ||
-        gFrameCount - capture.world_ui_chain_last_attempt_frame >=
-            MetalWorldSimpleCapture::max_failed_frames;
-    const bool request_bounded_world_ui_probe =
-        !snapshot_request &&
-        !capture.world_ui_continuous_unlocked &&
-        !capture.world_ui_probe_attempted &&
-        (capture.world_ui_chain_attempts <
-             MetalWorldSimpleCapture::max_world_ui_probe_attempts ||
-         presentation_requested) &&
-        world_ui_retry_due;
     const bool request_world_ui_chain = main_world_capture &&
         (snapshot_request || request_continuous_world_ui ||
-         request_bounded_world_ui_probe || debug_color_requested) &&
+         debug_color_requested) &&
         canCaptureMetalWorldPresentation();
     if (!capture.frame_active &&
         (snapshot_request ||
@@ -2185,8 +2101,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         // native scope sample requests the same refresh without making the
         // chain permanently continuous. Retire only
         // per-frame products and attempt gates; persistent probe, shadow and
-        // history resources stay live. A failed stage therefore falls back
-        // to GL for that frame and retries later instead of wedging a gate.
+        // history resources stay live. A failed stage therefore retains the
+        // previous Metal drawable and retries instead of wedging a gate.
         capture.target.reset();
         capture.composed_light_target.reset();
         capture.opaque_post_deferred_target.reset();
@@ -2238,8 +2154,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         if (capture.renderer_build)
         {
             // Pipeline creation can be deliberately expensive under Metal's
-            // shader-validation layer. The worker owns that wait while this
-            // and every following frame remains completely GL-authoritative.
+            // shader-validation layer. The worker owns that wait while the
+            // opaque native surface retains its previous drawable.
             return;
         }
 
@@ -2388,8 +2304,8 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         }
         LL_INFOS("Metal")
             << "Native " << build->owner
-            << " renderer pipelines are warming asynchronously; visible "
-               "GL remains responsive and authoritative"
+            << " renderer pipelines are warming asynchronously; the native "
+               "surface retains its previous drawable"
             << LL_ENDL;
         return;
     }
@@ -3989,7 +3905,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.world_ui_capture_active = false;
         capture.world_ui_probe_attempted = false;
         capture.world_ui_probe_attempts = 0;
-        capture.world_ui_continuous_unlocked = false;
+        capture.world_ui_continuous_unlocked = true;
         capture.world_ui_last_submitted_frame =
             std::numeric_limits<U32>::max();
         capture.world_ui_presentation_state_frame =
@@ -3999,7 +3915,6 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.world_ui_continuous_failure_streak = 0;
         capture.world_ui_continuous_last_failure_frame =
             std::numeric_limits<U32>::max();
-        capture.world_ui_continuous_cooldown_reported = false;
         capture.world_ui_chain_active = false;
         capture.world_ui_chain_counted = false;
         capture.world_ui_chain_snapshot = false;
@@ -10371,8 +10286,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                             else
                             {
                                 LL_WARNS("Metal")
-                                    << "Native world final presentation retained "
-                                       "GL: " << presentation_error << LL_ENDL;
+                                    << "Native world final presentation failed "
+                                       "closed; the previous Metal drawable "
+                                       "remains visible: "
+                                    << presentation_error << LL_ENDL;
                             }
                         }
                     }
@@ -10380,7 +10297,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 else
                 {
                     LL_WARNS("Metal")
-                        << "Native world display-post source retained GL: "
+                        << "Native world display-post source is unavailable; "
+                           "the current native transaction cannot publish: "
                         << display_error << LL_ENDL;
                 }
                 if (post_batch_active)
@@ -10424,10 +10342,10 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         LL_WARNS("Metal")
                             << (committing_opaque_post
                                     ? "Native world opaque/optical "
-                                      "presentation batch retained GL "
+                                      "presentation batch failed closed "
                                       "after commit failure: "
                                     : "Native world optical/presentation "
-                                      "post batch retained GL after "
+                                      "post batch failed closed after "
                                       "commit failure: ")
                             << display_error << LL_ENDL;
                     }
@@ -10443,16 +10361,14 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                 {
                     LL_INFOS_ONCE("Metal")
                         << "Native world final BGRA8 presentation is "
-                           "available for ordered UI composition; visible "
-                           "GL remains authoritative"
+                           "available for ordered UI composition"
                         << LL_ENDL;
                 }
                 if (display_post_available)
                 {
                     LL_INFOS_ONCE("Metal")
                         << "Native world display-post source is available; "
-                           "visible GL remains authoritative while scopes "
-                           "require this exact native source"
+                           "scopes require this exact native source"
                         << LL_ENDL;
                 }
             }
@@ -10484,7 +10400,8 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
                         capture.markIncomplete(__LINE__);
                         LL_WARNS("Metal")
                             << "Native world opaque/optical post batch "
-                               "retained GL after commit failure: "
+                               "failed closed after commit failure; the "
+                               "previous Metal drawable remains visible: "
                             << post_batch_error << LL_ENDL;
                     }
                 }
@@ -11078,12 +10995,9 @@ void LLPipeline::endMetalWorldUICompositionCapture()
                "texture was retained after its command submission"
             << LL_ENDL;
 
-        // The Metal-first path publishes one bounded exact probe before it
-        // unlocks continuous publication. Every later frame still starts
-        // transparent and earns opacity independently. Only a committed
-        // current-frame drawable suppresses its matching GL swap, so the
-        // transitional GL owner remains fail-closed rather than becoming a
-        // second visible backend.
+        // Native publication is mandatory. A committed current-frame
+        // drawable advances the surface; failure retains the previous Metal
+        // drawable and never reveals a second visible backend.
         if (presentation_requested)
         {
             if (surface_submitted)
@@ -11093,32 +11007,22 @@ void LLPipeline::endMetalWorldUICompositionCapture()
                 capture.world_ui_continuous_failure_streak = 0;
                 capture.world_ui_continuous_last_failure_frame =
                     std::numeric_limits<U32>::max();
-                capture.world_ui_continuous_cooldown_reported = false;
-                if (!capture.world_ui_continuous_unlocked)
-                {
-                    capture.world_ui_continuous_unlocked = true;
-                    LL_INFOS("Metal")
-                        << "The first exact native world + ordered UI/HUD "
-                           "frame was submitted without a GL swap; "
-                           "continuous exact publication is now unlocked"
-                        << LL_ENDL;
-                }
                 capture.world_ui_probe_attempted = false;
                 LL_INFOS_ONCE("Metal")
                     << "Continuous native world/UI publication is active; "
-                       "each incomplete frame falls back to its GL swap"
+                       "each incomplete frame retains the previous native "
+                       "drawable"
                     << LL_ENDL;
             }
             else
             {
-                gGL.setMetalPresentationOpaque(false);
                 capture.world_ui_target.reset();
                 capture.world_ui_frame = std::numeric_limits<U32>::max();
                 capture.world_ui_probe_attempted = false;
                 LL_INFOS_ONCE("Metal")
-                    << "Native world/UI publication failed closed; the GL "
-                       "swap remains authoritative while the bounded probe "
-                       "retries"
+                    << "Native world/UI publication failed closed; the "
+                       "opaque surface retains its previous Metal drawable "
+                       "while the next frame retries"
                     << LL_ENDL;
             }
         }
@@ -11131,21 +11035,17 @@ void LLPipeline::endMetalWorldUICompositionCapture()
     }
     else
     {
-        if (presentation_requested)
-        {
-            gGL.setMetalPresentationOpaque(false);
-        }
         capture.world_ui_frame = std::numeric_limits<U32>::max();
         // An unsupported runtime family is evidence, not a permanent latch:
-        // let the bounded probe retry on another independent frame.
+        // mandatory native authority retries on the next eligible frame.
         if (!capture.world_ui_chain_snapshot)
         {
             capture.world_ui_probe_attempted = false;
         }
         LL_INFOS_ONCE("Metal")
             << "The ordered native world/UI transaction failed closed; "
-               "visible GL remains authoritative while the bounded probe "
-               "retries. First exactness failure: "
+               "the previous Metal drawable remains authoritative while "
+               "the next frame retries. First exactness failure: "
             << capture_failure
             << LL_ENDL;
     }

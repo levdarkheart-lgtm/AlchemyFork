@@ -61,7 +61,7 @@ class PerfTests(unittest.TestCase):
     def write_capture(self, path, variant, exact=1, width=2048,
                       metal_submissions=None, metal_completed=None,
                       metal_timed=None, metal_gpu_ms=None,
-                      presentation_state=None):
+                      presentation_state=None, gl_fallback=None):
         headers = ["scenario", "variant", "frame_ms", "frame_index",
                    "source_sha", "build_type", "drawable_width",
                    "drawable_height", "quality_profile", "native_exact"]
@@ -100,9 +100,11 @@ class PerfTests(unittest.TestCase):
                         requested = presentation_state != "disabled"
                         attempted = presentation_state not in (
                             "disabled", "not_attempted")
+                        fallback = requested and not exact \
+                            if gl_fallback is None else gl_fallback
                         row.extend([
                             int(requested), int(attempted),
-                            int(requested and not exact), presentation_state,
+                            int(fallback), presentation_state,
                         ])
                     writer.writerow(row)
                     frame_index += 1
@@ -197,6 +199,22 @@ class PerfTests(unittest.TestCase):
             self.assertEqual(300, scene["gl_fallback"])
             self.assertEqual(300, scene["states"]["capture_failed"])
             self.assertEqual(1.0, scene["gl_fallback_rate"])
+
+    def test_native_only_failure_does_not_report_gl_fallback(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "capture.csv"
+            self.write_capture(
+                path, "candidate", exact=0,
+                presentation_state="capture_failed", gl_fallback=0)
+            capture = self.perf.load_capture(path)
+            report = self.perf.summarize_presentation_census(
+                capture, [s["id"] for s in self.spec["scenarios"]])
+            self.assertTrue(report["available"])
+            scene = report["scenes"][0]
+            self.assertEqual(300, scene["attempted"])
+            self.assertEqual(0, scene["gl_fallback"])
+            self.assertEqual(300, scene["states"]["capture_failed"])
+            self.assertEqual(0.0, scene["gl_fallback_rate"])
 
     def test_inconsistent_native_presentation_census_is_rejected(self):
         with tempfile.TemporaryDirectory() as d:

@@ -202,32 +202,32 @@ void display_startup()
 
     if (gViewerWindow && gViewerWindow->getWindow())
     {
-        bool native_presentation = false;
 #if LL_DARWIN
-        native_presentation = gGL.metalUIFrameHasCompleteCoverage() &&
-                              gGL.setMetalPresentationOpaque(true);
-        if (!native_presentation)
+        const bool native_coverage = gGL.metalUIFrameHasCompleteCoverage();
+        const bool native_surface = gGL.setMetalPresentationOpaque(true);
+        const bool native_presentation = native_coverage && native_surface;
+        // The native surface is the only visible presentation owner. Missing
+        // coverage is exposed as a native defect; never reveal the GL drawable
+        // behind it as a startup/login fallback.
+        if (native_presentation)
         {
-            gGL.setMetalPresentationOpaque(false);
-        }
-#endif
-        if (!native_presentation)
-        {
-            gViewerWindow->getWindow()->swapBuffers();
+            LL_INFOS_ONCE("Metal")
+                << "Complete startup/login frames are presented by the "
+                   "opaque native Metal surface without a GL swap"
+                << LL_ENDL;
         }
         else
         {
-            static bool logged_native_presentation = false;
-            if (!logged_native_presentation)
-            {
-                logged_native_presentation = true;
-                LL_INFOS("Metal") << "Complete startup/login frames are presented "
-                                     << "by the opaque native Metal surface without a GL swap"
-                                     << LL_ENDL;
-            }
+            LL_WARNS_ONCE("Metal")
+                << "A startup/login frame was not completely reproduced by "
+                   "Metal; the opaque native surface remains authoritative"
+                << LL_ENDL;
         }
-        // Whether GL swapped or Metal presented, finish the login frame: the
-        // uniform rings and queries key their reuse on completed GPU frames.
+#else
+        gViewerWindow->getWindow()->swapBuffers();
+#endif
+        // Finish the login frame: uniform rings and queries key their reuse on
+        // completed GPU frames even when native coverage is incomplete.
         gGL.endFrame();
     }
 }
@@ -564,7 +564,7 @@ static void record_metal_benchmark_frame(bool for_snapshot, bool gl_presented)
             << config->sample_frames << " consecutive samples"
             << (config->require_exact_native
                     ? "; every sample requires exact native presentation"
-                    : "; GL or native presentation is accepted")
+                    : "; non-exact native presentation states are accepted")
             << LL_ENDL;
         LLRender::setMetalCommandTimingEnabled(true);
         recorder = std::make_unique<ALMetalBenchmarkRecorder>(
@@ -666,24 +666,21 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     }
 
 #if LL_DARWIN
-    // A startup or preceding exact world frame may have made the Metal layer
-    // opaque. Restore transparent composition before every world frame,
-    // including resize-only frames, so an incomplete current native
-    // transaction always reveals the authoritative GL fallback, including its
-    // complete UI. A native frame earns opacity only when the exact ordered
-    // world/UI capture commits a fused drawable; a transparent Metal child
-    // layer cannot reliably replace UI above SDL's OpenGL drawable.
+    // Keep the Metal layer opaque before every world frame, including
+    // resize-only and incomplete frames. The previous native drawable remains
+    // visible until a complete current transaction replaces it; GL rendering
+    // may still supply migration-side effects but never presentation fallback.
     if (LLStartUp::getStartupState() >= STATE_PRECACHE)
     {
         gGL.setMetalUIReplacementEnabled(false);
-        gGL.setMetalPresentationOpaque(false);
-        static bool logged_world_gl_ui = false;
-        if (!logged_world_gl_ui)
+        gGL.setMetalPresentationOpaque(true);
+        static bool logged_native_only_presentation = false;
+        if (!logged_native_only_presentation)
         {
-            logged_world_gl_ui = true;
-            LL_INFOS("Metal") << "Incomplete world frames retain their complete "
-                                 "visible GL fallback; exact fused Metal world/UI "
-                                 "captures alone may take opaque surface ownership"
+            logged_native_only_presentation = true;
+            LL_INFOS("Metal") << "World presentation is native-only; incomplete "
+                                 "frames retain the previous Metal drawable and "
+                                 "never expose a GL swap"
                                << LL_ENDL;
         }
     }
@@ -1283,6 +1280,11 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         if (!for_snapshot)
         {
             render_ui();
+#if LL_DARWIN
+            // Application-owned GL is still traversed during conversion, but
+            // it is no longer a presentation fallback.
+            gDisplaySwapBuffers = false;
+#endif
             presented = gDisplaySwapBuffers;
             swap();
         }
@@ -1911,7 +1913,14 @@ void swap()
     LLPerfStats::RecordSceneTime T ( LLPerfStats::StatType_t::RENDER_SWAP ); // render time capture - Swap buffer time - can signify excessive data transfer to/from GPU
     LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Swap");
     LL_PROFILE_GPU_ZONE("swap");
-    if (gDisplaySwapBuffers)
+    bool swap_gl_drawable = gDisplaySwapBuffers;
+#if LL_DARWIN
+    if (LLStartUp::getStartupState() >= STATE_PRECACHE)
+    {
+        swap_gl_drawable = false;
+    }
+#endif
+    if (swap_gl_drawable)
     {
         gViewerWindow->getWindow()->swapBuffers();
     }

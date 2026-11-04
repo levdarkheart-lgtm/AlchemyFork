@@ -2,19 +2,6 @@
 <llsd xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="llsd.xsd">
     <map>
-        <key>ALMetalWorldPresentation</key>
-        <map>
-            <key>Comment</key>
-            <string>Transitional Metal-first world/UI presentation: after one complete native transaction reaches the drawable, continuously publish exact frames with per-frame GL fallback and a bounded failure cooldown. Requires restart; disable only for controlled fallback diagnosis while application-owned GL remains.</string>
-            <key>Persist</key>
-            <integer>0</integer>
-            <key>HideFromEditor</key>
-            <integer>1</integer>
-            <key>Type</key>
-            <string>Boolean</string>
-            <key>Value</key>
-            <integer>1</integer>
-        </map>
         <key>ALCefAcceleratedPaint</key>
         <map>
             <key>Comment</key>

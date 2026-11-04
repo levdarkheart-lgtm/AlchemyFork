@@ -102,11 +102,11 @@ def load_capture(path: Path, require_provenance=False, candidate=False):
                 expected_requested = state != "disabled"
                 expected_attempted = state not in ("disabled", "not_attempted")
                 expected_exact = state == "submitted"
-                expected_fallback = expected_requested and not expected_exact
                 if (bool(requested) != expected_requested or
                         bool(attempted) != expected_attempted or
                         bool(exact) != expected_exact or
-                        bool(fallback) != expected_fallback):
+                        (bool(fallback) and
+                         (not expected_requested or expected_exact))):
                     raise ValueError(
                         f"{path}:{n}: inconsistent native presentation census")
                 if scene not in presentation:
