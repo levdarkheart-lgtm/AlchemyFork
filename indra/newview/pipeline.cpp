@@ -1825,19 +1825,25 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         // Login/precache draws a partially ordered world while water and
         // alpha-environment ownership are still settling. It also drives
         // reflection faces before the connecting curtain lifts. Never make
-        // that UI wait on native world pipeline compilation; GL owns those
-        // transitional frames and the asynchronous native renderer warm-up
-        // begins only after STATE_STARTED.
+        // that UI wait on native world pipeline compilation. The retained GL
+        // traversal may still collect transitional state, but it is not a
+        // presentation fallback; native world warm-up begins after STARTED.
         return;
     }
     const std::optional<ALRenderTargetDesc>& descriptor =
         mResourcePlan.desc(ALRenderResourcePlan::Id::MainGBuffer);
-    const U32 capture_width = probe_face && mRT
-        ? mRT->deferredScreen.getWidth()
-        : descriptor ? descriptor->width : 0;
-    const U32 capture_height = probe_face && mRT
-        ? mRT->deferredScreen.getHeight()
-        : descriptor ? descriptor->height : 0;
+    const bool native_size_override = snapshot_request &&
+        main_world_capture && mMetalSizeOverrideActive;
+    const U32 capture_width = native_size_override
+        ? mMetalSizeOverrideWidth
+        : probe_face && mRT
+            ? mRT->deferredScreen.getWidth()
+            : descriptor ? descriptor->width : 0;
+    const U32 capture_height = native_size_override
+        ? mMetalSizeOverrideHeight
+        : probe_face && mRT
+            ? mRT->deferredScreen.getHeight()
+            : descriptor ? descriptor->height : 0;
     if (!device || capture_width == 0 || capture_height == 0)
     {
         // Startup can reach the draw-pool owner before the durable Metal
@@ -17311,19 +17317,57 @@ bool LLPipeline::beginSizeOverride(U32 width, U32 height)
     llassert(!mRenderInputRequests.overriding());
     mRenderInputRequests.overrideBegins();
 
-    ALRenderResourceInputs requested = mLatchedInputs;
-    requested.mWidth  = width;
-    requested.mHeight = height;
-    // The size the last snapshot built, which its end left in place: a 360 capture's next face.
-    if (mGLResourcesLive && requested == mRequestedInputs)
+#if LL_DARWIN
+    mMetalSizeOverrideActive = false;
+    mMetalSizeOverrideWidth = 0;
+    mMetalSizeOverrideHeight = 0;
+
+    const LLWindow* window = gViewerWindow
+        ? gViewerWindow->getWindow() : nullptr;
+    const ALMetalDevice* device = window
+        ? window->getMetalDevice() : nullptr;
+    U32 native_width = width;
+    U32 native_height = height;
+    ALRenderResourceInputs::scaleToRenderResolution(
+        native_width, native_height, mLatchedInputs.mResolutionDivisor,
+        mLatchedInputs.mResolutionMultiplier);
+    const U32 max_dimension = device
+        ? device->info().max_texture_2d_dimension : 0;
+    if (!device || width == 0 || height == 0 || native_width == 0 ||
+        native_height == 0 || width > max_dimension ||
+        height > max_dimension || native_width > max_dimension ||
+        native_height > max_dimension)
     {
-        return mResourcesFullSize;
+        LL_WARNS("Snapshot")
+            << "Cannot apply native snapshot size " << width << 'x'
+            << height << " (scaled " << native_width << 'x'
+            << native_height << ", Metal limit " << max_dimension << ')'
+            << LL_ENDL;
+        return false;
     }
-    return rebuildGLBuffers(requested, RebuildCause::Snapshot);
+
+    mMetalSizeOverrideWidth = native_width;
+    mMetalSizeOverrideHeight = native_height;
+    mMetalSizeOverrideActive = true;
+    LL_INFOS_ONCE("Metal")
+        << "Native snapshots override the Metal capture size without "
+           "reconciling GL render targets"
+        << LL_ENDL;
+    return true;
+#else
+    (void)width;
+    (void)height;
+    return false;
+#endif
 }
 
 void LLPipeline::endSizeOverride()
 {
+#if LL_DARWIN
+    mMetalSizeOverrideActive = false;
+    mMetalSizeOverrideWidth = 0;
+    mMetalSizeOverrideHeight = 0;
+#endif
     mRenderInputRequests.overrideEnds();
 }
 

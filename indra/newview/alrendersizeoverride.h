@@ -26,11 +26,10 @@
 
 #include "stdtypes.h"
 
-/// The main view rendered at a size of its own while the scope lasts, before the resolution scale: a snapshot's. The
-/// render resources are reconciled to the inputs as last latched at that size on entry, which rebuilds only the
-/// targets the render size sizes (ALRenderResourcePlan::followsRenderSize); the probe and hero packs and the fixed-size
-/// targets are kept. No application runs while it lasts, and its end marks the world view's size for the next one, so
-/// scopes back to back at one size build it once (LLPipeline::beginSizeOverride). One at a time.
+/// The main view rendered at a size of its own while the scope lasts, before the resolution scale: a snapshot's. On
+/// Darwin this records an exact native Metal capture size and never resizes GL resources. Unsupported platforms
+/// decline the override; there is no legacy target fallback. No render-input application runs while it lasts. One at
+/// a time.
 class ALRenderSizeOverride
 {
 public:
@@ -40,7 +39,7 @@ public:
     ALRenderSizeOverride(const ALRenderSizeOverride&)            = delete;
     ALRenderSizeOverride& operator=(const ALRenderSizeOverride&) = delete;
 
-    /// Whether the size was built in full, rather than halved for want of memory.
+    /// Whether the requested size was accepted in full.
     bool applied() const { return mApplied; }
 
 private:

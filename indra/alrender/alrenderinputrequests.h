@@ -37,9 +37,9 @@
 /// preset, a Look or a graphics level that changes a dozen settings latches the inputs, reloads the programs and
 /// reconciles the resources once.
 ///
-/// A snapshot holds the render size while it lasts (ALRenderSizeOverride): no application runs until the last one
-/// ends, and its end marks the change back, so snapshots taken back to back at one size, a 360 capture's six faces,
-/// reconcile the resources to the snapshot's size once and back once.
+/// A snapshot holds the render size while it lasts (ALRenderSizeOverride): no application runs until it ends. Darwin
+/// keeps that size in the native Metal capture without reconciling GL resources. Unsupported platforms decline the
+/// override; there is no legacy target fallback.
 class ALRenderInputRequests
 {
 public:

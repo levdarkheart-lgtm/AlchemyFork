@@ -122,12 +122,13 @@ public:
     /// and every resource reconciled, with whatever was marked until then.
     void loadRenderInputs();
 
-    /// A snapshot's render size, before the resolution scale, until endSizeOverride (ALRenderSizeOverride): the
-    /// resources reconciled to the latched inputs at that size, which rebuilds only what the size sizes, and no
-    /// application runs meanwhile. Whether the size was built in full rather than halved for want of memory.
+    /// A snapshot's render size, before the resolution scale, until endSizeOverride (ALRenderSizeOverride). Darwin
+    /// validates and records the exact native Metal target size without reconciling GL resources. Unsupported
+    /// platforms decline the override; there is no legacy target fallback. No render-input application runs
+    /// meanwhile. Whether the size was accepted in full.
     bool beginSizeOverride(U32 width, U32 height);
-    /// The snapshot ends: the next application reconciles to the inputs as the settings say, the window's size among
-    /// them, so snapshots taken back to back at one size build that size once.
+    /// The snapshot ends and releases its native size. The next application latches any changes that waited while
+    /// the scope was active, including a window resize.
     void endSizeOverride();
 
     /// The inputs as they were last latched: the resources' and the programs'.
@@ -307,6 +308,12 @@ private:
     bool mMetalLensFlareHistoryReady = false;
     bool mMetalHeroWorldCaptureActive = false;
     bool mMetalReflectionWorldCaptureActive = false;
+    // A synchronous snapshot renders at this already resolution-scaled size.
+    // It is deliberately independent of mResourcePlan: the native capture has
+    // no GL target to resize or restore.
+    bool mMetalSizeOverrideActive = false;
+    U32 mMetalSizeOverrideWidth = 0;
+    U32 mMetalSizeOverrideHeight = 0;
     // A synchronous snapshot may request one fresh exact world/UI
     // transaction without consuming the bounded presentation probe or
     // publishing its differently sized target to the live drawable.
