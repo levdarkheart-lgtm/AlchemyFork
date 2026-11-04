@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `66e0a60931`
+**Renderer code checkpoint:** `85036920be`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -14,11 +14,10 @@ append-only archives.
 ## Active implementation checkpoint
 
 M-003, M-004, M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit
-`66e0a60931` publishes refreshed local bitmaps directly to native Metal with
-generated mips while retaining decode/retry, world-ID, texture-list, prim,
-material, sculpt, wearable and avatar-rebake behavior. Backend-neutral bump
-geometry and volume alpha picking preserve texel sizing and CPU pick masks for
-native-only images. Preceding HDRI/fetched/sculpt work remains active.
+`85036920be` publishes abuse-report screenshot previews directly to native
+Metal while retaining native capture, prior-screenshot PNG save, JPEG2000
+upload/cache data, asset identity, texture-picker display and upload callbacks.
+Preceding local-bitmap, HDRI, fetched and sculpt work remains active.
 The preceding pressure checkpoint remains active. Metal-only queue entries
 retain native scale-down behavior without a GL name, scratch target, copy
 shader or live GL manager; timeout/resume preserves retained work order.
@@ -92,12 +91,12 @@ until the owner-attended review records that result.
   unified memory, arm64 macOS 26.5.2, Xcode 26.6, Apple7 support and the Metal
   compiler present.
 - The exact `tools/metal/build.sh` invocation exited 0 at committed renderer
-  source `66e0a60931`; the warnings-as-errors Xcode Release build reported
-  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68251`
-  (`26.4.0.68251`).
+  source `85036920be`; the warnings-as-errors Xcode Release build reported
+  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68253`
+  (`26.4.0.68253`).
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64;
   deep strict code-sign verification passed. Viewer executable SHA-256 is
-  `026e1dc67006cf35d7ec997d67dd779daf9dcbff734dbb202702b3e09adc61d3`.
+  `d4946b03c64941ab7ffba22c6b36be248e3dd9a1d3f3de503fb53067b7d20811`.
 - Source and packaged MSL are byte-identical at
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`;
   metallib SHA-256 is
@@ -105,10 +104,10 @@ until the owner-attended review records that result.
 - Source and packaged `settings_alchemy.xml` are byte-identical at
   `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
   an XML query confirms the packaged Metal-presentation default is `1`.
-- The changed production/test targets compiled warnings-as-errors. Native
-  local-style publication, mip, mask and binding behavior passed 17/1 focused;
+- The changed production/test targets compiled warnings-as-errors. Native RGB
+  screenshot-preview expansion and mips passed 529 assertions/1 focused case;
   full `newview_tests` passed 98,990/747 with the established CRT skip.
-  Physical Metal coverage passed 2,781/103.
+  Physical Metal coverage passed 3,310 assertions/104 cases.
 - Ninja Release linked and packaged the complete viewer warnings-as-errors.
 - The preceding source-exact physical baselines remain `almetal_tests` at
   52,526/56, `llappearance_gl_tests` at 13,208/3 and `alrender_tests` at
@@ -127,7 +126,7 @@ until the owner-attended review records that result.
 
 | Area | State | Current fact |
 | --- | --- | --- |
-| M-003..M-006 platform/resources/UI | doing | Local previews, HDRI, fetched publication, sculpt metadata, pressure scale-down and eviction are backend-correct at converted sites; native per-texture memory matches Metal storage. Exact presentation remains Metal-first/fail-closed. Live GL context creation/shutdown remains. |
+| M-003..M-006 platform/resources/UI | doing | Report screenshots, local previews, HDRI, fetched publication, sculpt metadata, pressure scale-down and eviction are backend-correct at converted sites; native per-texture memory matches Metal storage. Exact presentation remains Metal-first/fail-closed. Live GL context creation/shutdown remains. |
 | M-007 world/material | doing | Metal world capture consumes native bump backing; opaque fullbright is corrected. Native legacy BLEND/stained-glass implementation and deterministic coverage exist; owner-attended visual and broad material parity remain open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,224 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
@@ -138,10 +137,9 @@ until the owner-attended review records that result.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Local bitmaps retain decode/retry,
-mips, material/object/sculpt/wearable propagation, avatar rebakes, alpha picks
-and bump texel sizing through native publication. No feature was deleted to
-remove its GL allocation.
+**Advances the complete product:** yes. Abuse reports retain capture, optional
+PNG save, JPEG2000 asset upload/cache and picker preview through native
+publication. No feature was deleted to remove its GL allocation.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -151,9 +149,9 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Convert abuse-report screenshot preview publication from GL to native
-   Metal. Preserve native capture, JPEG2000 upload/cache data, asset identity,
-   texture-picker display and failure reporting.
+1. Make the existing native terrain-paint bake authoritative, preserving full
+   region geometry, alpha-ramp weights, bit-depth quantization, mips and local
+   terrain-material behavior before retiring its duplicate GL bake.
 2. In the next owner-attended session, collect the default-path publication
    census without adding an independent viewer-comparison run. Use measured
    failure states to repair blockers, then retire GL recovery only when complete

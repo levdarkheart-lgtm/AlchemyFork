@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `66e0a60931`.
+**Renderer checkpoint:** Commit `85036920be`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -15,25 +15,27 @@ checkpoint detail belongs in the indexed archive.
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
 | M-002 | GL/shader/pass/resource and binary inventory | doing | 2,407 files and 3,224 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Exact HDR/non-HDR world, presentation and ordered-UI Metal publication is default-on, fail-closed and machine-censused by current-frame failure boundary; dead restore authority/methods and redundant shutdown hooks are deleted. Live GL context creation/shutdown remains. |
-| M-004 | Metal resources, transfers, readback and synchronization | doing | Local bitmap/HDRI/fetched publication, sculpt metadata, pressure scale-down and eviction work natively at converted sites; authoritative per-texture memory matches actual Metal storage. |
+| M-004 | Metal resources, transfers, readback and synchronization | doing | Report-screenshot/local-bitmap/HDRI/fetched publication, sculpt metadata, pressure scale-down and eviction work natively at converted sites; authoritative per-texture memory matches actual Metal storage. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and font atlases are native-only; owner-attended text/emoji and moving-media parity remain open. |
 | M-007 | World scene and material correctness | doing | World capture consumes native legacy bumps; opaque fullbright is corrected. Native main-world/impostor legacy BLEND behavior and deterministic coverage exist; owner-attended stained-glass visual and broad material parity remain open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,224 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | Native local-bitmap and HDRI publication own no GL storage; prior color/tone/BRDF and dynamic-preview owners were retired after replacement. Continue producer-by-producer. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Native report-screenshot, local-bitmap and HDRI publication own no GL storage; prior color/tone/BRDF and dynamic-preview owners were retired after replacement. Continue producer-by-producer. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — native-only local-bitmap publication
+## Active checkpoint — native report-screenshot preview publication
 
-Commit `66e0a60931` publishes decoded local bitmaps directly to Metal with mips,
-retaining refresh, ID/list, material/sculpt/wearable and avatar-rebake behavior.
-Backend-neutral bump sizing and alpha picking preserve native-only consumers.
+Commit `85036920be` publishes the abuse-report screenshot preview directly to
+Metal with RGB expansion and mips, retaining capture, prior PNG save, JPEG2000
+asset/cache data, generated identity, picker display and upload callbacks.
+Preceding commit `66e0a60931` publishes decoded local bitmaps directly to Metal
+while retaining refresh, material/object/sculpt/wearable and avatar behavior.
 
 Preceding commit `5985911fab` retains full/split HDRI sky through native
 RGBA16F/mip publication with descriptor-exact accounting.
@@ -106,11 +108,11 @@ the CSV.
 ## Validation checkpoint
 
 - The source-exact warnings-as-errors Xcode Release build
-  `26.4.0d68251` passed at renderer source `66e0a60931`.
+  `26.4.0d68253` passed at renderer source `85036920be`.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices; deep strict
   signing passes.
 - Viewer executable SHA-256:
-  `026e1dc67006cf35d7ec997d67dd779daf9dcbff734dbb202702b3e09adc61d3`.
+  `d4946b03c64941ab7ffba22c6b36be248e3dd9a1d3f3de503fb53067b7d20811`.
   Source/packaged MSL:
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`.
   Metallib:
@@ -118,9 +120,9 @@ the CSV.
 - Source/packaged settings:
   `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
   packaged Metal-presentation default: `1`.
-- Changed targets compile warnings-as-errors. Local-style Metal publication,
-  mips, masks and binding pass 17/1; `newview_tests` passes 98,990/747 with the
-  established skip; physical Metal passes 2,781/103. Ninja and Xcode both
+- Changed targets compile warnings-as-errors. Native RGB screenshot preview
+  expansion/mips pass 529/1; `newview_tests` passes 98,990/747 with the
+  established skip; physical Metal passes 3,310/104. Ninja and Xcode both
   link/package `alchemy-bin`; preceding broad baselines remain green.
 - The focused Metal-only upload case passes 17/17 assertions in the shared
   binary. The complete shared diagnostic suite remains non-green at
@@ -148,11 +150,10 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—local bitmaps retain decode/retry, mips,
-   material/object/sculpt/wearable propagation, avatar rebakes, selection and
-   bump behavior with Metal-only storage.
-2. **Replacement boundary:** GL storage was retired after complete Metal
-   producer and consumer coverage; other producers remain explicit.
+1. **Product advancement:** yes—abuse reports retain capture, prior PNG save,
+   J2C asset/cache data and picker display through native Metal publication.
+2. **Replacement boundary:** only the preview backing changed; report asset
+   production and UI behavior remain intact, while other producers stay explicit.
 3. **Deferred critical work:** remaining GL context/traversal/resources,
    feature/stability matrices, visual queue, strict binary/runtime audit,
    measured M1 Max performance and release proof.
@@ -162,10 +163,10 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Convert abuse-report screenshot preview publication to native Metal; preserve
-native capture, JPEG2000 upload/cache data, generated asset identity,
-texture-picker display and failure reporting. Collect the census only in the
-next owner-attended session.
+Make the existing native terrain-paint bake authoritative before removing its
+duplicate GL pass. Preserve full region geometry, alpha-ramp weights, selected
+precision, mip generation and local terrain-material behavior. Collect the
+census only in the next owner-attended session.
 
 ## Non-negotiable open gates
 
