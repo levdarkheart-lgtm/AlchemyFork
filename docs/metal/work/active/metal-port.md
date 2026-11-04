@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `ebd07151a3`.
+**Renderer checkpoint:** Commit `0789086de1`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,9 +13,9 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,406 files and 3,217 findings; strict exits 1. No rule or suppression changed. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,406 files and 3,220 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Exact HDR/non-HDR world, presentation and ordered-UI Metal publication is default-on, fail-closed and machine-censused by current-frame failure boundary; dead restore authority/methods and redundant shutdown hooks are deleted. Live GL context creation/shutdown remains. |
-| M-004 | Metal resources, transfers, readback and synchronization | doing | Native-authoritative mip/no-mip scale-down stays entirely in Metal, actual native storage is budgeted once, and fetched-texture pressure now schedules native scale-down without GL scratch state. Established dynamic resources, previews, visual hints and avatar composites publish authoritatively. |
+| M-004 | Metal resources, transfers, readback and synchronization | doing | Native allocation, pressure scale-down and viewer-facing eviction are Metal-aware and budgeted once. Converted fetched/sculpt/bump owners release native storage without a GL name; established dynamic resources and previews publish authoritatively. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and font atlases are native-only; owner-attended text/emoji and moving-media parity remain open. |
 | M-007 | World scene and material correctness | doing | World capture consumes native legacy bumps; opaque fullbright is corrected. Native main-world/impostor legacy BLEND behavior and deterministic coverage exist; owner-attended stained-glass visual and broad material parity remain open. |
@@ -29,21 +29,26 @@ checkpoint detail belongs in the indexed archive.
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — native fetched-texture pressure scheduler
+## Active checkpoint — backend-neutral texture eviction
 
-Commit `ebd07151a3` adds narrow backend-neutral GPU-residency queries to the
-texture lifecycle boundary. Shutdown precache, redundant-upload avoidance,
-post-create downscale and `LLViewerLODTexture::scaleDown()` now recognize an
-authoritative Metal texture even when its GL name has deliberately retired.
+Commit `0789086de1` replaces `LLGLTexture`'s GL-name-gated destruction wrapper
+with `destroyGPUTexture()`. The viewer-facing operation recognizes actual GPU
+residency, delegates to the image owner that holds both transitional GL and
+authoritative Metal storage, and marks the wrapper deleted only after release.
 
-On Darwin, the downscale scheduler first scans its bounded current queue for
-Metal-authoritative images. It invokes the established native
-`LLImageGL::scaleDown()` route directly, clears the same pending lifecycle flag
-and never binds the retained GL scratch target, copy shader, framebuffer,
-screen triangle or blend/color state. GL/dual-backed entries are requeued in
-their original relative order for the fail-closed legacy path. If the native
-scan exhausts its time budget, it returns before unexamined entries could fall
-through to GL. No rendering behavior was deleted.
+Sculpt-only eviction now recognizes a Metal-only image instead of requiring a
+GL name. Normal fetched eviction, fetched-result clearing and native
+brightness/darkness bump cleanup use the same contract. The non-Darwin media
+recreation call retains equivalent GL behavior. Direct low-level
+`LLImageGL::destroyGLTexture()` calls remain where that owner performs explicit
+GL detach or owns both stores; no feature or lifecycle side effect was removed.
+
+### Preceding native pressure-scheduler checkpoint
+
+Commit `ebd07151a3` makes shutdown precache, redundant-upload avoidance,
+post-create downscale and queued scale-down recognize authoritative Metal.
+Darwin drains native entries through `LLImageGL::scaleDown()` without GL
+scratch state and preserves the GL/dual-backed fail-closed queue order.
 
 ### Preceding native residency-accounting checkpoint
 
@@ -92,11 +97,11 @@ the CSV.
 ## Validation checkpoint
 
 - The source-exact cold warnings-as-errors Xcode Release build
-  `26.4.0d68239` passed at `ebd07151a3`.
+  `26.4.0d68241` passed at `0789086de1`.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices; deep strict
   signing passes.
 - Viewer executable SHA-256:
-  `f2660391e4bbc98632509ad3bbff106e57b7f8b162cd85e7ae7df229722bcbe1`.
+  `ce2bf076c43f68e5ad0218602ba775d921652d3aea4f8a701e88ee6a37a4a28a`.
   Source/packaged MSL:
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`.
   Metallib:
@@ -105,8 +110,8 @@ the CSV.
   `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
   packaged Metal-presentation default: `1`.
 - The changed `llrender_gl_fresh_tests` target compiles warnings-as-errors. Its
-  focused physical Metal slice passes 1,960 assertions/19 cases and the
-  complete binary passes 2,671/99. A cold Ninja Release build also links and
+  focused physical Metal slice passes 1,972 assertions/20 cases and the
+  complete binary passes 2,683/100. A cold Ninja Release build also links and
   packages `alchemy-bin` warnings-as-errors. Preceding baselines remain
   `almetal_tests` 52,526/56, `llappearance_gl_tests` 13,208/3,
   `alrender_tests` 557,301/136 and `newview_tests` 98,978/744 with the
@@ -121,9 +126,9 @@ the CSV.
   cases; one established platform CRT case skips. The focused census slice
   passes 46 assertions/7 cases.
 - Harness structure validation, all 29 harness/tool tests and diff checks pass.
-- Strict inventory is 2,406 files / 3,217 findings / 2,906 unique
+- Strict inventory is 2,406 files / 3,220 findings / 2,909 unique
   path/kinds/snippet records, expected exit 1. Exact report SHA-256:
-  `4b3803cc47b02651b3a6a44f246253bcba20df37f45b53aa7f4847e9fad2b6a7`.
+  `0fd3f423a7552de947b09fcad4685f9e6ac650a2715c1965c96675e97af3d9b5`.
   Both OpenGL and Metal remain linked.
 - No viewer executable was launched, driven, photographed or compared.
 
@@ -137,10 +142,10 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—native-authoritative fetched images now retain
-   pressure-driven scale-down without reacquiring GL storage or scratch state.
-2. **Replacement boundary:** native-only entries use Metal; GL/dual-backed
-   entries retain the established fail-closed path until their consumers move.
+1. **Product advancement:** yes—native-only fetched, sculpt and bump resources
+   now retain eviction semantics and release actual Metal storage/accounting.
+2. **Replacement boundary:** viewer-facing full-residency release is neutral;
+   explicit low-level GL detach remains isolated at the owning image layer.
 3. **Deferred critical work:** remaining GL context/traversal/resources,
    feature/stability matrices, visual queue, strict binary/runtime audit,
    measured M1 Max performance and release proof.
@@ -150,11 +155,11 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Introduce backend-neutral destruction only at lifecycle sites whose contract
-is to drop all GPU residency. Prove native-only sculpt eviction and teardown
-physically; preserve explicit GL-only detach where that is the actual contract.
-During the next owner-attended session, collect the default-path publication
-census without adding an independent comparison run.
+Move native downscale queue draining ahead of the global GL-disabled return so
+already-native pressure work remains operational without a live GL manager.
+Keep upload and GL/dual-backed branches fail-closed until their native owners
+are complete and add deterministic scheduler coverage. During the next
+owner-attended session, collect the publication census without a comparison run.
 
 ## Non-negotiable open gates
 
