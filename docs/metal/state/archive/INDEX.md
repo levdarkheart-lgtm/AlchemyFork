@@ -125,6 +125,7 @@ reload the chronological history.
 | Metal-authoritative local terrain-paint baking with retained geometry/weights/mips, source-exact build 68255, 2026-11-04 | [CURRENT-native-terrain-paint-bake-checkpoint-2026-11-04.md](CURRENT-native-terrain-paint-bake-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Native system/default/local and decoded-memory fetched texture publication when GL is disabled, with active fail-closed recovery retained, source-exact build 68258, 2026-11-04 | [CURRENT-native-system-and-memory-texture-bootstrap-checkpoint-2026-11-04.md](CURRENT-native-system-and-memory-texture-bootstrap-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Truthful native-only fetched startup state and exact shipped preload texture publication, source-exact build 68260, 2026-11-04 | [CURRENT-native-startup-texture-state-checkpoint-2026-11-04.md](CURRENT-native-startup-texture-state-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
+| Superseded `LLCubeMap` GL storage/name owner removal after physical native replacement proof, source-exact build 68264, 2026-11-04 | [CURRENT-native-cubemap-gl-owner-removal-checkpoint-2026-11-04.md](CURRENT-native-cubemap-gl-owner-removal-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.

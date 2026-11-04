@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `9cd0f05401`
+**Renderer code checkpoint:** `f86d87a100`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -12,15 +12,19 @@ This concise recovery snapshot delegates superseded detail to the indexed archiv
 
 ## Active implementation checkpoint
 
-M-003, M-004, M-008, M-009 and M-011 are `doing`; M-012 is complete. Commits
-`8a4c9aee97`, `3984366670` and `9cd0f05401` make system/default/local raw,
-decoded-memory and local-file/UUID fetched startup textures publish truthfully
-through Metal when GL is disabled. Native-only requests no longer fake the
-legacy GL-created restoration bit; active initialized GL keeps it for
-fail-closed recovery. Test checkpoint `6cee16c030` covers all eleven explicit
-local preloads, whose exact pixels, formats, swizzles, mips, categories and
-accounting survive with zero GL backing. This is native replacement, not
-feature deletion.
+M-003, M-004, M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit
+`f86d87a100` removes `LLCubeMap`'s superseded GL cube allocation, upload,
+storage and name API only after its native Metal cube replacement was already
+authoritative on Darwin. World consumers fetch `getMetalTexture()` directly;
+physical six-face coverage proves transformed bytes, descriptor, readback,
+device-loss invalidation and retry. The old Darwin `initGL()` and texture-slot
+route were already inert, so target behavior is preserved. This is replacement
+completion, not feature deletion or audit-count-driven removal.
+
+The preceding startup-texture checkpoint remains active. System/default/local
+raw, decoded-memory and all eleven explicit local preloads publish truthfully
+through Metal when GL is disabled. Active initialized GL retains its separate
+fail-closed recovery behavior until the complete presentation cutover.
 
 The preceding terrain checkpoint remains active. Commit `aaf3bbcd2a` makes
 local terrain-paint baking Metal-authoritative while retaining full-resolution
@@ -91,12 +95,12 @@ until the owner-attended review records that result.
   unified memory, arm64 macOS 26.5.2, Xcode 26.6, Apple7 support and the Metal
   compiler present.
 - The exact `tools/metal/build.sh` invocation exited 0 at committed renderer
-  source `9cd0f05401`; the warnings-as-errors Xcode Release build reported
-  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68260`
-  (`26.4.0.68260`).
+  source `f86d87a100`; the warnings-as-errors Xcode Release build reported
+  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68264`
+  (`26.4.0.68264`).
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64;
   deep strict code-sign verification passed. Viewer executable SHA-256 is
-  `e2a40e6d1c57ca0ca8ab02361586752db9aadc0cb4b7127fc8ce4a48e347a9ab`.
+  `b9393f820e7dfa25a27f09094a06e4e41ba5fb983c035a254773a6b600fe36db`.
 - Source and packaged MSL are byte-identical at
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`;
   metallib SHA-256 is
@@ -105,18 +109,17 @@ until the owner-attended review records that result.
   `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
   an XML query confirms the packaged Metal-presentation default is `1`.
 - The changed production targets compiled and linked warnings-as-errors. The
-  focused physical complete-preload case passed 234 assertions and proves exact
-  decoded pixels, formats/swizzle, mips, native residency, false GL-created
-  state, zero GL backing and teardown. `llrender_gl_fresh_tests` passed
-  3,597/106 under Metal API validation.
+  focused physical `LLCubeMap` case passed 24 assertions and proves exact six-
+  face native contents plus device-loss/retry behavior.
+  `llrender_gl_fresh_tests` passed 3,594/106 under Metal API validation.
 - `almetal_tests` passed 52,526/56 under Metal API validation and
   `newview_tests` passed 98,990/747 with the established CRT skip. Ninja and
   Xcode both linked and packaged the complete viewer warnings-as-errors.
 - Harness structure validation passes for 32 required files; all 30 harness/tool
   tests and `git diff --check` pass. The documented strict-audit alias works.
-- Strict inventory is 2,407 files / 3,220 findings / 2,909 unique records,
+- Strict inventory is 2,407 files / 3,214 findings / 2,903 unique records,
   expected exit 1; no rule or suppression changed. Report SHA-256:
-  `2cb09cfa75c4dfd25091ee5a99c87975be86a5b2b6672fbdaf68babe12d97398`.
+  `e431bee7369b77e9bc3ed693d0a5cf1133a93870761651f11307d5382723706b`.
 - Both OpenGL and Metal remain linked. The static, linked and runtime no-GL
   release gates remain open.
 - No viewer executable was launched, driven, photographed or compared.
@@ -128,18 +131,17 @@ until the owner-attended review records that result.
 | M-003..M-006 platform/resources/UI | doing | System/default/local raw, decoded-memory and all eleven explicit local preloads publish natively with truthful state when GL is disabled; report screenshots, local previews, HDRI, fetched publication, sculpt metadata, pressure scale-down and eviction are backend-correct at converted sites. Exact presentation remains Metal-first/fail-closed. Live GL context creation/shutdown remains. |
 | M-007 world/material | doing | Local terrain-paint baking is Metal-authoritative with full geometry/weights/mips. Metal world capture consumes native bump backing; native legacy BLEND exists, while owner-attended visual and broad material parity remain open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
-| M-009 parity/stability/no-GL | doing | Strict inventory is 3,220 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
+| M-009 parity/stability/no-GL | doing | Strict inventory is 3,214 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Replaced GL owners are retired only after native coverage; system/local and in-memory factories are native-capable after GL disable, while active fail-closed recovery is intentionally retained. Live initialization, broad traversal/resources and shutdown GL paths remain. |
+| M-011 GL authority removal | doing | `LLCubeMap`'s inactive GL storage/name owner is retired after physical native replacement proof. `LLCubeMapArray` and other live owners remain until their Metal producers/consumers and failure paths are complete. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Startup requests now expose truthful
-native-only state and exact shipped assets survive a disabled GL manager
-through Metal publication. Active recovery remains where its removal would
-degrade fallback output. No feature was deleted for the cutover.
+**Advances the complete product:** yes. A complete native cubemap resource now
+has no retained GL storage or name owner, while face transforms, sampling,
+readback and retry behavior remain. No feature was deleted for the cutover.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -149,8 +151,9 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Trace `LLUIImageList` declarations and callback/clip/scale readiness through
-   the GL-disabled main-thread fetched create queue.
-2. Add deterministic lifecycle coverage, then convert the next bounded GL
-   owner only after every consumer and failure path has a native replacement.
-   Queue visual questions for owner-attended review; do not drive comparisons.
+1. Trace `LLCubeMapArray` reflection/hero-probe allocation, write/copy and
+   consumer ownership, including existing Metal mirror/fill paths.
+2. Implement native authoritative cube-array lifecycle only when every live
+   producer, consumer and failure path is covered; remove its GL owner only
+   after that proof. Queue visual questions for owner-attended review; do not
+   drive comparisons.
