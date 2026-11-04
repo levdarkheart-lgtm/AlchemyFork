@@ -55,8 +55,15 @@ public:
 
     void setNormalMaps(const LLUUID& normalMapId, const LLUUID& nextNormalMapId);
 
+    /// Enumerate the reflection-probe water surface directly from the native
+    /// field, environment and texture state before retained GL pool drawing.
+    void captureMetalReflectionProbe();
+
     /// The environment's wave normal map `i`: the current one (0) and the next (1), null before either is set.
     LLViewerTexture* getNormalMap(S32 i) const { return mWaterNormp[i]; }
+
+private:
+    bool captureMetalWaterSurface(bool direct_probe);
 };
 
 #endif // LL_LLDRAWPOOLWATER_H

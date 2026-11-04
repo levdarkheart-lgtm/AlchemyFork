@@ -1037,7 +1037,8 @@ public:
     void beginMetalWorldWaterExclusionPass();
     void captureMetalWorldWaterHaze();
     void captureMetalWorldWaterSurface(
-        const ALMetalWorldWaterSurface& surface);
+        const ALMetalWorldWaterSurface& surface,
+        bool direct_probe = false);
     void captureMetalWorldAtmospherics();
     void beginMetalWorldLegacyGlowPass(bool rigged);
     void beginMetalWorldPBRGlowPass(bool rigged);

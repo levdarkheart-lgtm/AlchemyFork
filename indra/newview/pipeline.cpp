@@ -574,6 +574,7 @@ struct LLPipeline::MetalWorldSimpleCapture
         direct_probe_aurora_buffers;
     std::unordered_set<const LLVertexBuffer*>
         direct_probe_cloud_buffers;
+    bool direct_probe_water_surface = false;
     bool direct_probe_scene_active = false;
     std::vector<ALMetalWorldHighlightBatch> highlight_batches;
     std::vector<ALMetalWorldDebugBlip> debug_blips;
@@ -2451,6 +2452,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.direct_probe_heavenly_body_faces.clear();
     capture.direct_probe_aurora_buffers.clear();
     capture.direct_probe_cloud_buffers.clear();
+    capture.direct_probe_water_surface = false;
     capture.direct_probe_scene_active = false;
     capture.sky_behind_target.reset();
     capture.hdri_sky_batches.clear();
@@ -8409,7 +8411,7 @@ void LLPipeline::captureMetalWorldWaterHaze()
 }
 
 void LLPipeline::captureMetalWorldWaterSurface(
-    const ALMetalWorldWaterSurface& surface)
+    const ALMetalWorldWaterSurface& surface, bool direct_probe)
 {
     if (!mMetalWorldSimpleCapture ||
         !mMetalWorldSimpleCapture->world_post_deferred_active ||
@@ -8418,9 +8420,16 @@ void LLPipeline::captureMetalWorldWaterSurface(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!direct_probe && capture.direct_probe_water_surface)
+    {
+        return;
+    }
     if (capture.pass_active || capture.world_pre_water_alpha_active ||
         capture.world_post_water_alpha_active ||
         capture.water_surface_valid ||
+        (direct_probe && capture.direct_probe_water_surface) ||
+        !surface.normal_maps[0] || !surface.normal_maps[1] ||
+        !surface.field.cell_map || surface.field.draw_count != 3 ||
         ((surface.underwater || surface.refracts) &&
          !capture.water_haze_valid))
     {
@@ -8428,6 +8437,10 @@ void LLPipeline::captureMetalWorldWaterSurface(
         capture.batches.clear();
         capture.water_surface = {};
         capture.water_surface_valid = false;
+        if (direct_probe)
+        {
+            capture.direct_probe_water_surface = false;
+        }
         return;
     }
 
@@ -8477,6 +8490,7 @@ void LLPipeline::captureMetalWorldWaterSurface(
     marker.water_surface = true;
     capture.batches.push_back(marker);
     capture.water_surface_valid = true;
+    capture.direct_probe_water_surface = direct_probe;
 }
 
 void LLPipeline::captureMetalWorldAtmospherics()
@@ -21869,6 +21883,19 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
         if (hasRenderType(poolp->getType()) && poolp->getNumPostDeferredPasses() > 0)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DRAWPOOL("deferred poolrender");
+
+#if LL_DARWIN
+            // Water is ordered after exclusion, haze and pre-water alpha.
+            // Enumerate its native probe snapshot here, before the retained
+            // GL pool executes, so those prerequisites stay in exact pass
+            // order without making the GL draw the Metal producer.
+            if (mMetalReflectionWorldCaptureActive &&
+                cur_type == LLDrawPool::POOL_WATER)
+            {
+                static_cast<LLDrawPoolWater*>(poolp)
+                    ->captureMetalReflectionProbe();
+            }
+#endif
 
             // Wireframe is for the pools' geometry alone. The passes run between pools above
             // are full-screen triangles, which in line mode shade only their edges, and the
