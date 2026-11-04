@@ -18674,7 +18674,6 @@ void LLPipeline::releaseDepthDependents()
     mWaterSurface.release();
     mDepthPyramid.release();
 
-    ALFarPlaneOverlay::release();
     if (ALSelectionOutline::instanceExists())
     {
         ALSelectionOutline::instance().release();

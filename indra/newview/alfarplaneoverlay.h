@@ -33,11 +33,7 @@
 namespace ALFarPlaneOverlay
 {
 
-/// Draws the overlay while it is on, and gives up its render target once it is off.
+/// Captures the overlay while it is on for the native Metal world transaction.
 void render();
-
-/// Gives up the overlay's render target, as the pipeline does when its context goes or the main depth format
-/// changes (LLPipeline::releaseDepthDependents).
-void release();
 
 } // namespace ALFarPlaneOverlay
