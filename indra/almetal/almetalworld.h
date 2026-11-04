@@ -2239,9 +2239,9 @@ public:
         std::uint32_t& valid_faces,
         std::string* error = nullptr);
 
-    // Build the source cube's mip chain and reproduce radianceGenF.glsl's
-    // gloss-quarter GGX filter directly on the Metal queue. All six native
-    // faces must belong to the same caller-managed generation.
+    // Build the source cube's mip chain and apply the gloss-quarter GGX
+    // filter directly on the Metal queue. All six native faces must belong
+    // to the same caller-managed generation.
     bool filterHeroProbeRadiance(
         ALMetalTexture& source_cube,
         std::uint32_t valid_faces,
@@ -2262,9 +2262,9 @@ public:
         std::uint32_t& valid_faces,
         std::string* error = nullptr);
 
-    // Reproduce radianceGenF.glsl's full 32-sample ordinary-probe filter.
-    // All six source faces must be coherent; the retained output is a cube
-    // ready for a GPU-only copy into the live cube-array slot.
+    // Apply the full 32-sample ordinary-probe GGX filter. All six source
+    // faces must be coherent; the retained output is a cube ready for a
+    // GPU-only copy into the live cube-array slot.
     bool filterReflectionProbeRadiance(
         ALMetalTexture& source_cube,
         std::uint32_t valid_faces,

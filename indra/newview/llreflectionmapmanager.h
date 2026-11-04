@@ -27,10 +27,6 @@
 #pragma once
 
 #include "llreflectionmap.h"
-#include "llrendertarget.h"
-#include "llcubemaparray.h"
-#include "llcubemap.h"
-#include "aluniformbuffer.h"
 
 #include <memory>
 
@@ -50,7 +46,8 @@ class ALMetalWorldGBufferRenderer;
 // Second-order SH: one DC term, three linear, five quadratic.
 #define LL_SH_COEFF_COUNT 9
 
-// RGBA32UI texels a probe's coefficients pack into: 27 halves, eight to a texel (shPackUtilF.glsl).
+// RGBA32UI texels a native probe's coefficients pack into: 27 halves, eight
+// to a texel.
 #define LL_SH_PACKED_TEXELS 4
 
 // reflection probe mininum scale
@@ -130,7 +127,7 @@ public:
     LLReflectionMapManager();
     ~LLReflectionMapManager();
 
-    // release any GL state
+    // release native reflection resources and logical probe state
     void cleanup();
 
     // maintain reflection probes
@@ -176,9 +173,8 @@ public:
     // call once at startup to allocate cubemap arrays
     void initReflectionMaps();
 
-    // The GL resources initReflectionMaps and update build: the cube array, the SH coefficients, the scratch target,
-    // the mip chain, the UBO and the vertex buffer. The probes stay, holding nothing, and start over once
-    // initReflectionMaps builds the resources again. Whether there was anything to free.
+    // Release native cube/SH resources while retaining logical probes so the
+    // next reconciliation can assign fresh slots. Returns whether storage was held.
     bool freeResources();
 
     // True if currently updating a radiance map, false if currently updating an irradiance map
@@ -324,8 +320,7 @@ private:
     U32 mSuperSample = 4;
     U32 superSample() const { return mSuperSample; }
 
-    // RenderHDREnabled as the cube array, the scratch target and the mip chain were allocated
-    // under: float colour or 8-bit. initReflectionMaps rebuilds all three when it changes.
+    // HDR mode reconciled into the native reflection resource plan.
     bool mHDR = true;
 
     // maximum LoD of reflection probes (mip levels - 1)

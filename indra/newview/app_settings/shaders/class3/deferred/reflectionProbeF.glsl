@@ -32,10 +32,10 @@ float ssrMinGlossiness();
 
 uniform samplerCubeArray   reflectionProbes;
 
-// Second-order SH irradiance, nine RGB coefficients per probe packed as halves into a row of
-// four RGBA32UI texels (class1/interface/shPackUtilF.glsl), one row per cubemap layer. See
-// class1/interface/shProjectF.glsl -- irradiance is band-limited to these nine numbers, so the
-// cubemap this replaces was storing a nine-degree-of-freedom function in sixteen thousand texels.
+// Second-order SH irradiance, nine RGB coefficients per probe packed by the native probe
+// projection into a row of four RGBA32UI texels, one row per cubemap layer. Irradiance is
+// band-limited to these nine numbers, so the cubemap this replaces was storing a
+// nine-degree-of-freedom function in sixteen thousand texels.
 uniform usampler2D         shCoeffs;
 
 uniform sampler2D sceneMap;
@@ -460,8 +460,7 @@ vec3 probeRadiance(int i, vec3 pos, vec3 box_pos, vec3 dir, float lod, bool wate
     return ret.rgb;
 }
 
-// unpackHalf2x16 is GLSL 4.20's; below it, the halves shPackUtilF.glsl packed by hand are read
-// the same way.
+// unpackHalf2x16 is GLSL 4.20's; below it, the native packed halves are read the same way.
 #if __VERSION__ >= 420
 vec2 shUnpackHalves(uint u)
 {
@@ -502,8 +501,8 @@ vec2 shUnpackHalves(uint u)
 // unchanged.
 vec3 evalSHIrradiance(vec3 n, int layer)
 {
-    // The row's 27 halves, two to a uint, eight to a texel, in coefficient order and red, green,
-    // blue within each (shPackUtilF.glsl).
+    // The row's 27 halves are stored two to a uint and eight to a texel, in coefficient order
+    // with red, green and blue within each coefficient.
     uvec4 t0 = texelFetch(shCoeffs, ivec2(0, layer), 0);
     uvec4 t1 = texelFetch(shCoeffs, ivec2(1, layer), 0);
     uvec4 t2 = texelFetch(shCoeffs, ivec2(2, layer), 0);

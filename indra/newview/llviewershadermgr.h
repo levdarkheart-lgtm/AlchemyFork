@@ -117,10 +117,6 @@ extern LLVector4            gShinyOrigin;
 extern LLGLSLShader         gOcclusionProgram;
 extern LLGLSLShader         gOcclusionCubeProgram;
 extern LLGLSLShader         gGlowCombineProgram;
-extern LLGLSLShader         gRadianceGenProgram;
-extern LLGLSLShader         gSHProjectionProgram;
-extern LLGLSLShader         gSHProjectionRowsProgram;
-extern LLGLSLShader         gSHProjectionReduceProgram;
 extern LLGLSLShader         gDebugProgram;
 enum NormalDebugShaderVariant : S32
 {

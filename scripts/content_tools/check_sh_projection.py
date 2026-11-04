@@ -1,34 +1,30 @@
 #!/usr/bin/env python3
 """
-check_sh_projection.py -- mirror of the reflection probe SH irradiance projection.
+check_sh_projection.py -- analytical oracle for reflection-probe SH projection.
 
-The probe manager projects each probe's irradiance cube onto nine spherical-harmonic
-coefficients (indra/newview/app_settings/shaders/class1/interface/shProjectF.glsl) and the
-deferred shaders reconstruct irradiance from them (evalSHIrradiance in
-class3/deferred/reflectionProbeF.glsl). Two things about that pass are easy to get subtly
-wrong and hard to see on screen, so they are checked here, statement for statement:
+The native Metal probe path projects each probe's irradiance cube onto nine
+spherical-harmonic coefficients. Deferred consumers reconstruct irradiance from the packed
+coefficients in evalSHIrradiance (class3/deferred/reflectionProbeF.glsl). Several details are
+easy to get subtly wrong and hard to see on screen, so this standalone oracle checks them:
 
-  (a) The two-pass, row-parallel form of the projection (SH_ROW_PARTIAL in shProjectF.glsl
-      followed by shProjectReduceF.glsl) must sum to exactly what the single-pass triple loop
-      sums, and the partials must survive being stored as 16-bit floats.
+  (a) A row-parallel projection and reduction must sum to the same result as the direct
+      triple loop, and intermediate partials must survive 16-bit-float storage.
   (b) The texel solid-angle weights must sum to 4 pi over the whole cube at every face
       resolution the viewer can integrate (ALProbeSHProjectionRes is clamped to 4 and up).
   (c) Integrating a coarser mip must not move the reconstructed irradiance by more than a
       fraction of a percent: nine coefficients are band-limited to degree two, so an 8x8
       face (the default) is already enough. This is the number that justified lowering the
       integrated resolution from 32 to 8.
-  (d) The packed row the projection's last draw writes (shPackTexel in shPackUtilF.glsl,
-      from the coefficients each texel holds a part of) must unpack, the way
-      evalSHIrradiance unpacks it, to every coefficient at half precision, with the padding
-      zero.
-  (e) The halves both files convert by hand below GLSL 4.20 (shHalfBits, shHalfValue) must be
-      IEEE binary16's: every half reads back as itself, and every single packs as round to
-      nearest even does, ties, denormals, overflow and NaN included.
+  (d) The packed native row must unpack the way evalSHIrradiance expects, preserving every
+      coefficient at half precision with zero padding.
+  (e) The legacy deferred consumer's pre-GLSL-4.20 half conversion must match IEEE binary16:
+      every half reads back as itself, and every single packs with round-to-nearest-even,
+      including ties, denormals, overflow and NaN.
 
-The weights, directions, basis functions and loop order here mirror shProjectF.glsl, and the
-packing mirrors shPackUtilF.glsl and evalSHIrradiance. If the shader's tiling, order, layout
-or constants change, change them here in the same commit; the whole point of the mirror is
-that the two cannot drift apart unnoticed.
+The weights, directions, basis functions and loop order mirror the native Metal projection;
+packing mirrors the native producer and evalSHIrradiance. If the implementation's tiling,
+order, layout or constants change, change this oracle in the same commit so they cannot drift
+apart unnoticed.
 
 Standard library only. Exit status 0 on RESULT: OK, 1 on RESULT: MISMATCH.
 """
@@ -41,7 +37,7 @@ import sys
 SH_COEFF_COUNT = 9
 
 # ---------------------------------------------------------------------------------------
-# shProjectF.glsl, statement for statement
+# Native SH projection math
 
 
 def area_element(x, y):
@@ -194,7 +190,7 @@ def texel_term(coef, faces, face, x, y, inv_res):
 
 
 def project_single_pass(faces):
-    """shProjectF.glsl without SH_ROW_PARTIAL: one fragment per coefficient, every texel"""
+    """Direct reference: one result per coefficient integrating every cube texel."""
     res = len(faces[0])
     inv_res = 1.0 / res
     coeffs = []
@@ -216,8 +212,7 @@ def fp16(v):
 
 
 def project_two_pass(faces, round_partials=False):
-    """shProjectF.glsl with SH_ROW_PARTIAL (one fragment per coefficient and face row) then
-    shProjectReduceF.glsl (one fragment per coefficient summing rows 0 .. 6*res-1)"""
+    """Row-parallel projection followed by reduction across all six cube faces."""
     res = len(faces[0])
     inv_res = 1.0 / res
     coeffs = []
@@ -245,7 +240,7 @@ def project_two_pass(faces, round_partials=False):
 
 
 # ---------------------------------------------------------------------------------------
-# shPackUtilF.glsl and evalSHIrradiance's unpack, statement for statement
+# Native packed layout and evalSHIrradiance's matching unpack
 
 SH_PACKED_TEXELS = 4
 
@@ -282,8 +277,7 @@ def sh_pack_texel(t, sums):
 
 
 def pack_row(coeffs):
-    """the last draw: one fragment per texel, its sums the coefficients it holds a part of and
-    zero past them, as both shProjectF (single pass) and shProjectReduceF fill them"""
+    """Pack one native row, preserving coefficient order and zeroing trailing padding."""
     row = []
     for t in range(SH_PACKED_TEXELS):
         first = sh_packed_first(t)

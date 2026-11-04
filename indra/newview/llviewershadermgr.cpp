@@ -85,10 +85,6 @@ static const ALShaderInputs& load_inputs()
 LLGLSLShader    gOcclusionProgram;
 LLGLSLShader    gOcclusionCubeProgram;
 LLGLSLShader    gGlowCombineProgram;
-LLGLSLShader    gRadianceGenProgram;
-LLGLSLShader    gSHProjectionProgram;
-LLGLSLShader    gSHProjectionRowsProgram;
-LLGLSLShader    gSHProjectionReduceProgram;
 LLGLSLShader    gTwoTextureCompareProgram;
 LLGLSLShader    gOneTextureFilterProgram;
 LLGLSLShader    gDebugProgram;
@@ -4030,51 +4026,6 @@ void LLViewerShaderMgr::loadShadersInterface()
         built(gAlphaMaskProgram.createShader(), gAlphaMaskProgram);
     }
 
-    {
-        gRadianceGenProgram.mName = "Radiance Gen Shader";
-        gRadianceGenProgram.mShaderFiles.clear();
-        gRadianceGenProgram.mShaderFiles.push_back(make_pair("interface/radianceGenV.glsl", GL_VERTEX_SHADER));
-        gRadianceGenProgram.mShaderFiles.push_back(make_pair("interface/radianceGenF.glsl", GL_FRAGMENT_SHADER));
-        gRadianceGenProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        gRadianceGenProgram.addPermutation("PROBE_FILTER_SAMPLES", "32");
-        built(gRadianceGenProgram.createShader(), gRadianceGenProgram);
-    }
-
-    {
-        gSHProjectionProgram.mName = "SH Irradiance Projection Shader";
-        gSHProjectionProgram.mShaderFiles.clear();
-        // Shares the radiance pass's vertex stage: it emits the same fullscreen quad, and the
-        // sample direction it also computes is simply unused here.
-        gSHProjectionProgram.mShaderFiles.push_back(make_pair("interface/irradianceGenV.glsl", GL_VERTEX_SHADER));
-        gSHProjectionProgram.mShaderFiles.push_back(make_pair("interface/shProjectF.glsl", GL_FRAGMENT_SHADER));
-        // It writes the packed coefficient row itself, as the reduce does.
-        gSHProjectionProgram.mShaderFiles.push_back(make_pair("interface/shPackUtilF.glsl", GL_FRAGMENT_SHADER));
-        gSHProjectionProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gSHProjectionProgram.createShader(), gSHProjectionProgram);
-    }
-
-    {
-        // Row-parallel form of the projection above: one fragment per coefficient and face row,
-        // then a reduce that adds the rows. The same integrand over 6 x R times more fragments
-        // (see LLReflectionMapManager::updateProbeFace).
-        gSHProjectionRowsProgram.mName = "SH Irradiance Projection Rows Shader";
-        gSHProjectionRowsProgram.mShaderFiles.clear();
-        gSHProjectionRowsProgram.mShaderFiles.push_back(make_pair("interface/irradianceGenV.glsl", GL_VERTEX_SHADER));
-        gSHProjectionRowsProgram.mShaderFiles.push_back(make_pair("interface/shProjectF.glsl", GL_FRAGMENT_SHADER));
-        gSHProjectionRowsProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        gSHProjectionRowsProgram.addPermutation("SH_ROW_PARTIAL", "1");
-        built(gSHProjectionRowsProgram.createShader(), gSHProjectionRowsProgram);
-    }
-
-    {
-        gSHProjectionReduceProgram.mName = "SH Irradiance Projection Reduce Shader";
-        gSHProjectionReduceProgram.mShaderFiles.clear();
-        gSHProjectionReduceProgram.mShaderFiles.push_back(make_pair("interface/irradianceGenV.glsl", GL_VERTEX_SHADER));
-        gSHProjectionReduceProgram.mShaderFiles.push_back(make_pair("interface/shProjectReduceF.glsl", GL_FRAGMENT_SHADER));
-        gSHProjectionReduceProgram.mShaderFiles.push_back(make_pair("interface/shPackUtilF.glsl", GL_FRAGMENT_SHADER));
-        gSHProjectionReduceProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gSHProjectionReduceProgram.createShader(), gSHProjectionReduceProgram);
-    }
 }
 
 
