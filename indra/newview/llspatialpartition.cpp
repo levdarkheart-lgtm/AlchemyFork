@@ -1856,21 +1856,6 @@ void renderXRay(LLSpatialGroup* group, LLCamera* camera)
     }
 }
 
-void renderCrossHairs(LLVector3 position, F32 size, LLColor4 color)
-{
-    gGL.color4fv(color.mV);
-    gGL.begin(LLRender::LINES);
-    {
-        gGL.vertex3fv((position - LLVector3(size, 0.f, 0.f)).mV);
-        gGL.vertex3fv((position + LLVector3(size, 0.f, 0.f)).mV);
-        gGL.vertex3fv((position - LLVector3(0.f, size, 0.f)).mV);
-        gGL.vertex3fv((position + LLVector3(0.f, size, 0.f)).mV);
-        gGL.vertex3fv((position - LLVector3(0.f, 0.f, size)).mV);
-        gGL.vertex3fv((position + LLVector3(0.f, 0.f, size)).mV);
-    }
-    gGL.end();
-}
-
 void renderUpdateType(LLDrawable* drawablep)
 {
     LLViewerObject* vobj = drawablep->getVObj();
@@ -3350,38 +3335,18 @@ void renderAgentTarget(LLVOAvatar* avatar)
         const LLColor4 drawable_color(0.f, 1.f, 0.f, 0.8f);
         const LLColor4 root_color(1.f, 1.f, 1.f, 0.8f);
         const LLColor4 pelvis_color(0.f, 0.f, 1.f, 0.8f);
-#if LL_DARWIN
         gPipeline.beginMetalAgentTargetCapture(crosshair_count);
         gPipeline.captureMetalAgentTargetCrosshair(
             avatar->getPositionAgent(), crosshair_size, agent_color);
-#endif
-        renderCrossHairs(
-            avatar->getPositionAgent(), crosshair_size, agent_color);
-#if LL_DARWIN
         gPipeline.captureMetalAgentTargetCrosshair(
             avatar->mDrawable->getPositionAgent(), crosshair_size,
             drawable_color);
-#endif
-        renderCrossHairs(
-            avatar->mDrawable->getPositionAgent(), crosshair_size,
-            drawable_color);
-#if LL_DARWIN
         gPipeline.captureMetalAgentTargetCrosshair(
             avatar->mRoot->getWorldPosition(), crosshair_size, root_color);
-#endif
-        renderCrossHairs(
-            avatar->mRoot->getWorldPosition(), crosshair_size, root_color);
-#if LL_DARWIN
         gPipeline.captureMetalAgentTargetCrosshair(
             avatar->mPelvisp->getWorldPosition(), crosshair_size,
             pelvis_color);
-#endif
-        renderCrossHairs(
-            avatar->mPelvisp->getWorldPosition(), crosshair_size,
-            pelvis_color);
-#if LL_DARWIN
         gPipeline.endMetalAgentTargetCapture(crosshair_count);
-#endif
     }
 }
 
