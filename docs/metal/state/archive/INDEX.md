@@ -119,6 +119,7 @@ reload the chronological history.
 | GL-independent native fetched-texture pressure scheduling with stable timeout/resume and source-exact build 68243, 2026-11-04 | [CURRENT-native-pressure-gl-disabled-checkpoint-2026-11-04.md](CURRENT-native-pressure-gl-disabled-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Transactional GL-disabled native fetched-texture publication and source-exact build 68245, 2026-11-04 | [CURRENT-native-fetched-texture-publication-checkpoint-2026-11-04.md](CURRENT-native-fetched-texture-publication-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | GL-independent sculpt metadata publication with no GPU allocation and source-exact build 68247, 2026-11-04 | [CURRENT-sculpt-metadata-gl-independent-checkpoint-2026-11-04.md](CURRENT-sculpt-metadata-gl-independent-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
+| Native-only HDRI RGBA16F publication and descriptor-exact per-texture accounting, source-exact build 68249, 2026-11-04 | [CURRENT-native-hdri-publication-checkpoint-2026-11-04.md](CURRENT-native-hdri-publication-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
