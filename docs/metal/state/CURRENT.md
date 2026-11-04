@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `914716ad01`
+**Renderer code checkpoint:** `23146eeeaa`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -13,13 +13,15 @@ This concise recovery snapshot delegates superseded detail to the indexed archiv
 ## Active implementation checkpoint
 
 M-003, M-004, M-007, M-008, M-009 and M-011 are `doing`; M-012 is complete.
-Commit `914716ad01` adds pool-owned legacy-texture and PBR terrain patches to
-the direct reflection-probe scene traversal. Native capture retains surface-map
-refresh, detail/paint textures, material factors, transforms, parcel overlay,
-tessellation and region transforms without GL binding, matrix readback or
-draw. Exact patch identities prevent duplicate Metal capture during complete
-GL fallback. Other pool/face-owned families still block removal of the live GL
-resource gate, `display_cube_face` and cube array.
+Commit `23146eeeaa` adds HDRI or WindLight sky, eligible sun/moon bodies and
+radiance-face clouds to the direct reflection-probe scene traversal. It
+retains exposure, rotation, atmospheric/weather inputs, ordinary-probe sun
+exclusion, hero-mirror sun inclusion and irradiance-cloud exclusion without
+GL binding, matrix readback or draw. Exact dome/body identities prevent
+duplicate Metal capture during complete GL fallback. Stars, meteors and
+aurora retain their deliberate cube-snapshot exclusion; no feature was
+deleted. Water, avatar and remaining pass inputs still block removal of the
+live GL resource gate, `display_cube_face` and cube array.
 The preceding startup-texture checkpoint remains active. System/default/local
 raw, decoded-memory and all eleven explicit local preloads publish truthfully
 through Metal when GL is disabled. Active initialized GL retains its separate
@@ -94,12 +96,12 @@ until the owner-attended review records that result.
   unified memory, arm64 macOS 26.5.2, Xcode 26.6, Apple7 support and the Metal
   compiler present.
 - The exact `tools/metal/build.sh` invocation exited 0 at committed renderer
-  source `914716ad01`; the warnings-as-errors Xcode Release build reported
-  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68276`
-  (`26.4.0.68276`).
+  source `23146eeeaa`; the warnings-as-errors Xcode Release build reported
+  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68278`
+  (`26.4.0.68278`).
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64;
   deep strict code-sign verification passed. Viewer executable SHA-256 is
-  `242b7008cbf98cfdf56245b25beb1ade14e5c4fce724c8149314e638c57c16c8`.
+  `19636a263a2df538778a86a64ec5ca75dcd568de812fbc59bd2e6e8018654352`.
 - Source and packaged MSL are byte-identical at
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`;
   metallib SHA-256 is
@@ -118,8 +120,8 @@ until the owner-attended review records that result.
   tests and `git diff --check` pass. The documented strict-audit alias works.
 - Strict inventory is 2,407 files / 3,214 findings / 2,903 unique
   path/rule/snippet records, expected exit 1; no rule or suppression changed.
-  Exact report `artifacts/metal/audit-gl-914716ad01.json` has SHA-256
-  `6a8c4364b406a4f3f555d6ad162c62d20097de70ad55cf24d78bd36cc142a1f5`.
+  Exact report `artifacts/metal/audit-gl-23146eeeaa.json` has SHA-256
+  `810665755c82d2f18ad85cd998cc6a955d2ab7629505b49536997905ef9e27b4`.
 - Both OpenGL and Metal remain linked. The static, linked and runtime no-GL
   release gates remain open.
 - No viewer executable was launched, driven, photographed or compared.
@@ -129,20 +131,20 @@ until the owner-attended review records that result.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | System/default/local raw, decoded-memory and all eleven explicit local preloads publish natively with truthful state when GL is disabled; report screenshots, local previews, HDRI, fetched publication, sculpt metadata, pressure scale-down and eviction are backend-correct at converted sites. Exact presentation remains Metal-first/fail-closed. Live GL context creation/shutdown remains. |
-| M-007 world/material | doing | Reflection-probe simple/material/PBR/bump opaque batches plus tree and terrain faces are enumerated directly from CPU scene state; transforms and bump resolution are GL-independent. Remaining pool/face-owned enumeration plus broad parity remain open. |
+| M-007 world/material | doing | Reflection-probe simple/material/PBR/bump opaque batches plus tree, terrain and HDRI/WindLight sky families are enumerated directly from CPU scene state; transforms and bump resolution are GL-independent. Remaining water/avatar/pass enumeration plus broad parity remain open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,214 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Logical probes are backend-neutral and core opaque/bump, tree and terrain batches have a direct native enumerator. `LLCubeMapArray` remains live until every probe family, consumer and failure path is complete. |
+| M-011 GL authority removal | doing | Logical probes are backend-neutral and core opaque/bump, tree, terrain and sky batches have a direct native enumerator. `LLCubeMapArray` remains live until every probe family, consumer and failure path is complete. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Legacy and PBR terrain geometry,
-materials, paint, overlay and tessellation now feed a direct Metal probe
-producer without GL state or draw execution. Native publication and complete
-fallback remain intact; no feature was deleted.
+**Advances the complete product:** yes. HDRI/WindLight atmosphere, eligible
+sun/moon bodies and radiance clouds now feed a direct Metal probe producer
+without GL state or draw execution. Existing cube-capture exclusions and
+complete fallback remain intact; no feature was deleted.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -152,8 +154,7 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Add direct reflection-probe production for the sky families without GL
-   binding/draw execution, with exact duplicate suppression and failure proof.
-2. Add the remaining water/avatar pass contracts and deterministic
-   failure proof before removing `mGLResourcesLive` or a live cube-array owner.
-   Queue visual questions for owner-attended review; do not drive comparisons.
+1. Add direct reflection-probe production for water without GL binding/draw
+   execution, with exact duplicate suppression and failure proof.
+2. Add avatar and remaining pass contracts plus deterministic failure proof before
+   removing the live GL gate; queue visual review without driving comparisons.

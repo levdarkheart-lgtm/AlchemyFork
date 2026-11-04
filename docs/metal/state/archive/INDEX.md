@@ -132,6 +132,7 @@ reload the chronological history.
 | Direct native reflection-probe legacy-bump enumeration with backend-neutral normal resolution, source-exact build 68272, 2026-11-04 | [CURRENT-direct-probe-bump-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-bump-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Direct native reflection-probe tree-face enumeration with CPU-owned transforms and complete fallback retained, source-exact build 68274, 2026-11-04 | [CURRENT-direct-probe-tree-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-tree-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Direct native reflection-probe legacy/PBR terrain enumeration with material, paint and tessellation behavior retained, source-exact build 68276, 2026-11-04 | [CURRENT-direct-probe-terrain-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-terrain-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
+| Direct native reflection-probe HDRI/WindLight/body/cloud enumeration with cube semantics retained, source-exact build 68278, 2026-11-04 | [CURRENT-direct-probe-sky-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-sky-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
