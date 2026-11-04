@@ -26,16 +26,12 @@
 
 #include "indra_constants.h"
 #include "llgltfmaterial.h"
-#include "llglslshader.h"
-#include "llglstates.h"
 #include "llimagegl.h"
 #include "llmaterial.h"
 #include "llmath.h"
 #include "llmatrix4a.h"
 #include "llrect.h"
 #include "llrender.h"
-#include "llrendertarget.h"
-#include "llshadermgr.h"
 #include "llsingleton.h"
 #include "lluuid.h"
 #include "llvertexbuffer.h"
@@ -72,7 +68,7 @@ class LLVOAvatar;
 /// library's transparent texture, and one whose texture has nothing its cut would keep (faceAlphaTest). Such surface
 /// is written at the cleared depth, behind every surface the scene shows, so it never hides the outline of a shown
 /// one behind it, as an invisible root's box would its children's; and every object counts as in front of it.
-/// Integer formats are not used because LLGLSLShader gives integer samplers no unit.
+/// The native ID target uses a compact normalized representation shared with the established palette contract.
 ///
 /// Ids are given in priority order, the highest first (EPriority). The jump pass (interface/selectionJumpF.glsl)
 /// marks, in a one-byte target of its own, the texels of the id target on the near side of a jump: a step in an
@@ -370,7 +366,7 @@ public:
     static constexpr F32 DEFAULT_WIRE_WIDTH = 1.f;
     static constexpr F32 MAX_WIRE_WIDTH = 8.f;
     /// How far the wireframe's lines are drawn in front of their own surface beyond its slope, in the depth
-    /// buffer's least steps (glPolygonOffset's units).
+    /// target's least representable depth steps.
     static constexpr F32 WIRE_OFFSET_UNITS = 4.f;
     /// The glow's reach in pixels at a UI scale of 1 for each unit of RenderHighlightThickness: 9 at its default,
     /// 0.6. LL's glow blurred a 256-texel-wide copy of the object over 8 x 8 taps 3.5 x thickness texels out at
@@ -411,28 +407,6 @@ public:
         return (parts & PART_WIREFRAME) && (pass != WIRE_HIDDEN || show_hidden);
     }
 
-    /// The GL state a wireframe pass draws in while it lives, over the window's framebuffer: colour blended in
-    /// over its alpha, no depth written, back faces culled as the id pass culls them (drawFace), and for the
-    /// world's passes the depth test, with the lines pulled in front of their own surface by `offset_factor`
-    /// (glPolygonOffset's factor, wireOffsetFactor) and WIRE_OFFSET_UNITS. gGL.setPolygonOffset turns the pull
-    /// toward the eye under either depth convention.
-    class WireState
-    {
-    public:
-        WireState(EWirePass pass, F32 offset_factor);
-        ~WireState();
-
-        WireState(const WireState&) = delete;
-        WireState& operator=(const WireState&) = delete;
-
-    private:
-        LLGLSColorMask mMask{ true, false };
-        LLGLEnable mCull{ GL_CULL_FACE };
-        LLGLEnable mBlend{ GL_BLEND };
-        LLGLDepthTest mDepth;
-        LLGLEnable mOffset;
-    };
-
     /// The polygon offset factor the wireframe's lines need in front of a window depth point-sampled from a scene
     /// `resample` window pixels to its texel: a surface's depth there was taken up to that many pixels away along
     /// its slope, and a pixel more for the line's own.
@@ -446,24 +420,11 @@ public:
     void add(LLViewerObject* object, U32 te_mask, const LLColor4& colour, bool show_hidden, EPriority priority,
              U32 parts);
 
-    /// Draws what was added since the last call over the bound framebuffer, with `view`, and forgets it, giving up
-    /// the targets that are stale (stale).
+    /// Encodes what was added into the active native transaction and forgets it.
     void render(const View& view);
 
-    /// Gives up the targets.
+    /// Drops pending CPU entries; native targets belong to the Metal renderer.
     void release();
-
-    /// How long the targets are kept after a call last drew with them: long enough for the pause between one
-    /// selection and the next, or the pointer passing from one glowing object to the next, not to make them again.
-    static constexpr F64 TARGET_KEEP_SECONDS = 30.0;
-
-    /// Whether a target last drawn with in frame `used_frame` (LLFrameTimer::getFrameCount), at `used_at` seconds
-    /// (LLFrameTimer::getTotalSeconds), is given up in frame `frame` at `now`: once a whole frame has passed without
-    /// it, and TARGET_KEEP_SECONDS.
-    static bool stale(U32 used_frame, F64 used_at, U32 frame, F64 now)
-    {
-        return frame - used_frame > 1 && now - used_at >= TARGET_KEEP_SECONDS;
-    }
 
     /// Palette rows for ids 1 to `count`, and the id 0 that is never drawn.
     static U32 paletteRows(U32 count) { return 2 * (count / PALETTE_WIDTH + 1); }
@@ -552,84 +513,6 @@ public:
     /// whose joining adds least area, and past MAX_RECTS_JOINED_IN_PAIRS all of them into one.
     static void mergeRects(std::vector<LLRect>& rects);
 
-    /// Makes `palette` hold at least `rows` rows, recreating it when it holds fewer, and uploads them.
-    static void uploadPalette(U32& palette, U32& palette_rows, const std::vector<U8>& texels, U32 rows);
-
-    /// Binds what the id pass reads to the bound id program: the target's size, and the scene's depth, which
-    /// decides what is hidden; with no scene every surface counts as visible.
-    static void bindIdPass(LLGLSLShader& program, LLRenderTarget* scene, S32 width, S32 height);
-
-    /// The GL state the id pass draws in while it lives: colour and depth written, the depth test keeping the
-    /// nearest surface, back faces culled as the scene culls them (the main view keeps GL_BACK and
-    /// counter-clockwise fronts), no blending and no scissor.
-    struct IdPassState
-    {
-        LLGLSColorMask mMask{ true, true };
-        LLGLDepthTest mDepth{ GL_TRUE, GL_TRUE, GL_LEQUAL };
-        LLGLEnable mCull{ GL_CULL_FACE };
-        LLGLDisable mBlend{ GL_BLEND };
-        LLGLDisable mScissor{ GL_SCISSOR_TEST };
-    };
-
-    /// The id, priority and hidden parts the bound id program writes for the faces drawn next. Faces not
-    /// `outlined`, drawn for the depth of the HUD's wireframe alone, are written as drawn nowhere: in the id target
-    /// they hide what lies behind them, and draw no line and mask no other's.
-    static void setId(LLGLSLShader& program, U32 id, EPriority priority, bool show_hidden, bool outlined = true);
-
-    /// Draws a face into the id pass from `buffer`'s bound range, culled as the scene culls it: both sides of a
-    /// double-sided GLTF material, the front alone of everything else (LLRenderPass::pushGLTFBatch).
-    static void drawFace(LLVertexBuffer& buffer, U32 start, U32 end, U32 count, U32 offset, bool double_sided);
-
-    /// The base colour transform a program was last given, which setAlphaTest leaves alone while it is the one
-    /// asked for; not valid until it is given one, as when a program is bound.
-    struct TransformCache
-    {
-        LLGLTFMaterial::TextureTransform::Pack mPack;
-        bool mValid = false;
-    };
-
-    /// How the bound id or wireframe program tests the alpha of the face drawn next, whose texture is bound as its
-    /// diffuse map (AlphaTest): with NO_ALPHA_TEST or UNSHOWN the texture is not read. `transform` is the base
-    /// colour's texture transform, packed as LLGLTFMaterial::TextureTransform::getPacked packs it, the identity for a
-    /// legacy face, whose texture coordinates have their transform in them; with `bound`, it is given only where it
-    /// is not the one the program has.
-    static void setAlphaTest(LLGLSLShader& program, const AlphaTest& test,
-                             const LLGLTFMaterial::TextureTransform::Pack& transform, TransformCache* bound = nullptr);
-
-    /// The jump pass with the bound jump program: into `jumps`, R8 at the size of `ids`, the id target, 1 on the
-    /// texels on the near side of a jump and 0 elsewhere, over the texels under `rects`; the others are cleared, as
-    /// `ids` holds nothing there when the rects cover every selected texel. Its depth is read through `view`'s
-    /// projection, which the id pass drew with.
-    static void drawJumps(LLGLSLShader& program, LLRenderTarget& ids, LLRenderTarget& jumps,
-                          const std::vector<LLRect>& rects, const View& view, LLVertexBuffer& triangle);
-
-    /// The tile pass with the bound tile program: into `tiles`, a texel to each TILE_SIZE square of `ids`, the id
-    /// target, and of `jumps`, the jump pass's marks: in its first attachment, RGBA16, the square's lowest and highest
-    /// id, whether it holds the near side of a jump and whether it holds a glowing surface; in its second, R32F, the
-    /// eye distance of its nearest texel of an object that does not glow, read through `view`'s projection, and past
-    /// every distance where there is none. Over the tiles under `rects`, rects of `ids`; the others are cleared, and
-    /// hold nothing when the rects cover every selected texel.
-    static void drawTiles(LLGLSLShader& program, LLRenderTarget& ids, LLRenderTarget& jumps, LLRenderTarget& tiles,
-                          const std::vector<LLRect>& rects, const View& view, LLVertexBuffer& triangle);
-
-    /// Clears the jump pass's target where a frame draws no contour, which reads no jumps but the tile pass does.
-    static void clearJumps(LLRenderTarget& jumps);
-
-    /// The tiles of the id target a rect of its texels touches.
-    static LLRect tileRect(const LLRect& rect);
-
-    /// The rect of a width x height window the backdrop is copied from before the lines over `rect` are drawn: the
-    /// rect grown by BACKDROP_REACH, held to the window, and to even edges, so each texel of the copy is the mean of a
-    /// square of BACKDROP_SCALE pixels.
-    static LLRect backdropRect(const LLRect& rect, S32 width, S32 height);
-
-    /// The backdrop mask pass with the bound mask program: into the alpha of `backdrop`, 1 on each texel none of
-    /// whose window pixels shows a selected surface in `ids`, the id target, and 0 on the others, over the texels
-    /// under `rects`, rects of the window; its colour is left as the copy left it. What lies behind a contour is read
-    /// from the texels it marks alone, so an object does not count as its own backdrop.
-    static void drawBackdropMask(LLGLSLShader& program, LLRenderTarget& ids, LLRenderTarget& backdrop,
-                                 const std::vector<LLRect>& rects, LLVertexBuffer& triangle);
-
     /// The OKLab lightness a line of lightness `line` takes over a backdrop of lightness `back` under CONTRAST_SHIFT,
     /// as contrastLightness in selectionContrastF.glsl gives it, where the two colours are less than MIN_CONTRAST
     /// apart: its own where the lightnesses are MIN_CONTRAST apart already; else, below the turn, MIN_CONTRAST lighter
@@ -647,49 +530,7 @@ public:
         return line <= back - MIN_CONTRAST ? line : llmax(back - MIN_CONTRAST - (1.f - line), 0.f);
     }
 
-    /// Binds `contrast` to the bound edge or wireframe program: the mode, the rim's width under CONTRAST_RIM, and
-    /// under CONTRAST_SHIFT `backdrop`, the window behind the lines (drawBackdropMask), without which the lines are
-    /// drawn as the palette has them.
-    static void bindContrast(LLGLSLShader& program, EContrast contrast, S32 rim_width, LLRenderTarget* backdrop);
-
-    /// The glow reach pass with the bound glow reach program: into `reach`, RGBA16 at the size of `tiles`, the tile
-    /// pass's record, for each tile the lowest and highest id of the tiles within `view`'s glow radius of it that hold
-    /// a glowing surface, over the tiles under `rects`, rects of the id target; the others are cleared, and hold no
-    /// glowing surface near them when the rects cover every selected texel and the glow's reach around them.
-    static void drawGlowReach(LLGLSLShader& program, LLRenderTarget& tiles, LLRenderTarget& reach,
-                              const std::vector<LLRect>& rects, const View& view, LLVertexBuffer& triangle);
-
-    /// The glow row pass with the bound glow row program: into `rows`, R8 at the size of `ids`, the id target, for
-    /// each texel how far along its row the nearest glowing texel within `view`'s glow radius lies, with `reach`, the
-    /// glow reach pass's record, over the texels under `rects`; the others are cleared, as for drawGlowReach.
-    static void drawGlowRows(LLGLSLShader& program, LLRenderTarget& ids, LLRenderTarget& reach, LLRenderTarget& rows,
-                             const std::vector<LLRect>& rects, const View& view, LLVertexBuffer& triangle);
-
-    /// Binds what a wireframe pass reads to the bound wireframe program: the pass, the lines' width, the viewport's
-    /// size, the palette, the contrast (bindContrast), and for WIRE_ID_DEPTH the depth of `ids`, the id target.
-    static void bindWirePass(LLGLSLShader& program, EWirePass pass, S32 wire_width, S32 width, S32 height, U32 palette,
-                             LLRenderTarget* ids, EContrast contrast, LLRenderTarget* backdrop);
-
-    /// The edge pass with the bound outline program and `view`'s widths and contrast: ids and their depth from `ids`,
-    /// the id target, the depth through `view`'s projection, which the id pass drew with, the jump pass's marks from
-    /// `jumps` and the tile pass's record from `tiles`. With `glow_reach` and `glow_rows`, the glow reach and row
-    /// passes' records, where an object glows, the pass draws the glow; and only then. With `backdrop`, what lies
-    /// behind the lines (bindContrast). Over each of `rects`, rects of the viewport at (vp_x, vp_y), where given, and
-    /// over the viewport and scissor in force where not.
-    static void drawEdges(LLGLSLShader& program, LLRenderTarget& ids, LLRenderTarget& jumps, LLRenderTarget& tiles,
-                          LLRenderTarget* glow_reach, LLRenderTarget* glow_rows, LLRenderTarget* backdrop, U32 palette,
-                          const View& view, LLVertexBuffer& triangle, const std::vector<LLRect>* rects = nullptr,
-                          S32 vp_x = 0, S32 vp_y = 0);
-
 private:
-    // The full-screen triangle with the bound program, `projection` loaded for its draw where given: the triangle
-    // takes no matrix, and the passes read depth through the projection's inverse.
-    static void drawTriangle(LLVertexBuffer& triangle, const LLMatrix4a* projection);
-
-    // Clears `target`, then draws the full-screen triangle into its texels under each of `rects`.
-    static void drawUnder(LLRenderTarget& target, const std::vector<LLRect>& rects, LLVertexBuffer& triangle,
-                          const LLMatrix4a* projection);
-
     struct Entry
     {
         LLViewerObject* mObject;
@@ -731,54 +572,13 @@ private:
     // and vertex buffer.
     void collectFaces(const View& view, S32 width, S32 height, const LLMatrix4a& mvp);
 
-    // Draws the faces of mFaces that are rigged (or not) and `drawn` passes into `program`, the bound id or wireframe
-    // program or the rigged variant of one, as the scene draws them: in the frame mFaces gives, a rigged one through
-    // its joint palette, with its alpha test and culling (bindFace, drawFace). `begin` is called with a face's
-    // FaceDraw before the first face of each object.
-    template <typename Drawn, typename Begin>
-    void drawFaceList(LLGLSLShader& program, bool rigged, const View& view, Drawn&& drawn, Begin&& begin);
-
-    // The id pass: what was added and is drawn into it (inIdPass) into mIdMap, a width x height target.
-    void drawIds(const View& view, S32 width, S32 height);
 #if LL_DARWIN
-    // Mirror the private face-id/depth producer into the active native
-    // world/UI transaction and consume its requested wireframe, contour and/or
-    // glow through native passes. False keeps GL authoritative and prevents
-    // publication of a partial transaction.
+    // Encode the private face-id/depth producer and requested wireframe,
+    // contour and/or glow directly into the active native transaction.
     bool drawMetalIds(const View& view, S32 width, S32 height,
                       bool contour, bool glow, bool wireframe,
                       bool contrast_shift, F32 wire_depth_slope);
 #endif
-
-    // The wireframe of what was added with one, over the bound framebuffer under the outline: the world's visible
-    // lines and its hidden ones against the window's depth, the HUD's against the id target's; kept apart from
-    // `backdrop` under CONTRAST_SHIFT.
-    void drawWireframes(const View& view, S32 width, S32 height, LLRenderTarget* backdrop);
-
-    // When a target was last drawn with: the frame (LLFrameTimer::getFrameCount) and the time
-    // (LLFrameTimer::getTotalSeconds).
-    struct Use
-    {
-        U32 mFrame = 0;
-        F64 mTime = 0.0;
-    };
-
-    // Gives up the targets stale in frame `frame` at `now`.
-    void releaseStale(U32 frame, F64 now);
-
-    // What a face is drawn with beyond its geometry.
-    struct FaceBinding
-    {
-        // A texture animation was loaded, which the caller unloads after the draw.
-        bool mAnimated = false;
-        // Its GLTF material is double-sided: the scene culls neither side.
-        bool mDoubleSided = false;
-    };
-
-    // Binds `face`'s texture and alpha test to the bound program, its base colour transform where `bound` says the
-    // program has another, and loads its texture animation, if it is drawn with one. With `whole` what its texture
-    // cuts is kept (faceAlphaTest).
-    static FaceBinding bindFace(LLGLSLShader& program, LLFace* face, bool whole, TransformCache& bound);
 
     void clearEntries();
 
@@ -787,35 +587,12 @@ private:
     std::vector<EPriority> mPriorities;
     std::vector<U32> mOrder;
     std::vector<U8> mPaletteTexels;
-    // What the palette holds, so a frame with the same colours uploads nothing.
-    std::vector<U8> mUploadedTexels;
-
-    LLRenderTarget mIdMap;
-    LLRenderTarget mJumpMap;
-    LLRenderTarget mTileMap;
-    LLRenderTarget mGlowReachMap;
-    LLRenderTarget mGlowRowMap;
-    LLRenderTarget mBackdropMap;
-    U32 mPalette = 0;
-    U32 mPaletteRows = 0;
-
-    // When the id target, the jump and tile targets, the glow's, the backdrop and the palette were last drawn with.
-    Use mIdUse;
-    Use mEdgeUse;
-    Use mGlowUse;
-    Use mBackdropUse;
-    Use mPaletteUse;
 
     // This frame's faces, and the pixels the id pass's objects and their lines and glow can touch, and those the
     // lines can (collectFaces).
     std::vector<FaceDraw> mFaces;
     std::vector<LLRect> mRects;
     std::vector<LLRect> mLineRects;
-
-    // Joint palettes uploaded to the bound rigged program, so a mesh's faces upload theirs once.
-    const LLVOAvatar* mLastAvatar = nullptr;
-    U64 mLastMeshId = 0;
-    bool mSkipLastSkin = false;
 };
 
 inline void ALSelectionOutline::writePalette(std::vector<U8>& texels, U32 id, const LLColor4& colour, bool show_hidden)
@@ -838,7 +615,6 @@ inline void ALSelectionOutline::writePalette(std::vector<U8>& texels, U32 id, co
     texels[visible + 3] = unorm(colour.mV[VALPHA]);
     texels[hidden + 3] = show_hidden ? unorm(colour.mV[VALPHA] * HIDDEN_ALPHA) : 0;
 }
-
 inline S32 ALSelectionOutline::contourWidth(F32 width, F32 ui_scale)
 {
     // Asked outright: /fp:fast may answer a comparison with a NaN either way.
@@ -1069,367 +845,4 @@ inline void ALSelectionOutline::mergeRects(std::vector<LLRect>& rects)
         rects[best_i].unionWith(rects[best_j]);
         rects.erase(rects.begin() + best_j);
     }
-}
-
-inline void ALSelectionOutline::uploadPalette(U32& palette, U32& palette_rows, const std::vector<U8>& texels, U32 rows)
-{
-    const U32 target = ALTextureSlot::getInternalType(ALTextureSlot::TT_TEXTURE);
-    if (!palette || palette_rows < rows)
-    {
-        if (palette)
-        {
-            LLImageGL::deleteTextures(1, &palette);
-        }
-        LLImageGL::generateTextures(1, &palette);
-        gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, palette);
-        LLImageGL::allocateTexture2D(target, GL_RGBA8, PALETTE_WIDTH, rows, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-        palette_rows = rows;
-    }
-    else
-    {
-        gGL.getTextureSlot(0)->bindManual(ALTextureSlot::TT_TEXTURE, palette);
-    }
-    // setManualSubImage writes whatever is bound on the active unit, slot 0 here.
-    LLImageGL::setManualSubImage(target, 0, PALETTE_WIDTH, rows, GL_RGBA, GL_UNSIGNED_BYTE, texels.data());
-    gGL.getTextureSlot(0)->unbind();
-}
-
-inline void ALSelectionOutline::bindIdPass(LLGLSLShader& program, LLRenderTarget* scene, S32 width, S32 height)
-{
-    if (scene)
-    {
-        program.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, scene);
-    }
-    else
-    {
-        // Not read without a scene; left empty rather than holding whatever the unit last had.
-        program.unbindTexture(LLShaderMgr::DEFERRED_DEPTH);
-    }
-    program.uniform1i(LLShaderMgr::SELECTION_SCENE_DEPTH, scene ? 1 : 0);
-    program.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (F32)width, (F32)height);
-}
-
-inline void ALSelectionOutline::setId(LLGLSLShader& program, U32 id, EPriority priority, bool show_hidden, bool outlined)
-{
-    program.uniform1i(LLShaderMgr::SELECTION_ID, (GLint)id);
-    program.uniform1i(LLShaderMgr::SELECTION_PRIORITY, (GLint)priority);
-    program.uniform1i(LLShaderMgr::SELECTION_SHOW_HIDDEN, show_hidden ? 1 : 0);
-    program.uniform1i(LLShaderMgr::SELECTION_OUTLINED, outlined ? 1 : 0);
-}
-
-inline void ALSelectionOutline::drawFace(LLVertexBuffer& buffer, U32 start, U32 end, U32 count, U32 offset,
-                                         bool double_sided)
-{
-    LLGLDisable no_cull(double_sided ? GL_CULL_FACE : 0);
-    buffer.setBuffer();
-    buffer.drawRange(LLRender::TRIANGLES, start, end, count, offset);
-}
-
-inline ALSelectionOutline::WireState::WireState(EWirePass pass, F32 offset_factor)
-:   mDepth(pass != WIRE_ID_DEPTH ? GL_TRUE : GL_FALSE, GL_FALSE, pass == WIRE_HIDDEN ? GL_GREATER : GL_LEQUAL),
-    mOffset(pass != WIRE_ID_DEPTH ? GL_POLYGON_OFFSET_FILL : 0)
-{
-    gGL.setSceneBlendType(LLRender::BT_ALPHA);
-    // Toward the eye in forward depth's terms, which gGL turns for reverse-Z.
-    gGL.setPolygonOffset(-offset_factor, -WIRE_OFFSET_UNITS);
-}
-
-inline ALSelectionOutline::WireState::~WireState()
-{
-    gGL.setPolygonOffset(0.f, 0.f);
-}
-
-inline void ALSelectionOutline::bindContrast(LLGLSLShader& program, EContrast contrast, S32 rim_width,
-                                             LLRenderTarget* backdrop)
-{
-    // A shift reads what lies behind the lines; without it they are drawn as the palette has them.
-    const EContrast mode = (contrast == CONTRAST_SHIFT && !backdrop) ? CONTRAST_OFF : contrast;
-    if (mode == CONTRAST_SHIFT)
-    {
-        // Read a texel at a time: its alpha says whether it is the backdrop of a contour (drawBackdropMask).
-        program.bindTexture(LLShaderMgr::SELECTION_BACKDROP_MAP, backdrop, ALSamplers::PointClamp);
-    }
-    else
-    {
-        // Not read; left empty rather than holding whatever the unit last had.
-        program.unbindTexture(LLShaderMgr::SELECTION_BACKDROP_MAP);
-    }
-    program.uniform1i(LLShaderMgr::SELECTION_CONTRAST, (GLint)mode);
-    program.uniform1i(LLShaderMgr::OUTLINE_RIM_WIDTH, mode == CONTRAST_RIM ? llmax(rim_width, 1) : 0);
-}
-
-inline void ALSelectionOutline::bindWirePass(LLGLSLShader& program, EWirePass pass, S32 wire_width, S32 width, S32 height,
-                                             U32 palette, LLRenderTarget* ids, EContrast contrast,
-                                             LLRenderTarget* backdrop)
-{
-    // The wireframe's lines are drawn on their object and have no rim: they are shifted or drawn as they are.
-    bindContrast(program, contrast == CONTRAST_SHIFT ? CONTRAST_SHIFT : CONTRAST_OFF, 0, backdrop);
-    program.uniform1i(LLShaderMgr::WIREFRAME_PASS, (GLint)pass);
-    program.uniform1i(LLShaderMgr::WIREFRAME_WIDTH, llmax(wire_width, 1));
-    program.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (F32)width, (F32)height);
-    const S32 channel = program.enableTexture(LLShaderMgr::SELECTION_PALETTE);
-    if (channel > -1)
-    {
-        gGL.getTextureSlot(channel)->bindManual(ALTextureSlot::TT_TEXTURE, palette, gGL.getSampler(ALSamplers::PointClamp));
-    }
-    if (ids && pass == WIRE_ID_DEPTH)
-    {
-        program.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, ids);
-    }
-    else
-    {
-        // Not read; left empty rather than holding whatever the unit last had.
-        program.unbindTexture(LLShaderMgr::DEFERRED_DEPTH);
-    }
-}
-
-inline void ALSelectionOutline::setAlphaTest(LLGLSLShader& program, const AlphaTest& test,
-                                             const LLGLTFMaterial::TextureTransform::Pack& transform, TransformCache* bound)
-{
-    program.setMinimumAlpha(test.mCutoff);
-    program.uniform1i(LLShaderMgr::SELECTION_KEEP_CUT, test.mKeepCut ? 1 : 0);
-    // An array, which LLGLSLShader's uniform cache does not keep, and the identity on every legacy face.
-    if (bound && bound->mValid && std::equal(std::begin(transform), std::end(transform), std::begin(bound->mPack)))
-    {
-        return;
-    }
-    program.uniform4fv(LLShaderMgr::TEXTURE_BASE_COLOR_TRANSFORM, 2, transform);
-    if (bound)
-    {
-        std::copy(std::begin(transform), std::end(transform), std::begin(bound->mPack));
-        bound->mValid = true;
-    }
-}
-
-inline void ALSelectionOutline::drawTriangle(LLVertexBuffer& triangle, const LLMatrix4a* projection)
-{
-    if (projection)
-    {
-        gGL.matrixMode(LLRender::MM_PROJECTION);
-        gGL.pushMatrix();
-        gGL.loadMatrix(*projection);
-        gGL.matrixMode(LLRender::MM_MODELVIEW);
-    }
-
-    triangle.setBuffer();
-    triangle.drawArrays(LLRender::TRIANGLES, 0, 3);
-
-    if (projection)
-    {
-        gGL.matrixMode(LLRender::MM_PROJECTION);
-        gGL.popMatrix();
-        gGL.matrixMode(LLRender::MM_MODELVIEW);
-    }
-}
-
-inline void ALSelectionOutline::drawUnder(LLRenderTarget& target, const std::vector<LLRect>& rects,
-                                          LLVertexBuffer& triangle, const LLMatrix4a* projection)
-{
-    target.bindTarget();
-    {
-        LLGLSColorMask mask(true, true);
-        LLGLDepthTest depth(GL_FALSE);
-        LLGLDisable blend(GL_BLEND);
-        {
-            LLGLDisable scissor(GL_SCISSOR_TEST);
-            gGL.setClearColor(LLColor4(0.f, 0.f, 0.f, 0.f));
-            target.clear();
-        }
-
-        const LLRect whole(0, (S32)target.getHeight(), (S32)target.getWidth(), 0);
-        for (const LLRect& rect : rects)
-        {
-            LLRect under = rect;
-            under.intersectWith(whole);
-            if (under.notEmpty())
-            {
-                LLGLSScissor scissor(under.mLeft, under.mBottom, under.getWidth(), under.getHeight());
-                drawTriangle(triangle, projection);
-            }
-        }
-    }
-    target.flush();
-}
-
-inline void ALSelectionOutline::drawJumps(LLGLSLShader& program, LLRenderTarget& ids, LLRenderTarget& jumps,
-                                          const std::vector<LLRect>& rects, const View& view, LLVertexBuffer& triangle)
-{
-    program.bindTexture(LLShaderMgr::SELECTION_ID_MAP, &ids, ALSamplers::PointClamp);
-    program.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, &ids);
-    drawUnder(jumps, rects, triangle, &view.mProjection);
-    program.unbindTexture(LLShaderMgr::DEFERRED_DEPTH);
-    program.unbindTexture(LLShaderMgr::SELECTION_ID_MAP);
-}
-
-inline void ALSelectionOutline::clearJumps(LLRenderTarget& jumps)
-{
-    jumps.bindTarget();
-    {
-        LLGLSColorMask mask(true, true);
-        LLGLDisable scissor(GL_SCISSOR_TEST);
-        gGL.setClearColor(LLColor4(0.f, 0.f, 0.f, 0.f));
-        jumps.clear();
-    }
-    jumps.flush();
-}
-
-inline LLRect ALSelectionOutline::tileRect(const LLRect& rect)
-{
-    const S32 left = llmax(rect.mLeft, 0) / (S32)TILE_SIZE;
-    const S32 bottom = llmax(rect.mBottom, 0) / (S32)TILE_SIZE;
-    const S32 right = (S32)tileCount((U32)llmax(rect.mRight, 0));
-    const S32 top = (S32)tileCount((U32)llmax(rect.mTop, 0));
-    return LLRect(left, top, right, bottom);
-}
-
-inline LLRect ALSelectionOutline::backdropRect(const LLRect& rect, S32 width, S32 height)
-{
-    LLRect copied(rect.mLeft - BACKDROP_REACH, rect.mTop + BACKDROP_REACH, rect.mRight + BACKDROP_REACH,
-                  rect.mBottom - BACKDROP_REACH);
-    copied.intersectWith(LLRect(0, llmax(height, 0), llmax(width, 0), 0));
-    // Down to whole squares of BACKDROP_SCALE pixels, all of them inside the window.
-    copied.mLeft -= copied.mLeft % BACKDROP_SCALE;
-    copied.mBottom -= copied.mBottom % BACKDROP_SCALE;
-    copied.mRight -= copied.mRight % BACKDROP_SCALE;
-    copied.mTop -= copied.mTop % BACKDROP_SCALE;
-    return copied;
-}
-
-inline void ALSelectionOutline::drawBackdropMask(LLGLSLShader& program, LLRenderTarget& ids, LLRenderTarget& backdrop,
-                                                 const std::vector<LLRect>& rects, LLVertexBuffer& triangle)
-{
-    program.bindTexture(LLShaderMgr::SELECTION_ID_MAP, &ids, ALSamplers::PointClamp);
-    program.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, &ids);
-    backdrop.bindTarget();
-    {
-        // The alpha alone: the colour is the copy's.
-        LLGLSColorMask mask(false, true);
-        LLGLDepthTest depth(GL_FALSE);
-        LLGLDisable blend(GL_BLEND);
-        const LLRect whole(0, (S32)backdrop.getHeight(), (S32)backdrop.getWidth(), 0);
-        for (const LLRect& rect : rects)
-        {
-            LLRect under(rect.mLeft / BACKDROP_SCALE, (rect.mTop + BACKDROP_SCALE - 1) / BACKDROP_SCALE,
-                         (rect.mRight + BACKDROP_SCALE - 1) / BACKDROP_SCALE, rect.mBottom / BACKDROP_SCALE);
-            under.intersectWith(whole);
-            if (under.notEmpty())
-            {
-                LLGLSScissor scissor(under.mLeft, under.mBottom, under.getWidth(), under.getHeight());
-                drawTriangle(triangle, nullptr);
-            }
-        }
-    }
-    backdrop.flush();
-    program.unbindTexture(LLShaderMgr::DEFERRED_DEPTH);
-    program.unbindTexture(LLShaderMgr::SELECTION_ID_MAP);
-}
-
-inline void ALSelectionOutline::drawTiles(LLGLSLShader& program, LLRenderTarget& ids, LLRenderTarget& jumps,
-                                          LLRenderTarget& tiles, const std::vector<LLRect>& rects, const View& view,
-                                          LLVertexBuffer& triangle)
-{
-    program.bindTexture(LLShaderMgr::SELECTION_ID_MAP, &ids, ALSamplers::PointClamp);
-    program.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, &ids);
-    program.bindTexture(LLShaderMgr::SELECTION_JUMP_MAP, &jumps, ALSamplers::PointClamp);
-    std::vector<LLRect> tile_rects;
-    tile_rects.reserve(rects.size());
-    for (const LLRect& rect : rects)
-    {
-        tile_rects.push_back(tileRect(rect));
-    }
-    drawUnder(tiles, tile_rects, triangle, &view.mProjection);
-    program.unbindTexture(LLShaderMgr::SELECTION_JUMP_MAP);
-    program.unbindTexture(LLShaderMgr::DEFERRED_DEPTH);
-    program.unbindTexture(LLShaderMgr::SELECTION_ID_MAP);
-}
-
-inline void ALSelectionOutline::drawGlowReach(LLGLSLShader& program, LLRenderTarget& tiles, LLRenderTarget& reach,
-                                              const std::vector<LLRect>& rects, const View& view,
-                                              LLVertexBuffer& triangle)
-{
-    // The glow reach program reads no depth, and needs no projection.
-    program.bindTexture(LLShaderMgr::SELECTION_TILE_MAP, &tiles, ALSamplers::PointClamp);
-    program.uniform1i(LLShaderMgr::OUTLINE_GLOW_RADIUS, llclamp(view.mGlowRadius, 1, MAX_GLOW_PIXELS));
-    std::vector<LLRect> tile_rects;
-    tile_rects.reserve(rects.size());
-    for (const LLRect& rect : rects)
-    {
-        tile_rects.push_back(tileRect(rect));
-    }
-    drawUnder(reach, tile_rects, triangle, nullptr);
-    program.unbindTexture(LLShaderMgr::SELECTION_TILE_MAP);
-}
-
-inline void ALSelectionOutline::drawGlowRows(LLGLSLShader& program, LLRenderTarget& ids, LLRenderTarget& reach,
-                                             LLRenderTarget& rows, const std::vector<LLRect>& rects, const View& view,
-                                             LLVertexBuffer& triangle)
-{
-    // The glow row program reads no depth, and needs no projection.
-    program.bindTexture(LLShaderMgr::SELECTION_ID_MAP, &ids, ALSamplers::PointClamp);
-    program.bindTexture(LLShaderMgr::SELECTION_GLOW_REACH_MAP, &reach, ALSamplers::PointClamp);
-    program.uniform1i(LLShaderMgr::OUTLINE_GLOW_RADIUS, llclamp(view.mGlowRadius, 1, MAX_GLOW_PIXELS));
-    drawUnder(rows, rects, triangle, nullptr);
-    program.unbindTexture(LLShaderMgr::SELECTION_GLOW_REACH_MAP);
-    program.unbindTexture(LLShaderMgr::SELECTION_ID_MAP);
-}
-
-inline void ALSelectionOutline::drawEdges(LLGLSLShader& program, LLRenderTarget& ids, LLRenderTarget& jumps,
-                                          LLRenderTarget& tiles, LLRenderTarget* glow_reach, LLRenderTarget* glow_rows,
-                                          LLRenderTarget* backdrop, U32 palette, const View& view, LLVertexBuffer& triangle,
-                                          const std::vector<LLRect>* rects, S32 vp_x, S32 vp_y)
-{
-    // Point sampled all: the ids, their depth, the jumps, the tiles, the glow's records, the backdrop and the
-    // palette are data, and texelFetch reads them whatever the filter.
-    const bool glow = glow_reach && glow_rows;
-    bindContrast(program, view.mContrast, view.mRimWidth, backdrop);
-    program.bindTexture(LLShaderMgr::SELECTION_ID_MAP, &ids, ALSamplers::PointClamp);
-    program.bindDepthTexture(LLShaderMgr::DEFERRED_DEPTH, &ids);
-    program.bindTexture(LLShaderMgr::SELECTION_JUMP_MAP, &jumps, ALSamplers::PointClamp);
-    program.bindTexture(LLShaderMgr::SELECTION_TILE_MAP, &tiles, ALSamplers::PointClamp, 0);
-    program.bindTexture(LLShaderMgr::SELECTION_TILE_DEPTH_MAP, &tiles, ALSamplers::PointClamp, 1);
-    if (glow)
-    {
-        program.bindTexture(LLShaderMgr::SELECTION_GLOW_REACH_MAP, glow_reach, ALSamplers::PointClamp);
-        program.bindTexture(LLShaderMgr::SELECTION_GLOW_ROW_MAP, glow_rows, ALSamplers::PointClamp);
-    }
-    else
-    {
-        // Not read without a glow; left empty rather than holding whatever the units last had.
-        program.unbindTexture(LLShaderMgr::SELECTION_GLOW_REACH_MAP);
-        program.unbindTexture(LLShaderMgr::SELECTION_GLOW_ROW_MAP);
-    }
-    const S32 channel = program.enableTexture(LLShaderMgr::SELECTION_PALETTE);
-    if (channel > -1)
-    {
-        gGL.getTextureSlot(channel)->bindManual(ALTextureSlot::TT_TEXTURE, palette, gGL.getSampler(ALSamplers::PointClamp));
-    }
-    program.uniform1i(LLShaderMgr::OUTLINE_WIDTH, llmax(view.mWidth, 1));
-    program.uniform1i(LLShaderMgr::OUTLINE_INNER_WIDTH, llmax(view.mInnerWidth, 1));
-    // A radius of 0 is no glow: the pass reaches no further than the lines.
-    program.uniform1i(LLShaderMgr::OUTLINE_GLOW_RADIUS, glow ? llclamp(view.mGlowRadius, 1, MAX_GLOW_PIXELS) : 0);
-    program.uniform1f(LLShaderMgr::OUTLINE_GLOW_BRIGHTNESS, view.mGlowBrightness);
-
-    if (rects)
-    {
-        // The rects do not overlap, so no pixel is blended twice.
-        for (const LLRect& rect : *rects)
-        {
-            LLGLSScissor scissor(vp_x + rect.mLeft, vp_y + rect.mBottom, rect.getWidth(), rect.getHeight());
-            drawTriangle(triangle, &view.mProjection);
-        }
-    }
-    else
-    {
-        drawTriangle(triangle, &view.mProjection);
-    }
-
-    program.unbindTexture(LLShaderMgr::SELECTION_BACKDROP_MAP);
-    program.unbindTexture(LLShaderMgr::SELECTION_PALETTE);
-    program.unbindTexture(LLShaderMgr::SELECTION_GLOW_ROW_MAP);
-    program.unbindTexture(LLShaderMgr::SELECTION_GLOW_REACH_MAP);
-    program.unbindTexture(LLShaderMgr::SELECTION_TILE_DEPTH_MAP);
-    program.unbindTexture(LLShaderMgr::SELECTION_TILE_MAP);
-    program.unbindTexture(LLShaderMgr::SELECTION_JUMP_MAP);
-    program.unbindTexture(LLShaderMgr::DEFERRED_DEPTH);
-    program.unbindTexture(LLShaderMgr::SELECTION_ID_MAP);
 }

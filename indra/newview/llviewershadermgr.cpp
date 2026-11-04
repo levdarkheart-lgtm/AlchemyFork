@@ -118,14 +118,6 @@ LLGLSLShader        gDepthPyramidProgram;
 LLGLSLShader        gHighlightProgram;
 LLGLSLShader        gHighlightNormalProgram;
 LLGLSLShader        gHighlightSpecularProgram;
-LLGLSLShader        gSelectionIdProgram;
-LLGLSLShader        gSelectionWireframeProgram;
-LLGLSLShader        gSelectionJumpProgram;
-LLGLSLShader        gSelectionTileProgram;
-LLGLSLShader        gSelectionOutlineProgram;
-LLGLSLShader        gSelectionGlowReachProgram;
-LLGLSLShader        gSelectionGlowRowProgram;
-LLGLSLShader        gSelectionBackdropMaskProgram;
 
 LLGLSLShader        gDeferredHighlightProgram;
 

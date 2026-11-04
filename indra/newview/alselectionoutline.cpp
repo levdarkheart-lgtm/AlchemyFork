@@ -27,12 +27,9 @@
 #include "alselectionoutline.h"
 
 #include "lldrawable.h"
-#include "lldrawpool.h"
 #include "lldrawpoolalpha.h"
 #include "llface.h"
 #include "llfetchedgltfmaterial.h"
-#include "llframetimer.h"
-#include "llglstates.h"
 #include "lltextureentry.h"
 #include "llui.h"
 #include "llviewercamera.h"
@@ -40,7 +37,6 @@
 #include "llviewerdisplay.h"
 #include "llviewerobject.h"
 #include "llviewerregion.h"
-#include "llviewershadermgr.h"
 #include "llviewertexture.h"
 #include "llvovolume.h"
 #include "llvoavatar.h"
@@ -109,15 +105,7 @@ namespace
     }
 }
 
-ALSelectionOutline::ALSelectionOutline()
-{
-    mIdMap.setLabel("outline.ids");
-    mJumpMap.setLabel("outline.jumps");
-    mTileMap.setLabel("outline.tiles");
-    mGlowReachMap.setLabel("outline.glow.reach");
-    mGlowRowMap.setLabel("outline.glow.rows");
-    mBackdropMap.setLabel("outline.backdrop");
-}
+ALSelectionOutline::ALSelectionOutline() = default;
 
 ALSelectionOutline::View ALSelectionOutline::worldView()
 {
@@ -181,79 +169,7 @@ void ALSelectionOutline::clearEntries()
 
 void ALSelectionOutline::release()
 {
-    if (mIdMap.isComplete())
-    {
-        mIdMap.release();
-    }
-    if (mJumpMap.isComplete())
-    {
-        mJumpMap.release();
-    }
-    if (mTileMap.isComplete())
-    {
-        mTileMap.release();
-    }
-    if (mGlowReachMap.isComplete())
-    {
-        mGlowReachMap.release();
-    }
-    if (mGlowRowMap.isComplete())
-    {
-        mGlowRowMap.release();
-    }
-    if (mBackdropMap.isComplete())
-    {
-        mBackdropMap.release();
-    }
-    if (mPalette)
-    {
-        LLImageGL::deleteTextures(1, &mPalette);
-        mPalette = 0;
-    }
-    mPaletteRows = 0;
-    mUploadedTexels.clear();
-}
-
-void ALSelectionOutline::releaseStale(U32 frame, F64 now)
-{
-    // Called every frame, so it touches nothing that is not there.
-    if (mIdMap.isComplete() && stale(mIdUse.mFrame, mIdUse.mTime, frame, now))
-    {
-        mIdMap.release();
-    }
-    if (stale(mEdgeUse.mFrame, mEdgeUse.mTime, frame, now))
-    {
-        if (mJumpMap.isComplete())
-        {
-            mJumpMap.release();
-        }
-        if (mTileMap.isComplete())
-        {
-            mTileMap.release();
-        }
-    }
-    if (stale(mGlowUse.mFrame, mGlowUse.mTime, frame, now))
-    {
-        if (mGlowReachMap.isComplete())
-        {
-            mGlowReachMap.release();
-        }
-        if (mGlowRowMap.isComplete())
-        {
-            mGlowRowMap.release();
-        }
-    }
-    if (mBackdropMap.isComplete() && stale(mBackdropUse.mFrame, mBackdropUse.mTime, frame, now))
-    {
-        mBackdropMap.release();
-    }
-    if (mPalette && stale(mPaletteUse.mFrame, mPaletteUse.mTime, frame, now))
-    {
-        LLImageGL::deleteTextures(1, &mPalette);
-        mPalette = 0;
-        mPaletteRows = 0;
-        mUploadedTexels.clear();
-    }
+    clearEntries();
 }
 
 void ALSelectionOutline::render(const View& view)
@@ -525,123 +441,6 @@ void ALSelectionOutline::collectFaces(const View& view, S32 width, S32 height, c
     });
 }
 
-template <typename Drawn, typename Begin>
-void ALSelectionOutline::drawFaceList(LLGLSLShader& program, bool rigged, const View& view, Drawn&& drawn, Begin&& begin)
-{
-    // Joint palettes and the base colour transform are given to the bound program, which this one is not yet.
-    mLastAvatar = nullptr;
-    mLastMeshId = 0;
-    mSkipLastSkin = false;
-    TransformCache transform;
-
-    const LLMatrix4a* loaded = nullptr;
-    bool any_loaded = false;
-    U32 index = U32_MAX;
-    for (const FaceDraw& draw : mFaces)
-    {
-        if (draw.mRigged != rigged || !drawn(draw))
-        {
-            continue;
-        }
-
-        LLFace* face = draw.mFace;
-        LLVertexBuffer* buffer = face->getVertexBuffer();
-        if (rigged &&
-            !LLRenderPass::uploadMatrixPalette(face->mAvatar, face->mSkinInfo, mLastAvatar, mLastMeshId, mSkipLastSkin))
-        {
-            continue;
-        }
-        if (!any_loaded || draw.mModel != loaded)
-        {
-            gGL.loadMatrix(view.mModelview);
-            if (draw.mModel)
-            {
-                gGL.multMatrix(draw.mModel->getF32ptr());
-            }
-            loaded = draw.mModel;
-            any_loaded = true;
-        }
-        if (draw.mIndex != index)
-        {
-            begin(draw);
-            index = draw.mIndex;
-        }
-
-        const FaceBinding binding = bindFace(program, face, wholeFaces(view, draw.mPriority), transform);
-        drawFace(*buffer, face->getGeomIndex(), face->getGeomIndex() + face->getGeomCount() - 1, face->getIndicesCount(),
-                 face->getIndicesStart(), binding.mDoubleSided);
-
-        if (binding.mAnimated)
-        {
-            gGL.matrixMode(LLRender::MM_TEXTURE0);
-            gGL.loadIdentity();
-            gGL.matrixMode(LLRender::MM_MODELVIEW);
-        }
-    }
-}
-
-void ALSelectionOutline::drawIds(const View& view, S32 width, S32 height)
-{
-    const bool any_rigged =
-        std::any_of(mFaces.begin(), mFaces.end(), [](const FaceDraw& draw) { return draw.mRigged; });
-    mIdMap.bindTarget();
-    {
-        // Depth writes on before the clear, which they mask.
-        IdPassState state;
-
-        gGL.setClearColor(LLColor4(0.f, 0.f, 0.f, 0.f));
-        mIdMap.clear();
-
-        gGL.matrixMode(LLRender::MM_PROJECTION);
-        gGL.pushMatrix();
-        gGL.loadMatrix(view.mProjection);
-        // A face's texture animation is loaded for its draw alone (bindFace); the others' is the identity.
-        gGL.matrixMode(LLRender::MM_TEXTURE0);
-        gGL.pushMatrix();
-        gGL.loadIdentity();
-        gGL.matrixMode(LLRender::MM_MODELVIEW);
-        gGL.pushMatrix();
-
-        // Static faces through the program, rigged ones through its rigged variant: the depth test, not the
-        // order, decides which surface each pixel keeps, but where two surfaces the scene does not show lie at the
-        // cleared depth, the later.
-        for (bool rigged : { false, true })
-        {
-            if (rigged && !any_rigged)
-            {
-                break;
-            }
-            LLGLSLShader& program = rigged ? *gSelectionIdProgram.mRiggedVariant : gSelectionIdProgram;
-            gSelectionIdProgram.bind(rigged);
-            bindIdPass(program, view.mHUD ? nullptr : &gPipeline.mRT->deferredScreen, width, height);
-            drawFaceList(program, rigged, view,
-                         [this, &view](const FaceDraw& draw)
-                         {
-                             const Entry& entry = mEntries[mOrder[draw.mIndex]];
-                             return inIdPass(entry.mParts, entry.mPriority, view.mHUD);
-                         },
-                         [this, &program](const FaceDraw& draw)
-                         {
-                             // An object drawn for the HUD wireframe's depth alone is not outlined: it hides what
-                             // lies behind it and draws no line of its own.
-                             const Entry& entry = mEntries[mOrder[draw.mIndex]];
-                             setId(program, draw.mIndex + 1, entry.mPriority, entry.mShowHidden,
-                                   outlined(entry.mParts, entry.mPriority));
-                         });
-            program.unbindTexture(LLShaderMgr::DIFFUSE_MAP);
-            program.unbindTexture(LLShaderMgr::DEFERRED_DEPTH);
-        }
-
-        gGL.matrixMode(LLRender::MM_PROJECTION);
-        gGL.popMatrix();
-        gGL.matrixMode(LLRender::MM_TEXTURE0);
-        gGL.popMatrix();
-        gGL.matrixMode(LLRender::MM_MODELVIEW);
-        gGL.popMatrix();
-    }
-    mIdMap.flush();
-}
-
 #if LL_DARWIN
 bool ALSelectionOutline::drawMetalIds(const View& view, S32 width, S32 height, bool contour_enabled, bool glow_enabled,
                                       bool wireframe_enabled, bool contrast_shift, F32 wire_depth_slope)
@@ -831,147 +630,3 @@ bool ALSelectionOutline::drawMetalIds(const View& view, S32 width, S32 height, b
     return gGL.drawMetalSelectionContour(contour);
 }
 #endif
-
-void ALSelectionOutline::drawWireframes(const View& view, S32 width, S32 height, LLRenderTarget* backdrop)
-{
-    LL_PROFILE_GPU_ZONE("selection wireframe");
-
-    // The window's depth is the final blit's point-sampled copy of the scene's, taken a render texel at a time.
-    F32 resample = 1.f;
-    if (!view.mHUD && gPipeline.mRT->deferredScreen.getWidth() > 0)
-    {
-        resample = (F32)width / (F32)gPipeline.mRT->deferredScreen.getWidth();
-    }
-    const F32 offset_factor = wireOffsetFactor(resample);
-
-    bool any_hidden = false;
-    for (const Entry& entry : mEntries)
-    {
-        any_hidden = any_hidden || inWirePass(entry.mParts, entry.mShowHidden, WIRE_HIDDEN);
-    }
-    const bool any_rigged =
-        std::any_of(mFaces.begin(), mFaces.end(), [](const FaceDraw& draw) { return draw.mRigged; });
-
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.pushMatrix();
-    gGL.loadMatrix(view.mProjection);
-    gGL.matrixMode(LLRender::MM_TEXTURE0);
-    gGL.pushMatrix();
-    gGL.loadIdentity();
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.pushMatrix();
-
-    const EWirePass world_passes[] = { WIRE_VISIBLE, WIRE_HIDDEN };
-    const EWirePass hud_passes[] = { WIRE_ID_DEPTH };
-    const EWirePass* passes = view.mHUD ? hud_passes : world_passes;
-    const U32 pass_count = view.mHUD ? 1 : 2;
-    for (U32 p = 0; p < pass_count; ++p)
-    {
-        const EWirePass pass = passes[p];
-        if (pass == WIRE_HIDDEN && !any_hidden)
-        {
-            continue;
-        }
-
-        WireState state(pass, offset_factor);
-        for (bool rigged : { false, true })
-        {
-            if (rigged && !any_rigged)
-            {
-                break;
-            }
-            LLGLSLShader& program = rigged ? *gSelectionWireframeProgram.mRiggedVariant : gSelectionWireframeProgram;
-            gSelectionWireframeProgram.bind(rigged);
-            bindWirePass(program, pass, view.mWireWidth, width, height, mPalette, &mIdMap, view.mContrast, backdrop);
-            // What glows, or is outlined alone, has no wireframe.
-            drawFaceList(program, rigged, view,
-                         [this, pass](const FaceDraw& draw)
-                         {
-                             const Entry& entry = mEntries[mOrder[draw.mIndex]];
-                             return inWirePass(entry.mParts, entry.mShowHidden, pass);
-                         },
-                         [this, &program](const FaceDraw& draw)
-                         {
-                             const Entry& entry = mEntries[mOrder[draw.mIndex]];
-                             setId(program, draw.mIndex + 1, entry.mPriority, entry.mShowHidden);
-                         });
-            program.unbindTexture(LLShaderMgr::DIFFUSE_MAP);
-            program.unbindTexture(LLShaderMgr::SELECTION_PALETTE);
-            program.unbindTexture(LLShaderMgr::DEFERRED_DEPTH);
-            program.unbindTexture(LLShaderMgr::SELECTION_BACKDROP_MAP);
-        }
-    }
-
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.popMatrix();
-    gGL.matrixMode(LLRender::MM_TEXTURE0);
-    gGL.popMatrix();
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.popMatrix();
-}
-
-ALSelectionOutline::FaceBinding ALSelectionOutline::bindFace(LLGLSLShader& program, LLFace* face, bool whole,
-                                                             TransformCache& bound)
-{
-    const LLTextureEntry* te = face->getTextureEntry();
-    LLViewerTexture* texture = face->getTexture();
-    F32 cutoff = NO_ALPHA_TEST;
-    LLUUID texture_id;
-    U8 max_alpha = 255;
-    LLGLTFMaterial::TextureTransform::Pack transform;
-    std::copy(std::begin(IDENTITY_TRANSFORM), std::end(IDENTITY_TRANSFORM), std::begin(transform));
-    FaceBinding binding;
-
-    auto* gltf = te ? static_cast<LLFetchedGLTFMaterial*>(te->getGLTFRenderMaterial()) : nullptr;
-    if (gltf)
-    {
-        // As LLRenderPass::pushGLTFBatch culls it, media or not.
-        binding.mDoubleSided = gltf->mDoubleSided;
-
-        // The base colour, unless the face plays media, which LLVolumeGeometryManager::registerFace hands
-        // LLFetchedGLTFMaterial::bind in its place.
-        if (!face->hasMedia() || !texture || texture->getType() != LLViewerTexture::MEDIA_TEXTURE)
-        {
-            texture = gltf->mBaseColorTexture.get();
-        }
-        if (texture && texture_has_alpha(texture))
-        {
-            cutoff = gltfAlphaCutoff(gltf->mAlphaMode, gltf->mAlphaCutoff);
-            texture_id = texture->getID();
-            max_alpha = texture_max_alpha(texture);
-        }
-        gltf->mTextureTransform[LLGLTFMaterial::GLTF_TEXTURE_INFO_BASE_COLOR].getPacked(transform);
-    }
-    else if (te && texture)
-    {
-        // The diffuse map as the face names it, whatever stands in for it while it loads.
-        const LLMaterial* material = te->getMaterialParams().get();
-        cutoff = legacyAlphaCutoff(material != nullptr, material ? material->getDiffuseAlphaMode() : 0,
-                                   material ? material->getAlphaMaskCutoff() : 0, texture_has_alpha(texture));
-        texture_id = te->getID();
-        max_alpha = texture_max_alpha(texture);
-    }
-
-    // Cut by its texture's alpha alone, never its colour's; but a face the scene draws nothing of, as a prim made
-    // invisible by its colour's alpha, is kept whole as surface the scene does not show.
-    const AlphaTest test = faceAlphaTest(texture_id, max_alpha, cutoff, whole, LLVOVolume::isInvisibleFace(te));
-    setAlphaTest(program, test, transform, &bound);
-    if (test.mCutoff <= 0.f || test.mCutoff > 1.f || !texture)
-    {
-        return binding;
-    }
-
-    // Sampled as LLRenderPass::pushBatch samples the diffuse map; alpha is the same with or without sRGB decode.
-    program.bindTexture(LLShaderMgr::DIFFUSE_MAP, texture, ALSamplers::AnisoWrap);
-
-    // A texture animation the face is drawn with rather than baked into its texture coordinates, as
-    // LLVolumeGeometryManager::registerFace hands it to the draw.
-    if (face->mTextureMatrix && face->isState(LLFace::TEXTURE_ANIM) && face->getVirtualSize() > MIN_TEX_ANIM_SIZE)
-    {
-        gGL.matrixMode(LLRender::MM_TEXTURE0);
-        gGL.loadMatrix((const GLfloat*)face->mTextureMatrix->mMatrix);
-        gGL.matrixMode(LLRender::MM_MODELVIEW);
-        binding.mAnimated = true;
-    }
-    return binding;
-}
