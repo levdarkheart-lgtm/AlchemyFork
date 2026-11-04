@@ -7728,7 +7728,7 @@
     <key>RenderCanUseTerrainBakeShaders</key>
     <map>
         <key>Comment</key>
-        <string>Hardware has support for Terrain Bake shaders</string>
+        <string>Hardware supports the native terrain paintmap bake</string>
         <key>Persist</key>
         <integer>0</integer>
         <key>Type</key>

@@ -130,7 +130,6 @@ extern LLGLSLShader         gBenchmarkProgram;
 extern LLGLSLShader         gReflectionProbeDisplayProgram;
 extern LLGLSLShader         gCopyProgram;
 extern LLGLSLShader         gCopyDepthProgram;
-extern LLGLSLShader         gPBRTerrainBakeProgram;
 extern LLGLSLShader         gDrawColorProgram;
 
 //output tex0[tc0] - tex1[tc1]

@@ -135,7 +135,7 @@ struct ALShaderInputs
         bool mWaterWaves       = true;  ///< the water waves' programs and the three objects only they attach
         bool mCompute          = true;  ///< the compute programs, where the context has compute and it is not switched off
         S32  mIndexedGLTFChannels = 4;  ///< the indexed material programs' GLTF_INDEXED_CHANNELS, 0 for none
-        U32  mTerrainPaintBitDepth = 0; ///< the local terrain paint's bake program, its precision 1 to 8, 0 for none
+        U32  mTerrainPaintBitDepth = 0; ///< native terrain paint quantization, 1 to 8 bits, 0 while disabled
 
         friend bool operator==(const Local&, const Local&) = default;
     };

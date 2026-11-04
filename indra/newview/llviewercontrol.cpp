@@ -1181,7 +1181,7 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "TuningFPSStrategy", handleFPSTuningStrategyChanged);
     {
         setting_setup_signal_listener(gSavedSettings, "LocalTerrainPaintEnabled", handleLocalTerrainChanged);
-        // The paint's bake program is built only while it is on.
+        // Latch native bake precision only while local terrain paint is on.
         setting_setup_signal_listener(gSavedSettings, "LocalTerrainPaintEnabled", handleRenderInputChanged);
         const char* transform_suffixes[] = {
             "ScaleU",

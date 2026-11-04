@@ -95,7 +95,6 @@ LLGLSLShader    gBenchmarkProgram;
 LLGLSLShader    gReflectionProbeDisplayProgram;
 LLGLSLShader    gCopyProgram;
 LLGLSLShader    gCopyDepthProgram;
-LLGLSLShader    gPBRTerrainBakeProgram;
 LLGLSLShader    gDrawColorProgram;
 
 //object shaders
@@ -3994,27 +3993,6 @@ void LLViewerShaderMgr::loadShadersInterface()
         gDrawColorProgram.clearPermutations();
         gDrawColorProgram.mShaderLevel = mShaderLevel[SHADER_OBJECT];
         built(gDrawColorProgram.createShader(), gDrawColorProgram);
-    }
-
-    if (mInputs.mLocal.mTerrainPaintBitDepth > 0)
-    {
-        LLGLSLShader* shader = &gPBRTerrainBakeProgram;
-        // LLTerrainPaintMap currently uses an RGB8 texture internally, which the input's 1 to 8 bits follow.
-        const U32 bit_depth = mInputs.mLocal.mTerrainPaintBitDepth;
-        shader->mName = llformat("Terrain Bake Shader RGB%o", bit_depth);
-        shader->mFeatures.isPBRTerrain = true;
-
-        shader->mShaderFiles.clear();
-        shader->mShaderFiles.push_back(make_pair("interface/pbrTerrainBakeV.glsl", GL_VERTEX_SHADER));
-        shader->mShaderFiles.push_back(make_pair("interface/pbrTerrainBakeF.glsl", GL_FRAGMENT_SHADER));
-        shader->mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        const U32 value_range = (1 << bit_depth) - 1;
-        shader->addPermutation("TERRAIN_PAINT_PRECISION", llformat("%d", value_range));
-        if (!built(shader->createShader(), *shader))
-        {
-            LL_WARNS() << "Failed to create shader '" << shader->mName << "', disabling!" << LL_ENDL;
-            gSavedSettings.setBOOL("RenderCanUseTerrainBakeShaders", false);
-        }
     }
 
     {
