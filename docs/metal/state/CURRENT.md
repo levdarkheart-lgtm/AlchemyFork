@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `23da75f187`
+**Renderer code checkpoint:** `d80a941a60`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -92,10 +92,10 @@ Commits through `f04b0b6306` make probes fail closed and directly enumerate the
 complete G-buffer/post-deferred scene, lighting and directional-shadow casters.
 `23da75f187` extends that native authority to hero/mirror faces, removes their
 GL gaussian/mip/radiance producer and makes both probe families use planned
-Metal G-buffer/shadow dimensions. Active faces no longer install GL default,
-depth, light, viewport or camera matrix state; a missing native transaction
-defers instead of rendering an unpublished GL face. Projector shadows are
-truthfully unavailable during cube capture rather than falling back to GL.
+Metal G-buffer/shadow dimensions. `d80a941a60` directly enumerates and renders
+projector-shadow casters into planned Metal shadow slices for both probe
+families. Probe faces no longer use retained GL projector targets or
+`drawShadow`; missing native resources leave the slice unbuilt and fail closed.
 
 Earlier native terrain, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -105,8 +105,8 @@ make exact ordered world/UI Metal presentation measurable and fail closed. A
 failed native frame retains the preceding Metal drawable; no GL swap is shown.
 
 Prior preview, post-effect, world/UI and physical-coverage evidence remains in
-the [archive index](archive/INDEX.md). Broader mirrors, projector shadows,
-moving media, remaining application-owned GL and complete parity remain open.
+the [archive index](archive/INDEX.md). Broader mirrors, projector-shadow visual
+parity, moving media, remaining application-owned GL and complete parity remain open.
 
 ## Visual review cadence
 
@@ -123,8 +123,8 @@ until the owner-attended review records that result.
   Viewer SHA-256: `c9bf95b8a8d6c9f36c437c16b913feb5d3f1e9bcd77e9b5c69965992af2527a8`.
 - Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
   UI 56/1. Shared-context baseline retains 5 known Apple GL failures/4 cases.
-- At `23da75f187`, Ninja/Xcode builds, benchmark 49/8, renderer 557,301/136,
-  tools 31/31, harness, 349/349 ARM64 and signing pass; executable SHA-256 is `079eff26f8d8772d492b125642487c48553d8927655e9f154a9a55fd914efdc3`.
+- At `d80a941a60`, Ninja/Xcode builds, benchmark 49/8, renderer 557,301/136,
+  tools 31/31, harness, 349/349 ARM64 and signing pass; executable SHA-256 is `2017d042524d4ac4f75eb628bbe5f9fdf4ba411274497626fceacc16fab3d1da`.
 - Strict GL inventory is 3,165 findings and exits 1. Both APIs remain
   linked; static, linked and runtime no-GL release gates remain open.
 
@@ -137,15 +137,15 @@ until the owner-attended review records that result.
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,165 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Reflection and hero faces advance only after native publication. Their GL targets, scene/deferred-light traversal, directional-shadow drawing, hero post-chain and face state setup are bypassed. Projector shadows plus retained non-probe resource/draw owners remain. |
+| M-011 GL authority removal | doing | Reflection and hero faces advance only after native publication. Scene/deferred-light traversal, directional/projector-shadow drawing, hero post-chain and face state setup are direct Metal. Obsolete GL allocations and retained non-probe owners remain. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
 **Advances the complete product:** yes. Metal owns every visible viewer frame;
-Snapshot has no GL framebuffer or target-resize dependency, and failed native
-transactions retain the preceding Metal frame. No feature was deleted.
+Snapshot has no GL framebuffer or target-resize dependency, probe projector
+shadows render directly in Metal, and failed native work fails closed.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -155,6 +155,6 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Implement direct native projector shadows for reflection and hero faces.
-2. Remove obsolete Darwin hero/probe GL allocations and shaders owner by owner.
+1. Remove obsolete Darwin hero GL allocations and shaders owner by owner.
+2. Remove obsolete Darwin reflection-probe GL allocations and shaders.
 3. Keep visual failures queued; do not launch either viewer autonomously.
