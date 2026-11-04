@@ -1174,14 +1174,16 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
     }
 #endif
 
+#if !LL_DARWIN
     if (gGLManager.mIsDisabled)
     {
         return create_timer.getElapsedTimeF32();
     }
+#endif
 
     //
-    // Create GL textures for all textures that need them (images which have been
-    // decoded, but haven't been pushed into GL).
+    // Create GPU textures for all decoded images that have not yet been
+    // published. Darwin uses the native path here once GL is disabled.
     //
 
     while (!mCreateTextureList.empty())
@@ -1204,10 +1206,21 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         // should
         bool redundant_load = imagep->hasGPUTexture() && imagep->getDiscardLevel() <= imagep->getDesiredDiscardLevel();
 
-        if (!redundant_load)
+        bool created = redundant_load;
+        if (!created)
         {
-           imagep->createTexture();
+            created = imagep->createTexture();
         }
+        // The established GL path finalizes a failed create exactly as before.
+        // With GL disabled, however, there is no fallback object to publish: retain
+        // the decoded pixels and pending state until native creation can succeed.
+#if LL_DARWIN
+        if (!created && gGLManager.mIsDisabled)
+        {
+            mCreateTextureList.push(imagep);
+            break;
+        }
+#endif
 
         imagep->postCreateTexture();
         imagep->mCreatePending = false;
@@ -1226,6 +1239,11 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         {
             break;
         }
+    }
+
+    if (gGLManager.mIsDisabled)
+    {
+        return create_timer.getElapsedTimeF32();
     }
 
     if (!mDownScaleQueue.empty() && gPipeline.mDownResMap.isComplete())

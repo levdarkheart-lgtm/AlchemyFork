@@ -1764,6 +1764,82 @@ namespace
         CHECK_FALSE(linear->getHasGLTexture());
     }
 
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: staged native creation preserves then replaces its published generation", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct MetalDeviceReset
+        {
+            ~MetalDeviceReset() { LLImageGL::setMetalDevice(nullptr); }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        const U64 baseline_bytes = LLImageGL::getTextureBytesAllocated();
+        LLPointer<LLImageGL> image = new LLImageGL(/*usemipmaps=*/true);
+        REQUIRE(image->createGLTexture(0, makeRaw(8, 8, 4, 0xff).get()));
+        REQUIRE(image->getMetalTexture());
+        const U32 old_name = image->getTexName();
+        ALMetalTexture* old_metal = image->getMetalTexture();
+        const U64 old_accounting = LLImageGL::getTextureBytesAllocated();
+        const LLVector2 centre(0.5f, 0.5f);
+        REQUIRE(image->getMask(centre));
+
+        // A failed native attempt restores the complete published format view.
+        image->beginUpload(3);
+        LLImageGL::setMetalDevice(nullptr);
+        CHECK_FALSE(image->createMetalTexture(
+            0, makeRaw(16, 16, 3, 0x22).get(), LLGLTexture::BOOST_NONE));
+        LLImageGL::setMetalDevice(device.get());
+        image->cancelUpload();
+        CHECK(image->getWidth() == 8);
+        CHECK(image->getHeight() == 8);
+        CHECK(image->getComponents() == 4);
+        CHECK(image->getPrimaryFormat() == static_cast<LLGLenum>(GL_RGBA));
+        CHECK(image->getTexName() == old_name);
+        CHECK(image->getMetalTexture() == old_metal);
+        CHECK(LLImageGL::getTextureBytesAllocated() == old_accounting);
+
+        // A successful replacement remains pending until the explicit
+        // authoritative publication boundary.
+        LLPointer<LLImageRaw> clear = makeRaw(16, 16, 4, 0x00);
+        image->beginUpload(4);
+        REQUIRE(image->createMetalTexture(
+            0, clear.get(), LLGLTexture::BOOST_NONE));
+        CHECK(image->getWidth() == 8);
+        CHECK(image->getHeight() == 8);
+        CHECK(image->getTexName() == old_name);
+        CHECK(image->getMetalTexture() == old_metal);
+        CHECK(image->getMask(centre));
+        CHECK(LLImageGL::getTextureBytesAllocated() == old_accounting);
+
+        image->publishMetalTextureAuthoritative();
+
+        CHECK(image->getWidth() == 16);
+        CHECK(image->getHeight() == 16);
+        CHECK(image->getTexName() == 0);
+        CHECK_FALSE(image->getHasGLTexture());
+        REQUIRE(image->getMetalTexture());
+        CHECK(image->getMetalTexture() != old_metal);
+        CHECK(image->getMetalTexture()->descriptor().mipmap_level_count == 5);
+        CHECK_FALSE(image->getMask(centre));
+        CHECK(LLImageGL::getTextureBytesAllocated() ==
+              baseline_bytes + static_cast<U64>(
+                  static_cast<S64>(image->getTextureMemory())));
+
+        std::array<U8, 16 * 16 * 4> pixels{};
+        REQUIRE(image->getMetalTexture()->readback(
+            *device, 0, 0, {}, pixels.data(), 16 * 4, &error));
+        INFO(error);
+        CHECK(std::all_of(pixels.begin(), pixels.end(),
+                          [](U8 byte) { return byte == 0x00; }));
+
+        image->destroyGLTexture();
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: native-only residency follows actual Metal storage through discard and teardown", "[LLImageGL][almetal]")
     {
         std::string error;

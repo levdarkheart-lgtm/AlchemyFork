@@ -1567,6 +1567,32 @@ bool LLViewerFetchedTexture::createTexture(S32 usename, S32 category)
         return false;
     }
 
+#if LL_DARWIN
+    // Once the GL manager is gone, fetched-image publication must still retain
+    // its complete lifecycle. Build a staged native generation, then retire any
+    // lower-resolution transitional GL backing only after Metal has committed.
+    if (gGLManager.mIsDisabled)
+    {
+        if (usename != 0 || !on_main_thread())
+        {
+            return false;
+        }
+
+        mGLTexturep->beginUpload(mRawImage->getComponents());
+        const bool created = mGLTexturep->createMetalTexture(
+            mRawDiscardLevel, mRawImage, category);
+        if (created)
+        {
+            mGLTexturep->publishMetalTextureAuthoritative();
+        }
+        else
+        {
+            mGLTexturep->cancelUpload();
+        }
+        return created;
+    }
+#endif
+
     bool res = mGLTexturep->createGLTexture(mRawDiscardLevel, mRawImage, usename, true, category);
 
     return res;
@@ -1626,7 +1652,11 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
             }
 #endif
             mNeedsCreateTexture = true;
-            auto mainq = LLImageGLThread::sEnabledTextures ? mMainQueue.lock() : nullptr;
+            auto mainq = LLImageGLThread::sEnabledTextures
+#if LL_DARWIN
+                && !gGLManager.mIsDisabled
+#endif
+                ? mMainQueue.lock() : nullptr;
             bool posted = false;
             if (mainq)
             {

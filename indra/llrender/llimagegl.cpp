@@ -1713,6 +1713,7 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
     }
     discard_level = llclamp(discard_level, 0, (S32)mMaxDiscardLevel);
     discard_level = llmin(discard_level, MAX_DISCARD_LEVEL);
+    const bool staged_upload = mUploadInFlight;
 
     if (mHasExplicitFormat &&
         ((mFormatPrimary == GL_RGBA && mComponents < 4) ||
@@ -1728,17 +1729,24 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
         resolveComponentFormat(mComponents);
     }
 
-    // Retire an earlier GL fallback, if this image had one, and any prior native storage.
-    // The replacement below is authoritative and must never coexist with stale pixels.
-    // Remove the old logical GL budget entry now; deferred object deletion must not
-    // make the authority handoff look like two resident viewer textures.
-    if (mTexName != 0)
+    // Direct native producers retire their previous storage immediately. A fetched-image
+    // replacement brackets this call with beginUpload(): build into pending native
+    // storage and keep the lower-resolution GL/Metal generation authoritative until the
+    // upload has committed and publishMetalTextureAuthoritative() performs the handoff.
+    if (!staged_upload && mTexName != 0)
     {
         free_tex_image(mTexName);
     }
-    destroyGLTexture();
-    mStorageAllocated = false;
-    mStorage = StorageDesc();
+    if (!staged_upload)
+    {
+        destroyGLTexture();
+        mStorageAllocated = false;
+        mStorage = StorageDesc();
+    }
+    else
+    {
+        mPendingMetalTexture.reset();
+    }
     mCurrentDiscardLevel = discard_level;
     mHasMipMaps = mUseMipMaps;
     const U32 width = static_cast<U32>(liveWidth(mCurrentDiscardLevel));
@@ -1757,10 +1765,16 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
         (mUseMipMaps && !generateMetalMipmaps(*command)) ||
         !commitMetalUpload(command_owner, command))
     {
-        mMetalTexture.reset();
-        mPendingMetalTexture.reset();
-        clearMetalTextureAccounting();
-        mTextureMemory = S64Bytes(0);
+        if (staged_upload)
+        {
+            mPendingMetalTexture.reset();
+        }
+        else
+        {
+            mMetalTexture.reset();
+            clearMetalTextureAccounting();
+            mTextureMemory = S64Bytes(0);
+        }
         return false;
     }
 
@@ -1768,10 +1782,13 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
     updatePickMask(width, height, data);
     touchContents();
     mTextureMemory = S64Bytes(getMipBytes(mCurrentDiscardLevel));
-    updateMetalTextureAccounting();
-    mLastBindTime = sLastFrameTime;
-    mGLTextureCreated = false;
-    llassert(mTexName == 0);
+    if (!staged_upload)
+    {
+        updateMetalTextureAccounting();
+        mLastBindTime = sLastFrameTime;
+        mGLTextureCreated = false;
+        llassert(mTexName == 0);
+    }
     return true;
 }
 
@@ -2492,7 +2509,7 @@ void LLImageGL::clearMetalTextureAccounting() noexcept
 
 ALMetalTexture* LLImageGL::metalTextureForUpload() noexcept
 {
-    if (!on_main_thread() && mUploadInFlight)
+    if (mUploadInFlight)
     {
         return mPendingMetalTexture.get();
     }
@@ -2528,7 +2545,7 @@ bool LLImageGL::prepareMetalTexture(std::unique_ptr<ALMetalCommandBuffer>& comma
     const MetalUploadFormat upload_format =
         metal_upload_format(getStorageInternalFormat(), mFormatPrimary, mFormatType);
     std::unique_ptr<ALMetalTexture>& destination =
-        (!on_main_thread() && mUploadInFlight) ? mPendingMetalTexture : mMetalTexture;
+        mUploadInFlight ? mPendingMetalTexture : mMetalTexture;
     if (upload_format.format == ALMetalPixelFormat::invalid)
     {
         destination.reset();
@@ -3732,6 +3749,30 @@ bool LLImageGL::syncMetalToMainThread()
     }
     return posted;
 }
+
+void LLImageGL::publishMetalTextureAuthoritative()
+{
+    llassert(on_main_thread());
+    llassert(mUploadInFlight);
+    llassert(mPendingMetalTexture);
+
+    // The pending native generation is complete. Retire the transitional GL
+    // object only at this publication boundary so allocation/encoding failure
+    // leaves the previously visible generation intact.
+    if (mTexName != 0)
+    {
+        if (!mExternalTexture)
+        {
+            free_tex_image(mTexName);
+            LLImageGL::deleteTextures(1, &mTexName);
+        }
+        mTexName = 0;
+    }
+    mStorageAllocated = false;
+    mStorage = StorageDesc();
+    mGLTextureCreated = false;
+    syncTexName(0);
+}
 #endif
 
 void LLImageGL::queuePublish(LLGLuint name, GLsync fence, UploadCompletion metal_completion)
@@ -3895,9 +3936,21 @@ void LLImageGL::beginUpload()
     mPublished.mComponents          = mComponents;
     mPublished.mCurrentDiscardLevel = mCurrentDiscardLevel;
     mPublished.mMaxDiscardLevel     = mMaxDiscardLevel;
-    mPublished.mFormatPrimary          = mFormatPrimary;
+    mPublished.mFormatPrimary       = mFormatPrimary;
     mPublished.mDeprecatedSourceFormat = mDeprecatedSourceFormat;
-    mPublished.mTextureMemory          = mTextureMemory;
+    mPublished.mFormatInternal      = mFormatInternal;
+    mPublished.mFormatType          = mFormatType;
+    mPublished.mFormatComponents    = mFormatComponents;
+    mPublished.mAlphaStride         = mAlphaStride;
+    mPublished.mAlphaOffset         = mAlphaOffset;
+    mPublished.mFormatSwapBytes     = mFormatSwapBytes;
+    mPublished.mHasExplicitFormat   = mHasExplicitFormat;
+    mPublished.mNeedsAlphaAndPickMask = mNeedsAlphaAndPickMask;
+    mPublished.mHasMipMaps          = mHasMipMaps;
+    mPublished.mMipLevels           = mMipLevels;
+    mPublished.mCategory            = mCategory;
+    mPublished.mGLTextureCreated    = mGLTextureCreated.load(std::memory_order_relaxed);
+    mPublished.mTextureMemory       = mTextureMemory;
     mUploadInFlight = true;
 }
 
@@ -3913,6 +3966,38 @@ void LLImageGL::beginUpload(S8 components)
     {
         resolveComponentFormat(components);
     }
+}
+
+void LLImageGL::cancelUpload()
+{
+    llassert(on_main_thread());
+    if (!mUploadInFlight)
+    {
+        return;
+    }
+
+    mWidth = static_cast<U16>(mPublished.mWidth);
+    mHeight = static_cast<U16>(mPublished.mHeight);
+    mComponents = mPublished.mComponents;
+    mCurrentDiscardLevel = mPublished.mCurrentDiscardLevel;
+    mMaxDiscardLevel = mPublished.mMaxDiscardLevel;
+    mFormatPrimary = mPublished.mFormatPrimary;
+    mDeprecatedSourceFormat = mPublished.mDeprecatedSourceFormat;
+    mFormatInternal = mPublished.mFormatInternal;
+    mFormatType = mPublished.mFormatType;
+    mFormatComponents = mPublished.mFormatComponents;
+    mAlphaStride = mPublished.mAlphaStride;
+    mAlphaOffset = mPublished.mAlphaOffset;
+    mFormatSwapBytes = mPublished.mFormatSwapBytes;
+    mHasExplicitFormat = mPublished.mHasExplicitFormat;
+    mNeedsAlphaAndPickMask = mPublished.mNeedsAlphaAndPickMask;
+    mHasMipMaps = mPublished.mHasMipMaps;
+    mMipLevels = mPublished.mMipLevels;
+    mCategory = mPublished.mCategory;
+    mGLTextureCreated.store(mPublished.mGLTextureCreated,
+                            std::memory_order_relaxed);
+    mTextureMemory = mPublished.mTextureMemory;
+    endUpload();
 }
 
 void LLImageGL::endUpload()

@@ -538,6 +538,18 @@ private:
         // upload of an image without an explicit one.
         LLGLenum mFormatPrimary = 0;
         LLGLenum mDeprecatedSourceFormat = 0;
+        LLGLint  mFormatInternal = -1;
+        LLGLenum mFormatType = GL_UNSIGNED_BYTE;
+        S8 mFormatComponents = -1;
+        S8 mAlphaStride = 0;
+        S8 mAlphaOffset = 0;
+        bool mFormatSwapBytes = false;
+        bool mHasExplicitFormat = false;
+        bool mNeedsAlphaAndPickMask = true;
+        bool mHasMipMaps = false;
+        S32 mMipLevels = 0;
+        S32 mCategory = -1;
+        bool mGLTextureCreated = false;
         S64Bytes mTextureMemory = S64Bytes(0);
     };
     PublishedGeom mPublished;
@@ -692,6 +704,11 @@ public:
     // has no GL fence or texture name; the shared Metal batch's commit token is its ordered
     // publication boundary. Returns whether that handoff reached the main queue.
     bool syncMetalToMainThread();
+
+    // Main-thread publication boundary for a complete staged native texture.
+    // Unlike a media-frame mirror update, this makes Metal authoritative and
+    // retires any transitional GL object only after the native upload commits.
+    void publishMetalTextureAuthoritative();
 #endif
 
 private:
@@ -756,6 +773,10 @@ public:
     // The same, first working out here the format an image without an explicit one takes
     // from the components it is about to upload: see resolveComponentFormat.
     void beginUpload(S8 components);
+    // Abort an upload that changed live build metadata but never published.
+    // Restores the texture view captured by beginUpload(), then discards
+    // staged native/alpha state.
+    void cancelUpload();
     void endUpload();
 
     //for debug use: show texture size distribution
