@@ -123,6 +123,7 @@ reload the chronological history.
 | Native-only local-bitmap preview publication with retained material/avatar propagation, source-exact build 68251, 2026-11-04 | [CURRENT-native-local-bitmap-publication-checkpoint-2026-11-04.md](CURRENT-native-local-bitmap-publication-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Native abuse-report screenshot preview publication with retained capture/upload/UI behavior, source-exact build 68253, 2026-11-04 | [CURRENT-native-report-screenshot-preview-checkpoint-2026-11-04.md](CURRENT-native-report-screenshot-preview-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Metal-authoritative local terrain-paint baking with retained geometry/weights/mips, source-exact build 68255, 2026-11-04 | [CURRENT-native-terrain-paint-bake-checkpoint-2026-11-04.md](CURRENT-native-terrain-paint-bake-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
+| Native system/default/local and decoded-memory fetched texture publication when GL is disabled, with active fail-closed recovery retained, source-exact build 68258, 2026-11-04 | [CURRENT-native-system-and-memory-texture-bootstrap-checkpoint-2026-11-04.md](CURRENT-native-system-and-memory-texture-bootstrap-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
