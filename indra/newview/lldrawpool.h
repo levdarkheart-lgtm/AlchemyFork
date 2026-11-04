@@ -427,26 +427,22 @@ public:
     // assumes draw infos of given type have valid GLTF materials
     void pushGLTFBatches(U32 type);
 
-    // Which material maps an indexed GLTF batch binds and uploads. Trimming the set
-    // skips needless texture binds / uniform uploads (and the normal-map discard-level
-    // fetch) when a pass samples only some maps.
+    // The remaining GL indexed helpers serve only shadow alpha coverage and
+    // emissive glow. Main-world opaque/masked G-buffer writes are native Metal.
     enum eGLTFIndexedMaps
     {
-        GLTF_MAPS_FULL = 0,    // base color + normal + ORM + emissive (GBuffer write)
         GLTF_MAPS_BASE_COLOR,  // base color only (shadow alpha-mask discard)
         GLTF_MAPS_GLOW,        // base color + emissive (glow/emissive pass)
     };
 
     // Indexed (multi-material) GLTF PBR helpers. Indexed and scalar draw infos
-    // coexist in the same render map (PASS_GLTF_PBR); they are distinguished by
-    // mGLTFMaterialList.size() > 1. Shadow/probe passes use the plain
-    // pushGLTFBatches (rendering everything scalar for depth); only the main
-    // opaque GBuffer pass splits the two:
+    // coexist in the same render map and are distinguished by
+    // mGLTFMaterialList.size() > 1. Remaining GL shadow/glow passes split them:
     //   pushGLTFBatchesScalar  -- renders only single-material infos
     //   pushGLTFBatchesIndexed -- renders only multi-material infos (indexed program bound)
     void pushGLTFBatchesScalar(U32 type);
-    void pushGLTFBatchesIndexed(U32 type, eGLTFIndexedMaps maps = GLTF_MAPS_FULL);
-    static void pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps maps = GLTF_MAPS_FULL);
+    void pushGLTFBatchesIndexed(U32 type, eGLTFIndexedMaps maps);
+    static void pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps maps);
 
     // like pushGLTFBatches, but will not bind textures or set up texture transforms
     void pushUntexturedGLTFBatches(U32 type);
@@ -464,8 +460,8 @@ public:
     // is one avatar+skin (the accumulation breaks on skin change), so the matrix
     // palette is uploaded per draw info as usual.
     void pushRiggedGLTFBatchesScalar(U32 type);
-    void pushRiggedGLTFBatchesIndexed(U32 type, eGLTFIndexedMaps maps = GLTF_MAPS_FULL);
-    static void pushRiggedGLTFBatchIndexed(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin, eGLTFIndexedMaps maps = GLTF_MAPS_FULL);
+    void pushRiggedGLTFBatchesIndexed(U32 type, eGLTFIndexedMaps maps);
+    static void pushRiggedGLTFBatchIndexed(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin, eGLTFIndexedMaps maps);
 
     // push a single GLTF draw call
     // lastMat/lastTex track the most recently bound material+media texture so

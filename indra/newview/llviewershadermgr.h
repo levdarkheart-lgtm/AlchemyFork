@@ -299,10 +299,6 @@ extern LLGLSLShader         gDeferredMaterialIndexedProgram[LLMaterial::SHADER_C
 extern LLGLSLShader         gHUDPBROpaqueProgram;
 extern LLGLSLShader         gPBRGlowProgram;
 extern LLGLSLShader         gPBRGlowIndexedProgram; // multi-material indexed PBR glow
-extern LLGLSLShader         gDeferredPBROpaqueProgram;
-extern LLGLSLShader         gDeferredPBRAlphaMaskProgram;
-extern LLGLSLShader         gDeferredPBROpaqueIndexedProgram; // multi-material indexed PBR opaque
-extern LLGLSLShader         gDeferredPBRAlphaMaskIndexedProgram; // multi-material indexed PBR alpha mask
 extern LLGLSLShader         gDeferredPBRAlphaProgram;
 extern LLGLSLShader         gDeferredPBRAlphaImpostorProgram;
 extern LLGLSLShader         gHUDPBRAlphaProgram;

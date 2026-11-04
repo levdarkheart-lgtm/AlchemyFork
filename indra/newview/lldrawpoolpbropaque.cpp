@@ -49,83 +49,35 @@ S32 LLDrawPoolGLTFPBR::getNumDeferredPasses()
     return 1;
 }
 
-void LLDrawPoolGLTFPBR::renderDeferred(S32 pass)
+#if LL_DARWIN
+static void capture_metal_pbr_batches(
+    U32 type, bool rigged, bool alpha_mask)
+{
+    gPipeline.beginMetalWorldPBRPass(rigged, alpha_mask);
+    auto* at = gPipeline.beginRenderMap(type);
+    auto* end = gPipeline.endRenderMap(type);
+    while (at != end)
+    {
+        LLDrawInfo* info = *at;
+        LLCullResult::increment_iterator(at, end);
+        if (info)
+        {
+            gPipeline.captureMetalWorldPBRBatch(
+                *info, info->mGLTFMaterialList.size() > 1);
+        }
+    }
+    gPipeline.endMetalWorldGBufferPass();
+}
+#endif
+
+void LLDrawPoolGLTFPBR::renderDeferred(S32)
 {
     llassert(!LLPipeline::sRenderingHUDs);
-
-    // GL_FRAMEBUFFER_SRGB is enabled for the whole deferred pass in renderGeomDeferred.
-
-    // Only the alpha-mask pass binds a program that can discard. Its materials are all
-    // masked and the opaque pass's never are, so the opaque pass's programs drop the
-    // test and keep their depth writes ahead of shading.
     const bool alpha_mask = mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK;
-    LLGLSLShader& scalar_program = alpha_mask ? gDeferredPBRAlphaMaskProgram : gDeferredPBROpaqueProgram;
-    LLGLSLShader& indexed_program = alpha_mask ? gDeferredPBRAlphaMaskIndexedProgram : gDeferredPBROpaqueIndexedProgram;
-
-    // Indexed (multi-material) batching applies to the static opaque and alpha-mask
-    // passes. The indexed programs write the GBuffer the same way for both; in the
-    // alpha-mask one the per-slot gltf_minimum_alpha array drives the discard.
-    // Only skip multi-material infos in the scalar sweep once BOTH the indexed
-    // program and its rigged variant are complete -- otherwise scalar would skip
-    // them and the indexed sweep would bind an incomplete program.
-    bool indexed = (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR ||
-                    mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK) &&
-                   LLGLSLShader::sIndexedGLTFChannels >= 2 &&
-                   indexed_program.isComplete() &&
-                   indexed_program.mRiggedVariant &&
-                   indexed_program.mRiggedVariant->isComplete();
-
-    LLGLSLShader* opaque = scalar_program.selectVariant();
-
 #if LL_DARWIN
-    gPipeline.beginMetalWorldPBRPass(false, alpha_mask);
+    capture_metal_pbr_batches(mRenderType, false, alpha_mask);
+    capture_metal_pbr_batches(mRenderType + 1, true, alpha_mask);
 #endif
-    opaque->bind();
-    if (indexed)
-    { // multi-material infos are drawn separately below; render only scalar here
-        pushGLTFBatchesScalar(mRenderType);
-    }
-    else
-    {
-        pushGLTFBatches(mRenderType);
-    }
-#if LL_DARWIN
-    gPipeline.endMetalWorldGBufferPass();
-    gPipeline.beginMetalWorldPBRPass(true, alpha_mask);
-#endif
-
-    opaque->bind(true);
-    if (indexed)
-    {
-        pushRiggedGLTFBatchesScalar(mRenderType + 1);
-    }
-    else
-    {
-        pushRiggedGLTFBatches(mRenderType + 1);
-    }
-#if LL_DARWIN
-    gPipeline.endMetalWorldGBufferPass();
-#endif
-
-    if (indexed)
-    {
-        LLGLSLShader* opaque_indexed = indexed_program.selectVariant();
-#if LL_DARWIN
-        gPipeline.beginMetalWorldPBRPass(false, alpha_mask);
-#endif
-        opaque_indexed->bind();
-        pushGLTFBatchesIndexed(mRenderType);
-#if LL_DARWIN
-        gPipeline.endMetalWorldGBufferPass();
-        gPipeline.beginMetalWorldPBRPass(true, alpha_mask);
-#endif
-
-        opaque_indexed->bind(true); // rigged variant
-        pushRiggedGLTFBatchesIndexed(mRenderType + 1);
-#if LL_DARWIN
-        gPipeline.endMetalWorldGBufferPass();
-#endif
-    }
 }
 
 S32 LLDrawPoolGLTFPBR::getNumPostDeferredPasses()

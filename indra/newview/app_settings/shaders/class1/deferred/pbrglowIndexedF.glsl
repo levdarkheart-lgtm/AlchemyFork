@@ -32,8 +32,7 @@
 
 // Indexed (multi-material) PBR glow/emissive fragment shader. vary_material_index
 // selects this primitive's material slot; each slot binds its base-color map to
-// unit s and its emissive map to unit 3N+s (N == GLTF_INDEXED_CHANNELS), matching
-// the GBuffer indexed layout so pushGLTFBatchIndexed can drive both. If-chains
+// unit s and its emissive map to unit 3N+s (N == GLTF_INDEXED_CHANNELS). If-chains
 // (not switch) are used for driver portability. See pbrglowF.glsl for the
 // single-material equivalent.
 

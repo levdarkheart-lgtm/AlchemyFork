@@ -1197,9 +1197,8 @@ void LLRenderPass::pushUntexturedGLTFBatches(U32 type)
     }
 }
 
-// Like pushGLTFBatches, but skips multi-material (indexed) draw infos -- those are
-// rendered separately by pushGLTFBatchesIndexed under the indexed shader. Used by
-// the main opaque GBuffer pass only.
+// Like pushGLTFBatches, but skips multi-material draw infos. Remaining callers
+// are the GL shadow/glow passes; native Metal owns main-world G-buffer writes.
 void LLRenderPass::pushGLTFBatchesScalar(U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
@@ -1247,15 +1246,13 @@ void LLRenderPass::pushGLTFBatchesIndexed(U32 type, eGLTFIndexedMaps maps)
 // s binds its maps to texture units [s, N+s, 2N+s, 3N+s] (N == shader's
 // sIndexedGLTFChannels) and contributes one element to the per-slot scalar/transform
 // uniform arrays. Mirrors LLFetchedGLTFMaterial::bind for the default-texture and
-// factor handling. maps trims the bound/uploaded set: GLTF_MAPS_BASE_COLOR (shadow
-// alpha-mask) binds only base color; GLTF_MAPS_GLOW (glow pass) adds emissive but
-// skips normal/ORM; GLTF_MAPS_FULL (GBuffer write) binds everything.
+// factor handling. GLTF_MAPS_BASE_COLOR (shadow alpha-mask) binds only base color;
+// GLTF_MAPS_GLOW adds emissive for the remaining glow pass.
 void LLRenderPass::pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps maps)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
 
-    const bool want_emissive = (maps == GLTF_MAPS_FULL || maps == GLTF_MAPS_GLOW);
-    const bool want_full     = (maps == GLTF_MAPS_FULL); // normal + ORM
+    const bool want_emissive = maps == GLTF_MAPS_GLOW;
 
     const S32 N = LLGLSLShader::sIndexedGLTFChannels; // shader sampler-array stride
     // Slot count is capped at N (<= MAX_INDEXED_GLTF_CHANNELS) by genDrawInfo; clamp
@@ -1272,14 +1269,10 @@ void LLRenderPass::pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps map
     // the slot count that happens to share the value 8; keeping them separate lets either move.
     constexpr S32 kSlots = LLGLSLShader::MAX_INDEXED_GLTF_CHANNELS;
     constexpr S32 kXf    = (S32)LLGLTFMaterial::TextureTransform::PACK_SIZE;
-    F32 roughness[kSlots] = { 0.f };
-    F32 metallic[kSlots]  = { 0.f };
     F32 min_alpha[kSlots] = { 0.f };
     F32 base_alpha[kSlots] = { 0.f };
     F32 emissive[3 * kSlots] = { 0.f };
     F32 bc_xform[kSlots * kXf] = { 0.f }; // kXf floats (2 vec4) per slot
-    F32 nm_xform[kSlots * kXf] = { 0.f };
-    F32 mr_xform[kSlots * kXf] = { 0.f };
     F32 em_xform[kSlots * kXf] = { 0.f };
 
     bool double_sided = false;
@@ -1295,10 +1288,8 @@ void LLRenderPass::pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps map
 
         double_sided = double_sided || mat->mDoubleSided;
 
-        // SRGBDecode on base colour and emissive, nothing on normal/ORM -- the same colour
-        // vs data split LLFetchedGLTFMaterial::bind makes, and it has to match: a batched and
-        // an unbatched copy of the same material must sample identically, or they shade
-        // differently for no reason the content author can see.
+        // Base colour and emissive use hardware sRGB decode, matching the scalar
+        // material binding used by the same remaining GL passes.
         LLViewerTexture* base = mat->mBaseColorTexture.notNull() ? mat->mBaseColorTexture.get() : LLViewerFetchedTexture::sWhiteImagep.get();
         gGL.getTextureSlot(s)->bindFast(base, ALSamplers::AnisoWrapSRGB);
 
@@ -1314,7 +1305,7 @@ void LLRenderPass::pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps map
             continue;
         }
 
-        // emissive map/color/transform -- needed by both the glow and GBuffer passes
+        // Emissive map/color/transform for the glow pass.
         LLViewerTexture* em = mat->mEmissiveTexture.notNull() ? mat->mEmissiveTexture.get() : LLViewerFetchedTexture::sWhiteImagep.get();
         gGL.getTextureSlot(3 * N + s)->bindFast(em, ALSamplers::AnisoWrapSRGB);
 
@@ -1328,24 +1319,6 @@ void LLRenderPass::pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps map
         mat->mTextureTransform[LLGLTFMaterial::GLTF_TEXTURE_INFO_EMISSIVE].getPacked(packed);
         memcpy(&em_xform[kXf * s], packed, sizeof(packed));
 
-        if (!want_full)
-        { // glow needs base color + emissive only
-            continue;
-        }
-
-        LLViewerTexture* norm = (mat->mNormalTexture.notNull() && mat->mNormalTexture->getDiscardLevel() <= 4) ? mat->mNormalTexture.get() : LLViewerFetchedTexture::sFlatNormalImagep.get();
-        LLViewerTexture* orm  = mat->mMetallicRoughnessTexture.notNull() ? mat->mMetallicRoughnessTexture.get() : LLViewerFetchedTexture::sWhiteImagep.get();
-
-        gGL.getTextureSlot(N + s)->bindFast(norm, ALSamplers::AnisoWrap);
-        gGL.getTextureSlot(2 * N + s)->bindFast(orm, ALSamplers::AnisoWrap);
-
-        roughness[s] = mat->mRoughnessFactor;
-        metallic[s]  = mat->mMetallicFactor;
-
-        mat->mTextureTransform[LLGLTFMaterial::GLTF_TEXTURE_INFO_NORMAL].getPacked(packed);
-        memcpy(&nm_xform[kXf * s], packed, sizeof(packed));
-        mat->mTextureTransform[LLGLTFMaterial::GLTF_TEXTURE_INFO_METALLIC_ROUGHNESS].getPacked(packed);
-        memcpy(&mr_xform[kXf * s], packed, sizeof(packed));
     }
 
     shader->uniform1fv(LLShaderMgr::GLTF_MINIMUM_ALPHA, n, min_alpha);
@@ -1360,14 +1333,6 @@ void LLRenderPass::pushGLTFBatchIndexed(LLDrawInfo& params, eGLTFIndexedMaps map
     if (maps == GLTF_MAPS_GLOW)
     {
         shader->uniform1fv(LLShaderMgr::GLTF_BASE_COLOR_ALPHA, n, base_alpha);
-    }
-
-    if (want_full)
-    {
-        shader->uniform1fv(LLShaderMgr::GLTF_ROUGHNESS_FACTOR, n, roughness);
-        shader->uniform1fv(LLShaderMgr::GLTF_METALLIC_FACTOR, n, metallic);
-        shader->uniform4fv(LLShaderMgr::GLTF_NORMAL_TRANSFORM, 2 * n, nm_xform);
-        shader->uniform4fv(LLShaderMgr::GLTF_MR_TRANSFORM, 2 * n, mr_xform);
     }
 
     LLGLDisable cull_face(double_sided ? GL_CULL_FACE : 0);

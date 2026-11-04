@@ -27,7 +27,7 @@
 // up to GLTF_INDEXED_CHANNELS materials; the per-vertex material slot arrives in
 // texture_index (packed in position.w) and selects this vertex's base-color and
 // emissive KHR_texture_transform sets. See pbrglowV.glsl for the single-material
-// equivalent and pbropaqueIndexedV.glsl for the GBuffer-write indexed shader.
+// equivalent; world G-buffer indexed geometry is now emitted directly by Metal.
 
 // Shared matrix stack + derived matrices, spliced from
 // class1/deferred/matricesBlock.glsl and bound at UB_MATRICES.

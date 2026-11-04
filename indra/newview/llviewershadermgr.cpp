@@ -239,10 +239,6 @@ LLGLSLShader            gDeferredMaterialIndexedProgram[LLMaterial::SHADER_COUNT
 LLGLSLShader            gHUDPBROpaqueProgram;
 LLGLSLShader            gPBRGlowProgram;
 LLGLSLShader            gPBRGlowIndexedProgram; // multi-material indexed PBR glow
-LLGLSLShader            gDeferredPBROpaqueProgram;
-LLGLSLShader            gDeferredPBRAlphaMaskProgram;
-LLGLSLShader            gDeferredPBROpaqueIndexedProgram;
-LLGLSLShader            gDeferredPBRAlphaMaskIndexedProgram;
 LLGLSLShader            gHUDPBRAlphaProgram;
 LLGLSLShader            gDeferredPBRAlphaProgram;
 LLGLSLShader            gDeferredPBRAlphaImpostorProgram;
@@ -387,21 +383,17 @@ static void add_terrain_tess_permutations(LLGLSLShader* shader, bool pinned)
     }
 }
 
-// Map an indexed GLTF PBR program's per-slot samplers to texture units. Slot s
-// uses base color unit s; when full (the GBuffer-write shaders, not the shadow
-// alpha-mask shader) it also uses normal N+s, ORM 2N+s and emissive 3N+s. Inactive
-// samplers resolve to -1 and are skipped by uniform1i. Safe to call on a program's
-// rigged variant too.
-static void setup_gltf_indexed_samplers(LLGLSLShader& shader, S32 n, bool full)
+// Map the remaining indexed GLTF shadow/glow samplers to texture units. Slot s
+// uses base color unit s and glow additionally uses emissive unit 3N+s. Inactive
+// samplers resolve to -1 and are skipped. Safe on a rigged variant too.
+static void setup_gltf_indexed_samplers(LLGLSLShader& shader, S32 n, bool emissive)
 {
     shader.bind();
     for (S32 s = 0; s < n; ++s)
     {
         shader.uniform1i(LLStaticHashedString(llformat("basecolor%d", s)), s);
-        if (full)
+        if (emissive)
         {
-            shader.uniform1i(LLStaticHashedString(llformat("normalmap%d", s)), n + s);
-            shader.uniform1i(LLStaticHashedString(llformat("ormmap%d", s)), 2 * n + s);
             shader.uniform1i(LLStaticHashedString(llformat("emissivemap%d", s)), 3 * n + s);
         }
     }
@@ -1401,10 +1393,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gHUDPBROpaqueProgram.unload();
         gPBRGlowProgram.unload();
         gPBRGlowIndexedProgram.unload();
-        gDeferredPBROpaqueProgram.unload();
-        gDeferredPBRAlphaMaskProgram.unload();
-        gDeferredPBROpaqueIndexedProgram.unload();
-        gDeferredPBRAlphaMaskIndexedProgram.unload();
         gDeferredPBRAlphaProgram.unload();
         gDeferredPBRAlphaImpostorProgram.unload();
         for (U32 paint_type = 0; paint_type < TERRAIN_PAINT_TYPE_COUNT; ++paint_type)
@@ -1590,84 +1578,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         }
     }
 
-    // The opaque pass's program cannot discard; the alpha-mask pass has its own (LLDrawPoolGLTFPBR::renderDeferred).
-    for (LLGLSLShader* shader : { &gDeferredPBROpaqueProgram, &gDeferredPBRAlphaMaskProgram })
-    {
-        const bool alpha_mask = shader == &gDeferredPBRAlphaMaskProgram;
-        shader->mName = alpha_mask ? "Deferred PBR Alpha Mask Shader" : "Deferred PBR Opaque Shader";
-        shader->mFeatures.hasSrgb = true;
-
-        shader->mShaderFiles.clear();
-        shader->mShaderFiles.push_back(make_pair("deferred/pbropaqueV.glsl", GL_VERTEX_SHADER));
-        shader->mShaderFiles.push_back(make_pair("deferred/pbropaqueF.glsl", GL_FRAGMENT_SHADER));
-        shader->mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        shader->clearPermutations();
-
-        add_common_permutations(shader);
-        if (alpha_mask)
-        {
-            shader->addPermutation("HAS_ALPHA_MASK", "1");
-        }
-
-        built(shader->createShader(LLGLSLShader::VARIANT_RIGGED | mirror_variant()), *shader);
-    }
-
-    if (LLGLSLShader::sIndexedGLTFChannels >= 2)
-    {
-        // Indexed (multi-material) PBR, opaque and alpha mask. Optional acceleration: failure here
-        // disables GLTF batching and nothing else.
-        bool indexed_ok = true;
-        for (LLGLSLShader* shader : { &gDeferredPBROpaqueIndexedProgram, &gDeferredPBRAlphaMaskIndexedProgram })
-        {
-            const bool alpha_mask = shader == &gDeferredPBRAlphaMaskIndexedProgram;
-            shader->mName = alpha_mask ? "Deferred PBR Alpha Mask Indexed Shader" : "Deferred PBR Opaque Indexed Shader";
-            shader->mFeatures.hasSrgb = true;
-            shader->mShaderFiles.clear();
-            shader->mShaderFiles.push_back(make_pair("deferred/pbropaqueIndexedV.glsl", GL_VERTEX_SHADER));
-            shader->mShaderFiles.push_back(make_pair("deferred/pbropaqueIndexedF.glsl", GL_FRAGMENT_SHADER));
-            shader->mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-            shader->clearPermutations();
-            shader->addPermutation("GLTF_INDEXED_CHANNELS", llformat("%d", LLGLSLShader::sIndexedGLTFChannels));
-            add_common_permutations(shader);
-            if (alpha_mask)
-            {
-                shader->addPermutation("HAS_ALPHA_MASK", "1");
-            }
-
-            // Map each slot's four material samplers to texture units, on every variant.
-            const S32 n = LLGLSLShader::sIndexedGLTFChannels;
-            shader->mOnLink = [n](LLGLSLShader& s) { setup_gltf_indexed_samplers(s, n, true); };
-
-            // rigged (skinned) variant for animesh / avatar attachments
-            indexed_ok = indexed_ok && shader->createShader(LLGLSLShader::VARIANT_RIGGED | mirror_variant());
-        }
-
-        if (!indexed_ok)
-        {
-            // Degrade gracefully: route all PBR faces back to the scalar path.
-            LL_WARNS("ShaderLoading") << "Indexed PBR shader failed to load; GLTF batching disabled." << LL_ENDL;
-            gDeferredPBROpaqueIndexedProgram.unload();
-            gDeferredPBRAlphaMaskIndexedProgram.unload();
-            LLGLSLShader::sIndexedGLTFChannels = 0;
-
-            // The legacy material indexed programs were built earlier (above) with the
-            // now-stale channel count and share sIndexedGLTFChannels. Tear them down so
-            // the invariant sIndexedLegacyMaterials => sIndexedGLTFChannels >= 2 holds.
-            if (LLGLSLShader::sIndexedLegacyMaterials)
-            {
-                for (U32 i = 0; i < LLMaterial::SHADER_COUNT; ++i)
-                {
-                    gDeferredMaterialIndexedProgram[i].unload();
-                }
-                LLGLSLShader::sIndexedLegacyMaterials = false;
-            }
-        }
-    }
-    else
-    {
-        LLGLSLShader::sIndexedGLTFChannels = 0;
-    }
-
     {
         gPBRGlowProgram.mName = " PBR Glow Shader";
         gPBRGlowProgram.mFeatures.hasSrgb = true;
@@ -1683,9 +1593,8 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
     if (LLGLSLShader::sIndexedGLTFChannels >= 2)
     {
-        // Indexed (multi-material) PBR glow, parallel to gPBRGlowProgram. Shares the
-        // GBuffer indexed sampler-unit layout (base color s, emissive 3N+s) so
-        // pushGLTFBatchIndexed drives it directly. Optional: failure leaves the
+        // Indexed (multi-material) PBR glow, parallel to gPBRGlowProgram. Base
+        // colour uses unit s and emissive uses 3N+s. Optional: failure leaves the
         // program incomplete and the pool falls back to scalar glow.
         gPBRGlowIndexedProgram.mName = "PBR Glow Indexed Shader";
         gPBRGlowIndexedProgram.mFeatures.hasSrgb = true;
