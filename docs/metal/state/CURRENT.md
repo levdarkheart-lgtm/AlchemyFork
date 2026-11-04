@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `6183613ef0`
+**Renderer code checkpoint:** `b27df920fc`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -13,17 +13,15 @@ This concise recovery snapshot delegates superseded detail to the indexed archiv
 ## Active implementation checkpoint
 
 M-003, M-004, M-007, M-008, M-009 and M-011 are `doing`; M-012 is complete.
-Commit `6183613ef0` directly enumerates deferred ordinary/control avatars for
-reflection probes before retained GL traversal. Ordered pass 0 retains native
-impostors, pass 1 rigid eyes and pass 2 opaque skinned body/cloth. Selection,
-LOD, baked/composite textures, skin palettes and impostor geometry match the
-retained path. CPU camera/joint matrices replace GL matrix reads. Missing or
-unsupported native inputs invalidate the whole face; successful direct capture
-suppresses only its duplicate later Metal hook while complete GL remains
-fallback. No feature was deleted. Transparent hair/skirt, indexed masks and
-remaining pass inputs still block removal of the GL resource gate,
-`display_cube_face` and cube array. The preceding direct water checkpoint
-retains surface, environment, optics and ordering semantics.
+Commit `b27df920fc` completes direct ordinary/control-avatar probe enumeration
+by adding post-deferred skirt, eyelash and hair production before retained GL.
+High-detail three-pass and low-detail two-pass cull/depth/color state, avatar
+selection, LOD, baked/composite textures, skin palettes and cloth are retained
+without reading GL state. Exact mesh identities suppress only duplicate later
+Metal hooks; missing/unsupported inputs invalidate the whole face while full GL
+remains fallback. Deferred impostor/rigid/opaque production from `6183613ef0`
+remains active. No feature was deleted. Indexed masks and remaining pass inputs
+still block removal of the GL resource gate, `display_cube_face` and cube array.
 The preceding startup-texture checkpoint remains active. System/default/local
 raw, decoded-memory and all eleven explicit local preloads publish truthfully
 through Metal when GL is disabled. Active initialized GL retains its separate
@@ -98,12 +96,12 @@ until the owner-attended review records that result.
   unified memory, arm64 macOS 26.5.2, Xcode 26.6, Apple7 support and the Metal
   compiler present.
 - The exact `tools/metal/build.sh` invocation exited 0 at committed renderer
-  source `6183613ef0`; the warnings-as-errors Xcode Release build reported
-  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68282`
-  (`26.4.0.68282`).
+  source `b27df920fc`; the warnings-as-errors Xcode Release build reported
+  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68284`
+  (`26.4.0.68284`).
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64;
   deep strict code-sign verification passed. Viewer executable SHA-256 is
-  `66509c200d8158d561f53b1f665b18f2b0096ecf57b3d734b02e5b6baabb2674`.
+  `ed66dc697f5f0da16503418f7d5e5876c78f721cc3ceb22f0dd6c7c74a35aed5`.
 - Source and packaged MSL are byte-identical at
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`;
   metallib SHA-256 is
@@ -114,14 +112,14 @@ until the owner-attended review records that result.
 - The changed production targets compiled and linked warnings-as-errors.
   `llrender_gl_fresh_tests` passed 3,594/106 and `almetal_tests` passed
   52,526/56 with Metal API/GPU validation enabled. `newview_tests` self-reported
-  build 68282 and passed 98,990/747 with the established CRT skip. Ninja and
+  build 68284 and passed 98,990/747 with the established CRT skip. Ninja and
   Xcode both linked and packaged the complete viewer warnings-as-errors.
 - Harness structure validation passes for 32 required files; all 30 harness/tool
   tests and `git diff --check` pass. The documented strict-audit alias works.
 - Strict inventory is 2,407 files / 3,214 findings / 2,903 unique
   path/rule/snippet records, expected exit 1; no rule or suppression changed.
-  Exact report `artifacts/metal/audit-gl-6183613ef0.json` has SHA-256
-  `fa79f0a6ff915838bfc769b37d1a2b8049fcfb112ce3b482015371286d6c08de`.
+  Exact report `artifacts/metal/audit-gl-b27df920fc.json` has SHA-256
+  `f8e3c3ecd6883dadc934e686e312a5b11e6bb0167406e23e615831ae6a5a2d53`.
 - Both OpenGL and Metal remain linked. The static, linked and runtime no-GL
   release gates remain open.
 - No viewer executable was launched, driven, photographed or compared.
@@ -131,20 +129,20 @@ until the owner-attended review records that result.
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | System/default/local raw, decoded-memory and all eleven explicit local preloads publish natively with truthful state when GL is disabled; report screenshots, local previews, HDRI, fetched publication, sculpt metadata, pressure scale-down and eviction are backend-correct at converted sites. Exact presentation remains Metal-first/fail-closed. Live GL context creation/shutdown remains. |
-| M-007 world/material | doing | Reflection-probe simple/material/PBR/bump opaque batches, tree, terrain, deferred avatars/impostors, HDRI/WindLight sky and water are enumerated directly from CPU scene state; transforms are GL-independent. Transparent avatar and remaining pass enumeration plus broad parity remain open. |
+| M-007 world/material | doing | Reflection-probe simple/material/PBR/bump opaque batches, tree, terrain, complete ordinary avatar/impostor, HDRI/WindLight sky and water are enumerated directly from CPU scene state; transforms/state are GL-independent. Remaining pass enumeration and broad parity remain open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,214 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Logical probes are backend-neutral and core opaque/bump, tree, terrain, deferred avatar/impostor, sky and water have a direct native producer. `LLCubeMapArray` remains live until every probe family, consumer and failure path is complete. |
+| M-011 GL authority removal | doing | Logical probes are backend-neutral and core opaque/bump, tree, terrain, ordinary avatar/impostor including transparent multipass, sky and water have a direct native producer. `LLCubeMapArray` remains live until every probe family, consumer and failure path is complete. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Deferred probe avatars and impostors
-now feed a direct Metal producer while preserving selection, LOD, textures,
-skinning, cloth, matrix, ordering and failure contracts. The complete fallback
-remains intact; no feature was deleted.
+**Advances the complete product:** yes. Probe avatars now feed direct Metal
+producers for impostor, rigid, opaque skinned/cloth and transparent multipass
+geometry while preserving selection, LOD, texture, state, order and failure
+contracts. The complete fallback remains intact; no feature was deleted.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -154,7 +152,7 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Add direct transparent avatar hair/skirt production at the ordered post-
-   deferred boundary, with exact duplicate suppression and failure proof.
-2. Add indexed masks and remaining pass contracts before removing the live GL
-   gate; queue visual review without driving comparisons.
+1. Paused by owner after this coherent checkpoint for an owner-attended visual
+   backlog review; do not autonomously drive or capture either viewer.
+2. After explicit resume, add indexed masks and remaining pass contracts before
+   removing the live GL gate.
