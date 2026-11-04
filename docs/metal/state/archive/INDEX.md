@@ -134,6 +134,7 @@ reload the chronological history.
 | Direct native reflection-probe legacy/PBR terrain enumeration with material, paint and tessellation behavior retained, source-exact build 68276, 2026-11-04 | [CURRENT-direct-probe-terrain-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-terrain-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Direct native reflection-probe HDRI/WindLight/body/cloud enumeration with cube semantics retained, source-exact build 68278, 2026-11-04 | [CURRENT-direct-probe-sky-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-sky-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 | Direct native reflection-probe water enumeration with surface, environment and ordering semantics retained, source-exact build 68280, 2026-11-04 | [CURRENT-direct-probe-water-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-water-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
+| Direct native reflection-probe deferred-avatar/impostor enumeration with selection, LOD, skinning, cloth and failure semantics retained, source-exact build 68282, 2026-11-04 | [CURRENT-direct-probe-deferred-avatar-enumeration-checkpoint-2026-11-04.md](CURRENT-direct-probe-deferred-avatar-enumeration-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
