@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `23146eeeaa`.
+**Renderer checkpoint:** Commit `ff2fd5dbee`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -18,35 +18,35 @@ checkpoint detail belongs in the indexed archive.
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Reflection maps use backend-neutral logical slots and the manager owns backend resources; native cube/radiance/SH plus startup/local/HDRI/fetched publication, scale-down and eviction work at converted sites. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Darwin media resources and font atlases are native-only; owner-attended text/emoji and moving-media parity remain open. |
-| M-007 | World scene and material correctness | doing | Probe simple/material/PBR/bump opaque batches plus tree, terrain and HDRI/WindLight sky families are enumerated directly from CPU scene state with GL-independent transforms. Remaining water/avatar/pass families plus broad parity remain open. |
+| M-007 | World scene and material correctness | doing | Probe simple/material/PBR/bump opaque batches plus tree, terrain, HDRI/WindLight sky and water are enumerated directly from CPU scene state with GL-independent transforms. Remaining avatar/pass families plus broad parity remain open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
 | M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,214 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | Reflection maps are backend-neutral and core opaque/bump, tree, terrain and sky batches have a direct native producer. `LLCubeMapArray` remains pending complete probe-family production, consumption and failure proof. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | Reflection maps are backend-neutral and core opaque/bump, tree, terrain, sky and water have a direct native producer. `LLCubeMapArray` remains pending complete probe-family production, consumption and failure proof. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — direct native probe sky enumeration
+## Active checkpoint — direct native probe water enumeration
 
-Commit `23146eeeaa` extends direct reflection-probe scene enumeration to the
-sky pool. HDRI capture retains the full dome, exposure and rotation;
-WindLight capture retains atmosphere, rainbow/halo, weather, eligible
-sun/moon bodies and radiance-face clouds. Ordinary probes exclude the sun,
-hero mirrors include it and irradiance faces exclude clouds as before. Stars,
-meteors and aurora retain their deliberate cube-snapshot exclusion. The direct
-producer does not bind a GL shader/texture, read a GL matrix or issue a GL
-draw.
+Commit `ff2fd5dbee` extends direct reflection-probe scene enumeration to the
+water surface at its exact post-deferred ordering boundary. One shared native
+snapshot builder retains normal-map selection/blending, double-precision
+global wave phases and lattice, map means, CPU matrices, far/rim, normal and
+optical state, light/hextile, above/below-water scaling, exclusions, haze and
+shadow selection. Probe faces retain the existing flat-field/no-refraction
+behavior. The direct producer does not bind a GL texture, read a GL matrix or
+issue a GL draw.
 
-Exact dome-buffer and heavenly-body identities suppress duplicate Metal
-capture when the full GL face renders as transition fallback. Missing or
-invalid native resources clear the staged direct identities so the retained
-GL hook remains authority. This is still not complete probe production:
-indexed generic masks, water, avatar and post-deferred owners remain. The
-GL-resource gate, `display_cube_face` and cube array remain until all are
-replaced.
+A successful direct snapshot suppresses only the subsequent duplicate Metal
+hook; the full GL face remains transition fallback. Missing normal maps,
+field/cell data, expected draw count or ordered haze invalidates the whole
+native face rather than publishing waterless output. This is still not
+complete probe production: indexed generic masks, avatar and remaining
+post-deferred owners remain. The GL-resource gate, `display_cube_face` and cube
+array remain until all are replaced.
 
 The preceding startup checkpoint remains active: direct native publication and
 truthful GL-created state work after GL disable, while initialized active GL
@@ -103,11 +103,11 @@ the CSV.
 ## Validation checkpoint
 
 - The source-exact warnings-as-errors Xcode Release build
-  `26.4.0d68278` passed at renderer source `23146eeeaa`.
+  `26.4.0d68280` passed at renderer source `ff2fd5dbee`.
 - `tools/metal/verify_app.sh` reports 349/349 ARM64 Mach-O slices; deep strict
   signing passes.
 - Viewer executable SHA-256:
-  `19636a263a2df538778a86a64ec5ca75dcd568de812fbc59bd2e6e8018654352`.
+  `0db65d7f2a9d5842a46591d2f7159ca35fdea02ef5452b2e1183fad313338260`.
   Source/packaged MSL:
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`.
   Metallib:
@@ -131,8 +131,8 @@ the CSV.
   the documented `audit_gl.py --strict` alias is tested.
 - Strict inventory is 2,407 files / 3,214 findings / 2,903 unique
   path/rule/snippet records, expected exit 1; no rule or suppression changed.
-  Exact report `artifacts/metal/audit-gl-23146eeeaa.json` has SHA-256
-  `810665755c82d2f18ad85cd998cc6a955d2ab7629505b49536997905ef9e27b4`.
+  Exact report `artifacts/metal/audit-gl-ff2fd5dbee.json` has SHA-256
+  `e4f7bbe1186d737fe10d9c6d48aa0eab4e341b986bc7c5e31949463dfff0afae`.
   Both OpenGL and Metal remain linked.
 - No viewer executable was launched, driven, photographed or compared.
 
@@ -146,8 +146,8 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—HDRI/WindLight atmosphere, eligible heavenly
-   bodies and radiance clouds feed direct Metal probe batches; fallback remains.
+1. **Product advancement:** yes—water surface, environment and ordered haze
+   inputs feed a direct Metal probe producer; fallback remains.
 2. **Replacement boundary:** remaining pool/face-owned scene families plus cube-array
    consumption remain until complete native capture is proven.
 3. **Deferred critical work:** remaining GL context/traversal/resources,
@@ -159,9 +159,9 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Add direct water producers without GL binding/draw execution, including exact
-duplicate suppression and failure proof. Then add avatar and remaining pass
-inputs; only complete native
+Add direct avatar producers without GL binding/draw execution, including exact
+duplicate suppression and failure proof. Then add indexed masks and remaining
+pass inputs; only complete native
 face production permits removing the GL-resource gate or cube-array owner.
 Visual evidence remains owner-attended.
 
