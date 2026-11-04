@@ -115,6 +115,7 @@ public:
     /*virtual*/S32         getHeight(S32 discard_level = -1) const;
 
     bool       hasGLTexture() const ;
+    bool       hasGPUTexture() const ;
     LLGLuint   getTexName() const ;
     bool       createGLTexture() ;
 

@@ -2133,6 +2133,8 @@ namespace
 
         LLPointer<LLGLTexture> texture = new LLGLTexture(/*usemipmaps=*/false);
         REQUIRE(texture->createMetalTexture(0, makeRaw(8, 8, 4, 0x44).get()));
+        CHECK(texture->hasGPUTexture());
+        CHECK_FALSE(texture->hasGLTexture());
         LLImageGL* native = texture->getGLTexture();
         REQUIRE(native->getTexName() == 0);
 

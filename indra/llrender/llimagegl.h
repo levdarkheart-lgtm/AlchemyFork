@@ -327,6 +327,17 @@ public:
     S32 getStorageInternalFormat() const;
 
     bool getHasGLTexture() const { return mTexName != 0; }
+    // Backend-neutral residency used by lifecycle/pressure code. During the
+    // transition an image may be GL-backed, dual-backed, or Metal-authoritative
+    // after deliberately retiring its GL name.
+    bool getHasGPUTexture() const
+    {
+#if LL_DARWIN
+        return mTexName != 0 || mMetalTexture != nullptr;
+#else
+        return mTexName != 0;
+#endif
+    }
     LLGLuint getTexName() const { return mTexName; }
 #if LL_DARWIN
     ALMetalTexture* getMetalTexture() const noexcept { return mMetalTexture.get(); }

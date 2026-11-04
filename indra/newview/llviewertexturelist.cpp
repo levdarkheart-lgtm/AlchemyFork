@@ -309,7 +309,7 @@ void LLViewerTextureList::shutdown()
          iter != mImages.end(); ++iter)
     {
         LLViewerFetchedTexture* image = *iter;
-        if (!image->hasGLTexture() ||
+        if (!image->hasGPUTexture() ||
             !image->getUseDiscard() ||
             image->needsAux() ||
             !image->getTargetHost().isInvalid() ||
@@ -1162,7 +1162,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         // desired discard may change while an image is being decoded. If the texture in VRAM is sufficient
         // for the current desired discard level, skip the texture creation.  This happens more often than it probably
         // should
-        bool redundant_load = imagep->hasGLTexture() && imagep->getDiscardLevel() <= imagep->getDesiredDiscardLevel();
+        bool redundant_load = imagep->hasGPUTexture() && imagep->getDiscardLevel() <= imagep->getDesiredDiscardLevel();
 
         if (!redundant_load)
         {
@@ -1172,7 +1172,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         imagep->postCreateTexture();
         imagep->mCreatePending = false;
 
-        if (imagep->hasGLTexture() && imagep->getDiscardLevel() < imagep->getDesiredDiscardLevel() &&
+        if (imagep->hasGPUTexture() && imagep->getDiscardLevel() < imagep->getDesiredDiscardLevel() &&
            (imagep->getDesiredDiscardLevel() <= MAX_DISCARD_LEVEL))
         {
             // NOTE: this may happen if the desired discard reduces while a decode is in progress and does not
@@ -1187,6 +1187,53 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             break;
         }
     }
+
+#if LL_DARWIN
+    // Native-authoritative images do not need the retained GL scratch target,
+    // copy shader, framebuffer state or even a GL name. Drain them first so
+    // memory pressure can reduce real Metal residency while the legacy target
+    // is unavailable. Keep GL/dual-backed entries queued for the established
+    // fail-closed path below.
+    if (!mDownScaleQueue.empty())
+    {
+        const std::size_t initial_count = mDownScaleQueue.size();
+        S32 min_count = (S32)mCreateTextureList.size() / 20 + 5;
+        bool time_exhausted = false;
+
+        create_timer.reset();
+        for (std::size_t index = 0; index < initial_count; ++index)
+        {
+            LLPointer<LLViewerFetchedTexture> image = mDownScaleQueue.front();
+            mDownScaleQueue.pop();
+
+            LLImageGL* img = image ? image->getGLTexture() : nullptr;
+            if (img && !img->getHasGLTexture() && img->getMetalTexture())
+            {
+                llassert(image->mDownScalePending);
+                img->scaleDown(image->getDesiredDiscardLevel());
+                image->mDownScalePending = false;
+            }
+            else
+            {
+                mDownScaleQueue.push(image);
+            }
+
+            if (create_timer.getElapsedTimeF32() > max_time && --min_count <= 0)
+            {
+                time_exhausted = true;
+                break;
+            }
+        }
+
+        // Do not enter the GL path with unexamined native entries still in the
+        // queue. They remain pending and resume ahead of retained work next
+        // frame.
+        if (time_exhausted)
+        {
+            return create_timer.getElapsedTimeF32();
+        }
+    }
+#endif
 
     if (!mDownScaleQueue.empty() && gPipeline.mDownResMap.isComplete())
     {

@@ -243,6 +243,15 @@ bool LLGLTexture::hasGLTexture() const
     return false ;
 }
 
+bool LLGLTexture::hasGPUTexture() const
+{
+    if (mGLTexturep.notNull())
+    {
+        return mGLTexturep->getHasGPUTexture();
+    }
+    return false;
+}
+
 bool LLGLTexture::getBoundRecently() const
 {
     if(mGLTexturep.notNull())

@@ -3216,7 +3216,7 @@ void LLViewerLODTexture::processTextureStats()
 
 bool LLViewerLODTexture::scaleDown()
 {
-    if (mGLTexturep.isNull() || !mGLTexturep->getHasGLTexture())
+    if (mGLTexturep.isNull() || !mGLTexturep->getHasGPUTexture())
     {
         return false;
     }
