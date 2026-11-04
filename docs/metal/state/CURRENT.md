@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `3b772a630f`
+**Renderer code checkpoint:** `ebd07151a3`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -14,13 +14,18 @@ append-only archives.
 ## Active implementation checkpoint
 
 M-003, M-004, M-008, M-009 and M-011 are `doing`; M-012 is complete. Commit
-`3b772a630f` makes process-wide texture residency accounting backend-neutral.
-Native-authoritative Metal allocation, replacement, scale-down, discard and
-teardown now update the same budget signal consumed by texture-pressure logic.
-The accounting uses actual Metal descriptor storage, including mip chains,
-block geometry, slices and samples. A transitional GL/Metal mirror remains one
-logical allocation: GL owns its entry until the authoritative handoff, then
-the Metal entry takes over without an overlap or deferred-delete gap.
+`ebd07151a3` routes fetched-texture pressure decisions through actual GPU
+residency. Native-authoritative Metal images now participate in redundant-load,
+post-create, shutdown-precache and queued scale-down decisions. The scheduler
+drains those images through `LLImageGL::scaleDown()` without a GL name, scratch
+target, copy shader, framebuffer binding or blend/color state. Transitional
+GL/dual-backed images retain their established fail-closed path and relative
+queue order; no feature was deleted for an inventory reduction.
+
+The preceding accounting checkpoint remains active. Native Metal allocation,
+replacement, scale-down, discard and teardown update the same process-wide
+budget signal consumed by pressure logic, using actual descriptor storage. A
+GL/Metal mirror remains one logical allocation through authoritative handoff.
 
 The preceding native scale-down checkpoint remains active. Commit
 `63f8f0d528` keeps native-authoritative texture scale-down entirely in Metal.
@@ -81,12 +86,12 @@ until the owner-attended review records that result.
   unified memory, arm64 macOS 26.5.2, Xcode 26.6, Apple7 support and the Metal
   compiler present.
 - The exact `tools/metal/build.sh` invocation exited 0 at committed source
-  `3b772a630f`; the warnings-as-errors Xcode Release build reported `BUILD
-  SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68237`
-  (`26.4.0.68237`).
+  `ebd07151a3`; the cold warnings-as-errors Xcode Release build reported
+  `BUILD SUCCEEDED` and staged Alchemy Metal Development `26.4.0d68239`
+  (`26.4.0.68239`).
 - `tools/metal/verify_app.sh` checked 349/349 bundled Mach-O slices as ARM64;
   deep strict code-sign verification passed. Viewer executable SHA-256 is
-  `1121b39f30c1fae9e30dd88bb5922dfc4034adffe6d9801f0c7233554c5a92b1`.
+  `f2660391e4bbc98632509ad3bbff106e57b7f8b162cd85e7ae7df229722bcbe1`.
 - Source and packaged MSL are byte-identical at
   `563f5db2c7d7427cbd32b0e8403a108e755bca4163a891a248ee107c0c174571`;
   metallib SHA-256 is
@@ -95,10 +100,11 @@ until the owner-attended review records that result.
   `355f811a1e9c299c01fbfe0ad22696810410fe4a6eaaeb814f2ae46c0751a4f0`;
   an XML query confirms the packaged Metal-presentation default is `1`.
 - The changed `llrender_gl_fresh_tests` target compiled warnings-as-errors.
-  Its focused residency-accounting slice passed 1,958 assertions across 19
-  cases; the complete binary passed 2,669 assertions across 99 cases. New
-  physical cases cover GL-to-Metal authoritative transfer, native-only mip and
-  no-mip scale-down, actual RGB8-to-RGBA8 storage, discard and teardown.
+  Its focused physical Metal slice passed 1,960 assertions across 19 cases;
+  the complete binary passed 2,671 assertions across 99 cases. The two new
+  assertions prove a Metal-only wrapper is GPU-resident but not GL-resident.
+- A cold Ninja Release `llrender_gl_fresh_tests alchemy-bin` build also passed
+  warnings-as-errors and linked/packaged the complete viewer.
 - The preceding source-exact physical baselines remain `almetal_tests` at
   52,526/56, `llappearance_gl_tests` at 13,208/3, `alrender_tests` at
   557,301/136 and `newview_tests` at 98,978/744 with the established CRT skip.
@@ -118,7 +124,7 @@ until the owner-attended review records that result.
 
 | Area | State | Current fact |
 | --- | --- | --- |
-| M-003..M-006 platform/resources/UI | doing | Exact native world/presentation/ordered-UI publication is Metal-first by default, fail-closed per frame and machine-censused by failure boundary. The dynamic-texture framework and all concrete producers are native-only on Darwin; previews, visual hints, avatar composites, color-grade volume/tone-curve and PBR BRDF LUTs, legacy bumps and established media/terrain/water/parcel/sky/minimap/font/edit-grid resources have native owners. Native-authoritative texture downscale no longer creates GL backing, and its actual Metal storage participates in process-wide residency accounting without double-counting dual-backed images. Live GL context creation/shutdown remains. |
+| M-003..M-006 platform/resources/UI | doing | Exact native world/presentation/ordered-UI publication is Metal-first by default and fail-closed. Native-authoritative scale-down is Metal-only, process-wide budgeted and now directly scheduled from fetched-texture pressure without GL scratch state. Dynamic resources and established media/terrain/water/parcel/sky/minimap/font/edit-grid owners remain native. Live GL context creation/shutdown remains. |
 | M-007 world/material | doing | Metal world capture consumes native bump backing; opaque fullbright is corrected. Native legacy BLEND/stained-glass implementation and deterministic coverage exist; owner-attended visual and broad material parity remain open. |
 | M-008 advanced views/effects | doing | Color grading, native PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible non-HDR legacy glow/presentation have Metal implementations at their documented boundaries. |
 | M-009 parity/stability/no-GL | doing | Strict inventory is 3,217 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
@@ -129,12 +135,10 @@ until the owner-attended review records that result.
 
 ## Complete-product advancement assessment
 
-**Advances the complete product:** yes. Native-authoritative images can now
-complete runtime allocation, replacement, scale-down and teardown while their
-actual Metal storage remains visible to process-wide pressure accounting. The
-same image is never counted as both a GL and Metal allocation. This preserves
-the existing eviction signal while GL names retire; it is not OpenGL-count-only
-deletion.
+**Advances the complete product:** yes. Native-authoritative fetched images now
+retain the viewer's existing pressure-management behavior, including queued
+scale-down, without reacquiring GL storage or binding GL scratch state. This is
+a Metal implementation of retained behavior, not OpenGL-count-only deletion.
 
 **Still incomplete:** the executable links OpenGL and still creates/shuts down a
 live GL context. Application-owned GL traversal and resources remain. Complete
@@ -144,11 +148,11 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Cut the fetched-texture pressure scheduler over to recognize native Metal
-   residency. Native-only images must be eligible for queued scale-down without
-   requiring or binding the legacy GL scratch target/program; dual-backed/GL
-   images must retain their existing fail-closed path until their consumers are
-   converted. Physically regress the scheduler boundary.
+1. Make texture destruction semantics backend-neutral at lifecycle sites that
+   mean "drop GPU residency." In particular, native-only sculpt storage must be
+   evictable without pretending it has a GL name, while call sites that truly
+   mean GL-only detach retain explicit GL semantics. Add physical lifecycle
+   regression before removing any superseded GL owner.
 2. In the next owner-attended session, collect the default-path publication
    census without adding an independent viewer-comparison run. Use measured
    failure states to repair blockers, then retire GL recovery only when complete

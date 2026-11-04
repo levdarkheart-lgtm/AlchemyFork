@@ -114,6 +114,7 @@ reload the chronological history.
 | Machine-readable Metal publication/fallback-cause census and source-exact build 68233, 2026-11-03 | [CURRENT-metal-presentation-census-checkpoint-2026-11-03.md](CURRENT-metal-presentation-census-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Native-authoritative Metal-only texture scale-down lifecycle and source-exact build 68235, 2026-11-03 | [CURRENT-native-texture-scale-down-checkpoint-2026-11-03.md](CURRENT-native-texture-scale-down-checkpoint-2026-11-03.md) | `docs/metal/state/CURRENT.md` |
 | Backend-neutral native Metal texture residency accounting and source-exact build 68237, 2026-11-04 | [CURRENT-native-texture-residency-accounting-checkpoint-2026-11-04.md](CURRENT-native-texture-residency-accounting-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
+| Native fetched-texture pressure scheduling without GL scratch state and source-exact build 68239, 2026-11-04 | [CURRENT-native-texture-pressure-scheduler-checkpoint-2026-11-04.md](CURRENT-native-texture-pressure-scheduler-checkpoint-2026-11-04.md) | `docs/metal/state/CURRENT.md` |
 
 Archives are append-only evidence. Correct a factual error with an explicit
 erratum or a new current observation; do not silently rewrite historical claims.
