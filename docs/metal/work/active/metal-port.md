@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `21562a1991`.
+**Renderer checkpoint:** Commit `945f071acf`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,14 +13,14 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 3,136 findings; strict exits 1. No rule or suppression changed. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 3,133 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Metal is the mandatory visible presentation owner. Startup/world GL swaps are suppressed; an incomplete native frame retains the previous Metal drawable and is machine-censused without claiming GL fallback. Live GL traversal/context creation/shutdown remain. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Native producers use the window-owned Metal device. Reflection probes use backend-neutral logical slots and Metal-only cube/radiance/SH publication; converted startup/local/HDRI/fetched resources retain native scale-down and eviction. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while retained GL consumers are removed; owner accepted readable UI text. Snapshot no longer allocates/binds/clears a GL scratch target or reconciles GL targets for capture size, and retries one exact-size Metal render after temporal-resource resize; preview/Refresh/Save-to-Disk await owner revalidation. |
 | M-007 | World scene and material correctness | doing | Probe G-buffer and post-deferred families are enumerated directly from CPU scene state, including sorted alpha, transparent avatars, atmosphere, water haze/exclusion/surface and emissive replay. Broad parity remains open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR BRDF integration, model/animation/image previews, visual hints, avatar composites, material previews, FXAA/SMAA/CAS, DoF, HDR bloom/cross-filter and eligible legacy non-HDR glow/presentation are implemented in Metal. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,136 findings), linked/runtime no-GL and visual review remain open. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (3,133 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation nor reflection/hero publication. Obsolete GL probe storage and generation/filter shaders are deleted; native faces own scene, lighting, shadows and post. Non-probe GL owners remain. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
@@ -99,6 +99,11 @@ their six exclusive GLSL files and the obsolete two-pass projection setting.
 The native Metal cube/radiance/SH path remains authoritative; the analytical
 SH oracle now documents and verifies the native packed-coefficient contract.
 
+`945f071acf` deletes the unreferenced terrain-paint GL bake program and its two
+exclusive shaders. Production paintmap baking remains owned by
+`ALMetalTerrainPaintRenderer`; the live 1-to-8-bit quantization input remains
+and its physical Metal test covers the native height/noise bake.
+
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
 resources avoid GL names; dual backing remains only where retained GL consumers
@@ -114,25 +119,15 @@ swap. Exact prior evidence remains in the
 - `verify_app.sh`: 349/349 ARM64 Mach-O slices; deep strict signing passes.
 - Metal-validation: fresh renderer 3,684/110, dual atlas 36/2, real glyph/native
   UI 56/1. Shared baseline retains 5 known Apple GL failures/4 cases.
-- `f04b0b6306`: warnings-as-errors RelWithDebInfo Ninja build and full Xcode app
-  build pass; focused benchmark tests pass 49/8, `alrender_tests` 557,301/136,
-  tools tests 31/31 and harness validation passes. App verification accepts
-  349/349 ARM64 slices; deep signing passes; executable SHA-256 is
-  `32dd668a3ddedce05300372a4a1f94ede3b8fa88c8c3f059cad5fb98372c518d`.
-- `23da75f187`: warnings-as-errors RelWithDebInfo Ninja and full Xcode app builds
-  pass; focused benchmark tests pass 49/8, `alrender_tests` 557,301/136, tools
-  tests 31/31 and the 32-file harness validates. App verification accepts
-  349/349 ARM64 slices; deep signing passes; executable SHA-256 is
-  `079eff26f8d8772d492b125642487c48553d8927655e9f154a9a55fd914efdc3`.
-- `d80a941a60`: the same Ninja/Xcode, benchmark 49/8, renderer 557,301/136,
-  tools 31/31 and harness gates pass. App verification accepts 349/349 ARM64
-  slices; deep signing passes; executable SHA-256 is
-  `2017d042524d4ac4f75eb628bbe5f9fdf4ba411274497626fceacc16fab3d1da`.
 - `21562a1991`: Ninja/Xcode, SH oracle, benchmark 49/8, renderer 557,301/136,
   tools 31/31 and harness pass. App verification accepts 349/349 ARM64 slices;
   deep signing passes; executable SHA-256 is
   `569b38ec1133b687c7408b9e8fd8f95e1dc13a36a8f3f4ba63c001f30f92ab79`.
-- Strict inventory is 3,136 findings and exits 1; both APIs remain linked.
+- `945f071acf`: Ninja/Xcode, native terrain GPU test 289/1, benchmark 49/8,
+  renderer 557,301/136 and tools 31/31 pass. App verification accepts 349/349
+  ARM64 slices; deep signing passes; executable SHA-256 is
+  `32f13656fdae67c3af3374a5c9833cfc43d020d727b4b79bb3822ea59a979a20`.
+- Strict inventory is 3,133 findings and exits 1; both APIs remain linked.
 
 ## Owner-attended visual review cadence
 
