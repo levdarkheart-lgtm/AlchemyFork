@@ -1386,8 +1386,9 @@ void LLViewerFetchedTexture::addToCreateTexture()
 
     if(isForSculptOnly())
     {
-        //just update some variables, not to create a real GL texture.
-        createGLTexture(mRawDiscardLevel, mRawImage, 0, false);
+        // Sculpt data is consumed on the CPU. Publish its decoded geometry and
+        // discard state without creating either kind of GPU texture.
+        setImageMetadata(mRawDiscardLevel, mRawImage);
         mNeedsCreateTexture = false;
         destroyRawImage();
     }

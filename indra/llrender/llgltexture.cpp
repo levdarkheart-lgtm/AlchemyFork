@@ -168,6 +168,21 @@ bool LLGLTexture::createGLTexture(S32 discard_level, const LLImageRaw* imageraw,
     return ret ;
 }
 
+bool LLGLTexture::setImageMetadata(S32 discard_level, const LLImageRaw* imageraw)
+{
+    llassert(mGLTexturep.notNull());
+
+    const bool updated = mGLTexturep->setImageMetadata(discard_level, imageraw);
+    if (updated)
+    {
+        mFullWidth = mGLTexturep->getCurrentWidth();
+        mFullHeight = mGLTexturep->getCurrentHeight();
+        mComponents = mGLTexturep->getComponents();
+        setTexelsPerImage();
+    }
+    return updated;
+}
+
 #if LL_DARWIN
 bool LLGLTexture::createMetalTexture(S32 discard_level, const LLImageRaw* imageraw,
                                      S32 category)

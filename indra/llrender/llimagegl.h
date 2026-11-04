@@ -260,6 +260,9 @@ public:
     bool createGLTexture() ;
     bool createGLTexture(S32 discard_level, const LLImageRaw* imageraw, S32 usename = 0, bool to_create = true,
         S32 category = sMaxCategories-1, bool defer_copy = false, LLGLuint* tex_name = nullptr);
+    // Publish decoded-image geometry, format and discard state without creating
+    // GPU storage. Any obsolete GL or Metal backing is released.
+    bool setImageMetadata(S32 discard_level, const LLImageRaw* imageraw);
     bool createGLTexture(S32 discard_level, const U8* data, bool data_hasmips = false, S32 usename = 0, bool defer_copy = false, LLGLuint* tex_name = nullptr);
     void setImage(const LLImageRaw* imageraw);
     bool setImage(const U8* data_in, bool data_hasmips = false, S32 usename = 0);

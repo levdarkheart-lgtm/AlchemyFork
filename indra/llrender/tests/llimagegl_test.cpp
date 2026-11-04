@@ -2256,6 +2256,47 @@ namespace
         CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
     }
 
+    TEST_CASE_METHOD(llimagegl_data, "LLGLTexture: metadata-only publication needs no live GL manager or GPU backing", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct StateReset
+        {
+            bool mDisabled = gGLManager.mIsDisabled;
+            ~StateReset()
+            {
+                gGLManager.mIsDisabled = mDisabled;
+                LLImageGL::setMetalDevice(nullptr);
+            }
+        } reset;
+        LLImageGL::setMetalDevice(device.get());
+
+        const U64 baseline_bytes = LLImageGL::getTextureBytesAllocated();
+        LLPointer<LLGLTexture> texture = new LLGLTexture(/*usemipmaps=*/true);
+        REQUIRE(texture->createMetalTexture(0, makeRaw(8, 8, 4, 0x55).get()));
+        REQUIRE(texture->hasGPUTexture());
+        REQUIRE(LLImageGL::getTextureBytesAllocated() > baseline_bytes);
+        const LLGLTexture::LLGLTextureState state = texture->getTextureState();
+
+        gGLManager.mIsDisabled = true;
+        REQUIRE(texture->setImageMetadata(
+            /*discard_level=*/2, makeRaw(4, 2, 3, 0x22).get()));
+
+        CHECK_FALSE(texture->hasGPUTexture());
+        CHECK_FALSE(texture->hasGLTexture());
+        CHECK(texture->getGLTexture()->getMetalTexture() == nullptr);
+        CHECK(texture->getDiscardLevel() == 2);
+        CHECK(texture->getFullWidth() == 16);
+        CHECK(texture->getFullHeight() == 8);
+        CHECK(texture->getComponents() == 3);
+        CHECK(texture->getTextureMemory() == S32Bytes(0));
+        CHECK(texture->getTextureState() == state);
+        CHECK(LLImageGL::getTextureBytesAllocated() == baseline_bytes);
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: native image upload updates Metal without touching GL", "[LLImageGL][almetal]")
     {
         std::string error;

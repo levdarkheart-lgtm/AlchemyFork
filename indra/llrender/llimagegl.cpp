@@ -3448,10 +3448,70 @@ bool LLImageGL::createGLTexture()
     return true ;
 }
 
+bool LLImageGL::setImageMetadata(S32 discard_level, const LLImageRaw* imageraw)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    checkActiveThread();
+
+    if (!imageraw || imageraw->isBufferInvalid())
+    {
+        LL_WARNS() << "Trying to publish metadata from invalid image data"
+                   << LL_ENDL;
+        mGLTextureCreated = false;
+        return false;
+    }
+
+    if (discard_level < 0)
+    {
+        llassert(mCurrentDiscardLevel >= 0);
+        discard_level = mCurrentDiscardLevel;
+    }
+    discard_level = llmin(discard_level, MAX_DISCARD_LEVEL);
+
+    const S32 width = imageraw->getWidth() << discard_level;
+    const S32 height = imageraw->getHeight() << discard_level;
+
+    checkUploadBegun();
+    if (!setSize(width, height, imageraw->getComponents(), discard_level))
+    {
+        LL_WARNS() << "Trying to publish image metadata with incorrect dimensions!"
+                   << LL_ENDL;
+        mGLTextureCreated = false;
+        return false;
+    }
+
+    if (mHasExplicitFormat &&
+        ((mFormatPrimary == GL_RGBA && mComponents < 4) ||
+         (mFormatPrimary == GL_RGB && mComponents < 3)))
+    {
+        LL_WARNS() << "Incorrect format: " << std::hex << mFormatPrimary
+                   << " components: " << (U32)mComponents << LL_ENDL;
+        mHasExplicitFormat = false;
+    }
+
+    if (!mHasExplicitFormat)
+    {
+        resolveComponentFormat(mComponents);
+    }
+
+    // A metadata-only image has no GPU owner. This releases either kind of
+    // transitional backing without requiring a live GL manager.
+    destroyGLTexture();
+    mCurrentDiscardLevel = discard_level;
+    mLastBindTime = sLastFrameTime;
+    mGLTextureCreated = false;
+    return true;
+}
+
 bool LLImageGL::createGLTexture(S32 discard_level, const LLImageRaw* imageraw, S32 usename/*=0*/, bool to_create, S32 category, bool defer_copy, LLGLuint* tex_name)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     checkActiveThread();
+
+    if (!to_create)
+    {
+        return setImageMetadata(discard_level, imageraw);
+    }
 
     if (gGLManager.mIsDisabled)
     {
@@ -3507,15 +3567,6 @@ bool LLImageGL::createGLTexture(S32 discard_level, const LLImageRaw* imageraw, S
     if( !mHasExplicitFormat )
     {
         resolveComponentFormat(mComponents);
-    }
-
-    if(!to_create) //not create a gl texture
-    {
-        destroyGLTexture();
-        mCurrentDiscardLevel = discard_level;
-        mLastBindTime = sLastFrameTime;
-        mGLTextureCreated = false;
-        return true ;
     }
 
     setCategory(category);
