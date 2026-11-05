@@ -162,9 +162,6 @@ extern LLGLSLShader         gCrossFilterProgram;
 constexpr S32               LENS_DIRT_MAX_LINES = 32;
 extern LLGLSLShader         gLensDirtGenProgram;
 
-extern LLGLSLShader         gPathfindingProgram;
-extern LLGLSLShader         gPathfindingNoNormalsProgram;
-
 // avatar shader handles
 extern LLGLSLShader         gAvatarProgram;
 extern LLGLSLShader         gImpostorProgram;

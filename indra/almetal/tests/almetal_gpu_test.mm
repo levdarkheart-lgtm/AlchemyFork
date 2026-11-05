@@ -53,7 +53,6 @@ namespace
             return !candidate.exact();
         };
         CHECK(rejects(&ALMetalWorldOverlayEligibility::render_debug));
-        CHECK(rejects(&ALMetalWorldOverlayEligibility::pathfinding));
     }
 
     id<MTLDevice> nativeDevice(const ALMetalDevice& device)

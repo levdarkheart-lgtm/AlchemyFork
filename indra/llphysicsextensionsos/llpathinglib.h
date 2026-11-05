@@ -45,8 +45,6 @@ typedef int bool32;
 #define LLCD_CALL
 #endif
 
-class LLRender;
-
 //=============================================================================
 class LLPathingLib
 {
@@ -71,12 +69,6 @@ public:
         LLSTB_MaterialPhantoms  = 0x1 << 3,
         LLSTB_ExclusionPhantoms = 0x1 << 4,
         LLSTB_None              = 0x1 << 5
-    };
-
-    enum LLPLPathBookEnd
-    {
-        LLPL_START = 0,
-        LLPL_END,
     };
 
     enum LLPLResult
@@ -156,25 +148,10 @@ public:
     //Set the various navmesh colors
     virtual void setNavMeshColors( const NavMeshColors& color ) = 0;
 
-    //The entry method to rendering the client side navmesh
-    virtual void renderNavMesh()  = 0;
-    //The entry method to rendering the client side navmesh edges
-    virtual void renderNavMeshEdges()  = 0;
-    //The entry method to render the client navmesh shapes VBO
-    virtual void renderNavMeshShapesVBO( U32 shapeRenderFlags )  = 0;
-    //The entry method to render the clients designated path
-    virtual void renderPath() = 0;
-    //The entry method to render the capsule bookends for the clients designated path
-    virtual void renderPathBookend( LLRender& gl, LLPathingLib::LLPLPathBookEnd type ) = 0;
-    //Renders all of the generated simple shapes (using their default transforms)
-    virtual void renderSimpleShapes( LLRender& gl, F32 regionsWaterHeight ) = 0;
-
     //Method called from second life to create a capsule from properties of a character
     virtual void createPhysicsCapsuleRep( F32 length, F32 radius,  bool horizontal, const LLUUID& id ) = 0;
     //Removes any cached physics capsule using a list of cached uuids
     virtual void cleanupPhysicsCapsuleRepResiduals() = 0;
-    //Renders a selected uuids physics rep
-    virtual void renderSimpleShapeCapsuleID( LLRender& gl, const LLUUID& id, const LLVector3& pos, const LLQuaternion& rot  ) = 0;
 
     //Method to delete any vbo's that are currently being managed by the pathing library
     virtual void cleanupVBOManager( ) = 0;

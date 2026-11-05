@@ -57,17 +57,6 @@ public:
     //Set the various navmesh colors
     virtual void setNavMeshColors( const NavMeshColors& color );
 
-    //The entry method to rendering the client side navmesh
-    virtual void renderNavMesh();
-    //The entry method to rendering the client side navmesh edges
-    virtual void renderNavMeshEdges();
-    //The entry method to render the client navmesh shapes VBO
-    virtual void renderNavMeshShapesVBO( U32 shapeRenderFlags );
-    //The entry method to render the clients designated path
-    virtual void renderPath();
-    //The entry method to render the capsule bookends for the clients designated path
-    virtual void renderPathBookend( LLRender& gl, LLPathingLib::LLPLPathBookEnd type );
-
     //Method to delete any vbo's that are currently being managed by the pathing library
     virtual void cleanupVBOManager();
     //Method to cleanup any allocations within the implementation

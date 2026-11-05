@@ -26,11 +26,10 @@
 struct ALMetalWorldOverlayEligibility
 {
     bool render_debug = false;
-    bool pathfinding = false;
 
     bool exact() const
     {
-        return !render_debug && !pathfinding;
+        return !render_debug;
     }
 };
 

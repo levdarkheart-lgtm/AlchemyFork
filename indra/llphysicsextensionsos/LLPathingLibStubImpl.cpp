@@ -80,26 +80,6 @@ void LLPathingLibImpl::setNavMeshColors( const NavMeshColors& color )
 {
 }
 
-void LLPathingLibImpl::renderNavMesh()
-{
-}
-
-void LLPathingLibImpl::renderNavMeshEdges()
-{
-}
-
-void LLPathingLibImpl::renderNavMeshShapesVBO( U32 shapeRenderFlags )
-{
-}
-
-void LLPathingLibImpl::renderPath()
-{
-}
-
-void LLPathingLibImpl::renderPathBookend( LLRender& gl, LLPathingLib::LLPLPathBookEnd type )
-{
-}
-
 void LLPathingLibImpl::cleanupVBOManager()
 {
 }
