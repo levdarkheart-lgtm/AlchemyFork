@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `35f43b29e0`
+**Renderer code checkpoint:** `dbff358ab5`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -93,7 +93,7 @@ two shaders while retaining the tested native bake and live precision input.
 `210380eb74` makes native selection ID/depth, alpha cuts, rigging, wireframe,
 contour, hover glow, contrast and HUD authoritative and deletes 13 GLSL files.
 `ffe4e79dc3` deletes six GL targets, their palette texture, eight GL programs, helpers and the obsolete 3,892-line GL test.
-Commits `95619cb3e5` through `d0da9cae1a` remove duplicate GL debug draws; `624441a65e` cuts trees; `79fbf30233` cuts base deferred geometry; `15d7a3b77c` cuts opaque/masked PBR G-buffer GL; `8bd478c19f` cuts opaque PBR glow; `a143d2789e` cuts legacy materials; `189908fc41` and `eab6bd61b3` cut main/alpha-pool glow; `35f43b29e0` cuts the legacy bump G-buffer and deletes its two GL programs/two shaders. Visual parity is queued.
+Commits `95619cb3e5` through `d0da9cae1a` remove duplicate GL debug draws; `624441a65e` cuts trees; `79fbf30233` cuts base deferred geometry; `15d7a3b77c` cuts opaque/masked PBR G-buffer GL; `8bd478c19f` cuts opaque PBR glow; `a143d2789e` cuts legacy materials; `189908fc41` and `eab6bd61b3` cut main/alpha-pool glow; `35f43b29e0` cuts the legacy bump G-buffer; `dbff358ab5` cuts world shiny/emboss replay and its world shiny program while retaining the distinct HUD programs. Visual parity is queued.
 
 Earlier native terrain, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -124,19 +124,19 @@ until the owner-attended review records that result.
 - At `ffe4e79dc3`, Ninja/Xcode, selection GPU 4,732/1, benchmark 49/8, renderer
   557,301/136, tools 31/31, 349/349 ARM64 and signing pass; executable SHA-256
   is `9d8f6b1313ef0c1bf7cae936a30152b3b1c5ab60728d126809fa3ea0bb8f284f`.
-- At `35f43b29e0`, RelWithDebInfo harness build/staging and physical world/G-buffer 8,022/1 pass; `verify_app.sh` accepts 349/349 ARM64 slices and deep signing passes.
-  Executable SHA-256 is `8e942e43de01a8667c9a7bfaa9de7ab06e49aedb308be9fe961ef1251668baa9`; strict inventory is 2,880. Runtime/visual parity remains open.
+- At `dbff358ab5`, RelWithDebInfo harness build/staging and physical world/G-buffer 8,022/1 pass; `verify_app.sh` accepts 349/349 ARM64 slices and deep signing passes.
+  Executable SHA-256 is `b472efdd45f138befceb9ef78b0f7fae828cd99cccf3d0afd7c2f164f21f2813`; strict inventory is 2,876. Runtime/visual parity remains open.
 
 ## Milestone snapshot
 
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | Native producers use the window-owned Metal device rather than the GL image registry. Converted resources/previews retain truthful native state. Metal solely presents; Snapshot has no GL capture target; selection effects use native targets only. Live GL traversal/context remain. |
-| M-007 world/material | doing | Reflection-probe scene families plus ordinary, legacy-material, legacy-bump and opaque/masked glTF PBR static/rigged G-buffer batches are directly enumerated into Metal. Grass, tree and shadow batches are native; broad material/scene parity remains open. |
+| M-007 world/material | doing | Probe scenes plus ordinary, legacy-material/bump, shiny/emboss and opaque/masked glTF PBR static/rigged batches are directly enumerated into Metal. Grass, trees and shadows are native; broad parity remains open. |
 | M-008 advanced views/effects | doing | Color grading, PBR integration/glow, previews, visual hints, avatar composites, selection, debug effects, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation have Metal implementations. Opaque PBR plus main and alpha-pool glow are native-only. |
-| M-009 parity/stability/no-GL | doing | Strict inventory is 2,880 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
+| M-009 parity/stability/no-GL | doing | Strict inventory is 2,876 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Probe publication, terrain bake, selection, base deferred/PBR/legacy-material/legacy-bump geometry, opaque PBR, main and alpha-pool glow, trees and converted debug effects have direct Metal owners. Superseded GL owners are deleted. |
+| M-011 GL authority removal | doing | Probe publication, terrain bake, selection, base deferred/PBR/legacy-material/legacy-bump geometry, world shiny/emboss, opaque PBR, glow, trees and converted debug effects have direct Metal owners. Superseded GL owners are deleted. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
