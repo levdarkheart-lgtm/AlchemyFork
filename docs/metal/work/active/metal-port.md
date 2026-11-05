@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `d45778cade`.
+**Renderer checkpoint:** Commit `1a27604157`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -118,7 +118,7 @@ sun, SSAO blur and base-light draws, six programs, nine GLSL stages and obsolete
 pack light-map slots, blurred scratch target and dispatch-reach input. Metal retains private light-map/blur ownership; the default 1440p plan sheds 21.1 MiB.
 `cbdecfd337` replaces the first deferred `setupHWLights()` mutation with CPU-only native direction preparation and deletes the now-drawless GL
 vertex/cull/blend/color-mask state prologue. `fa746d4cb8` makes direct Metal edit/touch highlights sole owner. `5d1bf5a394`/`497759ebb4` remove unreachable OSS pathing rendering/gate. `bbc4be43d9` removes GL object-update blips; `c965068e2f` removes the GL probe-volume draw/program/shaders; `06c4da2bb8` removes GL particle-raycast lines; `1950b5c562` removes GL shadow-frusta geometry; `f65bf7118b` removes the GL terrain-composition grid; `90a9967202` removes GL reflection-probe links; `e154478468` removes both GL Occlusion phases; `d625610b62` removes GL drawable face-center points; `74847d912b` removes live Develop > Bounding Boxes GL submissions and their native capture's ambient GL color/line/state dependency while retaining explicit semantic colors, face/drawable/group extents, bridge transforms, traversal order and the active-object 1–5 px pulse. `5c2a4ec7e7` removes duplicate GL raycast branch outlines, hidden/visible triangle edges and selected-prim axis/bounds geometry while replacing ambient GL-state sampling with explicit Metal colors, widths and depth conventions. `d37e51ea07` makes the selected-avatar/shared Collision Skeleton volume owner Metal-only, retaining ordinary/control colors, white center dots, exact transforms/scales/order and visible/occluded depth. `b766e89361` makes live Develop > Joints skeleton segments, endpoint spheres and rigged bounds Metal-only, retaining semantic colors, transforms, bounds spaces, ordering and visible/occluded depth. `6fa8f57688` deletes the separate uncalled base/self magenta-octahedron GL utility after a repository-wide reachability proof; `d45778cade` deletes the uncalled intersecting-bounds method and its sole octree traveler while retaining live bounding boxes. Independent pathfinding UI/data/network code remains. Other retained post-deferred output still owns the bound target.
-Visual cases 51–63 remain queued.
+`1a27604157` makes live Develop > Normals volume and indexed buffer faces Metal-only and deletes its duplicate GL immediate/geometry-shader submissions, program, reserved uniform and three exclusive stages. Visual cases 51–65 remain queued.
 
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -130,14 +130,14 @@ swap. Exact prior evidence remains in the
 
 ## Validation checkpoint
 
-- `d45778cade`: Ninja and prescribed Xcode Release 68410 pass
+- `1a27604157`: Ninja and prescribed Xcode Release 68412 pass
   warnings-as-errors; physical validated Metal retained-world 8,022/1 passes.
   Release inspection is 349/349 ARM64 and deep signing passes.
   Executable SHA-256 is
-  `e58c3d7f2e2c7930d69f8142685c6fc83ecadd707f8f035fc96cce115fb8a03d`;
+  `2c8e87fd781697d747aaca5322c720af5a3d7b6fe534708eb3f74015a5307eec`;
   metallib is `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
   All 556,530 renderer assertions and the 2,597-assertion focused resource-plan suite pass. Host doctor passes on the M1 Max acceptance host.
-  Strict inventory is 2,332 and exits 1; harness validation and all 31 tool tests pass.
+  Strict inventory is 2,321 and exits 1; harness validation and all 31 tool tests pass.
 
 ## Owner-attended visual review cadence
 
@@ -163,8 +163,8 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Make live Develop > Normals volume/buffer faces Metal-only while retaining
-normal/tangent transforms, colors, indexed expansion and order; no viewers.
+Make live Develop > Physics Shapes Metal-only while retaining three-pass
+semantics, colors, generated geometry, side effects and transforms; no viewers.
 
 ## Non-negotiable open gates
 
