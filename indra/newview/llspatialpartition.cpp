@@ -1549,13 +1549,14 @@ void pushBufferVerts(LLSpatialGroup* group, bool push_alpha = true)
                 {
                     for (LLSpatialGroup::buffer_list_t::iterator k = j->second.begin(); k != j->second.end(); ++k)
                     {
-#if LL_DARWIN
                         if (!push_alpha && *k)
                         {
                             gPipeline.captureMetalOcclusionGeometry(**k);
                         }
-#endif
-                        pushBufferVerts(*k);
+                        else if (push_alpha)
+                        {
+                            pushBufferVerts(*k);
+                        }
                     }
                 }
             }
@@ -1820,7 +1821,7 @@ std::set<LLSpatialGroup*> visible_selected_groups;
 
 
 
-void renderXRay(LLSpatialGroup* group, LLCamera* camera)
+void renderXRay(LLSpatialGroup* group)
 {
     bool render_objects = (!LLPipeline::sUseOcclusion || !group->isOcclusionState(LLSpatialGroup::OCCLUDED)) && group->isVisible() &&
                             !group->isEmpty();
@@ -3592,12 +3593,12 @@ public:
                 group->rebuildGeom();
                 group->rebuildMesh();
 
-                gGL.flush();
+                // Retain the CPU model-view stack until capture matrices no
+                // longer share LLRender's transform owner. No GL draw occurs.
                 gGL.pushMatrix();
                 gGLLastMatrix = NULL;
                 gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-                renderXRay(group, mCamera);
-                stop_glerror();
+                renderXRay(group);
                 gGLLastMatrix = NULL;
                 gGL.popMatrix();
             }
@@ -3838,22 +3839,8 @@ void LLSpatialPartition::renderDebug()
 
     if (gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_OCCLUSION))
     {
-        {
-            LLGLEnable cull(GL_CULL_FACE);
-
-            LLGLEnable blend(GL_BLEND);
-            LLGLDepthTest depth_under(GL_TRUE, GL_FALSE, GL_GREATER);
-            gGL.setPolygonMode(GL_LINE);
-            gGL.diffuseColor4f(0.5f, 0.0f, 0, 0.25f);
-
-            LLGLEnable offset(GL_POLYGON_OFFSET_LINE);
-            gGL.setPolygonOffset(-1.f, -1.f);
-
-            LLOctreeRenderXRay xray(camera);
-            xray.traverse(mOctree);
-
-            gGL.setPolygonMode(GL_FILL);
-        }
+        LLOctreeRenderXRay xray(camera);
+        xray.traverse(mOctree);
     }
     gDebugProgram.unbind();
 }

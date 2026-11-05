@@ -5631,52 +5631,6 @@ static bool metalRaycastStateIsExact(bool depth_enabled,
         gGL.getPolygonMode() == polygon_mode;
 }
 
-static bool metalOcclusionXRayStateIsExact()
-{
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
-    LLRender::eBlendFactor color_source;
-    LLRender::eBlendFactor color_destination;
-    LLRender::eBlendFactor alpha_source;
-    LLRender::eBlendFactor alpha_destination;
-    gGL.getBlendFunc(color_source, color_destination,
-                     alpha_source, alpha_destination);
-    U32 rgb_equation = 0;
-    U32 alpha_equation = 0;
-    gGL.getBlendEquation(rgb_equation, alpha_equation);
-    return LLGLState::isEnabled(GL_BLEND) &&
-        LLGLState::isEnabled(GL_CULL_FACE) &&
-        gGL.getCullFace() == GL_BACK &&
-        LLGLState::isEnabled(GL_POLYGON_OFFSET_LINE) &&
-        LLGLDepthTest::depthEnabled() &&
-        !LLGLDepthTest::depthWriteEnabled() &&
-        LLGLDepthTest::depthFunction() == GL_GREATER &&
-        color_source == LLRender::BF_SOURCE_ALPHA &&
-        color_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
-        alpha_source == LLRender::BF_SOURCE_ALPHA &&
-        alpha_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
-        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
-        color_mask[0] && color_mask[1] && color_mask[2] &&
-        !color_mask[3] && gGL.getLineWidth() == 1.f &&
-        gGL.getPolygonMode() == GL_LINE &&
-        gGL.getPolygonOffsetFactor() == -1.f &&
-        gGL.getPolygonOffsetUnits() == -1.f;
-}
-
-static bool metalOcclusionBoundsStateIsExact()
-{
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
-    return LLGLState::isEnabled(GL_CULL_FACE) &&
-        gGL.getCullFace() == GL_BACK &&
-        LLGLDepthTest::depthEnabled() &&
-        !LLGLDepthTest::depthWriteEnabled() &&
-        LLGLDepthTest::depthFunction() == GL_LEQUAL &&
-        color_mask[0] && color_mask[1] && color_mask[2] &&
-        !color_mask[3] && gGL.getLineWidth() == 1.f &&
-        gGL.getPolygonMode() == GL_FILL;
-}
-
 void LLPipeline::beginMetalOcclusionCapture()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -5713,7 +5667,6 @@ void LLPipeline::captureMetalOcclusionGeometry(
         return;
     }
 
-    const LLColor4& color = gGL.getDiffuseColor();
     if (!capture.complete ||
         !buffer.hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
         !buffer.getMetalVertexBuffer() ||
@@ -5721,9 +5674,6 @@ void LLPipeline::captureMetalOcclusionGeometry(
         (buffer.getIndexStride() != 2 &&
          buffer.getIndexStride() != 4) ||
         buffer.getNumIndices() % 3 != 0 ||
-        color.mV[0] != 0.5f || color.mV[1] != 0.f ||
-        color.mV[2] != 0.f || color.mV[3] != 0.25f ||
-        !metalOcclusionXRayStateIsExact() ||
         capture.render_debug_order == std::numeric_limits<U64>::max())
     {
         capture.markIncomplete(__LINE__);
@@ -5771,12 +5721,8 @@ void LLPipeline::captureMetalOcclusionBounds(
     {
         return;
     }
-    const LLColor4& color = gGL.getDiffuseColor();
     if (!capture.complete || !center.isFinite3() ||
         !half_extent.isFinite3() ||
-        color.mV[0] != 1.f || color.mV[1] != 0.f ||
-        color.mV[2] != 1.f || color.mV[3] != 1.f ||
-        !metalOcclusionBoundsStateIsExact() ||
         capture.render_debug_order == std::numeric_limits<U64>::max())
     {
         capture.markIncomplete(__LINE__);
@@ -22569,14 +22515,12 @@ void LLPipeline::renderDebug()
     }
 
     // Debug stuff.
-#if LL_DARWIN
     const bool capture_occlusion =
         !hud_only && hasRenderDebugMask(RENDER_DEBUG_OCCLUSION);
     if (capture_occlusion)
     {
         beginMetalOcclusionCapture();
     }
-#endif
     if (gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_OCTREE |
         LLPipeline::RENDER_DEBUG_OCCLUSION |
         LLPipeline::RENDER_DEBUG_LIGHTS |
@@ -22680,11 +22624,8 @@ void LLPipeline::renderDebug()
 #endif
     }
 
-    if (gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_OCCLUSION))
-    { //render visible selected group occlusion geometry
-        gDebugProgram.bind();
-        LLGLDepthTest depth(GL_TRUE, GL_FALSE);
-        gGL.diffuseColor3f(1,0,1);
+    if (capture_occlusion)
+    {
         for (std::set<LLSpatialGroup*>::iterator iter = visible_selected_groups.begin(); iter != visible_selected_groups.end(); ++iter)
         {
             LLSpatialGroup* group = *iter;
@@ -22696,22 +22637,10 @@ void LLPipeline::renderDebug()
             const LLVector4a* bounds = group->getBounds();
             size.setAdd(fudge, bounds[1]);
 
-#if LL_DARWIN
-            if (capture_occlusion)
-            {
-                captureMetalOcclusionBounds(bounds[0], size);
-            }
-#endif
-            drawBox(bounds[0], size);
+            captureMetalOcclusionBounds(bounds[0], size);
         }
-    }
-
-#if LL_DARWIN
-    if (capture_occlusion)
-    {
         endMetalOcclusionCapture();
     }
-#endif
 
     visible_selected_groups.clear();
 
