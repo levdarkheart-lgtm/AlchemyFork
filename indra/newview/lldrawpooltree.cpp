@@ -85,18 +85,6 @@ void LLDrawPoolTree::endDeferredPass(S32)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
 }
 
-//============================================
-// shadow implementation
-//============================================
-void LLDrawPoolTree::beginShadowPass(S32)
-{
-    LL_PROFILE_ZONE_SCOPED;
-}
-
-void LLDrawPoolTree::renderShadow(S32)
-{
-}
-
 void LLDrawPoolTree::captureMetalDirectionalShadow()
 {
 #if LL_DARWIN
@@ -141,11 +129,6 @@ void LLDrawPoolTree::addShadowCasters(ALSpotShadowCache::Casters& casters)
         add_shadow_texture(casters, draw, texture);
         casters.add(draw);
     }
-}
-
-void LLDrawPoolTree::endShadowPass(S32)
-{
-    LL_PROFILE_ZONE_SCOPED;
 }
 
 bool LLDrawPoolTree::verify() const

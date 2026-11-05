@@ -24,7 +24,7 @@
  */
 
 // NOTE: base colour and emissive are NOT converted here. Their samplers ask the hardware
-// to decode (GLTF_COLOR_SAMPLER, pushGLTFBatchIndexed), which converts each texel before
+// to decode (GLTF_COLOR_SAMPLER and the draw owner's sampler state), which converts each texel before
 // filtering rather than after -- converting a blend taken in sRGB space is what made
 // minified albedo read too dark. Doing it here as well would convert twice.
 

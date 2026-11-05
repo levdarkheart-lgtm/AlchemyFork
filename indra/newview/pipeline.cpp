@@ -405,8 +405,8 @@ bool addDeferredAttachments(LLRenderTarget& target)
     return true;
 }
 
-// The render pass types drawShadow draws as the prim volume alone, ignoring
-// textures. Each has its rigged twin at the next type.
+// Opaque render-pass types the native shadow collector draws as the prim
+// volume alone. Each has its rigged twin at the next type.
 static constexpr U32 SHADOW_GEOMETRY_PASSES[] = {
     LLRenderPass::PASS_SIMPLE,
     LLRenderPass::PASS_FULLBRIGHT,
@@ -13728,7 +13728,7 @@ void LLPipeline::countMetalShadowBatches(
             break;
         }
         if (!hasRenderType(pool->getType()) ||
-            pool->getNumShadowPasses() == 0)
+            !pool->hasShadowCasters())
         {
             continue;
         }
@@ -13753,8 +13753,8 @@ void LLPipeline::countMetalShadowBatches(
                  pool_casters.count() == 0)
         {
             // Avatar visibility, bake splitting and detail filtering are
-            // resolved in renderShadow. Its adjacent hook increments the
-            // expected total before each GL draw.
+            // resolved by the direct avatar capture. Its mesh hook increments
+            // the expected total for each native batch it emits.
         }
         else
         {
@@ -13873,7 +13873,7 @@ void LLPipeline::captureMetalShadowScene()
     for (LLDrawPool* pool : mPools)
     {
         if (!pool || !hasRenderType(pool->getType()) ||
-            pool->getNumShadowPasses() == 0)
+            !pool->hasShadowCasters())
         {
             continue;
         }
@@ -14675,9 +14675,9 @@ void LLPipeline::captureMetalSpotShadowAvatarBatch(
         fail();
         return;
     }
-    // This hook is immediately adjacent to the authoritative GL draw. Count
-    // every draw attempt before validating its mirror so a missing/invalid
-    // native batch cannot accidentally satisfy final reconciliation.
+    // Count every authoritative avatar batch before validating its native
+    // resources so a missing/invalid batch cannot accidentally satisfy final
+    // reconciliation.
     ++capture.spot_shadow_expected_batches;
 
     ALMetalWorldSpotShadowCoverage coverage;
@@ -18710,7 +18710,6 @@ bool LLPipeline::rebuildGLBuffers(const ALRenderResourceInputs& requested, Rebui
     const bool spot_maps_lost = first_resources || ((changes.mBuilt | changes.mFreed | changes.mFailed) & spot_maps).any();
     if (spot_maps_lost)
     {
-        mSpotShadowCache.invalidate();
     }
     // Which resource each pooled target serves over the next whole frame, for the log; not for a resize that built what
     // it asked, which is logged at debug level alone and comes every frame of a window's drag.
@@ -22553,71 +22552,6 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
     }
 }
 
-void LLPipeline::renderGeomShadow(LLCamera& camera)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-    LL_PROFILE_GPU_ZONE("renderGeomShadow");
-    U32 cur_type = 0;
-
-    LLGLEnable cull(GL_CULL_FACE);
-
-    LLVertexBuffer::unbind();
-
-    pool_set_t::iterator iter1 = mPools.begin();
-
-    while ( iter1 != mPools.end() )
-    {
-        LLDrawPool *poolp = *iter1;
-
-        cur_type = poolp->getType();
-
-        pool_set_t::iterator iter2 = iter1;
-        if (hasRenderType(poolp->getType()) && poolp->getNumShadowPasses() > 0)
-        {
-            poolp->prerender() ;
-
-            gGLLastMatrix = NULL;
-            gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-
-            for( S32 i = 0; i < poolp->getNumShadowPasses(); i++ )
-            {
-                LLVertexBuffer::unbind();
-                poolp->beginShadowPass(i);
-                for (iter2 = iter1; iter2 != mPools.end(); iter2++)
-                {
-                    LLDrawPool *p = *iter2;
-                    if (p->getType() != cur_type)
-                    {
-                        break;
-                    }
-
-                    p->renderShadow(i);
-                }
-                poolp->endShadowPass(i);
-                LLVertexBuffer::unbind();
-            }
-        }
-        else
-        {
-            // Skip all pools of this type
-            for (iter2 = iter1; iter2 != mPools.end(); iter2++)
-            {
-                LLDrawPool *p = *iter2;
-                if (p->getType() != cur_type)
-                {
-                    break;
-                }
-            }
-        }
-        iter1 = iter2;
-        stop_glerror();
-    }
-
-    gGLLastMatrix = NULL;
-    gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-}
-
-
 static U32 sIndicesDrawnCount = 0;
 
 void LLPipeline::addTrianglesDrawn(S32 index_count)
@@ -25261,157 +25195,6 @@ void LLPipeline::renderObjects(U32 type, bool texture, bool batch_texture, bool 
         mSimplePool->pushBatches(type, texture, batch_texture);
     }
 
-    gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-    gGLLastMatrix = NULL;
-}
-
-void LLPipeline::renderGLTFObjects(U32 type, bool texture, bool rigged)
-{
-    assertInitialized();
-    gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-    gGLLastMatrix = NULL;
-
-    if (rigged)
-    {
-        mSimplePool->pushRiggedGLTFBatches(type + 1, texture);
-    }
-    else
-    {
-        mSimplePool->pushGLTFBatches(type, texture);
-    }
-
-    gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-    gGLLastMatrix = NULL;
-}
-
-// Currently only used for shadows -Cosmic,2023-04-19
-void LLPipeline::renderAlphaObjects(bool rigged)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-    assertInitialized();
-    gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-    gGLLastMatrix = NULL;
-    S32 sun_up = LLEnvironment::instance().getIsSunUp() ? 1 : 0;
-    U32 target_width = LLRenderTarget::sCurResX;
-    U32 type = LLRenderPass::PASS_ALPHA;
-    // for gDeferredShadowAlphaMaskProgram
-    const LLVOAvatar* lastAvatar = nullptr;
-    U64 lastMeshId = 0;
-    bool skipLastSkin;
-    // for gDeferredShadowGLTFAlphaBlendProgram
-    const LLVOAvatar* lastAvatarGLTF = nullptr;
-    U64 lastMeshIdGLTF = 0;
-    bool skipLastSkinGLTF;
-    // GLTF material bind cache; invalidated in the non-GLTF branches below since
-    // mSimplePool->pushBatch rebinds texture units and would clobber the material
-    LLFetchedGLTFMaterial* lastMatGLTF = nullptr;
-    LLViewerTexture* lastTexGLTF = nullptr;
-    auto* begin = gPipeline.beginRenderMap(type);
-    auto* end = gPipeline.endRenderMap(type);
-
-    // The caster's uniforms, set when a draw binds a different program from the last draw's: nothing
-    // the batches push between them changes these.
-    LLGLSLShader* configured = nullptr;
-    const auto bind_caster = [&](LLGLSLShader& program, bool legacy)
-    {
-        program.bind(rigged);
-        LLGLSLShader* bound = LLGLSLShader::sCurBoundShaderPtr;
-        if (bound != configured)
-        {
-            configured = bound;
-            bound->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
-            bound->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
-            if (legacy)
-            {
-                bound->uniform1f(LLShaderMgr::DEFERRED_SHADOW_STIPPLE, 1.f); // blended
-            }
-            bound->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
-        }
-    };
-
-    for (LLCullResult::drawinfo_iterator i = begin; i != end; )
-    {
-        LLDrawInfo* pparams = *i;
-        LLCullResult::increment_iterator(i, end);
-
-        if (rigged != (pparams->mAvatar != nullptr))
-        {
-            // Pool contains both rigged and non-rigged DrawInfos. Only draw
-            // the objects we're interested in in this pass.
-            continue;
-        }
-
-        if (rigged)
-        {
-            if (pparams->mGLTFMaterial)
-            {
-                bind_caster(gDeferredShadowGLTFAlphaBlendProgram, false);
-                LLRenderPass::pushRiggedGLTFBatch(*pparams, lastAvatarGLTF, lastMeshIdGLTF, skipLastSkinGLTF, lastMatGLTF, lastTexGLTF);
-            }
-            else
-            {
-                bind_caster(gDeferredShadowAlphaMaskProgram, true);
-                lastMatGLTF = nullptr; // pushBatch clobbers texture units
-                lastTexGLTF = nullptr;
-                if (mSimplePool->uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
-                {
-                    mSimplePool->pushBatch(*pparams, true, true);
-                }
-            }
-        }
-        else
-        {
-            if (pparams->mGLTFMaterial)
-            {
-                bind_caster(gDeferredShadowGLTFAlphaBlendProgram, false);
-                LLRenderPass::pushGLTFBatch(*pparams, lastMatGLTF, lastTexGLTF);
-            }
-            else
-            {
-                bind_caster(gDeferredShadowAlphaMaskProgram, true);
-                lastMatGLTF = nullptr; // pushBatch clobbers texture units
-                lastTexGLTF = nullptr;
-                mSimplePool->pushBatch(*pparams, true, true);
-            }
-        }
-    }
-
-    gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-    gGLLastMatrix = NULL;
-}
-
-// Currently only used for shadows -Cosmic,2023-04-19
-void LLPipeline::renderMaskedObjects(U32 type, bool texture, bool batch_texture, bool rigged)
-{
-    assertInitialized();
-    gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-    gGLLastMatrix = NULL;
-    if (rigged)
-    {
-        mAlphaMaskPool->pushRiggedMaskBatches(type+1, texture, batch_texture);
-    }
-    else
-    {
-        mAlphaMaskPool->pushMaskBatches(type, texture, batch_texture);
-    }
-    gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-    gGLLastMatrix = NULL;
-}
-
-// Currently only used for shadows -Cosmic,2023-04-19
-void LLPipeline::renderFullbrightMaskedObjects(U32 type, bool texture, bool batch_texture, bool rigged)
-{
-    assertInitialized();
-    gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-    gGLLastMatrix = NULL;
-    if (rigged)
-    {
-        mFullbrightAlphaMaskPool->pushRiggedMaskBatches(type+1, texture, batch_texture);
-    }
-    else
-    {
-        mFullbrightAlphaMaskPool->pushMaskBatches(type, texture, batch_texture);
-    }
     gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
     gGLLastMatrix = NULL;
 }
@@ -29041,6 +28824,18 @@ void LLPipeline::renderFinalize()
 
 void LLPipeline::bindShadowMaps(LLGLSLShader& shader)
 {
+#if LL_DARWIN
+    // Application-owned shadow generation is Metal-only on macOS.  The
+    // retained deferred GL traversal must never reinterpret native slice
+    // validity as permission to sample the old GL depth targets: those
+    // targets are deliberately no longer rendered.  Tell every retained GL
+    // receiver that all six maps are absent and release any compare samplers
+    // left by an earlier program.  Native lighting consumes the retained
+    // Metal texture arrays directly through fillMetal*Shadows().
+    shader.uniform1i(LLShaderMgr::UNBUILT_SHADOW_MAPS, 0x3f);
+    unbindShadowMaps();
+    return;
+#else
     // Depth comparison is a sampler property, not a texture one. Every shader samples these
     // as sampler2DShadow (deferred/shadowUtil.glsl), so the compare sampler is the only way
     // they are ever read -- allocateShadowBuffer no longer writes GL_TEXTURE_COMPARE_MODE
@@ -29124,6 +28919,7 @@ void LLPipeline::bindShadowMaps(LLGLSLShader& shader)
 
     LLGLSLShader::sCompareSamplerUnits = bound_units;
     ALTextureSlot::sSamplerBindsShadowCycle += ALTextureSlot::sSamplerBinds - sampler_binds_before;
+#endif
 }
 
 void LLPipeline::unbindShadowMaps()
@@ -29164,14 +28960,11 @@ void LLPipeline::packDeferredUBO()
 
     // A pack's cascades share one size, and the spot pair another. Each is read from a map that was built: one that was
     // not has no size, and the filters over the maps that were divide by it.
-    const U32 unbuilt = unbuiltShadowMaps();
 #if LL_DARWIN
-    if (isMetalProbeFaceCaptureActive())
     {
-        // Native reflection lighting consumes only native shadow packs. The
-        // resource plan is their size contract even when no retained GL
-        // shadow target was built; the unbuilt mask prevents missing slices
-        // from being sampled.
+        // Native lighting consumes only Metal shadow packs. The resource plan
+        // is their size contract even when no retained GL shadow target was
+        // built; the unbuilt mask prevents missing slices from being sampled.
         const std::optional<ALRenderTargetDesc>& sun_desc =
             mResourcePlan.desc(ALRenderResourcePlan::sunShadow(
                 renderPack(), 0));
@@ -29186,9 +28979,9 @@ void LLPipeline::packDeferredUBO()
         d.proj_shadow_res[1] = static_cast<F32>(
             spot_desc ? std::max(spot_desc->height, 1u) : 1u);
     }
-    else
-#endif
+#else
     {
+        const U32 unbuilt = unbuiltShadowMaps();
         const LLRenderTarget* sun_map  = &mRT->shadow[0];
         const LLRenderTarget* spot_map =
             &mSpotShadow[(unbuilt & (1u << 4)) ? 1 : 0];
@@ -29205,6 +28998,7 @@ void LLPipeline::packDeferredUBO()
         d.proj_shadow_res[0] = (F32)spot_map->getWidth();
         d.proj_shadow_res[1] = (F32)spot_map->getHeight();
     }
+#endif
 
     // Reverse-Z shadow maps store reversed depth and sample with GEQUAL, so the receiver
     // reference is pushed the other way: negate the bias at this single assembly site.
@@ -30605,15 +30399,6 @@ inline float sgn(float a)
     return (0.0F);
 }
 
-void LLPipeline::renderShadow(const LLMatrix4a& view, const LLMatrix4a& proj, LLCamera& shadow_cam, LLCullResult& result, bool depth_clamp, bool do_cull, S32 occlusion)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-    LL_PROFILE_GPU_ZONE("renderShadow");
-
-    sortShadow(shadow_cam, result, do_cull, occlusion);
-    drawShadow(view, proj, shadow_cam, depth_clamp, occlusion);
-}
-
 void LLPipeline::sortShadow(LLCamera& shadow_cam, LLCullResult& result, bool do_cull, S32 occlusion)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
@@ -30634,255 +30419,6 @@ void LLPipeline::sortShadow(LLCamera& shadow_cam, LLCullResult& result, bool do_
 
     stateSort(shadow_cam, result);
 
-    sUseOcclusion = saved_occlusion;
-    LLPipeline::sShadowRender = false;
-}
-
-void LLPipeline::drawShadow(const LLMatrix4a& view, const LLMatrix4a& proj, LLCamera& shadow_cam, bool depth_clamp, S32 occlusion)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
-
-    LLPipeline::sShadowRender = true;
-
-    U32 saved_occlusion = sUseOcclusion;
-    sUseOcclusion = occlusion;
-
-    LLGLEnable cull(GL_CULL_FACE);
-
-    //enable depth clamping if available
-    LLGLEnable clamp_depth(depth_clamp ? GL_DEPTH_CLAMP : 0);
-
-    LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_LESS);
-
-    //generate shadow map
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.pushMatrix();
-    gGL.loadMatrix(proj);
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.pushMatrix();
-    gGL.loadMatrix(view);
-
-    stop_glerror();
-    gGLLastMatrix = NULL;
-
-    gGL.getTextureSlot(0)->unbind();
-
-    stop_glerror();
-
-    struct CompareVertexBuffer
-    {
-        bool operator()(const LLDrawInfo* const& lhs, const LLDrawInfo* const& rhs)
-        {
-            return lhs->mVertexBuffer > rhs->mVertexBuffer;
-        }
-    };
-
-
-    LLVertexBuffer::unbind();
-    for (int j = 0; j < 2; ++j) // 0 -- static, 1 -- rigged
-    {
-        bool rigged = j == 1;
-        gDeferredShadowProgram.bind(rigged);
-
-        gGL.diffuseColor4f(1, 1, 1, 1);
-
-        S32 shadow_detail = mResourceInputs.mShadowDetail;
-
-        // if not using VSM, disable color writes
-        if (shadow_detail <= 2)
-        {
-            gGL.setColorMask(false, false);
-        }
-
-        LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow simple");
-        LL_PROFILE_GPU_ZONE("shadow simple");
-        gGL.getTextureSlot(0)->unbind();
-
-        for (U32 type : SHADOW_GEOMETRY_PASSES)
-        {
-            renderObjects(type, false, false, rigged);
-        }
-
-        renderGLTFObjects(LLRenderPass::PASS_GLTF_PBR, false, rigged);
-
-    }
-
-    if (LLPipeline::sUseOcclusion > 1)
-    { // do occlusion culling against non-masked only to take advantage of hierarchical Z
-        doOcclusion(shadow_cam);
-    }
-
-
-    {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow geom");
-        renderGeomShadow(shadow_cam);
-    }
-
-    {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha");
-        LL_PROFILE_GPU_ZONE("shadow alpha");
-        const S32 sun_up = LLEnvironment::instance().getIsSunUp() ? 1 : 0;
-        U32 target_width = LLRenderTarget::sCurResX;
-
-        for (int i = 0; i < 2; ++i)
-        {
-            bool rigged = i == 1;
-
-            {
-                LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha masked");
-                LL_PROFILE_GPU_ZONE("shadow alpha masked");
-#if LL_DARWIN
-                setMetalSpotShadowCoverage(
-                    ALMetalWorldSpotShadowCoverage::legacy_mask);
-#endif
-                gDeferredShadowAlphaMaskProgram.bind(rigged);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
-                // Masked: opaque wherever it draws, so solid where it casts. The blended pass below
-                // shares the program and stipples.
-                LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_STIPPLE, 0.f);
-                renderMaskedObjects(LLRenderPass::PASS_ALPHA_MASK, true, true, rigged);
-            }
-
-            {
-                LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha blend");
-                LL_PROFILE_GPU_ZONE("shadow alpha blend");
-#if LL_DARWIN
-                setMetalSpotShadowCoverage(
-                    ALMetalWorldSpotShadowCoverage::legacy_blend);
-#endif
-                renderAlphaObjects(rigged);
-            }
-
-            {
-                LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow fullbright alpha masked");
-                LL_PROFILE_GPU_ZONE("shadow alpha masked");
-#if LL_DARWIN
-                setMetalSpotShadowCoverage(
-                    ALMetalWorldSpotShadowCoverage::legacy_fullbright_mask);
-#endif
-                gDeferredShadowFullbrightAlphaMaskProgram.bind(rigged);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
-                LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_STIPPLE, 0.f); // masked
-                renderFullbrightMaskedObjects(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, true, true, rigged);
-            }
-
-            {
-                LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha grass");
-                LL_PROFILE_GPU_ZONE("shadow alpha grass");
-#if LL_DARWIN
-                setMetalSpotShadowCoverage(
-                    ALMetalWorldSpotShadowCoverage::texture_mask);
-#endif
-                gDeferredTreeShadowProgram.bind(rigged);
-                // Grass's own cutoff, LLDrawPoolGrass::renderDeferred's, so what draws casts. The
-                // masked passes below set each batch's.
-                LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(0.5f);
-
-                if (i == 0)
-                {
-                    renderObjects(LLRenderPass::PASS_GRASS, true);
-                }
-
-                {
-                    LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha material");
-                    LL_PROFILE_GPU_ZONE("shadow alpha material");
-                    renderMaskedObjects(LLRenderPass::PASS_NORMSPEC_MASK, true, false, rigged);
-                    renderMaskedObjects(LLRenderPass::PASS_MATERIAL_ALPHA_MASK, true, false, rigged);
-                    renderMaskedObjects(LLRenderPass::PASS_SPECMAP_MASK, true, false, rigged);
-                    renderMaskedObjects(LLRenderPass::PASS_NORMMAP_MASK, true, false, rigged);
-
-                    // multi-material indexed legacy mask batches alpha-test per-slot
-                    if (LLGLSLShader::sIndexedLegacyMaterials && gDeferredShadowMaterialIndexedProgram.isComplete())
-                    {
-                        gDeferredShadowMaterialIndexedProgram.bind(rigged);
-                        LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
-                        U32 off = rigged ? 1 : 0;
-                        mAlphaMaskPool->pushMaskBatchesIndexed(LLRenderPass::PASS_NORMSPEC_MASK + off, rigged);
-                        mAlphaMaskPool->pushMaskBatchesIndexed(LLRenderPass::PASS_MATERIAL_ALPHA_MASK + off, rigged);
-                        mAlphaMaskPool->pushMaskBatchesIndexed(LLRenderPass::PASS_SPECMAP_MASK + off, rigged);
-                        mAlphaMaskPool->pushMaskBatchesIndexed(LLRenderPass::PASS_NORMMAP_MASK + off, rigged);
-                    }
-                }
-            }
-        }
-
-        for (int i = 0; i < 2; ++i)
-        {
-            bool rigged = i == 1;
-#if LL_DARWIN
-            setMetalSpotShadowCoverage(
-                ALMetalWorldSpotShadowCoverage::pbr_mask);
-#endif
-            gDeferredShadowGLTFAlphaMaskProgram.bind(rigged);
-            LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
-            LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
-
-            gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-            gGLLastMatrix = NULL;
-
-            U32 type = LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK;
-
-            // multi-material batches alpha-test per-slot; render them with the
-            // indexed shadow program so batched cutouts stay correct
-            bool gltf_indexed = LLGLSLShader::sIndexedGLTFChannels >= 2 && gDeferredShadowGLTFAlphaMaskIndexedProgram.isComplete();
-
-            if (rigged)
-            {
-                if (gltf_indexed)
-                {
-                    mAlphaMaskPool->pushRiggedGLTFBatchesScalar(type + 1);
-
-                    gDeferredShadowGLTFAlphaMaskIndexedProgram.bind(true);
-                    LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
-                    LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
-                    mAlphaMaskPool->pushRiggedGLTFBatchesIndexed(type + 1);
-                }
-                else
-                {
-                    mAlphaMaskPool->pushRiggedGLTFBatches(type + 1);
-                }
-            }
-            else
-            {
-                if (gltf_indexed)
-                {
-                    mAlphaMaskPool->pushGLTFBatchesScalar(type);
-
-                    gDeferredShadowGLTFAlphaMaskIndexedProgram.bind();
-                    LLGLSLShader::sCurBoundShaderPtr->uniform1i(LLShaderMgr::SUN_UP_FACTOR, sun_up);
-                    LLGLSLShader::sCurBoundShaderPtr->uniform1f(LLShaderMgr::DEFERRED_SHADOW_TARGET_WIDTH, (float)target_width);
-                    mAlphaMaskPool->pushGLTFBatchesIndexed(type);
-                }
-                else
-                {
-                    mAlphaMaskPool->pushGLTFBatches(type);
-                }
-            }
-
-            gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-            gGLLastMatrix = NULL;
-        }
-#if LL_DARWIN
-        setMetalSpotShadowCoverage(
-            ALMetalWorldSpotShadowCoverage::opaque);
-#endif
-    }
-
-    gDeferredShadowCubeProgram.bind();
-    gGLLastMatrix = NULL;
-    gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-
-    gGL.setColorMask(true, true);
-
-    gGL.matrixMode(LLRender::MM_PROJECTION);
-    gGL.popMatrix();
-    gGL.matrixMode(LLRender::MM_MODELVIEW);
-    gGL.popMatrix();
-    gGLLastMatrix = NULL;
-
-    // reset occlusion culling flag
     sUseOcclusion = saved_occlusion;
     LLPipeline::sShadowRender = false;
 }
@@ -30911,8 +30447,9 @@ namespace
         }
     }
 
-    // A GLTF material as the shadow programs draw by it: whether it culls back faces and, where it is alpha tested or
-    // stippled, by what of its base colour.
+    // A GLTF material as the native shadow encoder draws it: whether it culls
+    // back faces and, where it is alpha tested or stippled, which base-colour
+    // inputs determine coverage.
     void add_shadow_material(ALSpotShadowCache::Casters& casters, ShadowHash& draw, const LLFetchedGLTFMaterial* material,
                              bool textured)
     {
@@ -31009,10 +30546,11 @@ void LLPipeline::addShadowCasters(ALSpotShadowCache::Casters& casters)
     {
         rigged(type + 1);
     }
-    // What the pools draw in their own shadow passes, picked as renderGeomShadow picks them.
+    // Pool-owned casters enumerated by the direct Metal shadow traversal.
     for (LLDrawPool* pool : mPools)
     {
-        if (!casters.changing() && hasRenderType(pool->getType()) && pool->getNumShadowPasses() > 0)
+        if (!casters.changing() && hasRenderType(pool->getType()) &&
+            pool->hasShadowCasters())
         {
             pool->addShadowCasters(casters);
         }
@@ -31246,7 +30784,6 @@ U32 LLPipeline::unbuiltShadowMaps() const
     const U32 cascades = sunCascades();
     U32 unbuilt = 0;
 #if LL_DARWIN
-    if (isMetalProbeFaceCaptureActive())
     {
         const MetalWorldSimpleCapture* capture =
             mMetalWorldSimpleCapture.get();
@@ -31275,21 +30812,8 @@ U32 LLPipeline::unbuiltShadowMaps() const
         return unbuilt;
     }
 #endif
-    for (U32 i = 0; i < 4; ++i)
-    {
-        if (i >= cascades || !mRT->shadow[i].isComplete())
-        {
-            unbuilt |= 1u << i;
-        }
-    }
-    for (U32 i = 0; i < 2; ++i)
-    {
-        if (!mSpotShadow[i].isComplete())
-        {
-            unbuilt |= 1u << (4 + i);
-        }
-    }
-    return unbuilt;
+    (void)cascades;
+    return 0x3fu;
 }
 
 LLRenderTarget* LLPipeline::getSunShadowTarget(U32 i)
@@ -31358,12 +30882,9 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     LL_PROFILE_GPU_ZONE("generateSunShadow");
 
     LLDisableOcclusionCulling no_occlusion;
-#if LL_DARWIN
-    const bool native_probe_shadow =
-        isMetalProbeFaceCaptureActive();
-#else
-    constexpr bool native_probe_shadow = false;
-#endif
+    // Metal owns every Darwin shadow map. If the native device, renderer or
+    // planned texture is unavailable, the affected slice stays unbuilt; the
+    // Apple Silicon viewer must not revive the retained GL shadow target.
 
     bool skip_avatar_update = false;
     if (!isAgentAvatarValid() || gAgentCamera.getCameraAnimating() || gAgentCamera.getCameraMode() != CAMERA_MODE_MOUSELOOK || !LLVOAvatar::sVisibleInFirstPerson)
@@ -31446,14 +30967,6 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK_RIGGED,
                     END_RENDER_TYPES);
 
-    // The caller's mask comes back on every exit, the early one for an empty point cloud
-    // included.
-    std::unique_ptr<LLGLSColorMask> color_mask;
-    if (!native_probe_shadow)
-    {
-        color_mask = std::make_unique<LLGLSColorMask>(false, false);
-    }
-
     LLEnvironment& environment = LLEnvironment::instance();
 
     //get sun view matrix
@@ -31464,54 +30977,39 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     LLMatrix4a inv_view;
     inv_view.setInverse(saved_view);
 
-    // gGLViewport is saved alongside them because the cascade and spot loops below overwrite
-    // it with each shadow map's rect (getViewport(gGLViewport)) and never put it back. It is
-    // not a scratch variable: LLRenderTarget::flush() restores glViewport FROM it whenever it
-    // unbinds to the default framebuffer, and stamps sCurResX/Y from it too. So a stale value
-    // here silently gives the next such flush the shadow map's viewport and resolution --
-    // which is how the impostor bake, later in the same frame, was handing the default
-    // framebuffer a shadow-sized viewport on its way out.
-    S32 saved_gl_viewport[4] = { gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3] };
-
     LLMatrix4a view[6];
     LLMatrix4a proj[6];
 
     const auto shadow_dimensions =
-        [this, native_probe_shadow](U32 cascade,
-                                         U32& width, U32& height)
+        [this](U32 cascade, U32& width, U32& height)
     {
 #if LL_DARWIN
-        if (native_probe_shadow)
-        {
-            const std::optional<ALRenderTargetDesc>& planned =
-                mResourcePlan.desc(ALRenderResourcePlan::sunShadow(
-                    renderPack(), cascade));
-            if (!planned || planned->width == 0 ||
-                planned->height == 0 || !mMetalWorldSimpleCapture ||
-                !mMetalWorldSimpleCapture->renderer ||
-                !mMetalWorldSimpleCapture->device)
-            {
-                return false;
-            }
-            const U32 max_dimension = mMetalWorldSimpleCapture->device->info()
-                .max_texture_2d_dimension;
-            if (planned->width > max_dimension ||
-                planned->height > max_dimension)
-            {
-                return false;
-            }
-            width = planned->width;
-            height = planned->height;
-            return true;
-        }
-#endif
-        if (!mRT->shadow[cascade].isComplete())
+        const std::optional<ALRenderTargetDesc>& planned =
+            mResourcePlan.desc(ALRenderResourcePlan::sunShadow(
+                renderPack(), cascade));
+        if (!planned || planned->width == 0 ||
+            planned->height == 0 || !mMetalWorldSimpleCapture ||
+            !mMetalWorldSimpleCapture->renderer ||
+            !mMetalWorldSimpleCapture->device)
         {
             return false;
         }
-        width = mRT->shadow[cascade].getWidth();
-        height = mRT->shadow[cascade].getHeight();
-        return width != 0 && height != 0;
+        const U32 max_dimension = mMetalWorldSimpleCapture->device->info()
+            .max_texture_2d_dimension;
+        if (planned->width > max_dimension ||
+            planned->height > max_dimension)
+        {
+            return false;
+        }
+        width = planned->width;
+        height = planned->height;
+        return true;
+#else
+        (void)cascade;
+        (void)width;
+        (void)height;
+        return false;
+#endif
     };
 
     LLVector3 caster_dir(environment.getIsSunUp() ? mSunDir : mMoonDir);
@@ -31772,8 +31270,8 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 bool saved_shadow_render = LLPipeline::sShadowRender;
                 U32 saved_occlusion = sUseOcclusion;
                 LLPipeline::sShadowRender = true;
-                // Disable occlusion culling for the shadow cull exactly as renderShadow
-                // does: occlusion queries are main-camera and previous-frame based, so
+                // Disable occlusion culling for the native shadow cull:
+                // occlusion queries are main-camera and previous-frame based, so
                 // leaving them on wrongly culls casters hidden from the main view (their
                 // shadows still show) and flickers as the queries resolve frame to frame.
                 sUseOcclusion = 0;
@@ -31857,15 +31355,6 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 U32 shadow_height = 0;
                 if (shadow_dimensions(j, shadow_width, shadow_height))
                 {
-                    if (!native_probe_shadow)
-                    {
-                        mRT->shadow[j].bindTarget();
-                        {
-                            LLGLDepthTest depth(GL_TRUE);
-                            mRT->shadow[j].clear();
-                        }
-                        mRT->shadow[j].flush();
-                    }
 #if LL_DARWIN
                     // Retain the same explicit far-depth slice instead of
                     // leaving an older native cascade eligible for reuse.
@@ -31931,8 +31420,8 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 }
             }
 
-            // Casters nearer the light than every receiver are drawn clamped onto the near plane (drawShadow's depth
-            // clamp), and a receiver's compare reference moves toward lit by the constant bias (twice RenderShadowBias,
+            // Casters nearer the light than every receiver are drawn clamped onto the near plane (the native shadow
+            // scene enables Metal depth clamp), and a receiver's compare reference moves toward lit by the constant bias (twice RenderShadowBias,
             // directionalShadow) and at most half a texel of its capped slope on each axis (SHADOW_RPDB_MAXBIAS 0.01,
             // filterShadowGather). A receiver that close to the near plane read lit against all of them: the topmost
             // surface in view lost the shadow of anything above the view, a roof out of frame, until the view took the
@@ -32195,24 +31684,11 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             mSunShadowMatrix[j].setMul(mSunShadowMatrix[j], proj[j]);
             mSunShadowMatrix[j].setMul(mSunShadowMatrix[j], trans);
 
-            if (!native_probe_shadow)
-            {
-                stop_glerror();
-            }
-
             // A cascade whose map could not be built is not drawn, and its shadows are read lit (unbuiltShadowMaps).
             U32 shadow_width = 0;
             U32 shadow_height = 0;
             if (shadow_dimensions(j, shadow_width, shadow_height))
             {
-                const bool direct_metal_shadow = native_probe_shadow;
-                if (!direct_metal_shadow)
-                {
-                    mRT->shadow[j].bindTarget();
-                    mRT->shadow[j].getViewport(gGLViewport);
-                    mRT->shadow[j].clear();
-                }
-
                 {
                     static LLCullResult result[4];
                     if (have_union_cull)
@@ -32231,26 +31707,12 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                         j, shadow_width, shadow_height, native_batches,
                         native_complete, &view[j], &proj[j]);
 #endif
-                    if (direct_metal_shadow)
-                    {
 #if LL_DARWIN
-                        captureMetalShadowScene();
+                    captureMetalShadowScene();
 #endif
-                    }
-                    else
-                    {
-                        drawShadow(
-                            view[j], proj[j], shadow_cam, true,
-                            sun_occlusion);
-                    }
 #if LL_DARWIN
                     endMetalSpotShadowCapture();
 #endif
-                }
-
-                if (!direct_metal_shadow)
-                {
-                    mRT->shadow[j].flush();
                 }
             }
 
@@ -32308,13 +31770,11 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
         // this should never happen
         llassert(mShadowSpotLight[0] != mShadowSpotLight[1] || mShadowSpotLight[0].isNull());
 
-        // What the spot maps' casters are drawn with besides themselves. A
-        // native probe face has no GLSL program dependency; its cache key is
-        // tied to the Metal path and the same material/settings inputs.
+        // What the spot maps' casters are drawn with besides themselves. The
+        // cache key is tied to the Metal path and the same material/settings
+        // inputs.
         ALSpotShadowCache::Hash spot_state_hash;
-        spot_state_hash.add(native_probe_shadow
-            ? 0x4d4554414c535054ull
-            : static_cast<U64>(LLGLSLShader::sLoadGeneration));
+        spot_state_hash.add(0x4d4554414c535054ull);
         const U64 spot_state = spot_state_hash
                                    .add((U64)mResourceInputs.mShadowDetail)
                                    .add((U64)LLEnvironment::instance().getIsSunUp())
@@ -32389,43 +31849,32 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             mShadowModelview[i + 4] = view[i + 4];
             mShadowProjection[i + 4] = proj[i + 4];
 
-            bool direct_metal_shadow = false;
             U32 shadow_width = 0;
             U32 shadow_height = 0;
 #if LL_DARWIN
-            direct_metal_shadow = native_probe_shadow;
-            if (direct_metal_shadow)
+            const std::optional<ALRenderTargetDesc>& planned =
+                mResourcePlan.desc(
+                    i == 0 ? ALRenderResourcePlan::Id::SpotShadow0
+                           : ALRenderResourcePlan::Id::SpotShadow1);
+            if (planned && planned->width != 0 &&
+                planned->height != 0 && mMetalWorldSimpleCapture &&
+                mMetalWorldSimpleCapture->device &&
+                mMetalWorldSimpleCapture->renderer)
             {
-                const std::optional<ALRenderTargetDesc>& planned =
-                    mResourcePlan.desc(
-                        i == 0 ? ALRenderResourcePlan::Id::SpotShadow0
-                               : ALRenderResourcePlan::Id::SpotShadow1);
-                if (planned && planned->width != 0 &&
-                    planned->height != 0 && mMetalWorldSimpleCapture &&
-                    mMetalWorldSimpleCapture->device &&
-                    mMetalWorldSimpleCapture->renderer)
+                const U32 max_dimension =
+                    mMetalWorldSimpleCapture->device->info()
+                        .max_texture_2d_dimension;
+                if (planned->width <= max_dimension &&
+                    planned->height <= max_dimension)
                 {
-                    const U32 max_dimension =
-                        mMetalWorldSimpleCapture->device->info()
-                            .max_texture_2d_dimension;
-                    if (planned->width <= max_dimension &&
-                        planned->height <= max_dimension)
-                    {
-                        shadow_width = planned->width;
-                        shadow_height = planned->height;
-                    }
+                    shadow_width = planned->width;
+                    shadow_height = planned->height;
                 }
             }
 #endif
-            if (!direct_metal_shadow && !gCubeSnapshot &&
-                mSpotShadow[i].isComplete())
-            {
-                shadow_width = mSpotShadow[i].getWidth();
-                shadow_height = mSpotShadow[i].getHeight();
-            }
 
-            // Native cube faces render their projector casters directly into
-            // the probe capture owner's Metal shadow pack. A missing planned
+            // Every native view renders projector casters directly into the
+            // Metal shadow pack. A missing planned
             // resource leaves the slice explicitly unbuilt; it never selects
             // the retained GL target.
             if (shadow_width != 0 && shadow_height != 0)
@@ -32458,20 +31907,12 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
                 bool needs_draw = !keep_spot_shadows;
 #if LL_DARWIN
-                if (direct_metal_shadow)
-                {
-                    needs_draw = needs_draw ||
-                        !mMetalWorldSimpleCapture->
-                            direct_projector_shadow_valid[i] ||
-                        mMetalWorldSimpleCapture->
-                            direct_projector_shadow_cache.needsDraw(i, key);
-                }
-                else
+                needs_draw = needs_draw ||
+                    !mMetalWorldSimpleCapture->
+                        direct_projector_shadow_valid[i] ||
+                    mMetalWorldSimpleCapture->
+                        direct_projector_shadow_cache.needsDraw(i, key);
 #endif
-                {
-                    needs_draw = needs_draw ||
-                        mSpotShadowCache.needsDraw(i, key);
-                }
 
                 if (needs_draw)
                 {
@@ -32486,46 +31927,22 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     beginMetalSpotShadowCapture(
                         i, shadow_width, shadow_height, native_batches,
                         native_complete,
-                        direct_metal_shadow ? &view[i + 4] : nullptr,
-                        direct_metal_shadow ? &proj[i + 4] : nullptr);
+                        &view[i + 4], &proj[i + 4]);
+                    captureMetalShadowScene();
 #endif
-
-                    if (direct_metal_shadow)
-                    {
-#if LL_DARWIN
-                        captureMetalShadowScene();
-#endif
-                    }
-                    else
-                    {
-                        mSpotShadow[i].bindTarget();
-                        mSpotShadow[i].getViewport(gGLViewport);
-                        mSpotShadow[i].clear();
-                        drawShadow(
-                            view[i + 4], proj[i + 4], shadow_cam,
-                            false, 0);
-                    }
 
 #if LL_DARWIN
                     endMetalSpotShadowCapture();
 #endif
 
-                    if (direct_metal_shadow)
-                    {
 #if LL_DARWIN
-                        if (mMetalWorldSimpleCapture->
-                                direct_projector_shadow_valid[i])
-                        {
-                            mMetalWorldSimpleCapture->
-                                direct_projector_shadow_cache.drawn(i, key);
-                        }
-#endif
-                    }
-                    else
+                    if (mMetalWorldSimpleCapture->
+                            direct_projector_shadow_valid[i])
                     {
-                        mSpotShadow[i].flush();
-                        mSpotShadowCache.drawn(i, key);
+                        mMetalWorldSimpleCapture->
+                            direct_projector_shadow_cache.drawn(i, key);
                     }
+#endif
                     ++spot_draws;
                 }
 
@@ -32554,19 +31971,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
         offset_cam.setModelview(view[1]);
         offset_cam.setProjection(proj[1]);
         LLViewerCamera::setCurrent(offset_cam);
-        if (!native_probe_shadow)
-        {
-            gGL.loadMatrix(view[1]);
-            gGL.matrixMode(LLRender::MM_PROJECTION);
-            gGL.loadMatrix(proj[1]);
-            gGL.matrixMode(LLRender::MM_MODELVIEW);
-        }
     }
-
-    gGLViewport[0] = saved_gl_viewport[0];
-    gGLViewport[1] = saved_gl_viewport[1];
-    gGLViewport[2] = saved_gl_viewport[2];
-    gGLViewport[3] = saved_gl_viewport[3];
 
     popRenderTypeMask();
 
@@ -33714,7 +33119,6 @@ void LLPipeline::restoreHiddenObject( const LLUUID& id )
 void LLPipeline::skipRenderingShadows()
 {
 #if LL_DARWIN
-    if (isMetalProbeFaceCaptureActive())
     {
         if (!mMetalWorldSimpleCapture ||
             !mMetalWorldSimpleCapture->renderer ||
@@ -33742,24 +33146,6 @@ void LLPipeline::skipRenderingShadows()
         return;
     }
 #endif
-
-    LLGLDepthTest depth(GL_TRUE);
-
-    for (U32 j = 0, cascades = sunCascades(); j < cascades; j++)
-    {
-        if (mRT->shadow[j].isComplete())
-        {
-            mRT->shadow[j].bindTarget();
-            mRT->shadow[j].clear();
-            mRT->shadow[j].flush();
-#if LL_DARWIN
-            beginMetalDirectionalShadowCapture(
-                j, mRT->shadow[j].getWidth(),
-                mRT->shadow[j].getHeight(), 0, true);
-            endMetalSpotShadowCapture();
-#endif
-        }
-    }
 }
 
 class LLOctreeDirty : public OctreeTraveler

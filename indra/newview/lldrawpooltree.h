@@ -50,10 +50,7 @@ public:
     /*virtual*/ void endDeferredPass(S32 pass);
     /*virtual*/ void renderDeferred(S32 pass);
 
-    /*virtual*/ S32 getNumShadowPasses() { return 1; }
-    /*virtual*/ void beginShadowPass(S32 pass);
-    /*virtual*/ void endShadowPass(S32 pass);
-    /*virtual*/ void renderShadow(S32 pass);
+    /*virtual*/ bool hasShadowCasters() const { return true; }
     /*virtual*/ void addShadowCasters(ALSpotShadowCache::Casters& casters);
     void captureMetalDirectionalShadow();
 

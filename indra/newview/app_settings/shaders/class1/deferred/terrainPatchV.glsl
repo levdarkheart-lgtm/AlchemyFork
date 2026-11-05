@@ -4,7 +4,8 @@
  * The terrain's vertex stage. Each patch is four corners in region-local
  * metres with z = 0; everything the old terrain vertex shaders did now
  * happens per tessellated vertex in terrainTE, pbrterrainTE and
- * terrainShadowTE, after terrainSurface has placed the point.
+ * the terrain tessellation evaluation stage, after terrainSurface has placed
+ * the point.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code

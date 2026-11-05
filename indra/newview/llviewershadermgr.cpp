@@ -133,7 +133,6 @@ LLGLSLShader            gLensDirtGenProgram;
 // Deferred rendering shaders
 LLGLSLShader            gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
 LLGLSLShader            gDeferredTerrainProgram;
-LLGLSLShader            gDeferredTreeShadowProgram;
 LLGLSLShader            gDeferredLightProgram;
 LLGLSLShader            gDeferredMultiLightProgram[16];
 LLGLSLShader            gDeferredSpotLightProgram;
@@ -144,19 +143,6 @@ LLGLSLShader            gDeferredBlurLightProgram;
 LLGLSLShader            gDeferredBlurLightComputeProgram;
 LLGLSLShader            gDeferredSoftenProgram;
 LLGLSLShader            gDeferredSoftenSkyProgram;
-LLGLSLShader            gDeferredShadowProgram;
-LLGLSLShader            gDeferredTerrainShadowProgram;
-LLGLSLShader            gDeferredShadowCubeProgram;
-LLGLSLShader            gDeferredShadowAlphaMaskProgram;
-LLGLSLShader            gDeferredShadowGLTFAlphaMaskProgram;
-LLGLSLShader            gDeferredShadowGLTFAlphaMaskIndexedProgram; // multi-material indexed
-LLGLSLShader            gDeferredShadowMaterialIndexedProgram; // multi-material indexed legacy mask shadow
-LLGLSLShader            gDeferredShadowGLTFAlphaBlendProgram;
-LLGLSLShader            gDeferredShadowFullbrightAlphaMaskProgram;
-LLGLSLShader            gDeferredAvatarShadowProgram;
-LLGLSLShader            gDeferredAvatarCutShadowProgram;
-LLGLSLShader            gDeferredAvatarAlphaShadowProgram;
-LLGLSLShader            gDeferredAvatarAlphaMaskShadowProgram;
 #if !LL_DARWIN
 LLGLSLShader            gDeferredPostProgram;
 LLGLSLShader            gDeferredPostProgramNoNear;
@@ -335,40 +321,6 @@ static void add_terrain_tess_permutations(LLGLSLShader* shader, bool pinned)
     {
         shader->addPermutation("TERRAIN_TESS_PINNED", "1");
     }
-}
-
-// Map the remaining indexed GLTF shadow sampler to texture units. Slot s uses
-// base color unit s. Inactive samplers resolve to -1 and are skipped. Safe on a
-// rigged variant too.
-static void setup_gltf_indexed_samplers(LLGLSLShader& shader, S32 n)
-{
-    shader.bind();
-    for (S32 s = 0; s < n; ++s)
-    {
-        shader.uniform1i(LLStaticHashedString(llformat("basecolor%d", s)), s);
-    }
-    shader.unbind();
-}
-
-// Map an indexed legacy material program's per-slot samplers to texture units:
-// diffuse slot s -> unit s; normal s -> N+s (HAS_NORMAL_MAP); spec s -> 2N+s
-// (HAS_SPECULAR_MAP). Inactive samplers resolve to -1 and are skipped.
-static void setup_material_indexed_samplers(LLGLSLShader& shader, S32 n, bool has_normal, bool has_spec)
-{
-    shader.bind();
-    for (S32 s = 0; s < n; ++s)
-    {
-        shader.uniform1i(LLStaticHashedString(llformat("diffuse%d", s)), s);
-        if (has_normal)
-        {
-            shader.uniform1i(LLStaticHashedString(llformat("bump%d", s)), n + s);
-        }
-        if (has_spec)
-        {
-            shader.uniform1i(LLStaticHashedString(llformat("spec%d", s)), 2 * n + s);
-        }
-    }
-    shader.unbind();
 }
 
 #ifdef SHOW_ASSERT
@@ -1092,7 +1044,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
     if (mShaderLevel[SHADER_DEFERRED] == 0)
     {
-        gDeferredTreeShadowProgram.unload();
         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.unload();
         gDeferredTerrainProgram.unload();
         gDeferredLightProgram.unload();
@@ -1107,18 +1058,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredBlurLightComputeProgram.unload();
         gDeferredSoftenProgram.unload();
         gDeferredSoftenSkyProgram.unload();
-        gDeferredShadowProgram.unload();
-        gDeferredTerrainShadowProgram.unload();
-        gDeferredShadowCubeProgram.unload();
-        gDeferredShadowAlphaMaskProgram.unload();
-        gDeferredShadowGLTFAlphaMaskProgram.unload();
-        gDeferredShadowGLTFAlphaMaskIndexedProgram.unload();
-        gDeferredShadowMaterialIndexedProgram.unload();
-        gDeferredShadowFullbrightAlphaMaskProgram.unload();
-        gDeferredAvatarShadowProgram.unload();
-        gDeferredAvatarCutShadowProgram.unload();
-        gDeferredAvatarAlphaShadowProgram.unload();
-        gDeferredAvatarAlphaMaskShadowProgram.unload();
 #if !LL_DARWIN
         gDeferredPostProgram.unload();
         gDeferredPostProgramNoNear.unload();
@@ -1184,9 +1123,8 @@ void LLViewerShaderMgr::loadShadersDeferred()
         built(gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.createShader(mirror_variant()), gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram);
     }
 
-    // Native G-buffer capture accepts indexed legacy batches directly. Keep
-    // formation enabled when the shared slot width exists; retained indexed
-    // shadow programs validate their own GL consumers below.
+    // Native G-buffer and shadow capture accept indexed legacy batches
+    // directly. Keep formation enabled when the shared slot width exists.
     LLGLSLShader::sIndexedLegacyMaterials =
         LLGLSLShader::sIndexedGLTFChannels >= 2;
 
@@ -1267,15 +1205,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
             built(shader->createShader(mirror_variant()), *shader);
         }
-    }
-
-    {
-        gDeferredTreeShadowProgram.mName = "Deferred Tree Shadow Shader";
-        gDeferredTreeShadowProgram.mShaderFiles.clear();
-        gDeferredTreeShadowProgram.mShaderFiles.push_back(make_pair("deferred/treeShadowV.glsl", GL_VERTEX_SHADER));
-        gDeferredTreeShadowProgram.mShaderFiles.push_back(make_pair("deferred/treeShadowF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredTreeShadowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(gDeferredTreeShadowProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gDeferredTreeShadowProgram);
     }
 
     {
@@ -1476,201 +1405,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         load_soften(gDeferredSoftenProgram, "Deferred Soften Shader", false);
         load_soften(gDeferredSoftenSkyProgram, "Deferred Soften Sky Shader", true);
     }
-
-    {
-        gDeferredShadowProgram.mName = "Deferred Shadow Shader";
-        gDeferredShadowProgram.mShaderFiles.clear();
-        gDeferredShadowProgram.mShaderFiles.push_back(make_pair("deferred/shadowV.glsl", GL_VERTEX_SHADER));
-        gDeferredShadowProgram.mShaderFiles.push_back(make_pair("deferred/shadowF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredShadowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(gDeferredShadowProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gDeferredShadowProgram);
-    }
-
-    {
-        gDeferredTerrainShadowProgram.mName = "Deferred Terrain Shadow Shader";
-        gDeferredTerrainShadowProgram.mFeatures.hasTessellatedTerrain = true;
-        gDeferredTerrainShadowProgram.mShaderFiles.clear();
-        gDeferredTerrainShadowProgram.mShaderFiles.push_back(make_pair("deferred/terrainPatchV.glsl", GL_VERTEX_SHADER));
-        gDeferredTerrainShadowProgram.mShaderFiles.push_back(make_pair("deferred/terrainTC.glsl", GL_TESS_CONTROL_SHADER));
-        gDeferredTerrainShadowProgram.mShaderFiles.push_back(make_pair("deferred/terrainShadowTE.glsl", GL_TESS_EVALUATION_SHADER));
-        gDeferredTerrainShadowProgram.mShaderFiles.push_back(make_pair("deferred/shadowF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredTerrainShadowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredTerrainShadowProgram.clearPermutations();
-        add_terrain_tess_permutations(&gDeferredTerrainShadowProgram, mInputs.mLocal.mTerrainTessPinned);
-        built(gDeferredTerrainShadowProgram.createShader(), gDeferredTerrainShadowProgram);
-    }
-
-    {
-        gDeferredShadowCubeProgram.mName = "Deferred Shadow Cube Shader";
-        gDeferredShadowCubeProgram.mFeatures.isDeferred = true;
-        gDeferredShadowCubeProgram.mFeatures.hasShadows = true;
-        gDeferredShadowCubeProgram.mShaderFiles.clear();
-        gDeferredShadowCubeProgram.mShaderFiles.push_back(make_pair("deferred/shadowCubeV.glsl", GL_VERTEX_SHADER));
-        gDeferredShadowCubeProgram.mShaderFiles.push_back(make_pair("deferred/shadowF.glsl", GL_FRAGMENT_SHADER));
-        // gDeferredShadowCubeProgram.addPermutation("DEPTH_CLAMP", "1");
-        gDeferredShadowCubeProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(gDeferredShadowCubeProgram.createShader(), gDeferredShadowCubeProgram);
-    }
-
-    {
-        gDeferredShadowFullbrightAlphaMaskProgram.mName = "Deferred Shadow Fullbright Alpha Mask Shader";
-        gDeferredShadowFullbrightAlphaMaskProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-
-        gDeferredShadowFullbrightAlphaMaskProgram.mShaderFiles.clear();
-        gDeferredShadowFullbrightAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/shadowAlphaMaskV.glsl", GL_VERTEX_SHADER));
-        gDeferredShadowFullbrightAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/shadowAlphaMaskF.glsl", GL_FRAGMENT_SHADER));
-
-        gDeferredShadowFullbrightAlphaMaskProgram.clearPermutations();
-        gDeferredShadowFullbrightAlphaMaskProgram.addPermutation("DEPTH_CLAMP", "1");
-        gDeferredShadowFullbrightAlphaMaskProgram.addPermutation("IS_FULLBRIGHT", "1");
-
-        add_common_permutations(&gDeferredShadowFullbrightAlphaMaskProgram);
-
-        gDeferredShadowFullbrightAlphaMaskProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(gDeferredShadowFullbrightAlphaMaskProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gDeferredShadowFullbrightAlphaMaskProgram);
-    }
-
-    {
-        gDeferredShadowAlphaMaskProgram.mName = "Deferred Shadow Alpha Mask Shader";
-        gDeferredShadowAlphaMaskProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-
-        gDeferredShadowAlphaMaskProgram.mShaderFiles.clear();
-        gDeferredShadowAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/shadowAlphaMaskV.glsl", GL_VERTEX_SHADER));
-        gDeferredShadowAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/shadowAlphaMaskF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredShadowAlphaMaskProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(gDeferredShadowAlphaMaskProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gDeferredShadowAlphaMaskProgram);
-    }
-
-
-    {
-        gDeferredShadowGLTFAlphaMaskProgram.mName = "Deferred GLTF Shadow Alpha Mask Shader";
-        gDeferredShadowGLTFAlphaMaskProgram.mShaderFiles.clear();
-        gDeferredShadowGLTFAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/pbrShadowAlphaMaskV.glsl", GL_VERTEX_SHADER));
-        gDeferredShadowGLTFAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/pbrShadowAlphaMaskF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredShadowGLTFAlphaMaskProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredShadowGLTFAlphaMaskProgram.clearPermutations();
-
-        add_common_permutations(&gDeferredShadowGLTFAlphaMaskProgram);
-
-        built(gDeferredShadowGLTFAlphaMaskProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gDeferredShadowGLTFAlphaMaskProgram);
-    }
-
-    if (LLGLSLShader::sIndexedGLTFChannels >= 2)
-    {
-        // Indexed (multi-material) shadow alpha mask, so batched mask faces alpha-test
-        // per-slot in the shadow map. Optional: if it fails to load the shadow pass
-        // falls back to the scalar program (slightly wrong per-face cutouts, no crash).
-        gDeferredShadowGLTFAlphaMaskIndexedProgram.mName = "Deferred GLTF Shadow Alpha Mask Indexed Shader";
-        gDeferredShadowGLTFAlphaMaskIndexedProgram.mShaderFiles.clear();
-        gDeferredShadowGLTFAlphaMaskIndexedProgram.mShaderFiles.push_back(make_pair("deferred/pbrShadowAlphaMaskIndexedV.glsl", GL_VERTEX_SHADER));
-        gDeferredShadowGLTFAlphaMaskIndexedProgram.mShaderFiles.push_back(make_pair("deferred/pbrShadowAlphaMaskIndexedF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredShadowGLTFAlphaMaskIndexedProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredShadowGLTFAlphaMaskIndexedProgram.clearPermutations();
-        gDeferredShadowGLTFAlphaMaskIndexedProgram.addPermutation("GLTF_INDEXED_CHANNELS", llformat("%d", LLGLSLShader::sIndexedGLTFChannels));
-        add_common_permutations(&gDeferredShadowGLTFAlphaMaskIndexedProgram);
-        // only base color is sampled for the shadow alpha test
-        const S32 n = LLGLSLShader::sIndexedGLTFChannels;
-        gDeferredShadowGLTFAlphaMaskIndexedProgram.mOnLink = [n](LLGLSLShader& s) { setup_gltf_indexed_samplers(s, n); };
-
-        if (!gDeferredShadowGLTFAlphaMaskIndexedProgram.createShader(LLGLSLShader::VARIANT_RIGGED))
-        {
-            LL_WARNS("ShaderLoading") << "Indexed PBR shadow alpha mask shader failed to load." << LL_ENDL;
-            gDeferredShadowGLTFAlphaMaskIndexedProgram.unload();
-        }
-    }
-
-    if (LLGLSLShader::sIndexedLegacyMaterials)
-    {
-        // Indexed (multi-material) legacy material shadow alpha mask, so batched
-        // masked legacy faces alpha-test per-slot in the shadow map. Required when
-        // legacy batching is on: a failure here would leave indexed mask batches
-        // casting no shadow (skipped by the scalar pass, no indexed sweep), so on
-        // failure we disable legacy batching entirely rather than degrade silently.
-        gDeferredShadowMaterialIndexedProgram.mName = "Deferred Material Shadow Indexed Shader";
-        gDeferredShadowMaterialIndexedProgram.mShaderFiles.clear();
-        gDeferredShadowMaterialIndexedProgram.mShaderFiles.push_back(make_pair("deferred/materialShadowIndexedV.glsl", GL_VERTEX_SHADER));
-        gDeferredShadowMaterialIndexedProgram.mShaderFiles.push_back(make_pair("deferred/materialShadowIndexedF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredShadowMaterialIndexedProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredShadowMaterialIndexedProgram.clearPermutations();
-        gDeferredShadowMaterialIndexedProgram.addPermutation("GLTF_INDEXED_CHANNELS", llformat("%d", LLGLSLShader::sIndexedGLTFChannels));
-        // only diffuse is sampled for the shadow alpha test
-        const S32 n = LLGLSLShader::sIndexedGLTFChannels;
-        gDeferredShadowMaterialIndexedProgram.mOnLink = [n](LLGLSLShader& s) { setup_material_indexed_samplers(s, n, false, false); };
-
-        if (!gDeferredShadowMaterialIndexedProgram.createShader(LLGLSLShader::VARIANT_RIGGED))
-        {
-            LL_WARNS("ShaderLoading") << "Indexed legacy material shadow shader failed to load; legacy batching disabled." << LL_ENDL;
-            gDeferredShadowMaterialIndexedProgram.unload();
-            LLGLSLShader::sIndexedLegacyMaterials = false; // can't shadow indexed batches -- don't form them
-        }
-    }
-
-    {
-        gDeferredShadowGLTFAlphaBlendProgram.mName = "Deferred GLTF Shadow Alpha Blend Shader";
-        gDeferredShadowGLTFAlphaBlendProgram.mShaderFiles.clear();
-        gDeferredShadowGLTFAlphaBlendProgram.mShaderFiles.push_back(make_pair("deferred/pbrShadowAlphaMaskV.glsl", GL_VERTEX_SHADER));
-        gDeferredShadowGLTFAlphaBlendProgram.mShaderFiles.push_back(make_pair("deferred/pbrShadowAlphaBlendF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredShadowGLTFAlphaBlendProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredShadowGLTFAlphaBlendProgram.clearPermutations();
-
-        add_common_permutations(&gDeferredShadowGLTFAlphaBlendProgram);
-
-        built(gDeferredShadowGLTFAlphaBlendProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gDeferredShadowGLTFAlphaBlendProgram);
-    }
-
-    {
-        gDeferredAvatarShadowProgram.mName = "Deferred Avatar Shadow Shader";
-        gDeferredAvatarShadowProgram.mFeatures.hasSkinning = true;
-
-        gDeferredAvatarShadowProgram.mShaderFiles.clear();
-        gDeferredAvatarShadowProgram.mShaderFiles.push_back(make_pair("deferred/avatarShadowV.glsl", GL_VERTEX_SHADER));
-        gDeferredAvatarShadowProgram.mShaderFiles.push_back(make_pair("deferred/avatarShadowF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredAvatarShadowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        // The body casts the cloth drawn by the native avatar pass.
-        gDeferredAvatarShadowProgram.clearPermutations();
-        if (mInputs.mLocal.mAvatarCloth)
-        {
-            gDeferredAvatarShadowProgram.addPermutation("AVATAR_CLOTH", "1");
-        }
-        built(gDeferredAvatarShadowProgram.createShader(), gDeferredAvatarShadowProgram);
-    }
-
-    {
-        // The bodies whose bakes the deferred pass cuts out (SHADOW_PASS_AVATAR_OPAQUE_CUT): the alpha mask caster's
-        // files, and the cloth a body is drawn with, which the hair, skirts and eyelashes that caster casts are not
-        gDeferredAvatarCutShadowProgram.mName = "Deferred Avatar Cut Shadow Shader";
-        gDeferredAvatarCutShadowProgram.mFeatures.hasSkinning = true;
-        gDeferredAvatarCutShadowProgram.mShaderFiles.clear();
-        gDeferredAvatarCutShadowProgram.mShaderFiles.push_back(make_pair("deferred/avatarAlphaShadowV.glsl", GL_VERTEX_SHADER));
-        gDeferredAvatarCutShadowProgram.mShaderFiles.push_back(make_pair("deferred/avatarAlphaMaskShadowF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredAvatarCutShadowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredAvatarCutShadowProgram.clearPermutations();
-        if (mInputs.mLocal.mAvatarCloth)
-        {
-            gDeferredAvatarCutShadowProgram.addPermutation("AVATAR_CLOTH", "1");
-        }
-        built(gDeferredAvatarCutShadowProgram.createShader(), gDeferredAvatarCutShadowProgram);
-    }
-
-    {
-        gDeferredAvatarAlphaShadowProgram.mName = "Deferred Avatar Alpha Shadow Shader";
-        gDeferredAvatarAlphaShadowProgram.mFeatures.hasSkinning = true;
-        gDeferredAvatarAlphaShadowProgram.mShaderFiles.clear();
-        gDeferredAvatarAlphaShadowProgram.mShaderFiles.push_back(make_pair("deferred/avatarAlphaShadowV.glsl", GL_VERTEX_SHADER));
-        gDeferredAvatarAlphaShadowProgram.mShaderFiles.push_back(make_pair("deferred/avatarAlphaShadowF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredAvatarAlphaShadowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(gDeferredAvatarAlphaShadowProgram.createShader(), gDeferredAvatarAlphaShadowProgram);
-    }
-    {
-        gDeferredAvatarAlphaMaskShadowProgram.mName = "Deferred Avatar Alpha Mask Shadow Shader";
-        gDeferredAvatarAlphaMaskShadowProgram.mFeatures.hasSkinning  = true;
-        gDeferredAvatarAlphaMaskShadowProgram.mShaderFiles.clear();
-        gDeferredAvatarAlphaMaskShadowProgram.mShaderFiles.push_back(make_pair("deferred/avatarAlphaShadowV.glsl", GL_VERTEX_SHADER));
-        gDeferredAvatarAlphaMaskShadowProgram.mShaderFiles.push_back(make_pair("deferred/avatarAlphaMaskShadowF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredAvatarAlphaMaskShadowProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(gDeferredAvatarAlphaMaskShadowProgram.createShader(), gDeferredAvatarAlphaMaskShadowProgram);
-    }
-
     {
         // The projection count and hex tiling apply to the four-texture terrain as they do to
         // the PBR one: terrainF blends its detail textures through pbrterrainUtilF's weights,

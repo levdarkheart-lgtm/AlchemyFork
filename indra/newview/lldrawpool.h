@@ -108,12 +108,9 @@ public:
     virtual S32 getNumPostDeferredPasses();
     virtual void renderPostDeferred(S32 pass = 0);
 
-    virtual void beginShadowPass(S32 pass);
-    virtual void endShadowPass(S32 pass);
-    virtual S32 getNumShadowPasses();
-    virtual void renderShadow(S32 pass = 0);
-    // What this pool's shadow passes draw, folded into `casters`. A pool that cannot say marks them changing, and a
-    // map its shadow passes draw into is drawn every frame.
+    virtual bool hasShadowCasters() const;
+    // What this pool contributes to direct native shadows, folded into
+    // `casters`. A pool that cannot say marks them changing.
     virtual void addShadowCasters(ALSpotShadowCache::Casters& casters);
 
     virtual void render(S32 pass = 0) {};
@@ -430,15 +427,6 @@ public:
     // assumes draw infos of given type have valid GLTF materials
     void pushGLTFBatches(U32 type);
 
-    // Indexed (multi-material) GLTF PBR shadow helpers. Indexed and scalar draw
-    // infos coexist in the same render map and are distinguished by
-    // mGLTFMaterialList.size() > 1:
-    //   pushGLTFBatchesScalar  -- renders only single-material infos
-    //   pushGLTFBatchesIndexed -- renders only multi-material infos (indexed program bound)
-    void pushGLTFBatchesScalar(U32 type);
-    void pushGLTFBatchesIndexed(U32 type);
-    static void pushGLTFBatchIndexed(LLDrawInfo& params);
-
     // like pushGLTFBatches, but will not bind textures or set up texture transforms
     void pushUntexturedGLTFBatches(U32 type);
 
@@ -451,13 +439,6 @@ public:
     void pushRiggedGLTFBatches(U32 type, bool textured);
     void pushUntexturedRiggedGLTFBatches(U32 type);
 
-    // rigged indexed/scalar split (see pushGLTFBatchesScalar/Indexed); each batch
-    // is one avatar+skin (the accumulation breaks on skin change), so the matrix
-    // palette is uploaded per draw info as usual.
-    void pushRiggedGLTFBatchesScalar(U32 type);
-    void pushRiggedGLTFBatchesIndexed(U32 type);
-    static void pushRiggedGLTFBatchIndexed(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin);
-
     // push a single GLTF draw call
     // lastMat/lastTex track the most recently bound material+media texture so
     // consecutive draws sharing a material skip the redundant LLFetchedGLTFMaterial::bind
@@ -465,13 +446,6 @@ public:
     static void pushRiggedGLTFBatch(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin, LLFetchedGLTFMaterial*& lastMat, LLViewerTexture*& lastTex);
     static void pushUntexturedGLTFBatch(LLDrawInfo& params);
     static void pushUntexturedRiggedGLTFBatch(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin);
-
-    void pushMaskBatches(U32 type, bool texture = true, bool batch_textures = false);
-    void pushRiggedMaskBatches(U32 type, bool texture = true, bool batch_textures = false);
-    // indexed (multi-material) legacy material shadow alpha-mask: binds per-slot
-    // diffuse + per-slot cutoff array, then draws. Assumes the indexed material
-    // shadow program is bound.
-    void pushMaskBatchesIndexed(U32 type, bool rigged);
 
     void pushBatch(LLDrawInfo& params, bool texture, bool batch_textures = false);
     void pushUntexturedBatch(LLDrawInfo& params);

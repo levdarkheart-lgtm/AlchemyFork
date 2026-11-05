@@ -181,7 +181,6 @@ extern LLGLSLShader         gImpostorProgram;
 // Deferred rendering shaders
 extern LLGLSLShader         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
 extern LLGLSLShader         gDeferredTerrainProgram;
-extern LLGLSLShader         gDeferredTreeShadowProgram;
 extern LLGLSLShader         gDeferredLightProgram;
 extern LLGLSLShader         gDeferredMultiLightProgram[LL_DEFERRED_MULTI_LIGHT_COUNT];
 extern LLGLSLShader         gDeferredSpotLightProgram;
@@ -192,15 +191,6 @@ extern LLGLSLShader         gDeferredBlurLightProgram;
 extern LLGLSLShader         gDeferredBlurLightComputeProgram;
 extern LLGLSLShader         gDeferredSoftenProgram;
 extern LLGLSLShader         gDeferredSoftenSkyProgram;
-extern LLGLSLShader         gDeferredShadowProgram;
-extern LLGLSLShader         gDeferredTerrainShadowProgram;
-extern LLGLSLShader         gDeferredShadowCubeProgram;
-extern LLGLSLShader         gDeferredShadowAlphaMaskProgram;
-extern LLGLSLShader         gDeferredShadowGLTFAlphaMaskProgram;
-extern LLGLSLShader         gDeferredShadowGLTFAlphaMaskIndexedProgram; // multi-material indexed
-extern LLGLSLShader         gDeferredShadowMaterialIndexedProgram; // multi-material indexed legacy mask shadow
-extern LLGLSLShader         gDeferredShadowGLTFAlphaBlendProgram;
-extern LLGLSLShader         gDeferredShadowFullbrightAlphaMaskProgram;
 #if !LL_DARWIN
 // Retained non-Darwin DoF gather blur, four variants over two orthogonal
 // compile-time axes: FRONT_BLUR (RenderDepthOfFieldNearBlur) and DOF_SHAPED
@@ -225,10 +215,6 @@ extern LLGLSLShader         gExposureProgramNoFade;
 extern LLGLSLShader         gExposureHistogramProgram;
 extern LLGLSLShader         gLuminanceProgram;
 extern LLGLSLShader         gLensFlareStateProgram;
-extern LLGLSLShader         gDeferredAvatarShadowProgram;
-extern LLGLSLShader         gDeferredAvatarCutShadowProgram;
-extern LLGLSLShader         gDeferredAvatarAlphaShadowProgram;
-extern LLGLSLShader         gDeferredAvatarAlphaMaskShadowProgram;
 extern LLGLSLShader         gDeferredBufferVisualProgram;
 extern LLGLSLShader         gBlitWithEffectsProgram;
 #if !LL_DARWIN

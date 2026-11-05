@@ -196,8 +196,9 @@ void LLDrawPoolTerrain::bindSurface(LLGLSLShader* shader)
     shader->uniform1i(LLShaderMgr::TERRAIN_SMOOTHING, LLSurface::isSmoothing() ? 1 : 0);
     shader->uniform1f(LLShaderMgr::REGION_SCALE, regionp->getWidth());
 
-    // The sharpness of the triplanar weights the detail of either lit program blends through (pbrterrainUtilF.glsl);
-    // the shadow program has none.
+    // The sharpness of the triplanar weights the detail of either lit program
+    // blends through (pbrterrainUtilF.glsl). Native shadow coverage is
+    // captured separately and does not consume this GL uniform.
     static LLCachedControl<F32> triplanar_blend(gSavedSettings, "RenderTerrainPBRTriplanarBlendFactor", 8.f);
     shader->uniform1f(LLShaderMgr::TERRAIN_TRIPLANAR_BLEND, triplanar_blend);
 }
@@ -266,35 +267,6 @@ void LLDrawPoolTerrain::renderDeferred(S32 pass)
     }
 }
 
-void LLDrawPoolTerrain::beginShadowPass(S32 pass)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    LLFacePool::beginRenderPass(pass);
-    gGL.getTextureSlot(0)->unbind();
-    gDeferredTerrainShadowProgram.bind();
-    gGL.setPatchVertices(LLVOSurfacePatch::PATCH_CORNERS);
-}
-
-void LLDrawPoolTerrain::endShadowPass(S32 pass)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    LLFacePool::endRenderPass(pass);
-    gDeferredTerrainShadowProgram.unbind();
-}
-
-void LLDrawPoolTerrain::renderShadow(S32 pass)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    LL_PROFILE_GPU_ZONE("terrain shadow");
-    if (mDrawFace.empty())
-    {
-        return;
-    }
-    bindSurface(&gDeferredTerrainShadowProgram);
-    drawLoop();
-    unbindSurface(&gDeferredTerrainShadowProgram);
-}
-
 void LLDrawPoolTerrain::captureMetalDirectionalShadow()
 {
 #if LL_DARWIN
@@ -322,8 +294,9 @@ void LLDrawPoolTerrain::addShadowCasters(ALSpotShadowCache::Casters& casters)
         return;
     }
 
-    // What bindSurface hands the shadow program: the region's heights and placement, and levels from the distance to
-    // the main camera, so the patches tessellate again as it moves a metre.
+    // The terrain inputs that identify native shadow coverage: region heights
+    // and placement, plus tessellation levels derived from the main camera, so
+    // the projector cache invalidates when those patches change.
     LLViewerRegion*  regionp = mDrawFace[0]->getDrawable()->getVObj()->getRegion();
     LLSurface&       land    = regionp->getLand();
     const TessLevels levels  = tess_levels();

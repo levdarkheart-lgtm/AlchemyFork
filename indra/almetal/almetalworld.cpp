@@ -196,7 +196,7 @@ namespace
         float avatar_sin_wave[4]{};
         float avatar_gravity[4]{};
         float avatar_cloth_depth[4]{};
-        // x = per-mesh alpha used by avatarAlphaShadowF.
+        // x = per-mesh alpha consumed by the native avatar shadow path.
         float avatar_draw[4] = {1.f, 0.f, 0.f, 0.f};
     };
     static_assert(sizeof(WorldSpotShadowConstants) == 608);

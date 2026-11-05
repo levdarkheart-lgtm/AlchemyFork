@@ -6702,7 +6702,8 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                 // Indexed (multi-material) GLTF PBR: accumulate up to
                 // sIndexedGLTFChannels distinct materials into one batch, assigning
                 // each face a material slot via setTextureIndex. The shader selects
-                // per-vertex by that slot. See LLRenderPass::pushGLTFBatchIndexed.
+                // per-vertex by that slot; native Metal consumes the same slot
+                // list directly when it captures the batch.
                 const S32 gltf_channels = llmin((S32)LLGLSLShader::sIndexedGLTFChannels, LLGLSLShader::MAX_INDEXED_GLTF_CHANNELS);
                 const LLGLTFMaterial* mat_slots[LLGLSLShader::MAX_INDEXED_GLTF_CHANNELS];
                 U32 slot_count = 0;

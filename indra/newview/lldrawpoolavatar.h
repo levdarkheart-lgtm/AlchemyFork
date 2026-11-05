@@ -95,10 +95,7 @@ typedef enum
     /*virtual*/ void endPostDeferredPass(S32 pass);
     /*virtual*/ void renderPostDeferred(S32 pass);
 
-    /*virtual*/ S32 getNumShadowPasses();
-    /*virtual*/ void beginShadowPass(S32 pass);
-    /*virtual*/ void endShadowPass(S32 pass);
-    /*virtual*/ void renderShadow(S32 pass);
+    /*virtual*/ bool hasShadowCasters() const;
     void captureMetalDirectionalShadow();
 
     void beginRigid();
