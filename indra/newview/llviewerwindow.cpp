@@ -2354,7 +2354,16 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     // Initialize renderer resources after both GL and Metal owners are known.
     LLVertexBuffer::initClass(mWindow);
     LL_INFOS("RenderInit") << "LLVertexBuffer initialization done." << LL_ENDL ;
-    if (!gGL.init(true))
+    bool render_initialized = false;
+#if LL_DARWIN
+    // Keep temporary GL-context state separate from native resources. The
+    // former call is removed at the no-context cut; the Metal initialization
+    // and its authoritative immediate buffer remain unchanged.
+    render_initialized = gGL.init(false) && gGL.initMetal(true);
+#else
+    render_initialized = gGL.init(true);
+#endif
+    if (!render_initialized)
     {
         LLError::LLUserWarningMsg::show(LLTrans::getString("MBVideoDrvErr"));
         LL_ERRS() << "gGL not initialized" << LL_ENDL;

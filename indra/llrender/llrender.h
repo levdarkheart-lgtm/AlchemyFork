@@ -265,6 +265,13 @@ public:
     LLRender();
     ~LLRender();
     bool init(bool needs_vertex_buffer);
+#if LL_DARWIN
+    // Initialize the native renderer's logical state and immediate buffer
+    // without issuing an OpenGL call. During migration init(false) may still
+    // prepare the temporary GL context first; the no-context cut deletes that
+    // separate call without changing Metal resource initialization.
+    bool initMetal(bool needs_vertex_buffer);
+#endif
     void initVertexBuffer();
     void resetVertexBuffer();
     void shutdown();
@@ -874,6 +881,7 @@ private:
     LLVertexBuffer* genBuffer(U32 attribute_mask, S32 count);
     void drawBuffer(LLVertexBuffer* vb, U32 mode, S32 count);
     void resetStriders(S32 count);
+    void resetCachedState();
 
     eMatrixMode mMatrixMode;
     U32 mMatIdx[NUM_MATRIX_MODES];

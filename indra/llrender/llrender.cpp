@@ -635,6 +635,42 @@ bool LLRender::init(bool needs_vertex_buffer)
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
+    resetCachedState();
+
+    // A window may have cleared to a colour of its own before this ran, so
+    // issue the cached default rather than assuming it.
+    glClearColor(0.f, 0.f, 0.f, 0.f);
+
+    // Issue the remaining GL defaults described by resetCachedState().
+    issueRasterState();
+
+    // Build this context's sampler objects before anything can ask for one.
+    mSamplerCache.warmup();
+
+    gGL.setSceneBlendType(LLRender::BT_ALPHA);
+    gGL.setAmbientLightColor(LLColor4::black);
+
+    // necessary for reflection maps
+    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+    if (main_context)
+    {
+        LLGLState::seedState(GL_TEXTURE_CUBE_MAP_SEAMLESS, GL_TRUE);
+    }
+
+    { //bind a dummy vertex array object so we're core profile compliant
+        glGenVertexArrays(1, &mDummyVAO);
+        glBindVertexArray(mDummyVAO);
+    }
+
+    if (needs_vertex_buffer)
+    {
+        initVertexBuffer();
+    }
+    return true;
+}
+
+void LLRender::resetCachedState()
+{
     // Fresh context: nothing is bound at UB_LIGHTS/UB_MATRICES yet, whatever a previous one had.
     mLightsUBOBound   = false;
     mMatricesUBOBound = false;
@@ -682,11 +718,10 @@ bool LLRender::init(bool needs_vertex_buffer)
     mPolygonOffsetUnits  = 0.f;
     mPatchVertices       = 3;
 
-    // The clear colour is issued rather than assumed: a window may have cleared to a colour of
-    // its own before this ran. The scissor box GL starts at is the size of the window the
-    // context was made for, which nothing here knows, so it stays unknown until set.
+    // The scissor box GL starts at is the size of the window the context was
+    // made for, which nothing here knows, so it stays unknown until set. The
+    // same unknown values are correct before the first native frame.
     mClearColor = LLColor4(0.f, 0.f, 0.f, 0.f);
-    glClearColor(0.f, 0.f, 0.f, 0.f);
     mScissor[0] = 0;
     mScissor[1] = 0;
     mScissor[2] = -1;
@@ -696,7 +731,9 @@ bool LLRender::init(bool needs_vertex_buffer)
     mViewport[2] = -1;
     mViewport[3] = -1;
 
-    // The rest goes to GL's initial values and is issued, for the same reason as the clear colour.
+    // The rest uses GL's initial numeric values as the backend-neutral
+    // logical defaults. init() issues them to GL; initMetal() consumes them
+    // without touching GL.
     mPolygonMode        = GL_FILL;
     mCullFace           = GL_BACK;
     mPointSize          = 1.f;
@@ -709,33 +746,49 @@ bool LLRender::init(bool needs_vertex_buffer)
     mStencilWriteMask   = ~0u;
     mBlendEquationRGB   = GL_FUNC_ADD;
     mBlendEquationAlpha = GL_FUNC_ADD;
-    issueRasterState();
+}
 
-    // Build this context's sampler objects before anything can ask for one.
-    mSamplerCache.warmup();
-
-
-    gGL.setSceneBlendType(LLRender::BT_ALPHA);
-    gGL.setAmbientLightColor(LLColor4::black);
-
-    // necessary for reflection maps
-    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
-    if (main_context)
+#if LL_DARWIN
+bool LLRender::initMetal(bool needs_vertex_buffer)
+{
+    if (!mMetalDevice || !mMetalFrames)
     {
-        LLGLState::seedState(GL_TEXTURE_CUBE_MAP_SEAMLESS, GL_TRUE);
+        LL_WARNS("Metal") << "Cannot initialize LLRender without the window-owned Metal backend"
+                           << LL_ENDL;
+        return false;
+    }
+    if (needs_vertex_buffer && !LLVertexBuffer::isMetalBufferAuthority())
+    {
+        LL_WARNS("Metal") << "Cannot initialize the native immediate buffer before Metal buffer authority"
+                           << LL_ENDL;
+        return false;
     }
 
-    { //bind a dummy vertex array object so we're core profile compliant
-        glGenVertexArrays(1, &mDummyVAO);
-        glBindVertexArray(mDummyVAO);
+    // Once the temporary GL init call is removed this owns the complete
+    // logical-state reset. During migration the just-initialized GL context
+    // already established the same cache values, so do not desynchronize its
+    // physical state by resetting them a second time.
+    if (!gGLManager.mInited)
+    {
+        resetCachedState();
     }
+
+    mCurrBlendColorSFactor = BF_SOURCE_ALPHA;
+    mCurrBlendAlphaSFactor = BF_SOURCE_ALPHA;
+    mCurrBlendColorDFactor = BF_ONE_MINUS_SOURCE_ALPHA;
+    mCurrBlendAlphaDFactor = BF_ONE_MINUS_SOURCE_ALPHA;
+    setAmbientLightColor(LLColor4::black);
 
     if (needs_vertex_buffer)
     {
         initVertexBuffer();
     }
+    LL_INFOS("Metal") << "Native LLRender state initialized"
+                       << (needs_vertex_buffer ? " with immediate buffer" : "")
+                       << LL_ENDL;
     return true;
 }
+#endif
 
 void LLRender::initVertexBuffer()
 {
