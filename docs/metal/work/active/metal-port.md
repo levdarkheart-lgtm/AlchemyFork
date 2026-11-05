@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `497759ebb4`.
+**Renderer checkpoint:** Commit `bbc4be43d9`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -117,8 +117,8 @@ sun, SSAO blur and base-light draws, six programs, nine GLSL stages and obsolete
 `1f3cfeefb6` preserves CPU visible-light/projector-shadow selection and removes duplicate GL point/projector lighting. `3e975c4b28` then deletes the three dead
 pack light-map slots, blurred scratch target and dispatch-reach input. Metal retains private light-map/blur ownership; the default 1440p plan sheds 21.1 MiB.
 `cbdecfd337` replaces the first deferred `setupHWLights()` mutation with CPU-only native direction preparation and deletes the now-drawless GL
-vertex/cull/blend/color-mask state prologue. `fa746d4cb8` makes the existing direct Metal face capture the sole Darwin edit/touch-highlight producer and deletes four GL programs plus five exclusive GLSL stages. `5d1bf5a394` removes the unreachable GL pathing branch, programs, shaders and render-only extension API after proving the built OSS target links only its hard-false/nonfunctional pathing stub; `497759ebb4` removes the resulting constant-true overlay eligibility scaffold. Independent pathfinding UI/data/network code remains. Other retained post-deferred output still owns the bound target.
-Visual cases 51/52 remain queued.
+vertex/cull/blend/color-mask state prologue. `fa746d4cb8` makes the existing direct Metal face capture the sole Darwin edit/touch-highlight producer and deletes four GL programs plus five exclusive GLSL stages. `5d1bf5a394` removes the unreachable GL pathing branch, programs, shaders and render-only extension API after proving the built OSS target links only its hard-false/nonfunctional pathing stub; `497759ebb4` removes the resulting constant-true overlay eligibility scaffold. `bbc4be43d9` removes the duplicate immediate-mode GL object-update blips while retaining ordered native capture and CPU age, motion and expiration updates. Independent pathfinding UI/data/network code remains. Other retained post-deferred output still owns the bound target.
+Visual cases 51/52/53 remain queued.
 
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -130,11 +130,11 @@ swap. Exact prior evidence remains in the
 
 ## Validation checkpoint
 
-- `497759ebb4`: Ninja and prescribed Xcode Release 68382 pass
+- `bbc4be43d9`: Ninja and prescribed Xcode Release 68384 pass
   warnings-as-errors; physical validated Metal retained-world 8,022/1 passes.
   Release inspection is 349/349 ARM64 and deep signing passes.
   Executable SHA-256 is
-  `d5958dd68b3d5e49a6f4b37de3c79744639e97f34b81b3dfc18ca7d93d7b80be`;
+  `eb1633369f3baee146dcb9288f8b850b7d147a5b7b3ea064b66dafc771b455a9`;
   metallib is `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
   All 556,530 renderer assertions and the 2,597-assertion focused resource-plan suite pass. Host doctor passes on the M1 Max acceptance host.
   Strict inventory is 2,357 and exits 1; harness validation and all 31 tool tests pass.
@@ -163,7 +163,7 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Remove the duplicate GL debug-blip draw while retaining its existing ordered Metal point capture and CPU lifetime/motion update.
+Remove the duplicate GL reflection-probe-volume fullscreen draw and its exclusive program/shaders while retaining the existing fail-closed Metal constants owner.
 Do not wait for visual review, restore fallbacks or launch viewers.
 
 ## Non-negotiable open gates
