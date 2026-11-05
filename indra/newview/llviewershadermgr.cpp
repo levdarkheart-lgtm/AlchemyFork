@@ -210,7 +210,6 @@ LLGLSLShader            gDeferredWLMoonProgram;
 LLGLSLShader            gDeferredStarProgram;
 LLGLSLShader            gDeferredMeteorProgram;
 LLGLSLShader            gDeferredAuroraProgram;
-LLGLSLShader            gDeferredFullbrightShinyProgram;
 LLGLSLShader            gHUDFullbrightShinyProgram;
 LLGLSLShader            gDeferredBufferVisualProgram;
 LLGLSLShader            gBlitWithEffectsProgram;
@@ -1360,7 +1359,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredStarProgram.unload();
         gDeferredMeteorProgram.unload();
         gDeferredAuroraProgram.unload();
-        gDeferredFullbrightShinyProgram.unload();
         gHUDFullbrightShinyProgram.unload();
 
         gDeferredHighlightProgram.unload();
@@ -2073,25 +2071,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
         gHUDFullbrightAlphaMaskAlphaProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         built(gHUDFullbrightAlphaMaskAlphaProgram.createShader(), gHUDFullbrightAlphaMaskAlphaProgram);
-    }
-
-    {
-        gDeferredFullbrightShinyProgram.mName = "Deferred FullbrightShiny Shader";
-        gDeferredFullbrightShinyProgram.mFeatures.calculatesAtmospherics = true;
-        gDeferredFullbrightShinyProgram.mFeatures.hasAtmospherics = true;
-        gDeferredFullbrightShinyProgram.mFeatures.hasGamma = true;
-        gDeferredFullbrightShinyProgram.mFeatures.hasSrgb = true;
-        gDeferredFullbrightShinyProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-        gDeferredFullbrightShinyProgram.mShaderFiles.clear();
-        gDeferredFullbrightShinyProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightShinyV.glsl", GL_VERTEX_SHADER));
-        gDeferredFullbrightShinyProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightShinyF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredFullbrightShinyProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredFullbrightShinyProgram.mFeatures.hasReflectionProbes = true;
-
-        add_common_permutations(&gDeferredFullbrightShinyProgram);
-
-        gDeferredFullbrightShinyProgram.addPermutation("LINEAR_DIFFUSE", "1");
-        built(gDeferredFullbrightShinyProgram.createShader(LLGLSLShader::VARIANT_RIGGED | LLGLSLShader::VARIANT_CLASSIC | mirror_variant()), gDeferredFullbrightShinyProgram);
     }
 
     {

@@ -12566,6 +12566,13 @@ void LLPipeline::captureMetalWorldBumpBatch(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    if (!capture.direct_probe_scene_active &&
+        capture.direct_probe_draw_infos.contains(&params))
+    {
+        // The direct reflection-probe enumerator already submitted this
+        // exact emboss draw; do not append it again through the pool visit.
+        return;
+    }
     if (!capture.complete)
     {
         return;

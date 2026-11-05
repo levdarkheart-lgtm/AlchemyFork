@@ -282,12 +282,9 @@ void LLDrawPoolBump::beginFullbrightShiny()
 
     sVertexMask = VERTEX_MASK_SHINY | LLVertexBuffer::MAP_TEXCOORD0;
 
-    // Second pass: environment map
-    shader = gDeferredFullbrightShinyProgram.selectVariant();
-    if (LLPipeline::sRenderingHUDs)
-    {
-        shader = gHUDFullbrightShinyProgram.selectVariant();
-    }
+    // World shiny batches are submitted directly to Metal.  This retained
+    // program is now only the HUD owner until its separate native mode lands.
+    shader = gHUDFullbrightShinyProgram.selectVariant();
 
     if (mRigged)
     {
@@ -640,35 +637,68 @@ void LLDrawPoolBump::renderDeferred(S32 pass)
 void LLDrawPoolBump::renderPostDeferred(S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    (void)pass;
 
-    S32 num_passes = LLPipeline::sRenderingHUDs ? 1 : 2; // skip rigged pass when rendering HUDs
-
-    for (int i = 0; i < num_passes; ++i)
-    { // two passes -- static and rigged
-        mRigged = (i == 1);
-
-        // render shiny
+    if (LLPipeline::sRenderingHUDs)
+    {
+        // HUD shiny/emboss retains its existing programs until those distinct
+        // forward modes have native Metal equivalents.  HUDs never use the
+        // rigged post-deferred pass.
+        mRigged = false;
         beginFullbrightShiny();
-#if LL_DARWIN
-        gPipeline.beginMetalImpostorShinyPass(mRigged);
-#endif
         renderFullbrightShiny();
-#if LL_DARWIN
-        gPipeline.endMetalWorldGBufferPass();
-#endif
         endFullbrightShiny();
 
-        //render bump
         beginBump();
-#if LL_DARWIN
-        gPipeline.beginMetalImpostorEmbossPass(mRigged);
-#endif
         renderBump(LLRenderPass::PASS_POST_BUMP);
-#if LL_DARWIN
-        gPipeline.endMetalWorldGBufferPass();
-#endif
         endBump();
+        return;
     }
+
+#if LL_DARWIN
+    // The world owner is native-only: enumerate the same static then rigged
+    // shiny/emboss draw maps without binding a shader, texture unit, blend
+    // state, matrix stack, vertex array, or issuing an OpenGL draw.
+    for (bool rigged : { false, true })
+    {
+        mRigged = rigged;
+
+        const U32 shiny_type = rigged
+            ? LLRenderPass::PASS_FULLBRIGHT_SHINY_RIGGED
+            : LLRenderPass::PASS_FULLBRIGHT_SHINY;
+        gPipeline.beginMetalImpostorShinyPass(rigged);
+        auto* shiny_at = gPipeline.beginRenderMap(shiny_type);
+        auto* shiny_end = gPipeline.endRenderMap(shiny_type);
+        while (shiny_at != shiny_end)
+        {
+            LLDrawInfo* info = *shiny_at;
+            LLCullResult::increment_iterator(shiny_at, shiny_end);
+            if (info)
+            {
+                gPipeline.captureMetalWorldGBufferBatch(*info, true);
+            }
+        }
+        gPipeline.endMetalWorldGBufferPass();
+
+        const U32 emboss_type = rigged
+            ? LLRenderPass::PASS_POST_BUMP_RIGGED
+            : LLRenderPass::PASS_POST_BUMP;
+        gPipeline.beginMetalImpostorEmbossPass(rigged);
+        auto* emboss_at = gPipeline.beginRenderMap(emboss_type);
+        auto* emboss_end = gPipeline.endRenderMap(emboss_type);
+        while (emboss_at != emboss_end)
+        {
+            LLDrawInfo* info = *emboss_at;
+            LLCullResult::increment_iterator(emboss_at, emboss_end);
+            if (info)
+            {
+                gPipeline.captureMetalWorldBumpBatch(
+                    *info, LLDrawPoolBump::resolveBumpMap(*info));
+            }
+        }
+        gPipeline.endMetalWorldGBufferPass();
+    }
+#endif
 }
 
 

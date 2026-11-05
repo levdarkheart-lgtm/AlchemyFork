@@ -269,7 +269,6 @@ extern LLGLSLShader         gDeferredWLMoonProgram;
 extern LLGLSLShader         gDeferredStarProgram;
 extern LLGLSLShader         gDeferredMeteorProgram;
 extern LLGLSLShader         gDeferredAuroraProgram;
-extern LLGLSLShader         gDeferredFullbrightShinyProgram;
 extern LLGLSLShader         gHUDFullbrightShinyProgram;
 extern LLGLSLShader         gDeferredBufferVisualProgram;
 extern LLGLSLShader         gBlitWithEffectsProgram;
