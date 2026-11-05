@@ -4,13 +4,13 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `ad53dfe567`
+**Renderer code checkpoint:** `dfbbad949e`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
 ## Active implementation checkpoint
 
-### Metal-only presentation and main avatar family; visual failures queued
+### Metal-only presentation, main avatars and shadow generation; visual failures queued
 
 Two owner-attended UI candidates were rejected before the accepted font run.
 The latter encoded 5,049 Metal UI frames, 509,986 batches and 19,454,172
@@ -31,8 +31,8 @@ Commits `2836849036` and `cf6a821548` remove Snapshot's GL scratch/reconcile
 path. Fail-closed Metal readback owns the validated size; visual case 30 remains
 open.
 
-The source-exact Xcode Release package is `26.4.0.68358`; its viewer executable SHA-256 is
-`1433444a1e5f12ebf0416858c5f629f63d8dcc835d08c6fcb50e9542fbd420ee`.
+The source-exact Xcode Release package is `26.4.0.68360`; its viewer executable SHA-256 is
+`36da2b8e86c450cef619da2889fef18e070125ac79ee34c424919281809c00a6`.
 `tools/metal/verify_app.sh` accepted all 349 inspected Mach-O slices as ARM64
 and deep strict code-sign verification passed. `git diff --check` passes.
 
@@ -78,9 +78,14 @@ launched or captured.
 capture owns rigid/skinned bodies, impostors, hair/eyelash/skirt masks and
 post-deferred transparency; the impostor bake now includes transparent masks.
 Three GL programs and four exclusive GLSL stages are deleted, and native
-shadow capture no longer draws the opaque-cut body twice. Preview avatars and
-the retained main shadow traversal remain separate owners. Visual case 49 is
-queued; no viewer was launched or captured.
+shadow capture no longer draws the opaque-cut body twice. Preview avatars remain
+a separate owner. Visual case 49 is queued; no viewer was launched or captured.
+
+`dfbbad949e` makes every main/probe directional and projector shadow slice
+Metal-only. Direct caster enumeration replaces the GL draw-pool traversal; the
+GL shadow API, 14 program owners, 20 exclusive GLSL stages and dead indexed
+helpers are deleted. Retained GL receivers fail lit instead of sampling stale
+targets. Visual case 50 is queued; no viewer was launched or captured.
 
 Earlier native terrain, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -103,24 +108,24 @@ until the owner-attended review records that result.
 
 ## Build and test evidence
 
-- At `ad53dfe567`, Ninja and prescribed Xcode Release 68358 pass warnings-as-errors; the
-  physical retained-world case passes 8,022/1 under Metal API, GPU, shader and
-  load/store validation. Release verification passes 349/349 ARM64 slices and
+- At `dfbbad949e`, Ninja and prescribed Xcode Release 68360 pass warnings-as-errors; the
+  physical shadow and retained-world cases pass 119/1 and 8,022/1 under Metal
+  API, GPU, shader and load/store validation. Release verification passes 349/349 ARM64 slices and
   deep strict signing. Executable SHA-256 is
-  `1433444a1e5f12ebf0416858c5f629f63d8dcc835d08c6fcb50e9542fbd420ee`;
+  `36da2b8e86c450cef619da2889fef18e070125ac79ee34c424919281809c00a6`;
   metallib SHA-256 remains `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
-  Strict inventory is 2,585 and exits 1 as expected; no audit rule changed.
+  Strict inventory is 2,503 and exits 1 as expected; no audit rule changed.
 
 ## Milestone snapshot
 
 | Area | State | Current fact |
 | --- | --- | --- |
 | M-003..M-006 platform/resources/UI | doing | Native producers use the window-owned Metal device rather than the GL image registry. Converted resources/previews retain truthful native state. Metal solely presents; Snapshot has no GL capture target; selection plus HUD fullbright/shiny/emboss/transparent alpha use native targets only. Live GL traversal/context remain. |
-| M-007 world/material | doing | Probe scenes plus ordinary sky/cloud/body, avatars/impostors, fullbright, transparent alpha, water surface/exclusion/haze, atmospheric haze/sky-behind, legacy-material/bump, shiny/emboss and opaque/masked/blended glTF PBR batches are directly enumerated into Metal. Grass, trees and direct shadows are native; broad parity remains open. |
+| M-007 world/material | doing | Probe scenes plus ordinary sky/cloud/body, avatars/impostors, fullbright, transparent alpha, water surface/exclusion/haze, atmospheric haze/sky-behind, legacy-material/bump, shiny/emboss and opaque/masked/blended glTF PBR batches are directly enumerated into Metal. Grass, trees and all main/probe directional/projector shadow generation are native; broad parity remains open. |
 | M-008 advanced views/effects | doing | Color grading, PBR integration/glow, previews, visual hints, avatar composites, selection, debug effects, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation have Metal implementations. Alpha-pool, water, atmosphere, sky, impostor, DoF-depth and debug-highlight production are native-only. |
-| M-009 parity/stability/no-GL | doing | Strict inventory is 2,585 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
+| M-009 parity/stability/no-GL | doing | Strict inventory is 2,503 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
-| M-011 GL authority removal | doing | Probe publication, terrain bake, selection, base deferred/PBR/legacy-material/legacy-bump/fullbright/transparent/water geometry, water exclusion/haze, atmospheric haze/sky-behind, main sky/cloud/body and avatar/impostor layers, shiny/emboss, glow, DoF/debug alpha, trees and converted debug effects have direct Metal owners. Superseded GL owners are deleted. |
+| M-011 GL authority removal | doing | Probe publication, terrain bake, selection, base deferred/PBR/legacy-material/legacy-bump/fullbright/transparent/water geometry, water exclusion/haze, atmospheric haze/sky-behind, main sky/cloud/body and avatar/impostor layers, all main/probe shadow generation, shiny/emboss, glow, DoF/debug alpha, trees and converted debug effects have direct Metal owners. Superseded GL owners are deleted. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
 | M-013 RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum Metal/no-GL behavior remains required. |
 
@@ -138,7 +143,7 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Audit the retained main directional/projector shadow traversal against
-   direct native capture, then remove the next source-proven GL owner.
+1. Remove obsolete GL shadow target allocation/storage and its retired receiver
+   bindings while preserving backend-neutral Metal resource-plan dimensions.
 2. Re-run strict source/link/runtime gates after each owner cut.
 3. Keep visual failures queued; do not launch either viewer autonomously.
