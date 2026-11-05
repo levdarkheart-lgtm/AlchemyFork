@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `1f3cfeefb6`.
+**Renderer checkpoint:** Commit `3e975c4b28`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -15,7 +15,7 @@ checkpoint detail belongs in the indexed archive.
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
 | M-002 | GL/shader/pass/resource and binary inventory | doing | 2,398 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Metal is the mandatory visible presentation owner. Startup/world GL swaps are suppressed; an incomplete native frame retains the previous Metal drawable and is machine-censused without claiming GL fallback. Live GL traversal/context creation/shutdown remain. |
-| M-004 | Metal resources, transfers, readback and synchronization | doing | Native producers use the window-owned Metal device. Reflection probes use backend-neutral logical slots and Metal-only cube/radiance/SH publication; converted startup/local/HDRI/fetched resources retain native scale-down and eviction. |
+| M-004 | Metal resources, transfers, readback and synchronization | doing | Native producers use the window-owned Metal device. Reflection probes use backend-neutral logical slots and Metal-only cube/radiance/SH publication; dead GL light-map plan resources are deleted; converted resources retain native scale-down and eviction. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while retained GL consumers are removed; owner accepted readable UI text. Snapshot has no GL scratch/reconcile path. Selection effects plus HUD fullbright/shiny/emboss/transparent output are native-only; visual review remains queued. |
 | M-007 | World scene and material correctness | doing | Probe scenes plus ordinary sky/cloud/body, avatars/impostors, fullbright, transparent alpha, water surface/exclusion/haze, atmospheric haze/sky-behind, legacy-material/bump, shiny/emboss and opaque/masked/blended glTF PBR batches are directly enumerated into Metal. Grass, trees and all main/probe directional/projector shadow generation are native; broad parity remains open. |
@@ -29,7 +29,7 @@ checkpoint detail belongs in the indexed archive.
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — deferred lighting Metal-only
+## Active checkpoint — deferred lighting Metal-only; dead light-map plan removed
 
 ### Retained owner evidence and native presentation boundary
 
@@ -114,9 +114,9 @@ bindings and reservations. `629cd38c8a` splits native shadow constants from GL
 and shrinks `UB_DEFERRED` from 512 to 80 SSAO/specular bytes; native Metal shadow
 generation remains authoritative. `e6f54ce64d` then removes duplicate GL deferred
 sun, SSAO blur and base-light draws, six programs, nine GLSL stages and obsolete tests.
-`1f3cfeefb6` preserves visible-light accounting and top-two projector-shadow
-selection in backend-neutral CPU traversal before native encoding, then removes duplicate GL point/projector draws, 19 compiled program variants, five exclusive
-GLSL stages and the dead light-map member. Visual cases 51/52 remain queued.
+`1f3cfeefb6` preserves CPU visible-light/projector-shadow selection and removes duplicate GL point/projector lighting. `3e975c4b28` then deletes the three dead
+pack light-map slots, blurred scratch target and dispatch-reach input. Metal retains private light-map/blur ownership; the default 1440p plan sheds 21.1 MiB.
+Visual cases 51/52 remain queued.
 
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -128,13 +128,13 @@ swap. Exact prior evidence remains in the
 
 ## Validation checkpoint
 
-- `1f3cfeefb6`: Ninja and prescribed Xcode Release 68372 pass
+- `3e975c4b28`: Ninja and prescribed Xcode Release 68374 pass
   warnings-as-errors; physical validated Metal shadow 119/1 and retained-world
   8,022/1 pass. Release inspection is 349/349 ARM64 and deep signing passes.
   Executable SHA-256 is
-  `22aa2ab38b7cc864f22b0a96d34898952c898e9a4a6afe308f87f6ab49b40b4c`;
+  `05fb3c05cdb66bc6ad80c2184c49cc329ee056972fdd80a18ea0f48d47850e19`;
   metallib is `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
-  Six focused resource/projection/shadow/CAS tests pass. Host doctor passes on
+  All 556,530 renderer assertions and the 2,597-assertion focused resource-plan suite pass. Host doctor passes on
   the M1 Max acceptance host. Strict inventory is 2,398 and exits 1; harness
   validation and all 31 tool tests pass.
 
@@ -162,9 +162,9 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Remove the dead resource-plan light-map slots/IDs and obsolete
-`mSSAOBlurDispatched` input. Preserve the privately owned Metal light-map and
-blur implementation. Do not wait for visual review, restore fallbacks or launch viewers.
+Remove the now-drawless GL state prologue around native deferred lighting, then
+census the retained post-deferred target bind/clear/flush boundary. Do not wait
+for visual review, restore fallbacks or launch viewers.
 
 ## Non-negotiable open gates
 
