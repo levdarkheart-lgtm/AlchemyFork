@@ -92,7 +92,6 @@ LLGLSLShader    gNormalDebugProgram[NORMAL_DEBUG_SHADER_COUNT];
 LLGLSLShader    gClipProgram;
 LLGLSLShader    gAlphaMaskProgram;
 LLGLSLShader    gBenchmarkProgram;
-LLGLSLShader    gReflectionProbeDisplayProgram;
 LLGLSLShader    gCopyProgram;
 LLGLSLShader    gCopyDepthProgram;
 LLGLSLShader    gDrawColorProgram;
@@ -2009,21 +2008,6 @@ void LLViewerShaderMgr::loadShadersInterface()
         gBenchmarkProgram.mShaderFiles.push_back(make_pair("interface/benchmarkF.glsl", GL_FRAGMENT_SHADER));
         gBenchmarkProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
         built(gBenchmarkProgram.createShader(), gBenchmarkProgram);
-    }
-
-    {
-        gReflectionProbeDisplayProgram.mName = "Reflection Probe Display Shader";
-        gReflectionProbeDisplayProgram.mFeatures.hasReflectionProbes = true;
-        gReflectionProbeDisplayProgram.mFeatures.hasSrgb = true;
-        gReflectionProbeDisplayProgram.mFeatures.calculatesAtmospherics = true;
-        gReflectionProbeDisplayProgram.mFeatures.hasAtmospherics = true;
-        gReflectionProbeDisplayProgram.mFeatures.hasGamma = true;
-        gReflectionProbeDisplayProgram.mFeatures.isDeferred = true;
-        gReflectionProbeDisplayProgram.mShaderFiles.clear();
-        gReflectionProbeDisplayProgram.mShaderFiles.push_back(make_pair("interface/reflectionprobeV.glsl", GL_VERTEX_SHADER));
-        gReflectionProbeDisplayProgram.mShaderFiles.push_back(make_pair("interface/reflectionprobeF.glsl", GL_FRAGMENT_SHADER));
-        gReflectionProbeDisplayProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gReflectionProbeDisplayProgram.createShader(), gReflectionProbeDisplayProgram);
     }
 
     {

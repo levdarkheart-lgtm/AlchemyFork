@@ -22770,19 +22770,7 @@ void LLPipeline::renderDebug()
     if (render_ref_probe_volumes && !hud_only)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("probe debug display");
-
-#if LL_DARWIN
         captureMetalReflectionProbeVolumes();
-#endif
-        bindDeferredShader(gReflectionProbeDisplayProgram, NULL);
-        mScreenTriangleVB->setBuffer();
-
-        LLGLEnable blend(GL_BLEND);
-        LLGLDepthTest depth(GL_FALSE);
-
-        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-
-        unbindDeferredShader(gReflectionProbeDisplayProgram);
     }
 
     gUIProgram.bind();
