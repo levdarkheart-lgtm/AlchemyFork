@@ -66,7 +66,6 @@ thread_local U32 ALTextureSlot::sSamplerSkips  = 0;
 thread_local U32 ALTextureSlot::sTextureBinds  = 0;
 thread_local U32 ALTextureSlot::sSamplerBindsFlushed = 0;
 thread_local U32 ALTextureSlot::sSamplerBindsSplitBatch = 0;
-thread_local U32 ALTextureSlot::sSamplerBindsShadowCycle = 0;
 
 ALTextureSlot::ALTextureSlot(S32 index)
     : mCurrTexType(TT_NONE),
@@ -646,16 +645,9 @@ void ALTextureSlot::unbind()
         // Sampler left in place. Whoever binds here next names their own, so releasing it
         // would just be a glBindSampler now and another one then -- with a flush attached.
         //
-        // ONE EXCEPTION, and it is not theoretical -- it shipped as a driver warning before
-        // being caught. This leaves the WHITE PLACEHOLDER on the slot, which is sampleable,
-        // so a leftover COMPARE sampler is read through depth comparison on a non-depth
-        // texture: undefined. Whoever selects a compare sampler must therefore release it
-        // itself rather than relying on this; LLPipeline::bindShadowMaps and unbindShadowMaps
-        // call bindSampler(0) on the channels they give up.
-        //
-        // It is not enough to track the channels and unbind the TEXTURE. That is what those
-        // functions already did, and it is exactly what stopped being sufficient the moment
-        // this stopped clearing the sampler as a side effect.
+        // Retained application-owned GL sampling has no compare-sampler users. A future
+        // compare sampler must own its teardown explicitly before this optimization remains
+        // safe.
         stop_glerror();
     }
 }

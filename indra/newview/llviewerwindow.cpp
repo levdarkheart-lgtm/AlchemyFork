@@ -709,10 +709,9 @@ public:
             {
                 const U32 sampler_binds = ALTextureSlot::sSamplerBinds;
                 const U32 tex_binds     = ALTextureSlot::sTextureBinds;
-                addText(xpos, ypos, llformat("%d Sampler Binds (%d flushed, %d SPLIT BATCH, %d shadow-cycle, %d skipped, %.2f per tex bind)",
+                addText(xpos, ypos, llformat("%d Sampler Binds (%d flushed, %d SPLIT BATCH, %d skipped, %.2f per tex bind)",
                                              sampler_binds, ALTextureSlot::sSamplerBindsFlushed,
                                              ALTextureSlot::sSamplerBindsSplitBatch,
-                                             ALTextureSlot::sSamplerBindsShadowCycle,
                                              ALTextureSlot::sSamplerSkips,
                                              tex_binds ? (F32)sampler_binds / (F32)tex_binds : 0.f));
                 ypos += y_inc;

@@ -386,15 +386,9 @@ public:
     // ladder, so they do hold a previous draw's textures, but an ordinary 2D texture under an
     // unreached sampler2D is defined and costs nothing; clearing them would mean up to N
     // redundant binds on every draw in the hottest loop in the renderer. What must never land
-    // there is a texture whose SAMPLER disagrees with the declaration -- in practice a shadow
-    // map under a compare sampler, which is undefined even where the shader's dynamic branch
-    // never reaches it. LLPipeline::bindShadowMaps is the only compare-sampler bind in the
-    // tree and it publishes its units in LLGLSLShader::sCompareSamplerUnits, which bind()
-    // releases before any program that declares no shadow samplers runs.
-    // validate_bound_samplers() asserts the invariant at the draw under gDebugGL.
-    //
-    // So: a NEW compare sampler, or any depth texture bound outside that tracking, breaks
-    // this. Publish it in the same mask rather than clearing the tail here.
+    // there is a texture whose SAMPLER disagrees with the declaration. The retained
+    // application-owned GL tree has no compare-sampler users; validate_bound_samplers()
+    // asserts the remaining invariant at the draw under gDebugGL.
     //
     // The diffuse sampler is derived from the bound program, not named by the caller:
     // AnisoWrap, plus the SRGBDecode bit when the program's mLinearDiffuse (the

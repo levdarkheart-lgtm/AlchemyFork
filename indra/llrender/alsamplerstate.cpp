@@ -49,7 +49,6 @@ ALSamplerDesc ALSamplerCache::makeDesc(ALSampler key)
     // them as separate parameters.
     const U16  filter  = alSamplerFilter(key);
     const U16  address = alSamplerAddress(key);
-    const bool compare = alSamplerHas(key, ALSampler::Compare);
     const bool decode  = alSamplerHas(key, ALSampler::SRGBDecode);
 
     // The unreachable quarter of the address field. Reaching it means a mask was built by
@@ -89,15 +88,6 @@ ALSamplerDesc ALSamplerCache::makeDesc(ALSampler key)
         desc.mMaxAnisotropy = llclamp(LLRender::sAnisotropicFilteringLevel, 1.f, gGLManager.mMaxAnisotropy);
     }
 
-    if (compare)
-    {
-        desc.mCompareMode = GL_COMPARE_REF_TO_TEXTURE;
-        // Reverse-Z shadow maps store reversed depth, so the shadow compare passes when the
-        // receiver is GEQUAL the stored occluder. The latch clears the sampler cache on
-        // toggle so this re-derives (see LLPipeline::updateReverseZ).
-        desc.mCompareFunc = LLRender::sReverseZ ? GL_GEQUAL : GL_LEQUAL;
-    }
-
     desc.mSRGBDecode = decode ? GL_DECODE_EXT : GL_SKIP_DECODE_EXT;
 
     return desc;
@@ -135,12 +125,6 @@ U32 ALSamplerCache::create(const ALSamplerDesc& desc)
     if (gGLManager.mHasAnisotropic)
     {
         glSamplerParameterf(name, GL_TEXTURE_MAX_ANISOTROPY, desc.mMaxAnisotropy);
-    }
-
-    if (desc.mCompareMode != GL_NONE)
-    {
-        glSamplerParameteri(name, GL_TEXTURE_COMPARE_MODE, desc.mCompareMode);
-        glSamplerParameteri(name, GL_TEXTURE_COMPARE_FUNC, desc.mCompareFunc);
     }
 
     // Written unconditionally, including where it matches GL's default, so a sampler's

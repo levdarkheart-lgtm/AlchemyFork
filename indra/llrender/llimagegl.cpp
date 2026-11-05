@@ -937,7 +937,6 @@ void LLImageGL::updateStats(F64 current_time)
     ALTextureSlot::sTextureBinds = 0;
     ALTextureSlot::sSamplerBindsFlushed = 0;
     ALTextureSlot::sSamplerBindsSplitBatch = 0;
-    ALTextureSlot::sSamplerBindsShadowCycle = 0;
 }
 
 //----------------------------------------------------------------------------

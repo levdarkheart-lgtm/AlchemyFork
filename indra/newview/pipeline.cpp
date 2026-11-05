@@ -20540,14 +20540,6 @@ void LLPipeline::updateReverseZ(bool reverse_z)
 
     if (changed)
     {
-        // Rebuild the sampler objects so the shadow compare func (LEQUAL<->GEQUAL) re-derives.
-        // clearSamplers() MUST be followed by warmupSamplers(): the enum overload of
-        // ALSamplerCache::get() indexes a flat table with no lazy path, so a cleared cache
-        // hands out name 0 (asserting in debug) until warmup refills it. Only on a real flip --
-        // rebuilding all 48 objects is not free.
-        gGL.clearSamplers();
-        gGL.warmupSamplers();
-
         LL_INFOS("RenderInit") << "Reverse-Z depth " << (effective ? "ENABLED" : "disabled")
                                << " (setting=" << gSavedSettings.getBOOL("AlchemyRenderReverseZ")
                                << ", clip control=" << gGLManager.mHasClipControl << ")" << LL_ENDL;
@@ -28811,13 +28803,6 @@ void LLPipeline::bindShadowMaps(LLGLSLShader& shader)
     // native slice validity as permission to sample a GL depth target: none exists. Native lighting consumes the
     // Metal texture arrays directly through fillMetal*Shadows().
     shader.uniform1i(LLShaderMgr::UNBUILT_SHADOW_MAPS, 0x3f);
-    unbindShadowMaps();
-}
-
-void LLPipeline::unbindShadowMaps()
-{
-    // Defensive context-migration cleanup. No current application-owned path publishes compare-sampler units.
-    LLGLSLShader::releaseCompareSamplerUnits();
 }
 
 void LLPipeline::packDeferredUBO()
@@ -30155,16 +30140,12 @@ void LLPipeline::unbindDeferredShader(LLGLSLShader &shader)
     shader.disableTexture(LLShaderMgr::DEFERRED_LIGHT, ALTextureSlot::TT_TEXTURE);
     shader.disableTexture(LLShaderMgr::DIFFUSE_MAP);
 
-    // Unbind the shadow channels this shader declares, then any unit bindShadowMaps
-    // actually used -- the two are the same for the shader that bound them last, and differ
-    // for every earlier program with another layout. unbind() drops the compare sampler
-    // along with the texture.
+    // Retained GL receivers cannot sample native Metal shadow storage. Clear the six shader
+    // bindings they still declare; bindShadowMaps marks every slice unavailable.
     for (U32 i = 0; i < 6; i++)
     {
         shader.disableTexture(LLShaderMgr::DEFERRED_SHADOW0+i);
     }
-    unbindShadowMaps();
-
     shader.disableTexture(LLShaderMgr::DEFERRED_NOISE);
 
     if (!LLPipeline::sReflectionProbesEnabled)

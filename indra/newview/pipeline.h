@@ -1269,9 +1269,6 @@ public:
     // six maps unavailable on the retained shader so its hidden traversal cannot sample stale targets.
     void bindShadowMaps(LLGLSLShader& shader);
 
-    // Release any compare-sampler state retained from a pre-cutover program or context.
-    void unbindShadowMaps();
-
     // Rebuild the shared shadow/SSAO constant block from current state (CPU only). Called once
     // per deferred pass; every value in it is fixed for the whole pass.
     void packDeferredUBO();

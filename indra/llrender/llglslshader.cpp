@@ -61,7 +61,6 @@ using std::string;
 GLuint LLGLSLShader::sCurBoundShader = 0;
 LLGLSLShader* LLGLSLShader::sCurBoundShaderPtr = NULL;
 S32 LLGLSLShader::sIndexedTextureChannels = 0;
-U32 LLGLSLShader::sCompareSamplerUnits = 0;
 S32 LLGLSLShader::sIndexedGLTFChannels = 0;
 bool LLGLSLShader::sIndexedLegacyMaterials = false;
 U32 LLGLSLShader::sMaxGLTFMaterials = 0;
@@ -1728,21 +1727,6 @@ bool LLGLSLShader::mapUniforms()
 
     unbind();
 
-    // Cached here rather than recomputed per bind: this is read on every program switch for as
-    // long as the shadow maps are bound, and mTexture only changes at link.
-    mDeclaresShadowSamplers = false;
-    if (mTexture.size() > (size_t)LLShaderMgr::DEFERRED_SHADOW5)
-    {
-        for (S32 i = LLShaderMgr::DEFERRED_SHADOW0; i <= LLShaderMgr::DEFERRED_SHADOW5; ++i)
-        {
-            if (mTexture[i] > -1)
-            {
-                mDeclaresShadowSamplers = true;
-                break;
-            }
-        }
-    }
-
     LL_DEBUGS("ShaderUniform") << "Total Uniform Size: " << mTotalUniformSize << LL_ENDL;
     return res;
 }
@@ -1774,23 +1758,6 @@ bool LLGLSLShader::link(bool suppress_errors)
     }
 
     return success;
-}
-
-// static
-void LLGLSLShader::releaseCompareSamplerUnits()
-{
-    const U32 binds_before = ALTextureSlot::sSamplerBinds;
-    U32 units = sCompareSamplerUnits;
-    sCompareSamplerUnits = 0;
-    for (S32 unit = 0; units != 0; ++unit, units >>= 1)
-    {
-        if (units & 1u)
-        {
-            gGL.getTextureSlot(unit)->unbind();
-            gGL.getTextureSlot(unit)->bindSampler(0);
-        }
-    }
-    ALTextureSlot::sSamplerBindsShadowCycle += ALTextureSlot::sSamplerBinds - binds_before;
 }
 
 namespace
@@ -1917,15 +1884,6 @@ void LLGLSLShader::bind()
             LLVertexBuffer::setupClientArrays(mAttributeMask);
         }
 
-        // Shadow maps ride compare samplers on units this program may map to ordinary
-        // sampler2Ds -- a pairing GL calls undefined even where the shader never reads the
-        // unit. Release them here, at the one place every program switch passes through,
-        // rather than by ritual unbind calls at each pass that interleaves shader families.
-        // Declaring programs skip this: bindShadowMaps relayouts their units itself.
-        if (sCompareSamplerUnits != 0 && !declaresShadowSamplers())
-        {
-            releaseCompareSamplerUnits();
-        }
     }
 
     if (mEnvUniformsGeneration != sEnvironmentGeneration)

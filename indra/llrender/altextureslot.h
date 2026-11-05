@@ -96,13 +96,6 @@ public:
     // suspect, since scene geometry draws from VBOs with nothing queued in gGL.
     static thread_local U32 sSamplerBindsSplitBatch;
 
-    // ... of sSamplerBinds, the ones issued by the shadow-map compare-sampler cycle:
-    // releaseCompareSamplerUnits dropping slots to sampler 0 plus bindShadowMaps putting the
-    // compare sampler back. Scene-dependent through the alpha pass's emissive groups (each
-    // costs a release + restore), which makes it the prime suspect for a large standing
-    // total that UI toggles barely move.
-    static thread_local U32 sSamplerBindsShadowCycle;
-
     // What KIND of resource a slot holds. A property of the resource, not of the slot -- this
     // is D3D11's SRV dimension, and it lives here only because the slot has to name a target
     // to issue a classic glBindTexture.

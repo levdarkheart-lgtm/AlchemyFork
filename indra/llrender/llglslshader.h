@@ -254,21 +254,6 @@ public:
     static LLGLSLShader* sCurBoundShaderPtr;
     static S32 sIndexedTextureChannels;
 
-    // Units currently holding a depth texture under a compare sampler, as a bitmask by
-    // unit. LLPipeline::bindShadowMaps -- the only compare-sampler bind in the tree --
-    // publishes its units here, and bind() releases them before any program that does not
-    // declare the shadow samplers runs: a compare-mode depth read through a plain
-    // sampler2D is undefined even where the shader's dynamic branching never reaches the
-    // unit. Programs that DO declare them are relayouted by the next bindShadowMaps
-    // instead, so the deferred family pays nothing here.
-    static U32 sCompareSamplerUnits;
-    // Unbind the texture AND the sampler on every published unit. The sampler must go
-    // too: unbind() leaves the white placeholder on the unit, which IS sampleable, and
-    // reading it through depth comparison is undefined.
-    static void releaseCompareSamplerUnits();
-    // Does this program declare any of the shadow-map samplers (shadowMap0..5)? Computed once
-    // in mapUniforms(); bind() asks on every program switch while the maps are bound.
-    bool declaresShadowSamplers() const { return mDeclaresShadowSamplers; }
     // Hard ceiling on the indexed-GLTF slot count. setShaders() clamps
     // sIndexedGLTFChannels to this, and every fixed per-slot array that walks a batch is
     // sized from it. Those two things MUST agree: the arrays are indexed by slot up to
@@ -585,8 +570,6 @@ public:
     // environment-uniform generation this program last applied; see sEnvironmentGeneration.
     // A program starts one behind it when it links, so its first bind applies the set.
     U32 mEnvUniformsGeneration = 1;
-    // cached in mapUniforms(); see declaresShadowSamplers()
-    bool mDeclaresShadowSamplers = false;
     LLShaderFeatures mFeatures;
     // A compute program's work group size, its `layout(local_size_x = ...) in`, read back after it links or loads
     // from the binary cache. Zero for any other program.

@@ -76,10 +76,7 @@ enum class ALSampler : U16
     Mirror = 1u << 2,
     Clamp  = 2u << 2,
 
-    // --- depth compare, bit 4. Makes this a shadow sampler. ---
-    Compare = 1u << 4,
-
-    // --- bit 5: apply the sRGB transfer function on read (GL_EXT_texture_sRGB_decode) ---
+    // --- bit 4: apply the sRGB transfer function on read (GL_EXT_texture_sRGB_decode) ---
     //
     // OPT IN, which inverts GL's default. GL decodes an sRGB-format texture on every read
     // unless told not to, so the transfer function is applied by the format rather than by
@@ -94,7 +91,7 @@ enum class ALSampler : U16
     //
     // No effect on a non-sRGB format, which is most of them -- the bit only matters where
     // the internal format carries a transfer function to begin with.
-    SRGBDecode = 1u << 5,
+    SRGBDecode = 1u << 4,
 
     // There was a fifth field here, HasMips, recording whether the RESOURCE had a mip
     // chain. It existed because GL treats a mipmapped minification filter on a texture with
@@ -149,7 +146,7 @@ constexpr U16 alSamplerAddress(ALSampler key)
     return (static_cast<U16>(key) >> AL_SAMPLER_ADDRESS_SHIFT) & AL_SAMPLER_ADDRESS_MASK;
 }
 
-// Test a single-bit field (Compare, SRGBDecode).
+// Test the single-bit SRGBDecode field.
 constexpr bool alSamplerHas(ALSampler key, ALSampler bit)
 {
     return (static_cast<U16>(key) & static_cast<U16>(bit)) != 0;
@@ -180,9 +177,6 @@ struct ALSamplerDesc
     U32 mWrapT         = GL_REPEAT;
     U32 mWrapR         = GL_REPEAT;
     F32 mMaxAnisotropy = 1.f;
-    // GL_NONE, or GL_COMPARE_REF_TO_TEXTURE for a shadow sampler.
-    U32 mCompareMode = GL_NONE;
-    U32 mCompareFunc = GL_LEQUAL;
     // GL_SKIP_DECODE_EXT or GL_DECODE_EXT. Defaults to SKIP, which is the opposite of GL's
     // own default -- see ALSampler::SRGBDecode. No D3D11_SAMPLER_DESC equivalent: there the
     // SRV's format decides (DXGI_FORMAT_*_UNORM vs _UNORM_SRGB), which is the same choice
@@ -219,13 +213,6 @@ namespace ALSamplers
     // policy has one spelling; data textures (normal/ORM/masks) never take it.
     inline constexpr ALSampler AnisoWrapSRGB  = AnisoWrap | ALSampler::SRGBDecode;
 
-    // Shadow maps: bilinear + clamp with the depth comparison enabled. The LINEAR filter is
-    // what gives the hardware its 2x2 PCF on a compare sampler. Anisotropy was inert here --
-    // the depth targets are single-level, so there is no mip chain for it to act on -- and
-    // only cost the driver a max-anisotropy it could never use; dropped.
-    inline constexpr ALSampler ShadowCompare  = ALSampler::Bilinear | ALSampler::Clamp
-                                              | ALSampler::Compare;
-
     // NOT a sampling mode: "resolve from the render target's per-attachment policy"
     // (getDefaultColorSampler -- bilinear for attachment 0, point for the data attachments and
     // integer ones).
@@ -239,7 +226,7 @@ namespace ALSamplers
 // Owns the sampler objects belonging to one GL context.
 //
 // The descriptor space the renderer actually uses is small and enumerable -- filter x
-// address mode x compare x srgb-decode -- so the common path is a flat array index rather
+// address mode x srgb-decode -- so the common path is a flat array index rather
 // than a hash lookup, which matters because it runs per bind. That table is built up front
 // by warmup(), NOT lazily -- the enum get() below only indexes it -- and lives until the
 // context goes away. The objects are immutable, so sharing one between unrelated call sites
@@ -301,7 +288,7 @@ public:
 
     // Create every reachable sampler up front.
     //
-    // The table is 64 slots of which 48 are reachable, and a sampler object is a few words of
+    // The table is 32 slots of which 24 are reachable, and a sampler object is a few words of
     // driver state -- so building them all costs less than the branch that testing for them
     // would cost on every bind, forever. Call once the context is up, and again after clear()
     // drops them (an anisotropy change does that).
@@ -323,10 +310,10 @@ private:
 
     static U32 create(const ALSamplerDesc& desc);
 
-    // Six bits: filter(2) + address(2) + compare(1) + srgb-decode(1). 16 of the 64 slots
-    // are unreachable (address only uses 3 of its 4 values) and stay 0 -- 64 U32s is 256
+    // Five bits: filter(2) + address(2) + srgb-decode(1). Eight of the 32 slots are
+    // unreachable (address only uses 3 of its 4 values) and stay 0 -- 32 U32s is 128
     // bytes, and the alternative is arithmetic on every bind to compact them away.
-    static constexpr U32 KEY_BITS    = 6;
+    static constexpr U32 KEY_BITS    = 5;
     static constexpr U32 KEY_MASK    = (1u << KEY_BITS) - 1u;
     static constexpr U32 NUM_SAMPLERS = 1u << KEY_BITS;
 
