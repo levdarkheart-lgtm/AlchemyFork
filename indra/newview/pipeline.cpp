@@ -7158,13 +7158,8 @@ void LLPipeline::captureMetalRaycastParticle(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    const LLColor4& color = gGL.getDiffuseColor();
     if (!capture.complete || capture.raycast_particle_valid ||
-        !center.isFinite() || !half_extent.isFinite() ||
-        color.mV[0] != 1.f || color.mV[1] != 1.f ||
-        color.mV[2] != 0.f || color.mV[3] != 1.f ||
-        !metalRaycastStateIsExact(
-            true, true, GL_LEQUAL, 1.f, GL_FILL))
+        !center.isFinite() || !half_extent.isFinite())
     {
         capture.markIncomplete(__LINE__);
         capture.raycast_vertices.clear();
@@ -22779,35 +22774,9 @@ void LLPipeline::renderDebug()
     { //draw crosshairs on particle intersection
         if (gDebugRaycastParticle)
         {
-            gDebugProgram.bind();
-
-            gGL.getTextureSlot(0)->unbind();
-
             LLVector3 center(gDebugRaycastParticleIntersection.getF32ptr());
             LLVector3 size(0.1f, 0.1f, 0.1f);
-
-            LLVector3 p[6];
-
-            p[0] = center + size.scaledVec(LLVector3(1,0,0));
-            p[1] = center + size.scaledVec(LLVector3(-1,0,0));
-            p[2] = center + size.scaledVec(LLVector3(0,1,0));
-            p[3] = center + size.scaledVec(LLVector3(0,-1,0));
-            p[4] = center + size.scaledVec(LLVector3(0,0,1));
-            p[5] = center + size.scaledVec(LLVector3(0,0,-1));
-
-            gGL.begin(LLRender::LINES);
-            gGL.diffuseColor3f(1.f, 1.f, 0.f);
-#if LL_DARWIN
             captureMetalRaycastParticle(center, size);
-#endif
-            for (U32 i = 0; i < 6; i++)
-            {
-                gGL.vertex3fv(p[i].mV);
-            }
-            gGL.end();
-            gGL.flush();
-
-            gDebugProgram.unbind();
         }
     }
 
