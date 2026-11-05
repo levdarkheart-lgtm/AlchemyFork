@@ -7603,18 +7603,10 @@ void LLPipeline::beginMetalReflectionProbeLinkCapture(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
     if (!capture.complete || capture.reflection_probe_link_capture_active ||
         !capture.reflection_probe_links.empty() ||
         link_count > std::numeric_limits<std::uint32_t>::max() / 2 ||
-        link_count > std::numeric_limits<std::size_t>::max() / 2 ||
-        !LLGLState::isEnabled(GL_BLEND) ||
-        !LLGLDepthTest::depthEnabled() ||
-        !LLGLDepthTest::depthWriteEnabled() ||
-        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
-        gGL.getLineWidth() != 1.f ||
-        !color_mask[0] || !color_mask[1] || !color_mask[2] || color_mask[3])
+        link_count > std::numeric_limits<std::size_t>::max() / 2)
     {
         capture.markIncomplete(__LINE__);
         return;

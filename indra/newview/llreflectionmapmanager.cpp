@@ -2264,100 +2264,30 @@ void renderReflectionProbe(LLReflectionMap* probe)
 {
     if (probe->isRelevant())
     {
-        F32* po = probe->mOrigin.getF32ptr();
-
-        //draw orange line from probe to neighbors
-        gGL.flush();
-        gGL.diffuseColor4f(1, 0.5f, 0, 1);
-        gGL.begin(gGL.LINES);
         for (auto& neighbor : probe->mNeighbors)
         {
             if (probe->mViewerObject && neighbor->mViewerObject)
             {
                 continue;
             }
-
-#if LL_DARWIN
             gPipeline.captureMetalReflectionProbeLink(
                 probe->mOrigin, neighbor->mOrigin,
                 LLColor4(1.f, 0.5f, 0.f, 1.f));
-#endif
-            gGL.vertex3fv(po);
-            gGL.vertex3fv(neighbor->mOrigin.getF32ptr());
         }
-        gGL.end();
-        gGL.flush();
-
-        gGL.diffuseColor4f(1, 1, 0, 1);
-        gGL.begin(gGL.LINES);
         for (auto& neighbor : probe->mNeighbors)
         {
             if (probe->mViewerObject && neighbor->mViewerObject)
             {
-#if LL_DARWIN
                 gPipeline.captureMetalReflectionProbeLink(
                     probe->mOrigin, neighbor->mOrigin,
                     LLColor4(1.f, 1.f, 0.f, 1.f));
-#endif
-                gGL.vertex3fv(po);
-                gGL.vertex3fv(neighbor->mOrigin.getF32ptr());
             }
         }
-        gGL.end();
-        gGL.flush();
     }
-
-#if 0
-    LLSpatialGroup* group = probe->mGroup;
-    if (group)
-    { // draw lines from corners of object aabb to reflection probe
-
-        const LLVector4a* bounds = group->getBounds();
-        LLVector4a o = bounds[0];
-
-        gGL.flush();
-        gGL.diffuseColor4f(0, 0, 1, 1);
-        F32* c = o.getF32ptr();
-
-        const F32* bc = bounds[0].getF32ptr();
-        const F32* bs = bounds[1].getF32ptr();
-
-        // daaw blue lines from corners to center of node
-        gGL.begin(gGL.LINES);
-        gGL.vertex3fv(c);
-        gGL.vertex3f(bc[0] + bs[0], bc[1] + bs[1], bc[2] + bs[2]);
-        gGL.vertex3fv(c);
-        gGL.vertex3f(bc[0] - bs[0], bc[1] + bs[1], bc[2] + bs[2]);
-        gGL.vertex3fv(c);
-        gGL.vertex3f(bc[0] + bs[0], bc[1] - bs[1], bc[2] + bs[2]);
-        gGL.vertex3fv(c);
-        gGL.vertex3f(bc[0] - bs[0], bc[1] - bs[1], bc[2] + bs[2]);
-
-        gGL.vertex3fv(c);
-        gGL.vertex3f(bc[0] + bs[0], bc[1] + bs[1], bc[2] - bs[2]);
-        gGL.vertex3fv(c);
-        gGL.vertex3f(bc[0] - bs[0], bc[1] + bs[1], bc[2] - bs[2]);
-        gGL.vertex3fv(c);
-        gGL.vertex3f(bc[0] + bs[0], bc[1] - bs[1], bc[2] - bs[2]);
-        gGL.vertex3fv(c);
-        gGL.vertex3f(bc[0] - bs[0], bc[1] - bs[1], bc[2] - bs[2]);
-        gGL.end();
-
-        //draw yellow line from center of node to reflection probe origin
-        gGL.flush();
-        gGL.diffuseColor4f(1, 1, 0, 1);
-        gGL.begin(gGL.LINES);
-        gGL.vertex3fv(c);
-        gGL.vertex3fv(po);
-        gGL.end();
-        gGL.flush();
-    }
-#endif
 }
 
 void LLReflectionMapManager::renderDebug()
 {
-#if LL_DARWIN
     std::size_t link_count = 0;
     for (const LLPointer<LLReflectionMap>& probe : mProbes)
     {
@@ -2374,18 +2304,13 @@ void LLReflectionMapManager::renderDebug()
         link_count += probe->mNeighbors.size();
     }
     gPipeline.beginMetalReflectionProbeLinkCapture(link_count);
-#endif
-    gDebugProgram.bind();
 
     for (auto& probe : mProbes)
     {
         renderReflectionProbe(probe);
     }
 
-    gDebugProgram.unbind();
-#if LL_DARWIN
     gPipeline.endMetalReflectionProbeLinkCapture(link_count);
-#endif
 }
 
 void LLReflectionMapManager::initReflectionMaps()
