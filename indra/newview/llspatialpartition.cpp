@@ -3573,56 +3573,6 @@ public:
     }
 };
 
-class LLOctreePushBBoxVerts : public OctreeTraveler
-{
-public:
-    LLCamera* mCamera;
-    LLOctreePushBBoxVerts(LLCamera* camera): mCamera(camera) {}
-
-    virtual void traverse(const OctreeNode* node)
-    {
-        LLSpatialGroup* group = (LLSpatialGroup*) node->getListener(0);
-
-        const LLVector4a* bounds = group->getBounds();
-        if (!mCamera || mCamera->AABBInFrustum(bounds[0], bounds[1]))
-        {
-            node->accept(this);
-
-            for (U32 i = 0; i < node->getChildCount(); i++)
-            {
-                traverse(node->getChild(i));
-            }
-        }
-    }
-
-    virtual void visit(const OctreeNode* branch)
-    {
-        LLSpatialGroup* group = (LLSpatialGroup*) branch->getListener(0);
-
-        const LLVector4a* bounds = group->getBounds();
-        if (group->hasState(LLSpatialGroup::GEOM_DIRTY) || (mCamera && !mCamera->AABBInFrustumNoFarClip(bounds[0], bounds[1])))
-        {
-            return;
-        }
-
-        for (OctreeNode::const_element_iter i = branch->getDataBegin(); i != branch->getDataEnd(); ++i)
-        {
-            LLDrawable* drawable = (LLDrawable*)(*i)->getDrawable();
-            if(!drawable)
-        {
-                continue;
-            }
-            renderBoundingBox(drawable, false);
-        }
-    }
-};
-
-void LLSpatialPartition::renderIntersectingBBoxes(LLCamera* camera)
-{
-    LLOctreePushBBoxVerts pusher(camera);
-    pusher.traverse(mOctree);
-}
-
 class LLOctreeStateCheck : public OctreeTraveler
 {
 public:
