@@ -235,7 +235,6 @@ LLGLSLShader            gRlvSphereProgram;
 
 // Deferred materials shaders
 LLGLSLShader            gDeferredMaterialProgram[LLMaterial::SHADER_COUNT];
-LLGLSLShader            gDeferredMaterialIndexedProgram[LLMaterial::SHADER_COUNT]; // multi-material indexed (GBuffer masks only)
 LLGLSLShader            gHUDPBROpaqueProgram;
 LLGLSLShader            gPBRGlowProgram;
 LLGLSLShader            gHUDPBRAlphaProgram;
@@ -1381,7 +1380,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         for (U32 i = 0; i < LLMaterial::SHADER_COUNT; ++i)
         {
             gDeferredMaterialProgram[i].unload();
-            gDeferredMaterialIndexedProgram[i].unload();
         }
         LLGLSLShader::sIndexedLegacyMaterials = false;
 
@@ -1441,16 +1439,14 @@ void LLViewerShaderMgr::loadShadersDeferred()
         built(shader->createShader(LLGLSLShader::VARIANT_RIGGED | mirror_variant()), *shader);
     }
 
-    gDeferredMaterialProgram[1].mFeatures.hasLighting = false;
-    gDeferredMaterialProgram[5].mFeatures.hasLighting = false;
-    gDeferredMaterialProgram[9].mFeatures.hasLighting = false;
-    gDeferredMaterialProgram[13].mFeatures.hasLighting = false;
-
-    for (U32 i = 0; i < LLMaterial::SHADER_COUNT; ++i)
+    // Main-world legacy material G-buffer passes are native Metal. Retain only
+    // the four alpha-blend programs consumed by LLDrawPoolAlpha.
+    for (U32 i : { 1u, 5u, 9u, 13u })
     {
+        gDeferredMaterialProgram[i].mFeatures.hasLighting = false;
         gDeferredMaterialProgram[i].mName = llformat("Material Shader %d", i);
 
-        U32 alpha_mode = i & 0x3;
+        constexpr U32 alpha_mode = LLMaterial::DIFFUSE_ALPHA_MODE_BLEND;
 
         gDeferredMaterialProgram[i].mShaderFiles.clear();
         gDeferredMaterialProgram[i].mShaderFiles.push_back(make_pair("deferred/materialV.glsl", GL_VERTEX_SHADER));
@@ -1496,81 +1492,18 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
         gDeferredMaterialProgram[i].addPermutation("LINEAR_DIFFUSE", "1");
 
-        // Only the forward alpha-blend mask compiles the classic_mode branches in
-        // class3/materialF.glsl; every other mask is a GBuffer writer.
-        U32 variants = LLGLSLShader::VARIANT_RIGGED | mirror_variant();
-        if (alpha_mode == 1)
-        {
-            variants |= LLGLSLShader::VARIANT_CLASSIC;
-        }
+        U32 variants = LLGLSLShader::VARIANT_RIGGED |
+                       LLGLSLShader::VARIANT_CLASSIC |
+                       mirror_variant();
         built(gDeferredMaterialProgram[i].createShader(variants), gDeferredMaterialProgram[i]);
-    }
-
-    for (U32 i : { 1u, 5u, 9u, 13u })
-    {
         gDeferredMaterialProgram[i].forEachVariant([](LLGLSLShader& s) { s.mFeatures.hasLighting = true; });
     }
 
-    // Clear any stale value from a previous load before (re)deciding legacy indexed
-    // eligibility -- if the block below is skipped or fails partway, the flag must
-    // not carry a prior 'true' while the indexed programs are unloaded/incomplete.
-    LLGLSLShader::sIndexedLegacyMaterials = false;
-
-    if (LLGLSLShader::sIndexedGLTFChannels >= 2)
-    {
-        // Indexed (multi-material) legacy material GBuffer-write programs, parallel to
-        // gDeferredMaterialProgram but covering only the non-blend (GBuffer) masks and
-        // sampling the GBuffer-relevant maps only. Optional: failure leaves
-        // sIndexedLegacyMaterials false so legacy batching is skipped (the pool falls
-        // back to scalar).
-        bool material_indexed_ok = true;
-        for (U32 i = 0; i < LLMaterial::SHADER_COUNT && material_indexed_ok; ++i)
-        {
-            U32 alpha_mode = i & 0x3;
-            if (alpha_mode == 1) // DIFFUSE_ALPHA_MODE_BLEND -- forward/alpha pool, not indexed
-            {
-                continue;
-            }
-
-            bool has_spec   = (i & 0x4) != 0;
-            bool has_normal = (i & 0x8) != 0;
-
-            LLGLSLShader& prog = gDeferredMaterialIndexedProgram[i];
-            prog.mName = llformat("Material Indexed Shader %d", i);
-            // Converts specular between sRGB and linear in-shader, so it needs
-            // environment/srgbF attached -- see attachShaderFeatures.
-            prog.mFeatures.hasSrgb = true;
-            prog.mShaderFiles.clear();
-            prog.mShaderFiles.push_back(make_pair("deferred/materialIndexedV.glsl", GL_VERTEX_SHADER));
-            prog.mShaderFiles.push_back(make_pair("deferred/materialIndexedF.glsl", GL_FRAGMENT_SHADER));
-            prog.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-            prog.clearPermutations();
-            prog.addPermutation("LINEAR_DIFFUSE", "1");
-            if (has_normal) prog.addPermutation("HAS_NORMAL_MAP", "1");
-            if (has_spec)   prog.addPermutation("HAS_SPECULAR_MAP", "1");
-            prog.addPermutation("DIFFUSE_ALPHA_MODE", llformat("%d", alpha_mode));
-            prog.addPermutation("GLTF_INDEXED_CHANNELS", llformat("%d", LLGLSLShader::sIndexedGLTFChannels));
-            add_common_permutations(&prog);
-            const S32 n = LLGLSLShader::sIndexedGLTFChannels;
-            prog.mOnLink = [n, has_normal, has_spec](LLGLSLShader& s)
-            { setup_material_indexed_samplers(s, n, has_normal, has_spec); };
-
-            material_indexed_ok = prog.createShader(LLGLSLShader::VARIANT_RIGGED | mirror_variant());
-        }
-
-        if (material_indexed_ok)
-        {
-            LLGLSLShader::sIndexedLegacyMaterials = true;
-        }
-        else
-        {
-            LL_WARNS("ShaderLoading") << "Indexed legacy material shaders failed to load; legacy batching disabled." << LL_ENDL;
-            for (U32 i = 0; i < LLMaterial::SHADER_COUNT; ++i)
-            {
-                gDeferredMaterialIndexedProgram[i].unload();
-            }
-        }
-    }
+    // Native G-buffer capture accepts indexed legacy batches directly. Keep
+    // formation enabled when the shared slot width exists; retained indexed
+    // glow and shadow programs validate their own GL consumers below.
+    LLGLSLShader::sIndexedLegacyMaterials =
+        LLGLSLShader::sIndexedGLTFChannels >= 2;
 
     {
         gPBRGlowProgram.mName = " PBR Glow Shader";

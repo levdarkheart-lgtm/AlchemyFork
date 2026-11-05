@@ -12747,17 +12747,15 @@ void LLPipeline::captureMetalWorldMaterialBatch(
         -> LLImageGL*
     {
         LLImageGL* image = texture ? texture->getGLTexture() : nullptr;
-        if (!image || !image->getTexName())
+        if (!image || !image->getMetalTexture())
         {
-            // Material samplers reach LLViewerTexture::bindDefaultImage when
-            // a streamed diffuse, normal or specular map has no GL object.
-            // Replay the image the visible draw actually sampled instead of
-            // rejecting the native transaction while that asset is pending.
+            // Native publication readiness, rather than a GL name, selects
+            // the streamed fallback for this Metal-owned pass.
             LLViewerFetchedTexture* fallback =
                 LLViewerFetchedTexture::sDefaultImagep.get();
             LLImageGL* fallback_image = fallback
                 ? fallback->getGLTexture() : nullptr;
-            if (fallback_image && fallback_image->getTexName())
+            if (fallback_image && fallback_image->getMetalTexture())
             {
                 image = fallback_image;
             }

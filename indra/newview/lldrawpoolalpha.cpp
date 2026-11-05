@@ -222,7 +222,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
 
     // prepare_alpha_shader() recurses into the rigged variant, so priming the bases
     // covers every corner
-    for (int i = 0; i < LLMaterial::SHADER_COUNT; ++i)
+    for (U32 i : { 1u, 5u, 9u, 13u })
     {
         prepare_alpha_shader(gDeferredMaterialProgram[i].selectVariant(), true, water_sign);
     }
@@ -1055,6 +1055,8 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                         U32 mask = params.mShaderMask;
 
                         llassert(mask < LLMaterial::SHADER_COUNT);
+                        llassert((mask & 0x3u) ==
+                                 LLMaterial::DIFFUSE_ALPHA_MODE_BLEND);
                         target_shader = gDeferredMaterialProgram[mask].selectVariant();
                     }
                     else if (!params.mFullbright)

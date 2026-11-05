@@ -90,7 +90,7 @@ float sample_diffuse_alpha(vec2 uv)
 
 void main()
 {
-    // As materialIndexedF compares it.
+    // Match the native legacy-material G-buffer cutoff contract.
     float bias = 0.001953125; // 1/512, half an 8-bit quantization
     if (sample_diffuse_alpha(vary_texcoord0.xy) < mat_minimum_alpha[vary_material_index] - bias)
     {

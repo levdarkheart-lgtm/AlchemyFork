@@ -38,16 +38,9 @@
 
 class LLViewerTexture;
 class LLDrawInfo;
-class LLGLSLShader;
 
 class LLDrawPoolMaterials : public LLRenderPass
 {
-    LLGLSLShader *mShader;
-
-    // True when this pass's render map is empty (no geometry). begin/render/end all
-    // consult it so an empty pass skips the deferred shader bind/unbind entirely --
-    // modern PBR/simple scenes leave most of the 12 legacy material passes empty.
-    bool isPassEmpty(S32 pass);
 public:
     LLDrawPoolMaterials();
 
@@ -73,9 +66,8 @@ public:
     };
 
     // One authoritative description of the legacy material render maps and
-    // shader feature masks. The GL draw pool and direct Metal scene traversal
-    // both consume this table so their alpha/normal/specular semantics cannot
-    // drift during the renderer cutover. Rigged maps use render_type + 1.
+    // native feature masks. Main-world legacy material G-buffer rendering is
+    // Metal-only; rigged maps use render_type + 1.
     inline static constexpr std::array<DeferredPassDescription, 12>
         DEFERRED_PASSES{{
             { PASS_MATERIAL, 0 },
@@ -107,7 +99,7 @@ public:
 
     void render(S32 pass = 0) override { }
     S32  getNumPasses() override {return 0;}
-    void prerender() override;
+    void prerender() override { }
 
     S32 getNumDeferredPasses() override;
     void beginDeferredPass(S32 pass) override;
