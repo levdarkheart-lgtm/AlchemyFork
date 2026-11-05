@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `d625610b62`.
+**Renderer checkpoint:** Commit `74847d912b`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,14 +13,14 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,346 findings; strict exits 1. No rule or suppression changed. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,344 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Metal is the mandatory visible presentation owner. Startup/world GL swaps are suppressed; an incomplete native frame retains the previous Metal drawable and is machine-censused without claiming GL fallback. Live GL traversal/context creation/shutdown remain. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Native producers use the window-owned Metal device. Reflection probes use backend-neutral logical slots and Metal-only cube/radiance/SH publication; dead GL light-map plan resources are deleted; converted resources retain native scale-down and eviction. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while retained GL consumers are removed; owner accepted readable UI text. Snapshot has no GL scratch/reconcile path. Selection effects plus HUD fullbright/shiny/emboss/transparent output are native-only; visual review remains queued. |
 | M-007 | World scene and material correctness | doing | Probe scenes plus ordinary sky/cloud/body, avatars/impostors, fullbright, transparent alpha, water surface/exclusion/haze, atmospheric haze/sky-behind, legacy-material/bump, shiny/emboss and opaque/masked/blended glTF PBR batches are directly enumerated into Metal. Grass, trees and all main/probe directional/projector shadow generation are native; broad parity remains open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR integration/glow, previews, visual hints, avatar composites, selection, debug effects, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation are implemented in Metal. Alpha-pool, water, atmosphere, sky, impostor, DoF-depth and debug-highlight production are native-only. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (2,346 findings), linked/runtime no-GL and visual review remain open. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (2,344 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
 | M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation, probe publication, terrain bake, selection/edit highlights, base deferred/PBR/legacy-material/legacy-bump/fullbright/transparent/water geometry, deferred sun/SSAO/base/local/projector lighting, water exclusion/haze, atmospheric haze/sky-behind, main sky/cloud/body/avatar/impostor layers, main/probe shadow generation/storage/sampler/receiver state, shiny/emboss, glow, DoF/debug alpha, trees nor converted debug effects. Superseded owners and unreachable OSS pathing render code are deleted. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
@@ -117,8 +117,8 @@ sun, SSAO blur and base-light draws, six programs, nine GLSL stages and obsolete
 `1f3cfeefb6` preserves CPU visible-light/projector-shadow selection and removes duplicate GL point/projector lighting. `3e975c4b28` then deletes the three dead
 pack light-map slots, blurred scratch target and dispatch-reach input. Metal retains private light-map/blur ownership; the default 1440p plan sheds 21.1 MiB.
 `cbdecfd337` replaces the first deferred `setupHWLights()` mutation with CPU-only native direction preparation and deletes the now-drawless GL
-vertex/cull/blend/color-mask state prologue. `fa746d4cb8` makes direct Metal edit/touch highlights sole owner. `5d1bf5a394`/`497759ebb4` remove unreachable OSS pathing rendering/gate. `bbc4be43d9` removes GL object-update blips; `c965068e2f` removes the GL probe-volume draw/program/shaders; `06c4da2bb8` removes GL particle-raycast lines; `1950b5c562` removes GL shadow-frusta geometry; `f65bf7118b` removes the GL terrain-composition grid; `90a9967202` removes GL reflection-probe links; `e154478468` removes both GL Occlusion phases; `d625610b62` removes GL drawable face-center points and their native capture's ambient GL-state dependency while retaining transform-ordered Metal batches. Independent pathfinding UI/data/network code remains. Other retained post-deferred output still owns the bound target.
-Visual cases 51–60 remain queued.
+vertex/cull/blend/color-mask state prologue. `fa746d4cb8` makes direct Metal edit/touch highlights sole owner. `5d1bf5a394`/`497759ebb4` remove unreachable OSS pathing rendering/gate. `bbc4be43d9` removes GL object-update blips; `c965068e2f` removes the GL probe-volume draw/program/shaders; `06c4da2bb8` removes GL particle-raycast lines; `1950b5c562` removes GL shadow-frusta geometry; `f65bf7118b` removes the GL terrain-composition grid; `90a9967202` removes GL reflection-probe links; `e154478468` removes both GL Occlusion phases; `d625610b62` removes GL drawable face-center points; `74847d912b` removes live Develop > Bounding Boxes GL submissions and their native capture's ambient GL color/line/state dependency while retaining explicit semantic colors, face/drawable/group extents, bridge transforms, traversal order and the active-object 1–5 px pulse. The separate `renderIntersectingBBoxes()` utility remains isolated pending a verified native caller/owner. Independent pathfinding UI/data/network code remains. Other retained post-deferred output still owns the bound target.
+Visual cases 51–61 remain queued.
 
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -130,14 +130,14 @@ swap. Exact prior evidence remains in the
 
 ## Validation checkpoint
 
-- `d625610b62`: Ninja and prescribed Xcode Release 68398 pass
+- `74847d912b`: Ninja and prescribed Xcode Release 68400 pass
   warnings-as-errors; physical validated Metal retained-world 8,022/1 passes.
   Release inspection is 349/349 ARM64 and deep signing passes.
   Executable SHA-256 is
-  `2849d48feace1bd46403ec5b2ece91a1033e35182cc7df8b31fb979c4a90b971`;
+  `cb5608e70e5a174d856d84febdd16ea9bf44861d57cd3b688ff013cc35edee5e`;
   metallib is `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
   All 556,530 renderer assertions and the 2,597-assertion focused resource-plan suite pass. Host doctor passes on the M1 Max acceptance host.
-  Strict inventory is 2,346 and exits 1; harness validation and all 31 tool tests pass.
+  Strict inventory is 2,344 and exits 1; harness validation and all 31 tool tests pass.
 
 ## Owner-attended visual review cadence
 
@@ -163,7 +163,7 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Remove duplicate GL bounding-box outlines while retaining the existing ordered Metal colors, widths and transforms.
+Remove duplicate GL raycast traversal/overlays while retaining the existing ordered Metal branch, triangle, selected-object and particle diagnostics.
 Do not wait for visual review, restore fallbacks or launch viewers.
 
 ## Non-negotiable open gates
