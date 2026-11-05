@@ -445,7 +445,8 @@ void preserve_active_gl_texture_request(LLViewerFetchedTexture* image)
     // fetched image exists. Native-only startup must leave it false until the
     // decoded pixels publish through the Metal create queue. The active
     // transition renderer retains the old marker for fail-closed GL recovery.
-    if (!gGLManager.mInited || gGLManager.mIsDisabled)
+    if (!gGLManager.mInited || gGLManager.mIsDisabled ||
+        LLImageGL::isMetalTextureAuthority())
     {
         return;
     }
@@ -1202,7 +1203,8 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 
     //
     // Create GPU textures for all decoded images that have not yet been
-    // published. Darwin uses the native path here once GL is disabled.
+    // published. Darwin selects the native producer through explicit Metal
+    // texture authority rather than pretending the renderer is disabled.
     //
 
     while (!mCreateTextureList.empty())
@@ -1231,10 +1233,10 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             created = imagep->createTexture();
         }
         // The established GL path finalizes a failed create exactly as before.
-        // With GL disabled, however, there is no fallback object to publish: retain
+        // With Metal authoritative there is no fallback object to publish: retain
         // the decoded pixels and pending state until native creation can succeed.
 #if LL_DARWIN
-        if (!created && gGLManager.mIsDisabled)
+        if (!created && LLImageGL::isMetalTextureAuthority())
         {
             mCreateTextureList.push(imagep);
             break;
@@ -1260,6 +1262,12 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         }
     }
 
+#if LL_DARWIN
+    if (LLImageGL::isMetalTextureAuthority())
+    {
+        return create_timer.getElapsedTimeF32();
+    }
+#endif
     if (gGLManager.mIsDisabled)
     {
         return create_timer.getElapsedTimeF32();

@@ -267,13 +267,10 @@ LLPointer<LLViewerTexture> LLViewerTextureManager::getLocalTexture(const LLUUID&
 LLPointer<LLViewerTexture> LLViewerTextureManager::getLocalTexture(const LLImageRaw* raw, bool usemipmaps)
 {
 #if LL_DARWIN
-    // A native-only viewer still needs locally generated UI/debug textures after
-    // the GL manager is gone.  Constructing LLViewerTexture from LLImageRaw calls
-    // LLImageGL's legacy upload constructor immediately, so select the native
-    // producer before constructing the backing object.  Keep the established
-    // dual-backed path while GL is active: the transitional fail-closed frame
-    // still needs the exact local pixels if a Metal presentation cannot commit.
-    if (gGLManager.mIsDisabled)
+    // Constructing LLViewerTexture from LLImageRaw calls the legacy upload
+    // constructor immediately, so select the production Metal owner before
+    // constructing the backing object.
+    if (LLImageGL::isMetalTextureAuthority())
     {
         LLPointer<LLViewerTexture> tex = new LLViewerTexture(
             raw->getWidth(), raw->getHeight(), raw->getComponents(), usemipmaps);
@@ -305,7 +302,7 @@ LLViewerFetchedTexture* LLViewerTextureManager::getFetchedTexture(const LLImageR
     LLImageDataSharedLock lock(raw);
 #if LL_DARWIN
     LLViewerFetchedTexture* ret = nullptr;
-    if (gGLManager.mIsDisabled)
+    if (LLImageGL::isMetalTextureAuthority())
     {
         LLUUID id;
         id.generate();
@@ -448,7 +445,7 @@ void LLViewerTextureManager::init()
         }
     }
 #if LL_DARWIN
-    const bool default_created = gGLManager.mIsDisabled
+    const bool default_created = LLImageGL::isMetalTextureAuthority()
         ? imagep->createMetalTexture(0, image_raw, LLGLTexture::OTHER)
         : imagep->createGLTexture(0, image_raw);
 #else
@@ -1617,24 +1614,35 @@ bool LLViewerFetchedTexture::createTexture(S32 usename, S32 category)
     }
 
 #if LL_DARWIN
-    // Once the GL manager is gone, fetched-image publication must still retain
-    // its complete lifecycle. Build a staged native generation, then retire any
-    // lower-resolution transitional GL backing only after Metal has committed.
-    if (gGLManager.mIsDisabled)
+    // Build a staged native generation, then retire any older backing only
+    // after Metal has committed. The same path runs on the image worker without
+    // requiring a shared GL context.
+    if (LLImageGL::isMetalTextureAuthority())
     {
-        if (usename != 0 || !on_main_thread())
+        if (usename != 0)
         {
             return false;
         }
 
-        mGLTexturep->beginUpload(mRawImage->getComponents());
+        const bool main_thread = on_main_thread();
+        if (main_thread)
+        {
+            mGLTexturep->beginUpload(mRawImage->getComponents());
+        }
         const bool created = mGLTexturep->createMetalTexture(
             mRawDiscardLevel, mRawImage, category);
         if (created)
         {
-            mGLTexturep->publishMetalTextureAuthoritative();
+            if (main_thread)
+            {
+                mGLTexturep->publishMetalTextureAuthoritative();
+            }
+            else
+            {
+                return mGLTexturep->syncMetalToMainThread();
+            }
         }
-        else
+        else if (main_thread)
         {
             mGLTexturep->cancelUpload();
         }
@@ -1702,9 +1710,6 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
 #endif
             mNeedsCreateTexture = true;
             auto mainq = LLImageGLThread::sEnabledTextures
-#if LL_DARWIN
-                && !gGLManager.mIsDisabled
-#endif
                 ? mMainQueue.lock() : nullptr;
             bool posted = false;
             if (mainq)

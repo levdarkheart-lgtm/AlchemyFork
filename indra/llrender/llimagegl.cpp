@@ -79,6 +79,7 @@ constexpr U8 METAL_UPLOAD_COMMITTED = 1;
 constexpr U8 METAL_UPLOAD_FAILED = 2;
 #if LL_DARWIN
 static ALMetalDevice* sImageMetalDevice = nullptr;
+static bool sMetalTextureAuthority = false;
 static std::unique_ptr<ALMetalTextureResampler> sMetalTextureResampler;
 static std::atomic<bool> sMetalTextureReported{false};
 static std::atomic<bool> sMetalScaleDownReported{false};
@@ -489,6 +490,16 @@ ALMetalDevice* LLImageGL::getMetalDevice() noexcept
 {
     return sImageMetalDevice;
 }
+
+void LLImageGL::setMetalTextureAuthority(bool enabled) noexcept
+{
+    sMetalTextureAuthority = enabled;
+}
+
+bool LLImageGL::isMetalTextureAuthority() noexcept
+{
+    return sMetalTextureAuthority;
+}
 #endif
 
 //static
@@ -501,7 +512,8 @@ void LLImageGL::initClass(LLWindow* window, S32 num_catagories, bool skip_analyz
     {
         LLImageGLThread::sEnabledTextures = thread_texture_loads;
         LLImageGLThread::sEnabledMedia = thread_media_updates;
-        // Which clears both again if it gets no context to upload on.
+        // The legacy worker clears both again if it gets no shared context;
+        // Metal-authoritative Darwin uploads need no GL context.
         LLImageGLThread::createInstance(window);
     }
 }
@@ -1660,7 +1672,9 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const LLImageRaw* image,
     checkActiveThread();
     checkUploadBegun();
 
-    if (!on_main_thread() || !image || image->isBufferInvalid() || !sImageMetalDevice ||
+    const bool valid_upload_thread =
+        on_main_thread() || (sOnImageGLThread && mUploadInFlight);
+    if (!valid_upload_thread || !image || image->isBufferInvalid() || !sImageMetalDevice ||
         mExternalTexture || mTarget != GL_TEXTURE_2D)
     {
         return false;
@@ -1695,7 +1709,9 @@ bool LLImageGL::createMetalTexture(S32 discard_level, const U8* data,
     checkActiveThread();
     checkUploadBegun();
 
-    if (!on_main_thread() || !data || !sImageMetalDevice || mExternalTexture ||
+    const bool valid_upload_thread =
+        on_main_thread() || (sOnImageGLThread && mUploadInFlight);
+    if (!valid_upload_thread || !data || !sImageMetalDevice || mExternalTexture ||
         mTarget != GL_TEXTURE_2D || mWidth <= 0 || mHeight <= 0 ||
         mComponents <= 0)
     {
@@ -5465,6 +5481,17 @@ LLImageGLThread::LLImageGLThread(LLWindow* window)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 
+#if LL_DARWIN
+    if (LLImageGL::isMetalTextureAuthority())
+    {
+        // Native image uploads need the worker queue, not a shared GL context.
+        // Retaining the queue preserves asynchronous decode/upload and Metal
+        // command batching while removing this runtime OpenGL dependency.
+        LL::ThreadPool::start();
+        return;
+    }
+#endif
+
     mContext = mWindow->createSharedContext();
     if (!mContext)
     {
@@ -5474,6 +5501,7 @@ LLImageGLThread::LLImageGLThread(LLWindow* window)
         sEnabledMedia = false;
         return;
     }
+    mUsesGLContext = true;
     LL::ThreadPool::start();
 }
 
@@ -5490,8 +5518,11 @@ void LLImageGLThread::run()
 #if LL_DARWIN
     sOnImageGLThread = true;
 #endif
-    mWindow->makeContextCurrent(mContext);
-    gGL.init(false);
+    if (mUsesGLContext)
+    {
+        mWindow->makeContextCurrent(mContext);
+        gGL.init(false);
+    }
     LL::ThreadPool::run();
 #if LL_DARWIN
     // The queue may have been closed while an upload task was executing, preventing its
@@ -5500,8 +5531,11 @@ void LLImageGLThread::run()
     sWorkerMetalUploadBatch.mFlushQueued = false;
     flush_worker_metal_upload_batch();
 #endif
-    gGL.shutdown();
-    mWindow->destroySharedContext(mContext);
+    if (mUsesGLContext)
+    {
+        gGL.shutdown();
+        mWindow->destroySharedContext(mContext);
+    }
 #if LL_DARWIN
     sOnImageGLThread = false;
 #endif

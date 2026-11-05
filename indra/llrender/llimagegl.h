@@ -659,6 +659,12 @@ public:
     static void setMetalDevice(ALMetalDevice* device);
     static ALMetalDevice* getMetalDevice() noexcept;
 
+    // Select the production texture owner independently of the legacy global
+    // "renderer disabled" state. The native viewer keeps rendering enabled
+    // while all ordinary image producers publish Metal-only storage.
+    static void setMetalTextureAuthority(bool enabled) noexcept;
+    static bool isMetalTextureAuthority() noexcept;
+
     struct MetalMipLevel
     {
         const U8* mData = nullptr;
@@ -822,6 +828,7 @@ public:
 private:
     LLWindow* mWindow;
     void* mContext = nullptr;
+    bool mUsesGLContext = false;
 };
 
 #endif // LL_LLIMAGEGL_H

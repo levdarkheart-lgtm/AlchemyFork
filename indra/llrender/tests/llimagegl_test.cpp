@@ -2844,6 +2844,94 @@ namespace
                           [](U8 byte) { return byte == 0x77; }));
     }
 
+    TEST_CASE_METHOD(llimagegl_data, "LLImageGL: Metal-authoritative worker creates native-only textures", "[LLImageGL][almetal]")
+    {
+        std::string error;
+        auto device = ALMetalDevice::create(&error);
+        INFO(error);
+        REQUIRE(device);
+
+        struct StateRestore
+        {
+            ALMetalDevice* mDevice = LLImageGL::getMetalDevice();
+            bool mAuthority = LLImageGL::isMetalTextureAuthority();
+            ~StateRestore()
+            {
+                LLImageGL::setMetalTextureAuthority(mAuthority);
+                LLImageGL::setMetalDevice(mDevice);
+            }
+        } state_restore;
+        LLImageGL::setMetalDevice(device.get());
+        LLImageGL::setMetalTextureAuthority(true);
+        REQUIRE(LLImageGL::isMetalTextureAuthority());
+
+        LL::WorkQueue mainloop("mainloop");
+        LLImageGLThread::createInstance(gl->window());
+        struct ThreadEnd
+        {
+            ~ThreadEnd() { LLImageGLThread::deleteSingleton(); }
+        } thread_end;
+
+        LLPointer<LLImageGL> image = new LLImageGL(/*usemipmaps=*/true);
+        LLPointer<LLImageRaw> raw = makeRaw(32, 16, 4, 0x6d);
+        image->beginUpload(raw->getComponents());
+
+        std::atomic<bool> worker_done{ false };
+        std::atomic<bool> upload_ok{ false };
+        REQUIRE(LLImageGLThread::instance().post([&]()
+        {
+            bool created = image->createMetalTexture(
+                0, raw.get(), LLGLTexture::OTHER);
+            if (created)
+            {
+                created = image->syncMetalToMainThread();
+            }
+            upload_ok.store(created, std::memory_order_release);
+            worker_done.store(true, std::memory_order_release);
+        }));
+
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (!worker_done.load(std::memory_order_acquire) &&
+               std::chrono::steady_clock::now() < deadline)
+        {
+            mainloop.runPending();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        mainloop.runPending();
+        REQUIRE(upload_ok.load(std::memory_order_acquire));
+
+        bool published = false;
+        bool publication_succeeded = false;
+        image->afterPublish([&](bool succeeded)
+        {
+            publication_succeeded = succeeded;
+            published = true;
+        });
+        while (!published && std::chrono::steady_clock::now() < deadline)
+        {
+            mainloop.runPending();
+            LLImageGL::publishUploads();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
+        REQUIRE(published);
+        CHECK(publication_succeeded);
+        CHECK(image->getTexName() == 0);
+        CHECK_FALSE(image->getHasGLTexture());
+        REQUIRE(image->getMetalTexture());
+        CHECK(image->getMetalTexture()->descriptor().width == 32);
+        CHECK(image->getMetalTexture()->descriptor().height == 16);
+        CHECK(image->getMetalTexture()->descriptor().mipmap_level_count == 6);
+
+        std::array<U8, 32 * 16 * 4> pixels{};
+        REQUIRE(image->getMetalTexture()->readback(
+            *device, 0, 0, {}, pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::all_of(pixels.begin(), pixels.end(),
+                          [](U8 byte) { return byte == 0x6d; }));
+    }
+
     TEST_CASE_METHOD(llimagegl_data, "LLImageGL: queued worker textures share one Metal upload submission", "[LLImageGL][almetal]")
     {
         std::string error;

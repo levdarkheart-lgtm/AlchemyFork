@@ -2324,6 +2324,11 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     {
         LLVertexBuffer::setMetalDevice(sdl_window->getMetalDevice());
         LLImageGL::setMetalDevice(sdl_window->getMetalDevice());
+        // The Darwin product renderer is Metal-native. This is deliberately
+        // separate from gGLManager.mIsDisabled: the viewer remains fully
+        // operational while ordinary texture and font producers stop creating
+        // parallel GL resources.
+        LLImageGL::setMetalTextureAuthority(true);
         gGL.setMetalBackend(sdl_window->getMetalDevice(),
                             sdl_window->getMetalFrameScheduler(),
                             sdl_window->getMetalSurface());
@@ -6893,16 +6898,18 @@ void LLViewerWindow::initFonts(F32 zoom_factor)
     // the start.
     LLFontGL::sForceMonochromeEmoji = gSavedSettings.getBOOL("AlchemyForceMonochromeEmoji");
 
+#if LL_DARWIN
+    const bool create_gl_font_textures =
+        !LLImageGL::isMetalTextureAuthority();
+#else
+    constexpr bool create_gl_font_textures = true;
+#endif
     LLFontGL::initClass( gSavedSettings.getF32("FontScreenDPI"),
                                 mDisplayScale.mV[VX] * zoom_factor,
                                 mDisplayScale.mV[VY] * zoom_factor,
                                 gDirUtilp->getAppRODataDir(),
                                 gSavedSettings.getLLSD("AlchemyUIFontOverrides"),
-                                // Until a complete Metal world/UI transaction
-                                // owns presentation, the GL fallback must keep
-                                // readable UI while the same atlas is mirrored
-                                // for native UI capture.
-                                /*create_gl_textures=*/true,
+                                /*create_gl_textures=*/create_gl_font_textures,
                                 /*create_metal_textures=*/LL_DARWIN);
 }
 
