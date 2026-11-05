@@ -75,7 +75,7 @@ uniform float proj_ambiance;
 uniform vec3 color; // light_color
 uniform float size; // light_size
 
-// Shared shadow/SSAO constants and the specular exponent, spliced from
+// Shared SSAO constants and the specular exponent, spliced from
 // class1/deferred/deferredBlock.glsl and bound at UB_DEFERRED.
 //[ENGINE_BLOCK Deferred]
 // Shared matrix stack + derived matrices, spliced from

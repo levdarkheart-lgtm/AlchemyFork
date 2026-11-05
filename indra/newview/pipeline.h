@@ -1265,10 +1265,10 @@ public:
     void endMetalWorldGBufferCapture();
 #endif
 
-    // Rebuild the shared shadow/SSAO constant block from current state (CPU only). Called once
-    // per deferred pass; every value in it is fixed for the whole pass.
-    void packDeferredUBO();
-    // Upload (if dirty) and bind that block at UB_DEFERRED.
+    // Rebuild the native shadow state and retained GL SSAO/specular block from current state.
+    // Called once per deferred pass; every value is fixed for the whole pass.
+    void packDeferredConstants();
+    // Upload (if dirty) and bind the retained GL block at UB_DEFERRED.
     void bindDeferredUBO();
 
     void bindDeferredShaderFast(LLGLSLShader& shader);
@@ -1879,33 +1879,34 @@ public:
     LLVector4               mSunOrthoClipPlanes;
     LLVector2               mScreenScale;
 
-    // ---- Shared deferred uniform block (UB_DEFERRED) --------------------------------------
-    // std140-packed shadow/SSAO constants and the specular exponent, uploaded once per deferred
-    // pass instead of being re-pushed by every bindDeferredShader call. Holds only what is
-    // constant across a pass: screen_res is overridden per call and sun_dir/moon_dir are
-    // entangled with atmospherics, so those stay loose.
-    //
-    // shadow_matrix@0, ssao_effect_mat@384, shadow_clip@432, shadow_res@448,
-    // proj_shadow_res@456, scalars @464..500, size 512. Matrices go up as they lie: an
-    // LLMatrix4a's rows are the columns std140 reads by default, and ssao_effect_mat is
-    // symmetric either way. Checked against the driver at shader load by
-    // validateEngineBlockLayouts() in debug builds.
-    struct alignas(16) DeferredUBOData
+    // Native Metal shadow state is deliberately separate from the retained GL block: no GLSL
+    // receiver consumes these values. Matrices lie in the orientation the Metal constant
+    // bridges expect.
+    struct NativeShadowData
     {
-        F32 shadow_matrix[6][16];      // mat4[6]
-        F32 ssao_effect_mat[12];       // mat3 (3 vec4-strided columns)
-        F32 shadow_clip[4];            // vec4
-        F32 shadow_res[2];             // vec2
-        F32 proj_shadow_res[2];        // vec2
+        F32 shadow_matrix[6][16];
+        F32 shadow_clip[4];
+        F32 shadow_res[2];
         F32 shadow_bias;
         F32 shadow_offset;
         F32 spot_shadow_bias;
         F32 spot_shadow_offset;
+        F32 shadow_pcss_scale;
+    };
+
+    NativeShadowData            mNativeShadowData{};
+
+    // ---- Retained GL deferred uniform block (UB_DEFERRED) ---------------------------------
+    // std140-packed SSAO constants and the legacy specular exponent. ssao_effect_mat@0,
+    // scalars@48..64, size 80. The matrix is symmetric, so orientation is moot. Checked
+    // against the driver at shader load by validateEngineBlockLayouts() in debug builds.
+    struct alignas(16) DeferredUBOData
+    {
+        F32 ssao_effect_mat[12];       // mat3 (3 vec4-strided columns)
         F32 ssao_radius;
         F32 ssao_max_radius;
         F32 ssao_factor;
         F32 ssao_factor_inv;
-        F32 shadow_pcss_scale;
         F32 specular_exponent;
     };
 

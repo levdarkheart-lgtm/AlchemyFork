@@ -43,7 +43,7 @@ uniform float ssao_irradiance_max;
 // Inputs
 uniform vec4 clipPlane;
 uniform mat3 env_mat;
-// Shared deferred/SSAO constants, spliced from class1/deferred/deferredBlock.glsl and
+// Shared SSAO/specular constants, spliced from class1/deferred/deferredBlock.glsl and
 // bound at UB_DEFERRED. Members are read by bare name.
 //[ENGINE_BLOCK Deferred]
 uniform vec3 sun_dir;

@@ -26,7 +26,7 @@
 uniform sampler2D   noiseMap;
 uniform sampler2D   depthMap;
 
-// Shared shadow/SSAO constants, spliced from class1/deferred/deferredBlock.glsl and
+// Shared SSAO/specular constants, spliced from class1/deferred/deferredBlock.glsl and
 // bound at UB_DEFERRED. Members are read by bare name.
 //[ENGINE_BLOCK Deferred]
 

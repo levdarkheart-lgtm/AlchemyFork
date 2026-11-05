@@ -1150,28 +1150,19 @@ LLPipeline::LLPipeline() :
 
 #if !LL_RELEASE_FOR_DOWNLOAD
     // Register the Deferred block's expected std140 layout for debug validation at shader
-    // load, offsetof()-derived from the very struct packDeferredUBO writes -- llrender carries
-    // no hand-copied offset table that can drift from it. shadow_matrix/ssao_effect_mat must
+    // load, offsetof()-derived from the very struct packDeferredConstants writes -- llrender
+    // carries no hand-copied offset table that can drift from it. ssao_effect_mat must
     // introspect COLUMN-major (see DeferredUBOData). Registered here because gPipeline is a
     // global: this runs during static init, before any shader load.
 #define LL_DEFERRED_LAYOUT(name_lit, m, is_matrix) \
     { -1, name_lit, (U32)offsetof(DeferredUBOData, m), is_matrix }
     LLGLSLShader::registerEngineBlockLayout("Deferred",
     {
-        LL_DEFERRED_LAYOUT("shadow_matrix[0]",   shadow_matrix,      true),
         LL_DEFERRED_LAYOUT("ssao_effect_mat",    ssao_effect_mat,    true),
-        LL_DEFERRED_LAYOUT("shadow_clip",        shadow_clip,        false),
-        LL_DEFERRED_LAYOUT("shadow_res",         shadow_res,         false),
-        LL_DEFERRED_LAYOUT("proj_shadow_res",    proj_shadow_res,    false),
-        LL_DEFERRED_LAYOUT("shadow_bias",        shadow_bias,        false),
-        LL_DEFERRED_LAYOUT("shadow_offset",      shadow_offset,      false),
-        LL_DEFERRED_LAYOUT("spot_shadow_bias",   spot_shadow_bias,   false),
-        LL_DEFERRED_LAYOUT("spot_shadow_offset", spot_shadow_offset, false),
         LL_DEFERRED_LAYOUT("ssao_radius",        ssao_radius,        false),
         LL_DEFERRED_LAYOUT("ssao_max_radius",    ssao_max_radius,    false),
         LL_DEFERRED_LAYOUT("ssao_factor",        ssao_factor,        false),
         LL_DEFERRED_LAYOUT("ssao_factor_inv",    ssao_factor_inv,    false),
-        LL_DEFERRED_LAYOUT("shadow_pcss_scale",  shadow_pcss_scale,  false),
         LL_DEFERRED_LAYOUT("specular_exponent",  specular_exponent,  false),
     });
 #undef LL_DEFERRED_LAYOUT
@@ -13603,17 +13594,17 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
         ALMetalWorldDirectionalShadowConstants& constants =
             capture.impostor_directional_shadows.constants;
         std::memcpy(constants.shadow_matrix,
-                    mDeferredUBOData.shadow_matrix,
+                    mNativeShadowData.shadow_matrix,
                     sizeof(constants.shadow_matrix));
-        std::memcpy(constants.shadow_clip, mDeferredUBOData.shadow_clip,
+        std::memcpy(constants.shadow_clip, mNativeShadowData.shadow_clip,
                     sizeof(constants.shadow_clip));
-        constants.resolution[0] = mDeferredUBOData.shadow_res[0];
-        constants.resolution[1] = mDeferredUBOData.shadow_res[1];
+        constants.resolution[0] = mNativeShadowData.shadow_res[0];
+        constants.resolution[1] = mNativeShadowData.shadow_res[1];
         constants.resolution[2] = static_cast<F32>(capture.width);
         constants.resolution[3] = static_cast<F32>(capture.height);
-        constants.parameters[0] = mDeferredUBOData.shadow_bias;
-        constants.parameters[1] = mDeferredUBOData.shadow_offset;
-        constants.parameters[2] = mDeferredUBOData.shadow_pcss_scale;
+        constants.parameters[0] = mNativeShadowData.shadow_bias;
+        constants.parameters[1] = mNativeShadowData.shadow_offset;
+        constants.parameters[2] = mNativeShadowData.shadow_pcss_scale;
         constants.parameters[3] = static_cast<F32>(capture.height);
         constants.config[0] = sunCascades();
         constants.config[1] = unbuilt;
@@ -13639,17 +13630,17 @@ bool LLPipeline::fillMetalImpostorDirectionalShadows()
     {
         ALMetalWorldDirectionalShadowConstants constants;
         std::memcpy(constants.shadow_matrix,
-                    mDeferredUBOData.shadow_matrix,
+                    mNativeShadowData.shadow_matrix,
                     sizeof(constants.shadow_matrix));
-        std::memcpy(constants.shadow_clip, mDeferredUBOData.shadow_clip,
+        std::memcpy(constants.shadow_clip, mNativeShadowData.shadow_clip,
                     sizeof(constants.shadow_clip));
-        constants.resolution[0] = mDeferredUBOData.shadow_res[0];
-        constants.resolution[1] = mDeferredUBOData.shadow_res[1];
+        constants.resolution[0] = mNativeShadowData.shadow_res[0];
+        constants.resolution[1] = mNativeShadowData.shadow_res[1];
         constants.resolution[2] = static_cast<F32>(capture.width);
         constants.resolution[3] = static_cast<F32>(capture.height);
-        constants.parameters[0] = mDeferredUBOData.shadow_bias;
-        constants.parameters[1] = mDeferredUBOData.shadow_offset;
-        constants.parameters[2] = mDeferredUBOData.shadow_pcss_scale;
+        constants.parameters[0] = mNativeShadowData.shadow_bias;
+        constants.parameters[1] = mNativeShadowData.shadow_offset;
+        constants.parameters[2] = mNativeShadowData.shadow_pcss_scale;
         constants.parameters[3] = static_cast<F32>(capture.height);
         constants.config[0] = sunCascades();
         constants.config[1] = unbuilt;
@@ -14987,21 +14978,21 @@ bool LLPipeline::fillMetalWorldProjectorShadows()
     {
         ALMetalWorldDirectionalShadowConstants constants;
         std::memcpy(constants.shadow_matrix[0],
-                    mDeferredUBOData.shadow_matrix[4],
+                    mNativeShadowData.shadow_matrix[4],
                     sizeof(constants.shadow_matrix[0]));
         std::memcpy(constants.shadow_matrix[1],
-                    mDeferredUBOData.shadow_matrix[5],
+                    mNativeShadowData.shadow_matrix[5],
                     sizeof(constants.shadow_matrix[1]));
         std::memcpy(constants.shadow_clip,
-                    mDeferredUBOData.shadow_clip,
+                    mNativeShadowData.shadow_clip,
                     sizeof(constants.shadow_clip));
         constants.resolution[0] = static_cast<F32>(width);
         constants.resolution[1] = static_cast<F32>(height);
         constants.resolution[2] = static_cast<F32>(capture.width);
         constants.resolution[3] = static_cast<F32>(capture.height);
-        constants.parameters[0] = mDeferredUBOData.spot_shadow_bias;
-        constants.parameters[1] = mDeferredUBOData.spot_shadow_offset;
-        constants.parameters[2] = mDeferredUBOData.shadow_pcss_scale;
+        constants.parameters[0] = mNativeShadowData.spot_shadow_bias;
+        constants.parameters[1] = mNativeShadowData.spot_shadow_offset;
+        constants.parameters[2] = mNativeShadowData.shadow_pcss_scale;
         constants.parameters[3] = static_cast<F32>(capture.height);
         constants.config[0] = 2;
         constants.config[1] = unbuilt;
@@ -18567,7 +18558,7 @@ void LLPipeline::releaseAllRenderResources()
     releaseScopeBuffers();
     clearReferenceStill();
 
-    mDeferredUBO.release(); // shared shadow/SSAO block (UB_DEFERRED); re-created lazily on next use
+    mDeferredUBO.release(); // retained GL SSAO/specular block (UB_DEFERRED); re-created lazily on next use
     mDeferredUBODirty = true;
 
     if (LLEnvironment::instanceExists())
@@ -28797,19 +28788,20 @@ void LLPipeline::renderFinalize()
     recordTrianglesDrawn();
 }
 
-void LLPipeline::packDeferredUBO()
+void LLPipeline::packDeferredConstants()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
 
-    static_assert(sizeof(DeferredUBOData) == 512, "DeferredUBOData must match std140 (512 bytes)");
+    static_assert(sizeof(DeferredUBOData) == 80, "DeferredUBOData must match std140 (80 bytes)");
 
     DeferredUBOData& d = mDeferredUBOData;
+    NativeShadowData& shadow = mNativeShadowData;
 
-    // The rows as they lie are the columns std140 reads by default, so the shader computes
-    // shadow_matrix[k] * spos exactly as the loose uniform did.
+    // The rows as they lie are the orientation the native shadow constant bridges expect.
     for (U32 i = 0; i < 6; ++i)
     {
-        memcpy(d.shadow_matrix[i], mSunShadowMatrix[i].getF32ptr(), sizeof(d.shadow_matrix[i]));
+        memcpy(shadow.shadow_matrix[i], mSunShadowMatrix[i].getF32ptr(),
+               sizeof(shadow.shadow_matrix[i]));
     }
 
     // ssao_effect_mat scales the projection of colour onto <1,1,1>/sqrt(3) by the value factor
@@ -28823,28 +28815,24 @@ void LLPipeline::packDeferredUBO()
     d.ssao_effect_mat[4] = matrix_nondiag; d.ssao_effect_mat[5] = matrix_diag;    d.ssao_effect_mat[6]  = matrix_nondiag;
     d.ssao_effect_mat[8] = matrix_nondiag; d.ssao_effect_mat[9] = matrix_nondiag; d.ssao_effect_mat[10] = matrix_diag;
 
-    memcpy(d.shadow_clip, mSunClipPlanes.mV, sizeof(d.shadow_clip));
+    memcpy(shadow.shadow_clip, mSunClipPlanes.mV, sizeof(shadow.shadow_clip));
 
     // Metal lighting allocates from the backend-neutral plan. A missing description falls back to one texel so CPU
     // uniform packing stays finite; the unbuilt mask prevents the corresponding slice from being sampled.
     const std::optional<ALRenderTargetDesc>& sun_desc =
         mResourcePlan.desc(ALRenderResourcePlan::sunShadow(renderPack(), 0));
-    const std::optional<ALRenderTargetDesc>& spot_desc =
-        mResourcePlan.desc(ALRenderResourcePlan::Id::SpotShadow0);
-    d.shadow_res[0] = static_cast<F32>(sun_desc ? std::max(sun_desc->width, 1u) : 1u);
-    d.shadow_res[1] = static_cast<F32>(sun_desc ? std::max(sun_desc->height, 1u) : 1u);
-    d.proj_shadow_res[0] = static_cast<F32>(spot_desc ? std::max(spot_desc->width, 1u) : 1u);
-    d.proj_shadow_res[1] = static_cast<F32>(spot_desc ? std::max(spot_desc->height, 1u) : 1u);
+    shadow.shadow_res[0] = static_cast<F32>(sun_desc ? std::max(sun_desc->width, 1u) : 1u);
+    shadow.shadow_res[1] = static_cast<F32>(sun_desc ? std::max(sun_desc->height, 1u) : 1u);
 
     // Reverse-Z shadow maps store reversed depth and sample with GEQUAL, so the receiver
     // reference is pushed the other way: negate the bias at this single assembly site.
     // Offsets keep sign. The bias does not grow with altitude: the receivers are in eye space
     // and every light view is centred on the camera, so no precision is lost to it.
     const F32 bias_sign  = LLRender::sReverseZ ? -1.f : 1.f;
-    d.shadow_bias        = bias_sign * RenderShadowBias;
-    d.shadow_offset      = RenderShadowOffset;
-    d.spot_shadow_bias   = bias_sign * RenderSpotShadowBias;
-    d.spot_shadow_offset = RenderSpotShadowOffset;
+    shadow.shadow_bias        = bias_sign * RenderShadowBias;
+    shadow.shadow_offset      = RenderShadowOffset;
+    shadow.spot_shadow_bias   = bias_sign * RenderSpotShadowBias;
+    shadow.spot_shadow_offset = RenderSpotShadowOffset;
 
     const F32 ssao_factor = RenderSSAOFactor;
     d.ssao_radius        = RenderSSAOScale;
@@ -28855,7 +28843,7 @@ void LLPipeline::packDeferredUBO()
     // Read by the programs as uniforms rather than compiled in, so that changing either reloads nothing.
     static LLCachedControl<F32> pcss_scale(gSavedSettings, "AlchemyRenderShadowPCSSScale", 200.f);
     static LLCachedControl<F32> specular_exponent(gSavedSettings, "RenderSpecularExponent", 128.f);
-    d.shadow_pcss_scale = pcss_scale;
+    shadow.shadow_pcss_scale = pcss_scale;
     d.specular_exponent = specular_exponent;
 
     mDeferredUBODirty = true;
@@ -28867,7 +28855,7 @@ void LLPipeline::bindDeferredUBO()
     // block is never uploaded zero-filled (e.g. the reflection-probe display debug path).
     if (!mDeferredUBO.allocated())
     {
-        packDeferredUBO();
+        packDeferredConstants();
     }
     if (mDeferredUBODirty)
     {
@@ -28902,8 +28890,7 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
 
     shader.bind();
 
-    // Bind the shared per-pass shadow/SSAO block (UB_DEFERRED); everything in it used to be
-    // re-pushed as loose uniforms further down.
+    // Bind the retained per-pass GL SSAO/specular block (UB_DEFERRED).
     bindDeferredUBO();
 
     S32 channel = 0;
@@ -29016,12 +29003,10 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
 
     bindReflectionProbes(shader);
 
-    // shadow_matrix, shadow_clip, shadow_res, proj_shadow_res, shadow_bias/offset,
-    // spot_shadow_bias/offset, ssao_radius/max_radius/factor/factor_inv and ssao_effect_mat now
-    // live in the shared UB_DEFERRED block (packed once per pass in packDeferredUBO, bound
-    // above), so their per-bind loose setters -- and the per-bind rebuild of the 96-float
-    // shadow-matrix array, the ssao_effect_mat derivation and the camera-relative shadow bias
-    // -- are gone. Only uniforms that are NOT in the block are still pushed here.
+    // SSAO radius/max/factor/factor_inv, ssao_effect_mat and specular_exponent live in the
+    // retained GL UB_DEFERRED block, packed once per pass by packDeferredConstants(). Native
+    // shadow constants are held separately and never uploaded to GL. Only uniforms that are
+    // not in the block are still pushed here.
 
     shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES, (GLfloat)deferred_target->getWidth(), (GLfloat)deferred_target->getHeight());
     shader.uniform1f(LLShaderMgr::DEFERRED_NEAR_CLIP, LLViewerCamera::getInstance()->getNear()*2.f);
@@ -29119,7 +29104,7 @@ void LLPipeline::renderDeferredLighting()
         direction.loadua(mMoonDir.mV);
         modelview.transform4(direction, transformed);
         mTransformedMoonDir.set(transformed.getF32ptr());
-        packDeferredUBO();
+        packDeferredConstants();
         calcNearbyLights(*camera);
 
         static LLCachedControl<F32> ssao_scale(
@@ -29226,11 +29211,9 @@ void LLPipeline::renderDeferredLighting()
         mat.transform4(dir, tc);
         mTransformedMoonDir.set(tc.getF32ptr());
 
-        // Repack the shared shadow/SSAO block once for this deferred pass (per pass, so the
-        // cube-snapshot re-entry gets its own RT sizes and matrices). bindDeferredShader()
-        // uploads it on the first bind, and every deferred-lighting program then reads these
-        // ~13 constants from UB_DEFERRED instead of having them re-pushed on every bind.
-        packDeferredUBO();
+        // Repack native shadow state plus the retained GL SSAO/specular block once for this
+        // deferred pass. bindDeferredShader() uploads only the 80-byte GL block on first use.
+        packDeferredConstants();
 
         // The light map's sun pass runs wherever the pack has a light map: for shadows, and in the main view for SSAO.
         // It clears the map, so whatever the pool's target held before is gone.

@@ -175,7 +175,7 @@ public:
         UB_GLTF_NODES,          // "GLTFNodes"
         UB_GLTF_MATERIALS,      // "GLTFMaterials"
         UB_ENVIRONMENT,         // "Environment" (sky/water constants)
-        UB_DEFERRED,            // "Deferred" (shadow/SSAO constants)
+        UB_DEFERRED,            // "Deferred" (SSAO/specular constants)
         UB_LIGHTS,              // "Lights" (forward fixed-function light array state)
         UB_MATRICES,            // "Matrices" (modelview/projection/derived matrix stack state)
         NUM_UNIFORM_BLOCKS
