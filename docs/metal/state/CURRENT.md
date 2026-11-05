@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `c965068e2f`
+**Renderer code checkpoint:** `06c4da2bb8`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -31,7 +31,7 @@ Commits `2836849036` and `cf6a821548` remove Snapshot's GL scratch/reconcile
 path. Fail-closed Metal readback owns the validated size; visual case 30 remains
 open.
 
-The source-exact Xcode Release package is `26.4.0.68386`; its viewer executable SHA-256 is `445f0d5309855c11aa92892afa1469382e130e3350fc130db540ad8ec7bdb925`.
+The source-exact Xcode Release package is `26.4.0.68388`; its viewer executable SHA-256 is `6b016f2286216fda1c038e5898b6a3ae2657e8ff2b37d84ed2901c91bebb8bd1`.
 `tools/metal/verify_app.sh` accepted all 349 inspected Mach-O slices as ARM64
 and deep strict code-sign verification passed. `git diff --check` passes.
 
@@ -97,7 +97,7 @@ state and the 792-line utility; `629cd38c8a` separates native shadow constants.
 owners, nine GLSL stages and three obsolete tests/benchmarks. Visual case 51 is queued.
 `1f3cfeefb6` deletes duplicate GL point/projector lighting; `3e975c4b28` then deletes the three dead pack light-map slots, blurred scratch target and obsolete input.
 Metal retains its private light-map/blur implementation; the default 1440p plan sheds 21.1 MiB. Visual cases 51/52 remain queued.
-`cbdecfd337` separates native sun/moon direction preparation from GL light setup and deletes the drawless vertex/cull/blend/color-mask state prologue around the native deferred-light chain. `fa746d4cb8` makes direct Metal face capture the sole Darwin edit/touch-highlight producer and deletes four GL programs plus five exclusive GLSL stages. `5d1bf5a394` removes unreachable GL pathing rendering; `497759ebb4` removes its overlay gate. `bbc4be43d9` removes duplicate GL object-update blips, and `c965068e2f` removes the duplicate GL reflection-probe-volume fullscreen draw, its program and two exclusive GLSL stages while retaining their native owners. Visual cases 53/54 are queued. Independent pathfinding UI/data/network code remains. No viewer was launched.
+`cbdecfd337` separates native sun/moon direction preparation from GL light setup and deletes the drawless deferred-light state prologue. `fa746d4cb8` makes direct Metal edit/touch highlights sole owner. `5d1bf5a394` removes unreachable GL pathing rendering; `497759ebb4` removes its overlay gate. `bbc4be43d9` removes duplicate GL object-update blips, `c965068e2f` removes the GL reflection-probe-volume draw/program/shaders, and `06c4da2bb8` removes duplicate GL particle-raycast lines plus their native capture's obsolete GL-state dependency. Visual cases 53/54/55 are queued. Independent pathfinding UI/data/network code remains. No viewer was launched.
 Earlier native terrain, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
 resources avoid GL names; dual backing remains only where retained GL consumers
@@ -119,11 +119,11 @@ until the owner-attended review records that result.
 
 ## Build and test evidence
 
-- At `c965068e2f`, Ninja and prescribed Xcode Release 68386 pass warnings-as-errors; the
+- At `06c4da2bb8`, Ninja and prescribed Xcode Release 68388 pass warnings-as-errors; the
   physical retained-world case passes 8,022/1 under Metal
   API, GPU, shader and load/store validation. Release verification passes 349/349 ARM64 slices and
   deep strict signing. Executable SHA-256 is
-  `445f0d5309855c11aa92892afa1469382e130e3350fc130db540ad8ec7bdb925`;
+  `6b016f2286216fda1c038e5898b6a3ae2657e8ff2b37d84ed2901c91bebb8bd1`;
   metallib SHA-256 remains `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
   All 556,530 renderer assertions and the 2,597-assertion focused resource-plan suite pass. M1 Max host doctor passes.
   Strict inventory is 2,355 and exits 1 as expected; no audit rule changed. Harness validation and 31/31 tool tests pass.
@@ -155,6 +155,6 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Remove the duplicate GL particle-raycast crosshair lines while retaining the existing fail-closed Metal capture.
+1. Remove the duplicate GL shadow-frusta developer overlay while retaining its existing fail-closed Metal points, outlines and translucent volumes.
 2. Re-run strict source/link/runtime gates after each owner cut.
 3. Keep visual failures queued; do not launch either viewer autonomously.

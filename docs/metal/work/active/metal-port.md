@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `c965068e2f`.
+**Renderer checkpoint:** Commit `06c4da2bb8`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -117,8 +117,8 @@ sun, SSAO blur and base-light draws, six programs, nine GLSL stages and obsolete
 `1f3cfeefb6` preserves CPU visible-light/projector-shadow selection and removes duplicate GL point/projector lighting. `3e975c4b28` then deletes the three dead
 pack light-map slots, blurred scratch target and dispatch-reach input. Metal retains private light-map/blur ownership; the default 1440p plan sheds 21.1 MiB.
 `cbdecfd337` replaces the first deferred `setupHWLights()` mutation with CPU-only native direction preparation and deletes the now-drawless GL
-vertex/cull/blend/color-mask state prologue. `fa746d4cb8` makes direct Metal the sole Darwin edit/touch-highlight producer and deletes four programs plus five GLSL stages. `5d1bf5a394` removes unreachable OSS pathing rendering; `497759ebb4` removes its overlay gate. `bbc4be43d9` removes duplicate GL object-update blips. `c965068e2f` removes the duplicate GL reflection-probe-volume fullscreen draw, its sole program and two exclusive GLSL stages while retaining fail-closed Metal depth reconstruction/constants. Independent pathfinding UI/data/network code remains. Other retained post-deferred output still owns the bound target.
-Visual cases 51/52/53/54 remain queued.
+vertex/cull/blend/color-mask state prologue. `fa746d4cb8` makes direct Metal edit/touch highlights sole owner. `5d1bf5a394` removes unreachable OSS pathing rendering; `497759ebb4` removes its overlay gate. `bbc4be43d9` removes duplicate GL object-update blips. `c965068e2f` removes the GL reflection-probe-volume draw/program/shaders while retaining native depth reconstruction/constants. `06c4da2bb8` removes duplicate GL particle-raycast lines and the native owner's obsolete dependency on ambient GL color/state. Independent pathfinding UI/data/network code remains. Other retained post-deferred output still owns the bound target.
+Visual cases 51/52/53/54/55 remain queued.
 
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -130,11 +130,11 @@ swap. Exact prior evidence remains in the
 
 ## Validation checkpoint
 
-- `c965068e2f`: Ninja and prescribed Xcode Release 68386 pass
+- `06c4da2bb8`: Ninja and prescribed Xcode Release 68388 pass
   warnings-as-errors; physical validated Metal retained-world 8,022/1 passes.
   Release inspection is 349/349 ARM64 and deep signing passes.
   Executable SHA-256 is
-  `445f0d5309855c11aa92892afa1469382e130e3350fc130db540ad8ec7bdb925`;
+  `6b016f2286216fda1c038e5898b6a3ae2657e8ff2b37d84ed2901c91bebb8bd1`;
   metallib is `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
   All 556,530 renderer assertions and the 2,597-assertion focused resource-plan suite pass. Host doctor passes on the M1 Max acceptance host.
   Strict inventory is 2,355 and exits 1; harness validation and all 31 tool tests pass.
@@ -163,7 +163,7 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Remove the duplicate GL particle-raycast crosshair lines while retaining the existing fail-closed Metal capture.
+Remove the duplicate GL shadow-frusta developer overlay while retaining its existing fail-closed Metal points, outlines and translucent volumes.
 Do not wait for visual review, restore fallbacks or launch viewers.
 
 ## Non-negotiable open gates
