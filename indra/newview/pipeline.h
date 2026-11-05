@@ -472,9 +472,10 @@ public:
     void beginMetalOctreeCapture();
     void captureMetalOctreeBounds(
         const LLVector4a& center, const LLVector4a& half_extent,
-        bool rebuild_flash);
+        bool rebuild_flash, const LLColor4& color);
     void captureMetalOctreeGeometry(
-        const LLFace& face, const LLFace* skin_owner);
+        const LLFace& face, const LLFace* skin_owner,
+        const LLColor4& color);
     void endMetalOctreeCapture();
     // Retain Develop > Physics Shapes as its exact three-pass late overlay.
     // Generated CPU vertices deliberately outlive transient decomposition and

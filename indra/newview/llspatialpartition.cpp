@@ -1671,33 +1671,17 @@ void renderOctree(LLSpatialGroup* group)
 {
     //render solid object bounding box, color
     //coded by buffer usage and activity
-    gGL.setSceneBlendType(LLRender::BT_ADD_WITH_ALPHA);
-    LLVector4 col;
     if (group->mBuilt > 0.f)
     {
         group->mBuilt -= 2.f * gFrameIntervalSeconds.value();
-        col.setVec(0.1f,0.1f,1,0.1f);
+        const LLColor4 bounds_color(1.f, 0.f, 0.f, group->mBuilt);
 
         {
-            LLGLDepthTest gl_depth(false, false);
-            gGL.flush();
-            gGL.setPolygonMode(GL_LINE);
-
-            gGL.diffuseColor4f(1,0,0,group->mBuilt);
-            gGL.setLineWidth(5.f);
-
             const LLVector4a* bounds = group->getObjectBounds();
 #if LL_DARWIN
             gPipeline.captureMetalOctreeBounds(
-                bounds[0], bounds[1], true);
+                bounds[0], bounds[1], true, bounds_color);
 #endif
-            drawBoxOutline(bounds[0], bounds[1]);
-            gGL.setLineWidth(1.f);
-            gGL.flush();
-
-            const LLVOAvatar* lastAvatar = nullptr;
-            U64 lastMeshId = 0;
-            bool skipLastSkin = false;
 
             for (LLSpatialGroup::element_iter i = group->getDataBegin(); i != group->getDataEnd(); ++i)
             {
@@ -1718,26 +1702,11 @@ void renderOctree(LLSpatialGroup* group)
 
                 LLFace* skin_face = drawable->getFace(0);
                 bool rigged = skin_face->isState(LLFace::RIGGED);
-                gDebugProgram.bind(rigged);
-
-                gGL.diffuseColor4f(1, 0, 0, 1);
 
                 if (rigged)
                 {
                     gGL.pushMatrix();
                     gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-                    if (!LLRenderPass::uploadMatrixPalette(
-                            skin_face->mAvatar, skin_face->mSkinInfo,
-                            lastAvatar, lastMeshId, skipLastSkin))
-                    {
-                        // Both pushes above are popped at the end of the iteration this skips.
-                        gGL.popMatrix();
-                        if (!group->getSpatialPartition()->isBridge())
-                        {
-                            gGL.popMatrix();
-                        }
-                        continue;
-                    }
                 }
                 for (S32 j = 0; j < drawable->getNumFaces(); j++)
                 {
@@ -1745,27 +1714,28 @@ void renderOctree(LLSpatialGroup* group)
                     if (face && face->getVertexBuffer())
                     {
                         LLVOVolume* vol = drawable->getVOVolume();
+                        LLColor4 color;
 
                         if (gFrameTimeSeconds - face->mLastUpdateTime < 0.5f)
                         {
                             if (vol && vol->isShrinkWrapped())
                             {
-                                gGL.diffuseColor4f(0, 1, 1, group->mBuilt);
+                                color.set(0.f, 1.f, 1.f, group->mBuilt);
                             }
                             else
                             {
-                                gGL.diffuseColor4f(0, 1, 0, group->mBuilt);
+                                color.set(0.f, 1.f, 0.f, group->mBuilt);
                             }
                         }
                         else if (gFrameTimeSeconds - face->mLastMoveTime < 0.5f)
                         {
                             if (vol && vol->isShrinkWrapped())
                             {
-                                gGL.diffuseColor4f(1, 1, 0, group->mBuilt);
+                                color.set(1.f, 1.f, 0.f, group->mBuilt);
                             }
                             else
                             {
-                                gGL.diffuseColor4f(1, 0, 0, group->mBuilt);
+                                color.set(1.f, 0.f, 0.f, group->mBuilt);
                             }
                         }
                         else
@@ -1775,10 +1745,8 @@ void renderOctree(LLSpatialGroup* group)
 
 #if LL_DARWIN
                         gPipeline.captureMetalOctreeGeometry(
-                            *face, rigged ? skin_face : nullptr);
+                            *face, rigged ? skin_face : nullptr, color);
 #endif
-                        face->getVertexBuffer()->setBuffer();
-                        face->getVertexBuffer()->draw(LLRender::TRIANGLES, face->getIndicesCount(), face->getIndicesStart());
                     }
                 }
 
@@ -1792,28 +1760,16 @@ void renderOctree(LLSpatialGroup* group)
                     gGL.popMatrix();
                 }
             }
-            gGL.setPolygonMode(GL_FILL);
-            gDebugProgram.bind(); // make sure non-rigged variant is bound
-            gGL.diffuseColor4f(1,1,1,1);
         }
     }
 
-    gGL.diffuseColor4fv(col.mV);
-    LLVector4a fudge;
-    fudge.splat(0.001f);
-
-    gGL.setSceneBlendType(LLRender::BT_ALPHA);
-
     {
         //draw opaque outline
-        gGL.diffuseColor4f(0,1,1,1);
-
         const LLVector4a* bounds = group->getBounds();
 #if LL_DARWIN
         gPipeline.captureMetalOctreeBounds(
-            bounds[0], bounds[1], false);
+            bounds[0], bounds[1], false, LLColor4::cyan);
 #endif
-        drawBoxOutline(bounds[0], bounds[1]);
     }
 }
 

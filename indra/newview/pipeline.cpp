@@ -5671,61 +5671,6 @@ void LLPipeline::endMetalOcclusionCapture()
     }
 }
 
-static bool metalOctreeAdditiveStateIsExact(F32 line_width)
-{
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
-    LLRender::eBlendFactor color_source;
-    LLRender::eBlendFactor color_destination;
-    LLRender::eBlendFactor alpha_source;
-    LLRender::eBlendFactor alpha_destination;
-    gGL.getBlendFunc(color_source, color_destination,
-                     alpha_source, alpha_destination);
-    U32 rgb_equation = 0;
-    U32 alpha_equation = 0;
-    gGL.getBlendEquation(rgb_equation, alpha_equation);
-    return LLGLState::isEnabled(GL_BLEND) &&
-        !LLGLState::isEnabled(GL_CULL_FACE) &&
-        !LLGLDepthTest::depthEnabled() &&
-        !LLGLDepthTest::depthWriteEnabled() &&
-        color_source == LLRender::BF_SOURCE_ALPHA &&
-        color_destination == LLRender::BF_ONE &&
-        alpha_source == LLRender::BF_SOURCE_ALPHA &&
-        alpha_destination == LLRender::BF_ONE &&
-        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
-        color_mask[0] && color_mask[1] && color_mask[2] &&
-        !color_mask[3] && gGL.getLineWidth() == line_width &&
-        gGL.getPolygonMode() == GL_LINE;
-}
-
-static bool metalOctreeOutlineStateIsExact()
-{
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
-    LLRender::eBlendFactor color_source;
-    LLRender::eBlendFactor color_destination;
-    LLRender::eBlendFactor alpha_source;
-    LLRender::eBlendFactor alpha_destination;
-    gGL.getBlendFunc(color_source, color_destination,
-                     alpha_source, alpha_destination);
-    U32 rgb_equation = 0;
-    U32 alpha_equation = 0;
-    gGL.getBlendEquation(rgb_equation, alpha_equation);
-    return LLGLState::isEnabled(GL_BLEND) &&
-        !LLGLState::isEnabled(GL_CULL_FACE) &&
-        LLGLDepthTest::depthEnabled() &&
-        LLGLDepthTest::depthWriteEnabled() &&
-        LLGLDepthTest::depthFunction() == GL_LEQUAL &&
-        color_source == LLRender::BF_SOURCE_ALPHA &&
-        color_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
-        alpha_source == LLRender::BF_SOURCE_ALPHA &&
-        alpha_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
-        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
-        color_mask[0] && color_mask[1] && color_mask[2] &&
-        !color_mask[3] && gGL.getLineWidth() == 1.f &&
-        gGL.getPolygonMode() == GL_FILL;
-}
-
 void LLPipeline::beginMetalOctreeCapture()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -5747,7 +5692,7 @@ void LLPipeline::beginMetalOctreeCapture()
 
 void LLPipeline::captureMetalOctreeBounds(
     const LLVector4a& center, const LLVector4a& half_extent,
-    bool rebuild_flash)
+    bool rebuild_flash, const LLColor4& color)
 {
     if (!mMetalWorldSimpleCapture)
     {
@@ -5759,7 +5704,6 @@ void LLPipeline::captureMetalOctreeBounds(
         return;
     }
 
-    const LLColor4& color = gGL.getDiffuseColor();
     const bool exact_color = rebuild_flash
         ? color.mV[0] == 1.f && color.mV[1] == 0.f &&
               color.mV[2] == 0.f && std::isfinite(color.mV[3])
@@ -5767,8 +5711,6 @@ void LLPipeline::captureMetalOctreeBounds(
               color.mV[2] == 1.f && color.mV[3] == 1.f;
     if (!capture.complete || !center.isFinite3() ||
         !half_extent.isFinite3() || !exact_color ||
-        !(rebuild_flash ? metalOctreeAdditiveStateIsExact(5.f)
-                        : metalOctreeOutlineStateIsExact()) ||
         capture.render_debug_order == std::numeric_limits<U64>::max())
     {
         capture.markIncomplete(__LINE__);
@@ -5806,7 +5748,8 @@ void LLPipeline::captureMetalOctreeBounds(
 }
 
 void LLPipeline::captureMetalOctreeGeometry(
-    const LLFace& face, const LLFace* skin_owner)
+    const LLFace& face, const LLFace* skin_owner,
+    const LLColor4& color)
 {
     if (!mMetalWorldSimpleCapture)
     {
@@ -5823,7 +5766,6 @@ void LLPipeline::captureMetalOctreeGeometry(
     {
         return;
     }
-    const LLColor4& color = gGL.getDiffuseColor();
     const auto color_is = [&](F32 red, F32 green, F32 blue)
     {
         return color.mV[0] == red && color.mV[1] == green &&
@@ -5840,7 +5782,7 @@ void LLPipeline::captureMetalOctreeGeometry(
         !buffer->getMetalIndexBuffer() ||
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4) ||
-        !color_valid || !metalOctreeAdditiveStateIsExact(1.f) ||
+        !color_valid ||
         (rigged && (!skin_owner->mAvatar || !skin_owner->mSkinInfo ||
                     !buffer->hasDataType(LLVertexBuffer::TYPE_WEIGHT4))) ||
         capture.render_debug_order == std::numeric_limits<U64>::max())
