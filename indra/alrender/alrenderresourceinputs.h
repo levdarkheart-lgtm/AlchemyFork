@@ -46,8 +46,6 @@ struct ALRenderResourceInputs
     bool mGBufferNormHDR = true; ///< the G-buffer normal layout the programs compile for (LLRender::sGBufferNormHDR)
     bool mReverseZ = true;       ///< the depth convention the programs compile for (LLRender::sReverseZ)
     bool mCompute = true;        ///< whether the session computes, as the programs are built for it (LLRender::sCompute)
-    bool mTextureBarrier = true; ///< the context has glTextureBarrier (gGLManager.mHasTextureBarrier); without it the
-                                 ///< haze passes read a copy of the scene's depth
 
     S32  mShadowDetail = 2;       ///< RenderShadowDetail: 0 none, 1 the sun's, 2 the sun's and two spot lights'
     F32  mShadowScale = 1.f;      ///< RenderShadowResolutionScale, of the main view's sun and spot shadows
@@ -57,7 +55,6 @@ struct ALRenderResourceInputs
     bool mSSAOBlurDispatched = true; ///< SSAO's blur reaches no further than a dispatch holds (ALLightMapBlur::apron of
                                      ///< RenderShadowBlurSize's kernel): a wider one is the fragment passes'
     bool mSSR = false;            ///< RenderScreenSpaceReflections
-    bool mTransparentWater = true; ///< RenderTransparentWater: whether the native water transaction refracts the scene
 
     bool mProbes = true;          ///< RenderReflectionsEnabled, where the feature table allows it
     U32  mProbeResolution = 128;  ///< a probe's face edge, as probeResolution() takes RenderReflectionProbeResolution

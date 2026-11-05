@@ -587,10 +587,6 @@ public:
     // without the screen's stencil, which a blit's matching formats would make them carry. `dst` is cleared to the far
     // plane first, and stays so where the program has not built.
     void copySceneDepth(LLRenderTarget& dst);
-    // The scene's depth as a haze pass reads it, with mRT->screen bound and the draws since its binding having written
-    // the depth it shares: past a texture barrier, the scene's own (nullptr); without one, a copy from `scope` taken
-    // after the screen is let go and bound again, or the scene's own past that change where the pack has no copy.
-    LLRenderTarget* hazeDepth(ALTransientTargets& scope);
     void generateLuminance(LLRenderTarget* src, LLRenderTarget* dst);
     void generateExposure(LLRenderTarget* src, LLRenderTarget* dst, bool use_history = true);
     void generateLensFlareState(LLRenderTarget* src);
@@ -1318,8 +1314,8 @@ public:
     // and just before rendering alpha when camera is above water
     void doAtmospherics();
 
-    // Whether this frame's haze pass could converge anything on the sky behind (mSkyBehind): the main view's, with
-    // atmospherics on, the camera above the water, and water among what was sorted to draw.
+    // Whether this frame's native haze pass could converge anything on a Metal sky-behind texture: the main view's,
+    // with atmospherics on, the camera above the water, and water among what was sorted to draw.
     bool skyBehindWanted() const;
 
     // apply water haze based on contents of color and depth buffer
@@ -1953,19 +1949,6 @@ public:
     DeferredUBOData             mDeferredUBOData{};
     ALUniformBuffer             mDeferredUBO;
     bool                        mDeferredUBODirty{ true };
-
-    // The sky dome behind everything at half resolution: the sky pool draws it again here, with no depth, and the
-    // haze pass converges far water on it (hazeF.glsl). The main view's alone, from the pool from the sky pool's draw
-    // (acquireSkyBehind) to the end of the deferred lighting its haze runs in (releaseSkyBehind): null outside that,
-    // and in a frame that has none to draw.
-    LLRenderTarget*             acquireSkyBehind();
-    void                        releaseSkyBehind();
-    ALTransientTargets          mSkyBehindTargets{ mTransientTargets };
-    LLRenderTarget*             mSkyBehind = nullptr;
-    // Whether any water was in front of the sky's depth when the sky pool drew: the sky behind is drawn only then, and
-    // the haze shades the water's pixels only then. An occlusion query of gGL's, asked in mSkyBehindQueryFrame.
-    ALQueryTicket               mSkyBehindQuery;
-    U32                         mSkyBehindQueryFrame = 0;
 
     // The attachments profileAvatar() timed, with their spans of gGL's pool, until readAttachmentTimes() has them.
     std::vector<std::pair<LLPointer<LLViewerObject>, ALQuerySpan>> mAttachmentSpans;

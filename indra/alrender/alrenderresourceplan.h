@@ -61,7 +61,6 @@ public:
         Light,
         PostPing,
         PostPong,
-        DepthCopy,
         Sun0,
         Sun1,
         Sun2,
@@ -93,22 +92,21 @@ public:
     /// Every resource, each pack's in Slot order first. The names are the debugger labels (name()).
     enum class Id : U8
     {
-        MainGBuffer, MainScreen, MainLight, MainPostPing, MainPostPong, MainDepthCopy,
+        MainGBuffer, MainScreen, MainLight, MainPostPing, MainPostPong,
         MainSun0, MainSun1, MainSun2, MainSun3,
         MainBloom0, MainBloom1, MainBloom2, MainBloom3, MainBloom4, MainBloom5, MainBloom6,
 
-        ProbeGBuffer, ProbeScreen, ProbeLight, ProbePostPing, ProbePostPong, ProbeDepthCopy,
+        ProbeGBuffer, ProbeScreen, ProbeLight, ProbePostPing, ProbePostPong,
         ProbeSun0, ProbeSun1, ProbeSun2, ProbeSun3,
         ProbeBloom0, ProbeBloom1, ProbeBloom2, ProbeBloom3, ProbeBloom4, ProbeBloom5, ProbeBloom6,
 
-        HeroGBuffer, HeroScreen, HeroLight, HeroPostPing, HeroPostPong, HeroDepthCopy,
+        HeroGBuffer, HeroScreen, HeroLight, HeroPostPing, HeroPostPong,
         HeroSun0, HeroSun1, HeroSun2, HeroSun3,
         HeroBloom0, HeroBloom1, HeroBloom2, HeroBloom3, HeroBloom4, HeroBloom5, HeroBloom6,
 
         // The main view's own, at its render size.
         SpotShadow0, SpotShadow1,
         SMAAEdges, SMAABlend,
-        SkyBehind,
         SSRScene,
         MainLightBlurred,
 
@@ -175,9 +173,9 @@ public:
     }
 
     /// Whether the water drawn into @a pack refracts the scene beneath its surface. The native Metal water transaction
-    /// owns its private scene-color input; the retained depth-copy slot exists only for the GL haze pass until that pass
-    /// is cut over. A probe's face clips the scene at the water and culls what lies beyond it (LLPipeline::isWaterClip),
-    /// so its water is opaque: the fog of the water behind the surface, as everywhere with the setting off.
+    /// owns its private scene-color and depth inputs. A probe's face clips the scene at the water and culls what lies
+    /// beyond it (LLPipeline::isWaterClip), so its water is opaque: the fog of the water behind the surface, as
+    /// everywhere with the setting off.
     static constexpr bool refractsWater(Pack pack, bool transparent_water)
     {
         return transparent_water && pack != Pack::Probe;
@@ -219,9 +217,9 @@ public:
     static bool isTexture(Id id);
     /// Whether the passes that use it acquire it from the transient pool for as long as they need it, rather than the
     /// reconcile building it to keep: a target that lives for one phase of a frame, and holds nothing across frames. A
-    /// pack's light map is one, the main view's blurred light map, the retained haze depth copy, the bloom pyramid,
-    /// the post chain, SMAA's edges and blend weights, the legacy glow, the sky behind the water, and the targets the
-    /// UI previews and the appearance bakes draw into.
+    /// pack's light map is one, the main view's blurred light map, the bloom pyramid,
+    /// the post chain, SMAA's edges and blend weights, the legacy glow, and the targets the UI previews and the
+    /// appearance bakes draw into.
     static bool isTransient(Id id);
     /// Whether the reconcile readies it in the pool for the next frame to find: every transient resource but the
     /// previews' and the bakes' targets, which only a dynamic texture with something to draw acquires.

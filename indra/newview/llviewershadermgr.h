@@ -73,7 +73,6 @@ public:
     void loadShadersDeferred();
     void loadShadersObject();
     void loadShadersAvatar();
-    void loadShadersWater();
     void loadShadersInterface();
 
     std::vector<S32> mShaderLevel;
@@ -140,7 +139,6 @@ extern LLGLSLShader        gPhysicsPreviewProgram;
 extern LLGLSLShader     gObjectAlphaMaskNoColorProgram;
 
 //environment shaders
-extern LLGLSLShader         gWaterFieldProgram;
 // One level of ALDepthPyramid; built where the session computes.
 extern LLGLSLShader         gDepthPyramidProgram;
 extern LLGLSLShader         gGlowProgram;
@@ -191,9 +189,6 @@ extern LLGLSLShader         gDeferredSpotLightProgram;
 extern LLGLSLShader         gDeferredMultiSpotLightProgram;
 extern LLGLSLShader         gDeferredSunProgram;
 extern LLGLSLShader         gDeferredSunProbeProgram;
-extern LLGLSLShader         gHazeProgram;
-extern LLGLSLShader         gHazeOnWaterProgram;
-extern LLGLSLShader         gHazeWaterProgram;
 extern LLGLSLShader         gDeferredBlurLightProgram;
 extern LLGLSLShader         gDeferredBlurLightComputeProgram;
 extern LLGLSLShader         gDeferredAvatarProgram;

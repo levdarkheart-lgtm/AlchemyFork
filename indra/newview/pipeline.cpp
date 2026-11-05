@@ -736,6 +736,7 @@ struct LLPipeline::MetalWorldSimpleCapture
     bool windlight_sky_active = false;
     bool windlight_sky_complete = false;
     bool windlight_sky_native_available = false;
+    bool windlight_sky_behind_requested = false;
     bool windlight_stars_expected = false;
     bool windlight_stars_active = false;
     bool windlight_stars_complete = false;
@@ -1560,6 +1561,7 @@ bool LLPipeline::beginMetalHeroProbeFaceCapture(
     capture.base_light_map_target.reset();
     capture.base_light_target.reset();
     capture.sky_behind_target.reset();
+    capture.windlight_sky_behind_requested = false;
     capture.batches.clear();
     capture.avatar_palettes.clear();
     capture.frame_active = false;
@@ -1727,6 +1729,7 @@ bool LLPipeline::beginMetalReflectionProbeFaceCapture(
     capture.base_light_map_target.reset();
     capture.base_light_target.reset();
     capture.sky_behind_target.reset();
+    capture.windlight_sky_behind_requested = false;
     capture.batches.clear();
     capture.avatar_palettes.clear();
     capture.frame_active = false;
@@ -1955,6 +1958,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
         capture.windlight_sky_active = false;
         capture.windlight_sky_complete = false;
         capture.windlight_sky_native_available = false;
+        capture.windlight_sky_behind_requested = false;
         capture.windlight_star_batch = {};
         capture.windlight_star_moon = nullptr;
         capture.windlight_star_alpha = 0.f;
@@ -2372,6 +2376,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.direct_probe_water_surface = false;
     capture.direct_probe_scene_active = false;
     capture.sky_behind_target.reset();
+    capture.windlight_sky_behind_requested = false;
     capture.hdri_sky_batches.clear();
     capture.hdri_sky_environment = nullptr;
     capture.hdri_sky_active = false;
@@ -2396,6 +2401,7 @@ void LLPipeline::beginMetalWorldGBufferCapture()
     capture.windlight_sky_active = false;
     capture.windlight_sky_complete = false;
     capture.windlight_sky_native_available = false;
+    capture.windlight_sky_behind_requested = false;
     capture.windlight_star_batch = {};
     capture.windlight_star_moon = nullptr;
     capture.windlight_star_alpha = 0.f;
@@ -2816,6 +2822,7 @@ void LLPipeline::beginMetalWorldWindLightSky(
     capture.windlight_sky_active = false;
     capture.windlight_sky_complete = false;
     capture.windlight_sky_native_available = false;
+    capture.windlight_sky_behind_requested = false;
 
     LLImageGL* rainbow_image = rainbow ? rainbow->getGLTexture() : nullptr;
     LLImageGL* halo_image = halo ? halo->getGLTexture() : nullptr;
@@ -2878,6 +2885,7 @@ void LLPipeline::beginMetalWorldWindLightSky(
     capture.windlight_sky_rainbow = metal_rainbow;
     capture.windlight_sky_halo = metal_halo;
     capture.windlight_sky_hdr_scale = sky_hdr_scale;
+    capture.windlight_sky_behind_requested = skyBehindWanted();
     capture.windlight_sky_complete = true;
     capture.windlight_sky_active = true;
 }
@@ -3987,6 +3995,7 @@ void LLPipeline::beginMetalImpostorBakeCapture(
         capture.windlight_sky_active = false;
         capture.windlight_sky_complete = false;
         capture.windlight_sky_native_available = false;
+        capture.windlight_sky_behind_requested = false;
         capture.windlight_star_batch = {};
         capture.windlight_star_moon = nullptr;
         capture.windlight_stars_expected = false;
@@ -8503,8 +8512,8 @@ void LLPipeline::captureMetalWorldAtmospherics()
     // retain the main view's water-only sky-behind convergence input after
     // those owners have been removed; the atmospheric pass still applies
     // object haze while preserving the seeded subject coverage.
-    const bool sky_behind = !sCutoutRender && !gCubeSnapshot &&
-        mRT == &mMainRT && mSkyBehind != nullptr;
+    const bool sky_behind = !sCutoutRender &&
+        capture.windlight_sky_behind_requested;
     if (capture.pass_active || capture.world_pre_water_alpha_active ||
         capture.world_post_water_alpha_active ||
         capture.atmospheric_haze_valid ||
@@ -10653,6 +10662,7 @@ void LLPipeline::encodeMetalWorldOpaquePostDeferredCapture()
     capture.atmospheric_haze = {};
     capture.atmospheric_haze_valid = false;
     capture.sky_behind_target.reset();
+    capture.windlight_sky_behind_requested = false;
     capture.alpha_environment = {};
     capture.alpha_environment_valid = false;
     capture.world_alpha_lighting = {};
@@ -10690,6 +10700,7 @@ void LLPipeline::endMetalWorldPostDeferredCapture()
     capture.atmospheric_haze = {};
     capture.atmospheric_haze_valid = false;
     capture.sky_behind_target.reset();
+    capture.windlight_sky_behind_requested = false;
     capture.alpha_environment = {};
     capture.alpha_environment_valid = false;
     capture.world_alpha_lighting = {};
@@ -16575,7 +16586,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
                        "clear-depth GL authority after composite failure: "
                     << error << LL_ENDL;
             }
-            else if (mSkyBehind)
+            else if (capture.windlight_sky_behind_requested)
             {
                 error.clear();
                 capture.sky_behind_target =
@@ -17880,7 +17891,7 @@ void LLPipeline::latchRenderInputs()
     mLatchedInputs       = resourceInputsFromSettings(mLatchedShaderInputs);
 
     sReflectionProbesEnabled = mLatchedInputs.mProbes;
-    sRenderTransparentWater  = mLatchedInputs.mTransparentWater;
+    sRenderTransparentWater  = mLatchedShaderInputs.mLocal.mTransparentWater;
 
     mMaxFramesAhead  = gSavedSettings.getU32("AlchemyRenderMaxFramesAhead");
     mPacingSlackWork = gSavedSettings.getBOOL("AlchemyRenderPacingSlackWork");
@@ -18209,7 +18220,6 @@ ALRenderResourceInputs LLPipeline::resourceInputsFromSettings(const ALShaderInpu
     in.mGBufferNormHDR = shaders.mGlobal.mGBufferNormHDR;
     in.mReverseZ       = shaders.mGlobal.mReverseZ;
     in.mCompute        = shaders.mLocal.mCompute;
-    in.mTextureBarrier = gGLManager.mHasTextureBarrier;
 
     in.mShadowDetail     = gSavedSettings.getS32("RenderShadowDetail");
     in.mShadowScale      = gSavedSettings.getF32("RenderShadowResolutionScale");
@@ -18221,7 +18231,6 @@ ALRenderResourceInputs LLPipeline::resourceInputsFromSettings(const ALShaderInpu
                                                      gSavedSettings.getF32("RenderShadowBlurSize"),
                                                      gSavedSettings.getF32("RenderShadowBlurDistFactor"))) >= 0;
     in.mSSR              = gSavedSettings.getBOOL("RenderScreenSpaceReflections");
-    in.mTransparentWater = gSavedSettings.getBOOL("RenderTransparentWater");
 
     in.mProbes = LLFeatureManager::getInstance()->isFeatureAvailable("RenderReflectionsEnabled") &&
                  gSavedSettings.getBOOL("RenderReflectionsEnabled");
@@ -18618,7 +18627,6 @@ void LLPipeline::releaseAllRenderResources()
 void LLPipeline::releaseRenderTargets()
 {
     using Plan = ALRenderResourcePlan;
-    releaseSkyBehind();
     mTransientTargets.clear();
     for (size_t i = 0; i < Plan::ID_COUNT; ++i)
     {
@@ -18639,8 +18647,6 @@ void LLPipeline::releaseRenderTargets()
         rt->bloomMipCount = 0;
     }
 
-    mSkyBehindQuery      = {};
-    mSkyBehindQueryFrame = 0;
     mLensFlareStateValid = false;
     mLensFlareStateClearPending = false;
     mToneCurveLutDirty   = true;
@@ -27169,31 +27175,6 @@ void LLPipeline::copySceneDepth(LLRenderTarget& dst)
     dst.flush();
 }
 
-LLRenderTarget* LLPipeline::hazeDepth(ALTransientTargets& scope)
-{
-    // The water, the forward pools and the alpha before the water write the scene's depth with the screen bound, and a
-    // read that follows them in that binding sees their writes only past a barrier: without one radeonsi samples the
-    // depth's tile metadata as it stood before them, a fast-cleared tile as the far plane.
-    if (gGLManager.mHasTextureBarrier)
-    {
-        gGL.textureBarrier();
-        return nullptr;
-    }
-
-    // macOS's 4.1 context may have no barrier. The screen is let go and bound again, the framebuffer change a barrier
-    // stands for, with the scene's depth copied in between where the pack has a copy, so the pass reads no attachment.
-    // Where it has none, or the copy could not be built, the pass reads the scene's own past that change, as the
-    // lighting passes read it past theirs: a null return is the scene's depth made current either way.
-    LLRenderTarget* copy = acquireResource(scope, ALRenderResourcePlan::inPack(renderPack(), ALRenderResourcePlan::Slot::DepthCopy));
-    mRT->screen.flush();
-    if (copy)
-    {
-        copySceneDepth(*copy);
-    }
-    mRT->screen.bindTarget();
-    return copy;
-}
-
 LLRenderTarget* LLPipeline::generateGlow(LLRenderTarget* src, ALTransientTargets& scope)
 {
     LL_PROFILE_GPU_ZONE("glow generate");
@@ -29513,21 +29494,6 @@ void LLPipeline::renderDeferredLighting()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     LL_PROFILE_GPU_ZONE("renderDeferredLighting");
 
-    // The main view's sky behind is this frame's: given back once the haze that reads it has run, however the lighting
-    // ends.
-    struct SkyBehindRelease
-    {
-        LLPipeline& mPipeline;
-        bool        mMainView;
-        ~SkyBehindRelease()
-        {
-            if (mMainView)
-            {
-                mPipeline.releaseSkyBehind();
-            }
-        }
-    } sky_behind_release{ *this, !gCubeSnapshot && !sImpostorRender && mRT == &mMainRT };
-
     if (!sCull)
     {
         return;
@@ -30319,25 +30285,10 @@ void LLPipeline::renderDeferredLighting()
     gGL.setColorMask(true, true);
 }
 
-LLRenderTarget* LLPipeline::acquireSkyBehind()
-{
-    // What a frame whose lighting never ran left held goes back first.
-    releaseSkyBehind();
-    mSkyBehind = acquireResource(mSkyBehindTargets, ALRenderResourcePlan::Id::SkyBehind);
-    return mSkyBehind;
-}
-
-void LLPipeline::releaseSkyBehind()
-{
-    mSkyBehind = nullptr;
-    mSkyBehindTargets.releaseAll();
-}
-
 bool LLPipeline::skyBehindWanted() const
 {
-    // The haze pass converges only the water surface seen from above it (hazeF.glsl).
-    if (gCubeSnapshot || sImpostorRender || mRT != &mMainRT || !RenderDeferredAtmospheric || sUnderWaterRender ||
-        !mResourcePlan.wants(ALRenderResourcePlan::Id::SkyBehind))
+    // The native haze pass converges only the water surface seen from above it.
+    if (gCubeSnapshot || sImpostorRender || mRT != &mMainRT || !RenderDeferredAtmospheric || sUnderWaterRender)
     {
         return false;
     }
@@ -30358,85 +30309,11 @@ void LLPipeline::doAtmospherics()
     if (RenderDeferredAtmospheric)
     {
 #if LL_DARWIN
+        // Darwin's ordered Metal world transaction owns atmospheric haze,
+        // including the water-only sky-behind convergence input. There is no
+        // retained GL draw or resource fallback at this pass boundary.
         captureMetalWorldAtmospherics();
 #endif
-        // The scene's depth as the haze reads it, after the water and the pools before it wrote it in this binding.
-        ALTransientTargets haze(mTransientTargets);
-        LLRenderTarget*    depth = hazeDepth(haze);
-
-        LLGLEnable blend(GL_BLEND);
-        // The haze dims the glow in the alpha as it dims what is lit. In a cutout frame the alpha is the subject's
-        // coverage, seeded before this pass, and haze in front of the subject leaves it no less covered.
-        gGL.blendFunc(LLRender::BF_ONE, LLRender::BF_SOURCE_ALPHA, LLRender::BF_ZERO,
-                      alphaWritesCoverage() ? LLRender::BF_ONE : LLRender::BF_SOURCE_ALPHA);
-        // The caller's mask comes back for the pools drawn after the haze.
-        LLGLSColorMask color_mask(true, true);
-
-        LL_PROFILE_GPU_ZONE("haze");
-
-        // The triangle lies on the far plane (hazeV.glsl), level with the depth the sky leaves cleared: it passes
-        // only where the world drew something, so the sky is rejected before it is shaded. The screen target shares
-        // the G-buffer's depth, which the shader reads where it is past the barrier, or from its copy (hazeDepth): the
-        // haze writes none.
-        ALDrawnOnly drawn;
-
-        const auto apply_haze = [this, depth](LLGLSLShader& haze_shader, bool on_water)
-        {
-            bindDeferredShader(haze_shader, nullptr, depth);
-
-            LLEnvironment& environment = LLEnvironment::instance();
-            haze_shader.uniform1i(LLShaderMgr::SUN_UP_FACTOR, environment.getIsSunUp() ? 1 : 0);
-            haze_shader.uniform3fv(LLShaderMgr::LIGHTNORM, 1, environment.getClampedLightNorm().mV);
-
-            haze_shader.uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, LLDrawPoolAlpha::sWaterPlane.mV);
-
-            if (on_water)
-            {
-                haze_shader.bindTexture(LLShaderMgr::SKY_BEHIND_MAP, mSkyBehind, ALSamplers::BilinearClamp);
-                // From high above the water, the water fades into the sky behind it, wholly by the height it is no
-                // longer drawn from.
-                const F32 height = LLViewerCamera::getInstance()->getOrigin().mV[VZ] - environment.getWaterHeight();
-                haze_shader.uniform1f(LLShaderMgr::WATER_GROUND_FADE, ALFarPlane::groundFade(height));
-            }
-
-            // full screen blit
-            mScreenTriangleVB->setBuffer();
-            mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-
-            if (on_water)
-            {
-                haze_shader.disableTexture(LLShaderMgr::SKY_BEHIND_MAP);
-            }
-            unbindDeferredShader(haze_shader);
-        };
-
-        // Far water converges on the sky drawn behind it when this view's is there: the main view's alone, once the
-        // sky pool has drawn it this frame (HDRI skies and probe captures keep WindLight's own limit). The water
-        // marked its own pixels in the stencil, so the two draws shade each pixel once. The water's draw runs only if
-        // the sky pool's query saw water: its field covers every pixel the water marked, and inland none is.
-        const bool sky_behind = !gCubeSnapshot && mRT == &mMainRT && mSkyBehind;
-        if (sky_behind)
-        {
-            {
-                ALWaterStencil::OffWater stencil;
-                apply_haze(*gHazeProgram.selectVariant(), false);
-            }
-            {
-                ALWaterStencil::OnWater stencil;
-                std::optional<ALConditionalRender> if_water;
-                if (mSkyBehindQueryFrame == gFrameCount)
-                {
-                    if_water.emplace(gGL.queries(), mSkyBehindQuery);
-                }
-                apply_haze(*gHazeOnWaterProgram.selectVariant(), true);
-            }
-        }
-        else
-        {
-            apply_haze(*gHazeProgram.selectVariant(), false);
-        }
-
-        gGL.setSceneBlendType(LLRender::BT_ALPHA);
     }
 }
 
@@ -30464,57 +30341,11 @@ void LLPipeline::doWaterHaze()
     if (RenderDeferredAtmospheric)
     {
 #if LL_DARWIN
+        // Above- and below-water haze are native Metal passes. The capture
+        // records either the water field or fullscreen variant and fails the
+        // complete transaction closed if its inputs are unavailable.
         captureMetalWorldWaterHaze();
 #endif
-        // The scene's depth as the haze reads it, after the pools before it wrote it in this binding.
-        ALTransientTargets haze(mTransientTargets);
-        LLRenderTarget*    depth = hazeDepth(haze);
-
-        LLGLEnable blend(GL_BLEND);
-        gGL.blendFunc(LLRender::BF_ONE, LLRender::BF_SOURCE_ALPHA, LLRender::BF_ZERO, LLRender::BF_SOURCE_ALPHA);
-
-        // The caller's mask comes back for the pools drawn after the haze.
-        LLGLSColorMask color_mask(true, true);
-
-        // apply haze
-        LLGLSLShader& haze_shader = gHazeWaterProgram;
-
-        LL_PROFILE_GPU_ZONE("water haze");
-        // The scene's depth where it is, the G-buffer's, which the screen shares, past the barrier, or its copy
-        // (hazeDepth): the haze tests against it and writes none, from above or below.
-        bindDeferredShader(haze_shader, nullptr, depth);
-
-        haze_shader.uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, LLDrawPoolAlpha::sWaterPlane.mV);
-        haze_shader.uniform1i(LLShaderMgr::WATER_ABOVE_WATER, sUnderWaterRender ? -1 : 1);
-
-        if (LLPipeline::sUnderWaterRender)
-        {
-            LLGLDepthTest depth(GL_FALSE);
-
-            // full screen blit, the triangle worked from the vertex id (waterHazeV.glsl)
-            gGL.drawArraysInstanced(LLRender::TRIANGLES, 0, 3, 1);
-        }
-        else
-        {
-            // The field as LLDrawPoolWater draws it, flat.
-            // Default LEQUAL auto-translates to GEQUAL under reverse-Z, mirroring the manual
-            // above-water depth test in waterHazeF.glsl (which flips its compare direction).
-            LLGLDepthTest depth(GL_TRUE, GL_FALSE);
-            LLGLDisable   cull(GL_CULL_FACE);
-            // Not where an exclusion prim removed the water.
-            ALWaterStencil::NotExcluded stencil;
-
-            gGLLastMatrix = NULL;
-            gGL.loadMatrix(LLViewerCamera::getCurrent().getModelview());
-
-            mWaterSurface.bind(haze_shader);
-            mWaterSurface.draw(haze_shader, false);
-        }
-
-        unbindDeferredShader(haze_shader);
-
-
-        gGL.setSceneBlendType(LLRender::BT_ALPHA);
     }
 }
 

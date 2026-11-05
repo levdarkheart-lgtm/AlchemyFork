@@ -235,12 +235,18 @@ namespace
     // that value, so no distance, projection or pin enters the test.
     TEST_CASE("alfarplane: every pass tells sky from geometry by the cleared depth alone", "[alfarplane]")
     {
-        const std::string haze = shader_source("class3/deferred/hazeF.glsl");
-        const std::string haze_v = shader_source("class1/deferred/hazeV.glsl");
-        UNSCOPED_INFO("haze drawn on the far plane, reversed");
-        REQUIRE(haze_v.find("gl_Position = vec4(position.xy, 0.0, 1.0);") != std::string::npos);
-        UNSCOPED_INFO("haze drawn on the far plane, forward");
-        REQUIRE(haze_v.find("gl_Position = vec4(position.xy, 1.0, 1.0);") != std::string::npos);
+        const std::string metal = metal_shader_source();
+        const size_t haze_begin = metal.find(
+            "fragment float4 almetal_world_atmospheric_haze_fragment(");
+        const size_t haze_end = metal.find(
+            "fragment float4 almetal_world_pre_water_fullbright_fragment(",
+            haze_begin);
+        REQUIRE(haze_begin != std::string::npos);
+        REQUIRE(haze_end != std::string::npos);
+        const std::string haze = metal.substr(haze_begin,
+                                              haze_end - haze_begin);
+        UNSCOPED_INFO("native haze triangle uses the cleared far plane for both depth conventions");
+        REQUIRE(metal.find("constants.config.x != 0u ? 0.0 : 1.0,") != std::string::npos);
         // The lighting passes draw there too: the light map's passes, the lights and the soften pass's lit program in
         // front of it, the soften pass's sky program on it.
         for (const char* path : { "class2/deferred/softenLightV.glsl", "class3/deferred/multiPointLightV.glsl",
@@ -255,25 +261,30 @@ namespace
         const std::string soften = shader_source("class3/deferred/softenLightF.glsl");
         UNSCOPED_INFO("the sky's soften program lights nothing");
         REQUIRE(soften.find("writeColor(skyColor(getGBuffer(tc)));") != std::string::npos);
-        UNSCOPED_INFO("haze takes geometry where it is");
-        REQUIRE(haze.find("= getPositionWithDepth(tc, depth);") != std::string::npos);
-        UNSCOPED_INFO("void water fog keys on the far depth");
-        REQUIRE(shader_source("class3/deferred/waterHazeF.glsl").find("if (isFarDepth(depth))") != std::string::npos);
+        UNSCOPED_INFO("native haze reconstructs geometry where it is");
+        REQUIRE(haze.find("constants.inverse_projection *") != std::string::npos);
+        const size_t water_haze = metal.find(
+            "fragment float4 almetal_world_water_haze_fragment(");
+        REQUIRE(water_haze != std::string::npos);
+        UNSCOPED_INFO("native void-water fog keys on the cleared far depth");
+        REQUIRE(metal.find("const bool far_depth = reverse_z ? depth <= 0.0 : depth >= 1.0;",
+                           water_haze) != std::string::npos);
         const std::string flare = shader_source("class1/alchemy/lensFlareStateF.glsl");
         UNSCOPED_INFO("flare sky is the far plane, reversed");
         REQUIRE(flare.find("return d <= 0.0 ? 1.0 : 0.0;") != std::string::npos);
         UNSCOPED_INFO("flare sky is the far plane, forward");
         REQUIRE(flare.find("return d >= 1.0 ? 1.0 : 0.0;") != std::string::npos);
-        // Opaque geometry in the haze pass takes the in-scatter blended geometry takes in its own shading, and the
-        // water surface alone converges on the sky behind it.
-        UNSCOPED_INFO("the haze pass's in-scatter is alpha's");
-        REQUIRE(haze.find("atmosFragLighting(vec3(0), additive, atten)") != std::string::npos);
+        // Opaque geometry in the haze pass takes the same atmosphere helper as
+        // native alpha, and the water surface alone converges on the native
+        // sky-behind texture.
+        UNSCOPED_INFO("the native haze pass uses alpha's atmosphere");
+        REQUIRE(haze.find("almetal_world_alpha_atmospherics(") != std::string::npos);
+        UNSCOPED_INFO("water convergence is selected by the captured configuration");
+        REQUIRE(haze.find("if (constants.config.y != 0u)") != std::string::npos);
         UNSCOPED_INFO("water converges on the sky behind");
-        REQUIRE(haze.find("#ifdef HAZE_ON_WATER") != std::string::npos);
-        UNSCOPED_INFO("water converges on the sky behind");
-        REQUIRE(haze.find("additive = mix(additive, sky * (vec3(1.0) - atten), vec3(1.0) - atten);") != std::string::npos);
+        REQUIRE(haze.find("additive = mix(") != std::string::npos);
         UNSCOPED_INFO("the sky behind is sampled for water");
-        REQUIRE(haze.find("texture(skyBehindMap, tc)") != std::string::npos);
+        REQUIRE(haze.find("sky_behind_map.sample(") != std::string::npos);
         // The farthest geometry: a top corner of the edge water's extent, from as high above it as the water shows.
         const F64 edge = (F64)ALFarPlane::edgeWaterStretch(true) + MAX_FAR_CLIP;
         const F64 farthest = sqrt(2.0 * edge * edge + (F64)ALFarPlane::EDGE_WATER_STRETCH * ALFarPlane::EDGE_WATER_STRETCH);
@@ -301,9 +312,9 @@ namespace
         UNSCOPED_INFO("no rim, waves past the regions");
         CHECK(rimless.mWaveClamp >= EDGE_WATER_STRETCH);
 
-        const std::string haze = shader_source("class3/deferred/waterHazeF.glsl");
-        UNSCOPED_INFO("sky behind water is held past the surface");
-        REQUIRE(haze.find("entry + VOID_WATER_FOG_DEPTH") != std::string::npos);
+        const std::string metal = metal_shader_source();
+        UNSCOPED_INFO("native sky behind water is held 1024 metres past the surface");
+        REQUIRE(metal.find("position.xyz = direction * (entry + 1024.0);") != std::string::npos);
         const std::string surface = shader_source("class1/environment/waterSurface.glsl");
         UNSCOPED_INFO("wave clamp from the uniform");
         REQUIRE(surface.find("min(d, waterFar.x)") != std::string::npos);
@@ -316,7 +327,6 @@ namespace
             UNSCOPED_INFO("waves take " << phase);
             REQUIRE(surface.find(phase) != std::string::npos);
         }
-        const std::string metal = metal_shader_source();
         for (const char* entry : { "fragment float4 almetal_world_above_water_fragment(",
                                    "fragment float4 almetal_world_underwater_fragment(" })
         {
@@ -444,12 +454,21 @@ namespace
         REQUIRE(funcs.find("abs(rel_pos.y)") == std::string::npos);
         UNSCOPED_INFO("the rotation is in the Environment block");
         REQUIRE(shader_source("class1/deferred/environmentBlock.glsl").find("mat3  eyeToSky;") != std::string::npos);
-        // Read, and calling the haze with the position it unprojected, so the turn's absence below is not the
-        // absence of the file.
-        const std::string haze = shader_source("class3/deferred/hazeF.glsl");
-        UNSCOPED_INFO("the haze pass hands over eye space");
-        REQUIRE(haze.find("calcAtmosphericVarsLinear(pos.xyz,") != std::string::npos);
+        // The native haze passes the eye-space position to the shared native
+        // atmosphere helper; it does not apply the environment rotation again.
+        const std::string metal = metal_shader_source();
+        const size_t haze_begin = metal.find(
+            "fragment float4 almetal_world_atmospheric_haze_fragment(");
+        const size_t haze_end = metal.find(
+            "fragment float4 almetal_world_pre_water_fullbright_fragment(",
+            haze_begin);
+        REQUIRE(haze_begin != std::string::npos);
+        REQUIRE(haze_end != std::string::npos);
+        const std::string haze = metal.substr(haze_begin,
+                                              haze_end - haze_begin);
+        UNSCOPED_INFO("the native haze pass hands over eye space");
+        REQUIRE(haze.find("almetal_world_alpha_atmospherics(") != std::string::npos);
         UNSCOPED_INFO("and does not turn it itself");
-        REQUIRE(haze.find("eyeToSky") == std::string::npos);
+        REQUIRE(haze.find("eye_to_sky") == std::string::npos);
     }
 }

@@ -48,16 +48,13 @@ namespace
 
     // Each pack's slot names under its own prefix, laid out as Id lays the packs out.
     constexpr std::string_view PACK_NAMES[(size_t)Pack::COUNT][(size_t)Slot::COUNT] = {
-        { "main.gbuffer", "main.screen", "main.light", "main.post.ping", "main.post.pong", "main.depth.copy",
-          "main.shadow.sun0",
+        { "main.gbuffer", "main.screen", "main.light", "main.post.ping", "main.post.pong", "main.shadow.sun0",
           "main.shadow.sun1", "main.shadow.sun2", "main.shadow.sun3", "main.bloom.mip0", "main.bloom.mip1",
           "main.bloom.mip2", "main.bloom.mip3", "main.bloom.mip4", "main.bloom.mip5", "main.bloom.mip6" },
-        { "probe.gbuffer", "probe.screen", "probe.light", "probe.post.ping", "probe.post.pong", "probe.depth.copy",
-          "probe.shadow.sun0",
+        { "probe.gbuffer", "probe.screen", "probe.light", "probe.post.ping", "probe.post.pong", "probe.shadow.sun0",
           "probe.shadow.sun1", "probe.shadow.sun2", "probe.shadow.sun3", "probe.bloom.mip0", "probe.bloom.mip1",
           "probe.bloom.mip2", "probe.bloom.mip3", "probe.bloom.mip4", "probe.bloom.mip5", "probe.bloom.mip6" },
-        { "hero.gbuffer", "hero.screen", "hero.light", "hero.post.ping", "hero.post.pong", "hero.depth.copy",
-          "hero.shadow.sun0",
+        { "hero.gbuffer", "hero.screen", "hero.light", "hero.post.ping", "hero.post.pong", "hero.shadow.sun0",
           "hero.shadow.sun1", "hero.shadow.sun2", "hero.shadow.sun3", "hero.bloom.mip0", "hero.bloom.mip1",
           "hero.bloom.mip2", "hero.bloom.mip3", "hero.bloom.mip4", "hero.bloom.mip5", "hero.bloom.mip6" },
     };
@@ -66,7 +63,7 @@ namespace
 
     // Everything after the packs, in Id order.
     constexpr std::string_view OWN_NAMES[Plan::ID_COUNT - PACK_IDS] = {
-        "shadow.spot0", "shadow.spot1", "smaa.edges", "smaa.blend", "sky.behind", "ssr.scene", "main.light.blurred",
+        "shadow.spot0", "shadow.spot1", "smaa.edges", "smaa.blend", "ssr.scene", "main.light.blurred",
         "glow0", "glow1", "glow2", "downres", "preview", "bake", "exposure.meter", "exposure.histogram",
         "exposure", "exposure.last", "lens.flare.a", "lens.flare.b", "noise", "noise.true", "smaa.area", "smaa.search",
         "smaa.sample",
@@ -123,7 +120,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         U32  sun_cascades;
         bool light;
         bool post;
-        bool water;
     };
 
     const auto plan_pack = [&](Pack pack, const PackShape& shape)
@@ -146,17 +142,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
             plan.at(inPack(pack, Slot::Light)) = {
                 ALRenderTargetDesc{ .width = shape.width, .height = shape.height, .color = { GL_RGBA8 } }, gbuffer
             };
-        }
-
-        // The native Metal water transaction owns its private scene-colour and depth inputs. The retained GL haze pass
-        // still reads a depth copy where the context has no texture barrier.
-        // The depth copy serves the retained haze passes where the context has no texture barrier: each copies the
-        // scene's depth before it reads it (LLPipeline::hazeDepth), the draws before it in its binding having written
-        // the scene's own.
-        if (shape.water && !in.mTextureBarrier)
-        {
-            plan.at(inPack(pack, Slot::DepthCopy)).mDesc =
-                ALRenderTargetDesc{ .width = shape.width, .height = shape.height, .depth = main_depth };
         }
 
         if (shape.post)
@@ -204,7 +189,7 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
     const F32 shadow_scale = std::max(0.f, in.mShadowScale);
     const bool light = in.mShadowDetail > 0 || in.mSSAO;
     plan_pack(Pack::Main, { width, height, blur_happy_size(width, shadow_scale), blur_happy_size(height, shadow_scale),
-                            SUN_CASCADES, light, true, true });
+                            SUN_CASCADES, light, true });
 
     // A capture's light map is written by its sun pass, which runs for shadows alone: SSAO is the main view's, and a
     // capture's soften pass reads the light map whatever it holds (renderDeferredLighting), so without shadows it reads
@@ -218,16 +203,15 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
     // which the probes' captures never read, so they are there only while a retained preview fallback needs them. The
     // pack is there while probes are on or a retained preview is demanded, and the manager's own resources while probes
     // are. Its sun shadows, light
-    // map and depth copy are the captures' alone: a preview draws without the sun's shadows and draws no water
-    // (LLGLTFPreviewTexture::render). The retained haze owns the copy only without a texture barrier; the native water
-    // transaction owns no resource in this GL plan.
+    // map is the captures' alone: a preview draws without the sun's shadows and draws no water
+    // (LLGLTFPreviewTexture::render). The native water transaction owns no resource in this GL plan.
     if (in.mProbes || in.mMaterialPreview)
     {
         const U32 probe_size     = in.mProbeResolution * in.mProbeSuperSample;
         const U32 probe_shadow   = blur_happy_size(in.mProbeResolution * 4, 1.f);
         const U32 probe_cascades = !in.mProbes ? 0 : in.mProbeAllCascades ? SUN_CASCADES : CAPTURE_SUN_CASCADES;
         plan_pack(Pack::Probe, { probe_size, probe_size, probe_shadow, probe_shadow, probe_cascades,
-                                 capture_light && in.mProbes, in.mMaterialPreview, in.mProbes });
+                                 capture_light && in.mProbes, in.mMaterialPreview });
     }
     if (in.mProbes)
     {
@@ -244,7 +228,7 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
         const U32 hero_size   = std::max(in.mHeroResolution, 1u);
         const U32 hero_shadow = blur_happy_size(hero_size, 1.f);
         plan_pack(Pack::Hero,
-                  { hero_size, hero_size, hero_shadow, hero_shadow, CAPTURE_SUN_CASCADES, capture_light, false, true });
+                  { hero_size, hero_size, hero_shadow, hero_shadow, CAPTURE_SUN_CASCADES, capture_light, false });
         plan.mHeroProbes = ProbeManager{ .mResolution = hero_size, .mSuperSample = 1, .mHDR = hdr };
     }
 
@@ -301,13 +285,6 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
                                                           .color  = { hdr ? (U32)GL_R11F_G11F_B10F : screen_format },
                                                           .depth  = main_depth };
     }
-
-    // The sky behind everything at half size, in the format the sky's colour lands in: the emissive attachment's float
-    // with HDR, 8 bits otherwise.
-    plan.at(Id::SkyBehind).mDesc = ALRenderTargetDesc{ .width  = std::max(width / 2, 1u),
-                                                       .height = std::max(height / 2, 1u),
-                                                       .color  = { hdr && in.mEmissive ? (U32)GL_R11F_G11F_B10F
-                                                                                       : (U32)GL_RGBA8 } };
 
     // The legacy glow, which HDR's bloom replaces.
     if (!hdr)
@@ -423,7 +400,6 @@ bool ALRenderResourcePlan::followsRenderSize(Id id)
         case Id::SpotShadow1:
         case Id::SMAAEdges:
         case Id::SMAABlend:
-        case Id::SkyBehind:
         case Id::SSRScene:
         case Id::MainLightBlurred:
             return true;
@@ -466,11 +442,10 @@ bool ALRenderResourcePlan::isTransient(Id id)
     if (packOf(id))
     {
         const Slot slot = slotOf(id);
-        return slot == Slot::Light || slot == Slot::PostPing || slot == Slot::PostPong || slot == Slot::DepthCopy ||
-               slot >= Slot::Bloom0;
+        return slot == Slot::Light || slot == Slot::PostPing || slot == Slot::PostPong || slot >= Slot::Bloom0;
     }
     return id == Id::SMAAEdges || id == Id::SMAABlend || id == Id::Glow0 || id == Id::Glow1 || id == Id::Glow2 ||
-           id == Id::SkyBehind || id == Id::MainLightBlurred || id == Id::Preview || id == Id::Bake;
+           id == Id::MainLightBlurred || id == Id::Preview || id == Id::Bake;
 }
 
 // static

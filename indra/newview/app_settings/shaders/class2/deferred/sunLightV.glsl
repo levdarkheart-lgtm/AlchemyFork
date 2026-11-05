@@ -31,7 +31,7 @@ uniform vec2 screen_res;
 
 void main()
 {
-    // Level with the depth the sky leaves cleared, as the haze's triangle is (hazeV.glsl): the draw passes only in
+    // Level with the depth the sky leaves cleared, as the native haze triangle is: the draw passes only in
     // front of the far plane (LLPipeline::renderDeferredLighting), so no sky pixel is shadowed or occluded, and the
     // light map keeps the clear's white there. Reverse-Z puts the far plane at ndc z 0.
 #ifdef REVERSE_Z

@@ -194,18 +194,6 @@ namespace
         const auto previewed = [](Inputs& in) { in.mMaterialPreview = true; };
 
         return {
-            { "RenderTransparentWater", no_change, [](Inputs& in) { in.mTransparentWater = false; },
-              nothing },
-            // Without a texture barrier the haze passes read the depth copy independently of water refraction.
-            { "RenderTransparentWater without a texture barrier", [](Inputs& in) { in.mTextureBarrier = false; },
-              [](Inputs& in) { in.mTransparentWater = false; },
-              nothing },
-            // Every pack that draws retained haze takes the copy when the context has no texture barrier.
-            { "a context without a texture barrier", no_change, [](Inputs& in) { in.mTextureBarrier = false; },
-              [](const Plan&) { return in_packs({ Pack::Main, Pack::Probe, Pack::Hero }, { Slot::DepthCopy }); } },
-            { "a context without a texture barrier under opaque water", [](Inputs& in) { in.mTransparentWater = false; },
-              [](Inputs& in) { in.mTextureBarrier = false; },
-              [](const Plan&) { return in_packs({ Pack::Main, Pack::Probe, Pack::Hero }, { Slot::DepthCopy }); } },
             { "RenderFSAAType to FXAA", no_change, [](Inputs& in) { in.mFSAAType = 1; }, nothing },
             { "RenderFSAAType to SMAA", no_change, [](Inputs& in) { in.mFSAAType = 2; },
               [](const Plan&) { return smaa_resources(false); } },
@@ -238,14 +226,14 @@ namespace
             { "RenderBloomHalation", no_change, [](Inputs& in) { in.mBloomHalation = true; },
               [](const Plan& before) { return wanted(before, bloom({ Pack::Main })); } },
             { "RenderEnableEmissiveBuffer", no_change, [](Inputs& in) { in.mEmissive = false; },
-              [](const Plan&) { return of({ Id::MainGBuffer, Id::ProbeGBuffer, Id::HeroGBuffer, Id::SkyBehind }); } },
+              [](const Plan&) { return of({ Id::MainGBuffer, Id::ProbeGBuffer, Id::HeroGBuffer }); } },
             { "RenderHDREnabled", no_change, hdr_off,
               [](const Plan& before)
               {
                   return in_packs({ Pack::Main, Pack::Probe, Pack::Hero }, { Slot::GBuffer }) |
                          in_packs({ Pack::Main }, { Slot::PostPing, Slot::PostPong }) |
                          wanted(before, bloom({ Pack::Main })) |
-                         of({ Id::SkyBehind, Id::Glow0, Id::Glow1, Id::Glow2 });
+                         of({ Id::Glow0, Id::Glow1, Id::Glow2 });
               } },
             { "RenderHDREnabled under a material preview", previewed, hdr_off,
               [](const Plan& before)
@@ -253,7 +241,7 @@ namespace
                   return in_packs({ Pack::Main, Pack::Probe, Pack::Hero }, { Slot::GBuffer }) |
                          in_packs({ Pack::Main, Pack::Probe }, { Slot::PostPing, Slot::PostPong }) |
                          wanted(before, bloom({ Pack::Main, Pack::Probe })) |
-                         of({ Id::SkyBehind, Id::Glow0, Id::Glow1, Id::Glow2 });
+                         of({ Id::Glow0, Id::Glow1, Id::Glow2 });
               } },
             { "a retained material preview demanded", no_change, previewed,
               [](const Plan&)
@@ -818,10 +806,8 @@ namespace
             INFO(Plan::name(id));
             CHECK(plan.wants(id));
         }
-        UNSCOPED_INFO("a preview draws without the sun's shadows, water or haze, so the pack has no light map, sun "
-                      "shadows or haze depth copy for it");
-        CHECK(names(wanted(plan, sun_shadows({ Pack::Probe }) | of({ Id::ProbeLight, Id::ProbeDepthCopy }))) ==
-              "nothing");
+        UNSCOPED_INFO("a preview draws without the sun's shadows or water, so the pack has no light map or sun shadows");
+        CHECK(names(wanted(plan, sun_shadows({ Pack::Probe }) | of({ Id::ProbeLight }))) == "nothing");
         CHECK(!plan.reflectionProbes());
         CHECK(names(wanted(plan, Plan::idsOf(Pack::Hero))) == "nothing");
 
@@ -882,31 +868,10 @@ namespace
         }
     }
 
-    TEST_CASE("alrenderresourceplan: a mirror's retained haze depth copy has its pack's size", "[alrenderresourceplan]")
-    {
-        Inputs in          = defaults();
-        in.mHeroResolution = 512;
-        in.mTextureBarrier = false;
-        const Plan plan    = Plan::make(in);
-        for (Pack pack : { Pack::Main, Pack::Hero })
-        {
-            INFO("pack " << (U32)pack);
-            const Plan::Resource& gbuffer = plan[Plan::inPack(pack, Slot::GBuffer)];
-            const Plan::Resource& depth   = plan[Plan::inPack(pack, Slot::DepthCopy)];
-            REQUIRE(gbuffer.mDesc);
-            REQUIRE(depth.mDesc);
-            CHECK(depth.mDesc->width == gbuffer.mDesc->width);
-            CHECK(depth.mDesc->depth == gbuffer.mDesc->depth);
-            CHECK(depth.mDesc->colorCount() == 0);
-            CHECK_FALSE(depth.mDesc->stencil);
-        }
-        CHECK(plan.desc(Id::HeroDepthCopy)->width == 512);
-    }
-
     // A probe's face clips the scene at the water (LLPipeline::isWaterClip), so its water draws opaque; the main view
-    // and a mirror's face refract where the setting asks. The retained GL haze depth copy is independent of that
-    // native-water policy and exists only without a texture barrier.
-    TEST_CASE("alrenderresourceplan: water refraction policy is independent of retained haze depth", "[alrenderresourceplan]")
+    // and a mirror's face refract where the setting asks. The transaction's private Metal resources are outside this
+    // retained-resource plan.
+    TEST_CASE("alrenderresourceplan: native water refraction policy distinguishes capture packs", "[alrenderresourceplan]")
     {
         for (bool transparent : { true, false })
         {
@@ -914,36 +879,7 @@ namespace
             CHECK(Plan::refractsWater(Pack::Main, transparent) == transparent);
             CHECK(Plan::refractsWater(Pack::Hero, transparent) == transparent);
             CHECK_FALSE(Plan::refractsWater(Pack::Probe, transparent));
-
-            for (bool barrier : { true, false })
-            {
-                for (bool previewed : { false, true })
-                {
-                    INFO("texture barrier " << barrier << ", material preview " << previewed);
-                    Inputs in            = defaults();
-                    in.mTransparentWater = transparent;
-                    in.mTextureBarrier   = barrier;
-                    in.mMaterialPreview  = previewed;
-                    const Plan plan      = Plan::make(in);
-                    for (Pack pack : { Pack::Main, Pack::Probe, Pack::Hero })
-                    {
-                        INFO("pack " << (U32)pack);
-                        REQUIRE(plan.wants(Plan::inPack(pack, Slot::GBuffer)));
-                        UNSCOPED_INFO("without a barrier every pack that draws the water copies the depth for its haze");
-                        CHECK(plan.wants(Plan::inPack(pack, Slot::DepthCopy)) == !barrier);
-                    }
-                }
-            }
         }
-
-        // A pack there for a material preview alone draws no water, nor its haze.
-        Inputs preview           = defaults();
-        preview.mProbes          = false;
-        preview.mMaterialPreview = true;
-        preview.mTextureBarrier  = false;
-        const Plan plan          = Plan::make(preview);
-        REQUIRE(plan.wants(Id::ProbeGBuffer));
-        CHECK(names(wanted(plan, of({ Id::ProbeDepthCopy }))) == "nothing");
     }
 
     TEST_CASE("alrenderresourceplan: every light map is 8 bits a channel, whatever HDR says", "[alrenderresourceplan]")
@@ -1190,7 +1126,7 @@ namespace
             CHECK(!Plan::drivesRenderSize(id));
         }
         for (Id id : { Id::MainGBuffer, Id::MainScreen, Id::MainLight, Id::MainPostPing, Id::SMAABlend,
-                       Id::MainDepthCopy, Id::SkyBehind, Id::SSRScene, Id::MainLightBlurred })
+                       Id::SSRScene, Id::MainLightBlurred })
         {
             INFO(Plan::name(id));
             CHECK(Plan::drivesRenderSize(id));
@@ -1211,9 +1147,9 @@ namespace
     TEST_CASE("alrenderresourceplan: the passes acquire what lives for one phase of a frame from the pool", "[alrenderresourceplan]")
     {
         const IdSet transient = in_packs({ Pack::Main, Pack::Probe, Pack::Hero },
-                                         { Slot::Light, Slot::PostPing, Slot::PostPong, Slot::DepthCopy }) |
+                                         { Slot::Light, Slot::PostPing, Slot::PostPong }) |
                                 bloom({ Pack::Main, Pack::Probe, Pack::Hero }) |
-                                of({ Id::SMAAEdges, Id::SMAABlend, Id::Glow0, Id::Glow1, Id::Glow2, Id::SkyBehind,
+                                of({ Id::SMAAEdges, Id::SMAABlend, Id::Glow0, Id::Glow1, Id::Glow2,
                                      Id::MainLightBlurred, Id::Preview, Id::Bake });
         CHECK(names(Plan::idsWhere(Plan::isTransient)) == names(transient));
 
@@ -1276,7 +1212,6 @@ namespace
         U64 mOneEach    = 0; ///< the same resources, each a target of its own
         U32 mTargets    = 0;
         U32 mLastMisses = 0; ///< acquisitions the last frame had to build for
-        bool mSkyBehindIsBloom = false;
         bool mDefocusedIsLight = false; ///< depth of field's defocused scene took a target the lighting used
     };
 
@@ -1303,10 +1238,6 @@ namespace
         {
             pool.beginFrame();
 
-            // The sky pool draws the sky behind (LLDrawPoolWLSky), held to the end of the deferred lighting.
-            ALTransientTargets sky(pool);
-            LLRenderTarget*    sky_behind = acquire(sky, Id::SkyBehind);
-
             LLRenderTarget* light   = nullptr;
             LLRenderTarget* scratch = nullptr;
             {
@@ -1325,17 +1256,6 @@ namespace
                 }
             }
 
-            // renderGeomPostDeferred: the retained GL haze pass reads the scene's depth copy in place. The native
-            // Metal water transaction owns its private scene-colour input outside this GL resource plan.
-            {
-                ALTransientTargets pass(pool);
-                if (plan.wants(Id::MainDepthCopy))
-                {
-                    acquire(pass, Id::MainDepthCopy);
-                }
-            }
-            sky.releaseAll();
-
             // renderFinalize: depth of field's defocused scene, in the screen's description, and its blur at
             // CameraDoFResScale in bloom level 0's format (the post chain's without HDR), given back before the bloom
             // pyramid; then the pyramid, the post chain's first target, and its other only where a pass after
@@ -1343,7 +1263,6 @@ namespace
             // does, as the blit sharpens the frame itself. All but the blur held until the frame is presented.
             LLRenderTarget* defocused = nullptr;
             LLRenderTarget* bloom0    = nullptr;
-            LLRenderTarget* bloom1    = nullptr;
             {
                 ALTransientTargets post(pool);
                 if (dof)
@@ -1361,7 +1280,6 @@ namespace
                 {
                     LLRenderTarget* level = acquire(post, Plan::bloomMip(Pack::Main, mip));
                     bloom0 = mip == 0 ? level : bloom0;
-                    bloom1 = mip == 1 ? level : bloom1;
                 }
                 acquire(post, Id::MainPostPing);
                 if (in.mFSAAType != 0 || !in.mHDR)
@@ -1370,7 +1288,6 @@ namespace
                 }
             }
 
-            set.mSkyBehindIsBloom = sky_behind && sky_behind == bloom1;
             set.mDefocusedIsLight = defocused && (defocused == light || defocused == scratch);
             set.mLastMisses       = pool.stats().mMisses;
         }
@@ -1379,8 +1296,7 @@ namespace
         set.mTargets = pool.stats().mTargets;
         set.mPersistent = LLRenderTarget::bytesFor(*plan.desc(Id::MainGBuffer)) + LLRenderTarget::bytesFor(*plan.desc(Id::MainScreen));
         set.mOneEach    = set.mPersistent;
-        for (Id id : { Id::MainLight, Id::MainLightBlurred, Id::MainDepthCopy, Id::MainPostPing,
-                       Id::MainPostPong, Id::SkyBehind })
+        for (Id id : { Id::MainLight, Id::MainLightBlurred, Id::MainPostPing, Id::MainPostPong })
         {
             set.mOneEach += plan.wants(id) ? LLRenderTarget::bytesFor(*plan.desc(id)) : 0;
         }
@@ -1401,8 +1317,6 @@ namespace
         const WorkingSet set = main_view_frame(defaults());
         CHECK(set.mPersistent == 36 * PIXELS);
 
-        UNSCOPED_INFO("exact-description reuse finds the sky-behind match by itself");
-        CHECK(set.mSkyBehindIsBloom);
         UNSCOPED_INFO("a frame finds what it needs where the last one left it");
         CHECK(set.mLastMisses == 0);
 
@@ -1410,8 +1324,8 @@ namespace
         // chain's first: 4 + 2 + 4 + 1 + 0.33 + 4 B/px.
         CHECK(set.mTargets == 8);
         CHECK(set.mPooled == 56505600);
-        // Each planned resource with its own target: 56.3 B/px, 198 MiB.
-        CHECK(set.mOneEach == 207648000);
+        // Each planned GL resource with its own target: 55.3 B/px, 194.5 MiB.
+        CHECK(set.mOneEach == 203961600);
         CHECK(set.mPersistent + set.mPooled == 189216000); // 180.5 MiB
 
         // Without compute, the fragment passes blur through a scratch of the light map's description: two of it
@@ -1419,17 +1333,15 @@ namespace
         Inputs fragment  = defaults();
         fragment.mCompute = false;
         const WorkingSet passes = main_view_frame(fragment);
-        CHECK(passes.mSkyBehindIsBloom);
         CHECK(passes.mTargets == 8);
-        CHECK(passes.mOneEach == 200275200); // 191 MiB
+        CHECK(passes.mOneEach == 196588800); // 187.5 MiB
         CHECK(passes.mPersistent + passes.mPooled == 196588800); // 187.5 MiB
 
         // Without SSAO the lighting needs one target of the light map's description, and no blurred one.
         Inputs no_ssao = defaults();
         no_ssao.mSSAO  = false;
         const WorkingSet without = main_view_frame(no_ssao);
-        CHECK(without.mSkyBehindIsBloom);
-        CHECK(without.mOneEach == 200275200);
+        CHECK(without.mOneEach == 196588800);
         CHECK(without.mPersistent + without.mPooled == 181843200); // 173.4 MiB
 
         // With antialiasing the post chain's other target is drawn into, and pooled beside the first: 4 B/px more.

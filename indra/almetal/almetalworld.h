@@ -978,9 +978,9 @@ struct ALMetalWorldWaterFieldDraw
     bool triangle_strip = false;
 };
 
-// The exact procedural water field and fog inputs consumed by
-// waterHazeV/F.glsl. Above water, the field is depth-tested and masked by the
-// retained exclusion stencil. Underwater, only the matrices, plane and fog
+// The exact procedural water field and fog inputs consumed by the native
+// water-haze pipelines. Above water, the field is depth-tested and masked by
+// the native exclusion stencil. Underwater, only the matrices, plane and fog
 // terms are used by a full-screen triangle.
 struct ALMetalWorldWaterHaze
 {

@@ -1051,8 +1051,8 @@ fragment float4 almetal_world_windlight_sky_behind_fragment(
         color *= 1.0 + noise *
             float3(1.0 / 64.0, 1.0 / 64.0, 1.0 / 32.0);
     }
-    // This target deliberately holds the display-encoded sky value exactly
-    // as the GL sky-behind target does. Haze converts it after sampling.
+    // This native target deliberately holds the display-encoded WindLight
+    // sky value. The Metal atmospheric haze converts it after sampling.
     return float4(color, 1.0);
 }
 

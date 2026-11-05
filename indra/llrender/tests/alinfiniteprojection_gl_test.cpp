@@ -373,16 +373,17 @@ namespace
         CHECK((U32)glGetError() == (U32)GL_NO_ERROR);
     }
 
-    // The haze pass draws on the far plane too (hazeV.glsl), testing the other way (LLPipeline::doAtmospherics): only
-    // in front of the far plane, so it shades every pixel geometry covers, however far out, and no pixel of sky.
-    TEST_CASE_METHOD(alinfiniteprojection_data, "alinfiniteprojection_gl: the haze pass on the far plane shades all geometry and no sky", "[alinfiniteprojection_gl]")
+    // Retained GL drawn-only lighting passes use a far-plane triangle that
+    // tests in front of the clear: every geometry pixel passes, however far
+    // out, and no sky pixel does.
+    TEST_CASE_METHOD(alinfiniteprojection_data, "alinfiniteprojection_gl: a far-plane drawn-only pass covers geometry and no sky", "[alinfiniteprojection_gl]")
     {
         setUp();
         const LLMatrix4a proj = infinite();
         UNSCOPED_INFO("in front of the far plane is LESS under reverse-Z");
         CHECK((U32)LLGLDepthTest::remap(GL_GREATER) == (U32)GL_LESS);
         glGenQueries(1, &mQuery);
-        const auto haze_samples = [&]()
+        const auto drawn_samples = [&]()
         {
             glDepthFunc(LLGLDepthTest::remap(GL_GREATER));
             glDepthMask(GL_FALSE);
@@ -397,16 +398,16 @@ namespace
         };
 
         glClear(GL_DEPTH_BUFFER_BIT);
-        UNSCOPED_INFO("no haze on an empty frame");
-        CHECK(haze_samples() == (GLuint)0);
+        UNSCOPED_INFO("no drawn-only samples on an empty frame");
+        CHECK(drawn_samples() == (GLuint)0);
 
         for (F32 dist : { 1.f, 1000.f, 100000.f, MAX_RECONSTRUCT_DISTANCE })
         {
             CAPTURE(dist);
             glClear(GL_DEPTH_BUFFER_BIT);
             draw(proj, dist);
-            UNSCOPED_INFO("haze over all of the geometry");
-            REQUIRE(haze_samples() == (GLuint)(SIZE * SIZE));
+            UNSCOPED_INFO("the far-plane pass covers all geometry");
+            REQUIRE(drawn_samples() == (GLuint)(SIZE * SIZE));
         }
 
         // Pixel by pixel: geometry over the left half only, sky over the right.
@@ -414,14 +415,14 @@ namespace
         glViewport(0, 0, SIZE / 2, SIZE);
         draw(proj, MAX_RECONSTRUCT_DISTANCE);
         glViewport(0, 0, SIZE, SIZE);
-        UNSCOPED_INFO("haze over the geometry's half alone");
-        CHECK(haze_samples() == (GLuint)(SIZE * SIZE / 2));
+        UNSCOPED_INFO("the far-plane pass covers the geometry's half alone");
+        CHECK(drawn_samples() == (GLuint)(SIZE * SIZE / 2));
 
         CHECK((U32)glGetError() == (U32)GL_NO_ERROR);
     }
 
     // The soften pass draws on the far plane twice (softenLightV.glsl, LLPipeline::renderDeferredLighting): its lit
-    // program in front of the far plane, as the haze does, and its sky program on it. Between them every pixel is
+    // program in front of the far plane, as a drawn-only pass does, and its sky program on it. Between them every pixel is
     // shaded once, by the program for what it is, however far out the geometry lies.
     TEST_CASE_METHOD(alinfiniteprojection_data, "alinfiniteprojection_gl: the soften pass shades every pixel once as lit or as sky", "[alinfiniteprojection_gl]")
     {
