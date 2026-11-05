@@ -400,6 +400,7 @@ public:
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
 #if LL_DARWIN
         const bool native_upload =
+            LLVertexBuffer::isMetalBufferAuthority() ||
             LLVertexBuffer::metalOnlyUploadActive() ||
             gGL.isMetalUITextureCaptureAuthoritative() ||
             gGLManager.mIsDisabled;
@@ -433,6 +434,7 @@ public:
         LL_PROFILE_ZONE_SCOPED_CATEGORY_VERTEX;
 #if LL_DARWIN
         const bool native_upload =
+            LLVertexBuffer::isMetalBufferAuthority() ||
             LLVertexBuffer::metalOnlyUploadActive() ||
             gGL.isMetalUITextureCaptureAuthoritative() ||
             gGLManager.mIsDisabled;
@@ -941,6 +943,12 @@ const U32 LLVertexBuffer::sGLMode[LLRender::NUM_MODES] =
 //static
 void LLVertexBuffer::setupClientArrays(U32 data_mask)
 {
+#if LL_DARWIN
+    if (isMetalBufferAuthority())
+    {
+        return;
+    }
+#endif
     if (sLastMask != data_mask)
     {
         for (U32 i = 0; i < TYPE_MAX; ++i)
@@ -1104,6 +1112,12 @@ void LLVertexBuffer::clone(LLVertexBuffer& target) const
 
 void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const
 {
+#if LL_DARWIN
+    if (isMetalBufferAuthority())
+    {
+        return;
+    }
+#endif
     llassert(validateRange(start, end, count, indices_offset));
     llassert(validate_bound_samplers());
     llassert(mGLBuffer == sGLRenderBuffer);
@@ -1119,6 +1133,12 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
 
 void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const
 {
+#if LL_DARWIN
+    if (isMetalBufferAuthority())
+    {
+        return;
+    }
+#endif
     glDrawRangeElements(sGLMode[mode], start, end, count, mIndicesType,
         (GLvoid*)(indices_offset * (size_t)mIndicesStride));
     ++LLRender::sDrawCalls;
@@ -1134,6 +1154,12 @@ void LLVertexBuffer::draw(U32 mode, U32 count, U32 indices_offset) const
 
 void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
 {
+#if LL_DARWIN
+    if (isMetalBufferAuthority())
+    {
+        return;
+    }
+#endif
     llassert(first + count <= mNumVerts);
     llassert(validate_bound_samplers());
     llassert(mGLBuffer == sGLRenderBuffer);
@@ -1153,7 +1179,11 @@ void LLVertexBuffer::initClass(LLWindow* window)
     llassert(sVBOPool == nullptr);
 
 #if LL_DARWIN || LL_ARM64
-    if (gGLManager.mIsApple)
+    if (
+#if LL_DARWIN
+        isMetalBufferAuthority() ||
+#endif
+        gGLManager.mIsApple)
     {
         LL_INFOS() << "VBO Pooling Disabled" << LL_ENDL;
         sVBOPool = new LLAppleVBOPool();
@@ -1180,7 +1210,8 @@ void LLVertexBuffer::initClass(LLWindow* window)
 void LLVertexBuffer::unbind()
 {
 #if LL_DARWIN
-    if (gGL.isMetalUITextureCaptureAuthoritative())
+    if (isMetalBufferAuthority() ||
+        gGL.isMetalUITextureCaptureAuthoritative())
     {
         // The authoritative capture never changed the physical GL bindings,
         // so neither change nor invalidate the caches that describe them.
@@ -1254,10 +1285,21 @@ static std::vector<LLVertexBuffer*> sMappedBuffers;
 #if LL_DARWIN
 static ALMetalDevice* sMetalDevice = nullptr;
 static std::atomic<bool> sMetalMirrorReported{false};
+static std::atomic<bool> sMetalBufferAuthority{false};
 
 void LLVertexBuffer::setMetalDevice(ALMetalDevice* device)
 {
     sMetalDevice = device;
+}
+
+void LLVertexBuffer::setMetalBufferAuthority(bool enabled) noexcept
+{
+    sMetalBufferAuthority.store(enabled, std::memory_order_release);
+}
+
+bool LLVertexBuffer::isMetalBufferAuthority() noexcept
+{
+    return sMetalBufferAuthority.load(std::memory_order_acquire);
 }
 
 static std::unique_ptr<ALMetalBuffer> allocate_metal_buffer(U32 size, const char* label)
@@ -1601,7 +1643,11 @@ U8* LLVertexBuffer::mapVertexBuffer(LLVertexBuffer::AttributeType type, U32 inde
     // Apple's path gives GL whole stores, never ranges (see _unmapBuffer), so it marks only that
     // the vertices were written. While mIsApple can be encountered under windows, this is a
     // macOS OpenGL behavior workaround. LL_ARM64 check might be not needed
-    if (gGLManager.mIsApple)
+    if (
+#if LL_DARWIN
+        isMetalBufferAuthority() ||
+#endif
+        gGLManager.mIsApple)
     {
         mVerticesWritten = true;
     }
@@ -1645,7 +1691,11 @@ U8* LLVertexBuffer::mapIndexBuffer(U32 index, S32 count)
     }
 
 #if LL_DARWIN || LL_ARM64
-    if (gGLManager.mIsApple)
+    if (
+#if LL_DARWIN
+        isMetalBufferAuthority() ||
+#endif
+        gGLManager.mIsApple)
     {
         mIndicesWritten = true;
     }
@@ -1694,7 +1744,11 @@ void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8
     touchContents();
 
 #if LL_DARWIN || LL_ARM64
-    if (gGLManager.mIsApple)
+    if (
+#if LL_DARWIN
+        isMetalBufferAuthority() ||
+#endif
+        gGLManager.mIsApple)
     {
         // on OS X, flush_vbo doesn't actually write to the GL buffer, so be sure to call
         // _mapBuffer to tag the buffer for flushing to GL
@@ -1708,7 +1762,12 @@ void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8
             mVerticesWritten = true;
         }
         LL_PROFILE_ZONE_NAMED_CATEGORY_VERTEX("vb memcpy");
-        STOP_GLERROR;
+#if LL_DARWIN
+        if (!isMetalBufferAuthority())
+#endif
+        {
+            STOP_GLERROR;
+        }
         // copy into mapped buffer
         memcpy(dst+start, data, end-start+1);
     }
@@ -1751,6 +1810,7 @@ void LLVertexBuffer::_unmapBuffer()
 {
 #if LL_DARWIN
     const bool native_upload =
+        isMetalBufferAuthority() ||
         metalOnlyUploadActive() ||
         gGL.isMetalUITextureCaptureAuthoritative() ||
         gGLManager.mIsDisabled;
@@ -1775,7 +1835,11 @@ void LLVertexBuffer::_unmapBuffer()
     };
 
 #if LL_DARWIN || LL_ARM64
-    if (gGLManager.mIsApple)
+    if (
+#if LL_DARWIN
+        isMetalBufferAuthority() ||
+#endif
+        gGLManager.mIsApple)
     {
         // Apple's GL-on-Metal is given the whole store again, under the name the buffer already
         // has. glBufferData on a name the GPU may still be reading gives the name a new store and
@@ -2046,13 +2110,20 @@ bool LLVertexBuffer::getClothWeightStrider(LLStrider<LLVector4>& strider, U32 in
 // Set for rendering
 void LLVertexBuffer::setBuffer()
 {
-    STOP_GLERROR;
-
     if (mMapped)
     {
         LL_WARNS_ONCE() << "Missing call to unmapBuffer or flushBuffers" << LL_ENDL;
         _unmapBuffer();
     }
+
+#if LL_DARWIN
+    if (isMetalBufferAuthority())
+    {
+        return;
+    }
+#endif
+
+    STOP_GLERROR;
 
     // no data may be pending
     llassert(mMappedVertexRegions.empty());

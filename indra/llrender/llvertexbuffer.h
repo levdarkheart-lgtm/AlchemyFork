@@ -113,6 +113,11 @@ public:
     static void cleanupClass();
 #if LL_DARWIN
     static void setMetalDevice(ALMetalDevice* device);
+    // The production Darwin viewer owns ordinary geometry in Metal. Keep this
+    // policy independent from gGLManager.mIsDisabled so renderer-side feature
+    // selection remains live while duplicate GL buffer ownership is removed.
+    static void setMetalBufferAuthority(bool enabled) noexcept;
+    static bool isMetalBufferAuthority() noexcept;
     // CPU-authored preview meshes can publish directly to their Metal buffers
     // without manufacturing duplicate OpenGL names. The scope is nestable and
     // main-thread local to the producer that owns the upload.

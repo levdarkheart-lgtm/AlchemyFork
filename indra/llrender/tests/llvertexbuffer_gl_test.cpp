@@ -479,5 +479,55 @@ namespace
                       index_copy.size()) == 0);
         }
     }
+
+    TEST_CASE_METHOD(
+        llvertexbuffer_gl_data,
+        "llvertexbuffer_gl: production Metal authority keeps ordinary buffers native-only",
+        "[llvertexbuffer_gl][almetal]")
+    {
+        ALMetalDevice* device =
+            ll_test::sharedHeadlessGL().window()->getMetalDevice();
+        REQUIRE(device);
+        LLVertexBuffer::setMetalDevice(device);
+        LLVertexBuffer::unbind();
+        LLVertexBuffer::setMetalBufferAuthority(true);
+        struct ResetMetalAuthority
+        {
+            ~ResetMetalAuthority()
+            {
+                LLVertexBuffer::setMetalBufferAuthority(false);
+                LLVertexBuffer::setMetalDevice(nullptr);
+            }
+        } reset_metal_authority;
+
+        REQUIRE(LLVertexBuffer::isMetalBufferAuthority());
+        LLVertexBuffer::unbind();
+        LLPointer<LLVertexBuffer> buffer =
+            new LLVertexBuffer(LLVertexBuffer::MAP_VERTEX);
+        REQUIRE(buffer->allocateBuffer(3, 3));
+
+        LLStrider<LLVector3> positions;
+        REQUIRE(buffer->getVertexStrider(positions));
+        positions[0].set(-1.f, 0.f, 0.f);
+        positions[1].set(1.f, 0.f, 0.f);
+        positions[2].set(0.f, 1.f, 0.f);
+        LLStrider<U16> indices;
+        REQUIRE(buffer->getIndexStrider(indices));
+        indices[0] = 0;
+        indices[1] = 1;
+        indices[2] = 2;
+        buffer->unmapBuffer();
+        buffer->setBuffer();
+        buffer->draw(LLRender::TRIANGLES, 3, 0);
+
+        GLint vertex_binding = -1;
+        GLint index_binding = -1;
+        glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &vertex_binding);
+        glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &index_binding);
+        CHECK(vertex_binding == 0);
+        CHECK(index_binding == 0);
+        CHECK(buffer->getMetalVertexBuffer());
+        CHECK(buffer->getMetalIndexBuffer());
+    }
 #endif
 }

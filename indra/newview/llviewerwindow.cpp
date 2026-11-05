@@ -2323,6 +2323,7 @@ LLViewerWindow::LLViewerWindow(const Params& p)
     if (auto* sdl_window = dynamic_cast<LLWindowSDL*>(mWindow))
     {
         LLVertexBuffer::setMetalDevice(sdl_window->getMetalDevice());
+        LLVertexBuffer::setMetalBufferAuthority(true);
         LLImageGL::setMetalDevice(sdl_window->getMetalDevice());
         // The Darwin product renderer is Metal-native. This is deliberately
         // separate from gGLManager.mIsDisabled: the viewer remains fully
