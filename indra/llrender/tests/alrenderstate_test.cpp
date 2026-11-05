@@ -16,6 +16,7 @@
 #include "catch2/catch_test_macros.hpp"
 
 #include "llgl.h"
+#include "llglslshader.h"
 #include "llglstates.h"
 #include "llrender.h"
 
@@ -109,4 +110,53 @@ TEST_CASE("Scoped render state remains balanced without an OpenGL context",
     CHECK_FALSE(LLGLDepthTest::depthEnabled());
     CHECK(LLGLDepthTest::depthWriteEnabled());
     CHECK(LLGLDepthTest::depthFunction() == GL_LESS);
+}
+
+TEST_CASE("Sampler intent remains available without an OpenGL context",
+          "[alrenderstate][metal-cutover]")
+{
+    REQUIRE_FALSE(gGLManager.mInited);
+
+    struct SamplerReset
+    {
+        ~SamplerReset() { gGL.clearSamplers(); }
+    } reset;
+
+    gGL.clearSamplers();
+    gGL.warmupSamplers();
+    const U32 point = gGL.getSampler(ALSamplers::PointClamp);
+    const U32 linear = gGL.getSampler(ALSamplers::BilinearClamp);
+    CHECK(point != 0);
+    CHECK(linear != 0);
+    CHECK(point != linear);
+
+    ALSamplerDesc custom = ALSamplerCache::makeDesc(ALSamplers::BilinearClamp);
+    custom.mMagFilter = GL_NEAREST;
+    const U32 custom_name = gGL.getSampler(custom);
+    CHECK(custom_name != 0);
+    CHECK(custom_name != linear);
+
+    ALTextureSlot* slot = gGL.getTextureSlot(31);
+    ALTextureSlot::sSamplerBinds = 0;
+    ALTextureSlot::sSamplerSkips = 0;
+    slot->bindSampler(point);
+    slot->bindSampler(point);
+    CHECK(ALTextureSlot::sSamplerBinds == 1);
+    CHECK(ALTextureSlot::sSamplerSkips == 1);
+    slot->bindSampler(0);
+}
+
+TEST_CASE("Shader binding remains logical without an OpenGL context",
+          "[alrenderstate][metal-cutover]")
+{
+    REQUIRE_FALSE(gGLManager.mInited);
+
+    LLGLSLShader shader;
+    shader.bind();
+    CHECK(LLGLSLShader::sCurBoundShader == 0);
+    CHECK(LLGLSLShader::sCurBoundShaderPtr == &shader);
+
+    LLGLSLShader::unbind();
+    CHECK(LLGLSLShader::sCurBoundShader == 0);
+    CHECK(LLGLSLShader::sCurBoundShaderPtr == nullptr);
 }

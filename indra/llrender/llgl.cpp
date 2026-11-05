@@ -3481,7 +3481,10 @@ void rotate_quat(LLQuaternion& rotation)
 
 void flush_glerror()
 {
-    glGetError();
+    if (gGLManager.mInited)
+    {
+        glGetError();
+    }
 }
 
 const std::string getGLErrorString(GLenum error)
@@ -3579,7 +3582,7 @@ void assert_glerror()
     }
 */
 
-    if (!gDebugGL)
+    if (!gDebugGL || !gGLManager.mInited)
     {
         //funny looking if for branch prediction -- gDebugGL is almost always false and assert_glerror is called often
     }
@@ -3592,8 +3595,11 @@ void assert_glerror()
 
 void clear_glerror()
 {
-    glGetError();
-    glGetError();
+    if (gGLManager.mInited)
+    {
+        glGetError();
+        glGetError();
+    }
 }
 
 ///////////////////////////////////////////////////////////////

@@ -1767,6 +1767,19 @@ namespace
     // than taking the viewer down. Built on first need in each context (LLGLSLShader::releaseStandIn).
     GLuint sStandIn = 0;
 
+    bool issue_opengl_shader() noexcept
+    {
+        if (!gGLManager.mInited)
+        {
+            return false;
+        }
+#if LL_DARWIN
+        return !gGL.isMetalUITextureCaptureAuthoritative();
+#else
+        return true;
+#endif
+    }
+
     GLuint stand_in_stage(GLenum type, const char* source)
     {
         const GLuint stage = glCreateShader(type);
@@ -1816,7 +1829,10 @@ void LLGLSLShader::releaseStandIn()
         {
             unbind();
         }
-        glDeleteProgram(sStandIn);
+        if (gGLManager.mInited)
+        {
+            glDeleteProgram(sStandIn);
+        }
         sStandIn = 0;
     }
 }
@@ -1824,6 +1840,15 @@ void LLGLSLShader::releaseStandIn()
 void LLGLSLShader::bindStandIn()
 {
     gGL.flush();
+
+    // Native pipeline selection retains the shader object as semantic pass
+    // identity; it neither needs nor may manufacture a dummy GLSL program.
+    if (!issue_opengl_shader())
+    {
+        sCurBoundShader = 0;
+        sCurBoundShaderPtr = this;
+        return;
+    }
 
     const GLuint program = stand_in();
     if (sCurBoundShader != program || sCurBoundShaderPtr != this)
@@ -1847,15 +1872,14 @@ void LLGLSLShader::bind()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
 
-#if LL_DARWIN
-    if (gGL.isMetalUITextureCaptureAuthoritative())
+    if (!issue_opengl_shader())
     {
         gGL.flush();
         sCurBoundShader = mProgramObject;
         sCurBoundShaderPtr = this;
+        warnIfVariantMissed();
         return;
     }
-#endif
 
     // A program that did not build draws nothing, and its uniform and texture calls set nothing.
     if (mProgramObject == 0)
@@ -1946,15 +1970,13 @@ void LLGLSLShader::bind(bool rigged)
 void LLGLSLShader::unbind(void)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
-#if LL_DARWIN
-    if (gGL.isMetalUITextureCaptureAuthoritative())
+    if (!issue_opengl_shader())
     {
         gGL.flush();
         sCurBoundShader = 0;
         sCurBoundShaderPtr = nullptr;
         return;
     }
-#endif
     gGL.flush();
     LLVertexBuffer::unbind();
 

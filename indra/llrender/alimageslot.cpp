@@ -148,11 +148,11 @@ bool ALImageSlot::bind(LLImageGL* image, eAccess access, U32 level)
 
 bool ALImageSlot::bindManual(U32 texture, U32 level, bool layered, S32 layer, eAccess access, U32 format)
 {
-    llassert(LLRender::sCompute);
-    if (mIndex < 0 || !gGLManager.mHasCompute)
+    if (mIndex < 0 || !gGLManager.mInited || !gGLManager.mHasCompute)
     {
         return false;
     }
+    llassert(LLRender::sCompute);
 
     // An image reads and writes the texel's bits as `format` lays them out. sRGB would need a conversion on every
     // access, depth has no texel bits to give, and a compressed block is not a texel: GL takes none of them.
@@ -186,7 +186,8 @@ bool ALImageSlot::bindManual(U32 texture, U32 level, bool layered, S32 layer, eA
 
 void ALImageSlot::unbind()
 {
-    if (mIndex < 0 || mCurrTexture == 0 || !gGLManager.mHasCompute)
+    if (mIndex < 0 || mCurrTexture == 0 || !gGLManager.mInited ||
+        !gGLManager.mHasCompute)
     {
         return;
     }
@@ -201,7 +202,7 @@ void ALImageSlot::unbind()
 void ALImageSlot::refreshState()
 {
     // Image units exist only where compute does; a 4.1 context has nothing here to restore.
-    if (mIndex < 0 || !gGLManager.mHasCompute)
+    if (mIndex < 0 || !gGLManager.mInited || !gGLManager.mHasCompute)
     {
         return;
     }

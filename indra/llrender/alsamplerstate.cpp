@@ -26,6 +26,7 @@
 
 #include "alsamplerstate.h"
 
+#include "alrendercapabilities.h"
 #include "llgl.h"     // gGLManager
 #include "llrender.h" // LLRender::sAnisotropicFilteringLevel
 
@@ -39,6 +40,17 @@ namespace
         GL_MIRRORED_REPEAT,
         GL_CLAMP_TO_EDGE
     };
+
+    // A contextless native renderer still needs stable sampler identities in
+    // the retained slot caches. These values are never handed to GL; the
+    // cache maps them back to the same descriptors used by Metal encoders.
+    constexpr U32 LOGICAL_SAMPLER_BASE = 0x80000000u;
+    constexpr U32 LOGICAL_CUSTOM_BASE  = 0xc0000000u;
+
+    U32 logical_sampler(U32 slot)
+    {
+        return LOGICAL_SAMPLER_BASE | (slot + 1u);
+    }
 }
 
 // static
@@ -82,10 +94,17 @@ ALSamplerDesc ALSamplerCache::makeDesc(ALSampler key)
 
     desc.mWrapS = desc.mWrapT = desc.mWrapR = sGLAddressMode[address];
 
-    if (gGLManager.mHasAnisotropic && filter == static_cast<U16>(ALSampler::Anisotropic)
+    const bool has_anisotropy = gRenderCapabilities.isInitialized()
+        ? gRenderCapabilities.hasAnisotropicFiltering()
+        : gGLManager.mHasAnisotropic;
+    const F32 max_anisotropy = gRenderCapabilities.isInitialized()
+        ? gRenderCapabilities.maxAnisotropy()
+        : gGLManager.mMaxAnisotropy;
+    if (has_anisotropy && filter == static_cast<U16>(ALSampler::Anisotropic)
         && LLRender::sAnisotropicFilteringLevel > 1.f)
     {
-        desc.mMaxAnisotropy = llclamp(LLRender::sAnisotropicFilteringLevel, 1.f, gGLManager.mMaxAnisotropy);
+        desc.mMaxAnisotropy = llclamp(LLRender::sAnisotropicFilteringLevel, 1.f,
+                                      max_anisotropy);
     }
 
     desc.mSRGBDecode = decode ? GL_DECODE_EXT : GL_SKIP_DECODE_EXT;
@@ -138,6 +157,10 @@ U32 ALSamplerCache::create(const ALSamplerDesc& desc)
 
 U32 ALSamplerCache::createSlot(ALSampler key)
 {
+    if (!gGLManager.mInited)
+    {
+        return logical_sampler(static_cast<U16>(key) & KEY_MASK);
+    }
     return create(makeDesc(key));
 }
 
@@ -151,7 +174,10 @@ U32 ALSamplerCache::get(const ALSamplerDesc& desc)
         }
     }
 
-    const U32 name = create(desc);
+    const U32 name = gGLManager.mInited
+        ? create(desc)
+        : (LOGICAL_CUSTOM_BASE |
+           (static_cast<U32>(mCustomSamplers.size()) + 1u));
     if (name)
     {
         mCustomSamplers.emplace_back(desc, name);

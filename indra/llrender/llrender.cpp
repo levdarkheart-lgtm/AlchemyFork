@@ -794,6 +794,7 @@ bool LLRender::initMetal(bool needs_vertex_buffer)
     {
         resetCachedState();
         LLGLState::initClass();
+        mSamplerCache.warmup();
     }
 
     mCurrBlendColorSFactor = BF_SOURCE_ALPHA;
@@ -1968,10 +1969,7 @@ void LLRender::clearSamplers()
 
 void LLRender::warmupSamplers()
 {
-    if (gGLManager.mInited)
-    {
-        mSamplerCache.warmup();
-    }
+    mSamplerCache.warmup();
 }
 
 void LLRender::refreshState(void)

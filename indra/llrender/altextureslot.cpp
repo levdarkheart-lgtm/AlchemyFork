@@ -49,6 +49,22 @@ static const GLenum sGLTextureType[] =
     GL_TEXTURE_3D
 };
 
+namespace
+{
+    bool issue_opengl_texture() noexcept
+    {
+        if (!gGLManager.mInited)
+        {
+            return false;
+        }
+#if LL_DARWIN
+        return !gGL.isMetalUITextureCaptureAuthoritative();
+#else
+        return true;
+#endif
+    }
+}
+
 #if LL_DARWIN
 static U32 native_sample_fallback()
 {
@@ -94,6 +110,11 @@ void ALTextureSlot::refreshState(void)
     // and we reset the cached slot state
 
     gGL.flush();
+
+    if (!issue_opengl_texture())
+    {
+        return;
+    }
 
     glActiveTexture(GL_TEXTURE0 + mIndex);
 
@@ -144,7 +165,10 @@ void ALTextureSlot::bindSampler(U32 sampler)
     // ordered against draws the same way a texture change is.
     gGL.flush();
 
-    glBindSampler(mIndex, sampler);
+    if (issue_opengl_texture())
+    {
+        glBindSampler(mIndex, sampler);
+    }
     mCurrSampler = sampler;
 }
 
@@ -155,7 +179,10 @@ void ALTextureSlot::activate(void)
     if ((S32)gGL.mCurrTextureUnitIndex != mIndex || gGL.mDirty)
     {
         gGL.flush();
-        glActiveTexture(GL_TEXTURE0 + mIndex);
+        if (issue_opengl_texture())
+        {
+            glActiveTexture(GL_TEXTURE0 + mIndex);
+        }
         gGL.mCurrTextureUnitIndex = mIndex;
     }
 }
@@ -201,19 +228,37 @@ void ALTextureSlot::bindFast(LLTexture* texture, ALSampler key)
 
 void ALTextureSlot::bindFastImpl(LLTexture* texture, LLImageGL* gl_tex, U32 sampler)
 {
+    llassert(gl_tex);
     ++sTextureBinds;
     texture->setActive();
     U32 texname = gl_tex->getTexName();
     eTextureType target = gl_tex->getTarget();
+    const bool issue_gl = issue_opengl_texture();
 #if LL_DARWIN
+    if (!issue_gl && !gl_tex->getMetalTexture())
+    {
+        LL_PROFILE_ZONE_NAMED("MISSING NATIVE TEXTURE");
+        texture->forceImmediateUpdate();
+        if (!gl_tex->getMetalTexture())
+        {
+            gl_tex->forceUpdateBindStats();
+            texture->bindDefaultImage(mIndex);
+            return;
+        }
+    }
     const bool native_only = !texname && gl_tex->getMetalTexture();
     if (native_only)
     {
-        texname = native_sample_fallback();
+        // A non-zero logical token keeps the existing slot-state checks
+        // meaningful without ever becoming a GL texture name.
+        texname = issue_gl ? native_sample_fallback() : 1u;
         target = TT_TEXTURE;
     }
 #endif
-    glActiveTexture(GL_TEXTURE0 + mIndex);
+    if (issue_gl)
+    {
+        glActiveTexture(GL_TEXTURE0 + mIndex);
+    }
     gGL.mCurrTextureUnitIndex = mIndex;
     mCurrTexture = texname;
     mCurrImage = gl_tex;
@@ -224,6 +269,7 @@ void ALTextureSlot::bindFastImpl(LLTexture* texture, LLImageGL* gl_tex, U32 samp
         texture->forceImmediateUpdate();
         gl_tex->forceUpdateBindStats();
         texture->bindDefaultImage(mIndex);
+        return;
     }
     // Classic bind, NOT glBindTextureUnit, even where DSA is available.
     //
@@ -235,14 +281,20 @@ void ALTextureSlot::bindFastImpl(LLTexture* texture, LLImageGL* gl_tex, U32 samp
     //
     // (It also differs on a stale name: glBindTexture silently conjures a fresh empty
     // texture object, glBindTextureUnit raises GL_INVALID_OPERATION.)
-    glBindTexture(sGLTextureType[target], mCurrTexture);
+    if (issue_gl)
+    {
+        glBindTexture(sGLTextureType[target], mCurrTexture);
+    }
 
     // Select the sampler. No flush, per this function's contract -- consistent with the
     // texture binding above, which is changed the same way.
     if (mCurrSampler != sampler)
     {
         ++sSamplerBinds;
-        glBindSampler(mIndex, sampler);
+        if (issue_gl)
+        {
+            glBindSampler(mIndex, sampler);
+        }
         mCurrSampler = sampler;
     }
     else
@@ -330,10 +382,20 @@ bool ALTextureSlot::bindImpl(LLTexture* texture, bool forceBind, ALSampler key)
             U32 texname = gl_tex->getTexName();
             eTextureType target = gl_tex->getTarget();
 #if LL_DARWIN
+            if (!issue_opengl_texture() && !gl_tex->getMetalTexture())
+            {
+                texture->forceImmediateUpdate();
+                if (!gl_tex->getMetalTexture())
+                {
+                    gl_tex->forceUpdateBindStats();
+                    return texture->bindDefaultImage(mIndex);
+                }
+            }
             const bool native_only = !texname && gl_tex->getMetalTexture();
             if (native_only)
             {
-                texname = native_sample_fallback();
+                texname = issue_opengl_texture()
+                    ? native_sample_fallback() : 1u;
                 target = TT_TEXTURE;
             }
 #endif
@@ -344,7 +406,10 @@ bool ALTextureSlot::bindImpl(LLTexture* texture, bool forceBind, ALSampler key)
                     activate();
                     setTarget(target);
                     mCurrTexture = texname;
-                    glBindTexture(sGLTextureType[target], mCurrTexture);
+                    if (issue_opengl_texture())
+                    {
+                        glBindTexture(sGLTextureType[target], mCurrTexture);
+                    }
 #if LL_DARWIN
                     if (!native_only && gl_tex->updateBindStats())
 #else
@@ -406,6 +471,22 @@ bool ALTextureSlot::bindNativeSampled(LLImageGL* image, U32 sampler, bool forceB
         return false;
     }
 
+    if (!issue_opengl_texture())
+    {
+        const bool changed = mCurrImage != image ||
+                             mCurrTexType != TT_TEXTURE || forceBind;
+        if (changed)
+        {
+            gGL.flush();
+        }
+        mCurrTexture = 1u;
+        mCurrTexType = TT_TEXTURE;
+        mCurrImage = image;
+        bindSampler(sampler);
+        image->forceUpdateBindStats();
+        return true;
+    }
+
     const U32 fallback = native_sample_fallback();
     if (!fallback)
     {
@@ -445,7 +526,6 @@ bool ALTextureSlot::bindNativeSampled(LLImageGL* image, U32 sampler, bool forceB
 
 bool ALTextureSlot::bind(LLImageGL* texture, bool for_rendering, bool forceBind, S32 usename)
 {
-    stop_glerror();
     if (mIndex < 0) return false;
 
     if(!texture)
@@ -453,6 +533,30 @@ bool ALTextureSlot::bind(LLImageGL* texture, bool for_rendering, bool forceBind,
         LL_DEBUGS() << "NULL ALTextureSlot::bind texture" << LL_ENDL;
         return false;
     }
+
+    if (!issue_opengl_texture())
+    {
+#if LL_DARWIN
+        if (usename || !texture->getMetalTexture())
+        {
+            return false;
+        }
+        if (mCurrImage != texture || mCurrTexType != texture->getTarget() ||
+            forceBind)
+        {
+            gGL.flush();
+        }
+        mCurrTexture = 1u;
+        mCurrTexType = texture->getTarget();
+        mCurrImage = texture;
+        texture->updateBindStats();
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    stop_glerror();
 
     // Resolve texname after the null-check; previously this line dereferenced
     // `texture` when usename == 0 and texture was null, crashing before the
@@ -574,6 +678,23 @@ bool ALTextureSlot::bindManual(eTextureType type, U32 texture, U32 sampler)
 
     LLImageGL* next_image = (type == TT_TEXTURE && texture == sWhiteTexture.load())
         ? sWhiteImage.load() : nullptr;
+    if (!issue_opengl_texture())
+    {
+#if LL_DARWIN
+        if (!next_image || !next_image->getMetalTexture())
+        {
+            return false;
+        }
+        gGL.flush();
+        mCurrTexture = 1u;
+        mCurrTexType = TT_TEXTURE;
+        mCurrImage = next_image;
+        bindSampler(sampler);
+        return true;
+#else
+        return false;
+#endif
+    }
     if (mCurrImage != next_image)
     {
         gGL.flush();
@@ -612,9 +733,13 @@ void ALTextureSlot::unbind()
         return;
     }
 #endif
-    stop_glerror();
-
     if (mIndex < 0) return;
+
+    const bool issue_gl = issue_opengl_texture();
+    if (issue_gl)
+    {
+        stop_glerror();
+    }
 
     //always flush and activate for consistency
     //   some code paths assume unbind always flushes and sets the active texture
@@ -626,11 +751,11 @@ void ALTextureSlot::unbind()
         mCurrTexture = 0;
         mCurrImage = (mCurrTexType == TT_TEXTURE) ? sWhiteImage.load() : nullptr;
 
-        if (mCurrTexType == TT_TEXTURE)
+        if (issue_gl && mCurrTexType == TT_TEXTURE)
         {
             glBindTexture(sGLTextureType[mCurrTexType], sWhiteTexture);
         }
-        else
+        else if (issue_gl)
         {
             glBindTexture(sGLTextureType[mCurrTexType], 0);
         }
@@ -668,11 +793,12 @@ void ALTextureSlot::unbindFast()
         mCurrTexture = 0;
         mCurrImage = (mCurrTexType == TT_TEXTURE) ? sWhiteImage.load() : nullptr;
 
-        if (mCurrTexType == TT_TEXTURE)
+        const bool issue_gl = issue_opengl_texture();
+        if (issue_gl && mCurrTexType == TT_TEXTURE)
         {
             glBindTexture(sGLTextureType[mCurrTexType], sWhiteTexture);
         }
-        else
+        else if (issue_gl)
         {
             glBindTexture(sGLTextureType[mCurrTexType], 0);
         }
@@ -690,7 +816,7 @@ void ALTextureSlot::unbindFast()
 // slot based on the currently set active texture in opengl.
 void ALTextureSlot::debugTextureUnit(void)
 {
-    if (mIndex < 0) return;
+    if (mIndex < 0 || !issue_opengl_texture()) return;
 
     GLint activeTexture;
     glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
