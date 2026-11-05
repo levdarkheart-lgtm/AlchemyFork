@@ -503,7 +503,6 @@ struct LLPipeline::MetalWorldSimpleCapture
     U32 world_ui_chain_last_attempt_frame =
         std::numeric_limits<U32>::max();
     bool world_ui_chain_exhausted_reported = false;
-    bool world_ui_overlay_exact = false;
     std::unique_ptr<ALMetalRenderTarget> depth_of_field_target;
     U32 depth_of_field_frame = std::numeric_limits<U32>::max();
     std::unique_ptr<ALMetalRenderTarget> bloom_target;
@@ -4094,11 +4093,6 @@ void LLPipeline::beginMetalWorldPostDeferredCapture()
     {
         return;
     }
-
-    ALMetalWorldOverlayEligibility overlay_eligibility;
-    overlay_eligibility.render_debug =
-        (mRenderDebugMask & RENDER_DEBUG_GL_WORLD_OUTPUT) != 0;
-    capture.world_ui_overlay_exact = overlay_eligibility.exact();
 
     capture.batches.clear();
     capture.highlight_batches.clear();
@@ -10672,7 +10666,7 @@ bool LLPipeline::readMetalWorldSnapshot(
             *error = fmt::format(
                 "Metal world snapshot did not complete exactly: "
                 "chain_snapshot={}, capture_active={}, chain_active={}, "
-                "complete={}, first_incomplete_line={}, overlay_exact={}, "
+                "complete={}, first_incomplete_line={}, "
                 "frame_active={}, renderer={}, target={}, composed_light={}, "
                 "lighting_attempted={}, post_attempted={}, "
                 "presentation_target={}, presentation_frame={}, "
@@ -10683,7 +10677,6 @@ bool LLPipeline::readMetalWorldSnapshot(
                 capture.world_ui_chain_active,
                 capture.complete,
                 capture.first_incomplete_source_line,
-                capture.world_ui_overlay_exact,
                 capture.frame_active,
                 static_cast<bool>(capture.renderer),
                 static_cast<bool>(capture.target),
@@ -10861,7 +10854,6 @@ bool LLPipeline::beginMetalWorldUICompositionCapture()
          !capture.world_ui_chain_debug_color &&
          capture.world_ui_probe_attempted) ||
         !world_ui_transaction_eligible ||
-        !capture.world_ui_overlay_exact ||
         !capture.presentation_target ||
         capture.presentation_frame != gFrameCount || !capture.target)
     {

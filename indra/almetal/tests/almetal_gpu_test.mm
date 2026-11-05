@@ -40,21 +40,6 @@
 
 namespace
 {
-    TEST_CASE("almetal: remaining uncaptured world overlays reject exact publication",
-              "[almetal][world][overlay]")
-    {
-        ALMetalWorldOverlayEligibility eligibility;
-        CHECK(eligibility.exact());
-
-        const auto rejects = [](auto member)
-        {
-            ALMetalWorldOverlayEligibility candidate;
-            candidate.*member = true;
-            return !candidate.exact();
-        };
-        CHECK(rejects(&ALMetalWorldOverlayEligibility::render_debug));
-    }
-
     id<MTLDevice> nativeDevice(const ALMetalDevice& device)
     {
         return (__bridge id<MTLDevice>)device.nativeHandle();

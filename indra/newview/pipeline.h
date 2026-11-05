@@ -1622,13 +1622,6 @@ public:
         RENDER_DEBUG_IMPOSTORS          = 0x100000000,
         RENDER_DEBUG_REFLECTION_PROBES  = 0x200000000,
         RENDER_DEBUG_PROBE_UPDATES      = 0x400000000,
-
-        // All reachable render-debug world geometry now has a native owner.
-        // The remaining bits are unused (VERIFY/GLOW/ALPHA_BINS/NODES) or
-        // feed LLHUD/debug text drawn after native world publication. Keep
-        // this explicit zero: broad mRenderDebugMask != 0 eligibility would
-        // silently turn text-only diagnostics into a GL world fallback.
-        RENDER_DEBUG_GL_WORLD_OUTPUT = 0,
     };
 
 public:
