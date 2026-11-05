@@ -678,12 +678,14 @@ struct ALMetalUIRenderer::Impl
         ALMetalRenderPipelineDescriptor descriptor;
         descriptor.library = library.get();
         const bool pbr = shader == ALMetalHUDShader::pbr_alpha;
+        const bool emboss = shader == ALMetalHUDShader::emboss;
         const bool highlight = shader == ALMetalHUDShader::highlight ||
             shader == ALMetalHUDShader::highlight_skinned;
         const bool debug = shader == ALMetalHUDShader::debug ||
             shader == ALMetalHUDShader::debug_skinned;
         descriptor.vertex_function = pbr
             ? "almetal_hud_pbr_alpha_vertex"
+            : emboss ? "almetal_hud_emboss_vertex"
             : shader == ALMetalHUDShader::debug_skinned
             ? "almetal_hud_debug_skinned_vertex"
             : debug ? "almetal_hud_debug_vertex"
@@ -693,6 +695,7 @@ struct ALMetalUIRenderer::Impl
                         : "almetal_hud_fullbright_vertex";
         descriptor.fragment_function = pbr
             ? "almetal_hud_pbr_alpha_fragment"
+            : emboss ? "almetal_hud_emboss_fragment"
             : debug ? "almetal_hud_debug_fragment"
             : highlight ? "almetal_hud_highlight_fragment"
                         : "almetal_hud_fullbright_fragment";
@@ -719,6 +722,12 @@ struct ALMetalUIRenderer::Impl
                 break;
             case ALMetalHUDShader::fullbright:
                 descriptor.label = "Alchemy HUD fullbright pipeline";
+                break;
+            case ALMetalHUDShader::fullbright_shiny:
+                descriptor.label = "Alchemy HUD fullbright shiny pipeline";
+                break;
+            case ALMetalHUDShader::emboss:
+                descriptor.label = "Alchemy HUD legacy emboss pipeline";
                 break;
             case ALMetalHUDShader::pbr_alpha:
                 descriptor.label = "Alchemy HUD PBR alpha pipeline";
@@ -1490,6 +1499,8 @@ std::unique_ptr<ALMetalUIRenderer> ALMetalUIRenderer::createForTexture(
         !library->hasFunction("almetal_ui_depth_restore_fragment") ||
         !library->hasFunction("almetal_hud_fullbright_vertex") ||
         !library->hasFunction("almetal_hud_fullbright_fragment") ||
+        !library->hasFunction("almetal_hud_emboss_vertex") ||
+        !library->hasFunction("almetal_hud_emboss_fragment") ||
         !library->hasFunction("almetal_hud_pbr_alpha_vertex") ||
         !library->hasFunction("almetal_hud_pbr_alpha_fragment") ||
         !library->hasFunction("almetal_selection_id_vertex") ||
@@ -1954,6 +1965,7 @@ bool ALMetalUIRenderer::drawHUDIndexed(
         batch.shader == ALMetalHUDShader::highlight_skinned;
     const bool debug = batch.shader == ALMetalHUDShader::debug ||
         batch.shader == ALMetalHUDShader::debug_skinned;
+    const bool emboss = batch.shader == ALMetalHUDShader::emboss;
     const bool skinned = batch.shader == ALMetalHUDShader::highlight_skinned ||
         batch.shader == ALMetalHUDShader::debug_skinned;
     if (!mImpl || !batch.vertices || batch.vertex_count == 0 ||
@@ -1982,11 +1994,15 @@ bool ALMetalUIRenderer::drawHUDIndexed(
          (batch.texcoord_offset % (sizeof(float) * 2) != 0 ||
           !rangeFits(batch.texcoord_offset, batch.vertex_count,
                      sizeof(float) * 2, batch.vertices->length()))) ||
-        (!highlight && !debug &&
+        (!highlight && !debug && !emboss &&
          (batch.color_offset % (sizeof(std::uint8_t) * 4) != 0 ||
           !rangeFits(batch.color_offset, batch.vertex_count,
                      sizeof(std::uint8_t) * 4,
                      batch.vertices->length()))) ||
+        (emboss &&
+         (batch.texcoord1_offset % (sizeof(float) * 2) != 0 ||
+          !rangeFits(batch.texcoord1_offset, batch.vertex_count,
+                     sizeof(float) * 2, batch.vertices->length()))) ||
         !rangeFits(batch.index_offset, batch.index_count,
                    index_stride, batch.indices->length()))
     {
@@ -2010,6 +2026,11 @@ bool ALMetalUIRenderer::drawHUDIndexed(
         }
     }
     const bool pbr = batch.shader == ALMetalHUDShader::pbr_alpha;
+    if (emboss && batch.texture_count != 1)
+    {
+        setError(error, "Metal HUD emboss requires one bump texture");
+        return false;
+    }
     if (pbr &&
         (batch.texture_count != 1 || !batch.emissive_texture ||
          !finiteFloats(batch.pbr_base_color_transform, 8) ||
@@ -2125,7 +2146,8 @@ bool ALMetalUIRenderer::drawHUDIndexed(
     constants.config[2] = mImpl->surface ? 0u : 1u;
     constants.config[3] =
         batch.shader == ALMetalHUDShader::fullbright_alpha_mask ? 1u :
-        batch.shader == ALMetalHUDShader::fullbright_alpha ? 2u : 0u;
+        batch.shader == ALMetalHUDShader::fullbright_alpha ? 2u :
+        batch.shader == ALMetalHUDShader::fullbright_shiny ? 3u : 0u;
     std::memcpy(constants.highlight_color, batch.highlight_color,
                 sizeof(constants.highlight_color));
     std::memcpy(constants.pbr_base_color_transform,
@@ -2160,10 +2182,15 @@ bool ALMetalUIRenderer::drawHUDIndexed(
                       1, *batch.vertices, batch.texcoord_offset, error) &&
                   encoder.setFragmentSampler(0, sampler, error);
     }
-    if (encoded && !highlight && !debug)
+    if (encoded && !highlight && !debug && !emboss)
     {
         encoded = encoder.setVertexBuffer(
             2, *batch.vertices, batch.color_offset, error);
+    }
+    if (encoded && emboss)
+    {
+        encoded = encoder.setVertexBuffer(
+            7, *batch.vertices, batch.texcoord1_offset, error);
     }
     if (encoded && skinned)
     {

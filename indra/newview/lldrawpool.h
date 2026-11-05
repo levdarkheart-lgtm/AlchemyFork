@@ -415,7 +415,10 @@ public:
     static void captureMetalHUDBatch(
         const LLDrawInfo& params, bool batch_textures,
         bool alpha_mask, bool alpha_pool, bool pbr_alpha,
-        F32 minimum_alpha, bool force_double_sided = false);
+        F32 minimum_alpha, bool force_double_sided = false,
+        bool fullbright_shiny = false);
+    static void captureMetalHUDEmbossBatch(
+        const LLDrawInfo& params, LLViewerTexture* bump_texture);
 #endif
     void pushBatches(U32 type, bool texture = true, bool batch_textures = false);
     void pushUntexturedBatches(U32 type);
@@ -472,9 +475,6 @@ public:
 
     void pushBatch(LLDrawInfo& params, bool texture, bool batch_textures = false);
     void pushUntexturedBatch(LLDrawInfo& params);
-    void pushBumpBatch(LLDrawInfo& params, bool texture,
-                       bool batch_textures = false,
-                       LLViewerTexture* bump_texture = nullptr);
     static bool uploadMatrixPalette(LLDrawInfo& params);
     static bool uploadMatrixPalette(LLVOAvatar* avatar, LLMeshSkinInfo* skinInfo);
     static bool uploadMatrixPalette(LLVOAvatar* avatar, LLMeshSkinInfo* skinInfo, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin);

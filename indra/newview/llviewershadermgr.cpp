@@ -100,7 +100,6 @@ LLGLSLShader    gDrawColorProgram;
 //object shaders
 LLGLSLShader        gObjectPreviewProgram;
 LLGLSLShader        gPhysicsPreviewProgram;
-LLGLSLShader        gObjectBumpProgram;
 LLGLSLShader        gObjectAlphaMaskNoColorProgram;
 
 //environment shaders
@@ -210,7 +209,6 @@ LLGLSLShader            gDeferredWLMoonProgram;
 LLGLSLShader            gDeferredStarProgram;
 LLGLSLShader            gDeferredMeteorProgram;
 LLGLSLShader            gDeferredAuroraProgram;
-LLGLSLShader            gHUDFullbrightShinyProgram;
 LLGLSLShader            gDeferredBufferVisualProgram;
 LLGLSLShader            gBlitWithEffectsProgram;
 #if !LL_DARWIN
@@ -1359,8 +1357,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredStarProgram.unload();
         gDeferredMeteorProgram.unload();
         gDeferredAuroraProgram.unload();
-        gHUDFullbrightShinyProgram.unload();
-
         gDeferredHighlightProgram.unload();
 
         gDepthPyramidProgram.unload();
@@ -2071,26 +2067,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
         gHUDFullbrightAlphaMaskAlphaProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
         built(gHUDFullbrightAlphaMaskAlphaProgram.createShader(), gHUDFullbrightAlphaMaskAlphaProgram);
-    }
-
-    {
-        gHUDFullbrightShinyProgram.mName = "HUD FullbrightShiny Shader";
-        gHUDFullbrightShinyProgram.mFeatures.calculatesAtmospherics = true;
-        gHUDFullbrightShinyProgram.mFeatures.hasAtmospherics = true;
-        gHUDFullbrightShinyProgram.mFeatures.hasGamma = true;
-        gHUDFullbrightShinyProgram.mFeatures.hasSrgb = true;
-        gHUDFullbrightShinyProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-        gHUDFullbrightShinyProgram.mShaderFiles.clear();
-        gHUDFullbrightShinyProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightShinyV.glsl", GL_VERTEX_SHADER));
-        gHUDFullbrightShinyProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightShinyF.glsl", GL_FRAGMENT_SHADER));
-        gHUDFullbrightShinyProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gHUDFullbrightShinyProgram.mFeatures.hasReflectionProbes = true;
-        gHUDFullbrightShinyProgram.clearPermutations();
-        gHUDFullbrightShinyProgram.addPermutation("IS_HUD", "1");
-
-        add_common_permutations(&gHUDFullbrightShinyProgram);
-
-        built(gHUDFullbrightShinyProgram.createShader(LLGLSLShader::VARIANT_CLASSIC), gHUDFullbrightShinyProgram);
     }
 
     {
@@ -3229,23 +3205,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 void LLViewerShaderMgr::loadShadersObject()
 {
     LL_PROFILE_ZONE_SCOPED;
-    {
-        gObjectBumpProgram.mName = "Bump Shader";
-        gObjectBumpProgram.mShaderFiles.clear();
-        gObjectBumpProgram.mShaderFiles.push_back(make_pair("objects/bumpV.glsl", GL_VERTEX_SHADER));
-        gObjectBumpProgram.mShaderFiles.push_back(make_pair("objects/bumpF.glsl", GL_FRAGMENT_SHADER));
-        gObjectBumpProgram.mShaderLevel = mShaderLevel[SHADER_OBJECT];
-        //lldrawpoolbump assumes "texture0" has channel 0 and "texture1" has channel 1
-        gObjectBumpProgram.mOnLink = [](LLGLSLShader& s)
-        {
-            s.bind();
-            s.uniform1i(sTexture0, 0);
-            s.uniform1i(sTexture1, 1);
-            s.unbind();
-        };
-        built(gObjectBumpProgram.createShader(LLGLSLShader::VARIANT_RIGGED | mirror_variant()), gObjectBumpProgram);
-    }
-
     {
         gObjectAlphaMaskNoColorProgram.mName = "No color alpha mask Shader";
         gObjectAlphaMaskNoColorProgram.mFeatures.calculatesLighting = true;

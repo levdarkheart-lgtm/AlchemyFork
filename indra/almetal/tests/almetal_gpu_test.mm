@@ -886,6 +886,8 @@ TEST_CASE("almetal: offline built-in library exposes every production entry poin
             "almetal_uniform_color_fragment",
             "almetal_hud_fullbright_vertex",
             "almetal_hud_fullbright_fragment",
+            "almetal_hud_emboss_vertex",
+            "almetal_hud_emboss_fragment",
             "almetal_hud_pbr_alpha_vertex",
             "almetal_hud_pbr_alpha_fragment",
             "almetal_hud_debug_vertex",
@@ -30832,6 +30834,112 @@ TEST_CASE("almetal: production UI renderer consumes the viewer SoA layout", "[al
         INFO(error);
         CHECK(std::abs(depth_region_values[16 * 32 + 16] - 0.25f) <
               0.0001f);
+
+        // HUD fullbright shiny uses streamed alpha as environment intensity,
+        // never coverage. Its native mode therefore preserves the encoded
+        // texel/tint multiply while forcing opaque output like IS_HUD GLSL.
+        hud_batch.shader = ALMetalHUDShader::fullbright_shiny;
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        REQUIRE(hud_renderer->drawHUDIndexed(hud_batch, &error));
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 0]) - 192) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 1]) - 32) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 2]) - 32) <= 1);
+        CHECK(composed_pixels[center + 3] == 255u);
+
+        // Legacy emboss samples one native bump image at the independently
+        // generated texcoord0/texcoord1 offsets, then applies BT_MULT_X2 over
+        // retained HUD/world color with depth reads and no depth writes.
+        constexpr std::size_t hud_emboss_texcoord1_alignment =
+            sizeof(float) * 2;
+        constexpr std::size_t hud_emboss_texcoord1_offset =
+            (color_offset + sizeof(hud_colors) +
+             hud_emboss_texcoord1_alignment - 1) &
+            ~(hud_emboss_texcoord1_alignment - 1);
+        const float hud_emboss_texcoords0[3][2] = {
+            {0.25f, 0.5f}, {0.25f, 0.5f}, {0.25f, 0.5f}};
+        const float hud_emboss_texcoords1[3][2] = {
+            {0.75f, 0.5f}, {0.75f, 0.5f}, {0.75f, 0.5f}};
+        std::array<std::uint8_t,
+                   hud_emboss_texcoord1_offset +
+                       sizeof(hud_emboss_texcoords1)> hud_emboss_bytes{};
+        std::memcpy(hud_emboss_bytes.data(), hud_bytes.data(),
+                    hud_bytes.size());
+        std::memcpy(hud_emboss_bytes.data() + texcoord_offset,
+                    hud_emboss_texcoords0, sizeof(hud_emboss_texcoords0));
+        std::memcpy(hud_emboss_bytes.data() + hud_emboss_texcoord1_offset,
+                    hud_emboss_texcoords1, sizeof(hud_emboss_texcoords1));
+        ALMetalBufferDescriptor hud_emboss_vertex_descriptor =
+            hud_vertex_descriptor;
+        hud_emboss_vertex_descriptor.length = hud_emboss_bytes.size();
+        hud_emboss_vertex_descriptor.label =
+            "Alchemy HUD legacy emboss vertices";
+        auto hud_emboss_vertices = ALMetalBuffer::create(
+            *device, hud_emboss_vertex_descriptor, &error);
+        INFO(error);
+        REQUIRE(hud_emboss_vertices);
+        REQUIRE(hud_emboss_vertices->write(
+            0, hud_emboss_bytes.data(), hud_emboss_bytes.size(), &error));
+        const std::array<std::uint8_t, 8> hud_emboss_texels = {
+            255, 255, 255, 192, 255, 255, 255, 128};
+        auto hud_emboss_texture = make_hud_strip_texture(
+            "Alchemy HUD legacy emboss bump texture", hud_emboss_texels);
+
+        hud_batch.shader = ALMetalHUDShader::emboss;
+        hud_batch.vertices = hud_emboss_vertices.get();
+        hud_batch.texcoord1_offset = hud_emboss_texcoord1_offset;
+        hud_batch.textures[0] = hud_emboss_texture.get();
+        hud_batch.textures[1] = nullptr;
+        hud_batch.texture_count = 1;
+        hud_batch.blend.enabled = true;
+        hud_batch.blend.source_rgb = ALMetalBlendFactor::destination_color;
+        hud_batch.blend.destination_rgb = ALMetalBlendFactor::source_color;
+        hud_batch.blend.source_alpha = ALMetalBlendFactor::destination_alpha;
+        hud_batch.blend.destination_alpha = ALMetalBlendFactor::source_alpha;
+        hud_batch.depth.write_enabled = false;
+        hud_batch.depth_bias_slope = -1.f;
+        hud_batch.depth_bias_units = -1.f;
+        REQUIRE(hud_renderer->setFrameBackground(background.get(), &error));
+        REQUIRE(hud_renderer->setFrameDepth(
+            depth_source->depthStencilTexture(), &error));
+        REQUIRE(hud_renderer->clearFrameDepthRects(
+            &hud_region, 1, 1.f, &error));
+        const bool emboss_drawn =
+            hud_renderer->drawHUDIndexed(hud_batch, &error);
+        INFO(error);
+        REQUIRE(emboss_drawn);
+        REQUIRE(hud_renderer->endFrame(&error));
+        INFO(error);
+        REQUIRE(scheduler->waitUntilIdle(1000, &error));
+        INFO(error);
+        REQUIRE(hud_renderer->outputTexture()->readback(
+            *device, 0, 0, {}, composed_pixels.data(), 32 * 4, &error));
+        INFO(error);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 0]) - 30) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 1]) - 60) <= 1);
+        CHECK(std::abs(static_cast<int>(composed_pixels[center + 2]) - 120) <= 1);
+        CHECK(composed_pixels[center + 3] == 255u);
+
+        hud_batch.shader = ALMetalHUDShader::fullbright;
+        hud_batch.vertices = hud_vertices.get();
+        hud_batch.texcoord1_offset = 0;
+        hud_batch.textures[0] = hud_slot_zero.get();
+        hud_batch.textures[1] = hud_slot_one.get();
+        hud_batch.texture_count = 2;
+        hud_batch.blend.enabled = false;
+        hud_batch.depth.write_enabled = true;
+        hud_batch.depth_bias_slope = 0.f;
+        hud_batch.depth_bias_units = 0.f;
 
         // Ordinary HUD volumes retain back-face culling. Particle and HUD-
         // particle partitions disable it in the GL owner, however, because

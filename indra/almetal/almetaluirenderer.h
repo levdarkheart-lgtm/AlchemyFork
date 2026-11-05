@@ -123,6 +123,8 @@ enum class ALMetalHUDShader
     fullbright,
     fullbright_alpha_mask,
     fullbright_alpha,
+    fullbright_shiny,
+    emboss,
     pbr_alpha,
     highlight,
     highlight_skinned,
@@ -143,6 +145,7 @@ struct ALMetalHUDIndexedBatch
     const ALMetalBuffer* vertices = nullptr;
     std::size_t position_offset = 0;
     std::size_t texcoord_offset = 0;
+    std::size_t texcoord1_offset = 0;
     std::size_t color_offset = 0;
     std::size_t weight_offset = 0;
     std::uint32_t vertex_count = 0;

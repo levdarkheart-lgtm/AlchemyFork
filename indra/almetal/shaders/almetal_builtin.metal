@@ -18814,7 +18814,8 @@ struct ALMetalHUDFullbrightConstants
     float4 material;
     // x = reverse Z, y = texture count, z = offscreen Y flip,
     // w = coverage permutation: 0 opaque, 1 texture-only mask,
-    // 2 blended alpha-pool final-alpha mask.
+    // 2 blended alpha-pool final-alpha mask, 3 fullbright shiny whose
+    // streamed alpha is environment intensity rather than coverage.
     uint4 config;
 };
 
@@ -18880,8 +18881,52 @@ fragment float4 almetal_hud_fullbright_fragment(
     {
         discard_fragment();
     }
-    return max(float4(texture_color.rgb * input.color.rgb, final_alpha),
+    const float output_alpha = constants.config.w == 3u ? 1.0 : final_alpha;
+    return max(float4(texture_color.rgb * input.color.rgb, output_alpha),
                float4(0.0));
+}
+
+struct ALMetalHUDEmbossVaryings
+{
+    float4 position [[position]];
+    float2 texcoord0;
+    float2 texcoord1;
+};
+
+vertex ALMetalHUDEmbossVaryings almetal_hud_emboss_vertex(
+    const device float4* positions [[buffer(0)]],
+    const device float2* texcoords0 [[buffer(1)]],
+    constant ALMetalHUDFullbrightConstants& constants [[buffer(3)]],
+    const device float2* texcoords1 [[buffer(7)]],
+    uint vertex_id [[vertex_id]])
+{
+    float4 clip_position = constants.modelview_projection *
+        float4(positions[vertex_id].xyz, 1.0);
+    if (constants.config.z != 0u)
+    {
+        clip_position.y = -clip_position.y;
+    }
+
+    ALMetalHUDEmbossVaryings output;
+    output.position = constants.config.x != 0u
+        ? clip_position : almetal_clip_from_gl(clip_position);
+    output.texcoord0 = (constants.texture_matrix *
+        float4(texcoords0[vertex_id], 0.0, 1.0)).xy;
+    output.texcoord1 = (constants.texture_matrix *
+        float4(texcoords1[vertex_id], 0.0, 1.0)).xy;
+    return output;
+}
+
+fragment float4 almetal_hud_emboss_fragment(
+    ALMetalHUDEmbossVaryings input [[stage_in]],
+    texture2d<float> bump_texture [[texture(0)]],
+    sampler bump_sampler [[sampler(0)]])
+{
+    const float tex0 = bump_texture.sample(
+        bump_sampler, input.texcoord0).a;
+    const float tex1 = bump_texture.sample(
+        bump_sampler, input.texcoord1).a;
+    return max(float4(tex0 + (1.0 - tex1) - 0.5), float4(0.0));
 }
 
 struct ALMetalHUDHighlightConstants

@@ -72,16 +72,8 @@ LLBumpImageList gBumpImageList;
 const S32 STD_BUMP_LATEST_FILE_VERSION = 1;
 
 const U32 VERTEX_MASK_SHINY = LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_NORMAL | LLVertexBuffer::MAP_COLOR;
-const U32 VERTEX_MASK_BUMP = LLVertexBuffer::MAP_VERTEX |LLVertexBuffer::MAP_TEXCOORD0 | LLVertexBuffer::MAP_TEXCOORD1;
 
 U32 LLDrawPoolBump::sVertexMask = VERTEX_MASK_SHINY;
-
-
-static LLGLSLShader* shader = NULL;
-static S32 cube_channel = -1;
-static S32 diffuse_channel = -1;
-static S32 bump_channel = -1;
-static bool shiny = false;
 
 #if LL_DARWIN
 namespace
@@ -192,10 +184,7 @@ void LLStandardBumpmap::clear()
 LLDrawPoolBump::LLDrawPoolBump()
 :  LLRenderPass(LLDrawPool::POOL_BUMP)
 {
-    shiny = false;
 }
-
-
 void LLDrawPoolBump::prerender()
 {
     mShaderLevel = LLViewerShaderMgr::instance()->getShaderLevel(LLViewerShaderMgr::SHADER_OBJECT);
@@ -207,189 +196,6 @@ S32 LLDrawPoolBump::numBumpPasses()
     return 1;
 }
 
-
-//static
-void LLDrawPoolBump::bindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& diffuse_channel, S32& cube_channel)
-{
-    LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
-    if( cube_map && !LLPipeline::sReflectionProbesEnabled )
-    {
-        if (shader )
-        {
-            const LLMatrix4a& modelview = LLViewerCamera::getCurrent().getModelview();
-            const LLMatrix4 mat = modelview.toMatrix4();
-            LLVector3 vec = LLVector3(gShinyOrigin) * mat;
-            LLVector4 vec4(vec, gShinyOrigin.mV[3]);
-            shader->uniform4fv(LLViewerShaderMgr::SHINY_ORIGIN, 1, vec4.mV);
-            if (shader_level > 1)
-            {
-                cube_map->setMatrix(1, modelview);
-                // Make sure that texture coord generation happens for tex unit 1, as that's the one we use for
-                // the cube map in the one pass shiny shaders
-                cube_channel = shader->enableTexture(LLViewerShaderMgr::ENVIRONMENT_MAP);
-                cube_map->enableTexture(cube_channel);
-                diffuse_channel = shader->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
-            }
-            else
-            {
-                cube_map->setMatrix(0, modelview);
-                cube_channel = shader->enableTexture(LLViewerShaderMgr::ENVIRONMENT_MAP);
-                diffuse_channel = -1;
-                cube_map->enable(cube_channel);
-            }
-            gGL.getTextureSlot(cube_channel)->bind(cube_map, ALSamplers::AnisoClamp);
-        }
-        else
-        {
-            cube_channel = 0;
-            diffuse_channel = -1;
-            gGL.getTextureSlot(0)->unbind();
-            cube_map->enable(0);
-            cube_map->setMatrix(0, LLViewerCamera::getCurrent().getModelview());
-            gGL.getTextureSlot(0)->bind(cube_map, ALSamplers::AnisoClamp);
-        }
-    }
-}
-
-//static
-void LLDrawPoolBump::unbindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& diffuse_channel, S32& cube_channel)
-{
-    LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
-    if( cube_map && !LLPipeline::sReflectionProbesEnabled)
-    {
-        if (shader_level > 1)
-        {
-            shader->disableTexture(LLViewerShaderMgr::ENVIRONMENT_MAP, ALTextureSlot::TT_CUBE_MAP);
-
-            if (LLViewerShaderMgr::instance()->getShaderLevel(LLViewerShaderMgr::SHADER_OBJECT) > 0)
-            {
-                if (diffuse_channel != 0)
-                {
-                    shader->disableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
-                }
-            }
-        }
-        // Moved below shader->disableTexture call to avoid false alarms from auto-re-enable of textures on stage 0
-        // MAINT-755
-        cube_map->disable();
-        cube_map->restoreMatrix();
-    }
-}
-
-void LLDrawPoolBump::beginFullbrightShiny()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-
-    sVertexMask = VERTEX_MASK_SHINY | LLVertexBuffer::MAP_TEXCOORD0;
-
-    // World shiny batches are submitted directly to Metal.  This retained
-    // program is now only the HUD owner until its separate native mode lands.
-    shader = gHUDFullbrightShinyProgram.selectVariant();
-
-    if (mRigged)
-    {
-        llassert(shader->mRiggedVariant || !shader->isComplete());
-        shader = shader->riggedVariant();
-    }
-
-    // bind exposure map so fullbright shader can cancel out exposure
-    S32 channel = shader->enableTexture(LLShaderMgr::EXPOSURE_MAP);
-    if (channel > -1)
-    {
-        gGL.getTextureSlot(channel)->bind(&gPipeline.mExposureMap);
-    }
-
-    LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
-
-    if (cube_map && !LLPipeline::sReflectionProbesEnabled)
-    {
-        // Make sure that texture coord generation happens for tex unit 1, as that's the one we use for
-        // the cube map in the one pass shiny shaders
-        gGL.getTextureSlot(1)->unbind();
-        cube_channel = shader->enableTexture(LLViewerShaderMgr::ENVIRONMENT_MAP);
-        cube_map->enableTexture(cube_channel);
-        diffuse_channel = shader->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
-
-        gGL.getTextureSlot(cube_channel)->bind(cube_map, ALSamplers::AnisoClamp);
-    }
-
-    {
-        const LLMatrix4 mat = LLViewerCamera::getCurrent().getModelview().toMatrix4();
-        shader->bind();
-
-        LLVector3 vec = LLVector3(gShinyOrigin) * mat;
-        LLVector4 vec4(vec, gShinyOrigin.mV[3]);
-        shader->uniform4fv(LLViewerShaderMgr::SHINY_ORIGIN, 1, vec4.mV);
-
-        if (LLPipeline::sReflectionProbesEnabled)
-        {
-            gPipeline.bindReflectionProbes(*shader);
-        }
-        else
-        {
-            gPipeline.setEnvMat(*shader);
-        }
-    }
-
-    if (mShaderLevel > 1)
-    { //indexed texture rendering, channel 0 is always diffuse
-        diffuse_channel = 0;
-    }
-
-    shiny = true;
-}
-
-void LLDrawPoolBump::renderFullbrightShiny()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-
-    {
-        LLGLEnable blend_enable(GL_BLEND);
-
-        if (mShaderLevel > 1)
-        {
-            if (mRigged)
-            {
-                LLRenderPass::pushRiggedBatches(LLRenderPass::PASS_FULLBRIGHT_SHINY_RIGGED, true, true);
-            }
-            else
-            {
-                LLRenderPass::pushBatches(LLRenderPass::PASS_FULLBRIGHT_SHINY, true, true);
-            }
-        }
-        else
-        {
-            if (mRigged)
-            {
-                LLRenderPass::pushRiggedBatches(LLRenderPass::PASS_FULLBRIGHT_SHINY_RIGGED);
-            }
-            else
-            {
-                LLRenderPass::pushBatches(LLRenderPass::PASS_FULLBRIGHT_SHINY);
-            }
-        }
-    }
-}
-
-void LLDrawPoolBump::endFullbrightShiny()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-
-    LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
-    if( cube_map && !LLPipeline::sReflectionProbesEnabled )
-    {
-        cube_map->disable();
-        if (shader->mFeatures.hasReflectionProbes)
-        {
-            gPipeline.unbindReflectionProbes(*shader);
-        }
-        shader->unbind();
-    }
-
-    diffuse_channel = -1;
-    cube_channel = 0;
-    shiny = false;
-}
 
 void LLDrawPoolBump::renderGroup(LLSpatialGroup* group, U32 type, bool texture = true)
 {
@@ -408,57 +214,6 @@ void LLDrawPoolBump::renderGroup(LLSpatialGroup* group, U32 type, bool texture =
 
 
 // static
-bool LLDrawPoolBump::bindBumpMap(LLDrawInfo& params, S32 channel,
-                                 LLViewerTexture** resolved)
-{
-    return bindBumpMap(
-        params.mBump, params.mTexture, channel, resolved);
-}
-
-//static
-bool LLDrawPoolBump::bindBumpMap(LLFace* face, S32 channel)
-{
-    const LLTextureEntry* te = face->getTextureEntry();
-    if (te)
-    {
-        U8 bump_code = te->getBumpmap();
-        return bindBumpMap(bump_code, face->getTexture(), channel);
-    }
-
-    return false;
-}
-
-//static
-bool LLDrawPoolBump::bindBumpMap(U8 bump_code, LLViewerTexture* texture,
-                                 S32 channel, LLViewerTexture** resolved)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    LLViewerTexture* bump = resolveBumpMap(bump_code, texture);
-    if (resolved)
-    {
-        *resolved = bump;
-    }
-
-    if (bump)
-    {
-        if (channel == -2)
-        {
-            gGL.getTextureSlot(1)->bindFast(bump, ALSamplers::AnisoWrap);
-            gGL.getTextureSlot(0)->bindFast(bump, ALSamplers::AnisoWrap);
-        }
-        else
-        {
-            // NOTE: do not use bindFast here (see SL-16222)
-            gGL.getTextureSlot(channel)->bindSampled(bump, ALSamplers::AnisoWrap);
-        }
-
-        return true;
-    }
-
-    return false;
-}
-
-// static
 LLViewerTexture* LLDrawPoolBump::resolveBumpMap(
     const LLDrawInfo& params)
 {
@@ -471,9 +226,8 @@ LLViewerTexture* LLDrawPoolBump::resolveBumpMap(
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     // Texture atlases do not support legacy bump textures. This lookup owns
-    // no GL state: generated brightness/darkness images publish through the
-    // native texture path on Darwin, while the retained binder below merely
-    // consumes the resolved image.
+    // no GL state; generated brightness/darkness images publish through the
+    // native texture path on Darwin.
     LLViewerFetchedTexture* tex =
         LLViewerTextureManager::staticCastToFetchedTexture(texture);
     if (!tex)
@@ -499,49 +253,6 @@ LLViewerTexture* LLDrawPoolBump::resolveBumpMap(
     }
 }
 
-//static
-void LLDrawPoolBump::beginBump()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    sVertexMask = VERTEX_MASK_BUMP;
-    // Optional second pass: emboss bump map
-    stop_glerror();
-
-    shader = gObjectBumpProgram.selectVariant();
-
-    if (mRigged)
-    {
-        llassert(shader->mRiggedVariant || !shader->isComplete());
-        shader = shader->riggedVariant();
-    }
-
-    shader->bind();
-
-    gGL.setSceneBlendType(LLRender::BT_MULT_X2);
-    stop_glerror();
-}
-
-//static
-void LLDrawPoolBump::renderBump(U32 pass)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    LLGLDepthTest gls_depth(GL_TRUE, GL_FALSE, GL_LEQUAL);
-    LLGLEnable blend(GL_BLEND);
-    gGL.diffuseColor4f(1,1,1,1);
-    /// Get rid of z-fighting with non-bump pass.
-    LLGLEnable polyOffset(GL_POLYGON_OFFSET_FILL);
-    gGL.setPolygonOffset(-1.0f, -1.0f);
-    pushBumpBatches(pass);
-}
-
-//static
-void LLDrawPoolBump::endBump(U32 pass)
-{
-    LLGLSLShader::unbind();
-
-    gGL.setSceneBlendType(LLRender::BT_ALPHA);
-}
-
 S32 LLDrawPoolBump::getNumDeferredPasses()
 {
     return 1;
@@ -565,7 +276,6 @@ void LLDrawPoolBump::renderDeferred(S32 pass)
     (void)pass;
 
 #if LL_DARWIN
-    shiny = true;
     for (int i = 0; i < 2; ++i)
     {
         const bool rigged = i == 1;
@@ -629,7 +339,6 @@ void LLDrawPoolBump::renderDeferred(S32 pass)
         }
     }
 
-    shiny = false;
 #endif
 }
 
@@ -641,17 +350,64 @@ void LLDrawPoolBump::renderPostDeferred(S32 pass)
 
     if (LLPipeline::sRenderingHUDs)
     {
-        // HUD shiny/emboss retains its existing programs until those distinct
-        // forward modes have native Metal equivalents.  HUDs never use the
-        // rigged post-deferred pass.
-        mRigged = false;
-        beginFullbrightShiny();
-        renderFullbrightShiny();
-        endFullbrightShiny();
+#if LL_DARWIN
+        // HUD post-deferred replay is part of the authoritative offscreen
+        // Metal transaction. If that transaction is unavailable, fail closed
+        // instead of restoring an application OpenGL draw.
+        if (!gGL.isMetalUITextureCaptureAuthoritative())
+        {
+            return;
+        }
 
-        beginBump();
-        renderBump(LLRenderPass::PASS_POST_BUMP);
-        endBump();
+        mRigged = false;
+        {
+            LLGLEnable blend(GL_BLEND);
+            auto* at = gPipeline.beginRenderMap(
+                LLRenderPass::PASS_FULLBRIGHT_SHINY);
+            auto* end = gPipeline.endRenderMap(
+                LLRenderPass::PASS_FULLBRIGHT_SHINY);
+            while (at != end)
+            {
+                LLDrawInfo* info = *at;
+                LLCullResult::increment_iterator(at, end);
+                if (!info)
+                {
+                    continue;
+                }
+                applyModelMatrix(*info);
+                captureMetalHUDBatch(
+                    *info, mShaderLevel > 1,
+                    false, false, false, 0.f, false, true);
+            }
+        }
+
+        {
+            LLGLDepthTest depth(GL_TRUE, GL_FALSE, GL_LEQUAL);
+            LLGLEnable blend(GL_BLEND);
+            gGL.setSceneBlendType(LLRender::BT_MULT_X2);
+            auto* at = gPipeline.beginRenderMap(
+                LLRenderPass::PASS_POST_BUMP);
+            auto* end = gPipeline.endRenderMap(
+                LLRenderPass::PASS_POST_BUMP);
+            while (at != end)
+            {
+                LLDrawInfo* info = *at;
+                LLCullResult::increment_iterator(at, end);
+                if (!info)
+                {
+                    continue;
+                }
+                LLViewerTexture* bump = resolveBumpMap(*info);
+                if (!bump)
+                {
+                    continue;
+                }
+                applyModelMatrix(*info);
+                captureMetalHUDEmbossBatch(*info, bump);
+            }
+            gGL.setSceneBlendType(LLRender::BT_ALPHA);
+        }
+#endif
         return;
     }
 
@@ -1063,109 +819,4 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
 
     iter->second = bump; // derefs (and deletes) old image
     //---------------------------------------------------
-
 }
-
-void LLDrawPoolBump::pushBumpBatches(U32 type)
-{
-    const LLVOAvatar* lastAvatar = nullptr;
-    U64 lastMeshId = 0;
-    bool skipLastSkin = false;
-
-    if (mRigged)
-    { // nudge type enum and include skinweights for rigged pass
-        type += 1;
-    }
-
-    LLCullResult::drawinfo_iterator begin = gPipeline.beginRenderMap(type);
-    LLCullResult::drawinfo_iterator end = gPipeline.endRenderMap(type);
-
-    for (LLCullResult::drawinfo_iterator i = begin; i != end; ++i)
-    {
-        LLDrawInfo& params = **i;
-
-        LLViewerTexture* bump_texture = nullptr;
-        if (LLDrawPoolBump::bindBumpMap(
-                params, -2, &bump_texture))
-        {
-            if (mRigged)
-            {
-                if (!uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
-                {
-                    continue;
-                }
-            }
-            pushBumpBatch(params, false, false, bump_texture);
-        }
-    }
-}
-
-void LLRenderPass::pushBumpBatch(LLDrawInfo& params, bool texture,
-                                 bool batch_textures,
-                                 LLViewerTexture* bump_texture)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    applyModelMatrix(params);
-
-#if LL_DARWIN
-    gPipeline.captureMetalWorldBumpBatch(params, bump_texture);
-#endif
-
-    // Same derivation as pushBatch: the bound program knows whether its diffuse wants the
-    // hardware decode. The shadow pass reaches this too with an unflagged program, so its
-    // binds stay plain AnisoWrap.
-    const LLGLSLShader* bound = LLGLSLShader::sCurBoundShaderPtr;
-    ALSampler key = ALSamplers::AnisoWrap;
-    if (bound && bound->mLinearDiffuse)
-    {
-        key |= ALSampler::SRGBDecode;
-    }
-
-    bool tex_setup = false;
-
-    if (batch_textures && params.mTextureList.size() > 1)
-    {
-        // Clamped to the bound program's ladder and null slots stood in for, same as every
-        // other indexed pass -- a raw loop here would bind past the last declared sampler
-        // whenever a batch was built at a wider ladder than the current program's.
-        bindIndexedTextures(params, bound);
-    }
-    else
-    { //not batching textures or batch has only 1 texture -- might need a texture matrix
-        if (params.mTextureMatrix && (!gCubeSnapshot || gPipeline.mHeroProbeManager.isMirrorPass()))
-        {
-            // the non-shiny path used to load this twice -- a leftover from when the
-            // second (bump) texture unit carried its own copy of the matrix
-            gGL.matrixMode(LLRender::MM_TEXTURE0);
-            gGL.loadMatrix((GLfloat*) params.mTextureMatrix->mMatrix);
-            gPipeline.countTextureMatrixOp(*params.mTextureMatrix);
-
-            tex_setup = true;
-        }
-
-        if (shiny && mShaderLevel > 1 && texture)
-        {
-            if (params.mTexture.notNull())
-            {
-                gGL.getTextureSlot(diffuse_channel)->bindFast(params.mTexture, key);
-            }
-            else
-            {
-                gGL.getTextureSlot(diffuse_channel)->unbind();
-            }
-        }
-    }
-
-    params.mVertexBuffer->setBuffer();
-    params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
-
-    if (tex_setup)
-    {
-        // Both branches selected the texture matrix stack after activating unit 0; only the
-        // activate differed, and it was doing nothing either way.
-        gGL.matrixMode(LLRender::MM_TEXTURE0);
-        gGL.loadIdentity();
-        gGL.matrixMode(LLRender::MM_MODELVIEW);
-    }
-}
-

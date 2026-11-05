@@ -698,12 +698,15 @@ void LLRenderPass::captureMetalHUDBatch(
     bool alpha_pool,
     bool pbr_alpha,
     F32 minimum_alpha,
-    bool force_double_sided)
+    bool force_double_sided,
+    bool fullbright_shiny)
 {
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
     ALMetalHUDIndexedBatch batch;
     batch.shader = pbr_alpha
         ? ALMetalHUDShader::pbr_alpha
+        : fullbright_shiny
+        ? ALMetalHUDShader::fullbright_shiny
         : alpha_pool
         ? ALMetalHUDShader::fullbright_alpha
         : alpha_mask ? ALMetalHUDShader::fullbright_alpha_mask
@@ -813,7 +816,76 @@ void LLRenderPass::captureMetalHUDBatch(
         }
     }
 
-    // The capture never suppresses or changes the authoritative GL draw.
+    // Submit one exact native HUD batch. The caller owns the decision about
+    // whether this is diagnostic mirroring or the authoritative draw.
+    gGL.drawMetalHUDIndexedBatch(batch);
+}
+
+void LLRenderPass::captureMetalHUDEmbossBatch(
+    const LLDrawInfo& params, LLViewerTexture* bump_texture)
+{
+    LLVertexBuffer* buffer = params.mVertexBuffer.get();
+    ALMetalHUDIndexedBatch batch;
+    batch.shader = ALMetalHUDShader::emboss;
+    LLImageGL* bump_image = bump_texture
+        ? bump_texture->getGLTexture() : nullptr;
+    if (bump_image && !bump_image->getMetalTexture())
+    {
+        LLViewerTexture* fallback =
+            LLViewerFetchedTexture::sDefaultImagep.get();
+        bump_image = fallback ? fallback->getGLTexture() : nullptr;
+    }
+    if (!params.mCount || !buffer || !bump_image ||
+        !bump_image->getMetalTexture() ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD0) ||
+        !buffer->hasDataType(LLVertexBuffer::TYPE_TEXCOORD1) ||
+        !buffer->getMetalVertexBuffer() ||
+        !buffer->getMetalIndexBuffer())
+    {
+        // Submit the invalid descriptor so the authoritative capture records
+        // a fail-closed reason instead of silently omitting HUD geometry.
+        gGL.drawMetalHUDIndexedBatch(batch);
+        return;
+    }
+
+    batch.vertices = buffer->getMetalVertexBuffer();
+    batch.position_offset = buffer->getOffset(
+        LLVertexBuffer::TYPE_VERTEX);
+    batch.texcoord_offset = buffer->getOffset(
+        LLVertexBuffer::TYPE_TEXCOORD0);
+    batch.texcoord1_offset = buffer->getOffset(
+        LLVertexBuffer::TYPE_TEXCOORD1);
+    batch.vertex_count = buffer->getNumVerts();
+    batch.indices = buffer->getMetalIndexBuffer();
+    batch.index_offset = static_cast<std::size_t>(params.mOffset) *
+        buffer->getIndexStride();
+    batch.index_type = buffer->getIndexStride() == 4
+        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+    batch.index_count = params.mCount;
+    batch.textures[0] = bump_image->getMetalTexture();
+    batch.texture_count = 1;
+    batch.depth_bias_slope = -1.f;
+    batch.depth_bias_units = -1.f;
+
+    LLMatrix4a modelview_projection;
+    modelview_projection.setMul(
+        gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
+    std::memcpy(batch.matrices.modelview_projection,
+                modelview_projection.getF32ptr(),
+                sizeof(batch.matrices.modelview_projection));
+    for (U32 diagonal = 0; diagonal < 4; ++diagonal)
+    {
+        batch.matrices.texture0[diagonal * 4 + diagonal] = 1.f;
+    }
+    if (params.mTextureMatrix &&
+        (!gCubeSnapshot || gPipeline.mHeroProbeManager.isMirrorPass()))
+    {
+        std::memcpy(batch.matrices.texture0,
+                    params.mTextureMatrix->mMatrix,
+                    sizeof(batch.matrices.texture0));
+    }
+
     gGL.drawMetalHUDIndexedBatch(batch);
 }
 #endif

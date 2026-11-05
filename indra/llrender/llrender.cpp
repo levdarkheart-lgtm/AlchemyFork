@@ -242,6 +242,28 @@ namespace
         return ALMetalBlendFactor::one;
     }
 
+    ALMetalBlendFactor metal_alpha_blend_factor(
+        LLRender::eBlendFactor factor)
+    {
+        // OpenGL applies color factors component-wise, so GL_SOURCE_COLOR and
+        // GL_DEST_COLOR select source/destination alpha for the alpha
+        // component. Metal expresses that contract with its explicit alpha
+        // factors; color factors are not valid for an alpha blend slot.
+        switch (factor)
+        {
+            case LLRender::BF_SOURCE_COLOR:
+                return ALMetalBlendFactor::source_alpha;
+            case LLRender::BF_ONE_MINUS_SOURCE_COLOR:
+                return ALMetalBlendFactor::one_minus_source_alpha;
+            case LLRender::BF_DEST_COLOR:
+                return ALMetalBlendFactor::destination_alpha;
+            case LLRender::BF_ONE_MINUS_DEST_COLOR:
+                return ALMetalBlendFactor::one_minus_destination_alpha;
+            default:
+                return metal_blend_factor(factor);
+        }
+    }
+
     ALMetalBlendOperation metal_blend_operation(U32 operation)
     {
         switch (operation)
@@ -1212,10 +1234,10 @@ bool LLRender::drawMetalHUDIndexedBatch(
     resolved.blend.destination_rgb = metal_blend_factor(
         mCurrBlendColorDFactor == BF_UNDEF
             ? BF_ONE_MINUS_SOURCE_ALPHA : mCurrBlendColorDFactor);
-    resolved.blend.source_alpha = metal_blend_factor(
+    resolved.blend.source_alpha = metal_alpha_blend_factor(
         mCurrBlendAlphaSFactor == BF_UNDEF
             ? BF_SOURCE_ALPHA : mCurrBlendAlphaSFactor);
-    resolved.blend.destination_alpha = metal_blend_factor(
+    resolved.blend.destination_alpha = metal_alpha_blend_factor(
         mCurrBlendAlphaDFactor == BF_UNDEF
             ? BF_ONE_MINUS_SOURCE_ALPHA : mCurrBlendAlphaDFactor);
     resolved.blend.rgb_operation = metal_blend_operation(mBlendEquationRGB);
@@ -3187,9 +3209,9 @@ bool LLRender::drawMetalUIBuffer(LLVertexBuffer* buffer, U32 mode, U32 count,
         mCurrBlendColorSFactor == BF_UNDEF ? BF_SOURCE_ALPHA : mCurrBlendColorSFactor);
     batch.blend.destination_rgb = metal_blend_factor(
         mCurrBlendColorDFactor == BF_UNDEF ? BF_ONE_MINUS_SOURCE_ALPHA : mCurrBlendColorDFactor);
-    batch.blend.source_alpha = metal_blend_factor(
+    batch.blend.source_alpha = metal_alpha_blend_factor(
         mCurrBlendAlphaSFactor == BF_UNDEF ? BF_SOURCE_ALPHA : mCurrBlendAlphaSFactor);
-    batch.blend.destination_alpha = metal_blend_factor(
+    batch.blend.destination_alpha = metal_alpha_blend_factor(
         mCurrBlendAlphaDFactor == BF_UNDEF ? BF_ONE_MINUS_SOURCE_ALPHA : mCurrBlendAlphaDFactor);
     batch.blend.rgb_operation = metal_blend_operation(mBlendEquationRGB);
     batch.blend.alpha_operation = metal_blend_operation(mBlendEquationAlpha);
