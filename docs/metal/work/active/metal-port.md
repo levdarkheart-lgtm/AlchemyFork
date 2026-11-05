@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `8216ae2570`.
+**Renderer checkpoint:** Commit `629cd38c8a`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -108,12 +108,11 @@ objects, the non-Apple GL binding path and the obsolete GL shadow-sampler test.
 The resource plan still supplies exact Metal descriptors; native slice validity
 remains the fail-closed allocation/publication signal.
 
-`1404b65e00` removes the unreachable GL shadow comparison state and contracts
-the generic sampler table from 64/48 to 32/24 entries. `8216ae2570` deletes the
-retained receiver shadow feature/permutations, utility include and 792-line GLSL
-implementation, uniforms, bindings and sampler reservations. Retained GL
-lighting emits lit channels and AO without stale shadow sampling; native Metal
-shadow generation and consumption remain authoritative.
+`1404b65e00` removes GL shadow comparison state and contracts the sampler table;
+`8216ae2570` deletes receiver permutations, the 792-line GLSL utility, uniforms,
+bindings and reservations. `629cd38c8a` splits native shadow constants from GL
+and shrinks `UB_DEFERRED` from 512 to 80 SSAO/specular bytes; native Metal shadow
+generation and consumption remain authoritative.
 
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -125,11 +124,11 @@ swap. Exact prior evidence remains in the
 
 ## Validation checkpoint
 
-- `8216ae2570`: Ninja and prescribed Xcode Release 68366 pass
+- `629cd38c8a`: Ninja and prescribed Xcode Release 68368 pass
   warnings-as-errors; physical validated Metal shadow 119/1 and retained-world
   8,022/1 pass. Release inspection is 349/349 ARM64 and deep signing passes.
   Executable SHA-256 is
-  `a3d97e07c9af490071b33e832895abcc89dbc19a26f82ee9975b02ec678e69ab`;
+  `115085b943ca56bc2ff1dbe04bfd922e05e670ea4f8d296487428b37add3a9e8`;
   metallib is `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
   Resource-plan/spot-cache and retained CAS tests pass. The two retained GL DoF
   cases keep the archived macOS no-clip-control failure. Host doctor passes on
@@ -160,11 +159,11 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Split residual shadow-only members out of the retained GL deferred UBO and its
-GLSL block while preserving the native Metal shadow-constant contract and every
-source-proven non-shadow side effect. Then continue through the next retained
-GL owner. Do not wait for queued visual review, restore fallbacks or launch
-viewers.
+Remove the duplicate GL deferred light-map, SSAO blur, base, local and projector
+lighting chain now that the direct Metal chain owns those outputs. Delete its
+exclusive programs, GLSL and transient targets while retaining the distinct
+post-deferred traversal side effects. Do not wait for queued visual review,
+restore fallbacks or launch viewers.
 
 ## Non-negotiable open gates
 

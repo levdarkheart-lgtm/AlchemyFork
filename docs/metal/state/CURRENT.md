@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `8216ae2570`
+**Renderer code checkpoint:** `629cd38c8a`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -31,7 +31,7 @@ Commits `2836849036` and `cf6a821548` remove Snapshot's GL scratch/reconcile
 path. Fail-closed Metal readback owns the validated size; visual case 30 remains
 open.
 
-The source-exact Xcode Release package is `26.4.0.68366`; its viewer executable SHA-256 is `a3d97e07c9af490071b33e832895abcc89dbc19a26f82ee9975b02ec678e69ab`.
+The source-exact Xcode Release package is `26.4.0.68368`; its viewer executable SHA-256 is `115085b943ca56bc2ff1dbe04bfd922e05e670ea4f8d296487428b37add3a9e8`.
 `tools/metal/verify_app.sh` accepted all 349 inspected Mach-O slices as ARM64
 and deep strict code-sign verification passed. `git diff --check` passes.
 
@@ -91,10 +91,10 @@ binding path and the obsolete 555-line GL shadow-sampler test. The backend-neutr
 plan remains the Metal size/format contract. Native allocation failures remain
 fail-lit slice-validity failures; no GL storage can mask them.
 
-`1404b65e00` removes unreachable GL shadow comparison state and contracts the
-generic sampler cache from 64/48 to 32/24 entries. `8216ae2570` then deletes GL
-receiver shadow permutations, uniforms, bindings and the 792-line utility. GL
-lighting emits lit channels/AO without stale targets; Metal shadows remain.
+`1404b65e00` removes GL shadow comparison state; `8216ae2570` deletes receiver
+permutations, uniforms, bindings and the 792-line utility. `629cd38c8a` separates
+native shadow constants from GL and shrinks its deferred upload from 512 to 80
+bytes of SSAO/specular data; Metal shadow generation/consumption remain.
 
 Earlier native terrain, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -117,11 +117,11 @@ until the owner-attended review records that result.
 
 ## Build and test evidence
 
-- At `8216ae2570`, Ninja and prescribed Xcode Release 68366 pass warnings-as-errors; the
+- At `629cd38c8a`, Ninja and prescribed Xcode Release 68368 pass warnings-as-errors; the
   physical shadow and retained-world cases pass 119/1 and 8,022/1 under Metal
   API, GPU, shader and load/store validation. Release verification passes 349/349 ARM64 slices and
   deep strict signing. Executable SHA-256 is
-  `a3d97e07c9af490071b33e832895abcc89dbc19a26f82ee9975b02ec678e69ab`;
+  `115085b943ca56bc2ff1dbe04bfd922e05e670ea4f8d296487428b37add3a9e8`;
   metallib SHA-256 remains `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
   Resource-plan/spot-cache and retained CAS tests pass. Two retained GL DoF cases
   have the archived macOS no-clip-control failure. M1 Max host doctor passes.
@@ -155,6 +155,6 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Split residual shadow-only data from the retained GL deferred UBO while preserving native Metal shadow constants and source-proven non-shadow side effects.
+1. Remove the duplicate GL deferred light-map/base/local/projector chain and its programs/targets while preserving native Metal lighting plus post-deferred side effects.
 2. Re-run strict source/link/runtime gates after each owner cut.
 3. Keep visual failures queued; do not launch either viewer autonomously.
