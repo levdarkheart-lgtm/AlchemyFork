@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `5a26ff36b9`.
+**Renderer checkpoint:** Commit `5eb65fafbc`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -15,21 +15,21 @@ checkpoint detail belongs in the indexed archive.
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
 | M-002 | GL/shader/pass/resource and binary inventory | doing | 2,313 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Metal is the mandatory visible presentation owner. Startup/world GL swaps are suppressed; an incomplete native frame retains the previous Metal drawable and is machine-censused without claiming GL fallback. Live GL traversal/context creation/shutdown remain. |
-| M-004 | Metal resources, transfers, readback and synchronization | doing | Native producers use the window-owned Metal device. Ordinary font/local/default/fetched textures and async image workers are Metal-only; probes use Metal-only cube/radiance/SH publication; converted resources retain native scale-down and eviction. |
+| M-004 | Metal resources, transfers, readback and synchronization | doing | Native producers use the window-owned Metal device. Ordinary production vertex/index stores, font/local/default/fetched textures and async image workers are Metal-only; probes use Metal-only cube/radiance/SH publication; converted resources retain native scale-down and eviction. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
 | M-006 | UI, fonts, HUD and media ingress | doing | Font pages are Metal-only and owner previously accepted readable UI text. Threaded media already publishes native images. Snapshot has no GL scratch/reconcile path; selection and HUD output are native-only; visual review remains queued. |
 | M-007 | World scene and material correctness | doing | Probe scenes plus ordinary sky/cloud/body, avatars/impostors, fullbright, transparent alpha, water surface/exclusion/haze, atmospheric haze/sky-behind, legacy-material/bump, shiny/emboss and opaque/masked/blended glTF PBR batches are directly enumerated into Metal. Grass, trees and all main/probe directional/projector shadow generation are native; broad parity remains open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR integration/glow, previews, visual hints, avatar composites, selection, debug effects, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation are implemented in Metal. Alpha-pool, water, atmosphere, sky, impostor, DoF-depth and debug-highlight production are native-only. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Essential startup/frame cutover precedes developer/debug/RLVa niceties. Full matrix, stability, strict no-GL (2,313 findings), linked/runtime no-GL and visual review remain open. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Essential renderer initialization/context/link cutover precedes developer/debug/RLVa niceties. Full matrix, stability, strict no-GL (2,313 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation, ordinary font/texture streaming, probe publication nor converted core world/material/lighting/sky/avatar/shadow layers. The image worker GL context and superseded owners are deleted; the primary migration context remains. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation, ordinary geometry buffers, font/texture streaming, probe publication nor converted core world/material/lighting/sky/avatar/shadow layers. The image worker GL context and superseded owners are deleted; the primary migration context remains. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — essential texture streaming Metal-authoritative
+## Active checkpoint — essential geometry and texture resources Metal-authoritative
 
 ### Retained owner evidence and native presentation boundary
 
@@ -40,7 +40,7 @@ make Metal the sole post-startup presentation owner while incomplete native
 work retains the preceding drawable. Commits `2836849036` and `cf6a821548`
 remove Snapshot's GL scratch/reconcile path; visual revalidation remains open.
 
-`5a26ff36b9` makes font/local/default/fetched textures and async uploads Metal-authoritative; the image worker creates no GL context. The primary GL context/link remain; vertex/index authority and native init are next.
+`5a26ff36b9` makes font/local/default/fetched textures and async uploads Metal-authoritative; the image worker creates no GL context. `5eb65fafbc` makes ordinary production vertex/index stores native-only before renderer resource initialization, creates no GL buffer names and fail-closes legacy GL bind/draw attempts without globally disabling feature selection. The primary GL context/link remain; native renderer capability initialization is next.
 
 Commits `7a9878949d` and `51425778e1` remove the GL image registry as the
 Metal-device authority. `10e08508eb` makes scheduled and realtime probe
@@ -132,12 +132,12 @@ swap. Exact prior evidence remains in the
 
 ## Validation checkpoint
 
-- `5a26ff36b9`: Ninja 68427 and prescribed Xcode Release 68428 pass
-  warnings-as-errors; physical validated Metal world 8,022/1 and HUD 593/1 pass.
-  Release inspection is 349/349 ARM64 and deep signing passes. Executable SHA-256 is `e94be1130edf1f9564c906b019d41eb521713fb0dd702fe86cd05a9a4732c1d6`;
+- `5eb65fafbc`: Ninja 68429 and prescribed Release 68430 pass
+  warnings-as-errors; the new production geometry-authority case passes 9/1 and physical validated Metal world 8,022/1 and HUD 593/1 pass.
+  Release inspection is 349/349 ARM64 and deep signing passes. Executable SHA-256 is `ba9cb2156b2b52605c6be63b67682420f7c771cf67e1b36516502e7080bc23c2`;
   metallib is `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
-  New/focused/complete image renderer coverage passes 14/1, 2,906/28 and 3,698/111. Prior unchanged broad renderer/resource-plan evidence remains 556,530 and 2,597 assertions. Host doctor passes on the M1 Max acceptance host.
-  Strict inventory is 2,313 and exits 1; harness validation and all 31 tool tests pass. The exact executable still links OpenGL, Metal and QuartzCore.
+  Focused vertex-buffer coverage passes 135/8; `[almetal]` passes 3,039/33 fresh and 26/2 shared; complete fresh renderer coverage passes 3,698/111. Host doctor passes on the M1 Max acceptance host.
+  Strict inventory is 2,313 and exits 1; report SHA-256 is `bab38510c180ec789ad0d42f2920521f95fea85449d10909d84a529cbc074b06`. Harness validation and 31/31 tool tests pass; no audit rule changed. The exact executable still links OpenGL, Metal and QuartzCore.
 
 ## Owner-attended visual review cadence
 
@@ -149,11 +149,11 @@ summarized, but no row closes without explicit owner-attended evidence.
 
 ## Complete-product checkpoint gate
 
-1. **Product advancement:** yes—Metal is the only visible presentation owner,
-   Snapshot has no GL framebuffer, and ordinary avatar/impostor plus all
-   main/probe shadow-generation families feed direct native producers.
-2. **Replacement boundary:** obsolete probe allocations and remaining GL-owned
-   resource/draw owners still require native cutover.
+1. **Product advancement:** yes—Metal is the only visible presentation owner;
+   ordinary geometry buffers, textures/fonts, avatars and main/probe shadow
+   generation have native authority without parallel GL resource names.
+2. **Replacement boundary:** renderer capability initialization, the primary
+   GL context and remaining GL-owned resource/draw owners require native cutover.
 3. **Deferred critical work:** remaining GL context/traversal/resources,
    feature/stability matrices, visual queue, strict binary/runtime audit,
    measured M1 Max performance and release proof.
@@ -163,8 +163,8 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Convert ordinary startup/frame resource and shader owners required to remove the
-Darwin GL context and OpenGL link; defer developer/debug/RLVa niceties; no viewers.
+Separate Metal capability and renderer initialization from `gGLManager`/`gGL.init`,
+then remove the Darwin primary GL context and OpenGL link; defer developer/debug/RLVa niceties; no viewers.
 
 ## Non-negotiable open gates
 
