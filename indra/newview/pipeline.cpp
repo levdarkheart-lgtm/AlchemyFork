@@ -22547,15 +22547,7 @@ void LLPipeline::renderDebug()
 
 
     if (!hud_only && !mDebugBlips.empty())
-    { //render debug blips
-        gUIProgram.bind();
-        gGL.color4f(1, 1, 1, 1);
-
-        gGL.getTextureSlot(0)->bindSampled(LLViewerFetchedTexture::sWhiteImagep, ALSamplers::AnisoWrap, true);
-
-        gGL.setPointSize(8.f);
-        LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
-
+    {
         MetalWorldSimpleCapture* metal_capture =
             mMetalWorldSimpleCapture &&
                 mMetalWorldSimpleCapture->frame_active &&
@@ -22583,7 +22575,6 @@ void LLPipeline::renderDebug()
             }
         }
 
-        gGL.begin(LLRender::POINTS);
         for (std::list<DebugBlip>::iterator iter = mDebugBlips.begin(); iter != mDebugBlips.end(); )
         {
             DebugBlip& blip = *iter;
@@ -22619,13 +22610,7 @@ void LLPipeline::renderDebug()
                     metal_capture = nullptr;
                 }
             }
-
-            gGL.color4fv(blip.mColor.mV);
-            gGL.vertex3fv(blip.mPosition.mV);
         }
-        gGL.end();
-        gGL.flush();
-        gGL.setPointSize(1.f);
     }
 
     // Debug stuff.
