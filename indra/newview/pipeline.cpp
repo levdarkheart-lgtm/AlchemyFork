@@ -1498,6 +1498,13 @@ bool fillMetalWorldPreWaterAlphaDraw(
         ? 0.f : (depth_only && flat_depth ? 0.33f : 0.004f);
     return true;
 }
+
+bool metalWorldAlphaUsesDirectionalShadows(const LLPipeline& pipeline)
+{
+    return LLViewerShaderMgr::instance()->getShaderLevel(
+               LLViewerShaderMgr::SHADER_DEFERRED) > 1 &&
+           pipeline.shaderInputs().mGlobal.mShadowDetail > 0;
+}
 }
 
 bool LLPipeline::beginMetalHeroProbeFaceCapture(
@@ -12510,9 +12517,10 @@ void LLPipeline::captureMetalDebugAlphaBatch(
         std::memcpy(batch.modelview_projection,
                     modelview_projection.getF32ptr(),
                     sizeof(batch.modelview_projection));
-        std::memcpy(batch.texture_matrix,
-                    gGL.getTextureMatrix().getF32ptr(),
-                    sizeof(batch.texture_matrix));
+        for (U32 diagonal = 0; diagonal < 4; ++diagonal)
+        {
+            batch.texture_matrix[diagonal * 4 + diagonal] = 1.f;
+        }
         std::memcpy(batch.color, color.mV, sizeof(batch.color));
         // renderDebugAlpha runs after forwardRender restores RGB-only output.
         // Preserve glow/coverage alpha underneath the diagnostic overlay.
@@ -12543,13 +12551,14 @@ void LLPipeline::captureMetalDebugAlphaBatch(
         batch.skin_palette = skin_palette;
         batch.skin_palette_float_count = skin_palette_float_count;
         batch.skin_joint_count = skin_joint_count;
-        batch.double_sided = !LLGLState::isEnabled(GL_CULL_FACE);
+        batch.double_sided = false;
         std::memcpy(batch.matrices.modelview_projection,
                     modelview_projection.getF32ptr(),
                     sizeof(batch.matrices.modelview_projection));
-        std::memcpy(batch.matrices.texture0,
-                    gGL.getTextureMatrix().getF32ptr(),
-                    sizeof(batch.matrices.texture0));
+        for (U32 diagonal = 0; diagonal < 4; ++diagonal)
+        {
+            batch.matrices.texture0[diagonal * 4 + diagonal] = 1.f;
+        }
         std::memcpy(batch.highlight_color, color.mV,
                     sizeof(batch.highlight_color));
         gGL.drawMetalHUDIndexedBatch(batch);
@@ -13283,9 +13292,7 @@ void LLPipeline::captureMetalImpostorPBRAlphaBatch(
     bool uses_shadows = false;
     if (world_alpha)
     {
-        LLGLSLShader* pbr_shader =
-            gDeferredPBRAlphaProgram.selectVariant();
-        uses_shadows = pbr_shader->mFeatures.hasShadows;
+        uses_shadows = metalWorldAlphaUsesDirectionalShadows(*this);
         if (uses_shadows && !fillMetalImpostorDirectionalShadows())
         {
             capture.markIncomplete(__LINE__);
@@ -13405,9 +13412,8 @@ void LLPipeline::captureMetalImpostorFlatAlphaBatch(
             capture.world_alpha_lighting = lighting;
             capture.world_alpha_lighting_valid = true;
         }
-        LLGLSLShader* alpha_shader =
-            gDeferredAlphaProgram.selectVariant();
-        world_simple_shadows = alpha_shader->mFeatures.hasShadows;
+        world_simple_shadows =
+            metalWorldAlphaUsesDirectionalShadows(*this);
         if (world_simple_shadows)
         {
             if (!fillMetalImpostorDirectionalShadows())
@@ -15104,9 +15110,7 @@ void LLPipeline::captureMetalImpostorLegacyMaterialAlphaBatch(
         return;
     }
 
-    LLGLSLShader* material_shader =
-        gDeferredMaterialProgram[shader_mask].selectVariant();
-    bool uses_shadows = material_shader->mFeatures.hasShadows;
+    bool uses_shadows = metalWorldAlphaUsesDirectionalShadows(*this);
     if (uses_shadows && !fillMetalImpostorDirectionalShadows())
     {
         capture.markIncomplete(__LINE__);
@@ -33615,7 +33619,7 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
         // that blended geometry would lay down depth for a coverage mask that ran afterwards
         // -- the "shameless hack" the old comment named. Both are gone: the mask stamps
         // opaque coverage before the forward passes instead, and the alpha channel carries
-        // real coverage from there (LLDrawPoolAlpha::forwardRender). One fewer full scene
+        // real coverage from the native alpha-pool replay. One fewer full scene
         // render per impostor, and partial coverage survives to the composite instead of
         // being flattened to opaque, which is what produced the dark halo around hair.
     }

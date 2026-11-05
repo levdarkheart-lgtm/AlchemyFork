@@ -83,9 +83,9 @@ namespace
     // ALGPUBuffer STREAM store: a write is then a plain memcpy. The
     // map/unmap-per-write idiom this replaced (GL_STREAM_DRAW + unsynchronized map,
     // whole-store orphan on wrap) was measured stalling for MILLISECONDS on a single
-    // palette write inside LLDrawPoolAlpha::renderPostDeferred -- rigged alpha-only
-    // skins take their first write of the frame there, the GPU is a frame deep by
-    // then, and a driver that services the map or the orphan synchronously parks the
+    // late-frame rigged-alpha palette write in the retired GL pool -- those skins took
+    // their first write of the frame there, the GPU was a frame deep by then, and a
+    // driver that services the map or the orphan synchronously parks the
     // CPU right on it. That idiom survives only as the fallback when buffer-storage
     // is unavailable (macOS GL 4.1). Coherency is deliberately not user-tunable here
     // (unlike sPersistRing): each payload is written once and never revisited, which

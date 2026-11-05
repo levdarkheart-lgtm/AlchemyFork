@@ -615,7 +615,7 @@ public:
     // sRGB on the sampler (ALSampler::SRGBDecode), the shader has dropped its own
     // srgb_to_linear on the diffuse, and its vertex-colour tint is linearised in the vertex
     // stage. Set on the forward writers that were converted to filter albedo in linear space
-    // -- see the pool bind sites (bindIndexedTextures, pushBatch, LLDrawPoolAlpha::TexSetup),
+    // -- see the retained pool bind sites (bindIndexedTextures and pushBatch),
     // which read it to choose the diffuse sampler for a polymorphic per-draw shader. Left
     // false on the HUD programs (they output sRGB) and the FOR_IMPOSTOR alpha program (it
     // writes the sRGB sample straight to the bake).

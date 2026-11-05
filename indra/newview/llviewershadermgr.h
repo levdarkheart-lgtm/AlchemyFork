@@ -250,12 +250,6 @@ extern LLGLSLShader         gDeferredAvatarShadowProgram;
 extern LLGLSLShader         gDeferredAvatarCutShadowProgram;
 extern LLGLSLShader         gDeferredAvatarAlphaShadowProgram;
 extern LLGLSLShader         gDeferredAvatarAlphaMaskShadowProgram;
-extern LLGLSLShader         gDeferredAlphaProgram;
-extern LLGLSLShader         gHUDAlphaProgram;
-extern LLGLSLShader         gDeferredAlphaImpostorProgram;
-extern LLGLSLShader         gDeferredFullbrightAlphaMaskProgram;
-extern LLGLSLShader         gDeferredFullbrightAlphaMaskAlphaProgram;
-extern LLGLSLShader         gHUDFullbrightAlphaMaskAlphaProgram;
 extern LLGLSLShader         gDeferredAvatarAlphaProgram;
 extern LLGLSLShader         gEnvironmentMapProgram;
 extern LLGLSLShader         gDeferredWLSkyProgram;
@@ -282,13 +276,7 @@ extern LLGLSLShader         gCGTonemapColorgradeLegacyGammaProgram;
 extern LLGLSLShader         gRlvSphereProgram;
 // [/RLVa:KB]
 
-// Deferred materials shaders
-extern LLGLSLShader         gDeferredMaterialProgram[LLMaterial::SHADER_COUNT];
-
 extern LLGLSLShader         gHUDPBROpaqueProgram;
-extern LLGLSLShader         gDeferredPBRAlphaProgram;
-extern LLGLSLShader         gDeferredPBRAlphaImpostorProgram;
-extern LLGLSLShader         gHUDPBRAlphaProgram;
 
 enum TerrainPaintType : U32
 {

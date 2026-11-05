@@ -6800,8 +6800,8 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
             {
                 // Indexed (multi-material) legacy Blinn-Phong: accumulate distinct
                 // (diffuse, material) pairs into one batch. Faces must share the same
-                // shader mask (== gDeferredMaterialProgram index, i.e. the bound
-                // program), so the mask is a hard batch-break key.
+                // legacy material feature mask, so the native material
+                // permutation contract remains a hard batch-break key.
                 const S32 gltf_channels = llmin((S32)LLGLSLShader::sIndexedGLTFChannels, LLGLSLShader::MAX_INDEXED_GLTF_CHANNELS);
                 LLViewerTexture* diffuse_slots[LLGLSLShader::MAX_INDEXED_GLTF_CHANNELS];
                 LLMaterial* mat_slots[LLGLSLShader::MAX_INDEXED_GLTF_CHANNELS];

@@ -33,7 +33,6 @@
 
 class LLFace;
 class LLColor4;
-class LLGLSLShader;
 
 class LLDrawPoolAlpha final: public LLRenderPass
 {
@@ -41,11 +40,6 @@ public:
 
     // set by llsettingsvo so lldrawpoolalpha has quick access to the water plane in eye space
     static LLVector4 sWaterPlane;
-
-    // Gives the bound @a shader the coverage below which this pool draws no blended texel, for a
-    // caller drawing blended materials with its programs outside the pool (the material preview):
-    // LLFetchedGLTFMaterial::bind leaves a blended material's cutoff to the pass.
-    static void setCoverageCutoff(LLGLSLShader* shader);
 
     enum
     {
@@ -69,61 +63,14 @@ public:
     // to trigger Metal capture hooks.
     void captureMetalReflectionProbe();
 
-    void forwardRender(bool write_depth = false);
     /*virtual*/ void prerender();
 
     void renderDebugAlpha();
 
-    void renderGroupAlpha(LLSpatialGroup* group, U32 type, U32 mask, bool texture = true);
-    void renderAlpha(U32 mask, bool depth_only = false, bool rigged = false);
-    void renderAlphaHighlight();
-
     static bool sShowDebugAlpha;
 
 private:
-    LLGLSLShader* target_shader;
-
-    // setup by beginFooPass, [0] is static variant, [1] is rigged variant
-    LLGLSLShader* simple_shader = nullptr;
-    LLGLSLShader* fullbright_shader = nullptr;
-    LLGLSLShader* pbr_shader = nullptr;
-
-    void renderEmissives(std::vector<LLDrawInfo*>& emissives,
-                         bool particle_or_hud_particle);
-    void renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives,
-                               bool particle_or_hud_particle);
-    void renderPbrEmissives(std::vector<LLDrawInfo*>& emissives,
-                            bool particle_or_hud_particle);
-    void renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissives,
-                                  bool particle_or_hud_particle);
-    // Bind this draw's textures for `shader`.
-    //
-    // The shader is passed explicitly rather than read from LLGLSLShader::sCurBoundShaderPtr:
-    // bindTexture resolves a uniform to a texture unit THROUGH THE PROGRAM, so the same
-    // LLDrawInfo lands on different units depending on which program is current. Taking it as
-    // an argument is what ties a draw to the program it was batched for -- the caller has
-    // just bound that program and is the only one who knows which it is.
-    //
-    // Returns true if a texture matrix was pushed, to be passed to popTextureMatrix().
-    // diffuse_key names how the diffuse map is sampled. Particle groups pass a clamped
-    // sampler: their quads span the full [0,1] and wrap filtering bleeds the opposite edge
-    // into minified samples -- the clamp the default particle texture used to carry as
-    // texture state before sampling moved to the bind.
-    bool TexSetup(LLDrawInfo* draw, bool use_material, LLGLSLShader* shader, ALSampler diffuse_key = ALSamplers::AnisoWrap);
-
-    // Pop the texture matrix TexSetup pushed. Named for what it does: the textures TexSetup
-    // bound stay bound, and are superseded by the next draw's binds rather than restored
-    // here. (This was RestoreTexSetup, which promised more than it delivered.)
-    void popTextureMatrix(bool tex_setup);
-
-    // our 'normal' alpha blend function for this pass
-    LLRender::eBlendFactor mColorSFactor;
-    LLRender::eBlendFactor mColorDFactor;
-    LLRender::eBlendFactor mAlphaSFactor;
-    LLRender::eBlendFactor mAlphaDFactor;
-
-    // if true, we're executing a rigged render pass
-    bool mRigged = false;
+    void captureMetalBatches(bool rigged, bool depth_only);
 };
 
 #endif // LL_LLDRAWPOOLALPHA_H

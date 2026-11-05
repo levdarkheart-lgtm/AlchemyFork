@@ -171,12 +171,6 @@ LLGLSLShader            gDeferredAvatarShadowProgram;
 LLGLSLShader            gDeferredAvatarCutShadowProgram;
 LLGLSLShader            gDeferredAvatarAlphaShadowProgram;
 LLGLSLShader            gDeferredAvatarAlphaMaskShadowProgram;
-LLGLSLShader            gDeferredAlphaProgram;
-LLGLSLShader            gHUDAlphaProgram;
-LLGLSLShader            gDeferredAlphaImpostorProgram;
-LLGLSLShader            gDeferredFullbrightAlphaMaskProgram;
-LLGLSLShader            gDeferredFullbrightAlphaMaskAlphaProgram;
-LLGLSLShader            gHUDFullbrightAlphaMaskAlphaProgram;
 #if !LL_DARWIN
 LLGLSLShader            gDeferredPostProgram;
 LLGLSLShader            gDeferredPostProgramNoNear;
@@ -223,12 +217,7 @@ LLGLSLShader            gCGTonemapColorgradeLegacyGammaProgram;
 LLGLSLShader            gRlvSphereProgram;
 // [/RLVa:KB]
 
-// Deferred materials shaders
-LLGLSLShader            gDeferredMaterialProgram[LLMaterial::SHADER_COUNT];
 LLGLSLShader            gHUDPBROpaqueProgram;
-LLGLSLShader            gHUDPBRAlphaProgram;
-LLGLSLShader            gDeferredPBRAlphaProgram;
-LLGLSLShader            gDeferredPBRAlphaImpostorProgram;
 LLGLSLShader            gDeferredPBRTerrainProgram[TERRAIN_PAINT_TYPE_COUNT];
 LLGLSLShader            gDeferredPBRTerrainAlphaMaskProgram[TERRAIN_PAINT_TYPE_COUNT];
 
@@ -1314,11 +1303,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDeferredAvatarAlphaMaskShadowProgram.unload();
         gDeferredAvatarProgram.unload();
         gDeferredAvatarAlphaProgram.unload();
-        gDeferredAlphaProgram.unload();
-        gHUDAlphaProgram.unload();
-        gDeferredFullbrightAlphaMaskProgram.unload();
-        gDeferredFullbrightAlphaMaskAlphaProgram.unload();
-        gHUDFullbrightAlphaMaskAlphaProgram.unload();
 #if !LL_DARWIN
         gDeferredPostProgram.unload();
         gDeferredPostProgramNoNear.unload();
@@ -1356,15 +1340,9 @@ void LLViewerShaderMgr::loadShadersDeferred()
         gDepthPyramidProgram.unload();
         gDeferredBufferVisualProgram.unload();
 
-        for (U32 i = 0; i < LLMaterial::SHADER_COUNT; ++i)
-        {
-            gDeferredMaterialProgram[i].unload();
-        }
         LLGLSLShader::sIndexedLegacyMaterials = false;
 
         gHUDPBROpaqueProgram.unload();
-        gDeferredPBRAlphaProgram.unload();
-        gDeferredPBRAlphaImpostorProgram.unload();
         for (U32 paint_type = 0; paint_type < TERRAIN_PAINT_TYPE_COUNT; ++paint_type)
         {
             gDeferredPBRTerrainProgram[paint_type].unload();
@@ -1398,66 +1376,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         built(gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.createShader(mirror_variant()), gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram);
     }
 
-    // Main-world legacy material G-buffer passes are native Metal. Retain only
-    // the four alpha-blend programs consumed by LLDrawPoolAlpha.
-    for (U32 i : { 1u, 5u, 9u, 13u })
-    {
-        gDeferredMaterialProgram[i].mFeatures.hasLighting = false;
-        gDeferredMaterialProgram[i].mName = llformat("Material Shader %d", i);
-
-        constexpr U32 alpha_mode = LLMaterial::DIFFUSE_ALPHA_MODE_BLEND;
-
-        gDeferredMaterialProgram[i].mShaderFiles.clear();
-        gDeferredMaterialProgram[i].mShaderFiles.push_back(make_pair("deferred/materialV.glsl", GL_VERTEX_SHADER));
-        gDeferredMaterialProgram[i].mShaderFiles.push_back(make_pair("deferred/materialF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredMaterialProgram[i].mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        gDeferredMaterialProgram[i].clearPermutations();
-
-        bool has_normal_map   = (i & 0x8) > 0;
-        bool has_specular_map = (i & 0x4) > 0;
-
-        if (has_normal_map)
-        {
-            gDeferredMaterialProgram[i].addPermutation("HAS_NORMAL_MAP", "1");
-        }
-
-        if (has_specular_map)
-        {
-            gDeferredMaterialProgram[i].addPermutation("HAS_SPECULAR_MAP", "1");
-        }
-
-        gDeferredMaterialProgram[i].addPermutation("DIFFUSE_ALPHA_MODE", llformat("%d", alpha_mode));
-
-        if (alpha_mode != 0)
-        {
-            gDeferredMaterialProgram[i].mFeatures.hasAlphaMask = true;
-            gDeferredMaterialProgram[i].addPermutation("HAS_ALPHA_MASK", "1");
-        }
-
-        if (use_sun_shadow)
-        {
-            gDeferredMaterialProgram[i].addPermutation("HAS_SUN_SHADOW", "1");
-        }
-
-        add_common_permutations(&gDeferredMaterialProgram[i]);
-
-        gDeferredMaterialProgram[i].mFeatures.hasSrgb = true;
-        gDeferredMaterialProgram[i].mFeatures.calculatesAtmospherics = true;
-        gDeferredMaterialProgram[i].mFeatures.hasAtmospherics = true;
-        gDeferredMaterialProgram[i].mFeatures.hasGamma = true;
-        gDeferredMaterialProgram[i].mFeatures.hasShadows = use_sun_shadow;
-        gDeferredMaterialProgram[i].mFeatures.hasReflectionProbes = true;
-
-        gDeferredMaterialProgram[i].addPermutation("LINEAR_DIFFUSE", "1");
-
-        U32 variants = LLGLSLShader::VARIANT_RIGGED |
-                       LLGLSLShader::VARIANT_CLASSIC |
-                       mirror_variant();
-        built(gDeferredMaterialProgram[i].createShader(variants), gDeferredMaterialProgram[i]);
-        gDeferredMaterialProgram[i].forEachVariant([](LLGLSLShader& s) { s.mFeatures.hasLighting = true; });
-    }
-
     // Native G-buffer capture accepts indexed legacy batches directly. Keep
     // formation enabled when the shared slot width exists; retained indexed
     // shadow programs validate their own GL consumers below.
@@ -1478,116 +1396,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
         built(gHUDPBROpaqueProgram.createShader(), gHUDPBROpaqueProgram);
 
-    }
-
-    {
-        LLGLSLShader* shader = &gDeferredPBRAlphaProgram;
-        shader->mName = "Deferred PBR Alpha Shader";
-
-        shader->mFeatures.calculatesLighting = false;
-        shader->mFeatures.hasLighting = false;
-        shader->mFeatures.isAlphaLighting = true;
-        shader->mFeatures.hasSrgb = true;
-        shader->mFeatures.calculatesAtmospherics = true;
-        shader->mFeatures.hasAtmospherics = true;
-        shader->mFeatures.hasGamma = true;
-        shader->mFeatures.hasShadows = use_sun_shadow;
-        shader->mFeatures.isDeferred = true; // include deferredUtils
-        shader->mFeatures.hasReflectionProbes = mShaderLevel[SHADER_DEFERRED];
-
-        shader->mShaderFiles.clear();
-        shader->mShaderFiles.push_back(make_pair("deferred/pbralphaV.glsl", GL_VERTEX_SHADER));
-        shader->mShaderFiles.push_back(make_pair("deferred/pbralphaF.glsl", GL_FRAGMENT_SHADER));
-
-        shader->clearPermutations();
-
-        U32 alpha_mode = LLMaterial::DIFFUSE_ALPHA_MODE_BLEND;
-        shader->addPermutation("DIFFUSE_ALPHA_MODE", llformat("%d", alpha_mode));
-        shader->addPermutation("HAS_NORMAL_MAP", "1");
-        shader->addPermutation("HAS_SPECULAR_MAP", "1"); // PBR: Packed: Occlusion, Metal, Roughness
-        shader->addPermutation("HAS_EMISSIVE_MAP", "1");
-        shader->addPermutation("USE_VERTEX_COLOR", "1");
-
-        add_common_permutations(shader);
-
-        if (use_sun_shadow)
-        {
-            shader->addPermutation("HAS_SUN_SHADOW", "1");
-        }
-
-        shader->mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(shader->createShader(LLGLSLShader::VARIANT_RIGGED | LLGLSLShader::VARIANT_CLASSIC | mirror_variant()), *shader);
-
-        // Alpha Shader Hack
-        // See: LLRender::syncMatrices()
-        shader->forEachVariant([](LLGLSLShader& s)
-        {
-            s.mFeatures.calculatesLighting = true;
-            s.mFeatures.hasLighting = true;
-        });
-    }
-
-    {
-        // The impostor bake's variant: flat base colour, no lighting. A bake captures ALBEDO
-        // for a G-buffer that is lit once at composite time, so the fully lit program above
-        // would light blended PBR twice. gDeferredAlphaImpostorProgram is the same idea for
-        // the legacy path; this closes the PBR half.
-        //
-        // Same feature set as the program above, deliberately, even though the FOR_IMPOSTOR
-        // branch never reaches the lighting. Features select which shared objects get
-        // ATTACHED, and pbralphaF's prologue calls mirrorClip() and waterClip() before the
-        // branch -- waterClip lives in deferredUtil.glsl, which only isDeferred or
-        // hasReflectionProbes attaches. Trimming the set to what the branch appears to need
-        // links against an undefined waterClip. It is the same fragment source, so it wants
-        // the same attachments; the permutations are what make this program flat.
-        LLGLSLShader* shader = &gDeferredPBRAlphaImpostorProgram;
-        shader->mName = "Deferred PBR Alpha Impostor Shader";
-
-        shader->mFeatures.calculatesLighting = false;
-        shader->mFeatures.hasLighting = false;
-        shader->mFeatures.isAlphaLighting = true;
-        shader->mFeatures.hasSrgb = true;
-        shader->mFeatures.calculatesAtmospherics = true;
-        shader->mFeatures.hasAtmospherics = true;
-        shader->mFeatures.hasGamma = true;
-        shader->mFeatures.isDeferred = true; // include deferredUtils
-        shader->mFeatures.hasReflectionProbes = mShaderLevel[SHADER_DEFERRED];
-
-        shader->mShaderFiles.clear();
-        shader->mShaderFiles.push_back(make_pair("deferred/pbralphaV.glsl", GL_VERTEX_SHADER));
-        shader->mShaderFiles.push_back(make_pair("deferred/pbralphaF.glsl", GL_FRAGMENT_SHADER));
-
-        shader->clearPermutations();
-
-        U32 alpha_mode = LLMaterial::DIFFUSE_ALPHA_MODE_BLEND;
-        shader->addPermutation("DIFFUSE_ALPHA_MODE", llformat("%d", alpha_mode));
-        shader->addPermutation("FOR_IMPOSTOR", "1");
-        shader->addPermutation("USE_VERTEX_COLOR", "1");
-
-        add_common_permutations(shader);
-
-        shader->mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(shader->createShader(LLGLSLShader::VARIANT_RIGGED), *shader);
-    }
-
-    {
-        LLGLSLShader* shader = &gHUDPBRAlphaProgram;
-        shader->mName = "HUD PBR Alpha Shader";
-
-        shader->mFeatures.hasSrgb = true;
-
-        shader->mShaderFiles.clear();
-        shader->mShaderFiles.push_back(make_pair("deferred/pbralphaV.glsl", GL_VERTEX_SHADER));
-        shader->mShaderFiles.push_back(make_pair("deferred/pbralphaF.glsl", GL_FRAGMENT_SHADER));
-
-        shader->clearPermutations();
-
-        shader->addPermutation("IS_HUD", "1");
-
-        add_common_permutations(shader);
-
-        shader->mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(shader->createShader(LLGLSLShader::VARIANT_CLASSIC), *shader);
     }
 
     {
@@ -1826,184 +1634,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
             LL_WARNS("Shader") << "SSAO's blur dispatch did not build; the fragment passes blur instead" << LL_ENDL;
             gDeferredBlurLightComputeProgram.unload();
         }
-    }
-
-    {
-        for (int i = 0; i < 2; ++i)
-        {
-            bool hud = (i == 1);
-            LLGLSLShader* shader = hud ? &gHUDAlphaProgram : &gDeferredAlphaProgram;
-            shader->mName = hud ? "HUD Alpha Shader" : "Deferred Alpha Shader";
-
-            shader->mFeatures.calculatesLighting = false;
-            shader->mFeatures.hasLighting = false;
-            shader->mFeatures.isAlphaLighting = true;
-            shader->mFeatures.hasSrgb = true;
-            shader->mFeatures.calculatesAtmospherics = true;
-            shader->mFeatures.hasAtmospherics = true;
-            shader->mFeatures.hasGamma = true;
-            shader->mFeatures.hasShadows = use_sun_shadow;
-            shader->mFeatures.hasReflectionProbes = true;
-            shader->mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-            shader->mShaderFiles.clear();
-            shader->mShaderFiles.push_back(make_pair("deferred/alphaV.glsl", GL_VERTEX_SHADER));
-            shader->mShaderFiles.push_back(make_pair("deferred/alphaF.glsl", GL_FRAGMENT_SHADER));
-
-            shader->clearPermutations();
-
-            // Forward (non-HUD) decodes its diffuse on the sampler and filters in linear;
-            // the HUD path outputs sRGB and keeps the encoded texel. See mLinearDiffuse.
-            // The FOR_IMPOSTOR alpha program below takes it too -- the bake target is sRGB
-            // and generateImpostor encodes on store, so it shades in linear like the rest.
-            if (!hud) shader->addPermutation("LINEAR_DIFFUSE", "1");
-
-            shader->addPermutation("USE_VERTEX_COLOR", "1");
-            shader->addPermutation("HAS_ALPHA_MASK", "1");
-            shader->addPermutation("USE_INDEXED_TEX", "1");
-            if (use_sun_shadow)
-            {
-                shader->addPermutation("HAS_SUN_SHADOW", "1");
-            }
-
-            add_common_permutations(shader);
-
-            if (hud)
-            {
-                shader->addPermutation("IS_HUD", "1");
-            }
-
-            shader->mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-            // the deferred alpha pass draws rigged geometry and can appear in a mirror; the
-            // HUD pass never does either (HUDs are not drawn into the probe)
-            U32 variants = LLGLSLShader::VARIANT_CLASSIC;
-            if (!hud)
-            {
-                variants |= LLGLSLShader::VARIANT_RIGGED | mirror_variant();
-            }
-            built(shader->createShader(variants), *shader);
-
-            // Hack
-            shader->forEachVariant([](LLGLSLShader& s)
-            {
-                s.mFeatures.calculatesLighting = true;
-                s.mFeatures.hasLighting = true;
-            });
-        }
-    }
-
-    {
-        LLGLSLShader* shader = &gDeferredAlphaImpostorProgram;
-
-        shader->mName = "Deferred Alpha Impostor Shader";
-
-        // Begin Hack
-        shader->mFeatures.calculatesLighting = false;
-        shader->mFeatures.hasLighting = false;
-
-        shader->mFeatures.hasSrgb = true;
-        shader->mFeatures.isAlphaLighting = true;
-        shader->mFeatures.hasShadows = use_sun_shadow;
-        shader->mFeatures.hasReflectionProbes = true;
-        shader->mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-
-        shader->mShaderFiles.clear();
-        shader->mShaderFiles.push_back(make_pair("deferred/alphaV.glsl", GL_VERTEX_SHADER));
-        shader->mShaderFiles.push_back(make_pair("deferred/alphaF.glsl", GL_FRAGMENT_SHADER));
-
-        shader->clearPermutations();
-        shader->addPermutation("USE_INDEXED_TEX", "1");
-        shader->addPermutation("FOR_IMPOSTOR", "1");
-        shader->addPermutation("HAS_ALPHA_MASK", "1");
-        shader->addPermutation("USE_VERTEX_COLOR", "1");
-        // Shades in linear like every other forward writer: the bind paths decode the
-        // diffuse on the sampler off the derived mLinearDiffuse, and generateImpostor
-        // enables GL_FRAMEBUFFER_SRGB so the store re-encodes into the sRGB bake target.
-        // This program was the one hole left in that conversion -- it sampled encoded,
-        // tinted in gamma space, and wrote raw, which only worked because the pass it
-        // ran in did not encode either.
-        shader->addPermutation("LINEAR_DIFFUSE", "1");
-
-        if (use_sun_shadow)
-        {
-            shader->addPermutation("HAS_SUN_SHADOW", "1");
-        }
-
-        add_common_permutations(shader);
-
-        shader->mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(shader->createShader(LLGLSLShader::VARIANT_RIGGED | LLGLSLShader::VARIANT_CLASSIC | mirror_variant()), *shader);
-
-        // End Hack
-        shader->forEachVariant([](LLGLSLShader& s)
-        {
-            s.mFeatures.calculatesLighting = true;
-            s.mFeatures.hasLighting = true;
-        });
-    }
-
-    {
-        gDeferredFullbrightAlphaMaskProgram.mName = "Deferred Fullbright Alpha Masking Shader";
-        gDeferredFullbrightAlphaMaskProgram.mFeatures.calculatesAtmospherics = true;
-        gDeferredFullbrightAlphaMaskProgram.mFeatures.hasGamma = true;
-        gDeferredFullbrightAlphaMaskProgram.mFeatures.hasAtmospherics = true;
-        gDeferredFullbrightAlphaMaskProgram.mFeatures.hasSrgb = true;
-        gDeferredFullbrightAlphaMaskProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-        gDeferredFullbrightAlphaMaskProgram.mShaderFiles.clear();
-        gDeferredFullbrightAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightV.glsl", GL_VERTEX_SHADER));
-        gDeferredFullbrightAlphaMaskProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredFullbrightAlphaMaskProgram.clearPermutations();
-        gDeferredFullbrightAlphaMaskProgram.addPermutation("HAS_ALPHA_MASK","1");
-        gDeferredFullbrightAlphaMaskProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        add_common_permutations(&gDeferredFullbrightAlphaMaskProgram);
-
-        gDeferredFullbrightAlphaMaskProgram.addPermutation("LINEAR_DIFFUSE", "1");
-        built(gDeferredFullbrightAlphaMaskProgram.createShader(LLGLSLShader::VARIANT_RIGGED | mirror_variant()), gDeferredFullbrightAlphaMaskProgram);
-    }
-
-    {
-        gDeferredFullbrightAlphaMaskAlphaProgram.mName = "Deferred Fullbright Alpha Masking Alpha Shader";
-        gDeferredFullbrightAlphaMaskAlphaProgram.mFeatures.calculatesAtmospherics = true;
-        gDeferredFullbrightAlphaMaskAlphaProgram.mFeatures.hasGamma = true;
-        gDeferredFullbrightAlphaMaskAlphaProgram.mFeatures.hasAtmospherics = true;
-        gDeferredFullbrightAlphaMaskAlphaProgram.mFeatures.hasSrgb = true;
-        gDeferredFullbrightAlphaMaskAlphaProgram.mFeatures.isDeferred = true;
-        gDeferredFullbrightAlphaMaskAlphaProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-        gDeferredFullbrightAlphaMaskAlphaProgram.mShaderFiles.clear();
-        gDeferredFullbrightAlphaMaskAlphaProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightV.glsl", GL_VERTEX_SHADER));
-        gDeferredFullbrightAlphaMaskAlphaProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredFullbrightAlphaMaskAlphaProgram.clearPermutations();
-        gDeferredFullbrightAlphaMaskAlphaProgram.addPermutation("HAS_ALPHA_MASK", "1");
-        gDeferredFullbrightAlphaMaskAlphaProgram.addPermutation("IS_ALPHA", "1");
-
-        add_common_permutations(&gDeferredFullbrightAlphaMaskAlphaProgram);
-
-        gDeferredFullbrightAlphaMaskAlphaProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredFullbrightAlphaMaskAlphaProgram.addPermutation("LINEAR_DIFFUSE", "1");
-        built(gDeferredFullbrightAlphaMaskAlphaProgram.createShader(LLGLSLShader::VARIANT_RIGGED | mirror_variant()), gDeferredFullbrightAlphaMaskAlphaProgram);
-    }
-
-    {
-        gHUDFullbrightAlphaMaskAlphaProgram.mName = "HUD Fullbright Alpha Masking Alpha Shader";
-        gHUDFullbrightAlphaMaskAlphaProgram.mFeatures.calculatesAtmospherics = true;
-        gHUDFullbrightAlphaMaskAlphaProgram.mFeatures.hasGamma = true;
-        gHUDFullbrightAlphaMaskAlphaProgram.mFeatures.hasAtmospherics = true;
-        gHUDFullbrightAlphaMaskAlphaProgram.mFeatures.hasSrgb = true;
-        gHUDFullbrightAlphaMaskAlphaProgram.mFeatures.isDeferred = true;
-        gHUDFullbrightAlphaMaskAlphaProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
-        gHUDFullbrightAlphaMaskAlphaProgram.mShaderFiles.clear();
-        gHUDFullbrightAlphaMaskAlphaProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightV.glsl", GL_VERTEX_SHADER));
-        gHUDFullbrightAlphaMaskAlphaProgram.mShaderFiles.push_back(make_pair("deferred/fullbrightF.glsl", GL_FRAGMENT_SHADER));
-        gHUDFullbrightAlphaMaskAlphaProgram.clearPermutations();
-        gHUDFullbrightAlphaMaskAlphaProgram.addPermutation("HAS_ALPHA_MASK", "1");
-        gHUDFullbrightAlphaMaskAlphaProgram.addPermutation("IS_ALPHA", "1");
-        gHUDFullbrightAlphaMaskAlphaProgram.addPermutation("IS_HUD", "1");
-
-        add_common_permutations(&gHUDFullbrightAlphaMaskAlphaProgram);
-
-        gHUDFullbrightAlphaMaskAlphaProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        built(gHUDFullbrightAlphaMaskAlphaProgram.createShader(), gHUDFullbrightAlphaMaskAlphaProgram);
     }
 
     {

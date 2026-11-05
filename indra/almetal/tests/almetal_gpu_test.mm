@@ -4217,7 +4217,7 @@ TEST_CASE("almetal: world simple pass writes the native four-attachment G-buffer
         // Blend the glTF FOR_IMPOSTOR contract into the retained opaque bake:
         // flat linear base colour, true coverage, attachment-zero only. Static
         // alpha keeps depth read-only; rigged alpha writes it so later layers
-        // self-occlude, matching LLDrawPoolAlpha::forwardRender.
+        // self-occlude, matching the native alpha-pool rigged replay.
         ALMetalWorldSimpleBatch alpha_batch = batch;
         alpha_batch.texture_count = 1;
         alpha_batch.pbr_slot_count = 1;
