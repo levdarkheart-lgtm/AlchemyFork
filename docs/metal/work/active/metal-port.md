@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `9d8f96ac6b`.
+**Renderer checkpoint:** Commit `1d0bc66fd5`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -13,16 +13,16 @@ checkpoint detail belongs in the indexed archive.
 | ID | Work | State | Evidence / next boundary |
 | --- | --- | --- | --- |
 | M-001 | Reproducible ARM64 OSS build and reference baseline | doing | Source-exact ARM64 build/package identity passes; controlled performance baseline remains open. |
-| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,861 findings; strict exits 1. No rule or suppression changed. |
+| M-002 | GL/shader/pass/resource and binary inventory | doing | 2,847 findings; strict exits 1. No rule or suppression changed. |
 | M-003 | Native drawable, presentation and lifecycle | doing | Metal is the mandatory visible presentation owner. Startup/world GL swaps are suppressed; an incomplete native frame retains the previous Metal drawable and is machine-censused without claiming GL fallback. Live GL traversal/context creation/shutdown remain. |
 | M-004 | Metal resources, transfers, readback and synchronization | doing | Native producers use the window-owned Metal device. Reflection probes use backend-neutral logical slots and Metal-only cube/radiance/SH publication; converted startup/local/HDRI/fetched resources retain native scale-down and eviction. |
 | M-005 | MSL and explicit pipeline/resource binding | doing | Production library and established variants load; wide-line/point preview diagnostics now have explicit native pipelines. |
-| M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while retained GL consumers are removed; owner accepted readable UI text. Snapshot has no GL scratch/reconcile path. Selection effects plus HUD fullbright-shiny/emboss output are native-only; visual review remains queued. |
-| M-007 | World scene and material correctness | doing | Probe scenes plus ordinary, legacy-material/bump, shiny/emboss and opaque/masked glTF PBR static/rigged batches are directly enumerated into Metal. Grass, trees and shadows are native; broad parity remains open. |
+| M-006 | UI, fonts, HUD and media ingress | doing | Font pages retain synchronized GL+Metal storage while retained GL consumers are removed; owner accepted readable UI text. Snapshot has no GL scratch/reconcile path. Selection effects plus HUD fullbright/shiny/emboss output are native-only; visual review remains queued. |
+| M-007 | World scene and material correctness | doing | Probe scenes plus ordinary fullbright, legacy-material/bump, shiny/emboss and opaque/masked glTF PBR static/rigged batches are directly enumerated into Metal. Grass, trees and shadows are native; broad parity remains open. |
 | M-008 | Advanced views/effects and compute | doing | Color grading, PBR integration/glow, previews, visual hints, avatar composites, selection, debug effects, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation are implemented in Metal. Opaque PBR plus main and alpha-pool glow are native-only. |
-| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (2,861 findings), linked/runtime no-GL and visual review remain open. |
+| M-009 | Feature parity, stability and native-only cleanup | doing | Full matrix, stability, strict no-GL (2,847 findings), linked/runtime no-GL and visual review remain open. |
 | M-010 | M1 Max profiling and optimization | deferred | Qualifying paired quality-equivalent measurements follow stable parity. |
-| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation, probe publication, terrain bake, selection, base deferred/PBR/legacy-material/legacy-bump geometry, world/HUD shiny/emboss, opaque PBR/glow, trees nor converted debug effects. Superseded owners are deleted. |
+| M-011 | Remove duplicate GL authority owner by owner | doing | GL owns neither presentation, probe publication, terrain bake, selection, base deferred/PBR/legacy-material/legacy-bump/fullbright geometry, world/HUD shiny/emboss, opaque PBR/glow, trees nor converted debug effects. Superseded owners are deleted. |
 | M-012 | Development Computer Use / LLUI accessibility | complete | Semantic operation is verified; comparison driving is reserved for the owner-attended daily window. |
 | M-013 | RLVa strict parity | deferred | Owner-designated non-release nice-to-have; minimum no-GL behavior remains required. |
 
@@ -108,7 +108,7 @@ and its physical Metal test covers the native height/noise bake.
 delete 13 GLSL files, six GL targets, the palette texture, eight GL programs
 and the obsolete GL test; its physical case passes 4,732 assertions.
 Commits `95619cb3e5` through `d0da9cae1a` remove duplicate GL far-plane, wind,
-self-agent crosshair and light-debug draws/state checks; `624441a65e` cuts trees; `79fbf30233` cuts base deferred geometry; `15d7a3b77c` cuts opaque/masked PBR G-buffer GL; `8bd478c19f` cuts opaque PBR glow; `a143d2789e` cuts legacy materials; `189908fc41`/`eab6bd61b3` cut main/alpha-pool glow; `35f43b29e0` cuts the legacy bump G-buffer; `dbff358ab5` cuts world shiny/emboss; `9d8f96ac6b` adds native HUD shiny/emboss, GL-to-Metal alpha-factor normalization and deletes both remaining programs/four shaders. Visual parity is queued.
+self-agent crosshair and light-debug draws/state checks; `624441a65e` cuts trees; `79fbf30233` cuts base deferred geometry; `15d7a3b77c` cuts opaque/masked PBR G-buffer GL; `8bd478c19f` cuts opaque PBR glow; `a143d2789e` cuts legacy materials; `189908fc41`/`eab6bd61b3` cut main/alpha-pool glow; `35f43b29e0` cuts legacy bump; `dbff358ab5`/`9d8f96ac6b` cut world/HUD shiny/emboss; `1d0bc66fd5` makes world/HUD fullbright pools native-only and deletes three exclusive programs. Visual parity is queued.
 
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
@@ -133,7 +133,7 @@ swap. Exact prior evidence remains in the
   renderer 557,301/136 and tools 31/31 pass. App verification accepts 349/349
   ARM64 slices; deep signing passes; executable SHA-256 is
   `9d8f6b1313ef0c1bf7cae936a30152b3b1c5ab60728d126809fa3ea0bb8f284f`.
-- `9d8f96ac6b`: harness build/staging, physical HUD 593/1 and world/G-buffer 8,022/1 pass; 349/349 ARM64/deep signing pass; executable SHA-256 `b94ce421d66c6264a054b0273207b774246cff9e8f4a1fea01fe4156e3e3c2cd`; strict inventory 2,861 exits 1. Runtime/visual parity remains open.
+- `1d0bc66fd5`: harness build/staging, physical HUD 593/1 and world/G-buffer 8,022/1 pass; 349/349 ARM64/deep signing pass; executable SHA-256 `38895867a2557efc4cbdda54d0efdb3682c2a1bde91bb05289895ad365a8daf1`; strict inventory 2,847 exits 1. Runtime/visual parity remains open.
 
 ## Owner-attended visual review cadence
 
