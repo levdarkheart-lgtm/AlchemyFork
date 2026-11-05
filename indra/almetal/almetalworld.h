@@ -748,11 +748,11 @@ struct ALMetalWorldUpdateTypeBatch
     float color[4]{};
 };
 
-// Develop > Texel Density currently keeps gDebugProgram bound. That production
-// shader consumes only position and the current uniform color: the checkerboard
-// binding and texture matrix selected by current/desired/full are not shader
-// inputs. Retain the exact visible indexed overlay without adding an invented
-// sampled-texture path.
+// Develop > Texel Density kept gDebugProgram bound. That production shader
+// consumes only position and the current uniform color: the checkerboard
+// binding and texture matrix selected by current/desired/full were not shader
+// inputs. Retain the exact visible indexed overlay without preserving those
+// GL-only mutations or adding an invented sampled-texture path.
 struct ALMetalWorldTexelDensityBatch
 {
     const ALMetalBuffer* vertices = nullptr;

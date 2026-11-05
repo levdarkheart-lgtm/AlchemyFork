@@ -2685,11 +2685,6 @@ void renderTexelDensity(LLDrawable* drawable)
         return;
     }
 
-    LLGLEnable _(GL_BLEND);
-
-    LLMatrix4 checkerboard_matrix;
-    S32 discard_level = -1;
-
     for (S32 f = 0; f < drawable->getNumFaces(); f++)
     {
         LLFace* facep = drawable->getFace(f);
@@ -2698,97 +2693,14 @@ void renderTexelDensity(LLDrawable* drawable)
 
         if (texturep == NULL) continue;
 
-        switch(LLViewerTexture::sDebugTexelsMode)
-        {
-        case LLViewerTexture::DEBUG_TEXELS_CURRENT:
-            discard_level = -1;
-            break;
-        case LLViewerTexture::DEBUG_TEXELS_DESIRED:
-            {
-                LLViewerFetchedTexture* fetched_texturep = dynamic_cast<LLViewerFetchedTexture*>(texturep);
-                discard_level = fetched_texturep ? fetched_texturep->getDesiredDiscardLevel() : -1;
-                break;
-            }
-        default:
-        case LLViewerTexture::DEBUG_TEXELS_FULL:
-            discard_level = 0;
-            break;
-        }
-
-        checkerboard_matrix.initScale(LLVector3((F32)texturep->getWidth(discard_level) / 8.f, (F32)texturep->getHeight(discard_level) / 8.f, 1.f));
-
-        gGL.getTextureSlot(0)->bindSampled(LLViewerTexture::sCheckerBoardImagep, ALSamplers::AnisoWrap, true);
-        gGL.matrixMode(LLRender::MM_TEXTURE0);
-        gGL.loadMatrix((GLfloat*)&checkerboard_matrix.mMatrix);
-
         if (buffer && (facep->getGeomCount() >= 3))
         {
 #if LL_DARWIN
             gPipeline.captureMetalTexelDensityFace(
                 *facep, gGL.getDiffuseColor());
-            if (facep->getIndicesCount() != 0)
-            {
-                gGL.captureMetalUIIndexedBuffer(
-                    buffer, LLRender::TRIANGLES,
-                    facep->getIndicesCount(),
-                    facep->getIndicesStart());
-            }
 #endif
-            buffer->setBuffer();
-            U16 start = facep->getGeomStart();
-            U16 end = start + facep->getGeomCount()-1;
-            U32 count = facep->getIndicesCount();
-            U16 offset = facep->getIndicesStart();
-            buffer->drawRange(LLRender::TRIANGLES, start, end, count, offset);
         }
-
-        gGL.loadIdentity();
-        gGL.matrixMode(LLRender::MM_MODELVIEW);
     }
-
-    //S32 num_textures = llmax(1, (S32)params->mTextureList.size());
-
-    //for (S32 i = 0; i < num_textures; i++)
-    //{
-    //  LLViewerTexture* texturep = params->mTextureList.empty() ? params->mTexture.get() : params->mTextureList[i].get();
-    //  if (texturep == NULL) continue;
-
-    //  LLMatrix4 checkboard_matrix;
-    //  S32 discard_level = -1;
-    //  switch(LLViewerTexture::sDebugTexelsMode)
-    //  {
-    //  case LLViewerTexture::DEBUG_TEXELS_CURRENT:
-    //      discard_level = -1;
-    //      break;
-    //  case LLViewerTexture::DEBUG_TEXELS_DESIRED:
-    //      {
-    //          LLViewerFetchedTexture* fetched_texturep = dynamic_cast<LLViewerFetchedTexture*>(texturep);
-    //          discard_level = fetched_texturep ? fetched_texturep->getDesiredDiscardLevel() : -1;
-    //          break;
-    //      }
-    //  default:
-    //  case LLViewerTexture::DEBUG_TEXELS_FULL:
-    //      discard_level = 0;
-    //      break;
-    //  }
-
-    //  checkboard_matrix.initScale(LLVector3(texturep->getWidth(discard_level) / 8, texturep->getHeight(discard_level) / 8, 1.f));
-    //  gGL.getTextureSlot(i)->activate();
-
-    //  glMatrixMode(GL_TEXTURE);
-    //  glPushMatrix();
-    //  glLoadIdentity();
-    //  //gGL.matrixMode(LLRender::MM_TEXTURE0);
-    //  glLoadMatrixf((GLfloat*) checkboard_matrix.mMatrix);
-
-    //  gGL.getTextureSlot(i)->bindSampled(LLViewerTexture::sCheckerBoardImagep, ALSamplers::AnisoWrap, true);
-
-    //  pushVerts(params, LLVertexBuffer::MAP_VERTEX | LLVertexBuffer::MAP_TEXCOORD0 | LLVertexBuffer::MAP_COLOR | LLVertexBuffer::MAP_NORMAL );
-
-    //  glPopMatrix();
-    //  glMatrixMode(GL_MODELVIEW);
-    //  //gGL.matrixMode(LLRender::MM_MODELVIEW);
-    //}
 }
 
 

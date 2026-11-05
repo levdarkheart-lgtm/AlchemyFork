@@ -5144,15 +5144,32 @@ void LLPipeline::captureMetalUpdateTypeFace(
 void LLPipeline::captureMetalTexelDensityFace(
     const LLFace& face, const LLColor4& color)
 {
-    if (!mMetalWorldSimpleCapture ||
-        !mMetalWorldSimpleCapture->frame_active ||
-        !mMetalWorldSimpleCapture->world_post_deferred_active ||
-        mMetalWorldSimpleCapture->world_post_deferred_phase)
+    const bool hud_capture = sRenderingHUDs &&
+        gGL.hasMetalUITextureCapture();
+    const bool world_capture = mMetalWorldSimpleCapture &&
+        mMetalWorldSimpleCapture->frame_active &&
+        mMetalWorldSimpleCapture->world_post_deferred_active &&
+        !mMetalWorldSimpleCapture->world_post_deferred_phase;
+    if (!hud_capture && !world_capture)
     {
         return;
     }
 
-    MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
+    MetalWorldSimpleCapture* capture = world_capture
+        ? mMetalWorldSimpleCapture.get() : nullptr;
+    const auto fail = [capture, hud_capture](const char* reason)
+    {
+        if (capture)
+        {
+            capture->markIncomplete(__LINE__);
+            capture->texel_density_batches.clear();
+        }
+        if (hud_capture)
+        {
+            gGL.invalidateMetalUITextureCapture(reason);
+        }
+    };
+
     LLVertexBuffer* buffer = face.getVertexBuffer();
     if (!buffer || face.getGeomCount() < 3 ||
         face.getIndicesCount() == 0)
@@ -5160,23 +5177,15 @@ void LLPipeline::captureMetalTexelDensityFace(
         return;
     }
 
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
-    LLRender::eBlendFactor color_source;
-    LLRender::eBlendFactor color_destination;
-    LLRender::eBlendFactor alpha_source;
-    LLRender::eBlendFactor alpha_destination;
-    gGL.getBlendFunc(color_source, color_destination,
-                     alpha_source, alpha_destination);
-    U32 rgb_equation = 0;
-    U32 alpha_equation = 0;
-    gGL.getBlendEquation(rgb_equation, alpha_equation);
     const std::size_t geom_first = face.getGeomStart();
     const std::size_t geom_count = face.getGeomCount();
     const bool color_finite = std::all_of(
         std::begin(color.mV), std::end(color.mV),
         [](F32 value) { return std::isfinite(value); });
-    if (!capture.complete || face.getIndicesCount() % 3 != 0 ||
+    if ((capture && (!capture->complete ||
+         capture->render_debug_order ==
+             std::numeric_limits<U64>::max())) ||
+        face.getIndicesCount() % 3 != 0 ||
         face.getIndicesStart() < 0 ||
         geom_first > buffer->getNumVerts() ||
         geom_count > buffer->getNumVerts() - geom_first ||
@@ -5185,56 +5194,70 @@ void LLPipeline::captureMetalTexelDensityFace(
         !buffer->getMetalIndexBuffer() ||
         (buffer->getIndexStride() != sizeof(U16) &&
          buffer->getIndexStride() != sizeof(U32)) ||
-        capture.render_debug_order ==
-            std::numeric_limits<U64>::max() ||
-        !color_finite ||
-        LLGLSLShader::sCurBoundShaderPtr != &gDebugProgram ||
-        !LLGLState::isEnabled(GL_BLEND) ||
-        LLGLState::isEnabled(GL_CULL_FACE) ||
-        !LLGLDepthTest::depthEnabled() ||
-        !LLGLDepthTest::depthWriteEnabled() ||
-        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
-        color_source != LLRender::BF_SOURCE_ALPHA ||
-        color_destination != LLRender::BF_ONE_MINUS_SOURCE_ALPHA ||
-        alpha_source != LLRender::BF_SOURCE_ALPHA ||
-        alpha_destination != LLRender::BF_ONE_MINUS_SOURCE_ALPHA ||
-        rgb_equation != GL_FUNC_ADD || alpha_equation != GL_FUNC_ADD ||
-        !color_mask[0] || !color_mask[1] || !color_mask[2] ||
-        color_mask[3] || gGL.getPolygonMode() != GL_FILL)
+        !color_finite)
     {
-        capture.markIncomplete(__LINE__);
-        capture.texel_density_batches.clear();
+        fail("Texel Density geometry or semantic color is incomplete");
         return;
     }
 
     LLMatrix4a modelview_projection;
     modelview_projection.setMul(
         gGL.getModelviewMatrix(), gGL.getProjectionMatrix());
-    ALMetalWorldTexelDensityBatch batch;
-    batch.vertices = buffer->getMetalVertexBuffer();
-    batch.position_offset = buffer->getOffset(
-        LLVertexBuffer::TYPE_VERTEX);
-    batch.vertex_count = buffer->getNumVerts();
-    batch.indices = buffer->getMetalIndexBuffer();
-    batch.index_offset =
+    const std::size_t index_offset =
         static_cast<std::size_t>(face.getIndicesStart()) *
         buffer->getIndexStride();
-    batch.index_type = buffer->getIndexStride() == sizeof(U32)
-        ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
-    batch.index_count = face.getIndicesCount();
-    batch.order = capture.render_debug_order++;
-    std::memcpy(batch.modelview_projection,
-                modelview_projection.getF32ptr(),
-                sizeof(batch.modelview_projection));
-    std::memcpy(batch.color, color.mV, sizeof(batch.color));
-    try
+
+    if (capture)
     {
-        capture.texel_density_batches.push_back(batch);
+        ALMetalWorldTexelDensityBatch batch;
+        batch.vertices = buffer->getMetalVertexBuffer();
+        batch.position_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_VERTEX);
+        batch.vertex_count = buffer->getNumVerts();
+        batch.indices = buffer->getMetalIndexBuffer();
+        batch.index_offset = index_offset;
+        batch.index_type = buffer->getIndexStride() == sizeof(U32)
+            ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+        batch.index_count = face.getIndicesCount();
+        batch.order = capture->render_debug_order++;
+        std::memcpy(batch.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.modelview_projection));
+        std::memcpy(batch.color, color.mV, sizeof(batch.color));
+        try
+        {
+            capture->texel_density_batches.push_back(batch);
+        }
+        catch (const std::bad_alloc&)
+        {
+            fail("Texel Density batch allocation failed");
+            return;
+        }
     }
-    catch (const std::bad_alloc&)
+
+    if (hud_capture)
     {
-        capture.markIncomplete(__LINE__);
-        capture.texel_density_batches.clear();
+        ALMetalHUDIndexedBatch batch;
+        batch.shader = ALMetalHUDShader::debug;
+        batch.vertices = buffer->getMetalVertexBuffer();
+        batch.position_offset = buffer->getOffset(
+            LLVertexBuffer::TYPE_VERTEX);
+        batch.vertex_count = buffer->getNumVerts();
+        batch.indices = buffer->getMetalIndexBuffer();
+        batch.index_offset = index_offset;
+        batch.index_type = buffer->getIndexStride() == sizeof(U32)
+            ? ALMetalIndexType::uint32 : ALMetalIndexType::uint16;
+        batch.index_count = face.getIndicesCount();
+        batch.double_sided = true;
+        std::memcpy(batch.matrices.modelview_projection,
+                    modelview_projection.getF32ptr(),
+                    sizeof(batch.matrices.modelview_projection));
+        std::memcpy(batch.highlight_color, color.mV,
+                    sizeof(batch.highlight_color));
+        if (!gGL.drawMetalHUDIndexedBatch(batch))
+        {
+            fail("Texel Density HUD attachment encoding failed");
+        }
     }
 }
 

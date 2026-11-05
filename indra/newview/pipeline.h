@@ -521,8 +521,9 @@ public:
     void captureMetalUpdateTypeFace(
         const LLFace& face, const LLColor4& color);
     // Retain the actual Develop > Texel Density production draw. The bound
-    // gDebugProgram is position/uniform-color only; checkerboard dimensions
-    // and the texture matrix remain source side effects, not visual inputs.
+    // gDebugProgram is position/uniform-color only, so current/desired/full
+    // select the same reachable overlay without retaining GL-only
+    // checkerboard binding or texture-matrix mutations.
     void captureMetalTexelDensityFace(
         const LLFace& face, const LLColor4& color);
     // Retain Develop > Batch Size's per-draw hash colour, semantic polygon
