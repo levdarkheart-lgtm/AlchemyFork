@@ -3036,75 +3036,45 @@ public:
 
         LLVector3 center, size;
 
+        LLColor4 outline_color;
         if (branch->isEmpty())
         {
-            gGL.diffuseColor3f(1.f,0.2f,0.f);
+            outline_color.set(1.f, 0.2f, 0.f, 1.f);
             center.set(branch->getCenter().getF32ptr());
             size.set(branch->getSize().getF32ptr());
         }
         else
         {
-            gGL.diffuseColor3f(0.75f, 1.f, 0.f);
+            outline_color.set(0.75f, 1.f, 0.f, 1.f);
             center.set(vl->mBounds[0].getF32ptr());
             size.set(vl->mBounds[1].getF32ptr());
         }
 
-#if LL_DARWIN
-        gPipeline.captureMetalRaycastOutline(center, size, false);
-#endif
-        drawBoxOutline(center, size);
+        gPipeline.captureMetalRaycastOutline(
+            center, size, outline_color, false);
 
         for (U32 i = 0; i < 2; i++)
         {
-            LLGLDepthTest depth(GL_TRUE, GL_FALSE, i == 1 ? GL_LEQUAL : GL_GREATER);
+            const bool visible = i == 1;
 
-            if (i == 1)
+            if (!visible)
             {
-                gGL.diffuseColor4f(0,1,1,0.5f);
-            }
-            else
-            {
-                gGL.diffuseColor4f(0,0.5f,0.5f, 0.25f);
-#if LL_DARWIN
-                gPipeline.captureMetalRaycastOutline(center, size, true);
-#endif
-                drawBoxOutline(center, size);
+                const LLColor4 hidden_color(0.f, 0.5f, 0.5f, 0.25f);
+                gPipeline.captureMetalRaycastOutline(
+                    center, size, hidden_color, true);
             }
 
-            if (i == 1)
-            {
-                gGL.setLineWidth(3.f);
-            }
-
-#if LL_DARWIN
-            gPipeline.beginMetalRaycastTriangleBatch(i == 1);
-#endif
-            gGL.begin(LLRender::TRIANGLES);
+            gPipeline.beginMetalRaycastTriangleBatch(visible);
             for (LLOctreeNode<LLVolumeTriangle, LLVolumeTriangle*>::const_element_iter iter = branch->getDataBegin();
                     iter != branch->getDataEnd();
                     ++iter)
             {
                 const LLVolumeTriangle* tri = *iter;
 
-#if LL_DARWIN
                 gPipeline.captureMetalRaycastTriangle(
                     *tri->mV[0], *tri->mV[1], *tri->mV[2]);
-#endif
-                gGL.vertex3fv(tri->mV[0]->getF32ptr());
-                gGL.vertex3fv(tri->mV[1]->getF32ptr());
-                gGL.vertex3fv(tri->mV[2]->getF32ptr());
             }
-            gGL.end();
-#if LL_DARWIN
-            gPipeline.endMetalRaycastTriangleBatch(i == 1);
-#endif
-            // Drawn under this pass's depth func and colour, which the next pass changes.
-            gGL.flush();
-
-            if (i == 1)
-            {
-                gGL.setLineWidth(1.f);
-            }
+            gPipeline.endMetalRaycastTriangleBatch(visible);
         }
     }
 };
@@ -3122,9 +3092,6 @@ void renderRaycast(LLDrawable* drawablep)
 {
     if (drawablep->getNumFaces())
     {
-        LLGLEnable blend(GL_BLEND);
-        gGL.diffuseColor4f(0,1,1,0.5f);
-
         LLVOVolume* vobj = drawablep->getVOVolume();
         if (vobj && !vobj->isDead())
         {
@@ -3174,15 +3141,6 @@ void renderRaycast(LLDrawable* drawablep)
                     LLVector4a dir;
                     dir.setSub(end, start);
 
-                    gGL.flush();
-                    gGL.setPolygonMode(GL_LINE);
-
-                    {
-                        //render face positions
-                        //gGL.diffuseColor4f(0,1,1,0.5f);
-                        //LLVertexBuffer::drawElements(LLRender::TRIANGLES, face.mPositions, nullptr, face.mNumIndices, face.mIndices);
-                    }
-
                     if (!volume->isUnique())
                     {
                         if (!face.getOctree())
@@ -3194,7 +3152,6 @@ void renderRaycast(LLDrawable* drawablep)
                     }
 
                     gGL.popMatrix();
-                    gGL.setPolygonMode(GL_FILL);
                 }
             }
         }
@@ -3229,25 +3186,19 @@ void renderRaycast(LLDrawable* drawablep)
             orient.getRotMatrixToParent(rotation);
             gGL.multMatrix((float*)rotation.mMatrix);
 
-            gGL.diffuseColor4f(1,0,0,0.5f);
             const LLVector3 axis_center(0, 0, 0);
             const LLVector3 axis_x(0.1f, 0.022f, 0.022f);
-#if LL_DARWIN
-            gPipeline.captureMetalRaycastHitAxisBox(axis_center, axis_x);
-#endif
-            drawBox(axis_center, axis_x);
-            gGL.diffuseColor4f(0,1,0,0.5f);
+            const LLColor4 axis_x_color(1.f, 0.f, 0.f, 0.5f);
+            gPipeline.captureMetalRaycastHitAxisBox(
+                axis_center, axis_x, axis_x_color);
             const LLVector3 axis_y(0.021f, 0.1f, 0.021f);
-#if LL_DARWIN
-            gPipeline.captureMetalRaycastHitAxisBox(axis_center, axis_y);
-#endif
-            drawBox(axis_center, axis_y);
-            gGL.diffuseColor4f(0,0,1,0.5f);
+            const LLColor4 axis_y_color(0.f, 1.f, 0.f, 0.5f);
+            gPipeline.captureMetalRaycastHitAxisBox(
+                axis_center, axis_y, axis_y_color);
             const LLVector3 axis_z(0.02f, 0.02f, 0.1f);
-#if LL_DARWIN
-            gPipeline.captureMetalRaycastHitAxisBox(axis_center, axis_z);
-#endif
-            drawBox(axis_center, axis_z);
+            const LLColor4 axis_z_color(0.f, 0.f, 1.f, 0.5f);
+            gPipeline.captureMetalRaycastHitAxisBox(
+                axis_center, axis_z, axis_z_color);
             gGL.popMatrix();
 
             // draw bounding box of prim
@@ -3260,12 +3211,7 @@ void renderRaycast(LLDrawable* drawablep)
             size.setSub(ext[1], ext[0]);
             size.mul(0.5f);
 
-            LLGLDepthTest depth(GL_FALSE, GL_TRUE);
-            gGL.diffuseColor4f(0,0.5f,0.5f,1);
-#if LL_DARWIN
             gPipeline.captureMetalRaycastHitBounds(pos, size);
-#endif
-            drawBoxOutline(pos, size);
         }
     }
 }
@@ -3273,6 +3219,9 @@ void renderRaycast(LLDrawable* drawablep)
 
 void renderAvatarCollisionVolumes(LLVOAvatar* avatar)
 {
+    // This shared avatar-volume owner still has retained GL consumers. Keep
+    // its blend precondition local instead of leaking it into raycast capture.
+    LLGLEnable blend(GL_BLEND);
 #if LL_DARWIN
     gPipeline.beginMetalAvatarVolumeCapture(
         static_cast<std::size_t>(avatar->mNumCollisionVolumes));

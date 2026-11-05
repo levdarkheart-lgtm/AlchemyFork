@@ -444,14 +444,15 @@ public:
     void beginMetalRaycastCapture();
     void captureMetalRaycastOutline(
         const LLVector3& center, const LLVector3& half_extent,
-        bool hidden);
+        const LLColor4& color, bool hidden);
     void beginMetalRaycastTriangleBatch(bool visible);
     void captureMetalRaycastTriangle(
         const LLVector4a& a, const LLVector4a& b,
         const LLVector4a& c);
     void endMetalRaycastTriangleBatch(bool visible);
     void captureMetalRaycastHitAxisBox(
-        const LLVector3& center, const LLVector3& half_extent);
+        const LLVector3& center, const LLVector3& half_extent,
+        const LLColor4& color);
     void captureMetalRaycastHitBounds(
         const LLVector4a& center, const LLVector4a& half_extent);
     void endMetalRaycastCapture();

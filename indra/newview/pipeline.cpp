@@ -5562,39 +5562,6 @@ void LLPipeline::endMetalBoundingBoxCapture()
     }
 }
 
-static bool metalRaycastStateIsExact(bool depth_enabled,
-                                     bool depth_write_enabled,
-                                     U32 depth_function,
-                                     F32 line_width,
-                                     U32 polygon_mode)
-{
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
-    LLRender::eBlendFactor color_source;
-    LLRender::eBlendFactor color_destination;
-    LLRender::eBlendFactor alpha_source;
-    LLRender::eBlendFactor alpha_destination;
-    gGL.getBlendFunc(color_source, color_destination,
-                     alpha_source, alpha_destination);
-    U32 rgb_equation = 0;
-    U32 alpha_equation = 0;
-    gGL.getBlendEquation(rgb_equation, alpha_equation);
-    return LLGLState::isEnabled(GL_BLEND) &&
-        !LLGLState::isEnabled(GL_CULL_FACE) &&
-        LLGLDepthTest::depthEnabled() == depth_enabled &&
-        LLGLDepthTest::depthWriteEnabled() == depth_write_enabled &&
-        (!depth_enabled ||
-         LLGLDepthTest::depthFunction() == depth_function) &&
-        color_source == LLRender::BF_SOURCE_ALPHA &&
-        color_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
-        alpha_source == LLRender::BF_SOURCE_ALPHA &&
-        alpha_destination == LLRender::BF_ONE_MINUS_SOURCE_ALPHA &&
-        rgb_equation == GL_FUNC_ADD && alpha_equation == GL_FUNC_ADD &&
-        color_mask[0] && color_mask[1] && color_mask[2] &&
-        !color_mask[3] && gGL.getLineWidth() == line_width &&
-        gGL.getPolygonMode() == polygon_mode;
-}
-
 void LLPipeline::beginMetalOcclusionCapture()
 {
     if (!mMetalWorldSimpleCapture ||
@@ -6686,7 +6653,8 @@ void LLPipeline::beginMetalRaycastCapture()
 }
 
 void LLPipeline::captureMetalRaycastOutline(
-    const LLVector3& center, const LLVector3& half_extent, bool hidden)
+    const LLVector3& center, const LLVector3& half_extent,
+    const LLColor4& color, bool hidden)
 {
     if (!mMetalWorldSimpleCapture)
     {
@@ -6703,7 +6671,6 @@ void LLPipeline::captureMetalRaycastOutline(
         return;
     }
 
-    const LLColor4& color = gGL.getDiffuseColor();
     const bool color_valid = hidden
         ? color.mV[0] == 0.f && color.mV[1] == 0.5f &&
               color.mV[2] == 0.5f && color.mV[3] == 0.25f
@@ -6711,12 +6678,7 @@ void LLPipeline::captureMetalRaycastOutline(
             color.mV[2] == 0.f && color.mV[3] == 1.f) ||
            (color.mV[0] == 0.75f && color.mV[1] == 1.f &&
             color.mV[2] == 0.f && color.mV[3] == 1.f));
-    const bool state_valid = hidden
-        ? metalRaycastStateIsExact(
-              true, false, GL_GREATER, 1.f, GL_LINE)
-        : metalRaycastStateIsExact(
-              true, true, GL_LEQUAL, 1.f, GL_LINE);
-    if (!capture.complete || !color_valid || !state_valid ||
+    if (!capture.complete || !color_valid ||
         capture.render_debug_order == std::numeric_limits<U64>::max())
     {
         capture.markIncomplete(__LINE__);
@@ -6767,18 +6729,17 @@ void LLPipeline::beginMetalRaycastTriangleBatch(bool visible)
     {
         return;
     }
-    const LLColor4& color = gGL.getDiffuseColor();
     const F32 line_width = visible ? 3.f : 1.f;
+    const LLColor4 color(
+        0.f, visible ? 1.f : 0.5f, visible ? 1.f : 0.5f,
+        visible ? 0.5f : 0.25f);
     const bool color_valid = visible
         ? color.mV[0] == 0.f && color.mV[1] == 1.f &&
               color.mV[2] == 1.f && color.mV[3] == 0.5f
         : color.mV[0] == 0.f && color.mV[1] == 0.5f &&
               color.mV[2] == 0.5f && color.mV[3] == 0.25f;
     if (!capture.complete || capture.raycast_triangle_batch_active ||
-        !color_valid ||
-        !metalRaycastStateIsExact(
-            true, false, visible ? GL_LEQUAL : GL_GREATER,
-            line_width, GL_LINE))
+        !color_valid)
     {
         capture.markIncomplete(__LINE__);
         capture.raycast_vertices.clear();
@@ -6918,7 +6879,8 @@ void LLPipeline::endMetalRaycastTriangleBatch(bool visible)
 }
 
 void LLPipeline::captureMetalRaycastHitAxisBox(
-    const LLVector3& center, const LLVector3& half_extent)
+    const LLVector3& center, const LLVector3& half_extent,
+    const LLColor4& color)
 {
     if (!mMetalWorldSimpleCapture)
     {
@@ -6929,7 +6891,6 @@ void LLPipeline::captureMetalRaycastHitAxisBox(
     {
         return;
     }
-    const LLColor4& color = gGL.getDiffuseColor();
     const bool color_valid = color.mV[3] == 0.5f &&
         ((color.mV[0] == 1.f && color.mV[1] == 0.f &&
           color.mV[2] == 0.f) ||
@@ -6939,8 +6900,6 @@ void LLPipeline::captureMetalRaycastHitAxisBox(
           color.mV[2] == 1.f));
     if (!capture.complete || !center.isFinite() ||
         !half_extent.isFinite() || !color_valid ||
-        !metalRaycastStateIsExact(
-            true, true, GL_LEQUAL, 1.f, GL_FILL) ||
         capture.render_debug_order == std::numeric_limits<U64>::max())
     {
         capture.markIncomplete(__LINE__);
@@ -6988,13 +6947,11 @@ void LLPipeline::captureMetalRaycastHitBounds(
     {
         return;
     }
-    const LLColor4& color = gGL.getDiffuseColor();
+    const LLColor4 color(0.f, 0.5f, 0.5f, 1.f);
     if (!capture.complete || !center.isFinite3() ||
         !half_extent.isFinite3() || color.mV[0] != 0.f ||
         color.mV[1] != 0.5f || color.mV[2] != 0.5f ||
         color.mV[3] != 1.f ||
-        !metalRaycastStateIsExact(
-            false, false, GL_LEQUAL, 1.f, GL_FILL) ||
         capture.render_debug_order == std::numeric_limits<U64>::max())
     {
         capture.markIncomplete(__LINE__);
