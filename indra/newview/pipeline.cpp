@@ -7375,34 +7375,10 @@ void LLPipeline::captureMetalShadowFrusta()
         capture.shadow_frustum_vertices.clear();
         capture.shadow_frustum_batches.clear();
     };
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
-    LLRender::eBlendFactor color_source;
-    LLRender::eBlendFactor color_destination;
-    LLRender::eBlendFactor alpha_source;
-    LLRender::eBlendFactor alpha_destination;
-    gGL.getBlendFunc(color_source, color_destination,
-                     alpha_source, alpha_destination);
-    U32 rgb_equation = 0;
-    U32 alpha_equation = 0;
-    gGL.getBlendEquation(rgb_equation, alpha_equation);
     if (!capture.complete ||
         !capture.shadow_frustum_vertices.empty() ||
         !capture.shadow_frustum_batches.empty() ||
-        !hasRenderDebugMask(RENDER_DEBUG_SHADOW_FRUSTA) ||
-        !LLGLState::isEnabled(GL_BLEND) ||
-        LLGLState::isEnabled(GL_CULL_FACE) ||
-        !LLGLDepthTest::depthEnabled() ||
-        LLGLDepthTest::depthWriteEnabled() ||
-        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
-        gGL.getPointSize() != 1.f || gGL.getLineWidth() != 1.f ||
-        color_source != LLRender::BF_SOURCE_ALPHA ||
-        color_destination != LLRender::BF_ONE_MINUS_SOURCE_ALPHA ||
-        alpha_source != LLRender::BF_SOURCE_ALPHA ||
-        alpha_destination != LLRender::BF_ONE_MINUS_SOURCE_ALPHA ||
-        rgb_equation != GL_FUNC_ADD || alpha_equation != GL_FUNC_ADD ||
-        !color_mask[0] || !color_mask[1] || !color_mask[2] ||
-        color_mask[3])
+        !hasRenderDebugMask(RENDER_DEBUG_SHADOW_FRUSTA))
     {
         fail();
         return;
@@ -22782,139 +22758,7 @@ void LLPipeline::renderDebug()
 
     if (hasRenderDebugMask(LLPipeline::RENDER_DEBUG_SHADOW_FRUSTA) && !hud_only)
     {
-        LLVertexBuffer::unbind();
-
-        LLGLEnable blend(GL_BLEND);
-        LLGLDepthTest depth(true, false);
-        LLGLDisable cull(GL_CULL_FACE);
-
-        gGL.color4f(1,1,1,1);
-        gGL.getTextureSlot(0)->unbind();
-
-#if LL_DARWIN
         captureMetalShadowFrusta();
-#endif
-
-        F32 a = 0.1f;
-
-        F32 col[] =
-        {
-            1,0,0,a,
-            0,1,0,a,
-            0,0,1,a,
-            1,0,1,a,
-
-            1,1,0,a,
-            0,1,1,a,
-            1,1,1,a,
-            1,0,1,a,
-        };
-
-        for (U32 i = 0; i < 8; i++)
-        {
-            LLVector3* frust = mShadowCamera[i].mAgentFrustum;
-
-            if (i > 3)
-            { //render shadow frusta as volumes
-                if (mShadowFrustPoints[i-4].empty())
-                {
-                    continue;
-                }
-
-                gGL.color4fv(col+(i-4)*4);
-
-                gGL.begin(LLRender::TRIANGLE_STRIP);
-                gGL.vertex3fv(frust[0].mV); gGL.vertex3fv(frust[4].mV);
-                gGL.vertex3fv(frust[1].mV); gGL.vertex3fv(frust[5].mV);
-                gGL.vertex3fv(frust[2].mV); gGL.vertex3fv(frust[6].mV);
-                gGL.vertex3fv(frust[3].mV); gGL.vertex3fv(frust[7].mV);
-                gGL.vertex3fv(frust[0].mV); gGL.vertex3fv(frust[4].mV);
-                gGL.end();
-
-
-                gGL.begin(LLRender::TRIANGLE_STRIP);
-                gGL.vertex3fv(frust[0].mV);
-                gGL.vertex3fv(frust[1].mV);
-                gGL.vertex3fv(frust[3].mV);
-                gGL.vertex3fv(frust[2].mV);
-                gGL.end();
-
-                gGL.begin(LLRender::TRIANGLE_STRIP);
-                gGL.vertex3fv(frust[4].mV);
-                gGL.vertex3fv(frust[5].mV);
-                gGL.vertex3fv(frust[7].mV);
-                gGL.vertex3fv(frust[6].mV);
-                gGL.end();
-            }
-
-
-            if (i < 4)
-            {
-
-                //if (i == 0 || !mShadowFrustPoints[i].empty())
-                {
-                    //render visible point cloud
-                    gGL.flush();
-                    gGL.setPointSize(8.f);
-                    gGL.begin(LLRender::POINTS);
-
-                    F32* c = col+i*4;
-                    gGL.color3fv(c);
-
-                    for (U32 j = 0; j < mShadowFrustPoints[i].size(); ++j)
-                        {
-                            gGL.vertex3fv(mShadowFrustPoints[i][j].mV);
-
-                        }
-                    gGL.end();
-
-                    gGL.flush();
-                    gGL.setPointSize(1.f);
-
-                    LLVector3* ext = mShadowExtents[i];
-                    LLVector3 pos = (ext[0]+ext[1])*0.5f;
-                    LLVector3 size = (ext[1]-ext[0])*0.5f;
-                    drawBoxOutline(pos, size);
-
-                    //render camera frustum splits as outlines
-                    gGL.begin(LLRender::LINES);
-                    gGL.vertex3fv(frust[0].mV); gGL.vertex3fv(frust[1].mV);
-                    gGL.vertex3fv(frust[1].mV); gGL.vertex3fv(frust[2].mV);
-                    gGL.vertex3fv(frust[2].mV); gGL.vertex3fv(frust[3].mV);
-                    gGL.vertex3fv(frust[3].mV); gGL.vertex3fv(frust[0].mV);
-                    gGL.vertex3fv(frust[4].mV); gGL.vertex3fv(frust[5].mV);
-                    gGL.vertex3fv(frust[5].mV); gGL.vertex3fv(frust[6].mV);
-                    gGL.vertex3fv(frust[6].mV); gGL.vertex3fv(frust[7].mV);
-                    gGL.vertex3fv(frust[7].mV); gGL.vertex3fv(frust[4].mV);
-                    gGL.vertex3fv(frust[0].mV); gGL.vertex3fv(frust[4].mV);
-                    gGL.vertex3fv(frust[1].mV); gGL.vertex3fv(frust[5].mV);
-                    gGL.vertex3fv(frust[2].mV); gGL.vertex3fv(frust[6].mV);
-                    gGL.vertex3fv(frust[3].mV); gGL.vertex3fv(frust[7].mV);
-                    gGL.end();
-                }
-            }
-
-            /*gGL.flush();
-             gGL.setLineWidth(16-i*2);
-            for (LLWorld::region_list_t::const_iterator iter = LLWorld::getInstance()->getRegionList().begin();
-                    iter != LLWorld::getInstance()->getRegionList().end(); ++iter)
-            {
-                LLViewerRegion* region = *iter;
-                for (U32 j = 0; j < LLViewerRegion::NUM_PARTITIONS; j++)
-                {
-                    LLSpatialPartition* part = region->getSpatialPartition(j);
-                    if (part)
-                    {
-                        if (hasRenderType(part->mDrawableType))
-                        {
-                            part->renderIntersectingBBoxes(&mShadowCamera[i]);
-                        }
-                    }
-                }
-            }
-            gGL.flush();
-             gGL.setLineWidth(1.f);*/
-        }
     }
 
     if (mRenderDebugMask & RENDER_DEBUG_WIND_VECTORS)
