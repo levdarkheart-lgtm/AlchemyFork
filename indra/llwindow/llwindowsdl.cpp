@@ -707,15 +707,16 @@ void LLWindowSDL::destroySharedContext(void* contextPtr)
 
 void LLWindowSDL::toggleVSync(bool enable_vsync)
 {
-    const int interval = enable_vsync ? 1 : 0;
     LL_INFOS("Window") << (enable_vsync ? "Enabling" : "Disabling") << " vertical sync" << LL_ENDL;
+#if !LL_DARWIN
+    const int interval = enable_vsync ? 1 : 0;
     if (!SDL_GL_SetSwapInterval(interval))
     {
         // Some compositors (notably Wayland) refuse interval=0; the driver may also reject it.
         LL_WARNS("Window") << "SDL_GL_SetSwapInterval(" << interval << ") failed: "
                            << SDL_GetError() << LL_ENDL;
     }
-#if LL_DARWIN
+#else
     if (mMetalSurface)
     {
         std::string error;
@@ -1115,10 +1116,12 @@ bool LLWindowSDL::setSizeImpl(const LLCoordWindow size)
 
 void LLWindowSDL::swapBuffers()
 {
+#if !LL_DARWIN
     if (mWindow)
     {
         SDL_GL_SwapWindow(mWindow);
     }
+#endif
     LL_PROFILER_GPU_COLLECT;
 #if LL_LINUX
     checkGraphicsReset();

@@ -703,8 +703,15 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     { //skip render on frames where window has been resized
         LL_DEBUGS("Window") << "Resizing window" << LL_ENDL;
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Resize Window");
+#if LL_DARWIN
+        // Metal is the sole visible presentation owner. Keep the preceding
+        // complete drawable visible while applyRenderInputs reconciles the
+        // new size; do not clear or swap the migration GL drawable.
+        gGL.setMetalPresentationOpaque(true);
+#else
         gGL.clear(GL_COLOR_BUFFER_BIT);
         gViewerWindow->getWindow()->swapBuffers();
+#endif
         gGL.endFrame();
         gPipeline.applyRenderInputs();
         return;
