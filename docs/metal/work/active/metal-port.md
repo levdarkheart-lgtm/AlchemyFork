@@ -3,7 +3,7 @@
 **Owner:** Codex integrator. **Outcome:** complete `docs/metal/PRODUCT.md`, not a
 demo. **Evidence contract:** `docs/metal/VALIDATION.md` and
 `docs/metal/PERFORMANCE.md`. **History:** [archive index](../archive/INDEX.md).
-**Renderer checkpoint:** Commit `3e975c4b28`.
+**Renderer checkpoint:** Commit `cbdecfd337`.
 
 This ledger contains current decisions and executable work only. Completed
 checkpoint detail belongs in the indexed archive.
@@ -29,7 +29,7 @@ checkpoint detail belongs in the indexed archive.
 States describe evidence, not effort. `complete` applies only to a bounded work
 item and never implies product completion.
 
-## Active checkpoint — deferred lighting Metal-only; dead light-map plan removed
+## Active checkpoint — deferred lighting Metal-only; drawless GL state removed
 
 ### Retained owner evidence and native presentation boundary
 
@@ -116,6 +116,8 @@ generation remains authoritative. `e6f54ce64d` then removes duplicate GL deferre
 sun, SSAO blur and base-light draws, six programs, nine GLSL stages and obsolete tests.
 `1f3cfeefb6` preserves CPU visible-light/projector-shadow selection and removes duplicate GL point/projector lighting. `3e975c4b28` then deletes the three dead
 pack light-map slots, blurred scratch target and dispatch-reach input. Metal retains private light-map/blur ownership; the default 1440p plan sheds 21.1 MiB.
+`cbdecfd337` replaces the first deferred `setupHWLights()` mutation with CPU-only native direction preparation and deletes the now-drawless GL
+vertex/cull/blend/color-mask state prologue. Retained post-deferred pools still own the bound screen target and are the next cutover census.
 Visual cases 51/52 remain queued.
 
 Earlier terrain, water, startup/local/fetched resources, pressure, eviction,
@@ -128,15 +130,14 @@ swap. Exact prior evidence remains in the
 
 ## Validation checkpoint
 
-- `3e975c4b28`: Ninja and prescribed Xcode Release 68374 pass
+- `cbdecfd337`: Ninja and prescribed Xcode Release 68376 pass
   warnings-as-errors; physical validated Metal shadow 119/1 and retained-world
   8,022/1 pass. Release inspection is 349/349 ARM64 and deep signing passes.
   Executable SHA-256 is
-  `05fb3c05cdb66bc6ad80c2184c49cc329ee056972fdd80a18ea0f48d47850e19`;
+  `9b7a761e0c23b191697068b253b0abb08e6f8c942a4271c1199cbe199650a411`;
   metallib is `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
-  All 556,530 renderer assertions and the 2,597-assertion focused resource-plan suite pass. Host doctor passes on
-  the M1 Max acceptance host. Strict inventory is 2,398 and exits 1; harness
-  validation and all 31 tool tests pass.
+  All 556,530 renderer assertions and the 2,597-assertion focused resource-plan suite pass. Host doctor passes on the M1 Max acceptance host.
+  Strict inventory is 2,398 and exits 1; harness validation and all 31 tool tests pass.
 
 ## Owner-attended visual review cadence
 
@@ -162,9 +163,8 @@ signals only; none substitutes for movement toward a release criterion.
 
 ## Immediate executable action
 
-Remove the now-drawless GL state prologue around native deferred lighting, then
-census the retained post-deferred target bind/clear/flush boundary. Do not wait
-for visual review, restore fallbacks or launch viewers.
+Census the retained post-deferred screen-target bind/clear/flush boundary, separate native-capture prerequisites from remaining GL pool output, and remove
+the next proven-obsolete owner. Do not wait for visual review, restore fallbacks or launch viewers.
 
 ## Non-negotiable open gates
 
