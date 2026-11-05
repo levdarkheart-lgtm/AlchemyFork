@@ -1273,7 +1273,7 @@ public:
 
     void bindDeferredShaderFast(LLGLSLShader& shader);
     void bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_target = nullptr, LLRenderTarget* depth_target = nullptr);
-    void setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep);
+    void updateDeferredLightTraversalState(LLViewerCamera& camera, F32 light_scale, S32 local_light_count);
 
     void unbindDeferredShader(LLGLSLShader& shader);
 
@@ -1782,10 +1782,6 @@ public:
     // @a depth_from, the target the caller acquired for it.
     LLRenderTarget* acquireResource(ALTransientTargets& scope, ALRenderResourcePlan::Id id, std::string_view name = {},
                                     LLRenderTarget* depth_from = nullptr);
-
-    // The light map of the view whose deferred lighting is running, which bindDeferredShader binds where it is given
-    // none; null outside that lighting, where a program reading it reads white.
-    LLRenderTarget* mLightMap = nullptr;
 
     // What each spot map holds, so that one whose light and casters are as they were is not drawn again.
 

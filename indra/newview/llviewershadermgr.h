@@ -35,8 +35,6 @@
 #include "llshadermgr.h"
 #include "llmaterial.h"
 
-#define LL_DEFERRED_MULTI_LIGHT_COUNT 16
-
 class LLViewerShaderMgr: public LLShaderMgr
 {
 public:
@@ -181,10 +179,6 @@ extern LLGLSLShader         gImpostorProgram;
 // Deferred rendering shaders
 extern LLGLSLShader         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
 extern LLGLSLShader         gDeferredTerrainProgram;
-extern LLGLSLShader         gDeferredLightProgram;
-extern LLGLSLShader         gDeferredMultiLightProgram[LL_DEFERRED_MULTI_LIGHT_COUNT];
-extern LLGLSLShader         gDeferredSpotLightProgram;
-extern LLGLSLShader         gDeferredMultiSpotLightProgram;
 #if !LL_DARWIN
 // Retained non-Darwin DoF gather blur, four variants over two orthogonal
 // compile-time axes: FRONT_BLUR (RenderDepthOfFieldNearBlur) and DOF_SHAPED

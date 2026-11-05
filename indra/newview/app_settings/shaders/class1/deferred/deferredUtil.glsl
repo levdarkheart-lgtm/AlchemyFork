@@ -290,7 +290,7 @@ float getDepth(vec2 pos_screen)
 vec4 getTexture2DLodAmbient(vec2 tc, float lod)
 {
     vec4 ret = textureLod(projectionMap, tc, lod);
-    // projectionMap is decoded on the sampler (SRGBDecode, see setupSpotLight), so the
+    // projectionMap is decoded on the sampler (SRGBDecode), so the
     // cookie is filtered in linear -- the mipped LOD read included. Already linear here.
 
     vec2 dist = tc-vec2(0.5);
@@ -303,7 +303,7 @@ vec4 getTexture2DLodAmbient(vec2 tc, float lod)
 vec4 getTexture2DLodDiffuse(vec2 tc, float lod)
 {
     vec4 ret = textureLod(projectionMap, tc, lod);
-    // projectionMap is decoded on the sampler (SRGBDecode, see setupSpotLight), so the
+    // projectionMap is decoded on the sampler (SRGBDecode), so the
     // cookie is filtered in linear -- the mipped LOD read included. Already linear here.
 
     vec2 dist = vec2(0.5) - abs(tc-vec2(0.5));
@@ -349,7 +349,7 @@ vec3 getProjectedLightDiffuseColor(float light_distance, vec2 projected_uv)
 vec4 texture2DLodSpecular(vec2 tc, float lod)
 {
     vec4 ret = textureLod(projectionMap, tc, lod);
-    // projectionMap is decoded on the sampler (SRGBDecode, see setupSpotLight), so the
+    // projectionMap is decoded on the sampler (SRGBDecode), so the
     // cookie is filtered in linear -- the mipped LOD read included. Already linear here.
 
     vec2 dist = vec2(0.5) - abs(tc-vec2(0.5));
@@ -839,7 +839,7 @@ vec3 pbrCalcPointLightOrSpotLight(vec3 diffuseColor, vec3 specularColor,
 // over one model -- a diffuse-only one for the surfaces that carry no specular data, and the
 // full one.
 //
-// Term for term the deferred model -- see the legacy branch of class3/deferred/pointLightF.glsl.
+// Term for term the legacy deferred model now implemented by the native Metal lighting owner.
 // The forward passes each carried a copy of it, and both copies had drifted: they recovered the
 // light's radius by inverting the linear attenuation, ran an inlined distance falloff, fed the
 // geometry term and its own denominator the attenuated angular value rather than NdotL, took the

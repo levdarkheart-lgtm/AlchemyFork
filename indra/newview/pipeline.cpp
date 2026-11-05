@@ -16790,7 +16790,7 @@ void LLPipeline::endMetalWorldGBufferCapture()
                                         ? "; WindLight haze and stars are native"
                                         : "; WindLight atmospheric haze sky is native"
                                 : "; sky remains GL-owned")
-                    << "; presentation remains on GL until the remaining world passes exist"
+                    << "; publication still requires the complete native world transaction"
                     << LL_ENDL;
             }
         }
@@ -16943,7 +16943,7 @@ void LLPipeline::renderMetalWorldLocalLights(
         {
             capture.local_lighting_attempted = true;
             LL_WARNS("Metal")
-                << "Native world local-point-light owner retained GL after "
+                << "Native world local-point-light owner left the native frame incomplete after "
                 << capture.local_lighting_failed_frames
                 << " failures: " << error << LL_ENDL;
         }
@@ -17107,7 +17107,7 @@ void LLPipeline::renderMetalWorldProjectorLights(
         plane_normal.setSub(direction_point, plane_point);
         plane_normal.normalize3();
 
-        // setupSpotLight's cookie matrix is intentionally the forward
+        // The retired GL projector setup used this exact forward cookie matrix;
         // projection even when the scene depth is reverse-Z. Keep this
         // byte-for-byte construction paired with its [-1,1] z remap.
         eye_to_light.setMul(
@@ -17202,7 +17202,7 @@ void LLPipeline::renderMetalWorldProjectorLights(
             if (failed_frames == MetalWorldSimpleCapture::max_failed_frames)
             {
                 LL_WARNS("Metal")
-                    << "Native world projector-light owner retained GL after "
+                    << "Native world projector-light owner left the native frame incomplete after "
                     << failed_frames << " failures: " << error << LL_ENDL;
             }
         }
@@ -17264,7 +17264,7 @@ void LLPipeline::renderMetalWorldLightingComposition()
             << capture.composed_light_target->descriptor().width << "x"
             << capture.composed_light_target->descriptor().height
             << "; no intermediate light targets or composition draw were "
-               "created, and visible GL authority is unchanged"
+               "created, and native presentation remains fail-closed"
             << LL_ENDL;
     }
 }
@@ -23900,38 +23900,85 @@ static F32 light_fade_brightness(F32 fade)
     return llclamp(fade >= 0.f ? fade / LIGHT_FADE_TIME : 1.f + fade / LIGHT_FADE_TIME, 0.f, 1.f);
 }
 
-// The stored depths a view-space span of lit points can hold, from ALDepthBounds::viewSpan's: under forward-Z the 24-bit
-// depth stores the step nearest a point's depth, as much as half a step past the span's ends, which far off is more than
-// any margin in view space (a step is about 15 cm at 500 m), so the span is let out by two steps, kept off the
-// clear. A float depth's rounding lies far inside the view-space margin.
-static void widen_for_storage(F64& zmin, F64& zmax)
+void LLPipeline::updateDeferredLightTraversalState(
+    LLViewerCamera& camera, F32 light_scale, S32 local_light_count)
 {
-    if (!LLRender::sReverseZ)
+    if (!gCubeSnapshot)
     {
-        constexpr F64 STEP = 1.0 / 16777215.0;
-        F64 drawn_min, drawn_max;
-        ALDepthBounds::drawn(drawn_min, drawn_max);
-        zmin = llmax(zmin - 2.0 * STEP, drawn_min);
-        zmax = llmin(zmax + 2.0 * STEP, drawn_max);
+        mTargetShadowSpotLight[0] = nullptr;
+        mTargetShadowSpotLight[1] = nullptr;
     }
-}
 
-// Holds a light's draw to the stored depths its light reaches: its sphere, `size` around its view-space centre (the
-// light shaders' cutoff), widened a little for what reconstruction loses and for the depth's storage. To everything
-// drawn where the projection cannot say.
-static void bound_to_light(ALDepthBounds& bounds, const LLMatrix4a& proj, F32 view_z, F32 size)
-{
-    const F32 reach = size * 1.01f + 0.01f;
-    F64 zmin, zmax;
-    if (ALDepthBounds::viewSpan(proj, view_z + reach, view_z - reach, zmin, zmax))
+    llassert(mTargetShadowSpotLight[0] != mTargetShadowSpotLight[1] ||
+             mTargetShadowSpotLight[0].isNull());
+
+    S32 count = 0;
+    for (light_set_t::iterator iter = mNearbyLights.begin();
+         iter != mNearbyLights.end(); ++iter)
     {
-        widen_for_storage(zmin, zmax);
+        if (++count > local_light_count)
+        {
+            break;
+        }
+
+        LLDrawable* drawable = iter->drawable;
+        LLVOVolume* volume = drawable ? drawable->getVOVolume() : nullptr;
+        if (!volume || (volume->isAttachment() && !sRenderAttachedLights))
+        {
+            continue;
+        }
+
+        LLVector4a center;
+        center.load3(drawable->getPositionAgent().mV);
+        const F32 radius = volume->getLightRadius() * 1.5f;
+        LLColor3 color = volume->getLightLinearColor() * light_scale;
+        color *= light_fade_brightness(iter->fade);
+        if (color.magVecSquared() < 0.001f || radius <= 0.001f)
+        {
+            continue;
+        }
+
+        LLVector4a extent;
+        extent.splat(radius);
+        if (camera.AABBInFrustumNoFarClip(center, extent) == 0)
+        {
+            continue;
+        }
+
+        ++sVisibleLightCount;
+        if (!volume->isLightSpotlight())
+        {
+            continue;
+        }
+
+        volume->updateSpotLightPriority();
+        if (gCubeSnapshot)
+        {
+            continue;
+        }
+
+        LLDrawable* potential = drawable;
+        F32 candidate_priority = volume->getSpotLightPriority();
+        for (U32 shadow = 0; shadow < 2; ++shadow)
+        {
+            F32 priority = 0.f;
+            if (mTargetShadowSpotLight[shadow].notNull())
+            {
+                priority = mTargetShadowSpotLight[shadow]
+                    ->getVOVolume()->getSpotLightPriority();
+            }
+            if (candidate_priority > priority)
+            {
+                LLDrawable* displaced = mTargetShadowSpotLight[shadow];
+                mTargetShadowSpotLight[shadow] = potential;
+                potential = displaced;
+                candidate_priority = priority;
+            }
+        }
     }
-    else
-    {
-        ALDepthBounds::drawn(zmin, zmax);
-    }
-    bounds.set(zmin, zmax);
+
+    llassert(mTargetShadowSpotLight[0] != mTargetShadowSpotLight[1] ||
+             mTargetShadowSpotLight[0].isNull());
 }
 
 void LLPipeline::calcNearbyLights(LLCamera& camera)
@@ -28963,7 +29010,6 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
 
     stop_glerror();
 
-    light_target = light_target ? light_target : mLightMap;
     channel = shader.enableTexture(LLShaderMgr::DEFERRED_LIGHT);
     if (channel > -1)
     {
@@ -29248,6 +29294,13 @@ void LLPipeline::renderDeferredLighting()
         static LLCachedControl<F32> ssao_max(
             gSavedSettings, "RenderSSAOIrradianceMax", 0.25f);
         static LLCachedControl<S32> local_light_count(gSavedSettings, "RenderLocalLightCount", 256);
+        const S32 visible_light_limit = std::max<S32>(local_light_count, 0);
+        if (visible_light_limit > 0 &&
+            (!gCubeSnapshot || shaderInputs().mGlobal.mProbeLevel > 0))
+        {
+            updateDeferredLightTraversalState(
+                *camera, light_scale, visible_light_limit);
+        }
 #if LL_DARWIN
         if (RenderDeferredAtmospheric)
         {
@@ -29255,14 +29308,13 @@ void LLPipeline::renderDeferredLighting()
                 *camera, mResourceInputs.mShadowDetail > 0,
                 mResourceInputs.mSSAO, ssao_scale, ssao_max);
         }
-        // Consume the retained native G-buffer at the same owner boundary as
-        // the remaining GL point-light traversal. Metal is the sole visible
-        // presentation authority; the GL draws below are the next owner cut.
+        // Consume the retained native G-buffer. CPU light traversal above
+        // preserves visible-light accounting and next-frame projector-shadow
+        // selection without any duplicate GL lighting draw.
         renderMetalWorldLocalLights(
-            *camera, mat, light_scale, std::max<S32>(local_light_count, 0));
+            *camera, mat, light_scale, visible_light_limit);
         renderMetalWorldProjectorLights(
-            *camera, mat, light_scale,
-            std::max<S32>(local_light_count, 0));
+            *camera, mat, light_scale, visible_light_limit);
         renderMetalWorldLightingComposition();
         if (lighting_batch_active)
         {
@@ -29281,343 +29333,17 @@ void LLPipeline::renderDeferredLighting()
                     MetalWorldSimpleCapture::max_failed_frames)
                 {
                     LL_WARNS("Metal")
-                        << "Native deferred-light batch retained GL after "
+                        << "Native deferred-light batch left the frame incomplete after "
                         << failed_frames << " commit failures: "
                         << lighting_batch_error << LL_ENDL;
                 }
             }
         }
-        // These native-only owners must not disturb the visible GL fallback's
-        // accumulation target. Rebinding that same target would push a cycle
-        // into LLRenderTarget's ownership stack.
+        // These native owners must not disturb the retained traversal target.
+        // Rebinding that same target would push a cycle into LLRenderTarget's
+        // ownership stack.
         llassert(LLRenderTarget::getCurrentBoundTarget() == screen_target);
 #endif
-        if (local_light_count > 0 && (!gCubeSnapshot || shaderInputs().mGlobal.mProbeLevel > 0))
-        {
-            // A projector's colour is worked out with its fade where it is sorted, and carried
-            // to the pass that draws it.
-            struct SpotLight
-            {
-                LLPointer<LLDrawable> drawable;
-                LLColor3              col;
-            };
-
-            static std::vector<LLVector4>        fullscreen_lights;
-            static std::vector<SpotLight>        spot_lights;
-            static std::vector<SpotLight>        fullscreen_spot_lights;
-            static std::vector<LLVector4>        light_colors;
-
-            gGL.setSceneBlendType(LLRender::BT_ADD);
-            LLSettingsSky::ptr_t        psky        = LLEnvironment::instance().getCurrentSky();
-
-            if (!gCubeSnapshot)
-            {
-                for (U32 i = 0; i < 2; i++)
-                {
-                    mTargetShadowSpotLight[i] = NULL;
-                }
-            }
-
-            LLVertexBuffer::unbind();
-
-            // Each pass binds a deferred program, the G-buffer and the probes: none where it has no light to draw.
-            if (!mNearbyLights.empty())
-            {
-                LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("renderDeferredLighting - local lights");
-                LL_PROFILE_GPU_ZONE("local lights");
-                LLGLSLShader& light_shader = *gDeferredLightProgram.selectVariant();
-                bindDeferredShader(light_shader);
-
-                if (mCubeVB.isNull())
-                {
-                    mCubeVB = ll_create_cube_vb(LLVertexBuffer::MAP_VERTEX);
-                }
-
-                mCubeVB->setBuffer();
-
-                LLGLDepthTest depth(GL_TRUE, GL_FALSE);
-                // Each volume is held to the depths its light reaches as well: its depth test passes everything
-                // behind it, which the light does not.
-                const LLMatrix4a& proj = LLViewerCamera::getCurrent().getProjection();
-                std::optional<ALDepthBounds> bounds;
-                if (ALDepthBounds::available())
-                {
-                    F64 zmin, zmax;
-                    ALDepthBounds::drawn(zmin, zmax);
-                    bounds.emplace(zmin, zmax);
-                }
-                // mNearbyLights already includes distance calculation and excludes muted avatars.
-                // It is calculated from mLights
-                // mNearbyLights also provides fade value to gracefully fade-out out of range lights
-                S32 count = 0;
-                for (light_set_t::iterator iter = mNearbyLights.begin(); iter != mNearbyLights.end(); ++iter)
-                {
-                    count++;
-                    if (count > local_light_count)
-                    { //stop collecting lights once we hit the limit
-                        break;
-                    }
-
-                    LLDrawable * drawablep = iter->drawable;
-                    LLVOVolume * volume = drawablep->getVOVolume();
-                    if (!volume)
-                    {
-                        continue;
-                    }
-
-                    if (volume->isAttachment())
-                    {
-                        if (!sRenderAttachedLights)
-                        {
-                            continue;
-                        }
-                    }
-
-                    LLVector4a center;
-                    center.load3(drawablep->getPositionAgent().mV);
-                    const F32 *c = center.getF32ptr();
-                    F32        s = volume->getLightRadius() * 1.5f;
-
-                    // send light color to shader in linear space, faded in or out with the
-                    // light's fade clock -- a light fading out past the draw distance dims to
-                    // nothing before calcNearbyLights erases it, and a new one rises from nothing
-                    LLColor3 col = volume->getLightLinearColor() * light_scale;
-                    col *= light_fade_brightness(iter->fade);
-
-                    if (col.magVecSquared() < 0.001f)
-                    {
-                        continue;
-                    }
-
-                    if (s <= 0.001f)
-                    {
-                        continue;
-                    }
-
-                    LLVector4a sa;
-                    sa.splat(s);
-                    if (camera->AABBInFrustumNoFarClip(center, sa) == 0)
-                    {
-                        continue;
-                    }
-
-                    sVisibleLightCount++;
-
-                    if (camera->getOrigin().mV[0] > c[0] + s + 0.2f || camera->getOrigin().mV[0] < c[0] - s - 0.2f ||
-                        camera->getOrigin().mV[1] > c[1] + s + 0.2f || camera->getOrigin().mV[1] < c[1] - s - 0.2f ||
-                        camera->getOrigin().mV[2] > c[2] + s + 0.2f || camera->getOrigin().mV[2] < c[2] - s - 0.2f)
-                    {  // draw box if camera is outside box
-                        if (volume->isLightSpotlight())
-                        {
-                            drawablep->getVOVolume()->updateSpotLightPriority();
-                            spot_lights.push_back({ drawablep, col });
-                            continue;
-                        }
-
-                        light_shader.uniform3fv(LLShaderMgr::LIGHT_CENTER, 1, c);
-                        light_shader.uniform1f(LLShaderMgr::LIGHT_SIZE, s);
-                        light_shader.uniform3fv(LLShaderMgr::DIFFUSE_COLOR, 1, col.mV);
-                        light_shader.uniform1f(LLShaderMgr::LIGHT_FALLOFF, volume->getLightFalloff(DEFERRED_LIGHT_FALLOFF));
-
-                        if (bounds)
-                        {
-                            LLVector4a view;
-                            mat.affineTransform(center, view);
-                            bound_to_light(*bounds, proj, view[2], s);
-                        }
-
-                        gGL.syncMatrices();
-
-                        mCubeVB->drawRange(LLRender::TRIANGLE_FAN, 0, 7, 8, get_box_fan_indices(camera, center));
-                    }
-                    else
-                    {
-                        if (volume->isLightSpotlight())
-                        {
-                            drawablep->getVOVolume()->updateSpotLightPriority();
-                            fullscreen_spot_lights.push_back({ drawablep, col });
-                            continue;
-                        }
-
-                        LLVector4a tc;
-                        mat.affineTransform(center, tc);
-
-                        fullscreen_lights.push_back(LLVector4(tc[0], tc[1], tc[2], s));
-                        light_colors.push_back(LLVector4(col.mV[0], col.mV[1], col.mV[2], volume->getLightFalloff(DEFERRED_LIGHT_FALLOFF)));
-                    }
-                }
-
-                // Bookmark comment to allow searching for mSpecialRenderMode == 3 (avatar edit mode),
-                // prev site of appended deferred character light, removed by SL-13522 09/20
-
-                unbindDeferredShader(light_shader);
-            }
-
-            if (!spot_lights.empty())
-            {
-                LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("renderDeferredLighting - projectors");
-                LL_PROFILE_GPU_ZONE("projectors");
-                LLGLDepthTest depth(GL_TRUE, GL_FALSE);
-                // Held to the depths each projector reaches, as the point lights are.
-                const LLMatrix4a& proj = LLViewerCamera::getCurrent().getProjection();
-                std::optional<ALDepthBounds> bounds;
-                if (ALDepthBounds::available())
-                {
-                    F64 zmin, zmax;
-                    ALDepthBounds::drawn(zmin, zmax);
-                    bounds.emplace(zmin, zmax);
-                }
-                LLGLSLShader& spot_shader = *gDeferredSpotLightProgram.selectVariant();
-                bindDeferredShader(spot_shader);
-
-                mCubeVB->setBuffer();
-
-                spot_shader.enableTexture(LLShaderMgr::DEFERRED_PROJECTION);
-
-                for (const SpotLight& spot : spot_lights)
-                {
-                    LLDrawable* drawablep = spot.drawable;
-                    LLVOVolume *volume = drawablep->getVOVolume();
-
-                    LLVector4a center;
-                    center.load3(drawablep->getPositionAgent().mV);
-                    const F32* c = center.getF32ptr();
-                    F32        s = volume->getLightRadius() * 1.5f;
-
-                    sVisibleLightCount++;
-
-                    setupSpotLight(spot_shader, drawablep);
-
-                    spot_shader.uniform3fv(LLShaderMgr::LIGHT_CENTER, 1, c);
-                    spot_shader.uniform1f(LLShaderMgr::LIGHT_SIZE, s);
-                    spot_shader.uniform3fv(LLShaderMgr::DIFFUSE_COLOR, 1, spot.col.mV);
-                    spot_shader.uniform1f(LLShaderMgr::LIGHT_FALLOFF, volume->getLightFalloff(DEFERRED_LIGHT_FALLOFF));
-
-                    if (bounds)
-                    {
-                        LLVector4a view;
-                        mat.affineTransform(center, view);
-                        bound_to_light(*bounds, proj, view[2], s);
-                    }
-
-                    gGL.syncMatrices();
-
-                    mCubeVB->drawRange(LLRender::TRIANGLE_FAN, 0, 7, 8, get_box_fan_indices(camera, center));
-                }
-                spot_shader.disableTexture(LLShaderMgr::DEFERRED_PROJECTION);
-                unbindDeferredShader(spot_shader);
-            }
-
-            if (!fullscreen_lights.empty() || !fullscreen_spot_lights.empty())
-            {
-                LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("renderDeferredLighting - fullscreen lights");
-                // On the far plane (multiPointLightV.glsl): only where the world drew something, so no light is
-                // shaded over the sky. Under the depth bounds test each draw is held as well to the depths its lights
-                // reach, from the eye, which they surround, out to the farthest of them.
-                ALDrawnOnly drawn;
-                ALDepthBounds* bounds = drawn.bounds();
-                const LLMatrix4a& proj = LLViewerCamera::getCurrent().getProjection();
-                LL_PROFILE_GPU_ZONE("fullscreen lights");
-
-                U32 count = 0;
-                U32 total_count = 0;
-
-                const U32 max_count = LL_DEFERRED_MULTI_LIGHT_COUNT;
-                LLVector4 light[max_count];
-                LLVector4 col[max_count];
-
-                F32 far_z = 0.f;
-
-                for (size_t i = 0, num_fullscreen_lights = fullscreen_lights.size(); i < num_fullscreen_lights; ++i)
-                {
-                    light[count] = fullscreen_lights[i];
-                    col[count] = light_colors[i];
-
-                    far_z = llmin(light[count].mV[2] - light[count].mV[3], far_z);
-                    count++;
-                    total_count++;
-                    if (count == max_count || total_count == num_fullscreen_lights)
-                    {
-                        U32 idx = count - 1;
-                        // The program is chosen by batch size, so its LIGHT_COUNT already is the
-                        // count and both of its loops run to that; there is no light_count
-                        // uniform to feed.
-                        LLGLSLShader& multi_light_shader = *gDeferredMultiLightProgram[idx].selectVariant();
-                        bindDeferredShader(multi_light_shader);
-                        multi_light_shader.uniform4fv(LLShaderMgr::MULTI_LIGHT, count, light[0].mV);
-                        multi_light_shader.uniform4fv(LLShaderMgr::MULTI_LIGHT_COL, count, col[0].mV);
-                        multi_light_shader.uniform1f(LLShaderMgr::MULTI_LIGHT_FAR_Z, far_z);
-                        if (bounds)
-                        {   // far_z is the farthest of the lights' spheres, as the shader's cut is
-                            F64 zmin, zmax;
-                            if (ALDepthBounds::viewSpan(proj, 0.f, far_z * 1.01f - 0.01f, zmin, zmax))
-                            {
-                                widen_for_storage(zmin, zmax);
-                            }
-                            else
-                            {
-                                ALDepthBounds::drawn(zmin, zmax);
-                            }
-                            bounds->set(zmin, zmax);
-                        }
-                        far_z = 0.f;
-                        count = 0;
-                        mScreenTriangleVB->setBuffer();
-                        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-                        unbindDeferredShader(multi_light_shader);
-                    }
-                }
-
-                LLGLSLShader& multi_spot_shader = *gDeferredMultiSpotLightProgram.selectVariant();
-                if (!fullscreen_spot_lights.empty())
-                {
-                    bindDeferredShader(multi_spot_shader);
-                    multi_spot_shader.enableTexture(LLShaderMgr::DEFERRED_PROJECTION);
-                    mScreenTriangleVB->setBuffer();
-                }
-
-                for (const SpotLight& spot : fullscreen_spot_lights)
-                {
-                    LLDrawable* drawablep = spot.drawable;
-                    LLVOVolume* volume = drawablep->getVOVolume();
-                    LLVector3   center = drawablep->getPositionAgent();
-                    F32         light_size_final = volume->getLightRadius() * 1.5f;
-                    F32         light_falloff_final = volume->getLightFalloff(DEFERRED_LIGHT_FALLOFF);
-
-                    sVisibleLightCount++;
-
-                    LLVector4a tc;
-                    mat.affineTransform(LLVector4a(center.mV[0], center.mV[1], center.mV[2], 1.f), tc);
-
-                    if (bounds)
-                    {
-                        bound_to_light(*bounds, proj, tc[2], light_size_final);
-                    }
-
-                    setupSpotLight(multi_spot_shader, drawablep);
-
-                    multi_spot_shader.uniform3fv(LLShaderMgr::LIGHT_CENTER, 1, tc.getF32ptr());
-                    multi_spot_shader.uniform1f(LLShaderMgr::LIGHT_SIZE, light_size_final);
-                    multi_spot_shader.uniform3fv(LLShaderMgr::DIFFUSE_COLOR, 1, spot.col.mV);
-                    multi_spot_shader.uniform1f(LLShaderMgr::LIGHT_FALLOFF, light_falloff_final);
-
-                    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-                }
-
-                if (!fullscreen_spot_lights.empty())
-                {
-                    multi_spot_shader.disableTexture(LLShaderMgr::DEFERRED_PROJECTION);
-                    unbindDeferredShader(multi_spot_shader);
-                }
-            }
-
-            // Clear does not free internal vector storage, so this is more efficient than creating new vectors each frame
-            fullscreen_lights.clear();
-            spot_lights.clear();
-            fullscreen_spot_lights.clear();
-            light_colors.clear();
-        }
-
         gGL.setColorMask(true, true);
     }
 
@@ -29772,135 +29498,6 @@ static LLMatrix4a clip_to_texture(F32 z_scale, F32 z_bias)
     m.mMatrix[2].set(0.f, 0.f, z_scale, 0.f);
     m.mMatrix[3].set(0.5f, 0.5f, z_bias, 1.f);
     return m;
-}
-
-void LLPipeline::setupSpotLight(LLGLSLShader& shader, LLDrawable* drawablep)
-{
-    //construct frustum
-    LLVOVolume* volume = drawablep->getVOVolume();
-    LLVector3 params = volume->getSpotLightParams();
-
-    F32 fov = params.mV[0];
-    F32 focus = params.mV[1];
-
-    LLVector3 pos = drawablep->getPositionAgent();
-    LLQuaternion quat = volume->getRenderRotation();
-    LLVector3 scale = volume->getScale();
-
-    //get near clip plane
-    LLVector3 at_axis(0,0,-scale.mV[2]*0.5f);
-    at_axis *= quat;
-
-    LLVector3 np = pos+at_axis;
-    at_axis.normVec();
-
-    //get origin that has given fov for plane np, at_axis, and given scale
-    F32 dist = (scale.mV[1]*0.5f)/tanf(fov*0.5f);
-
-    LLVector3 origin = np - at_axis*dist;
-
-    //matrix from volume space to agent space
-    LLMatrix4 light_mat(quat, LLVector4(origin,1.f));
-
-    LLMatrix4a light_to_screen;
-    light_to_screen.setMul(LLMatrix4a(light_mat), LLViewerCamera::getCurrent().getModelview());
-
-    LLMatrix4a screen_to_light;
-    screen_to_light.setInverse(light_to_screen);
-
-    F32 s = volume->getLightRadius()*1.5f;
-    F32 near_clip = dist;
-    F32 width = scale.mV[VX];
-    F32 height = scale.mV[VY];
-    F32 far_clip = s+dist-scale.mV[VZ];
-
-    F32 fovy = fov; // radians
-    F32 aspect = width/height;
-
-    LLVector4a p1, p2, screen_origin;
-    light_to_screen.affineTransform(LLVector4a(0.f, 0.f, -(near_clip+0.01f), 1.f), p1);
-    light_to_screen.affineTransform(LLVector4a(0.f, 0.f, -(near_clip+1.f), 1.f), p2);
-    light_to_screen.affineTransform(LLVector4a(0.f, 0.f, 0.f, 1.f), screen_origin);
-
-    LLVector4a n;
-    n.setSub(p2, p1);
-    n.normalize3();
-
-    F32 proj_range = far_clip - near_clip;
-    // Deliberately the FORWARD perspective (not al_perspective), paired with the forward
-    // [-1,1]->[0,1] clip_to_texture: this projector matrix produces cookie-texture UVs and a
-    // self-consistent front/behind test (proj_tc.z > 0 in spotLightF/alphaF); it never
-    // rasterizes into or samples the reverse-Z depth buffer. Spot SHADOWS use the separately
-    // reversed shadow_matrix. Converting this to al_perspective would flip proj_tc.z against
-    // the forward remap and silently break projector cookies under reverse-Z.
-    screen_to_light.setMul(screen_to_light, LLMatrix4a::perspective(fovy, aspect, near_clip, far_clip));
-    screen_to_light.setMul(screen_to_light, clip_to_texture(0.5f, 0.5f));
-    shader.uniformMatrix4fv(LLShaderMgr::PROJECTOR_MATRIX, screen_to_light);
-    shader.uniform1f(LLShaderMgr::PROJECTOR_NEAR, near_clip);
-    shader.uniform3fv(LLShaderMgr::PROJECTOR_P, 1, p1.getF32ptr());
-    shader.uniform3fv(LLShaderMgr::PROJECTOR_N, 1, n.getF32ptr());
-    shader.uniform3fv(LLShaderMgr::PROJECTOR_ORIGIN, 1, screen_origin.getF32ptr());
-    shader.uniform1f(LLShaderMgr::PROJECTOR_RANGE, proj_range);
-    shader.uniform1f(LLShaderMgr::PROJECTOR_AMBIANCE, params.mV[2]);
-    // make sure we're not already targeting the same spot light with both shadow maps
-    llassert(mTargetShadowSpotLight[0] != mTargetShadowSpotLight[1] || mTargetShadowSpotLight[0].isNull());
-
-    if (!gCubeSnapshot)
-    {
-        LLDrawable* potential = drawablep;
-        //determine if this light is higher priority than one of the existing spot shadows
-        F32 m_pri = volume->getSpotLightPriority();
-
-        for (U32 i = 0; i < 2; i++)
-        {
-            F32 pri = 0.f;
-
-            if (mTargetShadowSpotLight[i].notNull())
-            {
-                pri = mTargetShadowSpotLight[i]->getVOVolume()->getSpotLightPriority();
-            }
-
-            if (m_pri > pri)
-            {
-                LLDrawable* temp = mTargetShadowSpotLight[i];
-                mTargetShadowSpotLight[i] = potential;
-                potential = temp;
-                m_pri = pri;
-            }
-        }
-    }
-
-    // make sure we didn't end up targeting the same spot light with both shadow maps
-    llassert(mTargetShadowSpotLight[0] != mTargetShadowSpotLight[1] || mTargetShadowSpotLight[0].isNull());
-
-    LLViewerTexture* img = volume->getLightTexture();
-
-    if (img == NULL)
-    {
-        img = LLViewerFetchedTexture::sWhiteImagep;
-    }
-
-    S32 channel = shader.enableTexture(LLShaderMgr::DEFERRED_PROJECTION);
-
-    if (channel > -1)
-    {
-        if (img)
-        {
-            // Projector cookie: an sRGB colour texture, decoded on the sampler so the
-            // projected light filters in linear -- deferredUtil no longer decodes it in-shader.
-            gGL.getTextureSlot(channel)->bindSampled(img, ALSamplers::AnisoWrapSRGB);
-
-            // At least 1: deferredUtil's cookie edge fade divides by it (lod / (proj_lod * 0.5)),
-            // and a cookie 1 px wide (or fetched no further than its smallest level) would make
-            // that 0 / 0. A one-texel image has no finer level for the extra range to select.
-            F32 lod_range = llmax(logf((F32)img->getWidth())/logf(2.f), 1.f);
-
-            shader.uniform1f(LLShaderMgr::PROJECTOR_FOCUS, focus);
-            shader.uniform1f(LLShaderMgr::PROJECTOR_LOD, lod_range);
-            shader.uniform1f(LLShaderMgr::PROJECTOR_AMBIENT_LOD, llclamp((proj_range-focus)/proj_range*lod_range, 0.f, 1.f));
-        }
-    }
-
 }
 
 void LLPipeline::unbindDeferredShader(LLGLSLShader &shader)

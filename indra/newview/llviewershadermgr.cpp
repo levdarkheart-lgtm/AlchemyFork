@@ -133,10 +133,6 @@ LLGLSLShader            gLensDirtGenProgram;
 // Deferred rendering shaders
 LLGLSLShader            gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
 LLGLSLShader            gDeferredTerrainProgram;
-LLGLSLShader            gDeferredLightProgram;
-LLGLSLShader            gDeferredMultiLightProgram[16];
-LLGLSLShader            gDeferredSpotLightProgram;
-LLGLSLShader            gDeferredMultiSpotLightProgram;
 #if !LL_DARWIN
 LLGLSLShader            gDeferredPostProgram;
 LLGLSLShader            gDeferredPostProgramNoNear;
@@ -1009,13 +1005,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
     {
         gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram.unload();
         gDeferredTerrainProgram.unload();
-        gDeferredLightProgram.unload();
-        for (U32 i = 0; i < LL_DEFERRED_MULTI_LIGHT_COUNT; ++i)
-        {
-            gDeferredMultiLightProgram[i].unload();
-        }
-        gDeferredSpotLightProgram.unload();
-        gDeferredMultiSpotLightProgram.unload();
 #if !LL_DARWIN
         gDeferredPostProgram.unload();
         gDeferredPostProgramNoNear.unload();
@@ -1163,78 +1152,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 
             built(shader->createShader(mirror_variant()), *shader);
         }
-    }
-
-    {
-        gDeferredLightProgram.mName = "Deferred Light Shader";
-        gDeferredLightProgram.mFeatures.isDeferred = true;
-        gDeferredLightProgram.mFeatures.hasFullGBuffer = true;
-        gDeferredLightProgram.mFeatures.hasSrgb = true;
-
-        gDeferredLightProgram.mShaderFiles.clear();
-        gDeferredLightProgram.mShaderFiles.push_back(make_pair("deferred/pointLightV.glsl", GL_VERTEX_SHADER));
-        gDeferredLightProgram.mShaderFiles.push_back(make_pair("deferred/pointLightF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredLightProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        gDeferredLightProgram.clearPermutations();
-
-        add_common_permutations(&gDeferredLightProgram);
-
-        built(gDeferredLightProgram.createShader(LLGLSLShader::VARIANT_CLASSIC), gDeferredLightProgram);
-    }
-
-    for (U32 i = 0; i < LL_DEFERRED_MULTI_LIGHT_COUNT; i++)
-    {
-        gDeferredMultiLightProgram[i].mName = llformat("Deferred MultiLight Shader %d", i);
-        gDeferredMultiLightProgram[i].mFeatures.isDeferred = true;
-        gDeferredMultiLightProgram[i].mFeatures.hasFullGBuffer = true;
-        gDeferredMultiLightProgram[i].mFeatures.hasSrgb = true;
-
-        gDeferredMultiLightProgram[i].clearPermutations();
-        gDeferredMultiLightProgram[i].mShaderFiles.clear();
-        gDeferredMultiLightProgram[i].mShaderFiles.push_back(make_pair("deferred/multiPointLightV.glsl", GL_VERTEX_SHADER));
-        gDeferredMultiLightProgram[i].mShaderFiles.push_back(make_pair("deferred/multiPointLightF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredMultiLightProgram[i].mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredMultiLightProgram[i].addPermutation("LIGHT_COUNT", llformat("%d", i+1));
-
-        add_common_permutations(&gDeferredMultiLightProgram[i]);
-
-        built(gDeferredMultiLightProgram[i].createShader(LLGLSLShader::VARIANT_CLASSIC), gDeferredMultiLightProgram[i]);
-    }
-
-    {
-        gDeferredSpotLightProgram.mName = "Deferred SpotLight Shader";
-        gDeferredSpotLightProgram.mShaderFiles.clear();
-        gDeferredSpotLightProgram.mFeatures.hasSrgb = true;
-        gDeferredSpotLightProgram.mFeatures.isDeferred = true;
-        gDeferredSpotLightProgram.mFeatures.hasFullGBuffer = true;
-
-        gDeferredSpotLightProgram.clearPermutations();
-        gDeferredSpotLightProgram.mShaderFiles.push_back(make_pair("deferred/pointLightV.glsl", GL_VERTEX_SHADER));
-        gDeferredSpotLightProgram.mShaderFiles.push_back(make_pair("deferred/spotLightF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredSpotLightProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        add_common_permutations(&gDeferredSpotLightProgram);
-
-        built(gDeferredSpotLightProgram.createShader(LLGLSLShader::VARIANT_CLASSIC), gDeferredSpotLightProgram);
-    }
-
-    {
-        gDeferredMultiSpotLightProgram.mName = "Deferred MultiSpotLight Shader";
-        gDeferredMultiSpotLightProgram.mFeatures.hasSrgb = true;
-        gDeferredMultiSpotLightProgram.mFeatures.isDeferred = true;
-        gDeferredMultiSpotLightProgram.mFeatures.hasFullGBuffer = true;
-
-        gDeferredMultiSpotLightProgram.clearPermutations();
-        gDeferredMultiSpotLightProgram.addPermutation("MULTI_SPOTLIGHT", "1");
-        gDeferredMultiSpotLightProgram.mShaderFiles.clear();
-        gDeferredMultiSpotLightProgram.mShaderFiles.push_back(make_pair("deferred/multiPointLightV.glsl", GL_VERTEX_SHADER));
-        gDeferredMultiSpotLightProgram.mShaderFiles.push_back(make_pair("deferred/spotLightF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredMultiSpotLightProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        add_common_permutations(&gDeferredMultiSpotLightProgram);
-
-        built(gDeferredMultiSpotLightProgram.createShader(LLGLSLShader::VARIANT_CLASSIC), gDeferredMultiSpotLightProgram);
     }
 
     {
