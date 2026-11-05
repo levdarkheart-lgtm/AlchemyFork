@@ -121,7 +121,6 @@
 #include "llsdutil.h"
 #include "llscenemonitor.h"
 #include "llsdserialize.h"
-#include "llrendersphere.h"
 #include "llskinningutil.h"
 
 #include "llperfstats.h"
@@ -1728,53 +1727,6 @@ void LLVOAvatar::calculateSpatialExtents(LLVector4a& newMin, LLVector4a& newMax)
     setCorrectedPixelArea(pixel_area);
 }
 
-void render_sphere_and_line(const LLVector3& begin_pos, const LLVector3& end_pos, F32 sphere_scale, const LLVector3& occ_color, const LLVector3& visible_color)
-{
-    // Unoccluded bone portions
-    LLGLDepthTest normal_depth(GL_TRUE);
-
-    // Draw line segment for unoccluded joint
-    gGL.diffuseColor3f(visible_color[0], visible_color[1], visible_color[2]);
-#if LL_DARWIN
-    gPipeline.beginMetalAvatarVolumePair(
-        end_pos, sphere_scale, occ_color, visible_color);
-#endif
-
-    gGL.begin(LLRender::LINES);
-    gGL.vertex3fv(begin_pos.mV);
-    gGL.vertex3fv(end_pos.mV);
-    gGL.end();
-
-
-    // Draw sphere representing joint pos
-    gGL.pushMatrix();
-    gGL.scalef(sphere_scale, sphere_scale, sphere_scale);
-#if LL_DARWIN
-    gPipeline.captureMetalAvatarVolumeSphereTransform();
-#endif
-    gSphere.renderGGL();
-    gGL.popMatrix();
-
-    LLGLDepthTest depth_under(GL_TRUE, GL_FALSE, GL_GREATER);
-
-    // Occluded bone portions
-    gGL.diffuseColor3f(occ_color[0], occ_color[1], occ_color[2]);
-#if LL_DARWIN
-    gPipeline.endMetalAvatarVolumePair();
-#endif
-
-    gGL.begin(LLRender::LINES);
-    gGL.vertex3fv(begin_pos.mV);
-    gGL.vertex3fv(end_pos.mV);
-    gGL.end();
-
-    // Draw sphere representing joint pos
-    gGL.pushMatrix();
-    gGL.scalef(sphere_scale, sphere_scale, sphere_scale);
-    gSphere.renderGGL();
-    gGL.popMatrix();
-}
-
 void capture_metal_sphere_and_line(const LLVector3& end_pos,
                                    F32 sphere_scale,
                                    const LLVector3& occ_color,
@@ -1844,13 +1796,8 @@ void LLVOAvatar::captureMetalCollisionVolumes()
     }
 }
 
-// defined in llspatialpartition.cpp -- draw a box outline in the current GL context from given center and half-size
-void drawBoxOutline(const LLVector4a& pos, const LLVector4a& size);
-
 void LLVOAvatar::renderBones(const std::string &selected_joint)
 {
-    LLGLEnable blend(GL_BLEND);
-
     avatar_joint_list_t::iterator iter = mSkeleton.begin();
     avatar_joint_list_t::iterator end = mSkeleton.end();
 
@@ -1910,20 +1857,19 @@ void LLVOAvatar::renderBones(const std::string &selected_joint)
                 visible_color = OTHER_COLOR_VISIBLE;
             }
         }
-        LLVector3 begin_pos(0,0,0);
         LLVector3 end_pos(jointp->getEnd());
 
         gGL.pushMatrix();
         gGL.multMatrix( jointp->getWorldMatrix().getF32ptr() );
 
-        render_sphere_and_line(begin_pos, end_pos, sphere_scale, occ_color, visible_color);
+        capture_metal_sphere_and_line(
+            end_pos, sphere_scale, occ_color, visible_color);
 
         gGL.popMatrix();
     }
 
 
     // draw joint space bounding boxes of rigged attachments in yellow
-    gGL.color3f(1.f, 1.f, 0.f);
     for (S32 joint_num = 0; joint_num < LL_CHARACTER_MAX_ANIMATED_JOINTS; joint_num++)
     {
         LLJoint* joint = getJoint(joint_num);
@@ -1954,17 +1900,13 @@ void LLVOAvatar::renderBones(const std::string &selected_joint)
             size.setSub(extents[1], extents[0]);
             size.mul(0.5f);
 
-#if LL_DARWIN
             gPipeline.captureMetalAvatarJointBox(pos, size, false);
-#endif
-            drawBoxOutline(pos, size);
 
             gGL.popMatrix();
         }
     }
 
     // draw world space attachment rigged bounding boxes in cyan
-    gGL.color3f(0.f, 1.f, 1.f);
     for (attachment_map_t::iterator iter = mAttachmentPoints.begin();
          iter != mAttachmentPoints.end();
          ++iter)
@@ -1997,11 +1939,8 @@ void LLVOAvatar::renderBones(const std::string &selected_joint)
                                 center.mul(0.5f);
                                 size.setSub(extents[1], extents[0]);
                                 size.mul(0.5f);
-#if LL_DARWIN
                                 gPipeline.captureMetalAvatarJointBox(
                                     center, size, true);
-#endif
-                                drawBoxOutline(center, size);
                             }
                         }
                     }

@@ -3228,7 +3228,6 @@ void renderAvatarCollisionVolumes(LLVOAvatar* avatar)
 
 void renderAvatarBones(LLVOAvatar* avatar)
 {
-#if LL_DARWIN
     std::size_t skeleton_segment_count = 0;
     for (std::size_t index = 0;
          index < avatar->getSkeletonJointCount(); ++index)
@@ -3237,11 +3236,8 @@ void renderAvatarBones(LLVOAvatar* avatar)
             avatar->getSkeletonJoint(static_cast<S32>(index)) != nullptr;
     }
     gPipeline.beginMetalAvatarJointCapture(skeleton_segment_count);
-#endif
     avatar->renderBones();
-#if LL_DARWIN
     gPipeline.endMetalAvatarJointCapture(skeleton_segment_count);
-#endif
 }
 
 void renderAgentTarget(LLVOAvatar* avatar)
