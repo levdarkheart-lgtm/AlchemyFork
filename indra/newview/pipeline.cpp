@@ -5103,8 +5103,6 @@ void LLPipeline::captureMetalUpdateTypeFace(
         color_is(0.f, 1.f, 0.f) || color_is(0.f, 1.f, 1.f) ||
         color_is(1.f, 0.f, 0.f) || color_is(1.f, 1.f, 0.f) ||
         color_is(0.f, 0.f, 1.f);
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
     if (!capture.complete || face.getIndicesCount() % 3 != 0 ||
         face.getIndicesStart() < 0 ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
@@ -5114,13 +5112,7 @@ void LLPipeline::captureMetalUpdateTypeFace(
          buffer->getIndexStride() != 4) ||
         capture.render_debug_order ==
             std::numeric_limits<U64>::max() ||
-        !valid_color || !LLGLState::isEnabled(GL_BLEND) ||
-        LLGLState::isEnabled(GL_CULL_FACE) ||
-        !LLGLDepthTest::depthEnabled() ||
-        !LLGLDepthTest::depthWriteEnabled() ||
-        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
-        !color_mask[0] || !color_mask[1] || !color_mask[2] ||
-        color_mask[3])
+        !valid_color)
     {
         capture.markIncomplete(__LINE__);
         capture.update_type_batches.clear();

@@ -1820,9 +1820,7 @@ void renderUpdateType(LLDrawable* drawablep)
     {
         return;
     }
-    LLGLEnable blend(GL_BLEND);
     LLColor4 color;
-    bool valid_color = true;
     switch (vobj->getLastUpdateType())
     {
     case OUT_FULL:
@@ -1845,14 +1843,9 @@ void renderUpdateType(LLDrawable* drawablep)
         color.set(0,0,1,0.5f);
         break;
     default:
-        valid_color = false;
         LL_WARNS() << "Unknown update_type " << vobj->getLastUpdateType() << LL_ENDL;
-        break;
+        return;
     };
-    if (valid_color)
-    {
-        gGL.diffuseColor4fv(color.mV);
-    }
     S32 num_faces = drawablep->getNumFaces();
     if (num_faces)
     {
@@ -1860,15 +1853,11 @@ void renderUpdateType(LLDrawable* drawablep)
         {
             LLFace* face = drawablep->getFace(i);
 #if LL_DARWIN
-            if (face && valid_color)
+            if (face)
             {
                 gPipeline.captureMetalUpdateTypeFace(*face, color);
-                gGL.captureMetalUIIndexedBuffer(
-                    face->getVertexBuffer(), LLRender::TRIANGLES,
-                    face->getIndicesCount(), face->getIndicesStart());
             }
 #endif
-            pushVerts(face);
         }
     }
 }
