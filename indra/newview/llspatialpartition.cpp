@@ -2663,19 +2663,10 @@ void renderTextureAnim(LLDrawInfo* params)
         return;
     }
 
-    LLGLEnable blend(GL_BLEND);
-    gGL.diffuseColor4f(1,1,0,0.5f);
     LLRenderPass::applyModelMatrix(*params);
 #if LL_DARWIN
     gPipeline.captureMetalTextureAnimBatch(*params);
-    gGL.captureMetalUIIndexedBuffer(
-        params->mVertexBuffer.get(), LLRender::TRIANGLES,
-        params->mCount, params->mOffset);
 #endif
-    params->mVertexBuffer->setBuffer();
-    params->mVertexBuffer->drawRange(
-        LLRender::TRIANGLES, params->mStart, params->mEnd,
-        params->mCount, params->mOffset);
 }
 
 void renderBatchSize(LLDrawInfo* params)

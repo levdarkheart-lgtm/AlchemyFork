@@ -5021,8 +5021,6 @@ void LLPipeline::captureMetalTextureAnimBatch(
 
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
     LLVertexBuffer* buffer = params.mVertexBuffer.get();
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
     if (!capture.complete || !buffer || params.mCount == 0 ||
         params.mCount % 3 != 0 ||
         !buffer->hasDataType(LLVertexBuffer::TYPE_VERTEX) ||
@@ -5031,14 +5029,7 @@ void LLPipeline::captureMetalTextureAnimBatch(
         (buffer->getIndexStride() != 2 &&
          buffer->getIndexStride() != 4) ||
         capture.render_debug_order ==
-            std::numeric_limits<U64>::max() ||
-        !LLGLState::isEnabled(GL_BLEND) ||
-        LLGLState::isEnabled(GL_CULL_FACE) ||
-        !LLGLDepthTest::depthEnabled() ||
-        !LLGLDepthTest::depthWriteEnabled() ||
-        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
-        !color_mask[0] || !color_mask[1] || !color_mask[2] ||
-        color_mask[3])
+            std::numeric_limits<U64>::max())
     {
         capture.markIncomplete(__LINE__);
         capture.texture_anim_batches.clear();
