@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `5eb65fafbc`
+**Renderer code checkpoint:** `0638853f28`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -25,13 +25,13 @@ incomplete current native transaction retains the preceding Metal drawable and
 retries. Legacy GL traversal still runs for unconverted rendering and resource
 side effects, so this is presentation-authority removal, not a no-GL claim.
 
-Commit `5a26ff36b9` makes font/local/default/fetched textures and async uploads Metal-authoritative without parallel GL names; the image worker retains native batching but creates no GL context. Commit `5eb65fafbc` makes ordinary production vertex/index stores Metal-authoritative before renderer resource initialization: they allocate no GL names and legacy bind/draw attempts fail closed without broadly disabling runtime feature selection. The primary GL context/link remain.
+Commit `5a26ff36b9` makes font/local/default/fetched textures and async uploads Metal-authoritative without parallel GL names; the image worker creates no GL context. Commit `5eb65fafbc` makes ordinary production vertex/index stores native-only. Commit `0638853f28` removes the Darwin CGL include, calls, multithread control and setting; renderer memory budgeting now comes from the selected Metal device's recommended working set. The primary GL context/link remain.
 
 Commits `2836849036` and `cf6a821548` remove Snapshot's GL scratch/reconcile
 path. Fail-closed Metal readback owns the validated size; visual case 30 remains
 open.
 
-The source-exact Release package is `26.4.0.68430`; its viewer executable SHA-256 is `ba9cb2156b2b52605c6be63b67682420f7c771cf67e1b36516502e7080bc23c2`.
+The source-exact Release package is `26.4.0.68432`; its viewer executable SHA-256 is `4f588558042c036e0b566dbb5b79f665ec408b2997c1e3d9fa4eb4dbcef152a1`.
 `tools/metal/verify_app.sh` accepted all 349 inspected Mach-O slices as ARM64
 and deep strict code-sign verification passed. `git diff --check` passes.
 
@@ -42,7 +42,7 @@ mirror black: NOT OK. Snapshot preview, Refresh and Save to Disk also remain
 NOT OK. Exact settings, positions and hashes remain in cases 29/30. Both
 viewers are closed; no autonomous screenshots were taken.
 
-M-003, M-004, M-007, M-008, M-009 and M-011 are `doing`; M-012 is complete. Ordinary production geometry buffers now join texture/font resources under native authority; renderer capability initialization and the primary GL context are the next essential boundary.
+M-003, M-004, M-007, M-008, M-009 and M-011 are `doing`; M-012 is complete. Ordinary geometry and texture/font resources have native authority, and Darwin initialization no longer consults CGL for memory or multithreading. Renderer capability initialization and the primary GL context are next.
 Commits through `f04b0b6306` make probes fail closed and directly enumerate the
 complete G-buffer/post-deferred scene, lighting and directional-shadow casters.
 `23da75f187` extends that native authority to hero/mirror faces, removes their
@@ -120,22 +120,22 @@ until the owner-attended review records that result.
 
 ## Build and test evidence
 
-- At `5eb65fafbc`, Ninja 68429 and prescribed Release 68430 pass warnings-as-errors; the new production geometry-authority case passes 9/1 and physical retained-world 8,022/1 and HUD 593/1 pass under Metal
+- At `0638853f28`, prescribed Release 68432 passes warnings-as-errors; physical Metal passes 52,566/55 and complete fresh renderer coverage passes 3,698/111 under Metal
   API, GPU, shader and load/store validation. Release verification passes 349/349 ARM64 slices and
   deep strict signing. Executable SHA-256 is
-  `ba9cb2156b2b52605c6be63b67682420f7c771cf67e1b36516502e7080bc23c2`;
+  `4f588558042c036e0b566dbb5b79f665ec408b2997c1e3d9fa4eb4dbcef152a1`;
   metallib SHA-256 remains `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
-  Focused vertex-buffer coverage passes 135/8; `[almetal]` passes 3,039/33 fresh and 26/2 shared; complete fresh renderer coverage passes 3,698/111. M1 Max host doctor passes.
-  Strict inventory is 2,313 and exits 1 as expected; report SHA-256 is `bab38510c180ec789ad0d42f2920521f95fea85449d10909d84a529cbc074b06`. Harness validation and 31/31 tool tests pass; no audit rule changed. The exact executable still links OpenGL, Metal and QuartzCore.
+  Focused native renderer coverage also passes 3,039/33. XML validation, M1 Max host doctor, harness validation and 31/31 tool tests pass.
+  Strict inventory falls from 2,313 to 2,307 and exits 1 as expected; report SHA-256 is `b15b8136c507fb2096bd30908f922c061d093259abd683b7ac06ddaf8125ebb8`. No audit rule changed. The exact executable still links OpenGL, Metal and QuartzCore.
 
 ## Milestone snapshot
 
 | Area | State | Current fact |
 | --- | --- | --- |
-| M-003..M-006 platform/resources/UI | doing | Native producers use the window-owned Metal device rather than the GL image registry. Ordinary geometry buffers, streamed/local/default textures and font atlases are Metal-only and the image worker has no GL context. Metal solely presents; Snapshot has no GL capture target. Live primary GL traversal/context remain. |
+| M-003..M-006 platform/resources/UI | doing | Native producers use the window-owned Metal device and its working-set budget rather than the GL image registry/CGL. Ordinary geometry, textures and font atlases are Metal-only; the image worker has no GL context. Metal solely presents; Snapshot has no GL capture target. Live primary GL traversal/context remain. |
 | M-007 world/material | doing | Probe scenes plus ordinary sky/cloud/body, avatars/impostors, fullbright, transparent alpha, water surface/exclusion/haze, atmospheric haze/sky-behind, legacy-material/bump, shiny/emboss and opaque/masked/blended glTF PBR batches are directly enumerated into Metal. Grass, trees and all main/probe directional/projector shadow generation are native; broad parity remains open. |
 | M-008 advanced views/effects | doing | Color grading, PBR integration/glow, previews, visual hints, avatar composites, selection, debug effects, material previews, AA, DoF, bloom/cross-filter and eligible legacy glow/presentation have Metal implementations. Alpha-pool, water, atmosphere, sky, impostor, DoF-depth and debug-highlight production are native-only. |
-| M-009 parity/stability/no-GL | doing | Strict inventory is 2,313 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
+| M-009 parity/stability/no-GL | doing | Strict inventory is 2,307 and exits 1; feature/stability and linked/runtime no-GL gates remain open. |
 | M-010 measured performance | deferred | No qualifying paired, quality-equivalent M1 Max claim exists. |
 | M-011 GL authority removal | doing | Ordinary geometry buffers, textures/fonts and the image worker are native-only. Probe publication, terrain bake, selection/edit highlights, core world/material/lighting/sky/avatar/shadow layers and converted debug effects have direct Metal owners; superseded GL owners are deleted. |
 | M-012 Computer Use bridge | complete | Semantic operation is verified; comparison driving is owner-attended only. |
