@@ -39,6 +39,7 @@
 #include "llkeyboardsdl.h"
 
 #include "llerror.h"
+#include "alrendercapabilities.h"
 #include "llgl.h"
 #include "llstring.h"
 #include "lldir.h"
@@ -190,6 +191,7 @@ LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
         return;
     }
     const ALMetalDeviceInfo& metal_info = mMetalDevice->info();
+    gRenderCapabilities.initializeMetal(metal_info);
     LL_INFOS("Metal") << "Metal device: " << metal_info.name
                        << ", registry " << metal_info.registry_id
                        << ", Apple family " << metal_info.highest_apple_family
@@ -222,6 +224,9 @@ LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
 #if LL_WINDOWS
             // GL didn't always report a VRAM budget (notably Intel iGPUs); ask DXGI.
             LLDXHardware::updateVRAMBudgetFromDXGI();
+#endif
+#if !LL_DARWIN
+            gRenderCapabilities.initializeOpenGL(gGLManager);
 #endif
 
             // Tracy's GPU context makes GL calls, so it waits for initGL to load
@@ -751,6 +756,9 @@ bool LLWindowSDL::switchContext(bool fullscreen, const LLCoordScreen &size, bool
 #endif
 #if LL_WINDOWS
             LLDXHardware::updateVRAMBudgetFromDXGI();
+#endif
+#if !LL_DARWIN
+            gRenderCapabilities.initializeOpenGL(gGLManager);
 #endif
             {
                 LL_PROFILER_GPU_CONTEXT;

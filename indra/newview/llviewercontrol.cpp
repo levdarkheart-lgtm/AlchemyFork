@@ -33,6 +33,7 @@
 #include "llviewercontrol.h"
 
 // Library includes
+#include "alrendercapabilities.h"
 #include "alfarplane.h"
 #include "aluniformbuffer.h"
 #include "llwindow.h"   // getGamma()
@@ -318,9 +319,11 @@ static bool handleEnableHDR(const LLSD& newvalue)
 static bool handleAnisotropicFilteringChanged(const LLSD& newval)
 {
     F32 val = static_cast<F32>(newval.asReal());
-    if (val > gGLManager.mMaxAnisotropy)
+    const F32 max_anisotropy = gRenderCapabilities.isInitialized()
+        ? gRenderCapabilities.maxAnisotropy() : gGLManager.mMaxAnisotropy;
+    if (val > max_anisotropy)
     {
-        val = llclamp(val, 0.f, gGLManager.mMaxAnisotropy);
+        val = llclamp(val, 0.f, max_anisotropy);
     }
     LLRender::sAnisotropicFilteringLevel = val;
     // Sampler objects are immutable, so the anisotropy baked into existing ones can't be

@@ -10,6 +10,7 @@ set(
   alpacingslack.cpp
   alprimitiveplot.cpp
   alquerypool.cpp
+  alrendercapabilities.cpp
   alsamplerstate.cpp
   altextureblit.cpp
   altextureslot.cpp
@@ -51,6 +52,7 @@ set(
   alpacingslack.h
   alprimitiveplot.h
   alquerypool.h
+  alrendercapabilities.h
   alrendertargetdesc.h
   alsamplerstate.h
   altextureblit.h
@@ -171,6 +173,7 @@ if(AL_BUILD_TESTS)
       tests/alfontcolrv1_test.cpp
       tests/alfontshaping_test.cpp
       tests/alpacingslack_test.cpp
+      tests/alrendercapabilities_test.cpp
       tests/alrendertargetdesc_test.cpp
       tests/llfontbitmapcache_test.cpp
       tests/llfontfreetype_test.cpp
@@ -182,6 +185,9 @@ if(AL_BUILD_TESTS)
     SUPPORT llrender_test_checks llcommon_test_checks
     DEFINES ${font_defines}
   )
+  if(DARWIN)
+    target_link_libraries(llrender_tests PRIVATE almetal)
+  endif()
 
   # The GL suites that stand a context up for each test case and end the GL
   # classes with it, on LLWindowManager's hidden window: the paths of the

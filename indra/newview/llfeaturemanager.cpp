@@ -36,6 +36,7 @@
 #include "lldir.h"
 
 #include "llsys.h"
+#include "alrendercapabilities.h"
 #include "llgl.h"
 
 #include "alcrashreporter.h"
@@ -552,7 +553,8 @@ bool checkRDNA35()
  */
 bool extractGLDeviceModel(std::string& device_name)
 {
-    const std::string gl_string = gGLManager.mGLRendererString;
+    const std::string gl_string = gRenderCapabilities.isInitialized()
+        ? gRenderCapabilities.renderer() : gGLManager.mGLRendererString;
 #if LL_LINUX
     // The kernel release, 'uname -r'. The OS string leads with the
     // distribution's name.
@@ -594,6 +596,22 @@ bool extractGLDeviceModel(std::string& device_name)
 
 bool LLFeatureManager::loadGPUClass()
 {
+    if (gRenderCapabilities.isMetal())
+    {
+        // The legacy benchmark compiles and draws a GLSL workload. It cannot
+        // classify a context-free Metal renderer and keeping it here would
+        // make feature selection itself retain the GL context. Preserve the
+        // established Apple-GPU quality class until a measured native Metal
+        // classifier replaces it.
+        mGPUClass = GPU_CLASS_3;
+        mGPUMemoryBandwidth = -1.f;
+        mGPUString = gRenderCapabilities.renderer();
+        LL_INFOS("RenderInit") << "Native Metal renderer " << mGPUString
+                                << "; selecting established Apple GPU class 3"
+                                << LL_ENDL;
+        return true;
+    }
+
     // This is a hack for certain AMD GPUs in newer driver versions on certain APUs.
     // These GPUs will show inconsistent freezes when attempting to run shader profiles against them.
     // This is extremely problematic as it can lead to:
@@ -968,19 +986,25 @@ void LLFeatureManager::applyBaseMasks()
     }
 
     // now all those wacky ones
-    if (gGLManager.mIsNVIDIA)
+    const bool have_renderer_caps = gRenderCapabilities.isInitialized();
+    const bool is_nvidia = have_renderer_caps ? gRenderCapabilities.isNVIDIA() : gGLManager.mIsNVIDIA;
+    const bool is_amd = have_renderer_caps ? gRenderCapabilities.isAMD() : gGLManager.mIsAMD;
+    const bool is_intel = have_renderer_caps ? gRenderCapabilities.isIntel() : gGLManager.mIsIntel;
+    const bool is_apple = have_renderer_caps ? gRenderCapabilities.isApple() : gGLManager.mIsApple;
+
+    if (is_nvidia)
     {
         maskFeatures("NVIDIA");
     }
-    if (gGLManager.mIsAMD)
+    if (is_amd)
     {
         maskFeatures("AMD");
     }
-    if (gGLManager.mIsIntel)
+    if (is_intel)
     {
         maskFeatures("Intel");
     }
-    if (gGLManager.mIsApple)
+    if (is_apple)
     {
         maskFeatures("AppleGPU");
     }
@@ -988,12 +1012,26 @@ void LLFeatureManager::applyBaseMasks()
     {
         maskFeatures("NonAppleGPU");
     }
+    // These masks constrain the retained GLSL layout. Native Metal pipelines
+    // have explicit resource and stage layouts, so GL unit/varying limits do
+    // not describe their capability.
+    const bool apply_legacy_shader_limits = !have_renderer_caps ||
+        gRenderCapabilities.hasLegacyShaderLimits();
+    const S32 texture_image_units = have_renderer_caps
+        ? gRenderCapabilities.textureImageUnits() : gGLManager.mNumTextureImageUnits;
+    const S32 max_varying_vectors = have_renderer_caps
+        ? gRenderCapabilities.maxVaryingVectors() : gGLManager.mMaxVaryingVectors;
+    const bool has_anisotropic = have_renderer_caps
+        ? gRenderCapabilities.hasAnisotropicFiltering() : gGLManager.mHasAnisotropic;
+    const F32 max_anisotropy = have_renderer_caps
+        ? gRenderCapabilities.maxAnisotropy() : gGLManager.mMaxAnisotropy;
+
     // GL 4.1 has at least 16 texture units, so this is the fewest a context past initGL has.
-    if (gGLManager.mNumTextureImageUnits <= 16)
+    if (apply_legacy_shader_limits && texture_image_units <= 16)
     {
         maskFeatures("TexUnit16orLess");
     }
-    if (!gGLManager.mHasAnisotropic || 2.f > gGLManager.mMaxAnisotropy)
+    if (!has_anisotropic || 2.f > max_anisotropy)
     {
         maskFeatures("AnisotropicMissing");
     }
@@ -1015,7 +1053,7 @@ void LLFeatureManager::applyBaseMasks()
         // HDR is on no list: vintage mode switches it, and only when vintage mode changes.
         gSavedSettings.setBOOL("RenderHDREnabled", false);
     }
-    if (gGLManager.mMaxVaryingVectors <= 16)
+    if (apply_legacy_shader_limits && max_varying_vectors <= 16)
     {
         maskFeatures("VaryingVectors16orLess");
     }

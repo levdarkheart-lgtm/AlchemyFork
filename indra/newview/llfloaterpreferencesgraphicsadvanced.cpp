@@ -27,6 +27,7 @@
 #include "llviewerprecompiledheaders.h"
 #include "llfloaterpreferencesgraphicsadvanced.h"
 
+#include "alrendercapabilities.h"
 #include "llcheckboxctrl.h"
 #include "llcombobox.h"
 #include "llfeaturemanager.h"
@@ -374,16 +375,18 @@ void LLFloaterPreferenceGraphicsAdvanced::refreshEnabledState()
     getChildView("antialiasing restart")->setVisible(!LLFeatureManager::getInstance()->isFeatureAvailable("RenderDeferred"));
 
     LLComboBox* af_combo = getChild<LLComboBox>("anisotropic_filter");
-    if (2.f > gGLManager.mMaxAnisotropy) {
+    const F32 max_anisotropy = gRenderCapabilities.isInitialized()
+        ? gRenderCapabilities.maxAnisotropy() : gGLManager.mMaxAnisotropy;
+    if (2.f > max_anisotropy) {
         af_combo->remove("2x");
     }
-    if (4.f > gGLManager.mMaxAnisotropy) {
+    if (4.f > max_anisotropy) {
         af_combo->remove("4x");
     }
-    if (8.f > gGLManager.mMaxAnisotropy) {
+    if (8.f > max_anisotropy) {
         af_combo->remove("8x");
     }
-    if (16.f > gGLManager.mMaxAnisotropy) {
+    if (16.f > max_anisotropy) {
         af_combo->remove("16x");
     }
 
