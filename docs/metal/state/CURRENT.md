@@ -4,7 +4,7 @@
 
 **Branch:** `codex/apple-silicon-metal`
 
-**Renderer code checkpoint:** `5d1bf5a394`
+**Renderer code checkpoint:** `497759ebb4`
 
 **Historical evidence:** [archive index](archive/INDEX.md)
 
@@ -31,7 +31,7 @@ Commits `2836849036` and `cf6a821548` remove Snapshot's GL scratch/reconcile
 path. Fail-closed Metal readback owns the validated size; visual case 30 remains
 open.
 
-The source-exact Xcode Release package is `26.4.0.68380`; its viewer executable SHA-256 is `8bf3926195bb5fe6441f7a63271badecea7e6e8a18a3931c6ba47f67bc2f524a`.
+The source-exact Xcode Release package is `26.4.0.68382`; its viewer executable SHA-256 is `d5958dd68b3d5e49a6f4b37de3c79744639e97f34b81b3dfc18ca7d93d7b80be`.
 `tools/metal/verify_app.sh` accepted all 349 inspected Mach-O slices as ARM64
 and deep strict code-sign verification passed. `git diff --check` passes.
 
@@ -97,7 +97,7 @@ state and the 792-line utility; `629cd38c8a` separates native shadow constants.
 owners, nine GLSL stages and three obsolete tests/benchmarks. Visual case 51 is queued.
 `1f3cfeefb6` deletes duplicate GL point/projector lighting; `3e975c4b28` then deletes the three dead pack light-map slots, blurred scratch target and obsolete input.
 Metal retains its private light-map/blur implementation; the default 1440p plan sheds 21.1 MiB. Visual cases 51/52 remain queued.
-`cbdecfd337` separates native sun/moon direction preparation from GL light setup and deletes the drawless vertex/cull/blend/color-mask state prologue around the native deferred-light chain. `fa746d4cb8` makes direct Metal face capture the sole Darwin edit/touch-highlight producer and deletes four GL programs plus five exclusive GLSL stages. `5d1bf5a394` removes the unreachable GL pathing branch, two programs, three GLSL stages and render-only extension API after proving this OSS target links only the hard-false/nonfunctional pathing stub. Independent pathfinding UI/data/network code remains. No viewer was launched.
+`cbdecfd337` separates native sun/moon direction preparation from GL light setup and deletes the drawless vertex/cull/blend/color-mask state prologue around the native deferred-light chain. `fa746d4cb8` makes direct Metal face capture the sole Darwin edit/touch-highlight producer and deletes four GL programs plus five exclusive GLSL stages. `5d1bf5a394` removes the unreachable GL pathing branch, programs, shaders and render-only extension API; `497759ebb4` then removes its constant-true overlay migration gate. Independent pathfinding UI/data/network code remains. No viewer was launched.
 Earlier native terrain, startup/local/fetched resources, pressure, eviction,
 accounting and scale-down checkpoints remain active. Native-authoritative
 resources avoid GL names; dual backing remains only where retained GL consumers
@@ -119,11 +119,11 @@ until the owner-attended review records that result.
 
 ## Build and test evidence
 
-- At `5d1bf5a394`, Ninja and prescribed Xcode Release 68380 pass warnings-as-errors; the
+- At `497759ebb4`, Ninja and prescribed Xcode Release 68382 pass warnings-as-errors; the
   physical retained-world case passes 8,022/1 under Metal
   API, GPU, shader and load/store validation. Release verification passes 349/349 ARM64 slices and
   deep strict signing. Executable SHA-256 is
-  `8bf3926195bb5fe6441f7a63271badecea7e6e8a18a3931c6ba47f67bc2f524a`;
+  `d5958dd68b3d5e49a6f4b37de3c79744639e97f34b81b3dfc18ca7d93d7b80be`;
   metallib SHA-256 remains `581fc1df32c6e76f77087353b483466428877c5a89b2fe2b92df296bb06a164f`.
   All 556,530 renderer assertions and the 2,597-assertion focused resource-plan suite pass. M1 Max host doctor passes.
   Strict inventory is 2,357 and exits 1 as expected; no audit rule changed. Harness validation and 31/31 tool tests pass.
@@ -155,6 +155,6 @@ The strict no-GL gate remains open.
 
 ## Exact next actions
 
-1. Remove the now-constant overlay-eligibility migration scaffold, then continue the retained post-deferred target census at the next live GL producer.
+1. Remove the duplicate GL debug-blip draw while retaining its existing ordered Metal point capture and CPU lifetime/motion update.
 2. Re-run strict source/link/runtime gates after each owner cut.
 3. Keep visual failures queued; do not launch either viewer autonomously.
