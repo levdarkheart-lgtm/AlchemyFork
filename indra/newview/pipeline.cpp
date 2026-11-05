@@ -21994,23 +21994,6 @@ void render_hud_elements()
     gUIProgram.unbind();
 }
 
-static inline void bindHighlightProgram(LLGLSLShader& program)
-{
-    if ((LLViewerShaderMgr::instance()->getShaderLevel(LLViewerShaderMgr::SHADER_INTERFACE) > 0))
-    {
-        program.bind();
-        gGL.diffuseColor4f(1, 1, 1, 0.5f);
-    }
-}
-
-static inline void unbindHighlightProgram(LLGLSLShader& program)
-{
-    if (LLViewerShaderMgr::instance()->getShaderLevel(LLViewerShaderMgr::SHADER_INTERFACE) > 0)
-    {
-        program.unbind();
-    }
-}
-
 void LLPipeline::renderSelectedFaces(const LLColor4& color,
                                      U32 texcoord_type)
 {
@@ -22047,15 +22030,8 @@ void LLPipeline::renderHighlights()
 {
     assertInitialized();
 
-    // Draw 3D UI elements here (before we clear the Z buffer in POOL_HUD)
-    // Render highlighted faces.
-    LLGLSPipelineAlpha gls_pipeline_alpha;
-    disableLights();
-
     if (hasRenderDebugFeatureMask(RENDER_DEBUG_FEATURE_SELECTED))
     {
-        bindHighlightProgram(gHighlightProgram);
-
         if (sRenderHighlightTextureChannel == LLRender::DIFFUSE_MAP ||
             sRenderHighlightTextureChannel == LLRender::BASECOLOR_MAP ||
             sRenderHighlightTextureChannel == LLRender::METALLIC_ROUGHNESS_MAP ||
@@ -22077,8 +22053,6 @@ void LLPipeline::renderHighlights()
                 LLViewerTexture::sNullImagep, highlight_face_color,
                 LLVertexBuffer::TYPE_TEXCOORD0);
         }
-
-        unbindHighlightProgram(gHighlightProgram);
     }
 
     // Contains a list of the faces of objects that are physical or
@@ -22090,20 +22064,16 @@ void LLPipeline::renderHighlights()
         if (sRenderHighlightTextureChannel == LLRender::NORMAL_MAP)
         {
             static const LLColor4 highlight_normal_color(1.0f, 0.5f, 0.5f, 0.5f);
-            bindHighlightProgram(gHighlightNormalProgram);
             renderSelectedFaces(
                 highlight_normal_color,
                 LLVertexBuffer::TYPE_TEXCOORD1);
-            unbindHighlightProgram(gHighlightNormalProgram);
         }
         else if (sRenderHighlightTextureChannel == LLRender::SPECULAR_MAP)
         {
             static const LLColor4 highlight_specular_color(0.0f, 0.3f, 1.0f, 0.8f);
-            bindHighlightProgram(gHighlightSpecularProgram);
             renderSelectedFaces(
                 highlight_specular_color,
                 LLVertexBuffer::TYPE_TEXCOORD2);
-            unbindHighlightProgram(gHighlightSpecularProgram);
         }
     }
 }

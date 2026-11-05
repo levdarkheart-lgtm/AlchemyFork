@@ -105,13 +105,6 @@ LLGLSLShader        gObjectAlphaMaskNoColorProgram;
 //environment shaders
 LLGLSLShader        gDepthPyramidProgram;
 
-//interface shaders
-LLGLSLShader        gHighlightProgram;
-LLGLSLShader        gHighlightNormalProgram;
-LLGLSLShader        gHighlightSpecularProgram;
-
-LLGLSLShader        gDeferredHighlightProgram;
-
 LLGLSLShader        gPathfindingProgram;
 LLGLSLShader        gPathfindingNoNormalsProgram;
 
@@ -1029,8 +1022,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         }
         gCASProgram.unload();
 #endif
-        gDeferredHighlightProgram.unload();
-
         gDepthPyramidProgram.unload();
         gDeferredBufferVisualProgram.unload();
 
@@ -1048,16 +1039,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
 // [/RLVa:KB]
 
         return;
-    }
-
-    {
-        gDeferredHighlightProgram.mName = "Deferred Highlight Shader";
-        gDeferredHighlightProgram.mShaderFiles.clear();
-        gDeferredHighlightProgram.mShaderFiles.push_back(make_pair("interface/highlightV.glsl", GL_VERTEX_SHADER));
-        gDeferredHighlightProgram.mShaderFiles.push_back(make_pair("deferred/highlightF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredHighlightProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        add_common_permutations(&gDeferredHighlightProgram);
-        built(gDeferredHighlightProgram.createShader(), gDeferredHighlightProgram);
     }
 
     {
@@ -1881,33 +1862,6 @@ void LLViewerShaderMgr::loadShadersAvatar()
 void LLViewerShaderMgr::loadShadersInterface()
 {
     LL_PROFILE_ZONE_SCOPED;
-    {
-        gHighlightProgram.mName = "Highlight Shader";
-        gHighlightProgram.mShaderFiles.clear();
-        gHighlightProgram.mShaderFiles.push_back(make_pair("interface/highlightV.glsl", GL_VERTEX_SHADER));
-        gHighlightProgram.mShaderFiles.push_back(make_pair("interface/highlightF.glsl", GL_FRAGMENT_SHADER));
-        gHighlightProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gHighlightProgram.createShader(LLGLSLShader::VARIANT_RIGGED), gHighlightProgram);
-    }
-
-    {
-        gHighlightNormalProgram.mName = "Highlight Normals Shader";
-        gHighlightNormalProgram.mShaderFiles.clear();
-        gHighlightNormalProgram.mShaderFiles.push_back(make_pair("interface/highlightNormV.glsl", GL_VERTEX_SHADER));
-        gHighlightNormalProgram.mShaderFiles.push_back(make_pair("interface/highlightF.glsl", GL_FRAGMENT_SHADER));
-        gHighlightNormalProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gHighlightNormalProgram.createShader(), gHighlightNormalProgram);
-    }
-
-    {
-        gHighlightSpecularProgram.mName = "Highlight Spec Shader";
-        gHighlightSpecularProgram.mShaderFiles.clear();
-        gHighlightSpecularProgram.mShaderFiles.push_back(make_pair("interface/highlightSpecV.glsl", GL_VERTEX_SHADER));
-        gHighlightSpecularProgram.mShaderFiles.push_back(make_pair("interface/highlightF.glsl", GL_FRAGMENT_SHADER));
-        gHighlightSpecularProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        built(gHighlightSpecularProgram.createShader(), gHighlightSpecularProgram);
-    }
-
     {
         gUIProgram.mName = "UI Shader";
         gUIProgram.mShaderFiles.clear();
