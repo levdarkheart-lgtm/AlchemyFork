@@ -3219,18 +3219,11 @@ void renderRaycast(LLDrawable* drawablep)
 
 void renderAvatarCollisionVolumes(LLVOAvatar* avatar)
 {
-    // This shared avatar-volume owner still has retained GL consumers. Keep
-    // its blend precondition local instead of leaking it into raycast capture.
-    LLGLEnable blend(GL_BLEND);
-#if LL_DARWIN
     gPipeline.beginMetalAvatarVolumeCapture(
         static_cast<std::size_t>(avatar->mNumCollisionVolumes));
-#endif
-    avatar->renderCollisionVolumes();
-#if LL_DARWIN
+    avatar->captureMetalCollisionVolumes();
     gPipeline.endMetalAvatarVolumeCapture(
         static_cast<std::size_t>(avatar->mNumCollisionVolumes));
-#endif
 }
 
 void renderAvatarBones(LLVOAvatar* avatar)

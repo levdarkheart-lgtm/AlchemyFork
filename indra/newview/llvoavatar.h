@@ -574,7 +574,7 @@ public:
     void        captureMetalDeferredTransparentMask();
     void        captureMetalPostDeferredTransparent();
     void        captureMetalDeferredImpostor();
-    void        renderCollisionVolumes();
+    void        captureMetalCollisionVolumes();
     void        renderBones(const std::string &selected_joint = std::string());
     virtual void renderJoints();
     static void deleteCachedImages(bool clearAll=true);

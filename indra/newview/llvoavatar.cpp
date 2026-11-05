@@ -1775,23 +1775,32 @@ void render_sphere_and_line(const LLVector3& begin_pos, const LLVector3& end_pos
     gGL.popMatrix();
 }
 
-//-----------------------------------------------------------------------------
-// renderCollisionVolumes()
-//-----------------------------------------------------------------------------
-void LLVOAvatar::renderCollisionVolumes()
+void capture_metal_sphere_and_line(const LLVector3& end_pos,
+                                   F32 sphere_scale,
+                                   const LLVector3& occ_color,
+                                   const LLVector3& visible_color)
 {
-    std::ostringstream ostr;
+    gPipeline.beginMetalAvatarVolumePair(
+        end_pos, sphere_scale, occ_color, visible_color);
+    gGL.pushMatrix();
+    gGL.scalef(sphere_scale, sphere_scale, sphere_scale);
+    gPipeline.captureMetalAvatarVolumeSphereTransform();
+    gGL.popMatrix();
+    gPipeline.endMetalAvatarVolumePair();
+}
 
+//-----------------------------------------------------------------------------
+// captureMetalCollisionVolumes()
+//-----------------------------------------------------------------------------
+void LLVOAvatar::captureMetalCollisionVolumes()
+{
     for (S32 i = 0; i < mNumCollisionVolumes; i++)
     {
-        ostr << mCollisionVolumes[i].getName() << ", ";
-
         LLAvatarJointCollisionVolume& collision_volume = mCollisionVolumes[i];
 
         gGL.pushMatrix();
         gGL.multMatrix( collision_volume.getWorldMatrix().getF32ptr() );
 
-        LLVector3 begin_pos(0,0,0);
         LLVector3 end_pos(collision_volume.getEnd());
         static F32 sphere_scale = 1.0f;
         static F32 center_dot_scale = 0.05f;
@@ -1817,8 +1826,11 @@ void LLVOAvatar::renderCollisionVolumes()
             cv_color_occluded = BLUE;
             cv_color_visible = PASTEL_BLUE;
         }
-        render_sphere_and_line(begin_pos, end_pos, sphere_scale, cv_color_occluded, cv_color_visible);
-        render_sphere_and_line(begin_pos, end_pos, center_dot_scale, dot_color_occluded, dot_color_visible);
+        capture_metal_sphere_and_line(
+            end_pos, sphere_scale, cv_color_occluded, cv_color_visible);
+        capture_metal_sphere_and_line(
+            end_pos, center_dot_scale,
+            dot_color_occluded, dot_color_visible);
 
         gGL.popMatrix();
     }

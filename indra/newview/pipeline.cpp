@@ -4464,8 +4464,6 @@ void LLPipeline::beginMetalAvatarVolumeCapture(
         return;
     }
     MetalWorldSimpleCapture& capture = *mMetalWorldSimpleCapture;
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
     constexpr std::size_t pairs_per_volume = 2;
     const bool count_overflows = collision_volume_count >
         std::numeric_limits<std::size_t>::max() / pairs_per_volume;
@@ -4479,10 +4477,7 @@ void LLPipeline::beginMetalAvatarVolumeCapture(
         capture.avatar_volume_pair_active || count_overflows ||
         reserve_overflows ||
         pair_count > std::numeric_limits<U64>::max() -
-            capture.render_debug_order ||
-        !LLGLState::isEnabled(GL_BLEND) ||
-        LLGLState::isEnabled(GL_CULL_FACE) ||
-        !color_mask[0] || !color_mask[1] || !color_mask[2] || color_mask[3])
+            capture.render_debug_order)
     {
         capture.markIncomplete(__LINE__);
         return;
@@ -4522,8 +4517,19 @@ void LLPipeline::beginMetalAvatarVolumePair(
         return;
     }
 
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
+    bool state_valid = true;
+    if (joint_capture)
+    {
+        bool color_mask[4]{};
+        gGL.getColorMask(color_mask);
+        state_valid = LLGLState::isEnabled(GL_BLEND) &&
+            !LLGLState::isEnabled(GL_CULL_FACE) &&
+            LLGLDepthTest::depthEnabled() &&
+            LLGLDepthTest::depthWriteEnabled() &&
+            LLGLDepthTest::depthFunction() == GL_LEQUAL &&
+            color_mask[0] && color_mask[1] && color_mask[2] &&
+            !color_mask[3];
+    }
     const std::size_t captured_pairs = volume_capture
         ? capture.avatar_volume_batches.size() -
               capture.avatar_volume_capture_first
@@ -4532,13 +4538,7 @@ void LLPipeline::beginMetalAvatarVolumePair(
         ? capture.avatar_volume_expected_pairs
         : capture.avatar_joint_expected_segments;
     if (!capture.complete || capture.avatar_volume_pair_active ||
-        captured_pairs >= expected_pairs ||
-        !LLGLState::isEnabled(GL_BLEND) ||
-        LLGLState::isEnabled(GL_CULL_FACE) ||
-        !LLGLDepthTest::depthEnabled() ||
-        !LLGLDepthTest::depthWriteEnabled() ||
-        LLGLDepthTest::depthFunction() != GL_LEQUAL ||
-        !color_mask[0] || !color_mask[1] || !color_mask[2] || color_mask[3])
+        captured_pairs >= expected_pairs || !state_valid)
     {
         capture.markIncomplete(__LINE__);
         return;
@@ -4606,16 +4606,21 @@ void LLPipeline::endMetalAvatarVolumePair()
         return;
     }
 
-    bool color_mask[4]{};
-    gGL.getColorMask(color_mask);
     const bool state_valid = capture.complete &&
-        capture.avatar_volume_sphere_transform_captured &&
-        LLGLState::isEnabled(GL_BLEND) &&
-        !LLGLState::isEnabled(GL_CULL_FACE) &&
-        LLGLDepthTest::depthEnabled() &&
-        !LLGLDepthTest::depthWriteEnabled() &&
-        LLGLDepthTest::depthFunction() == GL_GREATER &&
-        color_mask[0] && color_mask[1] && color_mask[2] && !color_mask[3];
+        capture.avatar_volume_sphere_transform_captured;
+    bool joint_state_valid = true;
+    if (capture.avatar_joint_capture_active)
+    {
+        bool color_mask[4]{};
+        gGL.getColorMask(color_mask);
+        joint_state_valid = LLGLState::isEnabled(GL_BLEND) &&
+            !LLGLState::isEnabled(GL_CULL_FACE) &&
+            LLGLDepthTest::depthEnabled() &&
+            !LLGLDepthTest::depthWriteEnabled() &&
+            LLGLDepthTest::depthFunction() == GL_GREATER &&
+            color_mask[0] && color_mask[1] && color_mask[2] &&
+            !color_mask[3];
+    }
     if (state_valid && capture.avatar_volume_capture_active)
     {
         try
@@ -4628,7 +4633,8 @@ void LLPipeline::endMetalAvatarVolumePair()
             capture.markIncomplete(__LINE__);
         }
     }
-    else if (state_valid && capture.avatar_joint_capture_active)
+    else if (state_valid && joint_state_valid &&
+             capture.avatar_joint_capture_active)
     {
         ALMetalWorldAvatarJointBatch joint_batch;
         joint_batch.kind = ALMetalWorldAvatarJointKind::segment;
