@@ -29171,15 +29171,7 @@ void LLPipeline::renderDeferredLighting()
     }
 #endif
 
-    LLRenderTarget *screen_target         = &mRT->screen;
-
-    // The light map, the pack's where it has one, for the lighting alone: nothing after the local lights reads it, and
-    // where a later pass's program has the sampler, bindDeferredShader gives it white.
-    ALTransientTargets lighting(mTransientTargets);
-    LLRenderTarget* deferred_light_target =
-        acquireResource(lighting, ALRenderResourcePlan::inPack(renderPack(), ALRenderResourcePlan::Slot::Light));
-    LLRenderTarget* const outer_light_map = mLightMap;
-    mLightMap = deferred_light_target;
+    LLRenderTarget* screen_target = &mRT->screen;
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("deferred");
@@ -29212,114 +29204,8 @@ void LLPipeline::renderDeferredLighting()
         mTransformedMoonDir.set(tc.getF32ptr());
 
         // Repack native shadow state plus the retained GL SSAO/specular block once for this
-        // deferred pass. bindDeferredShader() uploads only the 80-byte GL block on first use.
+        // deferred pass. The latter remains only for deferred debug/local-light consumers.
         packDeferredConstants();
-
-        // The light map's sun pass runs wherever the pack has a light map: for shadows, and in the main view for SSAO.
-        // It clears the map, so whatever the pool's target held before is gone.
-        if (deferred_light_target)
-        {
-            LL_PROFILE_GPU_ZONE("sun program");
-            deferred_light_target->bindTarget();
-            {  // paint shadow/SSAO light map (direct lighting lightmap)
-                LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("renderDeferredLighting - sun shadow");
-
-                LLGLSLShader& sun_shader = gCubeSnapshot ? gDeferredSunProbeProgram : gDeferredSunProgram;
-                bindDeferredShader(sun_shader, deferred_light_target);
-                mScreenTriangleVB->setBuffer();
-                gGL.setClearColor(LLColor4::white);
-                deferred_light_target->clear(GL_COLOR_BUFFER_BIT);
-                gGL.setClearColor(LLColor4::transparent);
-
-                sun_shader.uniform2f(LLShaderMgr::DEFERRED_SCREEN_RES,
-                                              (GLfloat)deferred_light_target->getWidth(),
-                                              (GLfloat)deferred_light_target->getHeight());
-
-                {
-                    // The triangle lies on the far plane (sunLightV.glsl) and the target shares the scene's
-                    // depth: only geometry is shadowed and occluded, and the sky keeps the clear's white, which
-                    // nothing reads there (the soften pass's sky program lights nothing).
-                    LLGLDisable   blend(GL_BLEND);
-                    ALDrawnOnly   drawn;
-                    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-                }
-
-                unbindDeferredShader(sun_shader);
-            }
-            deferred_light_target->flush();
-        }
-
-        // SSAO's blur of the light map's occlusion, in the main view (ALLightMapBlur): where the session computes, one
-        // dispatch into the blurred light map, which the soften pass reads in place of the light map; otherwise across
-        // into a scratch of the light map's description, cleared as the sun pass clears the map, and back down into the
-        // map.
-        LLRenderTarget* light_blurred = nullptr;
-        if (mResourceInputs.mSSAO && !gCubeSnapshot && deferred_light_target)
-        {
-            LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("renderDeferredLighting - soften shadow");
-            LL_PROFILE_GPU_ZONE("soften shadow");
-            const ALLightMapBlur::Kernel kernel =
-                ALLightMapBlur::kernel(RenderShadowGaussian, RenderShadowBlurSize, RenderShadowBlurDistFactor);
-
-            if (LLRender::sCompute && gDeferredBlurLightComputeProgram.isComplete() && ALLightMapBlur::apron(kernel) >= 0)
-            {
-                light_blurred = acquireResource(lighting, ALRenderResourcePlan::Id::MainLightBlurred);
-                if (light_blurred)
-                {
-                    bindDeferredShader(gDeferredBlurLightComputeProgram, deferred_light_target);
-                    ALLightMapBlur::setKernel(gDeferredBlurLightComputeProgram, kernel);
-                    if (!ALLightMapBlur::dispatch(gDeferredBlurLightComputeProgram, kernel, *light_blurred))
-                    {
-                        lighting.release(light_blurred);
-                        light_blurred = nullptr;
-                    }
-                    unbindDeferredShader(gDeferredBlurLightComputeProgram);
-                }
-            }
-
-            LLRenderTarget* blur_scratch = light_blurred
-                ? nullptr
-                : acquireResource(lighting, ALRenderResourcePlan::Id::MainLight, "main.light.scratch");
-            if (blur_scratch)
-            {
-                blur_scratch->bindTarget();
-                gGL.setClearColor(LLColor4::white);
-                blur_scratch->clear(GL_COLOR_BUFFER_BIT);
-                gGL.setClearColor(LLColor4::transparent);
-
-                bindDeferredShader(gDeferredBlurLightProgram);
-                ALLightMapBlur::setKernel(gDeferredBlurLightProgram, kernel);
-                gDeferredBlurLightProgram.uniform2f(LLShaderMgr::DELTA, 1.f, 0.f);
-
-                // Both blurs on the far plane (blurLightV.glsl), over geometry alone: the sky stays the clear's white
-                // in either target.
-                {
-                    LLGLDisable   blend(GL_BLEND);
-                    ALDrawnOnly   drawn;
-                    mScreenTriangleVB->setBuffer();
-                    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-                }
-
-                blur_scratch->flush();
-                unbindDeferredShader(gDeferredBlurLightProgram);
-
-                bindDeferredShader(gDeferredBlurLightProgram, blur_scratch);
-
-                deferred_light_target->bindTarget();
-
-                gDeferredBlurLightProgram.uniform2f(LLShaderMgr::DELTA, 0.f, 1.f);
-
-                {
-                    LLGLDisable   blend(GL_BLEND);
-                    ALDrawnOnly   drawn;
-                    mScreenTriangleVB->setBuffer();
-                    mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-                }
-                deferred_light_target->flush();
-                unbindDeferredShader(gDeferredBlurLightProgram);
-                lighting.release(blur_scratch);
-            }
-        }
 
 #if LL_DARWIN
         bool lighting_batch_active = false;
@@ -29361,49 +29247,6 @@ void LLPipeline::renderDeferredLighting()
             gSavedSettings, "RenderSSAOIrradianceScale", 0.5f);
         static LLCachedControl<F32> ssao_max(
             gSavedSettings, "RenderSSAOIrradianceMax", 0.25f);
-        if (RenderDeferredAtmospheric)
-        {  // apply sunlight contribution
-            LLGLSLShader &soften_shader = *gDeferredSoftenProgram.selectVariant();
-
-            LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("renderDeferredLighting - atmospherics");
-            LL_PROFILE_GPU_ZONE("atmospherics");
-            // The sun's shadow and the occlusion, blurred where the dispatch blurred them.
-            bindDeferredShader(soften_shader, light_blurred);
-
-            soften_shader.uniform1f(LLShaderMgr::DEFERRED_SSAO_IRRADIANCE_SCALE, ssao_scale);
-            soften_shader.uniform1f(LLShaderMgr::DEFERRED_SSAO_IRRADIANCE_MAX, ssao_max);
-
-            LLEnvironment &environment = LLEnvironment::instance();
-
-            soften_shader.uniform1i(LLShaderMgr::SUN_UP_FACTOR, environment.getIsSunUp() ? 1 : 0);
-            soften_shader.uniform3fv(LLShaderMgr::LIGHTNORM, 1, environment.getClampedLightNorm().mV);
-
-            soften_shader.uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, LLDrawPoolAlpha::sWaterPlane.mV);
-
-            // The triangle lies on the far plane (softenLightV.glsl), level with the depth the sky leaves cleared:
-            // this draw passes only where the world drew something, and the sky's draw below only where it did
-            // not, so no sky pixel pays for the G-buffer decode and atmospherics it would throw away.
-            LLGLDisable blend(GL_BLEND);
-            {
-                ALDrawnOnly drawn;
-
-                mScreenTriangleVB->setBuffer();
-                mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            }
-
-            unbindDeferredShader(soften_shader);
-
-            LLGLSLShader& sky_shader = *gDeferredSoftenSkyProgram.selectVariant();
-            bindDeferredShader(sky_shader);
-            {
-                LLGLDepthTest depth(GL_TRUE, GL_FALSE, GL_EQUAL);
-
-                mScreenTriangleVB->setBuffer();
-                mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            }
-            unbindDeferredShader(sky_shader);
-        }
-
         static LLCachedControl<S32> local_light_count(gSavedSettings, "RenderLocalLightCount", 256);
 #if LL_DARWIN
         if (RenderDeferredAtmospheric)
@@ -29413,9 +29256,8 @@ void LLPipeline::renderDeferredLighting()
                 mResourceInputs.mSSAO, ssao_scale, ssao_max);
         }
         // Consume the retained native G-buffer at the same owner boundary as
-        // the visible GL point-light passes. After complete native final color
-        // starts publishing SSR history, this offscreen chain advances each
-        // frame; it still is not presented and GL remains visible authority.
+        // the remaining GL point-light traversal. Metal is the sole visible
+        // presentation authority; the GL draws below are the next owner cut.
         renderMetalWorldLocalLights(
             *camera, mat, light_scale, std::max<S32>(local_light_count, 0));
         renderMetalWorldProjectorLights(
@@ -29778,10 +29620,6 @@ void LLPipeline::renderDeferredLighting()
 
         gGL.setColorMask(true, true);
     }
-
-    // Back to the pool: GL draws the lighting before whatever acquires the map next.
-    mLightMap = outer_light_map;
-    lighting.releaseAll();
 
     {  // render non-deferred geometry (alpha, fullbright, glow)
         LLGLDisable blend(GL_BLEND);

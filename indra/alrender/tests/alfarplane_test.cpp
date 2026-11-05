@@ -247,20 +247,6 @@ namespace
                                               haze_end - haze_begin);
         UNSCOPED_INFO("native haze triangle uses the cleared far plane for both depth conventions");
         REQUIRE(metal.find("constants.config.x != 0u ? 0.0 : 1.0,") != std::string::npos);
-        // The lighting passes draw there too: the light map's passes, the lights and the soften pass's lit program in
-        // front of it, the soften pass's sky program on it.
-        for (const char* path : { "class2/deferred/softenLightV.glsl", "class3/deferred/multiPointLightV.glsl",
-                                  "class2/deferred/sunLightV.glsl", "class1/deferred/blurLightV.glsl" })
-        {
-            const std::string v = shader_source(path);
-            UNSCOPED_INFO(path << " drawn on the far plane, reversed");
-            REQUIRE(v.find("gl_Position = vec4(position.xy, 0.0, 1.0);") != std::string::npos);
-            UNSCOPED_INFO(path << " drawn on the far plane, forward");
-            REQUIRE(v.find("gl_Position = vec4(position.xy, 1.0, 1.0);") != std::string::npos);
-        }
-        const std::string soften = shader_source("class3/deferred/softenLightF.glsl");
-        UNSCOPED_INFO("the sky's soften program lights nothing");
-        REQUIRE(soften.find("writeColor(skyColor(getGBuffer(tc)));") != std::string::npos);
         UNSCOPED_INFO("native haze reconstructs geometry where it is");
         REQUIRE(haze.find("constants.inverse_projection *") != std::string::npos);
         const size_t water_haze = metal.find(

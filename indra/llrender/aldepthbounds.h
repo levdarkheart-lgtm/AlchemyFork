@@ -71,8 +71,8 @@ private:
     static bool sActive;
 };
 
-/// A far-plane triangle that shades only what the world drew (sunLightV.glsl, softenLightV.glsl and the
-/// rest): the depth bounds test holding it off the clear's depth with the depth test off, or without the test the
+/// A far-plane triangle that shades only what the world drew: the depth bounds test holding it off the clear's depth
+/// with the depth test off, or without the test the
 /// depth test passing it where the stored depth is nearer than it.
 class ALDrawnOnly
 {

@@ -1,6 +1,6 @@
 /**
  * @file allightmapblur.h
- * @brief The light map's ambient occlusion blur: its kernel, and its one dispatch where the session computes.
+ * @brief Backend-neutral constants for the native light-map ambient-occlusion blur.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -26,33 +26,14 @@
 
 #include "v3math.h"
 
-class LLGLSLShader;
-class LLRenderTarget;
-
-/// The light map's ambient occlusion blur: a Gaussian along each axis in turn that keeps to each pixel's plane, its
-/// taps blurLightUtil.glsl's, so the two ways of running it blur alike.
-/// - Two fragment passes (gDeferredBlurLightProgram, blurLightF.glsl): across into a scratch of the light map's
-///   description, then down from it back into the map. Wherever the session does not compute.
-/// - One dispatch (gDeferredBlurLightComputeProgram, blurLightC.glsl): a work group walks its tile down a step of
-///   rows at a time, from the rows above it its taps down reach to those below. It fetches a step's depth and
-///   occlusion once into shared memory, from the columns its taps across reach either side, blurs the step across
-///   from there into a ring of the rows its taps down still read, and blurs down from the ring the rows whose taps it
-///   then holds. Into a target of the sun's shadow and the blurred occlusion alone, which the soften pass reads in
-///   place of the light map. Nothing is written between the two axes, so it takes no scratch, and the spot lights'
-///   shadows, which nothing blurs, stay in the light map for the passes that read them.
+/// The native light-map blur's Gaussian and depth-aware tap contract. Metal consumes these values directly; no
+/// application-owned GL shader, image binding or dispatch remains.
 class ALLightMapBlur
 {
 public:
-    /// blurLightC.glsl's tile, a work group's, the most rows above and below it and columns either side its taps may
-    /// reach, and the rows of a step, the work group's height: a kernel reaching further is blurred by the fragment
-    /// passes.
-    static constexpr U32 TILE_WIDTH  = 32;
-    static constexpr U32 TILE_HEIGHT = 256;
     static constexpr U32 MAX_APRON   = 16;
-    static constexpr U32 STEP_ROWS   = 16;
 
-    /// What both ways of blurring take: four weights out from the centre, the steps between them doubled by
-    /// blurLightUtil.glsl's taps halfway between each two.
+    /// Four weights out from the centre; the native shader samples halfway between adjacent steps too.
     struct Kernel
     {
         LLVector3 mTaps[4];      ///< kern: the shadow's weight (unused), the occlusion's, and the offset in steps
@@ -63,17 +44,6 @@ public:
     /// The kernel from RenderShadowGaussian's two widths, RenderShadowBlurSize and RenderShadowBlurDistFactor.
     static Kernel kernel(const LLVector3& gaussian, F32 blur_size, F32 dist_factor);
 
-    /// Sets @a kernel on @a shader, bound: either way's program.
-    static void setKernel(LLGLSLShader& shader, const Kernel& kernel);
-
     /// The rows above and below a tile that @a kernel's taps down can reach, or -1 past MAX_APRON.
     static S32 apron(const Kernel& kernel);
-
-    /// Dispatches @a program, bound as a deferred program over the light map with @a kernel set
-    /// (LLPipeline::bindDeferredShader), over the light map's size, into @a target, an RG8 target, the format
-    /// blurLightC.glsl stores: the sun's shadow and the blurred occlusion, read wherever the light map is, and the sky
-    /// the light map's own. Fetches of @a target after it see what it stored. False, with nothing dispatched, where
-    /// @a kernel reaches past MAX_APRON, @a target is narrower or shorter than a tile's width and its aprons either
-    /// side, is of another format, or the program has no image for it, which is then the fragment passes'.
-    static bool dispatch(LLGLSLShader& program, const Kernel& kernel, LLRenderTarget& target);
 };

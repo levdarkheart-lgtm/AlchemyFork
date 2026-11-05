@@ -137,12 +137,6 @@ LLGLSLShader            gDeferredLightProgram;
 LLGLSLShader            gDeferredMultiLightProgram[16];
 LLGLSLShader            gDeferredSpotLightProgram;
 LLGLSLShader            gDeferredMultiSpotLightProgram;
-LLGLSLShader            gDeferredSunProgram;
-LLGLSLShader            gDeferredSunProbeProgram;
-LLGLSLShader            gDeferredBlurLightProgram;
-LLGLSLShader            gDeferredBlurLightComputeProgram;
-LLGLSLShader            gDeferredSoftenProgram;
-LLGLSLShader            gDeferredSoftenSkyProgram;
 #if !LL_DARWIN
 LLGLSLShader            gDeferredPostProgram;
 LLGLSLShader            gDeferredPostProgramNoNear;
@@ -1022,11 +1016,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         }
         gDeferredSpotLightProgram.unload();
         gDeferredMultiSpotLightProgram.unload();
-        gDeferredSunProgram.unload();
-        gDeferredBlurLightProgram.unload();
-        gDeferredBlurLightComputeProgram.unload();
-        gDeferredSoftenProgram.unload();
-        gDeferredSoftenSkyProgram.unload();
 #if !LL_DARWIN
         gDeferredPostProgram.unload();
         gDeferredPostProgramNoNear.unload();
@@ -1248,120 +1237,6 @@ void LLViewerShaderMgr::loadShadersDeferred()
         built(gDeferredMultiSpotLightProgram.createShader(LLGLSLShader::VARIANT_CLASSIC), gDeferredMultiSpotLightProgram);
     }
 
-    {
-        std::string fragment;
-        bool use_ao = mInputs.mLocal.mSSAO;
-        if (use_ao)
-        {
-            fragment = "deferred/sunLightSSAOF.glsl";
-        }
-        else
-        {
-            fragment = "deferred/sunLightF.glsl";
-        }
-
-        gDeferredSunProgram.mName = "Deferred Sun Shader";
-        gDeferredSunProgram.mFeatures.isDeferred    = true;
-        gDeferredSunProgram.mFeatures.hasAmbientOcclusion = use_ao;
-
-        gDeferredSunProgram.mShaderFiles.clear();
-        gDeferredSunProgram.mShaderFiles.push_back(make_pair("deferred/sunLightV.glsl", GL_VERTEX_SHADER));
-        gDeferredSunProgram.mShaderFiles.push_back(make_pair(fragment, GL_FRAGMENT_SHADER));
-        gDeferredSunProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        add_common_permutations(&gDeferredSunProgram);
-
-        built(gDeferredSunProgram.createShader(), gDeferredSunProgram);
-    }
-
-    {
-        gDeferredSunProbeProgram.mName = "Deferred Sun Probe Shader";
-        gDeferredSunProbeProgram.mFeatures.isDeferred = true;
-
-        gDeferredSunProbeProgram.mShaderFiles.clear();
-        gDeferredSunProbeProgram.mShaderFiles.push_back(make_pair("deferred/sunLightV.glsl", GL_VERTEX_SHADER));
-        gDeferredSunProbeProgram.mShaderFiles.push_back(make_pair("deferred/sunLightF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredSunProbeProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        add_common_permutations(&gDeferredSunProbeProgram);
-
-        built(gDeferredSunProbeProgram.createShader(), gDeferredSunProbeProgram);
-    }
-
-    {
-        gDeferredBlurLightProgram.mName = "Deferred Blur Light Shader";
-        gDeferredBlurLightProgram.mFeatures.isDeferred = true;
-
-        gDeferredBlurLightProgram.mShaderFiles.clear();
-        gDeferredBlurLightProgram.mShaderFiles.push_back(make_pair("deferred/blurLightV.glsl", GL_VERTEX_SHADER));
-        gDeferredBlurLightProgram.mShaderFiles.push_back(make_pair("deferred/blurLightF.glsl", GL_FRAGMENT_SHADER));
-        gDeferredBlurLightProgram.mShaderFiles.push_back(make_pair("deferred/blurLightUtil.glsl", GL_FRAGMENT_SHADER));
-        gDeferredBlurLightProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-        add_common_permutations(&gDeferredBlurLightProgram);
-
-        built(gDeferredBlurLightProgram.createShader(), gDeferredBlurLightProgram);
-    }
-
-    // SSAO's blur in one dispatch, where the session computes and SSAO is wanted. Optional: its failing leaves the blur
-    // to the fragment passes above (ALLightMapBlur), not the shaders after it. A compute program attaches no features,
-    // so it takes the deferred objects the taps read as files of its own, compiled for its stage.
-    if (mInputs.mLocal.mCompute && mInputs.mLocal.mSSAO)
-    {
-        gDeferredBlurLightComputeProgram.mName = "Deferred Blur Light Compute Shader";
-        gDeferredBlurLightComputeProgram.mShaderFiles.clear();
-        gDeferredBlurLightComputeProgram.mShaderFiles.push_back(make_pair("deferred/blurLightC.glsl", GL_COMPUTE_SHADER));
-        gDeferredBlurLightComputeProgram.mShaderFiles.push_back(make_pair("deferred/blurLightUtil.glsl", GL_COMPUTE_SHADER));
-        gDeferredBlurLightComputeProgram.mShaderFiles.push_back(make_pair("deferred/deferredUtil.glsl", GL_COMPUTE_SHADER));
-        gDeferredBlurLightComputeProgram.mShaderFiles.push_back(make_pair("deferred/globalF.glsl", GL_COMPUTE_SHADER));
-        gDeferredBlurLightComputeProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-        gDeferredBlurLightComputeProgram.clearPermutations();
-        if (!gDeferredBlurLightComputeProgram.createShader())
-        {
-            LL_WARNS("Shader") << "SSAO's blur dispatch did not build; the fragment passes blur instead" << LL_ENDL;
-            gDeferredBlurLightComputeProgram.unload();
-        }
-    }
-
-    {
-        // The soften pass, and its variant for the sky alone (softenLightF.glsl, SOFTEN_SKY), from one configuration,
-        // so the two resolve the same shader level and link the same objects.
-        const auto load_soften = [&](LLGLSLShader& shader, const char* name, bool sky)
-        {
-            shader.mName = name;
-            shader.mShaderFiles.clear();
-            shader.mFeatures.hasSrgb = true;
-            shader.mFeatures.calculatesAtmospherics = true;
-            shader.mFeatures.hasAtmospherics = true;
-            shader.mFeatures.hasGamma = true;
-            shader.mFeatures.isDeferred = true;
-            shader.mFeatures.hasFullGBuffer = true;
-            shader.mFeatures.hasReflectionProbes = mShaderLevel[SHADER_DEFERRED] > 2;
-
-            shader.clearPermutations();
-            add_common_permutations(&shader);
-            shader.mShaderFiles.push_back(make_pair("deferred/softenLightV.glsl", GL_VERTEX_SHADER));
-            shader.mShaderFiles.push_back(make_pair("deferred/softenLightF.glsl", GL_FRAGMENT_SHADER));
-
-            shader.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
-
-            if (mInputs.mLocal.mSSAO)
-            { // If using SSAO, read its retained screen-space light-map channel.
-                shader.mShaderLevel = llmax(shader.mShaderLevel, 2);
-                shader.addPermutation("HAS_SSAO", "1");
-            }
-
-            if (sky)
-            {
-                shader.addPermutation("SOFTEN_SKY", "1");
-            }
-
-            built(shader.createShader(LLGLSLShader::VARIANT_CLASSIC), shader);
-        };
-
-        load_soften(gDeferredSoftenProgram, "Deferred Soften Shader", false);
-        load_soften(gDeferredSoftenSkyProgram, "Deferred Soften Sky Shader", true);
-    }
     {
         // The projection count and hex tiling apply to the four-texture terrain as they do to
         // the PBR one: terrainF blends its detail textures through pbrterrainUtilF's weights,

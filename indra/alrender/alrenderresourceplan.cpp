@@ -269,7 +269,7 @@ ALRenderResourcePlan ALRenderResourcePlan::make(const ALRenderResourceInputs& in
     // Where the session computes, and SSAO's kernel reaches no further than a dispatch holds, SSAO's blur writes the
     // sun's shadow and the blurred occlusion here, which the soften pass reads in place of the light map
     // (ALLightMapBlur): it takes no scratch, and no depth, as a dispatch's destination. The light map's 8 bits a
-    // channel, the format blurLightC.glsl stores.
+    // channel, the compact format the native light-map blur consumes.
     if (in.mSSAO && in.mCompute && in.mSSAOBlurDispatched)
     {
         plan.at(Id::MainLightBlurred).mDesc = ALRenderTargetDesc{ .width = width, .height = height, .color = { GL_RG8 } };

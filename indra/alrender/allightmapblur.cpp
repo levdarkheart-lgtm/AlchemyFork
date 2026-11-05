@@ -1,6 +1,6 @@
 /**
  * @file allightmapblur.cpp
- * @brief The light map's ambient occlusion blur: its kernel, and its one dispatch where the session computes.
+ * @brief Backend-neutral constants for the native light-map ambient-occlusion blur.
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Alchemy Viewer Source Code
@@ -26,11 +26,7 @@
 
 #include "allightmapblur.h"
 
-#include "llglslshader.h"
 #include "llmath.h"
-#include "llrender.h"
-#include "llrendertarget.h"
-#include "llshadermgr.h"
 
 #include <cmath>
 
@@ -50,14 +46,6 @@ ALLightMapBlur::Kernel ALLightMapBlur::kernel(const LLVector3& gaussian, F32 blu
 }
 
 // static
-void ALLightMapBlur::setKernel(LLGLSLShader& shader, const Kernel& kernel)
-{
-    shader.uniform1f(LLShaderMgr::DIST_FACTOR, kernel.mDistFactor);
-    shader.uniform3fv(LLShaderMgr::KERN, 4, kernel.mTaps[0].mV);
-    shader.uniform1f(LLShaderMgr::KERN_SCALE, kernel.mScale);
-}
-
-// static
 S32 ALLightMapBlur::apron(const Kernel& kernel)
 {
     // A tap lies at its offset times two steps out from an origin the checkerboard moves by a quarter of the second
@@ -74,34 +62,4 @@ S32 ALLightMapBlur::apron(const Kernel& kernel)
     }
     // A tap reads the row its offset lands in, which is at most ceil(reach) away; one more for the arithmetic.
     return (S32)std::ceil(reach) + 1;
-}
-
-// What blurLightC.glsl keeps in shared memory: a step's rows of view depth and occlusion, from the apron left of the
-// tile to the apron right of it, and a ring of the tile's columns of view depth and occlusion blurred across, as many
-// rows as a step's taps down read. Within the least that GL gives a work group.
-static_assert(sizeof(F32) * 2 *
-                      (ALLightMapBlur::STEP_ROWS * (ALLightMapBlur::TILE_WIDTH + 2 * ALLightMapBlur::MAX_APRON) +
-                       (2 * ALLightMapBlur::MAX_APRON + ALLightMapBlur::STEP_ROWS) * ALLightMapBlur::TILE_WIDTH) <=
-                  32768,
-              "blurLightC.glsl's shared memory must fit GL_MAX_COMPUTE_SHARED_MEMORY_SIZE's least");
-
-// static
-bool ALLightMapBlur::dispatch(LLGLSLShader& program, const Kernel& kernel, LLRenderTarget& target)
-{
-    // blurLightC.glsl stores through an rg8 image: the unit's format must be its. Every texel a tile reads lies within
-    // one mirror of a map at least its width and aprons across, which the shader's mirror takes without a remainder.
-    const S32 rows = apron(kernel);
-    const U32 least = TILE_WIDTH + 2 * (U32)llmax(rows, 0);
-    if (rows < 0 || target.getWidth() < least || target.getHeight() < least || target.getInternalFormat() != GL_RG8 ||
-        program.bindImage(LLShaderMgr::BLUR_LIGHT_TARGET, &target, ALImageSlot::WRITE_ONLY) < 0)
-    {
-        return false;
-    }
-
-    program.uniform1i(LLShaderMgr::BLUR_LIGHT_APRON, rows);
-    program.dispatch((target.getWidth() + TILE_WIDTH - 1) / TILE_WIDTH, (target.getHeight() + TILE_HEIGHT - 1) / TILE_HEIGHT);
-    // The soften pass samples what this stored.
-    gGL.memoryBarrier(LLRender::BARRIER_TEXTURE_FETCH);
-    program.unbindImage(LLShaderMgr::BLUR_LIGHT_TARGET);
-    return true;
 }
